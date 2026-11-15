@@ -13,15 +13,25 @@ const LABEL_STYLE = { fontSize: 10, fill: 'var(--muted-foreground)' };
 const LABEL_BG = { fill: 'var(--background)' };
 
 /** Explore mode: leaves and enters on the right, bowing out so nested arcs never cross a card. */
-function SideArcEdge({ id, sourceX, sourceY, targetX, targetY, label }: EdgeProps) {
-  const { path, labelX, labelY } = sideArc(sourceX, sourceY, targetX, targetY);
-  return <BaseEdge id={id} path={path} style={EDGE_STYLE} label={label} labelX={labelX} labelY={labelY} labelStyle={LABEL_STYLE} labelBgStyle={LABEL_BG} labelBgPadding={[3, 2]} />;
+export function SideArcEdge({ id, sourceX, sourceY, targetX, targetY, data }: EdgeProps) {
+  const { path } = sideArc(sourceX, sourceY, targetX, targetY);
+  // With 8 or more neighbours the arcs' labels stack on top of each other, so the join is a hover hint instead.
+  return <g><title>{String(data?.join ?? '')}</title><BaseEdge id={id} path={path} style={EDGE_STYLE} /></g>;
 }
 
 const nodeTypes = { mart: MartCard };
 const edgeTypes = { sideArc: SideArcEdge };
 
 type Props = { ids: string[]; edges: Edge[]; cards: Map<string, CardData>; direction: 'LR' | 'TB'; selectedId?: string | null; onSelect: (id: string) => void; onClear: () => void };
+
+export function buildFlowEdges(edges: Edge[], ids: string[], selectedId: string | null, tb: boolean): FlowEdge[] {
+  const set = new Set(ids);
+  return tb
+    ? exploreEdges(edges, ids, selectedId).map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: 'out', targetHandle: 'in', type: 'sideArc', ariaLabel: joinLabel(e), data: { join: joinLabel(e) } }))
+    : edges
+        .filter((e) => set.has(e.source) && set.has(e.target))
+        .map((e) => ({ id: e.id, source: e.source, target: e.target, type: 'default', style: EDGE_STYLE, label: joinLabel(e), labelStyle: LABEL_STYLE, labelBgStyle: LABEL_BG, labelBgPadding: [3, 2] as [number, number] }));
+}
 
 const joinLabel = (e: Edge) => e.joins.map((j) => `${j.sourceField} → ${j.targetField}`).join(', ');
 
@@ -33,13 +43,8 @@ function Flow({ ids, edges, cards, direction, selectedId = null, onSelect, onCle
     [ids, edges, direction, selectedId],
   );
   const nodes: Node[] = positions.map((p) => ({ id: p.id, type: 'mart', position: { x: p.x, y: p.y }, data: { ...cards.get(p.id)!, direction } as never, draggable: false }));
-  const set = new Set(ids);
   const tb = direction === 'TB';
-  const flowEdges: FlowEdge[] = tb
-    ? exploreEdges(edges, ids, selectedId).map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: 'out', targetHandle: 'in', type: 'sideArc', label: joinLabel(e) }))
-    : edges
-        .filter((e) => set.has(e.source) && set.has(e.target))
-        .map((e) => ({ id: e.id, source: e.source, target: e.target, type: 'default', style: EDGE_STYLE, label: joinLabel(e), labelStyle: LABEL_STYLE, labelBgStyle: LABEL_BG, labelBgPadding: [3, 2] as [number, number] }));
+  const flowEdges = buildFlowEdges(edges, ids, selectedId, tb);
 
   // Refit only when the visible set (or the layout it sits in) changes, never on identity churn.
   const fitKey = `${direction}:${ids.join('|')}${tb ? `:${selectedId ?? ''}` : ''}`;
@@ -60,7 +65,7 @@ function Flow({ ids, edges, cards, direction, selectedId = null, onSelect, onCle
 
   return (
     <ReactFlow nodes={nodes} edges={flowEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} onNodeClick={(_, n) => onSelect(n.id)} onPaneClick={onClear} nodesConnectable={false} proOptions={{ hideAttribution: true }} minZoom={0.2}>
-      {direction === 'LR' && <Controls showInteractive={false} />}
+      {direction === 'LR' && <Controls showInteractive={false} position="bottom-right" />}
     </ReactFlow>
   );
 }

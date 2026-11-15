@@ -64,7 +64,7 @@ function AppBody() {
             />
           )}
           {visible.hiddenMatches > 0 && (
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border bg-background px-3 py-1 text-xs shadow-sm">+{visible.hiddenMatches} more. Refine the search to see them.</div>
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border bg-background px-3 py-1 text-xs shadow-sm">{visible.mode === 'levels' ? `+${visible.hiddenMatches} more connected data marts` : `+${visible.hiddenMatches} more. Refine the search to see them.`}</div>
           )}
         </div>
         {exploring && <div data-testid="explorer" className="min-w-0 flex-1"><Explorer model={model} /></div>}

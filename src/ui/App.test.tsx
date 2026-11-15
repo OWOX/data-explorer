@@ -101,3 +101,20 @@ test('a tab whose mart disappears after a refresh falls back to its id', async (
   await waitFor(() => expect(screen.getByRole('tab')).toHaveTextContent('customers'));
   expect(within(screen.getByTestId('explorer')).getByRole('tabpanel')).toBeInTheDocument();
 });
+
+test('the "+N more" pill names connected marts in levels mode and asks to refine only when searching', async () => {
+  renderApp();
+  await screen.findByText('Orders');
+  expect(await screen.findByText(/^\+\d+ more connected data marts$/)).toBeInTheDocument();
+  expect(screen.queryByText(/Refine the search/)).toBeNull();
+  await userEvent.type(screen.getByLabelText('Search data marts'), 'a');
+  expect(await screen.findByText(/^\+\d+ more\. Refine the search to see them\.$/)).toBeInTheDocument();
+});
+
+test('the zoom controls sit bottom-right, clear of the cards', async () => {
+  const { container } = renderApp();
+  await screen.findByText('Orders');
+  const controls = container.querySelector('.react-flow__controls')!;
+  expect(controls.className).toMatch(/\bright\b/);
+  expect(controls.className).toMatch(/\bbottom\b/);
+});
