@@ -26,6 +26,16 @@ test('uses the connector title and string logo, falling back to the key and null
   expect(by.C).toMatchObject({ name: 'C', logo: null });
 });
 
+test('drops a remote logo URL and keeps a base64 data image', () => {
+  const sources = groupSources(
+    [mart('a', 'A'), mart('b', 'B')],
+    [{ name: 'A', logo: 'https://evil.example/x.png' }, { name: 'B', logo: 'data:image/svg+xml;base64,PHN2Zz4=' }],
+  );
+  const by = Object.fromEntries(sources.map((s) => [s.key, s]));
+  expect(by.A!.logo).toBeNull();
+  expect(by.B!.logo).toBe('data:image/svg+xml;base64,PHN2Zz4=');
+});
+
 test('orders by mart count descending, then name', () => {
   const sources = groupSources(
     [mart('1', 'Zed'), mart('2', 'Beta'), mart('3', 'Alpha'), mart('4', 'Big'), mart('5', 'Big')],

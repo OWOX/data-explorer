@@ -34,7 +34,7 @@ test('loadModel drops edges whose ends are unknown', async () => {
   const ctx = stubCtx({
     storages: { list: async () => [{ id: 's1', title: 'BQ', type: 'X' }] },
     models: { getEdges: async () => [{ id: 'e1', sourceDataMartId: 'a', targetDataMartId: 'zzz', joinConditions: [] }] },
-    getJson: async (path: string) => (path === '/api/contexts' ? [] : { items: [{ id: 'a', title: 'A', description: null, fieldCount: 0 }], total: 1, nextOffset: null }),
+    getJson: async (path: string) => ((path === '/api/contexts' || path === '/api/connectors') ? [] : { items: [{ id: 'a', title: 'A', description: null, fieldCount: 0 }], total: 1, nextOffset: null }),
   });
   expect((await loadModel(ctx)).edges).toEqual([]);
 });
@@ -50,7 +50,7 @@ test('a mart is accessible when listed and PUBLISHED, whatever its sharing flag 
   const ctx = stubCtx({
     storages: { list: async () => [{ id: 's1', title: 'BQ', type: 'X' }] },
     dataMarts: { list: async () => [entry('pub', true), entry('draft', true), entry('off', false)], traverseData: vi.fn() },
-    getJson: async (path: string) => (path === '/api/contexts' ? [] : canvas),
+    getJson: async (path: string) => ((path === '/api/contexts' || path === '/api/connectors') ? [] : canvas),
   });
   const { marts } = await loadModel(ctx);
   expect(['pub', 'draft', 'off', 'hidden'].map((id) => marts.get(id)!.accessible)).toEqual([true, false, true, false]);
@@ -61,7 +61,7 @@ const twoStorageCtx = (failing: string[]) => stubCtx({
   storages: { list: async () => [{ id: 's1', title: 'One', type: 'X' }, { id: 's2', title: 'Two', type: 'X' }] },
   models: { getEdges: async (sid: string) => { if (failing.includes(sid)) throw new Error(`${sid} down`); return []; } },
   dataMarts: { list: async () => [], traverseData: vi.fn() },
-  getJson: async (path: string, query?: Record<string, string>) => (path === '/api/contexts' ? [] : canvasOf(query!.storageId === 's1' ? 'a' : 'b')),
+  getJson: async (path: string, query?: Record<string, string>) => ((path === '/api/contexts' || path === '/api/connectors') ? [] : canvasOf(query!.storageId === 's1' ? 'a' : 'b')),
 });
 
 test('a failing storage is reported while the others still load', async () => {
@@ -82,7 +82,7 @@ test('storages load through a pool of at most 6', async () => {
     storages: { list: async () => ids.map((id) => ({ id, title: id, type: 'X' })) },
     models: { getEdges: async () => { running++; peak = Math.max(peak, running); await new Promise((r) => setTimeout(r, 5)); running--; return []; } },
     dataMarts: { list: async () => [], traverseData: vi.fn() },
-    getJson: async (path: string, query?: Record<string, string>) => (path === '/api/contexts' ? [] : canvasOf(query!.storageId!)),
+    getJson: async (path: string, query?: Record<string, string>) => ((path === '/api/contexts' || path === '/api/connectors') ? [] : canvasOf(query!.storageId!)),
   });
   const model = await loadModel(ctx);
   expect(model.marts.size).toBe(10);
@@ -104,4 +104,17 @@ test('sources come from connector marts; a failing /api/connectors falls back to
   expect(model.marts.get('a')!.sourceKey).toBe('Shopify');
   expect(model.marts.get('b')!.sourceKey).toBeNull();
   expect(model.sources).toEqual([{ key: 'Shopify', name: 'Shopify', logo: null, martIds: ['a'] }]);
+});
+
+test('a connector title from /api/connectors reaches model.sources', async () => {
+  const ctx = stubCtx({
+    storages: { list: async () => [{ id: 's1', title: 'BQ', type: 'X' }] },
+    dataMarts: { list: async () => [{ id: 'a', title: 'a', description: null, contexts: [], availableForReporting: true, definitionType: 'CONNECTOR', connectorSourceName: 'GoogleAnalytics4' }], traverseData: vi.fn() },
+    getJson: async (path: string) => {
+      if (path === '/api/connectors') return [{ name: 'GoogleAnalytics4', title: 'Google Analytics 4' }];
+      if (path === '/api/contexts') return [];
+      return canvasOf('a');
+    },
+  });
+  expect((await loadModel(ctx)).sources).toEqual([{ key: 'GoogleAnalytics4', name: 'Google Analytics 4', logo: null, martIds: ['a'] }]);
 });

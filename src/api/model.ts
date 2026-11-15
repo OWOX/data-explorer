@@ -65,5 +65,7 @@ export async function loadModel(ctx: Ctx): Promise<Model> {
       joins: e.joinConditions.map((j) => ({ sourceField: j.sourceFieldName, targetField: j.targetFieldName })),
     }));
 
-  return { marts, sources: groupSources(marts.values(), Array.isArray(connectors) ? connectors : []), edges, contexts: contexts.map((c) => ({ id: c.id, name: c.name, icon: c.icon ?? null })), failedStorages };
+  // isArray guards a malformed connectors response.
+  const sources = groupSources(marts.values(), Array.isArray(connectors) ? connectors : []);
+  return { marts, sources, edges, contexts: contexts.map((c) => ({ id: c.id, name: c.name, icon: c.icon ?? null })), failedStorages };
 }
