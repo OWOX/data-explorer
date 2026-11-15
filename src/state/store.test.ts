@@ -117,10 +117,10 @@ test('history keeps the last 20 selections and drops the oldest', () => {
 test('search and context toggles keep the selection and the history', () => {
   const start = s({ selection: sel({ martId: 'a' }), history: [sel({ martId: 'z' })] });
   let st = reducer(start, { type: 'search', q: 'ord' });
-  st = reducer(st, { type: 'setContexts', ids: ['c2'] });
+  st = reducer(st, { type: 'toggleContext', id: 'c1' });
+  st = reducer(st, { type: 'toggleContext', id: 'c2' });
+  st = reducer(st, { type: 'toggleContext', id: 'c1' });
   expect(st).toMatchObject({ search: 'ord', contextIds: ['c2'], selection: start.selection, history: start.history });
-  st = reducer(st, { type: 'setContexts', ids: null });
-  expect(st.contextIds).toBeNull();
 });
 
 test('saveGrid keeps one state per mart; refreshModel bumps the version', () => {

@@ -11,6 +11,7 @@ export function Band({
   title,
   total,
   hint,
+  afterHint,
   toolbar,
   folded,
   onFold,
@@ -23,6 +24,8 @@ export function Band({
   title: string;
   total?: number | string;
   hint: string;
+  /** Sits in the title row right after the hint, and wraps with it. */
+  afterHint?: ReactNode;
   toolbar?: ReactNode;
   /** Folded by the reader: header only, and its controls go with the content. */
   folded: boolean;
@@ -47,6 +50,7 @@ export function Band({
         <h2 className="dm-band-title">{title}</h2>
         {total !== undefined && <span className="dm-badge dm-band-count">{typeof total === 'number' ? num(total) : total}</span>}
         <Hint text={hint} label={hint} />
+        {afterHint}
         {/* Filtering what you cannot see answers nothing, so the controls fold with the content. */}
         {!folded && <div className="dm-band-tools">{toolbar}{!grid && <span ref={setSlot} className="contents" />}</div>}
         <button

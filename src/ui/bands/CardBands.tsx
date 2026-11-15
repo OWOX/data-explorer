@@ -3,7 +3,6 @@
 import { Box, Plug } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DqSummary, Mart, Model, Source } from '../../model/types';
-import { contextOptions, NO_CONTEXT } from '../../graph/contexts';
 import { storageOptions } from '../../graph/storages';
 import type { VisibleResult } from '../../graph/visible';
 import { sourceOfModel, useStore } from '../../state/store';
@@ -33,7 +32,6 @@ export function CardBands({
   model,
   visible,
   storageIds,
-  contextIds,
   counts,
   dq,
   foldedSources,
@@ -49,8 +47,6 @@ export function CardBands({
   visible: VisibleResult;
   /** The storages the Data Marts band is narrowed to; null is all of them. */
   storageIds: string[] | null;
-  /** The contexts the Data Marts band is narrowed to (NO_CONTEXT is "Without context"); null is all of them. */
-  contextIds: string[] | null;
   counts: Map<string, CountState>;
   dq: Map<string, DqSummary>;
   foldedSources: boolean;
@@ -62,7 +58,7 @@ export function CardBands({
   onOpenApp: (id: string) => void;
   children: ReactNode;
 }) {
-  const [{ selection, search }, dispatch] = useStore();
+  const [{ selection, search, contextIds }, dispatch] = useStore();
   const canvas = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [wireTip, setWireTip] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -128,26 +124,22 @@ export function CardBands({
     />
   );
 
-  // Every box starts ticked, so no filter is a full set; unticking narrows. Offered once the project has a context.
-  const contexts = useMemo(() => contextOptions(model), [model]);
-  const contextFilter = contexts.length === 0 ? undefined : (() => {
-    const options = [
-      ...contexts.map((c) => ({ value: c.id, label: c.name, icon: ({ size }: { size?: number }) => <PickedIcon icon={c.icon} fallback={DEFAULT_CONTEXT_ICON} size={size} /> })),
-      { value: NO_CONTEXT, label: 'Without context' },
-    ];
-    return (
-      <MultiSelect
-        label="Contexts"
-        options={options}
-        selected={contextIds ?? options.map((o) => o.value)}
-        onChange={(ids) => dispatch({ type: 'setContexts', ids: options.every((o) => ids.includes(o.value)) ? null : ids })}
-      />
-    );
-  })();
+  // A badge per context, in the title row: click to select it. Offered once the project has a context.
+  const contextBadges = model.contexts.length === 0 ? undefined : (
+    <div className="dm-context-filter" role="group" aria-label="Contexts">
+      {[...model.contexts].sort((a, b) => a.name.localeCompare(b.name)).map((c) => {
+        const on = contextIds.includes(c.id);
+        return (
+          <button key={c.id} type="button" aria-pressed={on} className="dm-badge dm-badge-toggle" onClick={() => dispatch({ type: 'toggleContext', id: c.id })}>
+            <PickedIcon icon={c.icon} fallback={DEFAULT_CONTEXT_ICON} size={12} />{c.name}
+          </button>
+        );
+      })}
+    </div>
+  );
   const toolbar = (
     <>
       <SearchBox value={search} onChange={(q) => dispatch({ type: 'search', q })} label="Search data marts" />
-      {contextFilter}
       {storageFilter}
     </>
   );
@@ -174,7 +166,7 @@ export function CardBands({
           return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => dispatch({ type: 'selectSource', key: source.key })} />;
         })}
       </Band>
-      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search and the filters match." toolbar={toolbar} folded={foldedMarts} onFold={onFoldMarts}>
+      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search and the filters match." afterHint={contextBadges} toolbar={toolbar} folded={foldedMarts} onFold={onFoldMarts}>
         {visible.ids.length === 0 && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
         {martCards.items.map((mart) => {
           const id = mart.id;

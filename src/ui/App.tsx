@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { martAppUrl } from '../config';
-import { tickedContexts } from '../graph/contexts';
 import { tickedStorages } from '../graph/storages';
 import { computeVisible } from '../graph/visible';
 import { sourceOfModel, useServices, useStore } from '../state/store';
@@ -28,10 +27,9 @@ function AppBody() {
   const [folds, setFolds] = useState<Partial<Record<Fold, boolean>>>({});
   const toggle = (band: Fold, current: boolean) => setFolds((f) => ({ ...f, [band]: !current }));
   const storageIds = useMemo(() => (model ? tickedStorages(model, state.storageIds) : null), [model, state.storageIds]);
-  const contextIds = useMemo(() => (model ? tickedContexts(model, state.contextIds) : null), [model, state.contextIds]);
   const visible = useMemo(
-    () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds, storageIds }) : null),
-    [model, state.selection, state.search, contextIds, storageIds],
+    () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds: state.contextIds, storageIds }) : null),
+    [model, state.selection, state.search, state.contextIds, storageIds],
   );
   const { dq, counts, request, recount } = useCardStatus(model, visible?.ids ?? [], state.modelVersion);
 
@@ -72,7 +70,6 @@ function AppBody() {
           model={model}
           visible={visible}
           storageIds={storageIds}
-          contextIds={contextIds}
           counts={counts}
           dq={dq}
           foldedSources={folds.sources ?? model.sources.length === 0}

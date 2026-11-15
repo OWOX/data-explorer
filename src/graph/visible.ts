@@ -1,7 +1,6 @@
 import type { Edge, Mart, Model } from '../model/types';
 import type { Selection } from '../state/store';
-import { matchesContexts } from './contexts';
-import { matchesSearch } from './search';
+import { matchesContexts, matchesSearch } from './search';
 
 export function inboundCounts(edges: Edge[]): Map<string, number> {
   const m = new Map<string, number>();
@@ -33,8 +32,8 @@ export type VisibleInput = {
   model: Model;
   selection: Selection;
   search: string;
-  /** The contexts ticked in the filter (NO_CONTEXT is "Without context"); null is all of them. */
-  contextIds: string[] | null;
+  /** The contexts selected as badges; none selected is no filter, and a mart needs any one of them. */
+  contextIds: string[];
   /** The storages ticked in the filter; null is all of them. */
   storageIds?: string[] | null;
 };
@@ -54,8 +53,8 @@ export function computeVisible({ model, selection, search, contextIds, storageId
   const selectedId = selection.martId && model.marts.has(selection.martId) ? selection.martId : null;
   const order = (ids: string[], first = selectedId) => ids.sort(rank(model.marts, inbound, first));
 
-  // 1. A search, or a narrowed Contexts filter: the matches, narrowed to the selected source.
-  if (search.trim() || contextIds !== null) {
+  // 1. A search, or a selected context badge: the matches, narrowed to the selected source.
+  if (search.trim() || contextIds.length > 0) {
     const source = selection.sourceKey;
     const ids: string[] = [];
     for (const mart of accessible) {

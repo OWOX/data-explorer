@@ -455,38 +455,46 @@ describe('search, contexts and refresh', () => {
     expect(within(marts()).getByText('Campaigns').closest('article')!.querySelector('.dm-badge-shrink')).toBeNull();
   });
 
-  const filterMenu = (name: string) => within(marts()).getByText(name, { selector: 'summary' }).closest('details') as HTMLElement;
-
-  test('the toolbar holds the search, then Contexts, then Storage', async () => {
+  test('the toolbar holds the search, then Storage; the Contexts badges sit in the title row after the hint', async () => {
     await ordersGrid();
     const tools = marts().querySelector('.dm-band-tools')!;
     const kinds = [...tools.children].map((c) => (c.matches('label.dm-search') ? 'search' : c.querySelector('summary')?.firstChild?.textContent));
-    expect(kinds).toEqual(['search', 'Contexts', 'Storage']);
+    expect(kinds).toEqual(['search', 'Storage']);
+    const head = marts().querySelector('.dm-band-head')!;
+    const order = [...head.children].map((c) => c.className.split(' ')[0]);
+    expect(order.indexOf('dm-context-filter')).toBe(order.indexOf('dm-hint') + 1);
   });
 
-  test('Contexts lists every context with its icon plus "Without context", all ticked: unticking narrows', async () => {
+  test('the Contexts badges show each context with its icon; none selected is no filter', async () => {
     await ordersGrid();
-    const menu = filterMenu('Contexts');
-    expect(within(menu).getByText('All')).toBeInTheDocument();
-    for (const name of ['Catalog', 'Marketing', 'Sales', 'Without context']) expect(within(menu).getByRole('checkbox', { name: new RegExp(name) })).toBeChecked();
-    expect(menu.querySelectorAll('.dm-filter-row svg').length).toBeGreaterThanOrEqual(3);
-    await userEvent.click(within(menu).getByRole('checkbox', { name: /Without context/ }));
-    await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
-    expect(within(marts()).getByText('Orders')).toBeInTheDocument();
-    expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument();
-    await userEvent.click(within(menu).getByRole('checkbox', { name: /Without context/ }));
-    expect(await within(marts()).findByText('Customers')).toBeInTheDocument();
+    const group = within(marts()).getByRole('group', { name: 'Contexts' });
+    const badges = within(group).getAllByRole('button');
+    expect(badges.map((b) => b.textContent)).toEqual(['Catalog', 'Marketing', 'Sales']);
+    for (const b of badges) { expect(b).toHaveAttribute('aria-pressed', 'false'); expect(b.querySelector('svg')).not.toBeNull(); }
+    expect(within(marts()).getByText('Customers')).toBeInTheDocument();
   });
 
-  test('only Marketing shows its marts; only Without context shows the marts in none', async () => {
+  test('a selected badge narrows the marts to that context; a second one adds its marts (any); deselecting all restores', async () => {
     await ordersGrid();
-    const menu = filterMenu('Contexts');
-    await userEvent.click(within(menu).getByRole('button', { name: 'Only Marketing' }));
+    const group = within(marts()).getByRole('group', { name: 'Contexts' });
+    await userEvent.click(within(group).getByRole('button', { name: 'Marketing' }));
     await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
     expect(within(marts()).getByText('Campaigns')).toBeInTheDocument();
-    await userEvent.click(within(menu).getByRole('button', { name: 'Only Without context' }));
+    expect(within(group).getByRole('button', { name: 'Marketing' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(marts()).queryByText('Orders')).toBeNull();
+    await userEvent.click(within(group).getByRole('button', { name: 'Sales' }));
+    expect(await within(marts()).findByText('Orders')).toBeInTheDocument();
+    expect(within(marts()).getByText('Campaigns')).toBeInTheDocument();
+    expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument();
+    await userEvent.click(within(group).getByRole('button', { name: 'Marketing' }));
+    await userEvent.click(within(group).getByRole('button', { name: 'Sales' }));
     expect(await within(marts()).findByText('Customers')).toBeInTheDocument();
-    expect(within(marts()).queryByText('Campaigns')).toBeNull();
+  });
+
+  test('a click on a badge does not fold the band', async () => {
+    await ordersGrid();
+    await userEvent.click(within(marts()).getByRole('button', { name: 'Sales' }));
+    expect(marts()).not.toHaveClass('folded');
   });
 
   test('a failed refresh keeps the bands and shows a retry in the header', async () => {

@@ -119,6 +119,15 @@
 .dm-tip-lines { display: flex; flex-direction: column; gap: 0.125rem; }
 .dm-tip-lines > span:first-child { font-weight: 500; }
 
+/* The context badges in the Data Marts title row: Data Flow's chip, a button that toggles. */
+.dm-context-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; min-width: 0; }
+.dm-badge-toggle { border: 1px solid transparent; cursor: pointer; font: inherit; font-size: 0.6875rem; line-height: 1.5; }
+.dm-badge-toggle:hover { color: var(--foreground); }
+.dm-badge-toggle[aria-pressed='true'] {
+  border-color: var(--primary); color: var(--foreground);
+  background: color-mix(in oklab, var(--primary) 14%, var(--muted));
+}
+
 /* --- cards -------------------------------------------------------------- */
 /* The OWOX palette's base ramp. Only the hues a run status can take are here. */
 .dm-node {

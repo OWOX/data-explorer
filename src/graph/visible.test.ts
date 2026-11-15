@@ -1,6 +1,5 @@
 import type { Edge, Mart, Model, Source } from '../model/types';
 import type { Selection } from '../state/store';
-import { NO_CONTEXT } from './contexts';
 import { computeVisible, inboundCounts, neighbours, pickFocus } from './visible';
 
 const e = (source: string, target: string): Edge => ({ id: `${source}-${target}`, source, target, joins: [] });
@@ -13,7 +12,7 @@ const modelOf = (ids: string[], edges: Edge[], extra: Partial<Mart>[] = [], sour
   storages: [], failedStorages: [],
 });
 const sel = (patch: Partial<Selection> = {}): Selection => ({ sourceKey: null, martId: null, record: null, ...patch });
-const run = (model: Model, selection: Selection, search = '', contextIds: string[] | null = null) =>
+const run = (model: Model, selection: Selection, search = '', contextIds: string[] = []) =>
   computeVisible({ model, selection, search, contextIds });
 
 test('inboundCounts counts targets', () => {
@@ -80,14 +79,12 @@ test('rule 1: search leaves out marts the member cannot open, and a search with 
   expect(run(model, sel(), 'nope').ids).toEqual([]);
 });
 
-test('rule 1: a narrowed Contexts filter applies on its own, with "Without context" as one of its boxes', () => {
+test('rule 1: selected context badges narrow on their own, and a mart needs any one of them', () => {
   const model = modelOf(['a', 'b', 'c'], [], [{ contextIds: ['c1'] }, {}, { contextIds: ['c2'] }]);
   expect(run(model, sel(), '', ['c1']).ids).toEqual(['a']);
-  expect(run(model, sel(), '', [NO_CONTEXT]).ids).toEqual(['b']);
-  expect(new Set(run(model, sel(), '', ['c1', NO_CONTEXT]).ids)).toEqual(new Set(['a', 'b']));
-  expect(run(model, sel(), '', []).ids).toEqual([]);
-  // every box ticked is no filter: rule 2 applies, so the selected mart alone (no edges)
-  expect(run(model, sel({ martId: 'a' }), '', null).ids).toEqual(['a']);
+  expect(new Set(run(model, sel(), '', ['c1', 'c2']).ids)).toEqual(new Set(['a', 'c']));
+  // none selected is no filter: rule 2 applies, so the selected mart alone (no edges)
+  expect(run(model, sel({ martId: 'a' }), '', []).ids).toEqual(['a']);
 });
 
 test('rule 1: the search reads the title only, so a context name or a field name finds nothing', () => {
@@ -106,7 +103,7 @@ describe('storageIds', () => {
   const edges = [e('b', 'a'), e('b', 'c'), e('d', 'c')];
   const model = (sources: Source[] = []) => modelOf(['a', 'b', 'c', 'd'], edges, [{ storageId: 's1' }, { storageId: 's1' }, { storageId: 's2' }, { storageId: 's2' }], sources);
   const only = (m: Model, selection: Selection, storageIds: string[] | null, search = '') =>
-    computeVisible({ model: m, selection, search, contextIds: null, storageIds });
+    computeVisible({ model: m, selection, search, contextIds: [], storageIds });
 
   test('null and every storage ticked narrow nothing', () => {
     expect(new Set(only(model(), sel({ martId: 'b' }), null).ids)).toEqual(new Set(['a', 'b', 'c']));
@@ -114,9 +111,9 @@ describe('storageIds', () => {
   });
 
   test('rule 1: the search matches only marts in a ticked storage', () => {
-    const r = computeVisible({ model: model(), selection: sel(), search: 'c', contextIds: null, storageIds: ['s1'] });
+    const r = computeVisible({ model: model(), selection: sel(), search: 'c', contextIds: [], storageIds: ['s1'] });
     expect(r.ids).toEqual([]);
-    expect(computeVisible({ model: model(), selection: sel(), search: 'c', contextIds: null, storageIds: ['s2'] }).ids).toEqual(['c']);
+    expect(computeVisible({ model: model(), selection: sel(), search: 'c', contextIds: [], storageIds: ['s2'] }).ids).toEqual(['c']);
   });
 
   test('rule 2: a selected mart is shown with its neighbours in ticked storages only', () => {

@@ -15,3 +15,12 @@ test.each([
 ])('"%s" matches the title only: %s', (q, hit) => {
   expect(matchesSearch(m, q)).toBe(hit);
 });
+
+import { matchesContexts } from './search';
+
+test('matchesContexts: any selected context matches; none selected matches all', () => {
+  expect(matchesContexts(m, [])).toBe(true);
+  expect(matchesContexts(m, ['c9', 'c1'])).toBe(true);
+  expect(matchesContexts(m, ['c9'])).toBe(false);
+  expect(matchesContexts({ ...m, contextIds: [] }, ['c1'])).toBe(false);
+});
