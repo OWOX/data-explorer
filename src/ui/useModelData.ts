@@ -41,17 +41,21 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
   const asked = useRef(new Map<string, number>());
   const generation = useRef(0);
   const appliedVersion = useRef(modelVersion);
-  const queue = useRef<{ id: string; recount: boolean }[]>([]);
+  const lastModel = useRef(model);
+  const queue = useRef<{ id: string; recount: boolean; seq: number }[]>([]);
   const active = useRef(0);
+  // The newest request per card: an older count that finishes late must not overwrite a newer value.
+  const seqs = useRef({ next: 0, latest: new Map<string, number>() });
 
   // A count turns to loading only here, when its request starts. Until then the old value stays.
-  const runCount = useCallback((id: string, recount: boolean): Promise<void> => {
+  const runCount = useCallback((id: string, recount: boolean, seq: number): Promise<void> => {
+    const current = () => seqs.current.latest.get(id) === seq;
     setCounts((c) => new Map(c).set(id, { state: 'loading' }));
     return schemas.get(id)
       .then((s) => (recount ? counter.recount(id, s) : counter.count(id, s)))
       .then(
-        (value) => setCounts((c) => new Map(c).set(id, { state: 'ok', value })),
-        (e) => setCounts((c) => new Map(c).set(id, { state: 'error', message: errorMessage(e) })),
+        (value) => { if (current()) setCounts((c) => new Map(c).set(id, { state: 'ok', value })); },
+        (e) => { if (current()) setCounts((c) => new Map(c).set(id, { state: 'error', message: errorMessage(e) })); },
       );
   }, [schemas, counter]);
 
@@ -61,25 +65,36 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
       while (active.current < COUNT_CONCURRENCY && queue.current.length) {
         const next = queue.current.shift()!;
         active.current++;
-        void runCount(next.id, next.recount).finally(() => { active.current--; drain(); });
+        void runCount(next.id, next.recount, next.seq).finally(() => { active.current--; drain(); });
       }
     };
     drain();
   }, [runCount]);
 
-  const request = useCallback((id: string) => {
-    if (asked.current.get(id) === generation.current) return;
-    asked.current.set(id, generation.current);
-    queue.current.push({ id, recount: generation.current > 0 });
+  // A card already waiting in the queue is upgraded in place, never queued twice.
+  const enqueue = useCallback((id: string, recount: boolean) => {
+    const seq = ++seqs.current.next;
+    seqs.current.latest.set(id, seq);
+    const waiting = queue.current.find((q) => q.id === id);
+    if (waiting) { waiting.recount ||= recount; waiting.seq = seq; } else queue.current.push({ id, recount, seq });
     pump();
   }, [pump]);
+
+  const request = useCallback((id: string) => {
+    const before = asked.current.get(id);
+    if (before === generation.current) return;
+    asked.current.set(id, generation.current);
+    // Only a card counted in an earlier generation is recounted; a first request may use the cache.
+    enqueue(id, before !== undefined);
+  }, [enqueue]);
 
   const key = visibleIds.join('|');
   useEffect(() => {
     if (!model) return;
     // A new model after a refresh: reload what is on screen. A failed reload never gets here, so
     // the previous counts and quality stay exactly as they were.
-    const refreshed = appliedVersion.current !== modelVersion;
+    const refreshed = appliedVersion.current !== modelVersion && model !== lastModel.current;
+    lastModel.current = model;
     if (refreshed) {
       appliedVersion.current = modelVersion;
       generation.current++;
@@ -94,5 +109,5 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
 
   const shown = new Map<string, CountState>(visibleIds.map((id) => [id, counts.get(id) ?? { state: 'idle' }]));
 
-  return { dq, counts: shown, request, recount: (id: string) => runCount(id, true) };
+  return { dq, counts: shown, request, recount: (id: string) => enqueue(id, true) };
 }
