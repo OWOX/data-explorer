@@ -291,3 +291,32 @@ test('Update is disabled from the first render of an opened menu, before any tog
   await within(data()).findByText('Export');
   expect(within(data()).getByRole('menuitem', { name: /Update/, hidden: true })).toBeDisabled();
 });
+
+test('a spreadsheet left behind on one destination is not reused for another destination', async () => {
+  const t = setup(2);
+  const real = t.ctx.owox.postJson;
+  let failed = false;
+  (t.ctx.owox as { postJson: Ctx['owox']['postJson'] }).postJson = ((path: string, body: unknown) => {
+    if (path === '/api/reports' && !failed) { failed = true; return Promise.reject(new Error('report refused')); }
+    return real(path, body);
+  }) as Ctx['owox']['postJson'];
+  t.view();
+  await rowsLoaded();
+  const openNew = async (dest: RegExp) => {
+    await userEvent.click(await within(data()).findByText('Export'));
+    await userEvent.click(await within(data()).findByRole('menuitem', { name: dest }));
+    await userEvent.click(await within(data()).findByRole('menuitem', { name: /New report/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'New report' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    return dialog;
+  };
+  const dialog = await openNew(/Team Sheets/);
+  await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('report refused'));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+  await openNew(/Finance Sheets/);
+  await waitFor(() => expect(t.open).toHaveBeenCalled(), { timeout: 6000 });
+  expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toEqual([
+    'POST /api/data-destinations/d-sheets-team/google-sheets/documents',
+    'POST /api/data-destinations/d-sheets-finance/google-sheets/documents',
+  ]);
+}, 15000);

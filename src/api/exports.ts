@@ -127,8 +127,8 @@ export interface Exporter {
   /** The export in flight for a mart, or one that finished while nobody followed it, until `acknowledge`. */
   inFlight(martId: string): Flight | undefined;
   acknowledge(martId: string): void;
-  /** The spreadsheet a failed report step left for this mart: a retry reuses it. Cleared when a report is made or another target is used. */
-  made(martId: string): SheetTarget | undefined;
+  /** The spreadsheet a failed report step left for this mart: a retry to the same destination reuses it (another destination's account may not reach it). Cleared when a report is made or another target is used. */
+  made(martId: string, destinationId: string): SheetTarget | undefined;
 }
 
 const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve) => {
@@ -141,7 +141,7 @@ export function createExporter(ctx: Ctx): Exporter {
   const cache = new Map<string, ExportedReport[]>();
   let destinations: Promise<DestinationDto[]> | null = null;
   const flights = new Map<string, Flight>();
-  const leftBehind = new Map<string, SheetTarget>();
+  const leftBehind = new Map<string, { target: SheetTarget; destinationId: string }>();
 
   async function load(martId: string): Promise<ExportedReport[]> {
     const hit = cache.get(martId);
@@ -207,7 +207,7 @@ export function createExporter(ctx: Ctx): Exporter {
     },
 
     inFlight: (martId) => flights.get(martId),
-    made: (martId) => leftBehind.get(martId),
+    made: (martId, destinationId) => { const kept = leftBehind.get(martId); return kept?.destinationId === destinationId ? kept.target : undefined; },
     acknowledge(martId) { if (flights.get(martId)?.settled) flights.delete(martId); },
 
     run(a) {
@@ -245,7 +245,7 @@ export function createExporter(ctx: Ctx): Exporter {
         if (source.kind === 'existing') {
           target = source.target;
           const kept = leftBehind.get(martId);
-          if (kept && (kept.spreadsheetId !== target.spreadsheetId || kept.sheetId !== target.sheetId)) leftBehind.delete(martId);
+          if (kept && (kept.target.spreadsheetId !== target.spreadsheetId || kept.target.sheetId !== target.sheetId)) leftBehind.delete(martId);
         } else {
           onStage?.('sheet');
           try {
@@ -260,7 +260,7 @@ export function createExporter(ctx: Ctx): Exporter {
           report = { reportId: created.id, destinationId: destination.id, spreadsheetId: target.spreadsheetId, sheetId: target.sheetId, title };
         } catch (e) {
           const err = new ExportError('report', messageOf(e), codeOf(e), target);
-          if (reportMayExist(err)) leftBehind.delete(martId); else leftBehind.set(martId, target);
+          if (reportMayExist(err)) leftBehind.delete(martId); else leftBehind.set(martId, { target, destinationId: destination.id });
           throw err;
         }
         leftBehind.delete(martId);

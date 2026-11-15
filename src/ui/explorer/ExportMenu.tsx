@@ -126,7 +126,7 @@ export function ExportMenu(p: Props) {
   function start(destination: DestinationDto, wanted: ExportSource, title: string, fromDialog = false) {
     if (exporter.inFlight(p.martId)) return;
     // A spreadsheet an earlier attempt made and left unused is reused, also after the menu was remounted.
-    const left = exporter.made(p.martId);
+    const left = exporter.made(p.martId, destination.id);
     const source: ExportSource = wanted.kind === 'new' && left ? { kind: 'existing', target: left } : wanted;
     const { payload, notes } = buildReportPayload(p.schema, p.visible, p.filters, p.sorts);
     setResult(null);
