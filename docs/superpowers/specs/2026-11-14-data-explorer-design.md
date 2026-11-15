@@ -114,7 +114,8 @@ Each column header has an optional filter popover. The operators depend on the f
 |---|---|
 | string | contains, not contains, equals, not equals, starts with, ends with, is blank, is not blank |
 | number | =, ≠, >, ≥, <, ≤, between, is blank, is not blank |
-| date, time | on, before, after, between, relative (today, yesterday, this/last week, this/last month, this/last quarter, this year, last N days, last N months), is blank, is not blank |
+| date | one-click presets (Today, Yesterday, Last 7/14/30/90 days, This/Last week, This/Last month, This/Last quarter, This year, Last 12 months; weeks are ISO weeks, and "Last N days" takes any N), custom range (between), on (DATE only), before, after, is blank, is not blank |
+| time | before, after, between, is blank, is not blank |
 | boolean | is true, is false, is blank |
 | other | is blank, is not blank |
 
