@@ -35,15 +35,25 @@ function AppBody() {
   );
   const { dq, counts, recount } = useCardStatus(model, visible?.ids ?? [], state.modelVersion);
 
-  // There is always a selected mart after load: the first load picks the focus mart, and a mart a
-  // refresh took away is replaced by it. A selected source with no mart is a choice, not a gap.
+  // There is always a selected mart after load: the first load picks the focus mart, and a mart or
+  // source a refresh took away is dropped from the selection (no history entry, so Back is not trapped).
+  // A selected source with no mart is a choice, not a gap.
   const focusId = visible?.focusId ?? null;
   const { martId, sourceKey } = state.selection;
   useEffect(() => {
     if (!model || !focusId) return;
-    if (!martId && !sourceKey) dispatch({ type: 'init', focusId });
-    else if (martId && !model.marts.has(martId)) dispatch({ type: 'selectMart', id: focusId, sourceOf: sourceOfModel(model) });
-  }, [model, focusId, martId, sourceKey, dispatch]);
+    if (!martId && !sourceKey) { dispatch({ type: 'init', focusId }); return; }
+    const martGone = !!martId && !model.marts.has(martId);
+    const sourceGone = !!sourceKey && !model.sources.some((x) => x.key === sourceKey);
+    if (!martGone && !sourceGone) return;
+    const keep = sourceGone ? null : sourceKey;
+    dispatch({
+      type: 'replace',
+      selection: martGone
+        ? { sourceKey: keep && sourceOfModel(model)(focusId) === keep ? keep : null, martId: focusId, record: null }
+        : { ...state.selection, sourceKey: null },
+    });
+  }, [model, focusId, martId, sourceKey, state.selection, dispatch]);
 
   // A failed refresh keeps the loaded model on screen; the error shows in the header.
   if (error && !model) return <div className="p-6"><ErrorBox error={error} onRetry={reload} /></div>;

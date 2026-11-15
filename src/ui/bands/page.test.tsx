@@ -47,6 +47,7 @@ describe('the four bands', () => {
     const grid = await ordersGrid();
     expect(within(band('band-data')).getByRole('heading', { name: 'Orders' })).toBeInTheDocument();
     expect(within(grid).getAllByRole('columnheader')).toHaveLength(5);
+    expect(within(data()).getByText('200+ rows')).toBeInTheDocument();
     expect(martCard('Orders')).toHaveAttribute('aria-pressed', 'true');
     expect(within(marts()).getByText('Customers')).toBeInTheDocument();
     expect(within(data()).queryByText('Select a data mart.')).toBeNull();
@@ -84,6 +85,49 @@ describe('the four bands', () => {
   test('the grid id cell is plain text', async () => {
     const grid = await ordersGrid();
     expect(within(within(grid).getAllByRole('row')[1]!.querySelector('td')!).queryByRole('button')).toBeNull();
+  });
+
+  test('three follows, then three Backs, return to each selection in order', async () => {
+    const grid = await ordersGrid();
+    const filterActive = () => within(data()).getByRole('button', { name: 'Reset' });
+    const nameLink = async (scope: HTMLElement) => waitFor(() => {
+      const b = within(scope).getAllByRole('button').find((x) => /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(x.textContent ?? ''));
+      expect(b).toBeDefined();
+      return b!;
+    });
+    // 1. a record target: Orders -> Customers record
+    await userEvent.click(within(grid).getAllByRole('row')[1]!);
+    await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
+    await userEvent.click(await nameLink(row()));
+    const customerHeading = await within(row()).findByRole('heading', { name: /^Customers · \d+$/ });
+    // 2. a filtered target: Customers record -> Orders, filtered
+    const section = await within(row()).findByRole('region', { name: 'Referenced by' });
+    const entry = within(section).getByRole('button', { name: /^Orders/ });
+    await waitFor(() => expect(entry).toBeEnabled());
+    await userEvent.click(entry);
+    await within(data()).findByRole('heading', { name: 'Orders' });
+    await waitFor(() => expect(within(data()).getByLabelText('Filter customer_id')).toHaveClass('text-primary'));
+    expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
+    // 3. a record target again: a row, then its customer
+    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    await userEvent.click(within(data()).getAllByRole('row')[1]!);
+    await within(row()).findByRole('heading', { name: /^Orders · \d+$/ });
+    await userEvent.click(await nameLink(row()));
+    await within(row()).findByRole('heading', { name: /^Customers · \d+$/ });
+    const back = () => userEvent.click(within(row()).getByRole('button', { name: /Back/ }));
+
+    await back(); // the Orders record
+    await within(row()).findByRole('heading', { name: /^Orders · \d+$/ });
+    expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument();
+    expect(within(data()).getByLabelText('Filter customer_id')).toHaveClass('text-primary');
+    await back(); // Orders, filtered, no record
+    await waitFor(() => expect(within(row()).getByText('Select a row.')).toBeInTheDocument());
+    expect(within(data()).getByLabelText('Filter customer_id')).toHaveClass('text-primary');
+    expect(filterActive()).toBeEnabled();
+    await back(); // the Customers record
+    expect(await within(row()).findByRole('heading', { name: customerHeading.textContent! })).toBeInTheDocument();
+    expect(within(data()).getByRole('heading', { name: 'Customers' })).toBeInTheDocument();
+    expect(martCard('Customers')).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('a related title moves the selection, and Back restores it', async () => {
@@ -151,7 +195,7 @@ describe('the grid', () => {
     await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(6));
   });
 
-  test('going back to a mart restores its filters and columns', async () => {
+  test('going back to a mart restores its filters', async () => {
     const grid = await ordersGrid();
     await userEvent.click(within(grid).getByLabelText('Filter id'));
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
@@ -160,10 +204,50 @@ describe('the grid', () => {
     await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(4));
     fireEvent.click(martCard('Customers'));
     await within(data()).findByRole('heading', { name: 'Customers' });
-    fireEvent.click(within(marts()).getByText('Orders').closest('article')!);
+    await userEvent.click(within(row()).getByRole('button', { name: /Back/ }));
     await within(data()).findByRole('heading', { name: 'Orders' });
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(4));
     expect(within(data()).getByRole('button', { name: 'Reset' })).toBeEnabled();
+  });
+
+  test('edits made on top of a followed filter survive a trip away and Back', async () => {
+    const grid = await ordersGrid();
+    await userEvent.click(within(grid).getAllByRole('row')[1]!);
+    await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
+    const customerLink = await waitFor(() => {
+      const b = within(row()).getAllByRole('button').find((x) => /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(x.textContent ?? ''));
+      expect(b).toBeDefined();
+      return b!;
+    });
+    await userEvent.click(customerLink);
+    await within(data()).findByRole('heading', { name: 'Customers' });
+    const section = await within(row()).findByRole('region', { name: 'Referenced by' });
+    const entry = within(section).getByRole('button', { name: /^Orders/ });
+    await waitFor(() => expect(entry).toBeEnabled());
+    await userEvent.click(entry); // Orders, filtered by customer_id
+    await within(data()).findByRole('heading', { name: 'Orders' });
+    await waitFor(() => expect(within(data()).getByLabelText('Filter customer_id')).toHaveClass('text-primary'));
+    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    await userEvent.click(within(data()).getByLabelText('Filter id'));
+    await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
+    await userEvent.type(screen.getByLabelText('Value'), '1000');
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(within(data()).getByLabelText('Filter id')).toHaveClass('text-primary'));
+    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    await userEvent.click(within(data()).getAllByRole('row')[1]!); // a row, then follow away
+    await within(row()).findByRole('heading', { name: /^Orders · \d+$/ });
+    const link = await waitFor(() => {
+      const b = within(row()).getAllByRole('button').find((x) => /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(x.textContent ?? ''));
+      expect(b).toBeDefined();
+      return b!;
+    });
+    await userEvent.click(link);
+    await within(data()).findByRole('heading', { name: 'Customers' });
+    await userEvent.click(within(row()).getByRole('button', { name: /Back/ }));
+    await userEvent.click(within(row()).getByRole('button', { name: /Back/ }));
+    await within(data()).findByRole('heading', { name: 'Orders' });
+    await waitFor(() => expect(within(data()).getByLabelText('Filter id')).toHaveClass('text-primary'));
+    expect(within(data()).getByLabelText('Filter customer_id')).toHaveClass('text-primary');
   });
 
   test('a mart without a primary key is preview only', async () => {
@@ -367,6 +451,11 @@ describe('search, contexts and refresh', () => {
     hide.current = true;
     await userEvent.click(screen.getByLabelText('Refresh model'));
     await waitFor(() => expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument());
+    // The replacement left no history entry: Back steps to the earlier Orders selection and then stops.
+    const back = within(row()).getByRole('button', { name: /Back/ });
+    await userEvent.click(back);
+    expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument();
+    await waitFor(() => expect(back).toBeDisabled());
   });
 });
 

@@ -82,6 +82,30 @@ test('back restores the previous selection, in order, and does nothing with no h
   expect(reducer(st, { type: 'back' })).toBe(st);
 });
 
+test('follow into a filtered mart seeds its saved grid once, keeping its columns', () => {
+  const filters = [{ field: 'order_id', op: 'eq' as const, value: 1 }];
+  const start = s({ selection: sel({ martId: 'a' }), grids: { c: { columns: ['x'], filters: { y: { field: 'y', op: 'eq', value: 2 } }, limit: 400 } } });
+  const st = reducer(start, { type: 'follow', target: { kind: 'mart', martId: 'c', filters }, sourceOf });
+  expect(st.grids.c).toEqual({ columns: ['x'], filters: { order_id: filters[0] }, limit: 200 });
+});
+
+test('replace swaps the selection without a history entry', () => {
+  const start = s({ selection: sel({ martId: 'gone' }), history: [sel({ martId: 'a' })] });
+  const st = reducer(start, { type: 'replace', selection: sel({ martId: 'b' }) });
+  expect(st.selection.martId).toBe('b');
+  expect(st.history).toEqual(start.history);
+});
+
+test('back skips history entries that name a mart or source that no longer exists', () => {
+  const history = [sel({ martId: 'a' }), sel({ martId: 'gone' }), sel({ sourceKey: 'dead' })];
+  const st = reducer(s({ selection: sel({ martId: 'b' }), history }), { type: 'back', known: (x) => x.martId !== 'gone' && x.sourceKey !== 'dead' });
+  expect(st.selection.martId).toBe('a');
+  expect(st.history).toEqual([]);
+  const none = reducer(s({ selection: sel({ martId: 'b' }), history: [sel({ martId: 'gone' })] }), { type: 'back', known: () => false });
+  expect(none.selection.martId).toBe('b');
+  expect(none.history).toEqual([]);
+});
+
 test('history keeps the last 20 selections and drops the oldest', () => {
   let st = reducer(s(), { type: 'init', focusId: 'm0' });
   for (let i = 1; i <= 25; i++) st = reducer(st, { type: 'selectMart', id: `m${i}`, sourceOf });

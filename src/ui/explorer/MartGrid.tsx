@@ -27,15 +27,16 @@ function useSchema(martId: string, version: number) {
   return s;
 }
 
+/** `saved` is the grid as the reader left it; `filters` only changes when a followed link asks a mounted grid to re-seed. */
 export type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
 
 /** The grid for one mart: loads the schema, then reads rows. Key it by mart id. */
-export function MartGrid({ martId, model, seed, onChange }: { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState) => void }) {
+export function MartGrid({ martId, model, seed, onChange, onRows }: { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
   const [schemaVersion, setSchemaVersion] = useState(0);
   const { schema, error } = useSchema(martId, schemaVersion);
   if (error) return <div className="p-4"><ErrorBox error={error} onRetry={() => setSchemaVersion((v) => v + 1)} /></div>;
   if (!schema) return <Skeleton rows={8} />;
-  return <Grid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} />;
+  return <Grid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onRows={onRows} />;
 }
 
 // TanStack Table v9: row.getVisibleCells() needs the column visibility feature.
@@ -63,13 +64,16 @@ function GridCell({ row, name, rel }: { row: Row; name: string; rel: RelColumn |
 
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
-function Grid({ martId, model, schema, seed, onChange }: { martId: string; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void }) {
+function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: string; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
   const { ctx, schemas } = useServices();
   const [, dispatch] = useStore();
-  // The columns, filters and page the reader left this mart with; filters a followed link asks for win.
-  const [visible, setVisible] = useState(() => seed.saved?.columns.filter((c) => schema.some((f) => f.name === c)) ?? defaultColumns(schema));
-  const [filters, setFilters] = useState<Record<string, ColumnFilter>>(() => (seed.filters ? toFilterMap(seed.filters) : seed.saved?.filters ?? {}));
-  const [limit, setLimit] = useState(() => (seed.filters ? PAGE_SIZE : seed.saved?.limit ?? PAGE_SIZE));
+  // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
+  const [visible, setVisible] = useState(() => {
+    const kept = seed.saved?.columns.filter((c) => schema.some((f) => f.name === c)) ?? [];
+    return kept.length ? kept : defaultColumns(schema);
+  });
+  const [filters, setFilters] = useState<Record<string, ColumnFilter>>(() => seed.saved?.filters ?? {});
+  const [limit, setLimit] = useState(() => seed.saved?.limit ?? PAGE_SIZE);
   const [version, setVersion] = useState(0);
   // Titles per related mart and value, for the grid's lifetime. Every lookup is a billed run, so a value is looked up once.
   const [titles, setTitles] = useState(new Map<string, string>());
@@ -148,13 +152,14 @@ function Grid({ martId, model, schema, seed, onChange }: { martId: string; model
 
   const env = useMemo(() => ({ titles, relSchemas, model }), [titles, relSchemas, model]);
   const table = useTable({ features, data: rows ?? [], columns });
+  const rowsLabel = rows ? `${rows.length}${hasMore ? '+' : ''}` : null;
+  useEffect(() => { onRows?.(rowsLabel); }, [rowsLabel]); // eslint-disable-line react-hooks/exhaustive-deps
   const hasFilters = Object.keys(filters).length > 0;
 
   return (
     <GridEnv.Provider value={env}>
     <div className="flex max-h-[32rem] min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-        {rows && <span className="text-xs text-muted-foreground">{rows.length}{hasMore ? '+' : ''} rows</span>}
         <div className="flex-1" />
         <button type="button" disabled={!hasFilters} onClick={() => { setFilters({}); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => { lookups.current.abort(); lookups.current = new AbortController(); setTitles(new Map()); asked.current.clear(); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>

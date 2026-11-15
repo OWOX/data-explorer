@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useReducer, type Dispatch, type ReactNode } from 'react';
 import { createRowCounter, type RowCounter } from '../api/row-counts';
 import { createSchemaLoader, type SchemaLoader } from '../api/schemas';
+import { PAGE_SIZE } from '../config';
 import type { ColumnFilter } from '../filters/build';
 import type { Model } from '../model/types';
 import type { ClickTarget } from '../records/relationships';
@@ -35,7 +36,9 @@ export type Action =
   | { type: 'selectMart'; id: string; sourceOf: SourceOf }
   | { type: 'openRecord'; martId: string; pk: Record<string, unknown>; sourceOf?: SourceOf }
   | { type: 'follow'; target: ClickTarget; sourceOf: SourceOf }
-  | { type: 'back' }
+  | { type: 'back'; known?: (selection: Selection) => boolean }
+  /** Swap the selection without a history entry: a refresh took the selected mart or source away. */
+  | { type: 'replace'; selection: Selection }
   | { type: 'search'; q: string }
   | { type: 'toggleContext'; id: string }
   | { type: 'saveGrid'; martId: string; grid: GridState }
@@ -74,14 +77,24 @@ export function reducer(state: State, a: Action): State {
     case 'follow': {
       const { target } = a;
       const sourceKey = sourceFor(cur, target.martId, a.sourceOf);
-      return move(state, target.kind === 'record'
-        ? { sourceKey, martId: target.martId, record: { martId: target.martId, pk: target.pk } }
-        : { sourceKey, martId: target.martId, record: null, filters: target.filters });
+      if (target.kind === 'record') return move(state, { sourceKey, martId: target.martId, record: { martId: target.martId, pk: target.pk } });
+      // The followed filters are a one-shot seed for the mart's saved grid, so edits made on top of them
+      // are what Back finds again. `selection.filters` only tells a mounted grid to re-seed.
+      const next = move(state, { sourceKey, martId: target.martId, record: null, filters: target.filters });
+      const saved = state.grids[target.martId];
+      const filters = Object.fromEntries(target.filters.map((f) => [f.field, f]));
+      return { ...next, grids: { ...next.grids, [target.martId]: { columns: saved?.columns ?? [], filters, limit: PAGE_SIZE } } };
     }
     case 'back': {
-      const previous = state.history.at(-1);
-      return previous ? { ...state, selection: previous, history: state.history.slice(0, -1) } : state;
+      // Entries naming a mart or source a refresh removed are skipped.
+      const history = [...state.history];
+      while (history.length) {
+        const previous = history.pop()!;
+        if (!a.known || a.known(previous)) return { ...state, selection: previous, history };
+      }
+      return history.length === state.history.length ? state : { ...state, history };
     }
+    case 'replace': return { ...state, selection: a.selection };
     // Searching narrows the Data Marts band; what is selected stays selected.
     case 'search': return { ...state, search: a.q };
     case 'toggleContext': {

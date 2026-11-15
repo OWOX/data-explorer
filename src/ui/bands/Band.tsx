@@ -20,7 +20,7 @@ export function Band({
   id: string;
   icon: LucideIcon;
   title: string;
-  total?: number;
+  total?: number | string;
   hint: string;
   toolbar?: ReactNode;
   /** 0-1 while the band is still being read: it shows a bar instead of its content. */
@@ -47,7 +47,7 @@ export function Band({
       >
         <span className="dm-band-icon"><Icon size={18} /></span>
         <h2 className="dm-band-title">{title}</h2>
-        {total !== undefined && <span className="dm-badge dm-band-count">{num(total)}</span>}
+        {total !== undefined && <span className="dm-badge dm-band-count">{typeof total === 'number' ? num(total) : total}</span>}
         <span className="dm-hint" tabIndex={0} role="note" aria-label={hint}>
           <Info size={14} />
           <span className="dm-hint-body">{hint}</span>
