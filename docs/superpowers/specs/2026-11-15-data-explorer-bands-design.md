@@ -76,6 +76,18 @@ Counts run for visible accessible cards through the existing pool (4 at a time) 
 4. Clicking a row of a mart with a primary key opens it in the Row band.
 5. With no mart selected (an empty project), the band shows "Select a data mart."
 
+### Export to Google Sheets
+
+The plugin's only writes: creating a spreadsheet, creating or updating the member's export report, and running it. Each follows the member's own click (the SDK refuses a write otherwise). Rows are never written.
+
+1. The header toolbar of the Data band has an Export control next to Columns. Destinations come from `ctx.owox.destinations.list()` (`GET /api/data-destinations`), kept where `type === 'GOOGLE_SHEETS'` and `availableForUse` is not false. They are read once per session and again on the header's Refresh. With none, or when the list fails (a warning is logged), the control is not rendered.
+2. One destination and no remembered report for the mart: a plain button. One click makes a spreadsheet (`POST /api/data-destinations/:id/google-sheets/documents`), the report (`POST /api/reports`), runs it (`POST /api/reports/:id/run`) and opens `https://docs.google.com/spreadsheets/d/<id>/edit#gid=<sheetId>`. If the spreadsheet cannot be created, the "New report" dialog opens with the message and the pasted-link option.
+3. Otherwise a menu in the style of the Data Marts band's filters. With two or more destinations the first level lists them; each opens its submenu (one destination shows it directly). A submenu has "Update '<title>'" for each remembered report on that destination (`PUT /api/reports/:id`, then run) and "New report…", a dialog with the title (prefilled) and a target: a new spreadsheet or a pasted link (`/spreadsheets/d/<id>/`, `#gid=<n>`, default 0).
+4. Report payload from the grid: `columnConfig` the shown columns in grid order; `filterConfig` the grid's complete filters, built by the same code as the rows query (at most 50); `sortConfig` the member's sorts without the primary-key tie-breakers (at most 10, the first 10 are sent and the member is told); `autoAggregationOptOut` the same columns, so the run does not collapse rows into DISTINCT or aggregates; no `limitConfig`. An update also clears `limitConfig`, `aggregationConfig`, `dateTruncConfig` and `uniqueCountConfig`.
+5. Reports created from the plugin are remembered in the member-scope collection `exports`: document id the data mart id, value `{ reports: [{ reportId, destinationId, spreadsheetId, sheetId, title }] }`. When the menu opens each is read (`GET /api/reports/:id`); one that answers 404 is dropped and the cleaned list is saved.
+6. Run progress: `GET /api/reports/:id` every 2 s until `lastRunAt` is later than before the run and `lastRunStatus` is final. SUCCESS opens the sheet; ERROR, CANCELLED and RESTRICTED show `lastRunError`; after 3 minutes the status reads "Still running" with a link. One export at a time per grid.
+7. Exporting never calls `traverseData`: the warehouse work is the report's run, billed once.
+
 ## 4. Row band
 
 1. Title: `<mart title> · <primary key>`.

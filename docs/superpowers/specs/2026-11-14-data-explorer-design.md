@@ -5,12 +5,12 @@ Status: approved in chat, awaiting spec review
 
 ## Goal
 
-An OWOX Data Marts plugin that shows the data model (data marts and their relationships) on a canvas and lets a member browse each data mart's rows and single records. Version 1 is read-only. Editing comes later, once a write path exists.
+An OWOX Data Marts plugin that shows the data model (data marts and their relationships) on a canvas and lets a member browse each data mart's rows and single records. Version 1 does not write rows. Its only writes are the member's export reports (see the bands spec, Export): creating a spreadsheet, creating or updating a report and running it, each from the member's click. Editing comes later, once a write path exists.
 
 ## Out of scope for v1
 
 1. Writing rows. OWOX has no row-write API. The edit UI (record forms, suggest dropdowns for relationship columns) is deferred.
-2. Saving to Google Sheets.
+2. Saving to Google Sheets from anything but the Data band's Export (see the bands spec).
 3. Editing the model itself (relationships, schema, contexts).
 
 ## Platform facts this design relies on
