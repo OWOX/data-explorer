@@ -84,9 +84,9 @@ test('back restores the previous selection, in order, and does nothing with no h
 
 test('follow into a filtered mart seeds its saved grid once, keeping its columns', () => {
   const filters = [{ field: 'order_id', op: 'eq' as const, value: 1 }];
-  const start = s({ selection: sel({ martId: 'a' }), grids: { c: { columns: ['x'], filters: { y: { field: 'y', op: 'eq', value: 2 } }, limit: 400 } } });
+  const start = s({ selection: sel({ martId: 'a' }), grids: { c: { columns: ['x'], filters: { y: { field: 'y', op: 'eq', value: 2 } }, sorts: [{ field: 'x', direction: 'desc' as const }], limit: 400 } } });
   const st = reducer(start, { type: 'follow', target: { kind: 'mart', martId: 'c', filters }, sourceOf });
-  expect(st.grids.c).toEqual({ columns: ['x'], filters: { order_id: filters[0] }, limit: 200 });
+  expect(st.grids.c).toEqual({ columns: ['x'], filters: { order_id: filters[0] }, sorts: [{ field: 'x', direction: 'desc' }], limit: 200 });
 });
 
 test('replace swaps the selection without a history entry', () => {
@@ -124,7 +124,7 @@ test('search and context toggles keep the selection and the history', () => {
 });
 
 test('saveGrid keeps one state per mart; refreshModel bumps the version', () => {
-  const grid = { columns: ['id'], filters: {}, limit: 200 };
+  const grid = { columns: ['id'], filters: {}, sorts: [], limit: 200 };
   let st = reducer(s(), { type: 'saveGrid', martId: 'a', grid });
   st = reducer(st, { type: 'saveGrid', martId: 'b', grid: { ...grid, limit: 400 } });
   expect(st.grids).toEqual({ a: grid, b: { ...grid, limit: 400 } });

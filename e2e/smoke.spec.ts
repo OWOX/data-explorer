@@ -110,3 +110,18 @@ test('the storage filter drops the marts of an unticked storage and leaves the s
   await expect(martCard(page, 'Orders')).toHaveAttribute('aria-pressed', 'true');
   await expect(band(page, 'data').getByRole('heading', { name: 'Orders' })).toBeVisible();
 });
+
+test('sort a column descending, then add a second sort', async ({ page }) => {
+  const data = await ordersGrid(page);
+  const firstCell = () => data.getByRole('row').nth(1).getByRole('cell').first();
+  await expect(firstCell()).toHaveText('1');
+  await data.getByRole('button', { name: /^Sort by id,/ }).click();
+  await data.getByRole('button', { name: /^Sort by id,/ }).click();
+  await expect(data.getByRole('columnheader').first()).toHaveAttribute('aria-sort', 'descending');
+  await expect(firstCell()).toHaveText('450');
+  await data.getByRole('button', { name: /^Sort by status,/ }).click();
+  await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
+  await expect(data.getByRole('columnheader', { name: /status/ })).toContainText('2');
+  await data.getByRole('button', { name: 'Reset' }).click();
+  await expect(firstCell()).toHaveText('1');
+});

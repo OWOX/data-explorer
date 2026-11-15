@@ -79,3 +79,16 @@ test('a changed limit, filter or version re-queries even with fewer columns', as
   rerender({ o: { ...opts(['id'], 401), filter: [{ column: 'id', operator: 'eq' as const, value: 1 }] }, v: 1 });
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
 });
+
+test('buildRowQuery sends the reader sorts first, then the primary keys not already sorted; no sorts leaves the query as it was', () => {
+  const plain = buildRowQuery(schema, ['a'], [], 200, rels);
+  expect(plain.sort).toEqual([{ column: 'id', direction: 'asc' }]);
+  expect(buildRowQuery(schema, ['a'], [], 200, rels, [])).toEqual(plain);
+  const sorted = buildRowQuery(schema, ['a', 'b'], [], 200, rels, [{ field: 'b', direction: 'desc' }, { field: 'a', direction: 'asc' }]);
+  expect(sorted.sort).toEqual([{ column: 'b', direction: 'desc' }, { column: 'a', direction: 'asc' }, { column: 'id', direction: 'asc' }]);
+  const onPk = buildRowQuery(schema, ['id', 'a'], [], 200, rels, [{ field: 'id', direction: 'desc' }]);
+  expect(onPk.sort).toEqual([{ column: 'id', direction: 'desc' }]);
+  const noPk: Schema = [f('x'), f('y')];
+  expect(buildRowQuery(noPk, ['x'], [], 200, new Map())).toEqual({ column: ['x'], limit: 201 });
+  expect(buildRowQuery(noPk, ['x'], [], 200, new Map(), [{ field: 'x', direction: 'asc' }]).sort).toEqual([{ column: 'x', direction: 'asc' }]);
+});

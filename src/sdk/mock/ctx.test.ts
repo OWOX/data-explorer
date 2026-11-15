@@ -50,3 +50,17 @@ test('fixture facts later tasks rely on', () => {
     expect(hit).toBe(m.id === 'customers');
   }
 });
+
+test('traverseData sorts by several keys, in order, each with its own direction, numbers by value', async () => {
+  const ctx = createMockCtx(demoFixtures());
+  const rows = await readRows(ctx, 'orders', { column: ['id', 'status', 'amount'], sort: [{ column: 'status', direction: 'asc' }, { column: 'id', direction: 'desc' }], limit: 450 });
+  for (let i = 1; i < rows.length; i++) {
+    const a = rows[i - 1]!, b = rows[i]!;
+    const c = String(a.status).localeCompare(String(b.status));
+    expect(c <= 0).toBe(true);
+    if (c === 0) expect(Number(a.id)).toBeGreaterThan(Number(b.id));
+  }
+  const byAmount = await readRows(ctx, 'orders', { column: ['amount'], sort: [{ column: 'amount', direction: 'asc' }], limit: 450 });
+  const amounts = byAmount.map((r) => Number(r.amount));
+  expect(amounts).toEqual([...amounts].sort((x, y) => x - y));
+});

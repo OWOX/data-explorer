@@ -686,3 +686,137 @@ describe('the storage filter', () => {
     expect(within(head()).queryByText('Storage')).toBeNull();
   });
 });
+
+describe('column sort', () => {
+  const sortBtn = (grid: HTMLElement, label: string) => within(grid).getByRole('button', { name: new RegExp(`^Sort by ${label},`) });
+  const header = (grid: HTMLElement, label: string) => sortBtn(grid, label).closest('th')!;
+  const firstId = (grid: HTMLElement) => within(within(grid).getAllByRole('row')[1]!).getAllByRole('cell')[0]!.textContent;
+  const sortOf = (calls: { id: string; o: { sort?: unknown } }[]) => calls.filter((c) => c.id === 'orders').at(-1)!.o.sort;
+
+  test('a click cycles none, ascending, descending, none, with aria-sort and a label that says where it is', async () => {
+    const grid = await ordersGrid();
+    expect(header(grid, 'status')).toHaveAttribute('aria-sort', 'none');
+    expect(sortBtn(grid, 'status')).toHaveAccessibleName('Sort by status, currently not sorted');
+    await userEvent.click(sortBtn(grid, 'status'));
+    await waitFor(() => expect(header(grid, 'status')).toHaveAttribute('aria-sort', 'ascending'));
+    expect(sortBtn(grid, 'status')).toHaveAccessibleName('Sort by status, currently ascending');
+    expect(header(grid, 'status').querySelector('svg.lucide-arrow-up')).not.toBeNull();
+    await userEvent.click(sortBtn(grid, 'status'));
+    await waitFor(() => expect(header(grid, 'status')).toHaveAttribute('aria-sort', 'descending'));
+    expect(header(grid, 'status').querySelector('svg.lucide-arrow-down')).not.toBeNull();
+    await userEvent.click(sortBtn(grid, 'status'));
+    await waitFor(() => expect(header(grid, 'status')).toHaveAttribute('aria-sort', 'none'));
+    expect(header(grid, 'status').querySelector('svg.lucide-arrow-up, svg.lucide-arrow-down')).toBeNull();
+  });
+
+  test('sorting reorders the rows: id descending puts the last row first', async () => {
+    const grid = await ordersGrid();
+    expect(firstId(grid)).toBe('1');
+    await userEvent.click(sortBtn(grid, 'id'));
+    await userEvent.click(sortBtn(grid, 'id'));
+    await waitFor(() => expect(firstId(grid)).toBe('450'));
+  });
+
+  test('two sorts show precedence numbers; removing the first keeps the other, renumbered', async () => {
+    const grid = await ordersGrid();
+    await userEvent.click(sortBtn(grid, 'status'));
+    expect(within(header(grid, 'status')).queryByText('1')).toBeNull();
+    await userEvent.click(sortBtn(grid, 'Customer'));
+    await userEvent.click(sortBtn(grid, 'product_id'));
+    await waitFor(() => expect(within(header(grid, 'product_id')).getByText('3')).toBeInTheDocument());
+    expect(within(header(grid, 'status')).getByText('1')).toBeInTheDocument();
+    expect(within(header(grid, 'Customer')).getByText('2')).toBeInTheDocument();
+    // remove the middle one: the others keep their order
+    await userEvent.click(sortBtn(grid, 'Customer'));
+    await userEvent.click(sortBtn(grid, 'Customer'));
+    await waitFor(() => expect(within(header(grid, 'product_id')).getByText('2')).toBeInTheDocument());
+    expect(within(header(grid, 'status')).getByText('1')).toBeInTheDocument();
+    expect(header(grid, 'Customer')).toHaveAttribute('aria-sort', 'none');
+  });
+
+  test('the query carries the sorts in order, then the primary key; one run per change, limit back to the page size', async () => {
+    const calls = await spyOnTraverse();
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await settle();
+    const grid = data();
+    await userEvent.click(within(grid).getByRole('button', { name: 'Load more' }));
+    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(401));
+    const before = calls.filter((c) => c.id === 'orders').length;
+    await userEvent.click(sortBtn(grid, 'status'));
+    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(201));
+    await settle();
+    expect(calls.filter((c) => c.id === 'orders')).toHaveLength(before + 1);
+    expect(calls.filter((c) => c.id === 'orders').at(-1)!.o.limit).toBe(201);
+    expect(sortOf(calls)).toEqual([{ column: 'status', direction: 'asc' }, { column: 'id', direction: 'asc' }]);
+    // sorting the key ascending sends the very same query: nothing is billed again
+    await userEvent.click(sortBtn(grid, 'id'));
+    await settle();
+    expect(calls.filter((c) => c.id === 'orders')).toHaveLength(before + 1);
+    await userEvent.click(sortBtn(grid, 'id'));
+    await waitFor(() => expect(calls.filter((c) => c.id === 'orders')).toHaveLength(before + 2));
+    expect(sortOf(calls)).toEqual([{ column: 'status', direction: 'asc' }, { column: 'id', direction: 'desc' }]);
+  });
+
+  test('the filter icon and the (i) do not sort', async () => {
+    const calls = await spyOnTraverse();
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await settle();
+    const grid = data();
+    const before = calls.filter((c) => c.id === 'orders').length;
+    await userEvent.click(within(grid).getByLabelText('Filter Customer'));
+    await userEvent.keyboard('{Escape}');
+    await userEvent.hover(within(grid).getByLabelText('About Customer'));
+    await userEvent.click(within(grid).getByLabelText('About Customer'));
+    await settle();
+    expect(header(grid, 'Customer')).toHaveAttribute('aria-sort', 'none');
+    expect(calls.filter((c) => c.id === 'orders')).toHaveLength(before);
+  });
+
+  test('a related-title column says it sorts by the key value; a plain one has no such title', async () => {
+    const grid = await ordersGrid();
+    expect(sortBtn(grid, 'Customer')).toHaveAttribute('title', 'Sorted by the key value');
+    expect(sortBtn(grid, 'status')).not.toHaveAttribute('title');
+  });
+
+  test('Reset clears the sorts, and is enabled by a sort alone', async () => {
+    const grid = await ordersGrid();
+    expect(within(grid).getByRole('button', { name: 'Reset' })).toBeDisabled();
+    await userEvent.click(sortBtn(grid, 'id'));
+    await userEvent.click(sortBtn(grid, 'id'));
+    await waitFor(() => expect(firstId(grid)).toBe('450'));
+    await userEvent.click(within(grid).getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(firstId(grid)).toBe('1'));
+    expect(header(grid, 'id')).toHaveAttribute('aria-sort', 'none');
+    expect(within(grid).getByRole('button', { name: 'Reset' })).toBeDisabled();
+  });
+
+  test('going back to a mart restores its sorts', async () => {
+    const grid = await ordersGrid();
+    await userEvent.click(sortBtn(grid, 'id'));
+    await userEvent.click(sortBtn(grid, 'id'));
+    await waitFor(() => expect(firstId(grid)).toBe('450'));
+    fireEvent.click(martCard('Customers'));
+    await within(data()).findByRole('heading', { name: 'Customers' });
+    await userEvent.click(within(row()).getByRole('button', { name: /Back/ }));
+    await within(data()).findByRole('heading', { name: 'Orders' });
+    await waitFor(() => expect(header(data(), 'id')).toHaveAttribute('aria-sort', 'descending'));
+    await waitFor(() => expect(firstId(data())).toBe('450'));
+  });
+
+  test('hiding a sorted column drops its sort and the query stops sending it', async () => {
+    const calls = await spyOnTraverse();
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    const grid = data();
+    await userEvent.click(sortBtn(grid, 'status'));
+    await userEvent.click(sortBtn(grid, 'product_id'));
+    await waitFor(() => expect(sortOf(calls)).toEqual([{ column: 'status', direction: 'asc' }, { column: 'product_id', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
+    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(screen.getByLabelText('status'));
+    await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(4));
+    await waitFor(() => expect(sortOf(calls)).toEqual([{ column: 'product_id', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
+    // showing it again does not bring the sort back
+    await userEvent.click(screen.getByLabelText('status'));
+    await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(5));
+    expect(header(grid, 'status')).toHaveAttribute('aria-sort', 'none');
+  });
+});

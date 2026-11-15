@@ -1,9 +1,10 @@
 import { columnVisibilityFeature, flexRender, tableFeatures, useTable, type ColumnDef } from '@tanstack/react-table';
-import { Info, RefreshCw, RotateCcw } from 'lucide-react';
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDown, ArrowUp, Info, RefreshCw, RotateCcw } from 'lucide-react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PAGE_SIZE } from '../../config';
 import { fieldLabel, fieldTitle } from '../../model/fieldLabel';
 import type { ColumnFilter } from '../../filters/build';
+import { cycleSort, type SortKey } from '../../model/sort';
 import type { Model, Schema } from '../../model/types';
 import { clickTarget, primaryKeys, type RelColumn } from '../../records/relationships';
 import { useMartRelationships } from '../../records/useMartRelationships';
@@ -50,7 +51,26 @@ const titleKey = (rel: RelColumn, value: unknown) => `${rel.relatedMartId}\u0000
 
 // Cells read titles and schemas from context so the header cells keep their identity when a lookup lands:
 // a new header component would remount and close an open filter popover.
-const GridEnv = createContext<{ titles: Map<string, string>; relSchemas: Map<string, Schema>; model: Model | null }>({ titles: new Map(), relSchemas: new Map(), model: null });
+const GridEnv = createContext<{ titles: Map<string, string>; relSchemas: Map<string, Schema>; model: Model | null; sorts: SortKey[]; relNames: Set<string>; toggleSort: (field: string) => void }>({ titles: new Map(), relSchemas: new Map(), model: null, sorts: [], relNames: new Set(), toggleSort: () => undefined });
+
+const DIRECTION_NAME = { asc: 'ascending', desc: 'descending' } as const;
+const sortOf = (sorts: SortKey[], field: string) => { const d = sorts.find((s) => s.field === field)?.direction; return d ? DIRECTION_NAME[d] : 'none'; };
+
+/** The column title as a button: none, ascending, descending, none. The arrow (and its precedence number) stays on screen while a sort is applied. */
+function SortTitle({ field }: { field: Schema[number] }) {
+  const { sorts, relNames, toggleSort } = useContext(GridEnv);
+  const at = sorts.findIndex((s) => s.field === field.name);
+  const current = at < 0 ? null : sorts[at]!.direction;
+  const label = fieldLabel(field);
+  const Arrow = current === 'desc' ? ArrowDown : ArrowUp;
+  return (
+    <button type="button" onClick={() => toggleSort(field.name)} aria-label={`Sort by ${label}, currently ${current ? DIRECTION_NAME[current] : 'not sorted'}`}
+      title={relNames.has(field.name) ? 'Sorted by the key value' : undefined} className="dm-sort inline-flex min-w-0 items-center gap-1 font-medium">
+      <span className="truncate" title={fieldTitle(field)}>{label}</span>
+      {current && <span className="dm-sort-mark inline-flex items-center"><Arrow className="size-3.5" aria-hidden />{sorts.length > 1 && <span className="text-[10px] tabular-nums">{at + 1}</span>}</span>}
+    </button>
+  );
+}
 
 function GridCell({ row, name, rel }: { row: Row; name: string; rel: RelColumn | undefined }) {
   const { titles, relSchemas } = useContext(GridEnv);
@@ -77,6 +97,7 @@ function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: strin
     return kept.length ? kept : defaultColumns(schema);
   });
   const [filters, setFilters] = useState<Record<string, ColumnFilter>>(() => seed.saved?.filters ?? {});
+  const [sorts, setSorts] = useState<SortKey[]>(() => (seed.saved?.sorts ?? []).filter((s) => schema.some((f) => f.name === s.field)));
   const [limit, setLimit] = useState(() => seed.saved?.limit ?? PAGE_SIZE);
   const [ownVersion, setVersion] = useState(0);
   // The header's Refresh re-reads what is shown too: its counter joins the grid's own, and each only ever goes up.
@@ -114,11 +135,11 @@ function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: strin
     }
   }
 
-  useEffect(() => { onChange({ columns: visible, filters, limit }); }, [visible, filters, limit]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onChange({ columns: visible, filters, sorts, limit }); }, [visible, filters, sorts, limit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { rels } = useMartRelationships(martId, model.edges);
   const pks = primaryKeys(schema);
-  const query = useMemo(() => buildRowQuery(schema, visible, Object.values(filters), limit, rels), [schema, visible, filters, limit, rels]);
+  const query = useMemo(() => buildRowQuery(schema, visible, Object.values(filters), limit, rels, sorts), [schema, visible, filters, sorts, limit, rels]);
   const { rows, loading, error, hasMore } = useMartRows(martId, query, version);
   // The title effect depends on the relationship columns on screen, not on every change of `visible`.
   const visibleRelKey = visible.filter((n) => rels.has(n)).join('|');
@@ -155,7 +176,7 @@ function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: strin
       id: name,
       header: () => (
         <div className="flex items-center gap-1">
-          <span className="truncate" title={fieldTitle(field)}>{fieldLabel(field)}</span>
+          <SortTitle field={field} />
           <FilterPopover field={field} value={filters[name]} onChange={(f) => {
             setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; });
             setLimit(PAGE_SIZE);
@@ -173,19 +194,24 @@ function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: strin
     };
   }), [visible, schema, rels, filters]);
 
-  const env = useMemo(() => ({ titles, relSchemas, model }), [titles, relSchemas, model]);
+  const toggleSort = useCallback((field: string) => { setSorts((cur) => cycleSort(cur, field)); setLimit(PAGE_SIZE); }, []);
+  const relNames = useMemo(() => new Set(rels.keys()), [rels]);
+  const env = useMemo(() => ({ titles, relSchemas, model, sorts, relNames, toggleSort }), [titles, relSchemas, model, sorts, relNames, toggleSort]);
+  // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
+  const changeColumns = (cols: string[]) => { setVisible(cols); setSorts((cur) => (cur.every((s) => cols.includes(s.field)) ? cur : cur.filter((s) => cols.includes(s.field)))); };
   const table = useTable({ features, data: rows ?? [], columns });
   const rowsLabel = rows ? `${rows.length}${hasMore ? '+' : ''}` : null;
   useEffect(() => { onRows?.(rowsLabel); }, [rowsLabel]); // eslint-disable-line react-hooks/exhaustive-deps
   const hasFilters = Object.keys(filters).length > 0;
+  const hasSorts = sorts.length > 0;
 
   return (
     <GridEnv.Provider value={env}>
     <div className="flex max-h-[32rem] min-h-0 flex-col">
       <BandTools slot={slot}>
-        <button type="button" disabled={!hasFilters} onClick={() => { setFilters({}); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
+        <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { setFilters({}); setSorts([]); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => { lookups.current.abort(); lookups.current = new AbortController(); setTitles(new Map()); asked.current.clear(); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
-        <ColumnPicker schema={schema} visible={visible} onChange={setVisible} />
+        <ColumnPicker schema={schema} visible={visible} onChange={changeColumns} />
       </BandTools>
       {pks.length === 0 && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
       {loading && rows && <div className="h-0.5 animate-pulse bg-primary" />}
@@ -193,7 +219,7 @@ function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: strin
         <table className="w-full border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-card">
             {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id}>{hg.headers.map((h) => <th key={h.id} className="dm-th max-w-64 border-b px-3 py-2 text-left font-medium">{flexRender(h.column.columnDef.header, h.getContext())}</th>)}</tr>
+              <tr key={hg.id}>{hg.headers.map((h) => <th key={h.id} aria-sort={sortOf(sorts, h.column.id)} className="dm-th max-w-64 border-b px-3 py-2 text-left font-medium">{flexRender(h.column.columnDef.header, h.getContext())}</th>)}</tr>
             ))}
           </thead>
           <tbody>

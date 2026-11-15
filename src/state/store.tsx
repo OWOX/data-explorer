@@ -1,3 +1,4 @@
+import type { SortKey } from '../model/sort';
 import { createContext, useContext, useMemo, useReducer, type Dispatch, type ReactNode } from 'react';
 import { createRowCounter, type RowCounter } from '../api/row-counts';
 import { createSchemaLoader, type SchemaLoader } from '../api/schemas';
@@ -16,7 +17,7 @@ export type Selection = {
 };
 
 /** What the Data band's grid keeps per mart for the session. */
-export type GridState = { columns: string[]; filters: Record<string, ColumnFilter>; limit: number };
+export type GridState = { columns: string[]; filters: Record<string, ColumnFilter>; sorts: SortKey[]; limit: number };
 
 export type State = {
   selection: Selection;
@@ -87,7 +88,7 @@ export function reducer(state: State, a: Action): State {
       const next = move(state, { sourceKey, martId: target.martId, record: null, filters: target.filters });
       const saved = state.grids[target.martId];
       const filters = Object.fromEntries(target.filters.map((f) => [f.field, f]));
-      return { ...next, grids: { ...next.grids, [target.martId]: { columns: saved?.columns ?? [], filters, limit: PAGE_SIZE } } };
+      return { ...next, grids: { ...next.grids, [target.martId]: { columns: saved?.columns ?? [], filters, sorts: saved?.sorts ?? [], limit: PAGE_SIZE } } };
     }
     case 'back': {
       // Entries naming a mart or source a refresh removed are skipped.

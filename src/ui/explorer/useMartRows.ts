@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { readRows } from '../../api/rows';
 import { isComplete, toTraverseFilter, type ColumnFilter } from '../../filters/build';
+import type { SortKey } from '../../model/sort';
 import type { Schema } from '../../model/types';
 import type { RelColumn } from '../../records/relationships';
 import type { Row, TraverseOptions } from '../../sdk/types';
@@ -10,7 +11,7 @@ export function defaultColumns(schema: Schema): string[] {
   return schema.filter((f) => !f.isCalculated).slice(0, 5).map((f) => f.name);
 }
 
-export function buildRowQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, rels: Map<string, RelColumn>): TraverseOptions {
+export function buildRowQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, rels: Map<string, RelColumn>, sorts: SortKey[] = []): TraverseOptions {
   const need = new Set(visible);
   schema.filter((f) => f.isPrimaryKey).forEach((f) => need.add(f.name));
   // BigQuery bills per column scanned: join source fields are fetched only for relationship columns on screen
@@ -21,8 +22,12 @@ export function buildRowQuery(schema: Schema, visible: string[], filters: Column
     const field = schema.find((x) => x.name === flt.field);
     return field && isComplete(flt, field) ? [toTraverseFilter(flt, field)] : [];
   });
-  const pks = schema.filter((f) => f.isPrimaryKey).map((f) => ({ column: f.name, direction: 'asc' as const }));
-  return { column, ...(filter.length ? { filter } : {}), ...(pks.length ? { sort: pks } : {}), limit: limit + 1 };
+  // The reader's sorts come first; the primary keys follow (unless already sorted) so "Load more" pages stay deterministic.
+  const sort = [
+    ...sorts.map((s) => ({ column: s.field, direction: s.direction })),
+    ...schema.filter((f) => f.isPrimaryKey && !sorts.some((s) => s.field === f.name)).map((f) => ({ column: f.name, direction: 'asc' as const })),
+  ];
+  return { column, ...(filter.length ? { filter } : {}), ...(sort.length ? { sort } : {}), limit: limit + 1 };
 }
 
 type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null };

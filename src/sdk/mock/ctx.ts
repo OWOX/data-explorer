@@ -20,10 +20,15 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
       const a = o.aggregation[0]!;
       return [{ [`${a.column} | COUNT`]: rows.filter((r) => r[a.column] != null).length }];
     }
-    for (const s of o.sort ?? []) {
+    const keys = o.sort ?? [];
+    if (keys.length) {
       rows = [...rows].sort((x, y) => {
-        const d = String(x[s.column] ?? '').localeCompare(String(y[s.column] ?? ''), undefined, { numeric: true });
-        return s.direction === 'asc' ? d : -d;
+        for (const s of keys) {
+          const a = x[s.column], b = y[s.column];
+          const d = typeof a === 'number' && typeof b === 'number' ? a - b : String(a ?? '').localeCompare(String(b ?? ''), undefined, { numeric: true });
+          if (d !== 0) return s.direction === 'asc' ? d : -d;
+        }
+        return 0;
       });
     }
     if (o.limit !== undefined) rows = rows.slice(0, o.limit);
