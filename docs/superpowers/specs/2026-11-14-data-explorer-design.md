@@ -5,12 +5,12 @@ Status: approved in chat, awaiting spec review
 
 ## Goal
 
-An OWOX Data Marts plugin that shows the data model (data marts and their relationships) on a canvas and lets a member browse each data mart's rows and single records. Version 1 is read-only. Editing comes later, once a write path exists.
+An OWOX Data Marts plugin that shows the data model (data marts and their relationships) on a canvas and lets a member browse each data mart's rows and single records. Version 1 does not write rows. Its only writes are the member's export reports (see the bands spec, Export): creating a spreadsheet, creating or updating a report and running it, each from the member's click. Editing comes later, once a write path exists.
 
 ## Out of scope for v1
 
 1. Writing rows. OWOX has no row-write API. The edit UI (record forms, suggest dropdowns for relationship columns) is deferred.
-2. Saving to Google Sheets.
+2. Saving to Google Sheets from anything but the Data band's Export (see the bands spec).
 3. Editing the model itself (relationships, schema, contexts).
 
 ## Platform facts this design relies on
@@ -66,7 +66,7 @@ Icons are a key from the OWOX icon enum or `lucide:<name>`. The plugin maps enum
 ### Visible set
 
 1. **Focus.** By default, the focus is the mart with the most inbound edges. Ties go to the alphabetically first title.
-2. **Nothing selected.** A BFS from the focus runs over undirected edges and stops when 12 marts are collected. Within one depth, marts with more inbound edges come first.
+2. **Nothing selected.** A BFS from the focus runs over undirected edges one level at a time. Each level is shown whole or not at all: the plugin adds the next level only if the total stays at or under 12 marts. Level 1 (the direct neighbours of the focus) always shows in full, even when it alone holds more than 12 marts.
 3. **Card selected.** The canvas shows the selected mart plus every direct neighbour, inbound and outbound, with no cap.
 4. **Filters active.** A context filter or a search query narrows the candidates to matching marts. Up to 12 matches show, ranked by inbound count, with a "+N more" note. Selecting a match switches to rule 3.
 5. An edge is drawn only when both of its ends are visible.
@@ -82,11 +82,12 @@ Icons are a key from the OWOX icon enum or `lucide:<name>`. The plugin maps enum
 The card is styled after the host's `ModelCanvasFlowNode` and `erd-card`: `rounded-xl border shadow-sm`, with an icon tile and the title. Each card shows:
 
 1. The mart icon and title. An (i) icon in the title's top right corner shows the mart description in a tooltip, and is hidden when there is no description.
-2. A row-count badge (compact format, such as `12.4K`), with a spinner while the count loads.
-3. A data quality icon. The status-to-icon map follows the host's `data-quality-status.ts`.
-4. A freshness icon, with `dataLastUpdatedAt` as relative time in a tooltip.
-5. Context chips with their icons.
-6. A muted stub style for marts the member cannot access.
+2. To the left of (i), an external-link icon (`ExternalLink`) opens `https://app.owox.com/ui/<ctx.projectId>/data-marts/<id>/overview` in a new tab through `ctx.ui.openExternal`, so the explorer keeps its state. The click does not select the card. The base URL is one constant, `OWOX_APP_URL`.
+3. A row-count badge (compact format, such as `12.4K`), with a spinner while the count loads.
+4. A data quality icon. The status-to-icon map follows the host's `data-quality-status.ts`.
+5. A freshness icon, with `dataLastUpdatedAt` as relative time in a tooltip.
+6. Context chips with their icons.
+7. A muted stub style for marts the member cannot access.
 
 Layout uses dagre, left to right, in canvas mode.
 
@@ -154,7 +155,7 @@ A relationship column is a field of the explored mart that appears as `sourceFie
 ## Testing
 
 1. **Unit tests (Vitest).**
-   1. `graph/`: focus choice, BFS cap at 12, selected-mode neighbours, search matching, filter narrowing.
+   1. `graph/`: focus choice, whole-level BFS under the 12-mart budget, level 1 shown past the budget, selected-mode neighbours, search matching, filter narrowing.
    2. `filters/`: the operator catalogue per category and the `traverseData` filter output.
    3. `records/`: the title heuristic, relationship-column detection, value-to-title resolution, and click targets.
 2. **Smoke tests (Playwright, mock mode).** Default focus appears, search narrows the canvas, a card click opens a tab with rows, a filter and its reset work, the column picker changes the visible columns, and an FK click opens a record tab.

@@ -1,0 +1,10 @@
+{
+  "name": "Data Explorer",
+  "description": "Browse data marts, their relationships and their rows.",
+  "delivery": { "type": "remote", "url": "https://owox.github.io/data-explorer/" },
+  "collections": [
+    { "name": "row-counts", "scope": "member" },
+    { "name": "grid-columns", "scope": "member" },
+    { "name": "exports", "scope": "member" }
+  ]
+}
