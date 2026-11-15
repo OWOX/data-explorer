@@ -105,8 +105,8 @@ const specs: Spec[] = [
   {
     id: 'returns', count: 30,
     description: 'Returned orders and the reason given.',
-    fields: [pk(), f('order_id', 'INT64'), f('reason', 'STRING')],
-    row: (i, r) => ({ id: i, order_id: pick(r, 450), reason: ['damaged', 'wrong item', 'changed mind'][pick(r, 3) - 1] }),
+    fields: [pk(), f('order_id', 'INT64'), f('name', 'STRING'), f('reason', 'STRING')],
+    row: (i, r) => ({ id: i, order_id: pick(r, 450), name: `Return ${i}`, reason: ['damaged', 'wrong item', 'changed mind'][pick(r, 3) - 1] }),
   },
   {
     id: 'payments', count: 30,
@@ -117,8 +117,8 @@ const specs: Spec[] = [
   {
     id: 'shipments', count: 30,
     description: 'Shipments dispatched for orders.',
-    fields: [pk(), f('order_id', 'INT64'), f('carrier', 'STRING')],
-    row: (i, r) => ({ id: i, order_id: pick(r, 450), carrier: ['dhl', 'ups', 'novaposhta'][pick(r, 3) - 1] }),
+    fields: [pk(), f('order_id', 'INT64'), f('name', 'STRING'), f('carrier', 'STRING')],
+    row: (i, r) => ({ id: i, order_id: pick(r, 450), name: `Shipment ${i}`, carrier: ['dhl', 'ups', 'novaposhta'][pick(r, 3) - 1] }),
   },
   {
     id: 'countries', icon: 'countries', count: 8,
@@ -147,8 +147,8 @@ const specs: Spec[] = [
   {
     id: 'ad_spend', icon: 'ad-spend', count: 30,
     description: 'Daily advertising spend per campaign.',
-    fields: [pk(), f('campaign_id', 'INT64'), f('spend', 'NUMERIC')],
-    row: (i, r) => ({ id: i, campaign_id: pick(r, 30), spend: Math.round(r() * 100_000) / 100 }),
+    fields: [pk(), f('campaign_id', 'INT64'), f('name', 'STRING'), f('spend', 'NUMERIC')],
+    row: (i, r) => ({ id: i, campaign_id: pick(r, 30), name: `Ad spend ${i}`, spend: Math.round(r() * 100_000) / 100 }),
   },
   {
     id: 'reviews', count: 30,
@@ -169,8 +169,8 @@ const specs: Spec[] = [
   {
     id: 'secret_ledger', accessible: false, count: 30,
     description: 'Restricted ledger.',
-    fields: [pk(), f('note', 'STRING')],
-    row: (i) => ({ id: i, note: `entry ${i}` }),
+    fields: [pk(), f('name', 'STRING'), f('note', 'STRING')],
+    row: (i) => ({ id: i, name: `Entry ${i}`, note: `entry ${i}` }),
   },
 ];
 

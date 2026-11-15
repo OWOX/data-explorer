@@ -38,6 +38,12 @@ test('fixture facts later tasks rely on', () => {
   expect(orders.rows.map((r) => r.id)).toEqual(Array.from({ length: 450 }, (_, i) => i + 1));
   expect(orders.fields.map((x) => x.name)).toEqual(['id', 'customer_id', 'product_id', 'store_id', 'status', 'amount', 'created_at', 'is_gift']);
   expect(f.marts.find((m) => m.id === 'daily_kpis')!.title).toBe('Daily KPIs');
+  // orders (status) and categories (aliased label) are labelled by design; only payments and daily_kpis lack any string label.
+  const labelled = (m: (typeof f.marts)[number]) => m.fields.some((x) => x.type === 'STRING' && !x.isPrimaryKey && !x.name.endsWith('_id') && !x.isHiddenForReporting);
+  expect(f.marts.filter((m) => !labelled(m)).map((m) => m.id).sort()).toEqual(['daily_kpis', 'payments']);
+  for (const id of ['returns', 'shipments', 'ad_spend', 'secret_ledger']) {
+    expect(f.marts.find((m) => m.id === id)!.fields.some((x) => x.name === 'name' && x.type === 'STRING')).toBe(true);
+  }
   const nameLike = /^[A-Z][a-z]+ [A-Z][a-z]+$/;
   for (const m of f.marts) {
     const hit = m.rows.some((r) => Object.values(r).some((v) => typeof v === 'string' && nameLike.test(v)));
