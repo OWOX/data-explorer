@@ -63,7 +63,7 @@ describe('the four bands', () => {
     expect(shopify).toHaveAttribute('aria-pressed', 'true');
     expect(within(marts()).getByText('Orders')).toBeInTheDocument();
     expect(within(marts()).getByText('Customers')).toBeInTheDocument();
-    expect(within(marts()).queryByText('Order Items')).toBeNull(); // an SQL mart: not fed by the source
+    await waitFor(() => expect(within(marts()).queryByText('Order Items')).toBeNull()); // an SQL mart: not fed by the source; it shrinks away first
     expect(within(data()).getByText('Select a data mart.')).toBeInTheDocument();
     fireEvent.click(shopify);
     await waitFor(() => expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument());
@@ -153,6 +153,17 @@ describe('the four bands', () => {
     const grid = await ordersGrid();
     await userEvent.click(within(grid).getAllByRole('row')[1]!);
     await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
+    fireEvent.keyDown(document, { key: 'ArrowLeft', altKey: true });
+    await waitFor(() => expect(within(row()).getByText('Select a row.')).toBeInTheDocument());
+  });
+
+  test('Alt+ArrowLeft typed in a field is the word-jump, not Back', async () => {
+    const grid = await ordersGrid();
+    await userEvent.click(within(grid).getAllByRole('row')[1]!);
+    await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
+    fireEvent.keyDown(screen.getByLabelText('Search data marts'), { key: 'ArrowLeft', altKey: true });
+    await settle();
+    expect(within(row()).getByRole('heading', { name: /^Orders · 1$/ })).toBeInTheDocument();
     fireEvent.keyDown(document, { key: 'ArrowLeft', altKey: true });
     await waitFor(() => expect(within(row()).getByText('Select a row.')).toBeInTheDocument());
   });
@@ -377,7 +388,7 @@ describe('the record', () => {
     expect(within(row()).queryByRole('region', { name: 'Referenced by' })).toBeNull();
   });
 
-  test('a model refresh with identical edges does not re-read an open record', async () => {
+  test('a header Refresh re-reads the open record once, and nothing else does', async () => {
     const calls = await spyOnTraverse();
     await within(data()).findByRole('table');
     await userEvent.click(within(data()).getAllByRole('cell').find((c) => c.textContent === '1')!);
@@ -386,10 +397,18 @@ describe('the record', () => {
     const recordReads = () => calls.filter((c) => c.id === 'orders' && c.o.limit === 1).length;
     const before = recordReads();
     expect(before).toBeGreaterThan(0);
+    const gridReads = () => calls.filter((c) => c.id === 'orders' && c.o.limit === 201).length;
+    const gridBefore = gridReads();
     await userEvent.click(screen.getByRole('button', { name: 'Refresh model' }));
     await settle();
     await settle();
-    expect(recordReads()).toBe(before);
+    expect(recordReads()).toBe(before + 1);
+    expect(gridReads()).toBe(gridBefore + 1);
+    // Nothing else re-reads: a hover, a search that hides nothing relevant, or a second settle.
+    await userEvent.type(screen.getByLabelText('Search data marts'), 'a');
+    await settle();
+    expect(recordReads()).toBe(before + 1);
+    expect(gridReads()).toBe(gridBefore + 1);
   });
 });
 

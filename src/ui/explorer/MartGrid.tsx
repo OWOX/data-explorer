@@ -66,7 +66,7 @@ const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Obje
 
 function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: string; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
   const { ctx, schemas } = useServices();
-  const [, dispatch] = useStore();
+  const [{ modelVersion }, dispatch] = useStore();
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
   const [visible, setVisible] = useState(() => {
     const kept = seed.saved?.columns.filter((c) => schema.some((f) => f.name === c)) ?? [];
@@ -74,7 +74,9 @@ function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: strin
   });
   const [filters, setFilters] = useState<Record<string, ColumnFilter>>(() => seed.saved?.filters ?? {});
   const [limit, setLimit] = useState(() => seed.saved?.limit ?? PAGE_SIZE);
-  const [version, setVersion] = useState(0);
+  const [ownVersion, setVersion] = useState(0);
+  // The header's Refresh re-reads what is shown too: its counter joins the grid's own, and each only ever goes up.
+  const version = ownVersion + modelVersion;
   // Titles per related mart and value, for the grid's lifetime. Every lookup is a billed run, so a value is looked up once.
   const [titles, setTitles] = useState(new Map<string, string>());
   const asked = useRef(new Set<string>());
@@ -87,6 +89,16 @@ function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: strin
     return () => ctrl.abort();
   }, []);
   const [relSchemas, setRelSchemas] = useState(new Map<string, Schema>());
+  // A header Refresh drops the looked-up titles as the grid's own Refresh does, so they are read again with the rows.
+  const seenModelVersion = useRef(modelVersion);
+  useEffect(() => {
+    if (seenModelVersion.current === modelVersion) return;
+    seenModelVersion.current = modelVersion;
+    lookups.current.abort();
+    lookups.current = new AbortController();
+    setTitles(new Map());
+    asked.current.clear();
+  }, [modelVersion]);
 
   // Re-seed the filters when a followed link asks for new ones on this same mart (adjust state during render).
   const [seededFrom, setSeededFrom] = useState(seed.filters);

@@ -1,5 +1,5 @@
-import { RefreshCw } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Box, RefreshCw } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { readRows } from '../../api/rows';
 import type { Model, Schema } from '../../model/types';
 import { clickTarget, joinFilters } from '../../records/relationships';
@@ -8,20 +8,28 @@ import { lookupTitles } from '../../records/titles';
 import type { Row } from '../../sdk/types';
 import { sourceOfModel, useServices, useStore } from '../../state/store';
 import { ErrorBox } from '../ErrorBox';
-import { MartIcon } from '../icons';
+import { PickedIcon } from '../bands/picked';
 import { Skeleton } from '../Skeleton';
 import { CellValue } from './CellValue';
 
 /** One record of a mart, read by primary key. Key it by mart and key so a new record starts clean. */
 export function RecordView({ martId, pk, model }: { martId: string; pk: Record<string, unknown>; model: Model }) {
   const { ctx, schemas } = useServices();
-  const [, dispatch] = useStore();
+  const [{ modelVersion }, dispatch] = useStore();
   const sourceOf = sourceOfModel(model);
-  const [version, setVersion] = useState(0);
+  const [ownVersion, setVersion] = useState(0);
+  // The header's Refresh re-reads the record too: its counter joins this view's own, and each only ever goes up.
+  const version = ownVersion + modelVersion;
   const [state, setState] = useState<{ ver: number; schema: Schema | null; row: Row | null | undefined; error: unknown }>({ ver: -1, schema: null, row: undefined, error: null });
   const [titles, setTitles] = useState(new Map<string, string>());
   const [relSchemas, setRelSchemas] = useState(new Map<string, Schema>());
   const { rels, incoming } = useMartRelationships(martId, model.edges);
+  const seenModelVersion = useRef(modelVersion);
+  useEffect(() => {
+    if (seenModelVersion.current === modelVersion) return;
+    seenModelVersion.current = modelVersion;
+    setTitles(new Map());
+  }, [modelVersion]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -101,7 +109,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
                 <li key={link.edgeId}>
                   <button type="button" disabled={!filters} onClick={() => filters && dispatch({ type: 'follow', target: { kind: 'mart', martId: link.sourceMartId, filters }, sourceOf })}
                     className="inline-flex items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-accent disabled:opacity-60 disabled:hover:bg-transparent">
-                    <MartIcon icon={source?.icon ?? null} />
+                    <PickedIcon icon={source?.icon} fallback={Box} />
                     <span className="font-medium">{source?.title ?? link.sourceMartId}</span>
                     <span className="text-xs text-muted-foreground">via {link.joins.map((j) => j.sourceField).join(', ')}</span>
                   </button>
