@@ -62,7 +62,7 @@ function AppBody() {
   return (
     <div className="flex h-full flex-col">
       <Header contexts={model.contexts} failedStorages={model.failedStorages} error={error} onRetry={reload} />
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto p-4" data-scroll-root="">
         <CardBands
           model={model}
           visible={visible}

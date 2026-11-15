@@ -1,5 +1,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { computeVisible } from '../../graph/visible';
+import type { Edge, Mart, Model } from '../../model/types';
 import { litIds, paintPlan, planLines, useWires, type Box, type Selection, type Wire } from './wires';
 
 const wire = (id: string, from: string, to: string, kind: Wire['kind'] = 'relationship'): Wire => ({
@@ -164,5 +166,25 @@ describe('useWires', () => {
       vi.advanceTimersByTime(50);
     });
     expect(calls).toBe(1);
+  });
+});
+
+describe('a hub with many neighbours', () => {
+  const N = 35;
+  const ids = Array.from({ length: N }, (_, i) => `n${String(i).padStart(2, '0')}`);
+  const mart = (id: string): Mart => ({ id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
+  const edges: Edge[] = ids.map((id, i) => ({ id: `e${i}`, source: id, target: 'hub', joins: [] }));
+  const model: Model = { marts: new Map(['hub', ...ids].map((id) => [id, mart(id)])), sources: [], edges, contexts: [], failedStorages: [] };
+
+  it('shows every neighbour and draws one path per pair', () => {
+    const { ids: shown } = computeVisible({ model, selection: { sourceKey: null, martId: 'hub', record: null }, search: '', contextIds: [], schemas: () => undefined });
+    expect(shown).toHaveLength(N + 1);
+    expect(new Set(shown)).toEqual(new Set(['hub', ...ids]));
+    const wires = edges.filter((e) => shown.includes(e.source) && shown.includes(e.target)).map((e) => wire(e.id, `dm-${e.source}`, `dm-${e.target}`));
+    const boxes = new Map<string, Box>([['dm-hub', box(0, 0)], ...ids.map((id, i) => [`dm-${id}`, box((i % 6) * 150, 100 + Math.floor(i / 6) * 100)] as const)]);
+    const { d, lead } = planLines(wires, boxes);
+    expect(wires).toHaveLength(N);
+    expect(d.filter(Boolean)).toHaveLength(N);
+    expect(lead).toEqual(wires.map((_, i) => i));
   });
 });
