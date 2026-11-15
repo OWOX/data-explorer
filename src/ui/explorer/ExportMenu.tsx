@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   buildReportPayload, exportTitle, ExportError, isPublishedSheetUrl, parseSheetUrl, sheetUrl,
-  type ExportedReport, type ExportSource, type Stage,
+  type ExportedReport, type ExportSource, type Flight, type Stage,
 } from '../../api/exports';
 import type { ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
@@ -29,6 +29,9 @@ export function ExportMenu(p: Props) {
   const [result, setResult] = useState<Result | null>(null);
   const [dialog, setDialog] = useState<{ destination: DestinationDto; error?: string; seq: number } | null>(null);
   const seq = useRef(0);
+  // Bumped when the mart changes or the menu goes away: an export finishing later is no longer in front of the member.
+  const gen = useRef(0);
+  useEffect(() => { gen.current += 1; return () => { gen.current += 1; }; }, [p.martId]);
   const [openDest, setOpenDest] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menu = useRef<HTMLDetailsElement>(null);
@@ -52,52 +55,73 @@ export function ExportMenu(p: Props) {
     return () => document.removeEventListener('click', close);
   }, []);
 
+  // An export this mart already has under way (it outlives the menu): pick it up, with the outcome of one that finished while away.
+  useEffect(() => {
+    const flight = exporter.inFlight(p.martId);
+    if (flight) follow(flight, { openWhenDone: !flight.settled });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exporter, p.martId]);
+
   if (destinations.length === 0) return null;
 
   const closeMenu = () => { if (menu.current) menu.current.open = false; };
   const forDestination = (d: DestinationDto) => (reports ?? []).filter((r) => r.destinationId === d.id);
 
-  async function start(destination: DestinationDto, source: ExportSource, title: string, fromDialog = false) {
-    const { payload, notes } = buildReportPayload(p.schema, p.visible, p.filters, p.sorts);
-    setResult(null);
-    if (source.kind === 'update' && !sheetUrl(source.report)) { setResult({ kind: 'error', text: UNRECOGNISED }); return; }
-    setDialog((cur) => (cur ? { ...cur, error: undefined } : cur));
-    setBusy(STAGE_LABEL[source.kind === 'new' ? 'sheet' : 'report']);
-    try {
-      const { report, outcome } = await exporter.run({
-        martId: p.martId, destination, title, source, payload, signal: ctx.signal,
-        onStage: (s) => setBusy(STAGE_LABEL[s]),
-      });
-      setReports({ martId: p.martId, list: await exporter.reports(p.martId) });
+  /** Shows the outcome of an export, whoever started it. Only a menu still on the mart acts on it; the sheet is opened only when the member was there to see it finish. */
+  function follow(flight: Flight, o: { fromDialog?: boolean; destination?: DestinationDto; openWhenDone: boolean }) {
+    const home = gen.current;
+    const here = () => gen.current === home;
+    const { notes, sourceKind } = flight;
+    const martId = p.martId;
+    setBusy(STAGE_LABEL[flight.stage]);
+    const unsubscribe = flight.subscribe((s) => { if (here()) setBusy(STAGE_LABEL[s]); });
+    flight.promise.then(async ({ report, outcome }) => {
+      unsubscribe();
+      if (!here()) return;
+      exporter.acknowledge(martId);
+      setReports({ martId, list: await exporter.reports(martId) });
       const url = sheetUrl(report) ?? undefined;
       const note = notes.length ? ` ${notes.join(' ')}` : '';
       setDialog(null);
       if (outcome.state === 'success') {
         setResult({ kind: 'ok', text: url ? `Exported to "${report.title}".${note}` : `Exported to "${report.title}", but ${UNRECOGNISED.toLowerCase()}${note}`, url });
-        if (url) await ctx.ui.openExternal(url).catch(() => undefined);
+        if (url && o.openWhenDone && here()) await ctx.ui.openExternal(url).catch(() => undefined);
       } else if (outcome.state === 'busy') {
-        setResult({ kind: 'error', text: source.kind === 'update' ? 'This report is already running. The new settings were saved but not run; try again when it finishes.' : 'This report is already running; try again when it finishes.', url });
+        setResult({ kind: 'error', text: sourceKind === 'update' ? 'This report is already running. The new settings were saved but not run; try again when it finishes.' : 'This report is already running; try again when it finishes.', url });
       } else if (outcome.state === 'failed') {
         setResult({ kind: 'error', text: `The run failed: ${outcome.error}${note}`, url });
       } else {
         setResult({ kind: 'timeout', text: `Still running.${note}`, url });
       }
-    } catch (e) {
+    }, async (e) => {
+      unsubscribe();
+      if (!here()) return;
+      exporter.acknowledge(martId);
       const text = messageOf(e);
-      if (e instanceof ExportError && e.stage === 'sheet') {
+      const { destination, fromDialog } = o;
+      if (destination && e instanceof ExportError && e.stage === 'sheet') {
         // The spreadsheet could not be made: offer the pasted-URL way instead.
         setDialog((cur) => ({ destination, error: `Could not create a spreadsheet: ${text}`, seq: cur?.seq ?? ++seq.current }));
-      } else if (fromDialog && e instanceof ExportError && e.stage === 'report') {
+      } else if (destination && fromDialog && e instanceof ExportError && e.stage === 'report') {
         setDialog((cur) => ({ destination, error: text, seq: cur?.seq ?? ++seq.current }));
       } else {
         // Past this point the report exists (and may be running): a retry from the dialog would make a second one.
         setDialog(null);
         setResult({ kind: 'error', text: e instanceof ExportError && e.stage === 'run' ? `The run could not be followed: ${text}` : text });
-        setReports({ martId: p.martId, list: await exporter.reports(p.martId).catch(() => []) });
+        const list = await exporter.reports(martId).catch(() => []);
+        if (here()) setReports({ martId, list });
       }
-    } finally {
-      setBusy(null);
-    }
+    }).finally(() => { if (here()) setBusy(null); });
+  }
+
+  function start(destination: DestinationDto, source: ExportSource, title: string, fromDialog = false) {
+    if (exporter.inFlight(p.martId)) return;
+    const { payload, notes } = buildReportPayload(p.schema, p.visible, p.filters, p.sorts);
+    setResult(null);
+    if (source.kind === 'update' && !sheetUrl(source.report)) { setResult({ kind: 'error', text: UNRECOGNISED }); return; }
+    setDialog((cur) => (cur ? { ...cur, error: undefined } : cur));
+    void exporter.run({ martId: p.martId, destination, title, source, payload, notes, signal: ctx.signal }).catch(() => undefined);
+    follow(exporter.inFlight(p.martId)!, { fromDialog, destination, openWhenDone: true });
   }
 
   // An open menu stays a menu when the check drops its last report, so it does not vanish under the pointer.

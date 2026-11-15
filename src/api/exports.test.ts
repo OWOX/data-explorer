@@ -239,4 +239,36 @@ describe('exporter', () => {
     expect(err).toMatchObject({ stage: 'run', message: 'run refused' });
     expect(await ex.reports('orders')).toHaveLength(1);
   });
+
+  test('one export at a time per mart: a second run is refused while the first is in flight, and the flight can be followed', async () => {
+    vi.useFakeTimers();
+    try {
+      const { ctx, calls } = exportCtx();
+      const ex = createExporter(ctx);
+      const first = ex.run({ martId: 'orders', destination: dest, title: 'T', source: { kind: 'new' }, payload, notes: ['n'] });
+      const flight = ex.inFlight('orders')!;
+      expect(flight).toMatchObject({ stage: 'sheet', sourceKind: 'new', notes: ['n'], settled: false });
+      const seen: string[] = [];
+      flight.subscribe((s) => seen.push(s));
+      await expect(ex.run({ martId: 'orders', destination: dest, title: 'T2', source: { kind: 'new' }, payload })).rejects.toThrow(/already in progress/);
+      expect(ex.inFlight('other')).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+      expect((await flight.promise).outcome).toEqual({ state: 'success' });
+      await first;
+      expect(seen).toEqual(['report', 'run']);
+      expect(calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
+      // Settled and not taken yet: still listed, so a menu that mounts later can show it; acknowledged, it is gone.
+      expect(ex.inFlight('orders')).toMatchObject({ settled: true });
+      ex.acknowledge('orders');
+      expect(ex.inFlight('orders')).toBeUndefined();
+    } finally { vi.useRealTimers(); }
+  });
+
+  test('acknowledge leaves a running export listed', async () => {
+    const { ctx } = exportCtx();
+    const ex = createExporter(ctx);
+    void ex.run({ martId: 'orders', destination: dest, title: 'T', source: { kind: 'new' }, payload, signal: AbortSignal.abort() }).catch(() => undefined);
+    ex.acknowledge('orders');
+    expect(ex.inFlight('orders')).toBeDefined();
+  });
 });

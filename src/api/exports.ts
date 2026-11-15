@@ -89,16 +89,33 @@ export type ExportSource =
   | { kind: 'existing'; target: SheetTarget }
   | { kind: 'update'; report: ExportedReport };
 
+export type RunResult = { report: ExportedReport; outcome: Outcome };
+
+/** An export that has started for a mart. It outlives the menu that started it, so a remounted menu can pick it up. */
+export interface Flight {
+  stage: Stage;
+  sourceKind: ExportSource['kind'];
+  notes: string[];
+  promise: Promise<RunResult>;
+  /** The promise has settled (the result was not taken yet when the entry is still listed). */
+  settled: boolean;
+  subscribe(cb: (s: Stage) => void): () => void;
+}
+
 export interface Exporter {
   /** The member's usable Google Sheets destinations; read once per session until `invalidate()`. */
   destinations(): Promise<DestinationDto[]>;
   invalidate(): void;
   /** The remembered reports for a mart, with the ones OWOX no longer has dropped (the cleaned list is saved). */
   reports(martId: string, verify?: boolean): Promise<ExportedReport[]>;
+  /** One export at a time per mart: a second `run` for a mart that has one in flight is refused. */
   run(a: {
     martId: string; destination: DestinationDto; title: string; source: ExportSource; payload: ReportPayload;
-    onStage?: (s: Stage) => void; signal?: AbortSignal;
-  }): Promise<{ report: ExportedReport; outcome: Outcome }>;
+    notes?: string[]; onStage?: (s: Stage) => void; signal?: AbortSignal;
+  }): Promise<RunResult>;
+  /** The export in flight for a mart, or one that finished while nobody followed it, until `acknowledge`. */
+  inFlight(martId: string): Flight | undefined;
+  acknowledge(martId: string): void;
 }
 
 const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve) => {
@@ -110,6 +127,7 @@ export function createExporter(ctx: Ctx): Exporter {
   const col = ctx.collections<ExportsDoc>(EXPORTS_COLLECTION);
   const cache = new Map<string, ExportedReport[]>();
   let destinations: Promise<DestinationDto[]> | null = null;
+  const flights = new Map<string, Flight>();
 
   async function load(martId: string): Promise<ExportedReport[]> {
     const hit = cache.get(martId);
@@ -174,7 +192,27 @@ export function createExporter(ctx: Ctx): Exporter {
       return kept;
     },
 
-    async run({ martId, destination, title, source, payload, onStage, signal }) {
+    inFlight: (martId) => flights.get(martId),
+    acknowledge(martId) { if (flights.get(martId)?.settled) flights.delete(martId); },
+
+    run(a) {
+      if (flights.has(a.martId)) return Promise.reject(new Error('An export for this data mart is already in progress.'));
+      const listeners = new Set<(s: Stage) => void>();
+      const flight: Flight = {
+        stage: a.source.kind === 'new' ? 'sheet' : 'report', sourceKind: a.source.kind, notes: a.notes ?? [], settled: false,
+        promise: undefined as unknown as Promise<RunResult>,
+        subscribe(cb) { listeners.add(cb); return () => listeners.delete(cb); },
+      };
+      const onStage = (s: Stage) => { flight.stage = s; a.onStage?.(s); listeners.forEach((l) => l(s)); };
+      flight.promise = execute({ ...a, onStage }).finally(() => { flight.settled = true; });
+      // The entry is read, not awaited, by a remounted menu: a rejection nobody follows must not go unhandled.
+      flight.promise.catch(() => undefined);
+      flights.set(a.martId, flight);
+      return flight.promise;
+    },
+  };
+
+  async function execute({ martId, destination, title, source, payload, onStage, signal }: Parameters<Exporter['run']>[0]): Promise<RunResult> {
       let report: ExportedReport;
       if (source.kind === 'update') {
         onStage?.('report');
@@ -215,6 +253,5 @@ export function createExporter(ctx: Ctx): Exporter {
         await ctx.owox.postJson(`/api/reports/${encodeURIComponent(report.reportId)}/run`, {});
         return { report, outcome: await poll(report.reportId, before, signal) };
       } catch (e) { throw new ExportError('run', messageOf(e)); }
-    },
-  };
+  }
 }

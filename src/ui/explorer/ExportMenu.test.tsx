@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import type { ExportedReport } from '../../api/exports';
@@ -158,3 +158,41 @@ test('a remembered report with an unrecognised target is not updated and nothing
   expect(t.open).not.toHaveBeenCalled();
   expect(t.calls.some((c) => c.startsWith('PUT'))).toBe(false);
 });
+
+const martCard = (title: string) => within(document.getElementById('band-marts')!).getByText(title).closest('article')!;
+const toMart = async (title: string) => { fireEvent.click(martCard(title)); await within(data()).findByRole('heading', { name: title }); };
+const exportControl = () => within(data()).findByLabelText('Export to Google Sheets');
+
+test('leaving the mart and coming back keeps the export busy: no second export, and the outcome opens the sheet', async () => {
+  const t = setup(1);
+  t.view();
+  await rowsLoaded();
+  await userEvent.click(await exportControl());
+  await within(data()).findByText('Exporting…');
+  await toMart('Customers');
+  await toMart('Orders');
+  await exportControl();
+  expect(within(data()).getByText('Exporting…')).toBeInTheDocument();
+  expect(within(data()).getByText(/…$/, { selector: '[role="status"]' })).toBeInTheDocument();
+  await userEvent.click(await exportControl());
+  await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 6000 });
+  expect(await within(data()).findByText(/Exported to "Orders · Data Explorer · /)).toBeInTheDocument();
+  await waitFor(() => expect(within(data()).queryByText('Exporting…')).toBeNull());
+  expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
+}, 15000);
+
+test('an export that finishes while the member is on another mart does not open the sheet; the result waits on that mart', async () => {
+  const t = setup(1);
+  t.view();
+  await rowsLoaded();
+  await userEvent.click(await exportControl());
+  await toMart('Customers');
+  await waitFor(() => expect(t.calls).toContain('POST /api/reports/mock-report-1/run'), { timeout: 5000 });
+  await new Promise((r) => setTimeout(r, 3500));
+  expect(t.open).not.toHaveBeenCalled();
+  await toMart('Orders');
+  expect(await within(data()).findByText(/Exported to "Orders · Data Explorer · /)).toBeInTheDocument();
+  expect(within(data()).getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0');
+  expect(t.open).not.toHaveBeenCalled();
+  expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
+}, 20000);
