@@ -1,9 +1,10 @@
 import { RefreshCw, Search, X } from 'lucide-react';
 import type { Context } from '../../model/types';
 import { useStore } from '../../state/store';
+import { ErrorBox } from '../ErrorBox';
 import { ContextIcon } from '../icons';
 
-export function Header({ contexts }: { contexts: Context[] }) {
+export function Header({ contexts, error, onRetry }: { contexts: Context[]; error?: unknown; onRetry?: () => void }) {
   const [state, dispatch] = useStore();
   return (
     <header className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
@@ -34,6 +35,7 @@ export function Header({ contexts }: { contexts: Context[] }) {
       <button type="button" aria-label="Refresh model" onClick={() => dispatch({ type: 'refreshModel' })} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent">
         <RefreshCw className="size-4" />Refresh
       </button>
+      {error != null && onRetry && <div className="w-full"><ErrorBox error={error} onRetry={onRetry} compact /></div>}
     </header>
   );
 }
