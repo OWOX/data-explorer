@@ -63,7 +63,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         if (path === '/api/contexts') return f.contexts as T;
         if (path === '/api/model-canvas/data-marts') {
           const items = f.marts.filter((m) => m.storageId === query?.storageId).map((m) => ({
-            id: m.id, title: m.title, description: m.description, icon: m.icon, fieldCount: m.fields.length,
+            id: m.id, title: m.title, description: m.description, icon: m.icon, fieldCount: m.fields.length, status: 'PUBLISHED',
             dataLastUpdated: m.dataLastUpdatedAt ? { dataLastUpdatedAt: m.dataLastUpdatedAt, computedAt: m.dataLastUpdatedAt } : null,
           }));
           return { items, total: items.length, nextOffset: null } as T;

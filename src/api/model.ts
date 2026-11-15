@@ -36,7 +36,7 @@ export async function loadModel(ctx: Ctx): Promise<Model> {
             storageId: s.id,
             contextIds: item?.contexts.map((c) => c.id) ?? [],
             dataLastUpdatedAt: n.dataLastUpdated?.dataLastUpdatedAt ?? null,
-            accessible: item !== undefined,
+            accessible: item !== undefined && n.status === 'PUBLISHED' && item.availableForReporting,
           });
         }
         return edges;
