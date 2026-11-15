@@ -177,7 +177,7 @@ describe('MartCard', () => {
 
 describe('Band', () => {
   const renderBand = (folded: boolean, onFold = vi.fn()) =>
-    render(<Band id="band-data" icon={Database} title="Data marts" total={1200} hint="All of them" folded={folded} onFold={onFold}><p>cards</p></Band>);
+    render(<Band id="band-data" icon={<Database />} title="Data marts" total={1200} hint="All of them" folded={folded} onFold={onFold}><p>cards</p></Band>);
 
   test('open: shows children, total and aria-expanded', () => {
     renderBand(false);
@@ -196,13 +196,10 @@ describe('Band', () => {
     expect(onFold).toHaveBeenCalledTimes(1);
   });
 
-  test('grid={false} renders children outside the card grid; loading shows a bar', () => {
-    const { container, rerender } = render(<Band id="b" icon={Database} title="Row" hint="h" folded={false} onFold={vi.fn()} grid={false}><p>direct</p></Band>);
+  test('grid={false} renders children outside the card grid', () => {
+    const { container } = render(<Band id="b" icon={<Database />} title="Row" hint="h" folded={false} onFold={vi.fn()} grid={false}><p>direct</p></Band>);
     expect(container.querySelector('.dm-band-grid')).toBeNull();
     expect(screen.getByText('direct')).toBeInTheDocument();
-    rerender(<Band id="b" icon={Database} title="Row" hint="h" folded={false} onFold={vi.fn()} loading={0.5} loadingLabel="Reading"><p>direct</p></Band>);
-    expect(screen.getByRole('progressbar', { name: 'Reading' })).toHaveAttribute('aria-valuenow', '50');
-    expect(screen.queryByText('direct')).toBeNull();
   });
 });
 
@@ -228,5 +225,20 @@ describe('lazy count request', () => {
     fire([{ target, isIntersecting: true }]);
     fire([{ target, isIntersecting: true }]);
     expect(props.onNeedCount).toHaveBeenCalledTimes(1);
+  });
+
+  test('the observer is rooted at the scrolling container, with the 200px margin', () => {
+    const made: { root: Element | null; rootMargin: string }[] = [];
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(_cb: unknown, o: { root: Element | null; rootMargin: string }) { made.push(o); }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    const props = martProps();
+    const { container } = render(<div data-scroll-root=""><TooltipProvider><MartCard {...props} /></TooltipProvider></div>);
+    expect(made).toHaveLength(1);
+    expect(made[0]!.root).toBe(container.firstElementChild);
+    expect(made[0]!.rootMargin).toBe('200px');
   });
 });

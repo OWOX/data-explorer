@@ -6,6 +6,7 @@ import { compactNumber, count as plural, num, relativeTime } from '../format';
 import { dqCardTone, dqVisual } from '../icons';
 import { Tooltip } from '../Tooltip';
 import { whenInView } from './inview';
+import type { CardTransition } from './transitions';
 import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
 
 /** The element id Task 3's lines look cards up by: Data Flow's `src-` prefix and key sanitising. */
@@ -29,6 +30,21 @@ function selectable(onSelect: () => void) {
   };
 }
 
+/**
+ * A card on its way out steps out of the grid and stays where it stood. Left in the flow it keeps
+ * its cell for the whole collapse and everything after it jumps when it goes; pinned, the grid
+ * closes up at once and the card shrinks over the space it held. Measured in a layout effect, in the
+ * commit that marked it leaving, so it is read before the browser draws anything.
+ */
+function usePinWhenLeaving(card: React.RefObject<HTMLElement | null>, transition: CardTransition | undefined) {
+  useLayoutEffect(() => {
+    const el = card.current;
+    if (!el || !transition?.leaving) return;
+    const { offsetLeft, offsetTop, offsetWidth, offsetHeight } = el;
+    Object.assign(el.style, { position: 'absolute', left: `${offsetLeft}px`, top: `${offsetTop}px`, width: `${offsetWidth}px`, height: `${offsetHeight}px` });
+  }, [card, transition?.leaving]);
+}
+
 const cardClass = (lit: boolean, aside: boolean, extra?: string) => ['dm-node', lit ? 'lit' : '', aside ? 'aside' : '', extra ?? ''].filter(Boolean).join(' ');
 
 export function SourceCard({
@@ -36,6 +52,7 @@ export function SourceCard({
   selected,
   lit,
   aside = false,
+  transition,
   onSelect,
 }: {
   source: Source;
@@ -43,14 +60,19 @@ export function SourceCard({
   lit: boolean;
   /** Lit by a card other than the pinned one: drawn at half strength. */
   aside?: boolean;
+  transition?: CardTransition;
   onSelect: () => void;
 }) {
+  const card = useRef<HTMLElement>(null);
+  usePinWhenLeaving(card, transition);
   return (
     <article
+      ref={card}
       id={sourceElementId(source.key)}
       data-node
       aria-pressed={selected}
-      className={cardClass(lit, aside)}
+      className={cardClass(lit, aside, transition?.className)}
+      {...(transition?.leaving ? { 'data-leaving': '' } : {})}
       {...selectable(onSelect)}
     >
       <div className="dm-node-head">
@@ -96,6 +118,7 @@ export function MartCard({
   selected,
   lit,
   aside = false,
+  transition,
   onSelect,
   onOpenApp,
   onRetryCount,
@@ -113,6 +136,7 @@ export function MartCard({
   lit: boolean;
   /** Lit by a card other than the pinned one: drawn at half strength. */
   aside?: boolean;
+  transition?: CardTransition;
   onSelect: () => void;
   onOpenApp: () => void;
   onRetryCount: () => void;
@@ -120,6 +144,7 @@ export function MartCard({
   onNeedCount: () => void;
 }) {
   const el = useRef<HTMLElement>(null);
+  usePinWhenLeaving(el, transition);
   const need = useRef(onNeedCount);
   useEffect(() => { need.current = onNeedCount; });
   useEffect(() => {
@@ -133,7 +158,8 @@ export function MartCard({
       data-node
       data-tone={dqCardTone(quality)}
       aria-pressed={selected}
-      className={cardClass(lit, aside, mart.accessible ? undefined : 'dm-noaccess')}
+      className={cardClass(lit, aside, [mart.accessible ? '' : 'dm-noaccess', transition?.className ?? ''].filter(Boolean).join(' '))}
+      {...(transition?.leaving ? { 'data-leaving': '' } : {})}
       {...selectable(onSelect)}
     >
       <div className="dm-node-head">

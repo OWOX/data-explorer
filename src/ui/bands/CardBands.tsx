@@ -2,12 +2,16 @@
 // The Data and Row bands arrive as children and sit under the same canvas; they do not re-render on hover.
 import { Database, Plug } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { DqSummary, Model } from '../../model/types';
+import type { DqSummary, Mart, Model, Source } from '../../model/types';
 import type { VisibleResult } from '../../graph/visible';
 import { sourceOfModel, useStore } from '../../state/store';
 import { Band } from './Band';
 import { MartCard, SourceCard, martElementId, sourceElementId, type CountState } from './cards';
+import { useCardTransitions } from './transitions';
 import { litIds, useWires, type Wire } from './wires';
+
+const martId = (m: Mart) => m.id;
+const sourceKey = (s: Source) => s.key;
 
 const nodeIdOf = (target: EventTarget | null) => (target instanceof Element ? target.closest('[data-node]')?.id ?? null : null);
 
@@ -94,6 +98,11 @@ export function CardBands({
     return { lit, aside };
   }, [wires, pinned, hovered]);
 
+  // Cards animate in and out as the set changes; a leaving card keeps its object, which the model may no longer hold.
+  const shownMarts = useMemo(() => visible.ids.flatMap((id) => model.marts.get(id) ?? []), [visible.ids, model]);
+  const martCards = useCardTransitions(shownMarts, martId);
+  const sourceCards = useCardTransitions(model.sources, sourceKey);
+
   const contextsOf = (ids: string[]) => model.contexts.filter((c) => ids.includes(c.id));
 
   return (
@@ -105,22 +114,23 @@ export function CardBands({
       onFocus={(e) => setHovered(nodeIdOf(e.target))}
       onBlur={(e) => { if (!canvas.current?.contains(e.relatedTarget as Node | null)) setHovered(null); }}
     >
-      <Band id="band-sources" icon={Plug} title="Data Sources" total={model.sources.length} hint="Connectors that feed data marts. Select one to see the marts it feeds." folded={foldedSources} onFold={onFoldSources}>
+      <Band id="band-sources" icon={<Plug size={18} />} title="Data Sources" total={model.sources.length} hint="Connectors that feed data marts. Select one to see the marts it feeds." folded={foldedSources} onFold={onFoldSources}>
         {model.sources.length === 0 && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No connector-based data marts.</p>}
-        {model.sources.map((source) => {
+        {sourceCards.items.map((source) => {
           const id = sourceElementId(source.key);
-          return <SourceCard key={source.key} source={source} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => dispatch({ type: 'selectSource', key: source.key })} />;
+          return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => dispatch({ type: 'selectSource', key: source.key })} />;
         })}
       </Band>
-      <Band id="band-marts" icon={Database} title="Data Marts" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search matches." folded={foldedMarts} onFold={onFoldMarts}>
+      <Band id="band-marts" icon={<Database size={18} />} title="Data Marts" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search matches." folded={foldedMarts} onFold={onFoldMarts}>
         {visible.ids.length === 0 && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
-        {visible.ids.map((id) => {
-          const mart = model.marts.get(id)!;
+        {martCards.items.map((mart) => {
+          const id = mart.id;
           const el = martElementId(id);
           return (
             <MartCard
               key={id}
               mart={mart}
+              transition={martCards.transitionOf(mart)}
               contexts={contextsOf(mart.contextIds)}
               count={counts.get(id) ?? { state: 'idle' }}
               quality={dq.get(id)}
