@@ -66,6 +66,7 @@ export type SchemaFieldDto = {
   isPrimaryKey?: boolean;
   isHiddenForReporting?: boolean;
   status?: string;
+  mode?: string;
   calculated?: unknown;
 };
 export type DataMartDetailDto = { id: string; schema?: { fields?: SchemaFieldDto[] } | null };

@@ -39,7 +39,7 @@ test('loadModel drops edges whose ends are unknown', async () => {
   expect((await loadModel(ctx)).edges).toEqual([]);
 });
 
-test('a mart is accessible only when listed, PUBLISHED and available for reporting', async () => {
+test('a mart is accessible when listed and PUBLISHED, whatever its sharing flag says', async () => {
   const canvas = { items: [
     { id: 'pub', title: 'P', description: null, fieldCount: 1, status: 'PUBLISHED' },
     { id: 'draft', title: 'D', description: null, fieldCount: 1, status: 'DRAFT' },
@@ -53,5 +53,38 @@ test('a mart is accessible only when listed, PUBLISHED and available for reporti
     getJson: async (path: string) => (path === '/api/contexts' ? [] : canvas),
   });
   const { marts } = await loadModel(ctx);
-  expect(['pub', 'draft', 'off', 'hidden'].map((id) => marts.get(id)!.accessible)).toEqual([true, false, false, false]);
+  expect(['pub', 'draft', 'off', 'hidden'].map((id) => marts.get(id)!.accessible)).toEqual([true, false, true, false]);
+});
+
+const canvasOf = (id: string) => ({ items: [{ id, title: id, description: null, fieldCount: 1, status: 'PUBLISHED' }], total: 1, nextOffset: null });
+const twoStorageCtx = (failing: string[]) => stubCtx({
+  storages: { list: async () => [{ id: 's1', title: 'One', type: 'X' }, { id: 's2', title: 'Two', type: 'X' }] },
+  models: { getEdges: async (sid: string) => { if (failing.includes(sid)) throw new Error(`${sid} down`); return []; } },
+  dataMarts: { list: async () => [], traverseData: vi.fn() },
+  getJson: async (path: string, query?: Record<string, string>) => (path === '/api/contexts' ? [] : canvasOf(query!.storageId === 's1' ? 'a' : 'b')),
+});
+
+test('a failing storage is reported while the others still load', async () => {
+  const model = await loadModel(twoStorageCtx(['s2']));
+  expect([...model.marts.keys()]).toEqual(['a']);
+  expect(model.failedStorages).toEqual([{ id: 's2', title: 'Two', message: 's2 down' }]);
+});
+
+test('the load fails only when every storage fails', async () => {
+  await expect(loadModel(twoStorageCtx(['s1', 's2']))).rejects.toThrow(/down/);
+});
+
+test('storages load through a pool of at most 6', async () => {
+  let running = 0;
+  let peak = 0;
+  const ids = Array.from({ length: 10 }, (_, i) => `s${i}`);
+  const ctx = stubCtx({
+    storages: { list: async () => ids.map((id) => ({ id, title: id, type: 'X' })) },
+    models: { getEdges: async () => { running++; peak = Math.max(peak, running); await new Promise((r) => setTimeout(r, 5)); running--; return []; } },
+    dataMarts: { list: async () => [], traverseData: vi.fn() },
+    getJson: async (path: string, query?: Record<string, string>) => (path === '/api/contexts' ? [] : canvasOf(query!.storageId!)),
+  });
+  const model = await loadModel(ctx);
+  expect(model.marts.size).toBe(10);
+  expect(peak).toBeLessThanOrEqual(6);
 });

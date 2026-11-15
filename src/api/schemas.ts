@@ -32,7 +32,8 @@ export function createSchemaLoader(ctx: Ctx): SchemaLoader {
             name: f.name,
             alias: f.alias ?? null,
             type: f.type,
-            category: categorizeFieldType(f.type),
+            // A repeated field is an array, whatever its element type: only blank filters apply.
+            category: f.mode === 'REPEATED' ? 'other' : categorizeFieldType(f.type),
             description: f.description ?? null,
             isPrimaryKey: f.isPrimaryKey === true,
             ...(f.calculated !== undefined ? { isCalculated: true } : {}),

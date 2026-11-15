@@ -47,7 +47,7 @@ function AppBody() {
 
   return (
     <div className="flex h-full flex-col">
-      <Header contexts={model.contexts} error={error} onRetry={reload} />
+      <Header contexts={model.contexts} failedStorages={model.failedStorages} error={error} onRetry={reload} />
       <div className="flex min-h-0 flex-1">
         <div className="relative min-h-0 border-r" style={exploring ? { width: CARD_SIZE.width + ARC_ROOM + 40, flex: 'none' } : { flex: 1 }}>
           {visible.mode === 'empty' ? (

@@ -30,3 +30,4 @@ npm run e2e     # Playwright (4 workers)
 3. "Load more" re-reads from the start, because the API has no offset.
 4. A relationship title is looked up only for single-field relationships.
 5. The OWOX link always points to app.owox.com.
+6. Nested RECORD fields are not expanded: their leaf columns are not offered. Repeated fields only filter on blank.

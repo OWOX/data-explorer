@@ -53,3 +53,12 @@ test('a failed schema fetch is not cached', async () => {
   await expect(loader.get('a')).rejects.toThrow('boom');
   await expect(loader.get('a')).resolves.toHaveLength(2);
 });
+
+test('a REPEATED field is category other, so it only offers blank filters', async () => {
+  const getJson = vi.fn(async () => ({ id: 'a', schema: { fields: [
+    { name: 'tags', type: 'STRING', mode: 'REPEATED' },
+    { name: 'name', type: 'STRING', mode: 'NULLABLE' },
+  ] } }));
+  const schema = await createSchemaLoader(stubCtx({ getJson })).get('a');
+  expect(schema.map((f) => [f.name, f.category])).toEqual([['tags', 'other'], ['name', 'string']]);
+});

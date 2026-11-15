@@ -30,6 +30,7 @@ export interface Model {
   marts: Map<string, Mart>;
   edges: Edge[];
   contexts: Context[];
+  failedStorages: { id: string; title: string; message: string }[];
 }
 
 export interface DqSummary {

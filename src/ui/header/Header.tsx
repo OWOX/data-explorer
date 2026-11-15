@@ -1,10 +1,13 @@
-import { RefreshCw, Search, X } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Search, X } from 'lucide-react';
 import type { Context } from '../../model/types';
 import { useStore } from '../../state/store';
 import { ErrorBox } from '../ErrorBox';
 import { ContextIcon } from '../icons';
+import { Tooltip } from '../Tooltip';
 
-export function Header({ contexts, error, onRetry }: { contexts: Context[]; error?: unknown; onRetry?: () => void }) {
+type Failed = { id: string; title: string; message: string };
+
+export function Header({ contexts, error, onRetry, failedStorages = [] }: { contexts: Context[]; error?: unknown; onRetry?: () => void; failedStorages?: Failed[] }) {
   const [state, dispatch] = useStore();
   return (
     <header className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
@@ -32,6 +35,14 @@ export function Header({ contexts, error, onRetry }: { contexts: Context[]; erro
           );
         })}
       </div>
+      {failedStorages.length > 0 && (
+        <div className="inline-flex items-center gap-1 text-xs text-destructive">
+          <Tooltip content={<ul>{failedStorages.map((f) => <li key={f.id}>{f.title}: {f.message}</li>)}</ul>}>
+            <span className="inline-flex items-center gap-1"><AlertTriangle className="size-3.5" />{failedStorages.length} {failedStorages.length === 1 ? 'storage' : 'storages'} failed to load</span>
+          </Tooltip>
+          <button type="button" onClick={() => dispatch({ type: 'refreshModel' })} className="rounded border px-2 py-0.5 text-foreground hover:bg-accent">Retry</button>
+        </div>
+      )}
       <button type="button" aria-label="Refresh model" onClick={() => dispatch({ type: 'refreshModel' })} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent">
         <RefreshCw className="size-4" />Refresh
       </button>

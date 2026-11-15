@@ -3,11 +3,13 @@ import type { Ctx, TraverseOptions } from '../sdk/types';
 import { readRows } from './rows';
 
 export const ROW_COUNTS_COLLECTION = 'row-counts';
+const COUNT_MAX_AGE_MS = 24 * 3600_000;
 type CountDoc = { dataMartId: string; count: number; at: string };
 
 export function countOptions(schema: Schema): { options: TraverseOptions; key: string } | null {
   if (schema.some((f) => f.isPrimaryKey)) return { options: { uniqueCount: [''] }, key: 'Unique Count' };
-  const first = schema[0];
+  // The backend allows COUNT only on string, boolean and other fields (number: SUM/AVG/MIN/MAX, date and time: MIN/MAX).
+  const first = schema.find((f) => f.category === 'string' || f.category === 'boolean' || f.category === 'other');
   if (!first) return null;
   return { options: { column: [first.name], aggregation: [{ column: first.name, function: 'COUNT' }] }, key: `${first.name} | COUNT` };
 }
@@ -33,7 +35,7 @@ export function createRowCounter(ctx: Ctx): RowCounter {
   return {
     async count(id, schema) {
       const cached = await col.get(id).catch(() => null);
-      if (cached) return cached.document.count;
+      if (cached && Date.now() - Date.parse(cached.document.at) < COUNT_MAX_AGE_MS) return cached.document.count;
       return measure(id, schema);
     },
     recount: measure,
