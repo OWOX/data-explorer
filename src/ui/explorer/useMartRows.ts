@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { readRows } from '../../api/rows';
-import { isComplete, toTraverseFilter, type ColumnFilter } from '../../filters/build';
+import { toTraverseFilters, type ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
 import type { Schema } from '../../model/types';
 import type { RelColumn } from '../../records/relationships';
@@ -18,10 +18,7 @@ export function buildRowQuery(schema: Schema, visible: string[], filters: Column
   // (and the composite partners their click needs), not for every relationship of the mart.
   for (const name of visible) rels.get(name)?.joins.forEach((j) => need.add(j.sourceField));
   const column = schema.map((f) => f.name).filter((n) => need.has(n));
-  const filter = filters.flatMap((flt) => {
-    const field = schema.find((x) => x.name === flt.field);
-    return field && isComplete(flt, field) ? [toTraverseFilter(flt, field)] : [];
-  });
+  const filter = toTraverseFilters(schema, filters);
   // The reader's sorts come first; the primary keys follow (unless already sorted) so "Load more" pages stay deterministic.
   const sort = [
     ...sorts.map((s) => ({ column: s.field, direction: s.direction })),

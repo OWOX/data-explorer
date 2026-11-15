@@ -17,6 +17,7 @@ import { Tooltip } from '../Tooltip';
 import { BandTools, BandToolsSlot } from '../bands/BandTools';
 import { CellValue } from './CellValue';
 import { ColumnPicker } from './ColumnPicker';
+import { ExportMenu } from './ExportMenu';
 import { FilterPopover } from './FilterPopover';
 import { buildRowQuery, defaultColumns, useMartRows } from './useMartRows';
 
@@ -249,6 +250,7 @@ function Grid({ martId, model, schema, seed, initialColumns, onChange, onRows }:
         <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { setFilters({}); setSorts([]); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => { lookups.current.abort(); lookups.current = new AbortController(); setTitles(new Map()); asked.current.clear(); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         <ColumnPicker schema={schema} visible={visible} onChange={changeColumns} />
+        <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={visible} filters={Object.values(filters)} sorts={sorts} />
       </BandTools>
       {pks.length === 0 && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
       {loading && rows && <div className="h-0.5 animate-pulse bg-primary" />}

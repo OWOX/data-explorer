@@ -125,3 +125,21 @@ test('sort a column descending, then add a second sort', async ({ page }) => {
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(firstCell()).toHaveText('1');
 });
+
+test('Export to Google Sheets: with one destination one click creates the report, runs it and opens the sheet', async ({ page }) => {
+  await page.goto('/?mock&sheets=1');
+  const data = await ordersGrid(page);
+  const popup = page.waitForEvent('popup');
+  await data.getByRole('button', { name: 'Export to Google Sheets' }).click();
+  await expect(data.getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', /spreadsheets\/d\/mock-sheet-1\/edit#gid=0/, { timeout: 10_000 });
+  expect((await popup).url()).toContain('mock-sheet-1');
+  // The report is remembered, so the control is now a menu offering to update it.
+  await data.getByText('Export', { exact: true }).click();
+  await expect(data.getByRole('menuitem', { name: /Update “Orders · Data Explorer · / })).toBeVisible();
+});
+
+test('Export to Google Sheets: with no Sheets destination there is no Export control', async ({ page }) => {
+  await page.goto('/?mock&sheets=0');
+  const data = await ordersGrid(page);
+  await expect(data.getByLabel('Export to Google Sheets')).toHaveCount(0);
+});
