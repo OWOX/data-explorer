@@ -1081,7 +1081,7 @@ describe('the Data band loading bar', () => {
   const bar = () => within(data()).queryByRole('progressbar', { name: 'Loading rows' });
 
   test('shows on the first load (with the skeleton), on Refresh, on a sort change and on Load more, and never rests on the page', async () => {
-    const delay = { ms: 60 };
+    const delay = { ms: 200 };
     await mountWith(slow(delay));
     expect(await within(data()).findByRole('progressbar', { name: 'Loading rows' })).toHaveClass('dm-progress');
     await within(data()).findByRole('table');
@@ -1105,10 +1105,57 @@ describe('the Data band loading bar', () => {
   });
 
   test('the bar sits on the top border of the card, as wide as it', async () => {
-    const delay = { ms: 60 };
+    const delay = { ms: 200 };
     await mountWith(slow(delay));
     const found = await within(data()).findByRole('progressbar', { name: 'Loading rows' });
     expect(found.closest('.dm-bigcard')).not.toBeNull();
     await waitFor(() => expect(bar()).toBeNull());
+  });
+});
+
+describe('the default sort', () => {
+  const orderSorts = (calls: { id: string; o: { sort?: unknown } }[]) => calls.filter((c) => c.id === 'orders').at(-1)!.o.sort;
+
+  test('with no sort set the rows load newest date first: Orders by created_at, then the key', async () => {
+    const calls = await spyOnTraverse();
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    expect(orderSorts(calls)).toEqual([{ column: 'created_at', direction: 'desc' }, { column: 'id', direction: 'asc' }]);
+    // created_at is not among the five opening columns, so no arrow is drawn; showing it draws one like a member sort
+    expect(within(data()).queryByRole('button', { name: /^Sort by created_at,/ })).toBeNull();
+    await userEvent.click(within(data()).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(screen.getByLabelText('created_at'));
+    const head = await within(data()).findByRole('button', { name: /^Sort by created_at, currently descending/ });
+    expect(head.closest('th')).toHaveAttribute('aria-sort', 'descending');
+    expect(head.querySelector('svg.lucide-arrow-down')).not.toBeNull();
+  });
+
+  test('a date column among the visible ones is the default, with its arrow from the start', async () => {
+    const calls = await spyOnTraverse();
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await userEvent.type(screen.getByLabelText('Search data marts'), 'daily');
+    fireEvent.click(await within(marts()).findByText('Daily KPIs'));
+    const day = await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
+    expect(day.closest('th')).toHaveAttribute('aria-sort', 'descending');
+    expect(calls.filter((c) => c.id === 'daily_kpis').at(-1)!.o.sort).toEqual([{ column: 'day', direction: 'desc' }]);
+  });
+
+  test("the member's own sort replaces the default, and Reset returns to it", async () => {
+    const calls = await spyOnTraverse();
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    const grid = data();
+    expect(within(grid).getByRole('button', { name: 'Reset' })).toBeDisabled();
+    await userEvent.click(within(grid).getByRole('button', { name: /^Sort by status,/ }));
+    await waitFor(() => expect(orderSorts(calls)).toEqual([{ column: 'status', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
+    await userEvent.click(within(grid).getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(orderSorts(calls)).toEqual([{ column: 'created_at', direction: 'desc' }, { column: 'id', direction: 'asc' }]));
+  });
+
+  test('a mart with no date field has no default sort beyond its key', async () => {
+    const calls = await spyOnTraverse();
+    await userEvent.type(screen.getByLabelText('Search data marts'), 'product');
+    fireEvent.click(await within(marts()).findByText('Products'));
+    await within(data()).findByRole('heading', { name: 'Products' });
+    await waitFor(() => expect(calls.some((c) => c.id === 'products' && c.o.limit === 201)).toBe(true));
+    expect(calls.filter((c) => c.id === 'products' && c.o.limit === 201).at(-1)!.o.sort).toEqual([{ column: 'id', direction: 'asc' }]);
   });
 });
