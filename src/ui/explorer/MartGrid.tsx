@@ -40,7 +40,47 @@ export function MartGrid({ martId, model, seed, onChange, onRows }: { martId: st
   const { schema, error } = useSchema(martId, schemaVersion);
   if (error) return <div className="p-4"><ErrorBox error={error} onRetry={() => setSchemaVersion((v) => v + 1)} /></div>;
   if (!schema) return <Skeleton rows={8} />;
-  return <Grid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onRows={onRows} />;
+  return <SeededGrid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onRows={onRows} />;
+}
+
+/** A saved-columns read slower than this is given up on for this mount. */
+export const SAVED_COLUMNS_WAIT_MS = 3000;
+
+/** The names in `saved` the column picker still offers, in the saved order. */
+const offered = (schema: Schema, saved: string[]) => saved.filter((c) => schema.some((f) => f.name === c));
+
+type Initial = { columns: string[]; cleaned: string[] | null };
+
+/**
+ * Settles the first column set before the grid mounts, so the first rows query is the only one:
+ * this session's columns, else the member's saved ones (read once, at most 3 s), else the defaults.
+ */
+function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
+  const { martId, schema, seed } = props;
+  const { columnStore } = useServices();
+  const [initial, setInitial] = useState<Initial | null>(() => {
+    const kept = offered(schema, seed.saved?.columns ?? []);
+    return kept.length ? { columns: kept, cleaned: null } : null;
+  });
+  useEffect(() => {
+    if (initial) return;
+    let live = true;
+    const fallback = () => live && setInitial((cur) => cur ?? { columns: defaultColumns(schema), cleaned: null });
+    const timer = setTimeout(() => { live = false; setInitial({ columns: defaultColumns(schema), cleaned: null }); }, SAVED_COLUMNS_WAIT_MS);
+    columnStore.load(martId).then((saved) => {
+      if (!live) return;
+      clearTimeout(timer);
+      const kept = offered(schema, saved ?? []);
+      const dropped = (saved?.length ?? 0) > kept.length;
+      setInitial({ columns: kept.length ? kept : defaultColumns(schema), cleaned: dropped ? kept : null });
+    }, fallback);
+    return () => { live = false; clearTimeout(timer); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const cleaned = initial?.cleaned ?? null;
+  // The cleanup of a saved list that named columns that are gone is the one save that is not the member's own change.
+  useEffect(() => { if (cleaned) columnStore.save(martId, cleaned); }, [cleaned, columnStore, martId]);
+  if (!initial) return <Skeleton rows={8} />;
+  return <Grid {...props} initialColumns={initial.columns} />;
 }
 
 // TanStack Table v9: row.getVisibleCells() needs the column visibility feature.
@@ -87,15 +127,12 @@ function GridCell({ row, name, rel }: { row: Row; name: string; rel: RelColumn |
 
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
-function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: string; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
-  const { ctx, schemas } = useServices();
+function Grid({ martId, model, schema, seed, initialColumns, onChange, onRows }: { martId: string; initialColumns: string[]; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
+  const { ctx, schemas, columnStore } = useServices();
   const slot = useContext(BandToolsSlot);
   const [{ modelVersion }, dispatch] = useStore();
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
-  const [visible, setVisible] = useState(() => {
-    const kept = seed.saved?.columns.filter((c) => schema.some((f) => f.name === c)) ?? [];
-    return kept.length ? kept : defaultColumns(schema);
-  });
+  const [visible, setVisible] = useState(initialColumns);
   const [filters, setFilters] = useState<Record<string, ColumnFilter>>(() => seed.saved?.filters ?? {});
   const [sorts, setSorts] = useState<SortKey[]>(() => sortsOnColumns(seed.saved?.sorts ?? [], visible));
   const [limit, setLimit] = useState(() => seed.saved?.limit ?? PAGE_SIZE);
@@ -198,7 +235,7 @@ function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: strin
   const relNames = useMemo(() => new Set(rels.keys()), [rels]);
   const env = useMemo(() => ({ titles, relSchemas, model, sorts, relNames, toggleSort }), [titles, relSchemas, model, sorts, relNames, toggleSort]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
-  const changeColumns = (cols: string[]) => { setVisible(cols); setSorts((cur) => sortsOnColumns(cur, cols)); };
+  const changeColumns = (cols: string[]) => { setVisible(cols); setSorts((cur) => sortsOnColumns(cur, cols)); columnStore.save(martId, cols); };
   const table = useTable({ features, data: rows ?? [], columns });
   const rowsLabel = rows ? `${rows.length}${hasMore ? '+' : ''}` : null;
   useEffect(() => { onRows?.(rowsLabel); }, [rowsLabel]); // eslint-disable-line react-hooks/exhaustive-deps

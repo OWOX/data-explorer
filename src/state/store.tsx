@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useReducer, type Dispatch, type ReactNode } from 'react';
+import { createColumnStore, type ColumnStore } from '../api/grid-columns';
 import { createRowCounter, type RowCounter } from '../api/row-counts';
 import { createSchemaLoader, type SchemaLoader } from '../api/schemas';
 import { PAGE_SIZE } from '../config';
@@ -127,11 +128,11 @@ export function useStore(): [State, Dispatch<Action>] {
   return v;
 }
 
-type Services = { ctx: Ctx; schemas: SchemaLoader; counter: RowCounter };
+type Services = { ctx: Ctx; schemas: SchemaLoader; counter: RowCounter; columnStore: ColumnStore };
 const ServicesCtx = createContext<Services | null>(null);
 
 export function AppServices({ ctx, children }: { ctx: Ctx; children: ReactNode }) {
-  const value = useMemo(() => ({ ctx, schemas: createSchemaLoader(ctx), counter: createRowCounter(ctx) }), [ctx]);
+  const value = useMemo(() => ({ ctx, schemas: createSchemaLoader(ctx), counter: createRowCounter(ctx), columnStore: createColumnStore(ctx) }), [ctx]);
   return <ServicesCtx.Provider value={value}>{children}</ServicesCtx.Provider>;
 }
 

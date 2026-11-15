@@ -38,7 +38,8 @@ npm run e2e     # Playwright smoke tests of the bands
 
 1. Read-only.
 2. Row counts are warehouse queries cached per member. Refresh recounts them.
-3. "Load more" re-reads from the start, because the API has no offset.
-4. A relationship title is looked up only for single-field relationships.
-5. The OWOX link always points to app.owox.com.
-6. Nested RECORD fields are not expanded: their leaf columns are not offered. Repeated fields only filter on blank.
+3. The columns you pick in a data mart's grid are saved per member and per data mart; a saved column that is no longer available is dropped. Sorts and filters are not saved.
+4. "Load more" re-reads from the start, because the API has no offset.
+5. A relationship title is looked up only for single-field relationships.
+6. The OWOX link always points to app.owox.com.
+7. Nested RECORD fields are not expanded: their leaf columns are not offered. Repeated fields only filter on blank.
