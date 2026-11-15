@@ -11,6 +11,7 @@ export function Band({
   hint,
   toolbar,
   loading,
+  loadingLabel = 'Loading',
   folded,
   onFold,
   grid = true,
@@ -24,6 +25,8 @@ export function Band({
   toolbar?: ReactNode;
   /** 0-1 while the band is still being read: it shows a bar instead of its content. */
   loading?: number | null;
+  /** What the progress bar is named to assistive tech. */
+  loadingLabel?: string;
   /** Folded by the reader: header only, and its controls go with the content. */
   folded: boolean;
   onFold: () => void;
@@ -68,7 +71,7 @@ export function Band({
         <div
           className={`dm-loadbar${loading >= 1 ? ' dm-loadbar-done' : ''}`}
           role="progressbar"
-          aria-label="Reading the project"
+          aria-label={loadingLabel}
           aria-valuenow={Math.round(loading * 100)}
           aria-valuemin={0}
           aria-valuemax={100}

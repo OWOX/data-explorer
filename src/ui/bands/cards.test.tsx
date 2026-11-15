@@ -8,9 +8,19 @@ import { Band } from './Band';
 import { MartCard, SourceCard, martElementId, sourceElementId } from './cards';
 
 // The Contexts row is judged by comparing two widths; jsdom has no layout, so give the row room.
+let restoreWidth: () => void = () => {};
+const setRowWidth = (width: number) => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => width });
+};
 beforeAll(() => {
-  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 5000 });
+  const own = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+  restoreWidth = () => {
+    if (own) Object.defineProperty(HTMLElement.prototype, 'clientWidth', own);
+    else delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+  };
+  setRowWidth(5000);
 });
+afterAll(() => restoreWidth());
 
 const mart: Mart = {
   id: 'm1', title: 'Orders', description: 'All orders', icon: null, storageId: 's',
@@ -84,7 +94,7 @@ describe('MartCard', () => {
     expect(container.querySelector('article')).toHaveAttribute('id', 'dm-m1');
     expect(container.querySelector('article')).toHaveAttribute('data-tone', 'ok');
     expect(screen.getByLabelText('Description')).toBeInTheDocument();
-    expect(screen.getByLabelText('Data quality: Passed')).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Passed\./)).toBeInTheDocument();
     expect(screen.getByLabelText(/Data updated/)).toBeInTheDocument();
   });
 
@@ -113,6 +123,25 @@ describe('MartCard', () => {
     renderMart({ contexts: [{ id: 'c1', name: 'Sales', icon: null }, { id: 'c2', name: 'Finance', icon: null }] });
     expect(screen.getAllByTitle('Context: Sales').length).toBeGreaterThan(0);
     expect(screen.getAllByTitle('Context: Finance').length).toBeGreaterThan(0);
+  });
+
+  test('contexts that do not fit fold into one counted chip naming them all', () => {
+    setRowWidth(0);
+    renderMart({ contexts: [{ id: 'c1', name: 'Sales', icon: null }, { id: 'c2', name: 'Finance', icon: null }] });
+    const chip = screen.getByLabelText('2 contexts: Sales, Finance');
+    expect(chip).toHaveTextContent('2');
+    setRowWidth(5000);
+  });
+
+  test('a count error message that ends in a period is not doubled', async () => {
+    renderMart({ count: { state: 'error', message: 'Query failed.' } });
+    await userEvent.hover(screen.getByText('—'));
+    expect((await screen.findAllByText('Query failed. Click to retry.')).length).toBeGreaterThan(0);
+  });
+
+  test('aside is carried onto the card next to lit', () => {
+    const { container } = renderMart({ lit: true, aside: true });
+    expect(container.querySelector('article')).toHaveClass('lit', 'aside');
   });
 
   test('the OWOX link opens the app and does not select', async () => {
@@ -162,8 +191,8 @@ describe('Band', () => {
     const { container, rerender } = render(<Band id="b" icon={Database} title="Row" hint="h" folded={false} onFold={vi.fn()} grid={false}><p>direct</p></Band>);
     expect(container.querySelector('.dm-band-grid')).toBeNull();
     expect(screen.getByText('direct')).toBeInTheDocument();
-    rerender(<Band id="b" icon={Database} title="Row" hint="h" folded={false} onFold={vi.fn()} loading={0.5}><p>direct</p></Band>);
-    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50');
+    rerender(<Band id="b" icon={Database} title="Row" hint="h" folded={false} onFold={vi.fn()} loading={0.5} loadingLabel="Reading"><p>direct</p></Band>);
+    expect(screen.getByRole('progressbar', { name: 'Reading' })).toHaveAttribute('aria-valuenow', '50');
     expect(screen.queryByText('direct')).toBeNull();
   });
 });

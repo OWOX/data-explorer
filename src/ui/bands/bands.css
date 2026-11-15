@@ -4,6 +4,9 @@
 /* Three layers, in this order: band panels, the lines over them, the cards over both. */
 .dm-canvas { position: relative; display: grid; gap: 1rem; }
 
+/* The block chrome OWOX itself uses for Storage / Input Source / Output schema: a light panel with
+   a rounded icon tile beside the title, no shadow, a hairline under it. */
+/* An exit reads the whole block, so the whole block answers: a 2px grey outline laid outside the
    panel, drawn rather than in flow, so nothing on the page shifts when it appears. */
 .dm-band.lit::after {
   content: ''; position: absolute; z-index: 6; inset: 0;
@@ -286,3 +289,25 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
    between two marts, and both ends sit in one band, so one arriving at the card in hand is drawn
    thin against the ones leaving it. A source line crosses bands, which already say which way it goes. */
 #wires path.relationship.inbound { stroke-width: 1; }
+/* The card under the pointer takes a 2px border in its own run-health colour — the ring is laid
+   outside the 1px it already has, so nothing shifts. A card nothing has run stays grey. */
+.dm-node.lit:hover {
+  border-color: var(--tone);
+  box-shadow: 0 0 0 1px var(--tone);
+}
+/* The card under the pointer while a different one is chosen: its own colour, at half strength.
+   Written with `.lit` and `:hover` so it outranks the ring rule above rather than racing it, and
+   `--tone` is used here rather than redefined — a variable cannot be set from itself. */
+.dm-node.lit.aside:hover {
+  border-color: color-mix(in oklab, var(--tone) 50%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--tone) 50%, transparent);
+}
+/* Status glyph tones. The fade belongs to the glyph, not the element: the mark wraps its own hint
+   bubble, and an ancestor's opacity is a ceiling its children cannot rise above. */
+.dm-ok { color: oklch(0.62 0.16 149); }
+.dm-warn { color: oklch(0.70 0.16 75); }
+.dm-bad { color: oklch(0.58 0.22 27); }
+.dm-idle { color: var(--muted-foreground); }
+.dm-idle svg { opacity: 0.6; }
+.dm-notice { color: oklch(0.62 0.13 250); }
+.dm-progress { color: var(--primary); }

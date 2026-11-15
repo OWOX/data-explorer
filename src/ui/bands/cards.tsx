@@ -1,9 +1,9 @@
 // The cards themselves, ported from Data Flow: a source card and a data mart card.
-import { ExternalLink, Info, LoaderCircle, Plug } from 'lucide-react';
+import { ExternalLink, History, Info, LoaderCircle, Plug } from 'lucide-react';
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Context, DqSummary, Mart, Source } from '../../model/types';
-import { compactNumber, count as plural, num } from '../format';
-import { DqIcon, dqCardTone, FreshnessIcon } from '../icons';
+import { compactNumber, count as plural, num, relativeTime } from '../format';
+import { dqCardTone, dqVisual } from '../icons';
 import { Tooltip } from '../Tooltip';
 import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
 
@@ -27,17 +27,20 @@ function selectable(onSelect: () => void) {
   };
 }
 
-const cardClass = (lit: boolean, extra?: string) => ['dm-node', lit ? 'lit' : '', extra ?? ''].filter(Boolean).join(' ');
+const cardClass = (lit: boolean, aside: boolean, extra?: string) => ['dm-node', lit ? 'lit' : '', aside ? 'aside' : '', extra ?? ''].filter(Boolean).join(' ');
 
 export function SourceCard({
   source,
   selected,
   lit,
+  aside = false,
   onSelect,
 }: {
   source: Source;
   selected: boolean;
   lit: boolean;
+  /** Lit by a card other than the pinned one: drawn at half strength. */
+  aside?: boolean;
   onSelect: () => void;
 }) {
   return (
@@ -45,7 +48,7 @@ export function SourceCard({
       id={sourceElementId(source.key)}
       data-node
       aria-pressed={selected}
-      className={cardClass(lit)}
+      className={cardClass(lit, aside)}
       {...selectable(onSelect)}
     >
       <div className="dm-node-head">
@@ -67,7 +70,7 @@ function CountBadge({ count, onRetry }: { count: CountState; onRetry: () => void
   }
   if (count.state === 'error') {
     return (
-      <Tooltip content={`${count.message}. Click to retry.`}>
+      <Tooltip content={`${count.message.replace(/\.$/, '')}. Click to retry.`}>
         <button
           type="button"
           className="dm-badge dm-badge-button"
@@ -89,6 +92,7 @@ export function MartCard({
   fieldHit,
   selected,
   lit,
+  aside = false,
   onSelect,
   onOpenApp,
   onRetryCount,
@@ -103,6 +107,8 @@ export function MartCard({
   fieldHit?: string;
   selected: boolean;
   lit: boolean;
+  /** Lit by a card other than the pinned one: drawn at half strength. */
+  aside?: boolean;
   onSelect: () => void;
   onOpenApp: () => void;
   onRetryCount: () => void;
@@ -113,7 +119,7 @@ export function MartCard({
       data-node
       data-tone={dqCardTone(quality)}
       aria-pressed={selected}
-      className={cardClass(lit, mart.accessible ? undefined : 'dm-noaccess')}
+      className={cardClass(lit, aside, mart.accessible ? undefined : 'dm-noaccess')}
       {...selectable(onSelect)}
     >
       <div className="dm-node-head">
@@ -141,8 +147,9 @@ export function MartCard({
         {fieldHit && <span className="dm-badge dm-badge-shrink font-mono" title={fieldHit}>{fieldHit}</span>}
       </div>
       <div className="dm-node-foot">
-        <DqIcon summary={quality} toned />
-        <FreshnessIcon at={freshness} />
+        <QualityMark summary={quality} />
+        {/* Nothing when the update time is unknown: an unknown freshness is not worth an icon. */}
+        {freshness && <Mark tone="idle" lines={[`Data updated ${relativeTime(freshness)}`]}><History size={14} /></Mark>}
         <Contexts contexts={contexts} />
       </div>
     </article>
@@ -210,6 +217,61 @@ function Contexts({ contexts }: { contexts: Context[] }) {
       ) : (
         contexts.map(chip)
       )}
+    </span>
+  );
+}
+
+const TONE_CLASS = { neutral: 'idle', progress: 'progress', success: 'ok', warning: 'warn', error: 'bad', notice: 'notice' } as const;
+
+/** The host's own sentence for each quality state, keyed by the label its icon already carries. */
+const QUALITY_LINE: Record<string, string> = {
+  'Never run': 'Data Quality has not been checked yet',
+  'All checks disabled': 'Data Quality checks are disabled',
+  'No applicable checks': 'No applicable Data Quality checks',
+  Queued: 'Data Quality check queued',
+  Running: 'Data Quality check running',
+  Passed: 'Data Quality checks passed',
+  'Issues found': 'Data Quality issues found',
+  'Run failed': 'Data Quality check failed',
+  Restricted: 'Data Quality run restricted',
+  Cancelled: 'Data Quality check cancelled',
+};
+
+/** What the summary says beyond its state: how many checks, how many findings, when it last ran. */
+function qualityDetails(s: DqSummary | undefined): string[] {
+  if (!s) return [];
+  const lines: string[] = [];
+  if ((s.totalChecks ?? 0) > 0) {
+    const notApplicable = s.notApplicableChecks ?? 0;
+    lines.push(`${plural(s.totalChecks ?? 0, 'check')}${notApplicable > 0 ? `, ${notApplicable} not applicable` : ''}`);
+  }
+  const findings = [
+    [s.errorFindings, 'error'],
+    [s.warningFindings, 'warning'],
+    [s.noticeFindings, 'notice'],
+  ].flatMap(([n, noun]) => (typeof n === 'number' && n > 0 ? [plural(n, noun as string)] : []));
+  if (findings.length > 0) lines.push(`Findings: ${findings.join(', ')}`);
+  if (s.lastRunAt) lines.push(`Last run ${relativeTime(s.lastRunAt)}`);
+  return lines;
+}
+
+function QualityMark({ summary }: { summary: DqSummary | undefined }) {
+  const { Icon, label, tone } = dqVisual(summary);
+  return (
+    <Mark tone={TONE_CLASS[tone]} lines={[label, QUALITY_LINE[label] ?? label, ...qualityDetails(summary)]}>
+      <Icon size={14} className={tone === 'progress' ? 'dm-spin' : undefined} />
+    </Mark>
+  );
+}
+
+/** A status glyph that says what it means on hover, and does nothing when clicked. */
+function Mark({ tone, lines, children }: { tone: string; lines: string[]; children: ReactNode }) {
+  return (
+    <span className={`dm-status dm-mark dm-${tone}`} tabIndex={0} role="note" aria-label={lines.join('. ')}>
+      {children}
+      <span className="dm-hint-body dm-mark-body">
+        {lines.map((line) => <span key={line}>{line}</span>)}
+      </span>
     </span>
   );
 }
