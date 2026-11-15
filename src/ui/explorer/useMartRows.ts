@@ -34,7 +34,7 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
     const ac = new AbortController();
     const pageLimit = (options.limit ?? 1) - 1;
     readRows(ctx, martId, options, { signal: ac.signal }).then(
-      (rows) => setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key }),
+      (rows) => { if (!ac.signal.aborted) setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key }); },
       (error) => { if (!ac.signal.aborted) setState({ rows: null, error, hasMore: false, doneFor: key }); },
     );
     return () => ac.abort();

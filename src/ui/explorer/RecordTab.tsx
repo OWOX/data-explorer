@@ -30,14 +30,18 @@ export function RecordTab({ tab, model }: { tab: Extract<Tab, { kind: 'record' }
         return { column, operator: 'eq' as const, value: isNum ? Number(v) : String(v) };
       });
       const [row] = await readRows(ctx, tab.martId, { columns: '*', filter, limit: 1 }, { signal: ac.signal });
+      if (ac.signal.aborted) return;
       setState({ ver: version, schema, row: row ?? null, error: null });
       for (const rel of rels.values()) {
-        const rs = await schemas.get(rel.relatedMartId);
-        setRelSchemas((m) => new Map(m).set(rel.relatedMartId, rs));
-        if (!row) continue;
-        const t = await lookupTitles(ctx, rel, [row[rel.field]], rs, ac.signal);
-        const title = t.get(String(row[rel.field]));
-        if (title) setTitles((m) => new Map(m).set(rel.field, title));
+        // A failed related schema or title lookup falls back to the raw value, like the grid.
+        try {
+          const rs = await schemas.get(rel.relatedMartId);
+          setRelSchemas((m) => new Map(m).set(rel.relatedMartId, rs));
+          if (!row) continue;
+          const t = await lookupTitles(ctx, rel, [row[rel.field]], rs, ac.signal);
+          const title = t.get(String(row[rel.field]));
+          if (title && !ac.signal.aborted) setTitles((m) => new Map(m).set(rel.field, title));
+        } catch { /* ignore */ }
       }
     })().catch((error) => { if (!ac.signal.aborted) setState((s) => ({ ...s, ver: version, error })); });
     return () => ac.abort();
@@ -62,6 +66,7 @@ export function RecordTab({ tab, model }: { tab: Extract<Tab, { kind: 'record' }
   return (
     <div className="flex h-full min-h-0 flex-col">
       {header}
+      {!loaded && <div role="progressbar" className="h-0.5 animate-pulse bg-primary" />}
       <dl className="grid min-h-0 flex-1 grid-cols-[minmax(10rem,16rem)_1fr] content-start gap-x-4 gap-y-2 overflow-auto p-4 text-sm">
         {state.schema.map((f) => {
           const rel = rels.get(f.name);

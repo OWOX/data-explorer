@@ -69,3 +69,39 @@ test('closing the last tab returns to the full canvas', async () => {
   await userEvent.click(screen.getByLabelText(/^Close Orders/));
   await waitFor(() => expect(screen.queryByTestId('explorer')).toBeNull());
 });
+
+function mountWith(wrap: (ctx: ReturnType<typeof createMockCtx>) => ReturnType<typeof createMockCtx>) {
+  render(<AppServices ctx={wrap(createMockCtx(demoFixtures()))}><StoreProvider><App /></StoreProvider></AppServices>);
+}
+
+async function openOrderRecord() {
+  fireEvent.click(await screen.findByText('Orders'));
+  const grid = await screen.findByRole('tabpanel');
+  const table = await within(grid).findByRole('table');
+  await userEvent.click(within(table).getAllByRole('cell').find((c) => c.textContent === '1')!);
+  await waitFor(() => expect(screen.getAllByRole('tab').at(-1)!.textContent).toMatch(/^Orders: 1/));
+  return (await screen.findAllByRole('tabpanel')).at(-1)!;
+}
+
+test('a record still renders when a related title lookup fails', async () => {
+  mountWith((ctx) => {
+    const real = ctx.owox.dataMarts.traverseData.bind(ctx.owox.dataMarts);
+    return { ...ctx, owox: { ...ctx.owox, dataMarts: { ...ctx.owox.dataMarts, traverseData: (id, o) => (id === 'customers' ? Promise.reject(new Error('boom')) : real(id, o)) } } };
+  });
+  const panel = await openOrderRecord();
+  expect(await within(panel).findByText('status')).toBeInTheDocument();
+  expect(within(panel).queryByText(/boom/)).toBeNull();
+});
+
+test('Refresh on a record shows the progress bar', async () => {
+  mountWith((ctx) => {
+    const real = ctx.owox.dataMarts.traverseData.bind(ctx.owox.dataMarts);
+    return { ...ctx, owox: { ...ctx.owox, dataMarts: { ...ctx.owox.dataMarts, traverseData: async (id, o) => { if (o.limit === 1) await new Promise((r) => setTimeout(r, 50)); return real(id, o); } } } };
+  });
+  const panel = await openOrderRecord();
+  await within(panel).findByText('status');
+  expect(within(panel).queryByRole('progressbar')).toBeNull();
+  await userEvent.click(within(panel).getByRole('button', { name: 'Refresh' }));
+  expect(within(panel).getByRole('progressbar')).toBeInTheDocument();
+  await waitFor(() => expect(within(panel).queryByRole('progressbar')).toBeNull());
+});
