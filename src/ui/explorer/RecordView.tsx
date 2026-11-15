@@ -1,13 +1,15 @@
 import { Box, RefreshCw } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { readRows } from '../../api/rows';
 import type { Model, Schema } from '../../model/types';
+import { fieldLabel } from '../../model/fieldLabel';
 import { clickTarget, joinFilters } from '../../records/relationships';
 import { useMartRelationships } from '../../records/useMartRelationships';
 import { lookupTitles } from '../../records/titles';
 import type { Row } from '../../sdk/types';
 import { sourceOfModel, useServices, useStore } from '../../state/store';
 import { ErrorBox } from '../ErrorBox';
+import { BandTools, BandToolsSlot } from '../bands/BandTools';
 import { PickedIcon } from '../bands/picked';
 import { Skeleton } from '../Skeleton';
 import { CellValue } from './CellValue';
@@ -15,6 +17,7 @@ import { CellValue } from './CellValue';
 /** One record of a mart, read by primary key. Key it by mart and key so a new record starts clean. */
 export function RecordView({ martId, pk, model }: { martId: string; pk: Record<string, unknown>; model: Model }) {
   const { ctx, schemas } = useServices();
+  const slot = useContext(BandToolsSlot);
   const [{ modelVersion }, dispatch] = useStore();
   const sourceOf = sourceOfModel(model);
   const [ownVersion, setVersion] = useState(0);
@@ -64,10 +67,9 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
   }, [ctx, schemas, martId, pk, rels, incoming, version]);
 
   const header = (
-    <div className="flex items-center gap-2 border-b px-3 py-2">
-      <div className="flex-1" />
+    <BandTools slot={slot}>
       <button type="button" onClick={() => { setTitles(new Map()); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
-    </div>
+    </BandTools>
   );
 
   const loaded = state.ver === version;
@@ -87,7 +89,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
           const target = rel ? clickTarget(rel, row, relSchemas.get(rel.relatedMartId)) : null;
           return (
             <div key={f.name} className="contents">
-              <dt className="text-muted-foreground">{f.alias ?? f.name}{f.alias && <span className="ml-1 font-mono text-[11px]">{f.name}</span>}</dt>
+              <dt className="text-muted-foreground">{fieldLabel(f)}{fieldLabel(f) !== f.name && <span className="ml-1 font-mono text-[11px]">{f.name}</span>}</dt>
               <dd className="min-w-0 break-words">
                 <CellValue row={row} field={f.name} title={titles.get(f.name)}
                   onOpen={target ? () => dispatch({ type: 'follow', target, sourceOf }) : undefined} />

@@ -106,7 +106,7 @@ describe('the four bands', () => {
     await waitFor(() => expect(entry).toBeEnabled());
     await userEvent.click(entry);
     await within(data()).findByRole('heading', { name: 'Orders' });
-    await waitFor(() => expect(within(data()).getByLabelText('Filter customer_id')).toHaveClass('text-primary'));
+    await waitFor(() => expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary'));
     expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
     // 3. a record target again: a row, then its customer
     await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
@@ -119,10 +119,10 @@ describe('the four bands', () => {
     await back(); // the Orders record
     await within(row()).findByRole('heading', { name: /^Orders · \d+$/ });
     expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument();
-    expect(within(data()).getByLabelText('Filter customer_id')).toHaveClass('text-primary');
+    expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary');
     await back(); // Orders, filtered, no record
     await waitFor(() => expect(within(row()).getByText('Select a row.')).toBeInTheDocument());
-    expect(within(data()).getByLabelText('Filter customer_id')).toHaveClass('text-primary');
+    expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary');
     expect(filterActive()).toBeEnabled();
     await back(); // the Customers record
     expect(await within(row()).findByRole('heading', { name: customerHeading.textContent! })).toBeInTheDocument();
@@ -237,7 +237,7 @@ describe('the grid', () => {
     await waitFor(() => expect(entry).toBeEnabled());
     await userEvent.click(entry); // Orders, filtered by customer_id
     await within(data()).findByRole('heading', { name: 'Orders' });
-    await waitFor(() => expect(within(data()).getByLabelText('Filter customer_id')).toHaveClass('text-primary'));
+    await waitFor(() => expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary'));
     await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
     await userEvent.click(within(data()).getByLabelText('Filter id'));
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
@@ -258,7 +258,7 @@ describe('the grid', () => {
     await userEvent.click(within(row()).getByRole('button', { name: /Back/ }));
     await within(data()).findByRole('heading', { name: 'Orders' });
     await waitFor(() => expect(within(data()).getByLabelText('Filter id')).toHaveClass('text-primary'));
-    expect(within(data()).getByLabelText('Filter customer_id')).toHaveClass('text-primary');
+    expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary');
   });
 
   test('a mart without a primary key is preview only', async () => {
@@ -326,7 +326,7 @@ describe('the grid', () => {
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
     await userEvent.click(within(data()).getByRole('button', { name: 'Load more' }));
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(401));
-    const customerCol = within(data()).getAllByRole('columnheader').findIndex((h) => h.textContent?.includes('customer_id'));
+    const customerCol = within(data()).getAllByRole('columnheader').findIndex((h) => h.textContent?.includes('Customer'));
     await waitFor(() => {
       const cells = within(data()).getAllByRole('row').slice(1).map((r) => r.querySelectorAll('td')[customerCol]!.textContent ?? '');
       expect(cells.filter((c) => /^\d+$/.test(c.trim()))).toEqual([]);
@@ -521,5 +521,86 @@ describe('folding and lines', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(ga).not.toHaveClass('lit');
     expect(shopify).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+describe('column headers and band toolbars', () => {
+  const head = (b: HTMLElement) => b.querySelector<HTMLElement>('.dm-band-head')!;
+
+  test('a column shows its alias, and its title attribute holds the technical name; no alias shows the name', async () => {
+    const grid = await ordersGrid();
+    const customer = within(grid).getByText('Customer');
+    expect(customer).toHaveAttribute('title', 'customer_id');
+    expect(within(grid).queryByText('customer_id')).toBeNull();
+    expect(within(grid).getByLabelText('Filter Customer')).toBeInTheDocument();
+    const id = within(grid).getByText('id', { selector: 'span.truncate' });
+    expect(id).not.toHaveAttribute('title');
+  });
+
+  test('the column picker lists the alias beside the technical name', async () => {
+    const grid = await ordersGrid();
+    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    expect(screen.getByLabelText(/Amount/)).toBeInTheDocument();
+    expect(screen.getByText('amount')).toBeInTheDocument();
+  });
+
+  test('the (i) is there only with a description, and shows it in a tooltip', async () => {
+    const grid = await ordersGrid();
+    expect(within(grid).queryByLabelText('About id')).toBeNull();
+    await userEvent.hover(within(grid).getByLabelText('About Customer'));
+    expect((await screen.findAllByText('Who placed the order.')).length).toBeGreaterThan(0);
+  });
+
+  test('an active filter keeps its icon on screen, an idle one reveals on hover', async () => {
+    const grid = await ordersGrid();
+    const idle = within(grid).getByLabelText('Filter id');
+    expect(idle).toHaveClass('dm-reveal');
+    expect(idle).not.toHaveClass('dm-reveal-on');
+    await userEvent.click(idle);
+    await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
+    await userEvent.type(screen.getByLabelText('Value'), '3');
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(within(grid).getByLabelText('Filter id')).toHaveClass('dm-reveal-on'));
+  });
+
+  test('the Data band controls sit in its header and work from there', async () => {
+    const calls = await spyOnTraverse();
+    const grid = await ordersGrid();
+    const bar = head(grid);
+    for (const name of ['Reset', 'Refresh', /Columns \(5\/8\)/]) expect(within(bar).getByRole('button', { name })).toBeInTheDocument();
+    await userEvent.click(within(grid).getByLabelText('Filter id'));
+    await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
+    await userEvent.type(screen.getByLabelText('Value'), '3');
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(4));
+    await userEvent.click(within(bar).getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(201));
+    await settle();
+    const reads = () => calls.filter((c) => c.id === 'orders' && c.o.limit === 201).length;
+    const before = reads();
+    await userEvent.click(within(bar).getByRole('button', { name: 'Refresh' }));
+    await settle();
+    expect(reads()).toBe(before + 1);
+    await userEvent.click(within(bar).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(screen.getByLabelText(/Amount/));
+    await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(6));
+    // The picker's own padding is not the band's fold.
+    expect(within(grid).getAllByRole('columnheader')).toHaveLength(6);
+  });
+
+  test('the content is one card inside the band, and folding the band takes the controls with it', async () => {
+    const grid = await ordersGrid();
+    expect(grid.querySelector('.dm-bigcard')).toContainElement(within(grid).getByRole('table'));
+    await userEvent.click(within(head(grid)).getByRole('button', { name: 'Hide Orders' }));
+    expect(within(grid).queryByRole('button', { name: 'Reset' })).toBeNull();
+  });
+
+  test('the Row band has Back and Refresh in its header', async () => {
+    await ordersGrid();
+    await userEvent.click(within(data()).getAllByRole('row')[1]!);
+    await within(row()).findByText('status');
+    const bar = head(row());
+    expect(within(bar).getByRole('button', { name: /Back/ })).toBeInTheDocument();
+    expect(within(bar).getByRole('button', { name: 'Refresh' })).toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@ import { Filter } from 'lucide-react';
 import { useState } from 'react';
 import { RELATIVE_MAX_N, RELATIVE_PRESETS, isDateTimeField, operatorsFor, type OpId } from '../../filters/catalogue';
 import { isComplete, type ColumnFilter, type FilterValue } from '../../filters/build';
+import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import type { RelativeDatePreset } from '../../sdk/types';
 import { Popover } from '../Popover';
@@ -20,7 +21,7 @@ export function FilterEditor({ field, value, onApply, onClear }: { field: Field;
 
   return (
     <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); if (isComplete(draft, field)) onApply(draft); }}>
-      <div className="text-xs font-medium text-muted-foreground">{field.alias ?? field.name}</div>
+      <div className="text-xs font-medium text-muted-foreground">{fieldLabel(field)}</div>
       <select aria-label="Operator" className={input} value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); }}>
         {ops.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
       </select>
@@ -59,7 +60,7 @@ export function FilterPopover({ field, value, onChange }: { field: Field; value:
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen} trigger={
-      <button type="button" aria-label={`Filter ${field.alias ?? field.name}`} className={value ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>
+      <button type="button" aria-label={`Filter ${fieldLabel(field)}`} className={value ? 'dm-reveal dm-reveal-on text-primary' : 'dm-reveal text-muted-foreground hover:text-foreground'}>
         <Filter className="size-3.5" fill={value ? 'currentColor' : 'none'} />
       </button>
     }>

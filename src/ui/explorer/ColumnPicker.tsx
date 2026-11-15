@@ -1,4 +1,5 @@
 import { Columns3 } from 'lucide-react';
+import { fieldLabel } from '../../model/fieldLabel';
 import type { Schema } from '../../model/types';
 import { Popover } from '../Popover';
 
@@ -16,8 +17,8 @@ export function ColumnPicker({ schema, visible, onChange }: { schema: Schema; vi
         {schema.map((f) => (
           <label key={f.name} className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={set.has(f.name)} disabled={set.has(f.name) && visible.length === 1} onChange={() => toggle(f.name)} />
-            <span className="truncate">{f.alias ?? f.name}</span>
-            {f.alias && <span className="truncate font-mono text-[11px] text-muted-foreground">{f.name}</span>}
+            <span className="truncate">{fieldLabel(f)}</span>
+            {fieldLabel(f) !== f.name && <span className="truncate font-mono text-[11px] text-muted-foreground">{f.name}</span>}
           </label>
         ))}
       </div>

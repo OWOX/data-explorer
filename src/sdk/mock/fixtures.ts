@@ -65,7 +65,7 @@ const specs: Spec[] = [
   {
     id: 'orders', connectorSourceName: 'Shopify', icon: 'orders', count: 450,
     description: 'Customer orders with status, amount and creation time.',
-    fields: [pk(), f('customer_id', 'INT64'), f('product_id', 'INT64'), f('store_id', 'INT64'), f('status', 'STRING'), f('amount', 'NUMERIC'), f('created_at', 'TIMESTAMP'), f('is_gift', 'BOOL')],
+    fields: [pk(), f('customer_id', 'INT64', { alias: 'Customer', description: 'Who placed the order.' }), f('product_id', 'INT64'), f('store_id', 'INT64'), f('status', 'STRING'), f('amount', 'NUMERIC', { alias: 'Amount' }), f('created_at', 'TIMESTAMP'), f('is_gift', 'BOOL')],
     row: (i, r) => ({
       id: i,
       customer_id: i === 7 || i === 150 || i === 300 ? null : pick(r, 60),
@@ -80,7 +80,7 @@ const specs: Spec[] = [
   {
     id: 'customers', connectorSourceName: 'Shopify', icon: 'customers', count: 60,
     description: 'People who placed orders, with their home country.',
-    fields: [pk(), f('name', 'STRING'), f('email', 'STRING'), f('country_code', 'STRING'), f('internal_flag', 'STRING', { isHiddenForReporting: true })],
+    fields: [pk(), f('name', 'STRING', { description: 'Full name as given at checkout.' }), f('email', 'STRING'), f('country_code', 'STRING'), f('internal_flag', 'STRING', { isHiddenForReporting: true })],
     row: (i) => ({
       id: i,
       name: `${FIRST[i % FIRST.length]} ${LAST[Math.floor(i / FIRST.length) % LAST.length]}`,

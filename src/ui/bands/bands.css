@@ -271,3 +271,24 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-idle svg { opacity: 0.6; }
 .dm-notice { color: oklch(0.62 0.13 250); }
 .dm-progress { color: var(--primary); }
+
+/* --- the big card: the Data and Row bands' content as one card, as wide as the band ------------- */
+/* The .dm-node look (background, border, radius), without its hover ring, lift or pointer: it is
+   not a control. `overflow: clip` rounds the corners without becoming the sticky header's scroller. */
+.dm-bigcard {
+  position: relative; z-index: 2;
+  border: 1px solid var(--border); border-radius: 0.625rem;
+  background: var(--card); overflow: clip;
+}
+:root.dark .dm-bigcard { box-shadow: 0 1px 2px rgb(0 0 0 / 0.3); }
+:root:not(.dark) .dm-bigcard { box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); }
+
+/* Column header actions: hidden until the header is hovered or holds focus, but they keep their
+   room, so the title does not jump. A column with a filter keeps its icon on. */
+.dm-reveal { display: inline-flex; flex-shrink: 0; opacity: 0; transition: opacity 120ms; }
+.dm-th:hover .dm-reveal, .dm-th:focus-within .dm-reveal,
+.dm-reveal-on, .dm-reveal[aria-expanded='true'], .dm-reveal[data-state='delayed-open'], .dm-reveal[data-state='instant-open'] { opacity: 1; }
+.dm-col-info { color: var(--muted-foreground); }
+.dm-col-info:hover { color: var(--foreground); }
+/* No hover on touch: the actions stay on screen there. */
+@media (hover: none) { .dm-reveal { opacity: 1; } }

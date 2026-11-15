@@ -1,7 +1,9 @@
 import { columnVisibilityFeature, flexRender, tableFeatures, useTable, type ColumnDef } from '@tanstack/react-table';
 import { RefreshCw, RotateCcw } from 'lucide-react';
+import { Info } from 'lucide-react';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PAGE_SIZE } from '../../config';
+import { fieldLabel, fieldTitle } from '../../model/fieldLabel';
 import type { ColumnFilter } from '../../filters/build';
 import type { Model, Schema } from '../../model/types';
 import { clickTarget, primaryKeys, type RelColumn } from '../../records/relationships';
@@ -11,6 +13,8 @@ import type { Row } from '../../sdk/types';
 import { sourceOfModel, useServices, useStore, type GridState } from '../../state/store';
 import { ErrorBox } from '../ErrorBox';
 import { Skeleton } from '../Skeleton';
+import { Tooltip } from '../Tooltip';
+import { BandTools, BandToolsSlot } from '../bands/BandTools';
 import { CellValue } from './CellValue';
 import { ColumnPicker } from './ColumnPicker';
 import { FilterPopover } from './FilterPopover';
@@ -66,6 +70,7 @@ const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Obje
 
 function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: string; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
   const { ctx, schemas } = useServices();
+  const slot = useContext(BandToolsSlot);
   const [{ modelVersion }, dispatch] = useStore();
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
   const [visible, setVisible] = useState(() => {
@@ -151,11 +156,18 @@ function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: strin
       id: name,
       header: () => (
         <div className="flex items-center gap-1">
-          <span className="truncate" title={field.description ?? field.name}>{field.alias ?? field.name}</span>
+          <span className="truncate" title={fieldTitle(field)}>{fieldLabel(field)}</span>
           <FilterPopover field={field} value={filters[name]} onChange={(f) => {
             setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; });
             setLimit(PAGE_SIZE);
           }} />
+          {field.description?.trim() && (
+            <Tooltip content={field.description}>
+              <button type="button" aria-label={`About ${fieldLabel(field)}`} className="dm-reveal dm-col-info">
+                <Info className="size-3.5" />
+              </button>
+            </Tooltip>
+          )}
         </div>
       ),
       cell: ({ row }) => <GridCell row={row.original} name={name} rel={rel} />,
@@ -171,19 +183,18 @@ function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: strin
   return (
     <GridEnv.Provider value={env}>
     <div className="flex max-h-[32rem] min-h-0 flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-        <div className="flex-1" />
+      <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters} onClick={() => { setFilters({}); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => { lookups.current.abort(); lookups.current = new AbortController(); setTitles(new Map()); asked.current.clear(); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         <ColumnPicker schema={schema} visible={visible} onChange={setVisible} />
-      </div>
+      </BandTools>
       {pks.length === 0 && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
       {loading && rows && <div className="h-0.5 animate-pulse bg-primary" />}
       <div className={`min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
         <table className="w-full border-collapse text-sm">
-          <thead className="sticky top-0 z-10 bg-background">
+          <thead className="sticky top-0 z-10 bg-card">
             {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id}>{hg.headers.map((h) => <th key={h.id} className="max-w-64 border-b px-3 py-2 text-left font-medium">{flexRender(h.column.columnDef.header, h.getContext())}</th>)}</tr>
+              <tr key={hg.id}>{hg.headers.map((h) => <th key={h.id} className="dm-th max-w-64 border-b px-3 py-2 text-left font-medium">{flexRender(h.column.columnDef.header, h.getContext())}</th>)}</tr>
             ))}
           </thead>
           <tbody>

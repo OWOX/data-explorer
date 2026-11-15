@@ -1,7 +1,8 @@
 // A band: the titled strip a page section sits in, with its count, hint, controls and fold.
 import { ChevronDown, Info } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { num } from '../format';
+import { BandToolsSlot } from './BandTools';
 
 export function Band({
   id,
@@ -29,6 +30,7 @@ export function Band({
   grid?: boolean;
   children: ReactNode;
 }) {
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
   return (
     <section id={id} data-band="" className={`dm-band${folded ? ' folded' : ''}`}>
       <header
@@ -36,6 +38,8 @@ export function Band({
         onClick={(e) => {
           // Everything in here that does its own thing keeps doing it; the space between is the
           // fold. The chevron is a button, so it is skipped here and fires its own handler once.
+          // A portal's events bubble here through React's tree; what is not in this header is not its fold.
+          if (!e.currentTarget.contains(e.target as Node)) return;
           if ((e.target as HTMLElement).closest('button, a, input, label, summary, details, .dm-hint')) return;
           onFold();
         }}
@@ -48,10 +52,10 @@ export function Band({
           <span className="dm-hint-body">{hint}</span>
         </span>
         {/* Filtering what you cannot see answers nothing, so the controls fold with the content. */}
-        {toolbar && !folded && <div className="dm-band-tools">{toolbar}</div>}
+        {!folded && <div className="dm-band-tools">{toolbar}<span ref={setSlot} className="contents" /></div>}
         <button
           type="button"
-          className={`dm-band-fold${toolbar && !folded ? '' : ' dm-band-fold-alone'}`}
+          className={`dm-band-fold${folded ? ' dm-band-fold-alone' : ''}`}
           onClick={onFold}
           aria-expanded={!folded}
           aria-label={folded ? `Show ${title}` : `Hide ${title}`}
@@ -60,7 +64,7 @@ export function Band({
           <ChevronDown size={16} className={folded ? undefined : 'dm-band-fold-open'} />
         </button>
       </header>
-      {folded ? null : grid ? <div className="dm-band-grid">{children}</div> : children}
+      {folded ? null : grid ? <div className="dm-band-grid">{children}</div> : <BandToolsSlot.Provider value={slot}><div className="dm-bigcard">{children}</div></BandToolsSlot.Provider>}
     </section>
   );
 }
