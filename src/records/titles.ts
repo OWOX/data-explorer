@@ -26,7 +26,7 @@ function batches<T extends string | number>(values: T[]): T[][] {
 export async function lookupTitles(ctx: Ctx, rel: RelColumn, values: unknown[], relatedSchema: Schema, signal?: AbortSignal): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const titleField = pickTitleField(relatedSchema);
-  if (rel.direction === 'incoming' || rel.composite || !titleField || titleField === rel.relatedField) return out;
+  if (rel.composite || !titleField || titleField === rel.relatedField) return out;
   const target = relatedSchema.find((f) => f.name === rel.relatedField);
   const isNum = target?.category === 'number';
   const distinct = [...new Set(values.filter((v) => v !== null && v !== undefined && String(v).trim() !== '').map((v) => (isNum ? Number(v) : String(v))))];

@@ -1,8 +1,9 @@
 import { RefreshCw } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { readRows } from '../../api/rows';
 import type { Model, Schema } from '../../model/types';
-import { clickTarget, relationshipColumns } from '../../records/relationships';
+import { clickTarget, joinFilters } from '../../records/relationships';
+import { useMartRelationships } from '../../records/useMartRelationships';
 import { lookupTitles } from '../../records/titles';
 import type { Row } from '../../sdk/types';
 import { useServices, useStore, type Tab } from '../../state/store';
@@ -19,7 +20,7 @@ export function RecordTab({ tab, model }: { tab: Extract<Tab, { kind: 'record' }
   const [state, setState] = useState<{ ver: number; schema: Schema | null; row: Row | null | undefined; error: unknown }>({ ver: -1, schema: null, row: undefined, error: null });
   const [titles, setTitles] = useState(new Map<string, string>());
   const [relSchemas, setRelSchemas] = useState(new Map<string, Schema>());
-  const rels = useMemo(() => relationshipColumns(tab.martId, model.edges), [tab.martId, model.edges]);
+  const { rels, incoming } = useMartRelationships(tab.martId, model.edges);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -43,9 +44,15 @@ export function RecordTab({ tab, model }: { tab: Extract<Tab, { kind: 'record' }
           if (title && !ac.signal.aborted) setTitles((m) => new Map(m).set(rel.field, title));
         } catch { /* ignore */ }
       }
+      for (const link of incoming) {
+        try {
+          const rs = await schemas.get(link.sourceMartId);
+          setRelSchemas((m) => new Map(m).set(link.sourceMartId, rs));
+        } catch { /* the entry stays disabled */ }
+      }
     })().catch((error) => { if (!ac.signal.aborted) setState((s) => ({ ...s, ver: version, error })); });
     return () => ac.abort();
-  }, [ctx, schemas, tab.martId, tab.pk, rels, version]);
+  }, [ctx, schemas, tab.martId, tab.pk, rels, incoming, version]);
 
   const header = (
     <div className="flex items-center gap-2 border-b px-3 py-2">
@@ -67,10 +74,11 @@ export function RecordTab({ tab, model }: { tab: Extract<Tab, { kind: 'record' }
     <div className="flex h-full min-h-0 flex-col">
       {header}
       {!loaded && <div role="progressbar" className="h-0.5 animate-pulse bg-primary" />}
-      <dl className="grid min-h-0 flex-1 grid-cols-[minmax(10rem,16rem)_1fr] content-start gap-x-4 gap-y-2 overflow-auto p-4 text-sm">
+      <div className="min-h-0 flex-1 overflow-auto">
+      <dl className="grid grid-cols-[minmax(10rem,16rem)_1fr] content-start gap-x-4 gap-y-2 p-4 text-sm">
         {state.schema.map((f) => {
           const rel = rels.get(f.name);
-          const target = rel ? clickTarget(rel, row, relSchemas.get(rel.relatedMartId) ?? []) : null;
+          const target = rel ? clickTarget(rel, row, relSchemas.get(rel.relatedMartId)) : null;
           return (
             <div key={f.name} className="contents">
               <dt className="text-muted-foreground">{f.alias ?? f.name}{f.alias && <span className="ml-1 font-mono text-[11px]">{f.name}</span>}</dt>
@@ -82,6 +90,30 @@ export function RecordTab({ tab, model }: { tab: Extract<Tab, { kind: 'record' }
           );
         })}
       </dl>
+      {incoming.length > 0 && (
+        <section aria-label="Referenced by" className="border-t p-4 text-sm">
+          <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">Referenced by</h3>
+          <ul className="flex flex-col gap-1">
+            {incoming.map((link) => {
+              const source = model.marts.get(link.sourceMartId);
+              const sourceSchema = relSchemas.get(link.sourceMartId);
+              // This record's join values filter the referencing mart: sourceField = record[targetField].
+              const filters = sourceSchema ? joinFilters(link.joins.map((j) => ({ sourceField: j.targetField, targetField: j.sourceField })), row, sourceSchema) : null;
+              return (
+                <li key={link.edgeId}>
+                  <button type="button" disabled={!filters} onClick={() => filters && dispatch({ type: 'openMart', martId: link.sourceMartId, filters })}
+                    className="inline-flex items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-accent disabled:opacity-60 disabled:hover:bg-transparent">
+                    <MartIcon icon={source?.icon ?? null} />
+                    <span className="font-medium">{source?.title ?? link.sourceMartId}</span>
+                    <span className="text-xs text-muted-foreground">via {link.joins.map((j) => j.sourceField).join(', ')}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+      </div>
     </div>
   );
 }

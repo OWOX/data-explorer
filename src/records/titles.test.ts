@@ -37,13 +37,6 @@ test('splits by serialized size so the in-list stays under the query parameter c
   }
 });
 
-test('incoming relationship columns have no title', async () => {
-  const traverseData = vi.fn();
-  const incoming = relationshipColumns('customers', [{ id: 'e', source: 'orders', target: 'customers', joins: [{ sourceField: 'customer_id', targetField: 'id' }] }]).get('id')!;
-  expect((await lookupTitles(stubCtx({ dataMarts: { list: vi.fn(), traverseData } }), incoming, [1], schema)).size).toBe(0);
-  expect(traverseData).not.toHaveBeenCalled();
-});
-
 test('no title field, composite, or no values → no query', async () => {
   const traverseData = vi.fn();
   const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });

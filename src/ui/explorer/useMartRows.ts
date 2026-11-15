@@ -13,7 +13,9 @@ export function defaultColumns(schema: Schema): string[] {
 export function buildRowQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, rels: Map<string, RelColumn>): TraverseOptions {
   const need = new Set(visible);
   schema.filter((f) => f.isPrimaryKey).forEach((f) => need.add(f.name));
-  for (const rel of rels.values()) rel.joins.forEach((j) => need.add(j.sourceField));
+  // BigQuery bills per column scanned: join source fields are fetched only for relationship columns on screen
+  // (and the composite partners their click needs), not for every relationship of the mart.
+  for (const name of visible) rels.get(name)?.joins.forEach((j) => need.add(j.sourceField));
   const column = schema.map((f) => f.name).filter((n) => need.has(n));
   const filter = filters.flatMap((flt) => {
     const field = schema.find((x) => x.name === flt.field);
@@ -24,11 +26,21 @@ export function buildRowQuery(schema: Schema, visible: string[], filters: Column
 }
 
 type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null };
+type Query = { dataKey: string; columns: string[]; key: string };
 
 export function useMartRows(martId: string, options: TraverseOptions | null, version: number) {
   const { ctx } = useServices();
   const [state, setState] = useState<RowsState>({ rows: null, error: null, hasMore: false, doneFor: null });
-  const key = `${version}:${JSON.stringify(options)}`;
+  // Each traverseData call is a billed warehouse run. Everything but the column list (filters, sort, limit,
+  // version) is the data key: when it changes the rows are re-read. When columns only shrink, the loaded rows
+  // already hold them, so the query identity stays and nothing is fetched; a column that was never loaded re-reads.
+  const columns = options?.column;
+  const dataKey = `${martId}:${version}:${JSON.stringify({ ...options, column: undefined })}`;
+  const [query, setQuery] = useState<Query>({ dataKey, columns: columns ?? [], key: `${dataKey}:${(columns ?? []).join(',')}` });
+  if (query.dataKey !== dataKey || !(columns ?? []).every((c) => query.columns.includes(c))) {
+    setQuery({ dataKey, columns: columns ?? [], key: `${dataKey}:${(columns ?? []).join(',')}` });
+  }
+  const key = query.key;
   useEffect(() => {
     if (!options) return;
     const ac = new AbortController();

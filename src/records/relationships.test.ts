@@ -1,4 +1,4 @@
-import { clickTarget, recordTabId, relationshipColumns } from './relationships';
+import { clickTarget, incomingLinks, joinFilters, recordTabId, relationshipColumns } from './relationships';
 import type { Edge, Field } from '../model/types';
 
 const edges: Edge[] = [
@@ -8,28 +8,21 @@ const edges: Edge[] = [
 ];
 const pk = (name: string): Field => ({ name, alias: null, type: 'INT64', category: 'number', description: null, isPrimaryKey: true });
 
-test('outgoing edges make relationship columns on their source fields', () => {
+test('only outgoing edges make relationship columns, on their source fields', () => {
   const cols = relationshipColumns('orders', edges);
-  expect(cols.get('customer_id')).toMatchObject({ relatedMartId: 'customers', relatedField: 'id', composite: false, direction: 'outgoing' });
-  expect(cols.get('currency')).toMatchObject({ composite: true, direction: 'outgoing' });
-  expect([...cols.values()].filter((c) => c.direction === 'outgoing').map((c) => c.field).sort()).toEqual(['currency', 'customer_id', 'day']);
+  expect(cols.get('customer_id')).toMatchObject({ relatedMartId: 'customers', relatedField: 'id', composite: false });
+  expect(cols.get('currency')).toMatchObject({ composite: true });
+  expect([...cols.keys()].sort()).toEqual(['currency', 'customer_id', 'day']);
+  expect(cols.has('id')).toBe(false); // e2 points at orders: it is not a grid link
 });
 
-test('incoming edges make columns on the target fields; outgoing wins a clash; first incoming wins', () => {
-  const es: Edge[] = [
-    ...edges,
-    { id: 'e4', source: 'returns', target: 'orders', joins: [{ sourceField: 'order_id', targetField: 'id' }] },
-    { id: 'e5', source: 'x', target: 'orders', joins: [{ sourceField: 'cid', targetField: 'customer_id' }] },
-  ];
-  const cols = relationshipColumns('orders', es);
-  expect(cols.get('id')).toMatchObject({ direction: 'incoming', edgeId: 'e2', relatedMartId: 'items', relatedField: 'order_id', joins: [{ sourceField: 'id', targetField: 'order_id' }] });
-  expect(cols.get('customer_id')).toMatchObject({ direction: 'outgoing', relatedMartId: 'customers' });
-});
-
-test('an incoming cell always opens the related mart filtered on the join fields', () => {
-  const rel = relationshipColumns('orders', edges).get('id')!;
-  expect(clickTarget(rel, { id: 5 }, [pk('order_id')])).toEqual({ kind: 'mart', martId: 'items', filters: [{ field: 'order_id', op: 'eq', value: 5 }] });
-  expect(clickTarget(rel, { id: null }, [])).toBeNull();
+test('incomingLinks lists every edge that points at the mart', () => {
+  const es: Edge[] = [...edges, { id: 'e4', source: 'returns', target: 'orders', joins: [{ sourceField: 'order_id', targetField: 'id' }] }, { id: 'e5', source: 'orders', target: 'orders', joins: [] }];
+  expect(incomingLinks('orders', es)).toEqual([
+    { edgeId: 'e2', sourceMartId: 'items', joins: [{ sourceField: 'order_id', targetField: 'id' }] },
+    { edgeId: 'e4', sourceMartId: 'returns', joins: [{ sourceField: 'order_id', targetField: 'id' }] },
+  ]);
+  expect(incomingLinks('items', edges)).toEqual([]);
 });
 
 test('click opens a record when the related field is the only primary key', () => {
@@ -66,4 +59,32 @@ test('a null or blank value is not clickable', () => {
 
 test('recordTabId is stable across key order', () => {
   expect(recordTabId('m', { b: 2, a: 1 })).toBe(recordTabId('m', { a: 1, b: 2 }));
+});
+
+const f = (name: string, type: string, category: Field['category']): Field => ({ name, alias: null, type, category, description: null, isPrimaryKey: false });
+
+test('a TIMESTAMP join field has no eq, so it filters with between from = to', () => {
+  const rel = relationshipColumns('orders', [{ id: 'e', source: 'orders', target: 'logs', joins: [{ sourceField: 'at', targetField: 'ts' }] }]).get('at')!;
+  expect(clickTarget(rel, { at: '2026-11-01T10:00:00Z' }, [f('ts', 'TIMESTAMP', 'date')])).toEqual({
+    kind: 'mart', martId: 'logs', filters: [{ field: 'ts', op: 'between', value: { from: '2026-11-01T10:00:00Z', to: '2026-11-01T10:00:00Z' } }],
+  });
+});
+
+test('a boolean join field filters with is_true or is_false', () => {
+  const rel = relationshipColumns('orders', [{ id: 'e', source: 'orders', target: 'flags', joins: [{ sourceField: 'paid', targetField: 'on' }] }]).get('paid')!;
+  const schema = [f('on', 'BOOL', 'boolean')];
+  expect(clickTarget(rel, { paid: true }, schema)).toMatchObject({ filters: [{ field: 'on', op: 'is_true' }] });
+  expect(clickTarget(rel, { paid: false }, schema)).toMatchObject({ filters: [{ field: 'on', op: 'is_false' }] });
+  expect(clickTarget(rel, { paid: 'false' }, schema)).toMatchObject({ filters: [{ field: 'on', op: 'is_false' }] });
+});
+
+test('nothing is clickable until the related schema has loaded', () => {
+  const rel = relationshipColumns('orders', edges).get('customer_id')!;
+  expect(clickTarget(rel, { customer_id: 7 }, undefined)).toBeNull();
+});
+
+test('joinFilters maps a record onto the referencing mart, or is null on a blank value', () => {
+  const joins = [{ sourceField: 'order_id', targetField: 'id' }];
+  expect(joinFilters(joins.map((j) => ({ sourceField: j.targetField, targetField: j.sourceField })), { id: 5 }, [f('order_id', 'INT64', 'number')])).toEqual([{ field: 'order_id', op: 'eq', value: 5 }]);
+  expect(joinFilters([{ sourceField: 'id', targetField: 'order_id' }], { id: null }, [])).toBeNull();
 });

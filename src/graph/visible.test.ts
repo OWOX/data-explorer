@@ -3,7 +3,7 @@ import type { Edge, Mart, Model } from '../model/types';
 
 const e = (source: string, target: string): Edge => ({ id: `${source}-${target}`, source, target, joins: [] });
 const mart = (id: string, extra: Partial<Mart> = {}): Mart => ({ id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, ...extra });
-const modelOf = (ids: string[], edges: Edge[]): Model => ({ marts: new Map(ids.map((i) => [i, mart(i)])), edges, contexts: [] });
+const modelOf = (ids: string[], edges: Edge[]): Model => ({ marts: new Map(ids.map((i) => [i, mart(i)])), edges, contexts: [], failedStorages: [] });
 
 test('inboundCounts counts targets', () => {
   expect(inboundCounts([e('a', 'b'), e('c', 'b'), e('b', 'd')])).toEqual(new Map([['b', 2], ['d', 1]]));

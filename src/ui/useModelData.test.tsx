@@ -10,7 +10,7 @@ const mart = (id: string): Mart => ({ id, title: id, description: null, icon: nu
 
 test('counts at most 12 cards, 4 at a time; the rest show no badge', async () => {
   const ids = Array.from({ length: 20 }, (_, i) => `m${i}`);
-  const model: Model = { marts: new Map(ids.map((id) => [id, mart(id)])), edges: [], contexts: [] };
+  const model: Model = { marts: new Map(ids.map((id) => [id, mart(id)])), edges: [], contexts: [], failedStorages: [] };
   let running = 0;
   let peak = 0;
   const traverseData = vi.fn(async () => {
