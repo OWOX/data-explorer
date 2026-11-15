@@ -584,8 +584,6 @@ describe('column headers and band toolbars', () => {
     await userEvent.click(within(bar).getByRole('button', { name: /Columns \(5\/8\)/ }));
     await userEvent.click(screen.getByLabelText(/Amount/));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(6));
-    // The picker's own padding is not the band's fold.
-    expect(within(grid).getAllByRole('columnheader')).toHaveLength(6);
   });
 
   test('the content is one card inside the band, and folding the band takes the controls with it', async () => {
@@ -593,6 +591,16 @@ describe('column headers and band toolbars', () => {
     expect(grid.querySelector('.dm-bigcard')).toContainElement(within(grid).getByRole('table'));
     await userEvent.click(within(head(grid)).getByRole('button', { name: 'Hide Orders' }));
     expect(within(grid).queryByRole('button', { name: 'Reset' })).toBeNull();
+  });
+
+  test('unfolding the band brings back exactly one set of controls', async () => {
+    const grid = await ordersGrid();
+    await userEvent.click(within(head(grid)).getByRole('button', { name: 'Hide Orders' }));
+    await userEvent.click(within(head(grid)).getByRole('button', { name: 'Show Orders' }));
+    await within(grid).findByRole('table');
+    expect(within(grid).getAllByRole('button', { name: 'Reset' })).toHaveLength(1);
+    expect(within(grid).getAllByRole('button', { name: 'Refresh' })).toHaveLength(1);
+    expect(within(grid).getAllByRole('button', { name: /Columns/ })).toHaveLength(1);
   });
 
   test('the Row band has Back and Refresh in its header', async () => {

@@ -38,8 +38,6 @@ export function Band({
         onClick={(e) => {
           // Everything in here that does its own thing keeps doing it; the space between is the
           // fold. The chevron is a button, so it is skipped here and fires its own handler once.
-          // A portal's events bubble here through React's tree; what is not in this header is not its fold.
-          if (!e.currentTarget.contains(e.target as Node)) return;
           if ((e.target as HTMLElement).closest('button, a, input, label, summary, details, .dm-hint')) return;
           onFold();
         }}
@@ -52,7 +50,7 @@ export function Band({
           <span className="dm-hint-body">{hint}</span>
         </span>
         {/* Filtering what you cannot see answers nothing, so the controls fold with the content. */}
-        {!folded && <div className="dm-band-tools">{toolbar}<span ref={setSlot} className="contents" /></div>}
+        {!folded && <div className="dm-band-tools">{toolbar}{!grid && <span ref={setSlot} className="contents" />}</div>}
         <button
           type="button"
           className={`dm-band-fold${folded ? ' dm-band-fold-alone' : ''}`}

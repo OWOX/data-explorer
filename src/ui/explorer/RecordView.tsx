@@ -113,7 +113,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
                     className="inline-flex items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-accent disabled:opacity-60 disabled:hover:bg-transparent">
                     <PickedIcon icon={source?.icon} fallback={Box} />
                     <span className="font-medium">{source?.title ?? link.sourceMartId}</span>
-                    <span className="text-xs text-muted-foreground">via {link.joins.map((j) => j.sourceField).join(', ')}</span>
+                    <span className="text-xs text-muted-foreground">via {link.joins.map((j) => { const f = sourceSchema?.find((x) => x.name === j.sourceField); return f ? fieldLabel(f) : j.sourceField; }).join(', ')}</span>
                   </button>
                 </li>
               );

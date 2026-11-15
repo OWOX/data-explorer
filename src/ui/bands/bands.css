@@ -280,8 +280,6 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
   border: 1px solid var(--border); border-radius: 0.625rem;
   background: var(--card); overflow: clip;
 }
-:root.dark .dm-bigcard { box-shadow: 0 1px 2px rgb(0 0 0 / 0.3); }
-:root:not(.dark) .dm-bigcard { box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); }
 
 /* Column header actions: hidden until the header is hovered or holds focus, but they keep their
    room, so the title does not jump. A column with a filter keeps its icon on. */

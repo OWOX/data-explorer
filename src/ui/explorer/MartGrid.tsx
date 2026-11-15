@@ -1,6 +1,5 @@
 import { columnVisibilityFeature, flexRender, tableFeatures, useTable, type ColumnDef } from '@tanstack/react-table';
-import { RefreshCw, RotateCcw } from 'lucide-react';
-import { Info } from 'lucide-react';
+import { Info, RefreshCw, RotateCcw } from 'lucide-react';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PAGE_SIZE } from '../../config';
 import { fieldLabel, fieldTitle } from '../../model/fieldLabel';
