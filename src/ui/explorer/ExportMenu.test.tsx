@@ -145,3 +145,16 @@ test('a failure after the report exists closes the dialog and reports in the hea
   expect(await within(data()).findByText(/The run could not be followed: run refused/)).toBeInTheDocument();
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
 });
+
+test('a remembered report with an unrecognised target is not updated and nothing is opened', async () => {
+  const t = setup(1, [{ ...REPORT, spreadsheetId: '../../url?q=https://evil.example' }]);
+  await t.seeded;
+  t.view();
+  await rowsLoaded();
+  await t.ctx.owox.postJson('/api/reports', { title: 'x', dataMartId: 'orders' });
+  await userEvent.click(await within(data()).findByText('Export'));
+  await userEvent.click(await within(data()).findByRole('menuitem', { name: /Update/ }));
+  expect(await within(data()).findByText(/unrecognised spreadsheet/)).toBeInTheDocument();
+  expect(t.open).not.toHaveBeenCalled();
+  expect(t.calls.some((c) => c.startsWith('PUT'))).toBe(false);
+});

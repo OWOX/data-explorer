@@ -60,7 +60,13 @@ export function parseSheetUrl(raw: string): SheetTarget | null {
 /** A published-to-web link (`/d/e/…`) is not the spreadsheet's id and cannot be written to. */
 export const isPublishedSheetUrl = (raw: string) => /\/spreadsheets\/d\/e\//.test(raw);
 
-export const sheetUrl = (t: SheetTarget) => `https://docs.google.com/spreadsheets/d/${t.spreadsheetId}/edit#gid=${t.sheetId}`;
+const SPREADSHEET_ID = /^[A-Za-z0-9_-]+$/;
+export const isSheetTarget = (t: { spreadsheetId: unknown; sheetId: unknown }): t is SheetTarget =>
+  typeof t.spreadsheetId === 'string' && SPREADSHEET_ID.test(t.spreadsheetId) && typeof t.sheetId === 'number' && Number.isSafeInteger(t.sheetId) && t.sheetId >= 0;
+
+/** The tab's address, or null when the id is not a plain spreadsheet id: an id read from OWOX must not steer the link elsewhere. */
+export const sheetUrl = (t: { spreadsheetId: string; sheetId: number }): string | null =>
+  isSheetTarget(t) ? `https://docs.google.com/spreadsheets/d/${encodeURIComponent(t.spreadsheetId)}/edit#gid=${t.sheetId}` : null;
 
 export const isSheetsDestination = (d: DestinationDto) => d.type === 'GOOGLE_SHEETS' && d.availableForUse !== false;
 
@@ -153,11 +159,12 @@ export function createExporter(ctx: Ctx): Exporter {
         try {
           const d = await ctx.owox.getJson<LiveReportDto>(`/api/reports/${encodeURIComponent(r.reportId)}`);
           const cfg = d.destinationConfig;
+          const live = { spreadsheetId: cfg?.spreadsheetId ?? r.spreadsheetId, sheetId: cfg?.sheetId ?? r.sheetId };
           return {
             reportId: r.reportId,
             destinationId: d.dataDestinationAccess?.id ?? r.destinationId,
-            spreadsheetId: typeof cfg?.spreadsheetId === 'string' ? cfg.spreadsheetId : r.spreadsheetId,
-            sheetId: typeof cfg?.sheetId === 'number' ? cfg.sheetId : r.sheetId,
+            // A target that is not a plain id is kept as "unrecognised" (empty id), never stored as given.
+            ...(isSheetTarget(live) ? live : { spreadsheetId: '', sheetId: 0 }),
             title: typeof d.title === 'string' && d.title ? d.title : r.title,
           };
         } catch (e) { return isNotFound(e) ? null : r; }
@@ -187,6 +194,7 @@ export function createExporter(ctx: Ctx): Exporter {
           onStage?.('sheet');
           try {
             const d = await ctx.owox.postJson<DocumentDto>(`/api/data-destinations/${encodeURIComponent(destination.id)}/google-sheets/documents`, { title });
+            if (!isSheetTarget(d)) throw new Error('OWOX returned an unrecognised spreadsheet');
             target = { spreadsheetId: d.spreadsheetId, sheetId: d.sheetId };
           } catch (e) { throw new ExportError('sheet', messageOf(e)); }
         }

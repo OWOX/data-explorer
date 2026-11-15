@@ -63,6 +63,10 @@ test('isPublishedSheetUrl spots /d/e/ links', () => { expect(isPublishedSheetUrl
 
 test('sheetUrl opens the tab', () => { expect(sheetUrl({ spreadsheetId: 'x', sheetId: 3 })).toBe('https://docs.google.com/spreadsheets/d/x/edit#gid=3'); });
 
+test.each([
+  ['../../url?q=https://evil.example', 0], ['a?b', 0], ['a#b', 0], ['a/b', 0], ['', 0], ['ok', -1], ['ok', NaN], ['ok', 1.5], ['ok', Infinity],
+])('sheetUrl refuses %j / %s', (spreadsheetId, sheetId) => { expect(sheetUrl({ spreadsheetId, sheetId })).toBeNull(); });
+
 const dest = { id: 'd1', title: 'Team Sheets', type: 'GOOGLE_SHEETS' };
 const payload: ReportPayload = { columnConfig: ['id'], filterConfig: null, sortConfig: null, autoAggregationOptOut: ['id'] };
 
@@ -192,6 +196,15 @@ describe('exporter', () => {
     const ex = createExporter(ctx);
     expect(await ex.reports('orders', true)).toEqual([keep, flaky]);
     expect((await ctx.collections<{ reports: ExportedReport[] }>('exports').get('orders'))?.document.reports).toEqual([keep, flaky]);
+  });
+
+  test('verifying marks a live target that is not a plain id as unrecognised instead of storing it', async () => {
+    const stale: ExportedReport = { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'old', sheetId: 0, title: 'Old' };
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [stale]);
+    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'r1', destinationConfig: { spreadsheetId: '../../url?q=https://evil.example', sheetId: 0 } });
+    const [r] = await createExporter(ctx).reports('orders', true);
+    expect(r).toMatchObject({ reportId: 'r1', spreadsheetId: '', sheetId: 0 });
+    expect(sheetUrl(r!)).toBeNull();
   });
 
   test('a report that is already running is not run again', async () => {

@@ -15,6 +15,7 @@ type Props = { martId: string; martTitle: string; schema: Schema; visible: strin
 type Result = { kind: 'ok' | 'timeout' | 'error'; text: string; url?: string };
 
 const STAGE_LABEL: Record<Stage, string> = { sheet: 'Creating the spreadsheet…', report: 'Saving the report…', run: 'Running the report…' };
+const UNRECOGNISED = 'This report targets an unrecognised spreadsheet.';
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** "Export" in the Data band header: a button when one click is enough, else a menu. Hidden without a Google Sheets destination. */
@@ -59,6 +60,7 @@ export function ExportMenu(p: Props) {
   async function start(destination: DestinationDto, source: ExportSource, title: string, fromDialog = false) {
     const { payload, notes } = buildReportPayload(p.schema, p.visible, p.filters, p.sorts);
     setResult(null);
+    if (source.kind === 'update' && !sheetUrl(source.report)) { setResult({ kind: 'error', text: UNRECOGNISED }); return; }
     setDialog((cur) => (cur ? { ...cur, error: undefined } : cur));
     setBusy(STAGE_LABEL[source.kind === 'new' ? 'sheet' : 'report']);
     try {
@@ -67,12 +69,12 @@ export function ExportMenu(p: Props) {
         onStage: (s) => setBusy(STAGE_LABEL[s]),
       });
       setReports({ martId: p.martId, list: await exporter.reports(p.martId) });
-      const url = sheetUrl(report);
+      const url = sheetUrl(report) ?? undefined;
       const note = notes.length ? ` ${notes.join(' ')}` : '';
       setDialog(null);
       if (outcome.state === 'success') {
-        setResult({ kind: 'ok', text: `Exported to "${report.title}".${note}`, url });
-        await ctx.ui.openExternal(url).catch(() => undefined);
+        setResult({ kind: 'ok', text: url ? `Exported to "${report.title}".${note}` : `Exported to "${report.title}", but ${UNRECOGNISED.toLowerCase()}${note}`, url });
+        if (url) await ctx.ui.openExternal(url).catch(() => undefined);
       } else if (outcome.state === 'busy') {
         setResult({ kind: 'error', text: source.kind === 'update' ? 'This report is already running. The new settings were saved but not run; try again when it finishes.' : 'This report is already running; try again when it finishes.', url });
       } else if (outcome.state === 'failed') {
