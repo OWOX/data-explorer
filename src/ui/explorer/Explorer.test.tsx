@@ -220,3 +220,24 @@ test('a model refresh with identical edges does not re-read an open record', asy
   await settle();
   expect(recordReads()).toBe(before);
 });
+
+test('titles still land when Load more arrives while the first lookup is pending', async () => {
+  let first = true;
+  mountWith((ctx) => {
+    const real = ctx.owox.dataMarts.traverseData.bind(ctx.owox.dataMarts);
+    return { ...ctx, owox: { ...ctx.owox, dataMarts: { ...ctx.owox.dataMarts, traverseData: async (id, o) => {
+      if (id === 'customers' && o.filter?.[0]?.operator === 'in' && first) { first = false; await new Promise((r) => setTimeout(r, 400)); }
+      return real(id, o);
+    } } } };
+  });
+  fireEvent.click(await screen.findByText('Orders'));
+  const panel = await screen.findByRole('tabpanel');
+  await waitFor(() => expect(within(panel).getAllByRole('row')).toHaveLength(201));
+  await userEvent.click(within(panel).getByRole('button', { name: 'Load more' })); // the first lookup is still pending
+  await waitFor(() => expect(within(panel).getAllByRole('row')).toHaveLength(401));
+  const customerCol = within(panel).getAllByRole('columnheader').findIndex((h) => h.textContent?.includes('customer_id'));
+  await waitFor(() => {
+    const cells = within(panel).getAllByRole('row').slice(1).map((r) => r.querySelectorAll('td')[customerCol]!.textContent ?? '');
+    expect(cells.filter((c) => /^\d+$/.test(c.trim()))).toEqual([]); // no raw ids left, old rows and new rows alike
+  }, { timeout: 4000 });
+});

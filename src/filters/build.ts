@@ -32,12 +32,21 @@ export function isComplete(f: ColumnFilter, field: Field): boolean {
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-const NO_SECONDS = /^(\d{4}-\d{2}-\d{2}T)?\d{2}:\d{2}$/;
+const LOCAL_DATETIME = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}(?::\d{2})?)$/;
+const NO_SECONDS = /^\d{2}:\d{2}$/;
 
-/** datetime-local and time inputs give HH:MM, the backend wants HH:MM:SS. */
-const withSeconds = (v: string) => (NO_SECONDS.test(v) ? `${v}:00` : v);
+/**
+ * datetime-local and time inputs give `YYYY-MM-DDTHH:MM` / `HH:MM`; the backend wants seconds, and a space
+ * between date and time, which every warehouse casts (Athena's CAST AS TIMESTAMP rejects the `T`).
+ * Full values with a fraction or a zone (from a row) pass through untouched.
+ */
+const withSeconds = (v: string) => {
+  const m = LOCAL_DATETIME.exec(v);
+  if (m) return `${m[1]} ${m[2]!.length === 5 ? `${m[2]}:00` : m[2]}`;
+  return NO_SECONDS.test(v) ? `${v}:00` : v;
+};
 /** A date-only bound on a timestamp widens to the start or the end of that day, so "to" is inclusive. */
-const bound = (v: string, end: boolean) => (DATE_ONLY.test(v) ? `${v}T${end ? '23:59:59' : '00:00:00'}` : withSeconds(v));
+const bound = (v: string, end: boolean) => (DATE_ONLY.test(v) ? `${v} ${end ? '23:59:59' : '00:00:00'}` : withSeconds(v));
 
 export function toTraverseFilter(f: ColumnFilter, field: Field): TraverseFilter {
   const column = field.name;

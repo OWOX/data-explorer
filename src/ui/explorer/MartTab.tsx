@@ -71,6 +71,14 @@ function MartGrid({ tab, model, schema }: { tab: Extract<Tab, { kind: 'mart' }>;
   // Titles per related mart and value, for the tab's lifetime. Every lookup is a billed run, so a value is looked up once.
   const [titles, setTitles] = useState(new Map<string, string>());
   const asked = useRef(new Set<string>());
+  // A lookup is billed once it starts, so it is never aborted because the rows moved on: its results are
+  // still wanted. Only unmount and Refresh abort (and the stale results are then dropped).
+  const lookups = useRef(new AbortController());
+  useEffect(() => {
+    lookups.current = new AbortController();
+    const ctrl = lookups.current;
+    return () => ctrl.abort();
+  }, []);
   const [relSchemas, setRelSchemas] = useState(new Map<string, Schema>());
 
   // Re-seed the filters when the tab is reopened with new initialFilters (adjust state during render).
@@ -90,27 +98,27 @@ function MartGrid({ tab, model, schema }: { tab: Extract<Tab, { kind: 'mart' }>;
 
   useEffect(() => {
     if (!rows || !visibleRelKey) return;
-    const ac = new AbortController();
+    const { signal } = lookups.current;
     for (const name of visibleRelKey.split('|')) {
       const rel = rels.get(name);
       if (!rel) continue;
       schemas.get(rel.relatedMartId).then(async (rs) => {
         setRelSchemas((m) => (m.get(rel.relatedMartId) === rs ? m : new Map(m).set(rel.relatedMartId, rs)));
         const fresh = [...new Set(rows.map((r) => r[rel.field]).filter((v) => !asked.current.has(titleKey(rel, v))))];
-        if (fresh.length === 0) return;
+        if (fresh.length === 0 || signal.aborted) return;
         const keys = fresh.map((v) => titleKey(rel, v));
         keys.forEach((k) => asked.current.add(k));
         try {
-          const found = await lookupTitles(ctx, rel, fresh, rs, ac.signal);
+          const found = await lookupTitles(ctx, rel, fresh, rs, signal);
+          if (signal.aborted) return;
           setTitles((m) => { const n = new Map(m); for (const [v, t] of found) n.set(titleKey(rel, v), t); return n; });
         } catch (e) {
-          // an aborted or failed lookup is retried by the next effect run
-          keys.forEach((k) => asked.current.delete(k));
+          // a failed lookup is retried by the next effect run; after Refresh or unmount `asked` is not ours to touch
+          if (!signal.aborted) keys.forEach((k) => asked.current.delete(k));
           throw e;
         }
       }).catch(() => undefined);
     }
-    return () => ac.abort();
   }, [rows, visibleRelKey, rels, ctx, schemas]);
 
   const columns = useMemo<GridColumn[]>(() => visible.map((name) => {
@@ -144,7 +152,7 @@ function MartGrid({ tab, model, schema }: { tab: Extract<Tab, { kind: 'mart' }>;
         {rows && <span className="text-xs text-muted-foreground">{rows.length}{hasMore ? '+' : ''} rows</span>}
         <div className="flex-1" />
         <button type="button" disabled={!hasFilters} onClick={() => { setFilters({}); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
-        <button type="button" onClick={() => { setTitles(new Map()); asked.current.clear(); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
+        <button type="button" onClick={() => { lookups.current.abort(); lookups.current = new AbortController(); setTitles(new Map()); asked.current.clear(); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         <ColumnPicker schema={schema} visible={visible} onChange={setVisible} />
       </div>
       {pks.length === 0 && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}

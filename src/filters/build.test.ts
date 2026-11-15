@@ -38,15 +38,15 @@ const time: Field = { ...num, name: 'at', type: 'TIME', category: 'time' };
 const dt: Field = { ...num, name: 'seen', type: 'DATETIME', category: 'date' };
 
 test('datetime-local values are sent with seconds', () => {
-  expect(toTraverseFilter({ field: 'created_at', op: 'after', value: '2026-11-01T10:30' }, ts)).toEqual({ column: 'created_at', operator: 'gt', value: '2026-11-01T10:30:00' });
-  expect(toTraverseFilter({ field: 'seen', op: 'before', value: '2026-11-01T10:30:15' }, dt)).toEqual({ column: 'seen', operator: 'lt', value: '2026-11-01T10:30:15' });
+  expect(toTraverseFilter({ field: 'created_at', op: 'after', value: '2026-11-01T10:30' }, ts)).toEqual({ column: 'created_at', operator: 'gt', value: '2026-11-01 10:30:00' });
+  expect(toTraverseFilter({ field: 'seen', op: 'before', value: '2026-11-01T10:30:15' }, dt)).toEqual({ column: 'seen', operator: 'lt', value: '2026-11-01 10:30:15' });
   expect(toTraverseFilter({ field: 'created_at', op: 'between', value: { from: '2026-11-01T08:00', to: '2026-11-01T09:15' } }, ts))
-    .toEqual({ column: 'created_at', operator: 'between', value: { from: '2026-11-01T08:00:00', to: '2026-11-01T09:15:00' } });
+    .toEqual({ column: 'created_at', operator: 'between', value: { from: '2026-11-01 08:00:00', to: '2026-11-01 09:15:00' } });
 });
 
 test('between on a timestamp with date-only values includes the whole end day', () => {
   expect(toTraverseFilter({ field: 'created_at', op: 'between', value: { from: '2026-11-01', to: '2026-11-03' } }, ts))
-    .toEqual({ column: 'created_at', operator: 'between', value: { from: '2026-11-01T00:00:00', to: '2026-11-03T23:59:59' } });
+    .toEqual({ column: 'created_at', operator: 'between', value: { from: '2026-11-01 00:00:00', to: '2026-11-03 23:59:59' } });
   // a DATE field is untouched
   expect(toTraverseFilter({ field: 'day', op: 'between', value: { from: '2026-11-01', to: '2026-11-03' } }, date))
     .toEqual({ column: 'day', operator: 'between', value: { from: '2026-11-01', to: '2026-11-03' } });
@@ -61,4 +61,9 @@ test('TIME values are sent as HH:MM:SS', () => {
 test('relative N is capped at 3650', () => {
   expect(isComplete({ field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 3650 } }, ts)).toBe(true);
   expect(isComplete({ field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 3651 } }, ts)).toBe(false);
+});
+
+test('a full timestamp from a row (fraction or zone) is not rewritten', () => {
+  expect(toTraverseFilter({ field: 'created_at', op: 'between', value: { from: '2026-11-01T10:00:00.123Z', to: '2026-11-01T10:00:00.123Z' } }, ts))
+    .toEqual({ column: 'created_at', operator: 'between', value: { from: '2026-11-01T10:00:00.123Z', to: '2026-11-01T10:00:00.123Z' } });
 });
