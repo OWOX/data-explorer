@@ -67,6 +67,41 @@ export const RELATIVE_PRESETS: { kind: RelativeDatePreset['kind']; label: string
   { kind: 'last_n_months', label: 'Last N months', needsN: true },
 ];
 
+/**
+ * The one-click date presets, in the order the popover lists them. Weeks are ISO weeks (Monday first), as
+ * the API defines them. Each is a `relative_date` rule, so a report exported from it stays relative.
+ */
+export const DATE_PRESETS: { label: string; rule: RelativeDatePreset }[] = [
+  { label: 'Today', rule: { kind: 'today' } },
+  { label: 'Yesterday', rule: { kind: 'yesterday' } },
+  { label: 'Last 7 days', rule: { kind: 'last_n_days', n: 7 } },
+  { label: 'Last 14 days', rule: { kind: 'last_n_days', n: 14 } },
+  { label: 'Last 30 days', rule: { kind: 'last_n_days', n: 30 } },
+  { label: 'Last 90 days', rule: { kind: 'last_n_days', n: 90 } },
+  { label: 'This week', rule: { kind: 'this_week' } },
+  { label: 'Last week', rule: { kind: 'last_week' } },
+  { label: 'This month', rule: { kind: 'this_month' } },
+  { label: 'Last month', rule: { kind: 'last_month' } },
+  { label: 'This quarter', rule: { kind: 'this_quarter' } },
+  { label: 'Last quarter', rule: { kind: 'last_quarter' } },
+  { label: 'This year', rule: { kind: 'this_year' } },
+  { label: 'Last 12 months', rule: { kind: 'last_n_months', n: 12 } },
+];
+
+const sameRule = (a: RelativeDatePreset, b: RelativeDatePreset) => JSON.stringify(a) === JSON.stringify(b);
+
+/** The name of a relative rule: its preset's label, or "Last 45 days" for a number the presets do not cover. */
+export function presetName(rule: RelativeDatePreset): string {
+  const hit = DATE_PRESETS.find((p) => sameRule(p.rule, rule));
+  if (hit) return hit.label;
+  if (rule.kind === 'last_n_days') return `Last ${rule.n} ${rule.n === 1 ? 'day' : 'days'}`;
+  if (rule.kind === 'last_n_months') return `Last ${rule.n} ${rule.n === 1 ? 'month' : 'months'}`;
+  return RELATIVE_PRESETS.find((p) => p.kind === rule.kind)?.label ?? rule.kind;
+}
+
+/** Whether a filter value is exactly this preset (the popover highlights it when reopened). */
+export const isPreset = (value: unknown, rule: RelativeDatePreset): boolean => typeof value === 'object' && value !== null && sameRule(value as RelativeDatePreset, rule);
+
 /** The backend's RELATIVE_DATE_MAX_N. */
 export const RELATIVE_MAX_N = 3650;
 
