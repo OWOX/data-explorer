@@ -47,7 +47,6 @@ import {
   PiggyBank,
   Radio,
   Receipt,
-  RefreshCw,
   Repeat,
   Route,
   ScanEye,
@@ -231,21 +230,28 @@ export function dqVisual(s: DqSummary | undefined): { Icon: LucideIcon; label: s
   }
 }
 
-export function DqIcon({ summary }: { summary: DqSummary | undefined }) {
+const CARD_TONE: Record<Tone, string> = { neutral: 'unknown', progress: 'progress', success: 'ok', warning: 'warn', error: 'bad', notice: 'warn' };
+/** The card's tone name, as in Data Flow: ok, warn, bad, progress or unknown. */
+export function dqCardTone(s: DqSummary | undefined): string {
+  return CARD_TONE[dqVisual(s).tone];
+}
+
+export function DqIcon({ summary, toned = false }: { summary: DqSummary | undefined; toned?: boolean }) {
   const { Icon, label, tone } = dqVisual(summary);
   return (
     <Tooltip content={`Data quality: ${label}`}>
-      <span aria-label={`Data quality: ${label}`} className={TONE[tone]}><Icon className={`size-3.5 ${tone === 'progress' ? 'animate-spin' : ''}`} /></span>
+      <span aria-label={`Data quality: ${label}`} className={toned ? 'text-(--tone)' : TONE[tone]}><Icon className={`size-3.5 ${tone === 'progress' ? 'animate-spin' : ''}`} /></span>
     </Tooltip>
   );
 }
 
+/** Nothing when the update time is unknown: an unknown freshness is not worth an icon. */
 export function FreshnessIcon({ at }: { at: string | null }) {
-  const text = at ? `Data updated ${relativeTime(at)}` : 'Data updated: unknown';
-  const Icon = at ? History : RefreshCw;
+  if (!at) return null;
+  const text = `Data updated ${relativeTime(at)}`;
   return (
     <Tooltip content={text}>
-      <span aria-label={text} className="text-muted-foreground"><Icon className="size-3.5" /></span>
+      <span aria-label={text} className="text-muted-foreground"><History className="size-3.5" /></span>
     </Tooltip>
   );
 }

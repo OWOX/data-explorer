@@ -73,3 +73,25 @@ test('computeVisible: selection wins over filters', () => {
   expect(r.mode).toBe('selected');
   expect(new Set(r.ids)).toEqual(new Set(['a', 'b']));
 });
+
+test('computeVisible: default view fills up to 12 from other connected groups, never isolated marts', () => {
+  const small = ['a', 'b', 'c', 'd', 'e'];
+  const big = Array.from({ length: 8 }, (_, i) => `g${i}`);
+  const edges = [...small.map((x) => e(x, 'hub')), ...big.map((x) => e(x, 'h2'))];
+  const ids = ['hub', 'h2', ...small, ...big, 'solo1', 'solo2'];
+  const r = computeVisible({ model: modelOf(ids, edges), selectedId: null, search: '', contextIds: [], schemas: () => undefined });
+  expect(r.mode).toBe('levels');
+  expect(r.focusId).toBe('h2');
+  expect(r.ids).toHaveLength(12);
+  expect(r.ids).toContain('hub');
+  expect(r.ids).not.toContain('solo1');
+  expect(r.ids).not.toContain('solo2');
+  // 15 connected marts in total, 12 shown
+  expect(r.hiddenMatches).toBe(3);
+});
+
+test('computeVisible: a small connected model has no hidden matches and keeps isolated marts out', () => {
+  const r = computeVisible({ model: modelOf(['a', 'b', 'c', 'd', 'solo'], [e('a', 'b'), e('c', 'd')]), selectedId: null, search: '', contextIds: [], schemas: () => undefined });
+  expect(new Set(r.ids)).toEqual(new Set(['a', 'b', 'c', 'd']));
+  expect(r.hiddenMatches).toBe(0);
+});

@@ -36,3 +36,21 @@ export function columnOrder(ids: string[], edges: Edge[], selectedId: string | n
   const rest = ids.filter((id) => id !== selectedId && !inbound.has(id) && !outbound.has(id));
   return [...before, selectedId, ...after, ...rest];
 }
+
+/** Explore mode draws a line only between the selected mart and each neighbour. */
+export function exploreEdges(edges: Edge[], ids: string[], selectedId: string | null): Edge[] {
+  if (!selectedId) return [];
+  const set = new Set(ids);
+  return edges.filter((e) => set.has(e.source) && set.has(e.target) && (e.source === selectedId || e.target === selectedId));
+}
+
+/** A cubic that leaves and enters on the right and bows out further the longer the span. */
+export function sideArc(sx: number, sy: number, tx: number, ty: number): { path: string; labelX: number; labelY: number } {
+  const k = 24 + Math.abs(ty - sy) * 0.15;
+  return {
+    path: `M ${sx},${sy} C ${sx + k},${sy} ${tx + k},${ty} ${tx},${ty}`,
+    // Bezier at t = 0.5, which is the outermost point of the bow.
+    labelX: (sx + 3 * (sx + k) + 3 * (tx + k) + tx) / 8,
+    labelY: (sy + 3 * sy + 3 * ty + ty) / 8,
+  };
+}

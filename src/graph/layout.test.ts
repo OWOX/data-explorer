@@ -1,4 +1,4 @@
-import { columnOrder, layoutColumn, layoutNodes } from './layout';
+import { columnOrder, exploreEdges, layoutColumn, layoutNodes, sideArc } from './layout';
 
 const edges = [{ id: '1', source: 'a', target: 'b', joins: [] }];
 
@@ -28,4 +28,20 @@ test('columnOrder: inbound, selected, outbound, rest', () => {
   ];
   expect(columnOrder(['sel', 'out', 'in', 'x'], es, 'sel')).toEqual(['in', 'sel', 'out', 'x']);
   expect(columnOrder(['b', 'a'], es, null)).toEqual(['b', 'a']);
+});
+
+test('exploreEdges keeps only edges that touch the selected mart', () => {
+  const e = (source: string, target: string) => ({ id: `${source}-${target}`, source, target, joins: [] });
+  const edges = [e('a', 'o'), e('o', 'b'), e('a', 'b'), e('c', 'o')];
+  expect(exploreEdges(edges, ['a', 'o', 'b'], 'o').map((x) => x.id)).toEqual(['a-o', 'o-b']);
+  expect(exploreEdges(edges, ['a', 'o', 'b'], null)).toEqual([]);
+});
+
+test('sideArc bows to the right, further for longer spans, label at the outermost point', () => {
+  const near = sideArc(100, 0, 100, 100);
+  const far = sideArc(100, 0, 100, 400);
+  expect(near.path).toBe('M 100,0 C 139,0 139,100 100,100');
+  expect(far.labelX).toBeGreaterThan(near.labelX);
+  expect(near.labelX).toBeCloseTo(100 + 0.75 * 39);
+  expect(near.labelY).toBe(50);
 });

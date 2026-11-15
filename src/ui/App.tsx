@@ -2,23 +2,31 @@ import { useMemo } from 'react';
 import { martAppUrl } from '../config';
 import { computeVisible } from '../graph/visible';
 import { useServices, useStore } from '../state/store';
-import { Canvas } from './canvas/Canvas';
+import { ARC_ROOM, Canvas } from './canvas/Canvas';
 import { CARD_SIZE, type CardData } from './canvas/MartCard';
 import { ErrorBox } from './ErrorBox';
 import { Explorer } from './explorer/Explorer';
 import { Header } from './header/Header';
 import { Skeleton } from './Skeleton';
+import { TooltipProvider } from './Tooltip';
 import { useCardStatus, useModel } from './useModelData';
 
 export function App() {
+  return <TooltipProvider><AppBody /></TooltipProvider>;
+}
+
+function AppBody() {
   const [state, dispatch] = useStore();
   const { ctx, schemas } = useServices();
   const { model, error, reload, schemaTick } = useModel();
+  // schemaTick re-runs a search as schemas arrive. With no search it must not: each prefetched
+  // schema would otherwise refit the canvas and undo the user's pan and zoom.
+  const searching = state.search.trim() !== '';
+  const tick = searching ? schemaTick : 0;
   const visible = useMemo(
     () => (model ? computeVisible({ model, selectedId: state.selectedId, search: state.search, contextIds: state.contextIds, schemas: (id) => schemas.peek(id) }) : null),
-    // schemaTick re-runs the search as schemas arrive
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [model, state.selectedId, state.search, state.contextIds, schemas, schemaTick],
+    [model, state.selectedId, state.search, state.contextIds, schemas, tick],
   );
   const { dq, counts, recount } = useCardStatus(model, visible?.ids ?? [], state.modelVersion);
   const exploring = state.tabs.length > 0;
@@ -29,7 +37,6 @@ export function App() {
 
   const cards = new Map<string, CardData>(visible.ids.map((id) => [id, {
     mart: model.marts.get(id)!,
-    contexts: model.contexts,
     count: counts.get(id) ?? { state: 'loading' },
     dq: dq.get(id),
     fieldHit: visible.fieldHits.get(id),
@@ -42,7 +49,7 @@ export function App() {
     <div className="flex h-full flex-col">
       <Header contexts={model.contexts} error={error} onRetry={reload} />
       <div className="flex min-h-0 flex-1">
-        <div className="relative min-h-0 border-r" style={exploring ? { width: CARD_SIZE.width + 48, flex: 'none' } : { flex: 1 }}>
+        <div className="relative min-h-0 border-r" style={exploring ? { width: CARD_SIZE.width + ARC_ROOM + 40, flex: 'none' } : { flex: 1 }}>
           {visible.mode === 'empty' ? (
             <p className="p-6 text-sm text-muted-foreground">No data marts match.</p>
           ) : (

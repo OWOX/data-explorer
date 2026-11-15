@@ -71,5 +71,17 @@ export function computeVisible({ model, selectedId, search, contextIds, schemas 
 
   const focusId = pickFocus(model.marts.keys(), model.marts, inbound);
   if (!focusId) return { ids: [], focusId: null, hiddenMatches: 0, fieldHits, mode: 'empty' };
-  return { ids: expandLevels(focusId, model.edges, VISIBLE_BUDGET), focusId, hiddenMatches: 0, fieldHits, mode: 'levels' };
+  const expanded = expandLevels(focusId, model.edges, VISIBLE_BUDGET);
+  // Fill the screen up to the budget with other connected marts; isolated marts never appear.
+  const shown = new Set(expanded);
+  const connected = new Set<string>();
+  for (const e of model.edges) {
+    if (e.source === e.target) continue;
+    if (model.marts.has(e.source)) connected.add(e.source);
+    if (model.marts.has(e.target)) connected.add(e.target);
+  }
+  const rest = [...connected].filter((id) => !shown.has(id)).sort(rank(model.marts, inbound));
+  const room = Math.max(0, VISIBLE_BUDGET - expanded.length);
+  const ids = [...expanded, ...rest.slice(0, room)];
+  return { ids, focusId, hiddenMatches: rest.length - Math.min(room, rest.length), fieldHits, mode: 'levels' };
 }
