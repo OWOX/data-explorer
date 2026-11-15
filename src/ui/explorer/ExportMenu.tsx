@@ -35,6 +35,9 @@ export function ExportMenu(p: Props) {
   useEffect(() => { gen.current += 1; return () => { gen.current += 1; }; }, [p.martId]);
   const [openDest, setOpenDest] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // The live check of the remembered reports is under way: until it ends their titles and targets may be stale.
+  const [checking, setChecking] = useState(false);
+  const checks = useRef(0);
   const menu = useRef<HTMLDetailsElement>(null);
 
   // Listed once per session; the header's Refresh lists them again.
@@ -140,7 +143,10 @@ export function ExportMenu(p: Props) {
     if (!open) return;
     setOpenDest(destinations.length === 1 ? destinations[0]!.id : null);
     // Reports OWOX no longer has are dropped before they are offered.
+    const check = ++checks.current;
+    setChecking(true);
     try { setReports({ martId: p.martId, list: await exporter.reports(p.martId, true) }); } catch { /* the remembered list stays */ }
+    finally { if (check === checks.current) setChecking(false); }
   }
 
   return (
@@ -174,8 +180,9 @@ export function ExportMenu(p: Props) {
     return (
       <div key={d.id} className={destinations.length > 1 ? 'dm-export-sub' : undefined}>
         {rs.map((r) => (
-          <button key={r.reportId} type="button" role="menuitem" className="dm-export-item" onClick={() => { closeMenu(); start(d, { kind: 'update', report: r }, r.title); }}>
+          <button key={r.reportId} type="button" role="menuitem" disabled={checking} className="dm-export-item" onClick={() => { closeMenu(); start(d, { kind: 'update', report: r }, r.title); }}>
             <span className="dm-filter-label">Update “{r.title}”</span>
+            {checking && <span className="dm-export-kind inline-flex items-center gap-1"><Loader2 className="size-3 animate-spin" />Checking…</span>}
           </button>
         ))}
         <button type="button" role="menuitem" className="dm-export-item" onClick={() => { closeMenu(); setDialog({ destination: d, seq: ++seq.current }); }}>

@@ -232,3 +232,28 @@ test('a timeout on the report step closes the dialog and warns that the report m
   expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1);
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
 });
+
+test('Update stays disabled until the live check of the remembered reports has finished, so no stale title is sent', async () => {
+  const t = setup(1, [REPORT]);
+  await t.seeded;
+  t.view();
+  await rowsLoaded();
+  await t.ctx.owox.postJson('/api/reports', { title: 'Renamed in OWOX', dataMartId: 'orders' });
+  const real = t.ctx.owox.getJson;
+  let release: () => void = () => {};
+  const gate = new Promise<void>((r) => { release = r; });
+  (t.ctx.owox as { getJson: Ctx['owox']['getJson'] }).getJson = (async (path: string, q?: Record<string, string>) => {
+    if (path === '/api/reports/mock-report-1') await gate;
+    return real(path, q);
+  }) as Ctx['owox']['getJson'];
+  await userEvent.click(await within(data()).findByText('Export'));
+  const update = await within(data()).findByRole('menuitem', { name: /Update/ });
+  expect(update).toBeDisabled();
+  expect(update).toHaveTextContent('Checking…');
+  await userEvent.click(update);
+  expect(t.calls.some((c) => c.startsWith('PUT'))).toBe(false);
+  release();
+  await waitFor(() => expect(within(data()).getByRole('menuitem', { name: /Update “Renamed in OWOX”/ })).toBeEnabled());
+  await userEvent.click(within(data()).getByRole('menuitem', { name: /Update “Renamed in OWOX”/ }));
+  await waitFor(() => expect(t.calls).toContain('PUT /api/reports/mock-report-1'), { timeout: 5000 });
+});
