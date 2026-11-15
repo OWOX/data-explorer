@@ -281,3 +281,13 @@ test('the spreadsheet a failed report step left is reused even after the menu wa
   await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 6000 });
   expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1);
 }, 15000);
+
+test('Update is disabled from the first render of an opened menu, before any toggle handler ran', async () => {
+  const t = setup(1, [REPORT]);
+  await t.seeded;
+  t.view();
+  await rowsLoaded();
+  await t.ctx.owox.postJson('/api/reports', { title: 'Orders weekly', dataMartId: 'orders' });
+  await within(data()).findByText('Export');
+  expect(within(data()).getByRole('menuitem', { name: /Update/, hidden: true })).toBeDisabled();
+});
