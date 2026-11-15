@@ -5,6 +5,7 @@ import { useServices, useStore } from '../state/store';
 import { Canvas } from './canvas/Canvas';
 import { CARD_SIZE, type CardData } from './canvas/MartCard';
 import { ErrorBox } from './ErrorBox';
+import { Explorer } from './explorer/Explorer';
 import { Header } from './header/Header';
 import { Skeleton } from './Skeleton';
 import { useCardStatus, useModel } from './useModelData';
@@ -57,7 +58,7 @@ export function App() {
             <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border bg-background px-3 py-1 text-xs shadow-sm">+{visible.hiddenMatches} more. Refine the search to see them.</div>
           )}
         </div>
-        {exploring && <div data-testid="explorer" className="min-w-0 flex-1" />}
+        {exploring && <div data-testid="explorer" className="min-w-0 flex-1"><Explorer model={model} /></div>}
       </div>
     </div>
   );
