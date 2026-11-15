@@ -67,3 +67,18 @@ test('a failing put is swallowed with a warning', async () => {
   await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
   expect(warn).toHaveBeenCalledTimes(1);
 });
+
+test('concurrent loads share one read', async () => {
+  const get = vi.fn(async () => ({ document: { columns: ['a'], at: 'x' } }));
+  const store = createColumnStore(ctxWith({ get, put: vi.fn() }));
+  expect(await Promise.all([store.load('m'), store.load('m')])).toEqual([['a'], ['a']]);
+  expect(get).toHaveBeenCalledTimes(1);
+});
+
+test('a stored null document counts as absent and is cached', async () => {
+  const get = vi.fn(async () => ({ document: null }));
+  const store = createColumnStore(ctxWith({ get, put: vi.fn() }));
+  expect(await store.load('m')).toBeNull();
+  expect(await store.load('m')).toBeNull();
+  expect(get).toHaveBeenCalledTimes(1);
+});

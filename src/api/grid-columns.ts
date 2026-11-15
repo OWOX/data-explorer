@@ -16,18 +16,30 @@ export function createColumnStore(ctx: Ctx): ColumnStore {
   const cache = new Map<string, string[] | null>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  const reads = new Map<string, Promise<string[] | null>>();
+
+  async function read(martId: string): Promise<string[] | null> {
+    try {
+      const found = await col.get(martId);
+      const doc = found?.document;
+      const columns = Array.isArray(doc?.columns) ? doc.columns.filter((c) => typeof c === 'string') : null;
+      // A save that landed while the read was out is newer than what it read.
+      if (!cache.has(martId)) cache.set(martId, columns);
+      return cache.get(martId)!;
+    } catch {
+      return null;
+    } finally {
+      reads.delete(martId);
+    }
+  }
+
   return {
-    async load(martId) {
-      if (cache.has(martId)) return cache.get(martId)!;
-      try {
-        const found = await col.get(martId);
-        const columns = Array.isArray(found?.document.columns) ? found.document.columns.filter((c) => typeof c === 'string') : null;
-        // A save that landed while the read was out is newer than what it read.
-        if (!cache.has(martId)) cache.set(martId, columns);
-        return cache.get(martId)!;
-      } catch {
-        return null;
-      }
+    load(martId) {
+      if (cache.has(martId)) return Promise.resolve(cache.get(martId)!);
+      // Concurrent loads (StrictMode mounts twice) share one read.
+      let pending = reads.get(martId);
+      if (!pending) { pending = read(martId); reads.set(martId, pending); }
+      return pending;
     },
     save(martId, columns) {
       cache.set(martId, columns);

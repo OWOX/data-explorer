@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
@@ -5,7 +6,7 @@ import { GRID_COLUMNS_COLLECTION, SAVE_DEBOUNCE_MS } from '../../api/grid-column
 import type { Ctx } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
-import { AppServices, StoreProvider } from '../../state/store';
+import { AppServices, StoreProvider, useServices } from '../../state/store';
 import { App } from '../App';
 import { SAVED_COLUMNS_WAIT_MS } from './MartGrid';
 
@@ -25,8 +26,13 @@ function setup(saved: string[] | null, tweak: (ctx: Mock) => Ctx = (c) => c) {
   } };
   const col = inner.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION);
   const seeded = saved ? col.put('orders', { columns: saved, at: 'then' }) : Promise.resolve();
-  const view = () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
-  return { ctx, calls, put, view, seeded, col };
+  const services: { current: ReturnType<typeof useServices> | null } = { current: null };
+  const Probe = () => { services.current = useServices(); return null; };
+  const view = (strict = false) => {
+    const tree = <AppServices ctx={ctx}><Probe /><StoreProvider><App /></StoreProvider></AppServices>;
+    return render(strict ? <StrictMode>{tree}</StrictMode> : tree);
+  };
+  return { ctx, calls, put, view, services, seeded, col };
 }
 const headers = () => within(document.getElementById('band-data')!).getAllByRole('columnheader').map((h) => h.textContent);
 const ordersCalls = (calls: { id: string; column?: string[] }[]) => calls.filter((c) => c.id === 'orders' && c.column && c.column.length > 1);
@@ -34,14 +40,26 @@ const ordersCalls = (calls: { id: string; column?: string[] }[]) => calls.filter
 test('saved columns seed the grid and the first rows query already uses them', async () => {
   const t = setup(['id', 'status', 'amount']);
   await t.seeded;
-  t.view();
+  t.view(true);
   await waitFor(() => expect(headers()).toHaveLength(3));
   expect(headers().join()).toMatch(/id.*status.*Amount/);
   await waitFor(() => expect(within(document.getElementById('band-data')!).getAllByRole('row').length).toBeGreaterThan(1));
   const q = ordersCalls(t.calls);
+  // StrictMode runs the rows effect twice in development, so two identical reads are the one query; none uses the defaults.
+  expect(q).toHaveLength(2);
+  for (const c of q) expect(c.column).toEqual(['id', 'status', 'amount']);
+  expect(t.put).not.toHaveBeenCalled();
+});
+
+test('outside StrictMode the first rows query runs exactly once, with the saved columns', async () => {
+  const t = setup(['id', 'status', 'amount']);
+  await t.seeded;
+  t.view();
+  await waitFor(() => expect(headers()).toHaveLength(3));
+  await waitFor(() => expect(within(document.getElementById('band-data')!).getAllByRole('row').length).toBeGreaterThan(1));
+  const q = ordersCalls(t.calls);
   expect(q).toHaveLength(1);
   expect(q[0]!.column).toEqual(['id', 'status', 'amount']);
-  expect(t.put).not.toHaveBeenCalled();
 });
 
 test('with nothing saved the defaults show and nothing is written', async () => {
@@ -90,13 +108,14 @@ test('this session\'s columns win over the saved ones', async () => {
   await userEvent.click(screen.getByRole('button', { name: /Columns \(2\/8\)/ }));
   await userEvent.click(screen.getByLabelText(/amount/i));
   await waitFor(() => expect(headers()).toHaveLength(3));
-  // Going to another mart and back keeps the session's grid, whatever the member store holds.
-  await t.col.put('orders', { columns: ['id'], at: 'later' });
+  // Going to another mart and back keeps the session's grid without asking the member store again.
+  const load = vi.spyOn(t.services.current!.columnStore, 'load');
   await userEvent.click(within(document.getElementById('band-marts')!).getByText('Customers').closest('article')!);
   await within(document.getElementById('band-data')!).findByRole('heading', { name: 'Customers' });
   await userEvent.click(within(document.getElementById('band-row')!).getByRole('button', { name: /Back/ }));
   await within(document.getElementById('band-data')!).findByRole('heading', { name: 'Orders' });
   await waitFor(() => expect(headers()).toHaveLength(3));
+  expect(load).not.toHaveBeenCalledWith('orders');
   unmount();
 });
 

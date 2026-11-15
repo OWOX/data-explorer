@@ -66,7 +66,6 @@ function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed:
   useEffect(() => {
     if (initial) return;
     let live = true;
-    const fallback = () => live && setInitial((cur) => cur ?? { columns: defaultColumns(schema), cleaned: null });
     const timer = setTimeout(() => { live = false; setInitial({ columns: defaultColumns(schema), cleaned: null }); }, SAVED_COLUMNS_WAIT_MS);
     columnStore.load(martId).then((saved) => {
       if (!live) return;
@@ -74,7 +73,7 @@ function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed:
       const kept = offered(schema, saved ?? []);
       const dropped = (saved?.length ?? 0) > kept.length;
       setInitial({ columns: kept.length ? kept : defaultColumns(schema), cleaned: dropped ? kept : null });
-    }, fallback);
+    });
     return () => { live = false; clearTimeout(timer); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const cleaned = initial?.cleaned ?? null;
