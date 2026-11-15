@@ -5,8 +5,8 @@ import type { Model } from '../../model/types';
 import { recordTabId } from '../../records/relationships';
 import { useStore } from '../../state/store';
 import { RecordView } from '../explorer/RecordView';
-import { resolveIcon } from '../icons';
 import { Band } from './Band';
+import { PickedIcon } from './picked';
 
 export function RowBand({ model, folded, onFold }: { model: Model; folded: boolean; onFold: () => void }) {
   const [{ selection, history }, dispatch] = useStore();
@@ -17,6 +17,8 @@ export function RowBand({ model, folded, onFold }: { model: Model; folded: boole
   useEffect(() => {
     if (!canGoBack) return;
     const onKey = (e: KeyboardEvent) => {
+      // Alt+Left is the word-jump while typing in a field: leave it to the field.
+      if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
       if (e.altKey && e.key === 'ArrowLeft') {
         e.preventDefault();
         back();
@@ -33,7 +35,7 @@ export function RowBand({ model, folded, onFold }: { model: Model; folded: boole
   return (
     <Band
       id="band-row"
-      icon={record ? resolveIcon(mart?.icon ?? null, Rows3) : Rows3}
+      icon={<PickedIcon icon={record ? mart?.icon : null} fallback={Rows3} size={18} />}
       title={title}
       hint="One row of the selected data mart. Related titles open the mart they point at."
       folded={folded}
