@@ -25,6 +25,25 @@ test('splits more than 500 values into batches', async () => {
   expect((traverseData.mock.calls[0]![1] as { filter: { value: number[] }[] }).filter[0]!.value).toHaveLength(500);
 });
 
+test('splits by serialized size so the in-list stays under the query parameter cap', async () => {
+  const traverseData = vi.fn<(id: string, opts: unknown) => Promise<ReturnType<typeof traversalOf>>>(async () => traversalOf([]));
+  const strSchema: Field[] = [{ ...schema[0]!, type: 'STRING', category: 'string' }, schema[1]!];
+  const values = Array.from({ length: 200 }, (_, i) => `${String(i).padStart(8, '0')}-aaaa-bbbb-cccc-dddddddddddd`);
+  await lookupTitles(stubCtx({ dataMarts: { list: vi.fn(), traverseData } }), rel, values, strSchema);
+  expect(traverseData.mock.calls.length).toBeGreaterThan(1);
+  for (const [, opts] of traverseData.mock.calls) {
+    const v = (opts as { filter: { value: string[] }[] }).filter[0]!.value;
+    expect(JSON.stringify(v).length).toBeLessThanOrEqual(6000);
+  }
+});
+
+test('incoming relationship columns have no title', async () => {
+  const traverseData = vi.fn();
+  const incoming = relationshipColumns('customers', [{ id: 'e', source: 'orders', target: 'customers', joins: [{ sourceField: 'customer_id', targetField: 'id' }] }]).get('id')!;
+  expect((await lookupTitles(stubCtx({ dataMarts: { list: vi.fn(), traverseData } }), incoming, [1], schema)).size).toBe(0);
+  expect(traverseData).not.toHaveBeenCalled();
+});
+
 test('no title field, composite, or no values → no query', async () => {
   const traverseData = vi.fn();
   const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
