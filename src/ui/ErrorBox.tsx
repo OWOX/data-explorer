@@ -1,0 +1,12 @@
+export function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+export function ErrorBox({ error, onRetry, compact = false }: { error: unknown; onRetry: () => void; compact?: boolean }) {
+  return (
+    <div role="alert" className={`flex items-center gap-2 text-destructive ${compact ? 'text-xs' : 'rounded-md border border-destructive/40 p-3 text-sm'}`}>
+      <span className="min-w-0 flex-1 truncate" title={errorMessage(error)}>{errorMessage(error)}</span>
+      <button type="button" onClick={onRetry} className="rounded border px-2 py-0.5 text-foreground hover:bg-accent">Retry</button>
+    </div>
+  );
+}
