@@ -6,13 +6,6 @@
 
 /* The block chrome OWOX itself uses for Storage / Input Source / Output schema: a light panel with
    a rounded icon tile beside the title, no shadow, a hairline under it. */
-/* An exit reads the whole block, so the whole block answers: a 2px grey outline laid outside the
-   panel, drawn rather than in flow, so nothing on the page shifts when it appears. */
-.dm-band.lit::after {
-  content: ''; position: absolute; z-index: 6; inset: 0;
-  border: 2px solid var(--muted-foreground); border-radius: inherit;
-  pointer-events: none;
-}
 /*
  * Nothing raises a whole band.
  *
@@ -72,16 +65,6 @@
   background: color-mix(in oklab, var(--border) 75%, transparent);
 }
 :root.dark .dm-band-count { background: color-mix(in oklab, white 8%, transparent); }
-/* Beside the count: a bare glyph in the grey of the chrome around it, darkening under the
-   pointer. No border, no fill — a mark you can press, not a button drawn as one. A `button` with
-   no rule of its own gets the browser's, which is exactly the border and fill this must not have. */
-.dm-band-action {
-  display: inline-flex; padding: 0;
-  border: 0; background: none; color: var(--muted-foreground);
-  cursor: pointer; transition: color 150ms;
-}
-.dm-band-action:hover:not(:disabled) { color: var(--foreground); }
-.dm-band-action:disabled { cursor: progress; }
 .dm-band-tools { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-left: auto; }
 /* The fold sits last in the header, hard right. It only pushes itself over when no toolbar has
    already claimed the space. */
@@ -93,22 +76,6 @@
 .dm-band-fold-alone { margin-left: auto; }
 .dm-band-fold:hover { color: var(--foreground); }
 .dm-band-fold-open { rotate: 180deg; }
-/* A folded block: one bar where its cards will be, so the page keeps its shape while it reads.
-   Named for the bar, not for what it measures — `.dm-progress` is a tone, and was once both.
-   Both fills are the palette's fourth row, which is pale enough to read as a track rather than
-   as a status. */
-.dm-loadbar {
-  height: 0.625rem; border-radius: 999px;
-  background: color-mix(in oklab, var(--muted-foreground) 12%, transparent);
-  overflow: hidden;
-}
-.dm-loadbar span {
-  display: block; height: 100%; border-radius: inherit;
-  background: #cee2f7;
-  transition: width 240ms ease-out, background 240ms ease-out;
-}
-/* Full, and green for the moment before the block opens. */
-.dm-loadbar-done span { background: #d9eed7; }
 /* A card grows out of a point when it arrives and collapses back into one when it stops matching.
    Only `scale` and `opacity`: neither touches layout, so its neighbours do not shuffle around it,
    the canvas keeps its size, and the observer that redraws every line stays quiet while it moves.
@@ -132,7 +99,6 @@
 }
 /* Positioned, so a card leaving the flow can pin itself against this box rather than the page. */
 .dm-band-grid { position: relative; display: grid; gap: 0.85rem; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
-.dm-empty { margin: 0; font-size: 0.8125rem; }
 
 /* The block description, on the ⓘ. No `title`: it waits a second, wraps where it likes, and cannot
    be read at a glance. */
@@ -184,7 +150,6 @@
    outside the 1px it already has, so nothing shifts. A card nothing has run stays grey. */
 .dm-node-head { display: flex; align-items: center; gap: 0.5rem; min-height: 1.5rem; }
 .dm-node-title { flex: 1; min-width: 0; font-size: 0.875rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dm-node-sub { font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dm-logo {
   display: inline-flex; align-items: center; justify-content: center;
   width: 1.5rem; height: 1.5rem; flex-shrink: 0;
@@ -208,8 +173,6 @@
   background: var(--muted); color: var(--muted-foreground);
   font-size: 0.6875rem; line-height: 1.5;
 }
-.dm-badge-off { opacity: 0.55; }
-.dm-badge-draft { background: color-mix(in oklab, var(--primary) 15%, transparent); color: var(--primary); }
 
 .dm-contexts { position: relative; display: flex; gap: 0.25rem; flex: 1; min-width: 0; overflow: hidden; }
 .dm-contexts .dm-badge { flex-shrink: 0; white-space: nowrap; }
@@ -248,9 +211,6 @@ button.dm-mark { cursor: pointer; }
 .dm-canvas.focused .dm-node { opacity: 0.25; }
 .dm-canvas.focused .dm-node.lit { opacity: 1; }
 .dm-canvas.focused .dm-node[aria-pressed='true'] { opacity: 1; }
-/* An exit wires to the Data Marts block rather than to each card, because it reads all of them.
-   The lit block therefore means every card in it, not none of them. */
-.dm-canvas.focused .dm-band.lit .dm-node { opacity: 1; }
 /* Selected reads as hovered does: the same colour, the same ring. What tells them apart is that
    everything else has stepped back, not that this one has grown. */
 .dm-node[aria-pressed='true'],

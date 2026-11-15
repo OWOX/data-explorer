@@ -1,32 +1,27 @@
 // A band: the titled strip a page section sits in, with its count, hint, controls and fold.
-import { ChevronDown, Info, type LucideIcon } from 'lucide-react';
+import { ChevronDown, Info } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { num } from '../format';
 
 export function Band({
   id,
-  icon: Icon,
+  icon,
   title,
   total,
   hint,
   toolbar,
-  loading,
-  loadingLabel = 'Loading',
   folded,
   onFold,
   grid = true,
   children,
 }: {
   id: string;
-  icon: LucideIcon;
+  /** The glyph drawn at 18px: a lucide element, or a PickedIcon. */
+  icon: ReactNode;
   title: string;
   total?: number | string;
   hint: string;
   toolbar?: ReactNode;
-  /** 0-1 while the band is still being read: it shows a bar instead of its content. */
-  loading?: number | null;
-  /** What the progress bar is named to assistive tech. */
-  loadingLabel?: string;
   /** Folded by the reader: header only, and its controls go with the content. */
   folded: boolean;
   onFold: () => void;
@@ -45,7 +40,7 @@ export function Band({
           onFold();
         }}
       >
-        <span className="dm-band-icon"><Icon size={18} /></span>
+        <span className="dm-band-icon">{icon}</span>
         <h2 className="dm-band-title">{title}</h2>
         {total !== undefined && <span className="dm-badge dm-band-count">{typeof total === 'number' ? num(total) : total}</span>}
         <span className="dm-hint" tabIndex={0} role="note" aria-label={hint}>
@@ -65,20 +60,7 @@ export function Band({
           <ChevronDown size={16} className={folded ? undefined : 'dm-band-fold-open'} />
         </button>
       </header>
-      {folded ? null : loading === null || loading === undefined ? (
-        grid ? <div className="dm-band-grid">{children}</div> : children
-      ) : (
-        <div
-          className={`dm-loadbar${loading >= 1 ? ' dm-loadbar-done' : ''}`}
-          role="progressbar"
-          aria-label={loadingLabel}
-          aria-valuenow={Math.round(loading * 100)}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
-          <span style={{ width: `${Math.round(loading * 100)}%` }} />
-        </div>
-      )}
+      {folded ? null : grid ? <div className="dm-band-grid">{children}</div> : children}
     </section>
   );
 }

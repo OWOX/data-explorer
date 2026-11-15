@@ -46,7 +46,7 @@ export type Action =
 
 export const HISTORY_LIMIT = 20;
 
-export const emptySelection: Selection = { sourceKey: null, martId: null, record: null };
+const emptySelection: Selection = { sourceKey: null, martId: null, record: null };
 export const initialState: State = { selection: emptySelection, history: [], search: '', contextIds: [], grids: {}, modelVersion: 0 };
 
 /** The source stays selected only when it feeds the mart being selected. */

@@ -1,5 +1,4 @@
-import { Box, Building2, ShoppingCart, ArrowDownAZ, Receipt, Tags } from 'lucide-react';
-import { dqVisual, resolveIcon } from './icons';
+import { dqVisual } from './icons';
 
 test.each([
   [{ state: 'PASSED' }, 'Passed', 'success'],
@@ -10,13 +9,4 @@ test.each([
   [undefined, 'No data quality info', 'neutral'],
 ])('%o → %s', (s, label, tone) => {
   expect(dqVisual(s as never)).toMatchObject({ label, tone });
-});
-
-test('resolveIcon', () => {
-  expect(resolveIcon('orders', Box)).toBe(Receipt);
-  expect(resolveIcon('lucide:shopping-cart', Box)).toBe(ShoppingCart);
-  expect(resolveIcon('lucide:building-2', Box)).toBe(Building2);
-  expect(resolveIcon('lucide:arrow-down-az', Box)).toBe(ArrowDownAZ);
-  expect(resolveIcon('lucide:no-such-icon', Box)).toBe(Box);
-  expect(resolveIcon(null, Tags)).toBe(Tags);
 });

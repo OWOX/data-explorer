@@ -2,7 +2,7 @@ import { AlertTriangle, RefreshCw, Search, X } from 'lucide-react';
 import type { Context } from '../../model/types';
 import { useStore } from '../../state/store';
 import { ErrorBox } from '../ErrorBox';
-import { ContextIcon } from '../icons';
+import { DEFAULT_CONTEXT_ICON, PickedIcon } from '../bands/picked';
 import { Tooltip } from '../Tooltip';
 
 type Failed = { id: string; title: string; message: string };
@@ -30,7 +30,7 @@ export function Header({ contexts, error, onRetry, failedStorages = [] }: { cont
           return (
             <button key={c.id} type="button" aria-pressed={on} onClick={() => dispatch({ type: 'toggleContext', id: c.id })}
               className={`inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs ${on ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-accent'}`}>
-              <ContextIcon icon={c.icon} />{c.name}
+              <PickedIcon icon={c.icon} fallback={DEFAULT_CONTEXT_ICON} size={12} />{c.name}
             </button>
           );
         })}
