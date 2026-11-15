@@ -1,15 +1,42 @@
 # Data Explorer
 
-An OWOX Data Marts plugin that reads data and writes only the reports you export. It runs as a static Vite + React site in an iframe and lets you browse data marts, how they connect, and their rows.
+**Open the rows behind any data mart in a few clicks, and follow a record to the records joined to it.**
 
-## Layout
+A plugin for [OWOX Data Marts](https://docs.owox.com/). One page, four bands: **Data Sources, Data Marts, Data, Row**.
 
-One page, four bands from top to bottom:
+![Data Explorer: Data Sources, Data Marts, Data and Row bands](docs/data-explorer.svg)
 
-1. **Data Sources**: the connectors that feed data marts. Select one to see the marts it feeds.
-2. **Data Marts**: the selected mart and every mart joined to it, or what the search matches. Lines join sources to marts and marts to marts; hover or select a card to light its lines. Each card shows a row count (requested once the card scrolls into view), a data quality icon and the contexts. With two or more storages, a Storage filter in the band header narrows the cards to the ticked ones; the selection stays as it is.
-3. **Data**: the selected mart's rows, with column filters, a column picker and Load more.
-4. **Row**: the clicked row as a record, with its related titles, a Referenced by list and Back.
+## The challenge
+
+A question about one order, one customer or one campaign ends in a row. The rows that explain it are in the data marts joined to that one. OWOX already knows the marts, their fields and how they join, but it shows no rows next to that model. To see the data you build a report or write SQL in the warehouse console. To follow `customer_id` into Customers you copy the id and start again in another tab. A quick look turns into a dozen steps, and you lose the path you took.
+
+## What this gives you
+
+🔎 **Find the data mart.** Search by title, context or field name, or pick a context chip. Select a connector in Data Sources to see only the marts it feeds.
+
+🗺️ **See what it joins to.** The Data Marts band shows the selected mart and every mart joined to it, with lines for the joins and for the source that feeds each mart. Each card has its row count, data quality, freshness and contexts. A Storage filter narrows the cards when the project has several storages.
+
+📋 **Rows without SQL.** The Data band is the mart's rows in a grid. Pick the columns, filter each column by its type, and click titles to sort, several columns at a time. Titles use field aliases, and the (i) shows the field's description. Your column choice is saved per data mart.
+
+🔗 **Follow a record.** A relationship column shows the related record's title instead of a bare id. Click it and that record opens in the Row band, with its own links and a "Referenced by" list of the marts that point at it. Back (or Alt+←) returns along the path you took.
+
+📤 **Take it to a sheet.** Export sends the grid as it is, with its columns, filters and sorting, to Google Sheets as an OWOX report, runs it and opens the sheet. Run it again later with Update.
+
+## What it costs
+
+Every grid, record and row count is a `traverseData` query in your warehouse, and the warehouse bills it. A card asks for its row count only once it scrolls into view, and counts are cached per member. Refresh recounts them.
+
+## What it writes
+
+Nothing until you click Export. Export creates a spreadsheet, creates or updates your report and runs it. Rows are never written. Per member, the plugin keeps row counts, your column choices and the reports you exported.
+
+## Install
+
+Once the plugin is published, open **Plugins** in OWOX Data Marts and add **Data Explorer**.
+
+---
+
+The rest of this file is for developers.
 
 ## Export to Google Sheets
 
