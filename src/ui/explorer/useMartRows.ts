@@ -7,7 +7,7 @@ import type { Row, TraverseOptions } from '../../sdk/types';
 import { useServices } from '../../state/store';
 
 export function defaultColumns(schema: Schema): string[] {
-  return schema.slice(0, 5).map((f) => f.name);
+  return schema.filter((f) => !f.isCalculated).slice(0, 5).map((f) => f.name);
 }
 
 export function buildRowQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, rels: Map<string, RelColumn>): TraverseOptions {

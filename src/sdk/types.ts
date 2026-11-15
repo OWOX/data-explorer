@@ -47,6 +47,7 @@ export type ModelCanvasNodeDto = {
   description: string | null;
   icon?: string | null;
   fieldCount: number;
+  status?: string;
   dataLastUpdated?: { dataLastUpdatedAt: string | null; computedAt: string } | null;
 };
 export type ModelCanvasPageDto = { items: ModelCanvasNodeDto[]; total: number; nextOffset: number | null };
@@ -64,6 +65,8 @@ export type SchemaFieldDto = {
   description?: string | null;
   isPrimaryKey?: boolean;
   isHiddenForReporting?: boolean;
+  status?: string;
+  calculated?: unknown;
 };
 export type DataMartDetailDto = { id: string; schema?: { fields?: SchemaFieldDto[] } | null };
 export type DqSummaryDto = {

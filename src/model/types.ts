@@ -7,6 +7,7 @@ export interface Field {
   category: FieldCategory;
   description: string | null;
   isPrimaryKey: boolean;
+  isCalculated?: boolean;
 }
 
 export interface Context { id: string; name: string; icon: string | null }

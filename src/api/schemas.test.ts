@@ -24,6 +24,17 @@ test('get() maps reporting-visible fields and caches by id', async () => {
   ]);
 });
 
+test('get() drops DISCONNECTED fields but keeps and flags calculated ones', async () => {
+  const getJson = vi.fn(async () => ({ id: 'a', schema: { fields: [
+    { name: 'id', type: 'INT64', status: 'CONNECTED' },
+    { name: 'gone', type: 'STRING', status: 'DISCONNECTED' },
+    { name: 'margin', type: 'NUMERIC', status: 'DISCONNECTED', calculated: { level: 'column' } },
+  ] } }));
+  const schema = await createSchemaLoader(stubCtx({ getJson })).get('a');
+  expect(schema.map((f) => f.name)).toEqual(['id', 'margin']);
+  expect(schema.find((f) => f.name === 'margin')!.isCalculated).toBe(true);
+});
+
 test('prefetch() loads every id, priority ids first, and notifies subscribers', async () => {
   const order: string[] = [];
   const getJson = vi.fn(async (path: string) => { const id = path.split('/').pop()!; order.push(id); return detail(id); });

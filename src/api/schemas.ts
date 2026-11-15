@@ -26,7 +26,8 @@ export function createSchemaLoader(ctx: Ctx): SchemaLoader {
       .getJson<DataMartDetailDto>(`/api/data-marts/${encodeURIComponent(id)}`)
       .then((d) => {
         const schema: Schema = (d.schema?.fields ?? [])
-          .filter((f) => !f.isHiddenForReporting)
+          // A calculated field has no warehouse column, so its status is not meaningful: keep it.
+          .filter((f) => !f.isHiddenForReporting && (f.calculated !== undefined || f.status !== 'DISCONNECTED'))
           .map((f) => ({
             name: f.name,
             alias: f.alias ?? null,
@@ -34,6 +35,7 @@ export function createSchemaLoader(ctx: Ctx): SchemaLoader {
             category: categorizeFieldType(f.type),
             description: f.description ?? null,
             isPrimaryKey: f.isPrimaryKey === true,
+            ...(f.calculated !== undefined ? { isCalculated: true } : {}),
           }));
         done.set(id, schema);
         listeners.forEach((l) => l());
