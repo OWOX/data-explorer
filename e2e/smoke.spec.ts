@@ -17,7 +17,7 @@ test('the first load selects Orders: its rows, its joined marts, the sources, ba
   await expect(martCard(page, 'Orders')).toHaveAttribute('aria-pressed', 'true');
   await expect(band(page, 'marts').getByText('Customers', { exact: true })).toBeVisible();
   await expect(band(page, 'sources').getByText('Shopify', { exact: true })).toBeVisible();
-  await expect(data.getByText('200+ rows')).toBeVisible();
+  await expect(data.getByText('200+ records')).toBeVisible();
   await expect(band(page, 'row').getByText('Select a row.')).toBeVisible();
   await expect(martCard(page, 'Orders').getByLabel(/^Passed/)).toBeVisible();
   await expect(martCard(page, 'Orders').getByLabel('Open in OWOX')).toBeVisible();
@@ -94,7 +94,7 @@ test('Refresh keeps the cards, counts and quality icons on screen', async ({ pag
   await expect(badge).toHaveText(/\d/);
   await page.getByRole('button', { name: 'Refresh model' }).click();
   await expect(martCard(page, 'Orders').getByLabel(/^Passed/)).toBeVisible();
-  await expect(martCard(page, 'Orders').getByLabel('Counting rows')).toHaveCount(0);
+  await expect(martCard(page, 'Orders').getByLabel('Counting records')).toHaveCount(0);
   await expect(badge).toHaveText(/\d/);
   await expect(band(page, 'data').getByRole('row')).toHaveCount(201);
 });

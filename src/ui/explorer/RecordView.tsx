@@ -91,7 +91,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
             <div key={f.name} className="contents">
               <dt className="text-muted-foreground">{fieldLabel(f)}{fieldLabel(f) !== f.name && <span className="ml-1 font-mono text-[11px]">{f.name}</span>}</dt>
               <dd className="min-w-0 break-words">
-                <CellValue row={row} field={f.name} title={titles.get(f.name)}
+                <CellValue row={row} field={f.name} type={f.type} title={titles.get(f.name)}
                   onOpen={target ? () => dispatch({ type: 'follow', target, sourceOf }) : undefined} />
               </dd>
             </div>

@@ -106,13 +106,18 @@ describe('MartCard', () => {
 
   test('count states: value, spinner, dash with retry', async () => {
     const { rerender, props } = renderMart();
-    expect(screen.getByText('12.4K')).toBeInTheDocument();
+    expect(screen.getByText('12.4K records')).toBeInTheDocument();
     rerender(<TooltipProvider><MartCard {...props} count={{ state: 'loading' }} /></TooltipProvider>);
-    expect(screen.getByLabelText('Counting rows')).toBeInTheDocument();
+    expect(screen.getByLabelText('Counting records')).toBeInTheDocument();
     rerender(<TooltipProvider><MartCard {...props} count={{ state: 'error', message: 'nope' }} /></TooltipProvider>);
     await userEvent.click(screen.getByText('—'));
     expect(props.onRetryCount).toHaveBeenCalledTimes(1);
     expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  test('a count of one is a record, not records', () => {
+    renderMart({ count: { state: 'ok', value: 1 } });
+    expect(screen.getByText('1 record')).toBeInTheDocument();
   });
 
   test('a quality state with no sentence of its own names itself once', () => {

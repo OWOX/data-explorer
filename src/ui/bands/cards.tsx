@@ -2,7 +2,7 @@
 import { ExternalLink, History, Info, LoaderCircle, Plug } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Context, DqSummary, Mart, Source } from '../../model/types';
-import { compactNumber, count as plural, num, relativeTime } from '../format';
+import { compactNumber, count as plural, num, recordsLabel, relativeTime } from '../format';
 import { dqCardTone, dqVisual } from '../icons';
 import { Tooltip } from '../Tooltip';
 import { whenInView } from './inview';
@@ -91,7 +91,7 @@ export function SourceCard({
 function CountBadge({ count, onRetry }: { count: CountState; onRetry: () => void }) {
   if (count.state === 'idle') return null;
   if (count.state === 'loading') {
-    return <span className="dm-badge" aria-label="Counting rows"><LoaderCircle className="dm-spin" size={12} /></span>;
+    return <span className="dm-badge" aria-label="Counting records"><LoaderCircle className="dm-spin" size={12} /></span>;
   }
   if (count.state === 'error') {
     return (
@@ -105,7 +105,7 @@ function CountBadge({ count, onRetry }: { count: CountState; onRetry: () => void
     );
   }
   if (count.value === null) return null;
-  return <Tooltip content={`${num(count.value)} rows`}><span className="dm-badge">{compactNumber(count.value)}</span></Tooltip>;
+  return <Tooltip content={recordsLabel(num(count.value))}><span className="dm-badge">{recordsLabel(compactNumber(count.value))}</span></Tooltip>;
 }
 
 export function MartCard({

@@ -112,15 +112,15 @@ function SortTitle({ field }: { field: Schema[number] }) {
   );
 }
 
-function GridCell({ row, name, rel }: { row: Row; name: string; rel: RelColumn | undefined }) {
+function GridCell({ row, name, type, rel }: { row: Row; name: string; type: string; rel: RelColumn | undefined }) {
   const { titles, relSchemas } = useContext(GridEnv);
   const { schemas } = useServices();
   const [, dispatch] = useStore();
   const { model } = useContext(GridEnv);
-  if (!rel) return <CellValue row={row} field={name} />;
+  if (!rel) return <CellValue row={row} field={name} type={type} />;
   const target = clickTarget(rel, row, relSchemas.get(rel.relatedMartId) ?? schemas.peek(rel.relatedMartId));
   return (
-    <CellValue row={row} field={name} title={titles.get(titleKey(rel, row[name]))}
+    <CellValue row={row} field={name} type={type} title={titles.get(titleKey(rel, row[name]))}
       onOpen={target && model ? () => dispatch({ type: 'follow', target, sourceOf: sourceOfModel(model) }) : undefined} />
   );
 }
@@ -227,7 +227,7 @@ function Grid({ martId, model, schema, seed, initialColumns, onChange, onRows }:
           )}
         </div>
       ),
-      cell: ({ row }) => <GridCell row={row.original} name={name} rel={rel} />,
+      cell: ({ row }) => <GridCell row={row.original} name={name} type={field.type} rel={rel} />,
     };
   }), [visible, schema, rels, filters]);
 
