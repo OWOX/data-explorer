@@ -992,3 +992,47 @@ describe('column sort', () => {
     expect(header(grid, 'status')).toHaveAttribute('aria-sort', 'none');
   });
 });
+
+describe('remembered folds', () => {
+  const seeded = (folded: Record<string, boolean> | 'fail') => (ctx: Mock): Ctx => ({
+    ...ctx,
+    collections: <T,>(name: string) => {
+      const real = ctx.collections<T>(name);
+      if (name !== 'preferences') return real;
+      return { get: async (id: string) => { if (folded === 'fail') throw new Error('down'); return id === 'bands' ? ({ document: { folded } as T }) : null; }, put: real.put };
+    },
+  });
+
+  test('with nothing saved only Data Sources is folded', async () => {
+    await mountApp();
+    expect(sources()).toHaveClass('folded');
+    for (const b of [marts(), data(), row()]) expect(b).not.toHaveClass('folded');
+  });
+
+  test('a saved choice wins over the default, per band', async () => {
+    await mountWith(seeded({ 'band-sources': false, 'band-marts': true }));
+    await waitFor(() => expect(sources()).not.toHaveClass('folded'));
+    expect(marts()).toHaveClass('folded');
+    expect(data()).not.toHaveClass('folded');
+  });
+
+  test('each click writes the choices to the preferences collection, document "bands"', async () => {
+    const puts: unknown[] = [];
+    await mountWith((ctx) => ({ ...ctx, collections: <T,>(name: string) => { const c = ctx.collections<T>(name); return name === 'preferences' ? { get: c.get, put: async (id: string, d: T) => { puts.push([id, d]); return c.put(id, d); } } : c; } }));
+    await userEvent.click(within(sources()).getByRole('button', { name: /^Show / }));
+    await userEvent.click(within(data()).getByRole('button', { name: /^Hide / }));
+    expect(puts).toEqual([
+      ['bands', { folded: { 'band-sources': false } }],
+      ['bands', { folded: { 'band-sources': false, 'band-data': true } }],
+    ]);
+  });
+
+  test('a failed read keeps the defaults', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await mountWith(seeded('fail'));
+    await settle();
+    expect(sources()).toHaveClass('folded');
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});

@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useReducer, type Dispatch, type ReactNode } from 'react';
 import { createExporter, type Exporter } from '../api/exports';
 import { createColumnStore, type ColumnStore } from '../api/grid-columns';
+import { createPreferences, type Preferences } from '../api/preferences';
 import { createRowCounter, type RowCounter } from '../api/row-counts';
 import { createSchemaLoader, type SchemaLoader } from '../api/schemas';
 import { PAGE_SIZE } from '../config';
@@ -130,11 +131,11 @@ export function useStore(): [State, Dispatch<Action>] {
   return v;
 }
 
-type Services = { ctx: Ctx; schemas: SchemaLoader; counter: RowCounter; columnStore: ColumnStore; exporter: Exporter };
+type Services = { ctx: Ctx; schemas: SchemaLoader; counter: RowCounter; columnStore: ColumnStore; exporter: Exporter; preferences: Preferences };
 const ServicesCtx = createContext<Services | null>(null);
 
 export function AppServices({ ctx, children }: { ctx: Ctx; children: ReactNode }) {
-  const value = useMemo(() => ({ ctx, schemas: createSchemaLoader(ctx), counter: createRowCounter(ctx), columnStore: createColumnStore(ctx), exporter: createExporter(ctx) }), [ctx]);
+  const value = useMemo(() => ({ ctx, schemas: createSchemaLoader(ctx), counter: createRowCounter(ctx), columnStore: createColumnStore(ctx), exporter: createExporter(ctx), preferences: createPreferences(ctx) }), [ctx]);
   return <ServicesCtx.Provider value={value}>{children}</ServicesCtx.Provider>;
 }
 

@@ -5,6 +5,7 @@
   "collections": [
     { "name": "row-counts", "scope": "member" },
     { "name": "grid-columns", "scope": "member" },
-    { "name": "exports", "scope": "member" }
+    { "name": "exports", "scope": "member" },
+    { "name": "preferences", "scope": "member" }
   ]
 }

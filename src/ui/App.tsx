@@ -17,15 +17,33 @@ export function App() {
 }
 
 type Fold = 'sources' | 'marts' | 'data' | 'row';
+/** Only the Data Sources band starts folded; the member's saved choice, when there is one, replaces this. */
+const DEFAULT_FOLDED: Record<Fold, boolean> = { sources: true, marts: false, data: false, row: false };
+const bandId = (band: Fold) => `band-${band}`;
 
 function AppBody() {
   const [state, dispatch] = useStore();
-  const { ctx } = useServices();
+  const { ctx, preferences } = useServices();
   const { model, error, reload } = useModel();
   // Folding is per band and lives here. A band the reader has not touched follows its default:
   // Data Sources is folded while there is nothing in it.
   const [folds, setFolds] = useState<Partial<Record<Fold, boolean>>>({});
-  const toggle = (band: Fold, current: boolean) => setFolds((f) => ({ ...f, [band]: !current }));
+  // The member's saved choices arrive once; a band they have already clicked meanwhile keeps that click.
+  useEffect(() => {
+    let live = true;
+    preferences.loadFolded().then((saved) => {
+      if (!live) return;
+      const known = Object.fromEntries((Object.keys(DEFAULT_FOLDED) as Fold[]).flatMap((b) => (typeof saved[bandId(b)] === 'boolean' ? [[b, saved[bandId(b)]!]] : [])));
+      setFolds((own) => ({ ...known, ...own }));
+    });
+    return () => { live = false; };
+  }, [preferences]);
+  const folded = (band: Fold) => folds[band] ?? DEFAULT_FOLDED[band];
+  const toggle = (band: Fold) => {
+    const next = { ...folds, [band]: !folded(band) };
+    setFolds(next);
+    preferences.saveFolded(Object.fromEntries((Object.keys(next) as Fold[]).map((b) => [bandId(b), next[b]!])));
+  };
   const storageIds = useMemo(() => (model ? tickedStorages(model, state.storageIds) : null), [model, state.storageIds]);
   const visible = useMemo(
     () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds: state.contextIds, storageIds }) : null),
@@ -72,16 +90,16 @@ function AppBody() {
           storageIds={storageIds}
           counts={counts}
           dq={dq}
-          foldedSources={folds.sources ?? model.sources.length === 0}
-          foldedMarts={folds.marts ?? false}
-          onFoldSources={() => toggle('sources', folds.sources ?? model.sources.length === 0)}
-          onFoldMarts={() => toggle('marts', folds.marts ?? false)}
+          foldedSources={folded('sources')}
+          foldedMarts={folded('marts')}
+          onFoldSources={() => toggle('sources')}
+          onFoldMarts={() => toggle('marts')}
           onRetryCount={(id) => void recount(id)}
           onRequestCount={request}
           onOpenApp={(id) => void ctx.ui.openExternal(martAppUrl(ctx.projectId, id))}
         >
-          <DataBand model={model} folded={folds.data ?? false} onFold={() => toggle('data', folds.data ?? false)} />
-          <RowBand model={model} folded={folds.row ?? false} onFold={() => toggle('row', folds.row ?? false)} />
+          <DataBand model={model} folded={folded('data')} onFold={() => toggle('data')} />
+          <RowBand model={model} folded={folded('row')} onFold={() => toggle('row')} />
         </CardBands>
       </main>
     </div>
