@@ -18,6 +18,12 @@ test('tickedStorages is null with fewer than two storages holding marts', () => 
   expect(tickedStorages(model(['s1', 's2'], [['a', 's1']]), ['s1'])).toBeNull();
 });
 
+test('tickedStorages falls back to all when every ticked storage vanished, but keeps a chosen None', () => {
+  const m = model(['s1', 's2'], [['a', 's1'], ['b', 's2']]);
+  expect(tickedStorages(m, ['gone'])).toBeNull();
+  expect(tickedStorages(m, [])).toEqual([]);
+});
+
 test('tickedStorages drops a storage a refresh removed', () => {
   const m = model(['s1', 's2'], [['a', 's1'], ['b', 's2']]);
   expect(tickedStorages(m, ['s1', 'gone'])).toEqual(['s1']);

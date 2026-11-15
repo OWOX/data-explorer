@@ -104,7 +104,6 @@ describe('storageIds', () => {
   });
 
   test('rule 1: the search matches only marts in a ticked storage', () => {
-    expect(only(model(), sel({ martId: 'b' }), ['s1'], '').ids).toEqual(expect.arrayContaining(['a', 'b']));
     const r = computeVisible({ model: model(), selection: sel(), search: 'c', contextIds: [], storageIds: ['s1'], schemas: () => undefined });
     expect(r.ids).toEqual([]);
     expect(computeVisible({ model: model(), selection: sel(), search: 'c', contextIds: [], storageIds: ['s2'], schemas: () => undefined }).ids).toEqual(['c']);

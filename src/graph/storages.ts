@@ -16,5 +16,8 @@ export function storageOptions(model: Model): StorageOption[] {
 export function tickedStorages(model: Model, storageIds: string[] | null): string[] | null {
   const offered = storageOptions(model).map((s) => s.id);
   if (offered.length < 2 || storageIds === null) return null;
-  return storageIds.filter((id) => offered.includes(id));
+  const still = storageIds.filter((id) => offered.includes(id));
+  // Every ticked storage vanished: that is no choice the reader made, so fall back to all. An empty
+  // set the reader chose (None) stays empty.
+  return still.length === 0 && storageIds.length > 0 ? null : still;
 }

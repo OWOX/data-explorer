@@ -646,6 +646,39 @@ describe('the storage filter', () => {
     expect(within(data()).getByRole('heading', { name: 'Payments' })).toBeInTheDocument();
   });
 
+  test('a click outside closes the open menu', async () => {
+    await ordersGrid();
+    const menu = storageMenu();
+    await userEvent.click(within(menu).getByText('Storage'));
+    expect(menu.open).toBe(true);
+    await userEvent.click(martCard('Customers'));
+    expect(menu.open).toBe(false);
+  });
+
+  test('with every storage unticked and the selected mart gone after a refresh, the selection is emptied', async () => {
+    const hide = { current: false };
+    await mountWith((ctx) => ({
+      ...ctx,
+      owox: {
+        ...ctx.owox,
+        getJson: async <T,>(path: string, query?: Record<string, string>) => {
+          const r = await ctx.owox.getJson<T>(path, query);
+          if (hide.current && path === '/api/model-canvas/data-marts') {
+            const page = r as unknown as { items: { id: string }[] };
+            return { ...page, items: page.items.filter((i) => i.id !== 'orders') } as T;
+          }
+          return r;
+        },
+      },
+    }));
+    await within(data()).findByRole('table');
+    await userEvent.click(within(storageMenu()).getByLabelText('Select all'));
+    await waitFor(() => expect(within(marts()).queryByText('Orders')).toBeNull());
+    hide.current = true;
+    await userEvent.click(screen.getByLabelText('Refresh model'));
+    await waitFor(() => expect(within(data()).getByText('Select a data mart.')).toBeInTheDocument());
+  });
+
   test('is hidden with one storage', async () => {
     const f = demoFixtures();
     f.marts.forEach((m) => { m.storageId = 's1'; });

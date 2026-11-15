@@ -28,7 +28,7 @@ test('rows show their label and count', () => {
   expect(screen.getByText((1200).toLocaleString())).toBeInTheDocument();
 });
 
-test('toggling a row unticks and reticks it', async () => {
+test('unticking a ticked row removes it', async () => {
   const onChange = mount(['a', 'b']);
   await userEvent.click(screen.getByRole('checkbox', { name: /Alpha/ }));
   expect(onChange).toHaveBeenLastCalledWith(['b']);
@@ -56,6 +56,16 @@ test('only narrows to one option', async () => {
   const onChange = mount(['a', 'b']);
   await userEvent.click(screen.getByRole('button', { name: 'Only Beta' }));
   expect(onChange).toHaveBeenLastCalledWith(['b']);
+});
+
+test('Select all is indeterminate when only some rows are ticked', () => {
+  const { unmount } = render(<MultiSelect label="Storage" options={options} selected={['a']} onChange={() => {}} />);
+  expect((screen.getByLabelText('Select all') as HTMLInputElement).indeterminate).toBe(true);
+  unmount();
+  render(<MultiSelect label="Storage" options={options} selected={['a', 'b']} onChange={() => {}} />);
+  const box = screen.getByLabelText('Select all') as HTMLInputElement;
+  expect(box.indeterminate).toBe(false);
+  expect(box.checked).toBe(true);
 });
 
 test('no options, no control', () => {

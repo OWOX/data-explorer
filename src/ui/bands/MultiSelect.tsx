@@ -1,4 +1,5 @@
 import { ChevronDown } from 'lucide-react';
+import { useEffect } from 'react';
 import { num } from '../format';
 import type { Mark } from '../storage-icons';
 
@@ -15,6 +16,18 @@ export function MultiSelect({ label, options, selected, onChange }: {
   selected: string[];
   onChange: (next: string[]) => void;
 }) {
+  // `<details name>` closes the other menu when one opens; nothing but this closes the last one
+  // when the pointer goes elsewhere.
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      for (const menu of document.querySelectorAll<HTMLDetailsElement>('details.dm-filter[open]')) {
+        if (!menu.contains(e.target as Node)) menu.open = false;
+      }
+    };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, []);
+
   if (options.length === 0) return null;
   // Counted against the options on offer: a ticked id that has since gone is no reason to say "3"
   // where every box in the menu is ticked.

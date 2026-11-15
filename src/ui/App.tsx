@@ -43,7 +43,12 @@ function AppBody() {
   const focusId = visible?.focusId ?? null;
   const { martId, sourceKey } = state.selection;
   useEffect(() => {
-    if (!model || !focusId) return;
+    if (!model) return;
+    // Nothing to fall back to (every ticked storage is empty): a selected mart that is gone leaves an empty selection.
+    if (!focusId) {
+      if (martId && !model.marts.has(martId)) dispatch({ type: 'replace', selection: { sourceKey: null, martId: null, record: null } });
+      return;
+    }
     if (!martId && !sourceKey) { dispatch({ type: 'init', focusId }); return; }
     const martGone = !!martId && !model.marts.has(martId);
     const sourceGone = !!sourceKey && !model.sources.some((x) => x.key === sourceKey);
