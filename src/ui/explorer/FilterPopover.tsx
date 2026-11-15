@@ -1,6 +1,6 @@
 import { Filter } from 'lucide-react';
 import { useState } from 'react';
-import { RELATIVE_PRESETS, operatorsFor, type OpId } from '../../filters/catalogue';
+import { RELATIVE_MAX_N, RELATIVE_PRESETS, isDateTimeField, operatorsFor, type OpId } from '../../filters/catalogue';
 import { isComplete, type ColumnFilter, type FilterValue } from '../../filters/build';
 import type { Field } from '../../model/types';
 import type { RelativeDatePreset } from '../../sdk/types';
@@ -16,7 +16,7 @@ export function FilterEditor({ field, value, onApply, onClear }: { field: Field;
   const draft: ColumnFilter = { field: field.name, op, ...(def.value === 'none' ? {} : { value: val }) };
   const range = (val ?? { from: '', to: '' }) as { from: string; to: string };
   const rel = (val ?? { kind: 'today' }) as RelativeDatePreset;
-  const dateType = field.category === 'time' ? 'time' : 'date';
+  const dateType = field.category === 'time' ? 'time' : isDateTimeField(field) ? 'datetime-local' : 'date';
 
   return (
     <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); if (isComplete(draft, field)) onApply(draft); }}>
@@ -44,7 +44,7 @@ export function FilterEditor({ field, value, onApply, onClear }: { field: Field;
           }}>
             {RELATIVE_PRESETS.map((p) => <option key={p.kind} value={p.kind}>{p.label}</option>)}
           </select>
-          {'n' in rel && <input aria-label="N" className={`${input} w-20`} type="number" min={1} value={Number.isNaN(rel.n) ? '' : rel.n} onChange={(e) => setVal({ ...rel, n: e.target.valueAsNumber } as RelativeDatePreset)} />}
+          {'n' in rel && <input aria-label="N" className={`${input} w-20`} type="number" min={1} max={RELATIVE_MAX_N} value={Number.isNaN(rel.n) ? '' : rel.n} onChange={(e) => setVal({ ...rel, n: e.target.valueAsNumber } as RelativeDatePreset)} />}
         </div>
       )}
       <div className="flex justify-end gap-2">

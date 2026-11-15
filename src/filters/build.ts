@@ -1,6 +1,6 @@
 import type { Field } from '../model/types';
 import type { RelativeDatePreset, TraverseFilter } from '../sdk/types';
-import { operatorsFor, RELATIVE_PRESETS, type OpId } from './catalogue';
+import { isDateTimeField, operatorsFor, RELATIVE_MAX_N, RELATIVE_PRESETS, type OpId } from './catalogue';
 
 export type FilterValue = string | number | { from: string | number; to: string | number } | RelativeDatePreset | undefined;
 export type ColumnFilter = { field: string; op: OpId; value?: FilterValue };
@@ -26,24 +26,35 @@ export function isComplete(f: ColumnFilter, field: Field): boolean {
       if (!preset) return false;
       if (!preset.needsN) return true;
       const n = (p as { n?: unknown }).n;
-      return Number.isInteger(n) && (n as number) > 0;
+      return Number.isInteger(n) && (n as number) > 0 && (n as number) <= RELATIVE_MAX_N;
     }
   }
 }
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const NO_SECONDS = /^(\d{4}-\d{2}-\d{2}T)?\d{2}:\d{2}$/;
+
+/** datetime-local and time inputs give HH:MM, the backend wants HH:MM:SS. */
+const withSeconds = (v: string) => (NO_SECONDS.test(v) ? `${v}:00` : v);
+/** A date-only bound on a timestamp widens to the start or the end of that day, so "to" is inclusive. */
+const bound = (v: string, end: boolean) => (DATE_ONLY.test(v) ? `${v}T${end ? '23:59:59' : '00:00:00'}` : withSeconds(v));
+
 export function toTraverseFilter(f: ColumnFilter, field: Field): TraverseFilter {
   const column = field.name;
   const isNum = field.category === 'number';
-  const scalar = (v: FilterValue) => (isNum ? Number(v) : String(v));
+  const stamped = isDateTimeField(field) || field.category === 'time';
+  const scalar = (v: FilterValue) => (isNum ? Number(v) : stamped ? withSeconds(String(v)) : String(v));
   switch (f.op) {
     case 'is_blank': case 'is_not_blank': case 'is_true': case 'is_false':
       return { column, operator: f.op };
     case 'on': return { column, operator: 'eq', value: String(f.value) };
-    case 'before': return { column, operator: 'lt', value: String(f.value) };
-    case 'after': return { column, operator: 'gt', value: String(f.value) };
+    case 'before': return { column, operator: 'lt', value: scalar(f.value) as string };
+    case 'after': return { column, operator: 'gt', value: scalar(f.value) as string };
     case 'relative': return { column, operator: 'relative_date', value: f.value as RelativeDatePreset };
     case 'between': {
       const r = f.value as { from: string | number; to: string | number };
+      if (isDateTimeField(field)) return { column, operator: 'between', value: { from: bound(String(r.from), false), to: bound(String(r.to), true) } };
+      if (field.category === 'time') return { column, operator: 'between', value: { from: withSeconds(String(r.from)), to: withSeconds(String(r.to)) } };
       return isNum
         ? { column, operator: 'between', value: { from: Number(r.from), to: Number(r.to) } }
         : { column, operator: 'between', value: { from: String(r.from), to: String(r.to) } };

@@ -40,3 +40,26 @@ test('Clear calls onClear', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
   expect(onClear).toHaveBeenCalled();
 });
+
+test('timestamp fields use datetime-local inputs, time fields time inputs, DATE a date input', async () => {
+  const { rerender } = render(<FilterEditor field={ts} value={undefined} onApply={vi.fn()} onClear={vi.fn()} />);
+  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'after');
+  expect(screen.getByLabelText('Value')).toHaveAttribute('type', 'datetime-local');
+  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'between');
+  expect(screen.getByLabelText('From')).toHaveAttribute('type', 'datetime-local');
+  rerender(<FilterEditor key="t" field={{ ...ts, name: 'at', type: 'TIME', category: 'time' }} value={undefined} onApply={vi.fn()} onClear={vi.fn()} />);
+  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'after');
+  expect(screen.getByLabelText('Value')).toHaveAttribute('type', 'time');
+  rerender(<FilterEditor key="d" field={{ ...ts, name: 'day', type: 'DATE' }} value={undefined} onApply={vi.fn()} onClear={vi.fn()} />);
+  expect(screen.getByLabelText('Value')).toHaveAttribute('type', 'date');
+});
+
+test('the relative N input is capped at 3650', async () => {
+  render(<FilterEditor field={ts} value={undefined} onApply={vi.fn()} onClear={vi.fn()} />);
+  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'relative');
+  await userEvent.selectOptions(screen.getByLabelText('Period'), 'last_n_days');
+  expect(screen.getByLabelText('N')).toHaveAttribute('max', '3650');
+  await userEvent.clear(screen.getByLabelText('N'));
+  await userEvent.type(screen.getByLabelText('N'), '4000');
+  expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+});

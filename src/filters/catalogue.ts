@@ -66,3 +66,9 @@ export const RELATIVE_PRESETS: { kind: RelativeDatePreset['kind']; label: string
   { kind: 'last_n_days', label: 'Last N days', needsN: true },
   { kind: 'last_n_months', label: 'Last N months', needsN: true },
 ];
+
+/** The backend's RELATIVE_DATE_MAX_N. */
+export const RELATIVE_MAX_N = 3650;
+
+/** A date-category field that carries a time of day (DATETIME, TIMESTAMP and their time-zone variants). */
+export const isDateTimeField = (field: Field) => field.category === 'date' && field.type.trim().toUpperCase() !== 'DATE';
