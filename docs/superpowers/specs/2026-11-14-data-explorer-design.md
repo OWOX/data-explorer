@@ -128,8 +128,7 @@ A relationship column is a field of the explored mart that appears as `sourceFie
 2. **Title field heuristic.**
    1. The first field whose name or alias equals `title` or `name` (case-insensitive).
    2. Else, the first field whose name or alias contains `title` or `name`.
-   3. Else, the first string field that is not a key.
-   4. Else, no title. The cell shows the raw value.
+   3. Else, no title. The cell shows the raw value. There is no fallback to "the first string field": a status or a type is not a title, and showing one in place of a key misleads.
 3. The cell shows the title, with the raw value in a tooltip.
 4. **Click behavior.** When the related join field is the related mart's only primary key, a click opens that record's tab. Otherwise it opens the related mart's tab filtered `equals <value>` on that field.
 5. When a relationship has several join conditions (a composite key), the cell shows the raw value and its click opens the related mart filtered on every join condition.
