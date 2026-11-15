@@ -350,6 +350,18 @@ describe('the record', () => {
     expect(within(row()).queryByText(/boom/)).toBeNull();
   });
 
+  test('the Row band labels show the alias only, with a (?) holding the description', async () => {
+    await mountApp();
+    await within(data()).findByRole('table');
+    await userEvent.click(within(data()).getAllByRole('cell').find((c) => c.textContent === '1')!);
+    await within(row()).findByText('status');
+    expect(within(row()).getByText('Customer')).toBeInTheDocument();
+    expect(within(row()).queryByText('customer_id')).toBeNull();
+    expect(within(row()).queryByLabelText('About status')).toBeNull();
+    await userEvent.hover(within(row()).getByLabelText('About Customer'));
+    expect((await screen.findAllByText('Who placed the order.')).length).toBeGreaterThan(0);
+  });
+
   test('Refresh on a record shows the progress bar', async () => {
     await mountWith(overrideTraverse((real) => async (id, o) => { if (o.limit === 1) await new Promise((r) => setTimeout(r, 50)); return real(id, o); }));
     await within(data()).findByRole('table');
@@ -665,11 +677,18 @@ describe('column headers and band toolbars', () => {
     expect(id).not.toHaveAttribute('title');
   });
 
-  test('the column picker lists the alias beside the technical name', async () => {
+  test('the column picker shows the alias only, and a (?) with the description when the field has one', async () => {
     const grid = await ordersGrid();
     await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/8\)/ }));
     expect(screen.getByLabelText(/Amount/)).toBeInTheDocument();
-    expect(screen.getByText('amount')).toBeInTheDocument();
+    expect(screen.queryByText('amount')).toBeNull();
+    expect(screen.queryByText('customer_id')).toBeNull();
+    const picker = within(screen.getByRole('dialog'));
+    expect(picker.getByLabelText('Customer')).toBeInTheDocument();
+    const about = picker.getByLabelText('About Customer');
+    expect(picker.queryByLabelText('About Amount')).toBeNull();
+    await userEvent.hover(about);
+    expect((await screen.findAllByText('Who placed the order.')).length).toBeGreaterThan(0);
   });
 
   test('the (i) is there only with a description, and shows it in a tooltip', async () => {

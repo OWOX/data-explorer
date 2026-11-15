@@ -13,6 +13,7 @@ import { BandTools, BandToolsSlot } from '../bands/BandTools';
 import { PickedIcon } from '../bands/picked';
 import { Skeleton } from '../Skeleton';
 import { CellValue } from './CellValue';
+import { FieldLabel } from './FieldLabel';
 
 /** One record of a mart, read by primary key. Key it by mart and key so a new record starts clean. */
 export function RecordView({ martId, pk, model }: { martId: string; pk: Record<string, unknown>; model: Model }) {
@@ -89,7 +90,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
           const target = rel ? clickTarget(rel, row, relSchemas.get(rel.relatedMartId)) : null;
           return (
             <div key={f.name} className="contents">
-              <dt className="text-muted-foreground">{fieldLabel(f)}{fieldLabel(f) !== f.name && <span className="ml-1 font-mono text-[11px]">{f.name}</span>}</dt>
+              <dt className="flex min-w-0 items-start text-muted-foreground"><FieldLabel field={f} wrap /></dt>
               <dd className="min-w-0 break-words">
                 <CellValue row={row} field={f.name} type={f.type} title={titles.get(f.name)}
                   onOpen={target ? () => dispatch({ type: 'follow', target, sourceOf }) : undefined} />
