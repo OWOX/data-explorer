@@ -174,7 +174,7 @@ describe('a hub with many neighbours', () => {
   const ids = Array.from({ length: N }, (_, i) => `n${String(i).padStart(2, '0')}`);
   const mart = (id: string): Mart => ({ id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
   const edges: Edge[] = ids.map((id, i) => ({ id: `e${i}`, source: id, target: 'hub', joins: [] }));
-  const model: Model = { marts: new Map(['hub', ...ids].map((id) => [id, mart(id)])), sources: [], edges, contexts: [], failedStorages: [] };
+  const model: Model = { marts: new Map(['hub', ...ids].map((id) => [id, mart(id)])), sources: [], edges, contexts: [], storages: [], failedStorages: [] };
 
   it('shows every neighbour and draws one path per pair', () => {
     const { ids: shown } = computeVisible({ model, selection: { sourceKey: null, martId: 'hub', record: null }, search: '', contextIds: [], schemas: () => undefined });

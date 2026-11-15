@@ -230,6 +230,9 @@ const updatedOf: Record<string, string> = {
   customers: iso(NOW - 3 * DAY),
 };
 
+/** The marts that live in the second storage, so the storage filter has something to filter. */
+const salesLake = new Set(['payments', 'returns', 'shipments', 'daily_kpis']);
+
 export function demoFixtures(): Fixtures {
   const marts: MockMart[] = specs.map((s, idx) => {
     const r = rng(1000 + idx * 97);
@@ -238,7 +241,7 @@ export function demoFixtures(): Fixtures {
       title: titleCase(s.id),
       description: s.description,
       icon: s.icon ?? null,
-      storageId: 's1',
+      storageId: salesLake.has(s.id) ? 's2' : 's1',
       contexts: contextOf[s.id] ? [contextOf[s.id]!] : [],
       accessible: s.accessible ?? true,
       definitionType: s.connectorSourceName ? 'CONNECTOR' : 'SQL',
@@ -249,5 +252,5 @@ export function demoFixtures(): Fixtures {
       dq: dqOf[s.id] ?? { state: 'NEVER_RUN' },
     };
   });
-  return { storages: [{ id: 's1', title: 'Demo Warehouse', type: 'GOOGLE_BIGQUERY' }], contexts, marts, edges, connectors };
+  return { storages: [{ id: 's1', title: 'Demo Warehouse', type: 'GOOGLE_BIGQUERY' }, { id: 's2', title: 'Sales Lake', type: 'AWS_ATHENA' }], contexts, marts, edges, connectors };
 }

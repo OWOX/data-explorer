@@ -67,5 +67,5 @@ export async function loadModel(ctx: Ctx): Promise<Model> {
 
   // isArray guards a malformed connectors response.
   const sources = groupSources(marts.values(), Array.isArray(connectors) ? connectors : []);
-  return { marts, sources, edges, contexts: contexts.map((c) => ({ id: c.id, name: c.name, icon: c.icon ?? null })), failedStorages };
+  return { marts, sources, edges, contexts: contexts.map((c) => ({ id: c.id, name: c.name, icon: c.icon ?? null })), storages: storages.map((s) => ({ id: s.id, title: s.title, type: s.type })), failedStorages };
 }

@@ -33,6 +33,8 @@ export type VisibleInput = {
   selection: Selection;
   search: string;
   contextIds: string[];
+  /** The storages ticked in the filter; null is all of them. */
+  storageIds?: string[] | null;
   schemas: (id: string) => Schema | undefined;
 };
 export type VisibleResult = {
@@ -44,10 +46,12 @@ export type VisibleResult = {
 };
 
 /** Which marts the Data Marts band shows, by the first rule that applies (spec, "Which marts show"). */
-export function computeVisible({ model, selection, search, contextIds, schemas }: VisibleInput): VisibleResult {
+export function computeVisible({ model, selection, search, contextIds, storageIds = null, schemas }: VisibleInput): VisibleResult {
   const inbound = inboundCounts(model.edges);
   const fieldHits = new Map<string, string>();
-  const accessible = [...model.marts.values()].filter((m) => m.accessible);
+  // A mart in an unticked storage is out of every rule below, the selected one included.
+  const inStorage = (id: string) => storageIds === null || storageIds.includes(model.marts.get(id)?.storageId ?? '');
+  const accessible = [...model.marts.values()].filter((m) => m.accessible && inStorage(m.id));
   const focusId = pickFocus(accessible.map((m) => m.id), model.marts, inbound);
   const selectedId = selection.martId && model.marts.has(selection.martId) ? selection.martId : null;
   const order = (ids: string[], first = selectedId) => ids.sort(rank(model.marts, inbound, first));
@@ -68,14 +72,14 @@ export function computeVisible({ model, selection, search, contextIds, schemas }
   }
 
   // 2. A mart is selected: it and every mart joined to it, in either direction.
-  if (selectedId) return { ids: order([selectedId, ...neighbours(selectedId, model.edges)]), focusId, fieldHits };
+  if (selectedId) return { ids: order([selectedId, ...neighbours(selectedId, model.edges)].filter(inStorage)), focusId, fieldHits };
 
   // 3. Only a source is selected: every mart it feeds.
   if (selection.sourceKey) {
     const source = model.sources.find((s) => s.key === selection.sourceKey);
-    return { ids: order((source?.martIds ?? []).filter((id) => model.marts.has(id))), focusId, fieldHits };
+    return { ids: order((source?.martIds ?? []).filter((id) => model.marts.has(id) && inStorage(id))), focusId, fieldHits };
   }
 
   // 4. Nothing selected, which is only the moment before a first load selects the focus mart.
-  return { ids: focusId ? order([focusId, ...neighbours(focusId, model.edges)], focusId) : [], focusId, fieldHits };
+  return { ids: focusId ? order([focusId, ...neighbours(focusId, model.edges)].filter(inStorage), focusId) : [], focusId, fieldHits };
 }

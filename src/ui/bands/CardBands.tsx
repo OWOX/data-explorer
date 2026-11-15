@@ -3,9 +3,12 @@
 import { Database, Plug } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DqSummary, Mart, Model, Source } from '../../model/types';
+import { storageOptions } from '../../graph/storages';
 import type { VisibleResult } from '../../graph/visible';
 import { sourceOfModel, useStore } from '../../state/store';
+import { storageMark } from '../storage-icons';
 import { Band } from './Band';
+import { MultiSelect } from './MultiSelect';
 import { MartCard, SourceCard, martElementId, sourceElementId, type CountState } from './cards';
 import { useCardTransitions } from './transitions';
 import { litIds, useWires, type Wire } from './wires';
@@ -25,6 +28,7 @@ const revisionOf = (key: string) => {
 export function CardBands({
   model,
   visible,
+  storageIds,
   counts,
   dq,
   foldedSources,
@@ -38,6 +42,8 @@ export function CardBands({
 }: {
   model: Model;
   visible: VisibleResult;
+  /** The storages the Data Marts band is narrowed to; null is all of them. */
+  storageIds: string[] | null;
   counts: Map<string, CountState>;
   dq: Map<string, DqSummary>;
   foldedSources: boolean;
@@ -103,6 +109,17 @@ export function CardBands({
   const martCards = useCardTransitions(shownMarts, martId);
   const sourceCards = useCardTransitions(model.sources, sourceKey);
 
+  const storages = useMemo(() => storageOptions(model), [model]);
+  // Offered from two storages up: with one there is nothing to choose between.
+  const storageFilter = storages.length < 2 ? undefined : (
+    <MultiSelect
+      label="Storage"
+      options={storages.map((s) => ({ value: s.id, label: s.title, count: s.count, icon: storageMark(s.type) }))}
+      selected={storageIds ?? storages.map((s) => s.id)}
+      onChange={(ids) => dispatch({ type: 'setStorages', ids: ids.length === storages.length ? null : ids })}
+    />
+  );
+
   const contextsOf = (ids: string[]) => model.contexts.filter((c) => ids.includes(c.id));
 
   return (
@@ -121,7 +138,7 @@ export function CardBands({
           return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => dispatch({ type: 'selectSource', key: source.key })} />;
         })}
       </Band>
-      <Band id="band-marts" icon={<Database size={18} />} title="Data Marts" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search matches." folded={foldedMarts} onFold={onFoldMarts}>
+      <Band id="band-marts" icon={<Database size={18} />} title="Data Marts" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search matches." toolbar={storageFilter} folded={foldedMarts} onFold={onFoldMarts}>
         {visible.ids.length === 0 && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
         {martCards.items.map((mart) => {
           const id = mart.id;

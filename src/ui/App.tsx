@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { martAppUrl } from '../config';
+import { tickedStorages } from '../graph/storages';
 import { computeVisible } from '../graph/visible';
 import { sourceOfModel, useServices, useStore } from '../state/store';
 import { CardBands } from './bands/CardBands';
@@ -28,10 +29,11 @@ function AppBody() {
   // schemaTick re-runs a search as schemas arrive. With no search it must not: the cards would be recomputed for nothing.
   const searching = state.search.trim() !== '';
   const tick = searching ? schemaTick : 0;
+  const storageIds = useMemo(() => (model ? tickedStorages(model, state.storageIds) : null), [model, state.storageIds]);
   const visible = useMemo(
-    () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds: state.contextIds, schemas: (id) => schemas.peek(id) }) : null),
+    () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds: state.contextIds, storageIds, schemas: (id) => schemas.peek(id) }) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [model, state.selection, state.search, state.contextIds, schemas, tick],
+    [model, state.selection, state.search, state.contextIds, storageIds, schemas, tick],
   );
   const { dq, counts, request, recount } = useCardStatus(model, visible?.ids ?? [], state.modelVersion);
 
@@ -66,6 +68,7 @@ function AppBody() {
         <CardBands
           model={model}
           visible={visible}
+          storageIds={storageIds}
           counts={counts}
           dq={dq}
           foldedSources={folds.sources ?? model.sources.length === 0}

@@ -35,6 +35,8 @@ export interface Model {
   sources: Source[];
   edges: Edge[];
   contexts: Context[];
+  /** Every storage the project lists, whether or not it loaded. */
+  storages: { id: string; title: string; type: string }[];
   failedStorages: { id: string; title: string; message: string }[];
 }
 

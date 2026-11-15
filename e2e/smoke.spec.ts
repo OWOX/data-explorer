@@ -98,3 +98,15 @@ test('Refresh keeps the cards, counts and quality icons on screen', async ({ pag
   await expect(badge).toHaveText(/\d/);
   await expect(band(page, 'data').getByRole('row')).toHaveCount(201);
 });
+
+test('the storage filter drops the marts of an unticked storage and leaves the selection alone', async ({ page }) => {
+  await ordersGrid(page);
+  await expect(band(page, 'marts').getByText('Payments', { exact: true })).toBeVisible();
+  const menu = band(page, 'marts').locator('details.dm-filter', { hasText: 'Storage' });
+  await menu.locator('summary').click();
+  await menu.getByRole('checkbox', { name: /Sales Lake/ }).uncheck();
+  await expect(band(page, 'marts').getByText('Payments', { exact: true })).toHaveCount(0);
+  await expect(band(page, 'marts').getByText('Customers', { exact: true })).toBeVisible();
+  await expect(martCard(page, 'Orders')).toHaveAttribute('aria-pressed', 'true');
+  await expect(band(page, 'data').getByRole('heading', { name: 'Orders' })).toBeVisible();
+});

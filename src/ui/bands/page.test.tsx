@@ -612,3 +612,44 @@ describe('column headers and band toolbars', () => {
     expect(within(bar).getByRole('button', { name: 'Refresh' })).toBeInTheDocument();
   });
 });
+
+describe('the storage filter', () => {
+  const head = () => marts().querySelector<HTMLElement>('.dm-band-head')!;
+  const storageMenu = () => within(head()).getByText('Storage').closest('details')!;
+
+  test('is in the Data Marts header, ticked by default, with a count per storage', async () => {
+    await ordersGrid();
+    const menu = storageMenu();
+    expect(within(menu).getByText('All')).toBeInTheDocument();
+    expect(within(menu).getByRole('checkbox', { name: /Demo Warehouse/ })).toBeChecked();
+    expect(within(menu).getByRole('checkbox', { name: /Sales Lake/ })).toBeChecked();
+    expect(within(menu).getByRole('checkbox', { name: /Sales Lake/ }).closest('label')).toHaveTextContent('4');
+  });
+
+  test('unticking Sales Lake removes Payments from the band; the Data band keeps the selected mart, with no history entry', async () => {
+    await ordersGrid();
+    expect(within(marts()).getByText('Payments')).toBeInTheDocument();
+    await userEvent.click(within(storageMenu()).getByRole('checkbox', { name: /Sales Lake/ }));
+    await waitFor(() => expect(within(marts()).queryByText('Payments')).toBeNull());
+    expect(within(marts()).getByText('Customers')).toBeInTheDocument();
+    expect(martCard('Orders')).toHaveAttribute('aria-pressed', 'true');
+    expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument();
+    expect(within(row()).getByRole('button', { name: /Back/ })).toBeDisabled();
+  });
+
+  test('a selected mart in an unticked storage leaves the Data Marts band but stays in the Data band', async () => {
+    await ordersGrid();
+    await userEvent.click(within(martCard('Orders').closest('section')!).getByText('Payments'));
+    await within(data()).findByRole('heading', { name: 'Payments' });
+    await userEvent.click(within(storageMenu()).getByRole('checkbox', { name: /Sales Lake/ }));
+    await waitFor(() => expect(within(marts()).queryByText('Payments')).toBeNull());
+    expect(within(data()).getByRole('heading', { name: 'Payments' })).toBeInTheDocument();
+  });
+
+  test('is hidden with one storage', async () => {
+    const f = demoFixtures();
+    f.marts.forEach((m) => { m.storageId = 's1'; });
+    await mountWith((c) => c, f);
+    expect(within(head()).queryByText('Storage')).toBeNull();
+  });
+});

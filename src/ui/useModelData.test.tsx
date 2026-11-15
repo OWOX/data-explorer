@@ -7,7 +7,7 @@ import { AppServices, StoreProvider } from '../state/store';
 import { useCardStatus } from './useModelData';
 
 const mart = (id: string): Mart => ({ id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
-const modelOf = (ids: string[]): Model => ({ marts: new Map(ids.map((id) => [id, mart(id)])), sources: [], edges: [], contexts: [], failedStorages: [] });
+const modelOf = (ids: string[]): Model => ({ marts: new Map(ids.map((id) => [id, mart(id)])), sources: [], edges: [], contexts: [], storages: [], failedStorages: [] });
 
 function setup(traverseData: () => Promise<ReturnType<typeof traversalOf>>) {
   const ctx = stubCtx({

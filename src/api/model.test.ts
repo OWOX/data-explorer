@@ -28,6 +28,7 @@ test('loadModel merges storages, canvas nodes, list contexts, edges and contexts
   expect(model.marts.get('b')!.accessible).toBe(false); // not in the member's list
   expect(model.edges).toEqual([{ id: 'e1', source: 'a', target: 'b', joins: [{ sourceField: 'customer_id', targetField: 'id' }] }]);
   expect(model.contexts).toEqual([{ id: 'c1', name: 'Sales', icon: 'revenue' }]);
+  expect(model.storages).toEqual([{ id: 's1', title: 'BQ', type: 'GOOGLE_BIGQUERY' }]);
 });
 
 test('loadModel drops edges whose ends are unknown', async () => {
@@ -117,4 +118,9 @@ test('a connector title from /api/connectors reaches model.sources', async () =>
     },
   });
   expect((await loadModel(ctx)).sources).toEqual([{ key: 'GoogleAnalytics4', name: 'Google Analytics 4', logo: null, martIds: ['a'] }]);
+});
+
+test('a failed storage stays in model.storages beside failedStorages', async () => {
+  const model = await loadModel(twoStorageCtx(['s2']));
+  expect(model.storages.map((s) => s.id)).toEqual(['s1', 's2']);
 });

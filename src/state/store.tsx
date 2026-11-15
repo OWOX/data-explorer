@@ -23,6 +23,8 @@ export type State = {
   history: Selection[];
   search: string;
   contextIds: string[];
+  /** The storages ticked in the Data Marts filter; null is all of them. */
+  storageIds: string[] | null;
   grids: Record<string, GridState>;
   modelVersion: number;
 };
@@ -41,13 +43,15 @@ export type Action =
   | { type: 'replace'; selection: Selection }
   | { type: 'search'; q: string }
   | { type: 'toggleContext'; id: string }
+  /** Narrow the Data Marts band to these storages (null: all). Not a selection change, so no history entry. */
+  | { type: 'setStorages'; ids: string[] | null }
   | { type: 'saveGrid'; martId: string; grid: GridState }
   | { type: 'refreshModel' };
 
 export const HISTORY_LIMIT = 20;
 
 const emptySelection: Selection = { sourceKey: null, martId: null, record: null };
-export const initialState: State = { selection: emptySelection, history: [], search: '', contextIds: [], grids: {}, modelVersion: 0 };
+export const initialState: State = { selection: emptySelection, history: [], search: '', contextIds: [], storageIds: null, grids: {}, modelVersion: 0 };
 
 /** The source stays selected only when it feeds the mart being selected. */
 const sourceFor = (current: Selection, martId: string, sourceOf?: SourceOf): string | null => {
@@ -101,6 +105,7 @@ export function reducer(state: State, a: Action): State {
       const has = state.contextIds.includes(a.id);
       return { ...state, contextIds: has ? state.contextIds.filter((c) => c !== a.id) : [...state.contextIds, a.id] };
     }
+    case 'setStorages': return { ...state, storageIds: a.ids };
     case 'saveGrid': return { ...state, grids: { ...state.grids, [a.martId]: a.grid } };
     case 'refreshModel': return { ...state, modelVersion: state.modelVersion + 1 };
   }

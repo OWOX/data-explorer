@@ -9,7 +9,7 @@ const modelOf = (ids: string[], edges: Edge[], extra: Partial<Mart>[] = [], sour
   sources,
   edges,
   contexts: [],
-  failedStorages: [],
+  storages: [], failedStorages: [],
 });
 const sel = (patch: Partial<Selection> = {}): Selection => ({ sourceKey: null, martId: null, record: null, ...patch });
 const run = (model: Model, selection: Selection, search = '', contextIds: string[] = []) =>
@@ -89,4 +89,49 @@ test('rule 1: a context filter applies, and a field match is reported', () => {
 test('a selected mart that is no longer in the model falls back to the focus mart', () => {
   const r = run(modelOf(['a', 'b'], [e('a', 'b')]), sel({ martId: 'gone' }));
   expect(r.ids[0]).toBe('b');
+});
+
+describe('storageIds', () => {
+  // a, b in storage s1; c, d in s2. b joins a and c; d joins c.
+  const edges = [e('b', 'a'), e('b', 'c'), e('d', 'c')];
+  const model = (sources: Source[] = []) => modelOf(['a', 'b', 'c', 'd'], edges, [{ storageId: 's1' }, { storageId: 's1' }, { storageId: 's2' }, { storageId: 's2' }], sources);
+  const only = (m: Model, selection: Selection, storageIds: string[] | null, search = '') =>
+    computeVisible({ model: m, selection, search, contextIds: [], storageIds, schemas: () => undefined });
+
+  test('null and every storage ticked narrow nothing', () => {
+    expect(new Set(only(model(), sel({ martId: 'b' }), null).ids)).toEqual(new Set(['a', 'b', 'c']));
+    expect(new Set(only(model(), sel({ martId: 'b' }), ['s1', 's2']).ids)).toEqual(new Set(['a', 'b', 'c']));
+  });
+
+  test('rule 1: the search matches only marts in a ticked storage', () => {
+    expect(only(model(), sel({ martId: 'b' }), ['s1'], '').ids).toEqual(expect.arrayContaining(['a', 'b']));
+    const r = computeVisible({ model: model(), selection: sel(), search: 'c', contextIds: [], storageIds: ['s1'], schemas: () => undefined });
+    expect(r.ids).toEqual([]);
+    expect(computeVisible({ model: model(), selection: sel(), search: 'c', contextIds: [], storageIds: ['s2'], schemas: () => undefined }).ids).toEqual(['c']);
+  });
+
+  test('rule 2: a selected mart is shown with its neighbours in ticked storages only', () => {
+    expect(new Set(only(model(), sel({ martId: 'b' }), ['s1']).ids)).toEqual(new Set(['a', 'b']));
+  });
+
+  test('rule 2: a selected mart in an unticked storage leaves the band, its neighbours stay', () => {
+    const r = only(model(), sel({ martId: 'c' }), ['s1']);
+    expect(r.ids).toEqual(['b']);
+  });
+
+  test('rule 3: a source feeds only its marts in ticked storages', () => {
+    const src: Source = { key: 'k', name: 'K', logo: null, martIds: ['a', 'c'] };
+    const m = modelOf(['a', 'b', 'c', 'd'], edges, [{ storageId: 's1', sourceKey: 'k' }, { storageId: 's1' }, { storageId: 's2', sourceKey: 'k' }, { storageId: 's2' }], [src]);
+    expect(only(m, sel({ sourceKey: 'k' }), ['s2']).ids).toEqual(['c']);
+  });
+
+  test('rule 4 and the focus mart come from ticked storages', () => {
+    const r = only(model(), sel(), ['s2']);
+    expect(r.focusId).toBe('c');
+    expect(new Set(r.ids)).toEqual(new Set(['c', 'd']));
+  });
+
+  test('no storage ticked shows nothing', () => {
+    expect(only(model(), sel({ martId: 'b' }), []).ids).toEqual([]);
+  });
 });
