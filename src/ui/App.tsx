@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { martAppUrl } from '../config';
+import { tickedContexts } from '../graph/contexts';
 import { tickedStorages } from '../graph/storages';
 import { computeVisible } from '../graph/visible';
 import { sourceOfModel, useServices, useStore } from '../state/store';
@@ -20,20 +21,17 @@ type Fold = 'sources' | 'marts' | 'data' | 'row';
 
 function AppBody() {
   const [state, dispatch] = useStore();
-  const { ctx, schemas } = useServices();
-  const { model, error, reload, schemaTick } = useModel();
+  const { ctx } = useServices();
+  const { model, error, reload } = useModel();
   // Folding is per band and lives here. A band the reader has not touched follows its default:
   // Data Sources is folded while there is nothing in it.
   const [folds, setFolds] = useState<Partial<Record<Fold, boolean>>>({});
   const toggle = (band: Fold, current: boolean) => setFolds((f) => ({ ...f, [band]: !current }));
-  // schemaTick re-runs a search as schemas arrive. With no search it must not: the cards would be recomputed for nothing.
-  const searching = state.search.trim() !== '';
-  const tick = searching ? schemaTick : 0;
   const storageIds = useMemo(() => (model ? tickedStorages(model, state.storageIds) : null), [model, state.storageIds]);
+  const contextIds = useMemo(() => (model ? tickedContexts(model, state.contextIds) : null), [model, state.contextIds]);
   const visible = useMemo(
-    () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds: state.contextIds, storageIds, schemas: (id) => schemas.peek(id) }) : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [model, state.selection, state.search, state.contextIds, storageIds, schemas, tick],
+    () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds, storageIds }) : null),
+    [model, state.selection, state.search, contextIds, storageIds],
   );
   const { dq, counts, request, recount } = useCardStatus(model, visible?.ids ?? [], state.modelVersion);
 
@@ -67,13 +65,14 @@ function AppBody() {
   if (!model || !visible) return <Skeleton rows={6} />;
 
   return (
-    <div className="flex h-full flex-col">
-      <Header contexts={model.contexts} failedStorages={model.failedStorages} error={error} onRetry={reload} />
-      <div className="min-h-0 flex-1 overflow-auto p-4" data-scroll-root="">
+    <div className="dm-page">
+      <Header failedStorages={model.failedStorages} error={error} onRetry={reload} />
+      <main className="dm-page-content">
         <CardBands
           model={model}
           visible={visible}
           storageIds={storageIds}
+          contextIds={contextIds}
           counts={counts}
           dq={dq}
           foldedSources={folds.sources ?? model.sources.length === 0}
@@ -87,7 +86,7 @@ function AppBody() {
           <DataBand model={model} folded={folds.data ?? false} onFold={() => toggle('data', folds.data ?? false)} />
           <RowBand model={model} folded={folds.row ?? false} onFold={() => toggle('row', folds.row ?? false)} />
         </CardBands>
-      </div>
+      </main>
     </div>
   );
 }

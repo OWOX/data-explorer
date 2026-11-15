@@ -10,6 +10,7 @@ import type { SortKey } from '../../model/sort';
 import type { Schema } from '../../model/types';
 import type { DestinationDto } from '../../sdk/types';
 import { useServices, useStore } from '../../state/store';
+import { Tooltip } from '../Tooltip';
 
 type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; filters: ColumnFilter[]; sorts: SortKey[] };
 type Result = { kind: 'ok' | 'timeout' | 'error'; text: string; url?: string };
@@ -199,7 +200,7 @@ function ExportResult({ result, onDismiss }: { result: Result; onDismiss: () => 
   const Icon = result.kind === 'ok' ? Check : AlertTriangle;
   return (
     <span role="status" className={`inline-flex max-w-96 items-center gap-1 text-xs ${result.kind === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}>
-      <Icon className="size-3.5 shrink-0" /><span className="truncate" title={result.text}>{result.text}</span>
+      <Icon className="size-3.5 shrink-0" /><Tooltip content={result.text}><span className="truncate">{result.text}</span></Tooltip>
       {result.url && <a href={result.url} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-0.5 underline">{result.kind === 'timeout' ? 'Still running — open the sheet' : 'Open the sheet'}<ExternalLink className="size-3" /></a>}
       <button type="button" aria-label="Dismiss" onClick={onDismiss} className="shrink-0 px-1">×</button>
     </span>

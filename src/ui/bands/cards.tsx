@@ -1,10 +1,10 @@
 // The cards themselves, ported from Data Flow: a source card and a data mart card.
-import { ExternalLink, History, Info, LoaderCircle, Plug } from 'lucide-react';
+import { ExternalLink, History, LoaderCircle, Plug } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Context, DqSummary, Mart, Source } from '../../model/types';
 import { compactNumber, count as plural, num, recordsLabel, relativeTime } from '../format';
 import { dqCardTone, dqVisual } from '../icons';
-import { Tooltip } from '../Tooltip';
+import { Hint, TipLines, Tooltip } from '../Tooltip';
 import { whenInView } from './inview';
 import type { CardTransition } from './transitions';
 import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
@@ -79,7 +79,7 @@ export function SourceCard({
         {source.logo
           ? <img className="dm-logo" src={source.logo} alt="" width={24} height={24} />
           : <span className="dm-logo" aria-hidden="true"><Plug size={16} /></span>}
-        <span className="dm-node-title" title={source.name}>{source.name}</span>
+        <Tooltip content={source.name}><span className="dm-node-title">{source.name}</span></Tooltip>
       </div>
       <div className="dm-badges">
         <span className="dm-badge">{plural(source.martIds.length, 'data mart')}</span>
@@ -114,7 +114,6 @@ export function MartCard({
   count,
   quality,
   freshness,
-  fieldHit,
   selected,
   lit,
   aside = false,
@@ -130,8 +129,6 @@ export function MartCard({
   quality: DqSummary | undefined;
   /** When the data was last updated (ISO), or null when unknown. */
   freshness: string | null;
-  /** The field the search matched, when it matched a field rather than the title. */
-  fieldHit?: string;
   selected: boolean;
   lit: boolean;
   /** Lit by a card other than the pinned one: drawn at half strength. */
@@ -165,26 +162,21 @@ export function MartCard({
       <div className="dm-node-head">
         {/* Only an icon someone picked: the default box on every card would say nothing. */}
         <PickedIcon icon={mart.icon} wrap="dm-logo" />
-        <span className="dm-node-title" title={mart.title}>{mart.title}</span>
-        <button
-          type="button"
-          aria-label="Open in OWOX"
-          title="Open this data mart"
-          className="dm-link"
-          onClick={(e) => { e.stopPropagation(); onOpenApp(); }}
-        >
-          <ExternalLink size={14} />
-        </button>
-        {mart.description && (
-          <span className="dm-hint" tabIndex={0} role="note" aria-label="Description">
-            <Info size={14} />
-            <span className="dm-hint-body">{mart.description}</span>
-          </span>
-        )}
+        <Tooltip content={mart.title}><span className="dm-node-title">{mart.title}</span></Tooltip>
+        <Tooltip content="Open this data mart">
+          <button
+            type="button"
+            aria-label="Open in OWOX"
+            className="dm-link"
+            onClick={(e) => { e.stopPropagation(); onOpenApp(); }}
+          >
+            <ExternalLink size={14} />
+          </button>
+        </Tooltip>
+        {mart.description && <Hint text={mart.description} label="Description" />}
       </div>
       <div className="dm-badges dm-badges-row">
         {mart.accessible ? <CountBadge count={count} onRetry={onRetryCount} /> : <span className="dm-badge">No access</span>}
-        {fieldHit && <span className="dm-badge dm-badge-shrink font-mono" title={fieldHit}>{fieldHit}</span>}
       </div>
       <div className="dm-node-foot">
         <QualityMark summary={quality} />
@@ -221,11 +213,14 @@ function Contexts({ contexts }: { contexts: Context[] }) {
     return () => watch.disconnect();
   }, [shown, contexts]);
   if (!shown) return null;
-  const chip = (context: Context): ReactNode => (
-    <span key={context.id} className="dm-badge" title={`Context: ${context.name}`}>
-      <PickedIcon icon={context.icon} fallback={DEFAULT_CONTEXT_ICON} size={12} /> {context.name}
-    </span>
-  );
+  const chip = (context: Context, tip = true): ReactNode => {
+    const badge = (
+      <span key={context.id} className="dm-badge">
+        <PickedIcon icon={context.icon} fallback={DEFAULT_CONTEXT_ICON} size={12} /> {context.name}
+      </span>
+    );
+    return tip ? <Tooltip key={context.id} content={`Context: ${context.name}`}>{badge}</Tooltip> : badge;
+  };
   // The folded chip wears the icon they all share, and the plain context icon when they differ.
   const first = contexts[0]?.icon;
   const shared = contexts.every((context) => context.icon === first) ? first : undefined;
@@ -233,29 +228,34 @@ function Contexts({ contexts }: { contexts: Context[] }) {
   return (
     <span ref={row} className={`dm-contexts${bare ? ' dm-contexts-bare' : ''}`}>
       <span className="dm-contexts-probe" aria-hidden>
-        <span ref={named} className="dm-contexts-measure">{contexts.map(chip)}</span>
+        <span ref={named} className="dm-contexts-measure">{contexts.map((c) => chip(c, false))}</span>
       </span>
       {bare ? (
-        <span
-          className="dm-badge dm-mark dm-contexts-count"
-          tabIndex={0}
-          role="note"
-          aria-label={`${plural(contexts.length, 'context')}: ${names.join(', ')}`}
+        <Tooltip
+          content={(
+            <TipLines lines={[
+              plural(contexts.length, 'context'),
+              ...contexts.map((context) => (
+                <span key={context.id} className="dm-contexts-line">
+                  <PickedIcon icon={context.icon} fallback={DEFAULT_CONTEXT_ICON} size={12} />
+                  {context.name}
+                </span>
+              )),
+            ]} />
+          )}
         >
-          {contexts.length > 1 && num(contexts.length)}
-          <PickedIcon icon={shared} fallback={DEFAULT_CONTEXT_ICON} size={12} />
-          <span className="dm-hint-body dm-mark-body">
-            <span>{plural(contexts.length, 'context')}</span>
-            {contexts.map((context) => (
-              <span key={context.id} className="dm-contexts-line">
-                <PickedIcon icon={context.icon} fallback={DEFAULT_CONTEXT_ICON} size={12} />
-                {context.name}
-              </span>
-            ))}
+          <span
+            className="dm-badge dm-mark dm-contexts-count"
+            tabIndex={0}
+            role="note"
+            aria-label={`${plural(contexts.length, 'context')}: ${names.join(', ')}`}
+          >
+            {contexts.length > 1 && num(contexts.length)}
+            <PickedIcon icon={shared} fallback={DEFAULT_CONTEXT_ICON} size={12} />
           </span>
-        </span>
+        </Tooltip>
       ) : (
-        contexts.map(chip)
+        contexts.map((c) => chip(c))
       )}
     </span>
   );
@@ -307,11 +307,8 @@ function QualityMark({ summary }: { summary: DqSummary | undefined }) {
 /** A status glyph that says what it means on hover, and does nothing when clicked. */
 function Mark({ tone, lines, children }: { tone: string; lines: string[]; children: ReactNode }) {
   return (
-    <span className={`dm-status dm-mark dm-${tone}`} tabIndex={0} role="note" aria-label={lines.join('. ')}>
-      {children}
-      <span className="dm-hint-body dm-mark-body">
-        {lines.map((line) => <span key={line}>{line}</span>)}
-      </span>
-    </span>
+    <Tooltip content={<TipLines lines={lines} />}>
+      <span className={`dm-status dm-mark dm-${tone}`} tabIndex={0} role="note" aria-label={lines.join('. ')}>{children}</span>
+    </Tooltip>
   );
 }

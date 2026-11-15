@@ -6,6 +6,7 @@ import { recordTabId } from '../../records/relationships';
 import { useStore } from '../../state/store';
 import { RecordView } from '../explorer/RecordView';
 import { Band } from './Band';
+import { Tooltip } from '../Tooltip';
 import { PickedIcon } from './picked';
 
 export function RowBand({ model, folded, onFold }: { model: Model; folded: boolean; onFold: () => void }) {
@@ -46,9 +47,11 @@ export function RowBand({ model, folded, onFold }: { model: Model; folded: boole
       onFold={onFold}
       grid={false}
       toolbar={
-        <button type="button" disabled={!canGoBack} onClick={back} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50" title="Back (Alt+Left)">
-          <ArrowLeft className="size-4" />Back
-        </button>
+        <Tooltip content="Back (Alt+Left)">
+          <button type="button" disabled={!canGoBack} onClick={back} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50">
+            <ArrowLeft className="size-4" />Back
+          </button>
+        </Tooltip>
       }
     >
       {shown ? <RecordView key={recordTabId(shown.martId, shown.pk)} martId={shown.martId} pk={shown.pk} model={model} /> : <p className="dm-muted p-2 text-sm">Select a row.</p>}

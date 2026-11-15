@@ -413,20 +413,68 @@ describe('the record', () => {
 });
 
 describe('search, contexts and refresh', () => {
+  test('the page header is the title with Refresh at its right end; the search lives in the Data Marts band', async () => {
+    await ordersGrid();
+    const header = document.querySelector('header.dm-page-header')!;
+    expect(within(header as HTMLElement).getByRole('heading', { level: 1, name: 'Data Explorer' })).toHaveClass('dm-page-header-title');
+    expect(header.lastElementChild!.querySelector('button[aria-label="Refresh model"]')).not.toBeNull();
+    expect(header.querySelector('input')).toBeNull();
+    expect(within(marts()).getByLabelText('Search data marts')).toBeInTheDocument();
+    expect(document.querySelector('main.dm-page-content')).not.toBeNull();
+  });
+
   test('search narrows the marts, keeps the selection, and an empty match says so', async () => {
     await ordersGrid();
     await userEvent.type(screen.getByLabelText('Search data marts'), 'zzzz');
     expect(await within(marts()).findByText('No data marts match.')).toBeInTheDocument();
     expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument();
-    await userEvent.click(screen.getByLabelText('Clear search'));
+    await userEvent.clear(screen.getByLabelText('Search data marts'));
     expect(await within(marts()).findByText('Customers')).toBeInTheDocument();
   });
 
-  test('a context chip filters to that context', async () => {
+  test('the search reads the title only: a context name finds nothing', async () => {
     await ordersGrid();
-    await userEvent.click(within(screen.getByRole('group', { name: 'Contexts' })).getByText('Marketing'));
+    await userEvent.type(screen.getByLabelText('Search data marts'), 'marketing');
+    expect(await within(marts()).findByText('No data marts match.')).toBeInTheDocument();
+    await userEvent.clear(screen.getByLabelText('Search data marts'));
+    await userEvent.type(screen.getByLabelText('Search data marts'), 'campaign');
+    expect(await within(marts()).findByText('Campaigns')).toBeInTheDocument();
+    expect(within(marts()).queryByText('Orders')).toBeNull();
+    expect(within(marts()).getByText('Campaigns').closest('article')!.querySelector('.dm-badge-shrink')).toBeNull();
+  });
+
+  const filterMenu = (name: string) => within(marts()).getByText(name, { selector: 'summary' }).closest('details') as HTMLElement;
+
+  test('the toolbar holds the search, then Contexts, then Storage', async () => {
+    await ordersGrid();
+    const tools = marts().querySelector('.dm-band-tools')!;
+    const kinds = [...tools.children].map((c) => (c.matches('label.dm-search') ? 'search' : c.querySelector('summary')?.firstChild?.textContent));
+    expect(kinds).toEqual(['search', 'Contexts', 'Storage']);
+  });
+
+  test('Contexts lists every context with its icon plus "Without context", all ticked: unticking narrows', async () => {
+    await ordersGrid();
+    const menu = filterMenu('Contexts');
+    expect(within(menu).getByText('All')).toBeInTheDocument();
+    for (const name of ['Catalog', 'Marketing', 'Sales', 'Without context']) expect(within(menu).getByRole('checkbox', { name: new RegExp(name) })).toBeChecked();
+    expect(menu.querySelectorAll('.dm-filter-row svg').length).toBeGreaterThanOrEqual(3);
+    await userEvent.click(within(menu).getByRole('checkbox', { name: /Without context/ }));
+    await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
+    expect(within(marts()).getByText('Orders')).toBeInTheDocument();
+    expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument();
+    await userEvent.click(within(menu).getByRole('checkbox', { name: /Without context/ }));
+    expect(await within(marts()).findByText('Customers')).toBeInTheDocument();
+  });
+
+  test('only Marketing shows its marts; only Without context shows the marts in none', async () => {
+    await ordersGrid();
+    const menu = filterMenu('Contexts');
+    await userEvent.click(within(menu).getByRole('button', { name: 'Only Marketing' }));
     await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
     expect(within(marts()).getByText('Campaigns')).toBeInTheDocument();
+    await userEvent.click(within(menu).getByRole('button', { name: 'Only Without context' }));
+    expect(await within(marts()).findByText('Customers')).toBeInTheDocument();
+    expect(within(marts()).queryByText('Campaigns')).toBeNull();
   });
 
   test('a failed refresh keeps the bands and shows a retry in the header', async () => {
@@ -605,11 +653,12 @@ describe('folding and lines', () => {
 describe('column headers and band toolbars', () => {
   const head = (b: HTMLElement) => b.querySelector<HTMLElement>('.dm-band-head')!;
 
-  test('a column shows its alias, and its title attribute holds the technical name; no alias shows the name', async () => {
+  test('a column shows its alias, and its tooltip holds the technical name; no alias shows the name', async () => {
     const grid = await ordersGrid();
     const customer = within(grid).getByText('Customer');
-    expect(customer).not.toHaveAttribute('title');
-    expect(customer.closest('button')).toHaveAttribute('title', 'customer_id. Sorted by the key value');
+    expect(customer.closest('button')).not.toHaveAttribute('title');
+    await userEvent.hover(customer);
+    expect((await screen.findAllByText('customer_id. Sorted by the key value')).length).toBeGreaterThan(0);
     expect(within(grid).queryByText('customer_id')).toBeNull();
     expect(within(grid).getByLabelText('Filter Customer')).toBeInTheDocument();
     const id = within(grid).getByText('id', { selector: 'span.truncate' });
@@ -851,12 +900,17 @@ describe('column sort', () => {
     expect(calls.filter((c) => c.id === 'orders')).toHaveLength(before);
   });
 
-  test('a related-title column says it sorts by the key value; a plain one has no such title', async () => {
+  test('a related-title column says it sorts by the key value; a plain one has no such tooltip', async () => {
     const grid = await ordersGrid();
-    expect(sortBtn(grid, 'Customer')).toHaveAttribute('title', 'customer_id. Sorted by the key value');
-    expect(within(sortBtn(grid, 'Customer')).getByText('Customer')).not.toHaveAttribute('title');
-    expect(sortBtn(grid, 'status')).not.toHaveAttribute('title');
-    expect(sortBtn(grid, 'product_id')).toHaveAttribute('title', 'Sorted by the key value');
+    for (const name of ['Customer', 'status', 'product_id']) expect(sortBtn(grid, name)).not.toHaveAttribute('title');
+    const tip = () => document.querySelector('[role="tooltip"]')?.textContent ?? null;
+    for (const [name, text] of [['Customer', 'customer_id. Sorted by the key value'], ['product_id', 'Sorted by the key value'], ['status', null]] as const) {
+      await userEvent.hover(sortBtn(grid, name));
+      if (text) await waitFor(() => expect(tip()).toBe(text)); else await settle();
+      if (!text) expect(tip()).toBeNull();
+      await userEvent.unhover(sortBtn(grid, name));
+      await waitFor(() => expect(tip()).toBeNull());
+    }
   });
 
   test('with two or more sorts the label says the precedence', async () => {

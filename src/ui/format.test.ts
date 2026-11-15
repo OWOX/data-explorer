@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { compactNumber, count, formatTemporal, recordsLabel, relativeTime, resetFormats } from './format';
 
 test.each([[0, '0'], [999, '999'], [1200, '1.2K'], [12400, '12.4K'], [3_400_000, '3.4M'], [2_000_000_000, '2B']])('%d → %s', (n, s) => {
@@ -39,17 +40,16 @@ describe('formatTemporal', () => {
   });
 
   test('a DATE is a calendar day: it never moves with the time zone', () => {
-    const was = process.env.TZ;
     try {
       for (const tz of ['America/Los_Angeles', 'Pacific/Auckland', 'UTC']) {
-        process.env.TZ = tz;
+        vi.stubEnv('TZ', tz);
         resetFormats();
         expect(formatTemporal('2026-03-12', 'DATE')).toBe(new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(2026, 2, 12)));
         expect(formatTemporal('2026-03-12', 'DATE')).toMatch(/12/);
         expect(formatTemporal('2026-03-12T00:00:00.000Z', 'DATE')).toMatch(/12/);
       }
     } finally {
-      if (was === undefined) delete process.env.TZ; else process.env.TZ = was;
+      vi.unstubAllEnvs();
       resetFormats();
     }
   });

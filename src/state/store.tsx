@@ -25,7 +25,8 @@ export type State = {
   selection: Selection;
   history: Selection[];
   search: string;
-  contextIds: string[];
+  /** The contexts ticked in the Contexts filter (NO_CONTEXT is "Without context"); null is all of them. */
+  contextIds: string[] | null;
   /** The storages ticked in the Data Marts filter; null is all of them. */
   storageIds: string[] | null;
   grids: Record<string, GridState>;
@@ -45,7 +46,8 @@ export type Action =
   /** Swap the selection without a history entry: a refresh took the selected mart or source away. */
   | { type: 'replace'; selection: Selection }
   | { type: 'search'; q: string }
-  | { type: 'toggleContext'; id: string }
+  /** Narrow the Data Marts band to these contexts (null: all), as the Storage filter does. Not a selection change. */
+  | { type: 'setContexts'; ids: string[] | null }
   /** Narrow the Data Marts band to these storages (null: all). Not a selection change, so no history entry. */
   | { type: 'setStorages'; ids: string[] | null }
   | { type: 'saveGrid'; martId: string; grid: GridState }
@@ -54,7 +56,7 @@ export type Action =
 export const HISTORY_LIMIT = 20;
 
 const emptySelection: Selection = { sourceKey: null, martId: null, record: null };
-export const initialState: State = { selection: emptySelection, history: [], search: '', contextIds: [], storageIds: null, grids: {}, modelVersion: 0 };
+export const initialState: State = { selection: emptySelection, history: [], search: '', contextIds: null, storageIds: null, grids: {}, modelVersion: 0 };
 
 /** The source stays selected only when it feeds the mart being selected. */
 const sourceFor = (current: Selection, martId: string, sourceOf?: SourceOf): string | null => {
@@ -104,10 +106,7 @@ export function reducer(state: State, a: Action): State {
     case 'replace': return { ...state, selection: a.selection };
     // Searching narrows the Data Marts band; what is selected stays selected.
     case 'search': return { ...state, search: a.q };
-    case 'toggleContext': {
-      const has = state.contextIds.includes(a.id);
-      return { ...state, contextIds: has ? state.contextIds.filter((c) => c !== a.id) : [...state.contextIds, a.id] };
-    }
+    case 'setContexts': return { ...state, contextIds: a.ids };
     case 'setStorages': return { ...state, storageIds: a.ids };
     case 'saveGrid': return { ...state, grids: { ...state.grids, [a.martId]: a.grid } };
     case 'refreshModel': return { ...state, modelVersion: state.modelVersion + 1 };

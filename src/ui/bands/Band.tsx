@@ -1,7 +1,8 @@
 // A band: the titled strip a page section sits in, with its count, hint, controls and fold.
-import { ChevronDown, Info } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { num } from '../format';
+import { Hint } from '../Tooltip';
 import { BandToolsSlot } from './BandTools';
 
 export function Band({
@@ -45,10 +46,7 @@ export function Band({
         <span className="dm-band-icon">{icon}</span>
         <h2 className="dm-band-title">{title}</h2>
         {total !== undefined && <span className="dm-badge dm-band-count">{typeof total === 'number' ? num(total) : total}</span>}
-        <span className="dm-hint" tabIndex={0} role="note" aria-label={hint}>
-          <Info size={14} />
-          <span className="dm-hint-body">{hint}</span>
-        </span>
+        <Hint text={hint} label={hint} />
         {/* Filtering what you cannot see answers nothing, so the controls fold with the content. */}
         {!folded && <div className="dm-band-tools">{toolbar}{!grid && <span ref={setSlot} className="contents" />}</div>}
         <button
@@ -57,7 +55,6 @@ export function Band({
           onClick={onFold}
           aria-expanded={!folded}
           aria-label={folded ? `Show ${title}` : `Hide ${title}`}
-          title={folded ? `Show ${title}` : `Hide ${title}`}
         >
           <ChevronDown size={16} className={folded ? undefined : 'dm-band-fold-open'} />
         </button>

@@ -12,10 +12,7 @@ export function useModel() {
   const [{ modelVersion }] = useStore();
   const [model, setModel] = useState<Model | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const [schemaTick, setSchemaTick] = useState(0);
   const [retry, setRetry] = useState(0);
-
-  useEffect(() => schemas.subscribe(() => setSchemaTick((t) => t + 1)), [schemas]);
 
   useEffect(() => {
     let live = true;
@@ -23,13 +20,13 @@ export function useModel() {
     setError(null);
     if (modelVersion > 0) schemas.clear();
     loadModel(ctx).then(
-      (m) => { if (!live) return; setModel(m); void schemas.prefetch([...m.marts.keys()]); },
+      (m) => { if (live) setModel(m); },
       (e) => { if (live) setError(e); },
     );
     return () => { live = false; };
   }, [ctx, schemas, modelVersion, retry]);
 
-  return { model, error, reload: () => setRetry((r) => r + 1), schemaTick };
+  return { model, error, reload: () => setRetry((r) => r + 1) };
 }
 
 export function useCardStatus(model: Model | null, visibleIds: string[], modelVersion: number) {

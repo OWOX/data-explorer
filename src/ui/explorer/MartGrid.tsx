@@ -103,13 +103,15 @@ function SortTitle({ field }: { field: Schema[number] }) {
   const current = at < 0 ? null : sorts[at]!.direction;
   const label = fieldLabel(field);
   const Arrow = current === 'desc' ? ArrowDown : ArrowUp;
-  return (
+  const tip = [fieldTitle(field), relNames.has(field.name) ? 'Sorted by the key value' : null].filter(Boolean).join('. ');
+  const button = (
     <button type="button" onClick={() => toggleSort(field.name)} aria-label={`Sort by ${label}, currently ${current ? DIRECTION_NAME[current] : 'not sorted'}${current && sorts.length > 1 ? `, sort ${at + 1} of ${sorts.length}` : ''}`}
-      title={[fieldTitle(field), relNames.has(field.name) ? 'Sorted by the key value' : null].filter(Boolean).join('. ') || undefined} className="dm-sort inline-flex min-w-0 items-center gap-1 font-medium">
+      className="dm-sort inline-flex min-w-0 items-center gap-1 font-medium">
       <span className="truncate">{label}</span>
       {current && <span className="dm-sort-mark inline-flex items-center"><Arrow className="size-3.5" aria-hidden />{sorts.length > 1 && <span className="text-[10px] tabular-nums">{at + 1}</span>}</span>}
     </button>
   );
+  return tip ? <Tooltip content={tip}>{button}</Tooltip> : button;
 }
 
 function GridCell({ row, name, type, rel }: { row: Row; name: string; type: string; rel: RelColumn | undefined }) {

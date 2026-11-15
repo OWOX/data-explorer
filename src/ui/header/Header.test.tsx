@@ -13,7 +13,7 @@ function Version() {
 function mount(failedStorages: { id: string; title: string; message: string }[]) {
   render(
     <AppServices ctx={stubCtx()}><StoreProvider><TooltipProvider>
-      <Header contexts={[]} failedStorages={failedStorages} />
+      <Header failedStorages={failedStorages} />
       <Version />
     </TooltipProvider></StoreProvider></AppServices>,
   );

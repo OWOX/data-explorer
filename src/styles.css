@@ -52,6 +52,20 @@
   --notice: #60a5fa;
 }
 
-html, body, #root { height: 100%; margin: 0; }
+html, body { margin: 0; }
 body { background: var(--background); color: var(--foreground); font-family: var(--font-sans); }
+
+/* The page shell and its paddings, exactly as Data Flow's. A tooltip anchored on a right-hand card can
+   reach past the content edge, and a hidden one is still laid out: `clip` rather than `hidden`, so this
+   does not become a scroll container and take vertical scrolling with it. */
+.dm-page { min-height: 100vh; overflow-x: clip; }
+.dm-page-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 1.5rem 3rem; }
+.dm-page-header-title { margin: 0; font-size: 1.5rem; font-weight: 500; }
+.dm-page-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+.dm-page-content { padding: 0 3rem 3rem; }
+
+@media (max-width: 640px) {
+  .dm-page-header { padding: 1rem 1.25rem; }
+  .dm-page-content { padding: 0 1.25rem 1.25rem; }
+}
 * { border-color: var(--border); }

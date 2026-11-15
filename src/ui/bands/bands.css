@@ -102,21 +102,22 @@
 /* Positioned, so a card leaving the flow can pin itself against this box rather than the page. */
 .dm-band-grid { position: relative; display: grid; gap: 0.85rem; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
 
-/* The block description, on the ⓘ. No `title`: it waits a second, wraps where it likes, and cannot
-   be read at a glance. */
+/* The ⓘ and every other hint: one dark bubble, drawn by the shared Tooltip in a portal on the body,
+   so nothing on the page paints over it. No `title`: it waits a second, wraps where it likes, and
+   cannot be read at a glance. */
 .dm-hint { position: relative; display: inline-flex; color: var(--muted-foreground); opacity: 0.55; cursor: help; }
 .dm-hint:hover, .dm-hint:focus-visible { opacity: 1; outline: none; }
 .dm-hint-body {
-  position: absolute; z-index: 30; top: calc(100% + 0.5rem); left: 0;
-  width: max-content; max-width: 22rem;
+  z-index: 1000; width: max-content; max-width: min(22rem, calc(100vw - 1rem));
   border-radius: 0.5rem; padding: 0.5rem 0.625rem;
   background: color-mix(in oklab, var(--foreground) 95%, transparent); color: var(--background);
-  font-size: 0.75rem; font-weight: 400; line-height: 1.45; text-align: left;
-  box-shadow: 0 6px 16px rgb(0 0 0 / 0.22);
-  opacity: 0; visibility: hidden; translate: 0 -0.25rem;
-  transition: opacity 120ms, translate 120ms, visibility 120ms;
+  font-size: 0.75rem; font-weight: 400; line-height: 1.45; text-align: left; overflow-wrap: anywhere;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.22); pointer-events: none;
 }
-.dm-hint:hover .dm-hint-body, .dm-hint:focus-visible .dm-hint-body { opacity: 1; visibility: visible; translate: 0 0; }
+.dm-hint-body ul { margin: 0; padding: 0; list-style: none; }
+.dm-tip-fixed { position: fixed; }
+.dm-tip-lines { display: flex; flex-direction: column; gap: 0.125rem; }
+.dm-tip-lines > span:first-child { font-weight: 500; }
 
 /* --- cards -------------------------------------------------------------- */
 /* The OWOX palette's base ramp. Only the hues a run status can take are here. */
@@ -181,8 +182,6 @@
 /* Folded, the row holds one chip that always fits, and its bubble has to get out above the card. */
 .dm-contexts-bare { overflow: visible; }
 .dm-contexts-count { cursor: help; min-height: calc(0.6875rem * 1.5 + 0.125rem); }
-/* The chip is nowrap and its bubble would inherit that: a long context name has to wrap inside it. */
-.dm-contexts-count .dm-hint-body { white-space: normal; overflow-wrap: anywhere; }
 .dm-contexts-line { display: inline-flex; align-items: center; gap: 0.375rem; font-weight: 400; }
 /* The named copy the row is judged against: laid out at full width inside a box that clips it, so
    it is never seen, never reached, and never widens the page. */
@@ -196,14 +195,6 @@
    `a.dm-mark` must not restate that or it would outrank `.dm-ok` and friends. */
 a.dm-mark { cursor: pointer; text-decoration: none; }
 button.dm-mark { cursor: pointer; }
-/* Narrower than the block hint's 22rem: this one hangs off a card, and the rightmost column leaves
-   only the card's own width plus the page gutter before the viewport edge.
-   ponytail: a fixed clamp, so a bubble near the edge can still lose a few px to the clip above at
-   some widths. Anchor positioning with `position-try-fallbacks: flip-inline` is the upgrade, once
-   the host's browser floor allows it. */
-.dm-mark-body { display: flex; flex-direction: column; gap: 0.125rem; top: auto; bottom: calc(100% + 0.5rem); max-width: 17rem; }
-.dm-mark-body > span:first-child { font-weight: 500; }
-.dm-mark:hover .dm-hint-body, .dm-mark:focus-visible .dm-hint-body { opacity: 1; visibility: visible; translate: 0 0; }
 /* Loader2 is the host's running glyph, and it spins there. */
 .dm-spin { animation: dm-spin 1s linear infinite; }
 @keyframes dm-spin { to { rotate: 360deg; } }
@@ -292,6 +283,20 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-col-info:hover { color: var(--foreground); }
 /* No hover on touch: the actions stay on screen there. */
 @media (hover: none) { .dm-reveal { opacity: 1; } }
+
+/* A search box that matches the filter controls beside it. */
+.dm-search {
+  display: flex; align-items: center; gap: 0.375rem;
+  height: 2rem; padding: 0 0.5rem;
+  border: 1px solid var(--border); border-radius: 0.375rem; background: var(--card);
+  color: var(--muted-foreground);
+}
+.dm-search:focus-within { border-color: var(--muted-foreground); }
+.dm-search input {
+  width: 9rem; min-width: 0; border: 0; background: none; outline: none;
+  color: var(--foreground); font: inherit; font-size: 0.8125rem;
+}
+.dm-search input::-webkit-search-cancel-button { cursor: pointer; }
 
 /* --- the filter menus in a band header, ported from Data Flow ------------------------------------ */
 .dm-filter { position: relative; }
