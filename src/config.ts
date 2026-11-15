@@ -1,5 +1,4 @@
 export const OWOX_APP_URL = 'https://app.owox.com';
-export const VISIBLE_BUDGET = 12;
 export const PAGE_SIZE = 200;
 export const SCHEMA_CONCURRENCY = 6;
 export const COUNT_CONCURRENCY = 4;

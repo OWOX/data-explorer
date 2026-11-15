@@ -1,9 +1,19 @@
-import { computeVisible, expandLevels, inboundCounts, neighbours, pickFocus } from './visible';
-import type { Edge, Mart, Model } from '../model/types';
+import type { Edge, Mart, Model, Source } from '../model/types';
+import type { Selection } from '../state/store';
+import { computeVisible, inboundCounts, neighbours, pickFocus } from './visible';
 
 const e = (source: string, target: string): Edge => ({ id: `${source}-${target}`, source, target, joins: [] });
 const mart = (id: string, extra: Partial<Mart> = {}): Mart => ({ id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null, ...extra });
-const modelOf = (ids: string[], edges: Edge[]): Model => ({ marts: new Map(ids.map((i) => [i, mart(i)])), sources: [], edges, contexts: [], failedStorages: [] });
+const modelOf = (ids: string[], edges: Edge[], extra: Partial<Mart>[] = [], sources: Source[] = []): Model => ({
+  marts: new Map(ids.map((id, i) => [id, mart(id, extra[i] ?? {})])),
+  sources,
+  edges,
+  contexts: [],
+  failedStorages: [],
+});
+const sel = (patch: Partial<Selection> = {}): Selection => ({ sourceKey: null, martId: null, record: null, ...patch });
+const run = (model: Model, selection: Selection, search = '', contextIds: string[] = []) =>
+  computeVisible({ model, selection, search, contextIds, schemas: () => undefined });
 
 test('inboundCounts counts targets', () => {
   expect(inboundCounts([e('a', 'b'), e('c', 'b'), e('b', 'd')])).toEqual(new Map([['b', 2], ['d', 1]]));
@@ -16,82 +26,67 @@ test('pickFocus picks the most inbound, ties by title', () => {
   expect(pickFocus([], marts, new Map())).toBeNull();
 });
 
-test('expandLevels adds whole levels while the total stays within budget', () => {
-  // f has 3 neighbours (level 1); each has 2 more (level 2 = 6) → 1+3+6 = 10 ≤ 12; level 3 has 5 → 15 > 12
-  const edges = [e('a', 'f'), e('b', 'f'), e('f', 'c'),
-    e('a1', 'a'), e('a2', 'a'), e('b1', 'b'), e('b2', 'b'), e('c', 'c1'), e('c', 'c2'),
-    e('x1', 'a1'), e('x2', 'a1'), e('x3', 'b1'), e('x4', 'c1'), e('x5', 'c2')];
-  const ids = expandLevels('f', edges, 12);
-  expect(new Set(ids)).toEqual(new Set(['f', 'a', 'b', 'c', 'a1', 'a2', 'b1', 'b2', 'c1', 'c2']));
+test('neighbours returns inbound and outbound, without duplicates or itself', () => {
+  expect(new Set(neighbours('b', [e('a', 'b'), e('b', 'c'), e('a', 'b'), e('b', 'b')]))).toEqual(new Set(['a', 'c']));
 });
 
-test('expandLevels always shows level 1 in full, even past the budget', () => {
-  const edges = Array.from({ length: 15 }, (_, i) => e(`n${i}`, 'hub'));
-  expect(expandLevels('hub', edges, 12)).toHaveLength(16);
-});
-
-test('expandLevels on an isolated mart returns just the mart', () => {
-  expect(expandLevels('solo', [], 12)).toEqual(['solo']);
-});
-
-test('neighbours returns inbound and outbound, without duplicates', () => {
-  expect(new Set(neighbours('b', [e('a', 'b'), e('b', 'c'), e('a', 'b')]))).toEqual(new Set(['a', 'c']));
-});
-
-test('computeVisible: no selection, no filters → levels from the focus', () => {
-  const r = computeVisible({ model: modelOf(['a', 'b', 'c', 'z'], [e('a', 'b'), e('c', 'b')]), selectedId: null, search: '', contextIds: [], schemas: () => undefined });
-  expect(r.mode).toBe('levels');
+test('rule 4: nothing selected shows the focus mart and its neighbours, focus first', () => {
+  const r = run(modelOf(['a', 'b', 'c', 'z'], [e('a', 'b'), e('c', 'b')]), sel());
   expect(r.focusId).toBe('b');
+  expect(r.ids[0]).toBe('b');
   expect(new Set(r.ids)).toEqual(new Set(['a', 'b', 'c']));
 });
 
-test('computeVisible: selection shows the selected mart and all direct neighbours, no cap', () => {
-  const edges = Array.from({ length: 20 }, (_, i) => e(`n${i}`, 'hub'));
-  const ids = ['hub', ...edges.map((x) => x.source)];
-  const r = computeVisible({ model: modelOf(ids, edges), selectedId: 'n3', search: '', contextIds: [], schemas: () => undefined });
-  expect(r.mode).toBe('selected');
-  expect(new Set(r.ids)).toEqual(new Set(['n3', 'hub']));
+test('the focus mart is never one the member cannot open', () => {
+  const r = run(modelOf(['a', 'b', 'c'], [e('a', 'b'), e('c', 'b')], [{}, { accessible: false }, {}]), sel());
+  expect(r.focusId).toBe('a');
 });
 
-test('computeVisible: search narrows to matches capped at 12 by inbound count', () => {
-  const ids = Array.from({ length: 15 }, (_, i) => `sales${i}`);
-  const edges = [e('sales1', 'sales0'), e('sales2', 'sales0')];
-  const r = computeVisible({ model: modelOf([...ids, 'other'], edges), selectedId: null, search: 'SALES', contextIds: [], schemas: () => undefined });
-  expect(r.mode).toBe('filtered');
-  expect(r.ids).toHaveLength(12);
-  expect(r.ids[0]).toBe('sales0');
-  expect(r.hiddenMatches).toBe(3);
+test('rule 2: a selected mart shows with every neighbour, no cap, ordered by inbound then title', () => {
+  const edges = Array.from({ length: 30 }, (_, i) => e(`n${String(i).padStart(2, '0')}`, 'hub'));
+  edges.push(e('n05', 'n01'));
+  const r = run(modelOf(['hub', ...edges.slice(0, 30).map((x) => x.source)], edges), sel({ martId: 'hub' }));
+  expect(r.ids).toHaveLength(31);
+  expect(r.ids[0]).toBe('hub');
+  expect(r.ids[1]).toBe('n01'); // the only neighbour with an inbound edge
+  expect(r.ids.slice(2)).toEqual(r.ids.slice(2).sort());
 });
 
-test('computeVisible: a search with no matches is empty, not the default view', () => {
-  const r = computeVisible({ model: modelOf(['a', 'b'], [e('a', 'b')]), selectedId: null, search: 'nope', contextIds: [], schemas: () => undefined });
-  expect(r).toMatchObject({ mode: 'empty', ids: [], hiddenMatches: 0 });
+test('rule 2: the selected mart comes first even with fewer inbound edges, and an inaccessible neighbour is included', () => {
+  const r = run(modelOf(['a', 'b', 'c'], [e('a', 'b'), e('c', 'b'), e('b', 'a')], [{}, {}, { accessible: false }]), sel({ martId: 'a' }));
+  expect(r.ids).toEqual(['a', 'b']);
+  const r2 = run(modelOf(['a', 'b', 'c'], [e('a', 'b'), e('c', 'b')], [{}, {}, { accessible: false }]), sel({ martId: 'b' }));
+  expect(r2.ids).toEqual(['b', 'a', 'c']);
 });
 
-test('computeVisible: selection wins over filters', () => {
-  const r = computeVisible({ model: modelOf(['a', 'b'], [e('a', 'b')]), selectedId: 'a', search: 'zzz', contextIds: [], schemas: () => undefined });
-  expect(r.mode).toBe('selected');
-  expect(new Set(r.ids)).toEqual(new Set(['a', 'b']));
+test('rule 3: a source with no mart selected shows every mart it feeds', () => {
+  const sources: Source[] = [{ key: 'Shopify', name: 'Shopify', logo: null, martIds: ['a', 'c'] }];
+  const model = modelOf(['a', 'b', 'c'], [e('a', 'b')], [{ sourceKey: 'Shopify' }, {}, { sourceKey: 'Shopify' }], sources);
+  expect(new Set(run(model, sel({ sourceKey: 'Shopify' })).ids)).toEqual(new Set(['a', 'c']));
 });
 
-test('computeVisible: default view fills up to 12 from other connected groups, never isolated marts', () => {
-  const small = ['a', 'b', 'c', 'd', 'e'];
-  const big = Array.from({ length: 8 }, (_, i) => `g${i}`);
-  const edges = [...small.map((x) => e(x, 'hub')), ...big.map((x) => e(x, 'h2'))];
-  const ids = ['hub', 'h2', ...small, ...big, 'solo1', 'solo2'];
-  const r = computeVisible({ model: modelOf(ids, edges), selectedId: null, search: '', contextIds: [], schemas: () => undefined });
-  expect(r.mode).toBe('levels');
-  expect(r.focusId).toBe('h2');
-  expect(r.ids).toHaveLength(12);
-  expect(r.ids).toContain('hub');
-  expect(r.ids).not.toContain('solo1');
-  expect(r.ids).not.toContain('solo2');
-  // 15 connected marts in total, 12 shown
-  expect(r.hiddenMatches).toBe(3);
+test('rule 1: a search shows its matches, narrowed to the selected source, selected mart first', () => {
+  const sources: Source[] = [{ key: 'S', name: 'S', logo: null, martIds: ['sales1', 'sales2'] }];
+  const model = modelOf(['sales1', 'sales2', 'sales3', 'other'], [e('sales1', 'sales2')], [{ sourceKey: 'S' }, { sourceKey: 'S' }, {}, { sourceKey: 'S' }], sources);
+  expect(new Set(run(model, sel(), 'SALES').ids)).toEqual(new Set(['sales1', 'sales2', 'sales3']));
+  expect(run(model, sel({ sourceKey: 'S' }), 'sales').ids).toEqual(['sales2', 'sales1']);
+  expect(run(model, sel({ martId: 'sales1' }), 'sales').ids[0]).toBe('sales1');
 });
 
-test('computeVisible: a small connected model has no hidden matches and keeps isolated marts out', () => {
-  const r = computeVisible({ model: modelOf(['a', 'b', 'c', 'd', 'solo'], [e('a', 'b'), e('c', 'd')]), selectedId: null, search: '', contextIds: [], schemas: () => undefined });
-  expect(new Set(r.ids)).toEqual(new Set(['a', 'b', 'c', 'd']));
-  expect(r.hiddenMatches).toBe(0);
+test('rule 1: search leaves out marts the member cannot open, and a search with no match is empty', () => {
+  const model = modelOf(['sales1', 'sales2'], [], [{}, { accessible: false }]);
+  expect(run(model, sel(), 'sales').ids).toEqual(['sales1']);
+  expect(run(model, sel(), 'nope').ids).toEqual([]);
+});
+
+test('rule 1: a context filter applies, and a field match is reported', () => {
+  const model = modelOf(['a', 'b'], [], [{ contextIds: ['c1'] }, {}]);
+  expect(run(model, sel(), '', ['c1']).ids).toEqual(['a']);
+  const r = computeVisible({ model, selection: sel(), search: 'cust', contextIds: [], schemas: (id) => (id === 'b' ? [{ name: 'customer_id', alias: null, type: 'INT64', category: 'number', description: null, isPrimaryKey: false }] : undefined) });
+  expect(r.fieldHits).toEqual(new Map([['b', 'customer_id']]));
+});
+
+test('a selected mart that is no longer in the model falls back to the focus mart', () => {
+  const r = run(modelOf(['a', 'b'], [e('a', 'b')]), sel({ martId: 'gone' }));
+  expect(r.ids[0]).toBe('b');
 });

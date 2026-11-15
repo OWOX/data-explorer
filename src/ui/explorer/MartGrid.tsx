@@ -8,9 +8,8 @@ import { clickTarget, primaryKeys, type RelColumn } from '../../records/relation
 import { useMartRelationships } from '../../records/useMartRelationships';
 import { lookupTitles } from '../../records/titles';
 import type { Row } from '../../sdk/types';
-import { useServices, useStore, type Tab } from '../../state/store';
+import { sourceOfModel, useServices, useStore, type GridState } from '../../state/store';
 import { ErrorBox } from '../ErrorBox';
-import { MartIcon } from '../icons';
 import { Skeleton } from '../Skeleton';
 import { CellValue } from './CellValue';
 import { ColumnPicker } from './ColumnPicker';
@@ -28,12 +27,15 @@ function useSchema(martId: string, version: number) {
   return s;
 }
 
-export function MartTab({ tab, model }: { tab: Extract<Tab, { kind: 'mart' }>; model: Model }) {
+export type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
+
+/** The grid for one mart: loads the schema, then reads rows. Key it by mart id. */
+export function MartGrid({ martId, model, seed, onChange }: { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState) => void }) {
   const [schemaVersion, setSchemaVersion] = useState(0);
-  const { schema, error } = useSchema(tab.martId, schemaVersion);
+  const { schema, error } = useSchema(martId, schemaVersion);
   if (error) return <div className="p-4"><ErrorBox error={error} onRetry={() => setSchemaVersion((v) => v + 1)} /></div>;
   if (!schema) return <Skeleton rows={8} />;
-  return <MartGrid tab={tab} model={model} schema={schema} />;
+  return <Grid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} />;
 }
 
 // TanStack Table v9: row.getVisibleCells() needs the column visibility feature.
@@ -44,31 +46,32 @@ const titleKey = (rel: RelColumn, value: unknown) => `${rel.relatedMartId}\u0000
 
 // Cells read titles and schemas from context so the header cells keep their identity when a lookup lands:
 // a new header component would remount and close an open filter popover.
-const GridEnv = createContext<{ titles: Map<string, string>; relSchemas: Map<string, Schema> }>({ titles: new Map(), relSchemas: new Map() });
+const GridEnv = createContext<{ titles: Map<string, string>; relSchemas: Map<string, Schema>; model: Model | null }>({ titles: new Map(), relSchemas: new Map(), model: null });
 
 function GridCell({ row, name, rel }: { row: Row; name: string; rel: RelColumn | undefined }) {
   const { titles, relSchemas } = useContext(GridEnv);
   const { schemas } = useServices();
   const [, dispatch] = useStore();
+  const { model } = useContext(GridEnv);
   if (!rel) return <CellValue row={row} field={name} />;
   const target = clickTarget(rel, row, relSchemas.get(rel.relatedMartId) ?? schemas.peek(rel.relatedMartId));
   return (
     <CellValue row={row} field={name} title={titles.get(titleKey(rel, row[name]))}
-      onOpen={target ? () => dispatch(target.kind === 'record' ? { type: 'openRecord', martId: target.martId, pk: target.pk } : { type: 'openMart', martId: target.martId, filters: target.filters }) : undefined} />
+      onOpen={target && model ? () => dispatch({ type: 'follow', target, sourceOf: sourceOfModel(model) }) : undefined} />
   );
 }
 
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
-function MartGrid({ tab, model, schema }: { tab: Extract<Tab, { kind: 'mart' }>; model: Model; schema: Schema }) {
+function Grid({ martId, model, schema, seed, onChange }: { martId: string; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void }) {
   const { ctx, schemas } = useServices();
   const [, dispatch] = useStore();
-  const mart = model.marts.get(tab.martId);
-  const [visible, setVisible] = useState(() => defaultColumns(schema));
-  const [filters, setFilters] = useState<Record<string, ColumnFilter>>(() => toFilterMap(tab.initialFilters));
-  const [limit, setLimit] = useState(PAGE_SIZE);
+  // The columns, filters and page the reader left this mart with; filters a followed link asks for win.
+  const [visible, setVisible] = useState(() => seed.saved?.columns.filter((c) => schema.some((f) => f.name === c)) ?? defaultColumns(schema));
+  const [filters, setFilters] = useState<Record<string, ColumnFilter>>(() => (seed.filters ? toFilterMap(seed.filters) : seed.saved?.filters ?? {}));
+  const [limit, setLimit] = useState(() => (seed.filters ? PAGE_SIZE : seed.saved?.limit ?? PAGE_SIZE));
   const [version, setVersion] = useState(0);
-  // Titles per related mart and value, for the tab's lifetime. Every lookup is a billed run, so a value is looked up once.
+  // Titles per related mart and value, for the grid's lifetime. Every lookup is a billed run, so a value is looked up once.
   const [titles, setTitles] = useState(new Map<string, string>());
   const asked = useRef(new Set<string>());
   // A lookup is billed once it starts, so it is never aborted because the rows moved on: its results are
@@ -81,18 +84,22 @@ function MartGrid({ tab, model, schema }: { tab: Extract<Tab, { kind: 'mart' }>;
   }, []);
   const [relSchemas, setRelSchemas] = useState(new Map<string, Schema>());
 
-  // Re-seed the filters when the tab is reopened with new initialFilters (adjust state during render).
-  const [seededFrom, setSeededFrom] = useState(tab.initialFilters);
-  if (seededFrom !== tab.initialFilters) {
-    setSeededFrom(tab.initialFilters);
-    setFilters(toFilterMap(tab.initialFilters));
-    setLimit(PAGE_SIZE);
+  // Re-seed the filters when a followed link asks for new ones on this same mart (adjust state during render).
+  const [seededFrom, setSeededFrom] = useState(seed.filters);
+  if (seededFrom !== seed.filters) {
+    setSeededFrom(seed.filters);
+    if (seed.filters) {
+      setFilters(toFilterMap(seed.filters));
+      setLimit(PAGE_SIZE);
+    }
   }
 
-  const { rels } = useMartRelationships(tab.martId, model.edges);
+  useEffect(() => { onChange({ columns: visible, filters, limit }); }, [visible, filters, limit]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { rels } = useMartRelationships(martId, model.edges);
   const pks = primaryKeys(schema);
   const query = useMemo(() => buildRowQuery(schema, visible, Object.values(filters), limit, rels), [schema, visible, filters, limit, rels]);
-  const { rows, loading, error, hasMore } = useMartRows(tab.martId, query, version);
+  const { rows, loading, error, hasMore } = useMartRows(martId, query, version);
   // The title effect depends on the relationship columns on screen, not on every change of `visible`.
   const visibleRelKey = visible.filter((n) => rels.has(n)).join('|');
 
@@ -139,16 +146,14 @@ function MartGrid({ tab, model, schema }: { tab: Extract<Tab, { kind: 'mart' }>;
     };
   }), [visible, schema, rels, filters]);
 
-  const env = useMemo(() => ({ titles, relSchemas }), [titles, relSchemas]);
+  const env = useMemo(() => ({ titles, relSchemas, model }), [titles, relSchemas, model]);
   const table = useTable({ features, data: rows ?? [], columns });
   const hasFilters = Object.keys(filters).length > 0;
 
   return (
     <GridEnv.Provider value={env}>
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex max-h-[32rem] min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-        <MartIcon icon={mart?.icon ?? null} />
-        <span className="font-semibold">{mart?.title ?? tab.martId}</span>
         {rows && <span className="text-xs text-muted-foreground">{rows.length}{hasMore ? '+' : ''} rows</span>}
         <div className="flex-1" />
         <button type="button" disabled={!hasFilters} onClick={() => { setFilters({}); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
@@ -170,7 +175,7 @@ function MartGrid({ tab, model, schema }: { tab: Extract<Tab, { kind: 'mart' }>;
               : rows.length === 0 ? <tr><td colSpan={visible.length || 1} className="p-4 text-sm text-muted-foreground">{hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.'}</td></tr>
               : table.getRowModel().rows.map((r) => (
                 <tr key={r.id}
-                  onClick={pks.length ? () => dispatch({ type: 'openRecord', martId: tab.martId, pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }) : undefined}
+                  onClick={pks.length ? () => dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }) : undefined}
                   className={`border-b ${pks.length ? 'cursor-pointer hover:bg-accent' : ''}`}>
                   {r.getVisibleCells().map((c) => <td key={c.id} className="max-w-64 px-3 py-1.5">{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
                 </tr>

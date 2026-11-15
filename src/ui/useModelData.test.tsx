@@ -8,7 +8,7 @@ import { useCardStatus } from './useModelData';
 
 const mart = (id: string): Mart => ({ id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
 
-test('counts at most 12 cards, 4 at a time; the rest show no badge', async () => {
+test('counts every visible card, 4 at a time', async () => {
   const ids = Array.from({ length: 20 }, (_, i) => `m${i}`);
   const model: Model = { marts: new Map(ids.map((id) => [id, mart(id)])), sources: [], edges: [], contexts: [], failedStorages: [] };
   let running = 0;
@@ -27,9 +27,7 @@ test('counts at most 12 cards, 4 at a time; the rest show no badge', async () =>
   const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
   const { result } = renderHook(() => useCardStatus(model, ids, 0), { wrapper });
 
-  await waitFor(() => expect(result.current.counts.get('m11')).toEqual({ state: 'ok', value: 7 }));
-  expect(traverseData).toHaveBeenCalledTimes(12);
+  await waitFor(() => expect(result.current.counts.get('m19')).toEqual({ state: 'ok', value: 7 }));
+  expect(traverseData).toHaveBeenCalledTimes(20);
   expect(peak).toBeLessThanOrEqual(4);
-  expect(result.current.counts.get('m12')).toEqual({ state: 'ok', value: null });
-  expect(result.current.counts.get('m19')).toEqual({ state: 'ok', value: null });
 });

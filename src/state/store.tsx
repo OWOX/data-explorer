@@ -1,65 +1,99 @@
 import { createContext, useContext, useMemo, useReducer, type Dispatch, type ReactNode } from 'react';
 import { createRowCounter, type RowCounter } from '../api/row-counts';
 import { createSchemaLoader, type SchemaLoader } from '../api/schemas';
-import type { Ctx } from '../sdk/types';
 import type { ColumnFilter } from '../filters/build';
-import { recordTabId } from '../records/relationships';
+import type { Model } from '../model/types';
+import type { ClickTarget } from '../records/relationships';
+import type { Ctx } from '../sdk/types';
 
-export type Tab =
-  | { kind: 'mart'; id: string; martId: string; initialFilters: ColumnFilter[] }
-  | { kind: 'record'; id: string; martId: string; pk: Record<string, unknown> };
+export type Selection = {
+  sourceKey: string | null;
+  martId: string | null;
+  record: { martId: string; pk: Record<string, unknown> } | null;
+  /** Filters a followed link asks the Data band to open with. */
+  filters?: ColumnFilter[];
+};
 
-export type State = { selectedId: string | null; search: string; contextIds: string[]; tabs: Tab[]; activeTabId: string | null; modelVersion: number };
+/** What the Data band's grid keeps per mart for the session. */
+export type GridState = { columns: string[]; filters: Record<string, ColumnFilter>; limit: number };
+
+export type State = {
+  selection: Selection;
+  history: Selection[];
+  search: string;
+  contextIds: string[];
+  grids: Record<string, GridState>;
+  modelVersion: number;
+};
+
+/** The source that feeds a mart, or null: lets the reducer keep a selected source only when it still applies. */
+export type SourceOf = (martId: string) => string | null;
 
 export type Action =
-  | { type: 'select'; id: string | null }
+  | { type: 'init'; focusId: string }
+  | { type: 'selectSource'; key: string | null }
+  | { type: 'selectMart'; id: string; sourceOf: SourceOf }
+  | { type: 'openRecord'; martId: string; pk: Record<string, unknown>; sourceOf?: SourceOf }
+  | { type: 'follow'; target: ClickTarget; sourceOf: SourceOf }
+  | { type: 'back' }
   | { type: 'search'; q: string }
   | { type: 'toggleContext'; id: string }
-  | { type: 'openMart'; martId: string; filters?: ColumnFilter[] }
-  | { type: 'openRecord'; martId: string; pk: Record<string, unknown> }
-  | { type: 'activate'; tabId: string }
-  | { type: 'close'; tabId: string }
+  | { type: 'saveGrid'; martId: string; grid: GridState }
   | { type: 'refreshModel' };
 
-export const initialState: State = { selectedId: null, search: '', contextIds: [], tabs: [], activeTabId: null, modelVersion: 0 };
+export const HISTORY_LIMIT = 20;
 
-const martOf = (tabs: Tab[], id: string | null) => tabs.find((t) => t.id === id)?.martId ?? null;
+export const emptySelection: Selection = { sourceKey: null, martId: null, record: null };
+export const initialState: State = { selection: emptySelection, history: [], search: '', contextIds: [], grids: {}, modelVersion: 0 };
+
+/** The source stays selected only when it feeds the mart being selected. */
+const sourceFor = (current: Selection, martId: string, sourceOf?: SourceOf): string | null => {
+  if (!current.sourceKey) return null;
+  if (sourceOf) return sourceOf(martId) === current.sourceKey ? current.sourceKey : null;
+  return martId === current.martId ? current.sourceKey : null;
+};
+
+/** Every change to the selection goes through here: it is what Back steps over. */
+function move(state: State, next: Selection): State {
+  if (JSON.stringify(next) === JSON.stringify(state.selection)) return state;
+  return { ...state, selection: next, history: [...state.history, state.selection].slice(-HISTORY_LIMIT) };
+}
 
 export function reducer(state: State, a: Action): State {
+  const cur = state.selection;
   switch (a.type) {
-    case 'select': return { ...state, selectedId: a.id };
-    // The most recent action wins: searching or filtering leaves selected mode (tabs stay open).
-    case 'search': return { ...state, search: a.q, selectedId: null };
+    case 'init': return cur.martId ? state : { ...state, selection: { ...cur, martId: a.focusId } };
+    case 'selectSource': return move(state, { sourceKey: a.key === cur.sourceKey ? null : a.key, martId: null, record: null });
+    case 'selectMart': return move(state, { sourceKey: sourceFor(cur, a.id, a.sourceOf), martId: a.id, record: null });
+    case 'openRecord': return move(state, {
+      sourceKey: sourceFor(cur, a.martId, a.sourceOf),
+      martId: a.martId,
+      record: { martId: a.martId, pk: a.pk },
+      ...(a.martId === cur.martId && cur.filters ? { filters: cur.filters } : {}),
+    });
+    case 'follow': {
+      const { target } = a;
+      const sourceKey = sourceFor(cur, target.martId, a.sourceOf);
+      return move(state, target.kind === 'record'
+        ? { sourceKey, martId: target.martId, record: { martId: target.martId, pk: target.pk } }
+        : { sourceKey, martId: target.martId, record: null, filters: target.filters });
+    }
+    case 'back': {
+      const previous = state.history.at(-1);
+      return previous ? { ...state, selection: previous, history: state.history.slice(0, -1) } : state;
+    }
+    // Searching narrows the Data Marts band; what is selected stays selected.
+    case 'search': return { ...state, search: a.q };
     case 'toggleContext': {
       const has = state.contextIds.includes(a.id);
-      return { ...state, selectedId: null, contextIds: has ? state.contextIds.filter((c) => c !== a.id) : [...state.contextIds, a.id] };
+      return { ...state, contextIds: has ? state.contextIds.filter((c) => c !== a.id) : [...state.contextIds, a.id] };
     }
-    case 'openMart': {
-      const id = `mart:${a.martId}`;
-      const existing = state.tabs.find((t) => t.id === id);
-      const tabs = existing
-        ? a.filters ? state.tabs.map((t) => (t.id === id ? { ...t, initialFilters: a.filters! } as Tab : t)) : state.tabs
-        : [...state.tabs, { kind: 'mart', id, martId: a.martId, initialFilters: a.filters ?? [] } as Tab];
-      return { ...state, tabs, activeTabId: id, selectedId: a.martId };
-    }
-    case 'openRecord': {
-      const id = recordTabId(a.martId, a.pk);
-      const tabs = state.tabs.some((t) => t.id === id) ? state.tabs : [...state.tabs, { kind: 'record', id, martId: a.martId, pk: a.pk } as Tab];
-      return { ...state, tabs, activeTabId: id, selectedId: a.martId };
-    }
-    case 'activate': return { ...state, activeTabId: a.tabId, selectedId: martOf(state.tabs, a.tabId) };
-    case 'close': {
-      const i = state.tabs.findIndex((t) => t.id === a.tabId);
-      if (i < 0) return state;
-      const tabs = state.tabs.filter((t) => t.id !== a.tabId);
-      if (tabs.length === 0) return { ...state, tabs, activeTabId: null, selectedId: null };
-      if (state.activeTabId !== a.tabId) return { ...state, tabs };
-      const next = tabs[Math.max(0, i - 1)]!;
-      return { ...state, tabs, activeTabId: next.id, selectedId: next.martId };
-    }
+    case 'saveGrid': return { ...state, grids: { ...state.grids, [a.martId]: a.grid } };
     case 'refreshModel': return { ...state, modelVersion: state.modelVersion + 1 };
   }
 }
+
+export const sourceOfModel = (model: Model): SourceOf => (id) => model.marts.get(id)?.sourceKey ?? null;
 
 const StoreCtx = createContext<[State, Dispatch<Action>] | null>(null);
 

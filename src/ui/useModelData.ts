@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { loadDqSummaries } from '../api/data-quality';
 import { loadModel } from '../api/model';
 import { runPool } from '../api/pool';
-import { COUNT_CONCURRENCY, VISIBLE_BUDGET } from '../config';
+import { COUNT_CONCURRENCY } from '../config';
 import type { DqSummary, Model } from '../model/types';
 import { useServices, useStore } from '../state/store';
-import type { CardData } from './canvas/MartCard';
+import type { CountState } from './bands/cards';
 import { errorMessage } from './ErrorBox';
 
 export function useModel() {
@@ -36,7 +36,7 @@ export function useModel() {
 export function useCardStatus(model: Model | null, visibleIds: string[], modelVersion: number) {
   const { ctx, schemas, counter } = useServices();
   const [dq, setDq] = useState(new Map<string, DqSummary>());
-  const [counts, setCounts] = useState(new Map<string, CardData['count']>());
+  const [counts, setCounts] = useState(new Map<string, CountState>());
   const fresh = useRef(false);
   const seenVersion = useRef(modelVersion);
 
@@ -67,17 +67,15 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
     fresh.current = false;
     const missingDq = ids.filter((id) => recount || !dq.has(id));
     if (missingDq.length) loadDqSummaries(ctx, missingDq).then((m) => setDq((d) => new Map([...d, ...m]))).catch(() => undefined);
-    // Only the first VISIBLE_BUDGET cards are counted, a few requests at a time.
-    const toCount = ids.slice(0, VISIBLE_BUDGET).filter((id) => recount || !counts.has(id));
+    // Every visible card is counted, a few requests at a time. Task 5 makes this lazy.
+    const toCount = ids.filter((id) => recount || !counts.has(id));
     setCounts((c) => { const n = new Map(c); toCount.forEach((id) => n.set(id, { state: 'loading' })); return n; });
     void runPool(toCount, COUNT_CONCURRENCY, (id) => runCount(id, recount));
     // dq and counts are read, not tracked: this runs when the model or the visible set changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model, key]);
 
-  // Cards past the cap are never counted: they show no badge.
-  const counted = new Set(visibleIds.filter((id) => model?.marts.get(id)?.accessible).slice(0, VISIBLE_BUDGET));
-  const shown = new Map<string, CardData['count']>(visibleIds.map((id) => [id, counted.has(id) ? counts.get(id) ?? { state: 'loading' } : { state: 'ok', value: null }]));
+  const shown = new Map<string, CountState>(visibleIds.map((id) => [id, counts.get(id) ?? { state: 'loading' }]));
 
   return { dq, counts: shown, recount: (id: string) => runCount(id, true) };
 }

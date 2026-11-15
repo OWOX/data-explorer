@@ -114,6 +114,11 @@ describe('MartCard', () => {
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
+  test('a quality state with no sentence of its own names itself once', () => {
+    renderMart({ quality: undefined });
+    expect(screen.getByLabelText('No data quality info')).toBeInTheDocument();
+  });
+
   test('shows the field hit as a badge', () => {
     renderMart({ fieldHit: 'customer_id' });
     expect(screen.getByText('customer_id')).toBeInTheDocument();
@@ -127,10 +132,13 @@ describe('MartCard', () => {
 
   test('contexts that do not fit fold into one counted chip naming them all', () => {
     setRowWidth(0);
-    renderMart({ contexts: [{ id: 'c1', name: 'Sales', icon: null }, { id: 'c2', name: 'Finance', icon: null }] });
-    const chip = screen.getByLabelText('2 contexts: Sales, Finance');
-    expect(chip).toHaveTextContent('2');
-    setRowWidth(5000);
+    try {
+      renderMart({ contexts: [{ id: 'c1', name: 'Sales', icon: null }, { id: 'c2', name: 'Finance', icon: null }] });
+      const chip = screen.getByLabelText('2 contexts: Sales, Finance');
+      expect(chip).toHaveTextContent('2');
+    } finally {
+      setRowWidth(5000);
+    }
   });
 
   test('a count error message that ends in a period is not doubled', async () => {

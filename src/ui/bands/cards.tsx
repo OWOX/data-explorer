@@ -258,7 +258,7 @@ function qualityDetails(s: DqSummary | undefined): string[] {
 function QualityMark({ summary }: { summary: DqSummary | undefined }) {
   const { Icon, label, tone } = dqVisual(summary);
   return (
-    <Mark tone={TONE_CLASS[tone]} lines={[label, QUALITY_LINE[label] ?? label, ...qualityDetails(summary)]}>
+    <Mark tone={TONE_CLASS[tone]} lines={[label, ...(QUALITY_LINE[label] ? [QUALITY_LINE[label]] : []), ...qualityDetails(summary)]}>
       <Icon size={14} className={tone === 'progress' ? 'dm-spin' : undefined} />
     </Mark>
   );
