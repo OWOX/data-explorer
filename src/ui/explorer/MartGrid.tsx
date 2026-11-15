@@ -254,7 +254,7 @@ function Grid({ martId, model, schema, seed, initialColumns, onChange, onRows }:
         <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={visible} filters={Object.values(filters)} sorts={sorts} />
       </BandTools>
       {pks.length === 0 && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
-      {loading && rows && <div className="h-0.5 animate-pulse bg-primary" />}
+      {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
       <div className={`min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
         <table className="w-full border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-card">
