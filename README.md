@@ -22,3 +22,11 @@ npm run e2e     # Playwright (4 workers)
 1. Tag the commit `vX.Y.Z`.
 2. Publish a GitHub Release. The Pages workflow builds and deploys the site.
 3. In OWOX: Plugins, then Publish Plugin, then `owox/data-explorer`.
+
+## Limitations (v1)
+
+1. Read-only.
+2. Row counts are warehouse queries cached per member. Refresh recounts them.
+3. "Load more" re-reads from the start, because the API has no offset.
+4. A relationship title is looked up only for single-field relationships.
+5. The OWOX link always points to app.owox.com.
