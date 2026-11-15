@@ -8,7 +8,7 @@ import type { CardData } from './MartCard';
 const MartCardView = (p: { data: CardData }) => <TooltipProvider><Card {...p} /></TooltipProvider>;
 
 const base: CardData = {
-  mart: { id: 'o', title: 'Orders', description: 'All orders', icon: 'orders', storageId: 's', contextIds: ['c1'], dataLastUpdatedAt: '2026-11-14T10:00:00Z', accessible: true },
+  mart: { id: 'o', title: 'Orders', description: 'All orders', icon: 'orders', storageId: 's', contextIds: ['c1'], dataLastUpdatedAt: '2026-11-14T10:00:00Z', accessible: true, sourceKey: null },
   count: { state: 'ok', value: 12400 },
   dq: { state: 'PASSED' },
   selected: false,

@@ -1,5 +1,6 @@
-import type { Ctx, ContextDto, ModelCanvasPageDto } from '../sdk/types';
+import type { Ctx, ConnectorDto, ContextDto, ModelCanvasPageDto } from '../sdk/types';
 import type { Edge, Mart, Model } from '../model/types';
+import { groupSources } from '../model/sources';
 import { runPool } from './pool';
 
 const STORAGE_CONCURRENCY = 6;
@@ -18,10 +19,12 @@ async function canvasNodes(ctx: Ctx, storageId: string) {
 }
 
 export async function loadModel(ctx: Ctx): Promise<Model> {
-  const [storages, list, contexts] = await Promise.all([
+  const [storages, list, contexts, connectors] = await Promise.all([
     ctx.owox.storages.list(),
     ctx.owox.dataMarts.list(),
     ctx.owox.getJson<ContextDto[]>('/api/contexts'),
+    // Connector titles and logos are decoration: a failure falls back to the raw keys.
+    ctx.owox.getJson<ConnectorDto[]>('/api/connectors').catch((): ConnectorDto[] => []),
   ]);
   const listed = new Map(list.map((m) => [m.id, m]));
   const marts = new Map<string, Mart>();
@@ -39,6 +42,7 @@ export async function loadModel(ctx: Ctx): Promise<Model> {
         dataLastUpdatedAt: n.dataLastUpdated?.dataLastUpdatedAt ?? null,
         // availableForReporting is the mart's sharing flag, not the member's permission, so it is not checked.
         accessible: item !== undefined && n.status === 'PUBLISHED',
+        sourceKey: item?.definitionType === 'CONNECTOR' ? item.connectorSourceName ?? null : null,
       });
     }
     return edges;
@@ -61,5 +65,5 @@ export async function loadModel(ctx: Ctx): Promise<Model> {
       joins: e.joinConditions.map((j) => ({ sourceField: j.sourceFieldName, targetField: j.targetFieldName })),
     }));
 
-  return { marts, edges, contexts: contexts.map((c) => ({ id: c.id, name: c.name, icon: c.icon ?? null })), failedStorages };
+  return { marts, sources: groupSources(marts.values(), Array.isArray(connectors) ? connectors : []), edges, contexts: contexts.map((c) => ({ id: c.id, name: c.name, icon: c.icon ?? null })), failedStorages };
 }

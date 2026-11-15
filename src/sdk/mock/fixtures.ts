@@ -1,4 +1,4 @@
-import type { ContextDto, DqSummaryDto, EdgeDto, Row, SchemaFieldDto, StorageDto } from '../types';
+import type { ConnectorDto, ContextDto, DqSummaryDto, EdgeDto, Row, SchemaFieldDto, StorageDto } from '../types';
 
 export type MockMart = {
   id: string;
@@ -8,6 +8,8 @@ export type MockMart = {
   storageId: string;
   contexts: string[];
   accessible: boolean;
+  definitionType: string;
+  connectorSourceName: string | null;
   dataLastUpdatedAt: string | null;
   fields: SchemaFieldDto[];
   rows: Row[];
@@ -19,6 +21,7 @@ export type Fixtures = {
   contexts: ContextDto[];
   marts: MockMart[];
   edges: EdgeDto[];
+  connectors: ConnectorDto[];
 };
 
 // Fixed reference instant so the data is deterministic.
@@ -50,6 +53,7 @@ type Spec = {
   row: (i: number, r: () => number) => Row;
   icon?: string;
   accessible?: boolean;
+  connectorSourceName?: string;
 };
 
 const pick = (r: () => number, n: number) => Math.floor(r() * n) + 1;
@@ -59,7 +63,7 @@ const titleCase = (id: string) =>
 
 const specs: Spec[] = [
   {
-    id: 'orders', icon: 'orders', count: 450,
+    id: 'orders', connectorSourceName: 'Shopify', icon: 'orders', count: 450,
     description: 'Customer orders with status, amount and creation time.',
     fields: [pk(), f('customer_id', 'INT64'), f('product_id', 'INT64'), f('store_id', 'INT64'), f('status', 'STRING'), f('amount', 'NUMERIC'), f('created_at', 'TIMESTAMP'), f('is_gift', 'BOOL')],
     row: (i, r) => ({
@@ -74,7 +78,7 @@ const specs: Spec[] = [
     }),
   },
   {
-    id: 'customers', icon: 'customers', count: 60,
+    id: 'customers', connectorSourceName: 'Shopify', icon: 'customers', count: 60,
     description: 'People who placed orders, with their home country.',
     fields: [pk(), f('name', 'STRING'), f('email', 'STRING'), f('country_code', 'STRING'), f('internal_flag', 'STRING', { isHiddenForReporting: true })],
     row: (i) => ({
@@ -103,19 +107,19 @@ const specs: Spec[] = [
     row: (i, r) => ({ id: i, order_id: pick(r, 450), product_id: pick(r, 40), quantity: pick(r, 5), name: `Item ${i}` }),
   },
   {
-    id: 'returns', count: 30,
+    id: 'returns', connectorSourceName: 'Shopify', count: 30,
     description: 'Returned orders and the reason given.',
     fields: [pk(), f('order_id', 'INT64'), f('name', 'STRING'), f('reason', 'STRING')],
     row: (i, r) => ({ id: i, order_id: pick(r, 450), name: `Return ${i}`, reason: ['damaged', 'wrong item', 'changed mind'][pick(r, 3) - 1] }),
   },
   {
-    id: 'payments', count: 30,
+    id: 'payments', connectorSourceName: 'Shopify', count: 30,
     description: 'Payments received for orders.',
     fields: [pk(), f('order_id', 'INT64'), f('amount', 'NUMERIC')],
     row: (i, r) => ({ id: i, order_id: pick(r, 450), amount: Math.round(r() * 50_000) / 100 }),
   },
   {
-    id: 'shipments', count: 30,
+    id: 'shipments', connectorSourceName: 'Shopify', count: 30,
     description: 'Shipments dispatched for orders.',
     fields: [pk(), f('order_id', 'INT64'), f('name', 'STRING'), f('carrier', 'STRING')],
     row: (i, r) => ({ id: i, order_id: pick(r, 450), name: `Shipment ${i}`, carrier: ['dhl', 'ups', 'novaposhta'][pick(r, 3) - 1] }),
@@ -133,25 +137,25 @@ const specs: Spec[] = [
     row: (i) => ({ id: i, label: `Category ${i}` }),
   },
   {
-    id: 'sessions', icon: 'sessions', count: 30,
+    id: 'sessions', connectorSourceName: 'GoogleAnalytics4', icon: 'sessions', count: 30,
     description: 'Website sessions attributed to campaigns.',
     fields: [pk(), f('customer_id', 'INT64'), f('campaign_id', 'INT64'), f('name', 'STRING')],
     row: (i, r) => ({ id: i, customer_id: pick(r, 60), campaign_id: pick(r, 30), name: `Session ${i}` }),
   },
   {
-    id: 'campaigns', icon: 'campaigns', count: 30,
+    id: 'campaigns', connectorSourceName: 'GoogleAnalytics4', icon: 'campaigns', count: 30,
     description: 'Marketing campaigns.',
     fields: [pk(), f('name', 'STRING')],
     row: (i) => ({ id: i, name: `Campaign ${i}` }),
   },
   {
-    id: 'ad_spend', icon: 'ad-spend', count: 30,
+    id: 'ad_spend', connectorSourceName: 'FacebookAds', icon: 'ad-spend', count: 30,
     description: 'Daily advertising spend per campaign.',
     fields: [pk(), f('campaign_id', 'INT64'), f('name', 'STRING'), f('spend', 'NUMERIC')],
     row: (i, r) => ({ id: i, campaign_id: pick(r, 30), name: `Ad spend ${i}`, spend: Math.round(r() * 100_000) / 100 }),
   },
   {
-    id: 'reviews', count: 30,
+    id: 'reviews', connectorSourceName: 'FacebookAds', count: 30,
     description: 'Customer reviews of products.',
     fields: [pk(), f('product_id', 'INT64'), f('title', 'STRING'), f('rating', 'INT64')],
     row: (i, r) => ({ id: i, product_id: pick(r, 40), title: `review ${i}`, rating: pick(r, 5) }),
@@ -210,6 +214,12 @@ const contextOf: Record<string, string> = {
   sessions: 'c-marketing', campaigns: 'c-marketing', ad_spend: 'c-marketing',
 };
 
+const connectors: ConnectorDto[] = [
+  { name: 'Shopify', title: 'Shopify' },
+  { name: 'GoogleAnalytics4', title: 'Google Analytics 4' },
+  { name: 'FacebookAds', title: 'Facebook Ads' },
+];
+
 const dqOf: Record<string, DqSummaryDto> = {
   orders: { state: 'PASSED' },
   customers: { state: 'ISSUES', warningFindings: 2 },
@@ -231,11 +241,13 @@ export function demoFixtures(): Fixtures {
       storageId: 's1',
       contexts: contextOf[s.id] ? [contextOf[s.id]!] : [],
       accessible: s.accessible ?? true,
+      definitionType: s.connectorSourceName ? 'CONNECTOR' : 'SQL',
+      connectorSourceName: s.connectorSourceName ?? null,
       dataLastUpdatedAt: updatedOf[s.id] ?? null,
       fields: s.fields,
       rows: range(s.count).map((i) => s.row(i, r)),
       dq: dqOf[s.id] ?? { state: 'NEVER_RUN' },
     };
   });
-  return { storages: [{ id: 's1', title: 'Demo Warehouse', type: 'GOOGLE_BIGQUERY' }], contexts, marts, edges };
+  return { storages: [{ id: 's1', title: 'Demo Warehouse', type: 'GOOGLE_BIGQUERY' }], contexts, marts, edges, connectors };
 }

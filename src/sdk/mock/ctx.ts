@@ -48,7 +48,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
       models: { getEdges: (sid) => slow(() => f.edges.filter((e) => byId.get(e.sourceDataMartId)?.storageId === sid)) },
       dataMarts: {
         list: () => slow(() => f.marts.filter((m) => m.accessible).map((m) => ({
-          id: m.id, title: m.title, description: m.description, availableForReporting: true,
+          id: m.id, title: m.title, description: m.description, availableForReporting: true, definitionType: m.definitionType, connectorSourceName: m.connectorSourceName,
           contexts: m.contexts.map((cid) => { const c = f.contexts.find((x) => x.id === cid)!; return { id: c.id, name: c.name, icon: c.icon ?? null }; }),
         }))),
         traverseData: async (id, o) => {
@@ -61,6 +61,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
       },
       getJson: <T,>(path: string, query?: Record<string, string>) => slow(() => {
         if (path === '/api/contexts') return f.contexts as T;
+        if (path === '/api/connectors') return f.connectors as T;
         if (path === '/api/model-canvas/data-marts') {
           const items = f.marts.filter((m) => m.storageId === query?.storageId).map((m) => ({
             id: m.id, title: m.title, description: m.description, icon: m.icon, fieldCount: m.fields.length, status: 'PUBLISHED',

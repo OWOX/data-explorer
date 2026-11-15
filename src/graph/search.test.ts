@@ -1,7 +1,7 @@
 import { matchesContexts, matchesSearch } from './search';
 import type { Mart, Schema } from '../model/types';
 
-const m: Mart = { id: 'o', title: 'Orders', description: null, icon: null, storageId: 's', contextIds: ['c1'], dataLastUpdatedAt: null, accessible: true };
+const m: Mart = { id: 'o', title: 'Orders', description: null, icon: null, storageId: 's', contextIds: ['c1'], dataLastUpdatedAt: null, accessible: true, sourceKey: null };
 const contexts = [{ id: 'c1', name: 'Sales', icon: null }];
 const schema: Schema = [{ name: 'customer_id', alias: 'Customer', type: 'INT64', category: 'number', description: null, isPrimaryKey: false }];
 

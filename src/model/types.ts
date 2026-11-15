@@ -21,13 +21,18 @@ export interface Mart {
   contextIds: string[];
   dataLastUpdatedAt: string | null;
   accessible: boolean;
+  /** Connector name when the mart is a CONNECTOR mart, else null. */
+  sourceKey: string | null;
 }
 
 export interface JoinCondition { sourceField: string; targetField: string }
 export interface Edge { id: string; source: string; target: string; joins: JoinCondition[] }
 
+export interface Source { key: string; name: string; logo: string | null; martIds: string[] }
+
 export interface Model {
   marts: Map<string, Mart>;
+  sources: Source[];
   edges: Edge[];
   contexts: Context[];
   failedStorages: { id: string; title: string; message: string }[];

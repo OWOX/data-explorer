@@ -6,11 +6,11 @@ import type { Mart, Model } from '../model/types';
 import { AppServices, StoreProvider } from '../state/store';
 import { useCardStatus } from './useModelData';
 
-const mart = (id: string): Mart => ({ id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true });
+const mart = (id: string): Mart => ({ id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
 
 test('counts at most 12 cards, 4 at a time; the rest show no badge', async () => {
   const ids = Array.from({ length: 20 }, (_, i) => `m${i}`);
-  const model: Model = { marts: new Map(ids.map((id) => [id, mart(id)])), edges: [], contexts: [], failedStorages: [] };
+  const model: Model = { marts: new Map(ids.map((id) => [id, mart(id)])), sources: [], edges: [], contexts: [], failedStorages: [] };
   let running = 0;
   let peak = 0;
   const traverseData = vi.fn(async () => {

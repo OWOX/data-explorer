@@ -24,7 +24,7 @@ test('loadModel merges storages, canvas nodes, list contexts, edges and contexts
   const model = await loadModel(ctx);
 
   expect([...model.marts.keys()]).toEqual(['a', 'b']);
-  expect(model.marts.get('a')).toEqual({ id: 'a', title: 'Orders', description: 'd', icon: 'orders', storageId: 's1', contextIds: ['c1'], dataLastUpdatedAt: '2026-11-01T00:00:00Z', accessible: true });
+  expect(model.marts.get('a')).toEqual({ id: 'a', title: 'Orders', description: 'd', icon: 'orders', storageId: 's1', contextIds: ['c1'], dataLastUpdatedAt: '2026-11-01T00:00:00Z', accessible: true, sourceKey: null });
   expect(model.marts.get('b')!.accessible).toBe(false); // not in the member's list
   expect(model.edges).toEqual([{ id: 'e1', source: 'a', target: 'b', joins: [{ sourceField: 'customer_id', targetField: 'id' }] }]);
   expect(model.contexts).toEqual([{ id: 'c1', name: 'Sales', icon: 'revenue' }]);
@@ -87,4 +87,21 @@ test('storages load through a pool of at most 6', async () => {
   const model = await loadModel(ctx);
   expect(model.marts.size).toBe(10);
   expect(peak).toBeLessThanOrEqual(6);
+});
+
+test('sources come from connector marts; a failing /api/connectors falls back to raw keys', async () => {
+  const entry = (id: string, definitionType: string, connectorSourceName: string | null) => ({ id, title: id, description: null, contexts: [], availableForReporting: true, definitionType, connectorSourceName });
+  const ctx = stubCtx({
+    storages: { list: async () => [{ id: 's1', title: 'BQ', type: 'X' }] },
+    dataMarts: { list: async () => [entry('a', 'CONNECTOR', 'Shopify'), entry('b', 'SQL', null)], traverseData: vi.fn() },
+    getJson: async (path: string) => {
+      if (path === '/api/connectors') throw new Error('boom');
+      if (path === '/api/contexts') return [];
+      return { items: [{ id: 'a', title: 'a', description: null, fieldCount: 1, status: 'PUBLISHED' }, { id: 'b', title: 'b', description: null, fieldCount: 1, status: 'PUBLISHED' }], total: 2, nextOffset: null };
+    },
+  });
+  const model = await loadModel(ctx);
+  expect(model.marts.get('a')!.sourceKey).toBe('Shopify');
+  expect(model.marts.get('b')!.sourceKey).toBeNull();
+  expect(model.sources).toEqual([{ key: 'Shopify', name: 'Shopify', logo: null, martIds: ['a'] }]);
 });

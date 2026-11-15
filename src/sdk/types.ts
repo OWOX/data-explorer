@@ -40,7 +40,10 @@ export type DataMartListItemDto = {
   description: string | null;
   contexts: { id: string; name: string; icon?: string | null }[];
   availableForReporting: boolean;
+  definitionType?: string | null;
+  connectorSourceName?: string | null;
 };
+export type ConnectorDto = { name: string; title?: string | null; logo?: unknown };
 export type ModelCanvasNodeDto = {
   id: string;
   title: string;
