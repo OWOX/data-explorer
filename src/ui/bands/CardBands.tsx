@@ -28,6 +28,7 @@ export function CardBands({
   onFoldSources,
   onFoldMarts,
   onRetryCount,
+  onRequestCount,
   onOpenApp,
   children,
 }: {
@@ -40,6 +41,7 @@ export function CardBands({
   onFoldSources: () => void;
   onFoldMarts: () => void;
   onRetryCount: (id: string) => void;
+  onRequestCount: (id: string) => void;
   onOpenApp: (id: string) => void;
   children: ReactNode;
 }) {
@@ -120,7 +122,7 @@ export function CardBands({
               key={id}
               mart={mart}
               contexts={contextsOf(mart.contextIds)}
-              count={counts.get(id) ?? { state: 'loading' }}
+              count={counts.get(id) ?? { state: 'idle' }}
               quality={dq.get(id)}
               freshness={mart.dataLastUpdatedAt}
               fieldHit={visible.fieldHits.get(id)}
@@ -130,6 +132,7 @@ export function CardBands({
               onSelect={() => dispatch({ type: 'selectMart', id, sourceOf })}
               onOpenApp={() => onOpenApp(id)}
               onRetryCount={() => onRetryCount(id)}
+              onNeedCount={() => onRequestCount(id)}
             />
           );
         })}

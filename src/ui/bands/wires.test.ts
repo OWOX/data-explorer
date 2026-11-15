@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { litIds, paintPlan, planLines, useWires, type Box, type Selection, type Wire } from './wires';
 
@@ -90,6 +90,7 @@ describe('paintPlan', () => {
 
 describe('useWires', () => {
   afterEach(() => {
+    cleanup();
     document.body.innerHTML = '';
     vi.unstubAllGlobals();
     vi.useRealTimers();

@@ -40,6 +40,7 @@ function martProps(over: Partial<React.ComponentProps<typeof MartCard>> = {}) {
     onSelect: vi.fn(),
     onOpenApp: vi.fn(),
     onRetryCount: vi.fn(),
+    onNeedCount: vi.fn(),
     ...over,
   };
 }
@@ -202,5 +203,30 @@ describe('Band', () => {
     rerender(<Band id="b" icon={Database} title="Row" hint="h" folded={false} onFold={vi.fn()} loading={0.5} loadingLabel="Reading"><p>direct</p></Band>);
     expect(screen.getByRole('progressbar', { name: 'Reading' })).toHaveAttribute('aria-valuenow', '50');
     expect(screen.queryByText('direct')).toBeNull();
+  });
+});
+
+describe('lazy count request', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  test('a card asks for its count only once it intersects the viewport, and only once', () => {
+    let fire: (e: Partial<IntersectionObserverEntry>[]) => void = () => {};
+    const observe = vi.fn();
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(cb: typeof fire) { fire = cb; }
+      observe = observe;
+      unobserve() {}
+      disconnect() {}
+    });
+    const props = martProps();
+    render(<TooltipProvider><MartCard {...props} /></TooltipProvider>);
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(props.onNeedCount).not.toHaveBeenCalled();
+    const target = observe.mock.calls[0]![0] as Element;
+    fire([{ target, isIntersecting: false }]);
+    expect(props.onNeedCount).not.toHaveBeenCalled();
+    fire([{ target, isIntersecting: true }]);
+    fire([{ target, isIntersecting: true }]);
+    expect(props.onNeedCount).toHaveBeenCalledTimes(1);
   });
 });

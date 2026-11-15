@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { loadDqSummaries } from '../api/data-quality';
 import { loadModel } from '../api/model';
-import { runPool } from '../api/pool';
 import { COUNT_CONCURRENCY } from '../config';
 import type { DqSummary, Model } from '../model/types';
 import { useServices, useStore } from '../state/store';
@@ -37,9 +36,15 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
   const { ctx, schemas, counter } = useServices();
   const [dq, setDq] = useState(new Map<string, DqSummary>());
   const [counts, setCounts] = useState(new Map<string, CountState>());
-  const fresh = useRef(false);
-  const seenVersion = useRef(modelVersion);
+  // Which refresh generation each card was last asked to count in. A refresh raises the generation:
+  // cards already asked are recounted when the new model lands, the rest when they next come into view.
+  const asked = useRef(new Map<string, number>());
+  const generation = useRef(0);
+  const appliedVersion = useRef(modelVersion);
+  const queue = useRef<{ id: string; recount: boolean }[]>([]);
+  const active = useRef(0);
 
+  // A count turns to loading only here, when its request starts. Until then the old value stays.
   const runCount = useCallback((id: string, recount: boolean): Promise<void> => {
     setCounts((c) => new Map(c).set(id, { state: 'loading' }));
     return schemas.get(id)
@@ -50,32 +55,44 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
       );
   }, [schemas, counter]);
 
-  useEffect(() => {
-    if (seenVersion.current === modelVersion) return;
-    seenVersion.current = modelVersion;
-    fresh.current = true;
-    // a model refresh drops the cached status so the visible cards reload
-    setDq(new Map());
-    setCounts(new Map());
-  }, [modelVersion]);
+  // One pool of COUNT_CONCURRENCY for every request, whenever it arrives.
+  const pump = useCallback(() => {
+    const drain = () => {
+      while (active.current < COUNT_CONCURRENCY && queue.current.length) {
+        const next = queue.current.shift()!;
+        active.current++;
+        void runCount(next.id, next.recount).finally(() => { active.current--; drain(); });
+      }
+    };
+    drain();
+  }, [runCount]);
+
+  const request = useCallback((id: string) => {
+    if (asked.current.get(id) === generation.current) return;
+    asked.current.set(id, generation.current);
+    queue.current.push({ id, recount: generation.current > 0 });
+    pump();
+  }, [pump]);
 
   const key = visibleIds.join('|');
   useEffect(() => {
     if (!model) return;
+    // A new model after a refresh: reload what is on screen. A failed reload never gets here, so
+    // the previous counts and quality stay exactly as they were.
+    const refreshed = appliedVersion.current !== modelVersion;
+    if (refreshed) {
+      appliedVersion.current = modelVersion;
+      generation.current++;
+    }
     const ids = visibleIds.filter((id) => model.marts.get(id)?.accessible);
-    const recount = fresh.current;
-    fresh.current = false;
-    const missingDq = ids.filter((id) => recount || !dq.has(id));
+    const missingDq = ids.filter((id) => refreshed || !dq.has(id));
     if (missingDq.length) loadDqSummaries(ctx, missingDq).then((m) => setDq((d) => new Map([...d, ...m]))).catch(() => undefined);
-    // Every visible card is counted, a few requests at a time. Task 5 makes this lazy.
-    const toCount = ids.filter((id) => recount || !counts.has(id));
-    setCounts((c) => { const n = new Map(c); toCount.forEach((id) => n.set(id, { state: 'loading' })); return n; });
-    void runPool(toCount, COUNT_CONCURRENCY, (id) => runCount(id, recount));
-    // dq and counts are read, not tracked: this runs when the model or the visible set changes
+    if (refreshed) ids.filter((id) => asked.current.has(id)).forEach(request);
+    // dq is read, not tracked: this runs when the model or the visible set changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model, key]);
 
-  const shown = new Map<string, CountState>(visibleIds.map((id) => [id, counts.get(id) ?? { state: 'loading' }]));
+  const shown = new Map<string, CountState>(visibleIds.map((id) => [id, counts.get(id) ?? { state: 'idle' }]));
 
-  return { dq, counts: shown, recount: (id: string) => runCount(id, true) };
+  return { dq, counts: shown, request, recount: (id: string) => runCount(id, true) };
 }

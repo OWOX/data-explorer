@@ -1,10 +1,11 @@
 // The cards themselves, ported from Data Flow: a source card and a data mart card.
 import { ExternalLink, History, Info, LoaderCircle, Plug } from 'lucide-react';
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Context, DqSummary, Mart, Source } from '../../model/types';
 import { compactNumber, count as plural, num, relativeTime } from '../format';
 import { dqCardTone, dqVisual } from '../icons';
 import { Tooltip } from '../Tooltip';
+import { whenInView } from './inview';
 import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
 
 /** The element id Task 3's lines look cards up by: Data Flow's `src-` prefix and key sanitising. */
@@ -12,6 +13,7 @@ export const sourceElementId = (key: string) => `src-${key.replace(/[^a-z0-9]+/g
 export const martElementId = (id: string) => `dm-${id}`;
 
 export type CountState =
+  | { state: 'idle' }
   | { state: 'loading' }
   | { state: 'ok'; value: number | null }
   | { state: 'error'; message: string };
@@ -65,6 +67,7 @@ export function SourceCard({
 }
 
 function CountBadge({ count, onRetry }: { count: CountState; onRetry: () => void }) {
+  if (count.state === 'idle') return null;
   if (count.state === 'loading') {
     return <span className="dm-badge" aria-label="Counting rows"><LoaderCircle className="dm-spin" size={12} /></span>;
   }
@@ -96,6 +99,7 @@ export function MartCard({
   onSelect,
   onOpenApp,
   onRetryCount,
+  onNeedCount,
 }: {
   mart: Mart;
   contexts: Context[];
@@ -112,9 +116,19 @@ export function MartCard({
   onSelect: () => void;
   onOpenApp: () => void;
   onRetryCount: () => void;
+  /** Called once the card is on screen: only then is its row count requested. */
+  onNeedCount: () => void;
 }) {
+  const el = useRef<HTMLElement>(null);
+  const need = useRef(onNeedCount);
+  useEffect(() => { need.current = onNeedCount; });
+  useEffect(() => {
+    if (!mart.accessible || !el.current) return;
+    return whenInView(el.current, () => need.current());
+  }, [mart.accessible]);
   return (
     <article
+      ref={el}
       id={martElementId(mart.id)}
       data-node
       data-tone={dqCardTone(quality)}

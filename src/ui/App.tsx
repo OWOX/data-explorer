@@ -33,7 +33,7 @@ function AppBody() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [model, state.selection, state.search, state.contextIds, schemas, tick],
   );
-  const { dq, counts, recount } = useCardStatus(model, visible?.ids ?? [], state.modelVersion);
+  const { dq, counts, request, recount } = useCardStatus(model, visible?.ids ?? [], state.modelVersion);
 
   // There is always a selected mart after load: the first load picks the focus mart, and a mart or
   // source a refresh took away is dropped from the selection (no history entry, so Back is not trapped).
@@ -73,6 +73,7 @@ function AppBody() {
           onFoldSources={() => toggle('sources', folds.sources ?? model.sources.length === 0)}
           onFoldMarts={() => toggle('marts', folds.marts ?? false)}
           onRetryCount={(id) => void recount(id)}
+          onRequestCount={request}
           onOpenApp={(id) => void ctx.ui.openExternal(martAppUrl(ctx.projectId, id))}
         >
           <DataBand model={model} folded={folds.data ?? false} onFold={() => toggle('data', folds.data ?? false)} />
