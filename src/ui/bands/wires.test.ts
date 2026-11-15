@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import { litIds, pairKey, paintPlan, planLines, useWires, type Box, type Selection, type Wire } from './wires';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { litIds, paintPlan, planLines, useWires, type Box, type Selection, type Wire } from './wires';
 
 const wire = (id: string, from: string, to: string, kind: Wire['kind'] = 'relationship'): Wire => ({
   id,
@@ -10,12 +10,6 @@ const wire = (id: string, from: string, to: string, kind: Wire['kind'] = 'relati
   title: id,
 });
 const box = (left: number, top: number): Box => ({ left, top, right: left + 100, bottom: top + 40, width: 100, height: 40 });
-
-describe('pairKey', () => {
-  it('names a pair the same whichever end comes first', () => {
-    expect(pairKey('a', 'b')).toBe(pairKey('b', 'a'));
-  });
-});
 
 describe('planLines', () => {
   const boxes = new Map([
@@ -44,6 +38,12 @@ describe('planLines', () => {
     expect(d[0]).toBeNull();
     expect(lead[0]).toBe(-1);
     expect(lead[1]).toBe(1);
+  });
+
+  it('skips a self-join', () => {
+    const { d, lead } = planLines([wire('w1', 'dm-1', 'dm-1')], boxes);
+    expect(d[0]).toBeNull();
+    expect(lead[0]).toBe(-1);
   });
 
   it('leaves from the facing side: down across bands, sideways within one', () => {
@@ -89,6 +89,12 @@ describe('paintPlan', () => {
 });
 
 describe('useWires', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
   it('draws one path per pair, lights after measuring, and puts lines out when the selection moves', () => {
     let measure: () => void = () => {};
     vi.stubGlobal(
@@ -129,7 +135,33 @@ describe('useWires', () => {
     expect(canvas.querySelectorAll('#wires > path.lit')).toHaveLength(0);
     unmount();
     expect(canvas.querySelector('#wires')).toBeNull();
-    canvas.remove();
-    vi.unstubAllGlobals();
+  });
+
+  it('re-measures one frame after an animation ends', () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const canvas = document.createElement('div');
+    canvas.innerHTML = '<div id="a"></div><div id="b"></div>';
+    document.body.append(canvas);
+    const a = canvas.querySelector('#a')!;
+    a.getBoundingClientRect = () => {
+      calls++;
+      return { left: 0, top: 0, right: 10, bottom: 10, width: 10, height: 10 } as DOMRect;
+    };
+    const wires = [wire('w', 'a', 'b')];
+    renderHook(() => useWires({ current: canvas }, wires, { pinned: null, hovered: null }, 0));
+    act(() => {
+      a.dispatchEvent(new Event('animationend', { bubbles: true }));
+      a.dispatchEvent(new Event('animationend', { bubbles: true }));
+      vi.advanceTimersByTime(50);
+    });
+    expect(calls).toBe(1);
   });
 });

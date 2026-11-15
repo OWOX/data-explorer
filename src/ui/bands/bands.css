@@ -279,7 +279,7 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 /* Blue crosses a band boundary: a source feeding a mart. Grey stays inside the Data Marts band:
    a join between two marts. */
 #wires .source { stroke: var(--primary); }
-#wires .relationship { stroke: var(--muted-foreground); }
+#wires .relationship { stroke: var(--muted-foreground); stroke-dasharray: 5 4; }
 #wires path.lit { opacity: 1; }
 /* A second card's lines, while another is chosen: the lines they always were, at half strength.
    Colour says what a line is, so fading says which card asked for it. One class heavier than the

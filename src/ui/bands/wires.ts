@@ -34,9 +34,6 @@ type Direction = 'outbound' | 'inbound';
 
 const LIT_CLASSES = ['lit', 'aside', 'outbound', 'inbound'] as const;
 
-/** A wire is the same wire whichever end you name first. */
-export const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
-
 /** Leave each box from the side that faces the other one: down/up across bands, sideways within one. */
 function curve(a: Box, b: Box) {
   if (b.top - a.bottom > 8 || a.top - b.bottom > 8) {
@@ -69,7 +66,8 @@ export function planLines(wires: Wire[], boxes: ReadonlyMap<string, Box>) {
   wires.forEach((wire, i) => {
     const a = boxes.get(wire.from);
     const b = boxes.get(wire.to);
-    if (!a || !b) {
+    // An end off the page, or a self-join (a loop on one box): nothing to draw.
+    if (!a || !b || wire.from === wire.to) {
       d.push(null);
       lead.push(-1);
       return;
@@ -134,6 +132,7 @@ function ensureLayer(canvas: HTMLElement) {
 }
 
 /**
+ * @param wires must be referentially stable (memoised): a new array rebuilds every path.
  * @param revision changes whenever the visible set of cards does: the paths are rebuilt and
  *   re-measured from scratch, so a line from a card that has just gone does not hang in mid-air.
  */
@@ -171,6 +170,7 @@ export function useWires(
       return path;
     }));
     alight.current = [];
+    leads.current = [];
 
     const layout = () => {
       const origin = canvas.getBoundingClientRect();
@@ -208,14 +208,32 @@ export function useWires(
     // Fires on first paint, on resize, when the webfont lands, and when a band folds (the canvas
     // and the band change height). Grids come and go with a fold, so what is watched is refreshed.
     const observer = new ResizeObserver(layout);
+    const watched = new Set<Element>();
     const watch = () => {
-      observer.observe(canvas);
-      for (const el of canvas.querySelectorAll('[data-band], .dm-band-grid')) observer.observe(el);
+      for (const el of [canvas, ...canvas.querySelectorAll('[data-band], .dm-band-grid')]) {
+        if (watched.has(el)) continue;
+        watched.add(el);
+        observer.observe(el);
+      }
     };
     watch();
 
+    // A card growing back out of a point (.dm-entering, .dm-turning) is transformed, which
+    // getBoundingClientRect reports and ResizeObserver never does: one pass after the last
+    // animation ends, folded into a frame so many endings cost one.
+    let queued = 0;
+    const settle = () => {
+      queued ||= requestAnimationFrame(() => {
+        queued = 0;
+        layout();
+      });
+    };
+    canvas.addEventListener('animationend', settle);
+
     return () => {
       observer.disconnect();
+      cancelAnimationFrame(queued);
+      canvas.removeEventListener('animationend', settle);
       for (const path of paths) path.remove();
       if (made) svg.remove();
     };
