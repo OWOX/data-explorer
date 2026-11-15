@@ -66,7 +66,7 @@ Icons are a key from the OWOX icon enum or `lucide:<name>`. The plugin maps enum
 ### Visible set
 
 1. **Focus.** By default, the focus is the mart with the most inbound edges. Ties go to the alphabetically first title.
-2. **Nothing selected.** A BFS from the focus runs over undirected edges and stops when 12 marts are collected. Within one depth, marts with more inbound edges come first.
+2. **Nothing selected.** A BFS from the focus runs over undirected edges one level at a time. Each level is shown whole or not at all: the plugin adds the next level only if the total stays at or under 12 marts. Level 1 (the direct neighbours of the focus) always shows in full, even when it alone holds more than 12 marts.
 3. **Card selected.** The canvas shows the selected mart plus every direct neighbour, inbound and outbound, with no cap.
 4. **Filters active.** A context filter or a search query narrows the candidates to matching marts. Up to 12 matches show, ranked by inbound count, with a "+N more" note. Selecting a match switches to rule 3.
 5. An edge is drawn only when both of its ends are visible.
@@ -154,7 +154,7 @@ A relationship column is a field of the explored mart that appears as `sourceFie
 ## Testing
 
 1. **Unit tests (Vitest).**
-   1. `graph/`: focus choice, BFS cap at 12, selected-mode neighbours, search matching, filter narrowing.
+   1. `graph/`: focus choice, whole-level BFS under the 12-mart budget, level 1 shown past the budget, selected-mode neighbours, search matching, filter narrowing.
    2. `filters/`: the operator catalogue per category and the `traverseData` filter output.
    3. `records/`: the title heuristic, relationship-column detection, value-to-title resolution, and click targets.
 2. **Smoke tests (Playwright, mock mode).** Default focus appears, search narrows the canvas, a card click opens a tab with rows, a filter and its reset work, the column picker changes the visible columns, and an FK click opens a record tab.
