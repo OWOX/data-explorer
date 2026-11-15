@@ -9,3 +9,6 @@ export function cycleSort(sorts: SortKey[], field: string): SortKey[] {
   if (cur.direction === 'asc') return sorts.map((s) => (s.field === field ? { field, direction: 'desc' } : s));
   return sorts.filter((s) => s.field !== field);
 }
+
+/** The sorts whose column is shown; a hidden column leaves no invisible ordering behind. */
+export const sortsOnColumns = (sorts: SortKey[], columns: string[]): SortKey[] => (sorts.every((s) => columns.includes(s.field)) ? sorts : sorts.filter((s) => columns.includes(s.field)));

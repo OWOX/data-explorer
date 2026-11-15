@@ -1,9 +1,9 @@
-import type { SortKey } from '../model/sort';
 import { createContext, useContext, useMemo, useReducer, type Dispatch, type ReactNode } from 'react';
 import { createRowCounter, type RowCounter } from '../api/row-counts';
 import { createSchemaLoader, type SchemaLoader } from '../api/schemas';
 import { PAGE_SIZE } from '../config';
 import type { ColumnFilter } from '../filters/build';
+import type { SortKey } from '../model/sort';
 import type { Model } from '../model/types';
 import type { ClickTarget } from '../records/relationships';
 import type { Ctx } from '../sdk/types';

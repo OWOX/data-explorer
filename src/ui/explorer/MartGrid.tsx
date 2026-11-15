@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { PAGE_SIZE } from '../../config';
 import { fieldLabel, fieldTitle } from '../../model/fieldLabel';
 import type { ColumnFilter } from '../../filters/build';
-import { cycleSort, type SortKey } from '../../model/sort';
+import { cycleSort, sortsOnColumns, type SortKey } from '../../model/sort';
 import type { Model, Schema } from '../../model/types';
 import { clickTarget, primaryKeys, type RelColumn } from '../../records/relationships';
 import { useMartRelationships } from '../../records/useMartRelationships';
@@ -64,9 +64,9 @@ function SortTitle({ field }: { field: Schema[number] }) {
   const label = fieldLabel(field);
   const Arrow = current === 'desc' ? ArrowDown : ArrowUp;
   return (
-    <button type="button" onClick={() => toggleSort(field.name)} aria-label={`Sort by ${label}, currently ${current ? DIRECTION_NAME[current] : 'not sorted'}`}
-      title={relNames.has(field.name) ? 'Sorted by the key value' : undefined} className="dm-sort inline-flex min-w-0 items-center gap-1 font-medium">
-      <span className="truncate" title={fieldTitle(field)}>{label}</span>
+    <button type="button" onClick={() => toggleSort(field.name)} aria-label={`Sort by ${label}, currently ${current ? DIRECTION_NAME[current] : 'not sorted'}${current && sorts.length > 1 ? `, sort ${at + 1} of ${sorts.length}` : ''}`}
+      title={[fieldTitle(field), relNames.has(field.name) ? 'Sorted by the key value' : null].filter(Boolean).join('. ') || undefined} className="dm-sort inline-flex min-w-0 items-center gap-1 font-medium">
+      <span className="truncate">{label}</span>
       {current && <span className="dm-sort-mark inline-flex items-center"><Arrow className="size-3.5" aria-hidden />{sorts.length > 1 && <span className="text-[10px] tabular-nums">{at + 1}</span>}</span>}
     </button>
   );
@@ -97,7 +97,7 @@ function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: strin
     return kept.length ? kept : defaultColumns(schema);
   });
   const [filters, setFilters] = useState<Record<string, ColumnFilter>>(() => seed.saved?.filters ?? {});
-  const [sorts, setSorts] = useState<SortKey[]>(() => (seed.saved?.sorts ?? []).filter((s) => schema.some((f) => f.name === s.field)));
+  const [sorts, setSorts] = useState<SortKey[]>(() => sortsOnColumns(seed.saved?.sorts ?? [], visible));
   const [limit, setLimit] = useState(() => seed.saved?.limit ?? PAGE_SIZE);
   const [ownVersion, setVersion] = useState(0);
   // The header's Refresh re-reads what is shown too: its counter joins the grid's own, and each only ever goes up.
@@ -198,7 +198,7 @@ function Grid({ martId, model, schema, seed, onChange, onRows }: { martId: strin
   const relNames = useMemo(() => new Set(rels.keys()), [rels]);
   const env = useMemo(() => ({ titles, relSchemas, model, sorts, relNames, toggleSort }), [titles, relSchemas, model, sorts, relNames, toggleSort]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
-  const changeColumns = (cols: string[]) => { setVisible(cols); setSorts((cur) => (cur.every((s) => cols.includes(s.field)) ? cur : cur.filter((s) => cols.includes(s.field)))); };
+  const changeColumns = (cols: string[]) => { setVisible(cols); setSorts((cur) => sortsOnColumns(cur, cols)); };
   const table = useTable({ features, data: rows ?? [], columns });
   const rowsLabel = rows ? `${rows.length}${hasMore ? '+' : ''}` : null;
   useEffect(() => { onRows?.(rowsLabel); }, [rowsLabel]); // eslint-disable-line react-hooks/exhaustive-deps

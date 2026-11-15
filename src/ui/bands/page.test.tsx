@@ -530,7 +530,8 @@ describe('column headers and band toolbars', () => {
   test('a column shows its alias, and its title attribute holds the technical name; no alias shows the name', async () => {
     const grid = await ordersGrid();
     const customer = within(grid).getByText('Customer');
-    expect(customer).toHaveAttribute('title', 'customer_id');
+    expect(customer).not.toHaveAttribute('title');
+    expect(customer.closest('button')).toHaveAttribute('title', 'customer_id. Sorted by the key value');
     expect(within(grid).queryByText('customer_id')).toBeNull();
     expect(within(grid).getByLabelText('Filter Customer')).toBeInTheDocument();
     const id = within(grid).getByText('id', { selector: 'span.truncate' });
@@ -774,8 +775,20 @@ describe('column sort', () => {
 
   test('a related-title column says it sorts by the key value; a plain one has no such title', async () => {
     const grid = await ordersGrid();
-    expect(sortBtn(grid, 'Customer')).toHaveAttribute('title', 'Sorted by the key value');
+    expect(sortBtn(grid, 'Customer')).toHaveAttribute('title', 'customer_id. Sorted by the key value');
+    expect(within(sortBtn(grid, 'Customer')).getByText('Customer')).not.toHaveAttribute('title');
     expect(sortBtn(grid, 'status')).not.toHaveAttribute('title');
+    expect(sortBtn(grid, 'product_id')).toHaveAttribute('title', 'Sorted by the key value');
+  });
+
+  test('with two or more sorts the label says the precedence', async () => {
+    const grid = await ordersGrid();
+    await userEvent.click(sortBtn(grid, 'status'));
+    await waitFor(() => expect(sortBtn(grid, 'status')).toHaveAccessibleName('Sort by status, currently ascending'));
+    await userEvent.click(sortBtn(grid, 'id'));
+    await waitFor(() => expect(sortBtn(grid, 'status')).toHaveAccessibleName('Sort by status, currently ascending, sort 1 of 2'));
+    expect(sortBtn(grid, 'id')).toHaveAccessibleName('Sort by id, currently ascending, sort 2 of 2');
+    expect(sortBtn(grid, 'product_id')).toHaveAccessibleName('Sort by product_id, currently not sorted');
   });
 
   test('Reset clears the sorts, and is enabled by a sort alone', async () => {

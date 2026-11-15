@@ -121,7 +121,7 @@ test('sort a column descending, then add a second sort', async ({ page }) => {
   await expect(firstCell()).toHaveText('450');
   await data.getByRole('button', { name: /^Sort by status,/ }).click();
   await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
-  await expect(data.getByRole('columnheader', { name: /status/ })).toContainText('2');
+  await expect(data.getByRole('columnheader', { name: /status/ }).locator('.dm-sort-mark')).toHaveText('2');
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(firstCell()).toHaveText('1');
 });
