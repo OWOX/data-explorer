@@ -8,6 +8,7 @@ import { DataBand } from './bands/DataBand';
 import { RowBand } from './bands/RowBand';
 import { ErrorBox } from './ErrorBox';
 import { Header } from './header/Header';
+import { HistoryButtons } from './header/HistoryButtons';
 import { Skeleton } from './Skeleton';
 import { TooltipProvider } from './Tooltip';
 import { useCardStatus, useModel } from './useModelData';
@@ -82,7 +83,7 @@ function AppBody() {
 
   return (
     <div className="dm-page">
-      <Header failedStorages={model.failedStorages} error={error} onRetry={reload} />
+      <Header failedStorages={model.failedStorages} error={error} onRetry={reload} history={<HistoryButtons model={model} />} />
       <main className="dm-page-content">
         <CardBands
           model={model}

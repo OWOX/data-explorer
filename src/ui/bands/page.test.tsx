@@ -52,7 +52,7 @@ describe('the four bands', () => {
     expect(within(marts()).getByText('Customers')).toBeInTheDocument();
     expect(within(data()).queryByText('Select a data mart.')).toBeNull();
     expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
-    expect(within(row()).getByRole('button', { name: /Back/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
   });
 
   test('a source click narrows the marts to what it feeds; clicking it again returns to the focus mart', async () => {
@@ -87,7 +87,7 @@ describe('the four bands', () => {
     expect(within(within(grid).getAllByRole('row')[1]!.querySelector('td')!).queryByRole('button')).toBeNull();
   });
 
-  test('three follows, then three Backs, return to each selection in order', async () => {
+  test('three follows, then three Undos, return to each selection in order', async () => {
     const grid = await ordersGrid();
     const filterActive = () => within(data()).getByRole('button', { name: 'Reset' });
     const nameLink = async (scope: HTMLElement) => waitFor(() => {
@@ -114,7 +114,7 @@ describe('the four bands', () => {
     await within(row()).findByRole('heading', { name: /^Orders · \d+$/ });
     await userEvent.click(await nameLink(row()));
     await within(row()).findByRole('heading', { name: /^Customers · \d+$/ });
-    const back = () => userEvent.click(within(row()).getByRole('button', { name: /Back/ }));
+    const back = () => userEvent.click(screen.getByRole('button', { name: 'Undo' }));
 
     await back(); // the Orders record
     await within(row()).findByRole('heading', { name: /^Orders · \d+$/ });
@@ -142,11 +142,46 @@ describe('the four bands', () => {
     expect(await within(row()).findByRole('heading', { name: /^Customers · \d+$/ })).toBeInTheDocument();
     expect(martCard('Customers')).toHaveAttribute('aria-pressed', 'true');
 
-    await userEvent.click(within(row()).getByRole('button', { name: /Back/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(await within(data()).findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
     expect(martCard('Orders')).toHaveAttribute('aria-pressed', 'true');
     expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
-    expect(within(row()).getByRole('button', { name: /Back/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+  });
+
+  test('Redo re-applies what Undo returned from; a new navigation empties it', async () => {
+    const grid = await ordersGrid();
+    const undo = () => screen.getByRole('button', { name: 'Undo' });
+    const redo = () => screen.getByRole('button', { name: 'Redo' });
+    await userEvent.click(within(grid).getAllByRole('row')[1]!);
+    await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
+    await userEvent.click(undo());
+    expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
+    expect(redo()).toBeEnabled();
+    await userEvent.click(redo());
+    expect(await within(row()).findByRole('heading', { name: /^Orders · 1$/ })).toBeInTheDocument();
+    expect(redo()).toBeDisabled();
+    await userEvent.click(undo());
+    fireEvent.click(martCard('Customers'));
+    await within(data()).findByRole('heading', { name: 'Customers' });
+    expect(redo()).toBeDisabled();
+  });
+
+  test('Alt+ArrowRight and Ctrl+Shift+Z redo, Ctrl+Z undoes, but not while typing in a field', async () => {
+    const grid = await ordersGrid();
+    await userEvent.click(within(grid).getAllByRole('row')[1]!);
+    await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
+    fireEvent.keyDown(screen.getByLabelText('Search data marts'), { key: 'z', ctrlKey: true });
+    await settle();
+    expect(within(row()).getByRole('heading', { name: /^Orders · 1$/ })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    await waitFor(() => expect(within(row()).getByText('Select a row.')).toBeInTheDocument());
+    fireEvent.keyDown(document, { key: 'ArrowRight', altKey: true });
+    await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
+    fireEvent.keyDown(document, { key: 'z', metaKey: true });
+    await waitFor(() => expect(within(row()).getByText('Select a row.')).toBeInTheDocument());
+    fireEvent.keyDown(document, { key: 'Z', metaKey: true, shiftKey: true });
+    await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
   });
 
   test('Alt+ArrowLeft goes back too', async () => {
@@ -215,7 +250,7 @@ describe('the grid', () => {
     await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(4));
     fireEvent.click(martCard('Customers'));
     await within(data()).findByRole('heading', { name: 'Customers' });
-    await userEvent.click(within(row()).getByRole('button', { name: /Back/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await within(data()).findByRole('heading', { name: 'Orders' });
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(4));
     expect(within(data()).getByRole('button', { name: 'Reset' })).toBeEnabled();
@@ -254,8 +289,8 @@ describe('the grid', () => {
     });
     await userEvent.click(link);
     await within(data()).findByRole('heading', { name: 'Customers' });
-    await userEvent.click(within(row()).getByRole('button', { name: /Back/ }));
-    await userEvent.click(within(row()).getByRole('button', { name: /Back/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await within(data()).findByRole('heading', { name: 'Orders' });
     await waitFor(() => expect(within(data()).getByLabelText('Filter id')).toHaveClass('text-primary'));
     expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary');
@@ -539,7 +574,7 @@ describe('search, contexts and refresh', () => {
     await userEvent.click(screen.getByLabelText('Refresh model'));
     await waitFor(() => expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument());
     // The replacement left no history entry: Back steps to the earlier Orders selection and then stops.
-    const back = within(row()).getByRole('button', { name: /Back/ });
+    const back = screen.getByRole('button', { name: 'Undo' });
     await userEvent.click(back);
     expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument();
     await waitFor(() => expect(back).toBeDisabled());
@@ -758,13 +793,17 @@ describe('column headers and band toolbars', () => {
     expect(within(grid).getAllByRole('button', { name: /Columns/ })).toHaveLength(1);
   });
 
-  test('the Row band has Back and Refresh in its header', async () => {
+  test('the Row band has Refresh in its header and no Back; Undo and Redo sit after the page title', async () => {
     await ordersGrid();
     await userEvent.click(within(data()).getAllByRole('row')[1]!);
     await within(row()).findByText('status');
     const bar = head(row());
-    expect(within(bar).getByRole('button', { name: /Back/ })).toBeInTheDocument();
+    expect(within(bar).queryByRole('button', { name: /Back/ })).toBeNull();
     expect(within(bar).getByRole('button', { name: 'Refresh' })).toBeInTheDocument();
+    const lead = document.querySelector('.dm-page-header-lead')!;
+    expect([...lead.children].map((c) => c.tagName)).toEqual(['H1', 'DIV']);
+    expect(within(lead as HTMLElement).getByRole('button', { name: 'Undo' })).toBeEnabled();
+    expect(within(lead as HTMLElement).getByRole('button', { name: 'Redo' })).toBeDisabled();
   });
 });
 
@@ -789,7 +828,7 @@ describe('the storage filter', () => {
     expect(within(marts()).getByText('Customers')).toBeInTheDocument();
     expect(martCard('Orders')).toHaveAttribute('aria-pressed', 'true');
     expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument();
-    expect(within(row()).getByRole('button', { name: /Back/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
   });
 
   test('a selected mart in an unticked storage leaves the Data Marts band but stays in the Data band', async () => {
@@ -969,7 +1008,7 @@ describe('column sort', () => {
     await waitFor(() => expect(firstId(grid)).toBe('450'));
     fireEvent.click(martCard('Customers'));
     await within(data()).findByRole('heading', { name: 'Customers' });
-    await userEvent.click(within(row()).getByRole('button', { name: /Back/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await within(data()).findByRole('heading', { name: 'Orders' });
     await waitFor(() => expect(header(data(), 'id')).toHaveAttribute('aria-sort', 'descending'));
     await waitFor(() => expect(firstId(data())).toBe('450'));

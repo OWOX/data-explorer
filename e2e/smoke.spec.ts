@@ -59,7 +59,7 @@ test('filter, reset, columns, a row fills the Row band, Back returns', async ({ 
   const row = band(page, 'row');
   await expect(row.getByRole('heading', { name: /^Orders · 1$/ })).toBeVisible();
   await expect(row.getByText('status')).toBeVisible();
-  await row.getByRole('button', { name: /Back/ }).click();
+  await page.getByRole('button', { name: 'Undo' }).click();
   await expect(row.getByText('Select a row.')).toBeVisible();
 });
 
@@ -68,7 +68,7 @@ test('a card click selects its mart and Back restores the previous one', async (
   await martCard(page, 'Customers').click();
   await expect(band(page, 'data').getByRole('heading', { name: 'Customers' })).toBeVisible();
   await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
-  await band(page, 'row').getByRole('button', { name: /Back/ }).click();
+  await page.getByRole('button', { name: 'Undo' }).click();
   await expect(band(page, 'data').getByRole('heading', { name: 'Orders' })).toBeVisible();
 });
 
@@ -82,7 +82,7 @@ test('a related title moves the selection, and Back restores the mart and the re
   await expect(data.getByRole('heading', { name: 'Customers' })).toBeVisible();
   await expect(row.getByRole('heading', { name: /^Customers · \d+$/ })).toBeVisible();
   await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
-  await row.getByRole('button', { name: /Back/ }).click();
+  await page.getByRole('button', { name: 'Undo' }).click();
   await expect(data.getByRole('heading', { name: 'Orders' })).toBeVisible();
   await expect(row.getByRole('heading', { name: /^Orders · 1$/ })).toBeVisible();
   await expect(martCard(page, 'Orders')).toHaveAttribute('aria-pressed', 'true');

@@ -1,16 +1,20 @@
 // The page header, as Data Flow draws it: the page title on the left, the page's own Refresh at the right end.
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useStore } from '../../state/store';
 import { ErrorBox } from '../ErrorBox';
 import { Tooltip } from '../Tooltip';
 
 type Failed = { id: string; title: string; message: string };
 
-export function Header({ error, onRetry, failedStorages = [] }: { error?: unknown; onRetry?: () => void; failedStorages?: Failed[] }) {
+export function Header({ error, onRetry, failedStorages = [], history }: { error?: unknown; onRetry?: () => void; failedStorages?: Failed[]; /** Undo and Redo, drawn right after the title. */ history?: ReactNode }) {
   const [, dispatch] = useStore();
   return (
     <header className="dm-page-header">
-      <h1 className="dm-page-header-title">Data Explorer</h1>
+      <div className="dm-page-header-lead">
+        <h1 className="dm-page-header-title">Data Explorer</h1>
+        {history}
+      </div>
       <div className="dm-page-header-actions">
         {failedStorages.length > 0 && (
           <div className="inline-flex items-center gap-1 text-xs text-destructive">

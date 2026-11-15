@@ -24,7 +24,10 @@ export type GridState = { columns: string[]; filters: Record<string, ColumnFilte
 
 export type State = {
   selection: Selection;
+  /** Selections Undo returns to, oldest first. */
   history: Selection[];
+  /** Selections Redo re-applies, the one undone last at the end; any new navigation empties it. */
+  future: Selection[];
   search: string;
   /** The contexts selected as badges in the Data Marts band; none is no filter. */
   contextIds: string[];
@@ -43,7 +46,8 @@ export type Action =
   | { type: 'selectMart'; id: string; sourceOf: SourceOf }
   | { type: 'openRecord'; martId: string; pk: Record<string, unknown>; sourceOf?: SourceOf }
   | { type: 'follow'; target: ClickTarget; sourceOf: SourceOf }
-  | { type: 'back'; known?: (selection: Selection) => boolean }
+  | { type: 'undo'; known?: (selection: Selection) => boolean }
+  | { type: 'redo'; known?: (selection: Selection) => boolean }
   /** Swap the selection without a history entry: a refresh took the selected mart or source away. */
   | { type: 'replace'; selection: Selection }
   | { type: 'search'; q: string }
@@ -56,7 +60,7 @@ export type Action =
 export const HISTORY_LIMIT = 20;
 
 const emptySelection: Selection = { sourceKey: null, martId: null, record: null };
-export const initialState: State = { selection: emptySelection, history: [], search: '', contextIds: [], storageIds: null, grids: {}, modelVersion: 0 };
+export const initialState: State = { selection: emptySelection, history: [], future: [], search: '', contextIds: [], storageIds: null, grids: {}, modelVersion: 0 };
 
 /** The source stays selected only when it feeds the mart being selected. */
 const sourceFor = (current: Selection, martId: string, sourceOf?: SourceOf): string | null => {
@@ -68,7 +72,7 @@ const sourceFor = (current: Selection, martId: string, sourceOf?: SourceOf): str
 /** Every change to the selection goes through here: it is what Back steps over. */
 function move(state: State, next: Selection): State {
   if (JSON.stringify(next) === JSON.stringify(state.selection)) return state;
-  return { ...state, selection: next, history: [...state.history, state.selection].slice(-HISTORY_LIMIT) };
+  return { ...state, selection: next, history: [...state.history, state.selection].slice(-HISTORY_LIMIT), future: [] };
 }
 
 export function reducer(state: State, a: Action): State {
@@ -94,14 +98,22 @@ export function reducer(state: State, a: Action): State {
       const filters = Object.fromEntries(target.filters.map((f) => [f.field, f]));
       return { ...next, grids: { ...next.grids, [target.martId]: { columns: saved?.columns ?? [], filters, sorts: saved?.sorts ?? [], limit: PAGE_SIZE } } };
     }
-    case 'back': {
+    case 'undo': {
       // Entries naming a mart or source a refresh removed are skipped.
       const history = [...state.history];
       while (history.length) {
         const previous = history.pop()!;
-        if (!a.known || a.known(previous)) return { ...state, selection: previous, history };
+        if (!a.known || a.known(previous)) return { ...state, selection: previous, history, future: [...state.future, cur].slice(-HISTORY_LIMIT) };
       }
       return history.length === state.history.length ? state : { ...state, history };
+    }
+    case 'redo': {
+      const future = [...state.future];
+      while (future.length) {
+        const next = future.pop()!;
+        if (!a.known || a.known(next)) return { ...state, selection: next, future, history: [...state.history, cur].slice(-HISTORY_LIMIT) };
+      }
+      return future.length === state.future.length ? state : { ...state, future };
     }
     case 'replace': return { ...state, selection: a.selection };
     // Searching narrows the Data Marts band; what is selected stays selected.
