@@ -17,3 +17,9 @@ export function relativeTime(iso: string, now = new Date()): string {
   }
   return 'just now';
 }
+
+/** A whole number grouped by the reader's own locale. */
+export const num = (n: number): string => n.toLocaleString();
+
+/** "1 data mart", "3 data marts". */
+export const count = (n: number, noun: string): string => `${num(n)} ${noun}${n === 1 ? '' : 's'}`;
