@@ -14,7 +14,7 @@ import { CellValue } from './CellValue';
 export function RecordTab({ tab, model }: { tab: Extract<Tab, { kind: 'record' }>; model: Model }) {
   const { ctx, schemas } = useServices();
   const [, dispatch] = useStore();
-  const mart = model.marts.get(tab.martId)!;
+  const mart = model.marts.get(tab.martId);
   const [version, setVersion] = useState(0);
   const [state, setState] = useState<{ ver: number; schema: Schema | null; row: Row | null | undefined; error: unknown }>({ ver: -1, schema: null, row: undefined, error: null });
   const [titles, setTitles] = useState(new Map<string, string>());
@@ -49,8 +49,8 @@ export function RecordTab({ tab, model }: { tab: Extract<Tab, { kind: 'record' }
 
   const header = (
     <div className="flex items-center gap-2 border-b px-3 py-2">
-      <MartIcon icon={mart.icon} />
-      <span className="font-semibold">{mart.title}</span>
+      <MartIcon icon={mart?.icon ?? null} />
+      <span className="font-semibold">{mart?.title ?? tab.martId}</span>
       <span className="font-mono text-xs text-muted-foreground">{Object.values(tab.pk).map(String).join(', ')}</span>
       <div className="flex-1" />
       <button type="button" onClick={() => { setTitles(new Map()); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>

@@ -28,10 +28,11 @@ const martOf = (tabs: Tab[], id: string | null) => tabs.find((t) => t.id === id)
 export function reducer(state: State, a: Action): State {
   switch (a.type) {
     case 'select': return { ...state, selectedId: a.id };
-    case 'search': return { ...state, search: a.q };
+    // The most recent action wins: searching or filtering leaves selected mode (tabs stay open).
+    case 'search': return { ...state, search: a.q, selectedId: null };
     case 'toggleContext': {
       const has = state.contextIds.includes(a.id);
-      return { ...state, contextIds: has ? state.contextIds.filter((c) => c !== a.id) : [...state.contextIds, a.id] };
+      return { ...state, selectedId: null, contextIds: has ? state.contextIds.filter((c) => c !== a.id) : [...state.contextIds, a.id] };
     }
     case 'openMart': {
       const id = `mart:${a.martId}`;

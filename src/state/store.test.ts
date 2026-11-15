@@ -63,3 +63,11 @@ test('search, contexts and refresh', () => {
   st = reducer(st, { type: 'refreshModel' });
   expect(st).toMatchObject({ search: 'ord', contextIds: ['c2'], modelVersion: 1 });
 });
+
+test('search and context toggles leave selected mode but keep the tabs', () => {
+  const opened = reducer(s(), { type: 'openMart', martId: 'a' });
+  const searched = reducer(opened, { type: 'search', q: 'x' });
+  expect(searched).toMatchObject({ selectedId: null, tabs: opened.tabs, activeTabId: 'mart:a' });
+  const toggled = reducer(opened, { type: 'toggleContext', id: 'c1' });
+  expect(toggled).toMatchObject({ selectedId: null, tabs: opened.tabs });
+});

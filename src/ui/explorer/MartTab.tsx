@@ -44,7 +44,7 @@ const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Obje
 function MartGrid({ tab, model, schema }: { tab: Extract<Tab, { kind: 'mart' }>; model: Model; schema: Schema }) {
   const { ctx, schemas } = useServices();
   const [, dispatch] = useStore();
-  const mart = model.marts.get(tab.martId)!;
+  const mart = model.marts.get(tab.martId);
   const [visible, setVisible] = useState(() => defaultColumns(schema));
   const [filters, setFilters] = useState<Record<string, ColumnFilter>>(() => toFilterMap(tab.initialFilters));
   const [limit, setLimit] = useState(PAGE_SIZE);
@@ -112,8 +112,8 @@ function MartGrid({ tab, model, schema }: { tab: Extract<Tab, { kind: 'mart' }>;
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-        <MartIcon icon={mart.icon} />
-        <span className="font-semibold">{mart.title}</span>
+        <MartIcon icon={mart?.icon ?? null} />
+        <span className="font-semibold">{mart?.title ?? tab.martId}</span>
         {rows && <span className="text-xs text-muted-foreground">{rows.length}{hasMore ? '+' : ''} rows</span>}
         <div className="flex-1" />
         <button type="button" disabled={!hasFilters} onClick={() => { setFilters({}); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>

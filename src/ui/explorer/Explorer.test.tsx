@@ -105,3 +105,13 @@ test('Refresh on a record shows the progress bar', async () => {
   expect(within(panel).getByRole('progressbar')).toBeInTheDocument();
   await waitFor(() => expect(within(panel).queryByRole('progressbar')).toBeNull());
 });
+
+test('an incoming relationship cell opens the referencing mart, filtered', async () => {
+  const panel = await openOrders();
+  const idCell = within(panel).getAllByRole('row')[1]!.querySelector('td')!;
+  await userEvent.click(within(idCell).getByRole('button'));
+  expect(screen.getAllByRole('tab').at(-1)!.textContent).toBe('Order Items');
+  const items = (await screen.findAllByRole('tabpanel')).find((p) => !p.hidden)!;
+  // the order_id = 1 filter is applied (seeded data may have no such item, so rows are not asserted)
+  await waitFor(() => expect(within(items).getByRole('button', { name: 'Reset' })).toBeEnabled());
+});

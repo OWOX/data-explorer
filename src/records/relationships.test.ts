@@ -8,11 +8,28 @@ const edges: Edge[] = [
 ];
 const pk = (name: string): Field => ({ name, alias: null, type: 'INT64', category: 'number', description: null, isPrimaryKey: true });
 
-test('only outgoing edges make relationship columns', () => {
+test('outgoing edges make relationship columns on their source fields', () => {
   const cols = relationshipColumns('orders', edges);
-  expect([...cols.keys()].sort()).toEqual(['currency', 'customer_id', 'day']);
-  expect(cols.get('customer_id')).toMatchObject({ relatedMartId: 'customers', relatedField: 'id', composite: false });
-  expect(cols.get('currency')!.composite).toBe(true);
+  expect(cols.get('customer_id')).toMatchObject({ relatedMartId: 'customers', relatedField: 'id', composite: false, direction: 'outgoing' });
+  expect(cols.get('currency')).toMatchObject({ composite: true, direction: 'outgoing' });
+  expect([...cols.values()].filter((c) => c.direction === 'outgoing').map((c) => c.field).sort()).toEqual(['currency', 'customer_id', 'day']);
+});
+
+test('incoming edges make columns on the target fields; outgoing wins a clash; first incoming wins', () => {
+  const es: Edge[] = [
+    ...edges,
+    { id: 'e4', source: 'returns', target: 'orders', joins: [{ sourceField: 'order_id', targetField: 'id' }] },
+    { id: 'e5', source: 'x', target: 'orders', joins: [{ sourceField: 'cid', targetField: 'customer_id' }] },
+  ];
+  const cols = relationshipColumns('orders', es);
+  expect(cols.get('id')).toMatchObject({ direction: 'incoming', edgeId: 'e2', relatedMartId: 'items', relatedField: 'order_id', joins: [{ sourceField: 'id', targetField: 'order_id' }] });
+  expect(cols.get('customer_id')).toMatchObject({ direction: 'outgoing', relatedMartId: 'customers' });
+});
+
+test('an incoming cell always opens the related mart filtered on the join fields', () => {
+  const rel = relationshipColumns('orders', edges).get('id')!;
+  expect(clickTarget(rel, { id: 5 }, [pk('order_id')])).toEqual({ kind: 'mart', martId: 'items', filters: [{ field: 'order_id', op: 'eq', value: 5 }] });
+  expect(clickTarget(rel, { id: null }, [])).toBeNull();
 });
 
 test('click opens a record when the related field is the only primary key', () => {
