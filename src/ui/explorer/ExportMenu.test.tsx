@@ -196,3 +196,39 @@ test('an export that finishes while the member is on another mart does not open 
   expect(t.open).not.toHaveBeenCalled();
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
 }, 20000);
+
+/** The dialog route with a new spreadsheet; `fail` decides what POST /api/reports does the first time. */
+async function newReportFailing(fail: () => Error) {
+  const t = setup(1, [REPORT]);
+  await t.seeded;
+  t.view();
+  await rowsLoaded();
+  const real = t.ctx.owox.postJson;
+  let failed = false;
+  (t.ctx.owox as { postJson: Ctx['owox']['postJson'] }).postJson = ((path: string, body: unknown) => {
+    if (path === '/api/reports' && !failed) { failed = true; t.calls.push(`POST ${path}`); return Promise.reject(fail()); }
+    return real(path, body);
+  }) as Ctx['owox']['postJson'];
+  await userEvent.click(await within(data()).findByText('Export'));
+  await userEvent.click(await within(data()).findByRole('menuitem', { name: /New report/ }));
+  const dialog = await screen.findByRole('dialog', { name: 'New report' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+  return { t, dialog };
+}
+
+test('a retry after the report step failed reuses the spreadsheet already made', async () => {
+  const { t, dialog } = await newReportFailing(() => new Error('report refused'));
+  await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('report refused'));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+  await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 6000 });
+  expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1);
+  expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(2);
+}, 15000);
+
+test('a timeout on the report step closes the dialog and warns that the report may exist, with no retry', async () => {
+  const { t } = await newReportFailing(() => Object.assign(new Error('Request timed out'), { payload: { code: 'TIMEOUT' } }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(await within(data()).findByText('The report may have been created; check OWOX before trying again.')).toBeInTheDocument();
+  expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1);
+  expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
+});

@@ -77,8 +77,11 @@ type DocumentDto = { spreadsheetId: string; sheetId: number };
 export type Stage = 'sheet' | 'report' | 'run';
 /** A failure at a named step, so the caller can tell a spreadsheet that could not be created from a run that failed. */
 export class ExportError extends Error {
-  constructor(public stage: Stage, message: string) { super(message); }
+  /** `code` is the SDK transport code (`TIMEOUT`...); `target` is the spreadsheet a failed report step leaves behind. */
+  constructor(public stage: Stage, message: string, public code?: string, public target?: SheetTarget) { super(message); }
 }
+/** The SDK transport puts its code on `payload`; a plain `code` is kept as a fallback. */
+const codeOf = (e: unknown) => { const x = e as { payload?: { code?: string }; code?: string } | null; return x?.payload?.code ?? x?.code; };
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /** The SDK transport puts the HTTP status on `payload`; a plain `status` is kept as a fallback. */
 const isNotFound = (e: unknown) => { const x = e as { payload?: { status?: number }; status?: number } | null; return (x?.payload?.status ?? x?.status) === 404; };
@@ -240,7 +243,7 @@ export function createExporter(ctx: Ctx): Exporter {
         try {
           const created = await ctx.owox.postJson<ReportDto>('/api/reports', { title, dataMartId: martId, dataDestinationId: destination.id, destinationConfig: destinationConfig(target), ...payload });
           report = { reportId: created.id, destinationId: destination.id, spreadsheetId: target.spreadsheetId, sheetId: target.sheetId, title };
-        } catch (e) { throw new ExportError('report', messageOf(e)); }
+        } catch (e) { throw new ExportError('report', messageOf(e), codeOf(e), target); }
         // Remembered before the run: a failed run leaves a report the member can update.
         await save(martId, [...(await load(martId)), report]);
       }

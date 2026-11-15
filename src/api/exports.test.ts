@@ -271,4 +271,14 @@ describe('exporter', () => {
     ex.acknowledge('orders');
     expect(ex.inFlight('orders')).toBeDefined();
   });
+
+  test('a failed report step carries the transport code and the spreadsheet it leaves behind', async () => {
+    const { ctx } = exportCtx();
+    (ctx.owox.postJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+      if (path.endsWith('/google-sheets/documents')) return { spreadsheetId: 'made', sheetId: 3 };
+      throw Object.assign(new Error('Request timed out'), { payload: { code: 'TIMEOUT' } });
+    });
+    const err = await createExporter(ctx).run({ martId: 'orders', destination: dest, title: 'T', source: { kind: 'new' }, payload }).catch((e) => e);
+    expect(err).toMatchObject({ stage: 'report', code: 'TIMEOUT', target: { spreadsheetId: 'made', sheetId: 3 } });
+  });
 });

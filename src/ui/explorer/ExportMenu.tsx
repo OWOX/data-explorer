@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   buildReportPayload, exportTitle, ExportError, isPublishedSheetUrl, parseSheetUrl, sheetUrl,
-  type ExportedReport, type ExportSource, type Flight, type Stage,
+  type ExportedReport, type ExportSource, type Flight, type SheetTarget, type Stage,
 } from '../../api/exports';
 import type { ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
@@ -15,6 +15,7 @@ type Props = { martId: string; martTitle: string; schema: Schema; visible: strin
 type Result = { kind: 'ok' | 'timeout' | 'error'; text: string; url?: string };
 
 const STAGE_LABEL: Record<Stage, string> = { sheet: 'Creating the spreadsheet…', report: 'Saving the report…', run: 'Running the report…' };
+const MAYBE_CREATED = 'The report may have been created; check OWOX before trying again.';
 const UNRECOGNISED = 'This report targets an unrecognised spreadsheet.';
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -27,7 +28,7 @@ export function ExportMenu(p: Props) {
   const reports = loaded?.martId === p.martId ? loaded.list : null;
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
-  const [dialog, setDialog] = useState<{ destination: DestinationDto; error?: string; seq: number } | null>(null);
+  const [dialog, setDialog] = useState<{ destination: DestinationDto; error?: string; seq: number; made?: SheetTarget } | null>(null);
   const seq = useRef(0);
   // Bumped when the mart changes or the menu goes away: an export finishing later is no longer in front of the member.
   const gen = useRef(0);
@@ -102,8 +103,13 @@ export function ExportMenu(p: Props) {
       if (destination && e instanceof ExportError && e.stage === 'sheet') {
         // The spreadsheet could not be made: offer the pasted-URL way instead.
         setDialog((cur) => ({ destination, error: `Could not create a spreadsheet: ${text}`, seq: cur?.seq ?? ++seq.current }));
-      } else if (destination && fromDialog && e instanceof ExportError && e.stage === 'report') {
-        setDialog((cur) => ({ destination, error: text, seq: cur?.seq ?? ++seq.current }));
+      } else if (destination && fromDialog && e instanceof ExportError && e.stage === 'report' && e.code !== 'TIMEOUT') {
+        // The spreadsheet stays: a retry reuses it instead of leaving an orphan behind.
+        setDialog((cur) => ({ destination, error: text, seq: cur?.seq ?? ++seq.current, made: sourceKind === 'new' ? e.target : cur?.made }));
+      } else if (e instanceof ExportError && e.stage === 'report' && e.code === 'TIMEOUT') {
+        // The request may have reached OWOX: a retry could make a second report.
+        setDialog(null);
+        setResult({ kind: 'error', text: MAYBE_CREATED });
       } else {
         // Past this point the report exists (and may be running): a retry from the dialog would make a second one.
         setDialog(null);
@@ -160,7 +166,7 @@ export function ExportMenu(p: Props) {
           </div>
         </details>
       )}
-      {dialog && <NewReportDialog key={dialog.seq} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
+      {dialog && <NewReportDialog key={dialog.seq} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source.kind === 'new' && dialog.made ? { kind: 'existing', target: dialog.made } : source, title, true)} />}
     </>
   );
 
