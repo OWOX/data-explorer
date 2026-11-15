@@ -179,7 +179,8 @@ export function useWires(
         for (const id of [wire.from, wire.to]) {
           if (boxes.has(id)) continue;
           const el = document.getElementById(id);
-          if (!el || !canvas.contains(el)) continue;
+          // A card in a folded band is hidden, not gone: it has no box to draw to.
+          if (!el || !canvas.contains(el) || el.closest('[hidden]')) continue;
           const r = el.getBoundingClientRect();
           boxes.set(id, {
             left: r.left - origin.left,

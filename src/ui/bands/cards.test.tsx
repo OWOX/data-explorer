@@ -186,10 +186,11 @@ describe('Band', () => {
     expect(screen.getByRole('button', { name: 'Hide Data marts' })).toHaveAttribute('aria-expanded', 'true');
   });
 
-  test('folded: hides children; the chevron calls onFold', async () => {
+  test('folded: keeps children mounted but hidden; the chevron calls onFold', async () => {
     const onFold = vi.fn();
     renderBand(true, onFold);
-    expect(screen.queryByText('cards')).toBeNull();
+    expect(screen.getByText('cards', { exact: true })).not.toBeVisible();
+    expect(screen.queryByRole('paragraph')).toBeNull();
     const button = screen.getByRole('button', { name: 'Show Data marts' });
     expect(button).toHaveAttribute('aria-expanded', 'false');
     await userEvent.click(button);

@@ -31,6 +31,8 @@
 .dm-band-head { position: relative; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; cursor: pointer; }
 /* Folded, the header is the whole block: its own bottom margin goes, and the block's padding is
    even top and bottom rather than the extra it leaves under a grid. */
+/* The display set on these would otherwise beat the hidden attribute. */
+.dm-band-grid[hidden], .dm-bigcard[hidden] { display: none; }
 .dm-band.folded { padding-bottom: 0.75rem; }
 .dm-band.folded .dm-band-head { margin-bottom: 0; }
 .dm-band-icon {

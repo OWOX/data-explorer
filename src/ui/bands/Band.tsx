@@ -62,7 +62,8 @@ export function Band({
           <ChevronDown size={16} className={folded ? undefined : 'dm-band-fold-open'} />
         </button>
       </header>
-      {folded ? null : grid ? <div className="dm-band-grid">{children}</div> : <BandToolsSlot.Provider value={slot}><div className="dm-bigcard">{children}</div></BandToolsSlot.Provider>}
+      {/* Folded content stays mounted, only hidden: unfolding must not remount the grid and ask for its rows again. */}
+      {grid ? <div className="dm-band-grid" hidden={folded}>{children}</div> : <BandToolsSlot.Provider value={slot}><div className="dm-bigcard" hidden={folded}>{children}</div></BandToolsSlot.Provider>}
     </section>
   );
 }

@@ -485,6 +485,44 @@ describe('folding and lines', () => {
     expect(within(data()).queryByRole('table')).toBeNull();
   });
 
+  test('folding the Data band and unfolding it does not ask for the rows again', async () => {
+    const calls = await spyOnTraverse();
+    await within(data()).findByRole('table');
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    const before = calls.length;
+    await userEvent.click(within(data()).getByRole('button', { name: /^Hide / }));
+    expect(within(data()).queryByRole('table')).toBeNull();
+    await userEvent.click(within(data()).getByRole('button', { name: /^Show / }));
+    await within(data()).findByRole('table');
+    await settle();
+    expect(calls).toHaveLength(before);
+    expect(within(data()).getAllByRole('row')).toHaveLength(201);
+  });
+
+  test('no line is drawn to a card in a folded band', async () => {
+    // jsdom has no layout: give each card a box of its own, and a hidden one none.
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const hidden = !!this.closest('[hidden]');
+      const left = this.id ? (this.id.length * 91) % 600 : 0;
+      const top = this.id ? (this.id.length * 37) % 400 : 0;
+      const [w, h] = hidden ? [0, 0] : [100, 40];
+      return { left, top, right: left + w, bottom: top + h, width: w, height: h, x: left, y: top, toJSON() {} } as DOMRect;
+    });
+    try {
+      await ordersGrid();
+      const svg = document.getElementById('wires')!;
+      const canvas = document.querySelector('.dm-canvas')!;
+      const drawn = () => svg.querySelectorAll('path.source[d], path.relationship[d]').length;
+      // The browser's ResizeObserver asks for a layout when a band changes height; here the animation end does.
+      fireEvent.animationEnd(canvas);
+      await waitFor(() => expect(drawn()).toBeGreaterThan(0));
+      await userEvent.click(within(marts()).getByRole('button', { name: /^Hide / }));
+      expect(martCard('Customers')).not.toBeVisible();
+      fireEvent.animationEnd(canvas);
+      await waitFor(() => expect(drawn()).toBe(0));
+    } finally { vi.restoreAllMocks(); }
+  });
+
   test('the page draws one line layer with a path per shown pair', async () => {
     await ordersGrid();
     const svg = document.getElementById('wires')!;
