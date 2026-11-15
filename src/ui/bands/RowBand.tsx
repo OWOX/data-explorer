@@ -1,6 +1,6 @@
 // The Row band: the selected record, and the Back button that steps through the selections before it.
 import { ArrowLeft, Rows3 } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { Model } from '../../model/types';
 import { recordTabId } from '../../records/relationships';
 import { useStore } from '../../state/store';
@@ -11,6 +11,10 @@ import { PickedIcon } from './picked';
 export function RowBand({ model, folded, onFold }: { model: Model; folded: boolean; onFold: () => void }) {
   const [{ selection, history }, dispatch] = useStore();
   const { record } = selection;
+  // Like the Data band: a folded band mounts no new record, so nothing hidden is fetched.
+  const [shownRecord, setShownRecord] = useState(record);
+  if (!folded && shownRecord !== record) setShownRecord(record);
+  const shown = folded ? shownRecord : record;
   const canGoBack = history.length > 0;
   const back = () => dispatch({ type: 'back', known: (sel) => (!sel.martId || model.marts.has(sel.martId)) && (!sel.sourceKey || model.sources.some((x) => x.key === sel.sourceKey)) });
 
@@ -47,7 +51,7 @@ export function RowBand({ model, folded, onFold }: { model: Model; folded: boole
         </button>
       }
     >
-      {record ? <RecordView key={recordTabId(record.martId, record.pk)} martId={record.martId} pk={record.pk} model={model} /> : <p className="dm-muted p-2 text-sm">Select a row.</p>}
+      {shown ? <RecordView key={recordTabId(shown.martId, shown.pk)} martId={shown.martId} pk={shown.pk} model={model} /> : <p className="dm-muted p-2 text-sm">Select a row.</p>}
     </Band>
   );
 }

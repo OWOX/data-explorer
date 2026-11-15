@@ -499,6 +499,46 @@ describe('folding and lines', () => {
     expect(within(data()).getAllByRole('row')).toHaveLength(201);
   });
 
+  test('a folded Data band runs no query for marts selected meanwhile; unfolding runs exactly one for the current mart', async () => {
+    const calls = await spyOnTraverse();
+    await within(data()).findByRole('table');
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await settle();
+    await userEvent.click(within(data()).getByRole('button', { name: /^Hide / }));
+    // Counts for cards that came into view are not row queries.
+    const rowQueries = () => calls.filter((c) => !(c.o as { uniqueCount?: unknown } | undefined)?.uniqueCount);
+    const before = rowQueries().length;
+    fireEvent.click(martCard('Customers'));
+    await settle();
+    const stores = within(marts()).queryByText('Stores');
+    if (stores) { fireEvent.click(stores.closest('article')!); await settle(); }
+    expect(rowQueries()).toHaveLength(before);
+    await userEvent.click(within(data()).getByRole('button', { name: /^Show / }));
+    await within(data()).findByRole('heading', { name: stores ? 'Stores' : 'Customers' });
+    await settle();
+    const fresh = rowQueries().slice(before);
+    // The grid's own rows query; the related-title lookups it triggers are not counted.
+    const grid = fresh.filter((c) => (c.o as { sort?: unknown } | undefined)?.sort);
+    expect(grid).toHaveLength(1);
+    expect(grid[0]!.id).toBe(stores ? 'stores' : 'customers');
+  });
+
+  test('a folded Row band fetches no record for rows selected meanwhile', async () => {
+    const calls = await spyOnTraverse();
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await userEvent.click(within(data()).getAllByRole('row')[1]!);
+    await within(row()).findByRole('heading', { name: /^Orders · \d+$/ });
+    await settle();
+    await userEvent.click(within(row()).getByRole('button', { name: /^Hide / }));
+    const before = calls.length;
+    await userEvent.click(within(data()).getAllByRole('row')[2]!);
+    await settle();
+    expect(calls).toHaveLength(before);
+    await userEvent.click(within(row()).getByRole('button', { name: /^Show / }));
+    await settle();
+    expect(calls.length).toBeGreaterThan(before);
+  });
+
   test('no line is drawn to a card in a folded band', async () => {
     // jsdom has no layout: give each card a box of its own, and a hidden one none.
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
