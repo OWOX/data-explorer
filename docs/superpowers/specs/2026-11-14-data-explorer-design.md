@@ -82,11 +82,12 @@ Icons are a key from the OWOX icon enum or `lucide:<name>`. The plugin maps enum
 The card is styled after the host's `ModelCanvasFlowNode` and `erd-card`: `rounded-xl border shadow-sm`, with an icon tile and the title. Each card shows:
 
 1. The mart icon and title. An (i) icon in the title's top right corner shows the mart description in a tooltip, and is hidden when there is no description.
-2. A row-count badge (compact format, such as `12.4K`), with a spinner while the count loads.
-3. A data quality icon. The status-to-icon map follows the host's `data-quality-status.ts`.
-4. A freshness icon, with `dataLastUpdatedAt` as relative time in a tooltip.
-5. Context chips with their icons.
-6. A muted stub style for marts the member cannot access.
+2. To the left of (i), an external-link icon (`ExternalLink`) opens `https://app.owox.com/ui/<ctx.projectId>/data-marts/<id>/overview` in a new tab through `ctx.ui.openExternal`, so the explorer keeps its state. The click does not select the card. The base URL is one constant, `OWOX_APP_URL`.
+3. A row-count badge (compact format, such as `12.4K`), with a spinner while the count loads.
+4. A data quality icon. The status-to-icon map follows the host's `data-quality-status.ts`.
+5. A freshness icon, with `dataLastUpdatedAt` as relative time in a tooltip.
+6. Context chips with their icons.
+7. A muted stub style for marts the member cannot access.
 
 Layout uses dagre, left to right, in canvas mode.
 
