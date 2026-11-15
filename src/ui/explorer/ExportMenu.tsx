@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   buildReportPayload, exportTitle, ExportError, isPublishedSheetUrl, parseSheetUrl, reportMayExist, sheetUrl,
-  type ExportedReport, type ExportSource, type Flight, type SheetTarget, type Stage,
+  type ExportedReport, type ExportSource, type Flight, type Stage,
 } from '../../api/exports';
 import type { ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
@@ -28,7 +28,7 @@ export function ExportMenu(p: Props) {
   const reports = loaded?.martId === p.martId ? loaded.list : null;
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
-  const [dialog, setDialog] = useState<{ destination: DestinationDto; error?: string; seq: number; made?: SheetTarget } | null>(null);
+  const [dialog, setDialog] = useState<{ destination: DestinationDto; error?: string; seq: number } | null>(null);
   const seq = useRef(0);
   // Bumped when the mart changes or the menu goes away: an export finishing later is no longer in front of the member.
   const gen = useRef(0);
@@ -108,7 +108,7 @@ export function ExportMenu(p: Props) {
         setDialog((cur) => ({ destination, error: `Could not create a spreadsheet: ${text}`, seq: cur?.seq ?? ++seq.current }));
       } else if (destination && fromDialog && e instanceof ExportError && e.stage === 'report' && !reportMayExist(e)) {
         // The spreadsheet stays: a retry reuses it instead of leaving an orphan behind.
-        setDialog((cur) => ({ destination, error: text, seq: cur?.seq ?? ++seq.current, made: sourceKind === 'new' ? e.target : cur?.made }));
+        setDialog((cur) => ({ destination, error: text, seq: cur?.seq ?? ++seq.current }));
       } else if (reportMayExist(e)) {
         // The request may have reached OWOX: a retry could make a second report.
         setDialog(null);
@@ -123,8 +123,11 @@ export function ExportMenu(p: Props) {
     }).finally(() => { if (here()) setBusy(null); });
   }
 
-  function start(destination: DestinationDto, source: ExportSource, title: string, fromDialog = false) {
+  function start(destination: DestinationDto, wanted: ExportSource, title: string, fromDialog = false) {
     if (exporter.inFlight(p.martId)) return;
+    // A spreadsheet an earlier attempt made and left unused is reused, also after the menu was remounted.
+    const left = exporter.made(p.martId);
+    const source: ExportSource = wanted.kind === 'new' && left ? { kind: 'existing', target: left } : wanted;
     const { payload, notes } = buildReportPayload(p.schema, p.visible, p.filters, p.sorts);
     setResult(null);
     if (source.kind === 'update' && !sheetUrl(source.report)) { setResult({ kind: 'error', text: UNRECOGNISED }); return; }
@@ -172,7 +175,7 @@ export function ExportMenu(p: Props) {
           </div>
         </details>
       )}
-      {dialog && <NewReportDialog key={dialog.seq} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source.kind === 'new' && dialog.made ? { kind: 'existing', target: dialog.made } : source, title, true)} />}
+      {dialog && <NewReportDialog key={dialog.seq} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
     </>
   );
 

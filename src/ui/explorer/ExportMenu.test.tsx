@@ -268,3 +268,16 @@ test('Update stays disabled until the live check of the remembered reports has f
   await userEvent.click(within(data()).getByRole('menuitem', { name: /Update “Renamed in OWOX”/ }));
   await waitFor(() => expect(t.calls).toContain('PUT /api/reports/mock-report-1'), { timeout: 5000 });
 });
+
+test('the spreadsheet a failed report step left is reused even after the menu was remounted', async () => {
+  const { t, dialog } = await newReportFailing(() => new Error('report refused'));
+  await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('report refused'));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+  await toMart('Customers');
+  await toMart('Orders');
+  await rowsLoaded();
+  // The remembered report is not in the mock OWOX, so the live check leaves the one-click button.
+  await userEvent.click(await within(data()).findByRole('button', { name: 'Export to Google Sheets' }));
+  await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 6000 });
+  expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1);
+}, 15000);
