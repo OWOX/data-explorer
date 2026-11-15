@@ -1,6 +1,6 @@
 import type { Field } from '../model/types';
 import type { RelativeDatePreset, TraverseFilter } from '../sdk/types';
-import { operatorsFor, type OpId } from './catalogue';
+import { operatorsFor, RELATIVE_PRESETS, type OpId } from './catalogue';
 
 export type FilterValue = string | number | { from: string | number; to: string | number } | RelativeDatePreset | undefined;
 export type ColumnFilter = { field: string; op: OpId; value?: FilterValue };
@@ -22,7 +22,11 @@ export function isComplete(f: ColumnFilter, field: Field): boolean {
     case 'relative': {
       const p = v as RelativeDatePreset | undefined;
       if (!p || typeof p !== 'object' || !('kind' in p)) return false;
-      return 'n' in p ? Number.isInteger(p.n) && p.n > 0 : true;
+      const preset = RELATIVE_PRESETS.find((r) => r.kind === p.kind);
+      if (!preset) return false;
+      if (!preset.needsN) return true;
+      const n = (p as { n?: unknown }).n;
+      return Number.isInteger(n) && (n as number) > 0;
     }
   }
 }

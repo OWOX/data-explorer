@@ -26,3 +26,10 @@ test('isComplete rejects missing or non-numeric values', () => {
   expect(isComplete({ field: 'status', op: 'is_blank' }, str)).toBe(true);
   expect(isComplete({ field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 0 } }, ts)).toBe(false);
 });
+
+test('isComplete requires N for N-presets and rejects unknown kinds', () => {
+  expect(isComplete({ field: 'created_at', op: 'relative', value: { kind: 'last_n_days' } as never }, ts)).toBe(false);
+  expect(isComplete({ field: 'created_at', op: 'relative', value: { kind: 'bogus' } as never }, ts)).toBe(false);
+  expect(isComplete({ field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 7 } }, ts)).toBe(true);
+  expect(isComplete({ field: 'created_at', op: 'relative', value: { kind: 'today' } }, ts)).toBe(true);
+});
