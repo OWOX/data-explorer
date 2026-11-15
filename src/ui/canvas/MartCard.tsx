@@ -5,6 +5,9 @@ import { compactNumber } from '../format';
 import { ContextIcon, DqIcon, FreshnessIcon, MartIcon } from '../icons';
 import { Tooltip } from '../Tooltip';
 
+const OWOX_BLUE = '#0084ff'; // host canvas constants.ts
+const MUTED_OPACITY = 0.6;
+
 export const CARD_SIZE = { width: 260, height: 132 };
 
 export type CardData = {
@@ -32,14 +35,21 @@ export function MartCardView({ data }: { data: CardData }) {
   const ctx = data.contexts.filter((c) => mart.contextIds.includes(c.id));
   return (
     <div
-      style={{ width: CARD_SIZE.width }}
-      className={`bg-background rounded-xl border shadow-sm transition-shadow ${data.selected ? 'ring-2 ring-primary' : 'hover:shadow-md'} ${mart.accessible ? '' : 'opacity-60'}`}
+      className="bg-background relative flex flex-col overflow-hidden rounded-xl border shadow-sm"
+      style={{
+        width: CARD_SIZE.width,
+        borderColor: data.selected ? OWOX_BLUE : undefined,
+        boxShadow: data.selected ? `0 0 0 1px ${OWOX_BLUE}` : undefined,
+        opacity: mart.accessible ? 1 : MUTED_OPACITY,
+        filter: mart.accessible ? undefined : 'grayscale(0.8)',
+        transition: 'opacity 0.2s, filter 0.2s',
+      }}
     >
       <div className="flex items-start gap-2 p-3 pb-2">
-        <div className="bg-muted text-foreground flex size-8 shrink-0 items-center justify-center rounded-md"><MartIcon icon={mart.icon} /></div>
+        <div className="bg-muted text-foreground flex h-7 w-7 shrink-0 items-center justify-center rounded-md" aria-hidden="true"><MartIcon icon={mart.icon} /></div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-start gap-1">
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold" title={mart.title}>{mart.title}</span>
+          <div className="flex items-center gap-1">
+            <span className="text-foreground min-w-0 flex-1 truncate text-sm font-semibold" title={mart.title}>{mart.title}</span>
             <button type="button" aria-label="Open in OWOX" onClick={(e) => { e.stopPropagation(); data.onOpenApp(); }} className="nodrag text-muted-foreground hover:text-foreground">
               <ExternalLink className="size-3.5" />
             </button>

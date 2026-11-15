@@ -87,6 +87,7 @@ import {
   icons,
   type LucideIcon,
 } from 'lucide-react';
+import * as lucide from 'lucide-react';
 import { createElement } from 'react';
 import type { DqSummary } from '../model/types';
 import { relativeTime } from './format';
@@ -169,11 +170,30 @@ const KEYED: Record<string, LucideIcon> = {
   'impressions': ScanEye,
 };
 
-const pascal = (s: string) => s.replace(/(^|-)([a-z0-9])/g, (_, __, c: string) => c.toUpperCase());
+// Mirrors the host's toLucideIconName (lucide-icon-name.ts).
+function toLucideIconName(componentName: string): string {
+  return componentName
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
+    .replace(/(?<![0-9])([a-zA-Z])([0-9])/g, '$1-$2')
+    .toLowerCase();
+}
+
+// Mirrors the host's lucide-icon-catalog.ts: current names from `icons`, plus alias exports
+// of the same components, so values saved under an old name still resolve.
+const LUCIDE = new Map<string, LucideIcon>();
+for (const [name, icon] of Object.entries(icons)) LUCIDE.set(`lucide:${toLucideIconName(name)}`, icon as LucideIcon);
+const CURRENT = new Set<unknown>(LUCIDE.values());
+for (const [exportName, component] of Object.entries(lucide)) {
+  if (!CURRENT.has(component)) continue;
+  if (exportName.startsWith('Lucide') || exportName.endsWith('Icon')) continue;
+  const value = `lucide:${toLucideIconName(exportName)}`;
+  if (!LUCIDE.has(value)) LUCIDE.set(value, component as LucideIcon);
+}
 
 export function resolveIcon(value: string | null, fallback: LucideIcon): LucideIcon {
   if (!value) return fallback;
-  if (value.startsWith('lucide:')) return (icons as Record<string, LucideIcon>)[pascal(value.slice(7))] ?? fallback;
+  if (value.startsWith('lucide:')) return LUCIDE.get(value) ?? fallback;
   return KEYED[value] ?? fallback;
 }
 
