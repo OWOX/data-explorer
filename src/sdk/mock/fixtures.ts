@@ -1,4 +1,4 @@
-import type { ConnectorDto, ContextDto, DqSummaryDto, EdgeDto, Row, SchemaFieldDto, StorageDto } from '../types';
+import type { ConnectorDto, ContextDto, DestinationDto, DqSummaryDto, EdgeDto, Row, SchemaFieldDto, StorageDto } from '../types';
 
 export type MockMart = {
   id: string;
@@ -22,6 +22,7 @@ export type Fixtures = {
   marts: MockMart[];
   edges: EdgeDto[];
   connectors: ConnectorDto[];
+  destinations: DestinationDto[];
 };
 
 // Fixed reference instant so the data is deterministic.
@@ -233,7 +234,15 @@ const updatedOf: Record<string, string> = {
 /** The marts that live in the second storage, so the storage filter has something to filter. */
 const salesLake = new Set(['payments', 'returns', 'shipments', 'daily_kpis']);
 
-export function demoFixtures(): Fixtures {
+const DESTINATIONS: DestinationDto[] = [
+  { id: 'd-sheets-team', title: 'Team Sheets', type: 'GOOGLE_SHEETS', availableForUse: true },
+  { id: 'd-sheets-finance', title: 'Finance Sheets', type: 'GOOGLE_SHEETS', availableForUse: true },
+  { id: 'd-looker', title: 'Looker Studio', type: 'LOOKER_STUDIO', availableForUse: true },
+];
+
+/** `sheets` is how many Google Sheets destinations the project has (the Looker Studio one is always there). */
+export function demoFixtures(opts: { sheets?: 0 | 1 | 2 } = {}): Fixtures {
+  const sheets = opts.sheets ?? 2;
   const marts: MockMart[] = specs.map((s, idx) => {
     const r = rng(1000 + idx * 97);
     return {
@@ -252,5 +261,5 @@ export function demoFixtures(): Fixtures {
       dq: dqOf[s.id] ?? { state: 'NEVER_RUN' },
     };
   });
-  return { storages: [{ id: 's1', title: 'Demo Warehouse', type: 'GOOGLE_BIGQUERY' }, { id: 's2', title: 'Sales Lake', type: 'AWS_ATHENA' }], contexts, marts, edges, connectors };
+  return { storages: [{ id: 's1', title: 'Demo Warehouse', type: 'GOOGLE_BIGQUERY' }, { id: 's2', title: 'Sales Lake', type: 'AWS_ATHENA' }], contexts, marts, edges, connectors, destinations: [...DESTINATIONS.slice(0, sheets), DESTINATIONS[2]!] };
 }

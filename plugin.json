@@ -4,6 +4,7 @@
   "delivery": { "type": "remote", "url": "https://owox.github.io/data-explorer/" },
   "collections": [
     { "name": "row-counts", "scope": "member" },
-    { "name": "grid-columns", "scope": "member" }
+    { "name": "grid-columns", "scope": "member" },
+    { "name": "exports", "scope": "member" }
   ]
 }

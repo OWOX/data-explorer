@@ -10,6 +10,14 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
   const docs = new Map<string, unknown>();
   const slow = async <T,>(v: () => T): Promise<T> => { if (latency) await wait(latency); return v(); };
 
+  type MockReport = Record<string, unknown> & { id: string; dataMartId: string; lastRunAt: string | null; lastRunStatus: string | null; lastRunError: string | null };
+  const reports = new Map<string, MockReport>();
+  let sheetSerial = 0;
+  let reportSerial = 0;
+  const notFound = (what: string) => Object.assign(new Error(`${what} not found`), { status: 404 });
+  const report = (id: string) => reports.get(id) ?? (() => { throw notFound('Report'); })();
+  const RUN_MS = 1000;
+
   function traverse(id: string, o: TraverseOptions): Row[] {
     const m = byId.get(id);
     if (!m) throw new Error(`Data Mart ${id} not found`);
@@ -64,7 +72,13 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
           };
         },
       },
+      destinations: { list: () => slow(() => f.destinations) },
       getJson: <T,>(path: string, query?: Record<string, string>) => slow(() => {
+        if (path === '/api/data-destinations') return f.destinations as T;
+        const byMart = /^\/api\/reports\/data-mart\/([^/]+)$/.exec(path);
+        if (byMart) return [...reports.values()].filter((r) => r.dataMartId === decodeURIComponent(byMart[1]!)) as T;
+        const one = /^\/api\/reports\/([^/]+)$/.exec(path);
+        if (one) return report(decodeURIComponent(one[1]!)) as T;
         if (path === '/api/contexts') return f.contexts as T;
         if (path === '/api/connectors') return f.connectors as T;
         if (path === '/api/model-canvas/data-marts') {
@@ -82,7 +96,35 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         }
         throw new Error(`Mock: unhandled GET ${path}`);
       }),
+      putJson: <T,>(path: string, body: unknown) => slow(() => {
+        const m = /^\/api\/reports\/([^/]+)$/.exec(path);
+        if (!m) throw new Error(`Mock: unhandled PUT ${path}`);
+        const cur = report(decodeURIComponent(m[1]!));
+        Object.assign(cur, body);
+        return cur as T;
+      }),
       postJson: <T,>(path: string, body: unknown) => slow(() => {
+        const doc = /^\/api\/data-destinations\/([^/]+)\/google-sheets\/documents$/.exec(path);
+        if (doc) {
+          if (!f.destinations.some((d) => d.id === decodeURIComponent(doc[1]!))) throw notFound('Destination');
+          sheetSerial += 1;
+          return { spreadsheetId: `mock-sheet-${sheetSerial}`, sheetId: 0, placedInRoot: false, sharedWithRequester: true } as T;
+        }
+        if (path === '/api/reports') {
+          reportSerial += 1;
+          const r: MockReport = { ...(body as object), id: `mock-report-${reportSerial}`, dataMartId: (body as { dataMartId: string }).dataMartId, lastRunAt: null, lastRunStatus: null, lastRunError: null };
+          reports.set(r.id, r);
+          return r as T;
+        }
+        const run = /^\/api\/reports\/([^/]+)\/run$/.exec(path);
+        if (run) {
+          const r = report(decodeURIComponent(run[1]!));
+          if (r.lastRunStatus !== 'RUNNING') {
+            r.lastRunStatus = 'RUNNING';
+            setTimeout(() => { r.lastRunAt = new Date().toISOString(); r.lastRunStatus = 'SUCCESS'; }, RUN_MS);
+          }
+          return undefined as T;
+        }
         if (path !== '/api/data-marts/data-quality/summaries') throw new Error(`Mock: unhandled POST ${path}`);
         const ids = (body as { dataMartIds: string[] }).dataMartIds;
         return { items: ids.flatMap((id) => { const dq = byId.get(id)?.dq; return dq ? [{ dataMartId: id, summary: dq }] : []; }) } as T;

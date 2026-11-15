@@ -1,4 +1,4 @@
-import type { Field } from '../model/types';
+import type { Field, Schema } from '../model/types';
 import type { RelativeDatePreset, TraverseFilter } from '../sdk/types';
 import { isDateTimeField, operatorsFor, RELATIVE_MAX_N, RELATIVE_PRESETS, type OpId } from './catalogue';
 
@@ -71,4 +71,12 @@ export function toTraverseFilter(f: ColumnFilter, field: Field): TraverseFilter 
     default:
       return { column, operator: f.op, value: scalar(f.value) } as TraverseFilter;
   }
+}
+
+/** The complete filters as traverseData filters. The grid's rows query and an export report share this. */
+export function toTraverseFilters(schema: Schema, filters: ColumnFilter[]): TraverseFilter[] {
+  return filters.flatMap((flt) => {
+    const field = schema.find((x) => x.name === flt.field);
+    return field && isComplete(flt, field) ? [toTraverseFilter(flt, field)] : [];
+  });
 }

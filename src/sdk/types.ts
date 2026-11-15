@@ -85,6 +85,9 @@ export type DqSummaryDto = {
 };
 export type DqSummariesResponseDto = { items: { dataMartId: string; summary: DqSummaryDto }[] };
 
+/** A data destination as the list endpoint returns it (the fields the plugin reads). */
+export type DestinationDto = { id: string; title: string; type: string; availableForUse?: boolean };
+
 export interface CollectionLike<T> {
   get(id: string): Promise<{ document: T } | null>;
   put(id: string, document: T): Promise<unknown>;
@@ -103,7 +106,9 @@ export interface Ctx {
       list(): Promise<DataMartListItemDto[]>;
       traverseData(id: string, options: TraverseOptions): Promise<Traversal>;
     };
+    destinations: { list(): Promise<DestinationDto[]> };
     getJson<T>(path: string, query?: Record<string, string>): Promise<T>;
     postJson<T>(path: string, body: unknown): Promise<T>;
+    putJson<T>(path: string, body: unknown): Promise<T>;
   };
 }

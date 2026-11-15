@@ -25,6 +25,8 @@ export function stubCtx(overrides: Partial<{ [K in keyof Ctx['owox']]: unknown }
       dataMarts: { list: vi.fn(async () => []), traverseData: vi.fn(async () => traversalOf([])) },
       getJson: vi.fn(async (path: string) => (path === '/api/connectors' ? [] : {})),
       postJson: vi.fn(async () => ({})),
+      putJson: vi.fn(async () => ({})),
+      destinations: { list: vi.fn(async () => []) },
       ...overrides,
     } as Ctx['owox'],
   };
