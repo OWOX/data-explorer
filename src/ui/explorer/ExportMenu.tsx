@@ -2,7 +2,7 @@ import { AlertTriangle, Check, ChevronDown, ChevronRight, ExternalLink, Loader2,
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  buildReportPayload, exportTitle, ExportError, isPublishedSheetUrl, parseSheetUrl, sheetUrl,
+  buildReportPayload, exportTitle, ExportError, isPublishedSheetUrl, parseSheetUrl, reportMayExist, sheetUrl,
   type ExportedReport, type ExportSource, type Flight, type SheetTarget, type Stage,
 } from '../../api/exports';
 import type { ColumnFilter } from '../../filters/build';
@@ -106,10 +106,10 @@ export function ExportMenu(p: Props) {
       if (destination && e instanceof ExportError && e.stage === 'sheet') {
         // The spreadsheet could not be made: offer the pasted-URL way instead.
         setDialog((cur) => ({ destination, error: `Could not create a spreadsheet: ${text}`, seq: cur?.seq ?? ++seq.current }));
-      } else if (destination && fromDialog && e instanceof ExportError && e.stage === 'report' && e.code !== 'TIMEOUT') {
+      } else if (destination && fromDialog && e instanceof ExportError && e.stage === 'report' && !reportMayExist(e)) {
         // The spreadsheet stays: a retry reuses it instead of leaving an orphan behind.
         setDialog((cur) => ({ destination, error: text, seq: cur?.seq ?? ++seq.current, made: sourceKind === 'new' ? e.target : cur?.made }));
-      } else if (e instanceof ExportError && e.stage === 'report' && e.code === 'TIMEOUT') {
+      } else if (reportMayExist(e)) {
         // The request may have reached OWOX: a retry could make a second report.
         setDialog(null);
         setResult({ kind: 'error', text: MAYBE_CREATED });

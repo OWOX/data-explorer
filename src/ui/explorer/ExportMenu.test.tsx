@@ -225,6 +225,17 @@ test('a retry after the report step failed reuses the spreadsheet already made',
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(2);
 }, 15000);
 
+test.each([
+  ['NETWORK_ERROR', { payload: { code: 'NETWORK_ERROR' } }],
+  ['a 504', { payload: { code: 'HTTP_ERROR', status: 504 } }],
+  ['a 502', { payload: { code: 'HTTP_ERROR', status: 502 } }],
+])('%s on the report step is treated like a timeout: no retry', async (_n, extra) => {
+  const { t } = await newReportFailing(() => Object.assign(new Error('gateway'), extra));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(await within(data()).findByText('The report may have been created; check OWOX before trying again.')).toBeInTheDocument();
+  expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
+});
+
 test('a timeout on the report step closes the dialog and warns that the report may exist, with no retry', async () => {
   const { t } = await newReportFailing(() => Object.assign(new Error('Request timed out'), { payload: { code: 'TIMEOUT' } }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

@@ -81,7 +81,15 @@ export class ExportError extends Error {
   constructor(public stage: Stage, message: string, public code?: string, public target?: SheetTarget) { super(message); }
 }
 /** The SDK transport puts its code on `payload`; a plain `code` is kept as a fallback. */
-const codeOf = (e: unknown) => { const x = e as { payload?: { code?: string }; code?: string } | null; return x?.payload?.code ?? x?.code; };
+const codeOf = (e: unknown) => {
+  const x = e as { payload?: { code?: string; status?: number }; code?: string } | null;
+  const status = x?.payload?.status;
+  // A gateway error says nothing about whether the request got through.
+  if (status === 502 || status === 504) return `HTTP_${status}`;
+  return x?.payload?.code ?? x?.code;
+};
+/** The answer to a report POST was lost or came from a gateway: the report may exist, so the step must not be retried. */
+export const reportMayExist = (e: unknown) => e instanceof ExportError && e.stage === 'report' && ['TIMEOUT', 'NETWORK_ERROR', 'HTTP_502', 'HTTP_504'].includes(e.code ?? '');
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /** The SDK transport puts the HTTP status on `payload`; a plain `status` is kept as a fallback. */
 const isNotFound = (e: unknown) => { const x = e as { payload?: { status?: number }; status?: number } | null; return (x?.payload?.status ?? x?.status) === 404; };
