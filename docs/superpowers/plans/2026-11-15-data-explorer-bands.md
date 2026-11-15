@@ -16,7 +16,7 @@
 
 1. Never modify `/Users/flakss/Projects/data-flow` or `/Users/flakss/Projects/owox-data-marts`.
 2. Vitest runs with at most 4 workers (`vitest.config.ts` already sets `maxWorkers: 4`). Never run Playwright or Vitest with more.
-3. Read-only plugin: no create/update/delete API calls. Every `traverseData` is a billed run; do not add any.
+3. Read-only plugin: no create/update/delete API calls. Every `traverseData` is a billed run; do not add any. (The Export to Google Sheets feature lifts this for its own writes only: spreadsheet, report, run.)
 4. New UI copy is plain, sentence case, no em dashes.
 5. Keep `src/sdk/types.ts`'s `Ctx` narrow: add only fields this plan names.
 6. Scratch files go in `tmp/`, never system `/tmp`.

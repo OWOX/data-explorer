@@ -14,7 +14,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
   const reports = new Map<string, MockReport>();
   let sheetSerial = 0;
   let reportSerial = 0;
-  const notFound = (what: string) => Object.assign(new Error(`${what} not found`), { status: 404 });
+  const notFound = (what: string) => Object.assign(new Error(`${what} not found`), { payload: { code: 'HTTP_ERROR', status: 404 } });
   const report = (id: string) => reports.get(id) ?? (() => { throw notFound('Report'); })();
   const RUN_MS = 1000;
 

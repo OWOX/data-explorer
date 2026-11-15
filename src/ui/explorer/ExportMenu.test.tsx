@@ -123,3 +123,25 @@ test('when the spreadsheet cannot be created the New report dialog opens with th
   expect(within(dialog).getByLabelText('Existing spreadsheet')).toBeInTheDocument();
   expect(t.calls.some((c) => c === 'POST /api/reports')).toBe(false);
 });
+
+test('a failure after the report exists closes the dialog and reports in the header, so a retry cannot make a second report', async () => {
+  const t = setup(1, [REPORT]);
+  await t.seeded;
+  t.view();
+  await rowsLoaded();
+  const real = t.ctx.owox.postJson;
+  (t.ctx.owox as { postJson: Ctx['owox']['postJson'] }).postJson = ((path: string, body: unknown) => (path.endsWith('/run') ? Promise.reject(new Error('run refused')) : real(path, body))) as Ctx['owox']['postJson'];
+  await userEvent.click(await within(data()).findByText('Export'));
+  await userEvent.click(await within(data()).findByRole('menuitem', { name: /New report/ }));
+  const dialog = await screen.findByRole('dialog', { name: 'New report' });
+  await userEvent.click(within(dialog).getByLabelText('Existing spreadsheet'));
+  await userEvent.type(within(dialog).getByLabelText('Spreadsheet link'), 'https://docs.google.com/spreadsheets/d/e/2PACX-abc/pubhtml');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+  expect(within(dialog).getByRole('alert')).toHaveTextContent(/published-to-web/);
+  await userEvent.clear(within(dialog).getByLabelText('Spreadsheet link'));
+  await userEvent.type(within(dialog).getByLabelText('Spreadsheet link'), 'https://docs.google.com/spreadsheets/d/mine/edit');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(await within(data()).findByText(/The run could not be followed: run refused/)).toBeInTheDocument();
+  expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
+});

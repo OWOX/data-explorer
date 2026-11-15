@@ -2,7 +2,7 @@ import { AlertTriangle, Check, ChevronDown, ChevronRight, ExternalLink, Loader2,
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  buildReportPayload, exportTitle, ExportError, parseSheetUrl, sheetUrl,
+  buildReportPayload, exportTitle, ExportError, isPublishedSheetUrl, parseSheetUrl, sheetUrl,
   type ExportedReport, type ExportSource, type Stage,
 } from '../../api/exports';
 import type { ColumnFilter } from '../../filters/build';
@@ -73,6 +73,8 @@ export function ExportMenu(p: Props) {
       if (outcome.state === 'success') {
         setResult({ kind: 'ok', text: `Exported to "${report.title}".${note}`, url });
         await ctx.ui.openExternal(url).catch(() => undefined);
+      } else if (outcome.state === 'busy') {
+        setResult({ kind: 'error', text: source.kind === 'update' ? 'This report is already running. The new settings were saved but not run; try again when it finishes.' : 'This report is already running; try again when it finishes.', url });
       } else if (outcome.state === 'failed') {
         setResult({ kind: 'error', text: `The run failed: ${outcome.error}${note}`, url });
       } else {
@@ -83,10 +85,13 @@ export function ExportMenu(p: Props) {
       if (e instanceof ExportError && e.stage === 'sheet') {
         // The spreadsheet could not be made: offer the pasted-URL way instead.
         setDialog((cur) => ({ destination, error: `Could not create a spreadsheet: ${text}`, seq: cur?.seq ?? ++seq.current }));
-      } else if (fromDialog) {
+      } else if (fromDialog && e instanceof ExportError && e.stage === 'report') {
         setDialog((cur) => ({ destination, error: text, seq: cur?.seq ?? ++seq.current }));
       } else {
-        setResult({ kind: 'error', text });
+        // Past this point the report exists (and may be running): a retry from the dialog would make a second one.
+        setDialog(null);
+        setResult({ kind: 'error', text: e instanceof ExportError && e.stage === 'run' ? `The run could not be followed: ${text}` : text });
+        setReports({ martId: p.martId, list: await exporter.reports(p.martId).catch(() => []) });
       }
     } finally {
       setBusy(null);
@@ -94,7 +99,7 @@ export function ExportMenu(p: Props) {
   }
 
   // An open menu stays a menu when the check drops its last report, so it does not vanish under the pointer.
-  const single = destinations.length === 1 && reports !== null && reports.length === 0 && !menuOpen;
+  const single = destinations.length === 1 && reports !== null && forDestination(destinations[0]!).length === 0 && !menuOpen;
   const button = 'inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50';
   const label = busy ? <><Loader2 className="size-4 animate-spin" />Exporting…</> : <><Sheet className="size-4" />Export</>;
 
@@ -179,6 +184,7 @@ function NewReportDialog({ destination, title, initialError, busy, onCancel, onE
     e.preventDefault();
     if (!name.trim()) return setError('Give the report a title.');
     if (!existing) { setError(null); return onExport(name.trim(), { kind: 'new' }); }
+    if (isPublishedSheetUrl(url)) return setError('That is a published-to-web link. Open the spreadsheet itself and paste its address bar link.');
     const target = parseSheetUrl(url);
     if (!target) return setError('Paste the link of a Google spreadsheet (docs.google.com/spreadsheets/d/…).');
     setError(null);

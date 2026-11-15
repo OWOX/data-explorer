@@ -2,7 +2,7 @@ import { vi } from 'vitest';
 import type { ColumnFilter } from '../filters/build';
 import type { Field, Schema } from '../model/types';
 import type { SortKey } from '../model/sort';
-import { createExporter, buildReportPayload, exportTitle, ExportError, parseSheetUrl, POLL_INTERVAL_MS, POLL_TIMEOUT_MS, sheetUrl, type ExportedReport, type ReportPayload } from './exports';
+import { createExporter, buildReportPayload, exportTitle, ExportError, isPublishedSheetUrl, parseSheetUrl, POLL_INTERVAL_MS, POLL_TIMEOUT_MS, sheetUrl, type ExportedReport, type ReportPayload } from './exports';
 import { stubCtx } from './test-ctx';
 
 const f = (name: string, type: string, category: Field['category'], extra: Partial<Field> = {}): Field => ({ name, alias: null, type, category, description: null, isPrimaryKey: false, ...extra });
@@ -58,6 +58,8 @@ test.each([
 test.each(['', 'abc', 'https://example.com/spreadsheets/d/abc/edit', 'http://docs.google.com/spreadsheets/d/abc/edit', 'https://docs.google.com/document/d/abc/edit'])('parseSheetUrl rejects %j', (url) => {
   expect(parseSheetUrl(url)).toBeNull();
 });
+
+test('isPublishedSheetUrl spots /d/e/ links', () => { expect(isPublishedSheetUrl('https://docs.google.com/spreadsheets/d/e/2PACX-abc/pubhtml')).toBe(true); expect(isPublishedSheetUrl('https://docs.google.com/spreadsheets/d/abc/edit')).toBe(false); });
 
 test('sheetUrl opens the tab', () => { expect(sheetUrl({ spreadsheetId: 'x', sheetId: 3 })).toBe('https://docs.google.com/spreadsheets/d/x/edit#gid=3'); });
 
@@ -183,12 +185,45 @@ describe('exporter', () => {
     const flaky: ExportedReport = { reportId: 'flaky', destinationId: 'd1', spreadsheetId: 'c', sheetId: 0, title: 'Flaky' };
     const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [keep, gone, flaky]);
     (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
-      if (path === '/api/reports/gone') throw Object.assign(new Error('Report not found'), { status: 404 });
-      if (path === '/api/reports/flaky') throw Object.assign(new Error('Bad gateway'), { status: 502 });
+      if (path === '/api/reports/gone') throw Object.assign(new Error('Report not found'), { payload: { code: 'HTTP_ERROR', status: 404 } });
+      if (path === '/api/reports/flaky') throw Object.assign(new Error('Bad gateway'), { payload: { code: 'HTTP_ERROR', status: 502 } });
       return { id: 'keep' };
     });
     const ex = createExporter(ctx);
     expect(await ex.reports('orders', true)).toEqual([keep, flaky]);
     expect((await ctx.collections<{ reports: ExportedReport[] }>('exports').get('orders'))?.document.reports).toEqual([keep, flaky]);
+  });
+
+  test('a report that is already running is not run again', async () => {
+    const remembered: ExportedReport = { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'sheet1', sheetId: 7, title: 'Old' };
+    const { ctx, calls } = exportCtx({ status: 'SUCCESS' }, 1, [remembered]);
+    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'r1', lastRunAt: '2026-01-01T00:00:00.000Z', lastRunStatus: 'RUNNING' });
+    const { outcome } = await createExporter(ctx).run({ martId: 'orders', destination: dest, title: 'Old', source: { kind: 'update', report: remembered }, payload });
+    expect(outcome.state).toBe('busy');
+    expect(calls.some((c) => c.endsWith('/run'))).toBe(false);
+    expect(ctx.owox.putJson).toHaveBeenCalled();
+  });
+
+  test('verifying takes the live title, destination and sheet over the remembered copy', async () => {
+    const stale: ExportedReport = { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'old', sheetId: 0, title: 'Old' };
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [stale]);
+    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'r1', title: 'Renamed', dataDestinationAccess: { id: 'd2' }, destinationConfig: { spreadsheetId: 'new', sheetId: 4 } });
+    const ex = createExporter(ctx);
+    const live = { reportId: 'r1', destinationId: 'd2', spreadsheetId: 'new', sheetId: 4, title: 'Renamed' };
+    expect(await ex.reports('orders', true)).toEqual([live]);
+    expect((await ctx.collections<{ reports: ExportedReport[] }>('exports').get('orders'))?.document.reports).toEqual([live]);
+  });
+
+  test('a failure while following the run is an ExportError at the run step, after the report was remembered', async () => {
+    const { ctx } = exportCtx();
+    (ctx.owox.postJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+      if (path.endsWith('/google-sheets/documents')) return { spreadsheetId: 's', sheetId: 0 };
+      if (path === '/api/reports') return { id: 'r1' };
+      throw new Error('run refused');
+    });
+    const ex = createExporter(ctx);
+    const err = await ex.run({ martId: 'orders', destination: dest, title: 'T', source: { kind: 'new' }, payload }).catch((e) => e);
+    expect(err).toMatchObject({ stage: 'run', message: 'run refused' });
+    expect(await ex.reports('orders')).toHaveLength(1);
   });
 });

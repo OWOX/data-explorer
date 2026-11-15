@@ -78,7 +78,7 @@ Counts run for visible accessible cards through the existing pool (4 at a time) 
 
 ### Export to Google Sheets
 
-The plugin's only writes: creating a spreadsheet, creating or updating the member's export report, and running it. Each follows the member's own click (the SDK refuses a write otherwise). Rows are never written.
+The plugin's only writes: creating a spreadsheet, creating or updating the member's export report, and running it. Each follows the member's own click; that is the plugin's own discipline, as the SDK README asks, not something the SDK enforces. Rows are never written.
 
 1. The header toolbar of the Data band has an Export control next to Columns. Destinations come from `ctx.owox.destinations.list()` (`GET /api/data-destinations`), kept where `type === 'GOOGLE_SHEETS'` and `availableForUse` is not false. They are read once per session and again on the header's Refresh. With none, or when the list fails (a warning is logged), the control is not rendered.
 2. One destination and no remembered report for the mart: a plain button. One click makes a spreadsheet (`POST /api/data-destinations/:id/google-sheets/documents`), the report (`POST /api/reports`), runs it (`POST /api/reports/:id/run`) and opens `https://docs.google.com/spreadsheets/d/<id>/edit#gid=<sheetId>`. If the spreadsheet cannot be created, the "New report" dialog opens with the message and the pasted-link option.

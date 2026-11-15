@@ -57,10 +57,14 @@ export function parseSheetUrl(raw: string): SheetTarget | null {
   return { spreadsheetId: id, sheetId: gid && /^\d+$/.test(gid) ? Number(gid) : 0 };
 }
 
+/** A published-to-web link (`/d/e/…`) is not the spreadsheet's id and cannot be written to. */
+export const isPublishedSheetUrl = (raw: string) => /\/spreadsheets\/d\/e\//.test(raw);
+
 export const sheetUrl = (t: SheetTarget) => `https://docs.google.com/spreadsheets/d/${t.spreadsheetId}/edit#gid=${t.sheetId}`;
 
 export const isSheetsDestination = (d: DestinationDto) => d.type === 'GOOGLE_SHEETS' && d.availableForUse !== false;
 
+type LiveReportDto = { title?: string; dataDestinationAccess?: { id?: string }; destinationConfig?: { spreadsheetId?: unknown; sheetId?: unknown } };
 type ReportDto = { id: string; lastRunAt?: string | null; lastRunStatus?: string | null; lastRunError?: string | null };
 type DocumentDto = { spreadsheetId: string; sheetId: number };
 
@@ -70,9 +74,10 @@ export class ExportError extends Error {
   constructor(public stage: Stage, message: string) { super(message); }
 }
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const isNotFound = (e: unknown) => (e as { status?: number } | null)?.status === 404;
+/** The SDK transport puts the HTTP status on `payload`; a plain `status` is kept as a fallback. */
+const isNotFound = (e: unknown) => { const x = e as { payload?: { status?: number }; status?: number } | null; return (x?.payload?.status ?? x?.status) === 404; };
 
-export type Outcome = { state: 'success' | 'failed' | 'timeout'; error?: string };
+export type Outcome = { state: 'success' | 'failed' | 'timeout' | 'busy'; error?: string };
 export type ExportSource =
   | { kind: 'new' }
   | { kind: 'existing'; target: SheetTarget }
@@ -143,11 +148,22 @@ export function createExporter(ctx: Ctx): Exporter {
     async reports(martId, verify = false) {
       const list = await load(martId);
       if (!verify || list.length === 0) return list;
-      const checked = await Promise.all(list.map(async (r) => {
-        try { await ctx.owox.getJson(`/api/reports/${encodeURIComponent(r.reportId)}`); return true; } catch (e) { return !isNotFound(e); }
+      // Each is read live: gone ones drop, and a title, destination or sheet edited in OWOX replaces the remembered copy.
+      const live = await Promise.all(list.map(async (r): Promise<ExportedReport | null> => {
+        try {
+          const d = await ctx.owox.getJson<LiveReportDto>(`/api/reports/${encodeURIComponent(r.reportId)}`);
+          const cfg = d.destinationConfig;
+          return {
+            reportId: r.reportId,
+            destinationId: d.dataDestinationAccess?.id ?? r.destinationId,
+            spreadsheetId: typeof cfg?.spreadsheetId === 'string' ? cfg.spreadsheetId : r.spreadsheetId,
+            sheetId: typeof cfg?.sheetId === 'number' ? cfg.sheetId : r.sheetId,
+            title: typeof d.title === 'string' && d.title ? d.title : r.title,
+          };
+        } catch (e) { return isNotFound(e) ? null : r; }
       }));
-      const kept = list.filter((_, i) => checked[i]);
-      if (kept.length !== list.length) await save(martId, kept);
+      const kept = live.filter((r): r is ExportedReport => r !== null);
+      if (JSON.stringify(kept) !== JSON.stringify(list)) await save(martId, kept);
       return kept;
     },
 
@@ -184,7 +200,10 @@ export function createExporter(ctx: Ctx): Exporter {
       }
       onStage?.('run');
       try {
-        const before = (await ctx.owox.getJson<ReportDto>(`/api/reports/${encodeURIComponent(report.reportId)}`)).lastRunAt ?? null;
+        const pre = await ctx.owox.getJson<ReportDto>(`/api/reports/${encodeURIComponent(report.reportId)}`);
+        // The backend skips a run request while one is running, so the new settings would never run.
+        if (pre.lastRunStatus === 'RUNNING') return { report, outcome: { state: 'busy' } };
+        const before = pre.lastRunAt ?? null;
         await ctx.owox.postJson(`/api/reports/${encodeURIComponent(report.reportId)}/run`, {});
         return { report, outcome: await poll(report.reportId, before, signal) };
       } catch (e) { throw new ExportError('run', messageOf(e)); }
