@@ -135,6 +135,8 @@ test('Export to Google Sheets: with one destination one click creates the report
   expect((await popup).url()).toContain('mock-sheet-1');
   // The report is remembered, so the control is now a menu offering to update it.
   await data.getByText('Export', { exact: true }).click();
+  // The first level lists the destination; its flyout holds the update.
+  await data.getByRole('menuitem').first().hover();
   await expect(data.getByRole('menuitem', { name: /Update “Orders · Data Explorer · / })).toBeVisible();
 });
 

@@ -1,5 +1,5 @@
-import { AlertTriangle, Check, ChevronDown, ChevronRight, ExternalLink, Loader2, Sheet } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { AlertTriangle, Check, ChevronDown, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   buildReportPayload, exportTitle, ExportError, isPublishedSheetUrl, parseSheetUrl, reportMayExist, sheetUrl,
@@ -10,6 +10,7 @@ import type { SortKey } from '../../model/sort';
 import type { Schema } from '../../model/types';
 import type { DestinationDto } from '../../sdk/types';
 import { useServices, useStore } from '../../state/store';
+import { GoogleSheetsIcon } from '../google-sheets-icon';
 import { Tooltip } from '../Tooltip';
 
 type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; filters: ColumnFilter[]; sorts: SortKey[] };
@@ -35,6 +36,8 @@ export function ExportMenu(p: Props) {
   const gen = useRef(0);
   useEffect(() => { gen.current += 1; return () => { gen.current += 1; }; }, [p.martId]);
   const [openDest, setOpenDest] = useState<string | null>(null);
+  // Which way the open flyout goes, and whether the keyboard (not the pointer) opened it, so its first row takes focus.
+  const [flyout, setFlyout] = useState<{ side: 'right' | 'left'; focus: boolean }>({ side: 'right', focus: false });
   const [menuOpen, setMenuOpen] = useState(false);
   // False until the live check of the remembered reports has ended since the menu opened: until then their titles and targets may be stale.
   const [verified, setVerified] = useState(false);
@@ -66,6 +69,18 @@ export function ExportMenu(p: Props) {
     if (flight) follow(flight, { openWhenDone: !flight.settled });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exporter, p.martId]);
+
+  // To the right of the row; to the left when it would leave the window. Judged before paint. A flyout the keyboard opened takes focus.
+  useLayoutEffect(() => {
+    const sub = menu.current?.querySelector<HTMLElement>('.dm-cascade-sub');
+    if (!openDest || !sub) return;
+    const box = sub.getBoundingClientRect();
+    const row = sub.parentElement!.getBoundingClientRect();
+    const side = row.right + box.width + 8 > window.innerWidth && row.left - box.width >= 8 ? 'left' : 'right';
+    setFlyout((f) => (f.side === side ? f : { ...f, side }));
+    if (flyout.focus) sub.querySelector<HTMLElement>('[data-lvl="2"]:not([disabled])')?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openDest]);
 
   if (destinations.length === 0) return null;
 
@@ -140,12 +155,12 @@ export function ExportMenu(p: Props) {
   // An open menu stays a menu when the check drops its last report, so it does not vanish under the pointer.
   const single = destinations.length === 1 && reports !== null && forDestination(destinations[0]!).length === 0 && !menuOpen;
   const button = 'inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50';
-  const label = busy ? <><Loader2 className="size-4 animate-spin" />Exporting…</> : <><Sheet className="size-4" />Export</>;
+  const label = busy ? <><Loader2 className="size-4 animate-spin" />Exporting…</> : <><GoogleSheetsIcon size={16} />Export</>;
 
   async function openMenu(open: boolean) {
     setMenuOpen(open);
     if (!open) { checks.current += 1; setVerified(false); return; }
-    setOpenDest(destinations.length === 1 ? destinations[0]!.id : null);
+    setOpenDest(null);
     // Reports OWOX no longer has are dropped before they are offered.
     const check = ++checks.current;
     try { setReports({ martId: p.martId, list: await exporter.reports(p.martId, true) }); } catch { /* the remembered list stays */ }
@@ -161,17 +176,18 @@ export function ExportMenu(p: Props) {
       ) : (
         <details ref={menu} className="dm-filter dm-export" name="dm-filter" onToggle={(e) => openMenu(e.currentTarget.open)} {...(busy ? { 'aria-disabled': true } : {})}>
           <summary aria-label="Export to Google Sheets" onClick={(e) => { if (busy) e.preventDefault(); }}>{label}<ChevronDown size={14} /></summary>
-          <div className="dm-filter-menu" role="menu">
-            {destinations.length > 1 && destinations.map((d) => (
-              <div key={d.id}>
-                <button type="button" role="menuitem" aria-expanded={openDest === d.id} className="dm-export-item" onClick={() => setOpenDest(openDest === d.id ? null : d.id)}>
-                  <ChevronRight size={14} className={openDest === d.id ? 'rotate-90' : undefined} />
-                  <span className="dm-filter-label">{d.title}</span><span className="dm-export-kind">Google Sheets</span>
+          <div className="dm-filter-menu dm-cascade" role="menu" data-level="1" onKeyDown={onMenuKey}>
+            {destinations.map((d) => (
+              <div key={d.id} className="dm-cascade-row" onMouseEnter={() => openFlyout(d.id, false)}>
+                <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={openDest === d.id} data-lvl="1" className="dm-export-item"
+                  onClick={() => openFlyout(d.id, false)}>
+                  <GoogleSheetsIcon size={16} />
+                  <span className="dm-filter-label">{d.title}</span>
+                  <ChevronRight size={14} />
                 </button>
-                {openDest === d.id && submenu(d, forDestination(d))}
+                {openDest === d.id && flyoutOf(d, forDestination(d))}
               </div>
             ))}
-            {destinations.length === 1 && submenu(destinations[0]!, forDestination(destinations[0]!))}
           </div>
         </details>
       )}
@@ -179,16 +195,54 @@ export function ExportMenu(p: Props) {
     </>
   );
 
-  function submenu(d: DestinationDto, rs: ExportedReport[]) {
+  function openFlyout(id: string, focus: boolean) {
+    setFlyout((f) => ({ ...f, focus }));
+    setOpenDest(id);
+  }
+
+  /** Arrow keys walk a level; Right or Enter opens a destination's flyout, Left or Escape closes it, Escape again closes the menu. */
+  function onMenuKey(e: ReactKeyboardEvent<HTMLElement>) {
+    const target = e.target as HTMLElement;
+    const lvl = target.dataset.lvl;
+    if (!lvl) return;
+    const items = [...(target.closest(lvl === '1' ? '[data-level="1"]' : '[data-level="2"]')!.querySelectorAll<HTMLElement>(`[role="menuitem"][data-lvl="${lvl}"]:not([disabled])`))];
+    const at = items.indexOf(target);
+    const move = (to: number) => { e.preventDefault(); items[(to + items.length) % items.length]?.focus(); };
+    if (e.key === 'ArrowDown') move(at + 1);
+    else if (e.key === 'ArrowUp') move(at - 1);
+    else if (e.key === 'Home') move(0);
+    else if (e.key === 'End') move(items.length - 1);
+    else if (lvl === '1' && (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      const row = target.closest('.dm-cascade-row')!;
+      const id = destinations[[...row.parentElement!.children].indexOf(row)]?.id;
+      if (id) openFlyout(id, true);
+    } else if (lvl === '2' && e.key === 'ArrowLeft') {
+      e.preventDefault();
+      target.closest('.dm-cascade-row')?.querySelector<HTMLElement>('[data-lvl="1"]')?.focus();
+      setOpenDest(null);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (lvl === '2') {
+        target.closest('.dm-cascade-row')?.querySelector<HTMLElement>('[data-lvl="1"]')?.focus();
+        setOpenDest(null);
+      } else {
+        closeMenu();
+        menu.current?.querySelector<HTMLElement>('summary')?.focus();
+      }
+    }
+  }
+
+  function flyoutOf(d: DestinationDto, rs: ExportedReport[]) {
     return (
-      <div key={d.id} className={destinations.length > 1 ? 'dm-export-sub' : undefined}>
+      <div className={`dm-cascade-sub dm-cascade-${flyout.side}`} role="menu" data-level="2" aria-label={d.title}>
         {rs.map((r) => (
-          <button key={r.reportId} type="button" role="menuitem" disabled={!verified} className="dm-export-item" onClick={() => { closeMenu(); start(d, { kind: 'update', report: r }, r.title); }}>
+          <button key={r.reportId} type="button" role="menuitem" data-lvl="2" disabled={!verified} className="dm-export-item" onClick={() => { closeMenu(); start(d, { kind: 'update', report: r }, r.title); }}>
             <span className="dm-filter-label">Update “{r.title}”</span>
             {!verified && <span className="dm-export-kind inline-flex items-center gap-1"><Loader2 className="size-3 animate-spin" />Checking…</span>}
           </button>
         ))}
-        <button type="button" role="menuitem" className="dm-export-item" onClick={() => { closeMenu(); setDialog({ destination: d, seq: ++seq.current }); }}>
+        <button type="button" role="menuitem" data-lvl="2" className="dm-export-item" onClick={() => { closeMenu(); setDialog({ destination: d, seq: ++seq.current }); }}>
           <span className="dm-filter-label">New report…</span>
         </button>
       </div>
