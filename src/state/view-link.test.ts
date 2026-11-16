@@ -82,7 +82,7 @@ describe('view link codec', () => {
     const out = await decodeViewLink(await route(valid({ g, ctx: ['c1', 4], st: ['s1', null] })));
     expect(out).toMatchObject({
       contextIds: ['c1'], storageIds: ['s1'],
-      grid: { columns: ['id', 'a__ok'], filters: { id: { field: 'id', op: 'gt', value: 1 }, 'id': expect.anything() }, sorts: [{ field: 'id', direction: 'asc' }, { field: 'n', direction: 'desc' }] },
+      grid: { columns: ['id', 'a__ok'], filters: { id: { field: 'id', op: 'gt', value: 1 } }, sorts: [{ field: 'id', direction: 'asc' }, { field: 'n', direction: 'desc' }] },
     });
     // columns 3 (5, [9,'x'], [0]), filters 4, sorts 2, ctx 1, st 1
     expect((out as DecodedView).dropped).toBe(3 + 4 + 2 + 1 + 1);
@@ -91,7 +91,7 @@ describe('view link codec', () => {
   it('encodes a real-sized view under the cap', async () => {
     const cols = Array.from({ length: 20 }, (_, i) => `${'join_path_segment_'.repeat(5)}${i}_${Math.round(Math.sin(i) * 1e6)}__field_${i}`);
     const filters = Object.fromEntries(cols.slice(0, 4).map((c, i) => [c, { field: c, op: 'contains' as const, value: `value ${i}` }]));
-    const r = await encodeViewLink({ ...base, grid: { columns: cols, filters, sorts: [{ field: cols[0], direction: 'asc' }], limit: 200 } });
+    const r = await encodeViewLink({ ...base, grid: { columns: cols, filters, sorts: [{ field: cols[0]!, direction: 'asc' }], limit: 200 } });
     expect(r.length).toBeLessThan(MAX_ROUTE_LENGTH);
   });
 });
