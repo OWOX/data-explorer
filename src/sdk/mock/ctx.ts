@@ -6,7 +6,7 @@ declare global { interface Window { __copiedLink?: string; __routeSet?: string }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: number } = {}): Ctx {
+export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: number; runMs?: number } = {}): Ctx {
   const latency = opts.latencyMs ?? 0;
   const byId = new Map(f.marts.map((m) => [m.id, m]));
   const docs = new Map<string, unknown>();
@@ -18,7 +18,8 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
   let reportSerial = 0;
   const notFound = (what: string) => Object.assign(new Error(`${what} not found`), { payload: { code: 'HTTP_ERROR', status: 404 } });
   const report = (id: string) => reports.get(id) ?? (() => { throw notFound('Report'); })();
-  const RUN_MS = 1000;
+  // How long a report run takes before it reports success.
+  const RUN_MS = opts.runMs ?? 1000;
 
   // The data marts a mart can pull fields from: its outgoing many-to-one links, and theirs, two hops deep. Each is named by the
   // dotted path of the marts it passes through, like OWOX's alias path, and its fields by that path and the field (`customers__email`).
