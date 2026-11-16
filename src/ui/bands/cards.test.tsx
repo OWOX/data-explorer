@@ -94,7 +94,7 @@ describe('MartCard', () => {
     expect(container.querySelector('article')).toHaveAttribute('id', 'dm-m1');
     expect(container.querySelector('article')).toHaveAttribute('data-tone', 'ok');
     expect(screen.getByLabelText('Description')).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Passed\./)).toBeInTheDocument();
+    expect(screen.getByLabelText('Passed')).toBeInTheDocument();
     expect(screen.getByLabelText(/Data updated/)).toBeInTheDocument();
   });
 
@@ -135,7 +135,7 @@ describe('MartCard', () => {
     setRowWidth(0);
     try {
       renderMart({ contexts: [{ id: 'c1', name: 'Sales', icon: null }, { id: 'c2', name: 'Finance', icon: null }] });
-      const chip = screen.getByLabelText('2 contexts: Sales, Finance');
+      const chip = screen.getByLabelText('2 contexts');
       expect(chip).toHaveTextContent('2');
     } finally {
       setRowWidth(5000);

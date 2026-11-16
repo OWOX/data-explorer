@@ -49,7 +49,7 @@ export function Band({
         <span className="dm-band-icon">{icon}</span>
         <h2 className="dm-band-title">{title}</h2>
         {total !== undefined && <span className="dm-badge dm-band-count">{typeof total === 'number' ? num(total) : total}</span>}
-        <Hint text={hint} label={hint} />
+        <Hint text={hint} label={`About ${title}`} />
         {afterHint}
         {/* Filtering what you cannot see answers nothing, so the controls fold with the content. */}
         {!folded && <div className="dm-band-tools">{toolbar}{!grid && <span ref={setSlot} className="contents" />}</div>}

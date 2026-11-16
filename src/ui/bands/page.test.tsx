@@ -1083,11 +1083,12 @@ describe('the Data band loading bar', () => {
   test('shows on the first load (with the skeleton), on Refresh, on a sort change and on Load more, and never rests on the page', async () => {
     const delay = { ms: 200 };
     await mountWith(slow(delay));
-    expect(await within(data()).findByRole('progressbar', { name: 'Loading rows' })).toHaveClass('dm-progress');
+    const first = await within(data()).findByRole('progressbar', { name: 'Loading rows' });
+    expect(first).toHaveClass('dm-progress');
+    expect(first.closest('.dm-bigcard')).not.toBeNull();
     await within(data()).findByRole('table');
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
     await waitFor(() => expect(bar()).toBeNull());
-    expect(data().querySelector('.dm-bigcard')!.contains(within(data()).queryByRole('progressbar'))).toBe(false);
 
     await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
     expect(await within(data()).findByRole('progressbar', { name: 'Loading rows' })).toBeInTheDocument();
@@ -1150,6 +1151,24 @@ describe('the default sort', () => {
     await waitFor(() => expect(orderSorts(calls)).toEqual([{ column: 'created_at', direction: 'desc' }, { column: 'id', direction: 'asc' }]));
   });
 
+  test('with the default on a visible column, a click on another column replaces it, and a click on the default column goes ascending', async () => {
+    const calls = await spyOnTraverse();
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await userEvent.type(screen.getByLabelText('Search data marts'), 'daily');
+    fireEvent.click(await within(marts()).findByText('Daily KPIs'));
+    await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
+    const sortOf = () => calls.filter((c) => c.id === 'daily_kpis').at(-1)!.o.sort;
+    await userEvent.click(within(data()).getByRole('button', { name: /^Sort by revenue,/ }));
+    await waitFor(() => expect(sortOf()).toEqual([{ column: 'revenue', direction: 'asc' }]));
+    expect(within(data()).getByRole('button', { name: /^Sort by day, currently not sorted/ })).toBeInTheDocument();
+    await userEvent.click(within(data()).getByRole('button', { name: 'Reset' }));
+    await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
+    await userEvent.click(within(data()).getByRole('button', { name: /^Sort by day,/ }));
+    await waitFor(() => expect(sortOf()).toEqual([{ column: 'day', direction: 'asc' }]));
+    await userEvent.click(within(data()).getByRole('button', { name: /^Sort by day,/ }));
+    await waitFor(() => expect(sortOf()).toEqual([{ column: 'day', direction: 'desc' }]));
+  });
+
   test('a mart with no date field has no default sort beyond its key', async () => {
     const calls = await spyOnTraverse();
     await userEvent.type(screen.getByLabelText('Search data marts'), 'product');
@@ -1157,5 +1176,53 @@ describe('the default sort', () => {
     await within(data()).findByRole('heading', { name: 'Products' });
     await waitFor(() => expect(calls.some((c) => c.id === 'products' && c.o.limit === 201)).toBe(true));
     expect(calls.filter((c) => c.id === 'products' && c.o.limit === 201).at(-1)!.o.sort).toEqual([{ column: 'id', direction: 'asc' }]);
+  });
+});
+
+describe('folds and the saved preferences read', () => {
+  const gated = (stored: Record<string, boolean>) => {
+    const gate: { release: () => void } = { release: () => undefined };
+    const opened = new Promise<void>((r) => { gate.release = r; });
+    const puts: unknown[] = [];
+    const wrap = (ctx: Mock): Ctx => ({
+      ...ctx,
+      collections: <T,>(name: string) => {
+        const real = ctx.collections<T>(name);
+        if (name !== 'preferences') return real;
+        return { get: async (id: string) => { await opened; return id === 'bands' ? ({ document: { folded: stored } as T }) : null; }, put: async (id: string, d: T) => { puts.push([id, d]); return real.put(id, d); } };
+      },
+    });
+    return { gate, puts, wrap };
+  };
+
+  test('a fold clicked before the saved read settles is merged into it, not written over it', async () => {
+    const { gate, puts, wrap } = gated({ 'band-marts': true, 'band-data': false, 'band-extra': true });
+    render(<AppServices ctx={wrap(createMockCtx(demoFixtures(), { latencyMs: 0 }))}><StoreProvider><App /></StoreProvider></AppServices>);
+    await waitFor(() => expect(sources()).not.toBeNull());
+    await userEvent.click(within(sources()).getByRole('button', { name: /^Show / }));
+    await settle();
+    expect(puts).toEqual([]);
+    gate.release();
+    await waitFor(() => expect(puts).toEqual([['bands', { folded: { 'band-marts': true, 'band-data': false, 'band-extra': true, 'band-sources': false } }]]));
+    expect(sources()).not.toHaveClass('folded');
+    expect(marts()).toHaveClass('folded');
+  });
+
+  test('the Data and Row bodies do not mount before the read settles, and a band saved as folded never reads rows', async () => {
+    const calls: string[] = [];
+    const { gate, wrap } = gated({ 'band-data': true });
+    const ctx = overrideTraverse((real) => (id, o) => { if (!o.aggregation && o.column) calls.push(id); return real(id, o); })(createMockCtx(demoFixtures(), { latencyMs: 0 }));
+    render(<AppServices ctx={wrap(ctx as Mock)}><StoreProvider><App /></StoreProvider></AppServices>);
+    await waitFor(() => expect(marts()).not.toBeNull());
+    await settle();
+    expect(document.getElementById('band-data')).toBeNull();
+    expect(document.getElementById('band-row')).toBeNull();
+    gate.release();
+    await waitFor(() => expect(data()).toHaveClass('folded'));
+    await settle();
+    expect(data().querySelector('table')).toBeNull();
+    expect(calls.filter((c) => c === 'orders' )).toEqual([]);
+    await userEvent.click(within(data()).getByRole('button', { name: /^Show / }));
+    await within(data()).findByRole('table');
   });
 });

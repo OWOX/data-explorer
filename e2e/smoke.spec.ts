@@ -172,12 +172,12 @@ test('a date column filter opens on presets; a preset applies at once and names 
   await page.getByLabel(/created_at/).check();
   await page.keyboard.press('Escape');
   await data.getByLabel('Filter created_at').click();
-  await expect(page.getByRole('menuitemradio')).toHaveCount(14);
-  await page.getByRole('menuitemradio', { name: 'Last 30 days' }).click();
-  await expect(page.getByRole('menuitemradio')).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Date presets' }).getByRole('button')).toHaveCount(14);
+  await page.getByRole('button', { name: 'Last 30 days' }).click();
+  await expect(page.getByRole('group', { name: 'Date presets' })).toHaveCount(0);
   await expect(data.getByLabel('Filter created_at')).toContainText('Last 30 days');
   await data.getByLabel('Filter created_at').click();
-  await expect(page.getByRole('menuitemradio', { name: 'Last 30 days' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('button', { name: 'Last 30 days' })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('Undo and Redo step through the selection', async ({ page }) => {

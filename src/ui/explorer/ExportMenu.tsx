@@ -37,7 +37,7 @@ export function ExportMenu(p: Props) {
   useEffect(() => { gen.current += 1; return () => { gen.current += 1; }; }, [p.martId]);
   const [openDest, setOpenDest] = useState<string | null>(null);
   // Which way the open flyout goes, and whether the keyboard (not the pointer) opened it, so its first row takes focus.
-  const [flyout, setFlyout] = useState<{ side: 'right' | 'left'; focus: boolean }>({ side: 'right', focus: false });
+  const [flyout, setFlyout] = useState<{ side: 'right' | 'left'; focus: boolean; tick: number }>({ side: 'right', focus: false, tick: 0 });
   const [menuOpen, setMenuOpen] = useState(false);
   // False until the live check of the remembered reports has ended since the menu opened: until then their titles and targets may be stale.
   const [verified, setVerified] = useState(false);
@@ -80,7 +80,7 @@ export function ExportMenu(p: Props) {
     setFlyout((f) => (f.side === side ? f : { ...f, side }));
     if (flyout.focus) sub.querySelector<HTMLElement>('[data-lvl="2"]:not([disabled])')?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openDest]);
+  }, [openDest, flyout.tick]);
 
   if (destinations.length === 0) return null;
 
@@ -175,7 +175,7 @@ export function ExportMenu(p: Props) {
         <button type="button" disabled={!!busy} aria-label="Export to Google Sheets" onClick={() => start(destinations[0]!, { kind: 'new' }, exportTitle(p.martTitle))} className={button}>{label}</button>
       ) : (
         <details ref={menu} className="dm-filter dm-export" name="dm-filter" onToggle={(e) => openMenu(e.currentTarget.open)} {...(busy ? { 'aria-disabled': true } : {})}>
-          <summary aria-label="Export to Google Sheets" onClick={(e) => { if (busy) e.preventDefault(); }}>{label}<ChevronDown size={14} /></summary>
+          <summary aria-label="Export to Google Sheets" onClick={(e) => { if (busy) e.preventDefault(); }} onKeyDown={onSummaryKey}>{label}<ChevronDown size={14} /></summary>
           <div className="dm-filter-menu dm-cascade" role="menu" data-level="1" onKeyDown={onMenuKey}>
             {destinations.map((d) => (
               <div key={d.id} className="dm-cascade-row" onMouseEnter={() => openFlyout(d.id, false)}>
@@ -195,8 +195,22 @@ export function ExportMenu(p: Props) {
     </>
   );
 
+  /** On the button: ArrowDown or Enter opens the menu and focuses its first row; Escape closes it. */
+  function onSummaryKey(e: ReactKeyboardEvent<HTMLElement>) {
+    if (busy) return;
+    if (e.key === 'ArrowDown' || e.key === 'Enter') {
+      e.preventDefault();
+      if (menu.current) menu.current.open = true;
+      menu.current?.querySelector<HTMLElement>('[data-lvl="1"]')?.focus();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeMenu();
+    }
+  }
+
   function openFlyout(id: string, focus: boolean) {
-    setFlyout((f) => ({ ...f, focus }));
+    // The tick re-runs the focus effect when the pointer had already opened this very flyout.
+    setFlyout((f) => ({ ...f, focus, tick: focus ? f.tick + 1 : f.tick }));
     setOpenDest(id);
   }
 

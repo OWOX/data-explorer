@@ -12,7 +12,7 @@ export function RowBand({ model, folded, onFold }: { model: Model; folded: boole
   const [{ selection }] = useStore();
   const { record } = selection;
   // Like the Data band: a folded band mounts no new record, so nothing hidden is fetched.
-  const [shownRecord, setShownRecord] = useState(record);
+  const [shownRecord, setShownRecord] = useState(folded ? null : record);
   if (!folded && shownRecord !== record) setShownRecord(record);
   const shown = folded ? shownRecord : record;
 

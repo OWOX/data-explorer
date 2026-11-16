@@ -54,6 +54,17 @@ describe('formatTemporal', () => {
     }
   });
 
+  test('an impossible day or time is left raw, not rolled into a real date', () => {
+    expect(formatTemporal('2026-02-31', 'DATE')).toBeNull();
+    expect(formatTemporal('2026-13-01', 'DATE')).toBeNull();
+    expect(formatTemporal('2026-02-29', 'DATE')).toBeNull();
+    expect(formatTemporal('2024-02-29', 'DATE')).not.toBeNull();
+    expect(formatTemporal('2026-02-31T10:00:00Z', 'TIMESTAMP')).toBeNull();
+    expect(formatTemporal('2026-04-31 10:00:00', 'DATETIME')).toBeNull();
+    expect(formatTemporal('2026-03-12T25:00:00Z', 'TIMESTAMP')).toBeNull();
+    expect(formatTemporal('2026-03-12T10:61:00Z', 'TIMESTAMP')).toBeNull();
+  });
+
   test('anything it cannot read, and any other type, is left to the caller', () => {
     expect(formatTemporal('not a date', 'TIMESTAMP')).toBeNull();
     expect(formatTemporal('', 'DATE')).toBeNull();

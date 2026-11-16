@@ -224,7 +224,6 @@ function Contexts({ contexts }: { contexts: Context[] }) {
   // The folded chip wears the icon they all share, and the plain context icon when they differ.
   const first = contexts[0]?.icon;
   const shared = contexts.every((context) => context.icon === first) ? first : undefined;
-  const names = contexts.map((context) => context.name);
   return (
     <span ref={row} className={`dm-contexts${bare ? ' dm-contexts-bare' : ''}`}>
       <span className="dm-contexts-probe" aria-hidden>
@@ -248,7 +247,7 @@ function Contexts({ contexts }: { contexts: Context[] }) {
             className="dm-badge dm-mark dm-contexts-count"
             tabIndex={0}
             role="note"
-            aria-label={`${plural(contexts.length, 'context')}: ${names.join(', ')}`}
+            aria-label={plural(contexts.length, 'context')}
           >
             {contexts.length > 1 && num(contexts.length)}
             <PickedIcon icon={shared} fallback={DEFAULT_CONTEXT_ICON} size={12} />
@@ -308,7 +307,7 @@ function QualityMark({ summary }: { summary: DqSummary | undefined }) {
 function Mark({ tone, lines, children }: { tone: string; lines: string[]; children: ReactNode }) {
   return (
     <Tooltip content={<TipLines lines={lines} />}>
-      <span className={`dm-status dm-mark dm-${tone}`} tabIndex={0} role="note" aria-label={lines.join('. ')}>{children}</span>
+      <span className={`dm-status dm-mark dm-${tone}`} tabIndex={0} role="note" aria-label={lines[0]}>{children}</span>
     </Tooltip>
   );
 }

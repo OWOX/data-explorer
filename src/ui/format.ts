@@ -43,6 +43,13 @@ function formats() {
   return cached;
 }
 
+/** A calendar day that exists: 2026-02-31 is not rolled into March, it is left raw. */
+function realDay(y: string, mo: string, d: string): boolean {
+  const date = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
+  return date.getUTCFullYear() === Number(y) && date.getUTCMonth() === Number(mo) - 1 && date.getUTCDate() === Number(d);
+}
+const realTime = (t: string): boolean => { const [h, mi, s] = t.split(':'); return Number(h) < 24 && Number(mi) < 60 && (s === undefined || Number.parseFloat(s) < 60); };
+
 const ZONE = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
 
 /**
@@ -60,12 +67,14 @@ export function formatTemporal(value: unknown, type: string): string | null {
   if (DATE_ONLY.has(t)) {
     const m = /^(\d{4})-(\d{2})-(\d{2})(?![\d])/.exec(text);
     if (!m) return null;
+    if (!realDay(m[1]!, m[2]!, m[3]!)) return null;
     const day = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
     return Number.isNaN(day.getTime()) ? null : formats().day.format(day);
   }
   if (!MOMENT.has(t)) return null;
   const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)\s*(.*)$/.exec(text);
   if (!m) return null;
+  if (!realDay(...(m[1]!.split('-') as [string, string, string])) || !realTime(m[2]!)) return null;
   const zone = (m[3] ?? '').trim();
   if (zone && !ZONE.test(zone)) return null;
   // "+00" and "+0530" become "+00:00" and "+05:30"; no zone is UTC, except for a wall-clock type.

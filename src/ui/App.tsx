@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { martAppUrl } from '../config';
 import { tickedStorages } from '../graph/storages';
 import { computeVisible } from '../graph/visible';
@@ -30,20 +30,35 @@ function AppBody() {
   // Data Sources is folded while there is nothing in it.
   const [folds, setFolds] = useState<Partial<Record<Fold, boolean>>>({});
   // The member's saved choices arrive once; a band they have already clicked meanwhile keeps that click.
+  // `saved` is the whole stored document, so a write merges into it rather than replacing it, and a click
+  // made before the read settles is written once it has (a write before it would overwrite what it is about to read).
+  const [prefsReady, setPrefsReady] = useState(false);
+  const saved = useRef<Record<string, boolean>>({});
+  const clicked = useRef<Partial<Record<Fold, boolean>>>({});
+  const write = (changes: Partial<Record<Fold, boolean>>) => {
+    saved.current = { ...saved.current, ...Object.fromEntries((Object.keys(changes) as Fold[]).map((b) => [bandId(b), changes[b]!])) };
+    preferences.saveFolded(saved.current);
+  };
   useEffect(() => {
     let live = true;
-    preferences.loadFolded().then((saved) => {
+    preferences.loadFolded().then((stored) => {
       if (!live) return;
-      const known = Object.fromEntries((Object.keys(DEFAULT_FOLDED) as Fold[]).flatMap((b) => (typeof saved[bandId(b)] === 'boolean' ? [[b, saved[bandId(b)]!]] : [])));
+      saved.current = stored;
+      const known = Object.fromEntries((Object.keys(DEFAULT_FOLDED) as Fold[]).flatMap((b) => (typeof stored[bandId(b)] === 'boolean' ? [[b, stored[bandId(b)]!]] : [])));
       setFolds((own) => ({ ...known, ...own }));
+      if (Object.keys(clicked.current).length > 0) write(clicked.current);
+      clicked.current = {};
+      setPrefsReady(true);
     });
     return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferences]);
   const folded = (band: Fold) => folds[band] ?? DEFAULT_FOLDED[band];
   const toggle = (band: Fold) => {
-    const next = { ...folds, [band]: !folded(band) };
-    setFolds(next);
-    preferences.saveFolded(Object.fromEntries((Object.keys(next) as Fold[]).map((b) => [bandId(b), next[b]!])));
+    const now = !folded(band);
+    setFolds((f) => ({ ...f, [band]: now }));
+    if (prefsReady) write({ [band]: now });
+    else clicked.current = { ...clicked.current, [band]: now };
   };
   const storageIds = useMemo(() => (model ? tickedStorages(model, state.storageIds) : null), [model, state.storageIds]);
   const visible = useMemo(
@@ -99,8 +114,13 @@ function AppBody() {
           onRequestCount={request}
           onOpenApp={(id) => void ctx.ui.openExternal(martAppUrl(ctx.projectId, id))}
         >
-          <DataBand model={model} folded={folded('data')} onFold={() => toggle('data')} />
-          <RowBand model={model} folded={folded('row')} onFold={() => toggle('row')} />
+          {/* Until the saved folds are known neither band mounts: one saved as folded must not read rows first. */}
+          {prefsReady ? (
+            <>
+              <DataBand model={model} folded={folded('data')} onFold={() => toggle('data')} />
+              <RowBand model={model} folded={folded('row')} onFold={() => toggle('row')} />
+            </>
+          ) : <div aria-busy="true"><Skeleton rows={4} /></div>}
         </CardBands>
       </main>
     </div>

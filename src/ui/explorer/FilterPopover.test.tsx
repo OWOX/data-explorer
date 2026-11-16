@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { FilterEditor, FilterPopover } from './FilterPopover';
@@ -34,16 +34,16 @@ const open = (field: Field, value?: ColumnFilter) => {
 
 test('a date column opens on the presets, in order, then Custom range and the other operators below a divider', () => {
   open(ts);
-  const names = screen.getAllByRole('menuitemradio').map((b) => b.textContent);
+  const names = within(screen.getByRole('group', { name: 'Date presets' })).getAllByRole('button').map((b) => b.textContent);
   expect(names).toEqual(['Today', 'Yesterday', 'Last 7 days', 'Last 14 days', 'Last 30 days', 'Last 90 days', 'This week', 'Last week', 'This month', 'Last month', 'This quarter', 'Last quarter', 'This year', 'Last 12 months']);
-  expect(screen.getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Custom range…', 'Before…', 'After…', 'Is blank', 'Is not blank']);
+  expect(screen.getAllByRole('button', { pressed: undefined }).filter((b) => !b.closest('[aria-label="Date presets"]') && b.hasAttribute('type') && !['Apply', 'Clear'].includes(b.textContent!)).map((b) => b.textContent)).toEqual(['Custom range…', 'Before…', 'After…', 'Is blank', 'Is not blank']);
   expect(screen.queryByLabelText('Operator')).toBeNull();
   expect(document.querySelector('hr')).not.toBeNull();
 });
 
 test('a DATE column also offers On', () => {
   open(day);
-  expect(screen.getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Custom range…', 'On…', 'Before…', 'After…', 'Is blank', 'Is not blank']);
+  expect(screen.getAllByRole('button', { pressed: undefined }).filter((b) => !b.closest('[aria-label="Date presets"]') && b.hasAttribute('type') && !['Apply', 'Clear'].includes(b.textContent!)).map((b) => b.textContent)).toEqual(['Custom range…', 'On…', 'Before…', 'After…', 'Is blank', 'Is not blank']);
 });
 
 test.each([
@@ -53,14 +53,14 @@ test.each([
   ['This quarter', { kind: 'this_quarter' }], ['Last quarter', { kind: 'last_quarter' }], ['This year', { kind: 'this_year' }], ['Last 12 months', { kind: 'last_n_months', n: 12 }],
 ])('clicking "%s" applies it at once as a relative rule', async (label, rule) => {
   const { onApply } = open(ts);
-  await userEvent.click(screen.getByRole('menuitemradio', { name: label }));
+  await userEvent.click(screen.getByRole('button', { name: label, pressed: false }));
   expect(onApply).toHaveBeenCalledWith({ field: 'created_at', op: 'relative', value: rule });
 });
 
 test('the active preset is highlighted when reopened', () => {
   open(ts, { field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 30 } });
-  expect(screen.getByRole('menuitemradio', { name: 'Last 30 days' })).toHaveAttribute('aria-checked', 'true');
-  expect(screen.getByRole('menuitemradio', { name: 'Last 7 days' })).toHaveAttribute('aria-checked', 'false');
+  expect(screen.getByRole('button', { name: 'Last 30 days' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: 'Last 7 days' })).toHaveAttribute('aria-pressed', 'false');
   expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
 });
 
@@ -78,7 +78,7 @@ test('Last N days takes any N, up to 3650', async () => {
 
 test('Custom range opens from and to inputs and applies between', async () => {
   const { onApply } = open(day);
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Custom range…' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Custom range…' }));
   expect(screen.getByLabelText('From')).toHaveAttribute('type', 'date');
   await userEvent.type(screen.getByLabelText('From'), '2026-01-01');
   await userEvent.type(screen.getByLabelText('To'), '2026-01-31');
@@ -88,16 +88,16 @@ test('Custom range opens from and to inputs and applies between', async () => {
 
 test('a timestamp range uses datetime-local inputs, and Presets goes back', async () => {
   open(ts);
-  await userEvent.click(screen.getByRole('menuitem', { name: 'After…' }));
+  await userEvent.click(screen.getByRole('button', { name: 'After…' }));
   expect(screen.getByLabelText('Value')).toHaveAttribute('type', 'datetime-local');
   expect(screen.getByLabelText('Operator')).toHaveValue('after');
   await userEvent.click(screen.getByRole('button', { name: '← Presets' }));
-  expect(screen.getAllByRole('menuitemradio')).toHaveLength(14);
+  expect(within(screen.getByRole('group', { name: 'Date presets' })).getAllByRole('button')).toHaveLength(14);
 });
 
 test('Is blank applies at once; a saved range reopens on its own form', async () => {
   const blank = open(ts);
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Is blank' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Is blank' }));
   expect(blank.onApply).toHaveBeenCalledWith({ field: 'created_at', op: 'is_blank' });
   document.body.innerHTML = '';
   open(ts, { field: 'created_at', op: 'between', value: { from: '2026-01-01T00:00', to: '2026-01-31T00:00' } });
@@ -115,7 +115,7 @@ test('time fields use time inputs and have no presets', async () => {
   render(<FilterEditor field={{ ...ts, name: 'at', type: 'TIME', category: 'time' }} value={undefined} onApply={vi.fn()} onClear={vi.fn()} />);
   await userEvent.selectOptions(screen.getByLabelText('Operator'), 'after');
   expect(screen.getByLabelText('Value')).toHaveAttribute('type', 'time');
-  expect(screen.queryByRole('menuitemradio')).toBeNull();
+  expect(screen.queryByRole('group', { name: 'Date presets' })).toBeNull();
 });
 
 test('the column filter control shows the preset name, and nothing for other filters', () => {
@@ -123,4 +123,11 @@ test('the column filter control shows the preset name, and nothing for other fil
   expect(screen.getByRole('button', { name: 'Filter Amount' })).toHaveTextContent('Last 30 days');
   rerender(<FilterPopover field={ts} value={{ field: 'created_at', op: 'is_blank' }} onChange={vi.fn()} />);
   expect(screen.getByRole('button', { name: 'Filter Amount' })).toHaveTextContent('');
+});
+
+test('the panel is a group of buttons, not a menu; Is blank shows its active state', () => {
+  open(ts, { field: 'created_at', op: 'is_blank' });
+  expect(screen.queryByRole('menu')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Is blank' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: 'Is not blank' })).toHaveAttribute('aria-pressed', 'false');
 });

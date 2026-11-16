@@ -410,4 +410,35 @@ describe('the cascading menu', () => {
     await userEvent.keyboard('{Escape}');
     expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
   });
+
+  test('on the Export button, ArrowDown or Enter focuses the first row and Escape closes the menu', async () => {
+    const t = setup(2);
+    t.view();
+    await rowsLoaded();
+    const summary = (await within(data()).findByText('Export')).closest('summary')!;
+    summary.focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(document.querySelector('details.dm-export')).toHaveAttribute('open');
+    expect(within(data()).getByRole('menuitem', { name: /Team Sheets/ })).toHaveFocus();
+    summary.focus();
+    await userEvent.keyboard('{Escape}');
+    expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
+    summary.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(within(data()).getByRole('menuitem', { name: /Team Sheets/ })).toHaveFocus();
+  });
+
+  test('ArrowRight on a row whose flyout the pointer already opened moves focus into it', async () => {
+    const t = setup(2);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    const team = await within(data()).findByRole('menuitem', { name: /Team Sheets/ });
+    await userEvent.hover(team);
+    const sub = await within(data()).findByRole('menu', { name: 'Team Sheets' });
+    expect(sub.contains(document.activeElement)).toBe(false);
+    team.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    await waitFor(() => expect(within(sub).getByRole('menuitem', { name: /New report/ })).toHaveFocus());
+  });
 });

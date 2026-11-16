@@ -236,9 +236,9 @@ function Grid({ martId, model, schema, seed, initialColumns, onChange, onRows }:
     };
   }), [visible, schema, rels, filters]);
 
-  // The first click starts from the default order only while that order is on screen: a default on a column
-  // the grid does not show would otherwise ride along as a second sort nobody can see.
-  const toggleSort = useCallback((field: string) => { setOwn((cur) => cycleSort(cur ?? sortsOnColumns(fallback, visible), field)); setLimit(PAGE_SIZE); }, [fallback, visible]);
+  // While the member has no sort of their own, a click replaces the default with that column ascending (the
+  // default's own column included), so a default never rides along as a second sort; after that the normal cycle.
+  const toggleSort = useCallback((field: string) => { setOwn((cur) => (cur === null ? [{ field, direction: 'asc' }] : cycleSort(cur, field))); setLimit(PAGE_SIZE); }, []);
   const relNames = useMemo(() => new Set(rels.keys()), [rels]);
   const env = useMemo(() => ({ titles, relSchemas, model, sorts, relNames, toggleSort }), [titles, relSchemas, model, sorts, relNames, toggleSort]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
