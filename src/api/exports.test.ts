@@ -31,6 +31,18 @@ describe('buildReportPayload', () => {
     ]);
   });
 
+  test('joined columns are exported like any shown column: columnConfig, filterConfig, sortConfig and the opt-out, by blended name', () => {
+    const joined = f('customers__email', 'STRING', 'string', { alias: 'email', joined: { martId: 'customers', label: 'Customers', aliasPath: 'customers' } });
+    const withJoined: Schema = [...schema, joined, f('products__price', 'NUMERIC', 'number', { joined: { martId: 'products', label: 'Products', aliasPath: 'products' } })];
+    const r = buildReportPayload(withJoined, ['customers__email', 'id', 'products__price'], [{ field: 'customers__email', op: 'contains', value: 'example' }, { field: 'products__price', op: 'gt', value: '10' }], [{ field: 'customers__email', direction: 'asc' }]);
+    expect(r.payload).toEqual({
+      columnConfig: ['id', 'customers__email', 'products__price'],
+      filterConfig: [{ column: 'customers__email', operator: 'contains', value: 'example' }, { column: 'products__price', operator: 'gt', value: 10 }],
+      sortConfig: [{ column: 'customers__email', direction: 'asc' }],
+      autoAggregationOptOut: ['id', 'customers__email', 'products__price'],
+    });
+  });
+
   test('sorts are the reader\'s own, without primary key tie-breakers, capped at 10 with a note', () => {
     const sorts: SortKey[] = [{ field: 'amount', direction: 'desc' }, { field: 'status', direction: 'asc' }];
     const r = buildReportPayload(schema, ['id', 'amount', 'status'], [], sorts);

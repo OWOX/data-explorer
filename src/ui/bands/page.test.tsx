@@ -258,7 +258,7 @@ describe('the grid', () => {
 
   test('the column picker adds a column', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/10\)/ }));
     await userEvent.click(screen.getByLabelText(/amount/i));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(6));
   });
@@ -338,7 +338,7 @@ describe('the grid', () => {
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
     await settle();
     const before = calls.filter((c) => c.id === 'orders').length;
-    await userEvent.click(within(data()).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(within(data()).getByRole('button', { name: /Columns \(5\/10\)/ }));
     await userEvent.click(screen.getAllByRole('checkbox').filter((c) => (c as HTMLInputElement).checked).at(-1)!);
     await waitFor(() => expect(within(data()).getAllByRole('columnheader')).toHaveLength(4));
     await settle();
@@ -409,7 +409,7 @@ describe('the record', () => {
     await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
     await userEvent.click(within(data()).getAllByRole('row')[1]!);
     await within(row()).findByRole('heading', { name: /^Order Items · 1$/ });
-    await within(row()).findByText('order_id');
+    await within(row()).findByText('Order');
     expect(within(row()).queryByRole('region', { name: 'Referenced by' })).toBeNull();
   });
 
@@ -700,7 +700,7 @@ describe('column headers and band toolbars', () => {
 
   test('the column picker shows the alias only, and a (?) with the description when the field has one', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/10\)/ }));
     expect(screen.getByLabelText(/Amount/)).toBeInTheDocument();
     expect(screen.queryByText('amount')).toBeNull();
     expect(screen.queryByText('customer_id')).toBeNull();
@@ -735,7 +735,7 @@ describe('column headers and band toolbars', () => {
     const calls = await spyOnTraverse();
     const grid = await ordersGrid();
     const bar = head(grid);
-    for (const name of ['Reset', 'Refresh', /Columns \(5\/8\)/]) expect(within(bar).getByRole('button', { name })).toBeInTheDocument();
+    for (const name of ['Reset', 'Refresh', /Columns \(5\/10\)/]) expect(within(bar).getByRole('button', { name })).toBeInTheDocument();
     await userEvent.click(within(grid).getByLabelText('Filter id'));
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
     await userEvent.type(screen.getByLabelText('Value'), '3');
@@ -749,7 +749,7 @@ describe('column headers and band toolbars', () => {
     await userEvent.click(within(bar).getByRole('button', { name: 'Refresh' }));
     await settle();
     expect(reads()).toBe(before + 1);
-    await userEvent.click(within(bar).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(within(bar).getByRole('button', { name: /Columns \(5\/10\)/ }));
     await userEvent.click(screen.getByLabelText(/Amount/));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(6));
   });
@@ -894,14 +894,14 @@ describe('column sort', () => {
     await userEvent.click(sortBtn(grid, 'status'));
     expect(within(header(grid, 'status')).queryByText('1')).toBeNull();
     await userEvent.click(sortBtn(grid, 'Customer'));
-    await userEvent.click(sortBtn(grid, 'product_id'));
-    await waitFor(() => expect(within(header(grid, 'product_id')).getByText('3')).toBeInTheDocument());
+    await userEvent.click(sortBtn(grid, 'Product'));
+    await waitFor(() => expect(within(header(grid, 'Product')).getByText('3')).toBeInTheDocument());
     expect(within(header(grid, 'status')).getByText('1')).toBeInTheDocument();
     expect(within(header(grid, 'Customer')).getByText('2')).toBeInTheDocument();
     // remove the middle one: the others keep their order
     await userEvent.click(sortBtn(grid, 'Customer'));
     await userEvent.click(sortBtn(grid, 'Customer'));
-    await waitFor(() => expect(within(header(grid, 'product_id')).getByText('2')).toBeInTheDocument());
+    await waitFor(() => expect(within(header(grid, 'Product')).getByText('2')).toBeInTheDocument());
     expect(within(header(grid, 'status')).getByText('1')).toBeInTheDocument();
     expect(header(grid, 'Customer')).toHaveAttribute('aria-sort', 'none');
   });
@@ -964,7 +964,7 @@ describe('column sort', () => {
     await userEvent.click(sortBtn(grid, 'id'));
     await waitFor(() => expect(sortBtn(grid, 'status')).toHaveAccessibleName('Sort by status, currently ascending, sort 1 of 2'));
     expect(sortBtn(grid, 'id')).toHaveAccessibleName('Sort by id, currently ascending, sort 2 of 2');
-    expect(sortBtn(grid, 'product_id')).toHaveAccessibleName('Sort by product_id, currently not sorted');
+    expect(sortBtn(grid, 'Product')).toHaveAccessibleName('Sort by Product, currently not sorted');
   });
 
   test('Reset clears the sorts, and is enabled by a sort alone', async () => {
@@ -997,9 +997,9 @@ describe('column sort', () => {
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
     const grid = data();
     await userEvent.click(sortBtn(grid, 'status'));
-    await userEvent.click(sortBtn(grid, 'product_id'));
+    await userEvent.click(sortBtn(grid, 'Product'));
     await waitFor(() => expect(sortOf(calls)).toEqual([{ column: 'status', direction: 'asc' }, { column: 'product_id', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
-    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/10\)/ }));
     await userEvent.click(screen.getByLabelText('status'));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(4));
     await waitFor(() => expect(sortOf(calls)).toEqual([{ column: 'product_id', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
@@ -1101,7 +1101,7 @@ describe('the default sort', () => {
     expect(orderSorts(calls)).toEqual([{ column: 'created_at', direction: 'desc' }, { column: 'id', direction: 'asc' }]);
     // created_at is not among the five opening columns, so no arrow is drawn; showing it draws one like a member sort
     expect(within(data()).queryByRole('button', { name: /^Sort by created_at,/ })).toBeNull();
-    await userEvent.click(within(data()).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(within(data()).getByRole('button', { name: /Columns \(5\/10\)/ }));
     await userEvent.click(screen.getByLabelText('created_at'));
     const head = await within(data()).findByRole('button', { name: /^Sort by created_at, currently descending/ });
     expect(head.closest('th')).toHaveAttribute('aria-sort', 'descending');

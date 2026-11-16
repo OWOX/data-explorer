@@ -2,7 +2,7 @@ import { Filter } from 'lucide-react';
 import { useState } from 'react';
 import { DATE_PRESETS, RELATIVE_MAX_N, RELATIVE_PRESETS, isDateTimeField, isPreset, operatorsFor, presetName, type OpId } from '../../filters/catalogue';
 import { isComplete, type ColumnFilter, type FilterValue } from '../../filters/build';
-import { fieldLabel } from '../../model/fieldLabel';
+import { columnTitle } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import type { RelativeDatePreset } from '../../sdk/types';
 import { Popover } from '../Popover';
@@ -37,8 +37,8 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
   const nOk = Number.isInteger(n) && n > 0 && n <= RELATIVE_MAX_N;
   const isDay = field.type.trim().toUpperCase() === 'DATE';
   return (
-    <div className="flex flex-col gap-0.5" role="group" aria-label={`Filter ${fieldLabel(field)}`}>
-      <div className="dm-popover-title px-2 text-xs font-medium text-muted-foreground">{fieldLabel(field)}</div>
+    <div className="flex flex-col gap-0.5" role="group" aria-label={`Filter ${columnTitle(field)}`}>
+      <div className="dm-popover-title px-2 text-xs font-medium text-muted-foreground">{columnTitle(field)}</div>
       <div className="flex flex-col gap-0.5" role="group" aria-label="Date presets">
         {DATE_PRESETS.map((pr) => {
           const active = isPreset(current, pr.rule);
@@ -76,7 +76,7 @@ function OperatorForm({ field, value, onApply, onClear, startOp }: EditorProps &
 
   return (
     <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); if (isComplete(draft, field)) onApply(draft); }}>
-      <div className="dm-popover-title text-xs font-medium text-muted-foreground">{fieldLabel(field)}</div>
+      <div className="dm-popover-title text-xs font-medium text-muted-foreground">{columnTitle(field)}</div>
       <select aria-label="Operator" className={input} value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); }}>
         {ops.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
       </select>
@@ -115,7 +115,7 @@ export function FilterPopover({ field, value, onChange }: { field: Field; value:
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen} trigger={
-      <button type="button" aria-label={`Filter ${fieldLabel(field)}`} className={value ? 'dm-reveal dm-reveal-on text-primary' : 'dm-reveal text-muted-foreground hover:text-foreground'}>
+      <button type="button" aria-label={`Filter ${columnTitle(field)}`} className={value ? 'dm-reveal dm-reveal-on text-primary' : 'dm-reveal text-muted-foreground hover:text-foreground'}>
         <Filter className="size-3.5" fill={value ? 'currentColor' : 'none'} />
         {value?.op === 'relative' && <span className="ml-1 whitespace-nowrap text-xs font-normal">{presetName(value.value as RelativeDatePreset)}</span>}
       </button>

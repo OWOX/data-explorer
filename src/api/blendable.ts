@@ -1,0 +1,67 @@
+import { categorizeFieldType } from '../model/field-category';
+import type { Field } from '../model/types';
+import type { BlendableSchemaDto, Ctx } from '../sdk/types';
+
+/** One joined data mart the Columns picker offers, with the fields of it a report can take. */
+export type JoinedSource = {
+  aliasPath: string;
+  martId: string;
+  /** What the picker and the column headers call it: the join's display prefix, with the alias path added when two joins reach the same mart. */
+  label: string;
+  depth: number;
+  fields: Field[];
+};
+
+export interface BlendableLoader {
+  /** The joined sources of a mart; read once per mart (a failure is not remembered, so the next ask reads again). */
+  get(martId: string): Promise<JoinedSource[]>;
+  peek(martId: string): JoinedSource[] | undefined;
+  clear(): void;
+}
+
+/** Joined fields of a mart as columns: only included, readable sources; no hidden or calculated field. Depth first, then title. */
+export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
+  const offered = (dto.availableSources ?? []).filter((s) => s.isIncluded && s.isAccessibleForReporting);
+  const byPath = new Map<string, JoinedSource>();
+  const nameOf = (s: (typeof offered)[number]) => (s.defaultAlias?.trim() || s.title);
+  const labelUses = new Map<string, number>();
+  offered.forEach((s) => labelUses.set(nameOf(s), (labelUses.get(nameOf(s)) ?? 0) + 1));
+  for (const s of offered) {
+    const base = nameOf(s);
+    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, fields: [] });
+  }
+  for (const b of dto.blendedFields ?? []) {
+    const source = byPath.get(b.aliasPath);
+    if (!source || b.isHidden || b.isCalculated) continue;
+    source.fields.push({
+      name: b.name,
+      alias: b.alias?.trim() ? b.alias : b.originalFieldName,
+      type: b.type,
+      category: categorizeFieldType(b.type),
+      description: b.description?.trim() ? b.description : null,
+      isPrimaryKey: false,
+      joined: { martId: source.martId, label: source.label, aliasPath: source.aliasPath },
+    });
+  }
+  return [...byPath.values()].filter((s) => s.fields.length > 0).sort((a, b) => a.depth - b.depth || a.label.localeCompare(b.label) || a.aliasPath.localeCompare(b.aliasPath));
+}
+
+export function createBlendableLoader(ctx: Ctx): BlendableLoader {
+  const done = new Map<string, JoinedSource[]>();
+  const inflight = new Map<string, Promise<JoinedSource[]>>();
+  return {
+    get(martId) {
+      const hit = done.get(martId);
+      if (hit) return Promise.resolve(hit);
+      const running = inflight.get(martId);
+      if (running) return running;
+      const p = ctx.owox.getJson<BlendableSchemaDto>(`/api/data-marts/${encodeURIComponent(martId)}/blendable-schema`)
+        .then((dto) => { const sources = joinedSources(dto); done.set(martId, sources); return sources; })
+        .finally(() => inflight.delete(martId));
+      inflight.set(martId, p);
+      return p;
+    },
+    peek: (martId) => done.get(martId),
+    clear() { done.clear(); },
+  };
+}

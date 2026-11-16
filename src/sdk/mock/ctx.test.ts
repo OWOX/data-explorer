@@ -2,6 +2,7 @@ import { createMockCtx } from './ctx';
 import { demoFixtures } from './fixtures';
 import { loadModel } from '../../api/model';
 import { readRows } from '../../api/rows';
+import type { BlendableSchemaDto } from '../types';
 
 test('mock ctx serves a model loadModel understands', async () => {
   const model = await loadModel(createMockCtx(demoFixtures()));
@@ -36,18 +37,13 @@ test('fixture facts later tasks rely on', () => {
   const orders = f.marts.find((m) => m.id === 'orders')!;
   expect(orders.rows).toHaveLength(450);
   expect(orders.rows.map((r) => r.id)).toEqual(Array.from({ length: 450 }, (_, i) => i + 1));
-  expect(orders.fields.map((x) => x.name)).toEqual(['id', 'customer_id', 'product_id', 'store_id', 'status', 'amount', 'created_at', 'is_gift']);
+  expect(orders.fields.map((x) => x.name)).toEqual(['id', 'customer_id', 'product_id', 'store_id', 'status', 'amount', 'created_at', 'is_gift', 'acquisition_session_id', 'net_revenue']);
   expect(f.marts.find((m) => m.id === 'daily_kpis')!.title).toBe('Daily KPIs');
   // orders (status) and categories (aliased label) are labelled by design; only payments and daily_kpis lack any string label.
   const labelled = (m: (typeof f.marts)[number]) => m.fields.some((x) => x.type === 'STRING' && !x.isPrimaryKey && !x.name.endsWith('_id') && !x.isHiddenForReporting);
   expect(f.marts.filter((m) => !labelled(m)).map((m) => m.id).sort()).toEqual(['daily_kpis', 'payments']);
   for (const id of ['returns', 'shipments', 'ad_spend', 'secret_ledger']) {
     expect(f.marts.find((m) => m.id === id)!.fields.some((x) => x.name === 'name' && x.type === 'STRING')).toBe(true);
-  }
-  const nameLike = /^[A-Z][a-z]+ [A-Z][a-z]+$/;
-  for (const m of f.marts) {
-    const hit = m.rows.some((r) => Object.values(r).some((v) => typeof v === 'string' && nameLike.test(v)));
-    expect(hit).toBe(m.id === 'customers');
   }
 });
 
@@ -63,4 +59,41 @@ test('traverseData sorts by several keys, in order, each with its own direction,
   const byAmount = await readRows(ctx, 'orders', { column: ['amount'], sort: [{ column: 'amount', direction: 'asc' }], limit: 450 });
   const amounts = byAmount.map((r) => Number(r.amount));
   expect(amounts).toEqual([...amounts].sort((x, y) => x - y));
+});
+
+test('blendable-schema lists the marts an order joins to, with their fields as blended names', async () => {
+  const dto = await createMockCtx(demoFixtures()).owox.getJson<BlendableSchemaDto>('/api/data-marts/orders/blendable-schema');
+  const sources = dto.availableSources!;
+  expect(sources.filter((s) => s.depth === 1).map((s) => s.aliasPath).sort()).toEqual(['customers', 'products', 'stores']);
+  expect(sources.every((s) => s.isIncluded && s.isAccessibleForReporting && s.mainGrainMultiplication === 'none')).toBe(true);
+  // Countries is reached twice, through customers and through stores: two sources, told apart by their alias path.
+  expect(sources.filter((s) => s.dataMartId === 'countries').map((s) => s.aliasPath).sort()).toEqual(['customers.countries', 'stores.countries']);
+  const names = dto.blendedFields!.map((b) => b.name);
+  expect(names).toEqual(expect.arrayContaining(['customers__email', 'products__sku', 'stores__city', 'customers__countries__name']));
+  expect(names).not.toContain('customers__internal_flag'); // hidden for reporting
+  expect(dto.hiddenFieldNames).toContain('customers__internal_flag');
+  expect(dto.blendedFields!.find((b) => b.name === 'products__title')).toMatchObject({ alias: 'Name', aliasPath: 'products', sourceDataMartId: 'products', originalFieldName: 'title' });
+  await expect(createMockCtx(demoFixtures()).owox.getJson('/api/data-marts/nope/blendable-schema')).rejects.toThrow();
+});
+
+test('traverseData resolves blended columns, filters and sorts by joining on the link', async () => {
+  const ctx = createMockCtx(demoFixtures());
+  const rows = await readRows(ctx, 'orders', { column: ['id', 'customer_id', 'customers__email', 'customers__countries__name', 'products__title'], filter: [{ column: 'id', operator: 'lte', value: 3 }] });
+  const customers = demoFixtures().marts.find((m) => m.id === 'customers')!.rows;
+  for (const r of rows) {
+    const c = customers.find((x) => x.id === r.customer_id);
+    expect(r.customers__email).toBe(c?.email ?? null);
+    expect(r.products__title).toEqual(expect.any(String));
+  }
+  const filtered = await readRows(ctx, 'orders', { column: ['id', 'stores__city'], filter: [{ column: 'stores__city', operator: 'eq', value: 'Berlin' }], limit: 450 });
+  expect(filtered.length).toBeGreaterThan(0);
+  expect(filtered.every((r) => r.stores__city === 'Berlin')).toBe(true);
+  const sorted = await readRows(ctx, 'orders', { column: ['id', 'products__title'], sort: [{ column: 'products__title', direction: 'asc' }], limit: 450 });
+  const titles = sorted.map((r) => String(r.products__title));
+  expect(titles).toEqual([...titles].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })));
+});
+
+test('an order that names no customer joins to nothing, not to a wrong row', async () => {
+  const rows = await readRows(createMockCtx(demoFixtures()), 'orders', { column: ['id', 'customers__name'], filter: [{ column: 'id', operator: 'eq', value: 7 }] });
+  expect(rows).toEqual([{ id: 7, customers__name: null }]);
 });

@@ -8,7 +8,7 @@ import type { CountState } from './bands/cards';
 import { errorMessage } from './ErrorBox';
 
 export function useModel() {
-  const { ctx, schemas } = useServices();
+  const { ctx, schemas, blendable } = useServices();
   const [{ modelVersion }] = useStore();
   const [model, setModel] = useState<Model | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -20,13 +20,13 @@ export function useModel() {
     let live = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
-    if (modelVersion > 0) schemas.clear();
+    if (modelVersion > 0) { schemas.clear(); blendable.clear(); }
     loadModel(ctx, (p) => { if (live) setProgress(p); }).then(
       (m) => { if (live) setModel(m); },
       (e) => { if (live) setError(e); },
     );
     return () => { live = false; };
-  }, [ctx, schemas, modelVersion, retry]);
+  }, [ctx, schemas, blendable, modelVersion, retry]);
 
   return { model, error, progress, reload: () => setRetry((r) => r + 1) };
 }

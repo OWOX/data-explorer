@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, useReducer, type Dispatch, type ReactNode } from 'react';
+import { createBlendableLoader, type BlendableLoader } from '../api/blendable';
 import { createExporter, type Exporter } from '../api/exports';
 import { createColumnStore, type ColumnStore } from '../api/grid-columns';
 import { createPreferences, type Preferences } from '../api/preferences';
@@ -143,11 +144,11 @@ export function useStore(): [State, Dispatch<Action>] {
   return v;
 }
 
-type Services = { ctx: Ctx; schemas: SchemaLoader; counter: RowCounter; columnStore: ColumnStore; exporter: Exporter; preferences: Preferences };
+type Services = { ctx: Ctx; schemas: SchemaLoader; blendable: BlendableLoader; counter: RowCounter; columnStore: ColumnStore; exporter: Exporter; preferences: Preferences };
 const ServicesCtx = createContext<Services | null>(null);
 
 export function AppServices({ ctx, children }: { ctx: Ctx; children: ReactNode }) {
-  const value = useMemo(() => ({ ctx, schemas: createSchemaLoader(ctx), counter: createRowCounter(ctx), columnStore: createColumnStore(ctx), exporter: createExporter(ctx), preferences: createPreferences(ctx) }), [ctx]);
+  const value = useMemo(() => ({ ctx, schemas: createSchemaLoader(ctx), blendable: createBlendableLoader(ctx), counter: createRowCounter(ctx), columnStore: createColumnStore(ctx), exporter: createExporter(ctx), preferences: createPreferences(ctx) }), [ctx]);
   return <ServicesCtx.Provider value={value}>{children}</ServicesCtx.Provider>;
 }
 
