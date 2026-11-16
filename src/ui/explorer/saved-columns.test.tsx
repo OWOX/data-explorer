@@ -110,8 +110,8 @@ test('this session\'s columns win over the saved ones', async () => {
   await waitFor(() => expect(headers()).toHaveLength(3));
   // Going to another mart and back keeps the session's grid without asking the member store again.
   const load = vi.spyOn(t.services.current!.columnStore, 'load');
-  await userEvent.click(within(document.getElementById('band-marts')!).getByText('Customers').closest('article')!);
-  await within(document.getElementById('band-data')!).findByRole('heading', { name: 'Customers' });
+  await userEvent.click(within(document.getElementById('band-marts')!).getByText('Order Items').closest('article')!);
+  await within(document.getElementById('band-data')!).findByRole('heading', { name: 'Order Items' });
   await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
   await within(document.getElementById('band-data')!).findByRole('heading', { name: 'Orders' });
   await waitFor(() => expect(headers()).toHaveLength(3));

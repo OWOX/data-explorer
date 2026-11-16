@@ -1,4 +1,4 @@
-import { AlertTriangle, ArchiveRestore, Check, ChevronDown, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArchiveRestore, Check, ChevronDown, ClipboardCopy, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -8,20 +8,32 @@ import {
 import type { ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
 import type { Schema } from '../../model/types';
+import type { Row } from '../../sdk/types';
+import { buildTsv } from '../../export/tsv';
 import type { DestinationDto } from '../../sdk/types';
+import { buildAiPrompt } from '../../api/ai-prompt';
 import { useServices, useStore } from '../../state/store';
+import { ChatGptIcon } from '../chatgpt-icon';
+import { ClaudeIcon } from '../claude-icon';
 import { GoogleSheetsIcon } from '../google-sheets-icon';
 import { Tooltip } from '../Tooltip';
+import { copyText } from './clipboard';
 
-type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; filters: ColumnFilter[]; sorts: SortKey[] };
+type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; filters: ColumnFilter[]; sorts: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean };
 type Result = { kind: 'ok' | 'timeout' | 'error'; text: string; url?: string };
+
+type Assistant = 'Claude' | 'ChatGPT';
+/** The prompt an assistant item copied, and whether it reached the clipboard. */
+type Copied = { assistant: Assistant; prompt: string; ok: boolean };
+/** The grid's rows as TSV, and whether they reached the clipboard. */
+type CopiedData = { tsv: string; count: number; more: boolean; ok: boolean };
 
 const STAGE_LABEL: Record<Stage, string> = { sheet: 'Creating the spreadsheet…', report: 'Saving the report…', run: 'Running the report…' };
 const MAYBE_CREATED = 'The report may have been created; check OWOX before trying again.';
 const UNRECOGNISED = 'This report targets an unrecognised spreadsheet.';
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** "Export" in the Data band header: a button when one click is enough, else a menu. Hidden without a Google Sheets destination. */
+/** "Export" in the Data band header: a menu of one "Copy to clipboard" item, the Google Sheets destinations, then an AI group that copies a prompt for Claude or ChatGPT. */
 export function ExportMenu(p: Props) {
   const { ctx, exporter } = useServices();
   const [{ modelVersion }] = useStore();
@@ -31,6 +43,13 @@ export function ExportMenu(p: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [dialog, setDialog] = useState<{ destination: DestinationDto; error?: string; seq: number } | null>(null);
+  const [copied, setCopied] = useState<Copied | null>(null);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [data, setData] = useState<CopiedData | null>(null);
+  const [dataOpen, setDataOpen] = useState(false);
+  // A copied prompt belongs to the mart it was built from (adjust state during render).
+  const [copiedFor, setCopiedFor] = useState(p.martId);
+  if (copiedFor !== p.martId) { setCopiedFor(p.martId); setCopied(null); setPromptOpen(false); setData(null); setDataOpen(false); }
   const seq = useRef(0);
   // Bumped when the mart changes or the menu goes away: an export finishing later is no longer in front of the member.
   const gen = useRef(0);
@@ -38,7 +57,6 @@ export function ExportMenu(p: Props) {
   const [openDest, setOpenDest] = useState<string | null>(null);
   // Which way the open flyout goes, and whether the keyboard (not the pointer) opened it, so its first row takes focus.
   const [flyout, setFlyout] = useState<{ side: 'right' | 'left'; focus: boolean; tick: number }>({ side: 'right', focus: false, tick: 0 });
-  const [menuOpen, setMenuOpen] = useState(false);
   // False until the live check of the remembered reports has ended since the menu opened: until then their titles and targets may be stale.
   const [verified, setVerified] = useState(false);
   const checks = useRef(0);
@@ -81,8 +99,6 @@ export function ExportMenu(p: Props) {
     if (flyout.focus) sub.querySelector<HTMLElement>('[data-lvl="2"]:not([disabled])')?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openDest, flyout.tick]);
-
-  if (destinations.length === 0) return null;
 
   const closeMenu = () => { if (menu.current) menu.current.open = false; };
   const forDestination = (d: DestinationDto) => (reports ?? []).filter((r) => r.destinationId === d.id);
@@ -146,19 +162,47 @@ export function ExportMenu(p: Props) {
     const source: ExportSource = wanted.kind === 'new' && left ? { kind: 'existing', target: left } : wanted;
     const { payload, notes } = buildReportPayload(p.schema, p.visible, p.filters, p.sorts);
     setResult(null);
+    setCopied(null);
+    setData(null);
     if (source.kind === 'update' && !sheetUrl(source.report)) { setResult({ kind: 'error', text: UNRECOGNISED }); return; }
     setDialog((cur) => (cur ? { ...cur, error: undefined } : cur));
     void exporter.run({ martId: p.martId, destination, title, source, payload, notes, signal: ctx.signal }).catch(() => undefined);
     follow(exporter.inFlight(p.martId)!, { fromDialog, destination, openWhenDone: true });
   }
 
-  // An open menu stays a menu when the check drops its last report, so it does not vanish under the pointer.
-  const single = destinations.length === 1 && reports !== null && forDestination(destinations[0]!).length === 0 && !menuOpen;
-  const button = 'inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50';
+  async function copyPrompt(assistant: Assistant) {
+    closeMenu();
+    const prompt = buildAiPrompt({ projectId: ctx.projectId, martId: p.martId, martTitle: p.martTitle, schema: p.schema, visible: p.visible, filters: p.filters, sorts: p.sorts });
+    const home = gen.current;
+    const ok = await copyText(prompt);
+    if (gen.current !== home) return;
+    setResult(null);
+    setData(null);
+    setCopied({ assistant, prompt, ok });
+    // Neither way of copying worked (the sandbox may block both): the prompt is shown to be copied by hand.
+    if (!ok) setPromptOpen(true);
+  }
+
+  /** The loaded rows as tab-separated text, through the same clipboard path as the prompt. Nothing is queried and nothing is written. */
+  async function copyData() {
+    closeMenu();
+    if (!p.rows?.length || p.loading) return;
+    const fields = p.visible.flatMap((name) => p.schema.find((f) => f.name === name) ?? []);
+    const tsv = buildTsv(fields, p.rows);
+    const home = gen.current;
+    const ok = await copyText(tsv);
+    if (gen.current !== home) return;
+    setResult(null);
+    setCopied(null);
+    setData({ tsv, count: p.rows.length, more: p.hasMore, ok });
+    if (!ok) setDataOpen(true);
+  }
+
+  const noRows = !p.rows?.length;
+  const copyOff = noRows ? 'No rows to copy' : p.loading ? 'Rows are loading' : null;
   const label = busy ? <><Loader2 className="size-4 animate-spin" />Exporting…</> : <><ArchiveRestore className="size-4" />Export</>;
 
   async function openMenu(open: boolean) {
-    setMenuOpen(open);
     if (!open) { checks.current += 1; setVerified(false); return; }
     setOpenDest(null);
     // Reports OWOX no longer has are dropped before they are offered.
@@ -171,14 +215,27 @@ export function ExportMenu(p: Props) {
     <>
       {busy && <span role="status" className="text-xs text-muted-foreground">{busy}</span>}
       {!busy && result && <ExportResult result={result} onDismiss={() => setResult(null)} />}
-      {single ? (
-        <button type="button" disabled={!!busy} aria-label="Export to Google Sheets" onClick={() => start(destinations[0]!, { kind: 'new' }, exportTitle(p.martTitle))} className={button}>{label}</button>
-      ) : (
-        <details ref={menu} className="dm-filter dm-export" name="dm-filter" onToggle={(e) => openMenu(e.currentTarget.open)} {...(busy ? { 'aria-disabled': true } : {})}>
-          <summary aria-label="Export to Google Sheets" onClick={(e) => { if (busy) e.preventDefault(); }} onKeyDown={onSummaryKey}>{label}<ChevronDown size={14} /></summary>
+      {!busy && !result && !copied && data && <CopiedDataNote data={data} onShow={() => setDataOpen(true)} onDismiss={() => { setData(null); setDataOpen(false); }} />}
+      {!busy && !result && copied && <CopiedNote copied={copied} onShow={() => setPromptOpen(true)} onDismiss={() => { setCopied(null); setPromptOpen(false); }} />}
+      <details ref={menu} className="dm-filter dm-export" name="dm-filter" onToggle={(e) => openMenu(e.currentTarget.open)} {...(busy ? { 'aria-disabled': true } : {})}>
+          <summary onClick={(e) => { if (busy) e.preventDefault(); }} onKeyDown={onSummaryKey}>{label}<ChevronDown size={14} /></summary>
           <div className="dm-filter-menu dm-cascade" role="menu" data-level="1" onKeyDown={onMenuKey}>
+            <div role="group" aria-label="Copy" className="dm-export-copy">
+              {copyOff ? (
+                <Tooltip content={copyOff}>
+                  <span className="block" onMouseEnter={() => setOpenDest(null)}>
+                    <button type="button" role="menuitem" data-lvl="1" data-action="copy" disabled className="dm-export-item w-full"><ClipboardCopy size={16} /><span className="dm-filter-label">Copy to clipboard</span></button>
+                  </span>
+                </Tooltip>
+              ) : (
+                <button type="button" role="menuitem" data-lvl="1" data-action="copy" className="dm-export-item" onMouseEnter={() => setOpenDest(null)} onClick={() => void copyData()}>
+                  <ClipboardCopy size={16} />
+                  <span className="dm-filter-label">Copy to clipboard</span>
+                </button>
+              )}
+            </div>
             {destinations.map((d) => (
-              <div key={d.id} className="dm-cascade-row" onMouseEnter={() => openFlyout(d.id, false)}>
+              <div key={d.id} data-dest={d.id} className="dm-cascade-row" onMouseEnter={() => openFlyout(d.id, false)}>
                 <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={openDest === d.id} data-lvl="1" className="dm-export-item"
                   onClick={() => openFlyout(d.id, false)}>
                   <GoogleSheetsIcon size={16} />
@@ -188,9 +245,19 @@ export function ExportMenu(p: Props) {
                 {openDest === d.id && flyoutOf(d, forDestination(d))}
               </div>
             ))}
+            <div role="group" aria-label="AI" className="dm-export-ai">
+              <div className="dm-export-heading" aria-hidden>AI</div>
+              {([['Claude', ClaudeIcon], ['ChatGPT', ChatGptIcon]] as const).map(([name, Icon]) => (
+                <button key={name} type="button" role="menuitem" data-lvl="1" data-action={name} className="dm-export-item" onMouseEnter={() => setOpenDest(null)} onClick={() => void copyPrompt(name)}>
+                  <Icon size={16} />
+                  <span className="dm-filter-label">{name}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </details>
-      )}
+      {promptOpen && copied && <TextDialog name="Prompt" heading={`Prompt for ${copied.assistant}`} note={`Paste it into ${copied.assistant} with the OWOX Data Marts connector turned on. Copying writes nothing to OWOX.`} areaLabel="Prompt text" text={copied.prompt} onClose={() => { setPromptOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
+      {dataOpen && data && <TextDialog name="Copy the data" note="Select the text and copy it, then paste it into a sheet. Copying writes nothing to OWOX." areaLabel="Data text" text={data.tsv} onClose={() => { setDataOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {dialog && <NewReportDialog key={dialog.seq} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
     </>
   );
@@ -201,7 +268,7 @@ export function ExportMenu(p: Props) {
     if (e.key === 'ArrowDown' || e.key === 'Enter') {
       e.preventDefault();
       if (menu.current) menu.current.open = true;
-      menu.current?.querySelector<HTMLElement>('[data-lvl="1"]')?.focus();
+      menu.current?.querySelector<HTMLElement>('[data-lvl="1"]:not([disabled])')?.focus();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       closeMenu();
@@ -226,10 +293,10 @@ export function ExportMenu(p: Props) {
     else if (e.key === 'ArrowUp') move(at - 1);
     else if (e.key === 'Home') move(0);
     else if (e.key === 'End') move(items.length - 1);
-    else if (lvl === '1' && (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ')) {
+    else if (lvl === '1' && target.dataset.action === undefined && (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
       const row = target.closest('.dm-cascade-row')!;
-      const id = destinations[[...row.parentElement!.children].indexOf(row)]?.id;
+      const id = (row as HTMLElement).dataset.dest;
       if (id) openFlyout(id, true);
     } else if (lvl === '2' && e.key === 'ArrowLeft') {
       e.preventDefault();
@@ -262,6 +329,68 @@ export function ExportMenu(p: Props) {
       </div>
     );
   }
+}
+
+/** "Prompt copied. Paste it into Claude", with a way to read it. When the clipboard was out of reach the prompt is in the dialog instead. */
+function CopiedNote({ copied, onShow, onDismiss }: { copied: Copied; onShow: () => void; onDismiss: () => void }) {
+  return (
+    <span role="status" className="inline-flex max-w-96 items-center gap-1 text-xs text-muted-foreground">
+      {copied.ok ? <Check className="size-3.5 shrink-0" /> : <AlertTriangle className="size-3.5 shrink-0" />}
+      <span className="truncate">{copied.ok ? `Prompt copied. Paste it into ${copied.assistant}` : `Could not copy. Copy the prompt, then paste it into ${copied.assistant}`}</span>
+      <button type="button" onClick={onShow} className="shrink-0 underline">Show prompt</button>
+      <button type="button" aria-label="Dismiss" onClick={onDismiss} className="shrink-0 px-1">×</button>
+    </span>
+  );
+}
+
+function TextDialog({ name, heading = name, note, areaLabel, text, onClose }: { name: string; heading?: string; note: string; areaLabel: string; text: string; onClose: () => void }) {
+  const [again, setAgain] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const area = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [onClose]);
+  useEffect(() => { area.current?.focus(); }, []);
+  // Tab cycles textarea, Close, Copy and back: focus never leaves the dialog behind the backdrop.
+  const trap = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab') return;
+    const items = [...e.currentTarget.querySelectorAll<HTMLElement>('textarea, button')];
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const next = e.shiftKey ? (at <= 0 ? items.length - 1 : at - 1) : (at < 0 || at === items.length - 1 ? 0 : at + 1);
+    e.preventDefault();
+    items[next]?.focus();
+  };
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label={name} onKeyDown={trap} onClick={(e) => e.stopPropagation()} className="flex w-[34rem] max-w-[92vw] flex-col gap-3 rounded-lg border bg-background p-4 text-sm shadow-lg">
+        <h2 className="text-base font-semibold">{heading}</h2>
+        <p className="text-xs text-muted-foreground">{note}</p>
+        <textarea ref={area} readOnly aria-label={areaLabel} rows={13} value={text} onFocus={(e) => e.currentTarget.select()} className="dm-input w-full resize-none rounded-md border bg-background p-2 font-mono text-xs" />
+        <div className="flex items-center justify-end gap-2">
+          {again === 'failed' && <span role="alert" className="mr-auto text-xs text-destructive">Could not copy. Select the text and copy it by hand.</span>}
+          <button type="button" onClick={onClose} className="h-8 rounded-md border px-3 hover:bg-accent">Close</button>
+          <button type="button" onClick={async () => { const ok = await copyText(text); setAgain(ok ? 'copied' : 'failed'); if (!ok) { area.current?.focus(); area.current?.select(); } }} className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-3 text-primary-foreground">
+            {again === 'copied' ? <><Check className="size-4" />Copied</> : 'Copy'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** "Copied N rows", or what is left to do when the clipboard was out of reach. */
+function CopiedDataNote({ data, onShow, onDismiss }: { data: CopiedData; onShow: () => void; onDismiss: () => void }) {
+  const rows = `${data.count} ${data.count === 1 ? 'row' : 'rows'}`;
+  return (
+    <span role="status" className="inline-flex max-w-96 items-center gap-1 text-xs text-muted-foreground">
+      {data.ok ? <Check className="size-3.5 shrink-0" /> : <AlertTriangle className="size-3.5 shrink-0" />}
+      <span className="truncate">{!data.ok ? 'Could not copy. Copy the data by hand' : data.more ? `Copied the first ${rows}. Load more to copy more.` : `Copied ${rows}`}</span>
+      {!data.ok && <button type="button" onClick={onShow} className="shrink-0 underline">Show data</button>}
+      <button type="button" aria-label="Dismiss" onClick={onDismiss} className="shrink-0 px-1">×</button>
+    </span>
+  );
 }
 
 function ExportResult({ result, onDismiss }: { result: Result; onDismiss: () => void }) {

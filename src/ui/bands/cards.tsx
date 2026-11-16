@@ -115,6 +115,7 @@ export function MartCard({
   quality,
   freshness,
   selected,
+  joined = false,
   lit,
   aside = false,
   transition,
@@ -130,6 +131,8 @@ export function MartCard({
   /** When the data was last updated (ISO), or null when unknown. */
   freshness: string | null;
   selected: boolean;
+  /** A joined data mart of the selected one: its fields are columns of the main grid. */
+  joined?: boolean;
   lit: boolean;
   /** Lit by a card other than the pinned one: drawn at half strength. */
   aside?: boolean;
@@ -154,14 +157,15 @@ export function MartCard({
       id={martElementId(mart.id)}
       data-node
       data-tone={dqCardTone(quality)}
-      aria-pressed={selected}
-      className={cardClass(lit, aside, [mart.accessible ? '' : 'dm-noaccess', transition?.className ?? ''].filter(Boolean).join(' '))}
+      aria-pressed={selected || joined}
+      className={cardClass(lit, aside, [mart.accessible ? '' : 'dm-noaccess', joined && !selected ? 'dm-joined' : '', transition?.className ?? ''].filter(Boolean).join(' '))}
       {...(transition?.leaving ? { 'data-leaving': '' } : {})}
       {...selectable(onSelect)}
     >
       <div className="dm-node-head">
         {/* Only an icon someone picked: the default box on every card would say nothing. */}
         <PickedIcon icon={mart.icon} wrap="dm-logo" />
+        {joined && !selected && <Tooltip content="Joined to the selected data mart: some of its fields are columns of the grid"><span className="dm-joined-mark" role="note" aria-label="Joined">+</span></Tooltip>}
         <Tooltip content={mart.title}><span className="dm-node-title">{mart.title}</span></Tooltip>
         <Tooltip content="Open this data mart">
           <button

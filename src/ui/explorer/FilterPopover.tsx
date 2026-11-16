@@ -6,8 +6,9 @@ import { columnTitle } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import type { RelativeDatePreset } from '../../sdk/types';
 import { Popover } from '../Popover';
+import { Select } from '../Select';
 
-const input = 'h-8 w-full rounded-md border bg-background px-2 text-sm';
+const input = 'dm-input h-8 w-full rounded-md border bg-background px-2 text-sm';
 
 type EditorProps = { field: Field; value: ColumnFilter | undefined; onApply: (f: ColumnFilter) => void; onClear: () => void };
 
@@ -38,7 +39,7 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
   const isDay = field.type.trim().toUpperCase() === 'DATE';
   return (
     <div className="flex flex-col gap-0.5" role="group" aria-label={`Filter ${columnTitle(field)}`}>
-      <div className="dm-popover-title px-2 text-xs font-medium text-muted-foreground">{columnTitle(field)}</div>
+      <div className="dm-popover-title px-2 text-xs font-medium text-muted-foreground">Filter</div>
       <div className="flex flex-col gap-0.5" role="group" aria-label="Date presets">
         {DATE_PRESETS.map((pr) => {
           const active = isPreset(current, pr.rule);
@@ -76,10 +77,10 @@ function OperatorForm({ field, value, onApply, onClear, startOp }: EditorProps &
 
   return (
     <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); if (isComplete(draft, field)) onApply(draft); }}>
-      <div className="dm-popover-title text-xs font-medium text-muted-foreground">{columnTitle(field)}</div>
-      <select aria-label="Operator" className={input} value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); }}>
+      <div className="dm-popover-title text-xs font-medium text-muted-foreground">Filter</div>
+      <Select aria-label="Operator" value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); }}>
         {ops.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-      </select>
+      </Select>
       {(def.value === 'text' || def.value === 'number') && (
         <input aria-label="Value" className={input} type={def.value === 'number' ? 'number' : 'text'} value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />
       )}
@@ -94,12 +95,12 @@ function OperatorForm({ field, value, onApply, onClear, startOp }: EditorProps &
       )}
       {def.value === 'relative' && (
         <div className="flex gap-2">
-          <select aria-label="Period" className={input} value={rel.kind} onChange={(e) => {
+          <Select aria-label="Period" value={rel.kind} onChange={(e) => {
             const p = RELATIVE_PRESETS.find((x) => x.kind === e.target.value)!;
             setVal((p.needsN ? { kind: p.kind, n: 7 } : { kind: p.kind }) as RelativeDatePreset);
           }}>
             {RELATIVE_PRESETS.map((p) => <option key={p.kind} value={p.kind}>{p.label}</option>)}
-          </select>
+          </Select>
           {'n' in rel && <input aria-label="N" className={`${input} w-20`} type="number" min={1} max={RELATIVE_MAX_N} value={Number.isNaN(rel.n) ? '' : rel.n} onChange={(e) => setVal({ ...rel, n: e.target.valueAsNumber } as RelativeDatePreset)} />}
         </div>
       )}

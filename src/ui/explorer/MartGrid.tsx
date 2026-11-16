@@ -2,10 +2,11 @@ import { columnVisibilityFeature, flexRender, tableFeatures, useTable, type Colu
 import { ArrowDown, ArrowUp, Box, Info, RefreshCw, RotateCcw } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { PAGE_SIZE } from '../../config';
-import type { JoinedSource } from '../../api/blendable';
+import { withJoined, type JoinedSource } from '../../api/blendable';
 import { columnTitle, fieldTitle } from '../../model/fieldLabel';
 import type { ColumnFilter } from '../../filters/build';
 import { cycleSort, defaultSort, sortsOnColumns, type SortKey } from '../../model/sort';
+import { joinedMartIds } from '../../state/join-plan';
 import type { Model, Schema } from '../../model/types';
 import { primaryKeys } from '../../records/relationships';
 import type { Row } from '../../sdk/types';
@@ -36,19 +37,16 @@ function useSchema(martId: string, version: number) {
 export type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
 
 /** The grid for one mart: loads the schema, then reads rows. Key it by mart id. */
-export function MartGrid({ martId, model, seed, onChange, onRows }: { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
+export function MartGrid({ martId, model, seed, onChange, onRows, paused = false }: { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void; /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
   const [schemaVersion, setSchemaVersion] = useState(0);
   const { schema, error } = useSchema(martId, schemaVersion);
   if (error) return <div className="p-4"><ErrorBox error={error} onRetry={() => setSchemaVersion((v) => v + 1)} /></div>;
   if (!schema) return <Skeleton rows={8} />;
-  return <SeededGrid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onRows={onRows} />;
+  return <SeededGrid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onRows={onRows} paused={paused} />;
 }
 
 /** A saved-columns read slower than this is given up on for this mount. */
 export const SAVED_COLUMNS_WAIT_MS = 3000;
-
-/** The schema a grid reads and filters over: the mart's own fields, then the fields of the joined marts it has loaded. */
-const withJoined = (schema: Schema, sources: JoinedSource[]): Schema => (sources.length ? [...schema, ...sources.flatMap((s) => s.fields)] : schema);
 
 /** The names in `saved` the column picker still offers, in the saved order. */
 const offered = (schema: Schema, saved: string[]) => saved.filter((c) => schema.some((f) => f.name === c));
@@ -65,7 +63,7 @@ type Initial = { columns: string[]; cleaned: string[] | null; sources: JoinedSou
  * A column saved from a joined mart waits for the joined marts to be read (inside the same 3 s): a read that
  * fails leaves those columns out of this visit without erasing them from what is saved.
  */
-function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
+function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void; paused: boolean }) {
   const { martId, schema, seed } = props;
   const { columnStore, blendable } = useServices();
   const [initial, setInitial] = useState<Initial | null>(() => {
@@ -93,7 +91,9 @@ function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed:
       const kept = offered(withJoined(schema, sources ?? []), saved);
       // Names a failed read could not check are left in what is saved; only names the schema really lacks are cleaned out.
       const dropped = !failed && saved.length > kept.length;
-      setInitial({ columns: kept.length ? kept : defaultColumns(schema), cleaned: dropped ? kept : null, sources });
+      // A session or link list is not a saved one: only a list read from the store is cleaned back into it.
+      setInitial({ columns: kept.length ? kept : defaultColumns(schema),
+      cleaned: dropped && !own ? kept : null, sources });
     })();
     return () => { live = false; clearTimeout(timer); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -135,19 +135,29 @@ function SortTitle({ field }: { field: Schema[number] }) {
   return <OverflowTip text={label} extra={field.joined ? undefined : fieldTitle(field)} measure={(el) => el.querySelector('.truncate')}>{button}</OverflowTip>;
 }
 
+const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+const stable = (g: GridState) => JSON.stringify([g.columns, Object.entries(g.filters).sort(([a], [b]) => a.localeCompare(b)), g.sorts, g.limit]);
+const sameGrid = (a: GridState, b: GridState) => stable(a) === stable(b);
+
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
-function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, onChange, onRows }: { martId: string; initialColumns: string[]; initialSources: JoinedSource[] | null; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
+function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, onChange, onRows, paused }: { paused: boolean; martId: string; initialColumns: string[]; initialSources: JoinedSource[] | null; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
   const { columnStore, blendable } = useServices();
   const slot = useContext(BandToolsSlot);
-  // The joined marts are read when the Columns picker first opens (or when a saved column named one), never otherwise.
+  // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
   const [sources, setSources] = useState<JoinedSource[]>(initialSources ?? []);
-  const [joinedState, setJoinedState] = useState<JoinedState>(initialSources ? 'ready' : 'idle');
+  const [joinedState, setJoinedState] = useState<JoinedState>(initialSources ? 'ready' : 'loading');
   const loadJoined = useCallback(() => {
     if (joinedState === 'ready' || joinedState === 'loading') return;
     setJoinedState('loading');
     blendable.get(martId).then((s) => { setSources(s); setJoinedState('ready'); }, () => setJoinedState('failed'));
   }, [blendable, martId, joinedState]);
+  useEffect(() => {
+    if (initialSources) return;
+    let live = true;
+    blendable.get(martId).then((s) => { if (live) { setSources(s); setJoinedState('ready'); } }, () => { if (live) setJoinedState('failed'); });
+    return () => { live = false; };
+  }, [blendable, martId, initialSources]);
   const schema = useMemo(() => withJoined(native, sources), [native, sources]);
   const [{ modelVersion }, dispatch] = useStore();
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
@@ -176,11 +186,34 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     }
   }
 
+  // The page changes this grid too (a card click adds or takes out a joined mart's columns, Undo puts them back): what the store
+  // holds is adopted when it is not what the grid already shows. The grid's own changes reach the store through the effect below.
+  const [seenSaved, setSeenSaved] = useState(seed.saved);
+  // Columns adopted from the page (Undo, Redo, a card click) are the member's columns now: they are saved like a picker change.
+  const [adopted, setAdopted] = useState<string[] | null>(null);
+  if (seed.saved !== seenSaved) {
+    setSeenSaved(seed.saved);
+    const saved = seed.saved;
+    if (saved && saved.columns.length > 0 && !sameGrid(saved, { columns: visible, filters: { ...parked, ...filters }, sorts: own, limit })) {
+      setVisible(saved.columns);
+      if (!sameList(saved.columns, visible)) setAdopted(saved.columns);
+      setFilters(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => offeredNow(k))));
+      setParked(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => !offeredNow(k))));
+      setOwn(saved.sorts);
+      setLimit(saved.limit);
+    }
+  }
+
+  useEffect(() => { if (adopted) columnStore.save(martId, adopted); }, [adopted, columnStore, martId]);
+
   useEffect(() => { onChange({ columns: visible, filters: { ...parked, ...filters }, sorts: own, limit }); }, [visible, filters, parked, own, limit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pks = primaryKeys(native);
   const query = useMemo(() => buildRowQuery(schema, visible, Object.values(filters), limit, sorts), [schema, visible, filters, sorts, limit]);
-  const { rows, loading, error, hasMore } = useMartRows(martId, query, version);
+  // A folded band reads nothing: the query it last read stays, and a change made meanwhile is read once it opens.
+  const [asked, setAsked] = useState(query);
+  if (!paused && asked !== query) setAsked(query);
+  const { rows, loading, error, hasMore } = useMartRows(martId, asked, version);
   // The fields on screen, kept as the same array until one of them changes: a joined mart arriving later (the picker reads it
   // when it opens) must not rebuild the headers, which would close a filter popover the reader has open.
   const [onScreen, setOnScreen] = useState<Schema>([]);
@@ -216,7 +249,13 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const toggleSort = useCallback((field: string) => { setOwn((cur) => (cur === null ? [{ field, direction: 'asc' }] : cycleSort(cur, field))); setLimit(PAGE_SIZE); }, []);
   const env = useMemo(() => ({ sorts, toggleSort }), [sorts, toggleSort]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
-  const changeColumns = (cols: string[]) => { setVisible(cols); setOwn((cur) => { const kept = cur && sortsOnColumns(cur, cols); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; }); columnStore.save(martId, cols); };
+  const changeColumns = (cols: string[]) => {
+    setVisible(cols);
+    setOwn((cur) => { const kept = cur && sortsOnColumns(cur, cols); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
+    // A joined mart whose last field was unticked is remembered as empty: it comes back with its first text field.
+    const left = joinedMartIds(visible, sources).filter((m) => !joinedMartIds(cols, sources).includes(m));
+    columnStore.save(martId, cols, left.length ? Object.fromEntries(left.map((m) => [m, [] as string[]])) : undefined);
+  };
   const byName = useMemo(() => new Map(schema.map((f) => [f.name, f])), [schema]);
   const table = useTable({ features, data: rows ?? [], columns });
   const rowsLabel = rows ? `${rows.length}${hasMore ? '+' : ''}` : null;
@@ -231,7 +270,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
         <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { setFilters({}); setParked({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         <ColumnPicker schema={native} sources={sources} joinedState={joinedState} visible={visible} model={model} onChange={changeColumns} onOpen={loadJoined} />
-        <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={visible} filters={Object.values(filters)} sorts={sorts} />
+        <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={visible} filters={Object.values(filters)} sorts={sorts} rows={rows} hasMore={hasMore} loading={loading} />
       </BandTools>
       {pks.length === 0 && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
@@ -240,9 +279,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
           <thead className="sticky top-0 z-10 bg-card">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                {hg.headers.map((h) => <th key={h.id} aria-sort={sortOf(sorts, h.column.id)} className={`dm-th ${maxWidthOf(byName.get(h.column.id)!)} overflow-hidden border-b px-3 py-2 text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
+                {hg.headers.map((h) => <th key={h.id} aria-sort={sortOf(sorts, h.column.id)} className={`dm-th ${maxWidthOf(byName.get(h.column.id)!)} overflow-hidden px-3 py-2 text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
                 {/* Takes the width the columns leave over, so the line under the header runs the whole card. */}
-                <th aria-hidden className="w-full border-b p-0" />
+                <th aria-hidden className="dm-th w-full p-0" />
               </tr>
             ))}
           </thead>

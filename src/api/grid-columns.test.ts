@@ -82,3 +82,30 @@ test('a stored null document counts as absent and is cached', async () => {
   expect(await store.load('m')).toBeNull();
   expect(get).toHaveBeenCalledTimes(1);
 });
+
+test('picks are read with the doc, merged by a later save, and written back without erasing the others', async () => {
+  vi.useFakeTimers();
+  const get = vi.fn(async () => ({ document: { columns: ['a'], at: 'x', picks: { customers: ['customers__city'], stores: ['stores__city'] } } }));
+  const put = vi.fn(async () => ({}));
+  const store = createColumnStore(ctxWith({ get, put }));
+  expect(await store.loadPicks('m')).toEqual({ customers: ['customers__city'], stores: ['stores__city'] });
+  store.save('m', ['a', 'customers__email'], { customers: ['customers__email'] });
+  expect(store.picks('m')).toEqual({ customers: ['customers__email'], stores: ['stores__city'] });
+  await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
+  expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'customers__email'], at: expect.any(String), picks: { customers: ['customers__email'], stores: ['stores__city'] } });
+});
+
+test('a plain column save keeps the picks that were stored and never read', async () => {
+  vi.useFakeTimers();
+  const get = vi.fn(async () => ({ document: { columns: ['a'], at: 'x', picks: { customers: ['customers__city'] } } }));
+  const put = vi.fn(async () => ({}));
+  const store = createColumnStore(ctxWith({ get, put }));
+  store.save('m', ['a', 'b']);
+  await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
+  expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'b'], at: expect.any(String), picks: { customers: ['customers__city'] } });
+});
+
+test('a failed read gives no picks', async () => {
+  const store = createColumnStore(ctxWith({ get: vi.fn().mockRejectedValue(new Error('down')), put: vi.fn() }));
+  expect(await store.loadPicks('m')).toEqual({});
+});

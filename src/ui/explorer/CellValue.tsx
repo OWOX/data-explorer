@@ -1,12 +1,8 @@
 import type { Row } from '../../sdk/types';
-import { formatTemporal } from '../format';
+import { formatTemporal, formatValue } from '../format';
 import { Tooltip, OverflowTip } from '../Tooltip';
 
-export function formatValue(v: unknown): string {
-  if (v === null || v === undefined) return '';
-  if (typeof v === 'object') return JSON.stringify(v);
-  return String(v);
-}
+export { formatValue };
 
 /**
  * One clipped line of a field's value, exactly as stored (never a looked-up title, never a link).

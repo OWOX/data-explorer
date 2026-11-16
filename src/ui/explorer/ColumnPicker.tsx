@@ -3,7 +3,6 @@ import { useState } from 'react';
 import type { JoinedSource } from '../../api/blendable';
 import type { Field, Model, Schema } from '../../model/types';
 import { Popover } from '../Popover';
-import { Tooltip } from '../Tooltip';
 import { PickedIcon } from '../bands/picked';
 import { FieldLabel } from './FieldLabel';
 
@@ -27,7 +26,9 @@ export function ColumnPicker({ schema, sources, joinedState, visible, model, onC
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (name: string) => {
     const next = set.has(name) ? visible.filter((c) => c !== name) : [...visible, name];
-    onChange(order.filter((n) => next.includes(n)));
+    // The mart's own fields keep the schema's order; joined ones keep the order they were added in, a new one last.
+    const own = new Set(schema.map((f) => f.name));
+    onChange([...schema.map((f) => f.name).filter((n) => next.includes(n)), ...next.filter((n) => !own.has(n) && order.includes(n))]);
   };
   const row = (f: Field) => (
     <label key={f.name} className="dm-reveal-host flex items-center gap-2 text-sm">
@@ -56,11 +57,6 @@ export function ColumnPicker({ schema, sources, joinedState, visible, model, onC
                 <ChevronRight className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden />
                 <PickedIcon icon={mart?.icon} fallback={Box} size={14} />
                 <span className="min-w-0 flex-1 truncate">{s.label}</span>
-                {s.mayRepeatRows && (
-                  <Tooltip content="Rows of this data mart can repeat when fields of this joined data mart are added: one row here can match several there.">
-                    <span className="shrink-0 text-xs font-normal text-muted-foreground">May repeat rows</span>
-                  </Tooltip>
-                )}
                 <span className="dm-badge tabular-nums" aria-label={`${ticked} of ${s.fields.length} ticked`}>{ticked}/{s.fields.length}</span>
               </button>
               {expanded && <div role="group" aria-label={s.label} className="flex flex-col gap-1 pl-5">{s.fields.map(row)}</div>}

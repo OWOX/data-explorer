@@ -51,7 +51,7 @@ export function Band({
         }}
       >
         <span className="dm-band-icon">{icon}</span>
-        <h2 className="dm-band-title">{title}</h2>
+        <h2 className="dm-band-title" title={title}>{title}</h2>
         {total !== undefined && <span className="dm-badge dm-band-count">{typeof total === 'number' ? num(total) : total}</span>}
         <Hint text={hint} label={`About ${title}`} />
         {afterHint}

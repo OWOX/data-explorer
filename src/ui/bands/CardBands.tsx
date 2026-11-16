@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DqSummary, Mart, Model, Source } from '../../model/types';
 import { storageOptions } from '../../graph/storages';
 import type { VisibleResult } from '../../graph/visible';
-import { sourceOfModel, useStore } from '../../state/store';
+import { useStore } from '../../state/store';
 import { storageMark } from '../storage-icons';
 import { Band } from './Band';
 import { MultiSelect } from './MultiSelect';
@@ -14,6 +14,7 @@ import { SearchBox } from './SearchBox';
 import { PointerTip } from '../Tooltip';
 import { MartCard, SourceCard, martElementId, sourceElementId, type CountState } from './cards';
 import { useCardTransitions } from './transitions';
+import { useCardClick } from './useCardClick';
 import { litIds, useWires, type Wire } from './wires';
 
 const martId = (m: Mart) => m.id;
@@ -32,6 +33,7 @@ export function CardBands({
   model,
   visible,
   storageIds,
+  joined,
   counts,
   dq,
   foldedSources,
@@ -48,6 +50,8 @@ export function CardBands({
   visible: VisibleResult;
   /** The storages the Data Marts band is narrowed to; null is all of them. */
   storageIds: string[] | null;
+  /** The joined data marts selected with the main one, in the order they were added. */
+  joined: string[];
   counts: Map<string, CountState>;
   dq: Map<string, DqSummary>;
   foldedSources: boolean;
@@ -65,7 +69,7 @@ export function CardBands({
   const canvas = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [wireTip, setWireTip] = useState<{ text: string; x: number; y: number } | null>(null);
-  const sourceOf = useMemo(() => sourceOfModel(model), [model]);
+  const click = useCardClick(model);
 
   // Escape lets go of the hovered card; what is selected only changes by clicks and Back.
   useEffect(() => {
@@ -100,7 +104,7 @@ export function CardBands({
     return null;
   }, [selection.martId, selection.sourceKey, idsKey, model.sources]);
 
-  useWires(canvas, wires, { pinned, hovered }, useMemo(() => revisionOf(idsKey), [idsKey]));
+  useWires(canvas, wires, { pinned, hovered, also: joined }, useMemo(() => revisionOf(idsKey), [idsKey]));
 
   const { lit, aside } = useMemo(() => {
     const pinnedSet = pinned ? litIds(wires, pinned) : null;
@@ -184,9 +188,10 @@ export function CardBands({
               quality={dq.get(id)}
               freshness={mart.dataLastUpdatedAt}
               selected={selection.martId === id}
+              joined={joined.includes(id)}
               lit={lit.has(el)}
               aside={aside.has(el)}
-              onSelect={() => dispatch({ type: 'selectMart', id, sourceOf })}
+              onSelect={() => void click(id)}
               onOpenApp={() => onOpenApp(id)}
               onRetryCount={() => onRetryCount(id)}
               onNeedCount={() => onRequestCount(id)}

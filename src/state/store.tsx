@@ -18,7 +18,12 @@ export type Selection = {
   record: { martId: string; pk: Record<string, unknown> } | null;
   /** Filters a followed link asks the Data band to open with. */
   filters?: ColumnFilter[];
+  /** The member took the last selected data mart away on purpose: nothing is selected, and the first load's pick must not come back. */
+  cleared?: boolean;
 };
+
+/** A selection Undo or Redo returns to, with the grids the step also changed (null: the mart had none). */
+export type Entry = Selection & { grids?: Record<string, GridState | null> };
 
 /** What the Data band's grid keeps per mart for the session. */
 export type GridState = { columns: string[]; filters: Record<string, ColumnFilter>; /** null: the member set none, so the grid opens in the default order (newest date first); a list, even an empty one, is their own. */ sorts: SortKey[] | null; limit: number };
@@ -26,9 +31,9 @@ export type GridState = { columns: string[]; filters: Record<string, ColumnFilte
 export type State = {
   selection: Selection;
   /** Selections Undo returns to, oldest first. */
-  history: Selection[];
+  history: Entry[];
   /** Selections Redo re-applies, the one undone last at the end; any new navigation empties it. */
-  future: Selection[];
+  future: Entry[];
   search: string;
   /** The contexts selected as badges in the Data Marts band; none is no filter. */
   contextIds: string[];
@@ -55,7 +60,11 @@ export type Action =
   | { type: 'toggleContext'; id: string }
   /** Narrow the Data Marts band to these storages (null: all). Not a selection change, so no history entry. */
   | { type: 'setStorages'; ids: string[] | null }
+  /** The main data mart, the joined ones (their columns in the main grid) and the grids they leave behind change in one step Undo covers. */
+  | { type: 'setMarts'; selection: Selection; grids: Record<string, GridState> }
   | { type: 'saveGrid'; martId: string; grid: GridState }
+  /** A view link opens: everything it carries is set at once. No history entry, so Undo has nothing to undo. */
+  | { type: 'applyView'; selection: Selection; grid: GridState | null; search: string; contextIds: string[]; storageIds: string[] | null }
   | { type: 'refreshModel' };
 
 export const HISTORY_LIMIT = 20;
@@ -75,6 +84,13 @@ function move(state: State, next: Selection): State {
   if (JSON.stringify(next) === JSON.stringify(state.selection)) return state;
   return { ...state, selection: next, history: [...state.history, state.selection].slice(-HISTORY_LIMIT), future: [] };
 }
+
+const applyGrids = (grids: Record<string, GridState>, put: Record<string, GridState | null>) => {
+  const next = { ...grids };
+  for (const [id, g] of Object.entries(put)) { if (g) next[id] = g; else delete next[id]; }
+  return next;
+};
+const valuesOf = (grids: Record<string, GridState>, keys: string[]): Record<string, GridState | null> => Object.fromEntries(keys.map((k) => [k, grids[k] ?? null]));
 
 export function reducer(state: State, a: Action): State {
   const cur = state.selection;
@@ -103,16 +119,22 @@ export function reducer(state: State, a: Action): State {
       // Entries naming a mart or source a refresh removed are skipped.
       const history = [...state.history];
       while (history.length) {
-        const previous = history.pop()!;
-        if (!a.known || a.known(previous)) return { ...state, selection: previous, history, future: [...state.future, cur].slice(-HISTORY_LIMIT) };
+        const { grids: put, ...previous } = history.pop()!;
+        if (!a.known || a.known(previous)) {
+          const now = put ? valuesOf(state.grids, Object.keys(put)) : undefined;
+          return { ...state, selection: previous, grids: put ? applyGrids(state.grids, put) : state.grids, history, future: [...state.future, now ? { ...cur, grids: now } : cur].slice(-HISTORY_LIMIT) };
+        }
       }
       return history.length === state.history.length ? state : { ...state, history };
     }
     case 'redo': {
       const future = [...state.future];
       while (future.length) {
-        const next = future.pop()!;
-        if (!a.known || a.known(next)) return { ...state, selection: next, future, history: [...state.history, cur].slice(-HISTORY_LIMIT) };
+        const { grids: put, ...next } = future.pop()!;
+        if (!a.known || a.known(next)) {
+          const was = put ? valuesOf(state.grids, Object.keys(put)) : undefined;
+          return { ...state, selection: next, grids: put ? applyGrids(state.grids, put) : state.grids, future, history: [...state.history, was ? { ...cur, grids: was } : cur].slice(-HISTORY_LIMIT) };
+        }
       }
       return future.length === state.future.length ? state : { ...state, future };
     }
@@ -124,7 +146,20 @@ export function reducer(state: State, a: Action): State {
       return { ...state, contextIds: has ? state.contextIds.filter((c) => c !== a.id) : [...state.contextIds, a.id] };
     }
     case 'setStorages': return { ...state, storageIds: a.ids };
+    case 'setMarts': {
+      const before = valuesOf(state.grids, Object.keys(a.grids));
+      if (JSON.stringify(a.selection) === JSON.stringify(cur) && JSON.stringify(before) === JSON.stringify(a.grids)) return state;
+      return { ...state, selection: a.selection, grids: { ...state.grids, ...a.grids }, history: [...state.history, { ...cur, grids: before }].slice(-HISTORY_LIMIT), future: [] };
+    }
     case 'saveGrid': return { ...state, grids: { ...state.grids, [a.martId]: a.grid } };
+    case 'applyView': return {
+      ...state,
+      selection: a.selection,
+      search: a.search,
+      contextIds: a.contextIds,
+      storageIds: a.storageIds,
+      grids: a.grid && a.selection.martId ? { ...state.grids, [a.selection.martId]: a.grid } : state.grids,
+    };
     case 'refreshModel': return { ...state, modelVersion: state.modelVersion + 1 };
   }
 }

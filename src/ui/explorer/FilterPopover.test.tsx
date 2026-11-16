@@ -131,3 +131,15 @@ test('the panel is a group of buttons, not a menu; Is blank shows its active sta
   expect(screen.getByRole('button', { name: 'Is blank' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getByRole('button', { name: 'Is not blank' })).toHaveAttribute('aria-pressed', 'false');
 });
+
+test('the title row says "Filter", not the field name, and a select draws our own chevron over a native select with no arrow', () => {
+  const { container, unmount } = render(<FilterEditor field={num} value={undefined} onApply={vi.fn()} onClear={vi.fn()} />);
+  const title = container.querySelector('.dm-popover-title')!;
+  expect(title).toHaveTextContent(/^Filter$/);
+  const select = screen.getByLabelText('Operator');
+  expect(select.className).toContain('appearance-none');
+  expect(select.parentElement!.querySelector('svg')).not.toBeNull();
+  unmount();
+  const day = render(<FilterEditor field={ts} value={undefined} onApply={vi.fn()} onClear={vi.fn()} />);
+  expect(day.container.querySelector('.dm-popover-title')).toHaveTextContent(/^Filter$/);
+});

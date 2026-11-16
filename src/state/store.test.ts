@@ -194,3 +194,67 @@ describe('redo', () => {
     expect(st.grids.c).toBe(grid);
   });
 });
+
+describe('setMarts: the main mart, its joined marts and their grid state change together', () => {
+  const grid = (columns: string[]) => ({ columns, filters: {}, sorts: null, limit: 200 });
+  const joined = (from: State) => reducer(from, { type: 'setMarts', selection: sel({ martId: 'a' }), grids: { a: grid(['id', 'b__x']) } });
+
+  test('it sets the selection and the grid in one history step', () => {
+    const start = s({ selection: sel({ martId: 'a' }), grids: { a: grid(['id']) } });
+    const st = joined(start);
+    expect(st.grids.a!.columns).toEqual(['id', 'b__x']);
+    expect(st.history).toHaveLength(1);
+    expect(st.history[0]).toMatchObject({ grids: { a: grid(['id']) } });
+  });
+
+  test('an op that changes nothing adds no history', () => {
+    const start = s({ selection: sel({ martId: 'a' }), grids: { a: grid(['id', 'b__x']) } });
+    expect(joined(start)).toBe(start);
+  });
+
+  test('undo puts the grid back, redo applies it again; a mart that had no grid goes back to none', () => {
+    const start = s({ selection: sel({ martId: 'a' }) });
+    const st = joined(start);
+    const back = reducer(st, { type: 'undo' });
+    expect(back.grids.a).toBeUndefined();
+    expect(back.selection).toEqual(start.selection);
+    expect(back.future[0]).toMatchObject({ martId: 'a', grids: { a: grid(['id', 'b__x']) } });
+    const again = reducer(back, { type: 'redo' });
+    expect(again.grids.a!.columns).toEqual(['id', 'b__x']);
+    expect(again.selection).toEqual(sel({ martId: 'a' }));
+  });
+
+  test('promoting another mart to main restores both grids and the selection on undo', () => {
+    const start = s({ selection: sel({ martId: 'a' }), grids: { a: grid(['id', 'b__x']) } });
+    const st = reducer(start, { type: 'setMarts', selection: sel({ martId: 'b' }), grids: { b: grid(['id']) } });
+    expect(st.selection.martId).toBe('b');
+    const back = reducer(st, { type: 'undo' });
+    expect(back.selection.martId).toBe('a');
+    expect(back.grids.b).toBeUndefined();
+    expect(back.grids.a!.columns).toEqual(['id', 'b__x']);
+  });
+});
+
+test('applyView sets everything at once, with no history entry', () => {
+  const grid = { columns: ['id'], filters: {}, sorts: null, limit: 200 };
+  const other = { columns: ['x'], filters: {}, sorts: null, limit: 200 };
+  const start = s({ selection: sel({ martId: 'a' }), history: [sel({ martId: 'd' })], future: [sel({ martId: 'c' })], grids: { z: other } });
+  const next = reducer(start, { type: 'applyView', selection: sel({ sourceKey: 'Shopify', martId: 'b' }), grid, search: 'q', contextIds: ['c1'], storageIds: ['s1'] });
+  expect(next.selection).toEqual(sel({ sourceKey: 'Shopify', martId: 'b' }));
+  expect(next.search).toBe('q');
+  expect(next.contextIds).toEqual(['c1']);
+  expect(next.storageIds).toEqual(['s1']);
+  expect(next.grids).toEqual({ z: other, b: grid });
+  expect(next.history).toBe(start.history);
+  expect(next.future).toBe(start.future);
+});
+
+test('applyView sets no grid without one or without a main mart', () => {
+  const grid = { columns: ['id'], filters: {}, sorts: null, limit: 200 };
+  const a = { type: 'applyView' as const, search: '', contextIds: [], storageIds: null };
+  expect(reducer(s(), { ...a, selection: sel({ martId: 'b' }), grid: null }).grids).toEqual({});
+  const none = reducer(s(), { ...a, selection: sel({ sourceKey: 'Shopify' }), grid });
+  expect(none.grids).toEqual({});
+  expect(none.selection).toEqual(sel({ sourceKey: 'Shopify' }));
+  expect(reducer(s(), { ...a, selection: sel(), grid: null }).selection).toEqual(sel());
+});
