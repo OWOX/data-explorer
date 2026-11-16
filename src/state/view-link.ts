@@ -37,6 +37,7 @@ type ViewLinkV1 = {
 };
 
 const ROUTE_PATH = '/v';
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 const toBase64Url = (bytes: Uint8Array): string => {
   let bin = '';
@@ -50,12 +51,30 @@ const fromBase64Url = (s: string): Uint8Array => {
   return Uint8Array.from(bin, (c) => c.charCodeAt(0));
 };
 
-const pipe = async (input: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> => {
+/** Inflated output past this is refused, so a small link can't expand into memory. */
+export const MAX_DECODED_BYTES = 64 * 1024;
+
+class TooBig extends Error {}
+
+const pipe = async (input: Uint8Array, stream: CompressionStream | DecompressionStream, limit = Infinity): Promise<Uint8Array> => {
   const writer = stream.writable.getWriter();
   // Errors surface on the read side; a failed write would otherwise be an unhandled rejection.
   writer.write(input as BufferSource).catch(() => {});
   writer.close().catch(() => {});
-  return new Uint8Array(await new Response(stream.readable).arrayBuffer());
+  const reader = stream.readable.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > limit) { reader.cancel().catch(() => {}); throw new TooBig(); }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) { out.set(c, at); at += c.length; }
+  return out;
 };
 
 /** A joined column is `<joinPath>__<field>`, split at the last `__`; other names stay whole. */
@@ -111,7 +130,7 @@ export async function decodeViewLink(route: string | undefined): Promise<Decoded
   if (s === null) return 'not-a-link';
   if (route!.length > MAX_ROUTE_LENGTH) return 'unreadable';
   try {
-    const json = new TextDecoder('utf-8', { fatal: true }).decode(await pipe(fromBase64Url(s), new DecompressionStream('deflate-raw')));
+    const json = new TextDecoder('utf-8', { fatal: true }).decode(await pipe(fromBase64Url(s), new DecompressionStream('deflate-raw'), MAX_DECODED_BYTES));
     return shape(JSON.parse(json));
   } catch {
     return 'unreadable';
@@ -142,14 +161,15 @@ function shape(raw: unknown): DecodedView {
     if (!Array.isArray(g.c) || !Array.isArray(g.fl) || !(g.s === null || Array.isArray(g.s)) || typeof g.l !== 'number' || !Number.isFinite(g.l)) throw new Error('bad grid parts');
     const columns: string[] = [];
     for (const c of g.c) { const n = name(c); if (n === null) dropped++; else columns.push(n); }
-    const filters: Record<string, ColumnFilter> = {};
+    // Built as entries: a decoded key like __proto__ must never reach an object's prototype.
+    const filterEntries: [string, ColumnFilter][] = [];
     for (const e of g.fl) {
       const field = Array.isArray(e) && (e.length === 2 || e.length === 3) ? name(e[0]) : null;
-      if (field === null || typeof (e as unknown[])[1] !== 'string') { dropped++; continue; }
+      if (field === null || typeof (e as unknown[])[1] !== 'string' || UNSAFE_KEYS.has(field)) { dropped++; continue; }
       const entry: ColumnFilter = { field, op: (e as unknown[])[1] as OpId };
       const value = (e as unknown[])[2] as FilterValue | null | undefined;
       if (value !== undefined && value !== null) entry.value = value;
-      filters[field] = entry;
+      filterEntries.push([field, entry]);
     }
     let sorts: SortKey[] | null = null;
     if (g.s) {
@@ -159,7 +179,7 @@ function shape(raw: unknown): DecodedView {
         if (field === null) dropped++; else sorts.push({ field, direction: (e as unknown[])[1] === 1 ? 'asc' : 'desc' });
       }
     }
-    grid = { columns, filters, sorts, limit: g.l };
+    grid = { columns, filters: Object.fromEntries(filterEntries),  sorts, limit: g.l };
   }
 
   return {

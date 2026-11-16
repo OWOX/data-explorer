@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeViewLink, encodeViewLink, MAX_ROUTE_LENGTH, type DecodedView } from './view-link';
+import { decodeViewLink, encodeViewLink, MAX_DECODED_BYTES, MAX_ROUTE_LENGTH, type DecodedView } from './view-link';
 
 const folded = { sources: false, marts: true, data: false, row: true };
 const base: Omit<DecodedView, 'dropped'> = {
@@ -86,6 +86,21 @@ describe('view link codec', () => {
     });
     // columns 3 (5, [9,'x'], [0]), filters 4, sorts 2, ctx 1, st 1
     expect((out as DecodedView).dropped).toBe(3 + 4 + 2 + 1 + 1);
+  });
+
+  it('drops a filter on a prototype key and keeps a normal filters object', async () => {
+    const g = { c: ['id'], fl: [['__proto__', 'eq', 'x'], ['constructor', 'eq', 'y'], ['id', 'eq', 'z']], s: null, l: 200 };
+    const out = (await decodeViewLink(await route(valid({ g })))) as DecodedView;
+    expect(out.dropped).toBe(2);
+    expect(Object.keys(out.grid!.filters)).toEqual(['id']);
+    expect(Object.getPrototypeOf(out.grid!.filters)).toBe(Object.prototype);
+    expect((out.grid!.filters as Record<string, unknown>).op).toBeUndefined();
+  });
+
+  it('refuses a payload that inflates past the cap', async () => {
+    const big = await route(valid({ q: 'a'.repeat(MAX_DECODED_BYTES + 36 * 1024) }));
+    expect(big.length).toBeLessThan(MAX_ROUTE_LENGTH);
+    expect(await decodeViewLink(big)).toBe('unreadable');
   });
 
   it('encodes a real-sized view under the cap', async () => {
