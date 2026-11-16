@@ -240,9 +240,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
           <thead className="sticky top-0 z-10 bg-card">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                {hg.headers.map((h) => <th key={h.id} aria-sort={sortOf(sorts, h.column.id)} className={`dm-th ${maxWidthOf(byName.get(h.column.id)!)} overflow-hidden border-b px-3 py-2 text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
+                {hg.headers.map((h) => <th key={h.id} aria-sort={sortOf(sorts, h.column.id)} className={`dm-th ${maxWidthOf(byName.get(h.column.id)!)} overflow-hidden px-3 py-2 text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
                 {/* Takes the width the columns leave over, so the line under the header runs the whole card. */}
-                <th aria-hidden className="w-full border-b p-0" />
+                <th aria-hidden className="dm-th w-full p-0" />
               </tr>
             ))}
           </thead>
