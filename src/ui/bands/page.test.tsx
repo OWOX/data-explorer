@@ -379,7 +379,7 @@ describe('the grid', () => {
 describe('the record', () => {
   async function openOrderRecord() {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getAllByRole('cell').find((c) => c.textContent === '1')!);
+    await userEvent.click((await within(grid).findAllByRole('cell', { name: '1' }))[0]!);
     await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
     return row();
   }
@@ -387,7 +387,7 @@ describe('the record', () => {
   test('a record still renders when a related title lookup fails', async () => {
     await mountWith(overrideTraverse((real) => (id, o) => (id === 'customers' ? Promise.reject(new Error('boom')) : real(id, o))));
     await within(data()).findByRole('table');
-    await userEvent.click(within(data()).getAllByRole('cell').find((c) => c.textContent === '1')!);
+    await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
     expect(await within(row()).findByText('status')).toBeInTheDocument();
     expect(within(row()).queryByText(/boom/)).toBeNull();
   });
@@ -395,7 +395,7 @@ describe('the record', () => {
   test('the Row band labels show the alias only, with a (?) holding the description', async () => {
     await mountApp();
     await within(data()).findByRole('table');
-    await userEvent.click(within(data()).getAllByRole('cell').find((c) => c.textContent === '1')!);
+    await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
     await within(row()).findByText('status');
     expect(within(row()).getByText('Customer')).toBeInTheDocument();
     expect(within(row()).queryByText('customer_id')).toBeNull();
@@ -407,7 +407,7 @@ describe('the record', () => {
   test('Refresh on a record shows the progress bar', async () => {
     await mountWith(overrideTraverse((real) => async (id, o) => { if (o.limit === 1) await new Promise((r) => setTimeout(r, 50)); return real(id, o); }));
     await within(data()).findByRole('table');
-    await userEvent.click(within(data()).getAllByRole('cell').find((c) => c.textContent === '1')!);
+    await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
     await within(row()).findByText('status');
     expect(within(row()).queryByRole('progressbar')).toBeNull();
     await userEvent.click(within(row()).getByRole('button', { name: 'Refresh' }));
@@ -445,7 +445,7 @@ describe('the record', () => {
   test('a model reload re-reads the open record once, and nothing else does', async () => {
     const calls = await spyOnTraverse();
     await within(data()).findByRole('table');
-    await userEvent.click(within(data()).getAllByRole('cell').find((c) => c.textContent === '1')!);
+    await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
     await within(row()).findByText('status');
     await settle();
     const recordReads = () => calls.filter((c) => c.id === 'orders' && c.o.limit === 1).length;
