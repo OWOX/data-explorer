@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Box, Info, RefreshCw, RotateCcw, X } from 'lucide-r
 import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pending-focus';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PAGE_SIZE } from '../../config';
-import type { JoinedSource } from '../../api/blendable';
+import { withJoined, type JoinedSource } from '../../api/blendable';
 import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
 import type { ColumnFilter } from '../../filters/build';
 import { cycleSort, defaultSort, sortsOnColumns, type SortKey } from '../../model/sort';
@@ -51,9 +51,6 @@ export function MartGrid({ martId, model, seed, onChange, onRows, paused = false
 /** A saved-columns read slower than this is given up on for this mount. */
 export const SAVED_COLUMNS_WAIT_MS = 3000;
 
-/** The schema a grid reads and filters over: the mart's own fields, then the fields of the joined marts it has loaded. */
-const withJoined = (schema: Schema, sources: JoinedSource[]): Schema => (sources.length ? [...schema, ...sources.flatMap((s) => s.fields)] : schema);
-
 /** The names in `saved` the column picker still offers, in the saved order. */
 const offered = (schema: Schema, saved: string[]) => saved.filter((c) => schema.some((f) => f.name === c));
 
@@ -100,7 +97,8 @@ function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed:
       // and a list that was not grouped by data mart is saved grouped.
       const dropped = !failed && saved.length > there.length;
       const regrouped = !failed && kept.length > 0 && kept.some((c, i) => c !== there[i]);
-      setInitial({ columns: kept.length ? kept : defaultColumns(schema), cleaned: dropped || regrouped ? kept : null, sources });
+      // A session or link list is not a saved one: only a list read from the store is cleaned back into it.
+      setInitial({ columns: kept.length ? kept : defaultColumns(schema), cleaned: (dropped || regrouped) && !own ? kept : null, sources });
     })();
     return () => { live = false; clearTimeout(timer); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -321,7 +319,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { setFilters({}); setParked({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
-        <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} filters={Object.values(filters)} sorts={sorts} rows={rows} hasMore={hasMore} />
+        <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} filters={Object.values(filters)} sorts={sorts} rows={rows} hasMore={hasMore} loading={loading} />
       </BandTools>
       {pks.length === 0 && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}

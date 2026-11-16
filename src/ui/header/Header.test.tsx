@@ -39,3 +39,29 @@ test('no failed storages, no warning', () => {
   mount([]);
   expect(screen.queryByText(/failed to load/)).toBeNull();
 });
+
+describe('the link button and notice', () => {
+  const mountLink = (props: Parameters<typeof Header>[0]) => render(
+    <AppServices ctx={stubCtx()}><StoreProvider><TooltipProvider><Header {...props} /></TooltipProvider></StoreProvider></AppServices>,
+  );
+
+  test('the chain button shows with a handler and calls it', async () => {
+    const onCopyLink = vi.fn();
+    mountLink({ onCopyLink });
+    await userEvent.click(screen.getByRole('button', { name: 'Copy link to this view' }));
+    expect(onCopyLink).toHaveBeenCalledTimes(1);
+  });
+
+  test('no handler, no button', () => {
+    mountLink({});
+    expect(screen.queryByRole('button', { name: 'Copy link to this view' })).toBeNull();
+  });
+
+  test('the notice renders and dismisses', async () => {
+    const onDismissNotice = vi.fn();
+    mountLink({ notice: 'Hello there', onDismissNotice });
+    expect(screen.getByRole('status')).toHaveTextContent('Hello there');
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(onDismissNotice).toHaveBeenCalled();
+  });
+});

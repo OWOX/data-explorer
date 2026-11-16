@@ -91,6 +91,19 @@ The selected data mart is the main one. A joined data mart is selected exactly w
 9. The Data band always shows every data mart that has a column on the grid or a filter on one of its fields (applied or parked), whatever the search, context or storage filters.
 10. A column with a filter shows only the filled funnel (Material Symbols `filter_alt`, Apache-2.0) in the primary colour, with the filter in the standard tooltip ("Filter: Last 30 days"); the unfiltered hover icon is the outline funnel.
 
+## Link to this view
+
+The chain button in the page header copies a link to the current view. The link holds the selected source, the main data mart and the columns joined to it, the main grid's filters, sorts and row limit, the open record, the Data Marts search, context badges and storage filter, and which bands are folded.
+
+Anyone in the project who can see those data marts opens the same view from the link. Once the link opens, the address goes back to the plugin's main page, so reloading doesn't reapply it.
+
+1. A link is at most 2048 characters, the limit of the host. A view that would need more is not copied, and the page says "This view is too large to link. Remove some columns or filters and try again."
+2. Parts the opener can't see, or that were deleted since, are skipped. The rest still shows, with a dismissible notice under the header.
+3. A link that can't be read opens the default view, with a notice.
+4. Opening a link does not change the opener's saved columns or band choices.
+5. The link is compressed, not encrypted. Anyone holding it can decode its filter values, so share it as you would share the data.
+6. On OWOX versions without page links the button is hidden.
+
 ## Develop
 
 ```bash

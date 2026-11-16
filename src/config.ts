@@ -10,5 +10,8 @@ export function martAppUrl(projectId: string, martId: string): string {
   return `${OWOX_APP_URL}/ui/${encodeURIComponent(projectId)}/data-marts/${encodeURIComponent(martId)}/overview`;
 }
 
+/** How long a view link waits for the main mart's fields before it stops pruning the grid. */
+export const VIEW_LINK_WAIT_MS = import.meta.env.MODE === 'test' ? 0 : 5000;
+
 /** How long a full load bar stays on screen, pale green, before the bands' bodies replace it. */
 export const LOADED_HOLD_MS = import.meta.env.MODE === 'test' ? 0 : 450;

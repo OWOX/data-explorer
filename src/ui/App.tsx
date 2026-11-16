@@ -13,6 +13,7 @@ import { Header } from './header/Header';
 import { HistoryButtons } from './header/HistoryButtons';
 import { TooltipProvider } from './Tooltip';
 import { useJoinSources } from './useJoinSources';
+import { useViewLink } from './useViewLink';
 import { useCardStatus, useModel } from './useModelData';
 
 export function App() {
@@ -55,10 +56,18 @@ function AppBody() {
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferences]);
-  // Every read is a step of the bar: the model's own, and the saved folds. Once it is full it stays full and green for a moment, then the bodies open.
-  const done = progress.done + (prefsReady ? 1 : 0);
-  const total = progress.total + 1;
-  const full = !!model && prefsReady && done >= total;
+  // Precedence: a band the member clicked, then the view link's fold, then the saved one, then the default.
+  const [touched, setTouched] = useState<Partial<Record<Fold, boolean>>>({});
+  const [linkFolds, setLinkFolds] = useState<Partial<Record<Fold, boolean>>>({});
+  const folded = (band: Fold) => touched[band] ?? linkFolds[band] ?? folds[band] ?? DEFAULT_FOLDED[band];
+  const link = useViewLink(model, { sources: folded('sources'), marts: folded('marts'), data: folded('data'), row: folded('row') });
+  // A page that opens from a view link has one more step: the link's own read. Link folds win over saved ones for this visit and are never written.
+  const [hasLink] = useState(link.pending);
+  if (link.folded && linkFolds !== link.folded) setLinkFolds(link.folded);
+  // Every read is a step of the bar: the model's own, the saved folds and a view link. Once it is full it stays full and green for a moment, then the bodies open.
+  const done = progress.done + (prefsReady ? 1 : 0) + (hasLink && !link.pending ? 1 : 0);
+  const total = progress.total + 1 + (hasLink ? 1 : 0);
+  const full = !!model && prefsReady && !link.pending && done >= total;
   const [held, setHeld] = useState(false);
   useEffect(() => {
     if (!full || held) return;
@@ -71,10 +80,10 @@ function AppBody() {
   const [peak, setPeak] = useState(0);
   if (raw > peak) setPeak(raw);
   const loading = opened ? null : Math.max(raw, peak);
-  const folded = (band: Fold) => folds[band] ?? DEFAULT_FOLDED[band];
   const toggle = (band: Fold) => {
     const now = !folded(band);
     setFolds((f) => ({ ...f, [band]: now }));
+    setTouched((t) => ({ ...t, [band]: now }));
     if (prefsReady) write({ [band]: now });
     else clicked.current = { ...clicked.current, [band]: now };
   };
@@ -99,7 +108,7 @@ function AppBody() {
   const focusId = visible?.focusId ?? null;
   const { martId, sourceKey } = state.selection;
   useEffect(() => {
-    if (!model) return;
+    if (!model || link.pending) return;
     // Nothing to fall back to (every ticked storage is empty): a selected mart that is gone leaves an empty selection.
     if (!focusId) {
       if (martId && !model.marts.has(martId)) dispatch({ type: 'replace', selection: { sourceKey: null, martId: null, record: null } });
@@ -117,7 +126,7 @@ function AppBody() {
         ? { sourceKey: keep && sourceOfModel(model)(focusId) === keep ? keep : null, martId: focusId, record: null }
         : { ...state.selection, sourceKey: null },
     });
-  }, [model, focusId, martId, sourceKey, state.selection, dispatch]);
+  }, [model, link.pending, focusId, martId, sourceKey, state.selection, dispatch]);
 
   // A failed refresh keeps the loaded model on screen; the error shows in the header.
   if (error && !model) return <div className="p-6"><ErrorBox error={error} onRetry={reload} /></div>;
@@ -125,7 +134,7 @@ function AppBody() {
     // The page shell at once: every band's header, and a bar in place of each body.
     return (
       <div className="dm-page">
-        <Header />
+        <Header notice={link.notice} onDismissNotice={link.dismiss} />
         <main className="dm-page-content">
           <LoadingBands loading={loading ?? 0} folded={{ sources: folded('sources'), marts: folded('marts'), data: folded('data'), row: folded('row') }} onFold={toggle} />
         </main>
@@ -135,7 +144,15 @@ function AppBody() {
 
   return (
     <div className="dm-page">
-      <Header failedStorages={model.failedStorages} error={error} onRetry={reload} history={<HistoryButtons model={model} />} />
+      <Header
+        failedStorages={model.failedStorages}
+        error={error}
+        onRetry={reload}
+        history={<HistoryButtons model={model} />}
+        onCopyLink={ctx.route !== undefined && ctx.ui.copyLink ? () => void link.copy() : undefined}
+        notice={link.notice}
+        onDismissNotice={link.dismiss}
+      />
       <main className="dm-page-content">
         <CardBands
           model={model}

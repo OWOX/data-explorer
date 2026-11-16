@@ -1,5 +1,5 @@
 import { categorizeFieldType } from '../model/field-category';
-import type { Field } from '../model/types';
+import type { Field, Schema } from '../model/types';
 import type { BlendableSchemaDto, Ctx } from '../sdk/types';
 
 /** The backend's `isArrayFieldType`: ARRAY, bare or with a parameter (`ARRAY<STRING>`). */
@@ -69,3 +69,6 @@ export function createBlendableLoader(ctx: Ctx): BlendableLoader {
     clear() { done.clear(); },
   };
 }
+
+/** The schema a grid reads and filters over: the mart's own fields, then the fields of the joined marts it has loaded. */
+export const withJoined = (schema: Schema, sources: JoinedSource[]): Schema => (sources.length ? [...schema, ...sources.flatMap((s) => s.fields)] : schema);

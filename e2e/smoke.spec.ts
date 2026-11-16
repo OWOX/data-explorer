@@ -436,3 +436,68 @@ test('the Data band shows the marts connected to a joined mart', async ({ page }
   await martCard(page, 'Customers').click();
   await expect(band(page, 'marts').getByText('Countries', { exact: true })).toBeVisible();
 });
+
+declare global { interface Window { __copiedLink?: string; __routeSet?: string } }
+
+test('a copied view link reopens the same view: mart, joined column, filter and sort', async ({ page, context }) => {
+  const data = await ordersGrid(page);
+  // Two header rows (the mart tabs and the column titles), then the rows.
+  await martCard(page, 'Customers').click();
+  await expect(data.getByRole('button', { name: 'Columns of Customers' })).toBeVisible();
+  await tick(page, 'email', 'Customers');
+  await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
+  await data.getByLabel('Filter id').click();
+  await page.getByLabel('Operator').selectOption('lte');
+  await page.getByLabel('Value').fill('3');
+  await page.getByRole('button', { name: 'Apply' }).click();
+  await expect(data.getByRole('row')).toHaveCount(5);
+  await data.getByRole('button', { name: /^Sort by status,/ }).click();
+  await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
+
+  await page.getByRole('button', { name: 'Copy link to this view' }).click();
+  await expect.poll(() => page.evaluate(() => window.__copiedLink)).toMatch(/^\/v\?s=/);
+  const link = (await page.evaluate(() => window.__copiedLink))!;
+  expect(link.length).toBeLessThanOrEqual(2048);
+
+  const opened = await context.newPage();
+  await opened.goto(`/?mock&route=${encodeURIComponent(link)}`);
+  const grid = band(opened, 'data');
+  await expect(grid.getByRole('heading', { name: 'Orders + Customers', exact: true })).toBeVisible();
+  await expect(grid.getByRole('row')).toHaveCount(5);
+  await expect(grid.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
+  await expect(grid.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
+  await expect(martCard(opened, 'Orders')).toHaveAttribute('aria-pressed', 'true');
+  await expect(opened.getByRole('status')).toHaveCount(0);
+
+  // The address returns to the main page, so a reload doesn't reapply the link.
+  await expect.poll(() => opened.evaluate(() => window.__routeSet)).toBe('/');
+  await expect.poll(() => new URL(opened.url()).searchParams.has('route')).toBe(false);
+  await opened.reload();
+  // Wait for the default view to finish loading, then check the link was not reapplied.
+  await expect(band(opened, 'data').getByRole('heading', { name: 'Orders', exact: true })).toBeVisible();
+  await expect(band(opened, 'data').getByRole('row').nth(1)).toBeVisible();
+  await expect(band(opened, 'data').getByRole('heading', { name: 'Orders + Customers', exact: true })).toHaveCount(0);
+  await expect(band(opened, 'data').getByRole('row')).not.toHaveCount(5);
+  await expect(opened.getByRole('status')).toHaveCount(0);
+  expect(new URL(opened.url()).searchParams.has('route')).toBe(false);
+});
+
+test('a link to a data mart the opener cannot see shows a notice and the page stays usable', async ({ page, context }) => {
+  await ordersGrid(page);
+  const payload = await page.evaluate(async () => {
+    const json = JSON.stringify({ v: 1, P: [], src: null, m: 'no-such-mart', r: null, q: '', ctx: [], st: null, f: { sources: true, marts: false, data: false, row: false }, g: null });
+    const stream = new Blob([new TextEncoder().encode(json)]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+    return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  });
+  const opened = await context.newPage();
+  await opened.goto(`/?mock&route=${encodeURIComponent(`/v?s=${payload}`)}`);
+  const notice = opened.getByRole('status').filter({ hasText: "Some parts of this link aren't available to you" });
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText('the data mart');
+  await expect(band(opened, 'data').getByRole('heading', { name: 'Orders' })).toBeVisible();
+  await notice.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(notice).toHaveCount(0);
+  await martCard(opened, 'Order Items').click();
+  await expect(band(opened, 'data').getByRole('heading', { name: 'Order Items' })).toBeVisible();
+});

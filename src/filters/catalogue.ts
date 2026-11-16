@@ -92,6 +92,8 @@ const sameRule = (a: RelativeDatePreset, b: RelativeDatePreset) => JSON.stringif
 
 /** The name of a relative rule: its preset's label, or "Last 45 days" for a number the presets do not cover. */
 export function presetName(rule: RelativeDatePreset): string {
+  // A link can carry any JSON here; a rule with no string kind has no name.
+  if (typeof rule !== 'object' || rule === null || typeof rule.kind !== 'string') return '';
   const hit = DATE_PRESETS.find((p) => sameRule(p.rule, rule));
   if (hit) return hit.label;
   if (rule.kind === 'last_n_days') return `Last ${rule.n} ${rule.n === 1 ? 'day' : 'days'}`;

@@ -582,16 +582,39 @@ describe('the AI group', () => {
 
 describe('Copy to clipboard', () => {
   const setClipboard = (writeText: unknown) => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: writeText ? { writeText } : undefined });
-  afterEach(() => { setClipboard(undefined); Object.defineProperty(document, 'execCommand', { configurable: true, value: undefined }); });
+  afterEach(() => { delete (navigator as { clipboard?: unknown }).clipboard; delete (document as { execCommand?: unknown }).execCommand; });
   const ORDERS: Schema = [
     { name: 'id', type: 'INTEGER', category: 'number' },
     { name: 'note', type: 'STRING', category: 'string', alias: 'Note' },
     { name: 'customers__city', type: 'STRING', category: 'string', alias: 'City', joined: { martId: 'customers', label: 'Customers' } },
   ] as Schema;
-  const lone = (rows: Row[] | null, hasMore = false) => {
+  const lone = (rows: Row[] | null, hasMore = false, loading = false) => {
     const ctx = createMockCtx(demoFixtures({ sheets: 0 }), { latencyMs: 0 });
-    return render(<AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={ORDERS} visible={['id', 'note', 'customers__city']} filters={[]} sorts={[]} rows={rows} hasMore={hasMore} /></StoreProvider></TooltipProvider></AppServices>);
+    return render(<AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={ORDERS} visible={['id', 'note', 'customers__city']} filters={[]} sorts={[]} rows={rows} hasMore={hasMore} loading={loading} /></StoreProvider></TooltipProvider></AppServices>);
   };
+
+  test('with no rows the keyboard still reaches the next enabled item', async () => {
+    lone([]);
+    const summary = (await screen.findByText('Export')).closest('summary')!;
+    summary.focus();
+    await userEvent.keyboard('{ArrowDown}');
+    const enabled = screen.getAllByRole('menuitem').filter((i) => !(i as HTMLButtonElement).disabled);
+    expect(enabled.length).toBeGreaterThan(0);
+    expect(enabled[0]).toHaveFocus();
+  });
+
+  test('while rows are loading the item is disabled with its reason, and enabled once they are in', async () => {
+    const view = lone([{ id: 1, note: 'a', customers__city: 'x' }], false, true);
+    await userEvent.click(await screen.findByText('Export'));
+    const item = await screen.findByRole('menuitem', { name: 'Copy to clipboard' });
+    expect(item).toBeDisabled();
+    await userEvent.hover(item.parentElement!);
+    expect(await screen.findAllByText('Rows are loading')).not.toHaveLength(0);
+    view.unmount();
+    lone([{ id: 1, note: 'a', customers__city: 'x' }], false, false);
+    await userEvent.click(await screen.findByText('Export'));
+    expect(await screen.findByRole('menuitem', { name: 'Copy to clipboard' })).toBeEnabled();
+  });
 
   test('it is the first group, above the destinations and the AI group, with the clipboard icon', async () => {
     const t = setup(1);

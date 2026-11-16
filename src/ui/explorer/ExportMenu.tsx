@@ -19,7 +19,7 @@ import { GoogleSheetsIcon } from '../google-sheets-icon';
 import { Tooltip } from '../Tooltip';
 import { copyText } from './clipboard';
 
-type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; filters: ColumnFilter[]; sorts: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean };
+type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; filters: ColumnFilter[]; sorts: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean };
 type Result = { kind: 'ok' | 'timeout' | 'error'; text: string; url?: string };
 
 type Assistant = 'Claude' | 'ChatGPT';
@@ -186,7 +186,7 @@ export function ExportMenu(p: Props) {
   /** The loaded rows as tab-separated text, through the same clipboard path as the prompt. Nothing is queried and nothing is written. */
   async function copyData() {
     closeMenu();
-    if (!p.rows?.length) return;
+    if (!p.rows?.length || p.loading) return;
     const fields = p.visible.flatMap((name) => p.schema.find((f) => f.name === name) ?? []);
     const tsv = buildTsv(fields, p.rows);
     const home = gen.current;
@@ -199,6 +199,7 @@ export function ExportMenu(p: Props) {
   }
 
   const noRows = !p.rows?.length;
+  const copyOff = noRows ? 'No rows to copy' : p.loading ? 'Rows are loading' : null;
   const label = busy ? <><Loader2 className="size-4 animate-spin" />Exporting…</> : <><ArchiveRestore className="size-4" />Export</>;
 
   async function openMenu(open: boolean) {
@@ -220,8 +221,8 @@ export function ExportMenu(p: Props) {
           <summary onClick={(e) => { if (busy) e.preventDefault(); }} onKeyDown={onSummaryKey}>{label}<ChevronDown size={14} /></summary>
           <div className="dm-filter-menu dm-cascade" role="menu" data-level="1" onKeyDown={onMenuKey}>
             <div role="group" aria-label="Copy" className="dm-export-copy">
-              {noRows ? (
-                <Tooltip content="No rows to copy">
+              {copyOff ? (
+                <Tooltip content={copyOff}>
                   <span className="block" onMouseEnter={() => setOpenDest(null)}>
                     <button type="button" role="menuitem" data-lvl="1" data-action="copy" disabled className="dm-export-item w-full"><ClipboardCopy size={16} /><span className="dm-filter-label">Copy to clipboard</span></button>
                   </span>
@@ -267,7 +268,7 @@ export function ExportMenu(p: Props) {
     if (e.key === 'ArrowDown' || e.key === 'Enter') {
       e.preventDefault();
       if (menu.current) menu.current.open = true;
-      menu.current?.querySelector<HTMLElement>('[data-lvl="1"]')?.focus();
+      menu.current?.querySelector<HTMLElement>('[data-lvl="1"]:not([disabled])')?.focus();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       closeMenu();
