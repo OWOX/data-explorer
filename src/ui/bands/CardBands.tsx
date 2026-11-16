@@ -1,6 +1,6 @@
 // The Sources and Data Marts bands with the lines between their cards, and the hover that lights them.
 // The Data and Row bands arrive as children and sit under the same canvas; they do not re-render on hover.
-import { Database, Plug } from 'lucide-react';
+import { Box, Plug } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DqSummary, Mart, Model, Source } from '../../model/types';
 import { storageOptions } from '../../graph/storages';
@@ -9,6 +9,9 @@ import { sourceOfModel, useStore } from '../../state/store';
 import { storageMark } from '../storage-icons';
 import { Band } from './Band';
 import { MultiSelect } from './MultiSelect';
+import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
+import { SearchBox } from './SearchBox';
+import { PointerTip } from '../Tooltip';
 import { MartCard, SourceCard, martElementId, sourceElementId, type CountState } from './cards';
 import { useCardTransitions } from './transitions';
 import { litIds, useWires, type Wire } from './wires';
@@ -55,9 +58,10 @@ export function CardBands({
   onOpenApp: (id: string) => void;
   children: ReactNode;
 }) {
-  const [{ selection }, dispatch] = useStore();
+  const [{ selection, search, contextIds }, dispatch] = useStore();
   const canvas = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<string | null>(null);
+  const [wireTip, setWireTip] = useState<{ text: string; x: number; y: number } | null>(null);
   const sourceOf = useMemo(() => sourceOfModel(model), [model]);
 
   // Escape lets go of the hovered card; what is selected only changes by clicks and Back.
@@ -120,6 +124,26 @@ export function CardBands({
     />
   );
 
+  // A badge per context, in the title row: click to select it. Offered once the project has a context.
+  const contextBadges = model.contexts.length === 0 ? undefined : (
+    <div className="dm-context-filter" role="group" aria-label="Contexts">
+      {[...model.contexts].sort((a, b) => a.name.localeCompare(b.name)).map((c) => {
+        const on = contextIds.includes(c.id);
+        return (
+          <button key={c.id} type="button" aria-pressed={on} className="dm-badge dm-badge-toggle" onClick={() => dispatch({ type: 'toggleContext', id: c.id })}>
+            <PickedIcon icon={c.icon} fallback={DEFAULT_CONTEXT_ICON} size={12} />{c.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+  const toolbar = (
+    <>
+      <SearchBox value={search} onChange={(q) => dispatch({ type: 'search', q })} label="Search data marts" />
+      {storageFilter}
+    </>
+  );
+
   const contextsOf = (ids: string[]) => model.contexts.filter((c) => ids.includes(c.id));
 
   return (
@@ -127,7 +151,11 @@ export function CardBands({
       ref={canvas}
       className={`dm-canvas${pinned || hovered ? ' focused' : ''}`}
       onPointerOver={(e) => setHovered(nodeIdOf(e.target))}
-      onPointerLeave={() => setHovered(null)}
+      onPointerMove={(e) => {
+        const text = e.target instanceof Element ? e.target.closest<SVGPathElement>('#wires path')?.dataset.tip : undefined;
+        setWireTip(text ? { text, x: e.clientX, y: e.clientY } : (cur) => (cur === null ? cur : null));
+      }}
+      onPointerLeave={() => { setHovered(null); setWireTip(null); }}
       onFocus={(e) => setHovered(nodeIdOf(e.target))}
       onBlur={(e) => { if (!canvas.current?.contains(e.relatedTarget as Node | null)) setHovered(null); }}
     >
@@ -138,7 +166,7 @@ export function CardBands({
           return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => dispatch({ type: 'selectSource', key: source.key })} />;
         })}
       </Band>
-      <Band id="band-marts" icon={<Database size={18} />} title="Data Marts" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search matches." toolbar={storageFilter} folded={foldedMarts} onFold={onFoldMarts}>
+      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search and the filters match." afterHint={contextBadges} toolbar={toolbar} folded={foldedMarts} onFold={onFoldMarts}>
         {visible.ids.length === 0 && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
         {martCards.items.map((mart) => {
           const id = mart.id;
@@ -152,7 +180,6 @@ export function CardBands({
               count={counts.get(id) ?? { state: 'idle' }}
               quality={dq.get(id)}
               freshness={mart.dataLastUpdatedAt}
-              fieldHit={visible.fieldHits.get(id)}
               selected={selection.martId === id}
               lit={lit.has(el)}
               aside={aside.has(el)}
@@ -165,6 +192,7 @@ export function CardBands({
         })}
       </Band>
       {children}
+      {wireTip && <PointerTip text={wireTip.text} x={wireTip.x} y={wireTip.y} />}
     </div>
   );
 }

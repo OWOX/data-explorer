@@ -1,4 +1,4 @@
-import type { Edge, Mart, Model, Schema } from '../model/types';
+import type { Edge, Mart, Model } from '../model/types';
 import type { Selection } from '../state/store';
 import { matchesContexts, matchesSearch } from './search';
 
@@ -32,23 +32,20 @@ export type VisibleInput = {
   model: Model;
   selection: Selection;
   search: string;
+  /** The contexts selected as badges; none selected is no filter, and a mart needs any one of them. */
   contextIds: string[];
   /** The storages ticked in the filter; null is all of them. */
   storageIds?: string[] | null;
-  schemas: (id: string) => Schema | undefined;
 };
 export type VisibleResult = {
   ids: string[];
   /** The mart a first load selects: most inbound edges among the marts the member can open. */
   focusId: string | null;
-  /** Marts the search matched through a field rather than the title, with that field. */
-  fieldHits: Map<string, string>;
 };
 
 /** Which marts the Data Marts band shows, by the first rule that applies (spec, "Which marts show"). */
-export function computeVisible({ model, selection, search, contextIds, storageIds = null, schemas }: VisibleInput): VisibleResult {
+export function computeVisible({ model, selection, search, contextIds, storageIds = null }: VisibleInput): VisibleResult {
   const inbound = inboundCounts(model.edges);
-  const fieldHits = new Map<string, string>();
   // A mart in an unticked storage is out of every rule below, the selected one included.
   const inStorage = (id: string) => storageIds === null || storageIds.includes(model.marts.get(id)?.storageId ?? '');
   const accessible = [...model.marts.values()].filter((m) => m.accessible && inStorage(m.id));
@@ -56,30 +53,28 @@ export function computeVisible({ model, selection, search, contextIds, storageId
   const selectedId = selection.martId && model.marts.has(selection.martId) ? selection.martId : null;
   const order = (ids: string[], first = selectedId) => ids.sort(rank(model.marts, inbound, first));
 
-  // 1. Search or context filter: the matches, narrowed to the selected source.
-  if (search.trim() || contextIds.length) {
+  // 1. A search, or a selected context badge: the matches, narrowed to the selected source.
+  if (search.trim() || contextIds.length > 0) {
     const source = selection.sourceKey;
     const ids: string[] = [];
     for (const mart of accessible) {
       if (source && mart.sourceKey !== source) continue;
       if (!matchesContexts(mart, contextIds)) continue;
-      const r = matchesSearch(mart, search, model.contexts, schemas(mart.id));
-      if (!r.hit) continue;
+      if (!matchesSearch(mart, search)) continue;
       ids.push(mart.id);
-      if (r.field) fieldHits.set(mart.id, r.field);
     }
-    return { ids: order(ids), focusId, fieldHits };
+    return { ids: order(ids), focusId };
   }
 
   // 2. A mart is selected: it and every mart joined to it, in either direction.
-  if (selectedId) return { ids: order([selectedId, ...neighbours(selectedId, model.edges)].filter(inStorage)), focusId, fieldHits };
+  if (selectedId) return { ids: order([selectedId, ...neighbours(selectedId, model.edges)].filter(inStorage)), focusId };
 
   // 3. Only a source is selected: every mart it feeds.
   if (selection.sourceKey) {
     const source = model.sources.find((s) => s.key === selection.sourceKey);
-    return { ids: order((source?.martIds ?? []).filter((id) => model.marts.has(id) && inStorage(id))), focusId, fieldHits };
+    return { ids: order((source?.martIds ?? []).filter((id) => model.marts.has(id) && inStorage(id))), focusId };
   }
 
   // 4. Nothing selected, which is only the moment before a first load selects the focus mart.
-  return { ids: focusId ? order([focusId, ...neighbours(focusId, model.edges)].filter(inStorage), focusId) : [], focusId, fieldHits };
+  return { ids: focusId ? order([focusId, ...neighbours(focusId, model.edges)].filter(inStorage), focusId) : [], focusId };
 }

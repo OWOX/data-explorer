@@ -3,6 +3,7 @@ import { Table2 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import type { Model } from '../../model/types';
 import { useStore, type GridState } from '../../state/store';
+import { recordsLabel } from '../format';
 import { MartGrid } from '../explorer/MartGrid';
 import { Band } from './Band';
 import { PickedIcon } from './picked';
@@ -12,7 +13,8 @@ export function DataBand({ model, folded, onFold }: { model: Model; folded: bool
   const { martId } = selection;
   const mart = martId ? model.marts.get(martId) : undefined;
   // The grid follows the selection only while the band is open: a folded band mounts nothing new, so no hidden query is billed.
-  const [shownId, setShownId] = useState(martId);
+  // A band that first appears folded mounts nothing, so no hidden query is billed.
+  const [shownId, setShownId] = useState(folded ? null : martId);
   if (!folded && shownId !== martId) setShownId(martId);
   const gridId = folded ? shownId : martId;
   const gridMart = gridId ? model.marts.get(gridId) : undefined;
@@ -21,7 +23,7 @@ export function DataBand({ model, folded, onFold }: { model: Model; folded: bool
   const save = useCallback((grid: GridState) => { if (gridId) dispatch({ type: 'saveGrid', martId: gridId, grid }); }, [dispatch, gridId]);
 
   return (
-    <Band id="band-data" icon={<PickedIcon icon={mart?.icon} fallback={Table2} size={18} />} title={mart?.title ?? 'Data'} total={mart && rows?.id === mart.id ? `${rows.label} rows` : undefined} hint="The rows of the selected data mart. Click a row to open it below." folded={folded} onFold={onFold} grid={false}>
+    <Band id="band-data" icon={<PickedIcon icon={mart?.icon} fallback={Table2} size={18} />} title={mart?.title ?? 'Data'} total={mart && rows?.id === mart.id ? recordsLabel(rows.label) : undefined} hint="The rows of the selected data mart. Click a row to open it below." folded={folded} onFold={onFold} grid={false}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (

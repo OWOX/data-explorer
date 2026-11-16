@@ -1,3 +1,4 @@
+import { describe } from 'vitest';
 import { initialState, reducer, type State } from './store';
 
 const s = (patch: Partial<State> = {}): State => ({ ...initialState, ...patch });
@@ -67,19 +68,19 @@ test('follow a filtered mart selects it with the filters and clears the record',
   expect(st.history).toEqual([start.selection]);
 });
 
-test('back restores the previous selection, in order, and does nothing with no history', () => {
+test('undo restores the previous selection, in order, and does nothing with no history', () => {
   let st = reducer(s(), { type: 'init', focusId: 'a' });
   st = reducer(st, { type: 'selectMart', id: 'b', sourceOf });
   st = reducer(st, { type: 'openRecord', martId: 'b', pk: { id: 1 } });
   st = reducer(st, { type: 'selectMart', id: 'c', sourceOf });
-  st = reducer(st, { type: 'back' });
+  st = reducer(st, { type: 'undo' });
   expect(st.selection).toEqual(sel({ martId: 'b', record: { martId: 'b', pk: { id: 1 } } }));
-  st = reducer(st, { type: 'back' });
+  st = reducer(st, { type: 'undo' });
   expect(st.selection).toEqual(sel({ martId: 'b' }));
-  st = reducer(st, { type: 'back' });
+  st = reducer(st, { type: 'undo' });
   expect(st.selection).toEqual(sel({ martId: 'a' }));
   expect(st.history).toEqual([]);
-  expect(reducer(st, { type: 'back' })).toBe(st);
+  expect(reducer(st, { type: 'undo' })).toBe(st);
 });
 
 test('follow into a filtered mart seeds its saved grid once, keeping its columns', () => {
@@ -96,12 +97,12 @@ test('replace swaps the selection without a history entry', () => {
   expect(st.history).toEqual(start.history);
 });
 
-test('back skips history entries that name a mart or source that no longer exists', () => {
+test('undo skips history entries that name a mart or source that no longer exists', () => {
   const history = [sel({ martId: 'a' }), sel({ martId: 'gone' }), sel({ sourceKey: 'dead' })];
-  const st = reducer(s({ selection: sel({ martId: 'b' }), history }), { type: 'back', known: (x) => x.martId !== 'gone' && x.sourceKey !== 'dead' });
+  const st = reducer(s({ selection: sel({ martId: 'b' }), history }), { type: 'undo', known: (x) => x.martId !== 'gone' && x.sourceKey !== 'dead' });
   expect(st.selection.martId).toBe('a');
   expect(st.history).toEqual([]);
-  const none = reducer(s({ selection: sel({ martId: 'b' }), history: [sel({ martId: 'gone' })] }), { type: 'back', known: () => false });
+  const none = reducer(s({ selection: sel({ martId: 'b' }), history: [sel({ martId: 'gone' })] }), { type: 'undo', known: () => false });
   expect(none.selection.martId).toBe('b');
   expect(none.history).toEqual([]);
 });
@@ -129,4 +130,67 @@ test('saveGrid keeps one state per mart; refreshModel bumps the version', () => 
   st = reducer(st, { type: 'saveGrid', martId: 'b', grid: { ...grid, limit: 400 } });
   expect(st.grids).toEqual({ a: grid, b: { ...grid, limit: 400 } });
   expect(reducer(st, { type: 'refreshModel' }).modelVersion).toBe(1);
+});
+
+describe('redo', () => {
+  const nav = () => {
+    let st = reducer(s(), { type: 'init', focusId: 'a' });
+    st = reducer(st, { type: 'selectMart', id: 'b', sourceOf });
+    st = reducer(st, { type: 'selectMart', id: 'c', sourceOf });
+    return st;
+  };
+
+  test('undo pushes the current selection onto the forward stack; redo re-applies it, in order', () => {
+    let st = reducer(nav(), { type: 'undo' });
+    st = reducer(st, { type: 'undo' });
+    expect(st.selection.martId).toBe('a');
+    expect(st.future.map((x) => x.martId)).toEqual(['c', 'b']);
+    st = reducer(st, { type: 'redo' });
+    expect(st.selection.martId).toBe('b');
+    st = reducer(st, { type: 'redo' });
+    expect(st.selection.martId).toBe('c');
+    expect(st.future).toEqual([]);
+    expect(st.history.map((x) => x.martId)).toEqual(['a', 'b']);
+    expect(reducer(st, { type: 'redo' })).toBe(st);
+  });
+
+  test('every kind of new navigation empties the forward stack', () => {
+    const undone = reducer(nav(), { type: 'undo' });
+    expect(undone.future).toHaveLength(1);
+    const actions = [
+      { type: 'selectMart', id: 'd', sourceOf },
+      { type: 'selectSource', key: 'Shopify' },
+      { type: 'openRecord', martId: 'b', pk: { id: 1 }, sourceOf },
+      { type: 'follow', target: { kind: 'record', martId: 'd', pk: { id: 1 } }, sourceOf },
+    ] as const;
+    for (const a of actions) expect(reducer(undone, a).future).toEqual([]);
+  });
+
+  test('things that are not navigation keep the forward stack', () => {
+    const undone = reducer(nav(), { type: 'undo' });
+    for (const a of [{ type: 'search', q: 'x' }, { type: 'toggleContext', id: 'c1' }, { type: 'setStorages', ids: null }, { type: 'refreshModel' }, { type: 'replace', selection: sel({ martId: 'a' }) }] as const) {
+      expect(reducer(undone, a).future).toEqual(undone.future);
+    }
+  });
+
+  test('redo skips selections whose mart no longer exists, and the forward stack is capped at 20', () => {
+    let st = s({ selection: sel({ martId: 'x' }), future: [sel({ martId: 'b' }), sel({ martId: 'gone' })] });
+    st = reducer(st, { type: 'redo', known: (x) => x.martId !== 'gone' });
+    expect(st.selection.martId).toBe('b');
+    expect(st.future).toEqual([]);
+    let long = reducer(s(), { type: 'init', focusId: 'm0' });
+    for (let i = 1; i <= 25; i++) long = reducer(long, { type: 'selectMart', id: `m${i}`, sourceOf });
+    for (let i = 0; i < 20; i++) long = reducer(long, { type: 'undo' });
+    expect(long.future).toHaveLength(20);
+    long = reducer(long, { type: 'undo' });
+    expect(long.history).toEqual([]);
+    expect(long.future).toHaveLength(20);
+  });
+
+  test('grids edited per mart are kept through undo and redo', () => {
+    const grid = { columns: ['x'], filters: {}, sorts: [], limit: 200 };
+    let st = reducer(nav(), { type: 'saveGrid', martId: 'c', grid });
+    st = reducer(reducer(st, { type: 'undo' }), { type: 'redo' });
+    expect(st.grids.c).toBe(grid);
+  });
 });

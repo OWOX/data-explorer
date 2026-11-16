@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { PAGE_SIZE } from '../../config';
 import { fieldLabel, fieldTitle } from '../../model/fieldLabel';
 import type { ColumnFilter } from '../../filters/build';
-import { cycleSort, sortsOnColumns, type SortKey } from '../../model/sort';
+import { cycleSort, defaultSort, sortsOnColumns, type SortKey } from '../../model/sort';
 import type { Model, Schema } from '../../model/types';
 import { clickTarget, primaryKeys, type RelColumn } from '../../records/relationships';
 import { useMartRelationships } from '../../records/useMartRelationships';
@@ -103,24 +103,26 @@ function SortTitle({ field }: { field: Schema[number] }) {
   const current = at < 0 ? null : sorts[at]!.direction;
   const label = fieldLabel(field);
   const Arrow = current === 'desc' ? ArrowDown : ArrowUp;
-  return (
+  const tip = [fieldTitle(field), relNames.has(field.name) ? 'Sorted by the key value' : null].filter(Boolean).join('. ');
+  const button = (
     <button type="button" onClick={() => toggleSort(field.name)} aria-label={`Sort by ${label}, currently ${current ? DIRECTION_NAME[current] : 'not sorted'}${current && sorts.length > 1 ? `, sort ${at + 1} of ${sorts.length}` : ''}`}
-      title={[fieldTitle(field), relNames.has(field.name) ? 'Sorted by the key value' : null].filter(Boolean).join('. ') || undefined} className="dm-sort inline-flex min-w-0 items-center gap-1 font-medium">
+      className="dm-sort inline-flex min-w-0 items-center gap-1 font-medium">
       <span className="truncate">{label}</span>
       {current && <span className="dm-sort-mark inline-flex items-center"><Arrow className="size-3.5" aria-hidden />{sorts.length > 1 && <span className="text-[10px] tabular-nums">{at + 1}</span>}</span>}
     </button>
   );
+  return tip ? <Tooltip content={tip}>{button}</Tooltip> : button;
 }
 
-function GridCell({ row, name, rel }: { row: Row; name: string; rel: RelColumn | undefined }) {
+function GridCell({ row, name, type, rel }: { row: Row; name: string; type: string; rel: RelColumn | undefined }) {
   const { titles, relSchemas } = useContext(GridEnv);
   const { schemas } = useServices();
   const [, dispatch] = useStore();
   const { model } = useContext(GridEnv);
-  if (!rel) return <CellValue row={row} field={name} />;
+  if (!rel) return <CellValue row={row} field={name} type={type} />;
   const target = clickTarget(rel, row, relSchemas.get(rel.relatedMartId) ?? schemas.peek(rel.relatedMartId));
   return (
-    <CellValue row={row} field={name} title={titles.get(titleKey(rel, row[name]))}
+    <CellValue row={row} field={name} type={type} title={titles.get(titleKey(rel, row[name]))}
       onOpen={target && model ? () => dispatch({ type: 'follow', target, sourceOf: sourceOfModel(model) }) : undefined} />
   );
 }
@@ -134,10 +136,13 @@ function Grid({ martId, model, schema, seed, initialColumns, onChange, onRows }:
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
   const [visible, setVisible] = useState(initialColumns);
   const [filters, setFilters] = useState<Record<string, ColumnFilter>>(() => seed.saved?.filters ?? {});
-  const [sorts, setSorts] = useState<SortKey[]>(() => sortsOnColumns(seed.saved?.sorts ?? [], visible));
+  // null: the member has set no sort, so rows open newest date first. The default is judged once, from the columns the grid opened with.
+  const [own, setOwn] = useState<SortKey[] | null>(() => (seed.saved?.sorts ? (sortsOnColumns(seed.saved.sorts, visible).length || !seed.saved.sorts.length ? sortsOnColumns(seed.saved.sorts, visible) : null) : null));
+  const [fallback] = useState(() => defaultSort(schema, visible));
+  const sorts = own ?? fallback;
   const [limit, setLimit] = useState(() => seed.saved?.limit ?? PAGE_SIZE);
   const [ownVersion, setVersion] = useState(0);
-  // The header's Refresh re-reads what is shown too: its counter joins the grid's own, and each only ever goes up.
+  // A model reload re-reads what is shown too: its counter joins the grid's own, and each only ever goes up.
   const version = ownVersion + modelVersion;
   // Titles per related mart and value, for the grid's lifetime. Every lookup is a billed run, so a value is looked up once.
   const [titles, setTitles] = useState(new Map<string, string>());
@@ -151,7 +156,7 @@ function Grid({ martId, model, schema, seed, initialColumns, onChange, onRows }:
     return () => ctrl.abort();
   }, []);
   const [relSchemas, setRelSchemas] = useState(new Map<string, Schema>());
-  // A header Refresh drops the looked-up titles as the grid's own Refresh does, so they are read again with the rows.
+  // A model reload drops the looked-up titles as the grid's own Refresh does, so they are read again with the rows.
   const seenModelVersion = useRef(modelVersion);
   useEffect(() => {
     if (seenModelVersion.current === modelVersion) return;
@@ -172,7 +177,7 @@ function Grid({ martId, model, schema, seed, initialColumns, onChange, onRows }:
     }
   }
 
-  useEffect(() => { onChange({ columns: visible, filters, sorts, limit }); }, [visible, filters, sorts, limit]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onChange({ columns: visible, filters, sorts: own, limit }); }, [visible, filters, own, limit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { rels } = useMartRelationships(martId, model.edges);
   const pks = primaryKeys(schema);
@@ -227,32 +232,34 @@ function Grid({ martId, model, schema, seed, initialColumns, onChange, onRows }:
           )}
         </div>
       ),
-      cell: ({ row }) => <GridCell row={row.original} name={name} rel={rel} />,
+      cell: ({ row }) => <GridCell row={row.original} name={name} type={field.type} rel={rel} />,
     };
   }), [visible, schema, rels, filters]);
 
-  const toggleSort = useCallback((field: string) => { setSorts((cur) => cycleSort(cur, field)); setLimit(PAGE_SIZE); }, []);
+  // While the member has no sort of their own, a click replaces the default with that column ascending (the
+  // default's own column included), so a default never rides along as a second sort; after that the normal cycle.
+  const toggleSort = useCallback((field: string) => { setOwn((cur) => (cur === null ? [{ field, direction: 'asc' }] : cycleSort(cur, field))); setLimit(PAGE_SIZE); }, []);
   const relNames = useMemo(() => new Set(rels.keys()), [rels]);
   const env = useMemo(() => ({ titles, relSchemas, model, sorts, relNames, toggleSort }), [titles, relSchemas, model, sorts, relNames, toggleSort]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
-  const changeColumns = (cols: string[]) => { setVisible(cols); setSorts((cur) => sortsOnColumns(cur, cols)); columnStore.save(martId, cols); };
+  const changeColumns = (cols: string[]) => { setVisible(cols); setOwn((cur) => { const kept = cur && sortsOnColumns(cur, cols); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; }); columnStore.save(martId, cols); };
   const table = useTable({ features, data: rows ?? [], columns });
   const rowsLabel = rows ? `${rows.length}${hasMore ? '+' : ''}` : null;
   useEffect(() => { onRows?.(rowsLabel); }, [rowsLabel]); // eslint-disable-line react-hooks/exhaustive-deps
   const hasFilters = Object.keys(filters).length > 0;
-  const hasSorts = sorts.length > 0;
+  const hasSorts = own !== null;
 
   return (
     <GridEnv.Provider value={env}>
     <div className="flex max-h-[32rem] min-h-0 flex-col">
       <BandTools slot={slot}>
-        <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { setFilters({}); setSorts([]); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
+        <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { setFilters({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => { lookups.current.abort(); lookups.current = new AbortController(); setTitles(new Map()); asked.current.clear(); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         <ColumnPicker schema={schema} visible={visible} onChange={changeColumns} />
         <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={visible} filters={Object.values(filters)} sorts={sorts} />
       </BandTools>
       {pks.length === 0 && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
-      {loading && rows && <div className="h-0.5 animate-pulse bg-primary" />}
+      {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
       <div className={`min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
         <table className="w-full border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-card">

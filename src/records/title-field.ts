@@ -9,7 +9,6 @@ export function pickTitleField(schema: Schema): string | null {
   return (
     strings.find((f) => exact(f.name) || exact(f.alias))?.name ??
     strings.find((f) => partial(f.name) || partial(f.alias))?.name ??
-    strings.find((f) => !f.isPrimaryKey)?.name ??
     null
   );
 }

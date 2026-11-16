@@ -34,7 +34,6 @@ function martProps(over: Partial<React.ComponentProps<typeof MartCard>> = {}) {
     count: { state: 'ok', value: 12400 } as const,
     quality: { state: 'PASSED' },
     freshness: mart.dataLastUpdatedAt,
-    fieldHit: undefined,
     selected: false,
     lit: false,
     onSelect: vi.fn(),
@@ -54,7 +53,7 @@ describe('SourceCard', () => {
 
   test('shows the name, the mart count and a logo; selects on click and Enter', async () => {
     const onSelect = vi.fn();
-    const { container } = render(<SourceCard source={source} selected={false} lit={false} onSelect={onSelect} />);
+    const { container } = render(<TooltipProvider><SourceCard source={source} selected={false} lit={false} onSelect={onSelect} /></TooltipProvider>);
     expect(screen.getByText('Facebook Ads')).toBeInTheDocument();
     expect(screen.getByText('3 data marts')).toBeInTheDocument();
     expect(container.querySelector('img.dm-logo')).toHaveAttribute('src', source.logo);
@@ -67,7 +66,7 @@ describe('SourceCard', () => {
   });
 
   test('without a logo it draws the plug glyph; one mart is singular', () => {
-    const { container } = render(<SourceCard source={{ ...source, logo: null, martIds: ['a'] }} selected lit onSelect={vi.fn()} />);
+    const { container } = render(<TooltipProvider><SourceCard source={{ ...source, logo: null, martIds: ['a'] }} selected lit onSelect={vi.fn()} /></TooltipProvider>);
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('span.dm-logo svg')).not.toBeNull();
     expect(screen.getByText('1 data mart')).toBeInTheDocument();
@@ -95,7 +94,7 @@ describe('MartCard', () => {
     expect(container.querySelector('article')).toHaveAttribute('id', 'dm-m1');
     expect(container.querySelector('article')).toHaveAttribute('data-tone', 'ok');
     expect(screen.getByLabelText('Description')).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Passed\./)).toBeInTheDocument();
+    expect(screen.getByLabelText('Passed')).toBeInTheDocument();
     expect(screen.getByLabelText(/Data updated/)).toBeInTheDocument();
   });
 
@@ -106,13 +105,18 @@ describe('MartCard', () => {
 
   test('count states: value, spinner, dash with retry', async () => {
     const { rerender, props } = renderMart();
-    expect(screen.getByText('12.4K')).toBeInTheDocument();
+    expect(screen.getByText('12.4K records')).toBeInTheDocument();
     rerender(<TooltipProvider><MartCard {...props} count={{ state: 'loading' }} /></TooltipProvider>);
-    expect(screen.getByLabelText('Counting rows')).toBeInTheDocument();
+    expect(screen.getByLabelText('Counting records')).toBeInTheDocument();
     rerender(<TooltipProvider><MartCard {...props} count={{ state: 'error', message: 'nope' }} /></TooltipProvider>);
     await userEvent.click(screen.getByText('—'));
     expect(props.onRetryCount).toHaveBeenCalledTimes(1);
     expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  test('a count of one is a record, not records', () => {
+    renderMart({ count: { state: 'ok', value: 1 } });
+    expect(screen.getByText('1 record')).toBeInTheDocument();
   });
 
   test('a quality state with no sentence of its own names itself once', () => {
@@ -120,22 +124,18 @@ describe('MartCard', () => {
     expect(screen.getByLabelText('No data quality info')).toBeInTheDocument();
   });
 
-  test('shows the field hit as a badge', () => {
-    renderMart({ fieldHit: 'customer_id' });
-    expect(screen.getByText('customer_id')).toBeInTheDocument();
-  });
-
-  test('context chips name each context', () => {
+  test('context chips name each context in the shared tooltip', async () => {
     renderMart({ contexts: [{ id: 'c1', name: 'Sales', icon: null }, { id: 'c2', name: 'Finance', icon: null }] });
-    expect(screen.getAllByTitle('Context: Sales').length).toBeGreaterThan(0);
-    expect(screen.getAllByTitle('Context: Finance').length).toBeGreaterThan(0);
+    expect(screen.queryByTitle('Context: Sales')).toBeNull();
+    await userEvent.hover(screen.getAllByText('Sales').at(-1)!);
+    expect((await screen.findAllByText('Context: Sales')).length).toBeGreaterThan(0);
   });
 
   test('contexts that do not fit fold into one counted chip naming them all', () => {
     setRowWidth(0);
     try {
       renderMart({ contexts: [{ id: 'c1', name: 'Sales', icon: null }, { id: 'c2', name: 'Finance', icon: null }] });
-      const chip = screen.getByLabelText('2 contexts: Sales, Finance');
+      const chip = screen.getByLabelText('2 contexts');
       expect(chip).toHaveTextContent('2');
     } finally {
       setRowWidth(5000);
@@ -177,7 +177,7 @@ describe('MartCard', () => {
 
 describe('Band', () => {
   const renderBand = (folded: boolean, onFold = vi.fn()) =>
-    render(<Band id="band-data" icon={<Database />} title="Data marts" total={1200} hint="All of them" folded={folded} onFold={onFold}><p>cards</p></Band>);
+    render(<TooltipProvider><Band id="band-data" icon={<Database />} title="Data marts" total={1200} hint="All of them" folded={folded} onFold={onFold}><p>cards</p></Band></TooltipProvider>);
 
   test('open: shows children, total and aria-expanded', () => {
     renderBand(false);
@@ -198,7 +198,7 @@ describe('Band', () => {
   });
 
   test('grid={false} renders children outside the card grid', () => {
-    const { container } = render(<Band id="b" icon={<Database />} title="Row" hint="h" folded={false} onFold={vi.fn()} grid={false}><p>direct</p></Band>);
+    const { container } = render(<TooltipProvider><Band id="b" icon={<Database />} title="Row" hint="h" folded={false} onFold={vi.fn()} grid={false}><p>direct</p></Band></TooltipProvider>);
     expect(container.querySelector('.dm-band-grid')).toBeNull();
     expect(screen.getByText('direct')).toBeInTheDocument();
   });
@@ -241,5 +241,22 @@ describe('lazy count request', () => {
     expect(made).toHaveLength(1);
     expect(made[0]!.root).toBe(container.firstElementChild);
     expect(made[0]!.rootMargin).toBe('200px');
+  });
+});
+
+describe('tooltips', () => {
+  test('a hint opens the shared bubble in a portal on the body, outside the card', async () => {
+    const { container } = renderMart();
+    await userEvent.hover(screen.getByLabelText('Description'));
+    const bubble = (await screen.findAllByText(mart.description!)).find((e) => e.classList.contains('dm-hint-body'))!;
+    expect(bubble).toBeTruthy();
+    expect(container.contains(bubble)).toBe(false);
+    expect(bubble.closest('article')).toBeNull();
+  });
+
+  test('a status mark says its lines in the same bubble', async () => {
+    renderMart();
+    await userEvent.hover(screen.getByLabelText(/Data updated/));
+    expect((await screen.findAllByText(/Data updated/)).some((e) => e.closest('.dm-hint-body'))).toBe(true);
   });
 });

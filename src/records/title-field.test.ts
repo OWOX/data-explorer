@@ -9,7 +9,8 @@ test.each<[string, Schema, string | null]>([
   ['exact alias', [f('id', 'INT64', { isPrimaryKey: true }), f('label', 'STRING', { alias: 'Name' })], 'label'],
   ['exact beats contains', [f('product_title'), f('title')], 'title'],
   ['contains', [f('id', 'INT64', { isPrimaryKey: true }), f('full_name')], 'full_name'],
-  ['first non-key string', [f('code', 'STRING', { isPrimaryKey: true }), f('status')], 'status'],
+  ['no first-string fallback: a status is not a title', [f('code', 'STRING', { isPrimaryKey: true }), f('status')], null],
+  ['an order has no title field, so customer_type is not one', [f('id', 'INT64', { isPrimaryKey: true }), f('customer_type'), f('status')], null],
   ['no title', [f('id', 'INT64', { isPrimaryKey: true }), f('amount', 'NUMERIC')], null],
   ['a key named name is still allowed by name', [f('name', 'STRING', { isPrimaryKey: true })], 'name'],
 ])('%s', (_, schema, expected) => {

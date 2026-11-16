@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { martAppUrl } from '../config';
 import { tickedStorages } from '../graph/storages';
 import { computeVisible } from '../graph/visible';
@@ -8,6 +8,7 @@ import { DataBand } from './bands/DataBand';
 import { RowBand } from './bands/RowBand';
 import { ErrorBox } from './ErrorBox';
 import { Header } from './header/Header';
+import { HistoryButtons } from './header/HistoryButtons';
 import { Skeleton } from './Skeleton';
 import { TooltipProvider } from './Tooltip';
 import { useCardStatus, useModel } from './useModelData';
@@ -17,23 +18,52 @@ export function App() {
 }
 
 type Fold = 'sources' | 'marts' | 'data' | 'row';
+/** Only the Data Sources band starts folded; the member's saved choice, when there is one, replaces this. */
+const DEFAULT_FOLDED: Record<Fold, boolean> = { sources: true, marts: false, data: false, row: false };
+const bandId = (band: Fold) => `band-${band}`;
 
 function AppBody() {
   const [state, dispatch] = useStore();
-  const { ctx, schemas } = useServices();
-  const { model, error, reload, schemaTick } = useModel();
+  const { ctx, preferences } = useServices();
+  const { model, error, reload } = useModel();
   // Folding is per band and lives here. A band the reader has not touched follows its default:
   // Data Sources is folded while there is nothing in it.
   const [folds, setFolds] = useState<Partial<Record<Fold, boolean>>>({});
-  const toggle = (band: Fold, current: boolean) => setFolds((f) => ({ ...f, [band]: !current }));
-  // schemaTick re-runs a search as schemas arrive. With no search it must not: the cards would be recomputed for nothing.
-  const searching = state.search.trim() !== '';
-  const tick = searching ? schemaTick : 0;
+  // The member's saved choices arrive once; a band they have already clicked meanwhile keeps that click.
+  // `saved` is the whole stored document, so a write merges into it rather than replacing it, and a click
+  // made before the read settles is written once it has (a write before it would overwrite what it is about to read).
+  const [prefsReady, setPrefsReady] = useState(false);
+  const saved = useRef<Record<string, boolean>>({});
+  const clicked = useRef<Partial<Record<Fold, boolean>>>({});
+  const write = (changes: Partial<Record<Fold, boolean>>) => {
+    saved.current = { ...saved.current, ...Object.fromEntries((Object.keys(changes) as Fold[]).map((b) => [bandId(b), changes[b]!])) };
+    preferences.saveFolded(saved.current);
+  };
+  useEffect(() => {
+    let live = true;
+    preferences.loadFolded().then((stored) => {
+      if (!live) return;
+      saved.current = stored;
+      const known = Object.fromEntries((Object.keys(DEFAULT_FOLDED) as Fold[]).flatMap((b) => (typeof stored[bandId(b)] === 'boolean' ? [[b, stored[bandId(b)]!]] : [])));
+      setFolds((own) => ({ ...known, ...own }));
+      if (Object.keys(clicked.current).length > 0) write(clicked.current);
+      clicked.current = {};
+      setPrefsReady(true);
+    });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preferences]);
+  const folded = (band: Fold) => folds[band] ?? DEFAULT_FOLDED[band];
+  const toggle = (band: Fold) => {
+    const now = !folded(band);
+    setFolds((f) => ({ ...f, [band]: now }));
+    if (prefsReady) write({ [band]: now });
+    else clicked.current = { ...clicked.current, [band]: now };
+  };
   const storageIds = useMemo(() => (model ? tickedStorages(model, state.storageIds) : null), [model, state.storageIds]);
   const visible = useMemo(
-    () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds: state.contextIds, storageIds, schemas: (id) => schemas.peek(id) }) : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [model, state.selection, state.search, state.contextIds, storageIds, schemas, tick],
+    () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds: state.contextIds, storageIds }) : null),
+    [model, state.selection, state.search, state.contextIds, storageIds],
   );
   const { dq, counts, request, recount } = useCardStatus(model, visible?.ids ?? [], state.modelVersion);
 
@@ -67,27 +97,32 @@ function AppBody() {
   if (!model || !visible) return <Skeleton rows={6} />;
 
   return (
-    <div className="flex h-full flex-col">
-      <Header contexts={model.contexts} failedStorages={model.failedStorages} error={error} onRetry={reload} />
-      <div className="min-h-0 flex-1 overflow-auto p-4" data-scroll-root="">
+    <div className="dm-page">
+      <Header failedStorages={model.failedStorages} error={error} onRetry={reload} history={<HistoryButtons model={model} />} />
+      <main className="dm-page-content">
         <CardBands
           model={model}
           visible={visible}
           storageIds={storageIds}
           counts={counts}
           dq={dq}
-          foldedSources={folds.sources ?? model.sources.length === 0}
-          foldedMarts={folds.marts ?? false}
-          onFoldSources={() => toggle('sources', folds.sources ?? model.sources.length === 0)}
-          onFoldMarts={() => toggle('marts', folds.marts ?? false)}
+          foldedSources={folded('sources')}
+          foldedMarts={folded('marts')}
+          onFoldSources={() => toggle('sources')}
+          onFoldMarts={() => toggle('marts')}
           onRetryCount={(id) => void recount(id)}
           onRequestCount={request}
           onOpenApp={(id) => void ctx.ui.openExternal(martAppUrl(ctx.projectId, id))}
         >
-          <DataBand model={model} folded={folds.data ?? false} onFold={() => toggle('data', folds.data ?? false)} />
-          <RowBand model={model} folded={folds.row ?? false} onFold={() => toggle('row', folds.row ?? false)} />
+          {/* Until the saved folds are known neither band mounts: one saved as folded must not read rows first. */}
+          {prefsReady ? (
+            <>
+              <DataBand model={model} folded={folded('data')} onFold={() => toggle('data')} />
+              <RowBand model={model} folded={folded('row')} onFold={() => toggle('row')} />
+            </>
+          ) : <div aria-busy="true"><Skeleton rows={4} /></div>}
         </CardBands>
-      </div>
+      </main>
     </div>
   );
 }

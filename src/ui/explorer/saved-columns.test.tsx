@@ -112,7 +112,7 @@ test('this session\'s columns win over the saved ones', async () => {
   const load = vi.spyOn(t.services.current!.columnStore, 'load');
   await userEvent.click(within(document.getElementById('band-marts')!).getByText('Customers').closest('article')!);
   await within(document.getElementById('band-data')!).findByRole('heading', { name: 'Customers' });
-  await userEvent.click(within(document.getElementById('band-row')!).getByRole('button', { name: /Back/ }));
+  await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
   await within(document.getElementById('band-data')!).findByRole('heading', { name: 'Orders' });
   await waitFor(() => expect(headers()).toHaveLength(3));
   expect(load).not.toHaveBeenCalledWith('orders');

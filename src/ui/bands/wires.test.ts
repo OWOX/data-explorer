@@ -177,7 +177,7 @@ describe('a hub with many neighbours', () => {
   const model: Model = { marts: new Map(['hub', ...ids].map((id) => [id, mart(id)])), sources: [], edges, contexts: [], storages: [], failedStorages: [] };
 
   it('shows every neighbour and draws one path per pair', () => {
-    const { ids: shown } = computeVisible({ model, selection: { sourceKey: null, martId: 'hub', record: null }, search: '', contextIds: [], schemas: () => undefined });
+    const { ids: shown } = computeVisible({ model, selection: { sourceKey: null, martId: 'hub', record: null }, search: '', contextIds: [] });
     expect(shown).toHaveLength(N + 1);
     expect(new Set(shown)).toEqual(new Set(['hub', ...ids]));
     const wires = edges.filter((e) => shown.includes(e.source) && shown.includes(e.target)).map((e) => wire(e.id, `dm-${e.source}`, `dm-${e.target}`));

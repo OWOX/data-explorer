@@ -13,6 +13,7 @@ import { BandTools, BandToolsSlot } from '../bands/BandTools';
 import { PickedIcon } from '../bands/picked';
 import { Skeleton } from '../Skeleton';
 import { CellValue } from './CellValue';
+import { FieldLabel } from './FieldLabel';
 
 /** One record of a mart, read by primary key. Key it by mart and key so a new record starts clean. */
 export function RecordView({ martId, pk, model }: { martId: string; pk: Record<string, unknown>; model: Model }) {
@@ -21,7 +22,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
   const [{ modelVersion }, dispatch] = useStore();
   const sourceOf = sourceOfModel(model);
   const [ownVersion, setVersion] = useState(0);
-  // The header's Refresh re-reads the record too: its counter joins this view's own, and each only ever goes up.
+  // A model reload re-reads the record too: its counter joins this view's own, and each only ever goes up.
   const version = ownVersion + modelVersion;
   const [state, setState] = useState<{ ver: number; schema: Schema | null; row: Row | null | undefined; error: unknown }>({ ver: -1, schema: null, row: undefined, error: null });
   const [titles, setTitles] = useState(new Map<string, string>());
@@ -81,7 +82,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
   return (
     <div className="flex max-h-[32rem] min-h-0 flex-col">
       {header}
-      {!loaded && <div role="progressbar" className="h-0.5 animate-pulse bg-primary" />}
+      {!loaded && <div role="progressbar" aria-label="Loading record" className="dm-progress" />}
       <div className="min-h-0 flex-1 overflow-auto">
       <dl className="grid grid-cols-[minmax(10rem,16rem)_1fr] content-start gap-x-4 gap-y-2 p-4 text-sm">
         {state.schema.map((f) => {
@@ -89,9 +90,9 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
           const target = rel ? clickTarget(rel, row, relSchemas.get(rel.relatedMartId)) : null;
           return (
             <div key={f.name} className="contents">
-              <dt className="text-muted-foreground">{fieldLabel(f)}{fieldLabel(f) !== f.name && <span className="ml-1 font-mono text-[11px]">{f.name}</span>}</dt>
+              <dt className="flex min-w-0 items-start text-muted-foreground"><FieldLabel field={f} wrap /></dt>
               <dd className="min-w-0 break-words">
-                <CellValue row={row} field={f.name} title={titles.get(f.name)}
+                <CellValue row={row} field={f.name} type={f.type} title={titles.get(f.name)}
                   onOpen={target ? () => dispatch({ type: 'follow', target, sourceOf }) : undefined} />
               </dd>
             </div>

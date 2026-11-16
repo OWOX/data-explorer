@@ -74,7 +74,8 @@ const specs: Spec[] = [
       store_id: pick(r, 30),
       status: STATUSES[pick(r, STATUSES.length) - 1],
       amount: Math.round(r() * 50_000) / 100,
-      created_at: iso(NOW - Math.floor(r() * 90 * DAY)),
+      // Newest first by id: the grid opens newest date first, so the first rows are the lowest ids.
+      created_at: iso(NOW - Math.floor((i - 1 + r() * 0.9) * (90 * DAY / 450))),
       is_gift: r() < 0.15,
     }),
   },

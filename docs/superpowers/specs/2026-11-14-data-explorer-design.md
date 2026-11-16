@@ -114,7 +114,8 @@ Each column header has an optional filter popover. The operators depend on the f
 |---|---|
 | string | contains, not contains, equals, not equals, starts with, ends with, is blank, is not blank |
 | number | =, ≠, >, ≥, <, ≤, between, is blank, is not blank |
-| date, time | on, before, after, between, relative (today, yesterday, this/last week, this/last month, this/last quarter, this year, last N days, last N months), is blank, is not blank |
+| date | one-click presets (Today, Yesterday, Last 7/14/30/90 days, This/Last week, This/Last month, This/Last quarter, This year, Last 12 months; weeks are ISO weeks, and "Last N days" takes any N), custom range (between), on (DATE only), before, after, is blank, is not blank |
+| time | before, after, between, is blank, is not blank |
 | boolean | is true, is false, is blank |
 | other | is blank, is not blank |
 
@@ -128,8 +129,7 @@ A relationship column is a field of the explored mart that appears as `sourceFie
 2. **Title field heuristic.**
    1. The first field whose name or alias equals `title` or `name` (case-insensitive).
    2. Else, the first field whose name or alias contains `title` or `name`.
-   3. Else, the first string field that is not a key.
-   4. Else, no title. The cell shows the raw value.
+   3. Else, no title. The cell shows the raw value. There is no fallback to "the first string field": a status or a type is not a title, and showing one in place of a key misleads.
 3. The cell shows the title, with the raw value in a tooltip.
 4. **Click behavior.** When the related join field is the related mart's only primary key, a click opens that record's tab. Otherwise it opens the related mart's tab filtered `equals <value>` on that field.
 5. When a relationship has several join conditions (a composite key), the cell shows the raw value and its click opens the related mart filtered on every join condition.

@@ -22,7 +22,7 @@ export type Wire = {
   to: string;
   /** `source` is the blue cross-band line; `relationship` is the grey in-band line. */
   kind: 'source' | 'relationship';
-  /** Tooltip: lines pass under cards, so they have to say what they are. */
+  /** Said in the tooltip: lines pass under cards, so they have to say what they are. */
   title: string;
 };
 
@@ -163,9 +163,8 @@ export function useWires(
       path.setAttribute('marker-end', 'url(#arrowhead)');
       path.dataset.from = wire.from;
       path.dataset.to = wire.to;
-      const title = document.createElementNS(NS, 'title');
-      title.textContent = wire.title;
-      path.append(title);
+      // Read by the canvas, which says it in the shared bubble: a native <title> would be a second tooltip style.
+      path.dataset.tip = wire.title;
       svg.append(path);
       return path;
     }));

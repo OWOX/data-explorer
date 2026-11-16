@@ -6,7 +6,7 @@ export function Popover({ trigger, children, align = 'start', open, onOpenChange
     <P.Root open={open} onOpenChange={onOpenChange}>
       <P.Trigger asChild>{trigger}</P.Trigger>
       <P.Portal>
-        <P.Content align={align} sideOffset={4} className="z-50 w-64 rounded-md border bg-background p-3 text-sm shadow-md">{children}</P.Content>
+        <P.Content align={align} sideOffset={4} collisionPadding={8} className="z-50 max-h-[var(--radix-popover-content-available-height)] w-64 overflow-auto rounded-md border bg-background p-3 text-sm shadow-md">{children}</P.Content>
       </P.Portal>
     </P.Root>
   );

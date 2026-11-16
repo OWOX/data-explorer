@@ -4,7 +4,7 @@ import { incomingLinks, relationshipColumns } from './relationships';
 
 /**
  * The relationships of one mart, memoised on what they say rather than on the `model.edges` array.
- * A header Refresh builds a new model with identical edges; keying on identity would re-read every
+ * A model reload builds a new model with identical edges; keying on identity would re-read every
  * open record and re-run its title lookups for nothing.
  */
 export function useMartRelationships(martId: string, edges: Edge[]) {
