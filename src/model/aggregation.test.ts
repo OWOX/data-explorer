@@ -1,4 +1,4 @@
-import { aggregatedKey, allowedFunctions, applyDraft, canBucket, canZone, describeColumn, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, type Aggregation } from './aggregation';
+import { isTimeZone, sanitizeAggregation, ungroupableColumn, aggregatedKey, allowedFunctions, applyDraft, canBucket, canZone, describeColumn, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, type Aggregation } from './aggregation';
 import type { Field } from './types';
 
 const f = (category: Field['category'], extra: Partial<Field> = {}): Field => ({ name: 'x', alias: null, type: category === 'date' ? 'TIMESTAMP' : 'STRING', category, description: null, isPrimaryKey: false, ...extra });
@@ -8,7 +8,9 @@ test('a field offers its category\'s defaults, narrowed by its own governance, o
   expect(allowedFunctions(f('string'))).toEqual(['COUNT', 'COUNT_DISTINCT', 'STRING_AGG', 'ANY_VALUE']);
   expect(allowedFunctions(f('date'))).toEqual(['MIN', 'MAX']);
   expect(allowedFunctions(f('boolean'))).toEqual(['COUNT', 'COUNT_DISTINCT']);
-  expect(allowedFunctions(f('other'))).toEqual(['COUNT']);
+  // an array, JSON or struct field takes no function (the backend refuses it); neither does a calculated field
+  expect(allowedFunctions(f('other'))).toEqual([]);
+  expect(allowedFunctions(f('number', { isCalculated: true }))).toEqual([]);
   // an override may only narrow within what the type supports, and keeps the canonical order
   expect(allowedFunctions(f('number', { allowedAggregations: ['P50', 'SUM', 'STRING_AGG'] }))).toEqual(['SUM', 'P50']);
   expect(allowedFunctions(f('number', { allowedAggregations: [] }))).toEqual([]);
@@ -87,4 +89,35 @@ test('a bucket start is shown by its bucket', () => {
   expect(formatBucket('2026-11-09', 'WEEK', 'en-US')).toBe('Nov 9, 2026');
   expect(formatBucket(null, 'DAY')).toBeNull();
   expect(formatBucket('soon', 'MONTH')).toBe('soon');
+});
+
+test('a calculated field cannot be bucketed or zoned', () => {
+  expect(canBucket(f('date', { isCalculated: true }))).toBe(false);
+  expect(canZone(f('date', { isCalculated: true }))).toBe(false);
+});
+
+test('sanitizeAggregation drops what the field cannot take and keeps the rest; same object when nothing changes', () => {
+  const fields = [f('number', { name: 'n' }), f('number', { name: 'calc', isCalculated: true }), f('other', { name: 'arr' }), f('date', { name: 'ts' }), f('date', { name: 'd', type: 'DATE' }), f('string', { name: 's' })];
+  const ok: Aggregation = { aggregations: [{ column: 'n', function: 'SUM' }, { column: 'unknown', function: 'SUM' }], dateTrunc: [{ column: 'ts', unit: 'MONTH', timeZone: 'UTC' }] };
+  expect(sanitizeAggregation(ok, fields)).toBe(ok);
+  const bad: Aggregation = {
+    aggregations: [{ column: 'n', function: 'STRING_AGG' }, { column: 'n', function: 'SUM' }, { column: 'calc', function: 'SUM' }, { column: 'arr', function: 'COUNT' }, { column: 's', function: 'COUNT' }],
+    dateTrunc: [{ column: 's', unit: 'DAY' }, { column: 'd', unit: 'DAY', timeZone: 'UTC' }, { column: 'calc', unit: 'DAY' }, { column: 's', unit: 'DAY' }],
+  };
+  expect(sanitizeAggregation(bad, fields)).toEqual({ aggregations: [{ column: 'n', function: 'SUM' }, { column: 's', function: 'COUNT' }], dateTrunc: [{ column: 'd', unit: 'DAY' }] });
+  // a column with a function and a bucket keeps the function
+  expect(sanitizeAggregation({ aggregations: [{ column: 'ts', function: 'MIN' }], dateTrunc: [{ column: 'ts', unit: 'DAY' }] }, fields).dateTrunc).toEqual([]);
+});
+
+test('ungroupableColumn finds a shown array or calculated column with no rule, only once the grid is grouped', () => {
+  const fields = [f('string', { name: 's' }), f('other', { name: 'arr' }), f('number', { name: 'calc', isCalculated: true })];
+  expect(ungroupableColumn(fields, NO_AGGREGATION)).toBeNull();
+  const g: Aggregation = { aggregations: [{ column: 's', function: 'COUNT' }], dateTrunc: [] };
+  expect(ungroupableColumn(fields, g)?.name).toBe('arr');
+  expect(ungroupableColumn([fields[0]!], g)).toBeNull();
+});
+
+test('the backend IANA pattern and length cap', () => {
+  for (const z of ['UTC', 'America/New_York', 'Etc/GMT+5', 'America/Argentina/Buenos_Aires']) expect(isTimeZone(z)).toBe(true);
+  for (const z of ['', '1UTC', 'UTC/', "UTC'; DROP", 'a b', '/UTC', 'A'.repeat(65), 'Europe//Kyiv', 7]) expect(isTimeZone(z)).toBe(false);
 });

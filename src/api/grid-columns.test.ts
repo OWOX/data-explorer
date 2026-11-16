@@ -172,3 +172,11 @@ test('a plain column save keeps the aggregations that were stored and never read
   await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
   expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'b'], at: expect.any(String), aggregations: [{ column: 'a', function: 'SUM' }] });
 });
+
+test('a bucket with a time zone the backend would refuse, or on a column that also has a function, is not loaded', async () => {
+  const get = vi.fn(async () => ({ document: { columns: ['a'], at: 'x', aggregations: [{ column: 'n', function: 'SUM' }], dateTrunc: [
+    { column: 'd1', unit: 'DAY', timeZone: "UTC'; DROP" }, { column: 'd2', unit: 'DAY', timeZone: '1UTC' }, { column: 'n', unit: 'DAY' }, { column: 'd3', unit: 'DAY', timeZone: 'Europe/Kyiv' }, { column: 'd4', unit: 'DAY', timeZone: 'A'.repeat(65) }, { column: 'd5', unit: 'DAY', timeZone: 5 },
+  ] } }));
+  const store = createColumnStore(ctxWith({ get, put: vi.fn() }));
+  expect(await store.loadAggregation('m')).toEqual({ aggregations: [{ column: 'n', function: 'SUM' }], dateTrunc: [{ column: 'd3', unit: 'DAY', timeZone: 'Europe/Kyiv' }] });
+});

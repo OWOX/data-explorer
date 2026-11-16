@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { decodeViewLink, encodeViewLink, MAX_AGG_RULES, MAX_DECODED_BYTES, MAX_ROUTE_LENGTH, type DecodedView } from './view-link';
 
 const folded = { sources: false, marts: true, data: false, row: true };
-const base: Omit<DecodedView, 'dropped'> = {
+const base: Omit<DecodedView, 'dropped' | 'droppedAggregations'> = {
   sourceKey: 'src1', martId: 'm1', record: { id: 7 }, search: 'sales', contextIds: ['c1'], storageIds: ['s1', 's2'], folded,
   grid: {
     columns: ['id', 'orders__customers__name', 'orders__customers__email', 'orders__total'],
@@ -31,13 +31,13 @@ describe('view link codec', () => {
   it('round trips native and joined columns, filter shapes, sorts and record', async () => {
     const r = await encodeViewLink(base);
     expect(r.startsWith('/v?s=')).toBe(true);
-    expect(await decodeViewLink(r)).toEqual({ ...base, dropped: 0 });
+    expect(await decodeViewLink(r)).toEqual({ ...base, dropped: 0, droppedAggregations: 0 });
   });
 
   it('round trips null sorts, empty sorts and a null grid', async () => {
     const g = base.grid!;
     for (const v of [{ ...base, grid: { ...g, sorts: null } }, { ...base, grid: { ...g, sorts: [] } }, { ...base, grid: null, record: null, storageIds: null }]) {
-      expect(await decodeViewLink(await encodeViewLink(v))).toEqual({ ...v, dropped: 0 });
+      expect(await decodeViewLink(await encodeViewLink(v))).toEqual({ ...v, dropped: 0, droppedAggregations: 0 });
     }
   });
 
@@ -167,7 +167,7 @@ describe('view link codec', () => {
         dateTrunc: [{ column: 'created', unit: 'MONTH' as const, timeZone: 'Europe/Kyiv' }],
       };
       const view = { ...base, grid };
-      expect(await decodeViewLink(await encodeViewLink(view))).toEqual({ ...view, dropped: 0 });
+      expect(await decodeViewLink(await encodeViewLink(view))).toEqual({ ...view, dropped: 0, droppedAggregations: 0 });
     });
 
     it('a link without them still opens, and a grid without them encodes none', async () => {
@@ -180,26 +180,28 @@ describe('view link codec', () => {
     it('drops unknown functions and buckets, bad shapes and unsafe time zones, and counts them', async () => {
       const g = withAgg({
         ag: [['total', 'SUM'], ['total', 'NOPE'], ['total', 7], 'x', ['total', 'SUM'], [9, 'AVG']],
-        dt: [['created', 'HOUR'], ['created', 'MONTH', 'UTC; drop'], ['created', 'WEEK', 'UTC']],
+        dt: [['created', 'HOUR'], ['created', 'MONTH', 'UTC; drop'], ['created', 'QUARTER', '1UTC'], ['created', 'QUARTER', 'Europe//Kyiv'], ['created', 'WEEK', 'UTC']],
       });
       const d = await decodeOk(valid({ g }));
       expect(d.grid!.aggregations).toEqual([{ column: 'total', function: 'SUM' }]);
       expect(d.grid!.dateTrunc).toEqual([{ column: 'created', unit: 'WEEK', timeZone: 'UTC' }]);
-      expect(d.dropped).toBe(7);
+      expect(d.droppedAggregations).toBe(9);
+      expect(d.dropped).toBe(0);
     });
 
     it('keeps one bucket per column and never both a bucket and functions on a column', async () => {
       const d = await decodeOk(valid({ g: withAgg({ ag: [['total', 'SUM']], dt: [['created', 'DAY'], ['created', 'YEAR'], ['total', 'DAY']] }) }));
       expect(d.grid!.dateTrunc).toEqual([{ column: 'created', unit: 'DAY' }]);
       expect(d.grid!.aggregations).toEqual([{ column: 'total', function: 'SUM' }]);
-      expect(d.dropped).toBe(2);
+      expect(d.droppedAggregations).toBe(2);
+      expect(d.dropped).toBe(0);
     });
 
     it('caps the rules read from a link', async () => {
       const ag = Array.from({ length: MAX_AGG_RULES + 10 }, (_, i) => [`c${i}`, 'SUM']);
       const d = await decodeOk(valid({ g: withAgg({ ag }) }));
       expect(d.grid!.aggregations).toHaveLength(MAX_AGG_RULES);
-      expect(d.dropped).toBe(10);
+      expect(d.droppedAggregations).toBe(10);
     });
 
     it('refuses rules that are not lists', async () => {

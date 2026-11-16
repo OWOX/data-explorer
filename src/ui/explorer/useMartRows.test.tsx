@@ -102,3 +102,35 @@ test('rules of a column that is not asked for are not sent, and no rules means t
   expect(buildRowQuery(schema, ['a'], [], 200, [], agg)).toEqual({ column: ['a'], limit: 201 });
   expect(buildRowQuery(schema, ['a'], [], 200, [], { aggregations: [], dateTrunc: [] }).column).toEqual(['id', 'a']);
 });
+
+test('grouped: a shrinking column list re-queries, because fewer group keys are different rows', async () => {
+  const { traverseData, wrapper } = hookCtx();
+  const grouped = (column: string[]): TraverseOptions => ({ column, aggregation: [{ column: 'b', function: 'SUM' }], limit: 201 });
+  const { result, rerender } = renderHook(({ o }) => useMartRows('m', o, 0), { wrapper, initialProps: { o: grouped(['a', 'c', 'b']) } });
+  await waitFor(() => expect(result.current.rows).toHaveLength(1));
+  rerender({ o: grouped(['a', 'b']) });
+  expect(result.current.loading).toBe(true);
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  // a date bucket groups too
+  rerender({ o: { column: ['a', 'd'], dateTrunc: [{ column: 'd', unit: 'DAY' }], limit: 201 } });
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(3));
+  rerender({ o: { column: ['d'], dateTrunc: [{ column: 'd', unit: 'DAY' }], limit: 201 } });
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
+});
+
+test('rows of another shape are not shown while the new query is in flight; the same shape keeps its rows', async () => {
+  const { wrapper } = hookCtx();
+  const { result, rerender } = renderHook(({ o }) => useMartRows('m', o, 0), { wrapper, initialProps: { o: opts(['id', 'a']) } });
+  await waitFor(() => expect(result.current.rows).toHaveLength(1));
+  rerender({ o: { ...opts(['id', 'a']), limit: 401 } });
+  expect(result.current.loading).toBe(true);
+  expect(result.current.rows).toHaveLength(1); // a bigger page of the same rows
+  rerender({ o: { column: ['a'], aggregation: [{ column: 'a', function: 'COUNT' }], limit: 401 } });
+  expect(result.current.loading).toBe(true);
+  expect(result.current.rows).toBeNull();
+  expect(result.current.hasMore).toBe(false);
+  await waitFor(() => expect(result.current.rows).toHaveLength(1));
+  rerender({ o: opts(['id', 'a']) });
+  expect(result.current.rows).toBeNull(); // and back
+});

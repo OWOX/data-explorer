@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const band = (page: Page, id: 'sources' | 'marts' | 'data' | 'row') => page.locator(`#band-${id}`);
 const martCard = (page: Page, title: string) => band(page, 'marts').locator('article', { hasText: title }).first();
@@ -287,6 +287,19 @@ test('deselecting the main mart promotes the next joined one; a mart the main on
   await expect(data.getByRole('heading', { name: 'Sessions', exact: true })).toBeVisible();
 });
 
+/** Waits for a body cell under "Amount · Sum" with a number in it (the grouped rows have arrived) and returns its text. */
+async function groupedSum(grid: Locator): Promise<string> {
+  let text = '';
+  await expect(async () => {
+    const heads = await grid.locator('thead tr').last().locator('th:not([aria-hidden])').allTextContents();
+    const at = heads.findIndex((h) => h.startsWith('Amount · Sum'));
+    expect(at).toBeGreaterThanOrEqual(0);
+    text = (await grid.locator('tbody tr').first().locator('td').nth(at).textContent()) ?? '';
+    expect(text).toMatch(/\d/);
+  }).toPass();
+  return text;
+}
+
 async function tick(page: Page, label: string | RegExp, group?: string) {
   await band(page, 'data').getByRole('button', { name: `Columns of ${group ?? 'Orders'}` }).click();
   await page.getByRole('dialog').getByLabel(label, { exact: true }).check();
@@ -498,8 +511,8 @@ test('a copied view link keeps a Sum on Amount: the opener sees the grouped grid
   await opened.goto(`/?mock&route=${encodeURIComponent(link)}`);
   const grid = band(opened, 'data');
   await expect(grid.getByRole('columnheader', { name: /Amount · Sum/ })).toBeVisible();
+  await groupedSum(grid);
   await expect(grid.getByText(/\d+\+? groups?$/)).toBeVisible();
-  await expect(grid.getByRole('cell').filter({ hasText: /\S/ }).first()).toBeVisible();
 });
 
 test('a link to a data mart the opener cannot see shows a notice and the page stays usable', async ({ page, context }) => {
@@ -531,6 +544,8 @@ test('a Sum on Amount groups the rows by the other columns; the badge counts gro
   await dialog.getByLabel('Sum').check();
   await dialog.getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByRole('columnheader', { name: /Amount · Sum/ })).toBeVisible();
+  // a real grouped value: a sum of order amounts is a positive number
+  expect(Number((await groupedSum(data)).replace(/[^\d.]/g, ''))).toBeGreaterThan(0);
   await expect(data.getByText(/\d+\+? groups?$/)).toBeVisible();
   await expect(data.getByText(/records$/)).toHaveCount(0);
   await data.getByRole('row').nth(2).click();

@@ -13,11 +13,11 @@ const model: Model = {
   storages: [{ id: 's1', title: 'S1', type: 'BQ' }, { id: 's2', title: 'S2', type: 'BQ' }],
   failedStorages: [],
 };
-const field = (name: string) => ({ name, alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false }) as Schema[number];
+const field = (name: string) => ({ name, alias: null, type: name === 'total' ? 'INT64' : 'STRING', category: name === 'total' ? 'number' : 'string', description: null, isPrimaryKey: false }) as Schema[number];
 const schema: Schema = ['id', 'total', 'customer__name'].map(field);
 const folded = { sources: false, marts: false, data: false, row: false };
 const view = (patch: Partial<DecodedView> = {}): DecodedView => ({
-  sourceKey: 'src1', martId: 'm1', record: { id: 1 }, search: 'q', contextIds: ['c1'], storageIds: ['s1'], folded, dropped: 0,
+  sourceKey: 'src1', martId: 'm1', record: { id: 1 }, search: 'q', contextIds: ['c1'], storageIds: ['s1'], folded, dropped: 0, droppedAggregations: 0,
   grid: { columns: ['id', 'total'], filters: { id: { field: 'id', op: 'eq', value: 1 } }, sorts: [{ field: 'id', direction: 'asc' }], limit: 400 },
   ...patch,
 });
@@ -103,6 +103,25 @@ describe('resolveView', () => {
     const { apply, skipped } = await resolveView(view({ grid }), model, read);
     expect(apply.grid!.aggregations).toBeUndefined();
     expect(skipped.aggregations).toBe(1);
+  });
+
+  it('rules the field cannot take are dropped and counted: a function it does not allow, a calculated field, a bucket on a text field, a bucket next to a function', async () => {
+    const fieldOf = (name: string, patch: Partial<Schema[number]> = {}) => ({ ...field(name), ...patch }) as Schema[number];
+    const typed: Schema = [fieldOf('id'), fieldOf('amount', { type: 'INT64', category: 'number' }), fieldOf('margin', { type: 'INT64', category: 'number', isCalculated: true }), fieldOf('tags', { type: 'STRING', category: 'other' }), fieldOf('day', { type: 'DATE', category: 'date' })];
+    const grid = {
+      columns: ['id', 'amount', 'margin', 'tags', 'day'], filters: {}, sorts: null, limit: 200,
+      aggregations: [{ column: 'amount', function: 'SUM' as const }, { column: 'amount', function: 'STRING_AGG' as const }, { column: 'margin', function: 'SUM' as const }, { column: 'tags', function: 'COUNT' as const }],
+      dateTrunc: [{ column: 'id', unit: 'DAY' as const }, { column: 'amount', unit: 'DAY' as const }, { column: 'day', unit: 'MONTH' as const, timeZone: 'UTC' }],
+    };
+    const { apply, skipped } = await resolveView(view({ grid }), model, async () => typed);
+    expect(apply.grid!.aggregations).toEqual([{ column: 'amount', function: 'SUM' }]);
+    expect(apply.grid!.dateTrunc).toEqual([{ column: 'day', unit: 'MONTH' }]);
+    expect(skipped.aggregations).toBe(3 + 2);
+  });
+
+  it('the codec dropped functions and buckets count under aggregations, not columns', async () => {
+    const { skipped } = await resolveView(view({ droppedAggregations: 4 }), model, read);
+    expect(skipped).toMatchObject({ columns: 0, aggregations: 4 });
   });
 
   it('counts the codec dropped entries under columns', async () => {

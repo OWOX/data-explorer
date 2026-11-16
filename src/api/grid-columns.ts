@@ -1,4 +1,4 @@
-import { AGGREGATE_FUNCTIONS, DATE_BUCKETS, NO_AGGREGATION, type Aggregation } from '../model/aggregation';
+import { AGGREGATE_FUNCTIONS, DATE_BUCKETS, isTimeZone, NO_AGGREGATION, type Aggregation } from '../model/aggregation';
 import type { Ctx } from '../sdk/types';
 
 export const GRID_COLUMNS_COLLECTION = 'grid-columns';
@@ -33,7 +33,8 @@ export interface ColumnStore {
 const validAggregation = (doc: { aggregations?: unknown; dateTrunc?: unknown } | undefined): Aggregation => {
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null && typeof (x as { column?: unknown }).column === 'string') : []);
   const aggregations = list(doc?.aggregations).flatMap((r) => ((AGGREGATE_FUNCTIONS as readonly unknown[]).includes(r.function) ? [{ column: r.column as string, function: r.function as never }] : []));
-  const dateTrunc = list(doc?.dateTrunc).flatMap((r) => ((DATE_BUCKETS as readonly unknown[]).includes(r.unit) ? [{ column: r.column as string, unit: r.unit as never, ...(typeof r.timeZone === 'string' ? { timeZone: r.timeZone } : {}) }] : []));
+  // A bucket needs a known unit and, when it has a time zone, one the backend accepts; a column takes functions or a bucket, never both.
+  const dateTrunc = list(doc?.dateTrunc).flatMap((r) => ((DATE_BUCKETS as readonly unknown[]).includes(r.unit) && (r.timeZone === undefined || isTimeZone(r.timeZone)) && !aggregations.some((a) => a.column === r.column) ? [{ column: r.column as string, unit: r.unit as never, ...(r.timeZone !== undefined ? { timeZone: r.timeZone as string } : {}) }] : []));
   return aggregations.length || dateTrunc.length ? { aggregations, dateTrunc } : NO_AGGREGATION;
 };
 

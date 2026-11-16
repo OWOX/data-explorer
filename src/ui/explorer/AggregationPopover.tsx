@@ -14,7 +14,7 @@ export const TIME_ZONES = ['UTC', 'America/New_York', 'America/Los_Angeles', 'Am
  * output column), or for a date one bucket (Day to Year, with an optional time zone), never both. "No aggregation" leaves the column
  * a group key. Filters still apply to the raw rows, before they are grouped.
  */
-export function AggregationEditor({ field, value, onApply, onCancel }: { field: Field; value: AggregationDraft; onApply: (d: AggregationDraft) => void; onCancel: () => void }) {
+export function AggregationEditor({ field, value, blocker, onApply, onCancel }: { field: Field; value: AggregationDraft; /** The title of a shown column that cannot be grouped: while it is shown, a rule that would group the rows is not applied. */ blocker?: string; onApply: (d: AggregationDraft) => void; onCancel: () => void }) {
   const allowed = allowedFunctions(field);
   const bucketable = canBucket(field);
   const zoneable = canZone(field);
@@ -25,6 +25,8 @@ export function AggregationEditor({ field, value, onApply, onCancel }: { field: 
   const toggle = (fn: AggFn, on: boolean) => { setBucket(null); setZone(null); setFns((cur) => (on ? [...cur.filter((f) => f !== fn), fn] : cur.filter((f) => f !== fn))); };
   const choose = (unit: DateBucket | null) => { setBucket(unit); if (unit === null) setZone(null); else setFns([]); };
   const ordered = allowed.filter((f) => fns.includes(f));
+  const groups = bucket !== null || ordered.length > 0;
+  const stranded = !!blocker && groups;
   return (
     <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); onApply({ functions: bucket ? [] : ordered, bucket, timeZone: bucket && zoneable ? zone : null }); }}>
       <div className="dm-popover-title text-sm font-medium">{columnTitle(field)}</div>
@@ -58,12 +60,13 @@ export function AggregationEditor({ field, value, onApply, onCancel }: { field: 
         </fieldset>
       )}
       {allowed.length === 0 && !bucketable && <p className="text-xs text-muted-foreground">No aggregation is allowed for this field.</p>}
+      {stranded && <p role="alert" className="text-xs text-destructive">{`"${blocker}" can't be grouped. Hide it to aggregate.`}</p>}
       <p className="text-xs text-muted-foreground">Filters still apply to the rows before they are aggregated.</p>
       <div className="flex items-center justify-between gap-2">
         <button type="button" disabled={!had && fns.length === 0 && bucket === null} onClick={() => onApply({ functions: [], bucket: null, timeZone: null })} className="rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50">Clear aggregation</button>
         <div className="flex gap-2">
           <button type="button" onClick={onCancel} className="rounded-md border px-2.5 py-1 text-sm hover:bg-accent">Cancel</button>
-          <button type="submit" disabled={!had && ordered.length === 0 && bucket === null} className="rounded-md bg-primary px-2.5 py-1 text-sm text-primary-foreground disabled:opacity-50">Apply</button>
+          <button type="submit" disabled={(!had && ordered.length === 0 && bucket === null) || stranded} className="rounded-md bg-primary px-2.5 py-1 text-sm text-primary-foreground disabled:opacity-50">Apply</button>
         </div>
       </div>
     </form>
@@ -71,7 +74,7 @@ export function AggregationEditor({ field, value, onApply, onCancel }: { field: 
 }
 
 /** The Sigma on a column title: shown on hover or focus, and kept on in the primary colour while the column has a function or a bucket. */
-export function AggregationPopover({ field, value, onApply }: { field: Field; value: AggregationDraft; onApply: (d: AggregationDraft) => void }) {
+export function AggregationPopover({ field, value, blocker, onApply }: { field: Field; value: AggregationDraft; blocker?: string; onApply: (d: AggregationDraft) => void }) {
   const [open, setOpen] = useState(false);
   const on = value.functions.length > 0 || value.bucket !== null;
   const allowed = allowedFunctions(field);
@@ -83,7 +86,7 @@ export function AggregationPopover({ field, value, onApply }: { field: Field; va
         <Sigma className="size-3.5" />
       </button>
     }>
-      <AggregationEditor key={JSON.stringify(value)} field={field} value={value} onApply={(d) => { onApply(d); setOpen(false); }} onCancel={() => setOpen(false)} />
+      <AggregationEditor key={JSON.stringify(value)} field={field} value={value} blocker={blocker} onApply={(d) => { onApply(d); setOpen(false); }} onCancel={() => setOpen(false)} />
     </Popover>
   );
 }

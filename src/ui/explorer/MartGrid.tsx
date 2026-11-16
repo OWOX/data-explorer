@@ -4,7 +4,7 @@ import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pend
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PAGE_SIZE } from '../../config';
 import { withJoined, type JoinedSource } from '../../api/blendable';
-import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, type AggFn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
+import { AGG_LABELS, allowedFunctions, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, sanitizeAggregation, ungroupableColumn, type AggFn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
 import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
 import type { ColumnFilter } from '../../filters/build';
 import { cycleSort, defaultSort, sortsOnColumns, type SortKey } from '../../model/sort';
@@ -78,12 +78,12 @@ function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed:
     const full = withJoined(schema, cached ?? []);
     const kept = orderColumns(offered(full, seed.saved?.columns ?? []), cached ?? [], defaultColumns(schema));
     // A session list that names a joined field waits for the joined marts unless they are already known.
-    return kept.length && (cached || !namesJoined(schema, seed.saved)) ? { columns: kept, cleaned: null, sources: cached ?? null, agg: seed.saved ? aggOf(seed.saved) : columnStore.aggregation(martId) } : null;
+    return kept.length && (cached || !namesJoined(schema, seed.saved)) ? { columns: kept, cleaned: null, sources: cached ?? null, agg: sanitizeAggregation(seed.saved ? aggOf(seed.saved) : columnStore.aggregation(martId), full) } : null;
   });
   useEffect(() => {
     if (initial) return;
     let live = true;
-    const timer = setTimeout(() => { live = false; setInitial({ columns: defaultColumns(schema), cleaned: null, sources: null, agg: seed.saved ? aggOf(seed.saved) : NO_AGGREGATION }); }, SAVED_COLUMNS_WAIT_MS);
+    const timer = setTimeout(() => { live = false; setInitial({ columns: defaultColumns(schema), cleaned: null, sources: null, agg: sanitizeAggregation(seed.saved ? aggOf(seed.saved) : NO_AGGREGATION, schema) }); }, SAVED_COLUMNS_WAIT_MS);
     (async () => {
       const own = seed.saved?.columns;
       const saved = own ?? await columnStore.load(martId) ?? [];
@@ -103,7 +103,7 @@ function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed:
       const dropped = !failed && saved.length > there.length;
       const regrouped = !failed && kept.length > 0 && kept.some((c, i) => c !== there[i]);
       // A session or link list is not a saved one: only a list read from the store is cleaned back into it.
-      setInitial({ columns: kept.length ? kept : defaultColumns(schema), cleaned: (dropped || regrouped) && !own ? kept : null, sources, agg: keepVisible(agg, kept) });
+      setInitial({ columns: kept.length ? kept : defaultColumns(schema), cleaned: (dropped || regrouped) && !own ? kept : null, sources, agg: sanitizeAggregation(keepVisible(agg, kept), withJoined(schema, sources ?? [])) });
     })();
     return () => { live = false; clearTimeout(timer); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -240,19 +240,25 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const shown = useMemo(() => orderColumns(visible, sources, defaultColumns(native)), [visible, sources, native]);
   if (!sameList(shown, visible)) setVisible(shown);
   // Rules of a column that is no longer shown go with it; any function or bucket left groups the rows (no default order then: it may name nothing shown).
-  const aggNow = useMemo(() => keepVisible(agg, shown), [agg, shown]);
+  const aggNow = useMemo(() => sanitizeAggregation(keepVisible(agg, shown), schema), [agg, shown, schema]);
   const grouped = isGrouped(aggNow);
-  const gridSorts = useMemo(() => (grouped ? (own ?? []) : sorts), [grouped, own, sorts]);
+  // Grouped with no sort of the member's own: the first group key ascending, so "Load more" pages never reshuffle.
+  const firstKey = shown.find((n) => !aggNow.aggregations.some((r) => r.column === n));
+  const gridSorts = useMemo<SortKey[]>(() => (grouped ? (own?.length ? own : firstKey ? [{ field: firstKey, direction: 'asc' }] : []) : sorts), [grouped, own, sorts, firstKey]);
   const pks = primaryKeys(native);
+  const wanted = shown.flatMap((name) => schema.find((f) => f.name === name) ?? []);
+  // A shown array, JSON, struct or calculated column with no rule would be a GROUP BY key the warehouse or the backend refuses: no grouped query goes out until it is hidden.
+  const blocked = ungroupableColumn(wanted, aggNow);
   const query = useMemo(() => buildRowQuery(schema, shown, Object.values(filters), limit, gridSorts, aggNow), [schema, shown, filters, gridSorts, limit, aggNow]);
   // A folded band reads nothing: the query it last read stays, and a change made meanwhile is read once it opens.
   const [asked, setAsked] = useState(query);
-  if (!paused && asked !== query) setAsked(query);
-  const { rows, loading, error, hasMore } = useMartRows(martId, asked, version);
+  if (!paused && !blocked && asked !== query) setAsked(query);
+  const { rows: read, loading: reading, error, hasMore } = useMartRows(martId, asked, version);
+  const rows = blocked ? null : read;
+  const loading = reading && !blocked;
   // The fields on screen, kept as the same array until one of them changes: a joined mart arriving later (the picker reads it
   // when it opens) must not rebuild the headers, which would close a filter popover the reader has open.
   const [onScreen, setOnScreen] = useState<Schema>([]);
-  const wanted = shown.flatMap((name) => schema.find((f) => f.name === name) ?? []);
   if (wanted.length !== onScreen.length || wanted.some((f, i) => f !== onScreen[i])) setOnScreen(wanted);
   const byName = useMemo(() => new Map(schema.map((f) => [f.name, f])), [schema]);
   // One output per column, or one per function of an aggregated column.
@@ -266,6 +272,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     columnStore.saveAggregation(martId, next);
     setLimit(PAGE_SIZE);
   }, [agg, columnStore, martId]);
+  // Shown columns that cannot take part in a grouped query: another column's Apply would group the rows and strand them.
+  const blockers = useMemo(() => onScreen.filter((f) => (f.isCalculated || f.category === 'other') && allowedFunctions(f).length === 0).map((f) => ({ name: f.name, title: columnTitle(f) })), [onScreen]);
   const columns = useMemo<GridColumn[]>(() => outputs.map((o) => {
     const field = shownByName.get(o.column)!;
     const name = field.name;
@@ -283,7 +291,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               setLimit(PAGE_SIZE);
             }} />
           )}
-          {lead && <AggregationPopover field={field} value={draftOf(o.column, aggNow)} onApply={(d) => changeAgg(o.column, d)} />}
+          {lead && <AggregationPopover field={field} value={draftOf(o.column, aggNow)} blocker={blockers.find((b) => b.name !== field.name)?.title} onApply={(d) => changeAgg(o.column, d)} />}
           {lead && field.description?.trim() && (
             <Tooltip content={field.description}>
               <button type="button" aria-label={`About ${columnTitle(field)}`} className="dm-reveal dm-col-info">
@@ -297,7 +305,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
         ? <BucketValue value={row.original[o.key]} unit={o.bucket} />
         : <CellValue row={row.original} field={o.key} type={outputType(field, o.fn)} />),
     };
-  }), [outputs, shownByName, filters, aggNow, changeAgg]);
+  }), [outputs, shownByName, filters, aggNow, changeAgg, blockers]);
 
   // While the member has no sort of their own, a click replaces the default with that column ascending (the
   // default's own column included), so a default never rides along as a second sort; after that the normal cycle.
@@ -373,7 +381,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { setFilters({}); setParked({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
-        <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} sorts={gridSorts} rows={rows} hasMore={hasMore} loading={loading} />
+        {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} sorts={gridSorts} rows={rows} hasMore={hasMore} loading={loading} />}
       </BandTools>
       {pks.length === 0 && !grouped && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
@@ -405,7 +413,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
             ))}
           </thead>
           <tbody>
-            {error ? <tr><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} /></td></tr>
+            {blocked ? <tr><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON, struct and calculated fields take no aggregation.`}</td></tr>
+              : error ? <tr><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} /></td></tr>
               : !rows ? <tr><td colSpan={outputs.length + 1}><Skeleton rows={8} /></td></tr>
               : rows.length === 0 ? <tr><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground">{hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.'}</td></tr>
               : table.getRowModel().rows.map((r) => (
@@ -418,7 +427,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               ))}
           </tbody>
         </table>
-        {!error && hasMore && <div className="p-3 text-center"><button type="button" onClick={() => setLimit((l) => l + PAGE_SIZE)} className="rounded-md border px-3 py-1 text-sm hover:bg-accent">Load more</button></div>}
+        {!error && !blocked && hasMore && <div className="p-3 text-center"><button type="button" onClick={() => setLimit((l) => l + PAGE_SIZE)} className="rounded-md border px-3 py-1 text-sm hover:bg-accent">Load more</button></div>}
       </div>
     </div>
     </GridEnv.Provider>

@@ -3,19 +3,22 @@ import userEvent from '@testing-library/user-event';
 import { GRID_COLUMNS_COLLECTION } from '../../api/grid-columns';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
-import type { TraverseOptions } from '../../sdk/types';
+import type { SchemaFieldDto, TraverseOptions } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
 
-function setup() {
-  const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+function setup(opts: { fields?: SchemaFieldDto[]; saved?: Record<string, unknown>; gate?: Promise<void> } = {}) {
+  const fixtures = demoFixtures();
+  if (opts.fields) fixtures.marts.find((m) => m.id === 'orders')!.fields.push(...opts.fields);
+  const ctx = createMockCtx(fixtures, { latencyMs: 0 });
+  if (opts.saved) void ctx.collections<Record<string, unknown>>(GRID_COLUMNS_COLLECTION).put('orders', { at: 'then', ...opts.saved });
   const puts: { id: string; doc: Record<string, unknown> }[] = [];
   const queries: { id: string; o: TraverseOptions }[] = [];
   const col = ctx.collections;
   const realTraverse = ctx.owox.dataMarts.traverseData.bind(ctx.owox.dataMarts);
   const spied = {
     ...ctx,
-    owox: { ...ctx.owox, dataMarts: { ...ctx.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { if (!(o as { uniqueCount?: unknown }).uniqueCount) queries.push({ id, o }); return realTraverse(id, o); } } },
+    owox: { ...ctx.owox, dataMarts: { ...ctx.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { if (!(o as { uniqueCount?: unknown }).uniqueCount) queries.push({ id, o }); return o.aggregation?.length && opts.gate ? opts.gate.then(() => realTraverse(id, o)) : realTraverse(id, o); } } },
     collections: <T,>(name: string) => { const c = col<T>(name); return name === GRID_COLUMNS_COLLECTION ? { get: c.get, put: (id: string, d: T) => { puts.push({ id, doc: d as never }); return c.put(id, d); } } : c; },
   };
   render(<AppServices ctx={spied}><StoreProvider><App /></StoreProvider></AppServices>);
@@ -26,6 +29,10 @@ const row = () => document.getElementById('band-row')!;
 const headers = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden') && h.getAttribute('scope') !== 'colgroup').map((h) => h.textContent!);
 const bodyRows = () => within(data()).getAllByRole('row').filter((r) => r.querySelector('td'));
 const ready = async () => { await waitFor(() => expect(headers()).toHaveLength(5)); await waitFor(() => expect(bodyRows().length).toBeGreaterThan(1)); };
+
+/** The first body cell under "Amount · Sum": text with a digit means the grouped rows have arrived. */
+const sumCell = () => { const at = headers().findIndex((h) => h.startsWith('Amount · Sum')); return at < 0 ? '' : (bodyRows()[0]?.querySelectorAll('td')[at]?.textContent ?? ''); };
+const sumLoaded = () => waitFor(() => expect(sumCell()).toMatch(/\d/));
 
 async function showColumn(label: string | RegExp) {
   await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
@@ -52,7 +59,9 @@ test('a Sum on Amount groups by the other columns: Amount · Sum, no primary key
   const q = t.queries.filter((x) => x.id === 'orders').at(-1)!.o;
   expect(q.aggregation).toEqual([{ column: 'amount', function: 'SUM' }]);
   expect(q.column).toEqual(['id', 'customer_id', 'product_id', 'store_id', 'status', 'amount']);
-  expect(q.sort).toBeUndefined();
+  // no sort of the member's own: the first group key ascending, so "Load more" pages stay put
+  expect(q.sort).toEqual([{ column: 'id', direction: 'asc' }]);
+  await sumLoaded();
   await waitFor(() => expect(within(data()).getByText(/\d+\+? groups?$/)).toBeInTheDocument());
   expect(within(data()).queryByText(/records$/)).toBeNull();
   // a grouped row is no single record
@@ -60,8 +69,7 @@ test('a Sum on Amount groups by the other columns: Amount · Sum, no primary key
   expect(await within(row()).findByText('Grouped rows have no single record.')).toBeInTheDocument();
   expect(bodyRows()[0]).not.toHaveClass('cursor-pointer');
   // the values are numbers read from the "<column> | SUM" key
-  const at = headers().findIndex((h) => h.startsWith('Amount · Sum'));
-  expect(bodyRows()[0]!.querySelectorAll('td')[at]!.textContent).toMatch(/\d/);
+  expect(sumCell()).toMatch(/\d/);
 });
 
 test('each function is its own column, the first is sortable, the others are not; the sort names the source column', async () => {
@@ -70,6 +78,7 @@ test('each function is its own column, the first is sortable, the others are not
   await showColumn('Amount');
   await aggregate('Amount', 'Sum', 'Average');
   await waitFor(() => expect(headers().filter((h) => h.startsWith('Amount')).length).toBe(2));
+  await sumLoaded();
   expect(within(data()).getByRole('button', { name: /^Sort by Amount · Sum,/ })).toBeInTheDocument();
   expect(within(data()).queryByRole('button', { name: /^Sort by Amount · Average,/ })).toBeNull();
   await userEvent.click(within(data()).getByRole('button', { name: /^Sort by Amount · Sum,/ }));
@@ -98,6 +107,7 @@ test('the Sigma stays on while a column is aggregated; Clear aggregation ungroup
   await ready();
   await showColumn('Amount');
   await aggregate('Amount', 'Sum');
+  await sumLoaded();
   await waitFor(() => expect(within(data()).getByRole('button', { name: 'Aggregate Amount' })).toHaveClass('dm-reveal-on'));
   await userEvent.click(within(data()).getByRole('button', { name: 'Reset' }));
   expect(headers().some((h) => h.startsWith('Amount · Sum'))).toBe(true);
@@ -126,4 +136,65 @@ test('a column no longer shown loses its rules', async () => {
   await userEvent.click(await screen.findByLabelText('Amount'));
   await waitFor(() => expect(headers()).not.toContain('Amount · Sum'));
   await waitFor(() => expect(t.queries.at(-1)!.o.aggregation).toBeUndefined());
+});
+
+test('while the grouped rows are in flight there is no groups badge and no empty Amount · Sum cells', async () => {
+  let open!: () => void;
+  const t = setup({ gate: new Promise<void>((r) => { open = r; }) });
+  await ready();
+  await showColumn('Amount');
+  expect(within(data()).getByText(/\d+\+? records$/)).toBeInTheDocument();
+  await aggregate('Amount', 'Sum');
+  await waitFor(() => expect(t.queries.at(-1)!.o.aggregation).toBeDefined());
+  expect(headers().some((h) => h.startsWith('Amount · Sum'))).toBe(true);
+  expect(within(data()).queryByText(/\d+\+? (groups?|records)$/)).toBeNull();
+  expect(sumCell()).toBe('');
+  open();
+  await sumLoaded();
+  await waitFor(() => expect(within(data()).getByText(/\d+\+? groups?$/)).toBeInTheDocument());
+});
+
+const ARRAY_AND_CALCULATED: SchemaFieldDto[] = [{ name: 'tags', type: 'STRING', mode: 'REPEATED' }, { name: 'margin', type: 'NUMERIC', calculated: { expression: 'amount - 1' } }];
+
+test('an array field takes no function; with one shown the grouped query is not sent and the grid says why', async () => {
+  const t = setup({ fields: ARRAY_AND_CALCULATED });
+  await ready();
+  await showColumn('Amount');
+  await showColumn('tags');
+  expect(within(data()).queryByRole('button', { name: 'Aggregate tags' })).toBeNull();
+  // Apply is off while tags is shown: grouping would make it a GROUP BY key
+  await userEvent.click(await within(data()).findByRole('button', { name: 'Aggregate Amount' }));
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.click(within(dialog).getByLabelText('Sum'));
+  expect(within(dialog).getByRole('button', { name: 'Apply' })).toBeDisabled();
+  expect(within(dialog).getByRole('alert')).toHaveTextContent(`"tags" can't be grouped`);
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  // hide tags, group, then show tags again: nothing grouped is sent
+  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
+  await userEvent.click(await screen.findByLabelText('tags'));
+  await userEvent.keyboard('{Escape}');
+  await aggregate('Amount', 'Sum');
+  await sumLoaded();
+  const before = t.queries.length;
+  await showColumn('tags');
+  expect(await within(data()).findByText(/"tags" can't be grouped/)).toBeInTheDocument();
+  expect(t.queries.length).toBe(before);
+  expect(within(data()).queryByText(/groups?$/)).toBeNull();
+  expect(within(data()).queryByRole('button', { name: /^Export/ })).toBeNull();
+  // hiding it brings the groups back
+  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
+  await userEvent.click(await screen.findByLabelText('tags'));
+  await userEvent.keyboard('{Escape}');
+  await sumLoaded();
+  expect(within(data()).queryByText(/can't be grouped/)).toBeNull();
+});
+
+test('a calculated field has no Sigma, and a saved rule on one is dropped', async () => {
+  const t = setup({ fields: ARRAY_AND_CALCULATED, saved: { columns: ['id', 'status', 'margin'], aggregations: [{ column: 'margin', function: 'SUM' }] } });
+  await waitFor(() => expect(headers()).toContain('margin'));
+  await waitFor(() => expect(bodyRows().length).toBeGreaterThan(0));
+  expect(within(data()).queryByRole('button', { name: 'Aggregate margin' })).toBeNull();
+  expect(headers().some((h) => h.startsWith('margin · '))).toBe(false);
+  expect(t.queries.every((q) => !q.o.aggregation)).toBe(true);
 });
