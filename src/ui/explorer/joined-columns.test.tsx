@@ -45,8 +45,10 @@ function setup(saved: string[] | null, opts: { blendFails?: boolean; blendGate?:
 }
 
 const data = () => document.getElementById('band-data')!;
-const headers = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden')).map((h) => h.textContent);
-const openPicker = async () => { await waitFor(() => expect(within(data()).getByRole('button', { name: /^Columns/ })).toBeInTheDocument()); await userEvent.click(within(data()).getByRole('button', { name: /^Columns/ })); };
+const titleHeaders = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden') && h.getAttribute('scope') !== 'colgroup');
+const bodyRows = () => within(data()).getAllByRole('row').filter((r) => r.querySelector('td'));
+const headers = () => titleHeaders().map((h) => h.textContent);
+const openPicker = async (mart = 'Orders') => { const name = `Columns of ${mart}`; await waitFor(() => expect(within(data()).getByRole('button', { name })).toBeInTheDocument()); await userEvent.click(within(data()).getByRole('button', { name })); };
 
 test('the joined data marts are read when a mart becomes main, once per mart, and the picker opening asks nothing more', async () => {
   const t = setup(null);
@@ -55,60 +57,43 @@ test('the joined data marts are read when a mart becomes main, once per mart, an
   await waitFor(() => expect(t.reads).toEqual([BLEND]));
   await new Promise((r) => setTimeout(r, 100));
   await openPicker();
-  await screen.findByRole('button', { name: /^Customers/ });
+  await screen.findByLabelText('status');
   await userEvent.keyboard('{Escape}');
   await openPicker();
   expect(t.reads).toEqual([BLEND]);
 });
 
-test('the picker lists the own fields first, then one folded group per joined mart, shallow ones first, told apart by their path', async () => {
+test('the Orders tab lists only Orders\' own fields: no joined group, and nothing is read', async () => {
   const t = setup(null);
   t.view();
   await openPicker();
-  await screen.findByRole('button', { name: /^Customers/ });
-  const picker = within(screen.getByRole('dialog'));
-  const names = picker.getAllByRole('button').filter((b) => b.hasAttribute('aria-expanded')).map((b) => b.textContent!.replace(/\d+\/\d+$/, ''));
-  expect(names).toEqual(['Customers', 'Products', 'Stores', 'Categories', 'Countries (customers.countries)', 'Countries (stores.countries)']);
-  for (const b of picker.getAllByRole('button')) expect(b).toHaveAttribute('aria-expanded', 'false');
-  // folded: none of the joined fields is a checkbox yet
-  expect(screen.queryByLabelText('email')).toBeNull();
-  // the own fields come before the first group
+  const picker = within(await screen.findByRole('dialog'));
   expect(picker.getAllByRole('checkbox')).toHaveLength(10);
+  expect(picker.queryByRole('button', { name: /^Customers/ })).toBeNull();
+  expect(t.reads).toEqual([BLEND]);
 });
 
-test('a group shows how many of its fields are ticked, and its fields carry a (?) with the description', async () => {
-  const t = setup(null);
+test('a joined tab lists that mart\'s fields with a count, each with its description, and ticking one adds a column to its group', async () => {
+  const t = setup(['id', 'customers__email']);
+  await t.seeded;
   t.view();
-  await openPicker();
-  const customers = await screen.findByRole('button', { name: /^Customers/ });
-  expect(customers).toHaveTextContent('0/5');
-  await userEvent.click(customers);
-  expect(customers).toHaveAttribute('aria-expanded', 'true');
-  const fields = within(screen.getByRole('group', { name: 'Customers' }));
-  expect(fields.getAllByRole('checkbox').map((c) => c.closest('label')!.textContent)).toEqual(['id', 'name', 'email', 'city', 'Country']);
-  expect(fields.getByLabelText('About name')).toBeInTheDocument();
-  await userEvent.click(fields.getByLabelText('email'));
-  await waitFor(() => expect(customers).toHaveTextContent('1/5'));
-});
-
-test('a ticked joined field becomes a column headed by its mart and label, with real values, and the query asks for the blended name', async () => {
-  const t = setup(null);
-  t.view();
-  await openPicker();
-  await userEvent.click(await screen.findByRole('button', { name: /^Customers/ }));
-  await userEvent.click(within(screen.getByRole('group', { name: 'Customers' })).getByLabelText('email'));
-  await waitFor(() => expect(headers()).toContain('Customers · email'));
-  await waitFor(() => expect(t.orderQueries().at(-1)!.o.column).toContain('customers__email'));
-  const at = headers().indexOf('Customers · email');
-  await waitFor(() => expect(within(data()).getAllByRole('row')[1]!.querySelectorAll('td')[at]!.textContent).toMatch(/^[a-z]+\.[a-z]+\d+@example\.com$/));
-  expect(screen.getByRole('button', { name: /^Columns \(5\/10 \+1\)/ })).toBeInTheDocument();
+  await openPicker('Customers');
+  const picker = within(await screen.findByRole('dialog'));
+  expect(picker.getAllByRole('checkbox').map((c) => c.closest('label')!.textContent)).toEqual(['id', 'name', 'email', 'city', 'Country']);
+  expect(picker.getByText(/Customers · 1\/5/)).toBeInTheDocument();
+  expect(picker.getByLabelText('About name')).toBeInTheDocument();
+  await userEvent.click(picker.getByLabelText('city'));
+  await waitFor(() => expect(headers()).toEqual(['id', 'email', 'city']));
+  await waitFor(() => expect(t.orderQueries().at(-1)!.o.column).toContain('customers__city'));
+  const at = headers().indexOf('city');
+  await waitFor(() => expect(bodyRows()[0]!.querySelectorAll('td')[at]!.textContent).toBeTruthy());
 });
 
 test('a joined column filters and sorts by its blended name, with the filters its own type has', async () => {
   const t = setup(['id', 'customers__email', 'stores__city']);
   await t.seeded;
   t.view();
-  await waitFor(() => expect(headers()).toEqual(['id', 'Customers · email', 'Stores · city']));
+  await waitFor(() => expect(headers()).toEqual(['id', 'email', 'city']));
   await userEvent.click(within(data()).getByLabelText('Filter Stores · city'));
   expect(await screen.findByRole('option', { name: 'contains' })).toBeInTheDocument(); // a string: the string operators
   await userEvent.selectOptions(screen.getByLabelText('Operator'), 'eq');
@@ -117,9 +102,9 @@ test('a joined column filters and sorts by its blended name, with the filters it
   await waitFor(() => expect(t.orderQueries().at(-1)!.o.filter).toEqual([{ column: 'stores__city', operator: 'eq', value: 'Berlin' }]));
   await userEvent.click(within(data()).getByRole('button', { name: /^Sort by Customers · email,/ }));
   await waitFor(() => expect(t.orderQueries().at(-1)!.o.sort).toEqual([{ column: 'customers__email', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
-  const at = headers().indexOf('Stores · city');
+  const at = headers().indexOf('city');
   await waitFor(() => {
-    const rows = within(data()).getAllByRole('row').slice(1);
+    const rows = bodyRows();
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => r.querySelectorAll('td')[at]!.textContent === 'Berlin')).toBe(true);
   });
@@ -129,7 +114,7 @@ test('saved columns may name joined fields: the joined marts are read first and 
   const t = setup(['id', 'status', 'products__sku']);
   await t.seeded;
   t.view();
-  await waitFor(() => expect(headers()).toEqual(['id', 'status', 'Products · SKU']));
+  await waitFor(() => expect(headers()).toEqual(['id', 'status', 'SKU']));
   expect(t.reads).toEqual([BLEND]);
   await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
   expect(t.orderQueries()).toHaveLength(1);
@@ -142,11 +127,11 @@ test('a saved joined name the schema no longer offers is dropped, and the cleane
   const t = setup(['id', 'customers__email', 'customers__gone', 'status']);
   await t.seeded;
   t.view();
-  await waitFor(() => expect(headers()).toEqual(['id', 'Customers · email', 'status']));
-  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: ['id', 'customers__email', 'status'], at: expect.any(String) }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
+  await waitFor(() => expect(headers()).toEqual(['id', 'status', 'email']));
+  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: ['id', 'status', 'customers__email'], at: expect.any(String) }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
 });
 
-test('when the joined marts cannot be read, a saved joined column is left out of this visit without erasing it, and the picker says why', async () => {
+test('when the joined marts cannot be read, a saved joined column is left out of this visit without erasing it', async () => {
   const t = setup(['id', 'status', 'customers__email'], { blendFails: true });
   await t.seeded;
   t.view();
@@ -154,7 +139,6 @@ test('when the joined marts cannot be read, a saved joined column is left out of
   await new Promise((r) => setTimeout(r, SAVE_DEBOUNCE_MS + 200));
   expect(t.put).not.toHaveBeenCalled();
   await openPicker();
-  expect(await screen.findByText(/could not be read/)).toBeInTheDocument();
   // the own fields still work
   await userEvent.click(screen.getByLabelText(/amount/i));
   await waitFor(() => expect(headers()).toContain('Amount'));
@@ -165,7 +149,7 @@ test('a joined column is in the Data band only: the Row band lists the mart\'s o
   await t.seeded;
   t.view();
   await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
-  await userEvent.click(within(data()).getAllByRole('row')[1]!);
+  await userEvent.click(bodyRows()[0]!);
   const row = document.getElementById('band-row')!;
   await within(row).findByText('status');
   expect(within(row).queryByText(/email/)).toBeNull();
@@ -200,4 +184,19 @@ test('a saved filter on a joined field that could not be read is not applied thi
   expect(within(data()).getByRole('button', { name: 'Reset' })).toBeDisabled();
   expect(t.orderQueries().every((q) => !q.o.filter)).toBe(true);
   expect(state.current!.grids.orders!.filters.customers__email).toBeDefined();
+});
+
+test('a saved list that interleaves the marts shows grouped and is saved grouped', async () => {
+  const t = setup(['id', 'customers__email', 'products__sku', 'customers__city']);
+  await t.seeded;
+  t.view();
+  await waitFor(() => expect(headers()).toEqual(['id', 'email', 'city', 'SKU']));
+  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: ['id', 'customers__email', 'customers__city', 'products__sku'], at: expect.any(String) }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
+});
+
+test('a saved list with joined columns and none of the main mart\'s own gets the main mart\'s default columns first', async () => {
+  const t = setup(['customers__email', 'products__sku']);
+  await t.seeded;
+  t.view();
+  await waitFor(() => expect(headers()).toEqual(['id', 'Customer', 'Product', 'Store', 'status', 'email', 'SKU']));
 });

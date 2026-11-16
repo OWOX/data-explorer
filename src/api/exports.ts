@@ -27,7 +27,9 @@ export type PayloadResult = { payload: ReportPayload; notes: string[] };
 /** The report that reproduces what the grid shows: shown columns, complete filters, the reader's own sorts. */
 export function buildReportPayload(schema: Schema, visible: string[], filters: ColumnFilter[], sorts: SortKey[]): PayloadResult {
   const notes: string[] = [];
-  const columnConfig = schema.map((f) => f.name).filter((n) => visible.includes(n));
+  const known = new Set(schema.map((f) => f.name));
+  // In the grid's order (the main mart's columns, then each joined mart's), keeping the names the schema has.
+  const columnConfig = visible.filter((n) => known.has(n));
   let filter = toTraverseFilters(schema, filters);
   if (filter.length > MAX_EXPORT_FILTERS) { notes.push(`Only the first ${MAX_EXPORT_FILTERS} filters were exported.`); filter = filter.slice(0, MAX_EXPORT_FILTERS); }
   let sort = sorts.map((s) => ({ column: s.field, direction: s.direction }));

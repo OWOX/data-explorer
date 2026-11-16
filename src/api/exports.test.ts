@@ -9,10 +9,10 @@ const f = (name: string, type: string, category: Field['category'], extra: Parti
 const schema: Schema = [f('id', 'INT64', 'number', { isPrimaryKey: true }), f('status', 'STRING', 'string'), f('amount', 'NUMERIC', 'number'), f('created_at', 'TIMESTAMP', 'date')];
 
 describe('buildReportPayload', () => {
-  test('shown columns in schema order, with the opt-out set to the same columns', () => {
+  test('shown columns in the grid\'s order, with the opt-out set to the same columns', () => {
     const { payload } = buildReportPayload(schema, ['amount', 'id'], [], []);
-    expect(payload.columnConfig).toEqual(['id', 'amount']);
-    expect(payload.autoAggregationOptOut).toEqual(['id', 'amount']);
+    expect(payload.columnConfig).toEqual(['amount', 'id']);
+    expect(payload.autoAggregationOptOut).toEqual(['amount', 'id']);
     expect(payload.filterConfig).toBeNull();
     expect(payload.sortConfig).toBeNull();
   });
@@ -34,7 +34,7 @@ describe('buildReportPayload', () => {
   test('joined columns are exported like any shown column: columnConfig, filterConfig, sortConfig and the opt-out, by blended name', () => {
     const joined = f('customers__email', 'STRING', 'string', { alias: 'email', joined: { martId: 'customers', label: 'Customers', aliasPath: 'customers' } });
     const withJoined: Schema = [...schema, joined, f('products__price', 'NUMERIC', 'number', { joined: { martId: 'products', label: 'Products', aliasPath: 'products' } })];
-    const r = buildReportPayload(withJoined, ['customers__email', 'id', 'products__price'], [{ field: 'customers__email', op: 'contains', value: 'example' }, { field: 'products__price', op: 'gt', value: '10' }], [{ field: 'customers__email', direction: 'asc' }]);
+    const r = buildReportPayload(withJoined, ['id', 'customers__email', 'products__price'], [{ field: 'customers__email', op: 'contains', value: 'example' }, { field: 'products__price', op: 'gt', value: '10' }], [{ field: 'customers__email', direction: 'asc' }]);
     expect(r.payload).toEqual({
       columnConfig: ['id', 'customers__email', 'products__price'],
       filterConfig: [{ column: 'customers__email', operator: 'contains', value: 'example' }, { column: 'products__price', operator: 'gt', value: 10 }],
@@ -293,4 +293,11 @@ describe('exporter', () => {
     const err = await createExporter(ctx).run({ martId: 'orders', destination: dest, title: 'T', source: { kind: 'new' }, payload }).catch((e) => e);
     expect(err).toMatchObject({ stage: 'report', code: 'TIMEOUT', target: { spreadsheetId: 'made', sheetId: 3 } });
   });
+});
+
+test('the report lists the columns in the grid\'s order: the main mart\'s, then each joined mart\'s in the order added', () => {
+  const wide: Schema = [...schema, f('customers__city', 'STRING', 'string'), f('products__sku', 'STRING', 'string')];
+  const { payload } = buildReportPayload(wide, ['id', 'status', 'products__sku', 'customers__city', 'gone'], [], []);
+  expect(payload.columnConfig).toEqual(['id', 'status', 'products__sku', 'customers__city']);
+  expect(payload.autoAggregationOptOut).toEqual(['id', 'status', 'products__sku', 'customers__city']);
 });

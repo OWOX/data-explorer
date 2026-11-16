@@ -1,6 +1,8 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
+import { describeFilter } from '../../filters/catalogue';
+import { TooltipProvider } from '../Tooltip';
 import { FilterEditor, FilterPopover } from './FilterPopover';
 import type { ColumnFilter } from '../../filters/build';
 import type { Field } from '../../model/types';
@@ -118,11 +120,26 @@ test('time fields use time inputs and have no presets', async () => {
   expect(screen.queryByRole('group', { name: 'Date presets' })).toBeNull();
 });
 
-test('the column filter control shows the preset name, and nothing for other filters', () => {
-  const { rerender } = render(<FilterPopover field={ts} value={{ field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 30 } }} onChange={vi.fn()} />);
-  expect(screen.getByRole('button', { name: 'Filter Amount' })).toHaveTextContent('Last 30 days');
-  rerender(<FilterPopover field={ts} value={{ field: 'created_at', op: 'is_blank' }} onChange={vi.fn()} />);
+test('the column filter control shows only a mark, never the filter text; the description is in the tooltip', async () => {
+  const { rerender, container } = render(<TooltipProvider><FilterPopover field={ts} value={undefined} onChange={vi.fn()} /></TooltipProvider>);
+  const outline = container.querySelector('button svg')!.innerHTML;
+  rerender(<TooltipProvider><FilterPopover field={ts} value={{ field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 30 } }} onChange={vi.fn()} /></TooltipProvider>);
+  const button = screen.getByRole('button', { name: 'Filter Amount' });
+  expect(button).toHaveTextContent('');
+  expect(button).toHaveClass('text-primary');
+  // the filled funnel, not the outline one
+  expect(button.querySelector('svg')!.innerHTML).not.toBe(outline);
+  expect(button.querySelector('path')!.getAttribute('d')).toMatch(/^M4\.25 5\.61/);
+  await userEvent.hover(button);
+  expect((await screen.findAllByText('Filter: Last 30 days')).length).toBeGreaterThan(0);
+  rerender(<TooltipProvider><FilterPopover field={ts} value={{ field: 'created_at', op: 'is_blank' }} onChange={vi.fn()} /></TooltipProvider>);
   expect(screen.getByRole('button', { name: 'Filter Amount' })).toHaveTextContent('');
+});
+
+test('describeFilter reads an applied filter in words', () => {
+  expect(describeFilter(num, { op: 'gte', value: '10' })).toBe('≥ 10');
+  expect(describeFilter(num, { op: 'between', value: { from: 1, to: 5 } })).toBe('between 1 and 5');
+  expect(describeFilter(ts, { op: 'is_blank' })).toBe('is blank');
 });
 
 test('the panel is a group of buttons, not a menu; Is blank shows its active state', () => {

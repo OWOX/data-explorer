@@ -308,6 +308,14 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 /* The line under the header is a shadow on each header cell, not a border: sticky cells lose collapsed borders as the body
    scrolls under them, a shadow travels with the cell. */
 .dm-th { box-shadow: inset 0 -1px 0 var(--border); }
+/* The group row above the titles: a divider between data marts, and the remove button shown with the row's hover or focus. */
+.dm-th-edge { box-shadow: inset 0 -1px 0 var(--border), inset 1px 0 0 var(--border); }
+.dm-gh-edge { box-shadow: inset 1px 0 0 var(--border); }
+.dm-gh:hover .dm-reveal, .dm-gh:focus-within .dm-reveal { opacity: 1; }
+.dm-gx-cols { color: var(--muted-foreground); border-radius: 4px; }
+.dm-gx-cols:hover { color: var(--foreground); background: var(--accent); }
+.dm-gx { color: var(--muted-foreground); border-radius: 4px; }
+.dm-gx:hover { color: var(--foreground); background: var(--accent); }
 
 /* Column header actions: hidden until the header is hovered or holds focus, but they keep their
    room, so the title does not jump. A column with a filter keeps its icon on. */

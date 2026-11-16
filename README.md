@@ -2,9 +2,9 @@
 
 **Open the rows behind any data mart in a few clicks, with fields from the data marts it joins to.**
 
-A plugin for [OWOX Data Marts](https://docs.owox.com/). One page, four bands: **Data Sources, Data Marts, Data, Row**.
+A plugin for [OWOX Data Marts](https://docs.owox.com/). One page, four bands: **Data Sources, Data, Rows, Row**.
 
-![Data Explorer: Data Sources, Data Marts, the Orders rows with joined Customers, Products and Stores columns, and one order open](docs/data-explorer.svg)
+![Data Explorer: Data Sources, Data, the Orders rows with joined Customers, Products and Stores columns, and one order open](docs/data-explorer.svg)
 
 ## The challenge
 
@@ -12,15 +12,15 @@ A question about one order, one customer or one campaign ends in a row. The fiel
 
 ## What this gives you
 
-🔎 **Find the data mart.** Search titles in the Data Marts band, or click context badges to narrow it. Select a connector in Data Sources to see only the data marts it feeds, or pick storages in the Storage filter.
+🔎 **Find the data mart.** Search titles in the Data band, or click context badges to narrow it. Select a connector in Data Sources to see only the data marts it feeds, or pick storages in the Storage filter.
 
-🗺️ **See what it joins to.** The Data Marts band shows the selected data mart and every data mart joined to it, with lines for the joins and the sources. Each card shows its record count, data quality, freshness and contexts.
+🗺️ **See what it joins to.** The Data band shows the selected data mart and every data mart joined to it, with lines for the joins and the sources. Each card shows its record count, data quality, freshness and contexts.
 
-📋 **Rows without SQL.** The Data band shows the rows. Pick columns, filter each by its type (dates from presets such as Last 30 days or This month), and click titles to sort by several columns. Until you sort, the newest rows come first. Dates and times show in your locale and time zone.
+📋 **Rows without SQL.** The Rows band shows the rows. Pick columns, filter each by its type (dates from presets such as Last 30 days or This month), and click titles to sort by several columns. Until you sort, the newest rows come first. Dates and times show in your locale and time zone.
 
-🧩 **Fields from joined data marts.** In Columns, each data mart this one joins to is a folded group. Tick a field and it becomes a column, such as `Customers · city`. It filters, sorts and exports like any other column, and OWOX reads it in the same query. A field of a one-to-many join arrives as one cell with its values separated by commas.
+🧩 **Fields from joined data marts.** Select a joined data mart in the Data band and its fields join the grid under their own tab, such as `Customers · city`; the Columns icon on that tab lists its fields. It filters, sorts and exports like any other column, and OWOX reads it in the same query. A field of a one-to-many join arrives as one cell with its values separated by commas.
 
-➕ **Several data marts, one main.** Click a card of a data mart the selected one joins to and its first text field becomes a column; the Data band is then titled "Orders + Customers" and the card wears a lighter, dashed style with a plus. Click it again and its columns, filters and sorts go; click it once more and it comes back with the fields you last chose. Click the selected data mart and the next joined one takes its place; click one it cannot join and it becomes the selected data mart on its own. Undo and Redo cover all of it.
+➕ **Several data marts, one main.** Click a card of a data mart the selected one joins to and its first text field and its first metric (neither an ID) become columns; the Rows band is then titled "Orders + Customers" and the card wears a lighter, dashed style with a plus. Click it again and its columns, filters and sorts go; click it once more and it comes back with the fields you last chose. Click the selected data mart and the next joined one takes its place; click one it cannot join and it becomes the selected data mart on its own. Undo and Redo cover all of it. Each data mart's columns sit together under a group header with its icon and title, and a small x on a group removes that data mart.
 
 🔗 **Open a record.** Click a row to see all its fields in the Row band, with "Referenced by": the data marts that point at it, each opening filtered to this record. Undo and Redo next to the page title step back and forward along your path.
 
@@ -44,7 +44,7 @@ The rest of this file is for developers.
 
 ## Export to Google Sheets
 
-The Data band's header always has an Export menu: the Google Sheets destinations you can use (none: none listed), then an "AI" group. A Sheets destination creates an OWOX report from the grid as it is now (the shown columns, the complete filters and your sorts, no row limit), runs it and opens the sheet.
+The Rows band's header always has an Export menu: the Google Sheets destinations you can use (none: none listed), then an "AI" group. A Sheets destination creates an OWOX report from the grid as it is now (the shown columns, the complete filters and your sorts, no row limit), runs it and opens the sheet.
 
 1. Export is always a menu, because the AI items are always there. A new spreadsheet and report are titled "<Data mart> · Data Explorer · <date time>".
 2. Export opens a cascading menu. Its first level lists the destinations (the Google Sheets icon and the destination's title), also when there is only one. Hovering a destination, clicking it, or ArrowRight or Enter opens a flyout beside it (to the left when there is no room on the right) with "Update '<report>'" for each report you created from the plugin on it (it applies the grid's current state and runs again) and "New report…". Arrow keys walk a level and Escape closes one.
@@ -74,16 +74,22 @@ The prompt names the project and data mart, the shown columns by technical name 
 
 In mock mode (`?mock`) add `&sheets=1` for one destination or `&sheets=0` for none (default two).
 
-The page header has no Refresh button. The model (marts, edges, contexts, connectors, data quality) is loaded when the plugin opens; to reload it, reopen the plugin. The Refresh in the Data band and in the Row band only re-reads that band's rows or record. If a storage fails to load, the header shows a warning with Retry, which reloads the model, counts and data quality; if that reload fails, the previous model, counts and quality stay on screen and the header shows the error with Retry.
+The page header has no Refresh button. The model (marts, edges, contexts, connectors, data quality) is loaded when the plugin opens; to reload it, reopen the plugin. The Refresh in the Rows band and in the Row band only re-reads that band's rows or record. If a storage fails to load, the header shows a warning with Retry, which reloads the model, counts and data quality; if that reload fails, the previous model, counts and quality stay on screen and the header shows the error with Retry.
 
 ## Several data marts, one main
 
 The selected data mart is the main one. A joined data mart is selected exactly when one of its joined fields is a column of the main grid, so the Columns picker and the cards are two views of one state (`src/state/join-plan.ts`). What the main data mart can join comes from `GET /api/data-marts/:id/blendable-schema`, read when a data mart becomes main (once per data mart per session, not billed). With several alias paths to one data mart, the shallowest wins.
 
-1. A card click on a joinable data mart adds the fields last chosen for that pair, else its first text field, after the shown columns. On a selected joined data mart it removes its columns, filters and sorts and remembers its field list for the pair in `grid-columns` (`picks`). Unticking the last field in the picker remembers an empty list, so the next add uses the first text field.
-2. A click on the main data mart promotes the next joined one (in the order added), which keeps its own saved grid and adds the other joined data marts it can join; with none left nothing is selected and the Data band says "Select a data mart.". A click on a data mart the main one cannot join makes it the only selected data mart.
-3. The cards shown are the main one, everything joined to it, and every selected joined data mart, ordered main first, selected joined data marts next, then breadth first over the edges.
+1. A card click on a joinable data mart adds the fields last chosen for that pair, else its first non-ID text field and first non-ID metric (an ID is a primary key, `id`, a name ending in `_id` or `Id`, or an alias ending in " ID"), after the shown columns. On a selected joined data mart it removes its columns, filters and sorts and remembers its field list for the pair in `grid-columns` (`picks`). Unticking the last field in the picker remembers an empty list, so the next add uses the first text field.
+2. A click on the main data mart promotes the next joined one (in the order added), which keeps its own saved grid and adds the other joined data marts it can join; with none left nothing is selected and the Rows band says "Select a data mart.". A click on a data mart the main one cannot join makes it the only selected data mart.
+3. The cards shown are the main one, every selected joined data mart, and every data mart connected by an edge to any of them (the main one or a joined one), ordered main first, selected joined data marts next, then breadth first over the edges.
 4. Each change is one store step (`setMarts`) that holds the grids it touched, so Undo and Redo put them back.
+5. Columns of one data mart sit together: the main data mart's own columns first, then each joined data mart's in the order they were added, each keeping its field order (`orderColumns` in `src/state/column-order.ts`, applied on a card click, a picker tick, a restore of saved columns and Undo/Redo). Export, the AI prompt and Copy to clipboard use the same order.
+6. With a joined data mart selected the grid gets a group row above the column titles: one cell per data mart with its icon and title, main first. The two header rows stay sticky together and the header line stays under the titles. Joined column titles in the grid drop the `<data mart> · ` prefix (the group names it); Export and Copy headers keep it. Hover or focus a group title and a small x appears after it ("Remove <title> from the grid"): it does what clicking that data mart's card does, in the same serialised, saved, Undo-able step. On the main data mart's group it deselects the main one and the next selected data mart is promoted, so the first group is always the main one. The last own column of the main data mart cannot be unticked while a joined one is shown.
+7. Tabs: the group row is always there, one tab per data mart (a single tab spanning every column when only the main data mart is selected). The x shows on the main tab only while another data mart is selected. The Columns picker is an icon on each tab, listing that data mart's own fields (the main tab: its own fields; a joined tab: its blended ones); there is no Columns button in the toolbar. Unticking a joined data mart's last field deselects it.
+8. Every data mart remembers the own field names it was showing when it last left the grid, whatever its role (`lastShown` in its `grid-columns` document). Added again as a joined data mart it comes back with those fields (the ones the new main's source offers, else the two-column default); clicked as the main data mart its own columns are exactly those, in that order. The most recent leave wins. The per-pair picks stay as the fallback for older saves.
+9. The Data band always shows every data mart that has a column on the grid or a filter on one of its fields (applied or parked), whatever the search, context or storage filters.
+10. A column with a filter shows only the filled funnel (Material Symbols `filter_alt`, Apache-2.0) in the primary colour, with the filter in the standard tooltip ("Filter: Last 30 days"); the unfiltered hover icon is the outline funnel.
 
 ## Link to this view
 
@@ -125,6 +131,6 @@ npm run e2e     # Playwright smoke tests of the bands
 2. Row counts are warehouse queries cached per member. Reopening the plugin reloads the model; the Retry on a storage that failed to load recounts them.
 3. The columns you pick in a data mart's grid are saved per member and per data mart; a saved column that is no longer available is dropped. Sorts and filters are not saved.
 4. "Load more" re-reads from the start, because the API has no offset.
-5. The joined fields of a data mart are read when you first open its Columns picker (or when a saved column names one). If that read fails, only the mart's own fields are listed.
+5. The joined fields of a data mart are read when it becomes the main one. If that read fails, only the mart's own fields are shown.
 6. The OWOX link always points to app.owox.com.
 7. Nested RECORD fields are not expanded: their leaf columns are not offered. Repeated fields only filter on blank.

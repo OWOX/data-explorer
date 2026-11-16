@@ -44,7 +44,7 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
       category: isArrayType(b.sourceFieldType) ? 'other' : categorizeFieldType(b.type),
       description: b.description?.trim() ? b.description : null,
       isPrimaryKey: false,
-      joined: { martId: source.martId, label: source.label, aliasPath: source.aliasPath },
+      joined: { martId: source.martId, label: source.label, aliasPath: source.aliasPath, originalName: b.originalFieldName },
     });
   }
   return [...byPath.values()].filter((s) => s.fields.length > 0).sort((a, b) => a.depth - b.depth || a.label.localeCompare(b.label) || a.aliasPath.localeCompare(b.aliasPath));

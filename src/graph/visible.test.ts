@@ -148,13 +148,27 @@ describe('selected joined marts', () => {
   test('each is shown even when it is not a neighbour, right after the main one and in the order added', () => {
     const r = computeVisible({ model, selection: sel({ martId: 'm' }), search: '', contextIds: [], joined: ['far', 'c'] });
     expect(r.ids.slice(0, 3)).toEqual(['m', 'far', 'c']);
-    expect(new Set(r.ids)).toEqual(new Set(['m', 'a', 'b', 'c', 'far']));
+    // far is selected, so the marts connected to it show too (x, a).
+    expect(new Set(r.ids)).toEqual(new Set(['m', 'a', 'b', 'c', 'far', 'x']));
   });
 
   test('the rest follows breadth first from the main and the joined ones, ties by inbound then title', () => {
     const r = computeVisible({ model, selection: sel({ martId: 'm' }), search: '', contextIds: [], joined: ['far'] });
     // far has two inbound edges; after m and far come m's neighbours by inbound then title
-    expect(r.ids).toEqual(['m', 'far', 'a', 'b', 'c']);
+    expect(r.ids).toEqual(['m', 'far', 'a', 'b', 'c', 'x']);
+  });
+
+  test('every mart connected to any selected mart shows, the main one\'s neighbours and the joined ones\'', () => {
+    const r = computeVisible({ model, selection: sel({ martId: 'm' }), search: '', contextIds: [], joined: ['a'] });
+    expect(new Set(r.ids)).toEqual(new Set(['m', 'a', 'b', 'c', 'far']));
+    expect(r.ids.slice(0, 2)).toEqual(['m', 'a']);
+    expect(computeVisible({ model, selection: sel({ martId: 'm' }), search: '', contextIds: [] }).ids).not.toContain('far');
+  });
+
+  test('a mart connected to a joined mart is dropped from an unticked storage', () => {
+    const m2 = modelOf(['m', 'a', 'far'], [e('m', 'a'), e('a', 'far')], [{}, {}, { storageId: 'other' }]);
+    const r = computeVisible({ model: m2, selection: sel({ martId: 'm' }), search: '', contextIds: [], storageIds: ['s'], joined: ['a'] });
+    expect(r.ids).toEqual(['m', 'a']);
   });
 
   test('a search shows them as well, and they do not need to match it', () => {
@@ -165,4 +179,22 @@ describe('selected joined marts', () => {
   test('without a joined mart the order is the main one, then its neighbours by inbound then title', () => {
     expect(computeVisible({ model, selection: sel({ martId: 'm' }), search: '', contextIds: [] }).ids).toEqual(['m', 'a', 'b', 'c']);
   });
+
+  test('a mart with a filter applied is shown after the joined ones, whatever the search', () => {
+    const r = computeVisible({ model, selection: sel({ martId: 'm' }), search: 'm', contextIds: [], joined: ['a'], filtered: ['x'] });
+    expect(r.ids.slice(0, 3)).toEqual(['m', 'a', 'x']);
+    expect(computeVisible({ model, selection: sel({ martId: 'm' }), search: '', contextIds: [], filtered: ['far'] }).ids).toContain('far');
+  });
+
+  test('joined and filtered marts stay when their storage is unticked', () => {
+    const m2 = modelOf(['m', 'a', 'f'], [e('m', 'a')], [{}, { storageId: 'other' }, { storageId: 'other' }]);
+    const r = computeVisible({ model: m2, selection: sel({ martId: 'm' }), search: '', contextIds: [], storageIds: ['s'], joined: ['a'], filtered: ['f'] });
+    expect(r.ids).toEqual(['m', 'a', 'f']);
+  });
+});
+
+test('the main mart stays in the band when a search or a context does not match it', () => {
+  const m = modelOf(['m', 'a'], [e('m', 'a')], [{ title: 'Orders' }, { title: 'Apple', contextIds: ['c1'] }]);
+  expect(computeVisible({ model: m, selection: sel({ martId: 'm' }), search: 'apple', contextIds: [] }).ids).toEqual(['m', 'a']);
+  expect(computeVisible({ model: m, selection: sel({ martId: 'm' }), search: '', contextIds: ['c1'] }).ids).toEqual(['m', 'a']);
 });

@@ -25,7 +25,7 @@ export function DataBand({ model, joined, folded, onFold, loading = null }: { mo
   const save = useCallback((grid: GridState) => { if (gridId) dispatch({ type: 'saveGrid', martId: gridId, grid }); }, [dispatch, gridId]);
 
   return (
-    <Band id="band-data" icon={<PickedIcon icon={mart?.icon} fallback={Table2} size={18} />} title={mart ? [mart.title, ...joined.map((id) => model.marts.get(id)?.title ?? id)].join(' + ') : 'Data'} total={mart && rows?.id === mart.id ? recordsLabel(rows.label) : undefined} hint="The rows of the selected data mart. Click a row to open it below." folded={folded} onFold={onFold} grid={false} loading={loading}>
+    <Band id="band-data" icon={<PickedIcon icon={mart?.icon} fallback={Table2} size={18} />} title={mart ? [mart.title, ...joined.map((id) => model.marts.get(id)?.title ?? id)].join(' + ') : 'Rows'} total={mart && rows?.id === mart.id ? recordsLabel(rows.label) : undefined} hint="The rows of the selected data mart. Click a row to open it below." folded={folded} onFold={onFold} grid={false} loading={loading}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (

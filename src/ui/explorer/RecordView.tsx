@@ -5,6 +5,7 @@ import type { Model, Schema } from '../../model/types';
 import { joinFilters } from '../../records/relationships';
 import { useIncomingLinks } from '../../records/useIncomingLinks';
 import type { Row } from '../../sdk/types';
+import { useRememberLeaving } from '../../state/leaving';
 import { sourceOfModel, useServices, useStore } from '../../state/store';
 import { ErrorBox } from '../ErrorBox';
 import { BandTools, BandToolsSlot } from '../bands/BandTools';
@@ -18,6 +19,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
   const { ctx, schemas } = useServices();
   const slot = useContext(BandToolsSlot);
   const [{ modelVersion }, dispatch] = useStore();
+  const rememberLeaving = useRememberLeaving();
   const sourceOf = sourceOfModel(model);
   const [ownVersion, setVersion] = useState(0);
   // A model reload re-reads the record too: its counter joins this view's own, and each only ever goes up.
@@ -85,7 +87,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
               const filters = sourceSchema ? joinFilters(link.joins.map((j) => ({ sourceField: j.targetField, targetField: j.sourceField })), row, sourceSchema) : null;
               return (
                 <li key={link.edgeId}>
-                  <button type="button" disabled={!filters} onClick={() => filters && dispatch({ type: 'follow', target: { kind: 'mart', martId: link.sourceMartId, filters }, sourceOf })}
+                  <button type="button" disabled={!filters} onClick={() => { if (!filters) return; rememberLeaving(link.sourceMartId); dispatch({ type: 'follow', target: { kind: 'mart', martId: link.sourceMartId, filters }, sourceOf }); }}
                     className="inline-flex items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-accent disabled:opacity-60 disabled:hover:bg-transparent">
                     <PickedIcon icon={source?.icon} fallback={Box} />
                     <span className="font-medium">{source?.title ?? link.sourceMartId}</span>

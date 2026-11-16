@@ -1,10 +1,11 @@
-// The Sources and Data Marts bands with the lines between their cards, and the hover that lights them.
+// The Sources and Data bands with the lines between their cards, and the hover that lights them.
 // The Data and Row bands arrive as children and sit under the same canvas; they do not re-render on hover.
 import { Box, Plug } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DqSummary, Mart, Model, Source } from '../../model/types';
 import { storageOptions } from '../../graph/storages';
 import type { VisibleResult } from '../../graph/visible';
+import { useRememberLeaving } from '../../state/leaving';
 import { useStore } from '../../state/store';
 import { storageMark } from '../storage-icons';
 import { Band } from './Band';
@@ -12,6 +13,7 @@ import { MultiSelect } from './MultiSelect';
 import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
 import { SearchBox } from './SearchBox';
 import { PointerTip } from '../Tooltip';
+import { CardClickContext } from './CardClick';
 import { MartCard, SourceCard, martElementId, sourceElementId, type CountState } from './cards';
 import { useCardTransitions } from './transitions';
 import { useCardClick } from './useCardClick';
@@ -33,7 +35,7 @@ export function CardBands({
   model,
   visible,
   storageIds,
-  joined,
+  joined: joinedProp,
   counts,
   dq,
   foldedSources,
@@ -66,6 +68,7 @@ export function CardBands({
   children: ReactNode;
 }) {
   const [{ selection, search, contextIds }, dispatch] = useStore();
+  const rememberLeaving = useRememberLeaving();
   const canvas = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [wireTip, setWireTip] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -104,16 +107,20 @@ export function CardBands({
     return null;
   }, [selection.martId, selection.sourceKey, idsKey, model.sources]);
 
+  // The same array until the set or its order changes, so the memos below do not rebuild on every render.
+  const joinedKey = joinedProp.join('|');
+  const joined = useMemo(() => (joinedKey ? joinedKey.split('|') : []), [joinedKey]);
   useWires(canvas, wires, { pinned, hovered, also: joined }, useMemo(() => revisionOf(idsKey), [idsKey]));
 
   const { lit, aside } = useMemo(() => {
-    const pinnedSet = pinned ? litIds(wires, pinned) : null;
+    // The cards of the selected joined marts light their own neighbours too, so a mart connected only to a joined one is not dimmed.
+    const pinnedSet = pinned ? new Set([...litIds(wires, pinned), ...joined.flatMap((id) => [...litIds(wires, martElementId(id))])]) : null;
     const hoveredSet = hovered ? litIds(wires, hovered) : null;
     const lit = new Set([...(pinnedSet ?? []), ...(hoveredSet ?? [])]);
     // Lit only by the pointer while another card is pinned: drawn at half strength.
     const aside = new Set([...lit].filter((id) => pinnedSet !== null && !pinnedSet.has(id)));
     return { lit, aside };
-  }, [wires, pinned, hovered]);
+  }, [wires, pinned, hovered, joined]);
 
   // Cards animate in and out as the set changes; a leaving card keeps its object, which the model may no longer hold.
   const shownMarts = useMemo(() => visible.ids.flatMap((id) => model.marts.get(id) ?? []), [visible.ids, model]);
@@ -170,10 +177,10 @@ export function CardBands({
         {model.sources.length === 0 && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No connector-based data marts.</p>}
         {sourceCards.items.map((source) => {
           const id = sourceElementId(source.key);
-          return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => dispatch({ type: 'selectSource', key: source.key })} />;
+          return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => { rememberLeaving(null); dispatch({ type: 'selectSource', key: source.key }); }} />;
         })}
       </Band>
-      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search and the filters match." afterHint={contextBadges} toolbar={toolbar} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
+      <Band id="band-marts" icon={<Box size={18} />} title="Data" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search and the filters match." afterHint={contextBadges} toolbar={toolbar} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
         {visible.ids.length === 0 && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
         {martCards.items.map((mart) => {
           const id = mart.id;
@@ -199,7 +206,7 @@ export function CardBands({
           );
         })}
       </Band>
-      {children}
+      <CardClickContext.Provider value={click}>{children}</CardClickContext.Provider>
       {wireTip && <PointerTip text={wireTip.text} x={wireTip.x} y={wireTip.y} />}
     </div>
   );

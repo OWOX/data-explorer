@@ -9,7 +9,7 @@ export interface Field {
   isPrimaryKey: boolean;
   isCalculated?: boolean;
   /** Set on a field of a joined data mart: `name` is the blended name a query takes, `alias` the field's label. */
-  joined?: { martId: string; /** What the joined mart is called in a column header and in the picker. */ label: string; aliasPath: string };
+  joined?: { martId: string; /** What the joined mart is called in a column header and in the picker. */ label: string; aliasPath: string; /** The field's name in the joined mart itself (the blended `name` minus the join path). */ originalName?: string };
 }
 
 export interface Context { id: string; name: string; icon: string | null }
