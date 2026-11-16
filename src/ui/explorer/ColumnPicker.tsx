@@ -42,7 +42,7 @@ export function ColumnPicker({ schema, sources, joinedState, visible, model, onC
     <Popover align="end" onOpenChange={(o) => { if (o) onOpen(); }} trigger={
       <button type="button" className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><Columns3 className="size-4" />Columns ({nativeOn}/{schema.length}{joinedOn > 0 ? ` +${joinedOn}` : ''})</button>
     }>
-      <div className="flex max-h-72 flex-col gap-1 overflow-auto">
+      <div className="flex flex-col gap-1">
         {shown.map(row)}
         {joinedState === 'loading' && <p className="mt-1 text-xs text-muted-foreground">Reading the joined data marts…</p>}
         {joinedState === 'failed' && <p className="mt-1 text-xs text-muted-foreground">The joined data marts could not be read, so only this data mart&apos;s own fields are listed.</p>}

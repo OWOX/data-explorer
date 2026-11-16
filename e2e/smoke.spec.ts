@@ -302,3 +302,16 @@ test('the first load draws every band header before the bodies, with a bar that 
   await expect(bars).toHaveCount(0, { timeout: 15_000 });
   await expect(band(page, 'data').getByRole('row')).toHaveCount(201);
 });
+
+test('a table wider than the page scrolls inside its card and never widens the bands', async ({ page }) => {
+  const data = await ordersGrid(page);
+  for (const label of ['created_at', 'Acquisition Session ID', 'Net Revenue', 'Amount']) await tick(page, label);
+  await tick(page, 'email', 'Customers');
+  await tick(page, 'Name', 'Products');
+  await expect(data.getByRole('columnheader', { name: /Products · Name/ })).toBeVisible();
+  const scroller = data.locator('.dm-bigcard div.overflow-auto').first();
+  expect(await scroller.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  const [bm, bd] = [await band(page, 'marts').boundingBox(), await data.boundingBox()];
+  expect(bm!.width).toBeCloseTo(bd!.width, 0);
+  expect(bd!.x + bd!.width).toBeLessThanOrEqual(1440);
+});
