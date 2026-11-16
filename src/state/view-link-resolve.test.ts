@@ -107,6 +107,13 @@ describe('resolveView', () => {
     expect(skipped.columns).toBe(2);
   });
 
+  it('counts filters and sorts on unoffered fields when all columns are dropped', async () => {
+    const grid = { columns: ['x', 'y'], filters: { gone: { field: 'gone', op: 'eq' as const, value: 1 } }, sorts: [{ field: 'gone', direction: 'asc' as const }], limit: 200 };
+    const { apply, skipped } = await resolveView(view({ grid }), model, read);
+    expect(apply.grid).toBeNull();
+    expect(skipped).toMatchObject({ columns: 2, filters: 1, sorts: 1 });
+  });
+
   it('passes the grid through unpruned when readGrid gives null or rejects', async () => {
     const grid = { columns: ['x'], filters: { x: { field: 'x', op: 'eq' as const, value: 1 } }, sorts: [{ field: 'x', direction: 'asc' as const }], limit: 200 };
     for (const r of [async () => null, async () => { throw new Error('boom'); }]) {

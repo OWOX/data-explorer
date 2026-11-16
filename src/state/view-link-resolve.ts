@@ -17,11 +17,10 @@ export type Skipped = { mart: boolean; source: boolean; columns: number; filters
 
 const clampLimit = (n: number) => Math.min(PAGE_SIZE * 10, Math.max(PAGE_SIZE, Math.round(n / PAGE_SIZE) * PAGE_SIZE));
 
-/** Prunes the grid to the fields on offer; every column dropped means no grid, so it opens with its defaults. */
+/** Prunes the grid to the fields on offer; with no column left it opens with its defaults. */
 function pruneGrid(grid: GridState, offered: Set<string>, skipped: Skipped): GridState | null {
   const columns = grid.columns.filter((c) => offered.has(c));
   skipped.columns += grid.columns.length - columns.length;
-  if (!columns.length) return null;
   const filters: Record<string, ColumnFilter> = {};
   for (const [k, f] of Object.entries(grid.filters)) {
     if (offered.has(f.field)) filters[k] = f; else skipped.filters++;
@@ -33,7 +32,8 @@ function pruneGrid(grid: GridState, offered: Set<string>, skipped: Skipped): Gri
     // An empty list means the member chose no sort, so a list emptied by pruning goes back to the default order.
     sorts = kept.length || !sorts.length ? kept : null;
   }
-  return { ...grid, columns, filters, sorts };
+  // Every column dropped means no grid; filters and sorts were still counted above.
+  return columns.length ? { ...grid, columns, filters, sorts } : null;
 }
 
 /** Checks a decoded view against what this member can see. Never throws; what can't be shown is counted in `skipped`. */
