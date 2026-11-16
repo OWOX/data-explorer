@@ -91,7 +91,8 @@ function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed:
       const kept = offered(withJoined(schema, sources ?? []), saved);
       // Names a failed read could not check are left in what is saved; only names the schema really lacks are cleaned out.
       const dropped = !failed && saved.length > kept.length;
-      setInitial({ columns: kept.length ? kept : defaultColumns(schema), cleaned: dropped ? kept : null, sources });
+      setInitial({ columns: kept.length ? kept : defaultColumns(schema), // A session or link list is not a saved one: only a list read from the store is cleaned back into it.
+      cleaned: dropped && !own ? kept : null, sources });
     })();
     return () => { live = false; clearTimeout(timer); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

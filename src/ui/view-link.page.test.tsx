@@ -23,8 +23,13 @@ const grid: GridState = {
 };
 const view = { sourceKey: null, martId: 'orders', record: null, search: '', contextIds: [], storageIds: null, folded: { sources: true, marts: false, data: false, row: false }, grid };
 
-function setup(route: string | undefined, copyLink?: (p?: string) => Promise<void>) {
-  const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
+function setup(route: string | undefined, copyLink?: (p?: string) => Promise<void>, failFirstBlendable = false) {
+  const real = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  let blends = 0;
+  const base: Ctx = failFirstBlendable ? { ...real, owox: { ...real.owox, getJson: (async (path: string, q?: Record<string, string>) => {
+    if (path.endsWith('/blendable-schema') && blends++ === 0) throw new Error('boom');
+    return real.owox.getJson(path, q);
+  }) as Ctx['owox']['getJson'] } } : real;
   const puts: string[] = [];
   const ctx: Ctx = {
     ...base,
@@ -72,6 +77,15 @@ describe('opening a view link', () => {
     setup(await encodeViewLink({ ...view, grid: { ...grid, columns: ['id', 'nope', 'customers__name'] } }));
     expect(await screen.findByRole('status')).toHaveTextContent('1 column');
     await waitFor(() => expect(box.latest.grids['orders']?.columns).toEqual(['id', 'customers__name']));
+  });
+
+  test('a link column the schema lacks never rewrites saved columns, even when the resolver read failed', async () => {
+    const { puts } = setup(await encodeViewLink({ ...view, grid: { ...grid, columns: ['id', 'nope', 'customers__name'] } }), undefined, true);
+    await loaded();
+    await waitFor(() => expect(box.latest.selection.martId).toBe('orders'));
+    await screen.findByRole('table');
+    await new Promise((r) => setTimeout(r, 300));
+    expect(puts).toEqual([]);
   });
 
   test('an unreadable link shows the unreadable notice', async () => {
