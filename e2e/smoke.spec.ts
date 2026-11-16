@@ -382,7 +382,7 @@ test('a table wider than the page scrolls inside its card and never widens the b
   expect(bd!.x + bd!.width).toBeLessThanOrEqual(1440);
 });
 
-declare global { interface Window { __copiedLink?: string } }
+declare global { interface Window { __copiedLink?: string; __routeSet?: string } }
 
 test('a copied view link reopens the same view: mart, joined column, filter and sort', async ({ page, context }) => {
   const data = await ordersGrid(page);
@@ -410,6 +410,14 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   await expect(grid.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
   await expect(martCard(opened, 'Orders')).toHaveAttribute('aria-pressed', 'true');
   await expect(opened.getByRole('status')).toHaveCount(0);
+
+  // The address returns to the main page, so a reload doesn't reapply the link.
+  await expect.poll(() => opened.evaluate(() => window.__routeSet)).toBe('/');
+  await expect.poll(() => new URL(opened.url()).searchParams.has('route')).toBe(false);
+  await opened.reload();
+  await expect(band(opened, 'data').getByRole('heading', { name: 'Orders + Customers', exact: true })).toHaveCount(0);
+  await expect(band(opened, 'data').getByRole('row')).not.toHaveCount(4);
+  expect(new URL(opened.url()).searchParams.has('route')).toBe(false);
 });
 
 test('a link to a data mart the opener cannot see shows a notice and the page stays usable', async ({ page, context }) => {

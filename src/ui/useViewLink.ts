@@ -22,6 +22,14 @@ export function useViewLink(model: Model | null, currentFolds: DecodedView['fold
   const [notice, setNotice] = useState<string | null>(null);
   const [folded, setFolded] = useState<DecodedView['folded'] | null>(null);
   const started = useRef(false);
+  const forgot = useRef(false);
+
+  // Once the link is handled, send the address back to the main page so a reload doesn't reapply it.
+  const forget = useCallback(() => {
+    if (forgot.current) return;
+    forgot.current = true;
+    try { ctx.ui.setRoute?.('/'); } catch { /* a host may refuse; the page works without it */ }
+  }, [ctx]);
 
   useEffect(() => {
     if (decoded !== null) return;
@@ -30,9 +38,10 @@ export function useViewLink(model: Model | null, currentFolds: DecodedView['fold
       if (!live) return;
       if (r === 'unreadable') setNotice("This link couldn't be read. Showing the default view.");
       setDecoded(typeof r === 'string' ? 'none' : r);
-    }, () => { if (live) setDecoded('none'); });
+      if (typeof r === 'string') forget();
+    }, () => { if (live) { setDecoded('none'); forget(); } });
     return () => { live = false; };
-  }, [decoded, route]);
+  }, [decoded, route, forget]);
 
   useEffect(() => {
     if (!model || !decoded || decoded === 'none' || started.current) return;
@@ -56,9 +65,10 @@ export function useViewLink(model: Model | null, currentFolds: DecodedView['fold
       } catch {
         // Apply nothing: the page opens as it would without a link.
       }
+      forget();
       setDecoded('none');
     })();
-  }, [model, decoded, schemas, blendable, dispatch]);
+  }, [model, decoded, schemas, blendable, dispatch, forget]);
 
   const copy = useCallback(async () => {
     const { selection, grids } = state;

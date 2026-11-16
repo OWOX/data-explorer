@@ -2,7 +2,7 @@ import type { AvailableSourceDto, BlendableSchemaDto, BlendedFieldDto, Ctx, Edge
 import { matchesFilter } from './evaluate';
 import { demoFixtures, type Fixtures } from './fixtures';
 
-declare global { interface Window { __copiedLink?: string } }
+declare global { interface Window { __copiedLink?: string; __routeSet?: string } }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -142,6 +142,12 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
       copyLink: async (path) => {
         window.__copiedLink = path;
         try { await navigator.clipboard?.writeText(path ?? ''); } catch { /* the clipboard may be blocked */ }
+      },
+      setRoute: (path) => {
+        window.__routeSet = path;
+        const url = new URL(location.href);
+        if (path === '/') url.searchParams.delete('route'); else url.searchParams.set('route', path);
+        history.replaceState(history.state, '', url);
       },
     },
     collections: <T,>(name: string) => ({

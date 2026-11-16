@@ -24,7 +24,7 @@ const grid: GridState = {
 };
 const view = { sourceKey: null, martId: 'orders', record: null, search: '', contextIds: [], storageIds: null, folded: { sources: true, marts: false, data: false, row: false }, grid };
 
-function setup(route: string | undefined, copyLink?: (p?: string) => Promise<void>, failFirstBlendable = false) {
+function setup(route: string | undefined, copyLink?: (p?: string) => Promise<void>, failFirstBlendable = false, setRoute?: (p: string) => void) {
   const real = createMockCtx(demoFixtures(), { latencyMs: 0 });
   let blends = 0;
   const base: Ctx = failFirstBlendable ? { ...real, owox: { ...real.owox, getJson: (async (path: string, q?: Record<string, string>) => {
@@ -39,7 +39,7 @@ function setup(route: string | undefined, copyLink?: (p?: string) => Promise<voi
   const ctx: Ctx = {
     ...base,
     route,
-    ui: { ...base.ui, copyLink },
+    ui: { ...base.ui, copyLink, setRoute },
     collections: <T,>(name: string) => {
       const c = base.collections<T>(name);
       return { get: (id: string) => c.get(id), put: (id: string, d: T) => { if (name === 'grid-columns' || name === 'preferences') puts.push(`${name}/${id}`); return c.put(id, d); } };
@@ -111,6 +111,49 @@ describe('opening a view link', () => {
     await loaded();
     await waitFor(() => expect(box.latest.selection.martId).not.toBeNull());
     expect(screen.queryByRole('status')).toBeNull();
+  });
+});
+
+describe('forgetting the route', () => {
+  test('a link that opens sets the route to / once, after the view is applied', async () => {
+    const calls: string[] = [];
+    setup(await encodeViewLink(view), undefined, false, (p) => calls.push(`${p}@${box.latest.selection.martId}`));
+    await loaded();
+    await waitFor(() => expect(box.latest.selection.martId).toBe('orders'));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatch(/^\/@/);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(calls).toHaveLength(1);
+  });
+
+  test('an unreadable link sets the route to / once', async () => {
+    const calls: string[] = [];
+    setup('/v?s=%%%', undefined, false, (p) => calls.push(p));
+    await screen.findByRole('status');
+    await waitFor(() => expect(calls).toEqual(['/']));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(calls).toEqual(['/']);
+  });
+
+  test('a plain route never calls setRoute', async () => {
+    const calls: string[] = [];
+    setup('/', undefined, false, (p) => calls.push(p));
+    await loaded();
+    await waitFor(() => expect(box.latest.selection.martId).not.toBeNull());
+    expect(calls).toEqual([]);
+  });
+
+  test('a host without setRoute still opens the link', async () => {
+    setup(await encodeViewLink(view));
+    await loaded();
+    await waitFor(() => expect(box.latest.selection.martId).toBe('orders'));
+    expect(box.latest.grids['orders']).toEqual(grid);
+  });
+
+  test('a host that refuses setRoute does not break the page', async () => {
+    setup(await encodeViewLink(view), undefined, false, () => { throw new Error('refused'); });
+    await loaded();
+    await waitFor(() => expect(box.latest.selection.martId).toBe('orders'));
   });
 });
 

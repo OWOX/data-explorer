@@ -24,5 +24,6 @@ export async function _typeCheck() {
   const sdk = await connect();
   const _route: Ctx['route'] = sdk.route;
   const _copy: Ctx['ui']['copyLink'] = sdk.ui.copyLink.bind(sdk.ui);
-  return [_check, _destinations, _put, _route, _copy] as const;
+  const _setRoute: Ctx['ui']['setRoute'] = sdk.ui.setRoute.bind(sdk.ui);
+  return [_check, _destinations, _put, _route, _copy, _setRoute] as const;
 }
