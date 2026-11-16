@@ -18,11 +18,13 @@ A question about one order, one customer or one campaign ends in a row. The fiel
 
 📋 **Rows without SQL.** The Data band shows the rows. Pick columns, filter each by its type (dates from presets such as Last 30 days or This month), and click titles to sort by several columns. Until you sort, the newest rows come first. Dates and times show in your locale and time zone.
 
-🧩 **Fields from joined data marts.** In Columns, each data mart this one joins to is a folded group. Tick a field and it becomes a column, such as `Customers · city`. It filters, sorts and exports like any other column, and OWOX reads it in the same query.
+🧩 **Fields from joined data marts.** In Columns, each data mart this one joins to is a folded group. Tick a field and it becomes a column, such as `Customers · city`. It filters, sorts and exports like any other column, and OWOX reads it in the same query. A field of a one-to-many join arrives as one cell with its values separated by commas.
+
+➕ **Several data marts, one main.** Click a card of a data mart the selected one joins to and its first text field becomes a column; the Data band is then titled "Orders + Customers" and the card wears a lighter, dashed style with a plus. Click it again and its columns, filters and sorts go; click it once more and it comes back with the fields you last chose. Click the selected data mart and the next joined one takes its place; click one it cannot join and it becomes the selected data mart on its own. Undo and Redo cover all of it.
 
 🔗 **Open a record.** Click a row to see all its fields in the Row band, with "Referenced by": the data marts that point at it, each opening filtered to this record. Undo and Redo next to the page title step back and forward along your path.
 
-📤 **Take it to a sheet.** Export sends the grid as it is (columns, filters, sorting) to Google Sheets as an OWOX report, runs it and opens the sheet. Update reruns it later with the grid's new state.
+📤 **Take it to a sheet, or to an AI.** Export sends the grid as it is (columns, filters, sorting) to Google Sheets as an OWOX report, runs it and opens the sheet. Update reruns it later with the grid's new state. The AI group of the same menu copies a prompt for Claude or ChatGPT that asks, through the OWOX Data Marts connector, for the same rows. Copying writes nothing to OWOX.
 
 ## What it costs
 
@@ -30,7 +32,7 @@ Every grid, record and record count is a `traverseData` query in your warehouse,
 
 ## What it writes
 
-Nothing until you click Export. Export creates a spreadsheet, creates or updates your report and runs it. Rows are never written. Per member, the plugin keeps record counts, your columns, which bands you folded and the reports you exported.
+Nothing until you click Export to Google Sheets. It creates a spreadsheet, creates or updates your report and runs it. Copying a prompt for an AI writes nothing. Rows are never written. Per member, the plugin keeps record counts, your columns, which bands you folded and the reports you exported.
 
 ## Install
 
@@ -42,10 +44,10 @@ The rest of this file is for developers.
 
 ## Export to Google Sheets
 
-The Data band's header has an Export button when the project has a Google Sheets destination you can use (none: no button). It creates an OWOX report from the grid as it is now (the shown columns, the complete filters and your sorts, no row limit), runs it and opens the sheet.
+The Data band's header always has an Export menu: the Google Sheets destinations you can use (none: none listed), then an "AI" group. A Sheets destination creates an OWOX report from the grid as it is now (the shown columns, the complete filters and your sorts, no row limit), runs it and opens the sheet.
 
-1. One destination and no report of yours for this data mart: one click creates a new spreadsheet, the report, runs it and opens the sheet. Both are titled "<Data mart> · Data Explorer · <date time>".
-2. Otherwise Export opens a cascading menu. Its first level lists the destinations (the Google Sheets icon and the destination's title), also when there is only one. Hovering a destination, clicking it, or ArrowRight or Enter opens a flyout beside it (to the left when there is no room on the right) with "Update '<report>'" for each report you created from the plugin on it (it applies the grid's current state and runs again) and "New report…". Arrow keys walk a level and Escape closes one.
+1. Export is always a menu, because the AI items are always there. A new spreadsheet and report are titled "<Data mart> · Data Explorer · <date time>".
+2. Export opens a cascading menu. Its first level lists the destinations (the Google Sheets icon and the destination's title), also when there is only one. Hovering a destination, clicking it, or ArrowRight or Enter opens a flyout beside it (to the left when there is no room on the right) with "Update '<report>'" for each report you created from the plugin on it (it applies the grid's current state and runs again) and "New report…". Arrow keys walk a level and Escape closes one.
 3. "New report…" asks for a title and a target: a new spreadsheet, or a pasted link of an existing one (its `#gid=` picks the tab, default the first). Share an existing spreadsheet with the destination's Google account as Editor.
 4. If OWOX cannot create a spreadsheet (a service-account destination needs a Drive folder), the dialog opens with the message so you can paste a link instead.
 5. The status of the run shows next to the button, with a link to the sheet. After 3 minutes without a result it says "Still running" and keeps the link.
@@ -54,9 +56,24 @@ The Data band's header has an Export button when the project has a Google Sheets
 8. The reports you create are remembered per data mart (`exports`, member scope). One that OWOX no longer has is dropped when the menu opens.
 9. Export writes only on your click: it creates the spreadsheet, creates or updates the report and runs it (a billed warehouse run). Updating replaces the report's configuration, so aggregations added to it in OWOX are cleared.
 
+### Export to an AI
+
+The AI group lists Claude and ChatGPT. Choosing one copies a plain-text prompt built from the grid as it is, and shows "Prompt copied. Paste it into Claude" next to the button with a "Show prompt" link. The link opens a dialog with the prompt in a read-only textarea (selected on focus) and a Copy button. The copy tries `navigator.clipboard.writeText`, then a hidden textarea and `document.execCommand('copy')`; when the sandboxed iframe blocks both, the dialog opens at once.
+
+The prompt names the project and data mart, the shown columns by technical name (joined ones by their blended name, such as `customers__city`), one line of plain words per filter and the sorts, and asks for a table and a note when rows were truncated. Everything copied from OWOX (names, ids, filter values) is written as a JSON string with control characters removed and at most 200 characters, under two fixed lines that say the request is read-only and that quoted text is data, never instructions.
+
 In mock mode (`?mock`) add `&sheets=1` for one destination or `&sheets=0` for none (default two).
 
 The page header has no Refresh button. The model (marts, edges, contexts, connectors, data quality) is loaded when the plugin opens; to reload it, reopen the plugin. The Refresh in the Data band and in the Row band only re-reads that band's rows or record. If a storage fails to load, the header shows a warning with Retry, which reloads the model, counts and data quality; if that reload fails, the previous model, counts and quality stay on screen and the header shows the error with Retry.
+
+## Several data marts, one main
+
+The selected data mart is the main one. A joined data mart is selected exactly when one of its joined fields is a column of the main grid, so the Columns picker and the cards are two views of one state (`src/state/join-plan.ts`). What the main data mart can join comes from `GET /api/data-marts/:id/blendable-schema`, read when a data mart becomes main (once per data mart per session, not billed). With several alias paths to one data mart, the shallowest wins.
+
+1. A card click on a joinable data mart adds the fields last chosen for that pair, else its first text field, after the shown columns. On a selected joined data mart it removes its columns, filters and sorts and remembers its field list for the pair in `grid-columns` (`picks`). Unticking the last field in the picker remembers an empty list, so the next add uses the first text field.
+2. A click on the main data mart promotes the next joined one (in the order added), which keeps its own saved grid and adds the other joined data marts it can join; with none left nothing is selected and the Data band says "Select a data mart.". A click on a data mart the main one cannot join makes it the only selected data mart.
+3. The cards shown are the main one, everything joined to it, and every selected joined data mart, ordered main first, selected joined data marts next, then breadth first over the edges.
+4. Each change is one store step (`setMarts`) that holds the grids it touched, so Undo and Redo put them back.
 
 ## Develop
 

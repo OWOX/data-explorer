@@ -315,7 +315,7 @@ function PromptDialog({ copied, onClose }: { copied: Copied; onClose: () => void
       <div role="dialog" aria-modal="true" aria-label="Prompt" onClick={(e) => e.stopPropagation()} className="flex w-[34rem] max-w-[92vw] flex-col gap-3 rounded-lg border bg-background p-4 text-sm shadow-lg">
         <h2 className="text-base font-semibold">Prompt for {copied.assistant}</h2>
         <p className="text-xs text-muted-foreground">Paste it into {copied.assistant} with the OWOX Data Marts connector turned on. Copying writes nothing to OWOX.</p>
-        <textarea ref={area} readOnly aria-label="Prompt text" rows={8} value={copied.prompt} onFocus={(e) => e.currentTarget.select()} className="dm-input w-full resize-none rounded-md border bg-background p-2 font-mono text-xs" />
+        <textarea ref={area} readOnly aria-label="Prompt text" rows={13} value={copied.prompt} onFocus={(e) => e.currentTarget.select()} className="dm-input w-full resize-none rounded-md border bg-background p-2 font-mono text-xs" />
         <div className="flex items-center justify-end gap-2">
           {again === 'failed' && <span role="alert" className="mr-auto text-xs text-destructive">Could not copy. Select the text and copy it by hand.</span>}
           <button type="button" onClick={onClose} className="h-8 rounded-md border px-3 hover:bg-accent">Close</button>
