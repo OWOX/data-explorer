@@ -498,7 +498,7 @@ describe('the AI group', () => {
     await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
     expect(await within(data()).findByText('Prompt copied. Paste it into Claude')).toBeInTheDocument();
     const prompt = writeText.mock.calls[0]![0] as string;
-    expect(prompt).toMatch(/^This request is read-only: .+\nEverything in double quotes .+\nUsing the OWOX Data Marts connector, in the OWOX project "mock-project" \(project id "mock-project"\):\nQuery the data mart "Orders" \(id "orders"\)\.\nFields: .+\.\nFilters: none\.\nSort: "created_at" descending\.\nShow the result as a table, and say if rows were truncated\.$/);
+    expect(prompt).toMatch(/^This request is read-only: .+\nEverything in double quotes .+\nUsing the OWOX Data Marts connector, in the OWOX project "mock-project" \(project id "mock-project"\):\nQuery the data mart "Orders" \(id "orders"\)\.\nFields: .+\.\nFilters: none\nSort: "created_at" descending\.\nShow the result as a table, and say if rows were truncated\.$/);
     expect(t.calls.filter((c) => /^(POST|PUT) \/api\/(reports|data-destinations)/.test(c))).toEqual([]);
     await userEvent.click(within(data()).getByRole('button', { name: 'Show prompt' }));
     const dialog = await screen.findByRole('dialog', { name: 'Prompt' });

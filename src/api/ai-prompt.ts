@@ -14,8 +14,9 @@ const WORDS: Record<string, string> = {
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
 const MAX_TEXT = 200;
+// C0 and C1 controls, DEL, zero-width and bidi marks and overrides, isolates, the BOM, and the line and paragraph separators.
 // eslint-disable-next-line no-control-regex
-const CONTROL = /[\u0000-\u001F\u007F\u2028\u2029]/g;
+const CONTROL = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069\uFEFF]/g;
 
 /** Text copied from OWOX (a title, a field name, a filter value) as one JSON string: no control character, at most 200 characters, so it cannot end its line or read as an instruction. */
 export const quoted = (v: unknown): string => {
@@ -63,7 +64,7 @@ export function buildAiPrompt(p: AiPromptInput): string {
     `Using the OWOX Data Marts connector, in the OWOX project ${quoted(p.projectTitle?.trim() || p.projectId)} (project id ${quoted(p.projectId)}):`,
     `Query the data mart ${quoted(p.martTitle)} (id ${quoted(p.martId)}).`,
     `Fields: ${fields.map(quoted).join(', ')}.`,
-    `Filters: ${p.filters.length ? p.filters.map(describeFilter).join('; ') : 'none'}.`,
+    p.filters.length ? `Filters:\n${p.filters.map((f) => `- ${describeFilter(f)}`).join('\n')}` : 'Filters: none',
     `Sort: ${sorts.length ? sorts.join(', then ') : 'none'}.`,
     'Show the result as a table, and say if rows were truncated.',
   ].join('\n');
