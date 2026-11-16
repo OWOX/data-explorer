@@ -109,4 +109,47 @@ describe('view link codec', () => {
     const r = await encodeViewLink({ ...base, grid: { columns: cols, filters, sorts: [{ field: cols[0]!, direction: 'asc' }], limit: 200 } });
     expect(r.length).toBeLessThan(MAX_ROUTE_LENGTH);
   });
+
+  describe('values that would break rendering', () => {
+    const gridWith = (fl: unknown[]) => ({ c: ['id'], fl, s: null, l: 100 });
+    const decodeOk = async (o: unknown) => (await decodeViewLink(await route(o))) as DecodedView;
+
+    it('drops a relative filter with no value', async () => {
+      const d = await decodeOk(valid({ g: gridWith([['id', 'relative']]) }));
+      expect(d.grid!.filters).toEqual({});
+      expect(d.dropped).toBe(1);
+    });
+
+    it('drops a relative filter whose kind is not a string', async () => {
+      const d = await decodeOk(valid({ g: gridWith([['id', 'relative', { kind: { a: 1 } }]]) }));
+      expect(d.grid!.filters).toEqual({});
+      expect(d.dropped).toBe(1);
+    });
+
+    it('drops a filter value with a non-scalar toString', async () => {
+      const d = await decodeOk(valid({ g: gridWith([['id', 'eq', { toString: 1 }]]) }));
+      expect(d.grid!.filters).toEqual({});
+      expect(d.dropped).toBe(1);
+    });
+
+    it('drops a record whose value is not a scalar', async () => {
+      const d = await decodeOk(valid({ r: { id: { toString: 1 } } }));
+      expect(d.record).toBeNull();
+      expect(d.dropped).toBe(1);
+    });
+
+    it('drops an empty record', async () => {
+      const d = await decodeOk(valid({ r: {} }));
+      expect(d.record).toBeNull();
+      expect(d.dropped).toBe(1);
+    });
+
+    it('keeps real value shapes', async () => {
+      const fl = [['a', 'eq', 'x'], ['b', 'gt', 3], ['c', 'is_true'], ['d', 'between', { from: 1, to: 2 }], ['e', 'relative', { kind: 'last_n_days', n: 7 }], ['f', 'relative', { kind: 'today' }]];
+      const d = await decodeOk(valid({ r: { id: 1, k: 'x', b: true }, g: gridWith(fl) }));
+      expect(d.dropped).toBe(0);
+      expect(Object.keys(d.grid!.filters)).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+      expect(d.record).toEqual({ id: 1, k: 'x', b: true });
+    });
+  });
 });

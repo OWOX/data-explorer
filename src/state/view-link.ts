@@ -117,6 +117,12 @@ export async function encodeViewLink(view: Omit<DecodedView, 'dropped'>): Promis
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isStringList = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string');
 
+const isScalar = (v: unknown): v is string | number | boolean => typeof v === 'string' || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v));
+const isPlain = (v: unknown): v is Record<string, unknown> => isObject(v) && Object.getPrototypeOf(v) === Object.prototype;
+/** A filter value the grid can render and query: a scalar, or a flat object of strings and numbers (ranges, relative presets). */
+const isFilterValue = (v: unknown): boolean =>
+  v === undefined || isScalar(v) || (isPlain(v) && Object.entries(v).every(([k, x]) => !(k in Object.prototype) && (typeof x === 'string' || (typeof x === 'number' && Number.isFinite(x)))));
+
 /** The route's `s` param, or null when the route isn't a view link. */
 function payloadOf(route: string | undefined): string | null {
   if (!route) return null;
@@ -149,6 +155,11 @@ function shape(raw: unknown): DecodedView {
   if (!(g === null || isObject(g))) throw new Error('bad grid');
 
   let dropped = 0;
+  let record: Record<string, unknown> | null = null;
+  if (r !== null) {
+    if (isPlain(r) && Object.keys(r).length > 0 && Object.entries(r).every(([k, x]) => !(k in Object.prototype) && isScalar(x))) record = r;
+    else dropped++;
+  }
   const keepStrings = (list: unknown[]): string[] => list.filter((x): x is string => typeof x === 'string' || (dropped++, false));
   const name = (c: unknown): string | null => {
     if (typeof c === 'string') return c;
@@ -168,6 +179,9 @@ function shape(raw: unknown): DecodedView {
       if (field === null || typeof (e as unknown[])[1] !== 'string' || UNSAFE_KEYS.has(field)) { dropped++; continue; }
       const entry: ColumnFilter = { field, op: (e as unknown[])[1] as OpId };
       const value = (e as unknown[])[2] as FilterValue | null | undefined;
+      // A relative filter needs a preset object; any other value must be safe to render and query.
+      const ok = isFilterValue(value ?? undefined) && (entry.op !== 'relative' || (isPlain(value) && typeof (value as { kind?: unknown }).kind === 'string'));
+      if (!ok) { dropped++; continue; }
       if (value !== undefined && value !== null) entry.value = value;
       filterEntries.push([field, entry]);
     }
@@ -185,7 +199,7 @@ function shape(raw: unknown): DecodedView {
   return {
     sourceKey: src,
     martId: m,
-    record: r,
+    record,
     search: q,
     contextIds: keepStrings(ctx),
     storageIds: st === null ? null : keepStrings(st),
