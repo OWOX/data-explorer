@@ -29,3 +29,14 @@ test('when both fail the answer is false and nothing is left in the page', async
   expect(await copyText('x')).toBe(false);
   expect(document.querySelector('textarea')).toBeNull();
 });
+
+test('the fallback gives focus back to the element that had it', async () => {
+  const button = document.createElement('button');
+  document.body.appendChild(button);
+  button.focus();
+  setClipboard(undefined);
+  setExec(vi.fn(() => true));
+  await copyText('x');
+  expect(document.activeElement).toBe(button);
+  button.remove();
+});

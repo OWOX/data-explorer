@@ -136,6 +136,7 @@ function SortTitle({ field }: { field: Schema[number] }) {
   return <OverflowTip text={label} extra={field.joined ? undefined : fieldTitle(field)} measure={(el) => el.querySelector('.truncate')}>{button}</OverflowTip>;
 }
 
+const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 const stable = (g: GridState) => JSON.stringify([g.columns, Object.entries(g.filters).sort(([a], [b]) => a.localeCompare(b)), g.sorts, g.limit]);
 const sameGrid = (a: GridState, b: GridState) => stable(a) === stable(b);
 
@@ -189,17 +190,22 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // The page changes this grid too (a card click adds or takes out a joined mart's columns, Undo puts them back): what the store
   // holds is adopted when it is not what the grid already shows. The grid's own changes reach the store through the effect below.
   const [seenSaved, setSeenSaved] = useState(seed.saved);
+  // Columns adopted from the page (Undo, Redo, a card click) are the member's columns now: they are saved like a picker change.
+  const [adopted, setAdopted] = useState<string[] | null>(null);
   if (seed.saved !== seenSaved) {
     setSeenSaved(seed.saved);
     const saved = seed.saved;
     if (saved && saved.columns.length > 0 && !sameGrid(saved, { columns: visible, filters: { ...parked, ...filters }, sorts: own, limit })) {
       setVisible(saved.columns);
+      if (!sameList(saved.columns, visible)) setAdopted(saved.columns);
       setFilters(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => offeredNow(k))));
       setParked(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => !offeredNow(k))));
       setOwn(saved.sorts);
       setLimit(saved.limit);
     }
   }
+
+  useEffect(() => { if (adopted) columnStore.save(martId, adopted); }, [adopted, columnStore, martId]);
 
   useEffect(() => { onChange({ columns: visible, filters: { ...parked, ...filters }, sorts: own, limit }); }, [visible, filters, parked, own, limit]); // eslint-disable-line react-hooks/exhaustive-deps
 

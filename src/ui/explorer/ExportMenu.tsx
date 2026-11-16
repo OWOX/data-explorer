@@ -216,7 +216,7 @@ export function ExportMenu(p: Props) {
             </div>
           </div>
         </details>
-      {promptOpen && copied && <PromptDialog copied={copied} onClose={() => setPromptOpen(false)} />}
+      {promptOpen && copied && <PromptDialog copied={copied} onClose={() => { setPromptOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {dialog && <NewReportDialog key={dialog.seq} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
     </>
   );
@@ -310,9 +310,19 @@ function PromptDialog({ copied, onClose }: { copied: Copied; onClose: () => void
     document.addEventListener('keydown', esc);
     return () => document.removeEventListener('keydown', esc);
   }, [onClose]);
+  useEffect(() => { area.current?.focus(); }, []);
+  // Tab cycles textarea, Close, Copy and back: focus never leaves the dialog behind the backdrop.
+  const trap = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab') return;
+    const items = [...e.currentTarget.querySelectorAll<HTMLElement>('textarea, button')];
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const next = e.shiftKey ? (at <= 0 ? items.length - 1 : at - 1) : (at < 0 || at === items.length - 1 ? 0 : at + 1);
+    e.preventDefault();
+    items[next]?.focus();
+  };
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label="Prompt" onClick={(e) => e.stopPropagation()} className="flex w-[34rem] max-w-[92vw] flex-col gap-3 rounded-lg border bg-background p-4 text-sm shadow-lg">
+      <div role="dialog" aria-modal="true" aria-label="Prompt" onKeyDown={trap} onClick={(e) => e.stopPropagation()} className="flex w-[34rem] max-w-[92vw] flex-col gap-3 rounded-lg border bg-background p-4 text-sm shadow-lg">
         <h2 className="text-base font-semibold">Prompt for {copied.assistant}</h2>
         <p className="text-xs text-muted-foreground">Paste it into {copied.assistant} with the OWOX Data Marts connector turned on. Copying writes nothing to OWOX.</p>
         <textarea ref={area} readOnly aria-label="Prompt text" rows={13} value={copied.prompt} onFocus={(e) => e.currentTarget.select()} className="dm-input w-full resize-none rounded-md border bg-background p-2 font-mono text-xs" />

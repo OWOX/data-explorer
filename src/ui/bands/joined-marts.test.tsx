@@ -1,19 +1,32 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { vi } from 'vitest';
 import { GRID_COLUMNS_COLLECTION } from '../../api/grid-columns';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
 
-function setup() {
+function setup(opts: { gate?: Promise<void> } = {}) {
   const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
-  const puts: { id: string; doc: unknown }[] = [];
+  const puts: { id: string; doc: { columns: string[]; picks?: Record<string, string[]> } }[] = [];
+  const rows: { id: string; o: { sort?: unknown } }[] = [];
+  const reads: string[] = [];
   const col = ctx.collections;
-  const spied = { ...ctx, collections: <T,>(name: string) => { const c = col<T>(name); return name === GRID_COLUMNS_COLLECTION ? { get: c.get, put: (id: string, d: T) => { puts.push({ id, doc: d }); return c.put(id, d); } } : c; } };
+  const realGet = ctx.owox.getJson.bind(ctx.owox);
+  const realTraverse = ctx.owox.dataMarts.traverseData.bind(ctx.owox.dataMarts);
+  const spied = {
+    ...ctx,
+    owox: {
+      ...ctx.owox,
+      getJson: (<T,>(path: string, q?: Record<string, string>) => {
+        if (path.endsWith('/blendable-schema')) { reads.push(path); if (opts.gate) return opts.gate.then(() => realGet<T>(path, q)); }
+        return realGet<T>(path, q);
+      }) as typeof ctx.owox.getJson,
+      dataMarts: { ...ctx.owox.dataMarts, traverseData: (id: string, o: Parameters<typeof realTraverse>[1]) => { if (!(o as { uniqueCount?: unknown }).uniqueCount) rows.push({ id, o }); return realTraverse(id, o); } },
+    },
+    collections: <T,>(name: string) => { const c = col<T>(name); return name === GRID_COLUMNS_COLLECTION ? { get: c.get, put: (id: string, d: T) => { puts.push({ id, doc: d as never }); return c.put(id, d); } } : c; } };
   render(<AppServices ctx={spied}><StoreProvider><App /></StoreProvider></AppServices>);
-  return { puts };
+  return { puts, rows, reads };
 }
 const data = () => document.getElementById('band-data')!;
 const row = () => document.getElementById('band-row')!;
@@ -81,6 +94,7 @@ test('deselecting the main data mart promotes the next joined one, which brings 
   await click('Orders');
   // Customers cannot join Stores (it has only Countries), so only Customers is left.
   await waitFor(() => expect(title()).toBe('Customers'));
+  expect(headers().some((h) => /Stores/.test(h))).toBe(false);
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -144,5 +158,71 @@ test('a joined mart that is not a neighbour is still shown, and the main card st
   await waitFor(() => expect(title()).toBe('Orders + Products'));
   const names = [...marts().querySelectorAll('article .dm-node-title')].map((e) => e.textContent);
   expect(names.slice(0, 2)).toEqual(['Orders', 'Products']);
-  vi.useRealTimers();
+});
+
+test('promoting back to Orders leaves it alone: the joined columns it was left with are taken out', async () => {
+  setup();
+  await ready();
+  await click('Customers');
+  await waitFor(() => expect(title()).toBe('Orders + Customers'));
+  await click('Orders');
+  await waitFor(() => expect(title()).toBe('Customers'));
+  await click('Orders');
+  await waitFor(() => expect(title()).toBe('Orders'));
+  expect(headers()).toHaveLength(5);
+  expect(card('Customers')).not.toHaveClass('dm-joined');
+});
+
+test('two quick clicks while the joined marts are still being read both join, and both are saved', async () => {
+  let release: () => void = () => undefined;
+  const t = setup({ gate: new Promise<void>((r) => { release = r; }) });
+  await ready();
+  await within(marts()).findByText('Stores');
+  fireEvent.click(card('Customers'));
+  fireEvent.click(card('Stores'));
+  release();
+  await waitFor(() => expect(title()).toBe('Orders + Customers + Stores'));
+  await waitFor(() => expect(t.puts.at(-1)?.doc.columns).toEqual(expect.arrayContaining(['customers__name', 'stores__name'])));
+});
+
+test('Undo of a card click is saved too: the last saved columns have no Customers column', async () => {
+  const t = setup();
+  await ready();
+  await click('Customers');
+  await waitFor(() => expect(headers()).toHaveLength(6));
+  await undo();
+  await waitFor(() => expect(headers()).toHaveLength(5));
+  await waitFor(() => expect(t.puts.at(-1)?.doc.columns.some((c) => c.startsWith('customers__'))).toBe(false), { timeout: 3000 });
+});
+
+test('adding a mart reads the rows once, taking it out reads none, and each mart is asked for its joins once', async () => {
+  const t = setup();
+  await ready();
+  await new Promise((r) => setTimeout(r, 150));
+  const before = t.rows.length;
+  await click('Customers');
+  await waitFor(() => expect(headers()).toHaveLength(6));
+  await new Promise((r) => setTimeout(r, 200));
+  expect(t.rows.slice(before).filter((r) => r.id === 'orders' && r.o.sort)).toHaveLength(1);
+  const afterAdd = t.rows.length;
+  await click('Customers');
+  await waitFor(() => expect(headers()).toHaveLength(5));
+  await new Promise((r) => setTimeout(r, 200));
+  expect(t.rows).toHaveLength(afterAdd);
+  expect(t.reads.filter((p) => p.includes('/orders/'))).toHaveLength(1);
+});
+
+test('what was last chosen for a pair is saved exactly: the fields, in the order shown', async () => {
+  const t = setup();
+  await ready();
+  await click('Customers');
+  await waitFor(() => expect(headers()).toHaveLength(6));
+  await userEvent.click(within(data()).getByRole('button', { name: /^Columns/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /^Customers/ }));
+  await userEvent.click(await screen.findByLabelText('email'));
+  await waitFor(() => expect(headers()).toHaveLength(7));
+  await userEvent.keyboard('{Escape}');
+  await click('Customers');
+  await waitFor(() => expect(headers()).toHaveLength(5));
+  await waitFor(() => expect(t.puts.at(-1)?.doc.picks).toEqual({ customers: ['customers__name', 'customers__email'] }), { timeout: 3000 });
 });

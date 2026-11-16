@@ -109,11 +109,11 @@ export function CardBands({
   const { lit, aside } = useMemo(() => {
     const pinnedSet = pinned ? litIds(wires, pinned) : null;
     const hoveredSet = hovered ? litIds(wires, hovered) : null;
-    const lit = new Set([...(pinnedSet ?? []), ...(hoveredSet ?? []), ...joined.flatMap((id) => [...litIds(wires, martElementId(id))])]);
+    const lit = new Set([...(pinnedSet ?? []), ...(hoveredSet ?? [])]);
     // Lit only by the pointer while another card is pinned: drawn at half strength.
     const aside = new Set([...lit].filter((id) => pinnedSet !== null && !pinnedSet.has(id)));
     return { lit, aside };
-  }, [wires, pinned, hovered, joined]);
+  }, [wires, pinned, hovered]);
 
   // Cards animate in and out as the set changes; a leaving card keeps its object, which the model may no longer hold.
   const shownMarts = useMemo(() => visible.ids.flatMap((id) => model.marts.get(id) ?? []), [visible.ids, model]);

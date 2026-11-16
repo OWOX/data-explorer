@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { JoinedSource } from '../../api/blendable';
 import type { Picks } from '../../api/grid-columns';
 import { PAGE_SIZE } from '../../config';
-import { joinedMartIds, planClick } from '../../state/join-plan';
+import { isJoinable, joinedMartIds, planClick } from '../../state/join-plan';
 import { sourceOfModel, useServices, useStore, type GridState, type State } from '../../state/store';
 import type { Model } from '../../model/types';
 import { defaultColumns } from '../explorer/useMartRows';
@@ -16,9 +16,21 @@ export function useCardClick(model: Model): (id: string) => Promise<void> {
   const [state, dispatch] = useStore();
   const { blendable, columnStore, schemas } = useServices();
   const latest = useRef<State>(state);
-  useEffect(() => { latest.current = state; });
+  // Whoever waits for the store to show what was just dispatched; the clicks run one at a time, each planned on what the one before left.
+  const waiters = useRef<(() => void)[]>([]);
+  const chain = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    latest.current = state;
+    const now = waiters.current.splice(0);
+    for (const w of now) w();
+  });
+  const rendered = () => new Promise<void>((resolve) => {
+    // A step that changed nothing never renders: the pause is the fallback.
+    const t = setTimeout(resolve, 50);
+    waiters.current.push(() => { clearTimeout(t); resolve(); });
+  });
 
-  return useCallback(async (id: string) => {
+  const run = useCallback(async (id: string) => {
     const main = latest.current.selection.martId;
     const sources = new Map<string, JoinedSource[]>();
     const grids = new Map<string, GridState>();
@@ -44,6 +56,8 @@ export function useCardClick(model: Model): (id: string) => Promise<void> {
         if (next) await load(next);
       }
     }
+    // A mart that becomes the only selected one is stripped of the joined columns it was left with.
+    if (id !== main && !(main && isJoinable(sources.get(main)!, id))) await load(id);
     const now = latest.current;
     // The member moved on while this was being read.
     if (now.selection.martId !== main) return;
@@ -60,5 +74,12 @@ export function useCardClick(model: Model): (id: string) => Promise<void> {
     if (Object.keys(plan.grids).length === 0 && plan.selection.martId && !plan.selection.cleared) dispatch({ type: 'selectMart', id: plan.selection.martId, sourceOf });
     else dispatch({ type: 'setMarts', selection: plan.selection, grids: plan.grids });
     for (const save of plan.saves) columnStore.save(save.martId, save.columns, save.picks);
+    await rendered();
   }, [blendable, columnStore, schemas, dispatch, model]);
+
+  return useCallback((id: string) => {
+    const next = chain.current.then(() => run(id), () => run(id));
+    chain.current = next.catch(() => undefined);
+    return next;
+  }, [run]);
 }

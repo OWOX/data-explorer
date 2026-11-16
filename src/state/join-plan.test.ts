@@ -92,3 +92,16 @@ test('a promoted mart that already shows the others keeps its own grid as it is'
   expect(plan.selection).toEqual(sel('customers'));
   expect(plan.grids).toEqual({});
 });
+
+test('a mart the main one cannot join becomes the only selected mart: the joined columns it was left with go, and are remembered', () => {
+  const grids = { customers: g(['id', 'countries__name']), orders: g(['id', 'customers__city', 'products__sku'], { filters: { customers__city: { field: 'customers__city', op: 'eq', value: 'x' } } }) };
+  const plan = planClick(env(grids, 'customers'), 'orders');
+  expect(plan.selection).toEqual(sel('orders'));
+  expect(plan.grids.orders).toEqual(g(['id']));
+  expect(plan.saves).toEqual([{ martId: 'orders', columns: ['id'], picks: { customers: ['customers__city'], products: ['products__sku'] } }]);
+});
+
+test('with no main, the clicked mart opens with none of its joined columns', () => {
+  const plan = planClick(env({ orders: g(['id', 'stores__city']) }, null), 'orders');
+  expect(plan.grids.orders!.columns).toEqual(['id']);
+});

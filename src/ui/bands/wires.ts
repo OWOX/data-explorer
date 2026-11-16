@@ -26,7 +26,7 @@ export type Wire = {
   title: string;
 };
 
-/** `also` are the selected joined marts: their lines are raised like the pinned card's. */
+/** `also` are the selected joined marts: the line of each to the pinned card is raised like the pinned card's own. */
 export type Selection = { pinned: string | null; hovered: string | null; also?: string[] };
 
 export type Box = { left: number; right: number; top: number; bottom: number; width: number; height: number };
@@ -115,7 +115,14 @@ export function paintPlan(wires: Wire[], { pinned, hovered, also = [] }: Selecti
     });
   };
   paint(pinned, false);
-  for (const id of also) paint(id, false);
+  // A selected joined mart raises only its own line to the pinned (main) mart, not everything it touches.
+  for (const id of also) {
+    wires.forEach((wire, i) => {
+      if (plan.has(i)) return;
+      if (wire.from === id && wire.to === pinned) plan.set(i, { aside: false, direction: 'outbound' });
+      else if (wire.to === id && wire.from === pinned) plan.set(i, { aside: false, direction: 'inbound' });
+    });
+  }
   paint(hovered && hovered !== pinned ? hovered : null, pinned !== null);
   return plan;
 }

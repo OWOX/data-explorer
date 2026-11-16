@@ -9,6 +9,7 @@ export async function copyText(text: string): Promise<boolean> {
       return true;
     }
   } catch { /* blocked: try the fallback */ }
+  const before = document.activeElement;
   const box = document.createElement('textarea');
   try {
     box.value = text;
@@ -22,5 +23,6 @@ export async function copyText(text: string): Promise<boolean> {
     return false;
   } finally {
     box.remove();
+    if (before instanceof HTMLElement) before.focus();
   }
 }

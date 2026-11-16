@@ -78,7 +78,21 @@ export type PlanEnv = {
   picksOf: (martId: string) => Picks;
 };
 
-const becomeMain = (env: PlanEnv, id: string): Plan => ({ selection: { sourceKey: env.sourceKeyFor(id), martId: id, record: null }, grids: {}, saves: [] });
+/** The clicked mart becomes the only selected one: joined columns it was left with are taken out, and remembered for its pairs. */
+const becomeMain = (env: PlanEnv, id: string): Plan => {
+  const selection = { sourceKey: env.sourceKeyFor(id), martId: id, record: null };
+  const sources = env.sourcesOf(id);
+  let grid = env.gridOf(id);
+  const joined = joinedMartIds(grid.columns, sources);
+  if (joined.length === 0) return { selection, grids: {}, saves: [] };
+  const picks: Picks = {};
+  for (const m of joined) {
+    const out = withoutMart(grid, sources, m, env.ownColumns(id));
+    grid = out.grid;
+    picks[m] = out.removed;
+  }
+  return { selection, grids: { [id]: grid }, saves: [{ martId: id, columns: grid.columns, picks }] };
+};
 
 /** Joined marts a card click can touch need `sourcesOf` and `gridOf` for the main and for every selected joined mart. */
 export function planClick(env: PlanEnv, id: string): Plan {

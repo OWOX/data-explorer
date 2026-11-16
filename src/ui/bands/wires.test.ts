@@ -189,13 +189,16 @@ describe('a hub with many neighbours', () => {
   });
 });
 
-test('the lines of the selected joined marts are raised with the pinned card\'s', () => {
+test('a selected joined mart raises only its own line to the pinned card', () => {
   const wires: Wire[] = [
     { id: 'a', from: 'm', to: 'x', kind: 'relationship', title: '' },
-    { id: 'b', from: 'x', to: 'y', kind: 'relationship', title: '' },
-    { id: 'c', from: 'q', to: 'r', kind: 'relationship', title: '' },
+    { id: 'b', from: 'y', to: 'm', kind: 'relationship', title: '' },
+    { id: 'c', from: 'y', to: 'z', kind: 'relationship', title: '' },
+    { id: 'd', from: 'x', to: 'q', kind: 'relationship', title: '' },
   ];
-  const plan = paintPlan(wires, { pinned: 'm', hovered: null, also: ['y'] });
-  expect([...plan.keys()].sort()).toEqual([0, 1]);
-  expect(plan.get(1)).toEqual({ aside: false, direction: 'inbound' });
+  const plan = paintPlan(wires, { pinned: 'x', hovered: null, also: ['y'] });
+  expect([...plan.keys()].sort()).toEqual([0, 3]);
+  const joined = paintPlan(wires, { pinned: 'm', hovered: null, also: ['y'] });
+  expect([...joined.keys()].sort()).toEqual([0, 1]);
+  expect(joined.get(1)).toEqual({ aside: false, direction: 'inbound' });
 });

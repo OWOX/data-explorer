@@ -505,12 +505,38 @@ describe('the AI group', () => {
     const area = within(dialog).getByRole('textbox') as HTMLTextAreaElement;
     expect(area).toHaveAttribute('readonly');
     expect(area.value).toBe(prompt);
-    await userEvent.click(area);
+    // The dialog opens with the textarea focused; focusing it again selects everything.
+    area.blur();
+    area.focus();
     expect(area.selectionStart).toBe(0);
     expect(area.selectionEnd).toBe(prompt.length);
     await userEvent.click(within(dialog).getByRole('button', { name: 'Copy' }));
     expect(writeText).toHaveBeenCalledTimes(2);
     expect(await within(dialog).findByText('Copied')).toBeInTheDocument();
+  });
+
+  test('the prompt dialog takes focus into its textarea, keeps Tab inside, and Escape returns focus to Export', async () => {
+    setClipboard(vi.fn().mockResolvedValue(undefined));
+    const t = setup(0);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
+    await userEvent.click(await within(data()).findByRole('button', { name: 'Show prompt' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Prompt' });
+    const area = within(dialog).getByRole('textbox');
+    await waitFor(() => expect(area).toHaveFocus());
+    await userEvent.tab();
+    expect(within(dialog).getByRole('button', { name: 'Close' })).toHaveFocus();
+    await userEvent.tab();
+    expect(within(dialog).getByRole('button', { name: 'Copy' })).toHaveFocus();
+    await userEvent.tab();
+    expect(area).toHaveFocus();
+    await userEvent.tab({ shift: true });
+    expect(within(dialog).getByRole('button', { name: 'Copy' })).toHaveFocus();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Prompt' })).toBeNull());
+    expect(document.querySelector('details.dm-export summary')).toHaveFocus();
   });
 
   test('ChatGPT names itself in the status', async () => {
