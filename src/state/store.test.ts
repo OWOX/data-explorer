@@ -194,3 +194,43 @@ describe('redo', () => {
     expect(st.grids.c).toBe(grid);
   });
 });
+
+describe('setMarts: the main mart, its joined marts and their grid state change together', () => {
+  const grid = (columns: string[]) => ({ columns, filters: {}, sorts: null, limit: 200 });
+  const joined = (from: State) => reducer(from, { type: 'setMarts', selection: sel({ martId: 'a' }), grids: { a: grid(['id', 'b__x']) } });
+
+  test('it sets the selection and the grid in one history step', () => {
+    const start = s({ selection: sel({ martId: 'a' }), grids: { a: grid(['id']) } });
+    const st = joined(start);
+    expect(st.grids.a!.columns).toEqual(['id', 'b__x']);
+    expect(st.history).toHaveLength(1);
+    expect(st.history[0]).toMatchObject({ grids: { a: grid(['id']) } });
+  });
+
+  test('an op that changes nothing adds no history', () => {
+    const start = s({ selection: sel({ martId: 'a' }), grids: { a: grid(['id', 'b__x']) } });
+    expect(joined(start)).toBe(start);
+  });
+
+  test('undo puts the grid back, redo applies it again; a mart that had no grid goes back to none', () => {
+    const start = s({ selection: sel({ martId: 'a' }) });
+    const st = joined(start);
+    const back = reducer(st, { type: 'undo' });
+    expect(back.grids.a).toBeUndefined();
+    expect(back.selection).toEqual(start.selection);
+    expect(back.future[0]).toMatchObject({ martId: 'a', grids: { a: grid(['id', 'b__x']) } });
+    const again = reducer(back, { type: 'redo' });
+    expect(again.grids.a!.columns).toEqual(['id', 'b__x']);
+    expect(again.selection).toEqual(sel({ martId: 'a' }));
+  });
+
+  test('promoting another mart to main restores both grids and the selection on undo', () => {
+    const start = s({ selection: sel({ martId: 'a' }), grids: { a: grid(['id', 'b__x']) } });
+    const st = reducer(start, { type: 'setMarts', selection: sel({ martId: 'b' }), grids: { b: grid(['id']) } });
+    expect(st.selection.martId).toBe('b');
+    const back = reducer(st, { type: 'undo' });
+    expect(back.selection.martId).toBe('a');
+    expect(back.grids.b).toBeUndefined();
+    expect(back.grids.a!.columns).toEqual(['id', 'b__x']);
+  });
+});
