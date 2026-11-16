@@ -381,3 +381,53 @@ test('a table wider than the page scrolls inside its card and never widens the b
   expect(bm!.width).toBeCloseTo(bd!.width, 0);
   expect(bd!.x + bd!.width).toBeLessThanOrEqual(1440);
 });
+
+declare global { interface Window { __copiedLink?: string } }
+
+test('a copied view link reopens the same view: mart, joined column, filter and sort', async ({ page, context }) => {
+  const data = await ordersGrid(page);
+  await tick(page, 'email', 'Customers');
+  await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
+  await data.getByLabel('Filter id').click();
+  await page.getByLabel('Operator').selectOption('lte');
+  await page.getByLabel('Value').fill('3');
+  await page.getByRole('button', { name: 'Apply' }).click();
+  await expect(data.getByRole('row')).toHaveCount(4);
+  await data.getByRole('button', { name: /^Sort by status,/ }).click();
+  await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
+
+  await page.getByRole('button', { name: 'Copy link to this view' }).click();
+  await expect.poll(() => page.evaluate(() => window.__copiedLink)).toMatch(/^\/v\?s=/);
+  const link = (await page.evaluate(() => window.__copiedLink))!;
+  expect(link.length).toBeLessThanOrEqual(2048);
+
+  const opened = await context.newPage();
+  await opened.goto(`/?mock&route=${encodeURIComponent(link)}`);
+  const grid = band(opened, 'data');
+  await expect(grid.getByRole('heading', { name: 'Orders + Customers', exact: true })).toBeVisible();
+  await expect(grid.getByRole('row')).toHaveCount(4);
+  await expect(grid.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
+  await expect(grid.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
+  await expect(martCard(opened, 'Orders')).toHaveAttribute('aria-pressed', 'true');
+  await expect(opened.getByRole('status')).toHaveCount(0);
+});
+
+test('a link to a data mart the opener cannot see shows a notice and the page stays usable', async ({ page, context }) => {
+  await ordersGrid(page);
+  const payload = await page.evaluate(async () => {
+    const json = JSON.stringify({ v: 1, P: [], src: null, m: 'no-such-mart', r: null, q: '', ctx: [], st: null, f: { sources: true, marts: false, data: false, row: false }, g: null });
+    const stream = new Blob([new TextEncoder().encode(json)]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+    return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  });
+  const opened = await context.newPage();
+  await opened.goto(`/?mock&route=${encodeURIComponent(`/v?s=${payload}`)}`);
+  const notice = opened.getByRole('status').filter({ hasText: "Some parts of this link aren't available to you" });
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText('the data mart');
+  await expect(band(opened, 'data').getByRole('heading', { name: 'Orders' })).toBeVisible();
+  await notice.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(notice).toHaveCount(0);
+  await martCard(opened, 'Order Items').click();
+  await expect(band(opened, 'data').getByRole('heading', { name: 'Order Items' })).toBeVisible();
+});

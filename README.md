@@ -85,6 +85,19 @@ The selected data mart is the main one. A joined data mart is selected exactly w
 3. The cards shown are the main one, everything joined to it, and every selected joined data mart, ordered main first, selected joined data marts next, then breadth first over the edges.
 4. Each change is one store step (`setMarts`) that holds the grids it touched, so Undo and Redo put them back.
 
+## Link to this view
+
+The chain button in the page header copies a link to the current view. The link holds the selected source, the main data mart and the columns joined to it, the main grid's filters, sorts and row limit, the open record, the Data Marts search, context badges and storage filter, and which bands are folded.
+
+Anyone in the project who can see those data marts opens the same view from the link.
+
+1. A link is at most 2048 characters, the limit of the host. A view that would need more is not copied, and the page says "This view is too large to link. Remove some columns or filters and try again."
+2. Parts the opener can't see, or that were deleted since, are skipped. The rest still shows, with a dismissible notice under the header.
+3. A link that can't be read opens the default view, with a notice.
+4. Opening a link does not change the opener's saved columns or band choices.
+5. The link is compressed, not encrypted. Anyone holding it can decode its filter values, so share it as you would share the data.
+6. On OWOX versions without page links the button is hidden.
+
 ## Develop
 
 ```bash
