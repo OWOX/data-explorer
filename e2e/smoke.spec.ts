@@ -12,6 +12,14 @@ async function ordersGrid(page: Page) {
   return data;
 }
 
+/** Orders joins Customers, so clicking it adds it to the grid; clicking Orders then promotes Customers to the main mart. */
+async function makeMain(page: Page, title: string) {
+  await martCard(page, title).click();
+  await expect(band(page, 'data').getByRole('heading', { name: `Orders + ${title}` })).toBeVisible();
+  await martCard(page, 'Orders').click();
+  await expect(band(page, 'data').getByRole('heading', { name: title, exact: true })).toBeVisible();
+}
+
 const unfoldSources = (page: Page) => page.getByRole('button', { name: 'Show Data Sources' }).click();
 
 test('the first load selects Orders: its rows, its joined marts, the sources, badges and icons', async ({ page }) => {
@@ -105,11 +113,11 @@ test('filter, reset, columns, a row fills the Row band, Back returns', async ({ 
   await expect(row.getByText('Select a row.')).toBeVisible();
 });
 
-test('a card click selects its mart and Back restores the previous one', async ({ page }) => {
+test('a card click on a mart Orders cannot join selects it alone, and Back restores the previous one', async ({ page }) => {
   await ordersGrid(page);
-  await martCard(page, 'Customers').click();
-  await expect(band(page, 'data').getByRole('heading', { name: 'Customers' })).toBeVisible();
-  await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
+  await martCard(page, 'Order Items').click();
+  await expect(band(page, 'data').getByRole('heading', { name: 'Order Items' })).toBeVisible();
+  await expect(martCard(page, 'Order Items')).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(band(page, 'data').getByRole('heading', { name: 'Orders' })).toBeVisible();
 });
@@ -117,19 +125,18 @@ test('a card click selects its mart and Back restores the previous one', async (
 test('a reference column shows the stored value as plain text; Referenced by opens the referencing mart, and Undo restores the record', async ({ page }) => {
   await ordersGrid(page);
   const row = band(page, 'row');
-  await martCard(page, 'Customers').click();
+  await makeMain(page, 'Customers');
   const data = band(page, 'data');
-  await expect(data.getByRole('heading', { name: 'Customers' })).toBeVisible();
   await expect(data.getByRole('row')).toHaveCount(61);
   await data.getByRole('row').nth(1).click();
   await expect(row.getByRole('heading', { name: /^Customers · \d+$/ })).toBeVisible();
   // nothing in the record is a link, and nothing says "via"
   await expect(row.locator('dd button')).toHaveCount(0);
   await row.getByRole('region', { name: 'Referenced by' }).getByRole('button', { name: /^Orders/ }).click();
-  await expect(data.getByRole('heading', { name: 'Orders' })).toBeVisible();
+  await expect(data.getByRole('heading', { name: /^Orders/ })).toBeVisible();
   await expect(row.getByText('Select a row.')).toBeVisible();
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(data.getByRole('heading', { name: 'Customers' })).toBeVisible();
+  await expect(data.getByRole('heading', { name: 'Customers', exact: true })).toBeVisible();
   await expect(row.getByRole('heading', { name: /^Customers · \d+$/ })).toBeVisible();
 });
 
@@ -173,12 +180,12 @@ test('a date column filter opens on presets; a preset applies at once and names 
 
 test('Undo and Redo step through the selection', async ({ page }) => {
   await ordersGrid(page);
-  await martCard(page, 'Customers').click();
-  await expect(band(page, 'data').getByRole('heading', { name: 'Customers' })).toBeVisible();
+  await martCard(page, 'Order Items').click();
+  await expect(band(page, 'data').getByRole('heading', { name: 'Order Items' })).toBeVisible();
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(band(page, 'data').getByRole('heading', { name: 'Orders' })).toBeVisible();
   await page.getByRole('button', { name: 'Redo' }).click();
-  await expect(band(page, 'data').getByRole('heading', { name: 'Customers' })).toBeVisible();
+  await expect(band(page, 'data').getByRole('heading', { name: 'Order Items' })).toBeVisible();
   await page.keyboard.press('Alt+ArrowLeft');
   await expect(band(page, 'data').getByRole('heading', { name: 'Orders' })).toBeVisible();
 });
@@ -198,24 +205,72 @@ test('sort a column descending, then add a second sort', async ({ page }) => {
   await expect(firstCell()).toHaveText('1');
 });
 
-test('Export to Google Sheets: with one destination one click creates the report, runs it and opens the sheet', async ({ page }) => {
+test('Export to Google Sheets: with one destination the menu lists it; New report creates the report, runs it and opens the sheet', async ({ page }) => {
   await page.goto('/?mock&sheets=1');
   const data = await ordersGrid(page);
   const popup = page.waitForEvent('popup');
-  await data.getByRole('button', { name: 'Export to Google Sheets' }).click();
+  await data.getByText('Export', { exact: true }).click();
+  await data.getByRole('menuitem', { name: /Team Sheets/ }).click();
+  await data.getByRole('menuitem', { name: /New report/ }).click();
+  await page.getByRole('dialog', { name: 'New report' }).getByRole('button', { name: 'Export' }).click();
   await expect(data.getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', /spreadsheets\/d\/mock-sheet-1\/edit#gid=0/, { timeout: 10_000 });
   expect((await popup).url()).toContain('mock-sheet-1');
-  // The report is remembered, so the control is now a menu offering to update it.
+  // The report is remembered, so the destination's flyout offers to update it.
   await data.getByText('Export', { exact: true }).click();
-  // The first level lists the destination; its flyout holds the update.
-  await data.getByRole('menuitem').first().hover();
+  await data.getByRole('menuitem', { name: /Team Sheets/ }).hover();
   await expect(data.getByRole('menuitem', { name: /Update “Orders · Data Explorer · / })).toBeVisible();
 });
 
-test('Export to Google Sheets: with no Sheets destination there is no Export control', async ({ page }) => {
+test('Export: with no Sheets destination the menu is still there, with the AI group', async ({ page }) => {
   await page.goto('/?mock&sheets=0');
   const data = await ordersGrid(page);
-  await expect(data.getByLabel('Export to Google Sheets')).toHaveCount(0);
+  await data.getByText('Export', { exact: true }).click();
+  await expect(data.getByRole('menuitem')).toHaveText(['Claude', 'ChatGPT']);
+});
+
+test('Export to an AI: the prompt is copied, named in a status, and readable in a dialog', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const data = await ordersGrid(page);
+  await data.getByText('Export', { exact: true }).click();
+  await data.getByRole('menuitem', { name: 'Claude' }).click();
+  await expect(data.getByText('Prompt copied. Paste it into Claude')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Query the data mart "Orders" (id "orders").');
+  await data.getByRole('button', { name: 'Show prompt' }).click();
+  const area = page.getByRole('dialog', { name: 'Prompt' }).getByRole('textbox');
+  await expect(area).toHaveValue(/read-only/);
+  await expect(area).toHaveAttribute('readonly', '');
+  await page.getByRole('dialog', { name: 'Prompt' }).getByRole('button', { name: 'Close' }).click();
+});
+
+test('selecting a joinable mart adds its first text column; deselecting removes it; reselecting restores the same field', async ({ page }) => {
+  const data = await ordersGrid(page);
+  const title = (t: string) => expect(data.getByRole('heading', { name: t, exact: true })).toBeVisible();
+  await martCard(page, 'Customers').click();
+  await title('Orders + Customers');
+  await expect(data.getByRole('columnheader', { name: /Customers · name/ })).toBeVisible();
+  await expect(martCard(page, 'Customers')).toHaveClass(/dm-joined/);
+  // choose a second field, take the mart out, bring it back
+  await tick(page, 'email', 'Customers');
+  await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
+  await martCard(page, 'Customers').click();
+  await title('Orders');
+  await expect(data.getByRole('columnheader', { name: /Customers ·/ })).toHaveCount(0);
+  await martCard(page, 'Customers').click();
+  await title('Orders + Customers');
+  await expect(data.getByRole('columnheader', { name: /Customers · name/ })).toBeVisible();
+  await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
+});
+
+test('deselecting the main mart promotes the next joined one; a mart the main one cannot join becomes the main one', async ({ page }) => {
+  const data = await ordersGrid(page);
+  await martCard(page, 'Customers').click();
+  await expect(data.getByRole('heading', { name: 'Orders + Customers', exact: true })).toBeVisible();
+  await martCard(page, 'Orders').click();
+  await expect(data.getByRole('heading', { name: 'Customers', exact: true })).toBeVisible();
+  await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
+  // Customers cannot join Sessions, so it becomes the main mart, alone
+  await martCard(page, 'Sessions').click();
+  await expect(data.getByRole('heading', { name: 'Sessions', exact: true })).toBeVisible();
 });
 
 async function tick(page: Page, label: string | RegExp, group?: string) {
