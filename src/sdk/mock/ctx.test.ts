@@ -97,3 +97,13 @@ test('an order that names no customer joins to nothing, not to a wrong row', asy
   const rows = await readRows(createMockCtx(demoFixtures()), 'orders', { column: ['id', 'customers__name'], filter: [{ column: 'id', operator: 'eq', value: 7 }] });
   expect(rows).toEqual([{ id: 7, customers__name: null }]);
 });
+
+test('a field hidden for reporting is rejected like the backend does, in column, filter and sort, also joined and in a report', async () => {
+  const ctx = createMockCtx(demoFixtures());
+  await expect(readRows(ctx, 'customers', { column: ['id', 'internal_flag'] })).rejects.toThrow(/Unknown column/);
+  await expect(readRows(ctx, 'customers', { column: ['id'], filter: [{ column: 'internal_flag', operator: 'is_blank' }] })).rejects.toThrow(/Unknown column/);
+  await expect(readRows(ctx, 'customers', { column: ['id'], sort: [{ column: 'internal_flag', direction: 'asc' }] })).rejects.toThrow(/Unknown column/);
+  await expect(readRows(ctx, 'orders', { column: ['id', 'customers__internal_flag'] })).rejects.toThrow(/Unknown column/);
+  await expect(ctx.owox.postJson('/api/reports', { dataMartId: 'customers', columnConfig: ['id', 'internal_flag'] })).rejects.toThrow(/Unknown column/);
+  await expect(readRows(ctx, 'customers', { column: ['id', 'email'], limit: 1 })).resolves.toHaveLength(1);
+});

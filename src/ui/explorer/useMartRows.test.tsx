@@ -14,11 +14,6 @@ test('defaultColumns is the first 5 fields', () => {
   expect(defaultColumns(schema)).toEqual(['id', 'a', 'b', 'c', 'customer_id']);
 });
 
-test('defaultColumns skips hidden fields', () => {
-  const s: Schema = [f('id', true, 'INT64'), { ...f('secret'), isHidden: true }, f('a')];
-  expect(defaultColumns(s)).toEqual(['id', 'a']);
-});
-
 test('defaultColumns skips calculated fields', () => {
   const s: Schema = [f('id', true, 'INT64'), { ...f('margin'), isCalculated: true }, f('a')];
   expect(defaultColumns(s)).toEqual(['id', 'a']);

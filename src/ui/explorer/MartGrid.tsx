@@ -152,7 +152,11 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const [{ modelVersion }, dispatch] = useStore();
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
   const [visible, setVisible] = useState(initialColumns);
-  const [filters, setFilters] = useState<Record<string, ColumnFilter>>(() => seed.saved?.filters ?? {});
+  // A saved filter on a field this visit does not offer (a joined field whose marts could not be read) is not applied, and not
+  // dropped from the kept copy either: it is parked, and written back with the live ones. It is not re-applied when the joined marts load later.
+  const offeredNow = (name: string) => schema.some((f) => f.name === name);
+  const [parked, setParked] = useState<Record<string, ColumnFilter>>(() => Object.fromEntries(Object.entries(seed.saved?.filters ?? {}).filter(([k]) => !offeredNow(k))));
+  const [filters, setFilters] = useState<Record<string, ColumnFilter>>(() => Object.fromEntries(Object.entries(seed.saved?.filters ?? {}).filter(([k]) => offeredNow(k))));
   // null: the member has set no sort, so rows open newest date first. The default is judged once, from the columns the grid opened with.
   const [own, setOwn] = useState<SortKey[] | null>(() => (seed.saved?.sorts ? (sortsOnColumns(seed.saved.sorts, visible).length || !seed.saved.sorts.length ? sortsOnColumns(seed.saved.sorts, visible) : null) : null));
   const [fallback] = useState(() => defaultSort(native, visible));
@@ -167,11 +171,12 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     setSeededFrom(seed.filters);
     if (seed.filters) {
       setFilters(toFilterMap(seed.filters));
+      setParked({});
       setLimit(PAGE_SIZE);
     }
   }
 
-  useEffect(() => { onChange({ columns: visible, filters, sorts: own, limit }); }, [visible, filters, own, limit]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onChange({ columns: visible, filters: { ...parked, ...filters }, sorts: own, limit }); }, [visible, filters, parked, own, limit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pks = primaryKeys(native);
   const query = useMemo(() => buildRowQuery(schema, visible, Object.values(filters), limit, sorts), [schema, visible, filters, sorts, limit]);
@@ -223,7 +228,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     <GridEnv.Provider value={env}>
     <div className="flex max-h-[32rem] min-h-0 flex-col">
       <BandTools slot={slot}>
-        <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { setFilters({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
+        <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { setFilters({}); setParked({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         <ColumnPicker schema={native} sources={sources} joinedState={joinedState} visible={visible} model={model} onChange={changeColumns} onOpen={loadJoined} />
         <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={visible} filters={Object.values(filters)} sorts={sorts} />

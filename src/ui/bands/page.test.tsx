@@ -53,6 +53,19 @@ const settle = () => new Promise((r) => setTimeout(r, 150));
 describe('the first load', () => {
   const bars = () => screen.queryAllByRole('progressbar', { name: 'Reading the project' });
 
+  test('the bar never moves backwards, even when the storages arrive after the other reads', async () => {
+    const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+    const lateStorages: Ctx = { ...ctx, owox: { ...ctx.owox, storages: { list: async () => { await new Promise((r) => setTimeout(r, 120)); return ctx.owox.storages.list(); } } } };
+    const seen: number[] = [];
+    const watch = new MutationObserver(() => { const v = document.querySelector('[role=progressbar][aria-label="Reading the project"]')?.getAttribute('aria-valuenow'); if (v) seen.push(Number(v)); });
+    watch.observe(document.body, { subtree: true, attributes: true, childList: true });
+    render(<AppServices ctx={lateStorages}><StoreProvider><App /></StoreProvider></AppServices>);
+    await waitFor(() => expect(document.getElementById('band-data')!.querySelector('table')).not.toBeNull());
+    watch.disconnect();
+    expect(seen.length).toBeGreaterThan(1);
+    expect(seen.every((v, i) => i === 0 || v >= seen[i - 1]!)).toBe(true);
+  });
+
   test('draws every band header at once with a bar in place of each body, fills it as reads finish, then shows the bodies', async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => { release = r; });
@@ -1209,35 +1222,54 @@ describe('folds and the saved preferences read', () => {
 });
 
 describe('hidden fields, clipped cells and the field (?)', () => {
-  async function customersGrid() {
-    await mountApp();
+  test('a field hidden for reporting is offered nowhere: not a default column, not in the picker, not in the Row band, never queried', async () => {
+    const calls = await spyOnTraverse();
     await within(data()).findByRole('table');
     fireEvent.click(martCard('Customers'));
     await within(data()).findByRole('heading', { name: 'Customers' });
     await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
-    return data();
-  }
-
-  test('a field hidden for reporting is not a default column; it is offered last in the picker under a divider, unticked', async () => {
-    const grid = await customersGrid();
+    const grid = data();
     expect(within(grid).queryByText('internal_flag')).toBeNull();
-    await userEvent.click(within(grid).getByRole('button', { name: /^Columns/ }));
-    const boxes = screen.getAllByRole('checkbox').map((b) => ({ name: b.closest('label')!.textContent, on: (b as HTMLInputElement).checked }));
-    expect(boxes.at(-1)).toEqual({ name: 'internal_flag', on: false });
-    expect(boxes.slice(0, -1).every((b) => b.on)).toBe(true);
-    const divider = screen.getByRole('separator');
-    expect(divider).toHaveTextContent('Hidden for reporting');
-    expect(divider.nextElementSibling!.textContent).toBe('internal_flag');
-    // it can still be added
-    await userEvent.click(screen.getAllByRole('checkbox').at(-1)!);
-    await waitFor(() => expect(within(grid).getByText('internal_flag')).toBeInTheDocument());
-  });
-
-  test('the Row band shows no field hidden for reporting', async () => {
-    const grid = await customersGrid();
+    await userEvent.click(within(grid).getByRole('button', { name: /^Columns \(5\/5\)/ }));
+    expect(screen.queryByText('internal_flag')).toBeNull();
+    expect(screen.queryByRole('separator')).toBeNull();
+    await userEvent.keyboard('{Escape}');
     await userEvent.click(within(grid).getAllByRole('row')[1]!);
     await within(row()).findByText('email');
     expect(within(row()).queryByText('internal_flag')).toBeNull();
+    const named = calls.filter((c) => c.id === 'customers').flatMap((c) => [...(c.o.column ?? []), ...(c.o.sort ?? []).map((s) => s.column), ...(c.o.filter ?? []).map((f) => f.column)]);
+    expect(named).not.toContain('internal_flag');
+  });
+
+  test('a mart whose primary key is hidden for reporting is preview only, with no 400', async () => {
+    const f = demoFixtures();
+    const stores = f.marts.find((m) => m.id === 'stores')!;
+    stores.fields = stores.fields.map((x) => (x.name === 'id' ? { ...x, isHiddenForReporting: true } : x));
+    const queries: { id: string; o: { column?: string[]; sort?: { column: string }[] } }[] = [];
+    await mountWith(overrideTraverse((real) => (id, o) => { queries.push({ id, o }); return real(id, o); }), f);
+    await within(data()).findByRole('table');
+    await userEvent.type(screen.getByLabelText('Search data marts'), 'stores');
+    fireEvent.click(await within(marts()).findByText('Stores'));
+    await within(data()).findByRole('heading', { name: 'Stores' });
+    expect(await screen.findByText('Preview only: this data mart has no primary key.')).toBeInTheDocument();
+    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    expect(within(data()).queryByText(/Unknown column/)).toBeNull();
+    await userEvent.click(within(data()).getAllByRole('row')[1]!);
+    expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
+    const named = queries.filter((q) => q.id === 'stores').flatMap((q) => [...(q.o.column ?? []), ...(q.o.sort ?? []).map((s) => s.column)]);
+    expect(named).not.toContain('id');
+  });
+
+  test('Referenced by leaves out a link whose join field is hidden for reporting', async () => {
+    const f = demoFixtures();
+    const shipments = f.marts.find((m) => m.id === 'shipments')!;
+    shipments.fields = shipments.fields.map((x) => (x.name === 'order_id' ? { ...x, isHiddenForReporting: true } : x));
+    await mountWith((c) => c, f);
+    await within(data()).findByRole('table');
+    await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
+    const section = await within(row()).findByRole('region', { name: 'Referenced by' });
+    await waitFor(() => expect(within(section).queryByRole('button', { name: /Shipments/ })).toBeNull());
+    expect(within(section).getAllByRole('button').map((b) => b.textContent)).toEqual(['Order Items', 'Returns', 'Payments']);
   });
 
   test('grid cells and headers are clipped to one line, with a width cap by type, and a filler cell keeps the header line full width', async () => {

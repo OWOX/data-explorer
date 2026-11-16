@@ -3,14 +3,15 @@ import { useState } from 'react';
 import type { JoinedSource } from '../../api/blendable';
 import type { Field, Model, Schema } from '../../model/types';
 import { Popover } from '../Popover';
+import { Tooltip } from '../Tooltip';
 import { PickedIcon } from '../bands/picked';
 import { FieldLabel } from './FieldLabel';
 
 export type JoinedState = 'idle' | 'loading' | 'ready' | 'failed';
 
 /**
- * The columns a grid can show: the mart's own fields, then one folded group per data mart joined to it, and last the own
- * fields hidden for reporting. `onOpen` fires each time the picker opens, so the joined marts are read when first needed.
+ * The columns a grid can show: the mart's own fields, then one folded group per data mart joined to it (a field hidden for
+ * reporting is offered nowhere). `onOpen` fires each time the picker opens, so the joined marts are read when first needed.
  */
 export function ColumnPicker({ schema, sources, joinedState, visible, model, onChange, onOpen }: {
   schema: Schema;
@@ -34,8 +35,6 @@ export function ColumnPicker({ schema, sources, joinedState, visible, model, onC
       <FieldLabel field={f} />
     </label>
   );
-  const shown = schema.filter((f) => !f.isHidden);
-  const hidden = schema.filter((f) => f.isHidden);
   const nativeOn = schema.filter((f) => set.has(f.name)).length;
   const joinedOn = visible.length - nativeOn;
   return (
@@ -43,7 +42,7 @@ export function ColumnPicker({ schema, sources, joinedState, visible, model, onC
       <button type="button" className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><Columns3 className="size-4" />Columns ({nativeOn}/{schema.length}{joinedOn > 0 ? ` +${joinedOn}` : ''})</button>
     }>
       <div className="flex flex-col gap-1">
-        {shown.map(row)}
+        {schema.map(row)}
         {joinedState === 'loading' && <p className="mt-1 text-xs text-muted-foreground">Reading the joined data marts…</p>}
         {joinedState === 'failed' && <p className="mt-1 text-xs text-muted-foreground">The joined data marts could not be read, so only this data mart&apos;s own fields are listed.</p>}
         {sources.map((s) => {
@@ -57,18 +56,17 @@ export function ColumnPicker({ schema, sources, joinedState, visible, model, onC
                 <ChevronRight className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden />
                 <PickedIcon icon={mart?.icon} fallback={Box} size={14} />
                 <span className="min-w-0 flex-1 truncate">{s.label}</span>
+                {s.mayRepeatRows && (
+                  <Tooltip content="Rows of this data mart can repeat when fields of this joined data mart are added: one row here can match several there.">
+                    <span className="shrink-0 text-xs font-normal text-muted-foreground">May repeat rows</span>
+                  </Tooltip>
+                )}
                 <span className="dm-badge tabular-nums" aria-label={`${ticked} of ${s.fields.length} ticked`}>{ticked}/{s.fields.length}</span>
               </button>
               {expanded && <div role="group" aria-label={s.label} className="flex flex-col gap-1 pl-5">{s.fields.map(row)}</div>}
             </div>
           );
         })}
-        {hidden.length > 0 && (
-          <>
-            <div role="separator" className="mt-1 border-t pt-2 text-xs text-muted-foreground">Hidden for reporting</div>
-            {hidden.map(row)}
-          </>
-        )}
       </div>
     </Popover>
   );

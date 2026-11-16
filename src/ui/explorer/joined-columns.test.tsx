@@ -1,17 +1,18 @@
+import { useEffect } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { GRID_COLUMNS_COLLECTION, SAVE_DEBOUNCE_MS } from '../../api/grid-columns';
-import type { Ctx, TraverseOptions } from '../../sdk/types';
+import type { BlendableSchemaDto, Ctx, TraverseOptions } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
-import { AppServices, StoreProvider } from '../../state/store';
+import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
 
 type Mock = ReturnType<typeof createMockCtx>;
 const BLEND = '/api/data-marts/orders/blendable-schema';
 
-function setup(saved: string[] | null, opts: { blendFails?: boolean; blendGate?: Promise<void> } = {}) {
+function setup(saved: string[] | null, opts: { blendFails?: boolean; blendGate?: Promise<void>; repeats?: string } = {}) {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const queries: { id: string; o: TraverseOptions }[] = [];
   const reads: string[] = [];
@@ -26,6 +27,7 @@ function setup(saved: string[] | null, opts: { blendFails?: boolean; blendGate?:
         if (path.endsWith('/blendable-schema')) {
           reads.push(path);
           if (opts.blendFails) return Promise.reject(new Error('blendable boom'));
+          if (opts.repeats) return realGet<BlendableSchemaDto>(path, query).then((d) => ({ ...d, availableSources: d.availableSources!.map((x) => (x.aliasPath === opts.repeats ? { ...x, mainGrainMultiplication: 'multiplies' as const } : x)) }) as T);
           if (opts.blendGate) return opts.blendGate.then(() => realGet<T>(path, query));
         }
         return realGet<T>(path, query);
@@ -40,7 +42,7 @@ function setup(saved: string[] | null, opts: { blendFails?: boolean; blendGate?:
   const seeded = saved ? spied.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: saved, at: 'then' }) : Promise.resolve();
   const view = () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
   const orderQueries = () => queries.filter((q) => q.id === 'orders' && q.o.column && q.o.column.length > 1);
-  return { view, queries, reads, put, seeded, orderQueries };
+  return { ctx, view, queries, reads, put, seeded, orderQueries };
 }
 
 const data = () => document.getElementById('band-data')!;
@@ -133,6 +135,7 @@ test('saved columns may name joined fields: the joined marts are read first and 
   await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
   expect(t.orderQueries()).toHaveLength(1);
   expect(t.orderQueries()[0]!.o.column).toEqual(['id', 'status', 'products__sku']);
+  await new Promise((r) => setTimeout(r, SAVE_DEBOUNCE_MS + 200)); // past the save debounce
   expect(t.put).not.toHaveBeenCalled();
 });
 
@@ -181,4 +184,32 @@ test('a filter popover the reader has open stays open when the joined marts arri
   await waitFor(() => expect(t.reads).toHaveLength(1));
   await new Promise((r) => setTimeout(r, 150));
   expect(screen.getByLabelText('Operator')).toBeInTheDocument();
+});
+
+test('a saved filter on a joined field that could not be read is not applied this visit, and stays in the kept copy', async () => {
+  const t = setup(null, { blendFails: true });
+  const state: { current: ReturnType<typeof useStore>[0] | null } = { current: null };
+  function Probe() {
+    const [s, dispatch] = useStore();
+    state.current = s;
+    useEffect(() => { dispatch({ type: 'saveGrid', martId: 'orders', grid: { columns: ['id', 'status'], filters: { customers__email: { field: 'customers__email', op: 'contains', value: 'anna' } }, sorts: null, limit: 200 } }); }, [dispatch]);
+    return null;
+  }
+  render(<AppServices ctx={t.ctx}><StoreProvider><Probe /><App /></StoreProvider></AppServices>);
+  await waitFor(() => expect(headers()).toEqual(['id', 'status']));
+  await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+  expect(within(data()).getByRole('button', { name: 'Reset' })).toBeDisabled();
+  expect(t.orderQueries().every((q) => !q.o.filter)).toBe(true);
+  expect(state.current!.grids.orders!.filters.customers__email).toBeDefined();
+});
+
+test('a source that can repeat rows says so in its group header, with the reason in the tooltip; the others say nothing', async () => {
+  const t = setup(null, { repeats: 'customers' });
+  t.view();
+  await openPicker();
+  const customers = await screen.findByRole('button', { name: /^Customers/ });
+  expect(customers).toHaveTextContent('May repeat rows');
+  expect(screen.getByRole('button', { name: /^Products/ })).not.toHaveTextContent('May repeat rows');
+  await userEvent.hover(within(customers).getByText('May repeat rows'));
+  await waitFor(() => expect(document.querySelector('[role="tooltip"]')).toHaveTextContent(/can repeat/));
 });

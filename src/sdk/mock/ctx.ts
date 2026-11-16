@@ -81,6 +81,15 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     }
     return cur?.[field] ?? null;
   }
+  /** Like the backend: a field hidden for reporting is not a column a query or a report may name. */
+  const badRequest = (message: string) => Object.assign(new Error(message), { payload: { code: 'HTTP_ERROR', status: 400 } });
+  function rejectHidden(martId: string, names: string[]) {
+    const hidden = new Set<string>();
+    byId.get(martId)?.fields.filter((x) => x.isHiddenForReporting).forEach((x) => hidden.add(x.name));
+    for (const h of joinTree(martId)) byId.get(h.martId)!.fields.filter((x) => x.isHiddenForReporting).forEach((x) => hidden.add(blendedName(h.aliasPath, x.name)));
+    const bad = names.find((n) => hidden.has(n));
+    if (bad) throw badRequest(`Unknown column: ${bad}`);
+  }
   const blendedIndex = (martId: string) => {
     const index = new Map<string, { hop: Hop; field: string }>();
     for (const h of joinTree(martId)) for (const x of byId.get(h.martId)!.fields) index.set(blendedName(h.aliasPath, x.name), { hop: h, field: x.name });
@@ -92,6 +101,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     if (!m) throw new Error(`Data Mart ${id} not found`);
     if (!m.accessible) throw new Error('You do not have access to this Data Mart');
     // Columns, filters and sorts may name fields of joined marts: those are read off the joined row and added to each row.
+    rejectHidden(id, [...(o.column ?? []), ...(o.filter ?? []).map((x) => x.column), ...(o.sort ?? []).map((x) => x.column)]);
     const index = blendedIndex(id);
     const wanted = [...new Set([...(o.column ?? []), ...(o.filter ?? []).map((x) => x.column), ...(o.sort ?? []).map((x) => x.column)].filter((n) => index.has(n)))];
     const source = wanted.length ? m.rows.map((r) => ({ ...r, ...Object.fromEntries(wanted.map((n) => [n, blendedValue(r, index.get(n)!.hop, index.get(n)!.field)])) })) : m.rows;
@@ -175,6 +185,8 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         const m = /^\/api\/reports\/([^/]+)$/.exec(path);
         if (!m) throw new Error(`Mock: unhandled PUT ${path}`);
         const cur = report(decodeURIComponent(m[1]!));
+        const b = body as { columnConfig?: string[]; filterConfig?: { column: string }[] | null; sortConfig?: { column: string }[] | null };
+        rejectHidden(cur.dataMartId, [...(b.columnConfig ?? []), ...(b.filterConfig ?? []).map((x) => x.column), ...(b.sortConfig ?? []).map((x) => x.column)]);
         Object.assign(cur, body);
         return cur as T;
       }),
@@ -186,6 +198,8 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
           return { spreadsheetId: `mock-sheet-${sheetSerial}`, sheetId: 0, placedInRoot: false, sharedWithRequester: true } as T;
         }
         if (path === '/api/reports') {
+          const b = body as { dataMartId: string; columnConfig?: string[]; filterConfig?: { column: string }[] | null; sortConfig?: { column: string }[] | null };
+          rejectHidden(b.dataMartId, [...(b.columnConfig ?? []), ...(b.filterConfig ?? []).map((x) => x.column), ...(b.sortConfig ?? []).map((x) => x.column)]);
           reportSerial += 1;
           const r: MockReport = { ...(body as object), id: `mock-report-${reportSerial}`, dataMartId: (body as { dataMartId: string }).dataMartId, lastRunAt: null, lastRunStatus: null, lastRunError: null };
           reports.set(r.id, r);

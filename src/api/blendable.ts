@@ -2,6 +2,9 @@ import { categorizeFieldType } from '../model/field-category';
 import type { Field } from '../model/types';
 import type { BlendableSchemaDto, Ctx } from '../sdk/types';
 
+/** The backend's `isArrayFieldType`: ARRAY, bare or with a parameter (`ARRAY<STRING>`). */
+const isArrayType = (type: string | undefined) => /^ARRAY(?:\s*[<(]|$)/i.test(type?.trim() ?? '');
+
 /** One joined data mart the Columns picker offers, with the fields of it a report can take. */
 export type JoinedSource = {
   aliasPath: string;
@@ -9,6 +12,8 @@ export type JoinedSource = {
   /** What the picker and the column headers call it: the join's display prefix, with the alias path added when two joins reach the same mart. */
   label: string;
   depth: number;
+  /** Rows of the main mart can repeat once this source is joined (`multiplies`, or `unknown`: the backend could not prove they do not). */
+  mayRepeatRows: boolean;
   fields: Field[];
 };
 
@@ -28,7 +33,7 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
   offered.forEach((s) => labelUses.set(nameOf(s), (labelUses.get(nameOf(s)) ?? 0) + 1));
   for (const s of offered) {
     const base = nameOf(s);
-    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, fields: [] });
+    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, mayRepeatRows: s.mainGrainMultiplication !== 'none', fields: [] });
   }
   for (const b of dto.blendedFields ?? []) {
     const source = byPath.get(b.aliasPath);
@@ -37,7 +42,8 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
       name: b.name,
       alias: b.alias?.trim() ? b.alias : b.originalFieldName,
       type: b.type,
-      category: categorizeFieldType(b.type),
+      // An array-valued source field only filters on blank, whatever type the join gives it (the backend's own check).
+      category: isArrayType(b.sourceFieldType) ? 'other' : categorizeFieldType(b.type),
       description: b.description?.trim() ? b.description : null,
       isPrimaryKey: false,
       joined: { martId: source.martId, label: source.label, aliasPath: source.aliasPath },

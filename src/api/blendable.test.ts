@@ -39,6 +39,24 @@ test('a joined field is a column: the blended name, its own type, its label, and
   expect(countries!.fields[0]!.alias).toBe('Country name');
 });
 
+test('a source that can repeat the main mart\'s rows is flagged, and an absent verdict reads as unknown', () => {
+  const src = (aliasPath: string, mainGrainMultiplication?: 'none' | 'multiplies' | 'unknown') => ({ aliasPath, title: aliasPath, depth: 1, dataMartId: aliasPath, isIncluded: true, isAccessibleForReporting: true, mainGrainMultiplication });
+  const field = (aliasPath: string) => ({ name: `${aliasPath}__x`, aliasPath, sourceDataMartId: aliasPath, originalFieldName: 'x', type: 'STRING' });
+  const sources = joinedSources({ availableSources: [src('a', 'none'), src('b', 'multiplies'), src('c', 'unknown'), src('d')], blendedFields: ['a', 'b', 'c', 'd'].map(field) });
+  expect(sources.map((s) => [s.aliasPath, s.mayRepeatRows])).toEqual([['a', false], ['b', true], ['c', true], ['d', true]]);
+});
+
+test('a joined field whose source type is an array only offers the blank filters', () => {
+  const [s] = joinedSources({
+    availableSources: [{ aliasPath: 'a', title: 'A', depth: 1, dataMartId: 'a', isIncluded: true, isAccessibleForReporting: true }],
+    blendedFields: [
+      { name: 'a__tags', aliasPath: 'a', sourceDataMartId: 'a', originalFieldName: 'tags', type: 'STRING', sourceFieldType: 'ARRAY<STRING>' },
+      { name: 'a__n', aliasPath: 'a', sourceDataMartId: 'a', originalFieldName: 'n', type: 'STRING', sourceFieldType: 'STRING' },
+    ],
+  });
+  expect(s!.fields.map((f) => f.category)).toEqual(['other', 'string']);
+});
+
 test('a source with no field left to offer is left out', () => {
   expect(joinedSources({ availableSources: dto.availableSources!.slice(1, 2), blendedFields: [dto.blendedFields![1]!] })).toEqual([]);
 });

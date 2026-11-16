@@ -11,7 +11,7 @@ const detail = (id: string) => ({
   ] },
 });
 
-test('get() maps every field, flags the ones hidden for reporting, and caches by id', async () => {
+test('get() maps the fields reporting may use (none hidden for reporting), and caches by id', async () => {
   const getJson = vi.fn(async (path: string) => detail(path.split('/').pop()!));
   const loader = createSchemaLoader(stubCtx({ getJson }));
   const a = await loader.get('a');
@@ -20,7 +20,6 @@ test('get() maps every field, flags the ones hidden for reporting, and caches by
   expect(getJson).toHaveBeenCalledWith('/api/data-marts/a');
   expect(a).toEqual([
     { name: 'id', alias: null, type: 'INT64', category: 'number', description: null, isPrimaryKey: true },
-    { name: 'secret', alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, isHidden: true },
     { name: 'name', alias: 'Name', type: 'STRING', category: 'string', description: 'n', isPrimaryKey: false },
   ]);
 });
@@ -52,7 +51,7 @@ test('a failed schema fetch is not cached', async () => {
   const getJson = vi.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValue(detail('a'));
   const loader = createSchemaLoader(stubCtx({ getJson }));
   await expect(loader.get('a')).rejects.toThrow('boom');
-  await expect(loader.get('a')).resolves.toHaveLength(3);
+  await expect(loader.get('a')).resolves.toHaveLength(2);
 });
 
 test('a REPEATED field is category other, so it only offers blank filters', async () => {

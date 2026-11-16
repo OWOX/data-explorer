@@ -64,7 +64,11 @@ function AppBody() {
     return () => clearTimeout(t);
   }, [full, held]);
   const opened = held;
-  const loading = opened ? null : Math.min(1, done / total);
+  // The total grows once the storages are known, so the raw fraction can dip: the bar never moves back.
+  const raw = Math.min(1, done / total);
+  const [peak, setPeak] = useState(0);
+  if (raw > peak) setPeak(raw);
+  const loading = opened ? null : Math.max(raw, peak);
   const folded = (band: Fold) => folds[band] ?? DEFAULT_FOLDED[band];
   const toggle = (band: Fold) => {
     const now = !folded(band);

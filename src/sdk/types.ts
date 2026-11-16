@@ -80,6 +80,8 @@ export type BlendedFieldDto = {
   sourceDataMartTitle?: string;
   originalFieldName: string;
   type: string;
+  /** The raw source type: an array type here makes the field array-valued whatever `type` says. */
+  sourceFieldType?: string;
   alias?: string | null;
   description?: string | null;
   isHidden?: boolean;

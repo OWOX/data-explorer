@@ -34,8 +34,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
         const isNum = schema.find((f) => f.name === column)?.category === 'number';
         return { column, operator: 'eq' as const, value: isNum ? Number(v) : String(v) };
       });
-      // Fields hidden for reporting are not read: the band shows none of them, and every column scanned is billed.
-      const [row] = await readRows(ctx, martId, { column: schema.filter((f) => !f.isHidden).map((f) => f.name), filter, limit: 1 }, { signal: ac.signal });
+      const [row] = await readRows(ctx, martId, { column: schema.map((f) => f.name), filter, limit: 1 }, { signal: ac.signal });
       if (ac.signal.aborted) return;
       setState({ ver: version, schema, row: row ?? null, error: null });
       for (const link of incoming) {
@@ -59,6 +58,8 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
   if (state.row === undefined || !state.schema || (!loaded && state.row === null)) return <div className="flex flex-col">{header}<Skeleton rows={8} /></div>;
   if (state.row === null) return <div className="flex flex-col">{header}<p className="p-4 text-sm text-muted-foreground">Record not found</p></div>;
   const row = state.row;
+  // A join on a field hidden for reporting (on either side) cannot be followed: the backend rejects the filter.
+  const links = incoming.filter((link) => link.joins.every((j) => state.schema!.some((f) => f.name === j.targetField) && (!relSchemas.get(link.sourceMartId) || relSchemas.get(link.sourceMartId)!.some((f) => f.name === j.sourceField))));
 
   return (
     <div className="flex max-h-[32rem] min-h-0 flex-col">
@@ -66,18 +67,18 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
       {!loaded && <div role="progressbar" aria-label="Loading record" className="dm-progress" />}
       <div className="min-h-0 flex-1 overflow-auto">
       <dl className="grid grid-cols-[minmax(10rem,16rem)_1fr] content-start gap-x-4 gap-y-2 p-4 text-sm">
-        {state.schema.filter((f) => !f.isHidden).map((f) => (
+        {state.schema.map((f) => (
           <div key={f.name} className="contents">
             <dt className="dm-reveal-host flex min-w-0 items-start text-muted-foreground"><FieldLabel field={f} wrap /></dt>
             <dd className="min-w-0 break-words"><CellValue row={row} field={f.name} type={f.type} wrap /></dd>
           </div>
         ))}
       </dl>
-      {incoming.length > 0 && (
+      {links.length > 0 && (
         <section aria-label="Referenced by" className="border-t p-4 text-sm">
           <h3 className="mb-2 text-xs font-medium uppercase text-muted-foreground">Referenced by</h3>
           <ul className="flex flex-col gap-1">
-            {incoming.map((link) => {
+            {links.map((link) => {
               const source = model.marts.get(link.sourceMartId);
               const sourceSchema = relSchemas.get(link.sourceMartId);
               // This record's join values filter the referencing mart: sourceField = record[targetField].
