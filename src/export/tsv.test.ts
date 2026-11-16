@@ -39,8 +39,8 @@ test('a long value is copied whole, never clipped', () => {
 test('arrays are joined with ", ", nulls inside are empty, objects are JSON', () => {
   expect(cellText(['a', 'b', 3])).toBe('a, b, 3');
   expect(cellText(['a', null, 'c'])).toBe('a, , c');
-  expect(cellText({ a: 1 })).toBe('{"a":1}');
-  expect(cellText([{ a: 1 }, 'x'])).toBe('{"a":1}, x');
+  expect(cellText({ a: 1 })).toBe('"{""a"":1}"');
+  expect(cellText([{ a: 1 }, 'x'])).toBe('"{""a"":1}, x"');
 });
 
 test('tab, CR and LF inside a value become one space each run', () => {
@@ -67,7 +67,7 @@ test('a header title with a tab or newline is cleaned too; no rows gives the hea
 });
 
 test('text that would start a spreadsheet formula is prefixed with an apostrophe', () => {
-  for (const v of ['=1+1', '+A1', '@SUM(A1)', '-cmd', '=HYPERLINK("x")']) expect(cellText(v, 'STRING')).toBe(`'${v}`);
+  for (const v of ['=1+1', '+A1', '@SUM(A1)', '-cmd']) expect(cellText(v, 'STRING')).toBe(`'${v}`);
 });
 
 test('plain numbers keep their sign and are not prefixed', () => {
@@ -77,4 +77,23 @@ test('plain numbers keep their sign and are not prefixed', () => {
 
 test('a header is guarded too', () => {
   expect(buildTsv([f('x', { alias: '=x' })], [{ x: '=y' }])).toBe("'=x\n'=y");
+});
+
+describe('quotes', () => {
+  test('a value that starts with a quote is wrapped and its quotes doubled', () => {
+    expect(cellText('"Premium" plan')).toBe('"""Premium"" plan"');
+  });
+  test('an inner quote wraps the value so it cannot swallow the next tab', () => {
+    expect(cellText('5" screen')).toBe('"5"" screen"');
+    expect(cellText('"abc')).toBe('"""abc"');
+  });
+  test('a header with a quote is wrapped too', () => {
+    expect(buildTsv([f('a', { alias: 'The "best" one' }), f('b')], [{ a: 'x', b: 'y' }])).toBe('"The ""best"" one"\tb\nx\ty');
+  });
+  test('a quoted value that starts with = is neutralised inside the quotes', () => {
+    expect(cellText('=HYPERLINK("http://x")')).toBe('"\'=HYPERLINK(""http://x"")"');
+  });
+  test('a value that starts with an apostrophe keeps it', () => {
+    expect(cellText("'abc")).toBe("''abc");
+  });
 });
