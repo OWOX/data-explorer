@@ -92,6 +92,16 @@ Counts run for visible accessible cards through the existing pool (4 at a time) 
 4. Clicking a row of a mart with a primary key opens it in the Row band.
 5. With no mart selected (an empty project), the band shows "Select a data mart."
 
+### Copy to clipboard
+
+The first group of the Export menu is one item, "Copy to clipboard" (lucide `ClipboardCopy`), above the destinations and the AI group, with the same arrow-key behaviour as the other first-level items (the destination flyout keys apply to destination rows only, found by `data-dest`).
+
+1. Source: the rows the grid has loaded (`useMartRows`), in grid order, so the grid's filters and sorts apply. No query is made and nothing is billed or written.
+2. Columns: the visible columns in grid order, joined ones included. The header row is `columnTitle` of each field (alias, or `<joined mart> · <field>`).
+3. Format: `buildTsv` in `src/export/tsv.ts` (pure): tab-separated, `\n` between lines, no trailing newline. A cell's text is `displayText(value, type)` from `src/ui/format.ts`, the function the grid's cells render with: DATE, DATETIME and TIMESTAMP in the viewer's locale and time zone, other values as stored, null as empty, arrays joined with ", ", objects as JSON; never clipped. Each run of tab, CR and LF inside a value becomes one space.
+4. Clipboard: `copyText` (async API, then the hidden textarea and `execCommand`, restoring focus). If both fail, a "Copy the data" dialog (the prompt dialog's component) shows the text read-only, selected on focus, with a Copy button.
+5. Status: "Copied N rows"; with `hasMore` "Copied the first N rows. Load more to copy more." No rows: the item is disabled with the tooltip "No rows to copy".
+
 ### Export to Google Sheets
 
 The plugin's only writes: creating a spreadsheet, creating or updating the member's export report, and running it. Each follows the member's own click; that is the plugin's own discipline, as the SDK README asks, not something the SDK enforces. Rows are never written.

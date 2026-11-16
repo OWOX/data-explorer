@@ -82,3 +82,14 @@ export function formatTemporal(value: unknown, type: string): string | null {
   const date = new Date(`${m[1]}T${m[2]}${offset || (WALL_CLOCK.has(t) ? '' : 'Z')}`);
   return Number.isNaN(date.getTime()) ? null : formats().moment.format(date);
 }
+
+export function formatValue(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  // A one-to-many joined field arrives as an array of its values: one cell, the values side by side.
+  if (Array.isArray(v)) return v.map((x) => (x === null || x === undefined ? '' : typeof x === 'object' ? JSON.stringify(x) : String(x))).join(', ');
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+/** The text a grid cell shows for a value of a warehouse type, whole (never clipped): the viewer's date format for a temporal value, else the value as stored. The cell and the copy to the clipboard both use it. */
+export const displayText = (v: unknown, type?: string): string => (type ? formatTemporal(v, type) : null) ?? formatValue(v);

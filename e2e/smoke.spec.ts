@@ -225,7 +225,7 @@ test('Export: with no Sheets destination the menu is still there, with the AI gr
   await page.goto('/?mock&sheets=0');
   const data = await ordersGrid(page);
   await data.getByText('Export', { exact: true }).click();
-  await expect(data.getByRole('menuitem')).toHaveText(['Claude', 'ChatGPT']);
+  await expect(data.getByRole('menuitem')).toHaveText(['Copy to clipboard', 'Claude', 'ChatGPT']);
 });
 
 test('Export to an AI: the prompt is copied, named in a status, and readable in a dialog', async ({ page, context }) => {
@@ -240,6 +240,17 @@ test('Export to an AI: the prompt is copied, named in a status, and readable in 
   await expect(area).toHaveValue(/read-only/);
   await expect(area).toHaveAttribute('readonly', '');
   await page.getByRole('dialog', { name: 'Prompt' }).getByRole('button', { name: 'Close' }).click();
+});
+
+test('Copy to clipboard: the loaded rows are copied as TSV and the status says so', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const data = await ordersGrid(page);
+  await data.getByText('Export', { exact: true }).click();
+  await data.getByRole('menuitem', { name: 'Copy to clipboard' }).click();
+  await expect(data.getByText(/^Copied (the first )?\d+ rows/)).toBeVisible();
+  const text = await page.evaluate(() => navigator.clipboard.readText());
+  expect(text.split('\n').length).toBeGreaterThan(2);
+  expect(text.split('\n')[0]).toContain('\t');
 });
 
 test('selecting a joinable mart adds its first text column; deselecting removes it; reselecting restores the same field', async ({ page }) => {

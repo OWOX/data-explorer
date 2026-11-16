@@ -271,7 +271,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
         <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { setFilters({}); setParked({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         <ColumnPicker schema={native} sources={sources} joinedState={joinedState} visible={visible} model={model} onChange={changeColumns} onOpen={loadJoined} />
-        <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={visible} filters={Object.values(filters)} sorts={sorts} />
+        <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={visible} filters={Object.values(filters)} sorts={sorts} rows={rows} hasMore={hasMore} />
       </BandTools>
       {pks.length === 0 && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}

@@ -24,7 +24,7 @@ A question about one order, one customer or one campaign ends in a row. The fiel
 
 🔗 **Open a record.** Click a row to see all its fields in the Row band, with "Referenced by": the data marts that point at it, each opening filtered to this record. Undo and Redo next to the page title step back and forward along your path.
 
-📤 **Take it to a sheet, or to an AI.** Export sends the grid as it is (columns, filters, sorting) to Google Sheets as an OWOX report, runs it and opens the sheet. Update reruns it later with the grid's new state. The AI group of the same menu copies a prompt for Claude or ChatGPT that asks, through the OWOX Data Marts connector, for the same rows. Copying writes nothing to OWOX.
+📤 **Take it to a sheet, or to an AI.** Copy to clipboard, the first item of the Export menu, copies the rows the grid has loaded as tab-separated text with a header row, so it pastes into Google Sheets or Excel as cells. It copies exactly what the grid shows (dates in your format, joined values separated by commas, nothing clipped) and runs no query, bills nothing and writes nothing. Export sends the grid as it is (columns, filters, sorting) to Google Sheets as an OWOX report, runs it and opens the sheet. Update reruns it later with the grid's new state. The AI group of the same menu copies a prompt for Claude or ChatGPT that asks, through the OWOX Data Marts connector, for the same rows. Copying writes nothing to OWOX.
 
 ## What it costs
 
@@ -55,6 +55,15 @@ The Data band's header always has an Export menu: the Google Sheets destinations
 7. Only the first 10 sorts are exported. The report keeps every column unaggregated, so the sheet has the grid's rows.
 8. The reports you create are remembered per data mart (`exports`, member scope). One that OWOX no longer has is dropped when the menu opens.
 9. Export writes only on your click: it creates the spreadsheet, creates or updates the report and runs it (a billed warehouse run). Updating replaces the report's configuration, so aggregations added to it in OWOX are cleared.
+
+### Copy to clipboard
+
+The first group of the Export menu has one item, "Copy to clipboard" (lucide `ClipboardCopy`). It copies the grid's loaded rows, in grid order with its filters and sorts, as TSV: the visible columns in grid order (joined ones included), a header row of the titles as the grid shows them, `\n` line ends. The text of each cell comes from `displayText` in `src/ui/format.ts`, the same function the grid's cells use, so a DATE or TIMESTAMP is in the viewer's format and time zone and a multi-value joined cell is its values joined with ", "; the full value is copied, never the clipped one. A tab, CR or LF inside a value becomes a space. The builder is `src/export/tsv.ts`. It copies through `copyText` (the clipboard API, then a hidden textarea and `execCommand`).
+
+1. The status reads "Copied N rows"; when the mart has more rows than are loaded it reads "Copied the first N rows. Load more to copy more."
+2. With no rows loaded the item is disabled, with the tooltip "No rows to copy".
+3. When the sandbox blocks both ways of copying, a "Copy the data" dialog opens with the text in a read-only textarea (selected on focus) and a Copy button; "Show data" in the status reopens it.
+4. Nothing is queried, billed or written to OWOX.
 
 ### Export to an AI
 

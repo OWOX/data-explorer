@@ -387,6 +387,7 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 }
 .dm-export-item:hover { background: var(--muted); }
 .dm-export-item svg { color: var(--muted-foreground); flex-shrink: 0; }
+.dm-export-copy { margin-bottom: 0.25rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
 .dm-export-ai { margin-top: 0.25rem; border-top: 1px solid var(--border); padding-top: 0.25rem; }
 .dm-export-heading { padding: 0.125rem 0.375rem; color: var(--muted-foreground); font-size: 0.6875rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
 .dm-export-kind { color: var(--muted-foreground); font-size: 0.6875rem; }

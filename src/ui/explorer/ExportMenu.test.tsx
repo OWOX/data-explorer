@@ -7,6 +7,10 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { Ctx } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
+import { TooltipProvider } from '../Tooltip';
+import type { Schema } from '../../model/types';
+import type { Row } from '../../sdk/types';
+import { ExportMenu } from './ExportMenu';
 
 type Call = string;
 
@@ -47,7 +51,7 @@ test('with no Google Sheets destination Export is still a menu, with the AI grou
   t.view();
   await rowsLoaded();
   await userEvent.click(await within(data()).findByText('Export'));
-  expect(within(data()).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Claude', 'ChatGPT']);
+  expect(within(data()).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Claude', 'ChatGPT']);
   expect(within(data()).getByRole('group', { name: 'AI' })).toBeInTheDocument();
 });
 
@@ -366,8 +370,8 @@ describe('the cascading menu', () => {
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     const rows = await within(data()).findAllByRole('menuitem');
-    expect(rows.map((r) => r.textContent)).toEqual(['Team Sheets', 'Finance Sheets', 'Claude', 'ChatGPT']);
-    for (const r of rows.slice(0, 2)) expect(r.querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull();
+    expect(rows.map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Team Sheets', 'Finance Sheets', 'Claude', 'ChatGPT']);
+    for (const r of rows.slice(1, 3)) expect(r.querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull();
     expect(within(data()).queryByText('Google Sheets')).toBeNull();
     // the Export button itself does not
     expect((await within(data()).findByText('Export')).closest('summary')!.querySelector('svg[viewBox="0 0 48 48"]')).toBeNull();
@@ -449,13 +453,13 @@ describe('the cascading menu', () => {
     summary.focus();
     await userEvent.keyboard('{ArrowDown}');
     expect(document.querySelector('details.dm-export')).toHaveAttribute('open');
-    expect(within(data()).getByRole('menuitem', { name: /Team Sheets/ })).toHaveFocus();
+    expect(within(data()).getByRole('menuitem', { name: /Copy to clipboard/ })).toHaveFocus();
     summary.focus();
     await userEvent.keyboard('{Escape}');
     expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
     summary.focus();
     await userEvent.keyboard('{Enter}');
-    expect(within(data()).getByRole('menuitem', { name: /Team Sheets/ })).toHaveFocus();
+    expect(within(data()).getByRole('menuitem', { name: /Copy to clipboard/ })).toHaveFocus();
   });
 
   test('ArrowRight on a row whose flyout the pointer already opened moves focus into it', async () => {
@@ -483,9 +487,9 @@ describe('the AI group', () => {
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     const items = await within(data()).findAllByRole('menuitem');
-    expect(items.map((i) => i.textContent)).toEqual(['Team Sheets', 'Claude', 'ChatGPT']);
-    expect(items[1]!.querySelector('svg path[fill="#D97757"]')).not.toBeNull();
-    expect(items[2]!.querySelector('svg')).not.toBeNull();
+    expect(items.map((i) => i.textContent)).toEqual(['Copy to clipboard', 'Team Sheets', 'Claude', 'ChatGPT']);
+    expect(items[2]!.querySelector('svg path[fill="#D97757"]')).not.toBeNull();
+    expect(items[3]!.querySelector('svg')).not.toBeNull();
   });
 
   test('choosing Claude copies the prompt, says so, and "Show prompt" opens it read-only with a Copy button', async () => {
@@ -573,5 +577,114 @@ describe('the AI group', () => {
     await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
     await waitFor(() => expect(writeText).toHaveBeenCalled());
     expect(writeText.mock.calls[0]![0]).toMatch(/Sort: "status" ascending\./);
+  });
+});
+
+describe('Copy to clipboard', () => {
+  const setClipboard = (writeText: unknown) => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: writeText ? { writeText } : undefined });
+  afterEach(() => { setClipboard(undefined); Object.defineProperty(document, 'execCommand', { configurable: true, value: undefined }); });
+  const ORDERS: Schema = [
+    { name: 'id', type: 'INTEGER', category: 'number' },
+    { name: 'note', type: 'STRING', category: 'string', alias: 'Note' },
+    { name: 'customers__city', type: 'STRING', category: 'string', alias: 'City', joined: { martId: 'customers', label: 'Customers' } },
+  ] as Schema;
+  const lone = (rows: Row[] | null, hasMore = false) => {
+    const ctx = createMockCtx(demoFixtures({ sheets: 0 }), { latencyMs: 0 });
+    return render(<AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={ORDERS} visible={['id', 'note', 'customers__city']} filters={[]} sorts={[]} rows={rows} hasMore={hasMore} /></StoreProvider></TooltipProvider></AppServices>);
+  };
+
+  test('it is the first group, above the destinations and the AI group, with the clipboard icon', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    const item = await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' });
+    expect(item.querySelector('svg.lucide-clipboard-copy')).not.toBeNull();
+    expect(within(data()).getAllByRole('menuitem')[0]).toBe(item);
+  });
+
+  test('choosing it copies the loaded rows as TSV with a header row and says how many', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    setClipboard(writeText);
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const loaded = within(data()).getAllByRole('row').length - 1;
+    await userEvent.click(await within(data()).findByText('Export'));
+    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' }));
+    expect(await within(data()).findByText(`Copied the first ${loaded} rows. Load more to copy more.`)).toBeInTheDocument();
+    const tsv = writeText.mock.calls[0]![0] as string;
+    const lines = tsv.split('\n');
+    expect(lines).toHaveLength(loaded + 1);
+    expect(lines[0]!.split('\t').length).toBeGreaterThan(1);
+    expect(t.calls.filter((c) => /^(POST|PUT) \/api\/(reports|data-destinations)/.test(c))).toEqual([]);
+  });
+
+  test('a grid with more rows than loaded says so', async () => {
+    setClipboard(vi.fn().mockResolvedValue(undefined));
+    lone([{ id: 1, note: 'a', customers__city: ['Kyiv', 'Lviv'] }, { id: 2, note: 'b\tc', customers__city: null }], true);
+    await userEvent.click(await screen.findByText('Export'));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Copy to clipboard' }));
+    expect(await screen.findByText('Copied the first 2 rows. Load more to copy more.')).toBeInTheDocument();
+    expect(vi.mocked(navigator.clipboard.writeText).mock.calls[0]![0]).toBe('id\tNote\tCustomers · City\n1\ta\tKyiv, Lviv\n2\tb c\t');
+  });
+
+  test('one row reads "Copied 1 row"', async () => {
+    setClipboard(vi.fn().mockResolvedValue(undefined));
+    lone([{ id: 1 }]);
+    await userEvent.click(await screen.findByText('Export'));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Copy to clipboard' }));
+    expect(await screen.findByText('Copied 1 row')).toBeInTheDocument();
+  });
+
+  test('with no rows the item is disabled and explains why', async () => {
+    lone([]);
+    await userEvent.click(await screen.findByText('Export'));
+    const item = await screen.findByRole('menuitem', { name: 'Copy to clipboard' });
+    expect(item).toBeDisabled();
+    await userEvent.hover(item.parentElement!);
+    expect(await screen.findAllByText('No rows to copy')).not.toHaveLength(0);
+  });
+
+  test('when neither way of copying works the data opens in a "Copy the data" dialog, read-only and selected on focus', async () => {
+    setClipboard(undefined);
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false });
+    lone([{ id: 1, note: 'a' }]);
+    await userEvent.click(await screen.findByText('Export'));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Copy to clipboard' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Copy the data' });
+    const area = within(dialog).getByRole('textbox') as HTMLTextAreaElement;
+    expect(area).toHaveAttribute('readonly');
+    expect(area.value).toBe('id\tNote\tCustomers · City\n1\ta\t');
+    area.blur();
+    area.focus();
+    expect(area.selectionEnd).toBe(area.value.length);
+    expect(within(dialog).getByRole('button', { name: 'Copy' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Copy the data' })).toBeNull());
+  });
+
+  test('the arrow keys walk past it like any first-level item', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    const item = await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' });
+    item.focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(within(data()).getByRole('menuitem', { name: /Team Sheets/ })).toHaveFocus();
+    await userEvent.keyboard('{ArrowUp}{ArrowUp}');
+    expect(within(data()).getByRole('menuitem', { name: 'ChatGPT' })).toHaveFocus();
+  });
+
+  test('a destination still opens its own flyout with the copy group above it', async () => {
+    const t = setup(2);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    const fin = await within(data()).findByRole('menuitem', { name: /Finance Sheets/ });
+    fin.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(await within(data()).findByRole('menu', { name: 'Finance Sheets' })).toBeInTheDocument();
   });
 });
