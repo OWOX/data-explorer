@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { StrictMode, useEffect, type Dispatch } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Ctx } from '../sdk/types';
@@ -8,6 +8,21 @@ import { demoFixtures } from '../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore, type GridState, type State } from '../state/store';
 import { decodeViewLink, encodeViewLink } from '../state/view-link';
 import { App } from './App';
+
+// Records dispatched actions in one shared list so a test can check their order against setRoute.
+const order = vi.hoisted(() => ({ log: [] as string[] }));
+vi.mock('../state/store', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../state/store')>();
+  const wrapped = new WeakMap<object, object>();
+  return {
+    ...real,
+    useStore: () => {
+      const [state, dispatch] = real.useStore();
+      if (!wrapped.has(dispatch)) wrapped.set(dispatch, ((a: { type: string }) => { if (a.type === 'applyView') order.log.push('applyView'); dispatch(a as never); }) as Dispatch<never>);
+      return [state, wrapped.get(dispatch)] as ReturnType<typeof real.useStore>;
+    },
+  };
+});
 
 const box: { latest: State } = { latest: undefined as never };
 function Probe() {
@@ -24,7 +39,7 @@ const grid: GridState = {
 };
 const view = { sourceKey: null, martId: 'orders', record: null, search: '', contextIds: [], storageIds: null, folded: { sources: true, marts: false, data: false, row: false }, grid };
 
-function setup(route: string | undefined, copyLink?: (p?: string) => Promise<void>, failFirstBlendable = false, setRoute?: (p: string) => void) {
+function setup(route: string | undefined, copyLink?: (p?: string) => Promise<void>, failFirstBlendable = false, setRoute?: (p: string) => void, strict = false) {
   const real = createMockCtx(demoFixtures(), { latencyMs: 0 });
   let blends = 0;
   const base: Ctx = failFirstBlendable ? { ...real, owox: { ...real.owox, getJson: (async (path: string, q?: Record<string, string>) => {
@@ -45,7 +60,8 @@ function setup(route: string | undefined, copyLink?: (p?: string) => Promise<voi
       return { get: (id: string) => c.get(id), put: (id: string, d: T) => { if (name === 'grid-columns' || name === 'preferences') puts.push(`${name}/${id}`); return c.put(id, d); } };
     },
   };
-  render(<AppServices ctx={ctx}><StoreProvider><App /><Probe /></StoreProvider></AppServices>);
+  const tree = <AppServices ctx={ctx}><StoreProvider><App /><Probe /></StoreProvider></AppServices>;
+  render(strict ? <StrictMode>{tree}</StrictMode> : tree);
   return { puts };
 }
 const loaded = () => waitFor(() => expect(document.querySelector('.dm-loadbar')).toBeNull());
@@ -116,14 +132,32 @@ describe('opening a view link', () => {
 
 describe('forgetting the route', () => {
   test('a link that opens sets the route to / once, after the view is applied', async () => {
-    const calls: string[] = [];
-    setup(await encodeViewLink(view), undefined, false, (p) => calls.push(`${p}@${box.latest.selection.martId}`));
+    order.log.length = 0;
+    setup(await encodeViewLink(view), undefined, false, (p) => order.log.push(p));
     await loaded();
     await waitFor(() => expect(box.latest.selection.martId).toBe('orders'));
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatch(/^\/@/);
+    await waitFor(() => expect(order.log).toContain('/'));
     await new Promise((r) => setTimeout(r, 100));
-    expect(calls).toHaveLength(1);
+    expect(order.log).toEqual(['applyView', '/']);
+  });
+
+  test('a link-shaped route with no payload sets the route to / once', async () => {
+    const calls: string[] = [];
+    setup('/v?x=1', undefined, false, (p) => calls.push(p));
+    await loaded();
+    await waitFor(() => expect(calls).toEqual(['/']));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(calls).toEqual(['/']);
+  });
+
+  test('under StrictMode setRoute is still called once', async () => {
+    const calls: string[] = [];
+    setup(await encodeViewLink(view), undefined, false, (p) => calls.push(p), true);
+    await loaded();
+    await waitFor(() => expect(box.latest.selection.martId).toBe('orders'));
+    await waitFor(() => expect(calls).toEqual(['/']));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(calls).toEqual(['/']);
   });
 
   test('an unreadable link sets the route to / once', async () => {

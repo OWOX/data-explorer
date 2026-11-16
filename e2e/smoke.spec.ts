@@ -415,8 +415,12 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   await expect.poll(() => opened.evaluate(() => window.__routeSet)).toBe('/');
   await expect.poll(() => new URL(opened.url()).searchParams.has('route')).toBe(false);
   await opened.reload();
+  // Wait for the default view to finish loading, then check the link was not reapplied.
+  await expect(band(opened, 'data').getByRole('heading', { name: 'Orders', exact: true })).toBeVisible();
+  await expect(band(opened, 'data').getByRole('row').nth(1)).toBeVisible();
   await expect(band(opened, 'data').getByRole('heading', { name: 'Orders + Customers', exact: true })).toHaveCount(0);
   await expect(band(opened, 'data').getByRole('row')).not.toHaveCount(4);
+  await expect(opened.getByRole('status')).toHaveCount(0);
   expect(new URL(opened.url()).searchParams.has('route')).toBe(false);
 });
 
