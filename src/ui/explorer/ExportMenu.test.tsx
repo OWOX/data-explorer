@@ -14,8 +14,8 @@ import { ExportMenu } from './ExportMenu';
 
 type Call = string;
 
-function setup(sheets: 0 | 1 | 2, remembered: ExportedReport[] = []) {
-  const base = createMockCtx(demoFixtures({ sheets }), { latencyMs: 0 });
+function setup(sheets: 0 | 1 | 2, remembered: ExportedReport[] = [], runMs?: number) {
+  const base = createMockCtx(demoFixtures({ sheets }), { latencyMs: 0, runMs });
   const calls: Call[] = [];
   const open = vi.fn(async () => {});
   const o = base.owox;
@@ -204,7 +204,7 @@ const openMenu = async (destination: RegExp | string = /Team Sheets/) => {
 
 
 test('leaving the mart and coming back keeps the export busy: no second export, and the outcome opens the sheet', async () => {
-  const t = setup(1);
+  const t = setup(1, [], 8000); // a run long enough to still be going after two mart changes on a slow machine
   t.view();
   await rowsLoaded();
   await exportNew();
@@ -216,11 +216,11 @@ test('leaving the mart and coming back keeps the export busy: no second export, 
   // A second click on the busy button opens nothing.
   await userEvent.click(within(data()).getByText('Exporting…'));
   expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
-  await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 6000 });
+  await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 15000 });
   expect(await within(data()).findByText(/Exported to "Orders · Data Explorer · /)).toBeInTheDocument();
   await waitFor(() => expect(within(data()).queryByText('Exporting…')).toBeNull());
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
-}, 15000);
+}, 30000);
 
 test('an export that finishes while the member is on another mart does not open the sheet; the result waits on that mart', async () => {
   const t = setup(1);

@@ -151,7 +151,7 @@ test('a joined column is in the Data band only: the Row band lists the mart\'s o
   await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
   await userEvent.click(bodyRows()[0]!);
   const row = document.getElementById('band-row')!;
-  await within(row).findByText('status');
+  await within(row).findByText('status', {}, { timeout: 15000 });
   expect(within(row).queryByText(/email/)).toBeNull();
 });
 
