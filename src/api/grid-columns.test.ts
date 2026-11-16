@@ -135,3 +135,16 @@ test('a plain column save keeps the last shown fields that were stored and never
   await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
   expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'b'], at: expect.any(String), lastShown: ['city'] });
 });
+
+test('a mart whose doc could not be read is never written over', async () => {
+  vi.useFakeTimers();
+  const get = vi.fn(async () => { throw new Error('down'); });
+  const put = vi.fn(async () => ({}));
+  const store = createColumnStore(ctxWith({ get, put }));
+  store.saveLastShown('m', ['a']);
+  store.save('m', ['x'], { j: ['y'] });
+  await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 10);
+  await vi.runAllTimersAsync();
+  expect(get).toHaveBeenCalled();
+  expect(put).not.toHaveBeenCalled();
+});

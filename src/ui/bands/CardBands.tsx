@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DqSummary, Mart, Model, Source } from '../../model/types';
 import { storageOptions } from '../../graph/storages';
 import type { VisibleResult } from '../../graph/visible';
+import { useRememberLeaving } from '../../state/leaving';
 import { useStore } from '../../state/store';
 import { storageMark } from '../storage-icons';
 import { Band } from './Band';
@@ -67,6 +68,7 @@ export function CardBands({
   children: ReactNode;
 }) {
   const [{ selection, search, contextIds }, dispatch] = useStore();
+  const rememberLeaving = useRememberLeaving();
   const canvas = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [wireTip, setWireTip] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -175,7 +177,7 @@ export function CardBands({
         {model.sources.length === 0 && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No connector-based data marts.</p>}
         {sourceCards.items.map((source) => {
           const id = sourceElementId(source.key);
-          return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => dispatch({ type: 'selectSource', key: source.key })} />;
+          return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => { rememberLeaving(null); dispatch({ type: 'selectSource', key: source.key }); }} />;
         })}
       </Band>
       <Band id="band-marts" icon={<Box size={18} />} title="Data" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search and the filters match." afterHint={contextBadges} toolbar={toolbar} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>

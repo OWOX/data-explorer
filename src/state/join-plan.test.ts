@@ -190,7 +190,7 @@ describe('what a mart showed when it left the grid comes back', () => {
     expect(plan.selection.martId).toBe('customers');
     expect(plan.grids.customers!.columns).toEqual(['name', 'email']);
     expect(plan.saves).toEqual([{ martId: 'customers', columns: ['name', 'email'] }]);
-    expect(plan.remember).toContainEqual({ martId: 'customers', fields: null });
+    expect(plan.remember).not.toContainEqual({ martId: 'customers', fields: null });
   });
 
   test('the main mart that is deselected remembers its own columns; clicked again it shows them', () => {
@@ -210,5 +210,19 @@ describe('what a mart showed when it left the grid comes back', () => {
     const plan = planClick(withShown(env({ orders: g(['id', 'customers__city', 'customers__email']), customers: g(['id']) }, 'orders')), 'orders');
     expect(plan.grids.customers!.columns).toEqual(['city', 'email']);
     expect(plan.remember).toEqual(expect.arrayContaining([{ martId: 'orders', fields: ['id'] }]));
+  });
+
+  test('joined marts stripped from the new main\'s stale saved grid do not override what the screen showed', () => {
+    const stores = src('stores', 'stores', [f('stores__city', 'string', 'stores'), f('stores__zip', 'string', 'stores')]);
+    const sources: Record<string, JoinedSource[]> = { orders: [stores], customers: [stores], z: [] };
+    const base: PlanEnv = { selection: sel('customers'), sourceKeyFor: () => null, sourcesOf: (id) => sources[id] ?? [], gridOf: (id) => ({ customers: g(['id', 'stores__zip']), orders: g(['id', 'stores__city']) }[id] ?? g(['id'])), ownColumns: () => ['id'], picksOf: () => ({}) };
+    const plan = planClick(withShown(base), 'orders');
+    expect(plan.remember.filter((r) => r.martId === 'stores')).toEqual([{ martId: 'stores', fields: ['zip'] }]);
+  });
+
+  test('a mart made main keeps what it remembered, so Undo has nothing to restore', () => {
+    shown.customers = ['name'];
+    const plan = planClick(withShown(env({ customers: g(['id']) }, 'stores')), 'customers');
+    expect(plan.remember.some((r) => r.martId === 'customers')).toBe(false);
   });
 });

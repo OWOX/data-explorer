@@ -128,7 +128,7 @@ export type PlanEnv = {
 const noShown = () => null;
 
 /** What the old main mart and its joined marts leave behind when another mart replaces them. */
-function leaveAll(main: string, sources: JoinedSource[], grid: GridState, except?: string): Plan['remember'] {
+export function leaveAll(main: string, sources: JoinedSource[], grid: GridState, except?: string): Plan['remember'] {
   const out: Plan['remember'] = [{ martId: main, fields: ownColumnsIn(grid.columns, sources) }];
   for (const m of joinedMartIds(grid.columns, sources)) if (m !== except) out.push({ martId: m, fields: ownNamesIn(grid.columns, sources, m) });
   return out;
@@ -145,7 +145,8 @@ const becomeMain = (env: PlanEnv, id: string, remember: Plan['remember'] = []): 
     const out = withoutMart(grid, sources, m, env.ownColumns(id));
     grid = out.grid;
     picks[m] = out.removed;
-    remember.push({ martId: m, fields: ownNamesIn(out.removed, sources, m) });
+    // Not remembered as left-the-grid: these marts sat in the mart's stale saved grid, not on screen, and `remember` already has
+    // what the screen showed (a later entry here would override it).
   }
   // What it showed when it last left a grid, as its own columns (this is the newest memory it has).
   const offered = new Set(env.ownNames?.(id) ?? []);
@@ -154,7 +155,7 @@ const becomeMain = (env: PlanEnv, id: string, remember: Plan['remember'] = []): 
   if (last.length > 0) {
     const kept = grid.sorts && sortsOnColumns(grid.sorts, last);
     grid = { ...grid, columns: last, sorts: grid.sorts && grid.sorts.length > 0 && kept!.length === 0 ? null : kept };
-    remember.push({ martId: id, fields: null });
+    // Its memory stays: forgetting it here could not be undone.
   }
   if (joined.length === 0 && !restored) return { selection, grids: {}, saves: [], remember };
   return { selection, grids: { [id]: grid }, saves: [{ martId: id, columns: grid.columns, ...(joined.length ? { picks } : {}) }], remember };

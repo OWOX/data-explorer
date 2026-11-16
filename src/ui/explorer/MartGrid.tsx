@@ -1,5 +1,6 @@
 import { columnVisibilityFeature, flexRender, tableFeatures, useTable, type ColumnDef } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp, Box, Info, RefreshCw, RotateCcw, X } from 'lucide-react';
+import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pending-focus';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PAGE_SIZE } from '../../config';
 import type { JoinedSource } from '../../api/blendable';
@@ -285,15 +286,25 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const remove = (id: string, index: number) => {
     // Focus lands on the neighbouring tab's remove button (else its Columns button) once the tab is gone.
     const next = groups[index + 1]?.id ?? groups[index - 1]?.id;
+    // Taking the main tab away promotes the next one and the grid remounts (DataBand keys it by mart): the new grid focuses its Columns button.
+    const promoted = id === martId && groups[1] ? groups[1].id : null;
+    askFocusFor(promoted);
     setRemoving(true);
     cardClick(id, { only: 'deselect' }).catch(() => undefined).finally(() => {
       setRemoving(false);
+      // Nothing remounted (the click did nothing): the request must not wait for a later mount.
+      if (promoted) setTimeout(() => dropFocusFor(promoted), 1000);
       setTimeout(() => {
         const th = next ? head.current?.querySelector(`th[data-group="${CSS.escape(next)}"]`) : null;
         (th?.querySelector<HTMLElement>('button[data-remove]:not(:disabled)') ?? th?.querySelector<HTMLElement>('button'))?.focus();
       }, 0);
     });
   };
+  useEffect(() => {
+    if (!isFocusAskedFor(martId)) return;
+    const button = head.current?.querySelector<HTMLElement>(`th[data-group="${CSS.escape(martId)}"] button`);
+    if (button && takeFocusFor(martId)) button.focus();
+  }, [groups, martId]);
   const several = groups.length > 1;
   // The first data mart is the main one: its last own column stays while a joined mart is shown.
   const ownNames = useMemo(() => new Set(native.map((f) => f.name)), [native]);

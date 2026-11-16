@@ -475,10 +475,11 @@ describe('search, contexts and refresh', () => {
     expect(document.querySelector('main.dm-page-content')).not.toBeNull();
   });
 
-  test('search narrows the marts, keeps the selection, and an empty match says so', async () => {
+  test('search narrows the marts and keeps the selection, its card included', async () => {
     await ordersGrid();
     await userEvent.type(screen.getByLabelText('Search data marts'), 'zzzz');
-    expect(await within(marts()).findByText('No data marts match.')).toBeInTheDocument();
+    await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
+    expect(within(marts()).getByText('Orders')).toBeInTheDocument();
     expect(within(data()).getByRole('heading', { name: /^Orders( \+ .*)?$/ })).toBeInTheDocument();
     await userEvent.clear(screen.getByLabelText('Search data marts'));
     expect(await within(marts()).findByText('Customers')).toBeInTheDocument();
@@ -487,11 +488,11 @@ describe('search, contexts and refresh', () => {
   test('the search reads the title only: a context name finds nothing', async () => {
     await ordersGrid();
     await userEvent.type(screen.getByLabelText('Search data marts'), 'marketing');
-    expect(await within(marts()).findByText('No data marts match.')).toBeInTheDocument();
+    await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
+    expect(within(marts()).queryByText('Campaigns')).toBeNull();
     await userEvent.clear(screen.getByLabelText('Search data marts'));
     await userEvent.type(screen.getByLabelText('Search data marts'), 'campaign');
     expect(await within(marts()).findByText('Campaigns')).toBeInTheDocument();
-    expect(within(marts()).queryByText('Orders')).toBeNull();
     expect(within(marts()).getByText('Campaigns').closest('article')!.querySelector('.dm-badge-shrink')).toBeNull();
   });
 
@@ -521,7 +522,8 @@ describe('search, contexts and refresh', () => {
     await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
     expect(within(marts()).getByText('Campaigns')).toBeInTheDocument();
     expect(within(group).getByRole('button', { name: 'Marketing' })).toHaveAttribute('aria-pressed', 'true');
-    expect(within(marts()).queryByText('Orders')).toBeNull();
+    // The main mart's card stays although it is not in the context.
+    expect(within(marts()).getByText('Orders')).toBeInTheDocument();
     await userEvent.click(within(group).getByRole('button', { name: 'Sales' }));
     expect(await within(marts()).findByText('Orders')).toBeInTheDocument();
     expect(within(marts()).getByText('Campaigns')).toBeInTheDocument();

@@ -37,11 +37,14 @@ export function createColumnStore(ctx: Ctx): ColumnStore {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
   const reads = new Map<string, Promise<string[] | null>>();
+  /** Marts whose stored doc was read successfully (or found absent); a put over one that was never read could erase it. */
+  const readOk = new Set<string>();
 
   async function read(martId: string): Promise<string[] | null> {
     try {
       const found = await col.get(martId);
       const doc = found?.document;
+      readOk.add(martId);
       const columns = Array.isArray(doc?.columns) ? doc.columns.filter((c) => typeof c === 'string') : null;
       // A save that landed while the read was out is newer than what it read.
       if (!cache.has(martId)) cache.set(martId, columns);
@@ -99,7 +102,9 @@ export function createColumnStore(ctx: Ctx): ColumnStore {
       Promise.resolve()
         .then(async () => {
           // What was never read is read first, so a save of one part does not erase the others.
-          if (!picked.has(martId) || !shownBy.has(martId)) await load(martId);
+          if (!readOk.has(martId) || !picked.has(martId) || !shownBy.has(martId)) await load(martId);
+          // The stored doc could not be read: writing would replace it with what this session knows alone. The change stays in memory.
+          if (!readOk.has(martId)) return;
           const merged = picksOf(martId);
           picked.set(martId, merged);
           patches.delete(martId);

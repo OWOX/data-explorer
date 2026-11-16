@@ -73,7 +73,8 @@ export function computeVisible({ model, selection, search, contextIds, storageId
     return [...out, ...ids.filter((id) => !placed.has(id)).sort(byRank)];
   };
   // A mart with a column on the grid or a filter applied is always shown: no search, context or storage filter takes it away.
-  const always = [...new Set([...joined, ...filtered])].filter((id) => model.marts.has(id));
+  // The main mart is one of them (unless its storage is unticked, which takes it out of every rule).
+  const always = [...new Set([...(selectedId && inStorage(selectedId) ? [selectedId] : []), ...joined, ...filtered])].filter((id) => model.marts.has(id));
   const withJoined = (ids: string[]) => (selectedId ? [...new Set([...ids, ...always])] : ids);
 
   // 1. A search, or a selected context badge: the matches, narrowed to the selected source.

@@ -365,3 +365,23 @@ test('after a group is removed, focus moves to the next tab\'s remove button', a
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Products']));
   await waitFor(() => expect(document.activeElement).toBe(within(data()).getByRole('button', { name: 'Remove Products from the grid' })));
 });
+
+test('picking a source saves what the main and its joined marts were showing, like a card click', async () => {
+  const t = setup();
+  await ready();
+  await click('Customers');
+  await waitFor(() => expect(headers()).toHaveLength(6));
+  fireEvent.click(within(document.getElementById('band-sources')!).getByText('Google Analytics 4').closest('article')!);
+  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown"'))).toBe(true), { timeout: 3000 });
+  await waitFor(() => expect(t.puts.some((p) => p.id === 'orders' && JSON.stringify(p.doc).includes('"lastShown"'))).toBe(true), { timeout: 3000 });
+});
+
+test('after the main group is removed, focus moves to the new main tab\'s Columns button', async () => {
+  setup();
+  await ready();
+  await click('Customers');
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
+  fireEvent.click(await within(data()).findByRole('button', { name: 'Remove Orders from the grid' }));
+  await waitFor(() => expect(title()).toBe('Customers'));
+  await waitFor(() => expect(document.activeElement).toBe(within(data()).getByRole('button', { name: 'Columns of Customers' })));
+});

@@ -192,3 +192,9 @@ describe('selected joined marts', () => {
     expect(r.ids).toEqual(['m', 'a', 'f']);
   });
 });
+
+test('the main mart stays in the band when a search or a context does not match it', () => {
+  const m = modelOf(['m', 'a'], [e('m', 'a')], [{ title: 'Orders' }, { title: 'Apple', contextIds: ['c1'] }]);
+  expect(computeVisible({ model: m, selection: sel({ martId: 'm' }), search: 'apple', contextIds: [] }).ids).toEqual(['m', 'a']);
+  expect(computeVisible({ model: m, selection: sel({ martId: 'm' }), search: '', contextIds: ['c1'] }).ids).toEqual(['m', 'a']);
+});

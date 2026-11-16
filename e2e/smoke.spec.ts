@@ -51,7 +51,8 @@ test('search narrows the marts', async ({ page }) => {
   await ordersGrid(page);
   await page.getByLabel('Search data marts').fill('campaign');
   await expect(band(page, 'marts').getByText('Campaigns', { exact: true })).toBeVisible();
-  await expect(band(page, 'marts').getByText('Orders', { exact: true })).toHaveCount(0);
+  // The main mart's card stays; a mart that does not match goes.
+  await expect(band(page, 'marts').getByText('Customers', { exact: true })).toHaveCount(0);
 });
 
 test('the page header is the title with Undo and Redo and no Refresh; the filters are in the Data band', async ({ page }) => {
