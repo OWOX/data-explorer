@@ -65,3 +65,16 @@ test('columns keep the given order, a missing key is empty, lines end with \\n a
 test('a header title with a tab or newline is cleaned too; no rows gives the header only', () => {
   expect(buildTsv([f('x', { alias: 'a\tb' })], [])).toBe('a b');
 });
+
+test('text that would start a spreadsheet formula is prefixed with an apostrophe', () => {
+  for (const v of ['=1+1', '+A1', '@SUM(A1)', '-cmd', '=HYPERLINK("x")']) expect(cellText(v, 'STRING')).toBe(`'${v}`);
+});
+
+test('plain numbers keep their sign and are not prefixed', () => {
+  for (const v of ['-5', '-1.25', '+3', '-1.2e3', '.5']) expect(cellText(v, 'STRING')).toBe(v);
+  expect(cellText(-5)).toBe('-5');
+});
+
+test('a header is guarded too', () => {
+  expect(buildTsv([f('x', { alias: '=x' })], [{ x: '=y' }])).toBe("'=x\n'=y");
+});

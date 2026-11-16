@@ -64,6 +64,7 @@ The first group of the Export menu has one item, "Copy to clipboard" (lucide `Cl
 2. With no rows loaded the item is disabled, with the tooltip "No rows to copy".
 3. When the sandbox blocks both ways of copying, a "Copy the data" dialog opens with the text in a read-only textarea (selected on focus) and a Copy button; "Show data" in the status reopens it.
 4. Nothing is queried, billed or written to OWOX.
+5. Values that would start a spreadsheet formula (a leading `=`, `+`, `-` or `@`, other than a plain number) are copied with a leading apostrophe so they paste as text.
 
 ### Export to an AI
 
