@@ -21,5 +21,8 @@ export async function _typeCheck() {
   const _check: Pick<Ctx['owox']['models'], 'getEdges'> = owox.models;
   const _destinations: Ctx['owox']['destinations'] = owox.destinations;
   const _put: Ctx['owox']['putJson'] = owox.putJson.bind(owox);
-  return [_check, _destinations, _put] as const;
+  const sdk = await connect();
+  const _route: Ctx['route'] = sdk.route;
+  const _copy: Ctx['ui']['copyLink'] = sdk.ui.copyLink.bind(sdk.ui);
+  return [_check, _destinations, _put, _route, _copy] as const;
 }

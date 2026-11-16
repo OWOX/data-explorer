@@ -2,7 +2,7 @@ import { columnVisibilityFeature, flexRender, tableFeatures, useTable, type Colu
 import { ArrowDown, ArrowUp, Box, Info, RefreshCw, RotateCcw } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { PAGE_SIZE } from '../../config';
-import type { JoinedSource } from '../../api/blendable';
+import { withJoined, type JoinedSource } from '../../api/blendable';
 import { columnTitle, fieldTitle } from '../../model/fieldLabel';
 import type { ColumnFilter } from '../../filters/build';
 import { cycleSort, defaultSort, sortsOnColumns, type SortKey } from '../../model/sort';
@@ -47,9 +47,6 @@ export function MartGrid({ martId, model, seed, onChange, onRows, paused = false
 
 /** A saved-columns read slower than this is given up on for this mount. */
 export const SAVED_COLUMNS_WAIT_MS = 3000;
-
-/** The schema a grid reads and filters over: the mart's own fields, then the fields of the joined marts it has loaded. */
-const withJoined = (schema: Schema, sources: JoinedSource[]): Schema => (sources.length ? [...schema, ...sources.flatMap((s) => s.fields)] : schema);
 
 /** The names in `saved` the column picker still offers, in the saved order. */
 const offered = (schema: Schema, saved: string[]) => saved.filter((c) => schema.some((f) => f.name === c));

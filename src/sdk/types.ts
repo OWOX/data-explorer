@@ -126,7 +126,9 @@ export interface Ctx {
   readonly projectId: string;
   readonly theme: string;
   readonly signal: AbortSignal;
-  readonly ui: { openExternal(url: string): Promise<void> };
+  /** The route the host opened the plugin with; undefined when the host has no page links. */
+  readonly route?: string;
+  readonly ui: { openExternal(url: string): Promise<void>; copyLink?(path?: string): Promise<void> };
   collections<T>(name: string): CollectionLike<T>;
   readonly owox: {
     storages: { list(): Promise<StorageDto[]> };

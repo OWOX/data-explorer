@@ -2,6 +2,8 @@ import type { AvailableSourceDto, BlendableSchemaDto, BlendedFieldDto, Ctx, Edge
 import { matchesFilter } from './evaluate';
 import { demoFixtures, type Fixtures } from './fixtures';
 
+declare global { interface Window { __copiedLink?: string } }
+
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: number } = {}): Ctx {
@@ -134,7 +136,14 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     projectId: 'mock-project',
     theme: window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
     signal: new AbortController().signal,
-    ui: { openExternal: async (url) => { window.open(url, '_blank', 'noopener'); } },
+    route: new URLSearchParams(location.search).get('route') ?? '/',
+    ui: {
+      openExternal: async (url) => { window.open(url, '_blank', 'noopener'); },
+      copyLink: async (path) => {
+        window.__copiedLink = path;
+        try { await navigator.clipboard?.writeText(path ?? ''); } catch { /* the clipboard may be blocked */ }
+      },
+    },
     collections: <T,>(name: string) => ({
       get: async (id: string) => { const k = `${name}/${id}`; return docs.has(k) ? { document: docs.get(k) as T } : null; },
       put: async (id: string, d: T) => { docs.set(`${name}/${id}`, d); return d; },
