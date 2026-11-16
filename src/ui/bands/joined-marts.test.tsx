@@ -307,6 +307,8 @@ test('the Data Marts band shows the marts connected to a joined mart, not only t
   await click('Customers');
   await waitFor(() => expect(within(marts()).getByText('Countries')).toBeInTheDocument());
   expect(within(marts()).getByText('Sessions')).toBeInTheDocument();
+  // lit like the main one's neighbours, so the canvas does not dim them
+  await waitFor(() => expect(card('Countries')).toHaveClass('lit'));
   await click('Customers');
   await waitFor(() => expect(within(marts()).queryByText('Countries')).toBeNull());
 });

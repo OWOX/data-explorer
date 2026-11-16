@@ -353,11 +353,11 @@ test('a joined column: tick Customers · email in the picker, and it filters', a
   const data = await ordersGrid(page);
   await tick(page, 'email', 'Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
-  await expect(data.getByRole('row').nth(1)).toContainText('@example.com');
+  await expect(data.getByRole('row').nth(2)).toContainText('@example.com');
   await data.getByLabel('Filter Customers · email').click();
   await page.getByLabel('Value').fill('anna');
   await page.getByRole('button', { name: 'Apply' }).click();
-  await expect(data.getByRole('row').nth(1)).toContainText('anna');
+  await expect(data.getByRole('row').nth(2)).toContainText('anna');
 });
 
 test('the first load draws every band header before the bodies, with a bar that fills and then goes', async ({ page }) => {
@@ -374,10 +374,35 @@ test('a table wider than the page scrolls inside its card and never widens the b
   for (const label of ['created_at', 'Acquisition Session ID', 'Net Revenue', 'Amount']) await tick(page, label);
   await tick(page, 'email', 'Customers');
   await tick(page, 'Name', 'Products');
+  await tick(page, 'is_gift');
+  await tick(page, 'city', 'Stores');
   await expect(data.getByRole('columnheader', { name: /Products · Name/ })).toBeVisible();
   const scroller = data.locator('.dm-bigcard div.overflow-auto').first();
   expect(await scroller.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
   const [bm, bd] = [await band(page, 'marts').boundingBox(), await data.boundingBox()];
   expect(bm!.width).toBeCloseTo(bd!.width, 0);
   expect(bd!.x + bd!.width).toBeLessThanOrEqual(1440);
+});
+
+test('a group row names each selected mart; the x on a joined group removes it and deselects its card', async ({ page }) => {
+  const data = await ordersGrid(page);
+  await expect(data.locator('thead tr[data-group-row]')).toHaveCount(0);
+  await martCard(page, 'Customers').click();
+  const groups = data.locator('thead tr[data-group-row] th');
+  await expect(groups).toHaveText(['Orders', 'Customers']);
+  const x = data.getByRole('button', { name: 'Remove Customers from the grid' });
+  await expect(x).toHaveCSS('opacity', '0');
+  await groups.nth(1).hover();
+  await expect(x).toHaveCSS('opacity', '1');
+  await x.click();
+  await expect(data.getByRole('heading', { name: 'Orders', exact: true })).toBeVisible();
+  await expect(data.locator('thead tr[data-group-row]')).toHaveCount(0);
+  await expect(martCard(page, 'Customers')).not.toHaveClass(/dm-joined/);
+});
+
+test('the Data Marts band shows the marts connected to a joined mart', async ({ page }) => {
+  await ordersGrid(page);
+  await expect(band(page, 'marts').getByText('Countries', { exact: true })).toHaveCount(0);
+  await martCard(page, 'Customers').click();
+  await expect(band(page, 'marts').getByText('Countries', { exact: true })).toBeVisible();
 });
