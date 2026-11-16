@@ -312,6 +312,8 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-th-edge { box-shadow: inset 0 -1px 0 var(--border), inset 1px 0 0 var(--border); }
 .dm-gh-edge { box-shadow: inset 1px 0 0 var(--border); }
 .dm-gh:hover .dm-reveal, .dm-gh:focus-within .dm-reveal { opacity: 1; }
+.dm-gx-cols { color: var(--muted-foreground); border-radius: 4px; }
+.dm-gx-cols:hover { color: var(--foreground); background: var(--accent); }
 .dm-gx { color: var(--muted-foreground); border-radius: 4px; }
 .dm-gx:hover { color: var(--foreground); background: var(--accent); }
 

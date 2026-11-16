@@ -179,4 +179,16 @@ describe('selected joined marts', () => {
   test('without a joined mart the order is the main one, then its neighbours by inbound then title', () => {
     expect(computeVisible({ model, selection: sel({ martId: 'm' }), search: '', contextIds: [] }).ids).toEqual(['m', 'a', 'b', 'c']);
   });
+
+  test('a mart with a filter applied is shown after the joined ones, whatever the search', () => {
+    const r = computeVisible({ model, selection: sel({ martId: 'm' }), search: 'm', contextIds: [], joined: ['a'], filtered: ['x'] });
+    expect(r.ids.slice(0, 3)).toEqual(['m', 'a', 'x']);
+    expect(computeVisible({ model, selection: sel({ martId: 'm' }), search: '', contextIds: [], filtered: ['far'] }).ids).toContain('far');
+  });
+
+  test('joined and filtered marts stay when their storage is unticked', () => {
+    const m2 = modelOf(['m', 'a', 'f'], [e('m', 'a')], [{}, { storageId: 'other' }, { storageId: 'other' }]);
+    const r = computeVisible({ model: m2, selection: sel({ martId: 'm' }), search: '', contextIds: [], storageIds: ['s'], joined: ['a'], filtered: ['f'] });
+    expect(r.ids).toEqual(['m', 'a', 'f']);
+  });
 });

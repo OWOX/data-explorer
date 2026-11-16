@@ -38,6 +38,8 @@ export type VisibleInput = {
   storageIds?: string[] | null;
   /** The joined data marts selected with the main one, in the order they were added: each is shown whatever else applies. */
   joined?: string[];
+  /** Marts that carry a filter of the grid without being a selected joined mart: shown too, after the joined ones. */
+  filtered?: string[];
 };
 export type VisibleResult = {
   ids: string[];
@@ -46,7 +48,7 @@ export type VisibleResult = {
 };
 
 /** Which marts the Data Marts band shows, by the first rule that applies (spec, "Which marts show"). */
-export function computeVisible({ model, selection, search, contextIds, storageIds = null, joined = [] }: VisibleInput): VisibleResult {
+export function computeVisible({ model, selection, search, contextIds, storageIds = null, joined = [], filtered = [] }: VisibleInput): VisibleResult {
   const inbound = inboundCounts(model.edges);
   // A mart in an unticked storage is out of every rule below, the selected one included.
   const inStorage = (id: string) => storageIds === null || storageIds.includes(model.marts.get(id)?.storageId ?? '');
@@ -59,7 +61,7 @@ export function computeVisible({ model, selection, search, contextIds, storageId
   // linked sit near each other and the lines cross less; what no edge reaches follows by rank.
   const arrange = (ids: string[], first: string | null): string[] => {
     const set = new Set(ids);
-    const joinedHere = first && selectedId === first ? joined.filter((id) => set.has(id) && id !== first) : [];
+    const joinedHere = first && selectedId === first ? always.filter((id) => set.has(id) && id !== first) : [];
     const out = [...(first && set.has(first) ? [first] : []), ...joinedHere];
     const placed = new Set(out);
     const queue = [...out];
@@ -70,7 +72,9 @@ export function computeVisible({ model, selection, search, contextIds, storageId
     }
     return [...out, ...ids.filter((id) => !placed.has(id)).sort(byRank)];
   };
-  const withJoined = (ids: string[]) => (selectedId ? [...new Set([...ids, ...joined.filter((id) => model.marts.has(id) && inStorage(id))])] : ids);
+  // A mart with a column on the grid or a filter applied is always shown: no search, context or storage filter takes it away.
+  const always = [...new Set([...joined, ...filtered])].filter((id) => model.marts.has(id));
+  const withJoined = (ids: string[]) => (selectedId ? [...new Set([...ids, ...always])] : ids);
 
   // 1. A search, or a selected context badge: the matches, narrowed to the selected source.
   if (search.trim() || contextIds.length > 0) {
@@ -87,7 +91,7 @@ export function computeVisible({ model, selection, search, contextIds, storageId
 
   // 2. A mart is selected: it and every mart joined to it, in either direction; with joined marts selected, every mart connected to any of them too.
   if (selectedId) {
-    const selected = [selectedId, ...joined.filter((id) => model.marts.has(id) && inStorage(id))];
+    const selected = [selectedId, ...joined.filter((id) => model.marts.has(id))];
     return { ids: arrange(withJoined([...new Set([...selected, ...selected.flatMap((id) => neighbours(id, model.edges))])].filter(inStorage)), selectedId), focusId };
   }
 

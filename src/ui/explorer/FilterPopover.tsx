@@ -1,11 +1,12 @@
 import { Filter } from 'lucide-react';
 import { useState } from 'react';
-import { DATE_PRESETS, RELATIVE_MAX_N, RELATIVE_PRESETS, isDateTimeField, isPreset, operatorsFor, presetName, type OpId } from '../../filters/catalogue';
+import { DATE_PRESETS, RELATIVE_MAX_N, RELATIVE_PRESETS, describeFilter, isDateTimeField, isPreset, operatorsFor, type OpId } from '../../filters/catalogue';
 import { isComplete, type ColumnFilter, type FilterValue } from '../../filters/build';
 import { columnTitle } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import type { RelativeDatePreset } from '../../sdk/types';
 import { Popover } from '../Popover';
+import { FilterAltIcon } from './FilterAltIcon';
 import { Select } from '../Select';
 
 const input = 'dm-input h-8 w-full rounded-md border bg-background px-2 text-sm';
@@ -115,10 +116,9 @@ function OperatorForm({ field, value, onApply, onClear, startOp }: EditorProps &
 export function FilterPopover({ field, value, onChange }: { field: Field; value: ColumnFilter | undefined; onChange: (f: ColumnFilter | undefined) => void }) {
   const [open, setOpen] = useState(false);
   return (
-    <Popover open={open} onOpenChange={setOpen} trigger={
+    <Popover open={open} onOpenChange={setOpen} tip={value ? `Filter: ${describeFilter(field, value)}` : undefined} trigger={
       <button type="button" aria-label={`Filter ${columnTitle(field)}`} className={value ? 'dm-reveal dm-reveal-on text-primary' : 'dm-reveal text-muted-foreground hover:text-foreground'}>
-        <Filter className="size-3.5" fill={value ? 'currentColor' : 'none'} />
-        {value?.op === 'relative' && <span className="ml-1 whitespace-nowrap text-xs font-normal">{presetName(value.value as RelativeDatePreset)}</span>}
+        {value ? <FilterAltIcon className="size-3.5" /> : <Filter className="size-3.5" />}
       </button>
     }>
       <FilterEditor key={JSON.stringify(value)} field={field} value={value}

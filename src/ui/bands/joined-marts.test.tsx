@@ -58,8 +58,7 @@ test('selecting it again takes its columns out, and a third time brings back the
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
   // choose another field of Customers in the picker
-  await userEvent.click(within(data()).getByRole('button', { name: /^Columns/ }));
-  await userEvent.click(await screen.findByRole('button', { name: /^Customers/ }));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Customers' }));
   await userEvent.click(await screen.findByLabelText('email'));
   await waitFor(() => expect(headers()).toHaveLength(7));
   await userEvent.keyboard('{Escape}');
@@ -112,7 +111,7 @@ test('clicking a data mart the main one cannot join makes it the main one, alone
 test('with no joined mart, deselecting the main one leaves nothing selected', async () => {
   setup();
   await ready();
-  await userEvent.click(within(data()).getAllByRole('row')[1]!);
+  await userEvent.click(within(data()).getAllByRole('row')[2]!);
   await within(row()).findByRole('heading', { name: /^Orders · / });
   await click('Orders');
   expect(await within(data()).findByText('Select a data mart.')).toBeInTheDocument();
@@ -140,15 +139,14 @@ test('unticking the last field of a joined mart in the picker deselects it; tick
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
-  await userEvent.click(within(data()).getByRole('button', { name: /^Columns/ }));
-  await userEvent.click(await screen.findByRole('button', { name: /^Customers/ }));
-  const group = await screen.findByRole('group', { name: 'Customers' });
+  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Customers' }));
+  const group = await screen.findByRole('dialog');
   await userEvent.click(within(group).getByRole('checkbox', { checked: true }));
   await waitFor(() => expect(title()).toBe('Orders'));
   expect(card('Customers')).not.toHaveClass('dm-joined');
-  await userEvent.click(await screen.findByRole('button', { name: /^Stores/ }));
-  const stores = await screen.findByRole('group', { name: 'Stores' });
-  await userEvent.click(within(stores).getAllByRole('checkbox')[0]!);
+  expect(within(data()).queryByRole('button', { name: 'Columns of Customers' })).toBeNull();
+  // another mart is added from its card, not from a picker
+  await click('Stores');
   await waitFor(() => expect(title()).toBe('Orders + Stores'));
 });
 
@@ -218,8 +216,7 @@ test('what was last chosen for a pair is saved exactly: the fields, in the order
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
-  await userEvent.click(within(data()).getByRole('button', { name: /^Columns/ }));
-  await userEvent.click(await screen.findByRole('button', { name: /^Customers/ }));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Customers' }));
   await userEvent.click(await screen.findByLabelText('email'));
   await waitFor(() => expect(headers()).toHaveLength(7));
   await userEvent.keyboard('{Escape}');
@@ -230,10 +227,13 @@ test('what was last chosen for a pair is saved exactly: the fields, in the order
 
 const groupRow = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup');
 
-test('with only the main mart there is no group row; a joined mart adds one cell per mart, spanning its columns, main first', async () => {
+test('the main mart alone has one tab spanning all its columns, with no x; a joined mart adds one tab per mart, main first', async () => {
   setup();
   await ready();
-  expect(groupRow()).toHaveLength(0);
+  expect(groupTitles()).toEqual(['Orders']);
+  expect(groupRow()[0]!.getAttribute('colspan')).toBe('5');
+  expect(within(data()).queryByRole('button', { name: 'Remove Orders from the grid' })).toBeNull();
+  expect(within(data()).getByRole('button', { name: 'Columns of Orders' })).toBeInTheDocument();
   await click('Customers');
   await waitFor(() => expect(groupRow()).toHaveLength(2));
   expect(groupTitles()).toEqual(['Orders', 'Customers']);
@@ -253,7 +253,7 @@ test('a column ticked for the main mart after a joined one stays in the main gro
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
-  await userEvent.click(within(data()).getByRole('button', { name: /^Columns/ }));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
   await userEvent.click(await screen.findByLabelText(/amount/i));
   await waitFor(() => expect(headers()).toHaveLength(7));
   expect(headers().indexOf('Amount')).toBeLessThan(6);
@@ -284,7 +284,7 @@ test('the x on the main group deselects it and promotes the next selected mart, 
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
   fireEvent.click(await within(data()).findByRole('button', { name: 'Remove Orders from the grid' }));
   await waitFor(() => expect(title()).toBe('Customers'));
-  expect(groupRow()).toHaveLength(0);
+  expect(groupTitles()).toEqual(['Customers']);
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -293,7 +293,7 @@ test('the last own column of the main mart cannot be unticked while a joined mar
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
-  await userEvent.click(within(data()).getByRole('button', { name: /^Columns/ }));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
   for (const label of ['id', 'Customer', 'Product', 'Store']) await userEvent.click(await screen.findByLabelText(label));
   await waitFor(() => expect(headers()).toEqual(['status', 'name']));
   expect(screen.getByLabelText('status')).toBeDisabled();

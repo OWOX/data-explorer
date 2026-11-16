@@ -27,17 +27,31 @@ export const sourceOfMart = (sources: JoinedSource[], martId: string): JoinedSou
 
 export const isJoinable = (sources: JoinedSource[], martId: string) => sources.some((s) => s.martId === martId);
 
-/** The first text field of the source, else its first field. */
-export const firstTextField = (source: JoinedSource): Field | undefined => source.fields.find((f) => f.category === 'string') ?? source.fields[0];
+/** A key by name or alias: a primary key, `id`, a name ending in `_id` or `Id`, or an alias ending in " ID" (any case). */
+export const isIdField = (f: Field): boolean => f.isPrimaryKey || /^id$/i.test(f.name) || /_id$/i.test(f.name) || /[a-z0-9]Id$/.test(f.name) || /\sid$/i.test(f.alias ?? '');
 
-/** The fields a joined mart comes back with: what was last chosen for the pair (those the source still offers), else the first text field. */
+/**
+ * What a mart joins the grid with when nothing was remembered: its first text field that is not an ID and its first metric
+ * (a number) that is not an ID. With no such text field the first text field; with no metric just the text; with no text
+ * field the first two fields that are not IDs.
+ */
+export function defaultJoinFields(source: JoinedSource): Field[] {
+  const text = source.fields.find((f) => f.category === 'string' && !isIdField(f)) ?? source.fields.find((f) => f.category === 'string');
+  if (!text) {
+    const plain = source.fields.filter((f) => !isIdField(f));
+    return (plain.length ? plain : source.fields).slice(0, 2);
+  }
+  const metric = source.fields.find((f) => f.category === 'number' && !isIdField(f));
+  return metric ? [text, metric] : [text];
+}
+
+/** The fields a joined mart comes back with: what was last chosen for the pair (those the source still offers), else its first non-ID text field and first non-ID metric. */
 export function fieldsFor(sources: JoinedSource[], martId: string, remembered: string[] | undefined): string[] {
   const offered = namesOf(sources, martId);
   const kept = (remembered ?? []).filter((n) => offered.has(n));
   if (kept.length) return kept;
   const source = sourceOfMart(sources, martId);
-  const first = source && firstTextField(source);
-  return first ? [first.name] : [];
+  return source ? defaultJoinFields(source).map((f) => f.name) : [];
 }
 
 /** The grid with everything of one joined mart taken out: its columns, its filters and its sorts. `removed` is the field list to remember. */

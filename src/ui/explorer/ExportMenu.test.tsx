@@ -609,7 +609,7 @@ describe('Copy to clipboard', () => {
     const t = setup(1);
     t.view();
     await rowsLoaded();
-    const loaded = within(data()).getAllByRole('row').length - 1;
+    const loaded = within(data()).getAllByRole('row').length - 2;
     await userEvent.click(await within(data()).findByText('Export'));
     await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' }));
     expect(await within(data()).findByText(`Copied the first ${loaded} rows. Load more to copy more.`)).toBeInTheDocument();

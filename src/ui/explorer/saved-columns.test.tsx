@@ -34,7 +34,7 @@ function setup(saved: string[] | null, tweak: (ctx: Mock) => Ctx = (c) => c) {
   };
   return { ctx, calls, put, view, services, seeded, col };
 }
-const headers = () => within(document.getElementById('band-data')!).getAllByRole('columnheader').map((h) => h.textContent);
+const headers = () => within(document.getElementById('band-data')!).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup').map((h) => h.textContent);
 const ordersCalls = (calls: { id: string; column?: string[] }[]) => calls.filter((c) => c.id === 'orders' && c.column && c.column.length > 1);
 
 test('saved columns seed the grid and the first rows query already uses them', async () => {
@@ -93,7 +93,7 @@ test('a member change in the picker is saved; seeding is not', async () => {
   t.view();
   await waitFor(() => expect(headers()).toHaveLength(2));
   expect(t.put).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByRole('button', { name: /Columns \(2\/10\)/ }));
+  await userEvent.click(screen.getByRole('button', { name: 'Columns of Orders' }));
   await userEvent.click(screen.getByLabelText(/amount/i));
   await waitFor(() => expect(headers()).toHaveLength(3));
   await waitFor(() => expect(t.put).toHaveBeenCalledTimes(1), { timeout: SAVE_DEBOUNCE_MS + 1500 });
@@ -105,7 +105,7 @@ test('this session\'s columns win over the saved ones', async () => {
   await t.seeded;
   const { unmount } = t.view();
   await waitFor(() => expect(headers()).toHaveLength(2));
-  await userEvent.click(screen.getByRole('button', { name: /Columns \(2\/10\)/ }));
+  await userEvent.click(screen.getByRole('button', { name: 'Columns of Orders' }));
   await userEvent.click(screen.getByLabelText(/amount/i));
   await waitFor(() => expect(headers()).toHaveLength(3));
   // Going to another mart and back keeps the session's grid without asking the member store again.

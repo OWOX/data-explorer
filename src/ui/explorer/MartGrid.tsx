@@ -19,7 +19,7 @@ import { BandTools, BandToolsSlot } from '../bands/BandTools';
 import { CardClickContext } from '../bands/CardClick';
 import { PickedIcon } from '../bands/picked';
 import { CellValue } from './CellValue';
-import { ColumnPicker, type JoinedState } from './ColumnPicker';
+import { ColumnPicker } from './ColumnPicker';
 import { ExportMenu } from './ExportMenu';
 import { FilterPopover } from './FilterPopover';
 import { buildRowQuery, defaultColumns, useMartRows } from './useMartRows';
@@ -151,16 +151,10 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
   const [sources, setSources] = useState<JoinedSource[]>(initialSources ?? []);
-  const [joinedState, setJoinedState] = useState<JoinedState>(initialSources ? 'ready' : 'loading');
-  const loadJoined = useCallback(() => {
-    if (joinedState === 'ready' || joinedState === 'loading') return;
-    setJoinedState('loading');
-    blendable.get(martId).then((s) => { setSources(s); setJoinedState('ready'); }, () => setJoinedState('failed'));
-  }, [blendable, martId, joinedState]);
   useEffect(() => {
     if (initialSources) return;
     let live = true;
-    blendable.get(martId).then((s) => { if (live) { setSources(s); setJoinedState('ready'); } }, () => { if (live) setJoinedState('failed'); });
+    blendable.get(martId).then((s) => { if (live) setSources(s); }, () => undefined);
     return () => { live = false; };
   }, [blendable, martId, initialSources]);
   const schema = useMemo(() => withJoined(native, sources), [native, sources]);
@@ -278,8 +272,13 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       if (last && last.id === id) last.span += 1;
       else out.push({ id, title: model.marts.get(id)?.title ?? f.joined?.label ?? id, icon: model.marts.get(id)?.icon, span: 1, main: id === martId });
     }
-    return out.length > 1 ? out : [];
+    return out;
   }, [onScreen, model, martId]);
+  const several = groups.length > 1;
+  // The first data mart is the main one: its last own column stays while a joined mart is shown.
+  const ownNames = useMemo(() => new Set(native.map((f) => f.name)), [native]);
+  const ownOn = shown.filter((n) => ownNames.has(n)).length;
+  const fieldsOf = (id: string) => (id === martId ? native : sources.filter((x) => x.martId === id).flatMap((x) => x.fields));
   // The first column of every group after the first carries a divider.
   const edges = useMemo(() => { const out = new Set<string>(); let at = 0; groups.forEach((g, i) => { if (i > 0) out.add(onScreen[at]!.name); at += g.span; }); return out; }, [groups, onScreen]);
   const hasFilters = Object.keys(filters).length > 0;
@@ -291,7 +290,6 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { setFilters({}); setParked({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
-        <ColumnPicker schema={native} sources={sources} joinedState={joinedState} visible={visible} model={model} onChange={changeColumns} onOpen={loadJoined} />
         <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} filters={Object.values(filters)} sorts={sorts} rows={rows} hasMore={hasMore} />
       </BandTools>
       {pks.length === 0 && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
@@ -299,21 +297,22 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       <div className={`min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
         <table className="w-full border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-card">
-            {groups.length > 0 && (
-              <tr data-group-row>
+            <tr data-group-row>
                 {groups.map((g, i) => (
                   <th key={g.id} colSpan={g.span} scope="colgroup" className={`dm-gh overflow-hidden px-3 pb-0.5 pt-2 text-left text-xs font-semibold ${i > 0 ? 'dm-gh-edge' : ''}`}>
                     <div className="flex min-w-0 items-center gap-1.5">
                       <span className="inline-flex shrink-0 text-muted-foreground"><PickedIcon icon={g.icon} fallback={Box} size={14} /></span>
                       <span className="truncate">{g.title}</span>
-                      <Tooltip content={`Remove ${g.title} from the grid`}>
-                        <button type="button" aria-label={`Remove ${g.title} from the grid`} onClick={() => void cardClick(g.id)} className="dm-reveal dm-gx"><X className="size-3.5" aria-hidden /></button>
-                      </Tooltip>
+                      <ColumnPicker title={g.title} fields={fieldsOf(g.id)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} />
+                      {(several || !g.main) && (
+                        <Tooltip content={`Remove ${g.title} from the grid`}>
+                          <button type="button" aria-label={`Remove ${g.title} from the grid`} onClick={() => void cardClick(g.id)} className="dm-reveal dm-gx"><X className="size-3.5" aria-hidden /></button>
+                        </Tooltip>
+                      )}
                     </div>
                   </th>
                 ))}
               </tr>
-            )}
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
                 {hg.headers.map((h) => <th key={h.id} aria-sort={sortOf(sorts, h.column.id)} className={`dm-th ${edges.has(h.column.id) ? 'dm-th-edge' : ''} ${maxWidthOf(byName.get(h.column.id)!)} overflow-hidden px-3 py-2 text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}

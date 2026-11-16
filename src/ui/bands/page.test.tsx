@@ -50,7 +50,7 @@ async function goTo(title: string) {
 async function ordersGrid() {
   await mountApp();
   await within(data()).findByRole('table');
-  await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+  await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
   return data();
 }
 
@@ -89,7 +89,7 @@ describe('the first load', () => {
     const slowEdges: Ctx = { ...ctx, owox: { ...ctx.owox, models: { getEdges: async (id: string) => { await gate; return ctx.owox.models.getEdges(id); } } } };
     render(<AppServices ctx={slowEdges}><StoreProvider><App /></StoreProvider></AppServices>);
     // the shell is there before anything has loaded
-    for (const name of ['Data Sources', 'Data Marts', 'Data', 'Row']) expect(await screen.findByRole('heading', { name })).toBeInTheDocument();
+    for (const name of ['Data Sources', 'Data', 'Rows', 'Row']) expect(await screen.findByRole('heading', { name })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Data Explorer' })).toBeInTheDocument();
     expect(document.querySelector('[aria-label="Loading"]')).toBeNull(); // no skeleton rows
     // Data Sources starts folded, so three bars: the bodies are not there
@@ -108,7 +108,7 @@ describe('the four bands', () => {
   test('the first load selects Orders, shows its rows and the marts joined to it', async () => {
     const grid = await ordersGrid();
     expect(within(band('band-data')).getByRole('heading', { name: /^Orders( \+ .*)?$/ })).toBeInTheDocument();
-    expect(within(grid).getAllByRole('columnheader')).toHaveLength(5);
+    expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(5);
     expect(await within(data()).findByText('200+ records')).toBeInTheDocument();
     expect(martCard('Orders')).toHaveAttribute('aria-pressed', 'true');
     expect(within(marts()).getByText('Customers')).toBeInTheDocument();
@@ -139,14 +139,14 @@ describe('the four bands', () => {
 
   test('a row click fills the Row band', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getAllByRole('row')[1]!);
+    await userEvent.click(within(grid).getAllByRole('row')[2]!);
     expect(await within(row()).findByRole('heading', { name: /^Orders · 1$/ })).toBeInTheDocument();
     expect(await within(row()).findByText('status')).toBeInTheDocument();
   });
 
   test('the grid id cell is plain text', async () => {
     const grid = await ordersGrid();
-    expect(within(within(grid).getAllByRole('row')[1]!.querySelector('td')!).queryByRole('button')).toBeNull();
+    expect(within(within(grid).getAllByRole('row')[2]!.querySelector('td')!).queryByRole('button')).toBeNull();
   });
 
   test('three follows, then three Undos, return to each selection in order', async () => {
@@ -155,7 +155,7 @@ describe('the four bands', () => {
     // 1. the Customers record
     await goTo('Customers');
     await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
-    await userEvent.click(within(data()).getAllByRole('row')[1]!);
+    await userEvent.click(within(data()).getAllByRole('row')[2]!);
     const customerHeading = await within(row()).findByRole('heading', { name: /^Customers · \d+$/ });
     // 2. a filtered target: Customers record -> Orders, filtered
     const section = await within(row()).findByRole('region', { name: 'Referenced by' });
@@ -188,11 +188,11 @@ describe('the four bands', () => {
 
   test('a reference column shows the stored value as plain text and asks no other mart for titles', async () => {
     const calls = await spyOnTraverse();
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await settle();
     const grid = data();
-    const at = within(grid).getAllByRole('columnheader').findIndex((h) => h.textContent?.includes('Customer'));
-    const first = within(grid).getAllByRole('row')[1]!;
+    const at = within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup').findIndex((h) => h.textContent?.includes('Customer'));
+    const first = within(grid).getAllByRole('row')[2]!;
     const cell = first.querySelectorAll('td')[at]!;
     expect(cell.textContent).toMatch(/^\d*$/); // the key, never a name
     expect(within(cell).queryByRole('button')).toBeNull();
@@ -204,7 +204,7 @@ describe('the four bands', () => {
     const grid = await ordersGrid();
     const undo = () => screen.getByRole('button', { name: 'Undo' });
     const redo = () => screen.getByRole('button', { name: 'Redo' });
-    await userEvent.click(within(grid).getAllByRole('row')[1]!);
+    await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
     await userEvent.click(undo());
     expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
@@ -219,7 +219,7 @@ describe('the four bands', () => {
 
   test('Alt+ArrowRight and Ctrl+Shift+Z redo, Ctrl+Z undoes, but not while typing in a field', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getAllByRole('row')[1]!);
+    await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
     fireEvent.keyDown(screen.getByLabelText('Search data marts'), { key: 'z', ctrlKey: true });
     await settle();
@@ -236,7 +236,7 @@ describe('the four bands', () => {
 
   test('Alt+ArrowLeft goes back too', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getAllByRole('row')[1]!);
+    await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
     fireEvent.keyDown(document, { key: 'ArrowLeft', altKey: true });
     await waitFor(() => expect(within(row()).getByText('Select a row.')).toBeInTheDocument());
@@ -244,7 +244,7 @@ describe('the four bands', () => {
 
   test('Alt+ArrowLeft typed in a field is the word-jump, not Back', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getAllByRole('row')[1]!);
+    await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
     fireEvent.keyDown(screen.getByLabelText('Search data marts'), { key: 'ArrowLeft', altKey: true });
     await settle();
@@ -270,7 +270,7 @@ describe('the grid', () => {
   test('shows the first 5 columns and 200 rows with load more', async () => {
     const grid = await ordersGrid();
     await userEvent.click(within(grid).getByRole('button', { name: 'Load more' }));
-    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(401));
+    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(402));
   });
 
   test('filter then reset', async () => {
@@ -279,16 +279,16 @@ describe('the grid', () => {
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
     await userEvent.type(screen.getByLabelText('Value'), '3');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(4));
+    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(5));
     await userEvent.click(within(grid).getByRole('button', { name: 'Reset' }));
-    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(202));
   });
 
   test('the column picker adds a column', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/10\)/ }));
+    await userEvent.click(within(grid).getByRole('button', { name: 'Columns of Orders' }));
     await userEvent.click(screen.getByLabelText(/amount/i));
-    await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(6));
+    await waitFor(() => expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(6));
   });
 
   test('going back to a mart restores its filters', async () => {
@@ -297,13 +297,13 @@ describe('the grid', () => {
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
     await userEvent.type(screen.getByLabelText('Value'), '3');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(4));
+    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(5));
     await goTo('Customers');
     // Joining it, then promoting it, are two steps.
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await within(data()).findByRole('heading', { name: /^Orders( \+ .*)?$/ });
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(4));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(5));
     expect(within(data()).getByRole('button', { name: 'Reset' })).toBeEnabled();
   });
 
@@ -311,7 +311,7 @@ describe('the grid', () => {
     await ordersGrid();
     await goTo('Customers');
     await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
-    await userEvent.click(within(data()).getAllByRole('row')[1]!);
+    await userEvent.click(within(data()).getAllByRole('row')[2]!);
     await within(row()).findByRole('heading', { name: /^Customers · \d+$/ });
     const section = await within(row()).findByRole('region', { name: 'Referenced by' });
     const entry = within(section).getByRole('button', { name: /^Orders/ });
@@ -347,27 +347,27 @@ describe('the grid', () => {
     await userEvent.type(screen.getByLabelText('Value'), '999999');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
     expect(await within(grid).findByText('No rows match the filters.')).toBeInTheDocument();
-    expect(within(grid).getAllByRole('columnheader')).toHaveLength(5);
+    expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(5);
     await userEvent.click(within(grid).getByLabelText('Filter id'));
     await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
-    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(202));
   });
 
   test('a failed read keeps the header and shows the error in the body', async () => {
     await mountWith(overrideTraverse((real) => (id, o) => (o.limit === 201 ? Promise.reject(new Error('read failed')) : real(id, o))));
     expect(await within(data()).findByText('read failed')).toBeInTheDocument();
-    expect(within(data()).getAllByRole('columnheader')).toHaveLength(5);
+    expect(within(data()).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(5);
     expect(within(data()).getByLabelText('Filter id')).toBeInTheDocument();
   });
 
   test('hiding a column does not read the mart again', async () => {
     const calls = await spyOnTraverse();
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await settle();
     const before = calls.filter((c) => c.id === 'orders').length;
-    await userEvent.click(within(data()).getByRole('button', { name: /Columns \(5\/10\)/ }));
+    await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
     await userEvent.click(screen.getAllByRole('checkbox').filter((c) => (c as HTMLInputElement).checked).at(-1)!);
-    await waitFor(() => expect(within(data()).getAllByRole('columnheader')).toHaveLength(4));
+    await waitFor(() => expect(within(data()).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(4));
     await settle();
     expect(calls.filter((c) => c.id === 'orders')).toHaveLength(before);
   });
@@ -434,7 +434,7 @@ describe('the record', () => {
     fireEvent.click(await within(marts()).findByText('Order Items'));
     await within(data()).findByRole('heading', { name: 'Order Items' });
     await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
-    await userEvent.click(within(data()).getAllByRole('row')[1]!);
+    await userEvent.click(within(data()).getAllByRole('row')[2]!);
     await within(row()).findByRole('heading', { name: /^Order Items · 1$/ });
     await within(row()).findByText('Order');
     expect(within(row()).queryByRole('region', { name: 'Referenced by' })).toBeNull();
@@ -596,7 +596,7 @@ describe('folding and lines', () => {
   test('folding the Data band and unfolding it does not ask for the rows again', async () => {
     const calls = await spyOnTraverse();
     await within(data()).findByRole('table');
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     const before = calls.length;
     await userEvent.click(within(data()).getByRole('button', { name: /^Hide / }));
     expect(within(data()).queryByRole('table')).toBeNull();
@@ -604,13 +604,13 @@ describe('folding and lines', () => {
     await within(data()).findByRole('table');
     await settle();
     expect(calls).toHaveLength(before);
-    expect(within(data()).getAllByRole('row')).toHaveLength(201);
+    expect(within(data()).getAllByRole('row')).toHaveLength(202);
   });
 
   test('a folded Data band runs no query for marts selected meanwhile; unfolding runs exactly one for the current mart', async () => {
     const calls = await spyOnTraverse();
     await within(data()).findByRole('table');
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await settle();
     await userEvent.click(within(data()).getByRole('button', { name: /^Hide / }));
     // Counts for cards that came into view are not row queries.
@@ -635,13 +635,13 @@ describe('folding and lines', () => {
 
   test('a folded Row band fetches no record for rows selected meanwhile', async () => {
     const calls = await spyOnTraverse();
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
-    await userEvent.click(within(data()).getAllByRole('row')[1]!);
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
+    await userEvent.click(within(data()).getAllByRole('row')[2]!);
     await within(row()).findByRole('heading', { name: /^Orders · \d+$/ });
     await settle();
     await userEvent.click(within(row()).getByRole('button', { name: /^Hide / }));
     const before = calls.length;
-    await userEvent.click(within(data()).getAllByRole('row')[2]!);
+    await userEvent.click(within(data()).getAllByRole('row')[3]!);
     await settle();
     expect(calls).toHaveLength(before);
     await userEvent.click(within(row()).getByRole('button', { name: /^Show / }));
@@ -729,7 +729,7 @@ describe('column headers and band toolbars', () => {
 
   test('the column picker shows the alias only, and a (?) with the description when the field has one', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/10\)/ }));
+    await userEvent.click(within(grid).getByRole('button', { name: 'Columns of Orders' }));
     expect(screen.getByLabelText(/Amount/)).toBeInTheDocument();
     expect(screen.queryByText('amount')).toBeNull();
     expect(screen.queryByText('customer_id')).toBeNull();
@@ -764,23 +764,23 @@ describe('column headers and band toolbars', () => {
     const calls = await spyOnTraverse();
     const grid = await ordersGrid();
     const bar = head(grid);
-    for (const name of ['Reset', 'Refresh', /Columns \(5\/10\)/]) expect(within(bar).getByRole('button', { name })).toBeInTheDocument();
+    for (const name of ['Reset', 'Refresh']) expect(within(bar).getByRole('button', { name })).toBeInTheDocument();
     await userEvent.click(within(grid).getByLabelText('Filter id'));
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
     await userEvent.type(screen.getByLabelText('Value'), '3');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(4));
+    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(5));
     await userEvent.click(within(bar).getByRole('button', { name: 'Reset' }));
-    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(202));
     await settle();
     const reads = () => calls.filter((c) => c.id === 'orders' && c.o.limit === 201).length;
     const before = reads();
     await userEvent.click(within(bar).getByRole('button', { name: 'Refresh' }));
     await settle();
     expect(reads()).toBe(before + 1);
-    await userEvent.click(within(bar).getByRole('button', { name: /Columns \(5\/10\)/ }));
+    await userEvent.click(within(grid).getByRole('button', { name: 'Columns of Orders' }));
     await userEvent.click(screen.getByLabelText(/Amount/));
-    await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(6));
+    await waitFor(() => expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(6));
   });
 
   test('the content is one card inside the band, and folding the band takes the controls with it', async () => {
@@ -802,7 +802,7 @@ describe('column headers and band toolbars', () => {
 
   test('the Row band has Refresh in its header and no Back; Undo and Redo sit after the page title', async () => {
     await ordersGrid();
-    await userEvent.click(within(data()).getAllByRole('row')[1]!);
+    await userEvent.click(within(data()).getAllByRole('row')[2]!);
     await within(row()).findByText('status');
     const bar = head(row());
     expect(within(bar).queryByRole('button', { name: /Back/ })).toBeNull();
@@ -891,7 +891,7 @@ describe('the storage filter', () => {
 describe('column sort', () => {
   const sortBtn = (grid: HTMLElement, label: string) => within(grid).getByRole('button', { name: new RegExp(`^Sort by ${label},`) });
   const header = (grid: HTMLElement, label: string) => sortBtn(grid, label).closest('th')!;
-  const firstId = (grid: HTMLElement) => within(within(grid).getAllByRole('row')[1]!).getAllByRole('cell')[0]!.textContent;
+  const firstId = (grid: HTMLElement) => within(within(grid).getAllByRole('row')[2]!).getAllByRole('cell')[0]!.textContent;
   const sortOf = (calls: { id: string; o: { sort?: unknown } }[]) => calls.filter((c) => c.id === 'orders').at(-1)!.o.sort;
 
   test('a click cycles none, ascending, descending, none, with aria-sort and a label that says where it is', async () => {
@@ -937,14 +937,14 @@ describe('column sort', () => {
 
   test('the query carries the sorts in order, then the primary key; one run per change, limit back to the page size', async () => {
     const calls = await spyOnTraverse();
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await settle();
     const grid = data();
     await userEvent.click(within(grid).getByRole('button', { name: 'Load more' }));
-    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(401));
+    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(402));
     const before = calls.filter((c) => c.id === 'orders').length;
     await userEvent.click(sortBtn(grid, 'status'));
-    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(202));
     await settle();
     expect(calls.filter((c) => c.id === 'orders')).toHaveLength(before + 1);
     expect(calls.filter((c) => c.id === 'orders').at(-1)!.o.limit).toBe(201);
@@ -960,7 +960,7 @@ describe('column sort', () => {
 
   test('the filter icon and the (i) do not sort', async () => {
     const calls = await spyOnTraverse();
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await settle();
     const grid = data();
     const before = calls.filter((c) => c.id === 'orders').length;
@@ -1024,18 +1024,18 @@ describe('column sort', () => {
 
   test('hiding a sorted column drops its sort and the query stops sending it', async () => {
     const calls = await spyOnTraverse();
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     const grid = data();
     await userEvent.click(sortBtn(grid, 'status'));
     await userEvent.click(sortBtn(grid, 'Product'));
     await waitFor(() => expect(sortOf(calls)).toEqual([{ column: 'status', direction: 'asc' }, { column: 'product_id', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
-    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/10\)/ }));
+    await userEvent.click(within(grid).getByRole('button', { name: 'Columns of Orders' }));
     await userEvent.click(screen.getByLabelText('status'));
-    await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(4));
+    await waitFor(() => expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(4));
     await waitFor(() => expect(sortOf(calls)).toEqual([{ column: 'product_id', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
     // showing it again does not bring the sort back
     await userEvent.click(screen.getByLabelText('status'));
-    await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(5));
+    await waitFor(() => expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(5));
     expect(header(grid, 'status')).toHaveAttribute('aria-sort', 'none');
   });
 });
@@ -1095,7 +1095,7 @@ describe('the Data band loading bar', () => {
     expect(first).toHaveClass('dm-progress');
     expect(first.closest('.dm-bigcard')).not.toBeNull();
     await within(data()).findByRole('table');
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await waitFor(() => expect(bar()).toBeNull());
 
     await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
@@ -1127,11 +1127,11 @@ describe('the default sort', () => {
 
   test('with no sort set the rows load newest date first: Orders by created_at, then the key', async () => {
     const calls = await spyOnTraverse();
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     expect(orderSorts(calls)).toEqual([{ column: 'created_at', direction: 'desc' }, { column: 'id', direction: 'asc' }]);
     // created_at is not among the five opening columns, so no arrow is drawn; showing it draws one like a member sort
     expect(within(data()).queryByRole('button', { name: /^Sort by created_at,/ })).toBeNull();
-    await userEvent.click(within(data()).getByRole('button', { name: /Columns \(5\/10\)/ }));
+    await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
     await userEvent.click(screen.getByLabelText('created_at'));
     const head = await within(data()).findByRole('button', { name: /^Sort by created_at, currently descending/ });
     expect(head.closest('th')).toHaveAttribute('aria-sort', 'descending');
@@ -1140,7 +1140,7 @@ describe('the default sort', () => {
 
   test('a date column among the visible ones is the default, with its arrow from the start', async () => {
     const calls = await spyOnTraverse();
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await userEvent.type(screen.getByLabelText('Search data marts'), 'daily');
     fireEvent.click(await within(marts()).findByText('Daily KPIs'));
     const day = await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
@@ -1150,7 +1150,7 @@ describe('the default sort', () => {
 
   test("the member's own sort replaces the default, and Reset returns to it", async () => {
     const calls = await spyOnTraverse();
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     const grid = data();
     expect(within(grid).getByRole('button', { name: 'Reset' })).toBeDisabled();
     await userEvent.click(within(grid).getByRole('button', { name: /^Sort by status,/ }));
@@ -1161,7 +1161,7 @@ describe('the default sort', () => {
 
   test('with the default on a visible column, a click on another column replaces it, and a click on the default column goes ascending', async () => {
     const calls = await spyOnTraverse();
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await userEvent.type(screen.getByLabelText('Search data marts'), 'daily');
     fireEvent.click(await within(marts()).findByText('Daily KPIs'));
     await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
@@ -1246,11 +1246,11 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
     const grid = data();
     expect(within(grid).queryByText('internal_flag')).toBeNull();
-    await userEvent.click(within(grid).getByRole('button', { name: /^Columns \(5\/5\)/ }));
+    await userEvent.click(within(grid).getByRole('button', { name: 'Columns of Customers' }));
     expect(screen.queryByText('internal_flag')).toBeNull();
     expect(screen.queryByRole('separator')).toBeNull();
     await userEvent.keyboard('{Escape}');
-    await userEvent.click(within(grid).getAllByRole('row')[1]!);
+    await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByText('email');
     expect(within(row()).queryByText('internal_flag')).toBeNull();
     const named = calls.filter((c) => c.id === 'customers').flatMap((c) => [...(c.o.column ?? []), ...(c.o.sort ?? []).map((s) => s.column), ...(c.o.filter ?? []).map((f) => f.column)]);
@@ -1270,7 +1270,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(await screen.findByText('Preview only: this data mart has no primary key.')).toBeInTheDocument();
     await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
     expect(within(data()).queryByText(/Unknown column/)).toBeNull();
-    await userEvent.click(within(data()).getAllByRole('row')[1]!);
+    await userEvent.click(within(data()).getAllByRole('row')[2]!);
     expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
     const named = queries.filter((q) => q.id === 'stores').flatMap((q) => [...(q.o.column ?? []), ...(q.o.sort ?? []).map((s) => s.column)]);
     expect(named).not.toContain('id');
@@ -1290,31 +1290,31 @@ describe('hidden fields, clipped cells and the field (?)', () => {
 
   test('grid cells and headers are clipped to one line, with a width cap by type, and a filler cell keeps the header line full width', async () => {
     const grid = await ordersGrid();
-    const first = within(grid).getAllByRole('row')[1]!;
+    const first = within(grid).getAllByRole('row')[2]!;
     const cells = [...first.querySelectorAll('td:not([aria-hidden])')];
     expect(cells.length).toBe(5);
     for (const td of cells) expect(td.className).toMatch(/overflow-hidden.*whitespace-nowrap|whitespace-nowrap.*overflow-hidden/);
     expect(cells[0]!.querySelector('.truncate')).not.toBeNull();
-    const status = within(grid).getAllByRole('columnheader').find((h) => h.textContent?.includes('status'))!;
+    const status = within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup').find((h) => h.textContent?.includes('status'))!;
     expect(status.className).toContain('max-w-[24rem]');
-    const id = within(grid).getAllByRole('columnheader').find((h) => h.textContent === 'id')!;
+    const id = within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup').find((h) => h.textContent === 'id')!;
     expect(id.className).toContain('max-w-[12rem]');
     expect(grid.querySelector('thead th[aria-hidden]')!.className).toContain('w-full');
     // The line under the header is a shadow on every header cell (the filler too), so it survives a sticky header over a scrolling body.
     expect(grid.querySelector('thead th[aria-hidden]')!.className).toContain('dm-th');
-    for (const h of within(grid).getAllByRole('columnheader')) expect(h.className).toContain('dm-th');
+    for (const h of within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')) expect(h.className).toContain('dm-th');
   });
 
   test('the (?) after a field label is revealed by its row, in the picker and in the Row band', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByRole('button', { name: /^Columns/ }));
+    await userEvent.click(within(grid).getByRole('button', { name: 'Columns of Orders' }));
     const hint = screen.getAllByLabelText('About Customer').find((el) => el.closest('label'))!;
     expect(hint.closest('label')).toHaveClass('dm-reveal-host');
     expect(hint.closest('.dm-hint-slot')).not.toBeNull();
     // right after the label, in the same inline box
     expect(hint.closest('.dm-fieldlabel')).not.toBeNull();
     await userEvent.keyboard('{Escape}');
-    await userEvent.click(within(grid).getAllByRole('row')[1]!);
+    await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByText('status');
     expect(within(row()).getByLabelText('About Customer').closest('dt')).toHaveClass('dm-reveal-host');
   });
