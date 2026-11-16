@@ -9,19 +9,27 @@ import type { ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
 import type { Schema } from '../../model/types';
 import type { DestinationDto } from '../../sdk/types';
+import { buildAiPrompt } from '../../api/ai-prompt';
 import { useServices, useStore } from '../../state/store';
+import { ChatGptIcon } from '../chatgpt-icon';
+import { ClaudeIcon } from '../claude-icon';
 import { GoogleSheetsIcon } from '../google-sheets-icon';
 import { Tooltip } from '../Tooltip';
+import { copyText } from './clipboard';
 
 type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; filters: ColumnFilter[]; sorts: SortKey[] };
 type Result = { kind: 'ok' | 'timeout' | 'error'; text: string; url?: string };
+
+type Assistant = 'Claude' | 'ChatGPT';
+/** The prompt an assistant item copied, and whether it reached the clipboard. */
+type Copied = { assistant: Assistant; prompt: string; ok: boolean };
 
 const STAGE_LABEL: Record<Stage, string> = { sheet: 'Creating the spreadsheet…', report: 'Saving the report…', run: 'Running the report…' };
 const MAYBE_CREATED = 'The report may have been created; check OWOX before trying again.';
 const UNRECOGNISED = 'This report targets an unrecognised spreadsheet.';
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** "Export" in the Data band header: a button when one click is enough, else a menu. Hidden without a Google Sheets destination. */
+/** "Export" in the Data band header: a menu of the Google Sheets destinations, then an AI group that copies a prompt for Claude or ChatGPT. */
 export function ExportMenu(p: Props) {
   const { ctx, exporter } = useServices();
   const [{ modelVersion }] = useStore();
@@ -31,6 +39,11 @@ export function ExportMenu(p: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [dialog, setDialog] = useState<{ destination: DestinationDto; error?: string; seq: number } | null>(null);
+  const [copied, setCopied] = useState<Copied | null>(null);
+  const [promptOpen, setPromptOpen] = useState(false);
+  // A copied prompt belongs to the mart it was built from (adjust state during render).
+  const [copiedFor, setCopiedFor] = useState(p.martId);
+  if (copiedFor !== p.martId) { setCopiedFor(p.martId); setCopied(null); setPromptOpen(false); }
   const seq = useRef(0);
   // Bumped when the mart changes or the menu goes away: an export finishing later is no longer in front of the member.
   const gen = useRef(0);
@@ -38,7 +51,6 @@ export function ExportMenu(p: Props) {
   const [openDest, setOpenDest] = useState<string | null>(null);
   // Which way the open flyout goes, and whether the keyboard (not the pointer) opened it, so its first row takes focus.
   const [flyout, setFlyout] = useState<{ side: 'right' | 'left'; focus: boolean; tick: number }>({ side: 'right', focus: false, tick: 0 });
-  const [menuOpen, setMenuOpen] = useState(false);
   // False until the live check of the remembered reports has ended since the menu opened: until then their titles and targets may be stale.
   const [verified, setVerified] = useState(false);
   const checks = useRef(0);
@@ -81,8 +93,6 @@ export function ExportMenu(p: Props) {
     if (flyout.focus) sub.querySelector<HTMLElement>('[data-lvl="2"]:not([disabled])')?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openDest, flyout.tick]);
-
-  if (destinations.length === 0) return null;
 
   const closeMenu = () => { if (menu.current) menu.current.open = false; };
   const forDestination = (d: DestinationDto) => (reports ?? []).filter((r) => r.destinationId === d.id);
@@ -146,19 +156,28 @@ export function ExportMenu(p: Props) {
     const source: ExportSource = wanted.kind === 'new' && left ? { kind: 'existing', target: left } : wanted;
     const { payload, notes } = buildReportPayload(p.schema, p.visible, p.filters, p.sorts);
     setResult(null);
+    setCopied(null);
     if (source.kind === 'update' && !sheetUrl(source.report)) { setResult({ kind: 'error', text: UNRECOGNISED }); return; }
     setDialog((cur) => (cur ? { ...cur, error: undefined } : cur));
     void exporter.run({ martId: p.martId, destination, title, source, payload, notes, signal: ctx.signal }).catch(() => undefined);
     follow(exporter.inFlight(p.martId)!, { fromDialog, destination, openWhenDone: true });
   }
 
-  // An open menu stays a menu when the check drops its last report, so it does not vanish under the pointer.
-  const single = destinations.length === 1 && reports !== null && forDestination(destinations[0]!).length === 0 && !menuOpen;
-  const button = 'inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50';
+  async function copyPrompt(assistant: Assistant) {
+    closeMenu();
+    const prompt = buildAiPrompt({ projectId: ctx.projectId, martId: p.martId, martTitle: p.martTitle, schema: p.schema, visible: p.visible, filters: p.filters, sorts: p.sorts });
+    const home = gen.current;
+    const ok = await copyText(prompt);
+    if (gen.current !== home) return;
+    setResult(null);
+    setCopied({ assistant, prompt, ok });
+    // Neither way of copying worked (the sandbox may block both): the prompt is shown to be copied by hand.
+    if (!ok) setPromptOpen(true);
+  }
+
   const label = busy ? <><Loader2 className="size-4 animate-spin" />Exporting…</> : <><ArchiveRestore className="size-4" />Export</>;
 
   async function openMenu(open: boolean) {
-    setMenuOpen(open);
     if (!open) { checks.current += 1; setVerified(false); return; }
     setOpenDest(null);
     // Reports OWOX no longer has are dropped before they are offered.
@@ -171,11 +190,9 @@ export function ExportMenu(p: Props) {
     <>
       {busy && <span role="status" className="text-xs text-muted-foreground">{busy}</span>}
       {!busy && result && <ExportResult result={result} onDismiss={() => setResult(null)} />}
-      {single ? (
-        <button type="button" disabled={!!busy} aria-label="Export to Google Sheets" onClick={() => start(destinations[0]!, { kind: 'new' }, exportTitle(p.martTitle))} className={button}>{label}</button>
-      ) : (
-        <details ref={menu} className="dm-filter dm-export" name="dm-filter" onToggle={(e) => openMenu(e.currentTarget.open)} {...(busy ? { 'aria-disabled': true } : {})}>
-          <summary aria-label="Export to Google Sheets" onClick={(e) => { if (busy) e.preventDefault(); }} onKeyDown={onSummaryKey}>{label}<ChevronDown size={14} /></summary>
+      {!busy && !result && copied && <CopiedNote copied={copied} onShow={() => setPromptOpen(true)} onDismiss={() => { setCopied(null); setPromptOpen(false); }} />}
+      <details ref={menu} className="dm-filter dm-export" name="dm-filter" onToggle={(e) => openMenu(e.currentTarget.open)} {...(busy ? { 'aria-disabled': true } : {})}>
+          <summary onClick={(e) => { if (busy) e.preventDefault(); }} onKeyDown={onSummaryKey}>{label}<ChevronDown size={14} /></summary>
           <div className="dm-filter-menu dm-cascade" role="menu" data-level="1" onKeyDown={onMenuKey}>
             {destinations.map((d) => (
               <div key={d.id} className="dm-cascade-row" onMouseEnter={() => openFlyout(d.id, false)}>
@@ -188,9 +205,18 @@ export function ExportMenu(p: Props) {
                 {openDest === d.id && flyoutOf(d, forDestination(d))}
               </div>
             ))}
+            <div role="group" aria-label="AI" className="dm-export-ai">
+              <div className="dm-export-heading" aria-hidden>AI</div>
+              {([['Claude', ClaudeIcon], ['ChatGPT', ChatGptIcon]] as const).map(([name, Icon]) => (
+                <button key={name} type="button" role="menuitem" data-lvl="1" data-ai={name} className="dm-export-item" onMouseEnter={() => setOpenDest(null)} onClick={() => void copyPrompt(name)}>
+                  <Icon size={16} />
+                  <span className="dm-filter-label">{name}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </details>
-      )}
+      {promptOpen && copied && <PromptDialog copied={copied} onClose={() => setPromptOpen(false)} />}
       {dialog && <NewReportDialog key={dialog.seq} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
     </>
   );
@@ -226,7 +252,7 @@ export function ExportMenu(p: Props) {
     else if (e.key === 'ArrowUp') move(at - 1);
     else if (e.key === 'Home') move(0);
     else if (e.key === 'End') move(items.length - 1);
-    else if (lvl === '1' && (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ')) {
+    else if (lvl === '1' && target.dataset.ai === undefined && (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
       const row = target.closest('.dm-cascade-row')!;
       const id = destinations[[...row.parentElement!.children].indexOf(row)]?.id;
@@ -262,6 +288,45 @@ export function ExportMenu(p: Props) {
       </div>
     );
   }
+}
+
+/** "Prompt copied. Paste it into Claude", with a way to read it. When the clipboard was out of reach the prompt is in the dialog instead. */
+function CopiedNote({ copied, onShow, onDismiss }: { copied: Copied; onShow: () => void; onDismiss: () => void }) {
+  return (
+    <span role="status" className="inline-flex max-w-96 items-center gap-1 text-xs text-muted-foreground">
+      {copied.ok ? <Check className="size-3.5 shrink-0" /> : <AlertTriangle className="size-3.5 shrink-0" />}
+      <span className="truncate">{copied.ok ? `Prompt copied. Paste it into ${copied.assistant}` : `Could not copy. Copy the prompt, then paste it into ${copied.assistant}`}</span>
+      <button type="button" onClick={onShow} className="shrink-0 underline">Show prompt</button>
+      <button type="button" aria-label="Dismiss" onClick={onDismiss} className="shrink-0 px-1">×</button>
+    </span>
+  );
+}
+
+function PromptDialog({ copied, onClose }: { copied: Copied; onClose: () => void }) {
+  const [again, setAgain] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const area = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [onClose]);
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label="Prompt" onClick={(e) => e.stopPropagation()} className="flex w-[34rem] max-w-[92vw] flex-col gap-3 rounded-lg border bg-background p-4 text-sm shadow-lg">
+        <h2 className="text-base font-semibold">Prompt for {copied.assistant}</h2>
+        <p className="text-xs text-muted-foreground">Paste it into {copied.assistant} with the OWOX Data Marts connector turned on. Copying writes nothing to OWOX.</p>
+        <textarea ref={area} readOnly aria-label="Prompt text" rows={8} value={copied.prompt} onFocus={(e) => e.currentTarget.select()} className="dm-input w-full resize-none rounded-md border bg-background p-2 font-mono text-xs" />
+        <div className="flex items-center justify-end gap-2">
+          {again === 'failed' && <span role="alert" className="mr-auto text-xs text-destructive">Could not copy. Select the text and copy it by hand.</span>}
+          <button type="button" onClick={onClose} className="h-8 rounded-md border px-3 hover:bg-accent">Close</button>
+          <button type="button" onClick={async () => { const ok = await copyText(copied.prompt); setAgain(ok ? 'copied' : 'failed'); if (!ok) { area.current?.focus(); area.current?.select(); } }} className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-3 text-primary-foreground">
+            {again === 'copied' ? <><Check className="size-4" />Copied</> : 'Copy'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 }
 
 function ExportResult({ result, onDismiss }: { result: Result; onDismiss: () => void }) {

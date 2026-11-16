@@ -1284,7 +1284,9 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     const id = within(grid).getAllByRole('columnheader').find((h) => h.textContent === 'id')!;
     expect(id.className).toContain('max-w-[12rem]');
     expect(grid.querySelector('thead th[aria-hidden]')!.className).toContain('w-full');
-    expect(grid.querySelector('thead th[aria-hidden]')!.className).toContain('border-b');
+    // The line under the header is a shadow on every header cell (the filler too), so it survives a sticky header over a scrolling body.
+    expect(grid.querySelector('thead th[aria-hidden]')!.className).toContain('dm-th');
+    for (const h of within(grid).getAllByRole('columnheader')) expect(h.className).toContain('dm-th');
   });
 
   test('the (?) after a field label is revealed by its row, in the picker and in the Row band', async () => {
@@ -1310,6 +1312,6 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     const body = (await screen.findByRole('group', { name: 'Filter day' })).closest('[data-popover-body]')!;
     expect(body.parentElement!.className).toContain('max-h-[min(20rem,var(--radix-popover-content-available-height))]');
     expect(body.className).toContain('overflow-y-auto');
-    expect(body.querySelector('.dm-popover-title')).toHaveTextContent('day');
+    expect(body.querySelector('.dm-popover-title')).toHaveTextContent(/^Filter$/);
   });
 });

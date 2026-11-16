@@ -30,22 +30,32 @@ function setup(sheets: 0 | 1 | 2, remembered: ExportedReport[] = []) {
   return { ctx, calls, open, view, seeded };
 }
 const data = () => document.getElementById('band-data')!;
+/** Export, the one destination, New report…, and Export in the dialog. */
+const exportNew = async () => {
+  await userEvent.click(await within(data()).findByText('Export'));
+  await userEvent.click(await within(data()).findByRole('menuitem', { name: /Team Sheets/ }));
+  await userEvent.click(await within(data()).findByRole('menuitem', { name: /New report/ }));
+  const dialog = await screen.findByRole('dialog', { name: 'New report' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+  return dialog;
+};
 const rowsLoaded = () => waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
 const REPORT: ExportedReport = { reportId: 'mock-report-1', destinationId: 'd-sheets-team', spreadsheetId: 'mock-sheet-1', sheetId: 0, title: 'Orders weekly' };
 
-test('with no Google Sheets destination there is no Export control', async () => {
+test('with no Google Sheets destination Export is still a menu, with the AI group and no destination row', async () => {
   const t = setup(0);
   t.view();
   await rowsLoaded();
-  expect(within(data()).queryByText('Export')).toBeNull();
-  expect(within(data()).queryByLabelText('Export to Google Sheets')).toBeNull();
+  await userEvent.click(await within(data()).findByText('Export'));
+  expect(within(data()).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Claude', 'ChatGPT']);
+  expect(within(data()).getByRole('group', { name: 'AI' })).toBeInTheDocument();
 });
 
-test('one destination and no report: one click makes the spreadsheet, the report, runs it and opens the sheet', async () => {
+test('one destination and no report: the button is still a menu; New report makes the spreadsheet, the report, runs it and opens the sheet', async () => {
   const t = setup(1);
   t.view();
   await rowsLoaded();
-  await userEvent.click(await within(data()).findByRole('button', { name: 'Export to Google Sheets' }));
+  await exportNew();
   await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 5000 });
   const writes = t.calls.filter((c) => /^(POST|PUT) \/api\/(reports|data-destinations)/.test(c));
   expect(writes).toEqual(['POST /api/data-destinations/d-sheets-team/google-sheets/documents', 'POST /api/reports', 'POST /api/reports/mock-report-1/run']);
@@ -129,9 +139,8 @@ test('when the spreadsheet cannot be created the New report dialog opens with th
   (t.ctx.owox as { postJson: Ctx['owox']['postJson'] }).postJson = ((path: string, body: unknown) => (path.endsWith('/google-sheets/documents') ? Promise.reject(new Error('No Drive folder is configured')) : real(path, body))) as Ctx['owox']['postJson'];
   t.view();
   await rowsLoaded();
-  await userEvent.click(await within(data()).findByRole('button', { name: 'Export to Google Sheets' }));
-  const dialog = await screen.findByRole('dialog', { name: 'New report' });
-  expect(within(dialog).getByRole('alert')).toHaveTextContent('Could not create a spreadsheet: No Drive folder is configured');
+  const dialog = await exportNew();
+  await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('Could not create a spreadsheet: No Drive folder is configured'));
   expect(within(dialog).getByLabelText('Existing spreadsheet')).toBeInTheDocument();
   expect(t.calls.some((c) => c === 'POST /api/reports')).toBe(false);
 });
@@ -174,25 +183,25 @@ test('a remembered report with an unrecognised target is not updated and nothing
 const martCard = (title: string) => within(document.getElementById('band-marts')!).getByText(title).closest('article')!;
 const toMart = async (title: string) => { fireEvent.click(martCard(title)); await within(data()).findByRole('heading', { name: title }); };
 /** Export, then the one destination: the first level lists destinations and its reports open in a flyout. */
-const openMenu = async (destination: RegExp | string = /./) => {
+const openMenu = async (destination: RegExp | string = /Team Sheets/) => {
   await userEvent.click(await within(data()).findByText('Export'));
   await userEvent.click(await within(data()).findByRole('menuitem', { name: destination }));
 };
 
-const exportControl = () => within(data()).findByLabelText('Export to Google Sheets');
 
 test('leaving the mart and coming back keeps the export busy: no second export, and the outcome opens the sheet', async () => {
   const t = setup(1);
   t.view();
   await rowsLoaded();
-  await userEvent.click(await exportControl());
+  await exportNew();
   await within(data()).findByText('Exporting…');
   await toMart('Customers');
   await toMart('Orders');
-  await exportControl();
-  expect(within(data()).getByText('Exporting…')).toBeInTheDocument();
+  await within(data()).findByText('Exporting…');
   expect(within(data()).getByText(/…$/, { selector: '[role="status"]' })).toBeInTheDocument();
-  await userEvent.click(await exportControl());
+  // A second click on the busy button opens nothing.
+  await userEvent.click(within(data()).getByText('Exporting…'));
+  expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
   await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 6000 });
   expect(await within(data()).findByText(/Exported to "Orders · Data Explorer · /)).toBeInTheDocument();
   await waitFor(() => expect(within(data()).queryByText('Exporting…')).toBeNull());
@@ -203,7 +212,7 @@ test('an export that finishes while the member is on another mart does not open 
   const t = setup(1);
   t.view();
   await rowsLoaded();
-  await userEvent.click(await exportControl());
+  await exportNew();
   await toMart('Customers');
   await waitFor(() => expect(t.calls).toContain('POST /api/reports/mock-report-1/run'), { timeout: 5000 });
   await new Promise((r) => setTimeout(r, 3500));
@@ -294,8 +303,7 @@ test('the spreadsheet a failed report step left is reused even after the menu wa
   await toMart('Customers');
   await toMart('Orders');
   await rowsLoaded();
-  // The remembered report is not in the mock OWOX, so the live check leaves the one-click button.
-  await userEvent.click(await within(data()).findByRole('button', { name: 'Export to Google Sheets' }));
+  await exportNew();
   await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 6000 });
   expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1);
 }, 15000);
@@ -308,7 +316,7 @@ test('Update is disabled from the first render of an opened menu, before any tog
   await t.ctx.owox.postJson('/api/reports', { title: 'Orders weekly', dataMartId: 'orders' });
   await within(data()).findByText('Export');
   // The menu is still closed (no toggle ran); its flyout, opened on the destination row, is disabled from its first render.
-  fireEvent.mouseEnter(within(data()).getByRole('menuitem', { hidden: true }).closest('.dm-cascade-row')!);
+  fireEvent.mouseEnter(within(data()).getByRole('menuitem', { name: /Team Sheets/, hidden: true }).closest('.dm-cascade-row')!);
   expect(within(data()).getByRole('menuitem', { name: /Update/, hidden: true })).toBeDisabled();
 });
 
@@ -348,11 +356,11 @@ describe('the cascading menu', () => {
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     const rows = await within(data()).findAllByRole('menuitem');
-    expect(rows.map((r) => r.textContent)).toEqual(['Team Sheets', 'Finance Sheets']);
-    for (const r of rows) expect(r.querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull();
+    expect(rows.map((r) => r.textContent)).toEqual(['Team Sheets', 'Finance Sheets', 'Claude', 'ChatGPT']);
+    for (const r of rows.slice(0, 2)) expect(r.querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull();
     expect(within(data()).queryByText('Google Sheets')).toBeNull();
     // the Export button itself does not
-    expect(within(data()).getByLabelText('Export to Google Sheets').querySelector('svg[viewBox="0 0 48 48"]')).toBeNull();
+    expect((await within(data()).findByText('Export')).closest('summary')!.querySelector('svg[viewBox="0 0 48 48"]')).toBeNull();
   });
 
   test('hovering a destination opens its flyout beside it, with New report', async () => {
@@ -452,5 +460,82 @@ describe('the cascading menu', () => {
     team.focus();
     await userEvent.keyboard('{ArrowRight}');
     await waitFor(() => expect(within(sub).getByRole('menuitem', { name: /New report/ })).toHaveFocus());
+  });
+});
+
+describe('the AI group', () => {
+  const setClipboard = (writeText: unknown) => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: writeText ? { writeText } : undefined });
+  afterEach(() => { setClipboard(undefined); Object.defineProperty(document, 'execCommand', { configurable: true, value: undefined }); });
+
+  test('Claude and ChatGPT follow the Google Sheets destinations, each under its own icon', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    const items = await within(data()).findAllByRole('menuitem');
+    expect(items.map((i) => i.textContent)).toEqual(['Team Sheets', 'Claude', 'ChatGPT']);
+    expect(items[1]!.querySelector('svg path[fill="#D97757"]')).not.toBeNull();
+    expect(items[2]!.querySelector('svg')).not.toBeNull();
+  });
+
+  test('choosing Claude copies the prompt, says so, and "Show prompt" opens it read-only with a Copy button', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    setClipboard(writeText);
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
+    expect(await within(data()).findByText('Prompt copied. Paste it into Claude')).toBeInTheDocument();
+    const prompt = writeText.mock.calls[0]![0] as string;
+    expect(prompt).toMatch(/^Using the OWOX Data Marts connector, in the OWOX project mock-project \(project id mock-project\):\nQuery the data mart "Orders" \(id orders\)\.\nFields: .+\.\nFilters: none\.\nSort: created_at descending\.\nShow the result as a table, and say if rows were truncated\.$/);
+    expect(t.calls.filter((c) => /^(POST|PUT) \/api\/(reports|data-destinations)/.test(c))).toEqual([]);
+    await userEvent.click(within(data()).getByRole('button', { name: 'Show prompt' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Prompt' });
+    const area = within(dialog).getByRole('textbox') as HTMLTextAreaElement;
+    expect(area).toHaveAttribute('readonly');
+    expect(area.value).toBe(prompt);
+    await userEvent.click(area);
+    expect(area.selectionStart).toBe(0);
+    expect(area.selectionEnd).toBe(prompt.length);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Copy' }));
+    expect(writeText).toHaveBeenCalledTimes(2);
+    expect(await within(dialog).findByText('Copied')).toBeInTheDocument();
+  });
+
+  test('ChatGPT names itself in the status', async () => {
+    setClipboard(vi.fn().mockResolvedValue(undefined));
+    const t = setup(0);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'ChatGPT' }));
+    expect(await within(data()).findByText('Prompt copied. Paste it into ChatGPT')).toBeInTheDocument();
+  });
+
+  test('when the clipboard is out of reach both ways, the dialog opens directly', async () => {
+    setClipboard(vi.fn().mockRejectedValue(new Error('blocked')));
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: vi.fn(() => false) });
+    const t = setup(0);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Prompt' });
+    expect((within(dialog).getByRole('textbox') as HTMLTextAreaElement).value).toMatch(/^Using the OWOX Data Marts connector/);
+    expect(within(data()).queryByText(/Prompt copied/)).toBeNull();
+  });
+
+  test('the prompt follows the grid: the columns shown, the filters and the sorts', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    setClipboard(writeText);
+    const t = setup(0);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(within(data()).getByRole('button', { name: 'Sort by status, currently not sorted' }));
+    await userEvent.click(await within(data()).findByText('Export'));
+    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(writeText.mock.calls[0]![0]).toMatch(/Sort: status ascending\./);
   });
 });
