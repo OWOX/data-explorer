@@ -4,6 +4,8 @@ import { Tooltip, OverflowTip } from '../Tooltip';
 
 export function formatValue(v: unknown): string {
   if (v === null || v === undefined) return '';
+  // A one-to-many joined field arrives as an array of its values: one cell, the values side by side.
+  if (Array.isArray(v)) return v.map((x) => (x === null || x === undefined ? '' : typeof x === 'object' ? JSON.stringify(x) : String(x))).join(', ');
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
 }

@@ -3,7 +3,6 @@ import { useState } from 'react';
 import type { JoinedSource } from '../../api/blendable';
 import type { Field, Model, Schema } from '../../model/types';
 import { Popover } from '../Popover';
-import { Tooltip } from '../Tooltip';
 import { PickedIcon } from '../bands/picked';
 import { FieldLabel } from './FieldLabel';
 
@@ -56,11 +55,6 @@ export function ColumnPicker({ schema, sources, joinedState, visible, model, onC
                 <ChevronRight className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`} aria-hidden />
                 <PickedIcon icon={mart?.icon} fallback={Box} size={14} />
                 <span className="min-w-0 flex-1 truncate">{s.label}</span>
-                {s.mayRepeatRows && (
-                  <Tooltip content="Rows of this data mart can repeat when fields of this joined data mart are added: one row here can match several there.">
-                    <span className="shrink-0 text-xs font-normal text-muted-foreground">May repeat rows</span>
-                  </Tooltip>
-                )}
                 <span className="dm-badge tabular-nums" aria-label={`${ticked} of ${s.fields.length} ticked`}>{ticked}/{s.fields.length}</span>
               </button>
               {expanded && <div role="group" aria-label={s.label} className="flex flex-col gap-1 pl-5">{s.fields.map(row)}</div>}

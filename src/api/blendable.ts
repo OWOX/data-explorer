@@ -12,8 +12,6 @@ export type JoinedSource = {
   /** What the picker and the column headers call it: the join's display prefix, with the alias path added when two joins reach the same mart. */
   label: string;
   depth: number;
-  /** Rows of the main mart can repeat once this source is joined (`multiplies`, or `unknown`: the backend could not prove they do not). */
-  mayRepeatRows: boolean;
   fields: Field[];
 };
 
@@ -33,7 +31,7 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
   offered.forEach((s) => labelUses.set(nameOf(s), (labelUses.get(nameOf(s)) ?? 0) + 1));
   for (const s of offered) {
     const base = nameOf(s);
-    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, mayRepeatRows: s.mainGrainMultiplication !== 'none', fields: [] });
+    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, fields: [] });
   }
   for (const b of dto.blendedFields ?? []) {
     const source = byPath.get(b.aliasPath);

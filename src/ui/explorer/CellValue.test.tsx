@@ -47,3 +47,9 @@ test('a cell is never a button, whatever the field is', () => {
   expect(screen.queryByRole('button')).toBeNull();
   expect(screen.getByText('7')).not.toHaveClass('text-primary');
 });
+
+test('an array value (a one-to-many joined field) shows its values joined with a comma, and a string shows as it comes', () => {
+  view(<><CellValue row={{ tags: ['red', 'blue', 3] }} field="tags" /><CellValue row={{ city: 'Lisbon' }} field="city" /></>);
+  expect(screen.getByText('red, blue, 3')).toBeInTheDocument();
+  expect(screen.getByText('Lisbon')).toBeInTheDocument();
+});
