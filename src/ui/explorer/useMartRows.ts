@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { readRows } from '../../api/rows';
 import { toTraverseFilters, type ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
-import { isGrouped, type Aggregation } from '../../model/aggregation';
 import type { Schema } from '../../model/types';
 import type { Row, TraverseOptions } from '../../sdk/types';
 import { useServices } from '../../state/store';
@@ -11,22 +10,7 @@ export function defaultColumns(schema: Schema): string[] {
   return schema.filter((f) => !f.isCalculated).slice(0, 5).map((f) => f.name);
 }
 
-/**
- * Grouped (a function or a bucket on a visible column): exactly the visible columns, in grid order, each function its own output;
- * every column without a rule is a group key. Primary keys are not added and no key tie-breaker sorts are, since a key would split the groups.
- */
-function buildGroupedQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, sorts: SortKey[], agg: Aggregation): TraverseOptions {
-  const known = new Set(schema.map((f) => f.name));
-  const column = visible.filter((n) => known.has(n));
-  const filter = toTraverseFilters(schema, filters);
-  const aggregations = agg.aggregations.filter((r) => column.includes(r.column));
-  const dateTrunc = agg.dateTrunc.filter((r) => column.includes(r.column));
-  const sort = sorts.filter((s) => column.includes(s.field)).map((s) => ({ column: s.field, direction: s.direction }));
-  return { column, ...(filter.length ? { filter } : {}), ...(aggregations.length ? { aggregation: aggregations } : {}), ...(dateTrunc.length ? { dateTrunc } : {}), ...(sort.length ? { sort } : {}), limit: limit + 1 };
-}
-
-export function buildRowQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, sorts: SortKey[] = [], agg?: Aggregation): TraverseOptions {
-  if (isGrouped(agg)) return buildGroupedQuery(schema, visible, filters, limit, sorts, agg!);
+export function buildRowQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, sorts: SortKey[] = []): TraverseOptions {
   const need = new Set(visible);
   schema.filter((f) => f.isPrimaryKey).forEach((f) => need.add(f.name));
   const column = schema.map((f) => f.name).filter((n) => need.has(n));

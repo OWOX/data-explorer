@@ -1,4 +1,3 @@
-import { knownFunctions } from '../model/aggregation';
 import { categorizeFieldType } from '../model/field-category';
 import type { Field } from '../model/types';
 import type { BlendableSchemaDto, Ctx } from '../sdk/types';
@@ -45,8 +44,6 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
       category: isArrayType(b.sourceFieldType) ? 'other' : categorizeFieldType(b.type),
       description: b.description?.trim() ? b.description : null,
       isPrimaryKey: false,
-      ...(b.postJoinAggregations !== undefined ? { postJoinAggregations: knownFunctions(b.postJoinAggregations) } : {}),
-      ...(b.postJoinAggregations === undefined && Array.isArray(b.allowedAggregations) ? { allowedAggregations: knownFunctions(b.allowedAggregations) } : {}),
       joined: { martId: source.martId, label: source.label, aliasPath: source.aliasPath, originalName: b.originalFieldName },
     });
   }

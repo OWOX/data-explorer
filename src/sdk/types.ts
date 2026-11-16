@@ -21,9 +21,7 @@ export type TraverseOptions = {
   column?: string[];
   filter?: TraverseFilter[];
   sort?: { column: string; direction: 'asc' | 'desc' }[];
-  /** Group the rows: a column with a function becomes `"<column> | <TOKEN>"`, every other listed column is a group key. Needs `column`. */
-  aggregation?: { column: string; function: 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'COUNT' | 'COUNT_DISTINCT' | 'STRING_AGG' | 'ANY_VALUE' | 'P25' | 'P50' | 'P75' | 'P95' }[];
-  dateTrunc?: { column: string; unit: 'DAY' | 'WEEK' | 'MONTH' | 'QUARTER' | 'YEAR'; timeZone?: string }[];
+  aggregation?: { column: string; function: 'COUNT' }[];
   uniqueCount?: string[];
   limit?: number;
 };
@@ -73,7 +71,6 @@ export type SchemaFieldDto = {
   status?: string;
   mode?: string;
   calculated?: unknown;
-  allowedAggregations?: string[];
 };
 export type DataMartDetailDto = { id: string; schema?: { fields?: SchemaFieldDto[] } | null };
 /** The part of GET /api/data-marts/:id/blendable-schema the plugin reads: the fields of joined data marts and which joins may be offered. */
@@ -89,9 +86,6 @@ export type BlendedFieldDto = {
   description?: string | null;
   isHidden?: boolean;
   isCalculated?: boolean;
-  allowedAggregations?: string[];
-  /** The functions the join's analyst allows on this field after the join; [] means none. */
-  postJoinAggregations?: string[];
   aliasPath: string;
   outputPrefix?: string | null;
   transitiveDepth?: number;
