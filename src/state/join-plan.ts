@@ -3,6 +3,7 @@
 import type { JoinedSource } from '../api/blendable';
 import type { Picks } from '../api/grid-columns';
 import { sortsOnColumns } from '../model/sort';
+import { orderColumns } from './column-order';
 import type { Field } from '../model/types';
 import type { GridState, Selection } from './store';
 
@@ -115,7 +116,8 @@ export function planClick(env: PlanEnv, id: string): Plan {
       if (!isJoinable(nextSources, r) || have.has(r)) continue;
       columns = [...columns, ...fieldsFor(nextSources, r, nextPicks[r]).filter((n) => !columns.includes(n))];
     }
-    const changed = columns.length !== nextGrid.columns.length;
+    columns = orderColumns(columns, nextSources);
+    const changed = columns.length !== nextGrid.columns.length || columns.some((c, i) => c !== nextGrid.columns[i]);
     return {
       selection: { sourceKey: env.sourceKeyFor(next), martId: next, record: null },
       grids: changed ? { [next]: { ...nextGrid, columns } } : {},
@@ -129,7 +131,7 @@ export function planClick(env: PlanEnv, id: string): Plan {
   }
 
   if (isJoinable(sources, id)) {
-    const columns = [...grid.columns, ...fieldsFor(sources, id, env.picksOf(main)[id]).filter((n) => !grid.columns.includes(n))];
+    const columns = orderColumns([...grid.columns, ...fieldsFor(sources, id, env.picksOf(main)[id]).filter((n) => !grid.columns.includes(n))], sources);
     return { selection: env.selection, grids: { [main]: { ...grid, columns } }, saves: [{ martId: main, columns }] };
   }
 

@@ -167,7 +167,8 @@ describe('the four bands', () => {
     expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
     // 3. a record of the filtered Orders
     await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
-    await userEvent.click(within(data()).getAllByRole('row')[1]!);
+    // Orders may show a joined mart here, so its group row sits above the titles: take the first row with cells.
+    await userEvent.click(within(data()).getAllByRole('row').find((r) => r.querySelector('td'))!);
     await within(row()).findByRole('heading', { name: /^Orders · \d+$/ });
     const back = () => userEvent.click(screen.getByRole('button', { name: 'Undo' }));
 

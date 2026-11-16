@@ -30,14 +30,17 @@ export function ColumnPicker({ schema, sources, joinedState, visible, model, onC
     const own = new Set(schema.map((f) => f.name));
     onChange([...schema.map((f) => f.name).filter((n) => next.includes(n)), ...next.filter((n) => !own.has(n) && order.includes(n))]);
   };
+  const nativeOn = schema.filter((f) => set.has(f.name)).length;
+  const joinedOn = visible.length - nativeOn;
+  const ownNames = new Set(schema.map((f) => f.name));
+  // The first data mart in the grid is always the main one, so its last column stays while a joined mart is shown.
+  const locked = (name: string) => set.has(name) && (visible.length === 1 || (joinedOn > 0 && nativeOn === 1 && ownNames.has(name)));
   const row = (f: Field) => (
     <label key={f.name} className="dm-reveal-host flex items-center gap-2 text-sm">
-      <input type="checkbox" checked={set.has(f.name)} disabled={set.has(f.name) && visible.length === 1} onChange={() => toggle(f.name)} />
+      <input type="checkbox" checked={set.has(f.name)} disabled={locked(f.name)} onChange={() => toggle(f.name)} />
       <FieldLabel field={f} />
     </label>
   );
-  const nativeOn = schema.filter((f) => set.has(f.name)).length;
-  const joinedOn = visible.length - nativeOn;
   return (
     <Popover align="end" onOpenChange={(o) => { if (o) onOpen(); }} trigger={
       <button type="button" className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><Columns3 className="size-4" />Columns ({nativeOn}/{schema.length}{joinedOn > 0 ? ` +${joinedOn}` : ''})</button>

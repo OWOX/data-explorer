@@ -85,8 +85,11 @@ export function computeVisible({ model, selection, search, contextIds, storageId
     return { ids: arrange(withJoined(ids), selectedId), focusId };
   }
 
-  // 2. A mart is selected: it and every mart joined to it, in either direction.
-  if (selectedId) return { ids: arrange(withJoined([selectedId, ...neighbours(selectedId, model.edges)].filter(inStorage)), selectedId), focusId };
+  // 2. A mart is selected: it and every mart joined to it, in either direction; with joined marts selected, every mart connected to any of them too.
+  if (selectedId) {
+    const selected = [selectedId, ...joined.filter((id) => model.marts.has(id) && inStorage(id))];
+    return { ids: arrange(withJoined([...new Set([...selected, ...selected.flatMap((id) => neighbours(id, model.edges))])].filter(inStorage)), selectedId), focusId };
+  }
 
   // 3. Only a source is selected: every mart it feeds.
   if (selection.sourceKey) {

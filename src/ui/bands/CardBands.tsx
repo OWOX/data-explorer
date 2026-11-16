@@ -12,6 +12,7 @@ import { MultiSelect } from './MultiSelect';
 import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
 import { SearchBox } from './SearchBox';
 import { PointerTip } from '../Tooltip';
+import { CardClickContext } from './CardClick';
 import { MartCard, SourceCard, martElementId, sourceElementId, type CountState } from './cards';
 import { useCardTransitions } from './transitions';
 import { useCardClick } from './useCardClick';
@@ -199,7 +200,7 @@ export function CardBands({
           );
         })}
       </Band>
-      {children}
+      <CardClickContext.Provider value={click}>{children}</CardClickContext.Provider>
       {wireTip && <PointerTip text={wireTip.text} x={wireTip.x} y={wireTip.y} />}
     </div>
   );

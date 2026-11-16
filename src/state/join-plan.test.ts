@@ -105,3 +105,16 @@ test('with no main, the clicked mart opens with none of its joined columns', () 
   const plan = planClick(env({ orders: g(['id', 'stores__city']) }, null), 'orders');
   expect(plan.grids.orders!.columns).toEqual(['id']);
 });
+
+test('an add groups the columns by mart: the main\'s own first, each joined mart together', () => {
+  const plan = planClick(env({ orders: g(['id', 'customers__id', 'status']) }, 'orders'), 'products');
+  expect(plan.grids.orders!.columns).toEqual(['id', 'status', 'customers__id', 'products__sku']);
+  expect(plan.saves[0]!.columns).toEqual(['id', 'status', 'customers__id', 'products__sku']);
+});
+
+test('a promoted mart\'s grid is grouped too', () => {
+  const grids = { orders: g(['id', 'customers__city']), customers: g(['stores__city', 'id']) };
+  const plan = planClick(env(grids, 'orders'), 'orders');
+  expect(plan.grids.customers!.columns).toEqual(['id', 'stores__city']);
+  expect(plan.saves).toEqual([{ martId: 'customers', columns: ['id', 'stores__city'] }]);
+});
