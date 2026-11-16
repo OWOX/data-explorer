@@ -1,40 +1,40 @@
 # Data Explorer
 
-**Open the rows behind any data mart in a few clicks, and follow a record to the records joined to it.**
+**Open the rows behind any data mart in a few clicks, with fields from the data marts it joins to.**
 
 A plugin for [OWOX Data Marts](https://docs.owox.com/). One page, four bands: **Data Sources, Data Marts, Data, Row**.
 
-![Data Explorer: Data Sources, Data Marts, Data and Row bands](docs/data-explorer.svg)
+![Data Explorer: Data Sources, Data Marts, the Orders rows with joined Customers, Products and Stores columns, and one order open](docs/data-explorer.svg)
 
 ## The challenge
 
-A question about one order, one customer or one campaign ends in a row. The rows that explain it are in the data marts joined to that one. OWOX already knows the marts, their fields and how they join, but it shows no rows next to that model. To see the data you build a report or write SQL in the warehouse console. To follow `customer_id` into Customers you copy the id and start again in another tab. A quick look turns into a dozen steps, and you lose the path you took.
+A question about one order, one customer or one campaign ends in a row. The fields that explain that row often live in other data marts: the customer's city, the product's name, the store. OWOX knows the data marts, their fields and how they join, but it shows no rows next to that model. To see them you build a report or write SQL in the warehouse console. To add the customer's city to an order you copy the id and look it up in another tab. A quick look turns into a dozen steps.
 
 ## What this gives you
 
-🔎 **Find the data mart.** Search by title in the Data Marts band, or click context badges (a mart needs any one of the selected contexts). Select a connector in Data Sources to see only the marts it feeds.
+🔎 **Find the data mart.** Search titles in the Data Marts band, or click context badges to narrow it. Select a connector in Data Sources to see only the data marts it feeds, or pick storages in the Storage filter.
 
-🗺️ **See what it joins to.** The Data Marts band shows the selected mart and every mart joined to it, with lines for the joins and for the source that feeds each mart. Each card has its row count, data quality, freshness and contexts. A Storage filter narrows the cards when the project has several storages.
+🗺️ **See what it joins to.** The Data Marts band shows the selected data mart and every data mart joined to it, with lines for the joins and the sources. Each card shows its record count, data quality, freshness and contexts.
 
-📋 **Rows without SQL.** The Data band is the mart's rows in a grid. Pick the columns, filter each column by its type, and click titles to sort, several columns at a time. With no sort of yours, rows come newest first by the mart's first date field. Date columns filter from one-click presets (Today, Last 30 days, This month and more). Dates and timestamps show in your own locale and time zone; the stored value is in the tooltip. Fields show their alias only, with a (?) holding the description (it shows when you hover the row). Long values are clipped to one line, and the full value is in the tooltip.
+📋 **Rows without SQL.** The Data band shows the rows. Pick columns, filter each by its type (dates from presets such as Last 30 days or This month), and click titles to sort by several columns. Until you sort, the newest rows come first. Dates and times show in your locale and time zone.
 
-🧩 **Joined columns.** The Columns picker also lists the data marts joined to this one, each as a folded group (with its icon, and how many of its fields are ticked). Tick a field and it becomes a grid column headed `<joined data mart> · <field>`. It filters and sorts like any column, is saved with your columns, and is exported in the report. The Row band shows the mart's own fields only. Your column choice and which bands you folded are saved per member.
+🧩 **Fields from joined data marts.** In Columns, each data mart this one joins to is a folded group. Tick a field and it becomes a column, such as `Customers · city`. It filters, sorts and exports like any other column, and OWOX reads it in the same query.
 
-🔗 **Follow a record.** A row opens in the Row band (its fields as stored, none of them a link), with a "Referenced by" list of the marts that point at it: click one and it opens filtered to this record. Reference values always show as stored, never replaced by a name from another mart. Fields hidden for reporting are never read, filtered, sorted, exported or offered (OWOX rejects them). Undo and Redo, right after the page title (or Alt+← and Alt+→, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z), step back and forward along the path you took.
+🔗 **Open a record.** Click a row to see all its fields in the Row band, with "Referenced by": the data marts that point at it, each opening filtered to this record. Undo and Redo next to the page title step back and forward along your path.
 
-📤 **Take it to a sheet.** Export sends the grid as it is, with its columns, filters and sorting, to Google Sheets as an OWOX report, runs it and opens the sheet. Run it again later with Update.
+📤 **Take it to a sheet.** Export sends the grid as it is (columns, filters, sorting) to Google Sheets as an OWOX report, runs it and opens the sheet. Update reruns it later with the grid's new state.
 
 ## What it costs
 
-Every grid, record and row count is a `traverseData` query in your warehouse, and the warehouse bills it. A card asks for its row count only once it scrolls into view, and counts are cached per member. Reopening the plugin reloads the model; the Retry on a storage that failed to load recounts them.
+Every grid, record and record count is a `traverseData` query in your warehouse, and the warehouse bills it. A card asks for its count only when it scrolls into view, and counts are cached per member. Folded bands run no queries.
 
 ## What it writes
 
-Nothing until you click Export. Export creates a spreadsheet, creates or updates your report and runs it. Rows are never written. Per member, the plugin keeps row counts, your column choices, which bands you folded and the reports you exported.
+Nothing until you click Export. Export creates a spreadsheet, creates or updates your report and runs it. Rows are never written. Per member, the plugin keeps record counts, your columns, which bands you folded and the reports you exported.
 
 ## Install
 
-Once the plugin is published, open **Plugins** in OWOX Data Marts and add **Data Explorer**.
+In OWOX Data Marts, open **Plugins** and add **Data Explorer**.
 
 ---
 
