@@ -173,7 +173,9 @@ test('a date column filter opens on presets; a preset applies at once and names 
   await expect(page.getByRole('group', { name: 'Date presets' }).getByRole('button')).toHaveCount(14);
   await page.getByRole('button', { name: 'Last 30 days' }).click();
   await expect(page.getByRole('group', { name: 'Date presets' })).toHaveCount(0);
-  await expect(data.getByLabel('Filter created_at')).toContainText('Last 30 days');
+  await expect(data.getByLabel('Filter created_at')).toHaveText('');
+  await data.getByLabel('Filter created_at').hover();
+  await expect(page.getByRole('tooltip').first()).toContainText('Filter: Last 30 days');
   await data.getByLabel('Filter created_at').click();
   await expect(page.getByRole('button', { name: 'Last 30 days' })).toHaveAttribute('aria-pressed', 'true');
 });
@@ -196,7 +198,7 @@ test('sort a column descending, then add a second sort', async ({ page }) => {
   await expect(firstCell()).toHaveText('1');
   await data.getByRole('button', { name: /^Sort by id,/ }).click();
   await data.getByRole('button', { name: /^Sort by id,/ }).click();
-  await expect(data.getByRole('columnheader').first()).toHaveAttribute('aria-sort', 'descending');
+  await expect(data.locator('th[aria-sort]').first()).toHaveAttribute('aria-sort', 'descending');
   await expect(firstCell()).toHaveText('450');
   await data.getByRole('button', { name: /^Sort by status,/ }).click();
   await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
@@ -349,6 +351,8 @@ test('a filter popover is at most 20rem tall and keeps its title while the list 
 
 test('a joined column: tick Customers · email in the picker, and it filters', async ({ page }) => {
   const data = await ordersGrid(page);
+  await martCard(page, 'Customers').click();
+  await expect(data.getByRole('button', { name: 'Columns of Customers' })).toBeVisible();
   await tick(page, 'email', 'Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
   await expect(data.getByRole('row').nth(3)).toContainText('@example.com');
@@ -370,11 +374,13 @@ test('the first load draws every band header before the bodies, with a bar that 
 test('a table wider than the page scrolls inside its card and never widens the bands', async ({ page }) => {
   const data = await ordersGrid(page);
   for (const label of ['created_at', 'Acquisition Session ID', 'Net Revenue', 'Amount']) await tick(page, label);
+  await martCard(page, 'Customers').click();
+  await martCard(page, 'Products').click();
+  await expect(data.getByRole('button', { name: 'Columns of Products' })).toBeVisible();
   await tick(page, 'email', 'Customers');
-  await tick(page, 'Name', 'Products');
   await tick(page, 'is_gift');
-  await tick(page, 'city', 'Stores');
-  await expect(data.getByRole('columnheader', { name: /Products · Name/ })).toBeVisible();
+  await martCard(page, 'Stores').click();
+  await expect(data.getByRole('columnheader', { name: /Products · SKU/ })).toBeVisible();
   const scroller = data.locator('.dm-bigcard div.overflow-auto').first();
   expect(await scroller.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
   const [bm, bd] = [await band(page, 'marts').boundingBox(), await data.boundingBox()];

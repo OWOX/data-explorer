@@ -1,3 +1,4 @@
+import { knownFunctions } from '../model/aggregation';
 import { SCHEMA_CONCURRENCY } from '../config';
 import { categorizeFieldType } from '../model/field-category';
 import type { Schema } from '../model/types';
@@ -38,6 +39,7 @@ export function createSchemaLoader(ctx: Ctx): SchemaLoader {
             description: f.description ?? null,
             isPrimaryKey: f.isPrimaryKey === true,
             ...(f.calculated !== undefined ? { isCalculated: true } : {}),
+            ...(Array.isArray(f.allowedAggregations) ? { allowedAggregations: knownFunctions(f.allowedAggregations) } : {}),
           }));
         done.set(id, schema);
         listeners.forEach((l) => l());
