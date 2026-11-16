@@ -48,12 +48,12 @@ const data = () => document.getElementById('band-data')!;
 const headers = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden')).map((h) => h.textContent);
 const openPicker = async () => { await waitFor(() => expect(within(data()).getByRole('button', { name: /^Columns/ })).toBeInTheDocument()); await userEvent.click(within(data()).getByRole('button', { name: /^Columns/ })); };
 
-test('the joined data marts are read only when the Columns picker first opens, once per mart', async () => {
+test('the joined data marts are read when a mart becomes main, once per mart, and the picker opening asks nothing more', async () => {
   const t = setup(null);
   t.view();
   await waitFor(() => expect(headers()).toHaveLength(5));
+  await waitFor(() => expect(t.reads).toEqual([BLEND]));
   await new Promise((r) => setTimeout(r, 100));
-  expect(t.reads).toEqual([]);
   await openPicker();
   await screen.findByRole('button', { name: /^Customers/ });
   await userEvent.keyboard('{Escape}');

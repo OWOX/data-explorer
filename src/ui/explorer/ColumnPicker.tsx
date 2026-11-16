@@ -26,7 +26,9 @@ export function ColumnPicker({ schema, sources, joinedState, visible, model, onC
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (name: string) => {
     const next = set.has(name) ? visible.filter((c) => c !== name) : [...visible, name];
-    onChange(order.filter((n) => next.includes(n)));
+    // The mart's own fields keep the schema's order; joined ones keep the order they were added in, a new one last.
+    const own = new Set(schema.map((f) => f.name));
+    onChange([...schema.map((f) => f.name).filter((n) => next.includes(n)), ...next.filter((n) => !own.has(n) && order.includes(n))]);
   };
   const row = (f: Field) => (
     <label key={f.name} className="dm-reveal-host flex items-center gap-2 text-sm">
