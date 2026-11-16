@@ -27,6 +27,7 @@ export function createSchemaLoader(ctx: Ctx): SchemaLoader {
       .then((d) => {
         const schema: Schema = (d.schema?.fields ?? [])
           // A calculated field has no warehouse column, so its status is not meaningful: keep it.
+          // A field hidden for reporting is not offered anywhere: the backend rejects it in a column, filter, sort or report.
           .filter((f) => !f.isHiddenForReporting && (f.calculated !== undefined || f.status !== 'DISCONNECTED'))
           .map((f) => ({
             name: f.name,

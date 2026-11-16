@@ -73,6 +73,35 @@ export type SchemaFieldDto = {
   calculated?: unknown;
 };
 export type DataMartDetailDto = { id: string; schema?: { fields?: SchemaFieldDto[] } | null };
+/** The part of GET /api/data-marts/:id/blendable-schema the plugin reads: the fields of joined data marts and which joins may be offered. */
+export type BlendedFieldDto = {
+  name: string;
+  sourceDataMartId: string;
+  sourceDataMartTitle?: string;
+  originalFieldName: string;
+  type: string;
+  /** The raw source type: an array type here makes the field array-valued whatever `type` says. */
+  sourceFieldType?: string;
+  alias?: string | null;
+  description?: string | null;
+  isHidden?: boolean;
+  isCalculated?: boolean;
+  aliasPath: string;
+  outputPrefix?: string | null;
+  transitiveDepth?: number;
+};
+export type AvailableSourceDto = {
+  aliasPath: string;
+  title: string;
+  defaultAlias?: string | null;
+  depth: number;
+  dataMartId: string;
+  relationshipId?: string;
+  isIncluded: boolean;
+  isAccessibleForReporting: boolean;
+  mainGrainMultiplication?: 'none' | 'multiplies' | 'unknown';
+};
+export type BlendableSchemaDto = { blendedFields?: BlendedFieldDto[]; availableSources?: AvailableSourceDto[]; hiddenFieldNames?: string[] };
 export type DqSummaryDto = {
   state: string;
   totalChecks?: number;

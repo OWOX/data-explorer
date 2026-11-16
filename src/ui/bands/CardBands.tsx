@@ -41,6 +41,7 @@ export function CardBands({
   onRetryCount,
   onRequestCount,
   onOpenApp,
+  loading = null,
   children,
 }: {
   model: Model;
@@ -56,6 +57,8 @@ export function CardBands({
   onRetryCount: (id: string) => void;
   onRequestCount: (id: string) => void;
   onOpenApp: (id: string) => void;
+  /** While the page is still reading: the fraction done, drawn as a bar in each band instead of its cards. */
+  loading?: number | null;
   children: ReactNode;
 }) {
   const [{ selection, search, contextIds }, dispatch] = useStore();
@@ -159,14 +162,14 @@ export function CardBands({
       onFocus={(e) => setHovered(nodeIdOf(e.target))}
       onBlur={(e) => { if (!canvas.current?.contains(e.relatedTarget as Node | null)) setHovered(null); }}
     >
-      <Band id="band-sources" icon={<Plug size={18} />} title="Data Sources" total={model.sources.length} hint="Connectors that feed data marts. Select one to see the marts it feeds." folded={foldedSources} onFold={onFoldSources}>
+      <Band id="band-sources" icon={<Plug size={18} />} title="Data Sources" total={model.sources.length} hint="Connectors that feed data marts. Select one to see the marts it feeds." folded={foldedSources} onFold={onFoldSources} loading={loading}>
         {model.sources.length === 0 && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No connector-based data marts.</p>}
         {sourceCards.items.map((source) => {
           const id = sourceElementId(source.key);
           return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => dispatch({ type: 'selectSource', key: source.key })} />;
         })}
       </Band>
-      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search and the filters match." afterHint={contextBadges} toolbar={toolbar} folded={foldedMarts} onFold={onFoldMarts}>
+      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search and the filters match." afterHint={contextBadges} toolbar={toolbar} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
         {visible.ids.length === 0 && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
         {martCards.items.map((mart) => {
           const id = mart.id;

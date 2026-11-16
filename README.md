@@ -16,9 +16,11 @@ A question about one order, one customer or one campaign ends in a row. The rows
 
 🗺️ **See what it joins to.** The Data Marts band shows the selected mart and every mart joined to it, with lines for the joins and for the source that feeds each mart. Each card has its row count, data quality, freshness and contexts. A Storage filter narrows the cards when the project has several storages.
 
-📋 **Rows without SQL.** The Data band is the mart's rows in a grid. Pick the columns, filter each column by its type, and click titles to sort, several columns at a time. With no sort of yours, rows come newest first by the mart's first date field. Date columns filter from one-click presets (Today, Last 30 days, This month and more). Dates and timestamps show in your own locale and time zone; the stored value is in the tooltip. Fields show their alias only, with a (?) holding the description. Your column choice and which bands you folded are saved per member.
+📋 **Rows without SQL.** The Data band is the mart's rows in a grid. Pick the columns, filter each column by its type, and click titles to sort, several columns at a time. With no sort of yours, rows come newest first by the mart's first date field. Date columns filter from one-click presets (Today, Last 30 days, This month and more). Dates and timestamps show in your own locale and time zone; the stored value is in the tooltip. Fields show their alias only, with a (?) holding the description (it shows when you hover the row). Long values are clipped to one line, and the full value is in the tooltip.
 
-🔗 **Follow a record.** A relationship column shows the related record's title instead of a bare id. Click it and that record opens in the Row band, with its own links and a "Referenced by" list of the marts that point at it. Undo and Redo, right after the page title (or Alt+← and Alt+→, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z), step back and forward along the path you took.
+🧩 **Joined columns.** The Columns picker also lists the data marts joined to this one, each as a folded group (with its icon, and how many of its fields are ticked). Tick a field and it becomes a grid column headed `<joined data mart> · <field>`. It filters and sorts like any column, is saved with your columns, and is exported in the report. The Row band shows the mart's own fields only. Your column choice and which bands you folded are saved per member.
+
+🔗 **Follow a record.** A row opens in the Row band (its fields as stored, none of them a link), with a "Referenced by" list of the marts that point at it: click one and it opens filtered to this record. Reference values always show as stored, never replaced by a name from another mart. Fields hidden for reporting are never read, filtered, sorted, exported or offered (OWOX rejects them). Undo and Redo, right after the page title (or Alt+← and Alt+→, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z), step back and forward along the path you took.
 
 📤 **Take it to a sheet.** Export sends the grid as it is, with its columns, filters and sorting, to Google Sheets as an OWOX report, runs it and opens the sheet. Run it again later with Update.
 
@@ -83,6 +85,6 @@ npm run e2e     # Playwright smoke tests of the bands
 2. Row counts are warehouse queries cached per member. Reopening the plugin reloads the model; the Retry on a storage that failed to load recounts them.
 3. The columns you pick in a data mart's grid are saved per member and per data mart; a saved column that is no longer available is dropped. Sorts and filters are not saved.
 4. "Load more" re-reads from the start, because the API has no offset.
-5. A relationship title is looked up only for single-field relationships.
+5. The joined fields of a data mart are read when you first open its Columns picker (or when a saved column names one). If that read fails, only the mart's own fields are listed.
 6. The OWOX link always points to app.owox.com.
 7. Nested RECORD fields are not expanded: their leaf columns are not offered. Repeated fields only filter on blank.

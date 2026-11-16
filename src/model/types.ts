@@ -8,6 +8,8 @@ export interface Field {
   description: string | null;
   isPrimaryKey: boolean;
   isCalculated?: boolean;
+  /** Set on a field of a joined data mart: `name` is the blended name a query takes, `alias` the field's label. */
+  joined?: { martId: string; /** What the joined mart is called in a column header and in the picker. */ label: string; aliasPath: string };
 }
 
 export interface Context { id: string; name: string; icon: string | null }
@@ -51,4 +53,4 @@ export interface DqSummary {
   lastRunAt?: string | null;
 }
 
-export type Schema = Field[]; // reporting-visible fields only, in schema order
+export type Schema = Field[]; // reporting-visible fields only (hidden ones are dropped), in schema order

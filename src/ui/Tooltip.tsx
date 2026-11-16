@@ -2,7 +2,7 @@
 // card, line or band can paint over it, and it keeps 8px from the viewport edge.
 import * as T from '@radix-ui/react-tooltip';
 import { CircleHelp, Info } from 'lucide-react';
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 /** One provider at the app root. */
@@ -17,6 +17,35 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
       <T.Portal>
         <T.Content side="top" sideOffset={6} collisionPadding={8} className="dm-hint-body">
           {content}
+        </T.Content>
+      </T.Portal>
+    </T.Root>
+  );
+}
+
+/** True when the element's content is wider than the element: its text ends in an ellipsis. */
+export const isTruncated = (el: Element | null | undefined): boolean => !!el && el.scrollWidth > el.clientWidth;
+
+/**
+ * The shared bubble for clipped text: it opens only when the trigger (or `measure`'s element inside it) is truncated,
+ * or when `extra` has something to add. A truncated `text` comes first.
+ */
+export function OverflowTip({ text, extra, measure, children }: { text: string; extra?: string; measure?: (trigger: HTMLElement) => Element | null; children: ReactElement }) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [lines, setLines] = useState<string[]>([]);
+  const [open, setOpen] = useState(false);
+  return (
+    <T.Root open={open} onOpenChange={(next) => {
+      if (!next) { setOpen(false); return; }
+      const el = trigger.current;
+      const shown = [isTruncated(el && (measure ? measure(el) : el)) ? text : null, extra].filter((l): l is string => !!l);
+      setLines(shown);
+      setOpen(shown.length > 0);
+    }}>
+      <T.Trigger asChild ref={trigger}>{children}</T.Trigger>
+      <T.Portal>
+        <T.Content side="top" sideOffset={6} collisionPadding={8} className="dm-hint-body">
+          <TipLines lines={lines} />
         </T.Content>
       </T.Portal>
     </T.Root>

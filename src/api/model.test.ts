@@ -124,3 +124,18 @@ test('a failed storage stays in model.storages beside failedStorages', async () 
   const model = await loadModel(twoStorageCtx(['s2']));
   expect(model.storages.map((s) => s.id)).toEqual(['s1', 's2']);
 });
+
+test('loadModel reports each step it finishes, the total growing by two per storage once they are known', async () => {
+  const canvas = { items: [{ id: 'a', title: 'A', description: null, fieldCount: 0, status: 'PUBLISHED' }], total: 1, nextOffset: null };
+  const ctx = stubCtx({
+    storages: { list: async () => [{ id: 's1', title: 'One', type: 'X' }, { id: 's2', title: 'Two', type: 'X' }] },
+    models: { getEdges: async () => [] },
+    getJson: async (path: string) => ((path === '/api/contexts' || path === '/api/connectors') ? [] : canvas),
+  });
+  const seen: { done: number; total: number }[] = [];
+  await loadModel(ctx, (p) => seen.push(p));
+  const last = seen.at(-1)!;
+  expect(last).toEqual({ done: 8, total: 8 }); // storages, marts, contexts, connectors, then a canvas read and an edge read per storage
+  expect(seen.every((p, i) => i === 0 || p.done === seen[i - 1]!.done + 1)).toBe(true);
+  expect(seen.every((p) => p.done <= p.total)).toBe(true);
+});

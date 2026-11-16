@@ -71,8 +71,10 @@ Counts run for visible accessible cards through the existing pool (4 at a time) 
 ## 3. Data band
 
 1. Title: the selected mart's title and its icon. Count badge: the loaded row count (`200+ records`, `1 record`). The Data Marts band uses the lucide `Box` icon; its cards say `11.1K records`.
-2. Body: today's `MartTab` grid unchanged — column picker (first 5 fields by default), per-type filter popovers, Reset, Refresh, Load more, related titles in link columns, preview-only banner for marts without a primary key, skeleton preloader, error with Retry.
-3. The grid's state (columns, filters, sorts, limit) is kept per mart for the session, so going back to a mart restores it.
+2. Body: the mart's grid: column picker (first 5 fields by default, fields hidden for reporting never offered), per-type filter popovers, Reset, Refresh, Load more, preview-only banner for marts without a primary key, error with Retry. Values show as stored: no title lookup, no link. A cell is one clipped line (`overflow: hidden; text-overflow: ellipsis; white-space: nowrap`, at most 24rem for text, 12rem for numbers and booleans, 16rem for dates), with the full value in the standard tooltip when it is cut; the line under the header always spans the card. A filter popover is at most 20rem tall and never taller than the room left, scrolls inside, and keeps its title row at the top.
+3. **First load.** The page shell draws at once: every band header, and in place of each body a progress bar (`.dm-loadbar`, `role="progressbar"`, `aria-valuenow` 0 to 100) that fills one step per finished read (storages, data marts, contexts, connectors, then a canvas read and an edge read per storage, then the saved band folds), turns pale green when full, and is replaced by the bodies after a short hold. Nothing in the Data and Row bands reads until then.
+4. **Joined columns.** `GET /api/data-marts/:id/blendable-schema` is read once per mart per session, when the Columns picker first opens or when saved columns, filters or sorts name a blended field; a failure shows only the own fields and a muted note, and a saved joined column is then left out of that visit without being erased. The picker lists the own fields, then one group per joined source with `isIncluded && isAccessibleForReporting` (hidden and calculated fields skipped), folded by default, labelled with the joined mart's icon and its display prefix (the alias path is added when two sources reach the same mart), with `ticked/total` on its header; shallow sources first, then by title. A field hidden for reporting is offered nowhere (a mart whose key is hidden is preview only, and a Referenced by link on a hidden join field is not listed). A source whose join can repeat the main mart's rows (`multiplies` or `unknown`) is marked "May repeat rows". A ticked joined field is a column named by its blended name (`customers__email`), headed `<joined mart> · <field>` with the joined mart's icon; it filters (by its `type`), sorts, is saved in `grid-columns`, goes into `column`, `filter` and `sort` of the rows query, and into `columnConfig`, `filterConfig`, `sortConfig` and `autoAggregationOptOut` of an export. A saved blended name the schema no longer offers is dropped and the cleaned list saved. The Row band shows the mart's own fields only.
+5. The grid's state (columns, filters, sorts, limit) is kept per mart for the session, so going back to a mart restores it.
 
    1. **Default sort.** With no sorts set (none saved in the session and none set by the member), rows load newest first by the first DATE, DATETIME or TIMESTAMP field, preferring one among the visible columns, else the first in schema order. It shows with the arrow like a member sort when its column is visible, Export sends it like any sort, and Reset returns to it. A member's first click starts from the default only if its column is on screen.
    2. **Loading.** While rows load (first load, Refresh, filter or sort change, Load more) an indeterminate bar as wide as the card sits on the card's top border. The skeleton shows for the very first load only.
@@ -96,11 +98,9 @@ The plugin's only writes: creating a spreadsheet, creating or updating the membe
 ## 4. Row band
 
 1. Title: `<mart title> · <primary key>`.
-2. Body: today's `RecordTab` (label and value list, related titles as links, "Referenced by", Refresh, "Record not found", error with Retry).
+2. Body: the label and value list (fields hidden for reporting are not read or shown; values as stored, none a link; the (?) after a label shows on hover or focus of its row), "Referenced by" (each entry names the referencing mart, with no "via" text, and opens it filtered to this record), Refresh, "Record not found", error with Retry.
 3. With no row selected, the band shows "Select a row."
-4. **Following a link.** Clicking a related title, in the Data grid or in the Row band:
-   1. When the click target is a record: the related mart becomes the selected mart (Data Marts redraws, Data shows its rows) and Row shows that record.
-   2. When the target is a filtered mart (composite key or non-PK join): the related mart becomes selected and Data opens with that filter applied. Row clears.
+4. **Following a link.** Clicking an entry of "Referenced by": the referencing mart becomes selected and Data opens with the join filters applied. Row clears.
 5. **Undo and Redo.** Two icon buttons right after the page title. Undo (also `Alt+←`, `Ctrl/Cmd+Z`) returns to the previous `{ sourceKey, martId, filters, record }`; selections naming a mart or source a refresh removed are skipped. Redo (also `Alt+→`, `Ctrl/Cmd+Shift+Z`) re-applies the selection undone last: Undo pushes the current selection onto a forward stack, and any new navigation (select a source or mart, follow a link, open a record) empties it. Both stacks hold the last 20 steps, and each button is disabled when its stack is empty. The shortcuts do not fire while focus is in an input, textarea or select. Grids edited per mart are kept as they were.
 
 ## Tooltips
@@ -140,14 +140,16 @@ Each band shows its own error where its content would be, with Retry. A connecto
 
 Fixtures gain `definitionType` and `connectorSourceName` per mart (about half the marts on 3 connectors: Facebook Ads, Shopify, Google Analytics 4), and `GET /api/connectors` returns those three with no logo, so the fallback icon shows.
 
+`GET /api/data-marts/:id/blendable-schema` is built from the fixture edges: a mart's outgoing links and theirs, two hops deep (Orders reaches Customers, Products and Stores, then Categories and, twice, Countries), all `isIncluded` and accessible with `mainGrainMultiplication: 'none'`, a field's blended name being the alias path with dots as `__`, then the field (`customers__email`). `traverseData` resolves a blended name in `column`, `filter` and `sort` by following the links; a row whose key is null joins to null. Reference fields carry aliases (Customer, Product, Store, Order, Category, Country), so no header shows an `_id`; products have names and SKUs, stores a city, customers an email and a city, and Orders an Acquisition Session ID long enough to be clipped.
+
 ## Testing
 
-1. Unit (Vitest, at most 4 workers):
+1. Unit (Vitest, at most 4 workers; also the blendable-schema read and its sources, the mock's blended columns, and the load bar's steps):
    1. Source grouping: per connector, skipping non-connector marts, counts and order, connectors fallback.
    2. Visible marts for each rule above, including the selected-mart-plus-connected case with an inaccessible neighbour and the source-clears-on-mart-select rule.
    3. Selection reducer: select source, select mart, follow link to a record, follow link to a filtered mart, back, history limit 20.
    4. Refresh failure keeps counts and data quality.
-2. Smoke (Playwright, mock mode): first load selects the focus mart and shows its rows; clicking a source narrows Data Marts; clicking a row fills Row; clicking a related title moves the selection; Undo restores it and Redo re-applies it; a filter and Reset work; the column picker changes columns.
+2. Smoke (Playwright, mock mode): first load selects the focus mart and shows its rows; clicking a source narrows Data Marts; clicking a row fills Row; clicking a "Referenced by" entry moves the selection; Undo restores it and Redo re-applies it; a filter and Reset work; the column picker changes columns.
 
 ## Delivery
 

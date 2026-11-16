@@ -11,7 +11,7 @@ const detail = (id: string) => ({
   ] },
 });
 
-test('get() maps reporting-visible fields and caches by id', async () => {
+test('get() maps the fields reporting may use (none hidden for reporting), and caches by id', async () => {
   const getJson = vi.fn(async (path: string) => detail(path.split('/').pop()!));
   const loader = createSchemaLoader(stubCtx({ getJson }));
   const a = await loader.get('a');

@@ -41,6 +41,19 @@ const COUNTRIES: [string, string][] = [
   ['GB', 'Britain'], ['FR', 'France'], ['ES', 'Spain'], ['IT', 'Italy'],
 ];
 const STATUSES = ['new', 'paid', 'shipped', 'delivered', 'cancelled'];
+const CITIES: Record<string, string[]> = {
+  UA: ['Kyiv', 'Lviv', 'Odesa'], PL: ['Warsaw', 'Krakow', 'Gdansk'], DE: ['Berlin', 'Hamburg', 'Munich'], US: ['Austin', 'Denver', 'Boston'],
+  GB: ['London', 'Leeds', 'Bristol'], FR: ['Paris', 'Lyon', 'Nantes'], ES: ['Madrid', 'Valencia', 'Seville'], IT: ['Milan', 'Turin', 'Naples'],
+};
+const PRODUCT_NAMES = [
+  'Merino Wool Sweater', 'Canvas Weekender Bag', 'Ceramic Pour-Over Set', 'Trail Running Shoes', 'Oak Standing Desk', 'Insulated Water Bottle', 'Linen Duvet Cover', 'Noise-Cancelling Headphones',
+  'Cast Iron Skillet', 'Waxed Cotton Jacket', 'Bamboo Cutting Board', 'Leather Card Holder', 'Cold Brew Coffee Kit', 'Yoga Mat Pro', 'Desk Lamp Arc', 'Stainless Steel Kettle',
+  'Wireless Charging Pad', 'Hiking Backpack 40L', 'Beeswax Candle Trio', 'Knitted Beanie', 'Mechanical Keyboard', 'Travel Pillow Memory', 'Sketchbook A5 Set', 'Copper Mug Pair',
+  'Polarized Sunglasses', 'Walnut Phone Stand', 'Organic Cotton Tee', 'French Press 1L', 'Slim Wallet RFID', 'Wool Throw Blanket', 'Fountain Pen Classic', 'Herb Garden Starter',
+  'Rain Shell Jacket', 'Ceramic Plant Pot', 'Bluetooth Speaker Mini', 'Cashmere Scarf', 'Chef Knife 20cm', 'Foam Roller Firm', 'Glass Storage Set', 'Pocket Notebook 3-Pack',
+];
+const STORE_NAMES = ['Flagship', 'Mitte', 'Old Town', 'Riverside', 'Central Station', 'Harbour', 'Market Hall', 'Airport Terminal', 'University', 'Park Avenue'];
+const SESSION_SOURCES = ['google-organic-search', 'facebook-paid-social', 'newsletter-autumn-campaign', 'direct-none', 'referral-partner-blog'];
 
 const f = (name: string, type: string, extra: Partial<SchemaFieldDto> = {}): SchemaFieldDto => ({ name, type, ...extra });
 const pk = (name = 'id', type = 'INT64') => f(name, type, { isPrimaryKey: true });
@@ -66,7 +79,7 @@ const specs: Spec[] = [
   {
     id: 'orders', connectorSourceName: 'Shopify', icon: 'orders', count: 450,
     description: 'Customer orders with status, amount and creation time.',
-    fields: [pk(), f('customer_id', 'INT64', { alias: 'Customer', description: 'Who placed the order.' }), f('product_id', 'INT64'), f('store_id', 'INT64'), f('status', 'STRING'), f('amount', 'NUMERIC', { alias: 'Amount' }), f('created_at', 'TIMESTAMP'), f('is_gift', 'BOOL')],
+    fields: [pk(), f('customer_id', 'INT64', { alias: 'Customer', description: 'Who placed the order.' }), f('product_id', 'INT64', { alias: 'Product' }), f('store_id', 'INT64', { alias: 'Store' }), f('status', 'STRING'), f('amount', 'NUMERIC', { alias: 'Amount' }), f('created_at', 'TIMESTAMP'), f('is_gift', 'BOOL'), f('acquisition_session_id', 'STRING', { alias: 'Acquisition Session ID', description: 'The web session that brought the buyer.' }), f('net_revenue', 'NUMERIC', { alias: 'Net Revenue' })],
     row: (i, r) => ({
       id: i,
       customer_id: i === 7 || i === 150 || i === 300 ? null : pick(r, 60),
@@ -77,53 +90,59 @@ const specs: Spec[] = [
       // Newest first by id: the grid opens newest date first, so the first rows are the lowest ids.
       created_at: iso(NOW - Math.floor((i - 1 + r() * 0.9) * (90 * DAY / 450))),
       is_gift: r() < 0.15,
+      acquisition_session_id: `ga4.${1_700_000_000 + i * 1_913}.${1_690_000_000 + i * 7_717}/${SESSION_SOURCES[i % SESSION_SOURCES.length]}/landing-collection-autumn-sale-2026`,
+      net_revenue: Math.round(r() * 45_000) / 100,
     }),
   },
   {
     id: 'customers', connectorSourceName: 'Shopify', icon: 'customers', count: 60,
     description: 'People who placed orders, with their home country.',
-    fields: [pk(), f('name', 'STRING', { description: 'Full name as given at checkout.' }), f('email', 'STRING'), f('country_code', 'STRING'), f('internal_flag', 'STRING', { isHiddenForReporting: true })],
-    row: (i) => ({
-      id: i,
-      name: `${FIRST[i % FIRST.length]} ${LAST[Math.floor(i / FIRST.length) % LAST.length]}`,
-      email: `customer${i}@example.com`,
-      country_code: COUNTRIES[i % COUNTRIES.length]![0],
-    }),
+    fields: [pk(), f('name', 'STRING', { description: 'Full name as given at checkout.' }), f('email', 'STRING'), f('city', 'STRING'), f('country_code', 'STRING', { alias: 'Country' }), f('internal_flag', 'STRING', { isHiddenForReporting: true })],
+    row: (i) => {
+      const first = FIRST[i % FIRST.length]!;
+      const last = LAST[Math.floor(i / FIRST.length) % LAST.length]!;
+      const country = COUNTRIES[i % COUNTRIES.length]![0]!;
+      return { id: i, name: `${first} ${last}`, email: `${first}.${last}${i}@example.com`.toLowerCase(), city: CITIES[country]![i % 3], country_code: country, internal_flag: i % 7 === 0 ? 'review' : null };
+    },
   },
   {
     id: 'products', icon: 'products', count: 40,
     description: 'Catalog of products on sale.',
-    fields: [pk(), f('title', 'STRING'), f('category_id', 'INT64'), f('price', 'NUMERIC')],
-    row: (i, r) => ({ id: i, title: `Product ${i}`, category_id: pick(r, 30), price: Math.round(r() * 20_000) / 100 }),
+    fields: [pk(), f('sku', 'STRING', { alias: 'SKU' }), f('title', 'STRING', { alias: 'Name' }), f('category_id', 'INT64', { alias: 'Category' }), f('price', 'NUMERIC')],
+    row: (i, r) => ({ id: i, sku: `SKU-${String(1000 + i * 17).padStart(5, '0')}`, title: PRODUCT_NAMES[(i - 1) % PRODUCT_NAMES.length], category_id: pick(r, 30), price: Math.round(r() * 20_000) / 100 }),
   },
   {
     id: 'stores', icon: undefined, count: 30,
     description: null,
-    fields: [pk(), f('name', 'STRING'), f('country_code', 'STRING')],
-    row: (i) => ({ id: i, name: `Store #${i}`, country_code: COUNTRIES[i % COUNTRIES.length]![0] }),
+    fields: [pk(), f('name', 'STRING'), f('city', 'STRING'), f('country_code', 'STRING', { alias: 'Country' })],
+    row: (i) => {
+      const country = COUNTRIES[i % COUNTRIES.length]![0]!;
+      const city = CITIES[country]![i % 3]!;
+      return { id: i, name: `${city} ${STORE_NAMES[i % STORE_NAMES.length]}`, city, country_code: country };
+    },
   },
   {
     id: 'order_items', count: 30,
     description: 'Line items belonging to orders.',
-    fields: [pk(), f('order_id', 'INT64'), f('product_id', 'INT64'), f('quantity', 'INT64'), f('name', 'STRING')],
+    fields: [pk(), f('order_id', 'INT64', { alias: 'Order' }), f('product_id', 'INT64', { alias: 'Product' }), f('quantity', 'INT64'), f('name', 'STRING')],
     row: (i, r) => ({ id: i, order_id: pick(r, 450), product_id: pick(r, 40), quantity: pick(r, 5), name: `Item ${i}` }),
   },
   {
     id: 'returns', connectorSourceName: 'Shopify', count: 30,
     description: 'Returned orders and the reason given.',
-    fields: [pk(), f('order_id', 'INT64'), f('name', 'STRING'), f('reason', 'STRING')],
+    fields: [pk(), f('order_id', 'INT64', { alias: 'Order' }), f('name', 'STRING'), f('reason', 'STRING')],
     row: (i, r) => ({ id: i, order_id: pick(r, 450), name: `Return ${i}`, reason: ['damaged', 'wrong item', 'changed mind'][pick(r, 3) - 1] }),
   },
   {
     id: 'payments', connectorSourceName: 'Shopify', count: 30,
     description: 'Payments received for orders.',
-    fields: [pk(), f('order_id', 'INT64'), f('amount', 'NUMERIC')],
+    fields: [pk(), f('order_id', 'INT64', { alias: 'Order' }), f('amount', 'NUMERIC')],
     row: (i, r) => ({ id: i, order_id: pick(r, 450), amount: Math.round(r() * 50_000) / 100 }),
   },
   {
     id: 'shipments', connectorSourceName: 'Shopify', count: 30,
     description: 'Shipments dispatched for orders.',
-    fields: [pk(), f('order_id', 'INT64'), f('name', 'STRING'), f('carrier', 'STRING')],
+    fields: [pk(), f('order_id', 'INT64', { alias: 'Order' }), f('name', 'STRING'), f('carrier', 'STRING')],
     row: (i, r) => ({ id: i, order_id: pick(r, 450), name: `Shipment ${i}`, carrier: ['dhl', 'ups', 'novaposhta'][pick(r, 3) - 1] }),
   },
   {
@@ -141,7 +160,7 @@ const specs: Spec[] = [
   {
     id: 'sessions', connectorSourceName: 'GoogleAnalytics4', icon: 'sessions', count: 30,
     description: 'Website sessions attributed to campaigns.',
-    fields: [pk(), f('customer_id', 'INT64'), f('campaign_id', 'INT64'), f('name', 'STRING')],
+    fields: [pk(), f('customer_id', 'INT64', { alias: 'Customer' }), f('campaign_id', 'INT64', { alias: 'Campaign' }), f('name', 'STRING')],
     row: (i, r) => ({ id: i, customer_id: pick(r, 60), campaign_id: pick(r, 30), name: `Session ${i}` }),
   },
   {
@@ -153,13 +172,13 @@ const specs: Spec[] = [
   {
     id: 'ad_spend', connectorSourceName: 'FacebookAds', icon: 'ad-spend', count: 30,
     description: 'Daily advertising spend per campaign.',
-    fields: [pk(), f('campaign_id', 'INT64'), f('name', 'STRING'), f('spend', 'NUMERIC')],
+    fields: [pk(), f('campaign_id', 'INT64', { alias: 'Campaign' }), f('name', 'STRING'), f('spend', 'NUMERIC')],
     row: (i, r) => ({ id: i, campaign_id: pick(r, 30), name: `Ad spend ${i}`, spend: Math.round(r() * 100_000) / 100 }),
   },
   {
     id: 'reviews', connectorSourceName: 'FacebookAds', count: 30,
     description: 'Customer reviews of products.',
-    fields: [pk(), f('product_id', 'INT64'), f('title', 'STRING'), f('rating', 'INT64')],
+    fields: [pk(), f('product_id', 'INT64', { alias: 'Product' }), f('title', 'STRING'), f('rating', 'INT64')],
     row: (i, r) => ({ id: i, product_id: pick(r, 40), title: `review ${i}`, rating: pick(r, 5) }),
   },
   {

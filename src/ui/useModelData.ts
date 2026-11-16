@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { loadDqSummaries } from '../api/data-quality';
-import { loadModel } from '../api/model';
+import { FIRST_STEPS, loadModel, type LoadProgress } from '../api/model';
 import { COUNT_CONCURRENCY } from '../config';
 import type { DqSummary, Model } from '../model/types';
 import { useServices, useStore } from '../state/store';
@@ -8,25 +8,27 @@ import type { CountState } from './bands/cards';
 import { errorMessage } from './ErrorBox';
 
 export function useModel() {
-  const { ctx, schemas } = useServices();
+  const { ctx, schemas, blendable } = useServices();
   const [{ modelVersion }] = useStore();
   const [model, setModel] = useState<Model | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
+  // The first load only: a reload keeps the model on screen, so it has no bar.
+  const [progress, setProgress] = useState<LoadProgress>({ done: 0, total: FIRST_STEPS });
 
   useEffect(() => {
     let live = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
-    if (modelVersion > 0) schemas.clear();
-    loadModel(ctx).then(
+    if (modelVersion > 0) { schemas.clear(); blendable.clear(); }
+    loadModel(ctx, (p) => { if (live) setProgress(p); }).then(
       (m) => { if (live) setModel(m); },
       (e) => { if (live) setError(e); },
     );
     return () => { live = false; };
-  }, [ctx, schemas, modelVersion, retry]);
+  }, [ctx, schemas, blendable, modelVersion, retry]);
 
-  return { model, error, reload: () => setRetry((r) => r + 1) };
+  return { model, error, progress, reload: () => setRetry((r) => r + 1) };
 }
 
 export function useCardStatus(model: Model | null, visibleIds: string[], modelVersion: number) {

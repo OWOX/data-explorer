@@ -1,4 +1,4 @@
-import type { Ctx, Row, TraverseOptions } from '../types';
+import type { AvailableSourceDto, BlendableSchemaDto, BlendedFieldDto, Ctx, EdgeDto, Row, TraverseOptions } from '../types';
 import { matchesFilter } from './evaluate';
 import { demoFixtures, type Fixtures } from './fixtures';
 
@@ -18,11 +18,94 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
   const report = (id: string) => reports.get(id) ?? (() => { throw notFound('Report'); })();
   const RUN_MS = 1000;
 
+  // The data marts a mart can pull fields from: its outgoing many-to-one links, and theirs, two hops deep. Each is named by the
+  // dotted path of the marts it passes through, like OWOX's alias path, and its fields by that path and the field (`customers__email`).
+  const MAX_JOIN_DEPTH = 2;
+  type Hop = { aliasPath: string; martId: string; depth: number; edges: EdgeDto[] };
+  const joinTrees = new Map<string, Hop[]>();
+  function joinTree(martId: string): Hop[] {
+    const hit = joinTrees.get(martId);
+    if (hit) return hit;
+    const out: Hop[] = [];
+    const walk = (from: string, path: string, edges: EdgeDto[], seen: string[]) => {
+      if (edges.length >= MAX_JOIN_DEPTH) return;
+      for (const e of f.edges.filter((x) => x.sourceDataMartId === from && !seen.includes(x.targetDataMartId))) {
+        const aliasPath = path ? `${path}.${e.targetDataMartId}` : e.targetDataMartId;
+        const chain = [...edges, e];
+        out.push({ aliasPath, martId: e.targetDataMartId, depth: chain.length, edges: chain });
+        walk(e.targetDataMartId, aliasPath, chain, [...seen, e.targetDataMartId]);
+      }
+    };
+    walk(martId, '', [], [martId]);
+    joinTrees.set(martId, out);
+    return out;
+  }
+  const blendedName = (aliasPath: string, field: string) => `${aliasPath.replaceAll('.', '__')}__${field}`;
+
+  function blendableSchema(martId: string): BlendableSchemaDto {
+    if (!byId.has(martId)) throw notFound('Data Mart');
+    const hops = joinTree(martId);
+    const availableSources: AvailableSourceDto[] = hops.map((h) => {
+      const t = byId.get(h.martId)!;
+      return { aliasPath: h.aliasPath, title: t.title, defaultAlias: t.title, depth: h.depth, dataMartId: t.id, relationshipId: h.edges.at(-1)!.id, isIncluded: true, isAccessibleForReporting: t.accessible, mainGrainMultiplication: 'none' };
+    });
+    const blendedFields: BlendedFieldDto[] = hops.flatMap((h) => {
+      const t = byId.get(h.martId)!;
+      return t.fields.filter((x) => !x.isHiddenForReporting).map((x): BlendedFieldDto => ({
+        name: blendedName(h.aliasPath, x.name), sourceDataMartId: t.id, sourceDataMartTitle: t.title, originalFieldName: x.name, type: x.type,
+        alias: x.alias ?? '', description: x.description ?? '', isHidden: false, isCalculated: false, aliasPath: h.aliasPath, outputPrefix: t.title, transitiveDepth: h.depth,
+      }));
+    });
+    const hiddenFieldNames = hops.flatMap((h) => byId.get(h.martId)!.fields.filter((x) => x.isHiddenForReporting).map((x) => blendedName(h.aliasPath, x.name)));
+    return { blendedFields, availableSources, hiddenFieldNames };
+  }
+
+  // One row of a joined mart per value of the join key, built once per link.
+  const joinIndexes = new Map<string, Map<string, Row>>();
+  function joinIndex(e: EdgeDto): Map<string, Row> {
+    let idx = joinIndexes.get(e.id);
+    if (!idx) {
+      idx = new Map();
+      const key = (r: Row, fields: string[]) => JSON.stringify(fields.map((x) => r[x] ?? null));
+      for (const r of byId.get(e.targetDataMartId)!.rows) idx.set(key(r, e.joinConditions.map((j) => j.targetFieldName)), r);
+      joinIndexes.set(e.id, idx);
+    }
+    return idx;
+  }
+  /** The value of a blended column for one row of the main mart: follow each link to its joined row, then read the field. */
+  function blendedValue(main: Row, hop: Hop, field: string): unknown {
+    let cur: Row | undefined = main;
+    for (const e of hop.edges) {
+      if (!cur) return null;
+      cur = joinIndex(e).get(JSON.stringify(e.joinConditions.map((j) => cur![j.sourceFieldName] ?? null)));
+    }
+    return cur?.[field] ?? null;
+  }
+  /** Like the backend: a field hidden for reporting is not a column a query or a report may name. */
+  const badRequest = (message: string) => Object.assign(new Error(message), { payload: { code: 'HTTP_ERROR', status: 400 } });
+  function rejectHidden(martId: string, names: string[]) {
+    const hidden = new Set<string>();
+    byId.get(martId)?.fields.filter((x) => x.isHiddenForReporting).forEach((x) => hidden.add(x.name));
+    for (const h of joinTree(martId)) byId.get(h.martId)!.fields.filter((x) => x.isHiddenForReporting).forEach((x) => hidden.add(blendedName(h.aliasPath, x.name)));
+    const bad = names.find((n) => hidden.has(n));
+    if (bad) throw badRequest(`Unknown column: ${bad}`);
+  }
+  const blendedIndex = (martId: string) => {
+    const index = new Map<string, { hop: Hop; field: string }>();
+    for (const h of joinTree(martId)) for (const x of byId.get(h.martId)!.fields) index.set(blendedName(h.aliasPath, x.name), { hop: h, field: x.name });
+    return index;
+  };
+
   function traverse(id: string, o: TraverseOptions): Row[] {
     const m = byId.get(id);
     if (!m) throw new Error(`Data Mart ${id} not found`);
     if (!m.accessible) throw new Error('You do not have access to this Data Mart');
-    let rows = m.rows.filter((r) => (o.filter ?? []).every((flt) => matchesFilter(r, flt)));
+    // Columns, filters and sorts may name fields of joined marts: those are read off the joined row and added to each row.
+    rejectHidden(id, [...(o.column ?? []), ...(o.filter ?? []).map((x) => x.column), ...(o.sort ?? []).map((x) => x.column)]);
+    const index = blendedIndex(id);
+    const wanted = [...new Set([...(o.column ?? []), ...(o.filter ?? []).map((x) => x.column), ...(o.sort ?? []).map((x) => x.column)].filter((n) => index.has(n)))];
+    const source = wanted.length ? m.rows.map((r) => ({ ...r, ...Object.fromEntries(wanted.map((n) => [n, blendedValue(r, index.get(n)!.hop, index.get(n)!.field)])) })) : m.rows;
+    let rows = source.filter((r) => (o.filter ?? []).every((flt) => matchesFilter(r, flt)));
     if (o.uniqueCount) return [{ 'Unique Count': rows.length }];
     if (o.aggregation?.length) {
       const a = o.aggregation[0]!;
@@ -88,6 +171,8 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
           }));
           return { items, total: items.length, nextOffset: null } as T;
         }
+        const blend = /^\/api\/data-marts\/([^/]+)\/blendable-schema$/.exec(path);
+        if (blend) return blendableSchema(decodeURIComponent(blend[1]!)) as T;
         const detail = /^\/api\/data-marts\/([^/]+)$/.exec(path);
         if (detail) {
           const m = byId.get(decodeURIComponent(detail[1]!));
@@ -100,6 +185,8 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         const m = /^\/api\/reports\/([^/]+)$/.exec(path);
         if (!m) throw new Error(`Mock: unhandled PUT ${path}`);
         const cur = report(decodeURIComponent(m[1]!));
+        const b = body as { columnConfig?: string[]; filterConfig?: { column: string }[] | null; sortConfig?: { column: string }[] | null };
+        rejectHidden(cur.dataMartId, [...(b.columnConfig ?? []), ...(b.filterConfig ?? []).map((x) => x.column), ...(b.sortConfig ?? []).map((x) => x.column)]);
         Object.assign(cur, body);
         return cur as T;
       }),
@@ -111,6 +198,8 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
           return { spreadsheetId: `mock-sheet-${sheetSerial}`, sheetId: 0, placedInRoot: false, sharedWithRequester: true } as T;
         }
         if (path === '/api/reports') {
+          const b = body as { dataMartId: string; columnConfig?: string[]; filterConfig?: { column: string }[] | null; sortConfig?: { column: string }[] | null };
+          rejectHidden(b.dataMartId, [...(b.columnConfig ?? []), ...(b.filterConfig ?? []).map((x) => x.column), ...(b.sortConfig ?? []).map((x) => x.column)]);
           reportSerial += 1;
           const r: MockReport = { ...(body as object), id: `mock-report-${reportSerial}`, dataMartId: (body as { dataMartId: string }).dataMartId, lastRunAt: null, lastRunStatus: null, lastRunError: null };
           reports.set(r.id, r);

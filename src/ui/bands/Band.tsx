@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react';
 import { num } from '../format';
 import { Hint } from '../Tooltip';
 import { BandToolsSlot } from './BandTools';
+import { LoadBar } from './LoadBar';
 
 export function Band({
   id,
@@ -16,6 +17,7 @@ export function Band({
   folded,
   onFold,
   grid = true,
+  loading = null,
   children,
 }: {
   id: string;
@@ -32,6 +34,8 @@ export function Band({
   onFold: () => void;
   /** Cards sit in the responsive grid; the Data and Row bands lay out their own content. */
   grid?: boolean;
+  /** While the page is still reading: 0 to 1 draws a load bar in place of the body (the header is already there); null shows the body. */
+  loading?: number | null;
   children: ReactNode;
 }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
@@ -63,8 +67,9 @@ export function Band({
           <ChevronDown size={16} className={folded ? undefined : 'dm-band-fold-open'} />
         </button>
       </header>
+      {loading !== null && !folded ? <LoadBar fraction={loading} /> : null}
       {/* Folded content stays mounted, only hidden: unfolding must not remount the grid and ask for its rows again. */}
-      {grid ? <div className="dm-band-grid" hidden={folded}>{children}</div> : <BandToolsSlot.Provider value={slot}><div className="dm-bigcard" hidden={folded}>{children}</div></BandToolsSlot.Provider>}
+      {loading !== null ? null : grid ? <div className="dm-band-grid" hidden={folded}>{children}</div> : <BandToolsSlot.Provider value={slot}><div className="dm-bigcard" hidden={folded}>{children}</div></BandToolsSlot.Provider>}
     </section>
   );
 }

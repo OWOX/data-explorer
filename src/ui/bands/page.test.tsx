@@ -19,6 +19,7 @@ const reloadModel = () => userEvent.click(screen.getByRole('button', { name: 'Re
 async function mountWith(wrap: (ctx: Mock) => Ctx = (c) => c, fixtures = demoFixtures()) {
   const view = render(<AppServices ctx={wrap(createMockCtx(fixtures, { latencyMs: 0 }))}><StoreProvider><App /><ModelReload /></StoreProvider></AppServices>);
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
+  await waitFor(() => expect(document.querySelector('.dm-loadbar')).toBeNull());
   return view;
 }
 const mountApp = () => mountWith();
@@ -48,6 +49,44 @@ async function spyOnTraverse() {
   return calls;
 }
 const settle = () => new Promise((r) => setTimeout(r, 150));
+
+describe('the first load', () => {
+  const bars = () => screen.queryAllByRole('progressbar', { name: 'Reading the project' });
+
+  test('the bar never moves backwards, even when the storages arrive after the other reads', async () => {
+    const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+    const lateStorages: Ctx = { ...ctx, owox: { ...ctx.owox, storages: { list: async () => { await new Promise((r) => setTimeout(r, 120)); return ctx.owox.storages.list(); } } } };
+    const seen: number[] = [];
+    const watch = new MutationObserver(() => { const v = document.querySelector('[role=progressbar][aria-label="Reading the project"]')?.getAttribute('aria-valuenow'); if (v) seen.push(Number(v)); });
+    watch.observe(document.body, { subtree: true, attributes: true, childList: true });
+    render(<AppServices ctx={lateStorages}><StoreProvider><App /></StoreProvider></AppServices>);
+    await waitFor(() => expect(document.getElementById('band-data')!.querySelector('table')).not.toBeNull());
+    watch.disconnect();
+    expect(seen.length).toBeGreaterThan(1);
+    expect(seen.every((v, i) => i === 0 || v >= seen[i - 1]!)).toBe(true);
+  });
+
+  test('draws every band header at once with a bar in place of each body, fills it as reads finish, then shows the bodies', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+    const slowEdges: Ctx = { ...ctx, owox: { ...ctx.owox, models: { getEdges: async (id: string) => { await gate; return ctx.owox.models.getEdges(id); } } } };
+    render(<AppServices ctx={slowEdges}><StoreProvider><App /></StoreProvider></AppServices>);
+    // the shell is there before anything has loaded
+    for (const name of ['Data Sources', 'Data Marts', 'Data', 'Row']) expect(await screen.findByRole('heading', { name })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Data Explorer' })).toBeInTheDocument();
+    expect(document.querySelector('[aria-label="Loading"]')).toBeNull(); // no skeleton rows
+    // Data Sources starts folded, so three bars: the bodies are not there
+    await waitFor(() => expect(bars()).toHaveLength(3));
+    // every read but the edges has finished: the bar is part way
+    await waitFor(() => { const v = Number(bars()[0]!.getAttribute('aria-valuenow')); expect(v).toBeGreaterThan(0); expect(v).toBeLessThan(100); });
+    expect(document.querySelector('.dm-loadbar-done')).toBeNull();
+    release();
+    await waitFor(() => expect(document.getElementById('band-data')!.querySelector('table')).not.toBeNull());
+    expect(bars()).toHaveLength(0);
+    expect(within(marts()).getByText('Customers')).toBeInTheDocument();
+  });
+});
 
 describe('the four bands', () => {
   test('the first load selects Orders, shows its rows and the marts joined to it', async () => {
@@ -95,17 +134,13 @@ describe('the four bands', () => {
   });
 
   test('three follows, then three Undos, return to each selection in order', async () => {
-    const grid = await ordersGrid();
+    await ordersGrid();
     const filterActive = () => within(data()).getByRole('button', { name: 'Reset' });
-    const nameLink = async (scope: HTMLElement) => waitFor(() => {
-      const b = within(scope).getAllByRole('button').find((x) => /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(x.textContent ?? ''));
-      expect(b).toBeDefined();
-      return b!;
-    });
-    // 1. a record target: Orders -> Customers record
-    await userEvent.click(within(grid).getAllByRole('row')[1]!);
-    await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
-    await userEvent.click(await nameLink(row()));
+    // 1. the Customers record
+    fireEvent.click(martCard('Customers'));
+    await within(data()).findByRole('heading', { name: 'Customers' });
+    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    await userEvent.click(within(data()).getAllByRole('row')[1]!);
     const customerHeading = await within(row()).findByRole('heading', { name: /^Customers · \d+$/ });
     // 2. a filtered target: Customers record -> Orders, filtered
     const section = await within(row()).findByRole('region', { name: 'Referenced by' });
@@ -115,18 +150,12 @@ describe('the four bands', () => {
     await within(data()).findByRole('heading', { name: 'Orders' });
     await waitFor(() => expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary'));
     expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
-    // 3. a record target again: a row, then its customer
+    // 3. a record of the filtered Orders
     await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
     await userEvent.click(within(data()).getAllByRole('row')[1]!);
     await within(row()).findByRole('heading', { name: /^Orders · \d+$/ });
-    await userEvent.click(await nameLink(row()));
-    await within(row()).findByRole('heading', { name: /^Customers · \d+$/ });
     const back = () => userEvent.click(screen.getByRole('button', { name: 'Undo' }));
 
-    await back(); // the Orders record
-    await within(row()).findByRole('heading', { name: /^Orders · \d+$/ });
-    expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument();
-    expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary');
     await back(); // Orders, filtered, no record
     await waitFor(() => expect(within(row()).getByText('Select a row.')).toBeInTheDocument());
     expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary');
@@ -135,25 +164,24 @@ describe('the four bands', () => {
     expect(await within(row()).findByRole('heading', { name: customerHeading.textContent! })).toBeInTheDocument();
     expect(within(data()).getByRole('heading', { name: 'Customers' })).toBeInTheDocument();
     expect(martCard('Customers')).toHaveAttribute('aria-pressed', 'true');
+    await back(); // the Customers mart, no record
+    await waitFor(() => expect(within(row()).getByText('Select a row.')).toBeInTheDocument());
+    await back(); // Orders
+    expect(await within(data()).findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
   });
 
-  test('a related title moves the selection, and Back restores it', async () => {
-    const grid = await ordersGrid();
-    const nameCell = await waitFor(() => {
-      const c = within(grid).getAllByRole('cell').find((x) => /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(x.textContent ?? ''));
-      expect(c).toBeDefined();
-      return c!;
-    });
-    await userEvent.click(within(nameCell).getByRole('button'));
-    expect(await within(data()).findByRole('heading', { name: 'Customers' })).toBeInTheDocument();
-    expect(await within(row()).findByRole('heading', { name: /^Customers · \d+$/ })).toBeInTheDocument();
-    expect(martCard('Customers')).toHaveAttribute('aria-pressed', 'true');
-
-    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(await within(data()).findByRole('heading', { name: 'Orders' })).toBeInTheDocument();
-    expect(martCard('Orders')).toHaveAttribute('aria-pressed', 'true');
-    expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+  test('a reference column shows the stored value as plain text and asks no other mart for titles', async () => {
+    const calls = await spyOnTraverse();
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
+    await settle();
+    const grid = data();
+    const at = within(grid).getAllByRole('columnheader').findIndex((h) => h.textContent?.includes('Customer'));
+    const first = within(grid).getAllByRole('row')[1]!;
+    const cell = first.querySelectorAll('td')[at]!;
+    expect(cell.textContent).toMatch(/^\d*$/); // the key, never a name
+    expect(within(cell).queryByRole('button')).toBeNull();
+    expect(cell.querySelector('.text-primary')).toBeNull();
+    expect(calls.filter((c) => c.id !== 'orders' && !(c.o as { uniqueCount?: unknown }).uniqueCount)).toEqual([]);
   });
 
   test('Redo re-applies what Undo returned from; a new navigation empties it', async () => {
@@ -243,7 +271,7 @@ describe('the grid', () => {
 
   test('the column picker adds a column', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/10\)/ }));
     await userEvent.click(screen.getByLabelText(/amount/i));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(6));
   });
@@ -264,39 +292,26 @@ describe('the grid', () => {
   });
 
   test('edits made on top of a followed filter survive a trip away and Back', async () => {
-    const grid = await ordersGrid();
-    await userEvent.click(within(grid).getAllByRole('row')[1]!);
-    await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
-    const customerLink = await waitFor(() => {
-      const b = within(row()).getAllByRole('button').find((x) => /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(x.textContent ?? ''));
-      expect(b).toBeDefined();
-      return b!;
-    });
-    await userEvent.click(customerLink);
+    await ordersGrid();
+    fireEvent.click(martCard('Customers'));
     await within(data()).findByRole('heading', { name: 'Customers' });
+    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    await userEvent.click(within(data()).getAllByRole('row')[1]!);
+    await within(row()).findByRole('heading', { name: /^Customers · \d+$/ });
     const section = await within(row()).findByRole('region', { name: 'Referenced by' });
     const entry = within(section).getByRole('button', { name: /^Orders/ });
     await waitFor(() => expect(entry).toBeEnabled());
     await userEvent.click(entry); // Orders, filtered by customer_id
     await within(data()).findByRole('heading', { name: 'Orders' });
     await waitFor(() => expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary'));
-    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(0));
     await userEvent.click(within(data()).getByLabelText('Filter id'));
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
     await userEvent.type(screen.getByLabelText('Value'), '1000');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(within(data()).getByLabelText('Filter id')).toHaveClass('text-primary'));
-    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
-    await userEvent.click(within(data()).getAllByRole('row')[1]!); // a row, then follow away
-    await within(row()).findByRole('heading', { name: /^Orders · \d+$/ });
-    const link = await waitFor(() => {
-      const b = within(row()).getAllByRole('button').find((x) => /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(x.textContent ?? ''));
-      expect(b).toBeDefined();
-      return b!;
-    });
-    await userEvent.click(link);
+    fireEvent.click(martCard('Customers')); // away
     await within(data()).findByRole('heading', { name: 'Customers' });
-    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await within(data()).findByRole('heading', { name: 'Orders' });
     await waitFor(() => expect(within(data()).getByLabelText('Filter id')).toHaveClass('text-primary'));
@@ -336,43 +351,11 @@ describe('the grid', () => {
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
     await settle();
     const before = calls.filter((c) => c.id === 'orders').length;
-    await userEvent.click(within(data()).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(within(data()).getByRole('button', { name: /Columns \(5\/10\)/ }));
     await userEvent.click(screen.getAllByRole('checkbox').filter((c) => (c as HTMLInputElement).checked).at(-1)!);
     await waitFor(() => expect(within(data()).getAllByRole('columnheader')).toHaveLength(4));
     await settle();
     expect(calls.filter((c) => c.id === 'orders')).toHaveLength(before);
-  });
-
-  test('Load more looks titles up only for values not seen yet', async () => {
-    const calls = await spyOnTraverse();
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
-    await waitFor(() => expect(calls.some((c) => c.id === 'customers' && c.o.filter?.[0]?.operator === 'in')).toBe(true));
-    await settle();
-    const lookups = () => calls.filter((c) => c.id === 'customers' && c.o.filter?.[0]?.operator === 'in').map((c) => (c.o.filter![0] as unknown as { value: number[] }).value);
-    const first = lookups().flat();
-    expect(first.length).toBeGreaterThan(0);
-    await userEvent.click(within(data()).getByRole('button', { name: 'Load more' }));
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(401));
-    await settle();
-    const afterLoadMore = lookups().flat().slice(first.length);
-    expect(afterLoadMore.length).toBeGreaterThan(0);
-    expect(afterLoadMore.every((v) => !first.includes(v))).toBe(true);
-  });
-
-  test('titles still land when Load more arrives while the first lookup is pending', async () => {
-    let first = true;
-    await mountWith(overrideTraverse((real) => async (id, o) => {
-      if (id === 'customers' && o.filter?.[0]?.operator === 'in' && first) { first = false; await new Promise((r) => setTimeout(r, 400)); }
-      return real(id, o);
-    }));
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
-    await userEvent.click(within(data()).getByRole('button', { name: 'Load more' }));
-    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(401));
-    const customerCol = within(data()).getAllByRole('columnheader').findIndex((h) => h.textContent?.includes('Customer'));
-    await waitFor(() => {
-      const cells = within(data()).getAllByRole('row').slice(1).map((r) => r.querySelectorAll('td')[customerCol]!.textContent ?? '');
-      expect(cells.filter((c) => /^\d+$/.test(c.trim()))).toEqual([]);
-    }, { timeout: 4000 });
   });
 });
 
@@ -384,12 +367,13 @@ describe('the record', () => {
     return row();
   }
 
-  test('a record still renders when a related title lookup fails', async () => {
-    await mountWith(overrideTraverse((real) => (id, o) => (id === 'customers' ? Promise.reject(new Error('boom')) : real(id, o))));
+  test('a record is read with one query and no lookups in other marts', async () => {
+    const calls = await spyOnTraverse();
     await within(data()).findByRole('table');
     await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
-    expect(await within(row()).findByText('status')).toBeInTheDocument();
-    expect(within(row()).queryByText(/boom/)).toBeNull();
+    await within(row()).findByText('status');
+    await settle();
+    expect(calls.filter((c) => c.id !== 'orders' && !(c.o as { uniqueCount?: unknown }).uniqueCount)).toEqual([]);
   });
 
   test('the Row band labels show the alias only, with a (?) holding the description', async () => {
@@ -419,7 +403,7 @@ describe('the record', () => {
     const record = await openOrderRecord();
     const section = await within(record).findByRole('region', { name: 'Referenced by' });
     const names = within(section).getAllByRole('button').map((b) => b.textContent);
-    expect(names).toEqual(expect.arrayContaining([expect.stringMatching(/Order Items.*via order_id/), expect.stringMatching(/Returns.*via order_id/), expect.stringMatching(/Payments.*via order_id/), expect.stringMatching(/Shipments.*via order_id/)]));
+    expect(names).toEqual(expect.arrayContaining(['Order Items', 'Returns', 'Payments', 'Shipments']));
     expect(names).toHaveLength(4);
     const entry = within(section).getByRole('button', { name: /Order Items/ });
     await waitFor(() => expect(entry).toBeEnabled());
@@ -438,7 +422,7 @@ describe('the record', () => {
     await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
     await userEvent.click(within(data()).getAllByRole('row')[1]!);
     await within(row()).findByRole('heading', { name: /^Order Items · 1$/ });
-    await within(row()).findByText('order_id');
+    await within(row()).findByText('Order');
     expect(within(row()).queryByRole('region', { name: 'Referenced by' })).toBeNull();
   });
 
@@ -627,7 +611,7 @@ describe('folding and lines', () => {
     await within(data()).findByRole('heading', { name: stores ? 'Stores' : 'Customers' });
     await settle();
     const fresh = rowQueries().slice(before);
-    // The grid's own rows query; the related-title lookups it triggers are not counted.
+    // The grid's own rows query.
     const grid = fresh.filter((c) => (c.o as { sort?: unknown } | undefined)?.sort);
     expect(grid).toHaveLength(1);
     expect(grid[0]!.id).toBe(stores ? 'stores' : 'customers');
@@ -720,7 +704,7 @@ describe('column headers and band toolbars', () => {
     const customer = within(grid).getByText('Customer');
     expect(customer.closest('button')).not.toHaveAttribute('title');
     await userEvent.hover(customer);
-    expect((await screen.findAllByText('customer_id. Sorted by the key value')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('customer_id')).length).toBeGreaterThan(0);
     expect(within(grid).queryByText('customer_id')).toBeNull();
     expect(within(grid).getByLabelText('Filter Customer')).toBeInTheDocument();
     const id = within(grid).getByText('id', { selector: 'span.truncate' });
@@ -729,7 +713,7 @@ describe('column headers and band toolbars', () => {
 
   test('the column picker shows the alias only, and a (?) with the description when the field has one', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/10\)/ }));
     expect(screen.getByLabelText(/Amount/)).toBeInTheDocument();
     expect(screen.queryByText('amount')).toBeNull();
     expect(screen.queryByText('customer_id')).toBeNull();
@@ -764,7 +748,7 @@ describe('column headers and band toolbars', () => {
     const calls = await spyOnTraverse();
     const grid = await ordersGrid();
     const bar = head(grid);
-    for (const name of ['Reset', 'Refresh', /Columns \(5\/8\)/]) expect(within(bar).getByRole('button', { name })).toBeInTheDocument();
+    for (const name of ['Reset', 'Refresh', /Columns \(5\/10\)/]) expect(within(bar).getByRole('button', { name })).toBeInTheDocument();
     await userEvent.click(within(grid).getByLabelText('Filter id'));
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
     await userEvent.type(screen.getByLabelText('Value'), '3');
@@ -778,7 +762,7 @@ describe('column headers and band toolbars', () => {
     await userEvent.click(within(bar).getByRole('button', { name: 'Refresh' }));
     await settle();
     expect(reads()).toBe(before + 1);
-    await userEvent.click(within(bar).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(within(bar).getByRole('button', { name: /Columns \(5\/10\)/ }));
     await userEvent.click(screen.getByLabelText(/Amount/));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(6));
   });
@@ -923,14 +907,14 @@ describe('column sort', () => {
     await userEvent.click(sortBtn(grid, 'status'));
     expect(within(header(grid, 'status')).queryByText('1')).toBeNull();
     await userEvent.click(sortBtn(grid, 'Customer'));
-    await userEvent.click(sortBtn(grid, 'product_id'));
-    await waitFor(() => expect(within(header(grid, 'product_id')).getByText('3')).toBeInTheDocument());
+    await userEvent.click(sortBtn(grid, 'Product'));
+    await waitFor(() => expect(within(header(grid, 'Product')).getByText('3')).toBeInTheDocument());
     expect(within(header(grid, 'status')).getByText('1')).toBeInTheDocument();
     expect(within(header(grid, 'Customer')).getByText('2')).toBeInTheDocument();
     // remove the middle one: the others keep their order
     await userEvent.click(sortBtn(grid, 'Customer'));
     await userEvent.click(sortBtn(grid, 'Customer'));
-    await waitFor(() => expect(within(header(grid, 'product_id')).getByText('2')).toBeInTheDocument());
+    await waitFor(() => expect(within(header(grid, 'Product')).getByText('2')).toBeInTheDocument());
     expect(within(header(grid, 'status')).getByText('1')).toBeInTheDocument();
     expect(header(grid, 'Customer')).toHaveAttribute('aria-sort', 'none');
   });
@@ -973,11 +957,11 @@ describe('column sort', () => {
     expect(calls.filter((c) => c.id === 'orders')).toHaveLength(before);
   });
 
-  test('a related-title column says it sorts by the key value; a plain one has no such tooltip', async () => {
+  test('a header tooltip holds the technical name of an aliased column; a plain, short one has none', async () => {
     const grid = await ordersGrid();
-    for (const name of ['Customer', 'status', 'product_id']) expect(sortBtn(grid, name)).not.toHaveAttribute('title');
+    for (const name of ['Customer', 'status']) expect(sortBtn(grid, name)).not.toHaveAttribute('title');
     const tip = () => document.querySelector('[role="tooltip"]')?.textContent ?? null;
-    for (const [name, text] of [['Customer', 'customer_id. Sorted by the key value'], ['product_id', 'Sorted by the key value'], ['status', null]] as const) {
+    for (const [name, text] of [['Customer', 'customer_id'], ['status', null]] as const) {
       await userEvent.hover(sortBtn(grid, name));
       if (text) await waitFor(() => expect(tip()).toBe(text)); else await settle();
       if (!text) expect(tip()).toBeNull();
@@ -993,7 +977,7 @@ describe('column sort', () => {
     await userEvent.click(sortBtn(grid, 'id'));
     await waitFor(() => expect(sortBtn(grid, 'status')).toHaveAccessibleName('Sort by status, currently ascending, sort 1 of 2'));
     expect(sortBtn(grid, 'id')).toHaveAccessibleName('Sort by id, currently ascending, sort 2 of 2');
-    expect(sortBtn(grid, 'product_id')).toHaveAccessibleName('Sort by product_id, currently not sorted');
+    expect(sortBtn(grid, 'Product')).toHaveAccessibleName('Sort by Product, currently not sorted');
   });
 
   test('Reset clears the sorts, and is enabled by a sort alone', async () => {
@@ -1026,9 +1010,9 @@ describe('column sort', () => {
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(201));
     const grid = data();
     await userEvent.click(sortBtn(grid, 'status'));
-    await userEvent.click(sortBtn(grid, 'product_id'));
+    await userEvent.click(sortBtn(grid, 'Product'));
     await waitFor(() => expect(sortOf(calls)).toEqual([{ column: 'status', direction: 'asc' }, { column: 'product_id', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
-    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(within(grid).getByRole('button', { name: /Columns \(5\/10\)/ }));
     await userEvent.click(screen.getByLabelText('status'));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader')).toHaveLength(4));
     await waitFor(() => expect(sortOf(calls)).toEqual([{ column: 'product_id', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
@@ -1130,7 +1114,7 @@ describe('the default sort', () => {
     expect(orderSorts(calls)).toEqual([{ column: 'created_at', direction: 'desc' }, { column: 'id', direction: 'asc' }]);
     // created_at is not among the five opening columns, so no arrow is drawn; showing it draws one like a member sort
     expect(within(data()).queryByRole('button', { name: /^Sort by created_at,/ })).toBeNull();
-    await userEvent.click(within(data()).getByRole('button', { name: /Columns \(5\/8\)/ }));
+    await userEvent.click(within(data()).getByRole('button', { name: /Columns \(5\/10\)/ }));
     await userEvent.click(screen.getByLabelText('created_at'));
     const head = await within(data()).findByRole('button', { name: /^Sort by created_at, currently descending/ });
     expect(head.closest('th')).toHaveAttribute('aria-sort', 'descending');
@@ -1215,15 +1199,18 @@ describe('folds and the saved preferences read', () => {
     expect(marts()).toHaveClass('folded');
   });
 
-  test('the Data and Row bodies do not mount before the read settles, and a band saved as folded never reads rows', async () => {
+  test('the Data and Row bodies show a bar until the read settles, and a band saved as folded never reads rows', async () => {
     const calls: string[] = [];
     const { gate, wrap } = gated({ 'band-data': true });
     const ctx = overrideTraverse((real) => (id, o) => { if (!o.aggregation && o.column) calls.push(id); return real(id, o); })(createMockCtx(demoFixtures(), { latencyMs: 0 }));
     render(<AppServices ctx={wrap(ctx as Mock)}><StoreProvider><App /></StoreProvider></AppServices>);
     await waitFor(() => expect(marts()).not.toBeNull());
     await settle();
-    expect(document.getElementById('band-data')).toBeNull();
-    expect(document.getElementById('band-row')).toBeNull();
+    // The headers are up, with a bar where the bodies will be; nothing in them is mounted, so nothing is read.
+    expect(data().querySelector('.dm-loadbar')).not.toBeNull();
+    expect(row().querySelector('.dm-loadbar')).not.toBeNull();
+    expect(data().querySelector('table')).toBeNull();
+    expect(calls).toEqual([]);
     gate.release();
     await waitFor(() => expect(data()).toHaveClass('folded'));
     await settle();
@@ -1231,5 +1218,98 @@ describe('folds and the saved preferences read', () => {
     expect(calls.filter((c) => c === 'orders' )).toEqual([]);
     await userEvent.click(within(data()).getByRole('button', { name: /^Show / }));
     await within(data()).findByRole('table');
+  });
+});
+
+describe('hidden fields, clipped cells and the field (?)', () => {
+  test('a field hidden for reporting is offered nowhere: not a default column, not in the picker, not in the Row band, never queried', async () => {
+    const calls = await spyOnTraverse();
+    await within(data()).findByRole('table');
+    fireEvent.click(martCard('Customers'));
+    await within(data()).findByRole('heading', { name: 'Customers' });
+    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    const grid = data();
+    expect(within(grid).queryByText('internal_flag')).toBeNull();
+    await userEvent.click(within(grid).getByRole('button', { name: /^Columns \(5\/5\)/ }));
+    expect(screen.queryByText('internal_flag')).toBeNull();
+    expect(screen.queryByRole('separator')).toBeNull();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(within(grid).getAllByRole('row')[1]!);
+    await within(row()).findByText('email');
+    expect(within(row()).queryByText('internal_flag')).toBeNull();
+    const named = calls.filter((c) => c.id === 'customers').flatMap((c) => [...(c.o.column ?? []), ...(c.o.sort ?? []).map((s) => s.column), ...(c.o.filter ?? []).map((f) => f.column)]);
+    expect(named).not.toContain('internal_flag');
+  });
+
+  test('a mart whose primary key is hidden for reporting is preview only, with no 400', async () => {
+    const f = demoFixtures();
+    const stores = f.marts.find((m) => m.id === 'stores')!;
+    stores.fields = stores.fields.map((x) => (x.name === 'id' ? { ...x, isHiddenForReporting: true } : x));
+    const queries: { id: string; o: { column?: string[]; sort?: { column: string }[] } }[] = [];
+    await mountWith(overrideTraverse((real) => (id, o) => { queries.push({ id, o }); return real(id, o); }), f);
+    await within(data()).findByRole('table');
+    await userEvent.type(screen.getByLabelText('Search data marts'), 'stores');
+    fireEvent.click(await within(marts()).findByText('Stores'));
+    await within(data()).findByRole('heading', { name: 'Stores' });
+    expect(await screen.findByText('Preview only: this data mart has no primary key.')).toBeInTheDocument();
+    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    expect(within(data()).queryByText(/Unknown column/)).toBeNull();
+    await userEvent.click(within(data()).getAllByRole('row')[1]!);
+    expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
+    const named = queries.filter((q) => q.id === 'stores').flatMap((q) => [...(q.o.column ?? []), ...(q.o.sort ?? []).map((s) => s.column)]);
+    expect(named).not.toContain('id');
+  });
+
+  test('Referenced by leaves out a link whose join field is hidden for reporting', async () => {
+    const f = demoFixtures();
+    const shipments = f.marts.find((m) => m.id === 'shipments')!;
+    shipments.fields = shipments.fields.map((x) => (x.name === 'order_id' ? { ...x, isHiddenForReporting: true } : x));
+    await mountWith((c) => c, f);
+    await within(data()).findByRole('table');
+    await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
+    const section = await within(row()).findByRole('region', { name: 'Referenced by' });
+    await waitFor(() => expect(within(section).queryByRole('button', { name: /Shipments/ })).toBeNull());
+    expect(within(section).getAllByRole('button').map((b) => b.textContent)).toEqual(['Order Items', 'Returns', 'Payments']);
+  });
+
+  test('grid cells and headers are clipped to one line, with a width cap by type, and a filler cell keeps the header line full width', async () => {
+    const grid = await ordersGrid();
+    const first = within(grid).getAllByRole('row')[1]!;
+    const cells = [...first.querySelectorAll('td:not([aria-hidden])')];
+    expect(cells.length).toBe(5);
+    for (const td of cells) expect(td.className).toMatch(/overflow-hidden.*whitespace-nowrap|whitespace-nowrap.*overflow-hidden/);
+    expect(cells[0]!.querySelector('.truncate')).not.toBeNull();
+    const status = within(grid).getAllByRole('columnheader').find((h) => h.textContent?.includes('status'))!;
+    expect(status.className).toContain('max-w-[24rem]');
+    const id = within(grid).getAllByRole('columnheader').find((h) => h.textContent === 'id')!;
+    expect(id.className).toContain('max-w-[12rem]');
+    expect(grid.querySelector('thead th[aria-hidden]')!.className).toContain('w-full');
+    expect(grid.querySelector('thead th[aria-hidden]')!.className).toContain('border-b');
+  });
+
+  test('the (?) after a field label is revealed by its row, in the picker and in the Row band', async () => {
+    const grid = await ordersGrid();
+    await userEvent.click(within(grid).getByRole('button', { name: /^Columns/ }));
+    const hint = screen.getAllByLabelText('About Customer').find((el) => el.closest('label'))!;
+    expect(hint.closest('label')).toHaveClass('dm-reveal-host');
+    expect(hint.closest('.dm-hint-slot')).not.toBeNull();
+    // right after the label, in the same inline box
+    expect(hint.closest('.dm-fieldlabel')).not.toBeNull();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(within(grid).getAllByRole('row')[1]!);
+    await within(row()).findByText('status');
+    expect(within(row()).getByLabelText('About Customer').closest('dt')).toHaveClass('dm-reveal-host');
+  });
+
+  test('a filter popover is capped at 20rem with its title pinned above the scrolling body', async () => {
+    await ordersGrid();
+    await userEvent.type(screen.getByLabelText('Search data marts'), 'daily');
+    fireEvent.click(await within(marts()).findByText('Daily KPIs'));
+    await within(data()).findByRole('heading', { name: 'Daily KPIs' });
+    await userEvent.click(await within(data()).findByLabelText('Filter day'));
+    const body = (await screen.findByRole('group', { name: 'Filter day' })).closest('[data-popover-body]')!;
+    expect(body.parentElement!.className).toContain('max-h-[min(20rem,var(--radix-popover-content-available-height))]');
+    expect(body.className).toContain('overflow-y-auto');
+    expect(body.querySelector('.dm-popover-title')).toHaveTextContent('day');
   });
 });

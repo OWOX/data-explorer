@@ -114,20 +114,23 @@ test('a card click selects its mart and Back restores the previous one', async (
   await expect(band(page, 'data').getByRole('heading', { name: 'Orders' })).toBeVisible();
 });
 
-test('a related title moves the selection, and Back restores the mart and the record', async ({ page }) => {
-  const data = await ordersGrid(page);
+test('a reference column shows the stored value as plain text; Referenced by opens the referencing mart, and Undo restores the record', async ({ page }) => {
+  await ordersGrid(page);
   const row = band(page, 'row');
+  await martCard(page, 'Customers').click();
+  const data = band(page, 'data');
+  await expect(data.getByRole('heading', { name: 'Customers' })).toBeVisible();
+  await expect(data.getByRole('row')).toHaveCount(61);
   await data.getByRole('row').nth(1).click();
-  await expect(row.getByRole('heading', { name: /^Orders · 1$/ })).toBeVisible();
-  // A customer's name in the grid is a related title: it opens that customer.
-  await data.getByRole('cell').filter({ hasText: /^[A-Z][a-z]+ [A-Z][a-z]+$/ }).first().getByRole('button').click();
+  await expect(row.getByRole('heading', { name: /^Customers · \d+$/ })).toBeVisible();
+  // nothing in the record is a link, and nothing says "via"
+  await expect(row.locator('dd button')).toHaveCount(0);
+  await row.getByRole('region', { name: 'Referenced by' }).getByRole('button', { name: /^Orders/ }).click();
+  await expect(data.getByRole('heading', { name: 'Orders' })).toBeVisible();
+  await expect(row.getByText('Select a row.')).toBeVisible();
+  await page.getByRole('button', { name: 'Undo' }).click();
   await expect(data.getByRole('heading', { name: 'Customers' })).toBeVisible();
   await expect(row.getByRole('heading', { name: /^Customers · \d+$/ })).toBeVisible();
-  await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(data.getByRole('heading', { name: 'Orders' })).toBeVisible();
-  await expect(row.getByRole('heading', { name: /^Orders · 1$/ })).toBeVisible();
-  await expect(martCard(page, 'Orders')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('the storage filter drops the marts of an unticked storage and leaves the selection alone', async ({ page }) => {
@@ -213,4 +216,102 @@ test('Export to Google Sheets: with no Sheets destination there is no Export con
   await page.goto('/?mock&sheets=0');
   const data = await ordersGrid(page);
   await expect(data.getByLabel('Export to Google Sheets')).toHaveCount(0);
+});
+
+async function tick(page: Page, label: string | RegExp, group?: string) {
+  await band(page, 'data').getByRole('button', { name: /^Columns/ }).click();
+  const dialog = page.getByRole('dialog');
+  if (group) await dialog.getByRole('button', { name: new RegExp(`^${group}`) }).click();
+  await (group ? dialog.getByRole('group', { name: group }) : dialog).getByLabel(label, { exact: true }).check();
+  await page.keyboard.press('Escape');
+}
+
+test('a long value is clipped inside its column, the header line spans the card, and the full value is in the tooltip', async ({ page }) => {
+  const data = await ordersGrid(page);
+  await tick(page, 'Acquisition Session ID');
+  await tick(page, 'Net Revenue');
+  const heads = data.getByRole('columnheader');
+  await expect(heads.filter({ hasText: 'Acquisition Session ID' })).toBeVisible();
+  const cell = data.getByRole('row').nth(1).locator('td').nth(5);
+  await expect(cell).toContainText('ga4.'); // the new column is read, then shown
+  const next = data.getByRole('row').nth(1).locator('td').nth(6);
+  const [a, b] = [await cell.boundingBox(), await next.boundingBox()];
+  expect(a!.width).toBeLessThanOrEqual(24 * 16 + 1);
+  expect(a!.x + a!.width).toBeLessThanOrEqual(b!.x + 1); // the text never runs under the next column
+  const span = cell.locator('span').first();
+  expect(await span.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  await span.hover();
+  await expect(page.getByRole('tooltip').first()).toContainText('ga4.');
+  // the line under the header reaches the right edge of the card
+  const filler = data.locator('thead th[aria-hidden]');
+  const card = await data.locator('.dm-bigcard').boundingBox();
+  const line = await filler.boundingBox();
+  expect(line!.x + line!.width).toBeGreaterThanOrEqual(card!.x + card!.width - 3);
+});
+
+test('the (?) after a field label shows only while its row is hovered', async ({ page }) => {
+  const data = await ordersGrid(page);
+  await data.getByRole('row').nth(1).click();
+  const row = band(page, 'row');
+  await expect(row.getByRole('heading', { name: /^Orders · 1$/ })).toBeVisible();
+  const hint = row.getByLabel('About Customer');
+  const slot = hint.locator('xpath=ancestor::span[contains(@class,"dm-hint-slot")]');
+  await page.mouse.move(2, 2);
+  await expect(slot).toHaveCSS('opacity', '0');
+  await row.getByText('Customer', { exact: true }).hover();
+  await expect(slot).toHaveCSS('opacity', '1');
+  // 4px after the label, and level with it
+  const label = await row.getByText('Customer', { exact: true }).boundingBox();
+  const glyph = await hint.boundingBox();
+  expect(glyph!.x - (label!.x + label!.width)).toBeGreaterThanOrEqual(3);
+  expect(glyph!.x - (label!.x + label!.width)).toBeLessThanOrEqual(6);
+  expect(Math.abs((glyph!.y + glyph!.height / 2) - (label!.y + label!.height / 2))).toBeLessThanOrEqual(2);
+});
+
+test('a filter popover is at most 20rem tall and keeps its title while the list scrolls', async ({ page }) => {
+  const data = await ordersGrid(page);
+  await tick(page, 'created_at');
+  await data.getByLabel('Filter created_at').click();
+  const body = page.locator('[data-popover-body]');
+  await expect(body).toBeVisible();
+  const box = await page.locator('[data-popover-body]').evaluate((el) => (el.parentElement as HTMLElement).getBoundingClientRect().height);
+  expect(box).toBeLessThanOrEqual(20 * 16 + 1);
+  expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  await body.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  const title = await body.locator('.dm-popover-title').boundingBox();
+  const top = await body.boundingBox();
+  expect(Math.abs(title!.y - top!.y)).toBeLessThanOrEqual(2);
+});
+
+test('a joined column: tick Customers · email in the picker, and it filters', async ({ page }) => {
+  const data = await ordersGrid(page);
+  await tick(page, 'email', 'Customers');
+  await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
+  await expect(data.getByRole('row').nth(1)).toContainText('@example.com');
+  await data.getByLabel('Filter Customers · email').click();
+  await page.getByLabel('Value').fill('anna');
+  await page.getByRole('button', { name: 'Apply' }).click();
+  await expect(data.getByRole('row').nth(1)).toContainText('anna');
+});
+
+test('the first load draws every band header before the bodies, with a bar that fills and then goes', async ({ page }) => {
+  const bars = page.getByRole('progressbar', { name: 'Reading the project' });
+  await expect(bars.first()).toBeVisible();
+  for (const name of ['Data Sources', 'Data Marts', 'Data', 'Row']) await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  await expect(band(page, 'data').getByRole('row')).toHaveCount(0);
+  await expect(bars).toHaveCount(0, { timeout: 15_000 });
+  await expect(band(page, 'data').getByRole('row')).toHaveCount(201);
+});
+
+test('a table wider than the page scrolls inside its card and never widens the bands', async ({ page }) => {
+  const data = await ordersGrid(page);
+  for (const label of ['created_at', 'Acquisition Session ID', 'Net Revenue', 'Amount']) await tick(page, label);
+  await tick(page, 'email', 'Customers');
+  await tick(page, 'Name', 'Products');
+  await expect(data.getByRole('columnheader', { name: /Products · Name/ })).toBeVisible();
+  const scroller = data.locator('.dm-bigcard div.overflow-auto').first();
+  expect(await scroller.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  const [bm, bd] = [await band(page, 'marts').boundingBox(), await data.boundingBox()];
+  expect(bm!.width).toBeCloseTo(bd!.width, 0);
+  expect(bd!.x + bd!.width).toBeLessThanOrEqual(1440);
 });
