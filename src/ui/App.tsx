@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { martAppUrl } from '../config';
+import { LOADED_HOLD_MS, martAppUrl } from '../config';
 import { tickedStorages } from '../graph/storages';
 import { computeVisible } from '../graph/visible';
 import { sourceOfModel, useServices, useStore } from '../state/store';
 import { CardBands } from './bands/CardBands';
 import { DataBand } from './bands/DataBand';
 import { RowBand } from './bands/RowBand';
+import { LoadingBands } from './bands/LoadingBands';
 import { ErrorBox } from './ErrorBox';
 import { Header } from './header/Header';
 import { HistoryButtons } from './header/HistoryButtons';
-import { Skeleton } from './Skeleton';
 import { TooltipProvider } from './Tooltip';
 import { useCardStatus, useModel } from './useModelData';
 
@@ -25,7 +25,7 @@ const bandId = (band: Fold) => `band-${band}`;
 function AppBody() {
   const [state, dispatch] = useStore();
   const { ctx, preferences } = useServices();
-  const { model, error, reload } = useModel();
+  const { model, error, progress, reload } = useModel();
   // Folding is per band and lives here. A band the reader has not touched follows its default:
   // Data Sources is folded while there is nothing in it.
   const [folds, setFolds] = useState<Partial<Record<Fold, boolean>>>({});
@@ -53,6 +53,18 @@ function AppBody() {
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferences]);
+  // Every read is a step of the bar: the model's own, and the saved folds. Once it is full it stays full and green for a moment, then the bodies open.
+  const done = progress.done + (prefsReady ? 1 : 0);
+  const total = progress.total + 1;
+  const full = !!model && prefsReady && done >= total;
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (!full || held) return;
+    const t = setTimeout(() => setHeld(true), LOADED_HOLD_MS);
+    return () => clearTimeout(t);
+  }, [full, held]);
+  const opened = held;
+  const loading = opened ? null : Math.min(1, done / total);
   const folded = (band: Fold) => folds[band] ?? DEFAULT_FOLDED[band];
   const toggle = (band: Fold) => {
     const now = !folded(band);
@@ -94,7 +106,17 @@ function AppBody() {
 
   // A failed refresh keeps the loaded model on screen; the error shows in the header.
   if (error && !model) return <div className="p-6"><ErrorBox error={error} onRetry={reload} /></div>;
-  if (!model || !visible) return <Skeleton rows={6} />;
+  if (!model || !visible) {
+    // The page shell at once: every band's header, and a bar in place of each body.
+    return (
+      <div className="dm-page">
+        <Header />
+        <main className="dm-page-content">
+          <LoadingBands loading={loading ?? 0} folded={{ sources: folded('sources'), marts: folded('marts'), data: folded('data'), row: folded('row') }} onFold={toggle} />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="dm-page">
@@ -113,14 +135,11 @@ function AppBody() {
           onRetryCount={(id) => void recount(id)}
           onRequestCount={request}
           onOpenApp={(id) => void ctx.ui.openExternal(martAppUrl(ctx.projectId, id))}
+          loading={loading}
         >
-          {/* Until the saved folds are known neither band mounts: one saved as folded must not read rows first. */}
-          {prefsReady ? (
-            <>
-              <DataBand model={model} folded={folded('data')} onFold={() => toggle('data')} />
-              <RowBand model={model} folded={folded('row')} onFold={() => toggle('row')} />
-            </>
-          ) : <div aria-busy="true"><Skeleton rows={4} /></div>}
+          {/* While the bar shows, neither band reads anything: the saved folds are not known yet, and one saved as folded must not read rows first. */}
+          <DataBand model={model} folded={folded('data')} onFold={() => toggle('data')} loading={loading} />
+          <RowBand model={model} folded={folded('row')} onFold={() => toggle('row')} loading={loading} />
         </CardBands>
       </main>
     </div>

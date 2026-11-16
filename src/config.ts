@@ -9,3 +9,6 @@ export const IN_LIST_MAX_CHARS = 6000;
 export function martAppUrl(projectId: string, martId: string): string {
   return `${OWOX_APP_URL}/ui/${encodeURIComponent(projectId)}/data-marts/${encodeURIComponent(martId)}/overview`;
 }
+
+/** How long a full load bar stays on screen, pale green, before the bands' bodies replace it. */
+export const LOADED_HOLD_MS = import.meta.env.MODE === 'test' ? 0 : 450;

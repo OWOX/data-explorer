@@ -21,7 +21,7 @@ export const sortsOnColumns = (sorts: SortKey[], columns: string[]): SortKey[] =
  * schema order. A mart with no date field has no default.
  */
 export function defaultSort(schema: Schema, visible: string[]): SortKey[] {
-  const dates = schema.filter((f) => f.category === 'date' && !f.isCalculated);
+  const dates = schema.filter((f) => f.category === 'date' && !f.isCalculated && !f.isHidden);
   const field = dates.find((f) => visible.includes(f.name)) ?? dates[0];
   return field ? [{ field: field.name, direction: 'desc' }] : [];
 }

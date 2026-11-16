@@ -8,13 +8,14 @@ import { RecordView } from '../explorer/RecordView';
 import { Band } from './Band';
 import { PickedIcon } from './picked';
 
-export function RowBand({ model, folded, onFold }: { model: Model; folded: boolean; onFold: () => void }) {
+export function RowBand({ model, folded, onFold, loading = null }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null }) {
   const [{ selection }] = useStore();
   const { record } = selection;
   // Like the Data band: a folded band mounts no new record, so nothing hidden is fetched.
-  const [shownRecord, setShownRecord] = useState(folded ? null : record);
-  if (!folded && shownRecord !== record) setShownRecord(record);
-  const shown = folded ? shownRecord : record;
+  const held = folded || loading !== null;
+  const [shownRecord, setShownRecord] = useState(held ? null : record);
+  if (!held && shownRecord !== record) setShownRecord(record);
+  const shown = held ? shownRecord : record;
 
   const mart = record ? model.marts.get(record.martId) : undefined;
   const title = record ? `${mart?.title ?? record.martId} · ${Object.values(record.pk).map(String).join(', ')}` : 'Row';
@@ -28,6 +29,7 @@ export function RowBand({ model, folded, onFold }: { model: Model; folded: boole
       folded={folded}
       onFold={onFold}
       grid={false}
+      loading={loading}
     >
       {shown ? <RecordView key={recordTabId(shown.martId, shown.pk)} martId={shown.martId} pk={shown.pk} model={model} /> : <p className="dm-muted p-2 text-sm">Select a row.</p>}
     </Band>

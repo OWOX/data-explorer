@@ -387,3 +387,29 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-sort { cursor: pointer; text-align: left; }
 .dm-sort:hover { color: var(--foreground); }
 .dm-sort-mark { color: var(--primary); gap: 1px; flex-shrink: 0; }
+
+/* A field label and its (?): the label, a 4px gap, then the glyph centred on the label's first line (the slot is one
+   line high, whatever the label does when it wraps). The glyph is there only while the row (`dm-reveal-host`) is
+   hovered or holds focus; a touch screen has no hover, so it stays on there. */
+.dm-fieldlabel { display: inline-flex; align-items: flex-start; gap: 0.25rem; min-width: 0; max-width: 100%; line-height: 1.25rem; }
+.dm-hint-slot { display: inline-flex; flex-shrink: 0; align-items: center; height: 1.25rem; opacity: 0; transition: opacity 120ms; }
+.dm-reveal-host:hover .dm-hint-slot, .dm-reveal-host:focus-within .dm-hint-slot { opacity: 1; }
+@media (hover: none) { .dm-hint-slot { opacity: 1; } }
+
+/* The title row of a popover that scrolls (a filter's column name): it stays at the top while the list moves under it.
+   The body pads 0.75rem; the title takes that padding back so it sits flush with the edge when pinned. */
+.dm-popover-title { position: sticky; top: 0; z-index: 1; margin: -0.75rem 0 0; padding-top: 0.75rem; padding-bottom: 0.25rem; background: var(--background); }
+
+/* A band that is still reading: one bar where its body will be, so the page keeps its shape. Both fills are pale
+   enough to read as a track rather than as a status; it is green for the moment before the bodies open. */
+.dm-loadbar {
+  height: 0.625rem; border-radius: 999px;
+  background: color-mix(in oklab, var(--muted-foreground) 12%, transparent);
+  overflow: hidden;
+}
+.dm-loadbar span {
+  display: block; height: 100%; border-radius: inherit;
+  background: #cee2f7;
+  transition: width 240ms ease-out, background 240ms ease-out;
+}
+.dm-loadbar-done span { background: #d9eed7; }

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TooltipProvider } from '../Tooltip';
 import { CellValue } from './CellValue';
@@ -22,4 +22,28 @@ test('an unreadable value, a null and a field with no type show raw', () => {
   view(<><CellValue row={{ at: 'soon' }} field="at" type="TIMESTAMP" /><CellValue row={{ at: null }} field="at" type="TIMESTAMP" /><CellValue row={{ x: '2026-03-12' }} field="x" /></>);
   expect(screen.getByText('soon')).toBeInTheDocument();
   expect(screen.getByText('2026-03-12')).toBeInTheDocument();
+});
+
+const truncating = (el: HTMLElement) => { Object.defineProperty(el, 'scrollWidth', { configurable: true, value: 300 }); Object.defineProperty(el, 'clientWidth', { configurable: true, value: 100 }); };
+
+test('a value is one clipped line, and a truncated one shows in full on hover', async () => {
+  view(<CellValue row={{ id: 'a-very-long-session-identifier-0123456789' }} field="id" />);
+  const cell = screen.getByText('a-very-long-session-identifier-0123456789');
+  expect(cell).toHaveClass('truncate');
+  truncating(cell);
+  await userEvent.hover(cell);
+  await waitFor(() => expect(screen.getAllByText('a-very-long-session-identifier-0123456789').length).toBeGreaterThan(1));
+});
+
+test('a value that fits has no tooltip', async () => {
+  view(<CellValue row={{ id: 'short' }} field="id" />);
+  await userEvent.hover(screen.getByText('short'));
+  await new Promise((r) => setTimeout(r, 400));
+  expect(screen.queryByRole('tooltip')).toBeNull();
+});
+
+test('a cell is never a button, whatever the field is', () => {
+  view(<CellValue row={{ customer_id: 7 }} field="customer_id" type="INT64" />);
+  expect(screen.queryByRole('button')).toBeNull();
+  expect(screen.getByText('7')).not.toHaveClass('text-primary');
 });

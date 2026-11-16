@@ -7,29 +7,6 @@ export function primaryKeys(schema: Schema): string[] {
   return schema.filter((f) => f.isPrimaryKey).map((f) => f.name);
 }
 
-export type RelColumn = {
-  field: string;
-  edgeId: string;
-  relatedMartId: string;
-  relatedField: string;
-  composite: boolean;
-  /** Sourced from this mart's side: sourceField is this mart's field, targetField the related mart's. */
-  joins: { sourceField: string; targetField: string }[];
-};
-
-/** Relationship cells of the grid and the record: this mart's own outgoing edges only. */
-export function relationshipColumns(martId: string, edges: Edge[]): Map<string, RelColumn> {
-  const out = new Map<string, RelColumn>();
-  for (const e of edges) {
-    if (e.source !== martId) continue;
-    for (const j of e.joins) {
-      if (out.has(j.sourceField)) continue;
-      out.set(j.sourceField, { field: j.sourceField, edgeId: e.id, relatedMartId: e.target, relatedField: j.targetField, composite: e.joins.length > 1, joins: e.joins });
-    }
-  }
-  return out;
-}
-
 export type IncomingLink = {
   edgeId: string;
   sourceMartId: string;
@@ -64,18 +41,6 @@ export function equalsFilter(field: Field | undefined, name: string, value: unkn
 export function joinFilters(joins: { sourceField: string; targetField: string }[], row: Row, targetSchema: Schema): ColumnFilter[] | null {
   if (joins.some((j) => blank(row[j.sourceField]))) return null;
   return joins.map((j) => equalsFilter(targetSchema.find((f) => f.name === j.targetField), j.targetField, row[j.sourceField]));
-}
-
-/** `relatedSchema` undefined means it has not loaded yet: no target until the filter operators are known. */
-export function clickTarget(rel: RelColumn, row: Row, relatedSchema: Schema | undefined): ClickTarget | null {
-  if (!relatedSchema) return null;
-  const filters = joinFilters(rel.joins, row, relatedSchema);
-  if (!filters) return null;
-  const pks = primaryKeys(relatedSchema);
-  if (!rel.composite && pks.length === 1 && pks[0] === rel.relatedField) {
-    return { kind: 'record', martId: rel.relatedMartId, pk: { [rel.relatedField]: row[rel.field] } };
-  }
-  return { kind: 'mart', martId: rel.relatedMartId, filters };
 }
 
 export function recordTabId(martId: string, pk: Record<string, unknown>): string {

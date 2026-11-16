@@ -9,7 +9,7 @@ type CountDoc = { dataMartId: string; count: number; at: string };
 export function countOptions(schema: Schema): { options: TraverseOptions; key: string } | null {
   if (schema.some((f) => f.isPrimaryKey)) return { options: { uniqueCount: [''] }, key: 'Unique Count' };
   // The backend allows COUNT only on string, boolean and other fields (number: SUM/AVG/MIN/MAX, date and time: MIN/MAX).
-  const first = schema.find((f) => f.category === 'string' || f.category === 'boolean' || f.category === 'other');
+  const first = schema.find((f) => !f.isHidden && (f.category === 'string' || f.category === 'boolean' || f.category === 'other'));
   if (!first) return null;
   return { options: { column: [first.name], aggregation: [{ column: first.name, function: 'COUNT' }] }, key: `${first.name} | COUNT` };
 }

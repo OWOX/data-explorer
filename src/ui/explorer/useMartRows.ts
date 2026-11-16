@@ -3,20 +3,16 @@ import { readRows } from '../../api/rows';
 import { toTraverseFilters, type ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
 import type { Schema } from '../../model/types';
-import type { RelColumn } from '../../records/relationships';
 import type { Row, TraverseOptions } from '../../sdk/types';
 import { useServices } from '../../state/store';
 
 export function defaultColumns(schema: Schema): string[] {
-  return schema.filter((f) => !f.isCalculated).slice(0, 5).map((f) => f.name);
+  return schema.filter((f) => !f.isCalculated && !f.isHidden).slice(0, 5).map((f) => f.name);
 }
 
-export function buildRowQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, rels: Map<string, RelColumn>, sorts: SortKey[] = []): TraverseOptions {
+export function buildRowQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, sorts: SortKey[] = []): TraverseOptions {
   const need = new Set(visible);
   schema.filter((f) => f.isPrimaryKey).forEach((f) => need.add(f.name));
-  // BigQuery bills per column scanned: join source fields are fetched only for relationship columns on screen
-  // (and the composite partners their click needs), not for every relationship of the mart.
-  for (const name of visible) rels.get(name)?.joins.forEach((j) => need.add(j.sourceField));
   const column = schema.map((f) => f.name).filter((n) => need.has(n));
   const filter = toTraverseFilters(schema, filters);
   // The reader's sorts come first; the primary keys follow (unless already sorted) so "Load more" pages stay deterministic.

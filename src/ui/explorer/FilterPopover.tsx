@@ -38,7 +38,7 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
   const isDay = field.type.trim().toUpperCase() === 'DATE';
   return (
     <div className="flex flex-col gap-0.5" role="group" aria-label={`Filter ${fieldLabel(field)}`}>
-      <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">{fieldLabel(field)}</div>
+      <div className="dm-popover-title px-2 text-xs font-medium text-muted-foreground">{fieldLabel(field)}</div>
       <div className="flex flex-col gap-0.5" role="group" aria-label="Date presets">
         {DATE_PRESETS.map((pr) => {
           const active = isPreset(current, pr.rule);
@@ -76,7 +76,7 @@ function OperatorForm({ field, value, onApply, onClear, startOp }: EditorProps &
 
   return (
     <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); if (isComplete(draft, field)) onApply(draft); }}>
-      <div className="text-xs font-medium text-muted-foreground">{fieldLabel(field)}</div>
+      <div className="dm-popover-title text-xs font-medium text-muted-foreground">{fieldLabel(field)}</div>
       <select aria-label="Operator" className={input} value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); }}>
         {ops.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
       </select>

@@ -18,18 +18,28 @@ async function canvasNodes(ctx: Ctx, storageId: string) {
   return items;
 }
 
-export async function loadModel(ctx: Ctx): Promise<Model> {
+export type LoadProgress = { done: number; total: number };
+
+/** The reads before the storages are known: the storages, the marts, the contexts and the connectors. */
+export const FIRST_STEPS = 4;
+
+/** `onProgress` hears every finished read. Each storage adds two more once the storages are known: its canvas and its edges. */
+export async function loadModel(ctx: Ctx, onProgress?: (p: LoadProgress) => void): Promise<Model> {
+  let done = 0;
+  let total = FIRST_STEPS;
+  const step = <T,>(value: T): T => { done += 1; onProgress?.({ done, total }); return value; };
   const [storages, list, contexts, connectors] = await Promise.all([
-    ctx.owox.storages.list(),
-    ctx.owox.dataMarts.list(),
-    ctx.owox.getJson<ContextDto[]>('/api/contexts'),
+    ctx.owox.storages.list().then((s) => { total += s.length * 2; return step(s); }),
+    ctx.owox.dataMarts.list().then(step),
+    ctx.owox.getJson<ContextDto[]>('/api/contexts').then(step),
     // Connector titles and logos are decoration: a failure falls back to the raw keys.
-    ctx.owox.getJson<ConnectorDto[]>('/api/connectors').catch((): ConnectorDto[] => []),
+    ctx.owox.getJson<ConnectorDto[]>('/api/connectors').catch((): ConnectorDto[] => []).then(step),
   ]);
   const listed = new Map(list.map((m) => [m.id, m]));
   const marts = new Map<string, Mart>();
   const results = await runPool(storages, STORAGE_CONCURRENCY, async (s) => {
-    const [nodes, edges] = await Promise.all([canvasNodes(ctx, s.id), ctx.owox.models.getEdges(s.id)]);
+    // A storage that fails still counts as read: the bar must be able to fill.
+    const [nodes, edges] = await Promise.all([canvasNodes(ctx, s.id).then(step, (e) => { step(null); throw e; }), ctx.owox.models.getEdges(s.id).then(step, (e) => { step(null); throw e; })]);
     for (const n of nodes) {
       const item = listed.get(n.id);
       marts.set(n.id, {

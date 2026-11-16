@@ -8,6 +8,8 @@ export interface Field {
   description: string | null;
   isPrimaryKey: boolean;
   isCalculated?: boolean;
+  /** Hidden for reporting in OWOX: offered last in the column picker, never a default column or a Row band field. */
+  isHidden?: boolean;
 }
 
 export interface Context { id: string; name: string; icon: string | null }
@@ -51,4 +53,4 @@ export interface DqSummary {
   lastRunAt?: string | null;
 }
 
-export type Schema = Field[]; // reporting-visible fields only, in schema order
+export type Schema = Field[]; // every connected field, in schema order; hidden ones carry `isHidden`

@@ -114,20 +114,23 @@ test('a card click selects its mart and Back restores the previous one', async (
   await expect(band(page, 'data').getByRole('heading', { name: 'Orders' })).toBeVisible();
 });
 
-test('a related title moves the selection, and Back restores the mart and the record', async ({ page }) => {
-  const data = await ordersGrid(page);
+test('a reference column shows the stored value as plain text; Referenced by opens the referencing mart, and Undo restores the record', async ({ page }) => {
+  await ordersGrid(page);
   const row = band(page, 'row');
+  await martCard(page, 'Customers').click();
+  const data = band(page, 'data');
+  await expect(data.getByRole('heading', { name: 'Customers' })).toBeVisible();
+  await expect(data.getByRole('button', { name: /^Hide / })).toBeVisible();
   await data.getByRole('row').nth(1).click();
-  await expect(row.getByRole('heading', { name: /^Orders · 1$/ })).toBeVisible();
-  // A customer's name in the grid is a related title: it opens that customer.
-  await data.getByRole('cell').filter({ hasText: /^[A-Z][a-z]+ [A-Z][a-z]+$/ }).first().getByRole('button').click();
+  await expect(row.getByRole('heading', { name: /^Customers · \d+$/ })).toBeVisible();
+  // nothing in the record is a link, and nothing says "via"
+  await expect(row.locator('dd button')).toHaveCount(0);
+  await row.getByRole('region', { name: 'Referenced by' }).getByRole('button', { name: /^Orders/ }).click();
+  await expect(data.getByRole('heading', { name: 'Orders' })).toBeVisible();
+  await expect(row.getByText('Select a row.')).toBeVisible();
+  await page.getByRole('button', { name: 'Undo' }).click();
   await expect(data.getByRole('heading', { name: 'Customers' })).toBeVisible();
   await expect(row.getByRole('heading', { name: /^Customers · \d+$/ })).toBeVisible();
-  await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(data.getByRole('heading', { name: 'Orders' })).toBeVisible();
-  await expect(row.getByRole('heading', { name: /^Orders · 1$/ })).toBeVisible();
-  await expect(martCard(page, 'Orders')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('the storage filter drops the marts of an unticked storage and leaves the selection alone', async ({ page }) => {
