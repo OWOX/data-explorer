@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Ctx } from '../sdk/types';
+import { SAVE_DEBOUNCE_MS } from '../api/grid-columns';
 import { createMockCtx } from '../sdk/mock/ctx';
 import { demoFixtures } from '../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore, type GridState, type State } from '../state/store';
@@ -27,7 +28,11 @@ function setup(route: string | undefined, copyLink?: (p?: string) => Promise<voi
   const real = createMockCtx(demoFixtures(), { latencyMs: 0 });
   let blends = 0;
   const base: Ctx = failFirstBlendable ? { ...real, owox: { ...real.owox, getJson: (async (path: string, q?: Record<string, string>) => {
-    if (path.endsWith('/blendable-schema') && blends++ === 0) throw new Error('boom');
+    if (path.endsWith('/blendable-schema')) {
+      // The resolver's read fails; later reads are slow, so the grid mounts before the joined marts are cached.
+      if (blends++ === 0) throw new Error('boom');
+      await new Promise((r) => setTimeout(r, 150));
+    }
     return real.owox.getJson(path, q);
   }) as Ctx['owox']['getJson'] } } : real;
   const puts: string[] = [];
@@ -84,7 +89,8 @@ describe('opening a view link', () => {
     await loaded();
     await waitFor(() => expect(box.latest.selection.martId).toBe('orders'));
     await screen.findByRole('table');
-    await new Promise((r) => setTimeout(r, 300));
+    // The column store saves after a debounce.
+    await new Promise((r) => setTimeout(r, SAVE_DEBOUNCE_MS + 300));
     expect(puts).toEqual([]);
   });
 
