@@ -48,6 +48,7 @@ export function useCardClick(model: Model): (id: string) => Promise<void> {
         grids.set(martId, { filters: {}, sorts: null, limit: PAGE_SIZE, ...have, columns: kept.length ? kept : defaultColumns(own) });
       }
       picks.set(martId, await columnStore.loadPicks(martId));
+      await columnStore.loadLastShown(martId);
     };
     if (main) {
       await load(main);
@@ -58,6 +59,8 @@ export function useCardClick(model: Model): (id: string) => Promise<void> {
     }
     // A mart that becomes the only selected one is stripped of the joined columns it was left with.
     if (id !== main && !(main && isJoinable(sources.get(main)!, id))) await load(id);
+    // The mart being added or made main brings what it showed when it last left a grid.
+    if (id !== main) await columnStore.loadLastShown(id);
     const now = latest.current;
     // The member moved on while this was being read.
     if (now.selection.martId !== main) return;
@@ -70,10 +73,13 @@ export function useCardClick(model: Model): (id: string) => Promise<void> {
       gridOf: (martId) => fresh(martId) ?? { columns: [], filters: {}, sorts: null, limit: PAGE_SIZE },
       ownColumns: (martId) => defaultColumns(schemas.peek(martId) ?? []),
       picksOf: (martId) => picks.get(martId) ?? {},
+      lastShownOf: (martId) => columnStore.lastShown(martId),
+      ownNames: (martId) => (schemas.peek(martId) ?? []).map((f) => f.name),
     }, id);
     if (Object.keys(plan.grids).length === 0 && plan.selection.martId && !plan.selection.cleared) dispatch({ type: 'selectMart', id: plan.selection.martId, sourceOf });
     else dispatch({ type: 'setMarts', selection: plan.selection, grids: plan.grids });
     for (const save of plan.saves) columnStore.save(save.martId, save.columns, save.picks);
+    for (const r of plan.remember) columnStore.saveLastShown(r.martId, r.fields);
     await rendered();
   }, [blendable, columnStore, schemas, dispatch, model]);
 

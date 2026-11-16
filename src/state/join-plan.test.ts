@@ -3,7 +3,7 @@ import type { Field } from '../model/types';
 import { defaultJoinFields, fieldsFor, isIdField, joinedMartIds, planClick, withoutMart, type PlanEnv } from './join-plan';
 import type { GridState } from './store';
 
-const f = (name: string, category: Field['category'], martId: string): Field => ({ name, alias: null, type: 'STRING', category, description: null, isPrimaryKey: false, joined: { martId, label: martId, aliasPath: martId } });
+const f = (name: string, category: Field['category'], martId: string): Field => ({ name, alias: null, type: 'STRING', category, description: null, isPrimaryKey: false, joined: { martId, label: martId, aliasPath: martId, originalName: name.slice(martId.length + 2) } });
 const src = (aliasPath: string, martId: string, fields: Field[], depth = 1): JoinedSource => ({ aliasPath, martId, label: martId, depth, fields });
 const ordersSources = [
   src('customers', 'customers', [f('customers__id', 'number', 'customers'), f('customers__city', 'string', 'customers'), f('customers__email', 'string', 'customers')]),
@@ -161,5 +161,54 @@ describe('what a joined mart comes with by default', () => {
     const e = { ...env({ orders: g(['id']) }, 'orders'), sourcesOf: () => sources };
     expect(planClick(e, 'products').grids.orders!.columns).toEqual(['id', 'products__sku', 'products__price']);
     expect(planClick({ ...e, picksOf: () => ({ products: ['products__price'] }) }, 'products').grids.orders!.columns).toEqual(['id', 'products__price']);
+  });
+});
+
+describe('what a mart showed when it left the grid comes back', () => {
+  const shown: Record<string, string[]> = {};
+  const withShown = (e: PlanEnv): PlanEnv => ({ ...e, lastShownOf: (id) => shown[id] ?? null, ownNames: (id) => ({ customers: ['id', 'city', 'email', 'name'], orders: ['id', 'status'], stores: ['id', 'city'] }[id] ?? []) });
+  beforeEach(() => { for (const k of Object.keys(shown)) delete shown[k]; });
+
+  test('a joined mart that is removed remembers its own field names, and comes back with them', () => {
+    const removed = planClick(withShown(env({ orders: g(['id', 'customers__email', 'customers__city']) }, 'orders')), 'customers');
+    expect(removed.remember).toEqual([{ martId: 'customers', fields: ['email', 'city'] }]);
+    shown.customers = ['email', 'city'];
+    const back = planClick(withShown(env({ orders: g(['id']) }, 'orders', { orders: { customers: ['customers__id'] } })), 'customers');
+    expect(back.grids.orders!.columns).toEqual(['id', 'customers__email', 'customers__city']);
+  });
+
+  test('a field the new main\'s source does not offer is skipped; with none left the default comes back', () => {
+    shown.stores = ['city', 'zip'];
+    expect(planClick(withShown(env({ orders: g(['id']) }, 'orders')), 'stores').grids.orders!.columns).toEqual(['id', 'stores__city']);
+    shown.stores = ['zip'];
+    expect(planClick(withShown(env({ orders: g(['id']) }, 'orders')), 'stores').grids.orders!.columns).toEqual(['id', 'stores__city']);
+  });
+
+  test('a mart shown as joined and later clicked as main shows the same fields as its own columns', () => {
+    shown.customers = ['name', 'email'];
+    const plan = planClick(withShown(env({ customers: g(['id', 'city']) }, 'stores')), 'customers');
+    expect(plan.selection.martId).toBe('customers');
+    expect(plan.grids.customers!.columns).toEqual(['name', 'email']);
+    expect(plan.saves).toEqual([{ martId: 'customers', columns: ['name', 'email'] }]);
+    expect(plan.remember).toContainEqual({ martId: 'customers', fields: null });
+  });
+
+  test('the main mart that is deselected remembers its own columns; clicked again it shows them', () => {
+    const left = planClick(withShown(env({ orders: g(['id', 'status']) }, 'orders')), 'orders');
+    expect(left.remember).toEqual([{ martId: 'orders', fields: ['id', 'status'] }]);
+    shown.orders = ['status', 'id'];
+    const again = planClick(withShown(env({ orders: g(['id']) }, null)), 'orders');
+    expect(again.grids.orders!.columns).toEqual(['status', 'id']);
+  });
+
+  test('a main replaced by another mart, and its joined marts, remember what they showed', () => {
+    const plan = planClick(withShown(env({ orders: g(['id', 'customers__city']), order_items: g(['id']) }, 'orders')), 'order_items');
+    expect(plan.remember).toEqual(expect.arrayContaining([{ martId: 'orders', fields: ['id'] }, { martId: 'customers', fields: ['city'] }]));
+  });
+
+  test('a promoted mart shows the fields it had as joined, as its own columns', () => {
+    const plan = planClick(withShown(env({ orders: g(['id', 'customers__city', 'customers__email']), customers: g(['id']) }, 'orders')), 'orders');
+    expect(plan.grids.customers!.columns).toEqual(['city', 'email']);
+    expect(plan.remember).toEqual(expect.arrayContaining([{ martId: 'orders', fields: ['id'] }]));
   });
 });

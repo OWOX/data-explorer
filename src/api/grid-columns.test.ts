@@ -109,3 +109,29 @@ test('a failed read gives no picks', async () => {
   const store = createColumnStore(ctxWith({ get: vi.fn().mockRejectedValue(new Error('down')), put: vi.fn() }));
   expect(await store.loadPicks('m')).toEqual({});
 });
+
+test('what a mart showed when it left a grid is read with its doc, saved without erasing the columns, and can be forgotten', async () => {
+  vi.useFakeTimers();
+  const get = vi.fn(async () => ({ document: { columns: ['a', 'b'], at: 'x', lastShown: ['city', 'name'] } }));
+  const put = vi.fn(async () => ({}));
+  const store = createColumnStore(ctxWith({ get, put }));
+  expect(store.lastShown('m')).toBeNull();
+  expect(await store.loadLastShown('m')).toEqual(['city', 'name']);
+  expect(store.lastShown('m')).toEqual(['city', 'name']);
+  store.saveLastShown('m', ['email']);
+  await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
+  expect(put).toHaveBeenLastCalledWith('m', { columns: ['a', 'b'], at: expect.any(String), lastShown: ['email'] });
+  store.saveLastShown('m', null);
+  await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
+  expect(put).toHaveBeenLastCalledWith('m', { columns: ['a', 'b'], at: expect.any(String) });
+});
+
+test('a plain column save keeps the last shown fields that were stored and never read', async () => {
+  vi.useFakeTimers();
+  const get = vi.fn(async () => ({ document: { columns: ['a'], at: 'x', lastShown: ['city'] } }));
+  const put = vi.fn(async () => ({}));
+  const store = createColumnStore(ctxWith({ get, put }));
+  store.save('m', ['a', 'b']);
+  await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
+  expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'b'], at: expect.any(String), lastShown: ['city'] });
+});

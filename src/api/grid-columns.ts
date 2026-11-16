@@ -4,7 +4,7 @@ export const GRID_COLUMNS_COLLECTION = 'grid-columns';
 export const SAVE_DEBOUNCE_MS = 500;
 /** The joined fields last chosen for each joined data mart, per main data mart: `{ customers: ['customers__city'] }`. An empty list means "none, use the default next time". */
 export type Picks = Record<string, string[]>;
-type ColumnsDoc = { columns: string[]; at: string; picks?: Picks };
+type ColumnsDoc = { columns: string[]; at: string; picks?: Picks; lastShown?: string[] };
 
 export interface ColumnStore {
   /** The member's saved column names for a mart, or null when there are none or the read failed. */
@@ -13,6 +13,12 @@ export interface ColumnStore {
   loadPicks(martId: string): Promise<Picks>;
   /** What `loadPicks` read, with this session's changes; empty until it has been read. */
   picks(martId: string): Picks;
+  /** The mart's OWN field names as they were shown when it last left the grid (as main or as a joined mart); null when none was remembered or it is not read yet. */
+  lastShown(martId: string): string[] | null;
+  /** Reads what `lastShown` serves (once per mart; a failure reads as none). */
+  loadLastShown(martId: string): Promise<string[] | null>;
+  /** Remembers the own field names a mart was showing when it left the grid; null forgets them. Saved with the same pause as `save`. */
+  saveLastShown(martId: string, fields: string[] | null): void;
   /** Saves after a short pause; the last call for a mart wins. `picks` merges into the remembered joined picks. Never throws. */
   save(martId: string, columns: string[], picks?: Picks): void;
 }
@@ -27,6 +33,7 @@ export function createColumnStore(ctx: Ctx): ColumnStore {
   const cache = new Map<string, string[] | null>();
   const picked = new Map<string, Picks>();
   const patches = new Map<string, Picks>();
+  const shownBy = new Map<string, string[] | null>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
   const reads = new Map<string, Promise<string[] | null>>();
@@ -39,6 +46,7 @@ export function createColumnStore(ctx: Ctx): ColumnStore {
       // A save that landed while the read was out is newer than what it read.
       if (!cache.has(martId)) cache.set(martId, columns);
       if (!picked.has(martId)) picked.set(martId, validPicks(doc?.picks));
+      if (!shownBy.has(martId)) shownBy.set(martId, Array.isArray(doc?.lastShown) ? doc.lastShown.filter((x): x is string => typeof x === 'string') : null);
       return cache.get(martId)!;
     } catch {
       return null;
@@ -48,7 +56,7 @@ export function createColumnStore(ctx: Ctx): ColumnStore {
   }
 
   function load(martId: string): Promise<string[] | null> {
-    if (cache.has(martId) && picked.has(martId)) return Promise.resolve(cache.get(martId)!);
+    if (cache.has(martId) && picked.has(martId) && shownBy.has(martId)) return Promise.resolve(cache.get(martId)!);
     // Concurrent loads (StrictMode mounts twice) share one read.
     let pending = reads.get(martId);
     if (!pending) { pending = read(martId); reads.set(martId, pending); }
@@ -68,23 +76,37 @@ export function createColumnStore(ctx: Ctx): ColumnStore {
       return picksOf(martId);
     },
     picks: picksOf,
+    lastShown: (martId) => shownBy.get(martId) ?? null,
+    async loadLastShown(martId) {
+      if (!shownBy.has(martId)) await load(martId);
+      return shownBy.get(martId) ?? null;
+    },
+    saveLastShown(martId, fields) {
+      shownBy.set(martId, fields);
+      schedule(martId);
+    },
     save(martId, columns, picks) {
       cache.set(martId, columns);
       if (picks) patches.set(martId, { ...patches.get(martId), ...picks });
-      clearTimeout(timers.get(martId));
-      timers.set(martId, setTimeout(() => {
-        timers.delete(martId);
-        Promise.resolve()
-          .then(async () => {
-            // Saved picks that were never read are read first, so a plain column save does not erase them.
-            if (!picked.has(martId)) await load(martId);
-            const merged = picksOf(martId);
-            picked.set(martId, merged);
-            patches.delete(martId);
-            await col.put(martId, { columns: cache.get(martId) ?? columns, at: new Date().toISOString(), ...(Object.keys(merged).length ? { picks: merged } : {}) });
-          })
-          .catch((e) => console.warn('Saving the column selection failed', e));
-      }, SAVE_DEBOUNCE_MS));
+      schedule(martId);
     },
   };
+
+  function schedule(martId: string) {
+    clearTimeout(timers.get(martId));
+    timers.set(martId, setTimeout(() => {
+      timers.delete(martId);
+      Promise.resolve()
+        .then(async () => {
+          // What was never read is read first, so a save of one part does not erase the others.
+          if (!picked.has(martId) || !shownBy.has(martId)) await load(martId);
+          const merged = picksOf(martId);
+          picked.set(martId, merged);
+          patches.delete(martId);
+          const shown = shownBy.get(martId);
+          await col.put(martId, { columns: cache.get(martId) ?? [], at: new Date().toISOString(), ...(Object.keys(merged).length ? { picks: merged } : {}), ...(shown ? { lastShown: shown } : {}) });
+        })
+        .catch((e) => console.warn('Saving the column selection failed', e));
+    }, SAVE_DEBOUNCE_MS));
+  }
 }

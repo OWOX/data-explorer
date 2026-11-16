@@ -7,7 +7,7 @@ import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
 import type { ColumnFilter } from '../../filters/build';
 import { cycleSort, defaultSort, sortsOnColumns, type SortKey } from '../../model/sort';
 import { orderColumns } from '../../state/column-order';
-import { joinedMartIds } from '../../state/join-plan';
+import { joinedMartIds, ownNamesIn } from '../../state/join-plan';
 import type { Model, Schema } from '../../model/types';
 import { primaryKeys } from '../../records/relationships';
 import type { Row } from '../../sdk/types';
@@ -257,6 +257,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     // A joined mart whose last field was unticked is remembered as empty: it comes back with its first text field.
     const left = joinedMartIds(visible, sources).filter((m) => !joinedMartIds(cols, sources).includes(m));
     columnStore.save(martId, cols, left.length ? Object.fromEntries(left.map((m) => [m, [] as string[]])) : undefined);
+    // A joined mart that has just left remembers what it was showing, as its own field names.
+    for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
   };
   const byName = useMemo(() => new Map(schema.map((f) => [f.name, f])), [schema]);
   const table = useTable({ features, data: rows ?? [], columns });

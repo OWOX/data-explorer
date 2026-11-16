@@ -35,7 +35,7 @@ test('a source is named by its display prefix, and by its alias path too when tw
 
 test('a joined field is a column: the blended name, its own type, its label, and where it came from', () => {
   const [buyers, countries] = joinedSources(dto);
-  expect(buyers!.fields[0]).toEqual({ name: 'customers__email', alias: 'email', type: 'STRING', category: 'string', description: 'Where we write.', isPrimaryKey: false, joined: { martId: 'u', label: 'Buyers', aliasPath: 'customers' } });
+  expect(buyers!.fields[0]).toEqual({ name: 'customers__email', alias: 'email', type: 'STRING', category: 'string', description: 'Where we write.', isPrimaryKey: false, joined: { martId: 'u', label: 'Buyers', aliasPath: 'customers', originalName: 'email' } });
   expect(countries!.fields[0]!.alias).toBe('Country name');
 });
 

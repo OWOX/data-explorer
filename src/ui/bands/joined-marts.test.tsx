@@ -312,3 +312,18 @@ test('the Data Marts band shows the marts connected to a joined mart, not only t
   await click('Customers');
   await waitFor(() => expect(within(marts()).queryByText('Countries')).toBeNull());
 });
+
+test('a mart that leaves the grid remembers its own field names in its own grid-columns document', async () => {
+  const t = setup();
+  await ready();
+  await click('Customers');
+  await waitFor(() => expect(headers()).toHaveLength(6));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Customers' }));
+  await userEvent.click(await screen.findByLabelText('email'));
+  await waitFor(() => expect(headers()).toHaveLength(7));
+  await userEvent.keyboard('{Escape}');
+  // Customers leaves the grid
+  await click('Customers');
+  await waitFor(() => expect(title()).toBe('Orders'));
+  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["name","email"]'))).toBe(true), { timeout: 3000 });
+});
