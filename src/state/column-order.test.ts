@@ -21,6 +21,12 @@ test('a list that is already grouped, or has no joined column, comes back unchan
   expect(orderColumns([], sources)).toEqual([]);
 });
 
+test('joined columns with no own column get the main mart\'s fallback columns first', () => {
+  expect(orderColumns(['customers__city', 'products__sku'], sources, ['id', 'status'])).toEqual(['id', 'status', 'customers__city', 'products__sku']);
+  expect(orderColumns(['id', 'customers__city'], sources, ['x'])).toEqual(['id', 'customers__city']);
+  expect(orderColumns(['customers__city'], sources)).toEqual(['customers__city']);
+});
+
 test('with no sources every column is the main mart\'s own', () => {
   expect(orderColumns(['b', 'a', 'customers__id'], [])).toEqual(['b', 'a', 'customers__id']);
 });

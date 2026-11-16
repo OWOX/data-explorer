@@ -20,10 +20,10 @@ test.each<[ColumnFilter, string]>([
   expect(describeFilter(filter)).toBe(words);
 });
 
-test('the prompt names the project, the mart, the shown columns in schema order, the filters and the sorts', () => {
+test('the prompt names the project, the mart, the shown columns in grid order, the filters and the sorts', () => {
   const prompt = buildAiPrompt({
     projectId: 'p1', projectTitle: 'Acme', martId: 'orders', martTitle: 'Orders', schema,
-    visible: ['customers__city', 'id', 'created_at'],
+    visible: ['id', 'created_at', 'customers__city'],
     filters: [{ field: 'status', op: 'eq', value: 'paid' }, { field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 30 } }],
     sorts: [{ field: 'created_at', direction: 'desc' }, { field: 'amount', direction: 'asc' }],
   });
@@ -77,4 +77,10 @@ test('NEL, zero-width and bidi characters are stripped, and a double quote in a 
   expect(prompt).toContain('Query the data mart "a b c d e f" (id "o").');
   expect(prompt).toContain('Fields: "we\\"ird".');
   expect(prompt.split('\n')).toHaveLength(8);
+});
+
+test('the fields are listed in the grid\'s order, a joined mart added first before a later one', () => {
+  const wide: Field[] = [...schema, f('products__sku', 'string')];
+  const prompt = buildAiPrompt({ projectId: 'p1', martId: 'orders', martTitle: 'Orders', schema: wide, visible: ['id', 'products__sku', 'customers__city'], filters: [], sorts: [] });
+  expect(prompt).toContain('Fields: "id", "products__sku", "customers__city".');
 });

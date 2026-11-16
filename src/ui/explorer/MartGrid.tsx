@@ -1,6 +1,6 @@
 import { columnVisibilityFeature, flexRender, tableFeatures, useTable, type ColumnDef } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp, Box, Info, RefreshCw, RotateCcw, X } from 'lucide-react';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PAGE_SIZE } from '../../config';
 import type { JoinedSource } from '../../api/blendable';
 import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
@@ -74,7 +74,7 @@ function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed:
   const [initial, setInitial] = useState<Initial | null>(() => {
     const cached = blendable.peek(martId);
     const full = withJoined(schema, cached ?? []);
-    const kept = orderColumns(offered(full, seed.saved?.columns ?? []), cached ?? []);
+    const kept = orderColumns(offered(full, seed.saved?.columns ?? []), cached ?? [], defaultColumns(schema));
     // A session list that names a joined field waits for the joined marts unless they are already known.
     return kept.length && (cached || !namesJoined(schema, seed.saved)) ? { columns: kept, cleaned: null, sources: cached ?? null } : null;
   });
@@ -93,10 +93,13 @@ function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed:
       }
       if (!live) return;
       clearTimeout(timer);
-      const kept = orderColumns(offered(withJoined(schema, sources ?? []), saved), sources ?? []);
-      // Names a failed read could not check are left in what is saved; only names the schema really lacks are cleaned out.
-      const dropped = !failed && saved.length > kept.length;
-      setInitial({ columns: kept.length ? kept : defaultColumns(schema), cleaned: dropped ? kept : null, sources });
+      const there = offered(withJoined(schema, sources ?? []), saved);
+      const kept = orderColumns(there, sources ?? [], defaultColumns(schema));
+      // Names a failed read could not check are left in what is saved; only names the schema really lacks are cleaned out,
+      // and a list that was not grouped by data mart is saved grouped.
+      const dropped = !failed && saved.length > there.length;
+      const regrouped = !failed && kept.length > 0 && kept.some((c, i) => c !== there[i]);
+      setInitial({ columns: kept.length ? kept : defaultColumns(schema), cleaned: dropped || regrouped ? kept : null, sources });
     })();
     return () => { live = false; clearTimeout(timer); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -137,7 +140,7 @@ function SortTitle({ field }: { field: Schema[number] }) {
       {current && <span className="dm-sort-mark inline-flex items-center"><Arrow className="size-3.5" aria-hidden />{sorts.length > 1 && <span className="text-[10px] tabular-nums">{at + 1}</span>}</span>}
     </button>
   );
-  return <OverflowTip text={shown} extra={field.joined ? undefined : fieldTitle(field)} measure={(el) => el.querySelector('.truncate')}>{button}</OverflowTip>;
+  return <OverflowTip text={label} extra={field.joined ? undefined : fieldTitle(field)} measure={(el) => el.querySelector('.truncate')}>{button}</OverflowTip>;
 }
 
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
@@ -208,7 +211,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   useEffect(() => { onChange({ columns: visible, filters: { ...parked, ...filters }, sorts: own, limit }); }, [visible, filters, parked, own, limit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every data mart's columns sit together: the main mart's own, then each joined mart's in the order it was added.
-  const shown = useMemo(() => orderColumns(visible, sources), [visible, sources]);
+  const shown = useMemo(() => orderColumns(visible, sources, defaultColumns(native)), [visible, sources, native]);
   if (!sameList(shown, visible)) setVisible(shown);
   const pks = primaryKeys(native);
   const query = useMemo(() => buildRowQuery(schema, shown, Object.values(filters), limit, sorts), [schema, shown, filters, sorts, limit]);
@@ -251,7 +254,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const env = useMemo(() => ({ sorts, toggleSort }), [sorts, toggleSort]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
   const changeColumns = (picked: string[]) => {
-    const cols = orderColumns(picked, sources);
+    const cols = orderColumns(picked, sources, defaultColumns(native));
     setVisible(cols);
     setOwn((cur) => { const kept = cur && sortsOnColumns(cur, cols); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
     // A joined mart whose last field was unticked is remembered as empty: it comes back with its first text field.
@@ -276,6 +279,21 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     }
     return out;
   }, [onScreen, model, martId]);
+  // A remove button is off while its click is being applied, so a second click cannot put the mart back.
+  const [removing, setRemoving] = useState(false);
+  const head = useRef<HTMLTableSectionElement>(null);
+  const remove = (id: string, index: number) => {
+    // Focus lands on the neighbouring tab's remove button (else its Columns button) once the tab is gone.
+    const next = groups[index + 1]?.id ?? groups[index - 1]?.id;
+    setRemoving(true);
+    cardClick(id, { only: 'deselect' }).catch(() => undefined).finally(() => {
+      setRemoving(false);
+      setTimeout(() => {
+        const th = next ? head.current?.querySelector(`th[data-group="${CSS.escape(next)}"]`) : null;
+        (th?.querySelector<HTMLElement>('button[data-remove]:not(:disabled)') ?? th?.querySelector<HTMLElement>('button'))?.focus();
+      }, 0);
+    });
+  };
   const several = groups.length > 1;
   // The first data mart is the main one: its last own column stays while a joined mart is shown.
   const ownNames = useMemo(() => new Set(native.map((f) => f.name)), [native]);
@@ -298,17 +316,17 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
       <div className={`min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
         <table className="w-full border-collapse text-sm">
-          <thead className="sticky top-0 z-10 bg-card">
+          <thead ref={head} className="sticky top-0 z-10 bg-card">
             <tr data-group-row>
                 {groups.map((g, i) => (
-                  <th key={g.id} colSpan={g.span} scope="colgroup" className={`dm-gh overflow-hidden px-3 pb-0.5 pt-2 text-left text-xs font-semibold ${i > 0 ? 'dm-gh-edge' : ''}`}>
+                  <th key={g.id} data-group={g.id} colSpan={g.span} scope="colgroup" className={`dm-gh overflow-hidden px-3 pb-0.5 pt-2 text-left text-xs font-semibold ${i > 0 ? 'dm-gh-edge' : ''}`}>
                     <div className="flex min-w-0 items-center gap-1.5">
                       <span className="inline-flex shrink-0 text-muted-foreground"><PickedIcon icon={g.icon} fallback={Box} size={14} /></span>
                       <span className="truncate">{g.title}</span>
                       <ColumnPicker title={g.title} fields={fieldsOf(g.id)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} />
                       {(several || !g.main) && (
                         <Tooltip content={`Remove ${g.title} from the grid`}>
-                          <button type="button" aria-label={`Remove ${g.title} from the grid`} onClick={() => void cardClick(g.id)} className="dm-reveal dm-gx"><X className="size-3.5" aria-hidden /></button>
+                          <button type="button" aria-label={`Remove ${g.title} from the grid`} data-remove disabled={removing} onClick={() => remove(g.id, i)} className="dm-reveal dm-gx"><X className="size-3.5" aria-hidden /></button>
                         </Tooltip>
                       )}
                     </div>

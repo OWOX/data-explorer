@@ -56,7 +56,8 @@ export type AiPromptInput = {
 
 /** The prompt that asks an AI assistant, through the OWOX Data Marts connector, for what the grid shows. Plain text, nothing is written to OWOX; every name and value from OWOX is a quoted string. */
 export function buildAiPrompt(p: AiPromptInput): string {
-  const fields = p.schema.map((f) => f.name).filter((n) => p.visible.includes(n));
+  const known = new Set(p.schema.map((f) => f.name));
+  const fields = p.visible.filter((n) => known.has(n));
   const sorts = p.sorts.map((s) => `${quoted(s.field)} ${s.direction === 'desc' ? 'descending' : 'ascending'}`);
   return [
     'This request is read-only: do not create, change, run or delete anything in OWOX.',

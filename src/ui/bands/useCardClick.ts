@@ -12,7 +12,9 @@ import { defaultColumns } from '../explorer/useMartRows';
  * What the plan needs (the joined marts of the main one and of the next main, their grids, the remembered picks) is read first;
  * the whole change is then one store step, so Undo takes it back as one.
  */
-export function useCardClick(model: Model): (id: string) => Promise<void> {
+export type ClickOptions = { /** The click only takes a mart out: it does nothing when the mart is no longer the main or a joined one when it runs (a double click on a remove button). */ only?: 'deselect' };
+
+export function useCardClick(model: Model): (id: string, options?: ClickOptions) => Promise<void> {
   const [state, dispatch] = useStore();
   const { blendable, columnStore, schemas } = useServices();
   const latest = useRef<State>(state);
@@ -30,7 +32,7 @@ export function useCardClick(model: Model): (id: string) => Promise<void> {
     waiters.current.push(() => { clearTimeout(t); resolve(); });
   });
 
-  const run = useCallback(async (id: string) => {
+  const run = useCallback(async (id: string, options?: ClickOptions) => {
     const main = latest.current.selection.martId;
     const sources = new Map<string, JoinedSource[]>();
     const grids = new Map<string, GridState>();
@@ -64,6 +66,11 @@ export function useCardClick(model: Model): (id: string) => Promise<void> {
     const now = latest.current;
     // The member moved on while this was being read.
     if (now.selection.martId !== main) return;
+    if (options?.only === 'deselect') {
+      const g = main ? (now.grids[main]?.columns.length ? now.grids[main] : grids.get(main)) : undefined;
+      const member = !!main && (id === main || (!!g && joinedMartIds(g.columns, sources.get(main) ?? []).includes(id)));
+      if (!member) return;
+    }
     const sourceOf = sourceOfModel(model);
     const fresh = (martId: string) => { const g = now.grids[martId]; return g && g.columns.length > 0 ? g : grids.get(martId); };
     const plan = planClick({
@@ -83,8 +90,8 @@ export function useCardClick(model: Model): (id: string) => Promise<void> {
     await rendered();
   }, [blendable, columnStore, schemas, dispatch, model]);
 
-  return useCallback((id: string) => {
-    const next = chain.current.then(() => run(id), () => run(id));
+  return useCallback((id: string, options?: ClickOptions) => {
+    const next = chain.current.then(() => run(id, options), () => run(id, options));
     chain.current = next.catch(() => undefined);
     return next;
   }, [run]);

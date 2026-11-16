@@ -34,7 +34,7 @@ export function CardBands({
   model,
   visible,
   storageIds,
-  joined,
+  joined: joinedProp,
   counts,
   dq,
   foldedSources,
@@ -105,9 +105,11 @@ export function CardBands({
     return null;
   }, [selection.martId, selection.sourceKey, idsKey, model.sources]);
 
+  // The same array until the set or its order changes, so the memos below do not rebuild on every render.
+  const joinedKey = joinedProp.join('|');
+  const joined = useMemo(() => (joinedKey ? joinedKey.split('|') : []), [joinedKey]);
   useWires(canvas, wires, { pinned, hovered, also: joined }, useMemo(() => revisionOf(idsKey), [idsKey]));
 
-  const joinedKey = joined.join('|');
   const { lit, aside } = useMemo(() => {
     // The cards of the selected joined marts light their own neighbours too, so a mart connected only to a joined one is not dimmed.
     const pinnedSet = pinned ? new Set([...litIds(wires, pinned), ...joined.flatMap((id) => [...litIds(wires, martElementId(id))])]) : null;
@@ -116,7 +118,7 @@ export function CardBands({
     // Lit only by the pointer while another card is pinned: drawn at half strength.
     const aside = new Set([...lit].filter((id) => pinnedSet !== null && !pinnedSet.has(id)));
     return { lit, aside };
-  }, [wires, pinned, hovered, joinedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wires, pinned, hovered, joined]);
 
   // Cards animate in and out as the set changes; a leaving card keeps its object, which the model may no longer hold.
   const shownMarts = useMemo(() => visible.ids.flatMap((id) => model.marts.get(id) ?? []), [visible.ids, model]);

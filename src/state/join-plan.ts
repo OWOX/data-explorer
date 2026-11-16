@@ -187,7 +187,7 @@ export function planClick(env: PlanEnv, id: string): Plan {
       if (have.has(r)) continue;
       columns = [...columns, ...fieldsFor(nextSources, r, nextPicks[r], ownNamesIn(grid.columns, sources, r)).filter((n) => !columns.includes(n))];
     }
-    columns = orderColumns(columns, nextSources);
+    columns = orderColumns(columns, nextSources, env.ownColumns(next));
     const changed = columns.length !== nextGrid.columns.length || columns.some((c, i) => c !== nextGrid.columns[i]);
     const sorts = changed && nextGrid.sorts ? sortsOnColumns(nextGrid.sorts, columns) : nextGrid.sorts;
     return {
@@ -204,7 +204,7 @@ export function planClick(env: PlanEnv, id: string): Plan {
   }
 
   if (isJoinable(sources, id)) {
-    const columns = orderColumns([...grid.columns, ...fieldsFor(sources, id, env.picksOf(main)[id], shownOf(id)).filter((n) => !grid.columns.includes(n))], sources);
+    const columns = orderColumns([...grid.columns, ...fieldsFor(sources, id, env.picksOf(main)[id], shownOf(id)).filter((n) => !grid.columns.includes(n))], sources, env.ownColumns(main));
     return { selection: env.selection, grids: { [main]: { ...grid, columns } }, saves: [{ martId: main, columns }], remember: [] };
   }
 

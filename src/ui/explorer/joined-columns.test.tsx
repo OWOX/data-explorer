@@ -185,3 +185,18 @@ test('a saved filter on a joined field that could not be read is not applied thi
   expect(t.orderQueries().every((q) => !q.o.filter)).toBe(true);
   expect(state.current!.grids.orders!.filters.customers__email).toBeDefined();
 });
+
+test('a saved list that interleaves the marts shows grouped and is saved grouped', async () => {
+  const t = setup(['id', 'customers__email', 'products__sku', 'customers__city']);
+  await t.seeded;
+  t.view();
+  await waitFor(() => expect(headers()).toEqual(['id', 'email', 'city', 'SKU']));
+  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: ['id', 'customers__email', 'customers__city', 'products__sku'], at: expect.any(String) }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
+});
+
+test('a saved list with joined columns and none of the main mart\'s own gets the main mart\'s default columns first', async () => {
+  const t = setup(['customers__email', 'products__sku']);
+  await t.seeded;
+  t.view();
+  await waitFor(() => expect(headers()).toEqual(['id', 'Customer', 'Product', 'Store', 'status', 'email', 'SKU']));
+});

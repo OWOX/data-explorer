@@ -327,3 +327,41 @@ test('a mart that leaves the grid remembers its own field names in its own grid-
   await waitFor(() => expect(title()).toBe('Orders'));
   await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["name","email"]'))).toBe(true), { timeout: 3000 });
 });
+
+test('a double click on a group x takes the mart out once and never puts it back', async () => {
+  setup();
+  await ready();
+  await click('Customers');
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
+  const x = await within(data()).findByRole('button', { name: 'Remove Customers from the grid' });
+  fireEvent.click(x);
+  fireEvent.click(x);
+  await waitFor(() => expect(title()).toBe('Orders'));
+  await new Promise((r) => setTimeout(r, 300));
+  expect(title()).toBe('Orders');
+  expect(groupTitles()).toEqual(['Orders']);
+});
+
+test('a double click on the main group x promotes once; the promoted mart is not removed as well', async () => {
+  setup();
+  await ready();
+  await click('Customers');
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
+  const x = await within(data()).findByRole('button', { name: 'Remove Orders from the grid' });
+  fireEvent.click(x);
+  fireEvent.click(x);
+  await waitFor(() => expect(title()).toBe('Customers'));
+  await new Promise((r) => setTimeout(r, 300));
+  expect(title()).toBe('Customers');
+});
+
+test('after a group is removed, focus moves to the next tab\'s remove button', async () => {
+  setup();
+  await ready();
+  await click('Customers');
+  await click('Products');
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Products']));
+  fireEvent.click(await within(data()).findByRole('button', { name: 'Remove Customers from the grid' }));
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Products']));
+  await waitFor(() => expect(document.activeElement).toBe(within(data()).getByRole('button', { name: 'Remove Products from the grid' })));
+});
