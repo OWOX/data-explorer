@@ -53,6 +53,18 @@ test('one destination and no report: one click makes the spreadsheet, the report
   expect(within(data()).getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0');
 });
 
+test('the Export button carries the archive-restore icon, and the Google Sheets icon stays on the destination rows', async () => {
+  const t = setup(2);
+  t.view();
+  await rowsLoaded();
+  const summary = (await within(data()).findByText('Export')).closest('summary')!;
+  expect(summary.querySelector('svg.lucide-archive-restore')).not.toBeNull();
+  expect(summary.querySelector('svg[viewBox="0 0 48 48"]')).toBeNull();
+  await userEvent.click(summary);
+  const item = await within(data()).findByRole('menuitem', { name: /Team Sheets/ });
+  expect(item.querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull();
+});
+
 test('two destinations: the first level lists them, each with its New report entry', async () => {
   const t = setup(2);
   t.view();
@@ -339,8 +351,8 @@ describe('the cascading menu', () => {
     expect(rows.map((r) => r.textContent)).toEqual(['Team Sheets', 'Finance Sheets']);
     for (const r of rows) expect(r.querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull();
     expect(within(data()).queryByText('Google Sheets')).toBeNull();
-    // and the Export button itself wears the Sheets icon
-    expect(within(data()).getByLabelText('Export to Google Sheets').querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull();
+    // the Export button itself does not
+    expect(within(data()).getByLabelText('Export to Google Sheets').querySelector('svg[viewBox="0 0 48 48"]')).toBeNull();
   });
 
   test('hovering a destination opens its flyout beside it, with New report', async () => {

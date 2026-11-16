@@ -22,7 +22,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
   const [{ modelVersion }, dispatch] = useStore();
   const sourceOf = sourceOfModel(model);
   const [ownVersion, setVersion] = useState(0);
-  // The header's Refresh re-reads the record too: its counter joins this view's own, and each only ever goes up.
+  // A model reload re-reads the record too: its counter joins this view's own, and each only ever goes up.
   const version = ownVersion + modelVersion;
   const [state, setState] = useState<{ ver: number; schema: Schema | null; row: Row | null | undefined; error: unknown }>({ ver: -1, schema: null, row: undefined, error: null });
   const [titles, setTitles] = useState(new Map<string, string>());

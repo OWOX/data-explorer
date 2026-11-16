@@ -1,5 +1,5 @@
-// The page header, as Data Flow draws it: the page title on the left, the page's own Refresh at the right end.
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+// The page header, as Data Flow draws it: the page title on the left, Undo and Redo after it. There is no Refresh: the model loads when the plugin opens.
+import { AlertTriangle } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useStore } from '../../state/store';
 import { ErrorBox } from '../ErrorBox';
@@ -24,9 +24,6 @@ export function Header({ error, onRetry, failedStorages = [], history }: { error
             <button type="button" onClick={() => dispatch({ type: 'refreshModel' })} className="rounded border px-2 py-0.5 text-foreground hover:bg-accent">Retry</button>
           </div>
         )}
-        <button type="button" aria-label="Refresh model" onClick={() => dispatch({ type: 'refreshModel' })} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent">
-          <RefreshCw className="size-4" />Refresh
-        </button>
       </div>
       {error != null && onRetry && <div className="w-full"><ErrorBox error={error} onRetry={onRetry} compact /></div>}
     </header>

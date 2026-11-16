@@ -142,7 +142,7 @@ function Grid({ martId, model, schema, seed, initialColumns, onChange, onRows }:
   const sorts = own ?? fallback;
   const [limit, setLimit] = useState(() => seed.saved?.limit ?? PAGE_SIZE);
   const [ownVersion, setVersion] = useState(0);
-  // The header's Refresh re-reads what is shown too: its counter joins the grid's own, and each only ever goes up.
+  // A model reload re-reads what is shown too: its counter joins the grid's own, and each only ever goes up.
   const version = ownVersion + modelVersion;
   // Titles per related mart and value, for the grid's lifetime. Every lookup is a billed run, so a value is looked up once.
   const [titles, setTitles] = useState(new Map<string, string>());
@@ -156,7 +156,7 @@ function Grid({ martId, model, schema, seed, initialColumns, onChange, onRows }:
     return () => ctrl.abort();
   }, []);
   const [relSchemas, setRelSchemas] = useState(new Map<string, Schema>());
-  // A header Refresh drops the looked-up titles as the grid's own Refresh does, so they are read again with the rows.
+  // A model reload drops the looked-up titles as the grid's own Refresh does, so they are read again with the rows.
   const seenModelVersion = useRef(modelVersion);
   useEffect(() => {
     if (seenModelVersion.current === modelVersion) return;

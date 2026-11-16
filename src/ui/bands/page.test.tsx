@@ -3,14 +3,21 @@ import userEvent from '@testing-library/user-event';
 import type { Ctx } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
-import { AppServices, StoreProvider } from '../../state/store';
+import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
 
 type Mock = ReturnType<typeof createMockCtx>;
 
 // The bands exist once the model has loaded.
+// The page has no Refresh button; the model reloads through a failed storage's Retry. This probe dispatches the same action.
+function ModelReload() {
+  const [, dispatch] = useStore();
+  return <button type="button" onClick={() => dispatch({ type: 'refreshModel' })}>Reload model (test probe)</button>;
+}
+const reloadModel = () => userEvent.click(screen.getByRole('button', { name: 'Reload model (test probe)' }));
+
 async function mountWith(wrap: (ctx: Mock) => Ctx = (c) => c, fixtures = demoFixtures()) {
-  const view = render(<AppServices ctx={wrap(createMockCtx(fixtures, { latencyMs: 0 }))}><StoreProvider><App /></StoreProvider></AppServices>);
+  const view = render(<AppServices ctx={wrap(createMockCtx(fixtures, { latencyMs: 0 }))}><StoreProvider><App /><ModelReload /></StoreProvider></AppServices>);
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
   return view;
 }
@@ -435,7 +442,7 @@ describe('the record', () => {
     expect(within(row()).queryByRole('region', { name: 'Referenced by' })).toBeNull();
   });
 
-  test('a header Refresh re-reads the open record once, and nothing else does', async () => {
+  test('a model reload re-reads the open record once, and nothing else does', async () => {
     const calls = await spyOnTraverse();
     await within(data()).findByRole('table');
     await userEvent.click(within(data()).getAllByRole('cell').find((c) => c.textContent === '1')!);
@@ -446,7 +453,7 @@ describe('the record', () => {
     expect(before).toBeGreaterThan(0);
     const gridReads = () => calls.filter((c) => c.id === 'orders' && c.o.limit === 201).length;
     const gridBefore = gridReads();
-    await userEvent.click(screen.getByRole('button', { name: 'Refresh model' }));
+    await reloadModel();
     await settle();
     await settle();
     expect(recordReads()).toBe(before + 1);
@@ -460,11 +467,11 @@ describe('the record', () => {
 });
 
 describe('search, contexts and refresh', () => {
-  test('the page header is the title with Refresh at its right end; the search lives in the Data Marts band', async () => {
+  test('the page header is the title with no Refresh button; the search lives in the Data Marts band', async () => {
     await ordersGrid();
     const header = document.querySelector('header.dm-page-header')!;
     expect(within(header as HTMLElement).getByRole('heading', { level: 1, name: 'Data Explorer' })).toHaveClass('dm-page-header-title');
-    expect(header.lastElementChild!.querySelector('button[aria-label="Refresh model"]')).not.toBeNull();
+    expect(within(header as HTMLElement).queryByRole('button', { name: /Refresh/ })).toBeNull();
     expect(header.querySelector('input')).toBeNull();
     expect(within(marts()).getByLabelText('Search data marts')).toBeInTheDocument();
     expect(document.querySelector('main.dm-page-content')).not.toBeNull();
@@ -537,7 +544,7 @@ describe('search, contexts and refresh', () => {
     await mountWith((ctx) => ({ ...ctx, owox: { ...ctx.owox, storages: { list: async () => { if (fail.current) throw new Error('boom'); return ctx.owox.storages.list(); } } } }));
     await within(data()).findByRole('table');
     fail.current = true;
-    await userEvent.click(screen.getByLabelText('Refresh model'));
+    await reloadModel();
     expect(await screen.findByRole('alert')).toHaveTextContent('boom');
     expect(within(data()).getByRole('table')).toBeInTheDocument();
     expect(within(marts()).getByText('Customers')).toBeInTheDocument();
@@ -571,7 +578,7 @@ describe('search, contexts and refresh', () => {
     fireEvent.click(martCard('Customers'));
     await within(data()).findByRole('heading', { name: 'Customers' });
     hide.current = true;
-    await userEvent.click(screen.getByLabelText('Refresh model'));
+    await reloadModel();
     await waitFor(() => expect(within(data()).getByRole('heading', { name: 'Orders' })).toBeInTheDocument());
     // The replacement left no history entry: Back steps to the earlier Orders selection and then stops.
     const back = screen.getByRole('button', { name: 'Undo' });
@@ -869,7 +876,7 @@ describe('the storage filter', () => {
     await userEvent.click(within(storageMenu()).getByLabelText('Select all'));
     await waitFor(() => expect(within(marts()).queryByText('Orders')).toBeNull());
     hide.current = true;
-    await userEvent.click(screen.getByLabelText('Refresh model'));
+    await reloadModel();
     await waitFor(() => expect(within(data()).getByText('Select a data mart.')).toBeInTheDocument());
   });
 

@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, ChevronDown, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArchiveRestore, Check, ChevronDown, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -44,7 +44,7 @@ export function ExportMenu(p: Props) {
   const checks = useRef(0);
   const menu = useRef<HTMLDetailsElement>(null);
 
-  // Listed once per session; the header's Refresh lists them again.
+  // Listed once per session; a model reload (Retry on a failed storage) lists them again.
   const seenVersion = useRef(modelVersion);
   useEffect(() => {
     let live = true;
@@ -155,7 +155,7 @@ export function ExportMenu(p: Props) {
   // An open menu stays a menu when the check drops its last report, so it does not vanish under the pointer.
   const single = destinations.length === 1 && reports !== null && forDestination(destinations[0]!).length === 0 && !menuOpen;
   const button = 'inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50';
-  const label = busy ? <><Loader2 className="size-4 animate-spin" />Exporting…</> : <><GoogleSheetsIcon size={16} />Export</>;
+  const label = busy ? <><Loader2 className="size-4 animate-spin" />Exporting…</> : <><ArchiveRestore className="size-4" />Export</>;
 
   async function openMenu(open: boolean) {
     setMenuOpen(open);

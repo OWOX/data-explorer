@@ -24,7 +24,7 @@ A question about one order, one customer or one campaign ends in a row. The rows
 
 ## What it costs
 
-Every grid, record and row count is a `traverseData` query in your warehouse, and the warehouse bills it. A card asks for its row count only once it scrolls into view, and counts are cached per member. Refresh recounts them.
+Every grid, record and row count is a `traverseData` query in your warehouse, and the warehouse bills it. A card asks for its row count only once it scrolls into view, and counts are cached per member. Reopening the plugin reloads the model; the Retry on a storage that failed to load recounts them.
 
 ## What it writes
 
@@ -54,7 +54,7 @@ The Data band's header has an Export button when the project has a Google Sheets
 
 In mock mode (`?mock`) add `&sheets=1` for one destination or `&sheets=0` for none (default two).
 
-Refresh reloads the model, counts and data quality. If it fails, the previous model, counts and quality stay on screen and the header offers Retry.
+The page header has no Refresh button. The model (marts, edges, contexts, connectors, data quality) is loaded when the plugin opens; to reload it, reopen the plugin. The Refresh in the Data band and in the Row band only re-reads that band's rows or record. If a storage fails to load, the header shows a warning with Retry, which reloads the model, counts and data quality; if that reload fails, the previous model, counts and quality stay on screen and the header shows the error with Retry.
 
 ## Develop
 
@@ -80,7 +80,7 @@ npm run e2e     # Playwright smoke tests of the bands
 ## Limitations (v1)
 
 1. Writes only from your click on Export: a spreadsheet, a report, a run. Rows are never written.
-2. Row counts are warehouse queries cached per member. Refresh recounts them.
+2. Row counts are warehouse queries cached per member. Reopening the plugin reloads the model; the Retry on a storage that failed to load recounts them.
 3. The columns you pick in a data mart's grid are saved per member and per data mart; a saved column that is no longer available is dropped. Sorts and filters are not saved.
 4. "Load more" re-reads from the start, because the API has no offset.
 5. A relationship title is looked up only for single-field relationships.

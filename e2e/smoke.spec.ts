@@ -46,14 +46,13 @@ test('search narrows the marts', async ({ page }) => {
   await expect(band(page, 'marts').getByText('Orders', { exact: true })).toHaveCount(0);
 });
 
-test('the page header is the title, Undo and Redo, and Refresh at the right end; the filters are in the Data Marts band', async ({ page }) => {
+test('the page header is the title with Undo and Redo and no Refresh; the filters are in the Data Marts band', async ({ page }) => {
   await ordersGrid(page);
   const header = page.locator('header.dm-page-header');
   await expect(header.getByRole('heading', { level: 1, name: 'Data Explorer' })).toBeVisible();
   await expect(header.getByRole('button', { name: 'Undo' })).toBeDisabled();
   await expect(header.getByRole('button', { name: 'Redo' })).toBeDisabled();
-  const refresh = await header.getByRole('button', { name: 'Refresh model' }).boundingBox();
-  expect(refresh!.x + refresh!.width).toBeGreaterThan(1440 - 3 * 16 - 8 - 80);
+  await expect(header.getByRole('button', { name: /Refresh/ })).toHaveCount(0);
   await expect(band(page, 'marts').locator('.dm-band-tools label.dm-search')).toBeVisible();
   // Data Sources starts folded
   await expect(band(page, 'sources')).toHaveClass(/folded/);
@@ -129,17 +128,6 @@ test('a related title moves the selection, and Back restores the mart and the re
   await expect(data.getByRole('heading', { name: 'Orders' })).toBeVisible();
   await expect(row.getByRole('heading', { name: /^Orders · 1$/ })).toBeVisible();
   await expect(martCard(page, 'Orders')).toHaveAttribute('aria-pressed', 'true');
-});
-
-test('Refresh keeps the cards, counts and quality icons on screen', async ({ page }) => {
-  await ordersGrid(page);
-  const badge = martCard(page, 'Orders').locator('.dm-badge').first();
-  await expect(badge).toHaveText(/\d/);
-  await page.getByRole('button', { name: 'Refresh model' }).click();
-  await expect(martCard(page, 'Orders').getByLabel(/^Passed/)).toBeVisible();
-  await expect(martCard(page, 'Orders').getByLabel('Counting records')).toHaveCount(0);
-  await expect(badge).toHaveText(/\d/);
-  await expect(band(page, 'data').getByRole('row')).toHaveCount(201);
 });
 
 test('the storage filter drops the marts of an unticked storage and leaves the selection alone', async ({ page }) => {
