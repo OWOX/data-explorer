@@ -67,3 +67,20 @@ test('the loader reads once per mart, shares a read in flight, and does not reme
   loader.clear();
   expect(loader.peek('orders')).toBeUndefined();
 });
+
+test('a joined field carries the join\'s post-join aggregations ([] means none), else its own allowed ones', () => {
+  const sources = joinedSources({
+    availableSources: [{ aliasPath: 'c', title: 'C', depth: 1, dataMartId: 'u', isIncluded: true, isAccessibleForReporting: true }],
+    blendedFields: [
+      { name: 'c__a', aliasPath: 'c', sourceDataMartId: 'u', originalFieldName: 'a', type: 'NUMERIC', postJoinAggregations: ['MAX', 'NOPE'] },
+      { name: 'c__b', aliasPath: 'c', sourceDataMartId: 'u', originalFieldName: 'b', type: 'NUMERIC', postJoinAggregations: [] },
+      { name: 'c__d', aliasPath: 'c', sourceDataMartId: 'u', originalFieldName: 'd', type: 'NUMERIC', allowedAggregations: ['SUM'] },
+      { name: 'c__e', aliasPath: 'c', sourceDataMartId: 'u', originalFieldName: 'e', type: 'NUMERIC' },
+    ],
+  });
+  const [a, b, d, e] = sources[0]!.fields;
+  expect(a!.postJoinAggregations).toEqual(['MAX']);
+  expect(b!.postJoinAggregations).toEqual([]);
+  expect(d!.allowedAggregations).toEqual(['SUM']);
+  expect('postJoinAggregations' in e! || 'allowedAggregations' in e!).toBe(false);
+});

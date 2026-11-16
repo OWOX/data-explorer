@@ -1,4 +1,5 @@
 import type { AvailableSourceDto, BlendableSchemaDto, BlendedFieldDto, Ctx, EdgeDto, Row, TraverseOptions } from '../types';
+import { aggregateRows } from './aggregate';
 import { matchesFilter } from './evaluate';
 import { demoFixtures, type Fixtures } from './fixtures';
 
@@ -110,9 +111,10 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     const source = wanted.length ? m.rows.map((r) => ({ ...r, ...Object.fromEntries(wanted.map((n) => [n, blendedValue(r, index.get(n)!.hop, index.get(n)!.field)])) })) : m.rows;
     let rows = source.filter((r) => (o.filter ?? []).every((flt) => matchesFilter(r, flt)));
     if (o.uniqueCount) return [{ 'Unique Count': rows.length }];
-    if (o.aggregation?.length) {
-      const a = o.aggregation[0]!;
-      return [{ [`${a.column} | COUNT`]: rows.filter((r) => r[a.column] != null).length }];
+    if (o.aggregation?.length || o.dateTrunc?.length) {
+      if (!o.column?.length) throw badRequest('Aggregation requires an explicit column list');
+      const grouped = aggregateRows(rows, o.column, o.aggregation ?? [], o.dateTrunc ?? [], o.sort ?? []);
+      return o.limit !== undefined ? grouped.slice(0, o.limit) : grouped;
     }
     const keys = o.sort ?? [];
     if (keys.length) {

@@ -22,7 +22,7 @@ const view = (patch: Partial<DecodedView> = {}): DecodedView => ({
   ...patch,
 });
 const read = async () => schema;
-const none: Skipped = { mart: false, source: false, columns: 0, filters: 0, sorts: 0, contexts: 0, storages: 0 };
+const none: Skipped = { mart: false, source: false, columns: 0, filters: 0, sorts: 0, aggregations: 0, contexts: 0, storages: 0 };
 
 describe('resolveView', () => {
   it('keeps a fully valid view as is', async () => {
@@ -85,6 +85,24 @@ describe('resolveView', () => {
     const { apply, skipped } = await resolveView(view({ grid }), model, read);
     expect(apply.grid).toEqual({ columns: ['id', 'customer__name'], filters: { id: grid.filters.id }, sorts: [grid.sorts[0]], limit: 200 });
     expect(skipped).toMatchObject({ columns: 1, filters: 1, sorts: 1 });
+  });
+
+  it('drops rules on columns the schema lacks, counts them, and keeps the rest', async () => {
+    const grid = {
+      columns: ['id', 'total', 'gone'], filters: {}, sorts: null, limit: 200,
+      aggregations: [{ column: 'total', function: 'SUM' as const }, { column: 'gone', function: 'AVG' as const }],
+      dateTrunc: [{ column: 'gone2', unit: 'DAY' as const }],
+    };
+    const { apply, skipped } = await resolveView(view({ grid }), model, read);
+    expect(apply.grid).toEqual({ columns: ['id', 'total'], filters: {}, sorts: null, limit: 200, aggregations: [{ column: 'total', function: 'SUM' }] });
+    expect(skipped).toMatchObject({ columns: 1, aggregations: 2 });
+  });
+
+  it('a rule on a column that was never shown is dropped too', async () => {
+    const grid = { columns: ['id'], filters: {}, sorts: null, limit: 200, aggregations: [{ column: 'total', function: 'SUM' as const }] };
+    const { apply, skipped } = await resolveView(view({ grid }), model, read);
+    expect(apply.grid!.aggregations).toBeUndefined();
+    expect(skipped.aggregations).toBe(1);
   });
 
   it('counts the codec dropped entries under columns', async () => {
@@ -150,8 +168,8 @@ describe('skippedMessage', () => {
       .toBe("Some parts of this link aren't available to you: 1 column, 1 filter, 1 sort, 1 context, 1 storage.");
   });
   it('uses plural and keeps the order', () => {
-    expect(skippedMessage({ mart: true, source: true, columns: 2, filters: 3, sorts: 4, contexts: 5, storages: 6 }))
-      .toBe("Some parts of this link aren't available to you: the data mart, the source, 2 columns, 3 filters, 4 sorts, 5 contexts, 6 storages.");
+    expect(skippedMessage({ mart: true, source: true, columns: 2, filters: 3, sorts: 4, aggregations: 1, contexts: 5, storages: 6 }))
+      .toBe("Some parts of this link aren't available to you: the data mart, the source, 2 columns, 3 filters, 4 sorts, 1 aggregation, 5 contexts, 6 storages.");
   });
   it('lists only what was skipped', () => {
     expect(skippedMessage({ ...none, source: true, sorts: 2 })).toBe("Some parts of this link aren't available to you: the source, 2 sorts.");

@@ -301,3 +301,17 @@ test('the report lists the columns in the grid\'s order: the main mart\'s, then 
   expect(payload.columnConfig).toEqual(['id', 'status', 'products__sku', 'customers__city']);
   expect(payload.autoAggregationOptOut).toEqual(['id', 'status', 'products__sku', 'customers__city']);
 });
+
+test('a grouped grid exports its rules: aggregationConfig, dateTruncConfig, and the opt-out only for columns with no function', () => {
+  const agg = { aggregations: [{ column: 'amount', function: 'SUM' as const }, { column: 'amount', function: 'AVG' as const }, { column: 'gone', function: 'MIN' as const }], dateTrunc: [{ column: 'created_at', unit: 'MONTH' as const, timeZone: 'UTC' }] };
+  const { payload } = buildReportPayload(schema, ['status', 'amount', 'created_at'], [], [{ field: 'amount', direction: 'desc' }], agg);
+  expect(payload.columnConfig).toEqual(['status', 'amount', 'created_at']);
+  expect(payload.aggregationConfig).toEqual([{ column: 'amount', function: 'SUM' }, { column: 'amount', function: 'AVG' }]);
+  expect(payload.dateTruncConfig).toEqual([{ column: 'created_at', unit: 'MONTH', timeZone: 'UTC' }]);
+  expect(payload.autoAggregationOptOut).toEqual(['status', 'created_at']);
+  expect(payload.sortConfig).toEqual([{ column: 'amount', direction: 'desc' }]);
+  // an ungrouped grid carries neither key
+  const plain = buildReportPayload(schema, ['status'], [], []).payload;
+  expect('aggregationConfig' in plain).toBe(false);
+  expect('dateTruncConfig' in plain).toBe(false);
+});

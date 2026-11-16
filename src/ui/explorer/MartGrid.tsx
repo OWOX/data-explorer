@@ -4,6 +4,7 @@ import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pend
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PAGE_SIZE } from '../../config';
 import { withJoined, type JoinedSource } from '../../api/blendable';
+import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, type AggFn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
 import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
 import type { ColumnFilter } from '../../filters/build';
 import { cycleSort, defaultSort, sortsOnColumns, type SortKey } from '../../model/sort';
@@ -20,6 +21,7 @@ import { BandTools, BandToolsSlot } from '../bands/BandTools';
 import { CardClickContext } from '../bands/CardClick';
 import { PickedIcon } from '../bands/picked';
 import { CellValue } from './CellValue';
+import { AggregationPopover } from './AggregationPopover';
 import { ColumnPicker } from './ColumnPicker';
 import { ExportMenu } from './ExportMenu';
 import { FilterPopover } from './FilterPopover';
@@ -40,7 +42,7 @@ function useSchema(martId: string, version: number) {
 export type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
 
 /** The grid for one mart: loads the schema, then reads rows. Key it by mart id. */
-export function MartGrid({ martId, model, seed, onChange, onRows, paused = false }: { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void; /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
+export function MartGrid({ martId, model, seed, onChange, onRows, paused = false }: { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null, grouped?: boolean) => void; /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
   const [schemaVersion, setSchemaVersion] = useState(0);
   const { schema, error } = useSchema(martId, schemaVersion);
   if (error) return <div className="p-4"><ErrorBox error={error} onRetry={() => setSchemaVersion((v) => v + 1)} /></div>;
@@ -58,7 +60,9 @@ const offered = (schema: Schema, saved: string[]) => saved.filter((c) => schema.
 const namesJoined = (schema: Schema, saved: GridState | undefined) =>
   !!saved && [...saved.columns, ...Object.keys(saved.filters), ...(saved.sorts ?? []).map((x) => x.field)].some((n) => !schema.some((f) => f.name === n));
 
-type Initial = { columns: string[]; cleaned: string[] | null; sources: JoinedSource[] | null };
+type Initial = { columns: string[]; cleaned: string[] | null; sources: JoinedSource[] | null; agg: Aggregation };
+
+const aggOf = (g: GridState | undefined): Aggregation => (g && (g.aggregations?.length || g.dateTrunc?.length) ? { aggregations: g.aggregations ?? [], dateTrunc: g.dateTrunc ?? [] } : NO_AGGREGATION);
 
 /**
  * Settles the first column set before the grid mounts, so the first rows query is the only one:
@@ -74,16 +78,17 @@ function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed:
     const full = withJoined(schema, cached ?? []);
     const kept = orderColumns(offered(full, seed.saved?.columns ?? []), cached ?? [], defaultColumns(schema));
     // A session list that names a joined field waits for the joined marts unless they are already known.
-    return kept.length && (cached || !namesJoined(schema, seed.saved)) ? { columns: kept, cleaned: null, sources: cached ?? null } : null;
+    return kept.length && (cached || !namesJoined(schema, seed.saved)) ? { columns: kept, cleaned: null, sources: cached ?? null, agg: seed.saved ? aggOf(seed.saved) : columnStore.aggregation(martId) } : null;
   });
   useEffect(() => {
     if (initial) return;
     let live = true;
-    const timer = setTimeout(() => { live = false; setInitial({ columns: defaultColumns(schema), cleaned: null, sources: null }); }, SAVED_COLUMNS_WAIT_MS);
+    const timer = setTimeout(() => { live = false; setInitial({ columns: defaultColumns(schema), cleaned: null, sources: null, agg: seed.saved ? aggOf(seed.saved) : NO_AGGREGATION }); }, SAVED_COLUMNS_WAIT_MS);
     (async () => {
       const own = seed.saved?.columns;
       const saved = own ?? await columnStore.load(martId) ?? [];
       const needs = namesJoined(schema, own ? seed.saved : { columns: saved, filters: seed.saved?.filters ?? {}, sorts: seed.saved?.sorts ?? null, limit: 0 });
+      const agg = seed.saved ? aggOf(seed.saved) : await columnStore.loadAggregation(martId);
       let sources: JoinedSource[] | null = blendable.peek(martId) ?? null;
       let failed = false;
       if (needs && !sources) {
@@ -98,7 +103,7 @@ function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed:
       const dropped = !failed && saved.length > there.length;
       const regrouped = !failed && kept.length > 0 && kept.some((c, i) => c !== there[i]);
       // A session or link list is not a saved one: only a list read from the store is cleaned back into it.
-      setInitial({ columns: kept.length ? kept : defaultColumns(schema), cleaned: (dropped || regrouped) && !own ? kept : null, sources });
+      setInitial({ columns: kept.length ? kept : defaultColumns(schema), cleaned: (dropped || regrouped) && !own ? kept : null, sources, agg: keepVisible(agg, kept) });
     })();
     return () => { live = false; clearTimeout(timer); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -106,7 +111,7 @@ function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed:
   // The cleanup of a saved list that named columns that are gone is the one save that is not the member's own change.
   useEffect(() => { if (cleaned) columnStore.save(martId, cleaned); }, [cleaned, columnStore, martId]);
   if (!initial) return <Skeleton rows={8} />;
-  return <Grid {...props} initialColumns={initial.columns} initialSources={initial.sources} />;
+  return <Grid {...props} initialColumns={initial.columns} initialSources={initial.sources} initialAgg={initial.agg} />;
 }
 
 // TanStack Table v9: row.getVisibleCells() needs the column visibility feature.
@@ -121,17 +126,28 @@ const GridEnv = createContext<{ sorts: SortKey[]; toggleSort: (field: string) =>
 const maxWidthOf = (field: Pick<Schema[number], 'category'>) => (field.category === 'string' || field.category === 'other' ? 'max-w-[24rem]' : field.category === 'number' || field.category === 'boolean' ? 'max-w-[12rem]' : 'max-w-[16rem]');
 
 const DIRECTION_NAME = { asc: 'ascending', desc: 'descending' } as const;
+/** A grouped value of a date bucket: the bucket start, shown by the bucket. */
+function BucketValue({ value, unit }: { value: unknown; unit: Output['bucket'] & string }) {
+  const text = formatBucket(value, unit);
+  return <span className="block truncate" title={value === null || value === undefined ? undefined : String(value)}>{text ?? ''}</span>;
+}
+
 const sortOf = (sorts: SortKey[], field: string) => { const d = sorts.find((s) => s.field === field)?.direction; return d ? DIRECTION_NAME[d] : 'none'; };
 
-/** The column title as a button: none, ascending, descending, none. The arrow (and its precedence number) stays on screen while a sort is applied. */
-function SortTitle({ field }: { field: Schema[number] }) {
+/** What a grouped output is headed: the field, then the function ("Amount · Sum"). */
+const outputLabel = (field: Schema[number], o: Output) => (o.fn ? `${columnTitle(field)} · ${AGG_LABELS[o.fn]}` : columnTitle(field));
+
+/** The column title as a button: none, ascending, descending, none. The arrow (and its precedence number) stays on screen while a sort is applied.
+ * An extra function of an aggregated column has no sort (the backend sorts an aggregated column by its first function). */
+function SortTitle({ field, output }: { field: Schema[number]; output: Output }) {
   const { sorts, toggleSort } = useContext(GridEnv);
   const at = sorts.findIndex((s) => s.field === field.name);
   const current = at < 0 ? null : sorts[at]!.direction;
-  const label = columnTitle(field);
+  const label = outputLabel(field, output);
   // Inside a data mart's group the group row names the mart, so the title is the field alone.
-  const shown = fieldLabel(field);
+  const shown = output.fn ? `${fieldLabel(field)} · ${AGG_LABELS[output.fn]}` : fieldLabel(field);
   const Arrow = current === 'desc' ? ArrowDown : ArrowUp;
+  if (!output.sortable) return <OverflowTip text={label} measure={(el) => el.querySelector('.truncate')}><span className="inline-flex min-w-0 items-center font-medium"><span className="truncate">{shown}</span></span></OverflowTip>;
   const button = (
     <button type="button" onClick={() => toggleSort(field.name)} aria-label={`Sort by ${label}, currently ${current ? DIRECTION_NAME[current] : 'not sorted'}${current && sorts.length > 1 ? `, sort ${at + 1} of ${sorts.length}` : ''}`}
       className="dm-sort inline-flex min-w-0 items-center gap-1 font-medium">
@@ -139,16 +155,24 @@ function SortTitle({ field }: { field: Schema[number] }) {
       {current && <span className="dm-sort-mark inline-flex items-center"><Arrow className="size-3.5" aria-hidden />{sorts.length > 1 && <span className="text-[10px] tabular-nums">{at + 1}</span>}</span>}
     </button>
   );
-  return <OverflowTip text={label} extra={field.joined ? undefined : fieldTitle(field)} measure={(el) => el.querySelector('.truncate')}>{button}</OverflowTip>;
+  return <OverflowTip text={label} extra={field.joined || output.fn ? undefined : fieldTitle(field)} measure={(el) => el.querySelector('.truncate')}>{button}</OverflowTip>;
 }
 
+/** The type an aggregated output has: a count is a whole number, an average or percentile a decimal, Combined text; the rest keep the field's. */
+const outputType = (field: Schema[number], fn: AggFn | undefined): string => {
+  if (fn === 'COUNT' || fn === 'COUNT_DISTINCT') return 'INTEGER';
+  if (fn === 'STRING_AGG') return 'STRING';
+  if (fn === 'AVG' || fn === 'P25' || fn === 'P50' || fn === 'P75' || fn === 'P95') return 'FLOAT';
+  return field.type;
+};
+
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
-const stable = (g: GridState) => JSON.stringify([g.columns, Object.entries(g.filters).sort(([a], [b]) => a.localeCompare(b)), g.sorts, g.limit]);
+const stable = (g: GridState) => JSON.stringify([g.columns, Object.entries(g.filters).sort(([a], [b]) => a.localeCompare(b)), g.sorts, g.limit, g.aggregations ?? [], g.dateTrunc ?? []]);
 const sameGrid = (a: GridState, b: GridState) => stable(a) === stable(b);
 
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
-function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, onChange, onRows, paused }: { paused: boolean; martId: string; initialColumns: string[]; initialSources: JoinedSource[] | null; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
+function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, initialAgg, onChange, onRows, paused }: { paused: boolean; martId: string; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null, grouped?: boolean) => void }) {
   const { columnStore, blendable } = useServices();
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
@@ -163,6 +187,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const [{ modelVersion }, dispatch] = useStore();
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
   const [visible, setVisible] = useState(initialColumns);
+  // The functions and date buckets on columns: any of them groups the rows.
+  const [agg, setAgg] = useState<Aggregation>(initialAgg);
   // A saved filter on a field this visit does not offer (a joined field whose marts could not be read) is not applied, and not
   // dropped from the kept copy either: it is parked, and written back with the live ones. It is not re-applied when the joined marts load later.
   const offeredNow = (name: string) => schema.some((f) => f.name === name);
@@ -195,8 +221,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   if (seed.saved !== seenSaved) {
     setSeenSaved(seed.saved);
     const saved = seed.saved;
-    if (saved && saved.columns.length > 0 && !sameGrid(saved, { columns: visible, filters: { ...parked, ...filters }, sorts: own, limit })) {
+    if (saved && saved.columns.length > 0 && !sameGrid(saved, { columns: visible, filters: { ...parked, ...filters }, sorts: own, limit, aggregations: agg.aggregations, dateTrunc: agg.dateTrunc })) {
       setVisible(saved.columns);
+      setAgg(aggOf(saved));
       if (!sameList(saved.columns, visible)) setAdopted(saved.columns);
       setFilters(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => offeredNow(k))));
       setParked(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => !offeredNow(k))));
@@ -205,15 +232,19 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     }
   }
 
-  useEffect(() => { if (adopted) columnStore.save(martId, adopted); }, [adopted, columnStore, martId]);
+  useEffect(() => { if (adopted) { columnStore.save(martId, adopted); columnStore.saveAggregation(martId, agg); } }, [adopted, columnStore, martId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { onChange({ columns: visible, filters: { ...parked, ...filters }, sorts: own, limit }); }, [visible, filters, parked, own, limit]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onChange({ columns: visible, filters: { ...parked, ...filters }, sorts: own, limit, ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}) }); }, [visible, filters, parked, own, limit, agg]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every data mart's columns sit together: the main mart's own, then each joined mart's in the order it was added.
   const shown = useMemo(() => orderColumns(visible, sources, defaultColumns(native)), [visible, sources, native]);
   if (!sameList(shown, visible)) setVisible(shown);
+  // Rules of a column that is no longer shown go with it; any function or bucket left groups the rows (no default order then: it may name nothing shown).
+  const aggNow = useMemo(() => keepVisible(agg, shown), [agg, shown]);
+  const grouped = isGrouped(aggNow);
+  const gridSorts = useMemo(() => (grouped ? (own ?? []) : sorts), [grouped, own, sorts]);
   const pks = primaryKeys(native);
-  const query = useMemo(() => buildRowQuery(schema, shown, Object.values(filters), limit, sorts), [schema, shown, filters, sorts, limit]);
+  const query = useMemo(() => buildRowQuery(schema, shown, Object.values(filters), limit, gridSorts, aggNow), [schema, shown, filters, gridSorts, limit, aggNow]);
   // A folded band reads nothing: the query it last read stays, and a change made meanwhile is read once it opens.
   const [asked, setAsked] = useState(query);
   if (!paused && asked !== query) setAsked(query);
@@ -223,18 +254,37 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const [onScreen, setOnScreen] = useState<Schema>([]);
   const wanted = shown.flatMap((name) => schema.find((f) => f.name === name) ?? []);
   if (wanted.length !== onScreen.length || wanted.some((f, i) => f !== onScreen[i])) setOnScreen(wanted);
-  const columns = useMemo<GridColumn[]>(() => onScreen.map((field) => {
+  const byName = useMemo(() => new Map(schema.map((f) => [f.name, f])), [schema]);
+  // One output per column, or one per function of an aggregated column.
+  const outputs = useMemo(() => outputsOf(onScreen.map((f) => f.name), aggNow), [onScreen, aggNow]);
+  // From the fields on screen, not the whole schema: a joined mart arriving later must not rebuild the headers (it would close an open popover).
+  const shownByName = useMemo(() => new Map(onScreen.map((f) => [f.name, f])), [onScreen]);
+  const outputByKey = useMemo(() => new Map(outputs.map((o) => [o.key, o])), [outputs]);
+  const changeAgg = useCallback((column: string, draft: AggregationDraft) => {
+    const next = applyDraft(column, draft, agg);
+    setAgg(next);
+    columnStore.saveAggregation(martId, next);
+    setLimit(PAGE_SIZE);
+  }, [agg, columnStore, martId]);
+  const columns = useMemo<GridColumn[]>(() => outputs.map((o) => {
+    const field = shownByName.get(o.column)!;
     const name = field.name;
+    // The filter, the info and the aggregation belong to the column: they sit on its first output only.
+    const lead = outputs.find((x) => x.column === o.column) === o;
+    const aggregated = aggNow.aggregations.some((r) => r.column === o.column) || aggNow.dateTrunc.some((r) => r.column === o.column);
     return {
-      id: name,
+      id: o.key,
       header: () => (
         <div className="flex min-w-0 items-center gap-1">
-          <SortTitle field={field} />
-          <FilterPopover field={field} value={filters[name]} onChange={(f) => {
-            setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; });
-            setLimit(PAGE_SIZE);
-          }} />
-          {field.description?.trim() && (
+          <SortTitle field={field} output={o} />
+          {lead && (
+            <FilterPopover field={field} aggregated={aggregated} value={filters[name]} onChange={(f) => {
+              setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; });
+              setLimit(PAGE_SIZE);
+            }} />
+          )}
+          {lead && <AggregationPopover field={field} value={draftOf(o.column, aggNow)} onApply={(d) => changeAgg(o.column, d)} />}
+          {lead && field.description?.trim() && (
             <Tooltip content={field.description}>
               <button type="button" aria-label={`About ${columnTitle(field)}`} className="dm-reveal dm-col-info">
                 <Info className="size-3.5" />
@@ -243,18 +293,22 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
           )}
         </div>
       ),
-      cell: ({ row }) => <CellValue row={row.original} field={name} type={field.type} />,
+      cell: ({ row }) => (o.bucket
+        ? <BucketValue value={row.original[o.key]} unit={o.bucket} />
+        : <CellValue row={row.original} field={o.key} type={outputType(field, o.fn)} />),
     };
-  }), [onScreen, filters]);
+  }), [outputs, shownByName, filters, aggNow, changeAgg]);
 
   // While the member has no sort of their own, a click replaces the default with that column ascending (the
   // default's own column included), so a default never rides along as a second sort; after that the normal cycle.
   const toggleSort = useCallback((field: string) => { setOwn((cur) => (cur === null ? [{ field, direction: 'asc' }] : cycleSort(cur, field))); setLimit(PAGE_SIZE); }, []);
-  const env = useMemo(() => ({ sorts, toggleSort }), [sorts, toggleSort]);
+  const env = useMemo(() => ({ sorts: gridSorts, toggleSort }), [gridSorts, toggleSort]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
   const changeColumns = (picked: string[]) => {
     const cols = orderColumns(picked, sources, defaultColumns(native));
     setVisible(cols);
+    const nextAgg = keepVisible(agg, cols);
+    if (nextAgg !== agg) { setAgg(nextAgg); columnStore.saveAggregation(martId, nextAgg); }
     setOwn((cur) => { const kept = cur && sortsOnColumns(cur, cols); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
     // A joined mart whose last field was unticked is remembered as empty: it comes back with its first text field.
     const left = joinedMartIds(visible, sources).filter((m) => !joinedMartIds(cols, sources).includes(m));
@@ -262,22 +316,22 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     // A joined mart that has just left remembers what it was showing, as its own field names.
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
   };
-  const byName = useMemo(() => new Map(schema.map((f) => [f.name, f])), [schema]);
   const table = useTable({ features, data: rows ?? [], columns });
   const rowsLabel = rows ? `${rows.length}${hasMore ? '+' : ''}` : null;
-  useEffect(() => { onRows?.(rowsLabel); }, [rowsLabel]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onRows?.(rowsLabel, grouped); }, [rowsLabel, grouped]); // eslint-disable-line react-hooks/exhaustive-deps
   const cardClick = useContext(CardClickContext);
   // One cell per data mart over its columns, main first; only when a joined mart is on screen.
   const groups = useMemo(() => {
     const out: { id: string; title: string; icon: string | null | undefined; span: number; main: boolean }[] = [];
-    for (const f of onScreen) {
+    for (const o of outputs) {
+      const f = byName.get(o.column)!;
       const id = f.joined?.martId ?? martId;
       const last = out[out.length - 1];
       if (last && last.id === id) last.span += 1;
       else out.push({ id, title: model.marts.get(id)?.title ?? f.joined?.label ?? id, icon: model.marts.get(id)?.icon, span: 1, main: id === martId });
     }
     return out;
-  }, [onScreen, model, martId]);
+  }, [outputs, byName, model, martId]);
   // A remove button is off while its click is being applied, so a second click cannot put the mart back.
   const [removing, setRemoving] = useState(false);
   const head = useRef<HTMLTableSectionElement>(null);
@@ -309,7 +363,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const ownOn = shown.filter((n) => ownNames.has(n)).length;
   const fieldsOf = (id: string) => (id === martId ? native : sources.filter((x) => x.martId === id).flatMap((x) => x.fields));
   // The first column of every group after the first carries a divider.
-  const edges = useMemo(() => { const out = new Set<string>(); let at = 0; groups.forEach((g, i) => { if (i > 0) out.add(onScreen[at]!.name); at += g.span; }); return out; }, [groups, onScreen]);
+  const edges = useMemo(() => { const out = new Set<string>(); let at = 0; groups.forEach((g, i) => { if (i > 0) out.add(outputs[at]!.key); at += g.span; }); return out; }, [groups, outputs]);
   const hasFilters = Object.keys(filters).length > 0;
   const hasSorts = own !== null;
 
@@ -319,9 +373,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { setFilters({}); setParked({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
-        <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} filters={Object.values(filters)} sorts={sorts} rows={rows} hasMore={hasMore} loading={loading} />
+        <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} sorts={gridSorts} rows={rows} hasMore={hasMore} loading={loading} />
       </BandTools>
-      {pks.length === 0 && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
+      {pks.length === 0 && !grouped && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
       <div className={`min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
         <table className="w-full border-collapse text-sm">
@@ -344,21 +398,21 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               </tr>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                {hg.headers.map((h) => <th key={h.id} aria-sort={sortOf(sorts, h.column.id)} className={`dm-th ${edges.has(h.column.id) ? 'dm-th-edge' : ''} ${maxWidthOf(byName.get(h.column.id)!)} overflow-hidden px-3 py-2 text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
+                {hg.headers.map((h) => <th key={h.id} aria-sort={outputByKey.get(h.column.id)?.sortable ? sortOf(gridSorts, outputByKey.get(h.column.id)!.column) : 'none'} className={`dm-th ${edges.has(h.column.id) ? 'dm-th-edge' : ''} ${maxWidthOf(byName.get(outputByKey.get(h.column.id)!.column)!)} overflow-hidden px-3 py-2 text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
                 {/* Takes the width the columns leave over, so the line under the header runs the whole card. */}
                 <th aria-hidden className="dm-th w-full p-0" />
               </tr>
             ))}
           </thead>
           <tbody>
-            {error ? <tr><td colSpan={visible.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} /></td></tr>
-              : !rows ? <tr><td colSpan={visible.length + 1}><Skeleton rows={8} /></td></tr>
-              : rows.length === 0 ? <tr><td colSpan={visible.length + 1} className="p-4 text-sm text-muted-foreground">{hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.'}</td></tr>
+            {error ? <tr><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} /></td></tr>
+              : !rows ? <tr><td colSpan={outputs.length + 1}><Skeleton rows={8} /></td></tr>
+              : rows.length === 0 ? <tr><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground">{hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.'}</td></tr>
               : table.getRowModel().rows.map((r) => (
                 <tr key={r.id}
-                  onClick={pks.length ? () => dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }) : undefined}
-                  className={`border-b ${pks.length ? 'cursor-pointer hover:bg-accent' : ''}`}>
-                  {r.getVisibleCells().map((c) => <td key={c.id} className={`${maxWidthOf(byName.get(c.column.id)!)} overflow-hidden whitespace-nowrap px-3 py-1.5`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
+                  onClick={pks.length && !grouped ? () => dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }) : undefined}
+                  className={`border-b ${pks.length && !grouped ? 'cursor-pointer hover:bg-accent' : ''}`}>
+                  {r.getVisibleCells().map((c) => <td key={c.id} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap px-3 py-1.5`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
                   <td aria-hidden className="p-0" />
                 </tr>
               ))}

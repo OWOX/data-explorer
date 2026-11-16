@@ -84,3 +84,10 @@ test('the fields are listed in the grid\'s order, a joined mart added first befo
   const prompt = buildAiPrompt({ projectId: 'p1', martId: 'orders', martTitle: 'Orders', schema: wide, visible: ['id', 'products__sku', 'customers__city'], filters: [], sorts: [] });
   expect(prompt).toContain('Fields: "id", "products__sku", "customers__city".');
 });
+
+test('a grouped grid lists its aggregations and buckets in words, names and zone quoted', () => {
+  const agg = { aggregations: [{ column: 'amount', function: 'SUM' as const }, { column: 'amount', function: 'AVG' as const }], dateTrunc: [{ column: 'created_at', unit: 'MONTH' as const, timeZone: 'Europe/Kyiv' }] };
+  const prompt = buildAiPrompt({ projectId: 'p1', martId: 'orders', martTitle: 'Orders', schema, visible: ['status', 'amount', 'created_at'], aggregation: agg, filters: [], sorts: [] });
+  expect(prompt).toContain('Aggregations (group by every other field):\n- "amount": sum, average\n- "created_at": by month (time zone "Europe/Kyiv")');
+  expect(buildAiPrompt({ projectId: 'p1', martId: 'orders', martTitle: 'Orders', schema, visible: ['status'], filters: [], sorts: [] })).not.toContain('Aggregations');
+});

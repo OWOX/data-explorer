@@ -3,6 +3,7 @@
 import type { JoinedSource } from '../api/blendable';
 import type { Picks } from '../api/grid-columns';
 import { sortsOnColumns } from '../model/sort';
+import { keepVisible } from '../model/aggregation';
 import { orderColumns } from './column-order';
 import type { Field } from '../model/types';
 import type { GridState, Selection } from './store';
@@ -88,11 +89,14 @@ export function withoutMart(grid: GridState, sources: JoinedSource[], martId: st
   // A grid always keeps a column: when only the joined mart's were shown, the mart's own defaults come back.
   if (columns.length === 0) columns = own;
   const kept = grid.sorts && sortsOnColumns(grid.sorts, columns);
+  const agg = keepVisible({ aggregations: grid.aggregations ?? [], dateTrunc: grid.dateTrunc ?? [] }, columns);
   return {
     removed,
     grid: {
       ...grid,
       columns,
+      aggregations: agg.aggregations.length ? agg.aggregations : undefined,
+      dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined,
       filters: Object.fromEntries(Object.entries(grid.filters).filter(([k]) => !names.has(k))),
       sorts: grid.sorts && grid.sorts.length > 0 && kept!.length === 0 ? null : kept,
     },
@@ -154,7 +158,8 @@ const becomeMain = (env: PlanEnv, id: string, remember: Plan['remember'] = []): 
   const restored = last.length > 0 && !(last.length === grid.columns.length && last.every((c, i) => c === grid.columns[i]));
   if (last.length > 0) {
     const kept = grid.sorts && sortsOnColumns(grid.sorts, last);
-    grid = { ...grid, columns: last, sorts: grid.sorts && grid.sorts.length > 0 && kept!.length === 0 ? null : kept };
+    const agg = keepVisible({ aggregations: grid.aggregations ?? [], dateTrunc: grid.dateTrunc ?? [] }, last);
+    grid = { ...grid, columns: last, sorts: grid.sorts && grid.sorts.length > 0 && kept!.length === 0 ? null : kept, aggregations: agg.aggregations.length ? agg.aggregations : undefined, dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined };
     // Its memory stays: forgetting it here could not be undone.
   }
   if (joined.length === 0 && !restored) return { selection, grids: {}, saves: [], remember };

@@ -83,3 +83,22 @@ test('buildRowQuery sends the reader sorts first, then the primary keys not alre
   expect(buildRowQuery(noPk, ['x'], [], 200)).toEqual({ column: ['x'], limit: 201 });
   expect(buildRowQuery(noPk, ['x'], [], 200, [{ field: 'x', direction: 'asc' }]).sort).toEqual([{ column: 'x', direction: 'asc' }]);
 });
+
+test('a grid with a function or a bucket is grouped: exactly the visible columns, no primary key, no key tie-breaker, the rules sent', () => {
+  const agg = { aggregations: [{ column: 'customer_id', function: 'SUM' as const }, { column: 'customer_id', function: 'MAX' as const }], dateTrunc: [{ column: 'g', unit: 'MONTH' as const, timeZone: 'UTC' }] };
+  const q = buildRowQuery(schema, ['g', 'a', 'customer_id'], [{ field: 'a', op: 'eq', value: 'x' }], 200, [{ field: 'customer_id', direction: 'desc' }, { field: 'gone', direction: 'asc' }], agg);
+  expect(q).toEqual({
+    column: ['g', 'a', 'customer_id'],
+    filter: [{ column: 'a', operator: 'eq', value: 'x' }],
+    aggregation: [{ column: 'customer_id', function: 'SUM' }, { column: 'customer_id', function: 'MAX' }],
+    dateTrunc: [{ column: 'g', unit: 'MONTH', timeZone: 'UTC' }],
+    sort: [{ column: 'customer_id', direction: 'desc' }],
+    limit: 201,
+  });
+});
+
+test('rules of a column that is not asked for are not sent, and no rules means the ungrouped query as before', () => {
+  const agg = { aggregations: [{ column: 'e', function: 'COUNT' as const }], dateTrunc: [] };
+  expect(buildRowQuery(schema, ['a'], [], 200, [], agg)).toEqual({ column: ['a'], limit: 201 });
+  expect(buildRowQuery(schema, ['a'], [], 200, [], { aggregations: [], dateTrunc: [] }).column).toEqual(['id', 'a']);
+});

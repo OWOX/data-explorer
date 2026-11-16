@@ -113,7 +113,7 @@ function OperatorForm({ field, value, onApply, onClear, startOp }: EditorProps &
   );
 }
 
-export function FilterPopover({ field, value, onChange }: { field: Field; value: ColumnFilter | undefined; onChange: (f: ColumnFilter | undefined) => void }) {
+export function FilterPopover({ field, value, onChange, aggregated = false }: { field: Field; value: ColumnFilter | undefined; onChange: (f: ColumnFilter | undefined) => void; /** The column is aggregated: the filter still applies to the raw rows. */ aggregated?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen} tip={value ? `Filter: ${describeFilter(field, value)}` : undefined} trigger={
@@ -123,6 +123,7 @@ export function FilterPopover({ field, value, onChange }: { field: Field; value:
     }>
       <FilterEditor key={JSON.stringify(value)} field={field} value={value}
         onApply={(f) => { onChange(f); setOpen(false); }} onClear={() => { onChange(undefined); setOpen(false); }} />
+      {aggregated && <p className="mt-2 text-xs text-muted-foreground">Filters rows before they are aggregated</p>}
     </Popover>
   );
 }

@@ -148,3 +148,27 @@ test('a mart whose doc could not be read is never written over', async () => {
   expect(get).toHaveBeenCalled();
   expect(put).not.toHaveBeenCalled();
 });
+
+test('aggregations and buckets are read with the doc, saved with the columns, and bad rules are ignored', async () => {
+  vi.useFakeTimers();
+  const get = vi.fn(async () => ({ document: { columns: ['a'], at: 'x', aggregations: [{ column: 'a', function: 'SUM' }, { column: 'a', function: 'NOPE' }, 7], dateTrunc: [{ column: 'd', unit: 'MONTH', timeZone: 'UTC' }, { column: 'd', unit: 'HOUR' }] } }));
+  const put = vi.fn(async () => ({}));
+  const store = createColumnStore(ctxWith({ get, put }));
+  expect(await store.loadAggregation('m')).toEqual({ aggregations: [{ column: 'a', function: 'SUM' }], dateTrunc: [{ column: 'd', unit: 'MONTH', timeZone: 'UTC' }] });
+  store.saveAggregation('m', { aggregations: [{ column: 'a', function: 'AVG' }], dateTrunc: [] });
+  await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
+  expect(put).toHaveBeenLastCalledWith('m', { columns: ['a'], at: expect.any(String), aggregations: [{ column: 'a', function: 'AVG' }] });
+  store.saveAggregation('m', { aggregations: [], dateTrunc: [] });
+  await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
+  expect(put).toHaveBeenLastCalledWith('m', { columns: ['a'], at: expect.any(String) });
+});
+
+test('a plain column save keeps the aggregations that were stored and never read', async () => {
+  vi.useFakeTimers();
+  const get = vi.fn(async () => ({ document: { columns: ['a'], at: 'x', aggregations: [{ column: 'a', function: 'SUM' }] } }));
+  const put = vi.fn(async () => ({}));
+  const store = createColumnStore(ctxWith({ get, put }));
+  store.save('m', ['a', 'b']);
+  await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
+  expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'b'], at: expect.any(String), aggregations: [{ column: 'a', function: 'SUM' }] });
+});

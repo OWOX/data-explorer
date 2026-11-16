@@ -1,3 +1,4 @@
+import type { Aggregation, AggregationRule, DateTruncRule } from '../model/aggregation';
 import { toTraverseFilters, type ColumnFilter } from '../filters/build';
 import type { SortKey } from '../model/sort';
 import type { Schema } from '../model/types';
@@ -20,22 +21,34 @@ export type ReportPayload = {
   sortConfig: { column: string; direction: 'asc' | 'desc' }[] | null;
   /** The exported columns: without it the run collapses rows into DISTINCT/aggregates and the sheet differs from the grid. */
   autoAggregationOptOut: string[];
+  /** Present only for a grouped grid, as the report carries them: the same rules the grid sent. */
+  aggregationConfig?: AggregationRule[];
+  dateTruncConfig?: DateTruncRule[];
 };
 
 export type PayloadResult = { payload: ReportPayload; notes: string[] };
 
 /** The report that reproduces what the grid shows: shown columns, complete filters, the reader's own sorts. */
-export function buildReportPayload(schema: Schema, visible: string[], filters: ColumnFilter[], sorts: SortKey[]): PayloadResult {
+export function buildReportPayload(schema: Schema, visible: string[], filters: ColumnFilter[], sorts: SortKey[], agg?: Aggregation): PayloadResult {
   const notes: string[] = [];
   const known = new Set(schema.map((f) => f.name));
   // In the grid's order (the main mart's columns, then each joined mart's), keeping the names the schema has.
   const columnConfig = visible.filter((n) => known.has(n));
+  const aggregations = (agg?.aggregations ?? []).filter((r) => columnConfig.includes(r.column));
+  const dateTrunc = (agg?.dateTrunc ?? []).filter((r) => columnConfig.includes(r.column));
   let filter = toTraverseFilters(schema, filters);
   if (filter.length > MAX_EXPORT_FILTERS) { notes.push(`Only the first ${MAX_EXPORT_FILTERS} filters were exported.`); filter = filter.slice(0, MAX_EXPORT_FILTERS); }
   let sort = sorts.map((s) => ({ column: s.field, direction: s.direction }));
   if (sort.length > MAX_EXPORT_SORTS) { notes.push(`Only the first ${MAX_EXPORT_SORTS} sorts were exported.`); sort = sort.slice(0, MAX_EXPORT_SORTS); }
   return {
-    payload: { columnConfig, filterConfig: filter.length ? filter : null, sortConfig: sort.length ? sort : null, autoAggregationOptOut: [...columnConfig] },
+    payload: {
+      columnConfig, filterConfig: filter.length ? filter : null, sortConfig: sort.length ? sort : null,
+      // Without the opt-out the run collapses rows on its own and the sheet differs from the grid. With a rule of its own the
+      // run is already aggregated (auto-collapse stands down), so the opt-out lists the columns the member aggregated by nothing.
+      autoAggregationOptOut: columnConfig.filter((c) => !aggregations.some((r) => r.column === c)),
+      ...(aggregations.length ? { aggregationConfig: aggregations } : {}),
+      ...(dateTrunc.length ? { dateTruncConfig: dateTrunc } : {}),
+    },
     notes,
   };
 }

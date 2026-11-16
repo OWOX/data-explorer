@@ -1,6 +1,8 @@
 import type { Field } from '../model/types';
 import { displayText } from '../ui/format';
-import { buildTsv, cellText } from './tsv';
+import { buildTsv as build, cellText, tsvColumns } from './tsv';
+
+const buildTsv = (fields: Parameters<typeof tsvColumns>[0], rows: Parameters<typeof build>[1]) => build(tsvColumns(fields), rows);
 
 const f = (name: string, extra: Partial<Field> = {}): Field => ({ name, type: 'STRING', category: 'string', ...extra }) as Field;
 
@@ -96,4 +98,11 @@ describe('quotes', () => {
   test('a value that starts with an apostrophe keeps it', () => {
     expect(cellText("'abc")).toBe("''abc");
   });
+});
+
+test('a grouped grid is copied as shown: one column per function with the mart prefix kept, a bucket by its bucket, counts as numbers', () => {
+  const fields = [f('status'), f('amount', { type: 'NUMERIC', category: 'number' }), f('created_at', { type: 'TIMESTAMP', category: 'date' }), f('customers__city', { joined: { martId: 'c', label: 'Customers', aliasPath: 'customers' }, alias: 'city' })];
+  const agg = { aggregations: [{ column: 'amount', function: 'SUM' as const }, { column: 'amount', function: 'COUNT_DISTINCT' as const }, { column: 'customers__city', function: 'STRING_AGG' as const }], dateTrunc: [{ column: 'created_at', unit: 'MONTH' as const }] };
+  const tsv = build(tsvColumns(fields, agg), [{ status: 'paid', 'amount | SUM': 40, 'amount | COUNTUNIQUE': 2, created_at: '2026-11-01', 'customers__city | STRINGAGG': 'Kyiv, Lviv' }]);
+  expect(tsv).toBe('status\tamount · Sum\tamount · Count Unique\tcreated_at\tCustomers · city · Combined\npaid\t40\t2\tNov 2026\tKyiv, Lviv');
 });
