@@ -63,6 +63,8 @@ export type Action =
   /** The main data mart, the joined ones (their columns in the main grid) and the grids they leave behind change in one step Undo covers. */
   | { type: 'setMarts'; selection: Selection; grids: Record<string, GridState> }
   | { type: 'saveGrid'; martId: string; grid: GridState }
+  /** A view link opens: everything it carries is set at once. No history entry, so Undo has nothing to undo. */
+  | { type: 'applyView'; selection: Selection; grid: GridState | null; search: string; contextIds: string[]; storageIds: string[] | null }
   | { type: 'refreshModel' };
 
 export const HISTORY_LIMIT = 20;
@@ -150,6 +152,14 @@ export function reducer(state: State, a: Action): State {
       return { ...state, selection: a.selection, grids: { ...state.grids, ...a.grids }, history: [...state.history, { ...cur, grids: before }].slice(-HISTORY_LIMIT), future: [] };
     }
     case 'saveGrid': return { ...state, grids: { ...state.grids, [a.martId]: a.grid } };
+    case 'applyView': return {
+      ...state,
+      selection: a.selection,
+      search: a.search,
+      contextIds: a.contextIds,
+      storageIds: a.storageIds,
+      grids: a.grid && a.selection.martId ? { ...state.grids, [a.selection.martId]: a.grid } : state.grids,
+    };
     case 'refreshModel': return { ...state, modelVersion: state.modelVersion + 1 };
   }
 }

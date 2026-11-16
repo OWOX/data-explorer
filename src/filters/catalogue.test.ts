@@ -52,6 +52,11 @@ describe('date presets', () => {
     expect(presetName({ kind: 'this_week' })).toBe('This week');
   });
 
+  test('presetName tolerates a malformed rule', () => {
+    expect(presetName(undefined as never)).toBe('');
+    expect(presetName({ kind: { a: 1 } } as never)).toBe('');
+  });
+
   test('isPreset matches the exact rule only', () => {
     expect(isPreset({ kind: 'last_n_days', n: 7 }, DATE_PRESETS[2]!.rule)).toBe(true);
     expect(isPreset({ kind: 'last_n_days', n: 8 }, DATE_PRESETS[2]!.rule)).toBe(false);

@@ -1,5 +1,5 @@
 // The page header, as Data Flow draws it: the page title on the left, Undo and Redo after it. There is no Refresh: the model loads when the plugin opens.
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Link, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useStore } from '../../state/store';
 import { ErrorBox } from '../ErrorBox';
@@ -7,7 +7,20 @@ import { Tooltip } from '../Tooltip';
 
 type Failed = { id: string; title: string; message: string };
 
-export function Header({ error, onRetry, failedStorages = [], history }: { error?: unknown; onRetry?: () => void; failedStorages?: Failed[]; /** Undo and Redo, drawn right after the title. */ history?: ReactNode }) {
+type HeaderProps = {
+  error?: unknown;
+  onRetry?: () => void;
+  failedStorages?: Failed[];
+  /** Undo and Redo, drawn right after the title. */
+  history?: ReactNode;
+  /** Copies a link to the current view; no button without it (a host with no page links). */
+  onCopyLink?: () => void;
+  /** One line under the header: what a link skipped, or why one could not be copied. */
+  notice?: string | null;
+  onDismissNotice?: () => void;
+};
+
+export function Header({ error, onRetry, failedStorages = [], history, onCopyLink, notice, onDismissNotice }: HeaderProps) {
   const [, dispatch] = useStore();
   return (
     <header className="dm-page-header">
@@ -24,7 +37,18 @@ export function Header({ error, onRetry, failedStorages = [], history }: { error
             <button type="button" onClick={() => dispatch({ type: 'refreshModel' })} className="rounded border px-2 py-0.5 text-foreground hover:bg-accent">Retry</button>
           </div>
         )}
+        {onCopyLink && (
+          <Tooltip content="Copy link to this view">
+            <button type="button" aria-label="Copy link to this view" onClick={onCopyLink} className="inline-flex size-8 items-center justify-center rounded-md border hover:bg-accent"><Link className="size-4" /></button>
+          </Tooltip>
+        )}
       </div>
+      {notice && (
+        <div role="status" className="flex w-full items-center justify-between gap-2 rounded-md border bg-muted px-3 py-1.5 text-sm">
+          <span>{notice}</span>
+          <button type="button" aria-label="Dismiss" onClick={onDismissNotice} className="inline-flex size-6 items-center justify-center rounded hover:bg-accent"><X className="size-4" /></button>
+        </div>
+      )}
       {error != null && onRetry && <div className="w-full"><ErrorBox error={error} onRetry={onRetry} compact /></div>}
     </header>
   );
