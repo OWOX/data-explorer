@@ -26,7 +26,8 @@ export type Wire = {
   title: string;
 };
 
-export type Selection = { pinned: string | null; hovered: string | null };
+/** `also` are the selected joined marts: their lines are raised like the pinned card's. */
+export type Selection = { pinned: string | null; hovered: string | null; also?: string[] };
 
 export type Box = { left: number; right: number; top: number; bottom: number; width: number; height: number };
 
@@ -103,7 +104,7 @@ export function litIds(wires: Wire[], id: string) {
  * them, faded only while something is pinned. Direction is read from the card in hand: leaving it
  * against arriving at it. The pinned card paints first, so a shared line keeps its reading.
  */
-export function paintPlan(wires: Wire[], { pinned, hovered }: Selection) {
+export function paintPlan(wires: Wire[], { pinned, hovered, also = [] }: Selection) {
   const plan = new Map<number, { aside: boolean; direction: Direction }>();
   const paint = (id: string | null, aside: boolean) => {
     if (id === null) return;
@@ -114,6 +115,7 @@ export function paintPlan(wires: Wire[], { pinned, hovered }: Selection) {
     });
   };
   paint(pinned, false);
+  for (const id of also) paint(id, false);
   paint(hovered && hovered !== pinned ? hovered : null, pinned !== null);
   return plan;
 }
@@ -151,6 +153,7 @@ export function useWires(
   /** The paths currently carrying classes, so putting them out costs their own number (invariant 4). */
   const alight = useRef<SVGPathElement[]>([]);
   const { pinned, hovered } = selection;
+  const alsoKey = (selection.also ?? []).join('|');
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -253,7 +256,7 @@ export function useWires(
       for (const path of alight.current) path.classList.remove(...LIT_CLASSES);
       alight.current = [];
       const on = new Set<SVGPathElement>();
-      for (const [i, look] of paintPlan(wires, { pinned, hovered })) {
+      for (const [i, look] of paintPlan(wires, { pinned, hovered, also: alsoKey ? alsoKey.split('|') : [] })) {
         const line = paths[leads.current[i] ?? -1];
         if (!line || on.has(line)) continue;
         on.add(line);
@@ -268,5 +271,5 @@ export function useWires(
     return () => {
       lightAgain.current = () => {};
     };
-  }, [canvasRef, wires, revision, pinned, hovered]);
+  }, [canvasRef, wires, revision, pinned, hovered, alsoKey]);
 }

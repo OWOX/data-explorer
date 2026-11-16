@@ -141,3 +141,28 @@ describe('storageIds', () => {
     expect(only(model(), sel({ martId: 'b' }), []).ids).toEqual([]);
   });
 });
+
+describe('selected joined marts', () => {
+  const model = modelOf(['m', 'a', 'b', 'c', 'far', 'x'], [e('m', 'a'), e('m', 'b'), e('m', 'c'), e('a', 'far'), e('x', 'far')]);
+
+  test('each is shown even when it is not a neighbour, right after the main one and in the order added', () => {
+    const r = computeVisible({ model, selection: sel({ martId: 'm' }), search: '', contextIds: [], joined: ['far', 'c'] });
+    expect(r.ids.slice(0, 3)).toEqual(['m', 'far', 'c']);
+    expect(new Set(r.ids)).toEqual(new Set(['m', 'a', 'b', 'c', 'far']));
+  });
+
+  test('the rest follows breadth first from the main and the joined ones, ties by inbound then title', () => {
+    const r = computeVisible({ model, selection: sel({ martId: 'm' }), search: '', contextIds: [], joined: ['far'] });
+    // far has two inbound edges; after m and far come m's neighbours by inbound then title
+    expect(r.ids).toEqual(['m', 'far', 'a', 'b', 'c']);
+  });
+
+  test('a search shows them as well, and they do not need to match it', () => {
+    const r = computeVisible({ model, selection: sel({ martId: 'm' }), search: 'a', contextIds: [], joined: ['x'] });
+    expect(r.ids).toContain('x');
+  });
+
+  test('without a joined mart the order is the main one, then its neighbours by inbound then title', () => {
+    expect(computeVisible({ model, selection: sel({ martId: 'm' }), search: '', contextIds: [] }).ids).toEqual(['m', 'a', 'b', 'c']);
+  });
+});

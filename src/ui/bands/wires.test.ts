@@ -188,3 +188,14 @@ describe('a hub with many neighbours', () => {
     expect(lead).toEqual(wires.map((_, i) => i));
   });
 });
+
+test('the lines of the selected joined marts are raised with the pinned card\'s', () => {
+  const wires: Wire[] = [
+    { id: 'a', from: 'm', to: 'x', kind: 'relationship', title: '' },
+    { id: 'b', from: 'x', to: 'y', kind: 'relationship', title: '' },
+    { id: 'c', from: 'q', to: 'r', kind: 'relationship', title: '' },
+  ];
+  const plan = paintPlan(wires, { pinned: 'm', hovered: null, also: ['y'] });
+  expect([...plan.keys()].sort()).toEqual([0, 1]);
+  expect(plan.get(1)).toEqual({ aside: false, direction: 'inbound' });
+});

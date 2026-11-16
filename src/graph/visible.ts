@@ -36,6 +36,8 @@ export type VisibleInput = {
   contextIds: string[];
   /** The storages ticked in the filter; null is all of them. */
   storageIds?: string[] | null;
+  /** The joined data marts selected with the main one, in the order they were added: each is shown whatever else applies. */
+  joined?: string[];
 };
 export type VisibleResult = {
   ids: string[];
@@ -44,14 +46,31 @@ export type VisibleResult = {
 };
 
 /** Which marts the Data Marts band shows, by the first rule that applies (spec, "Which marts show"). */
-export function computeVisible({ model, selection, search, contextIds, storageIds = null }: VisibleInput): VisibleResult {
+export function computeVisible({ model, selection, search, contextIds, storageIds = null, joined = [] }: VisibleInput): VisibleResult {
   const inbound = inboundCounts(model.edges);
   // A mart in an unticked storage is out of every rule below, the selected one included.
   const inStorage = (id: string) => storageIds === null || storageIds.includes(model.marts.get(id)?.storageId ?? '');
   const accessible = [...model.marts.values()].filter((m) => m.accessible && inStorage(m.id));
   const focusId = pickFocus(accessible.map((m) => m.id), model.marts, inbound);
   const selectedId = selection.martId && model.marts.has(selection.martId) ? selection.martId : null;
-  const order = (ids: string[], first = selectedId) => ids.sort(rank(model.marts, inbound, first));
+  const rankOf = (first: string | null) => rank(model.marts, inbound, first);
+  const order = (ids: string[], first = selectedId) => ids.sort(rankOf(first));
+  // Main first, then the selected joined marts, then everything else breadth first from them over the edges, so cards that are
+  // linked sit near each other and the lines cross less; what no edge reaches follows by rank.
+  const arrange = (ids: string[], first: string | null): string[] => {
+    const set = new Set(ids);
+    const joinedHere = first && selectedId === first ? joined.filter((id) => set.has(id) && id !== first) : [];
+    const out = [...(first && set.has(first) ? [first] : []), ...joinedHere];
+    const placed = new Set(out);
+    const queue = [...out];
+    const byRank = rankOf(first);
+    while (queue.length) {
+      const next = neighbours(queue.shift()!, model.edges).filter((n) => set.has(n) && !placed.has(n)).sort(byRank);
+      for (const n of next) { placed.add(n); out.push(n); queue.push(n); }
+    }
+    return [...out, ...ids.filter((id) => !placed.has(id)).sort(byRank)];
+  };
+  const withJoined = (ids: string[]) => (selectedId ? [...new Set([...ids, ...joined.filter((id) => model.marts.has(id) && inStorage(id))])] : ids);
 
   // 1. A search, or a selected context badge: the matches, narrowed to the selected source.
   if (search.trim() || contextIds.length > 0) {
@@ -63,11 +82,11 @@ export function computeVisible({ model, selection, search, contextIds, storageId
       if (!matchesSearch(mart, search)) continue;
       ids.push(mart.id);
     }
-    return { ids: order(ids), focusId };
+    return { ids: arrange(withJoined(ids), selectedId), focusId };
   }
 
   // 2. A mart is selected: it and every mart joined to it, in either direction.
-  if (selectedId) return { ids: order([selectedId, ...neighbours(selectedId, model.edges)].filter(inStorage)), focusId };
+  if (selectedId) return { ids: arrange(withJoined([selectedId, ...neighbours(selectedId, model.edges)].filter(inStorage)), selectedId), focusId };
 
   // 3. Only a source is selected: every mart it feeds.
   if (selection.sourceKey) {

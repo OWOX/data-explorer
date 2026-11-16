@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { LOADED_HOLD_MS, martAppUrl } from '../config';
 import { tickedStorages } from '../graph/storages';
 import { computeVisible } from '../graph/visible';
+import { joinedMartIds } from '../state/join-plan';
 import { sourceOfModel, useServices, useStore } from '../state/store';
 import { CardBands } from './bands/CardBands';
 import { DataBand } from './bands/DataBand';
@@ -11,6 +12,7 @@ import { ErrorBox } from './ErrorBox';
 import { Header } from './header/Header';
 import { HistoryButtons } from './header/HistoryButtons';
 import { TooltipProvider } from './Tooltip';
+import { useJoinSources } from './useJoinSources';
 import { useCardStatus, useModel } from './useModelData';
 
 export function App() {
@@ -77,9 +79,14 @@ function AppBody() {
     else clicked.current = { ...clicked.current, [band]: now };
   };
   const storageIds = useMemo(() => (model ? tickedStorages(model, state.storageIds) : null), [model, state.storageIds]);
+  // The joined data marts are those with a field among the main grid's columns; which marts the main one can join is read when it becomes main.
+  const mainId = state.selection.martId;
+  const joinSources = useJoinSources(model && mainId && model.marts.get(mainId)?.accessible ? mainId : null);
+  const mainColumns = mainId ? state.grids[mainId]?.columns : undefined;
+  const joined = useMemo(() => (joinSources && mainColumns ? joinedMartIds(mainColumns, joinSources) : []), [joinSources, mainColumns]);
   const visible = useMemo(
-    () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds: state.contextIds, storageIds }) : null),
-    [model, state.selection, state.search, state.contextIds, storageIds],
+    () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds: state.contextIds, storageIds, joined }) : null),
+    [model, state.selection, state.search, state.contextIds, storageIds, joined],
   );
   const { dq, counts, request, recount } = useCardStatus(model, visible?.ids ?? [], state.modelVersion);
 
@@ -95,7 +102,8 @@ function AppBody() {
       if (martId && !model.marts.has(martId)) dispatch({ type: 'replace', selection: { sourceKey: null, martId: null, record: null } });
       return;
     }
-    if (!martId && !sourceKey) { dispatch({ type: 'init', focusId }); return; }
+    // Nothing selected on purpose (the last selected mart was clicked off) stays that way.
+    if (!martId && !sourceKey) { if (!state.selection.cleared) dispatch({ type: 'init', focusId }); return; }
     const martGone = !!martId && !model.marts.has(martId);
     const sourceGone = !!sourceKey && !model.sources.some((x) => x.key === sourceKey);
     if (!martGone && !sourceGone) return;
@@ -130,6 +138,7 @@ function AppBody() {
           model={model}
           visible={visible}
           storageIds={storageIds}
+          joined={joined}
           counts={counts}
           dq={dq}
           foldedSources={folded('sources')}
@@ -142,7 +151,7 @@ function AppBody() {
           loading={loading}
         >
           {/* While the bar shows, neither band reads anything: the saved folds are not known yet, and one saved as folded must not read rows first. */}
-          <DataBand model={model} folded={folded('data')} onFold={() => toggle('data')} loading={loading} />
+          <DataBand model={model} joined={joined} folded={folded('data')} onFold={() => toggle('data')} loading={loading} />
           <RowBand model={model} folded={folded('row')} onFold={() => toggle('row')} loading={loading} />
         </CardBands>
       </main>

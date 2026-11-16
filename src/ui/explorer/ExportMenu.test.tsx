@@ -181,7 +181,17 @@ test('a remembered report with an unrecognised target is not updated and nothing
 });
 
 const martCard = (title: string) => within(document.getElementById('band-marts')!).getByText(title).closest('article')!;
-const toMart = async (title: string) => { fireEvent.click(martCard(title)); await within(data()).findByRole('heading', { name: title }); };
+const headingText = () => within(data()).getByRole('heading').textContent;
+/** A mart the main one can join is added to its grid first, so clicking the main card then promotes it. */
+const toMart = async (title: string) => {
+  const main = headingText()!;
+  fireEvent.click(martCard(title));
+  // A mart that comes back as main shows the joined marts it was left with.
+  const mainNow = () => headingText() === title || headingText()!.startsWith(`${title} + `);
+  await waitFor(() => expect(mainNow() || headingText() === `${main} + ${title}`).toBe(true));
+  if (!mainNow()) fireEvent.click(martCard(main));
+  await waitFor(() => expect(mainNow()).toBe(true));
+};
 /** Export, then the one destination: the first level lists destinations and its reports open in a flyout. */
 const openMenu = async (destination: RegExp | string = /Team Sheets/) => {
   await userEvent.click(await within(data()).findByText('Export'));

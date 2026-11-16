@@ -8,7 +8,7 @@ import { MartGrid } from '../explorer/MartGrid';
 import { Band } from './Band';
 import { PickedIcon } from './picked';
 
-export function DataBand({ model, folded, onFold, loading = null }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null }) {
+export function DataBand({ model, joined, folded, onFold, loading = null }: { model: Model; /** The joined data marts selected with this one, in the order added. */ joined: string[]; folded: boolean; onFold: () => void; loading?: number | null }) {
   const [{ selection, grids }, dispatch] = useStore();
   const { martId } = selection;
   const mart = martId ? model.marts.get(martId) : undefined;
@@ -25,13 +25,13 @@ export function DataBand({ model, folded, onFold, loading = null }: { model: Mod
   const save = useCallback((grid: GridState) => { if (gridId) dispatch({ type: 'saveGrid', martId: gridId, grid }); }, [dispatch, gridId]);
 
   return (
-    <Band id="band-data" icon={<PickedIcon icon={mart?.icon} fallback={Table2} size={18} />} title={mart?.title ?? 'Data'} total={mart && rows?.id === mart.id ? recordsLabel(rows.label) : undefined} hint="The rows of the selected data mart. Click a row to open it below." folded={folded} onFold={onFold} grid={false} loading={loading}>
+    <Band id="band-data" icon={<PickedIcon icon={mart?.icon} fallback={Table2} size={18} />} title={mart ? [mart.title, ...joined.map((id) => model.marts.get(id)?.title ?? id)].join(' + ') : 'Data'} total={mart && rows?.id === mart.id ? recordsLabel(rows.label) : undefined} hint="The rows of the selected data mart. Click a row to open it below." folded={folded} onFold={onFold} grid={false} loading={loading}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (
         <p className="dm-muted p-2 text-sm">You do not have access to this data mart</p>
       ) : (
-        <MartGrid key={gridMart.id} martId={gridMart.id} model={model} seed={{ filters: selection.filters, saved: grids[gridMart.id] }} onChange={save} onRows={showRows} />
+        <MartGrid key={gridMart.id} martId={gridMart.id} model={model} seed={{ filters: selection.filters, saved: grids[gridMart.id] }} onChange={save} onRows={showRows} paused={held} />
       )}
     </Band>
   );

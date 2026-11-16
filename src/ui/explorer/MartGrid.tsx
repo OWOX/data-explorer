@@ -37,12 +37,12 @@ function useSchema(martId: string, version: number) {
 export type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
 
 /** The grid for one mart: loads the schema, then reads rows. Key it by mart id. */
-export function MartGrid({ martId, model, seed, onChange, onRows }: { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
+export function MartGrid({ martId, model, seed, onChange, onRows, paused = false }: { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void; /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
   const [schemaVersion, setSchemaVersion] = useState(0);
   const { schema, error } = useSchema(martId, schemaVersion);
   if (error) return <div className="p-4"><ErrorBox error={error} onRetry={() => setSchemaVersion((v) => v + 1)} /></div>;
   if (!schema) return <Skeleton rows={8} />;
-  return <SeededGrid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onRows={onRows} />;
+  return <SeededGrid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onRows={onRows} paused={paused} />;
 }
 
 /** A saved-columns read slower than this is given up on for this mount. */
@@ -66,7 +66,7 @@ type Initial = { columns: string[]; cleaned: string[] | null; sources: JoinedSou
  * A column saved from a joined mart waits for the joined marts to be read (inside the same 3 s): a read that
  * fails leaves those columns out of this visit without erasing them from what is saved.
  */
-function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
+function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void; paused: boolean }) {
   const { martId, schema, seed } = props;
   const { columnStore, blendable } = useServices();
   const [initial, setInitial] = useState<Initial | null>(() => {
@@ -141,18 +141,23 @@ const sameGrid = (a: GridState, b: GridState) => stable(a) === stable(b);
 
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
-function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, onChange, onRows }: { martId: string; initialColumns: string[]; initialSources: JoinedSource[] | null; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
+function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, onChange, onRows, paused }: { paused: boolean; martId: string; initialColumns: string[]; initialSources: JoinedSource[] | null; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null) => void }) {
   const { columnStore, blendable } = useServices();
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
   const [sources, setSources] = useState<JoinedSource[]>(initialSources ?? []);
-  const [joinedState, setJoinedState] = useState<JoinedState>(initialSources ? 'ready' : 'idle');
+  const [joinedState, setJoinedState] = useState<JoinedState>(initialSources ? 'ready' : 'loading');
   const loadJoined = useCallback(() => {
     if (joinedState === 'ready' || joinedState === 'loading') return;
     setJoinedState('loading');
     blendable.get(martId).then((s) => { setSources(s); setJoinedState('ready'); }, () => setJoinedState('failed'));
   }, [blendable, martId, joinedState]);
-  useEffect(() => { loadJoined(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (initialSources) return;
+    let live = true;
+    blendable.get(martId).then((s) => { if (live) { setSources(s); setJoinedState('ready'); } }, () => { if (live) setJoinedState('failed'); });
+    return () => { live = false; };
+  }, [blendable, martId, initialSources]);
   const schema = useMemo(() => withJoined(native, sources), [native, sources]);
   const [{ modelVersion }, dispatch] = useStore();
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
@@ -200,7 +205,10 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
 
   const pks = primaryKeys(native);
   const query = useMemo(() => buildRowQuery(schema, visible, Object.values(filters), limit, sorts), [schema, visible, filters, sorts, limit]);
-  const { rows, loading, error, hasMore } = useMartRows(martId, query, version);
+  // A folded band reads nothing: the query it last read stays, and a change made meanwhile is read once it opens.
+  const [asked, setAsked] = useState(query);
+  if (!paused && asked !== query) setAsked(query);
+  const { rows, loading, error, hasMore } = useMartRows(martId, asked, version);
   // The fields on screen, kept as the same array until one of them changes: a joined mart arriving later (the picker reads it
   // when it opens) must not rebuild the headers, which would close a filter popover the reader has open.
   const [onScreen, setOnScreen] = useState<Schema>([]);

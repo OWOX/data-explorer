@@ -57,6 +57,8 @@
   margin: 0; padding: 0.125rem 0.3125rem; font-size: 0.9375rem; font-weight: 500; line-height: 1;
   background: color-mix(in oklab, color-mix(in oklab, var(--muted) 50%, var(--background)) 90%, transparent);
   border-radius: 0.25rem;
+  /* "Orders + Customers + …" stays on one line and is cut with an ellipsis (the full text is the title attribute). */
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 :root.dark .dm-band-title {
   background: color-mix(in oklab, color-mix(in oklab, white 4%, var(--background)) 90%, transparent);
@@ -219,6 +221,19 @@ button.dm-mark { cursor: pointer; }
 .dm-node[aria-pressed='true']:hover {
   border-color: var(--tone);
   box-shadow: 0 0 0 1px var(--tone);
+}
+/* A joined data mart of the selected one (its fields are columns of the grid): the same family, lighter. A dashed tinted border
+   and a small plus, where the main one has the solid ring. */
+.dm-node.dm-joined[aria-pressed='true'],
+.dm-node.dm-joined[aria-pressed='true']:hover {
+  border-style: dashed; border-color: var(--tone);
+  background: color-mix(in oklab, var(--primary) 7%, var(--card));
+  box-shadow: none;
+}
+.dm-joined-mark {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 1rem; height: 1rem; border-radius: 999px;
+  background: var(--primary); color: var(--primary-foreground); font-size: 0.75rem; line-height: 1; font-weight: 600;
 }
 /* A data mart the member cannot open: still a card, but plainly not one to expect anything from. */
 .dm-noaccess { opacity: 0.6; filter: grayscale(0.8); }
