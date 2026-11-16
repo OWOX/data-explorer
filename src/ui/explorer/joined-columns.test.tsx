@@ -116,7 +116,7 @@ test('saved columns may name joined fields: the joined marts are read first and 
   t.view();
   await waitFor(() => expect(headers()).toEqual(['id', 'status', 'SKU']));
   expect(t.reads).toEqual([BLEND]);
-  await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+  await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
   expect(t.orderQueries()).toHaveLength(1);
   expect(t.orderQueries()[0]!.o.column).toEqual(['id', 'status', 'products__sku']);
   await new Promise((r) => setTimeout(r, SAVE_DEBOUNCE_MS + 200)); // past the save debounce
@@ -148,10 +148,10 @@ test('a joined column is in the Data band only: the Row band lists the mart\'s o
   const t = setup(['id', 'customers__email']);
   await t.seeded;
   t.view();
-  await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+  await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
   await userEvent.click(bodyRows()[0]!);
   const row = document.getElementById('band-row')!;
-  await within(row).findByText('status', {}, { timeout: 15000 });
+  await within(row).findByText('status');
   expect(within(row).queryByText(/email/)).toBeNull();
 });
 
@@ -180,7 +180,7 @@ test('a saved filter on a joined field that could not be read is not applied thi
   }
   render(<AppServices ctx={t.ctx}><StoreProvider><Probe /><App /></StoreProvider></AppServices>);
   await waitFor(() => expect(headers()).toEqual(['id', 'status']));
-  await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+  await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
   expect(within(data()).getByRole('button', { name: 'Reset' })).toBeDisabled();
   expect(t.orderQueries().every((q) => !q.o.filter)).toBe(true);
   expect(state.current!.grids.orders!.filters.customers__email).toBeDefined();

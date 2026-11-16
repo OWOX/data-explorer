@@ -154,7 +154,7 @@ describe('the four bands', () => {
     const filterActive = () => within(data()).getByRole('button', { name: 'Reset' });
     // 1. the Customers record
     await goTo('Customers');
-    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
     await userEvent.click(within(data()).getAllByRole('row')[2]!);
     const customerHeading = await within(row()).findByRole('heading', { name: /^Customers · \d+$/ });
     // 2. a filtered target: Customers record -> Orders, filtered
@@ -166,7 +166,7 @@ describe('the four bands', () => {
     await waitFor(() => expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary'));
     expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
     // 3. a record of the filtered Orders
-    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
     // Orders may show a joined mart here, so its group row sits above the titles: take the first row with cells.
     await userEvent.click(within(data()).getAllByRole('row').find((r) => r.querySelector('td'))!);
     await within(row()).findByRole('heading', { name: /^Orders · \d+$/ });
@@ -310,7 +310,7 @@ describe('the grid', () => {
   test('edits made on top of a followed filter survive a trip away and Back', async () => {
     await ordersGrid();
     await goTo('Customers');
-    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
     await userEvent.click(within(data()).getAllByRole('row')[2]!);
     await within(row()).findByRole('heading', { name: /^Customers · \d+$/ });
     const section = await within(row()).findByRole('region', { name: 'Referenced by' });
@@ -433,7 +433,7 @@ describe('the record', () => {
     await userEvent.type(screen.getByLabelText('Search data marts'), 'order items');
     fireEvent.click(await within(marts()).findByText('Order Items'));
     await within(data()).findByRole('heading', { name: 'Order Items' });
-    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
     await userEvent.click(within(data()).getAllByRole('row')[2]!);
     await within(row()).findByRole('heading', { name: /^Order Items · 1$/ });
     await within(row()).findByText('Order');
@@ -1103,7 +1103,7 @@ describe('the Data band loading bar', () => {
     await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
     expect(await within(data()).findByRole('progressbar', { name: 'Loading rows' })).toBeInTheDocument();
     // the rows stay on screen: the skeleton is for the very first load only
-    expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1);
+    expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true);
     await waitFor(() => expect(bar()).toBeNull());
 
     await userEvent.click(within(data()).getByRole('button', { name: /^Sort by status,/ }));
@@ -1245,7 +1245,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     const calls = await spyOnTraverse();
     await within(data()).findByRole('table');
     await goTo('Customers');
-    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
     const grid = data();
     expect(within(grid).queryByText('internal_flag')).toBeNull();
     await userEvent.click(within(grid).getByRole('button', { name: 'Columns of Customers' }));
@@ -1270,7 +1270,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     await within(marts()).findByText('Stores');
     await goTo('Stores');
     expect(await screen.findByText('Preview only: this data mart has no primary key.')).toBeInTheDocument();
-    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+    await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
     expect(within(data()).queryByText(/Unknown column/)).toBeNull();
     await userEvent.click(within(data()).getAllByRole('row')[2]!);
     expect(within(row()).getByText('Select a row.')).toBeInTheDocument();

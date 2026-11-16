@@ -43,7 +43,7 @@ test('saved columns seed the grid and the first rows query already uses them', a
   t.view(true);
   await waitFor(() => expect(headers()).toHaveLength(3));
   expect(headers().join()).toMatch(/id.*status.*Amount/);
-  await waitFor(() => expect(within(document.getElementById('band-data')!).getAllByRole('row').length).toBeGreaterThan(1));
+  await waitFor(() => expect(within(document.getElementById('band-data')!).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
   const q = ordersCalls(t.calls);
   // StrictMode runs the rows effect twice in development, so two identical reads are the one query; none uses the defaults.
   expect(q).toHaveLength(2);
@@ -56,7 +56,7 @@ test('outside StrictMode the first rows query runs exactly once, with the saved 
   await t.seeded;
   t.view();
   await waitFor(() => expect(headers()).toHaveLength(3));
-  await waitFor(() => expect(within(document.getElementById('band-data')!).getAllByRole('row').length).toBeGreaterThan(1));
+  await waitFor(() => expect(within(document.getElementById('band-data')!).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
   const q = ordersCalls(t.calls);
   expect(q).toHaveLength(1);
   expect(q[0]!.column).toEqual(['id', 'status', 'amount']);
