@@ -176,8 +176,13 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const pks = primaryKeys(native);
   const query = useMemo(() => buildRowQuery(schema, visible, Object.values(filters), limit, sorts), [schema, visible, filters, sorts, limit]);
   const { rows, loading, error, hasMore } = useMartRows(martId, query, version);
-  const columns = useMemo<GridColumn[]>(() => visible.filter((name) => schema.some((f) => f.name === name)).map((name) => {
-    const field = schema.find((f) => f.name === name)!;
+  // The fields on screen, kept as the same array until one of them changes: a joined mart arriving later (the picker reads it
+  // when it opens) must not rebuild the headers, which would close a filter popover the reader has open.
+  const [onScreen, setOnScreen] = useState<Schema>([]);
+  const wanted = visible.flatMap((name) => schema.find((f) => f.name === name) ?? []);
+  if (wanted.length !== onScreen.length || wanted.some((f, i) => f !== onScreen[i])) setOnScreen(wanted);
+  const columns = useMemo<GridColumn[]>(() => onScreen.map((field) => {
+    const name = field.name;
     return {
       id: name,
       header: () => (
@@ -199,7 +204,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       ),
       cell: ({ row }) => <CellValue row={row.original} field={name} type={field.type} />,
     };
-  }), [visible, schema, filters, model]);
+  }), [onScreen, filters, model]);
 
   // While the member has no sort of their own, a click replaces the default with that column ascending (the
   // default's own column included), so a default never rides along as a second sort; after that the normal cycle.

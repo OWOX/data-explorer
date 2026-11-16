@@ -11,7 +11,7 @@ import { App } from '../App';
 type Mock = ReturnType<typeof createMockCtx>;
 const BLEND = '/api/data-marts/orders/blendable-schema';
 
-function setup(saved: string[] | null, opts: { blendFails?: boolean } = {}) {
+function setup(saved: string[] | null, opts: { blendFails?: boolean; blendGate?: Promise<void> } = {}) {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const queries: { id: string; o: TraverseOptions }[] = [];
   const reads: string[] = [];
@@ -23,7 +23,11 @@ function setup(saved: string[] | null, opts: { blendFails?: boolean } = {}) {
       ...base.owox,
       dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { queries.push({ id, o }); return real(id, o); } },
       getJson: (<T,>(path: string, query?: Record<string, string>) => {
-        if (path.endsWith('/blendable-schema')) { reads.push(path); if (opts.blendFails) return Promise.reject(new Error('blendable boom')); }
+        if (path.endsWith('/blendable-schema')) {
+          reads.push(path);
+          if (opts.blendFails) return Promise.reject(new Error('blendable boom'));
+          if (opts.blendGate) return opts.blendGate.then(() => realGet<T>(path, query));
+        }
         return realGet<T>(path, query);
       }) as Mock['owox']['getJson'],
     },
@@ -163,4 +167,18 @@ test('a joined column is in the Data band only: the Row band lists the mart\'s o
   const row = document.getElementById('band-row')!;
   await within(row).findByText('status');
   expect(within(row).queryByText(/email/)).toBeNull();
+});
+
+test('a filter popover the reader has open stays open when the joined marts arrive', async () => {
+  let release: () => void = () => {};
+  const t = setup(null, { blendGate: new Promise<void>((r) => { release = r; }) });
+  t.view();
+  await openPicker();
+  await userEvent.keyboard('{Escape}');
+  await userEvent.click(await within(data()).findByLabelText('Filter status'));
+  expect(await screen.findByLabelText('Operator')).toBeInTheDocument();
+  release();
+  await waitFor(() => expect(t.reads).toHaveLength(1));
+  await new Promise((r) => setTimeout(r, 150));
+  expect(screen.getByLabelText('Operator')).toBeInTheDocument();
 });
