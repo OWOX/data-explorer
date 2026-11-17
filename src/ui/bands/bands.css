@@ -323,7 +323,8 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-icon { width: 11.2px; height: 11.2px; }
 /* Sheets' chrome: column letters on top, row numbers on the left, both decorative. The numbers stay on the left
    when the grid scrolls sideways; the letters travel with the header. */
-.dm-grid .dm-chrome { background: var(--sheet-chrome-bg); color: var(--sheet-chrome-text); text-align: center; font-weight: 400; padding: 0; height: 21px; box-shadow: inset -1px -1px 0 var(--grid-line-strong); }
+/* Sheets draws its letters and row numbers smaller than the cells: about 11px against the cells' 10pt. */
+.dm-grid .dm-chrome { font-size: 11px; background: var(--sheet-chrome-bg); color: var(--sheet-chrome-text); text-align: center; font-weight: 400; padding: 0; height: 21px; box-shadow: inset -1px -1px 0 var(--grid-line-strong); }
 .dm-grid thead .dm-chrome { box-shadow: inset -1px -1px 0 var(--grid-line-strong); }
 .dm-grid tbody .dm-chrome { position: sticky; left: 0; z-index: 1; width: 46px; min-width: 46px; max-width: 46px; }
 .dm-grid .dm-corner { position: sticky; left: 0; z-index: 3; width: 46px; min-width: 46px; max-width: 46px; }

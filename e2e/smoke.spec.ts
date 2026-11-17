@@ -663,6 +663,9 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
   // the letters sit above the tabs, the numbers on the left
   await expect(data.locator('thead .dm-letter[data-chrome]').first()).toHaveText('A');
   await expect(data.locator('tbody th[data-chrome]').first()).toHaveText('1');
+  // Sheets' letters and row numbers are smaller than the cells: 11px against 10pt
+  await expect(data.locator('thead .dm-letter[data-chrome]').first()).toHaveCSS('font-size', '11px');
+  await expect(data.locator('tbody th[data-chrome]').first()).toHaveCSS('font-size', '11px');
   // a click selects: a 2px blue frame, the letter and number lit
   await second.click();
   const cell = data.locator('td[data-selected]');
