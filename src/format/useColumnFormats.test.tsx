@@ -14,13 +14,14 @@ const schema: Schema = [f('rate', 'number', 'FLOAT64'), f('amount', 'number', 'N
 
 function setup(answer: () => Promise<unknown>) {
   const docs = new Map<string, unknown>();
+  const gets = { n: 0 };
   const doGenerate = vi.fn(async () => ({ content: [{ type: 'text', text: JSON.stringify(await answer()) }] }));
   ctx = {
     ...stubCtx(),
     credentials: { ai: { fast: { doGenerate } } },
-    collections: <T,>(name: string) => ({ get: async (id: string) => (docs.has(`${name}/${id}`) ? { document: docs.get(`${name}/${id}`) as T } : null), put: async (id: string, d: T) => { docs.set(`${name}/${id}`, d); } }),
+    collections: <T,>(name: string) => ({ get: async (id: string) => { gets.n++; return docs.has(`${name}/${id}`) ? { document: docs.get(`${name}/${id}`) as T } : null; }, put: async (id: string, d: T) => { docs.set(`${name}/${id}`, d); } }),
   } as unknown as Ctx;
-  return { doGenerate, docs };
+  return { doGenerate, docs, gets };
 }
 beforeEach(() => resetAiPickSession());
 
@@ -50,7 +51,10 @@ test('unmounting aborts the ask; nothing is stored', async () => {
   const s = setup(() => new Promise(() => {}));
   const { unmount } = renderHook(() => useColumnFormats('m1', schema, 'Orders'));
   await waitFor(() => expect(s.doGenerate).toHaveBeenCalled());
+  const signal = (s.doGenerate.mock.calls[0] as unknown as [{ abortSignal: AbortSignal }])[0].abortSignal;
+  expect(signal.aborted).toBe(false);
   unmount();
+  expect(signal.aborted).toBe(true);
   expect(s.docs.has('column-formats-project/m1')).toBe(false);
 });
 
@@ -76,4 +80,47 @@ test('columns that join after the first pick are asked about once, together, and
   expect(s.doGenerate).toHaveBeenCalledTimes(2);
   const user = ((s.doGenerate.mock.calls[1] as unknown as [{ prompt: [unknown, { content: { text: string }[] }] }])[0].prompt[1]).content[0]!.text;
   expect(JSON.parse(user).columns.map((c: { id: string }) => c.id)).toEqual(['c.a', 'c.b']);
+});
+
+test('a schema change while an ask is pending neither cancels nor repeats it; the new column is asked after', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  let n = 0;
+  const s = setup(async () => { if (n++ === 0) await gate; return {}; });
+  const joined: Field = { ...f('c.a', 'number', 'NUMERIC'), joined: { martId: 'c', label: 'Customers', aliasPath: 'c' } };
+  const { rerender } = renderHook(({ sch, title }: { sch: Schema; title: string }) => useColumnFormats('m1', sch, title), { initialProps: { sch: schema, title: 'Orders' } });
+  await waitFor(() => expect(s.doGenerate).toHaveBeenCalledTimes(1));
+  const first = (s.doGenerate.mock.calls[0] as unknown as [{ abortSignal: AbortSignal }])[0].abortSignal;
+  rerender({ sch: [...schema, joined], title: 'Orders 2' });
+  await new Promise((r) => setTimeout(r, PICK_SETTLE_MS * 2));
+  expect(s.doGenerate).toHaveBeenCalledTimes(1);
+  expect(first.aborted).toBe(false);
+  release();
+  await waitFor(() => expect(s.doGenerate).toHaveBeenCalledTimes(2), { timeout: PICK_SETTLE_MS * 8 });
+  await new Promise((r) => setTimeout(r, PICK_SETTLE_MS * 2));
+  expect(s.doGenerate).toHaveBeenCalledTimes(2);
+  const user = ((s.doGenerate.mock.calls[1] as unknown as [{ prompt: [unknown, { content: { text: string }[] }] }])[0].prompt[1]).content[0]!.text;
+  expect(JSON.parse(user).columns.map((c: { id: string }) => c.id)).toEqual(['c.a']);
+});
+
+test('hook instances on one mart share the load, the ask and member choices', async () => {
+  const s = setup(async () => ({ rate: { kind: 'percent' } }));
+  const grid = renderHook(() => useColumnFormats('m1', schema, 'Orders'));
+  const row = renderHook(() => useColumnFormats('m1', schema, 'Orders'));
+  await waitFor(() => expect(row.result.current.formatOf('rate', 'FLOAT64')).toEqual({ kind: 'percent' }));
+  expect(grid.result.current.formatOf('rate', 'FLOAT64')).toEqual({ kind: 'percent' });
+  act(() => grid.result.current.setMember('rate', { kind: 'plain' }));
+  expect(row.result.current.formatOf('rate', 'FLOAT64')).toEqual({ kind: 'plain' });
+  await new Promise((r) => setTimeout(r, PICK_SETTLE_MS * 2));
+  expect(s.doGenerate).toHaveBeenCalledTimes(1);
+});
+
+test('two instances on one mart read the stored documents once', async () => {
+  const s = setup(async () => ({}));
+  s.docs.set('column-formats-member/m1', { rate: { kind: 'plain' } });
+  const a = renderHook(() => useColumnFormats('m1'));
+  const b = renderHook(() => useColumnFormats('m1'));
+  await waitFor(() => expect(b.result.current.formatOf('rate', 'FLOAT64')).toEqual({ kind: 'plain' }));
+  expect(a.result.current.formatOf('rate', 'FLOAT64')).toEqual({ kind: 'plain' });
+  expect(s.gets.n).toBe(2);
 });

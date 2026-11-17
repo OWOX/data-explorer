@@ -17,7 +17,11 @@ const SYSTEM = [
 ].join('\n');
 
 const validCurrency = (code: string): boolean => {
-  try { new Intl.NumberFormat(undefined, { style: 'currency', currency: code }); return true; } catch { return false; }
+  try {
+    // A well-formed code is not enough (Intl accepts "XYZ"): it has to be a currency the engine knows, where the engine can list them.
+    const known = (Intl as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.('currency');
+    if (known && !known.includes(code)) return false;
+    new Intl.NumberFormat(undefined, { style: 'currency', currency: code }); return true; } catch { return false; }
 };
 
 /** The model's answer reduced to the picks that are well-formed, offered by the column's type, */

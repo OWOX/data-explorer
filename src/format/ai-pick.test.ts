@@ -49,6 +49,9 @@ test('asks with title, name, alias and description, no values; stores valid pick
 test('invalid kinds, currencies and shapes are dropped; auto is stored so later sessions do not ask again', async () => {
   const s = setup({ amount: { kind: 'money', currency: 'ZZZZ' }, rate: { kind: 'bogus' }, created: { kind: 'auto' } });
   expect(await run(s)).toEqual({ created: { kind: 'auto' } });
+  resetAiPickSession();
+  expect(await run(setup({ amount: { kind: 'money', currency: 'XYZ' } }))).toEqual({});
+  resetAiPickSession();
   const t = setup({ amount: { kind: 'money' }, rate: 'percent', created: { kind: 'money', currency: 'USD' } });
   expect(await run(t)).toEqual({});
 });
@@ -95,9 +98,6 @@ test('asks once per column per mart per session; a column that joins later is as
 });
 
 test('an aborted ask is taken back', async () => {
-  const s = setup({ rate: { kind: 'percent' } });
-  void s;
-  resetAiPickSession();
   const ctl = new AbortController();
   const slow = setup({ rate: { kind: 'percent' } });
   const p = run(slow, {}, schema, ctl.signal);
