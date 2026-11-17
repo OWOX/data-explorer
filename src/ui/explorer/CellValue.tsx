@@ -1,5 +1,6 @@
 import type { Row } from '../../sdk/types';
 import { formatNumber, formatTemporal, formatValue, isNumericType } from '../format';
+import { formatValue as formatAs, type Format } from '../../format/formats';
 import { Tooltip, OverflowTip } from '../Tooltip';
 
 export { formatValue };
@@ -9,8 +10,12 @@ export { formatValue };
  * `type` is the field's warehouse type: DATE, DATETIME and TIMESTAMP values show in the viewer's own
  * format, the stored value in the tooltip. Any other value that does not fit shows in full on hover.
  */
-export function CellValue({ row, field, type, wrap = false }: { row: Row; field: string; type?: string; wrap?: boolean }) {
+export function CellValue({ row, field, type, wrap = false, format }: { row: Row; field: string; type?: string; wrap?: boolean; /** The column's chosen display format; absent or `auto` keeps the default look. */ format?: Format }) {
   const raw = formatValue(row[field]);
+  if (type && format && format.kind !== 'auto') {
+    const shown = formatAs(row[field], type, format);
+    return wrap ? <span>{shown}</span> : <OverflowTip text={shown}><span className="block truncate">{shown}</span></OverflowTip>;
+  }
   const when = type ? formatTemporal(row[field], type) : null;
   // A number shows with thousands separators, as Sheets does; the tooltip (when clipped) shows the same text.
   const num = isNumericType(type) ? formatNumber(row[field]) : null;

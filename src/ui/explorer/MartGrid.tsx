@@ -2,6 +2,7 @@ import { columnVisibilityFeature, flexRender, tableFeatures, useTable, type Colu
 import { ArrowDown, ArrowUp, Box, Info, RefreshCw, RotateCcw, X } from 'lucide-react';
 import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pending-focus';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useColumnFormats } from '../../format/useColumnFormats';
 import { PAGE_SIZE } from '../../config';
 import { columnLetter } from './columnLetters';
 import { isNumericType } from '../format';
@@ -192,6 +193,10 @@ const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Obje
 
 function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, initialAgg, onChange, onRows, paused }: { paused: boolean; martId: string; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: boolean) => void }) {
   const { columnStore, blendable } = useServices();
+  const { formatOf } = useColumnFormats(martId);
+  // The cells read the latest formats through a ref, so a format change repaints cells without rebuilding the column defs (and remounting the headers).
+  const formatOfRef = useRef(formatOf);
+  formatOfRef.current = formatOf;
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
   const [sources, setSources] = useState<JoinedSource[]>(initialSources ?? []);
@@ -325,7 +330,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       ),
       cell: ({ row }) => (o.bucket
         ? <BucketValue value={row.original[o.key]} unit={o.bucket} />
-        : <CellValue row={row.original} field={o.key} type={outputType(field, o.fn)} />),
+        : <CellValue row={row.original} field={o.key} type={outputType(field, o.fn)} format={formatOfRef.current(o.column, outputType(field, o.fn))} />),
     };
   }), [outputs, shownByName, filters, aggNow, changeAgg, blockers]);
 
