@@ -805,3 +805,39 @@ test('the column menu and its Format submenu stay inside the window at the right
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menu', { name: 'Menu of Amount' })).toHaveCount(0);
 });
+
+test('full screen: the Data band alone fills the plugin area, its title stays, Escape leaves', async ({ page }) => {
+  const data = await ordersGrid(page);
+  const cell = data.locator('tbody td').nth(1);
+  await cell.click();
+  await data.getByRole('button', { name: 'Full screen' }).click();
+  await expect(data.getByRole('button', { name: 'Exit full screen' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('header.dm-page-header')).toBeHidden();
+  await expect(band(page, 'marts')).toBeHidden();
+  await expect(band(page, 'sources')).toBeHidden();
+  await expect(band(page, 'row')).toBeHidden();
+  await expect(data.getByRole('heading', { name: 'Data' })).toBeVisible();
+  await expect(data.locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  // The band covers the viewport, and the grid scroller takes what the title row leaves.
+  const view = page.viewportSize()!;
+  const box = (await data.boundingBox())!;
+  expect(box).toMatchObject({ x: 0, y: 0, width: view.width, height: view.height });
+  const head = (await data.locator('.dm-band-head').boundingBox())!;
+  const scroller = (await data.locator('.dm-grid-root').boundingBox())!;
+  expect(scroller.height).toBeGreaterThan(view.height - head.height - 60);
+  expect(scroller.height).toBeLessThanOrEqual(view.height - head.height);
+  // The same grid: its selected cell is still selected.
+  await expect(cell).toHaveAttribute('data-selected', '');
+  // Escape closes an open column menu first, and only then full screen.
+  await data.getByLabel('Column menu status').click();
+  await expect(page.getByRole('menu', { name: 'Menu of status' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu', { name: 'Menu of status' })).toHaveCount(0);
+  await expect(data.getByRole('button', { name: 'Exit full screen' })).toBeVisible();
+  await data.locator('.dm-band-head').click();
+  await page.keyboard.press('Escape');
+  await expect(data.getByRole('button', { name: 'Full screen' })).toBeVisible();
+  await expect(page.locator('header.dm-page-header')).toBeVisible();
+  await expect(band(page, 'marts')).toBeVisible();
+  await expect(cell).toHaveAttribute('data-selected', '');
+});

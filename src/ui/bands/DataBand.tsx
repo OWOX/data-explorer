@@ -12,7 +12,7 @@ import { Band } from './Band';
 export const NO_KEY_NOTE = 'Preview only: this data mart has no primary key.';
 const HINT = 'The rows of the selected data mart. Click a row to open it below.';
 
-export function DataBand({ model, folded, onFold, loading = null }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null }) {
+export function DataBand({ model, folded, onFold, loading = null, fullScreen }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null; fullScreen?: { on: boolean; onToggle: () => void } }) {
   const [{ selection, grids }, dispatch] = useStore();
   const { martId } = selection;
   const mart = martId ? model.marts.get(martId) : undefined;
@@ -30,7 +30,7 @@ export function DataBand({ model, folded, onFold, loading = null }: { model: Mod
 
   const noKey = !!mart && rows?.id === mart.id && rows.noKey && !!gridMart?.accessible;
   return (
-    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={noKey ? `${HINT} ${NO_KEY_NOTE}` : HINT} afterHint={noKey ? <NoKeyWarning /> : undefined} folded={folded} onFold={onFold} grid={false} loading={loading}>
+    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={noKey ? `${HINT} ${NO_KEY_NOTE}` : HINT} afterHint={noKey ? <NoKeyWarning /> : undefined} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (

@@ -110,7 +110,7 @@ Anyone in the project who can see those data marts opens the same view from the 
 
 ## Aggregation
 
-Hover a column title in the Data band and a Sigma icon appears next to the filter icon. It stays on, in the primary colour, while the column is aggregated. It opens the same popover the OWOX report picker has: "Aggregate by" with the functions the field allows (Sum, Average, Min, Max, Count, Count Unique, Combined, Sample, percentiles; the field's own governance or the join's post-join set wins over the type defaults), and for a date a "Group by bucket" (Day, Week, Month, Quarter, Year) with an optional time zone. A date takes functions or one bucket, never both. Array, JSON, struct and calculated fields have no Sigma: the backend refuses a function or a bucket on them. The popover is headed "Aggregation"; its "Clear" button (an outline button left of Cancel and Apply, off while nothing is set) removes them.
+Aggregate is a row of the column menu (see Column menu); a Sigma icon next to the title, in the primary colour, shows while the column is aggregated and opens the same panel. It is the popover the OWOX report picker has: "Aggregate by" with the functions the field allows (Sum, Average, Min, Max, Count, Count Unique, Combined, Sample, percentiles; the field's own governance or the join's post-join set wins over the type defaults), and for a date a "Group by bucket" (Day, Week, Month, Quarter, Year) with an optional time zone. A date takes functions or one bucket, never both. Array, JSON, struct and calculated fields have no Sigma: the backend refuses a function or a bucket on them. The popover is headed "Aggregation"; its "Clear" button (an outline button left of Cancel and Apply, off while nothing is set) removes them.
 
 1. As soon as one visible column has a function or a bucket, the grid is grouped: the query sends `aggregation` and `dateTrunc` with exactly the visible columns, and every column without a rule is a group key. Primary keys are not added and no key tie-breaker sort is sent.
 2. Each function is its own column, headed `<column> · <Label>` (for example "Amount · Sum"), read from the row key `"<column> | <TOKEN>"`. A bucketed date shows its bucket start ("Nov 2026", "Q4 2026", "2026", or the day).
@@ -121,6 +121,27 @@ Hover a column title in the Data band and a Sigma icon appears next to the filte
 7. Aggregations and buckets are saved with the grid (`aggregations` and `dateTrunc` in the `grid-columns` document); rules of a column that is no longer shown are dropped; a card click or Undo carries them with the grid. Reset clears filters and sorts, not aggregations.
 8. A shown array, JSON or struct column would become a group key the warehouse refuses. A calculated column is fine: the backend groups by a row-level one and projects an aggregate-level one. While an array, JSON or struct column is shown, the grid sends no grouped query and says `"<column>" can't be grouped: hide it.`; Export is off, and the Apply button of another column's popover is off with the same note. Hide the column to get the groups back. Rules a saved grid or a view link holds on such a column, or that the field does not allow, are dropped.
 9. Mock mode implements all the functions (percentiles by interpolation, Combined with ", ", Sample takes the first value) and the date buckets.
+
+## Column menu
+
+Every column title in the Data band has a green menu icon (three lines, each shorter than the one above). It opens a Sheets-style menu with up to five rows: Filter, Aggregate, Format, Sort and, after a divider, Hide column. A row that does not apply to the column is left out: Aggregate where the column cannot aggregate, Format on text and boolean columns, Sort where the column cannot sort. Filter, Aggregate and Sort open the same editors as before (Apply, Clear and Escape work the same); Hide column does what unticking the column in Fields does. Next to the title, the filter, aggregation and sort icons show only while that setting is on, and clicking one opens the menu with that row open. The icon turns white on green while the column has any of them or a format of its own.
+
+Escape closes the open submenu, then the menu.
+
+### Formats
+
+Format changes only what the grid shows.
+
+1. Numbers: Automatic (grouped, `1,223`), Plain number (`1223`), Percent (the value times 100, up to 2 decimals, `12.5%`) and Money with USD, EUR, GBP or UAH (2 decimals).
+2. Dates and timestamps: Automatic, Date, Date and time, Time. Text and boolean columns have no formats.
+3. For a number or date column with no project pick, the plugin asks the AI (the one set up for smart search; no AI configured, nothing is sent) once per data mart per session. It gets the data mart title, the column name, its alias and its description, never sample values. Its answer is checked: an unknown format or currency is dropped, and a failure is silent. A pick may name a currency outside the four above, which then shows in the list.
+4. The pick is stored for the project (`column-formats-project`); your own choice is stored for you (`column-formats-member`), keyed by the data mart. Order: your choice, then the project pick, then Automatic. Choosing Automatic is a choice: it keeps a project pick from applying to you.
+5. Copy to clipboard and Export keep the raw values: plain digits for numbers, dates as the Automatic look. A percent or money format never reaches them.
+6. A joined column is keyed by its blended column name, and the AI gets the joined data mart's title for it.
+
+### Full screen
+
+The icon at the right of the Data band title (next to the fold chevron) makes the Data band fill the plugin area: 100% of its height, the title row on top, the grid taking the rest and scrolling inside it. The page header and the other bands are hidden, not removed, so the grid keeps its selection, scroll position and filters. The same icon or Escape leaves. Escape does nothing to full screen while a menu, popover or dialog is open, or while a field has focus: it closes that first. With a cell selected and the grid focused, the first Escape clears the selection. The fold chevron is hidden while the band is full screen. Full screen is not saved: the page always opens in the normal layout.
 
 ## Develop
 

@@ -83,14 +83,14 @@
 :root.dark .dm-band-count { background: color-mix(in oklab, white 8%, transparent); }
 .dm-band-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 /* CollapsibleCardHeader's chevron: a 1.75rem round button at the far right. */
-.dm-band-fold {
+.dm-band-fold, .dm-band-full {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
   width: 1.75rem; height: 1.75rem; padding: 0; border: 0; border-radius: 999px; background: none;
   color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
   cursor: pointer; transition: color 200ms, background-color 200ms;
 }
-.dm-band-fold:hover { color: var(--foreground); background: color-mix(in oklab, var(--border) 50%, transparent); }
-:root.dark .dm-band-fold:hover { background: color-mix(in oklab, white 4%, transparent); }
+.dm-band-fold:hover, .dm-band-full:hover { color: var(--foreground); background: color-mix(in oklab, var(--border) 50%, transparent); }
+:root.dark .dm-band-fold:hover, :root.dark .dm-band-full:hover { background: color-mix(in oklab, white 4%, transparent); }
 .dm-band-fold svg { transition: rotate 200ms; }
 .dm-band-fold-open { rotate: 180deg; }
 /* A card grows out of a point when it arrives and collapses back into one when it stops matching.
@@ -556,3 +556,12 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
   transition: width 240ms ease-out, background 240ms ease-out;
 }
 .dm-loadbar-done span { background: #d9eed7; }
+
+/* --- full screen: the Data band alone, fixed over the plugin area, its title row on top and the grid under it --- */
+/* Nothing is unmounted: the other bands and the header are only hidden, so the grid keeps its selection and scroll. */
+.dm-full .dm-page-header, .dm-full .dm-canvas > :not(#band-data) { display: none; }
+.dm-full #band-data { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; border-radius: 0; border-bottom: 0; background: var(--background); }
+.dm-full #band-data .dm-band-reveal { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+.dm-full #band-data .dm-band-reveal-in { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0.5rem; }
+.dm-full #band-data .dm-bigcard { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.dm-full #band-data .dm-bigcard > div { max-height: none !important; flex: 1 1 0; }
