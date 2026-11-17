@@ -259,6 +259,11 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
 /** The pending focus after Hide column. The menu that set it is gone by then, so it lives here; a new hide or an unmounted header cancels it. */
 let focusTimer: number | undefined;
 
+/** The menu icon is revealed by its header's hover or focus; a column with something active keeps it on. */
+export function menuIconClass(active: boolean): string {
+  return active ? 'dm-ctl dm-ctl-lg dm-ctl-on dm-reveal dm-reveal-on' : 'dm-ctl dm-ctl-lg dm-reveal';
+}
+
 export function ColumnControls({ field, output }: { field: Field; output: Output }) {
   const env = useContext(ColumnMenuEnvContext);
   const [menu, setMenu] = useState<{ anchor: HTMLElement; sub: SubKey | null } | null>(null);
@@ -309,7 +314,7 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
         </button>
       )}
       <button ref={icon} type="button" aria-label={`Column menu ${title}`} aria-haspopup="menu" aria-expanded={!!menu} data-menu-icon data-field={field.name}
-        className={active ? 'dm-ctl dm-ctl-lg dm-ctl-on' : 'dm-ctl dm-ctl-lg'} onClick={(e) => toggle(e.currentTarget, null)}>
+        className={menuIconClass(active)} onClick={(e) => toggle(e.currentTarget, null)}>
         <FilterLinesIcon className="dm-icon" />
       </button>
       {menu && <MenuPopup key={menu.sub ?? 'root'} field={field} output={output} anchor={menu.anchor} initial={menu.sub} onClose={close} />}

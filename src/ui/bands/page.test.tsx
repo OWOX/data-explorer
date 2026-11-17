@@ -1360,12 +1360,13 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(within(row()).getByLabelText('About Customer').closest('dt')).toHaveClass('dm-reveal-host');
   });
 
-  test('the Fields icon of a tab is always on screen, in the same green and size as the column menu icons', async () => {
+  test('the Fields icon of a tab shows on hover of its cell, in the same green and size as the column menu icons', async () => {
     const grid = await ordersGrid();
     const icon = within(grid).getByRole('button', { name: 'Fields of Orders' });
-    expect(icon).not.toHaveClass('dm-reveal');
+    expect(icon).toHaveClass('dm-reveal');
+    expect(icon).not.toHaveClass('dm-reveal-on');
     expect(icon).toHaveClass('dm-ctl', 'dm-ctl-lg');
-    expect(within(grid).getByLabelText('Column menu id')).toHaveClass('dm-ctl', 'dm-ctl-lg');
+    expect(within(grid).getByLabelText('Column menu id')).toHaveClass('dm-ctl', 'dm-ctl-lg', 'dm-reveal');
     expect(icon.closest('th')).toHaveClass('dm-gh');
   });
 
@@ -1565,14 +1566,14 @@ describe('whole column and row selection, and the header layout', () => {
     });
   });
 
-  test('a filter, an aggregation and a sort in use are green squares; idle ones are not', async () => {
+  test('a filter, an aggregation and a sort in use are green line icons and keep the menu icon on; idle ones are not', async () => {
     const grid = await ordersGrid();
     expect(within(grid).queryByLabelText('Filter id')).toBeNull();
-    expect(within(grid).getByLabelText('Column menu id')).not.toHaveClass('dm-ctl-on');
+    expect(within(grid).getByLabelText('Column menu id')).not.toHaveClass('dm-ctl-on', 'dm-reveal-on');
     expect(within(grid).getByLabelText('Column menu id')).toHaveClass('dm-ctl');
     await userEvent.click(sortBtn(grid, 'status'));
     await waitFor(() => expect(header(grid, 'status').querySelector('[data-sort-mark]')).toHaveClass('dm-ctl-on'));
-    expect(within(grid).getByLabelText('Column menu status')).toHaveClass('dm-ctl-on');
+    expect(within(grid).getByLabelText('Column menu status')).toHaveClass('dm-ctl-on', 'dm-reveal-on');
     expect(header(grid, 'id').querySelector('[data-sort-mark]')).toBeNull();
   });
 

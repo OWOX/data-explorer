@@ -12,13 +12,19 @@ async function ordersGrid(page: Page) {
   return data;
 }
 
+/** The menu icon shows while its header cell is hovered: hover the cell, then click the icon. */
+async function clickMenuIcon(icon: Locator) {
+  await icon.scrollIntoViewIfNeeded();
+  await icon.locator('xpath=ancestor::th').hover();
+  await icon.click();
+}
+
 /** Opens a column's menu and its first-level row (Filter, Aggregate, Format, Sort). */
 async function openColumnSub(data: Locator, title: string, row: 'Filter' | 'Aggregate' | 'Format' | 'Sort') {
   const icon = data.getByLabel(`Column menu ${title}`);
   // A scroll closes an open menu, and a narrow grid scrolls to reveal the icon: retry until the row holds still.
   await expect(async () => {
-    await icon.scrollIntoViewIfNeeded();
-    await icon.click();
+    await clickMenuIcon(icon);
     await data.page().getByRole('menuitem', { name: row, exact: true }).click({ timeout: 2000 });
   }).toPass({ timeout: 15_000 });
 }
@@ -835,8 +841,7 @@ test('the column menu and its Format submenu stay inside the window at the right
   const data = await ordersGrid(page);
   await tick(page, 'Amount');
   const menuIcon = data.getByLabel('Column menu Amount');
-  await menuIcon.scrollIntoViewIfNeeded();
-  await menuIcon.click();
+  await clickMenuIcon(menuIcon);
   const inside = async (name: string) => {
     const box = (await page.getByRole('menu', { name }).boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(0);
@@ -906,7 +911,7 @@ test('full screen: the Data band alone fills the plugin area, its title stays, E
   await page.keyboard.press('Escape');
   await expect(data.getByRole('button', { name: 'Exit full screen' })).toBeVisible();
   // Escape closes an open column menu first, and only then full screen.
-  await data.getByLabel('Column menu status').click();
+  await clickMenuIcon(data.getByLabel('Column menu status'));
   await expect(page.getByRole('menu', { name: 'Menu of status' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menu', { name: 'Menu of status' })).toHaveCount(0);

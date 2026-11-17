@@ -4,7 +4,7 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
-import { HOVER_MS } from './ColumnMenu';
+import { HOVER_MS, menuIconClass } from './ColumnMenu';
 import { openColumnMenu, openSubmenu } from './menu-test-utils';
 import { placeBeside, placeBelow } from './menuPlacement';
 
@@ -440,5 +440,15 @@ describe('the column menu icons', () => {
     const menu = await openColumnMenu(within(data()), 'status');
     expect(state(menu, 'Sort')).toBe(true);
     expect(state(menu, 'Filter')).toBe(false);
+  });
+});
+
+describe('menuIconClass', () => {
+  test('a column with an active action keeps the menu icon on; an idle one reveals it on hover', () => {
+    expect(menuIconClass(true).split(' ')).toEqual(expect.arrayContaining(['dm-ctl-on', 'dm-reveal', 'dm-reveal-on']));
+    const idle = menuIconClass(false).split(' ');
+    expect(idle).toContain('dm-reveal');
+    expect(idle).not.toContain('dm-reveal-on');
+    expect(idle).not.toContain('dm-ctl-on');
   });
 });

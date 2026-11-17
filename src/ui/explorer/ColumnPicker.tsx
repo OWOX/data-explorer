@@ -25,7 +25,7 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange }:
   const ticked = fields.filter((f) => set.has(f.name)).length;
   return (
     <Popover align="start" tip="Fields" trigger={
-      <button type="button" aria-label={`Fields of ${title}`} className="dm-ctl dm-ctl-lg"><Columns3 className="dm-icon" aria-hidden /></button>
+      <button type="button" aria-label={`Fields of ${title}`} className="dm-ctl dm-ctl-lg dm-reveal"><Columns3 className="dm-icon" aria-hidden /></button>
     }>
       <div className="flex flex-col gap-1">
         <p className="dm-popover-title text-xs font-medium text-muted-foreground">Fields · {ticked}/{fields.length}</p>

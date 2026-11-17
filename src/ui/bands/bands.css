@@ -83,14 +83,14 @@
 :root.dark .dm-band-count { background: color-mix(in oklab, white 8%, transparent); }
 .dm-band-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 /* CollapsibleCardHeader's chevron: a 1.75rem round button at the far right. */
-.dm-band-fold, .dm-band-full {
+.dm-band-fold {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
   width: 1.75rem; height: 1.75rem; padding: 0; border: 0; border-radius: 999px; background: none;
   color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
   cursor: pointer; transition: color 200ms, background-color 200ms;
 }
-.dm-band-fold:hover, .dm-band-full:hover { color: var(--foreground); background: color-mix(in oklab, var(--border) 50%, transparent); }
-:root.dark .dm-band-fold:hover, :root.dark .dm-band-full:hover { background: color-mix(in oklab, white 4%, transparent); }
+.dm-band-fold:hover { color: var(--foreground); background: color-mix(in oklab, var(--border) 50%, transparent); }
+:root.dark .dm-band-fold:hover { background: color-mix(in oklab, white 4%, transparent); }
 .dm-band-fold svg { transition: rotate 200ms; }
 .dm-band-fold-open { rotate: 180deg; }
 /* A card grows out of a point when it arrives and collapses back into one when it stops matching.
@@ -136,10 +136,13 @@
 .dm-tip-lines > span:first-child { font-weight: 500; }
 
 /* The context badges in the Data Marts title row: Data Flow's chip, a button that toggles. */
-.dm-context-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; min-width: 0; }
+.dm-context-filter { position: relative; display: flex; flex: 1 1 0; flex-wrap: nowrap; align-items: center; gap: 0.25rem; min-width: 0; overflow: hidden; }
+.dm-context-filter .dm-badge { flex-shrink: 0; white-space: nowrap; }
+/* The measuring copy of the badges: laid out at natural width, never seen. */
+.dm-context-probe { position: absolute; top: 0; left: 0; display: flex; gap: 0.25rem; width: max-content; visibility: hidden; pointer-events: none; }
 .dm-badge-toggle { border: 1px solid transparent; cursor: pointer; font: inherit; font-size: 0.6875rem; line-height: 1.5; }
 .dm-badge-toggle:hover { color: var(--foreground); }
-.dm-badge-toggle[aria-pressed='true'] {
+.dm-badge-toggle[aria-pressed='true'], .dm-badge-toggle[data-on] {
   border-color: var(--primary); color: var(--foreground);
   background: color-mix(in oklab, var(--primary) 14%, var(--muted));
 }
@@ -374,18 +377,19 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 /* Column header actions: hidden until the header is hovered or holds focus, but they keep their
    room, so the title does not jump. A column with a filter keeps its icon on. */
 .dm-reveal { display: inline-flex; flex-shrink: 0; opacity: 0; transition: opacity 120ms; }
-.dm-th:hover .dm-reveal, .dm-th:has(:focus-visible) .dm-reveal,
-.dm-reveal-on, .dm-reveal[aria-expanded='true'], .dm-reveal[data-state='delayed-open'], .dm-reveal[data-state='instant-open'] { opacity: 1; }
+.dm-th:hover .dm-reveal, .dm-th:focus-within .dm-reveal, .dm-gh:focus-within .dm-reveal,
+.dm-reveal-on, .dm-reveal[data-state='open'], .dm-reveal[aria-expanded='true'], .dm-reveal[data-state='delayed-open'], .dm-reveal[data-state='instant-open'] { opacity: 1; }
 .dm-col-info { color: var(--muted-foreground); }
 .dm-col-info:hover { color: var(--foreground); }
 /* The title cell, as in Sheets' filtered header: the title, its (i), a spacer, then the filter, aggregation and sort controls
-   at the right end. A control is a green line icon; once it is doing something it is a small green square with a white icon. */
+   at the right end. A control is a green line icon, and stays one while it is doing something. */
 .dm-hdr { display: flex; min-width: 0; align-items: center; gap: 4px; }
 .dm-hdr-spacer { flex: 1 1 0; min-width: 8px; }
 .dm-hdr-controls { display: inline-flex; flex-shrink: 0; align-items: center; gap: 2px; }
 .dm-ctl { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 1px; min-width: 16px; height: 16px; padding: 0 1px; border-radius: 4px; background: transparent; color: var(--sheet-green); }
-.dm-ctl:hover { background: color-mix(in srgb, var(--sheet-green) 12%, transparent); }
-.dm-ctl-on, .dm-ctl-on:hover { background: var(--sheet-green); color: var(--sheet-green-fg); }
+.dm-ctl:hover { background: var(--accent); }
+/* An active control stays a plain green line icon: no fill, no border. */
+.dm-ctl-on, .dm-ctl-on:hover { color: var(--sheet-green); }
 /* The column menu icon and the picker icon beside the data mart title: the same green, the same 15px glyph. */
 .dm-ctl-lg .dm-icon { width: 15px; height: 15px; }
 /* The column menu: Google Sheets' look (white panel, 4px radius, soft shadow, 32px rows, 14px Google Sans on #202124, #f1f3f4 hover,
@@ -437,7 +441,7 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-menu-sep { height: 0; margin: 8px 0; border-top: 1px solid var(--menu-line); }
 .dm-menu-row[role='menuitemradio'], .dm-menu-row[aria-checked] { padding-left: 16px; }
 /* No hover on touch: the actions stay on screen there. */
-@media (hover: none) and (pointer: coarse) { .dm-reveal { opacity: 1; } }
+@media (hover: none) { .dm-reveal { opacity: 1; } }
 
 /* A search box that matches the filter controls beside it. */
 .dm-search {

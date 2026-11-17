@@ -14,6 +14,7 @@ async function tick(page: Page, label: string) {
 async function openSub(page: Page, column: string, row: 'Filter' | 'Aggregate') {
   const icon = data(page).getByLabel(`Column menu ${column}`, { exact: true });
   await icon.scrollIntoViewIfNeeded();
+  await icon.locator('xpath=ancestor::th').hover();
   await click(page, icon);
   await click(page, page.getByRole('menuitem', { name: row, exact: true }));
   const dialog = page.getByRole('dialog');
