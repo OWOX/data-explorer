@@ -1,0 +1,65 @@
+import { Tag } from 'lucide-react';
+import { useLayoutEffect, useRef, useState } from 'react';
+import type { Context } from '../../model/types';
+import { Popover } from '../Popover';
+import { fitBadges } from './fitBadges';
+import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
+
+const GAP = 4;
+
+/**
+ * A badge per context, in one line: the ones that fit stay, the rest go behind a "+N (tag) more" chip that
+ * opens a list of them. A hidden badge still toggles its context, and a selected one lights the chip.
+ */
+export function ContextBadges({ contexts, selectedIds, onToggle }: { contexts: Context[]; selectedIds: string[]; onToggle: (id: string) => void }) {
+  const sorted = [...contexts].sort((a, b) => a.name.localeCompare(b.name));
+  const box = useRef<HTMLDivElement>(null);
+  const probe = useRef<HTMLDivElement>(null);
+  const [kept, setKept] = useState(sorted.length);
+  const key = sorted.map((c) => `${c.id}\u0000${c.name}\u0000${c.icon ?? ''}`).join('\u0001');
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      if (!box.current || !probe.current) return;
+      const parts = [...probe.current.children] as HTMLElement[];
+      const chip = parts.pop();
+      if (!chip) return;
+      setKept(fitBadges(parts.map((p) => p.getBoundingClientRect().width), chip.getBoundingClientRect().width, box.current.clientWidth, GAP));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (box.current) ro.observe(box.current);
+    return () => ro.disconnect();
+    // `key` stands for the contexts: a rename or a new one changes the widths.
+  }, [key]);
+
+  const shown = sorted.slice(0, kept);
+  const hidden = sorted.slice(kept);
+  const badge = (c: Context) => (
+    <button key={c.id} type="button" aria-pressed={selectedIds.includes(c.id)} className="dm-badge dm-badge-toggle" onClick={() => onToggle(c.id)}>
+      <PickedIcon icon={c.icon} fallback={DEFAULT_CONTEXT_ICON} size={12} />{c.name}
+    </button>
+  );
+  const chipBody = (n: number) => <>+{n}<Tag size={12} aria-hidden />more</>;
+  return (
+    <div ref={box} className="dm-context-filter" role="group" aria-label="Contexts">
+      {shown.map(badge)}
+      {hidden.length > 0 && (
+        <Popover align="start" label="More contexts" trigger={
+          <button type="button" data-context-more data-on={hidden.some((c) => selectedIds.includes(c.id)) ? '' : undefined} className="dm-badge dm-badge-toggle" aria-label={`${hidden.length} more contexts`}>
+            {chipBody(hidden.length)}
+          </button>
+        }>
+          <div className="flex flex-col items-start gap-1" role="group" aria-label="Hidden contexts">{hidden.map(badge)}</div>
+        </Popover>
+      )}
+      {/* Off screen: the same badges at their natural width, and the widest the chip gets. */}
+      <div ref={probe} aria-hidden className="dm-context-probe">
+        {sorted.map((c) => (
+          <span key={c.id} className="dm-badge dm-badge-toggle"><PickedIcon icon={c.icon} fallback={DEFAULT_CONTEXT_ICON} size={12} />{c.name}</span>
+        ))}
+        <span className="dm-badge dm-badge-toggle">{chipBody(sorted.length)}</span>
+      </div>
+    </div>
+  );
+}

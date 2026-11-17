@@ -85,7 +85,7 @@ export function Band({
           {fullScreen && !folded && (
             <button
               type="button"
-              className="dm-band-full"
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border hover:bg-accent"
               onClick={fullScreen.onToggle}
               aria-pressed={fullScreen.on}
               aria-label={fullScreen.on ? 'Exit full screen' : 'Full screen'}
