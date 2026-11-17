@@ -279,14 +279,15 @@ test('Export: with no Sheets destination the menu is still there, with the AI gr
   await page.goto('/?mock&sheets=0');
   const data = await ordersGrid(page);
   await data.getByText('Export', { exact: true }).click();
-  await expect(data.getByRole('menuitem')).toHaveText(['Copy to clipboard', 'Claude', 'ChatGPT']);
+  await expect(data.locator('[role="menuitem"]:not([data-link])')).toHaveText(['Copy to clipboard', 'Claude', 'ChatGPT']);
+  await expect(data.getByRole('menuitem', { name: 'Open OWOX in Claude' })).toBeVisible();
 });
 
 test('Export to an AI: the prompt is copied, named in a status, and readable in a dialog', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const data = await ordersGrid(page);
   await data.getByText('Export', { exact: true }).click();
-  await data.getByRole('menuitem', { name: 'Claude' }).click();
+  await data.getByRole('menuitem', { name: 'Claude', exact: true }).click();
   await expect(data.getByText('Prompt copied. Paste it into Claude')).toBeVisible();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Query the data mart "Orders" (id "orders").');
   await data.getByRole('button', { name: 'Show prompt' }).click();
