@@ -122,6 +122,7 @@
    cannot be read at a glance. */
 .dm-hint { position: relative; display: inline-flex; color: var(--muted-foreground); opacity: 0.55; cursor: help; }
 .dm-hint:hover, .dm-hint:focus-visible { opacity: 1; outline: none; }
+.dm-hint-warn { color: var(--warning); opacity: 0.9; }
 .dm-hint-body {
   z-index: 1000; width: max-content; max-width: min(22rem, calc(100vw - 1rem));
   border-radius: 0.5rem; padding: 0.5rem 0.625rem;

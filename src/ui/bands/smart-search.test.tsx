@@ -27,34 +27,47 @@ const ready = async () => {
   await within(data()).findByRole('table');
   await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
 };
-const openSearch = async () => { await userEvent.click(within(marts()).getByRole('button', { name: 'Search data marts' })); return within(marts()).getByRole('textbox', { name: 'Search data marts' }); };
+const openSearch = async () => { await userEvent.click(screen.getByRole('button', { name: 'Search data marts' })); return screen.getByRole('textbox', { name: 'Search data marts' }); };
 const search = async (q: string) => { const box = await openSearch(); await userEvent.type(box, `${q}{Enter}`); };
 const undo = () => userEvent.click(screen.getByRole('button', { name: 'Undo' }));
 const Z = (title: string) => within(marts()).getByText(title).closest('article')!;
 
 describe('the search box', () => {
+  test('lives in the page header, left of Undo, Redo and Copy link, not in the Data Marts band', async () => {
+    setup().view();
+    await ready();
+    const header = document.querySelector('header.dm-page-header') as HTMLElement;
+    const names = within(header).getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+    expect(names.slice(0, 3)).toEqual(['Search data marts', 'Undo', 'Redo']);
+    expect(within(marts()).queryByRole('button', { name: 'Search data marts' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Search data marts' }));
+    expect(within(header).getByRole('textbox', { name: 'Search data marts' })).toBeInTheDocument();
+    expect(within(marts()).queryByRole('textbox')).toBeNull();
+    expect(within(header).getAllByRole('button').map((b) => b.getAttribute('aria-label')).indexOf('Undo')).toBeGreaterThan(0);
+  });
+
   test('is an icon button; clicking opens an input with a go button, Escape closes it and nothing is applied', async () => {
     setup().view();
     await ready();
-    expect(within(marts()).queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
     const box = await openSearch();
     expect(box).toHaveFocus();
-    expect(within(marts()).getByRole('button', { name: 'Search' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled();
     await userEvent.type(box, 'ord');
-    expect(within(marts()).getByRole('button', { name: 'Search' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Search' })).toBeEnabled();
     await userEvent.keyboard('{Escape}');
-    expect(within(marts()).queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
     // nothing was run: the band is as it was, and the icon is back
-    expect(within(marts()).getByRole('button', { name: 'Search data marts' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Search data marts' })).toBeInTheDocument();
     expect(within(marts()).getByText('Customers')).toBeInTheDocument();
   });
 
   test('opens from the keyboard', async () => {
     setup().view();
     await ready();
-    within(marts()).getByRole('button', { name: 'Search data marts' }).focus();
+    screen.getByRole('button', { name: 'Search data marts' }).focus();
     await userEvent.keyboard('{Enter}');
-    expect(within(marts()).getByRole('textbox', { name: 'Search data marts' })).toHaveFocus();
+    expect(screen.getByRole('textbox', { name: 'Search data marts' })).toHaveFocus();
   });
 
   test('go is off while the box is empty, the input stops at the backend limit of 256, and one character is a title match with no search call', async () => {
@@ -63,7 +76,7 @@ describe('the search box', () => {
     await ready();
     const spy = vi.spyOn(t.ctx.owox, 'getJson');
     const box = await openSearch();
-    expect(within(marts()).getByRole('button', { name: 'Search' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled();
     expect(box).toHaveAttribute('maxlength', '256');
     await userEvent.type(box, 'p{Enter}');
     await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
@@ -87,14 +100,14 @@ describe('the search box', () => {
     await ready();
     await search('customers');
     await waitFor(() => expect(headings()).toBe('Customers'));
-    expect(within(marts()).getByRole('textbox', { name: 'Search data marts' })).toHaveValue('customers');
-    await userEvent.click(within(marts()).getByRole('button', { name: 'Clear search' }));
-    expect(within(marts()).getByRole('textbox', { name: 'Search data marts' })).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: 'Search data marts' })).toHaveValue('customers');
+    await userEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+    expect(screen.getByRole('textbox', { name: 'Search data marts' })).toHaveValue('');
     // the band shows the main mart's neighbours again
     expect(await within(marts()).findByText('Orders')).toBeInTheDocument();
-    const box = within(marts()).getByRole('textbox', { name: 'Search data marts' });
+    const box = screen.getByRole('textbox', { name: 'Search data marts' });
     await userEvent.type(box, 'products');
-    await userEvent.click(within(marts()).getByRole('button', { name: 'Search' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
     await waitFor(() => expect(headings()).toBe('Products'));
   });
 
@@ -104,11 +117,11 @@ describe('the search box', () => {
     await search('customers');
     await waitFor(() => expect(headings()).toBe('Customers'));
     await userEvent.keyboard('{Escape}');
-    expect(within(marts()).queryByRole('textbox')).toBeNull();
-    expect(within(marts()).getByRole('button', { name: 'Search data marts: customers' })).toHaveTextContent('customers');
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Search data marts: customers' })).toHaveTextContent('customers');
     expect(headings()).toBe('Customers');
-    await userEvent.click(within(marts()).getByRole('button', { name: 'Search data marts: customers' }));
-    expect(within(marts()).getByRole('textbox')).toHaveValue('customers');
+    await userEvent.click(screen.getByRole('button', { name: 'Search data marts: customers' }));
+    expect(screen.getByRole('textbox')).toHaveValue('customers');
   });
 });
 
@@ -214,7 +227,7 @@ describe('the pipeline', () => {
     await search('customers');
     await waitFor(() => expect(headings()).toBe('Customers'));
     expect(screen.queryByRole('alert')).toBeNull();
-    expect(within(marts()).queryByRole('note', { name: 'AI search hint' })).toBeNull();
+    expect(screen.queryByRole('note', { name: 'AI search hint' })).toBeNull();
   });
 
   test('a new search while one runs cancels the first', async () => {
@@ -227,7 +240,7 @@ describe('the pipeline', () => {
     await userEvent.type(box, 'customers{Enter}');
     await waitFor(() => expect(first).toBeDefined());
     // go stays enabled while a search runs: a new query cancels it
-    expect(within(marts()).getByRole('button', { name: 'Search' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Search' })).toBeEnabled();
     await userEvent.clear(box);
     await userEvent.type(box, 'products{Enter}');
     await waitFor(() => expect(first!.aborted).toBe(true));
@@ -239,21 +252,21 @@ describe('no AI configured', () => {
     const t = setup({ ai: false });
     const first = t.view();
     await ready();
-    expect(within(marts()).queryByRole('note', { name: 'AI search hint' })).toBeNull();
+    expect(screen.queryByRole('note', { name: 'AI search hint' })).toBeNull();
     await search('customers');
     await waitFor(() => expect(headings()).toBe('Customers'));
-    const hint = within(marts()).getByRole('note', { name: 'AI search hint' });
+    const hint = screen.getByRole('note', { name: 'AI search hint' });
     expect(hint).toHaveTextContent("Connect AI in this plugin's settings to also find data marts by meaning and apply filters.");
     expect(screen.queryByRole('alert')).toBeNull();
     await userEvent.click(within(hint).getByRole('button', { name: 'Dismiss the AI hint' }));
-    expect(within(marts()).queryByRole('note', { name: 'AI search hint' })).toBeNull();
+    expect(screen.queryByRole('note', { name: 'AI search hint' })).toBeNull();
     // remembered: a new page load on the same project does not bring it back
     first.unmount();
     t.view();
     await ready();
     await search('products');
     await waitFor(() => expect(headings()).toBe('Products'));
-    expect(within(marts()).queryByRole('note', { name: 'AI search hint' })).toBeNull();
+    expect(screen.queryByRole('note', { name: 'AI search hint' })).toBeNull();
     expect((await t.ctx.collections<{ aiHintDismissed: boolean }>('preferences').get('search'))?.document).toEqual({ aiHintDismissed: true });
   });
 
@@ -262,7 +275,7 @@ describe('no AI configured', () => {
     await ready();
     await search('customers');
     await waitFor(() => expect(headings()).toBe('Customers'));
-    expect(within(marts()).queryByRole('note', { name: 'AI search hint' })).toBeNull();
+    expect(screen.queryByRole('note', { name: 'AI search hint' })).toBeNull();
   });
 
   test('nothing found without AI says "No data marts match."', async () => {
@@ -311,7 +324,7 @@ test('submitting the query that is already running changes nothing: no restart, 
   const box = await openSearch();
   await userEvent.type(box, 'customers{Enter}');
   await waitFor(() => expect(calls).toBe(1));
-  await userEvent.click(within(marts()).getByRole('button', { name: 'Search' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }));
   await userEvent.type(box, '{Enter}');
   expect(calls).toBe(1);
   expect(gets.mock.calls.filter(([p]) => p === '/api/search')).toHaveLength(1);

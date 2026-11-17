@@ -355,7 +355,20 @@ describe('the grid', () => {
     await within(data()).findByRole('table');
     await search('daily');
     fireEvent.click(await within(marts()).findByText('Daily KPIs'));
-    expect(await screen.findByText('Preview only: this data mart has no primary key.')).toBeInTheDocument();
+    const warning = await within(data()).findByRole('note', { name: NO_PK });
+    expect(warning).toBeInTheDocument();
+    // The sentence is gone from above the grid; it is the warning's tooltip and the end of the (i) hint.
+    expect(within(data()).queryByText(NO_PK)).toBeNull();
+    await userEvent.hover(warning);
+    expect((await screen.findAllByText(NO_PK)).length).toBeGreaterThan(0);
+    await userEvent.unhover(warning);
+    await userEvent.hover(within(data()).getByRole('note', { name: 'About Data' }));
+    expect((await screen.findAllByText(new RegExp(`Click a row to open it below\\. ${NO_PK}`))).length).toBeGreaterThan(0);
+  });
+
+  test('a mart with a primary key shows no warning, and neither does a grouped grid', async () => {
+    await ordersGrid();
+    expect(within(data()).queryByRole('note', { name: NO_PK })).toBeNull();
   });
 
   test('a filter with no matches keeps the header, so the filter can be cleared', async () => {
@@ -482,14 +495,17 @@ describe('the record', () => {
   });
 });
 
+const NO_PK = 'Preview only: this data mart has no primary key.';
+
 describe('search, contexts and refresh', () => {
-  test('the page header is the title with no Refresh button; the search lives in the Data Marts band', async () => {
+  test('the page header is the title and the actions (the search first) with no Refresh button', async () => {
     await ordersGrid();
     const header = document.querySelector('header.dm-page-header')!;
     expect(within(header as HTMLElement).getByRole('heading', { level: 1, name: 'Data Explorer' })).toHaveClass('dm-page-header-title');
     expect(within(header as HTMLElement).queryByRole('button', { name: /Refresh/ })).toBeNull();
     expect(header.querySelector('input')).toBeNull();
-    expect(within(marts()).getByLabelText('Search data marts')).toBeInTheDocument();
+    expect(within(header as HTMLElement).getByRole('button', { name: 'Search data marts' })).toBeInTheDocument();
+    expect(within(marts()).queryByLabelText('Search data marts')).toBeNull();
     expect(document.querySelector('main.dm-page-content')).not.toBeNull();
   });
 
@@ -514,11 +530,11 @@ describe('search, contexts and refresh', () => {
     expect(within(marts()).getByText('Campaigns').closest('article')!.querySelector('.dm-badge-shrink')).toBeNull();
   });
 
-  test('the toolbar holds the search, then Storage; the Contexts badges sit in the title row after the hint', async () => {
+  test('the toolbar holds Storage (the search is in the page header); the Contexts badges sit in the title row after the hint', async () => {
     await ordersGrid();
     const tools = marts().querySelector('.dm-band-tools')!;
     const kinds = [...tools.children].map((c) => (c.matches('button.dm-search-btn') ? 'search' : c.querySelector('summary')?.firstChild?.textContent));
-    expect(kinds).toEqual(['search', 'Storage']);
+    expect(kinds).toEqual(['Storage']);
     const head = marts().querySelector('.dm-band-titlegroup')!;
     const order = [...head.children].map((c) => c.className.split(' ')[0]);
     expect(order.indexOf('dm-context-filter')).toBe(order.indexOf('dm-hint') + 1);
@@ -1291,7 +1307,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     await search('stores');
     await within(marts()).findByText('Stores');
     await goTo('Stores');
-    expect(await screen.findByText('Preview only: this data mart has no primary key.')).toBeInTheDocument();
+    expect(await within(data()).findByRole('note', { name: NO_PK })).toBeInTheDocument();
     await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
     expect(within(data()).queryByText(/Unknown column/)).toBeNull();
     await userEvent.click(within(data()).getAllByRole('row')[2]!);
@@ -1475,6 +1491,77 @@ describe('whole column and row selection, and the header layout', () => {
     // the record stays the one first opened: the shift-click does not open row 4
     await new Promise((r) => setTimeout(r, 300));
     expect(within(row()).getByRole('heading', { name: /^Orders · 2$/ })).toBeInTheDocument();
+  });
+
+  describe('shift-click and Shift+Arrow make a block of cells', () => {
+    const bodyCell = (grid: HTMLElement, r: number, c: number) => grid.querySelectorAll('tbody tr')[r]!.querySelectorAll('td')[c]!;
+    const selectedCell = (grid: HTMLElement) => grid.querySelector('td[data-selected]');
+    const lit = (grid: HTMLElement) => ({
+      letters: [...grid.querySelectorAll('thead .dm-letter[data-selected]')].map((e) => [e.textContent, e.getAttribute('data-selected')]),
+      numbers: [...grid.querySelectorAll('tbody th[data-selected]')].map((e) => [e.textContent, e.getAttribute('data-selected')]),
+    });
+
+    test('shift-click on another cell: the first cell stays active, the block is tinted and framed, handle at the far corner, headers lit lightly, no other record opens', async () => {
+      const grid = await ordersGrid();
+      await userEvent.click(bodyCell(grid, 1, 1));
+      expect(await within(row()).findByRole('heading', { name: /^Orders · 2$/ })).toBeInTheDocument();
+      const user = userEvent.setup();
+      await user.keyboard('{Shift>}');
+      await user.click(bodyCell(grid, 3, 3));
+      await user.keyboard('{/Shift}');
+      const block = [1, 2, 3].flatMap((r) => [1, 2, 3].map((c) => bodyCell(grid, r, c)));
+      expect(block.every((td) => td.hasAttribute('data-range'))).toBe(true);
+      expect(grid.querySelectorAll('tbody td[data-range]')).toHaveLength(9);
+      expect(grid.querySelectorAll('tbody td[data-active]')).toHaveLength(1);
+      expect(bodyCell(grid, 1, 1)).toHaveAttribute('data-active');
+      expect(grid.querySelectorAll('tbody td[data-handle]')).toHaveLength(1);
+      expect(bodyCell(grid, 3, 3)).toHaveAttribute('data-handle');
+      expect(bodyCell(grid, 1, 1)).toHaveAttribute('data-edge', 'l t');
+      expect(bodyCell(grid, 2, 2)).toHaveAttribute('data-edge', '');
+      expect(bodyCell(grid, 3, 3)).toHaveAttribute('data-edge', 'r b');
+      expect(grid.querySelector('td[data-selected]')).toBeNull();
+      expect(lit(grid)).toEqual({ letters: [['B', ''], ['C', ''], ['D', '']], numbers: [['2', ''], ['3', ''], ['4', '']] });
+      await new Promise((r) => setTimeout(r, 300));
+      expect(within(row()).getByRole('heading', { name: /^Orders · 2$/ })).toBeInTheDocument();
+    });
+
+    test('the block can run up and left of the first cell; the first cell is still the active one', async () => {
+      const grid = await ordersGrid();
+      await userEvent.click(bodyCell(grid, 3, 3));
+      fireEvent.click(bodyCell(grid, 1, 2), { shiftKey: true });
+      expect(grid.querySelectorAll('tbody td[data-range]')).toHaveLength(6);
+      expect(bodyCell(grid, 3, 3)).toHaveAttribute('data-active');
+      expect(bodyCell(grid, 3, 3)).toHaveAttribute('data-handle');
+      expect(bodyCell(grid, 1, 2)).toHaveAttribute('data-edge', 'l t');
+    });
+
+    test('Shift+Arrow grows and shrinks the block from the active cell; a plain click or Escape ends it', async () => {
+      const grid = await ordersGrid();
+      const box = grid.querySelector<HTMLElement>('.dm-grid-root')!;
+      await userEvent.click(bodyCell(grid, 1, 1));
+      fireEvent.keyDown(box, { key: 'ArrowDown', shiftKey: true });
+      fireEvent.keyDown(box, { key: 'ArrowRight', shiftKey: true });
+      fireEvent.keyDown(box, { key: 'ArrowRight', shiftKey: true });
+      expect(grid.querySelectorAll('tbody td[data-range]')).toHaveLength(6);
+      expect(bodyCell(grid, 1, 1)).toHaveAttribute('data-active');
+      expect(bodyCell(grid, 2, 3)).toHaveAttribute('data-handle');
+      fireEvent.keyDown(box, { key: 'ArrowUp', shiftKey: true });
+      fireEvent.keyDown(box, { key: 'ArrowLeft', shiftKey: true });
+      expect(grid.querySelectorAll('tbody td[data-range]')).toHaveLength(2);
+      fireEvent.keyDown(box, { key: 'ArrowLeft', shiftKey: true });
+      // back on the active cell: a single selected cell again, no block
+      expect(grid.querySelector('[data-range]')).toBeNull();
+      expect(selectedCell(grid)).toBe(bodyCell(grid, 1, 1));
+      fireEvent.keyDown(box, { key: 'ArrowDown', shiftKey: true });
+      fireEvent.keyDown(box, { key: 'Escape' });
+      expect(grid.querySelector('[data-range]')).toBeNull();
+      expect(selectedCell(grid)).toBeNull();
+      await userEvent.click(bodyCell(grid, 1, 1));
+      fireEvent.keyDown(box, { key: 'ArrowDown', shiftKey: true });
+      await userEvent.click(bodyCell(grid, 2, 2));
+      expect(grid.querySelector('[data-range]')).toBeNull();
+      expect(selectedCell(grid)).toBe(bodyCell(grid, 2, 2));
+    });
   });
 
   test('a filter, an aggregation and a sort in use are green squares; idle ones are not', async () => {

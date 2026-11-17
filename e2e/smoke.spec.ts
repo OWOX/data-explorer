@@ -49,29 +49,29 @@ test('a source click narrows the marts; clicking it again returns', async ({ pag
 
 const heading = (page: Page) => band(page, 'data').locator('thead tr[data-group-row] th[data-group]');
 const search = async (page: Page, q: string) => {
-  const marts = band(page, 'marts');
-  const box = marts.getByRole('textbox', { name: 'Search data marts' });
-  if (!(await box.isVisible())) await marts.getByRole('button', { name: /^Search data marts/ }).click();
+  const header = page.locator('header.dm-page-header');
+  const box = header.getByRole('textbox', { name: 'Search data marts' });
+  if (!(await box.isVisible())) await header.getByRole('button', { name: /^Search data marts/ }).click();
   await box.fill(q);
   await box.press('Enter');
 };
 
 test('search finds the marts through OWOX search and makes the best one the main mart', async ({ page }) => {
   await ordersGrid(page);
-  await band(page, 'marts').getByRole('button', { name: 'Search data marts' }).click();
-  await expect(band(page, 'marts').getByRole('textbox', { name: 'Search data marts' })).toBeFocused();
+  await page.locator('header.dm-page-header').getByRole('button', { name: 'Search data marts' }).click();
+  await expect(page.locator('header.dm-page-header').getByRole('textbox', { name: 'Search data marts' })).toBeFocused();
   await search(page, 'campaign');
   await expect(heading(page)).toHaveText(['Campaigns']);
   await expect(band(page, 'marts').getByText('Campaigns', { exact: true })).toBeVisible();
   // The marts that do not match go, and the query stays on screen.
   await expect(band(page, 'marts').getByText('Customers', { exact: true })).toHaveCount(0);
-  await expect(band(page, 'marts').getByRole('textbox', { name: 'Search data marts' })).toHaveValue('campaign');
+  await expect(page.locator('header.dm-page-header').getByRole('textbox', { name: 'Search data marts' })).toHaveValue('campaign');
   // Escape closes the box and keeps the result; the x clears it and restores the band.
   await page.keyboard.press('Escape');
-  await expect(band(page, 'marts').getByRole('button', { name: 'Search data marts: campaign' })).toBeVisible();
+  await expect(page.locator('header.dm-page-header').getByRole('button', { name: 'Search data marts: campaign' })).toBeVisible();
   await expect(heading(page)).toHaveText(['Campaigns']);
-  await band(page, 'marts').getByRole('button', { name: 'Clear search' }).click();
-  await expect(band(page, 'marts').getByRole('button', { name: 'Search data marts', exact: true })).toBeVisible();
+  await page.locator('header.dm-page-header').getByRole('button', { name: 'Clear search' }).click();
+  await expect(page.locator('header.dm-page-header').getByRole('button', { name: 'Search data marts', exact: true })).toBeVisible();
   await expect(heading(page)).toHaveText(['Campaigns']);
 });
 
@@ -96,7 +96,7 @@ test('smart search with no AI configured: no error, the hint shows once and stay
   await ordersGrid(page);
   await search(page, 'products');
   await expect(heading(page)).toHaveText(['Products']);
-  const hint = band(page, 'marts').getByRole('note', { name: 'AI search hint' });
+  const hint = page.locator('header.dm-page-header').getByRole('note', { name: 'AI search hint' });
   await expect(hint).toHaveText(/Connect AI in this plugin's settings/);
   await hint.getByRole('button', { name: 'Dismiss the AI hint' }).click();
   await expect(hint).toHaveCount(0);
@@ -113,7 +113,8 @@ test('the page header is the title with Undo and Redo and no Refresh; the filter
   await expect(header.getByRole('button', { name: 'Undo' })).toBeDisabled();
   await expect(header.getByRole('button', { name: 'Redo' })).toBeDisabled();
   await expect(header.getByRole('button', { name: /Refresh/ })).toHaveCount(0);
-  await expect(band(page, 'marts').locator('.dm-band-tools button.dm-search-btn')).toBeVisible();
+  await expect(header.getByRole('button', { name: 'Search data marts' })).toBeVisible();
+  await expect(band(page, 'marts').locator('button.dm-search-btn')).toHaveCount(0);
   // Data Sources starts folded
   await expect(band(page, 'sources')).toHaveClass(/folded/);
 });
@@ -708,4 +709,55 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
   expect(await data.locator('tbody td[data-handle]').evaluate((e) => getComputedStyle(e, '::before').borderRadius)).toBe('50%');
   await page.keyboard.press('Escape');
   await expect(colCells).toHaveCount(0);
+});
+
+test('a numeric filter applied through the popover (> 400) leaves fewer rows', async ({ page }) => {
+  const data = await ordersGrid(page);
+  await data.getByRole('button', { name: 'Fields of Orders' }).click();
+  await page.getByLabel(/Amount/).check();
+  await page.keyboard.press('Escape');
+  await expect(data.getByLabel('Filter Amount')).toBeVisible();
+  const before = await data.getByRole('row').count();
+  await data.getByLabel('Filter Amount').click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Operator').selectOption('gt');
+  await dialog.getByLabel('Value').fill('400');
+  await dialog.getByRole('button', { name: 'Apply' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(data.getByLabel('Filter Amount')).toHaveClass(/dm-ctl-on/);
+  await expect.poll(async () => data.getByRole('row').count()).toBeLessThan(before);
+});
+
+test('the opened search grows leftwards in the header: the title stays, the actions stay on screen', async ({ page }) => {
+  await ordersGrid(page);
+  const header = page.locator('header.dm-page-header');
+  await header.getByRole('button', { name: 'Search data marts' }).click();
+  const box = await header.getByRole('textbox', { name: 'Search data marts' }).boundingBox();
+  const title = await header.getByRole('heading', { name: 'Data Explorer' }).boundingBox();
+  const copy = await header.getByRole('button', { name: 'Copy link to this view' }).count();
+  expect(title!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x).toBeGreaterThan(title!.x + title!.width);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(1440);
+  expect(copy).toBeLessThanOrEqual(1);
+});
+
+test('shift-click on another cell makes a block of cells, with the first cell active', async ({ page }) => {
+  const data = await ordersGrid(page);
+  await data.locator('tbody tr').nth(1).locator('td').nth(1).click();
+  await page.keyboard.down('Shift');
+  await data.locator('tbody tr').nth(3).locator('td').nth(3).click();
+  await page.keyboard.up('Shift');
+  await expect(data.locator('tbody td[data-range]')).toHaveCount(9);
+  await expect(data.locator('tbody td[data-active]')).toHaveCount(1);
+  await expect(data.locator('tbody td[data-handle]')).toHaveCount(1);
+});
+
+test('a no-primary-key mart shows a warning next to the Data (i), not a block above the grid', async ({ page }) => {
+  await ordersGrid(page);
+  const header = page.locator('header.dm-page-header');
+  await header.getByRole('button', { name: 'Search data marts' }).click();
+  await header.getByRole('textbox', { name: 'Search data marts' }).fill('daily');
+  await page.keyboard.press('Enter');
+  await expect(band(page, 'data').getByRole('note', { name: /no primary key/ })).toBeVisible();
+  await expect(band(page, 'data').getByText('Preview only', { exact: false })).toHaveCount(0);
 });

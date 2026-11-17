@@ -1,11 +1,16 @@
 // The Data band: the selected mart's rows, in the grid the Explorer always had.
-import { Table2 } from 'lucide-react';
+import { Table2, TriangleAlert } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import type { Model } from '../../model/types';
 import { useStore, type GridState } from '../../state/store';
 import { groupsLabel, recordsLabel } from '../format';
+import { Tooltip } from '../Tooltip';
 import { MartGrid } from '../explorer/MartGrid';
 import { Band } from './Band';
+
+/** Shown as the warning's tooltip and at the end of the band's (i). */
+export const NO_KEY_NOTE = 'Preview only: this data mart has no primary key.';
+const HINT = 'The rows of the selected data mart. Click a row to open it below.';
 
 export function DataBand({ model, folded, onFold, loading = null }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null }) {
   const [{ selection, grids }, dispatch] = useStore();
@@ -19,12 +24,13 @@ export function DataBand({ model, folded, onFold, loading = null }: { model: Mod
   if (!held && shownId !== martId) setShownId(martId);
   const gridId = held ? shownId : martId;
   const gridMart = gridId ? model.marts.get(gridId) : undefined;
-  const [rows, setRows] = useState<{ id: string; label: string; grouped: boolean } | null>(null);
-  const showRows = useCallback((label: string | null, grouped = false) => { if (gridId) setRows(label === null ? null : { id: gridId, label, grouped }); }, [gridId]);
+  const [rows, setRows] = useState<{ id: string; label: string; grouped: boolean; noKey: boolean } | null>(null);
+  const showRows = useCallback((label: string | null, grouped = false, noKey = false) => { if (gridId) setRows(label === null ? null : { id: gridId, label, grouped, noKey }); }, [gridId]);
   const save = useCallback((grid: GridState) => { if (gridId) dispatch({ type: 'saveGrid', martId: gridId, grid }); }, [dispatch, gridId]);
 
+  const noKey = !!mart && rows?.id === mart.id && rows.noKey && !!gridMart?.accessible;
   return (
-    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint="The rows of the selected data mart. Click a row to open it below." folded={folded} onFold={onFold} grid={false} loading={loading}>
+    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={noKey ? `${HINT} ${NO_KEY_NOTE}` : HINT} afterHint={noKey ? <NoKeyWarning /> : undefined} folded={folded} onFold={onFold} grid={false} loading={loading}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (
@@ -33,5 +39,14 @@ export function DataBand({ model, folded, onFold, loading = null }: { model: Mod
         <MartGrid key={gridMart.id} martId={gridMart.id} model={model} seed={{ filters: selection.filters, saved: grids[gridMart.id] }} onChange={save} onRows={showRows} paused={held} />
       )}
     </Band>
+  );
+}
+
+/** A small warning next to the (i): the grid is a preview, and rows cannot be opened. */
+function NoKeyWarning() {
+  return (
+    <Tooltip content={NO_KEY_NOTE}>
+      <span className="dm-hint dm-hint-warn" tabIndex={0} role="note" aria-label={NO_KEY_NOTE}><TriangleAlert size={14} /></span>
+    </Tooltip>
   );
 }

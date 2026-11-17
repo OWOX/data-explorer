@@ -160,3 +160,41 @@ test('the title row says "Filter", not the field name, and a select draws our ow
   const day = render(<FilterEditor field={ts} value={undefined} onApply={vi.fn()} onClear={vi.fn()} />);
   expect(day.container.querySelector('.dm-popover-title')).toHaveTextContent(/^Filter$/);
 });
+
+const fieldOf = (type: string, category: Field['category']): Field => ({ ...num, name: 'v', type, category });
+test.each(['NUMERIC', 'BIGNUMERIC', 'FLOAT64', 'FLOAT', 'INT64', 'INTEGER', 'DECIMAL', 'BIGINT', 'DOUBLE'])('%s column: ">" and "100" apply', async (type) => {
+  const onApply = vi.fn();
+  render(<FilterEditor field={fieldOf(type, 'number')} value={undefined} onApply={onApply} onClear={vi.fn()} />);
+  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'gt');
+  await userEvent.type(screen.getByLabelText('Value'), '100');
+  expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'v', op: 'gt', value: '100' });
+});
+
+test('Enter in the value box applies a number filter', async () => {
+  const onApply = vi.fn();
+  render(<FilterEditor field={num} value={undefined} onApply={onApply} onClear={vi.fn()} />);
+  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'gt');
+  await userEvent.type(screen.getByLabelText('Value'), '100{Enter}');
+  expect(onApply).toHaveBeenCalledWith({ field: 'amount', op: 'gt', value: '100' });
+});
+
+test('a string column: contains "abc" applies', async () => {
+  const onApply = vi.fn();
+  render(<FilterEditor field={fieldOf('STRING', 'string')} value={undefined} onApply={onApply} onClear={vi.fn()} />);
+  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'eq');
+  await userEvent.type(screen.getByLabelText('Value'), 'abc');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'v', op: 'eq', value: 'abc' });
+});
+
+test('a date column: After… with a day applies', async () => {
+  const onApply = vi.fn();
+  render(<FilterEditor field={day} value={undefined} onApply={onApply} onClear={vi.fn()} />);
+  await userEvent.click(screen.getByRole('button', { name: 'After…' }));
+  const box = screen.getByLabelText('Value');
+  await userEvent.type(box, '2026-01-02');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'day', op: 'after', value: '2026-01-02' });
+});
