@@ -9,7 +9,7 @@ const f = (name: string, category: Field['category'], type: string, extra: Parti
 const schema: Schema = [f('amount', 'number', 'NUMERIC', { alias: 'Revenue', description: 'Order total' }), f('rate', 'number', 'FLOAT64'), f('created', 'date', 'TIMESTAMP'), f('status', 'string', 'STRING')];
 
 function setup(answer: unknown, opts: { noAi?: boolean } = {}) {
-  const doGenerate = vi.fn(async (_o: Parameters<AiModel['doGenerate']>[0]) => {
+  const doGenerate = vi.fn<AiModel['doGenerate']>(async () => {
     if (answer instanceof Error) throw answer;
     return { content: [{ type: 'text', text: typeof answer === 'string' ? answer : JSON.stringify(answer) }] };
   });

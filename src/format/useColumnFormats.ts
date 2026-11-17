@@ -13,7 +13,7 @@ export function useColumnFormats(martId: string, schema: Schema = [], martTitle 
   const store = useMemo(() => formatStore(ctx), [ctx]);
   // The AI pick reads the schema and title as they are when the formats have loaded.
   const asking = useRef({ schema, martTitle });
-  asking.current = { schema, martTitle };
+  useEffect(() => { asking.current = { schema, martTitle }; });
   const [loaded, setLoaded] = useState<{ martId: string; formats: Formats }>({ martId, formats: NONE });
   useEffect(() => {
     const ctl = new AbortController();
