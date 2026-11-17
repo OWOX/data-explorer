@@ -36,6 +36,8 @@ export type State = {
   /** Selections Redo re-applies, the one undone last at the end; any new navigation empties it. */
   future: Entry[];
   search: string;
+  /** The data marts a smart search found, best first; empty when the Data Marts band is not showing a search result. */
+  found: string[];
   /** The contexts selected as badges in the Data Marts band; none is no filter. */
   contextIds: string[];
   /** The storages ticked in the Data Marts filter; null is all of them. */
@@ -58,6 +60,8 @@ export type Action =
   /** Swap the selection without a history entry: a refresh took the selected mart or source away. */
   | { type: 'replace'; selection: Selection }
   | { type: 'search'; q: string }
+  /** A smart search found these marts: the band shows them (best first) and keeps the query. The selection change that goes with it is a `setMarts` or `selectMart`, which is what Undo covers. */
+  | { type: 'smartFound'; query: string; ids: string[] }
   | { type: 'toggleContext'; id: string }
   /** Narrow the Data Marts band to these storages (null: all). Not a selection change, so no history entry. */
   | { type: 'setStorages'; ids: string[] | null }
@@ -71,7 +75,7 @@ export type Action =
 export const HISTORY_LIMIT = 20;
 
 const emptySelection: Selection = { sourceKey: null, martId: null, record: null };
-export const initialState: State = { selection: emptySelection, history: [], future: [], search: '', contextIds: [], storageIds: null, grids: {}, modelVersion: 0 };
+export const initialState: State = { selection: emptySelection, history: [], future: [], search: '', found: [], contextIds: [], storageIds: null, grids: {}, modelVersion: 0 };
 
 /** The source stays selected only when it feeds the mart being selected. */
 const sourceFor = (current: Selection, martId: string, sourceOf?: SourceOf): string | null => {
@@ -141,7 +145,8 @@ export function reducer(state: State, a: Action): State {
     }
     case 'replace': return { ...state, selection: a.selection };
     // Searching narrows the Data Marts band; what is selected stays selected.
-    case 'search': return { ...state, search: a.q };
+    case 'search': return { ...state, search: a.q, found: [] };
+    case 'smartFound': return { ...state, search: a.query, found: a.ids };
     case 'toggleContext': {
       const has = state.contextIds.includes(a.id);
       return { ...state, contextIds: has ? state.contextIds.filter((c) => c !== a.id) : [...state.contextIds, a.id] };
@@ -157,6 +162,7 @@ export function reducer(state: State, a: Action): State {
       ...state,
       selection: a.selection,
       search: a.search,
+      found: [],
       contextIds: a.contextIds,
       storageIds: a.storageIds,
       grids: a.grid && a.selection.martId ? { ...state.grids, [a.selection.martId]: a.grid } : state.grids,

@@ -6,7 +6,8 @@ export async function bootContext(): Promise<Ctx | 'outside-host'> {
     const { createMockCtx } = await import('./mock/ctx');
     const { demoFixtures } = await import('./mock/fixtures');
     const sheets = new URLSearchParams(location.search).get('sheets');
-    return createMockCtx(demoFixtures({ sheets: sheets === '0' || sheets === '1' ? Number(sheets) as 0 | 1 : 2 }), { latencyMs: 250 });
+    // ?ai=0 is a project with no AI configured.
+    return createMockCtx(demoFixtures({ sheets: sheets === '0' || sheets === '1' ? Number(sheets) as 0 | 1 : 2 }), { latencyMs: 250, ai: new URLSearchParams(location.search).get('ai') !== '0' });
   }
   try {
     return (await connect()) as unknown as Ctx;

@@ -25,3 +25,24 @@ test('a malformed document is ignored', async () => {
   const ctx = { ...stubCtx(), collections: () => ({ get: async () => ({ document: { folded: { a: 'yes', b: true } } }), put: async () => {} }) } as unknown as Ctx;
   expect(await createPreferences(ctx).loadFolded()).toEqual({ b: true });
 });
+
+test('the AI hint is shown until dismissed; the dismissal is remembered in the preferences collection, apart from the folds', async () => {
+  const ctx = stubCtx();
+  const p = createPreferences(ctx);
+  expect(await p.loadAiHintDismissed()).toBe(false);
+  p.saveFolded({ 'band-data': true });
+  p.dismissAiHint();
+  await vi.waitFor(async () => expect(await createPreferences(ctx).loadAiHintDismissed()).toBe(true));
+  expect(await createPreferences(ctx).loadFolded()).toEqual({ 'band-data': true });
+  expect((await ctx.collections<{ aiHintDismissed: boolean }>('preferences').get('search'))?.document).toEqual({ aiHintDismissed: true });
+});
+
+test('a failed read of the hint says it is not dismissed; a failed write only logs', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const ctx = { ...stubCtx(), collections: () => ({ get: async () => { throw new Error('down'); }, put: async () => { throw new Error('down'); } }) } as unknown as Ctx;
+  const p = createPreferences(ctx);
+  expect(await p.loadAiHintDismissed()).toBe(false);
+  p.dismissAiHint();
+  await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(2));
+  warn.mockRestore();
+});
