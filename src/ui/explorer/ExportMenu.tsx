@@ -1,4 +1,4 @@
-import { AlertTriangle, ArchiveRestore, Check, ChevronDown, ClipboardCopy, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArchiveRestore, Check, ChevronDown, Copy, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -34,7 +34,7 @@ const MAYBE_CREATED = 'The report may have been created; check OWOX before tryin
 const UNRECOGNISED = 'This report targets an unrecognised spreadsheet.';
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** "Export" in the Data band header: a menu of one "Copy to clipboard" item, the Google Sheets destinations, then an AI group that copies a prompt for Claude or ChatGPT. */
+/** "Export" in the Data band header: a menu of one "Copy to clipboard" item, the Google Sheets destinations, then Claude and ChatGPT, each of which copies a prompt. */
 export function ExportMenu(p: Props) {
   const { ctx, exporter } = useServices();
   const [{ modelVersion }] = useStore();
@@ -225,12 +225,12 @@ export function ExportMenu(p: Props) {
               {copyOff ? (
                 <Tooltip content={copyOff}>
                   <span className="block" onMouseEnter={() => setOpenDest(null)}>
-                    <button type="button" role="menuitem" data-lvl="1" data-action="copy" disabled className="dm-export-item w-full"><ClipboardCopy size={16} /><span className="dm-filter-label">Copy to clipboard</span></button>
+                    <button type="button" role="menuitem" data-lvl="1" data-action="copy" disabled className="dm-export-item w-full"><Copy size={16} /><span className="dm-filter-label">Copy to clipboard</span></button>
                   </span>
                 </Tooltip>
               ) : (
                 <button type="button" role="menuitem" data-lvl="1" data-action="copy" className="dm-export-item" onMouseEnter={() => setOpenDest(null)} onClick={() => void copyData()}>
-                  <ClipboardCopy size={16} />
+                  <Copy size={16} />
                   <span className="dm-filter-label">Copy to clipboard</span>
                 </button>
               )}
@@ -246,8 +246,7 @@ export function ExportMenu(p: Props) {
                 {openDest === d.id && flyoutOf(d, forDestination(d))}
               </div>
             ))}
-            <div role="group" aria-label="AI" className="dm-export-ai">
-              <div className="dm-export-heading" aria-hidden>AI</div>
+            <div role="group" aria-label="Assistants" className="dm-export-ai">
               {([['Claude', ClaudeIcon], ['ChatGPT', ChatGptIcon]] as const).map(([name, Icon]) => (
                 <button key={name} type="button" role="menuitem" data-lvl="1" data-action={name} className="dm-export-item" onMouseEnter={() => setOpenDest(null)} onClick={() => void copyPrompt(name)}>
                   <Icon size={16} />

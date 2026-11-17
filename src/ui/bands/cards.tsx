@@ -158,16 +158,15 @@ export function MartCard({
       data-node
       data-tone={dqCardTone(quality)}
       aria-pressed={selected || joined}
-      className={cardClass(lit, aside, [mart.accessible ? '' : 'dm-noaccess', joined && !selected ? 'dm-joined' : '', transition?.className ?? ''].filter(Boolean).join(' '))}
+      className={cardClass(lit, aside, [mart.accessible ? '' : 'dm-noaccess', transition?.className ?? ''].filter(Boolean).join(' '))}
       {...(transition?.leaving ? { 'data-leaving': '' } : {})}
       {...selectable(onSelect)}
     >
       <div className="dm-node-head">
         {/* Only an icon someone picked: the default box on every card would say nothing. */}
         <PickedIcon icon={mart.icon} wrap="dm-logo" />
-        {joined && !selected && <Tooltip content="Joined to the selected data mart: some of its fields are columns of the grid"><span className="dm-joined-mark" role="note" aria-label="Joined">+</span></Tooltip>}
         <Tooltip content={mart.title}><span className="dm-node-title">{mart.title}</span></Tooltip>
-        <Tooltip content="Open this data mart">
+        <span className="dm-card-reveal ml-auto"><Tooltip content="Open this data mart">
           <button
             type="button"
             aria-label="Open in OWOX"
@@ -176,8 +175,8 @@ export function MartCard({
           >
             <ExternalLink size={14} />
           </button>
-        </Tooltip>
-        {mart.description && <Hint text={mart.description} label="Description" />}
+        </Tooltip></span>
+        {mart.description && <span className="dm-card-reveal"><Hint text={mart.description} label="Description" /></span>}
       </div>
       <div className="dm-badges dm-badges-row">
         {mart.accessible ? <CountBadge count={count} onRetry={onRetryCount} /> : <span className="dm-badge">No access</span>}

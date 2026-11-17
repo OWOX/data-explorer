@@ -43,7 +43,7 @@ const exportNew = async () => {
   await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
   return dialog;
 };
-const rowsLoaded = () => waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+const rowsLoaded = () => waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
 const REPORT: ExportedReport = { reportId: 'mock-report-1', destinationId: 'd-sheets-team', spreadsheetId: 'mock-sheet-1', sheetId: 0, title: 'Orders weekly' };
 
 test('with no Google Sheets destination Export is still a menu, with the AI group and no destination row', async () => {
@@ -52,7 +52,10 @@ test('with no Google Sheets destination Export is still a menu, with the AI grou
   await rowsLoaded();
   await userEvent.click(await within(data()).findByText('Export'));
   expect(within(data()).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Claude', 'ChatGPT']);
-  expect(within(data()).getByRole('group', { name: 'AI' })).toBeInTheDocument();
+  // no "AI" sub-header: Claude and ChatGPT follow a separator only
+  expect(within(data()).queryByText('AI')).toBeNull();
+  expect(within(data()).getByRole('menuitem', { name: 'Claude' }).closest('.dm-export-ai')).not.toBeNull();
+  expect(data().querySelector('[data-action="copy"] svg')).toHaveClass('lucide-copy');
 });
 
 test('one destination and no report: the button is still a menu; New report makes the spreadsheet, the report, runs it and opens the sheet', async () => {
@@ -185,7 +188,7 @@ test('a remembered report with an unrecognised target is not updated and nothing
 });
 
 const martCard = (title: string) => within(document.getElementById('band-marts')!).getByText(title).closest('article')!;
-const headingText = () => within(data()).getByRole('heading').textContent;
+const headingText = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!).join(' + ');
 /** A mart the main one can join is added to its grid first, so clicking the main card then promotes it. */
 const toMart = async (title: string) => {
   const main = headingText()!;
@@ -619,13 +622,13 @@ describe('Copy to clipboard', () => {
     expect(await screen.findByRole('menuitem', { name: 'Copy to clipboard' })).toBeEnabled();
   });
 
-  test('it is the first group, above the destinations and the AI group, with the clipboard icon', async () => {
+  test('it is the first group, above the destinations and the assistants, with the copy icon', async () => {
     const t = setup(1);
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     const item = await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' });
-    expect(item.querySelector('svg.lucide-clipboard-copy')).not.toBeNull();
+    expect(item.querySelector('svg.lucide-copy')).not.toBeNull();
     expect(within(data()).getAllByRole('menuitem')[0]).toBe(item);
   });
 

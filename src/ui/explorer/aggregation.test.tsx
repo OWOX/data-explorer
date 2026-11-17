@@ -28,14 +28,14 @@ const data = () => document.getElementById('band-data')!;
 const row = () => document.getElementById('band-row')!;
 const headers = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden') && h.getAttribute('scope') !== 'colgroup').map((h) => h.textContent!);
 const bodyRows = () => within(data()).getAllByRole('row').filter((r) => r.querySelector('td'));
-const ready = async () => { await waitFor(() => expect(headers()).toHaveLength(5)); await waitFor(() => expect(bodyRows().length).toBeGreaterThan(1)); };
+const ready = async () => { await waitFor(() => expect(headers()).toHaveLength(5)); await waitFor(() => expect(bodyRows().some((r) => r.querySelector('td')?.textContent)).toBe(true)); };
 
 /** The first body cell under "Amount · Sum": text with a digit means the grouped rows have arrived. */
 const sumCell = () => { const at = headers().findIndex((h) => h.startsWith('Amount · Sum')); return at < 0 ? '' : (bodyRows()[0]?.querySelectorAll('td')[at]?.textContent ?? ''); };
 const sumLoaded = () => waitFor(() => expect(sumCell()).toMatch(/\d/));
 
 async function showColumn(label: string | RegExp) {
-  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
   await userEvent.click(await screen.findByLabelText(label));
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -102,7 +102,7 @@ test('a date takes one bucket instead of functions, and shows the bucket start b
   await waitFor(() => expect(bodyRows()[0]!.querySelectorAll('td')[at]!.textContent).toMatch(/^[A-Z][a-z]{2} \d{4}$/));
 });
 
-test('the Sigma stays on while a column is aggregated; Clear aggregation ungroups; Reset keeps aggregations', async () => {
+test('the Sigma stays on while a column is aggregated; Clear ungroups; Reset keeps aggregations', async () => {
   const t = setup();
   await ready();
   await showColumn('Amount');
@@ -113,9 +113,26 @@ test('the Sigma stays on while a column is aggregated; Clear aggregation ungroup
   expect(headers().some((h) => h.startsWith('Amount · Sum'))).toBe(true);
   await waitFor(() => expect(t.puts.some((p) => p.id === 'orders' && JSON.stringify(p.doc.aggregations) === JSON.stringify([{ column: 'amount', function: 'SUM' }]))).toBe(true), { timeout: 3000 });
   await userEvent.click(within(data()).getByRole('button', { name: 'Aggregate Amount' }));
-  await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Clear aggregation' }));
+  await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Clear' }));
   await waitFor(() => expect(headers()).toContain('Amount'));
   expect(within(data()).getByText(/records$/)).toBeInTheDocument();
+});
+
+test('the popover is headed "Aggregation"; Clear is an outline button left of Cancel and Apply, off while nothing is set', async () => {
+  setup();
+  await ready();
+  await showColumn('Amount');
+  await userEvent.click(await within(data()).findByRole('button', { name: 'Aggregate Amount' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Aggregation of Amount' });
+  expect(within(dialog).getByText('Aggregation', { selector: '.dm-popover-title' })).toBeInTheDocument();
+  expect(within(dialog).queryByText('Amount', { selector: '.dm-popover-title' })).toBeNull();
+  const clear = within(dialog).getByRole('button', { name: 'Clear' });
+  expect(clear).toBeDisabled();
+  expect(clear.className).toContain('border');
+  const buttons = within(dialog).getAllByRole('button').map((b) => b.textContent);
+  expect(buttons.slice(-3)).toEqual(['Clear', 'Cancel', 'Apply']);
+  await userEvent.click(within(dialog).getByLabelText('Sum'));
+  expect(clear).toBeEnabled();
 });
 
 test('the filter popover of an aggregated column says it filters before aggregating', async () => {
@@ -132,7 +149,7 @@ test('a column no longer shown loses its rules', async () => {
   await ready();
   await showColumn('Amount');
   await aggregate('Amount', 'Sum');
-  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
   await userEvent.click(await screen.findByLabelText('Amount'));
   await waitFor(() => expect(headers()).not.toContain('Amount · Sum'));
   await waitFor(() => expect(t.queries.at(-1)!.o.aggregation).toBeUndefined());
@@ -171,7 +188,7 @@ test('an array field takes no function; with one shown the grouped query is not 
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   // hide tags, group, then show tags again: nothing grouped is sent
-  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
   await userEvent.click(await screen.findByLabelText('tags'));
   await userEvent.keyboard('{Escape}');
   await aggregate('Amount', 'Sum');
@@ -183,7 +200,7 @@ test('an array field takes no function; with one shown the grouped query is not 
   expect(within(data()).queryByText(/groups?$/)).toBeNull();
   expect(document.querySelector('.dm-export')).toBeNull();
   // hiding it brings the groups back
-  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
   await userEvent.click(await screen.findByLabelText('tags'));
   await userEvent.keyboard('{Escape}');
   await sumLoaded();

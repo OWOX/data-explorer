@@ -24,11 +24,11 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange }:
   };
   const ticked = fields.filter((f) => set.has(f.name)).length;
   return (
-    <Popover align="start" tip={`Columns of ${title}`} trigger={
-      <button type="button" aria-label={`Columns of ${title}`} className="dm-gx-cols inline-flex shrink-0 items-center"><Columns3 className="size-3.5" aria-hidden /></button>
+    <Popover align="start" tip="Fields" trigger={
+      <button type="button" aria-label={`Fields of ${title}`} className="dm-reveal dm-gx-cols items-center"><Columns3 className="size-3.5" aria-hidden /></button>
     }>
       <div className="flex flex-col gap-1">
-        <p className="dm-popover-title text-xs font-medium text-muted-foreground">{title} · {ticked}/{fields.length}</p>
+        <p className="dm-popover-title text-xs font-medium text-muted-foreground">Fields · {ticked}/{fields.length}</p>
         {fields.map((f) => (
           <label key={f.name} className="dm-reveal-host flex items-center gap-2 text-sm">
             <input type="checkbox" checked={set.has(f.name)} disabled={set.has(f.name) && (visible.length === 1 || locked(f.name))} onChange={() => toggle(f.name)} />

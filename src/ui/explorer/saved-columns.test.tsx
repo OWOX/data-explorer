@@ -93,7 +93,7 @@ test('a member change in the picker is saved; seeding is not', async () => {
   t.view();
   await waitFor(() => expect(headers()).toHaveLength(2));
   expect(t.put).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByRole('button', { name: 'Columns of Orders' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Fields of Orders' }));
   await userEvent.click(screen.getByLabelText(/amount/i));
   await waitFor(() => expect(headers()).toHaveLength(3));
   await waitFor(() => expect(t.put).toHaveBeenCalledTimes(1), { timeout: SAVE_DEBOUNCE_MS + 1500 });
@@ -105,15 +105,15 @@ test('this session\'s columns win over the saved ones', async () => {
   await t.seeded;
   const { unmount } = t.view();
   await waitFor(() => expect(headers()).toHaveLength(2));
-  await userEvent.click(screen.getByRole('button', { name: 'Columns of Orders' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Fields of Orders' }));
   await userEvent.click(screen.getByLabelText(/amount/i));
   await waitFor(() => expect(headers()).toHaveLength(3));
   // Going to another mart and back keeps the session's grid without asking the member store again.
   const load = vi.spyOn(t.services.current!.columnStore, 'load');
   await userEvent.click(within(document.getElementById('band-marts')!).getByText('Order Items').closest('article')!);
-  await within(document.getElementById('band-data')!).findByRole('heading', { name: 'Order Items' });
+  await within(document.getElementById('band-data')!).findByText('Order Items');
   await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
-  await within(document.getElementById('band-data')!).findByRole('heading', { name: 'Orders' });
+  await within(document.getElementById('band-data')!).findByText('Orders');
   await waitFor(() => expect(headers()).toHaveLength(3));
   expect(load).not.toHaveBeenCalledWith('orders');
   unmount();
