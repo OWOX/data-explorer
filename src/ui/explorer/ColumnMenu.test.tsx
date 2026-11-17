@@ -430,7 +430,7 @@ describe('the column menu icons', () => {
     await waitFor(() => expect(open()).toHaveLength(0));
     const menu = await openColumnMenu(within(data()), 'Amount');
     expect(state(menu, 'Aggregate')).toBe(true);
-    for (const name of ['Filter', 'Format', 'Hide column']) expect(state(menu, name)).toBe(false);
+    for (const name of ['Filter', 'Format', 'Sort', 'Hide column']) expect(state(menu, name)).toBe(false);
   });
   test('a sort fills the Sort icon', async () => {
     setup();
