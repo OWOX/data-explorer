@@ -37,6 +37,8 @@
   /* The Data band grid only: Google Sheets' gridline grey, and its darker header border. */
   --grid-line: #e1e1e1;
   --grid-line-strong: #c0c0c0;
+  --grid-header-bg: #f3f3f3;
+  --grid-freeze: #c7c7c7;
 }
 
 .dark {
@@ -55,6 +57,8 @@
   --notice: #60a5fa;
   --grid-line: #2a3649;
   --grid-line-strong: #3b4a60;
+  --grid-header-bg: #1b2433;
+  --grid-freeze: #4a5a73;
 }
 
 html, body { margin: 0; background: transparent; }
