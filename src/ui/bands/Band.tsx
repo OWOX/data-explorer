@@ -1,10 +1,13 @@
 // A band: the titled strip a page section sits in, with its count, hint, controls and fold.
 import { ChevronDown } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { num } from '../format';
 import { Hint } from '../Tooltip';
 import { BandToolsSlot } from './BandTools';
 import { LoadBar } from './LoadBar';
+
+/** The body's collapse animation, as CollapsibleCard's duration-200. */
+const REVEAL_MS = 200;
 
 export function Band({
   id,
@@ -39,10 +42,25 @@ export function Band({
   children: ReactNode;
 }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  // Folding animates the body's height (grid rows 1fr -> 0fr, as OWOX's CollapsibleCard does); the
+  // body is only taken out of the page (`hidden`) once that has played, and put back at once on open.
+  const [gone, setGone] = useState(folded);
+  const [settled, setSettled] = useState(!folded);
+  const [seen, setSeen] = useState(folded);
+  if (seen !== folded) { setSeen(folded); setGone(false); setSettled(false); }
+  useEffect(() => {
+    const t = window.setTimeout(() => { setGone(folded); setSettled(!folded); }, REVEAL_MS);
+    return () => window.clearTimeout(t);
+  }, [folded]);
+  const hidden = folded && gone;
+  // Taking the body out of the page moves no box the line layer watches, so tell it to look again.
+  const section = useRef<HTMLElement>(null);
+  useEffect(() => { section.current?.dispatchEvent(new Event('animationend', { bubbles: true })); }, [hidden]);
   return (
-    <section id={id} data-band="" className={`dm-band${folded ? ' folded' : ''}`}>
+    <section ref={section} id={id} data-band="" className={`dm-band${folded ? ' folded' : ''}`}>
+      {/* The header is the same box folded and open: only the body below it collapses. */}
       <header
-        className="dm-band-head"
+        className="dm-band-head group"
         onClick={(e) => {
           // Everything in here that does its own thing keeps doing it; the space between is the
           // fold. The chevron is a button, so it is skipped here and fires its own handler once.
@@ -50,26 +68,34 @@ export function Band({
           onFold();
         }}
       >
-        <span className="dm-band-icon">{icon}</span>
-        <h2 className="dm-band-title" title={title}>{title}</h2>
-        {total !== undefined && <span className="dm-badge dm-band-count">{typeof total === 'number' ? num(total) : total}</span>}
-        <Hint text={hint} label={`About ${title}`} />
-        {afterHint}
-        {/* Filtering what you cannot see answers nothing, so the controls fold with the content. */}
-        {!folded && <div className="dm-band-tools">{toolbar}{!grid && <span ref={setSlot} className="contents" />}</div>}
-        <button
-          type="button"
-          className={`dm-band-fold${folded ? ' dm-band-fold-alone' : ''}`}
-          onClick={onFold}
-          aria-expanded={!folded}
-          aria-label={folded ? `Show ${title}` : `Hide ${title}`}
-        >
-          <ChevronDown size={16} className={folded ? undefined : 'dm-band-fold-open'} />
-        </button>
+        <div className="dm-band-titlegroup">
+          <span className="dm-band-icon">{icon}</span>
+          <h2 className="dm-band-title" title={title}>{title}</h2>
+          {total !== undefined && <span className="dm-badge dm-band-count">{typeof total === 'number' ? num(total) : total}</span>}
+          <Hint text={hint} label={`About ${title}`} />
+          {afterHint}
+        </div>
+        <div className="dm-band-actions">
+          {/* Filtering what you cannot see answers nothing, so the controls fold with the content. */}
+          {!folded && <div className="dm-band-tools">{toolbar}{!grid && <span ref={setSlot} className="contents" />}</div>}
+          <button
+            type="button"
+            className="dm-band-fold"
+            onClick={onFold}
+            aria-expanded={!folded}
+            aria-label={folded ? `Show ${title}` : `Hide ${title}`}
+          >
+            <ChevronDown size={16} className={folded ? undefined : 'dm-band-fold-open'} />
+          </button>
+        </div>
       </header>
-      {loading !== null && !folded ? <LoadBar fraction={loading} /> : null}
-      {/* Folded content stays mounted, only hidden: unfolding must not remount the grid and ask for its rows again. */}
-      {loading !== null ? null : grid ? <div className="dm-band-grid" hidden={folded}>{children}</div> : <BandToolsSlot.Provider value={slot}><div className="dm-bigcard" hidden={folded}>{children}</div></BandToolsSlot.Provider>}
+      <div className={`dm-band-reveal${folded ? '' : ' open'}${settled ? ' settled' : ''}`}>
+        <div className="dm-band-reveal-in">
+          {loading !== null && !folded ? <LoadBar fraction={loading} /> : null}
+          {/* Folded content stays mounted, only hidden: unfolding must not remount the grid and ask for its rows again. */}
+          {loading !== null ? null : grid ? <div className="dm-band-grid dm-band-body" hidden={hidden}>{children}</div> : <BandToolsSlot.Provider value={slot}><div className="dm-bigcard dm-band-body" hidden={hidden}>{children}</div></BandToolsSlot.Provider>}
+        </div>
+      </div>
     </section>
   );
 }
