@@ -129,7 +129,7 @@ test('the popover is headed "Aggregation"; Clear is an outline button left of Ca
   expect(within(dialog).queryByText('Amount', { selector: '.dm-popover-title' })).toBeNull();
   const clear = within(dialog).getByRole('button', { name: 'Clear' });
   expect(clear).toBeDisabled();
-  expect(clear.className).toContain('border');
+  expect(clear.className).toContain('dm-btn-secondary');
   const buttons = within(dialog).getAllByRole('button').map((b) => b.textContent);
   expect(buttons.slice(-3)).toEqual(['Clear', 'Cancel', 'Apply']);
   await userEvent.click(within(dialog).getByLabelText('Sum'));

@@ -48,7 +48,7 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
         <span>Last</span>
         <input aria-label="N" className={`${input} w-16`} type="number" min={1} max={RELATIVE_MAX_N} value={Number.isNaN(n) ? '' : n} onChange={(e) => setN(e.target.valueAsNumber)} />
         <span>days</span>
-        <button type="submit" disabled={!nOk} className="ml-auto rounded-md bg-primary px-2 py-0.5 text-xs text-primary-foreground disabled:opacity-50">Apply</button>
+        <button type="submit" disabled={!nOk} className="dm-btn dm-btn-primary dm-btn-sm ml-auto">Apply</button>
       </form>
       <button type="button" onClick={() => setForm('between')} className={item}>Custom range…</button>
       <hr className="my-1" />
@@ -58,7 +58,7 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
         const active = value?.op === op;
         return <button key={op} type="button" aria-pressed={active} onClick={() => onApply({ field: field.name, op })} className={`${item} ${active ? 'bg-accent font-medium' : ''}`}>{op === 'is_blank' ? 'Is blank' : 'Is not blank'}</button>;
       })}
-      {value && <button type="button" onClick={onClear} className="mt-1 self-end rounded-md border px-2.5 py-1 text-sm hover:bg-accent">Clear</button>}
+      {value && <button type="button" onClick={onClear} className="dm-btn dm-btn-secondary mt-2 self-end">Clear</button>}
     </div>
   );
 }
@@ -102,9 +102,9 @@ function OperatorForm({ field, value, onApply, onClear, startOp }: EditorProps &
           {'n' in rel && <input aria-label="N" className={`${input} w-20`} type="number" min={1} max={RELATIVE_MAX_N} value={Number.isNaN(rel.n) ? '' : rel.n} onChange={(e) => setVal({ ...rel, n: e.target.valueAsNumber } as RelativeDatePreset)} />}
         </div>
       )}
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onClear} className="rounded-md border px-2.5 py-1 text-sm hover:bg-accent">Clear</button>
-        <button type="submit" disabled={!isComplete(draft, field)} className="rounded-md bg-primary px-2.5 py-1 text-sm text-primary-foreground disabled:opacity-50">Apply</button>
+      <div className="dm-menu-actions">
+        <button type="button" onClick={onClear} className="dm-btn dm-btn-secondary">Clear</button>
+        <button type="submit" disabled={!isComplete(draft, field)} className="dm-btn dm-btn-primary">Apply</button>
       </div>
     </form>
   );

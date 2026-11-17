@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronRight, EyeOff, Hash, Sigma } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronRight, EyeOff, Funnel, Hash, Sigma } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { formatsFor, keepsUnit, type Format } from '../../format/formats';
@@ -197,7 +197,7 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
   const choose = (f: Format) => { env.setFormat(field.name, f); onClose(); };
   const dir = env.sorts.find((s) => s.field === field.name)?.direction ?? null;
   const on: Record<SubKey, boolean> = { filter: !!env.filters[field.name], aggregate: aggOn(env.draftOf(field.name)), format: formatActive(env, field, output, type), sort: output.sortable && !!dir };
-  const glyph: Record<SubKey, ReactNode> = { filter: <FilterAltIcon />, aggregate: <Sigma />, format: <Hash />, sort: <ArrowUpDown /> };
+  const glyph: Record<SubKey, ReactNode> = { filter: <Funnel />, aggregate: <Sigma />, format: <Hash />, sort: <ArrowUpDown /> };
   const rowFor = (k: SubKey, label: string, haspopup: 'menu' | 'dialog') => (
     <Row key={k} label={label} icon={glyph[k]} active={on[k]} sub haspopup={haspopup} expanded={sub?.key === k} rowRef={ref(k)} onActivate={(r) => open(k, r, true)} onOpen={(r) => open(k, r, true)} onHover={(r) => hoverRow(k, r)} onLeaveRow={leaveRow} />
   );
