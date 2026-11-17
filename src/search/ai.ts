@@ -1,7 +1,7 @@
 import type { AiModel, Ctx } from '../sdk/types';
 
 /** One search run waits this long for the model, all its questions together; past it the run goes on as if no AI were configured. */
-export const AI_TIMEOUT_MS = 20_000;
+export const AI_TIMEOUT_MS = import.meta.env.MODE === 'test' ? 400 : 20_000;
 
 /** The model could not answer this run (a timeout, an error, an answer that is no JSON, or the run was cancelled). Never shown to the member. */
 export class AiUnavailable extends Error {}

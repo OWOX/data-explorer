@@ -3,6 +3,7 @@
 import { Box, Plug } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DqSummary, Mart, Model, Source } from '../../model/types';
+import { matchesSearch } from '../../graph/search';
 import { storageOptions } from '../../graph/storages';
 import type { VisibleResult } from '../../graph/visible';
 import { useRememberLeaving } from '../../state/leaving';
@@ -11,7 +12,8 @@ import { storageMark } from '../storage-icons';
 import { Band } from './Band';
 import { MultiSelect } from './MultiSelect';
 import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
-import { SearchBox } from './SearchBox';
+import { AiHint, SearchBox } from './SearchBox';
+import { useSmartSearch } from './useSmartSearch';
 import { PointerTip } from '../Tooltip';
 import { CardClickContext } from './CardClick';
 import { MartCard, SourceCard, martElementId, sourceElementId, type CountState } from './cards';
@@ -67,7 +69,8 @@ export function CardBands({
   loading?: number | null;
   children: ReactNode;
 }) {
-  const [{ selection, search, contextIds }, dispatch] = useStore();
+  const [{ selection, contextIds, found }, dispatch] = useStore();
+  const smart = useSmartSearch(model);
   const rememberLeaving = useRememberLeaving();
   const canvas = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -153,10 +156,13 @@ export function CardBands({
   );
   const toolbar = (
     <>
-      <SearchBox value={search} onChange={(q) => dispatch({ type: 'search', q })} label="Search data marts" />
+      <SearchBox smart={smart} label="Search data marts" />
       {storageFilter}
     </>
   );
+
+  // A search nothing answered and no title matches: the selected mart is still shown, so the band is not empty, but it says so.
+  const noMatch = smart.applied !== '' && found.length === 0 && ![...model.marts.values()].some((m) => m.accessible && matchesSearch(m, smart.applied));
 
   const contextsOf = (ids: string[]) => model.contexts.filter((c) => ids.includes(c.id));
 
@@ -181,7 +187,8 @@ export function CardBands({
         })}
       </Band>
       <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search and the filters match." afterHint={contextBadges} toolbar={toolbar} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
-        {visible.ids.length === 0 && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
+        {smart.hintVisible && <div style={{ gridColumn: '1 / -1' }}><AiHint onDismiss={smart.dismissHint} /></div>}
+        {(visible.ids.length === 0 || noMatch) && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
         {martCards.items.map((mart) => {
           const id = mart.id;
           const el = martElementId(id);
