@@ -239,7 +239,7 @@ test('the main mart alone has one tab spanning all its columns, with no x; a joi
   expect(groupTitles()).toEqual(['Orders', 'Customers']);
   expect(groupRow().map((h) => h.getAttribute('colspan'))).toEqual(['5', '1']);
   // the group row sits above the title row, and only the title row carries the header line
-  const [first, second] = data().querySelectorAll('thead tr');
+  const [first, second] = data().querySelectorAll('thead tr:not([data-chrome])');
   expect(first).toHaveAttribute('data-group-row');
   expect(second!.querySelector('th.dm-th')).not.toBeNull();
   expect(first!.querySelector('th.dm-th')).toBeNull();

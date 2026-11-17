@@ -39,6 +39,12 @@
   --grid-line-strong: #c0c0c0;
   --grid-header-bg: #f3f3f3;
   --grid-freeze: #c7c7c7;
+  --grid-text: #000000;
+  --sheet-chrome-bg: #f8f9fa;
+  --sheet-chrome-text: #444444;
+  --sheet-sel-bg: #d3e3fd;
+  --sheet-sel-text: #0b57d0;
+  --sheet-select: #1a73e8;
 }
 
 .dark {
@@ -59,6 +65,12 @@
   --grid-line-strong: #3b4a60;
   --grid-header-bg: #1b2433;
   --grid-freeze: #4a5a73;
+  --grid-text: #e2e8f0;
+  --sheet-chrome-bg: #1b2433;
+  --sheet-chrome-text: #a8b3c4;
+  --sheet-sel-bg: #1d3a63;
+  --sheet-sel-text: #a8c7fa;
+  --sheet-select: #8ab4f8;
 }
 
 html, body { margin: 0; background: transparent; }

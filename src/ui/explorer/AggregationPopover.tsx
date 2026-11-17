@@ -81,7 +81,7 @@ export function AggregationPopover({ field, value, blocker, onApply }: { field: 
   return (
     <Popover open={open} onOpenChange={setOpen} tip={tip} label={`Aggregation of ${columnTitle(field)}`} trigger={
       <button type="button" aria-label={`Aggregate ${columnTitle(field)}`} className={on ? 'dm-reveal dm-reveal-on text-primary' : 'dm-reveal text-muted-foreground hover:text-foreground'}>
-        <Sigma className="size-3.5" />
+        <Sigma className="dm-icon" />
       </button>
     }>
       <AggregationEditor key={JSON.stringify(value)} field={field} value={value} blocker={blocker} onApply={(d) => { onApply(d); setOpen(false); }} onCancel={() => setOpen(false)} />

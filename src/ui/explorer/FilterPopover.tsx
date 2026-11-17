@@ -118,7 +118,7 @@ export function FilterPopover({ field, value, onChange, aggregated = false }: { 
   return (
     <Popover open={open} onOpenChange={setOpen} tip={value ? `Filter: ${describeFilter(field, value)}` : undefined} trigger={
       <button type="button" aria-label={`Filter ${columnTitle(field)}`} className={value ? 'dm-reveal dm-reveal-on text-primary' : 'dm-reveal text-muted-foreground hover:text-foreground'}>
-        {value ? <FilterAltIcon className="size-3.5" /> : <Filter className="size-3.5" />}
+        {value ? <FilterAltIcon className="dm-icon" /> : <Filter className="dm-icon" />}
       </button>
     }>
       <FilterEditor key={JSON.stringify(value)} field={field} value={value}
