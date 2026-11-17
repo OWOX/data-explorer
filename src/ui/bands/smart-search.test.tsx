@@ -195,7 +195,7 @@ describe('the pipeline', () => {
     await search('paid orders last month');
     await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('dm-ctl-on'));
     await undo();
-    await waitFor(() => expect(within(data()).getByLabelText('Filter status')).not.toHaveClass('dm-ctl-on'));
+    await waitFor(() => expect(within(data()).queryByLabelText('Filter status')).toBeNull());
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
   });
 

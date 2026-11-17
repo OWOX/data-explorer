@@ -388,6 +388,28 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-ctl { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 1px; min-width: 16px; height: 16px; padding: 0 1px; border-radius: 4px; background: transparent; color: var(--sheet-green); }
 .dm-ctl:hover { background: color-mix(in srgb, var(--sheet-green) 12%, transparent); }
 .dm-ctl-on, .dm-ctl-on:hover { background: var(--sheet-green); color: var(--sheet-green-fg); }
+/* The picker icon beside the data mart title wears the same green; its tint on hover. */
+.dm-ctl-picker { width: 18px; height: 18px; }
+/* The column menu: Google Sheets' look (white panel, 4px radius, soft shadow, 32px rows, 14px Google Sans on #202124, #f1f3f4 hover,
+   #dadce0 dividers). A submenu is another panel beside its row. */
+.dm-menu {
+  --menu-bg: #fff; --menu-fg: #202124; --menu-hover: #f1f3f4; --menu-line: #dadce0; --menu-muted: #5f6368;
+  position: fixed; z-index: 60; box-sizing: border-box; display: flex; flex-direction: column; min-width: 160px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto;
+  padding: 8px 0; border-radius: 4px; background: var(--menu-bg); color: var(--menu-fg); box-shadow: 0 2px 6px rgba(60, 64, 67, .3);
+  font: 400 14px/20px 'Google Sans', Roboto, Arial, sans-serif; outline: none;
+}
+:root.dark .dm-menu { --menu-bg: #2d2e30; --menu-fg: #e8eaed; --menu-hover: #3c4043; --menu-line: #5f6368; --menu-muted: #9aa0a6; box-shadow: 0 2px 6px rgba(0, 0, 0, .6); }
+.dm-menu-root { min-width: 200px; }
+/* The filter and aggregation forms keep the app's own tokens inside the Sheets-style frame. */
+.dm-menu-editor { width: 16rem; max-height: min(20rem, calc(100vh - 16px)); padding: 0; overflow: hidden; background: var(--background); color: var(--foreground); font-family: inherit; font-size: 0.875rem; }
+.dm-menu-row { display: flex; width: 100%; height: 32px; flex-shrink: 0; align-items: center; gap: 8px; padding: 0 16px; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; white-space: nowrap; }
+.dm-menu-row:hover, .dm-menu-row:focus-visible, .dm-menu-row[aria-expanded='true'] { background: var(--menu-hover); outline: none; }
+.dm-menu-row:disabled { color: var(--menu-muted); opacity: .5; cursor: default; background: transparent; }
+.dm-menu-label { flex: 1 1 auto; }
+.dm-menu-check { display: inline-flex; width: 16px; flex-shrink: 0; justify-content: center; margin-left: -4px; color: var(--sheet-green); }
+.dm-menu-arrow { flex-shrink: 0; margin-right: -6px; color: var(--menu-muted); }
+.dm-menu-sep { height: 0; margin: 8px 0; border-top: 1px solid var(--menu-line); }
+.dm-menu-row[role='menuitemradio'], .dm-menu-row[aria-checked] { padding-left: 16px; }
 /* No hover on touch: the actions stay on screen there. */
 @media (hover: none) and (pointer: coarse) { .dm-reveal { opacity: 1; } }
 
@@ -536,3 +558,4 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
   transition: width 240ms ease-out, background 240ms ease-out;
 }
 .dm-loadbar-done span { background: #d9eed7; }
+[data-menu-icon] .dm-icon { width: 14px; height: 14px; }

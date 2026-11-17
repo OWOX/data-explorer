@@ -6,6 +6,7 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { SchemaFieldDto, TraverseOptions } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
+import { openSubmenu } from './menu-test-utils';
 
 function setup(fields: SchemaFieldDto[] = []) {
   const fixtures = demoFixtures();
@@ -35,7 +36,7 @@ test('Amount > 400 through the popover: the filter is on, the query carries it a
   await loaded();
   await show('Amount');
   const before = bodyRows().length;
-  await userEvent.click(within(data()).getByRole('button', { name: 'Filter Amount' }));
+  await openSubmenu(within(data()), 'Amount', 'Filter');
   const dialog = await screen.findByRole('dialog');
   await userEvent.selectOptions(within(dialog).getByLabelText('Operator'), 'gt');
   await userEvent.type(within(dialog).getByLabelText('Value'), '400');
@@ -50,7 +51,7 @@ test.each(['NUMERIC', 'BIGNUMERIC', 'FLOAT64', 'FLOAT', 'INT64', 'INTEGER', 'DEC
   const t = setup([{ name: 'metric', type }]);
   await loaded();
   await show('metric');
-  await userEvent.click(within(data()).getByRole('button', { name: 'Filter metric' }));
+  await openSubmenu(within(data()), 'metric', 'Filter');
   const dialog = await screen.findByRole('dialog');
   await userEvent.selectOptions(within(dialog).getByLabelText('Operator'), 'gt');
   await userEvent.type(within(dialog).getByLabelText('Value'), '100{Enter}');
@@ -63,7 +64,7 @@ test('a string column: status equals "paid" through the popover applies', async 
   const t = setup();
   await loaded();
   const before = bodyRows().length;
-  await userEvent.click(within(data()).getByRole('button', { name: 'Filter status' }));
+  await openSubmenu(within(data()), 'status', 'Filter');
   const dialog = await screen.findByRole('dialog');
   await userEvent.selectOptions(within(dialog).getByLabelText('Operator'), 'eq');
   await userEvent.type(within(dialog).getByLabelText('Value'), 'paid');
@@ -77,10 +78,10 @@ test('a date column: a preset applies at once, and "After…" with a day applies
   const t = setup();
   await loaded();
   await show('created_at');
-  await userEvent.click(within(data()).getByRole('button', { name: 'Filter created_at' }));
+  await openSubmenu(within(data()), 'created_at', 'Filter');
   await userEvent.click(await screen.findByRole('button', { name: 'Last 30 days' }));
   await waitFor(() => expect(lastFilter(t.queries)).toEqual([{ column: 'created_at', operator: 'relative_date', value: { kind: 'last_n_days', n: 30 } }]));
-  await userEvent.click(within(data()).getByRole('button', { name: 'Filter created_at' }));
+  await openSubmenu(within(data()), 'created_at', 'Filter');
   await userEvent.click(await screen.findByRole('button', { name: 'After…' }));
   const dialog = await screen.findByRole('dialog');
   await userEvent.type(within(dialog).getByLabelText('Value'), '2020-01-01T00:00');

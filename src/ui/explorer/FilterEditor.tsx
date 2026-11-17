@@ -1,12 +1,9 @@
-import { Filter } from 'lucide-react';
 import { useState } from 'react';
-import { DATE_PRESETS, RELATIVE_MAX_N, RELATIVE_PRESETS, describeFilter, isDateTimeField, isPreset, operatorsFor, type OpId } from '../../filters/catalogue';
+import { DATE_PRESETS, RELATIVE_MAX_N, RELATIVE_PRESETS, isDateTimeField, isPreset, operatorsFor, type OpId } from '../../filters/catalogue';
 import { isComplete, type ColumnFilter, type FilterValue } from '../../filters/build';
 import { columnTitle } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import type { RelativeDatePreset } from '../../sdk/types';
-import { Popover } from '../Popover';
-import { FilterAltIcon } from './FilterAltIcon';
 import { Select } from '../Select';
 
 const input = 'dm-input h-8 w-full rounded-md border bg-background px-2 text-sm';
@@ -110,20 +107,5 @@ function OperatorForm({ field, value, onApply, onClear, startOp }: EditorProps &
         <button type="submit" disabled={!isComplete(draft, field)} className="rounded-md bg-primary px-2.5 py-1 text-sm text-primary-foreground disabled:opacity-50">Apply</button>
       </div>
     </form>
-  );
-}
-
-export function FilterPopover({ field, value, onChange, aggregated = false }: { field: Field; value: ColumnFilter | undefined; onChange: (f: ColumnFilter | undefined) => void; /** The column is aggregated: the filter still applies to the raw rows. */ aggregated?: boolean }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Popover open={open} onOpenChange={setOpen} tip={value ? `Filter: ${describeFilter(field, value)}` : undefined} trigger={
-      <button type="button" aria-label={`Filter ${columnTitle(field)}`} className={value ? 'dm-ctl dm-ctl-on dm-reveal dm-reveal-on' : 'dm-ctl dm-reveal'}>
-        {value ? <FilterAltIcon className="dm-icon" /> : <Filter className="dm-icon" />}
-      </button>
-    }>
-      <FilterEditor key={JSON.stringify(value)} field={field} value={value}
-        onApply={(f) => { onChange(f); setOpen(false); }} onClear={() => { onChange(undefined); setOpen(false); }} />
-      {aggregated && <p className="mt-2 text-xs text-muted-foreground">Filters rows before they are aggregated</p>}
-    </Popover>
   );
 }
