@@ -223,20 +223,23 @@ test('leaving the mart and coming back keeps the export busy: no second export, 
 }, 30000);
 
 test('an export that finishes while the member is on another mart does not open the sheet; the result waits on that mart', async () => {
-  const t = setup(1);
+  // The run takes 6s, so it is still going when the member reaches Customers even on a slow machine.
+  const t = setup(1, [], 6000);
   t.view();
   await rowsLoaded();
   await exportNew();
   await toMart('Customers');
   await waitFor(() => expect(t.calls).toContain('POST /api/reports/mock-report-1/run'), { timeout: 5000 });
-  await new Promise((r) => setTimeout(r, 3500));
+  // It finishes there: the run ends at 6s and the next poll (every 2s) sees it.
+  await waitFor(() => expect(t.calls.filter((c) => c === 'GET /api/reports/mock-report-1').length).toBeGreaterThan(0), { timeout: 5000 });
+  await new Promise((r) => setTimeout(r, 9000));
   expect(t.open).not.toHaveBeenCalled();
   await toMart('Orders');
   expect(await within(data()).findByText(/Exported to "Orders · Data Explorer · /)).toBeInTheDocument();
   expect(within(data()).getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0');
   expect(t.open).not.toHaveBeenCalled();
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
-}, 20000);
+}, 40000);
 
 /** The dialog route with a new spreadsheet; `fail` decides what POST /api/reports does the first time. */
 async function newReportFailing(fail: () => Error) {
