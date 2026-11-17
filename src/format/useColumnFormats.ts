@@ -24,28 +24,41 @@ function createEntry(ctx: Ctx, martId: string) {
   const listeners = new Set<() => void>();
   // Columns whose member choice was removed here: a stored choice that is still on its way must not bring them back.
   const removed = new Set<string>();
-  let latest: { schema: Schema; title: string } | null = null;
-  // The ask in flight and the schema it was made for; a later schema is asked about once it finishes.
-  let run: { ctl: AbortController; schema: Schema } | null = null;
+  // What each live hook instance offers; the AI is asked about the union of their eligible columns.
+  const offers = new Set<{ schema: Schema; title: string }>();
+  const merged = (): { schema: Schema; title: string } | null => {
+    const first = offers.values().next().value;
+    if (!first) return null;
+    const byName = new Map<string, Schema[number]>();
+    for (const o of offers) for (const f of o.schema) if (!byName.has(f.name)) byName.set(f.name, f);
+    const schema = [...byName.values()];
+    return { schema, title: first.title };
+  };
+  const signature = (schema: Schema) => schema.map((f) => f.name).join('\0');
+  let loadFailed = false;
+  // The ask in flight and the columns it was made for; others are asked about once it finishes.
+  let run: { ctl: AbortController; sig: string } | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const set = (next: Formats) => { formats = next; listeners.forEach((l) => l()); };
 
   const schedule = () => {
     clearTimeout(timer);
-    if (!ready || !latest || run || subscribers === 0) return;
+    if (!ready || offers.size === 0 || run || subscribers === 0) return;
     timer = setTimeout(start, PICK_SETTLE_MS);
   };
   const start = () => {
+    const latest = merged();
     if (!latest || run || subscribers === 0) return;
     const { schema, title } = latest;
-    const mine = { ctl: new AbortController(), schema };
+    const mine = { ctl: new AbortController(), sig: signature(schema) };
     run = mine;
     void pickFormats(ctx, store, martId, title, schema, formats.project, mine.ctl.signal).then((picks) => {
       if (run !== mine) return; // aborted and detached
       run = null;
       if (Object.keys(picks).length) set({ member: formats.member, project: { ...picks, ...formats.project } });
-      if (latest && latest.schema !== schema) schedule();
+      const now = merged();
+      if (now && signature(now.schema) !== mine.sig) schedule();
     });
   };
 
@@ -53,7 +66,9 @@ function createEntry(ctx: Ctx, martId: string) {
     started = true;
     void store.load(martId).then((stored) => {
       const member = Object.fromEntries(Object.entries(stored.member).filter(([c]) => !removed.has(c)));
-      ready = true;
+      loadFailed = stored.failed === true;
+      // An unreadable document is not an empty one: nothing is asked, and the next subscribe after a full teardown reads again.
+      ready = !loadFailed;
       set({ member: { ...member, ...formats.member }, project: stored.project });
       schedule();
     });
@@ -68,15 +83,22 @@ function createEntry(ctx: Ctx, martId: string) {
       return () => {
         listeners.delete(listener);
         if (--subscribers > 0) return;
-        clearTimeout(timer);
-        run?.ctl.abort();
-        run = null;
+        // A view that remounts (another row of the same mart) unsubscribes and subscribes in one commit: tear down only if nobody came back.
+        setTimeout(() => {
+          if (subscribers > 0) return;
+          clearTimeout(timer);
+          run?.ctl.abort();
+          run = null;
+          if (loadFailed) { started = false; loadFailed = false; }
+        }, 0);
       };
     },
     /** The schema and title the AI is asked about; a change never cancels or repeats a running ask. */
     offer(schema: Schema, title: string) {
-      latest = { schema, title };
+      const mine = { schema, title };
+      offers.add(mine);
       schedule();
+      return () => { offers.delete(mine); };
     },
     setMember(column: string, f: Format | null) {
       if (f) removed.delete(column); else removed.add(column);
@@ -103,7 +125,7 @@ export function useColumnFormats(martId: string, schema: Schema = NO_SCHEMA, mar
   const { ctx } = useServices();
   const entry = useMemo(() => entryFor(ctx, martId), [ctx, martId]);
   const formats = useSyncExternalStore(entry.subscribe, entry.get);
-  useEffect(() => { entry.offer(schema, martTitle); }, [entry, schema, martTitle]);
+  useEffect(() => entry.offer(schema, martTitle), [entry, schema, martTitle]);
   const formatOf = useCallback((column: string, type: string): Format => {
     const f = resolveFormat(formats.member[column], formats.project[column]);
     return isValidFormat(f, type) ? f : AUTO;

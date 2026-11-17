@@ -33,7 +33,7 @@ test('a failed read or write warns and never throws; an unreadable document is n
   const put = vi.fn();
   const ctx = { ...stubCtx(), collections: () => ({ get: async () => { throw new Error('down'); }, put }) } as unknown as Ctx;
   const s = formatStore(ctx);
-  expect(await s.load('m')).toEqual({ member: {}, project: {} });
+  expect(await s.load('m')).toEqual({ member: {}, project: {}, failed: true });
   await s.setMember('m', 'a', { kind: 'plain' });
   await s.setProject('m', { a: { kind: 'plain' } });
   expect(put).not.toHaveBeenCalled();

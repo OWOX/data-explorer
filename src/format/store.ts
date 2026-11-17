@@ -10,8 +10,8 @@ const clean = (raw: unknown): FormatDoc =>
   typeof raw !== 'object' || raw === null || Array.isArray(raw) ? {} : Object.fromEntries(Object.entries(raw).filter(([, f]) => isFormat(f)));
 
 export interface FormatStore {
-  /** Both documents of a mart; an empty one when absent, malformed or unreadable. */
-  load(martId: string): Promise<Formats>;
+  /** Both documents of a mart; an empty one when absent, malformed or unreadable. `failed` is set when a read threw, so an unreadable document is told from an empty one. */
+  load(martId: string): Promise<Formats & { failed?: true }>;
   /** Saves the member's format for a column; null removes the choice. Never throws. */
   setMember(martId: string, column: string, f: Format | null): Promise<void>;
   /** Merges project picks into the mart's document; with `keep`, a column already picked keeps its pick. Never throws. */
@@ -22,8 +22,8 @@ export function formatStore(ctx: Ctx): FormatStore {
   const member = ctx.collections<FormatDoc>(MEMBER_FORMATS_COLLECTION);
   const project = ctx.collections<FormatDoc>(PROJECT_FORMATS_COLLECTION);
   type Col = typeof member;
-  const read = async (col: Col, martId: string): Promise<FormatDoc> => {
-    try { return clean((await col.get(martId))?.document); } catch (e) { console.warn('Reading the column formats failed', e); return {}; }
+  const read = async (col: Col, martId: string): Promise<{ doc: FormatDoc; failed: boolean }> => {
+    try { return { doc: clean((await col.get(martId))?.document), failed: false }; } catch (e) { console.warn('Reading the column formats failed', e); return { doc: {}, failed: true }; }
   };
   // A write is read-modify-write on the stored document; writes to one document run one after another.
   const queue = new Map<string, Promise<void>>();
@@ -41,7 +41,7 @@ export function formatStore(ctx: Ctx): FormatStore {
   return {
     async load(martId) {
       const [m, p] = await Promise.all([read(member, martId), read(project, martId)]);
-      return { member: m, project: p };
+      return { member: m.doc, project: p.doc, ...(m.failed || p.failed ? { failed: true as const } : {}) };
     },
     setMember: (martId, column, f) => write(member, `m/${martId}`, martId, (doc) => {
       const next = { ...doc };
