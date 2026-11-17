@@ -300,11 +300,20 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 
 /* The line under the header is a shadow on each header cell, not a border: sticky cells lose collapsed borders as the body
    scrolls under them, a shadow travels with the cell. */
-.dm-th { box-shadow: inset -1px -1px 0 var(--grid-line-strong); }
+/* Google Sheets' grid: Arial 10pt, 21px rows, 3px of horizontal padding, the text centred. */
+.dm-grid { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 20px; }
+.dm-grid td, .dm-grid .dm-th { height: 21px; padding: 0 3px; vertical-align: middle; }
+.dm-grid .dm-th-fill, .dm-grid .dm-gh-fill { padding: 0; }
+.dm-grid .truncate { line-height: 20px; }
+/* The frozen header: one grey ground for both rows, the filler cells included. */
+.dm-head, .dm-head th { background: var(--grid-header-bg); }
 /* Inside the grid every cell has a 1px line on its right and bottom (shadows, so they hold on sticky cells); the
    card's own border is the outer edge, so the filler cell at the end and the last row draw no extra line there. */
 .dm-grid td { box-shadow: inset -1px -1px 0 var(--grid-line); }
-.dm-grid .dm-th:last-child { box-shadow: inset 0 -1px 0 var(--grid-line-strong); }
+/* The frozen-header divider: a 4px bar along the bottom of the title row, carried to the card's edge by the filler cell. An
+   inset shadow, so it stays on the sticky header; the title row is 21px of cell plus the 4px bar. */
+.dm-grid .dm-th { height: 25px; padding-bottom: 4px; box-shadow: inset -1px 0 0 var(--grid-line-strong), inset 0 -4px 0 var(--grid-freeze); }
+.dm-grid .dm-th:last-child { box-shadow: inset 0 -4px 0 var(--grid-freeze); }
 .dm-grid td:last-child { box-shadow: inset 0 -1px 0 var(--grid-line); }
 /* The group row above the titles: a divider between data marts, a line under the row (the filler cell carries it to the
    card's edge), and the remove button shown with the row's hover or focus. */
