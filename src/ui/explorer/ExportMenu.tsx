@@ -24,6 +24,11 @@ type Props = { martId: string; martTitle: string; schema: Schema; visible: strin
 type Result = { kind: 'ok' | 'timeout' | 'error'; text: string; url?: string };
 
 type Assistant = 'Claude' | 'ChatGPT';
+/** Where each assistant lists the OWOX app (the links owox.com uses). */
+const PROVIDER_LISTING: Record<Assistant, string> = {
+  Claude: 'https://claude.ai/directory/owox-data-marts',
+  ChatGPT: 'https://chatgpt.com/plugins/plugin_asdk_app_6a3e81be8f8481918e1e2cd1d7ea09c4?q=owox',
+};
 /** The prompt an assistant item copied, and whether it reached the clipboard. */
 type Copied = { assistant: Assistant; prompt: string; ok: boolean };
 /** The grid's rows as TSV, and whether they reached the clipboard. */
@@ -248,10 +253,17 @@ export function ExportMenu(p: Props) {
             ))}
             <div role="group" aria-label="Assistants" className="dm-export-ai">
               {([['Claude', ClaudeIcon], ['ChatGPT', ChatGptIcon]] as const).map(([name, Icon]) => (
-                <button key={name} type="button" role="menuitem" data-lvl="1" data-action={name} className="dm-export-item" onMouseEnter={() => setOpenDest(null)} onClick={() => void copyPrompt(name)}>
-                  <Icon size={16} />
-                  <span className="dm-filter-label">{name}</span>
-                </button>
+                <div key={name} className="dm-export-ai-row" onMouseEnter={() => setOpenDest(null)}>
+                  <button type="button" role="menuitem" data-lvl="1" data-action={name} className="dm-export-item" onClick={() => void copyPrompt(name)}>
+                    <Icon size={16} />
+                    <span className="dm-filter-label">{name}</span>
+                  </button>
+                  <Tooltip content={`Open OWOX in ${name}`}>
+                    <button type="button" data-link={name} className="dm-export-link" aria-label={`Open OWOX in ${name}`} onClick={() => void ctx.ui.openExternal(PROVIDER_LISTING[name]).catch(() => undefined)}>
+                      <ExternalLink size={14} />
+                    </button>
+                  </Tooltip>
+                </div>
               ))}
             </div>
           </div>
@@ -284,8 +296,19 @@ export function ExportMenu(p: Props) {
   /** Arrow keys walk a level; Right or Enter opens a destination's flyout, Left or Escape closes it, Escape again closes the menu. */
   function onMenuKey(e: ReactKeyboardEvent<HTMLElement>) {
     const target = e.target as HTMLElement;
+    // The external-link button at the end of an assistant row: ArrowLeft goes back to its item, Escape closes the menu.
+    if (target.dataset.link) {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); target.parentElement?.querySelector<HTMLElement>('[data-lvl="1"]')?.focus(); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeMenu(); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }
+      return;
+    }
     const lvl = target.dataset.lvl;
     if (!lvl) return;
+    if (lvl === '1' && e.key === 'ArrowRight' && target.dataset.action && target.dataset.action !== 'copy') {
+      e.preventDefault();
+      target.parentElement?.querySelector<HTMLElement>('[data-link]')?.focus();
+      return;
+    }
     const items = [...(target.closest(lvl === '1' ? '[data-level="1"]' : '[data-level="2"]')!.querySelectorAll<HTMLElement>(`[role="menuitem"][data-lvl="${lvl}"]:not([disabled])`))];
     const at = items.indexOf(target);
     const move = (to: number) => { e.preventDefault(); items[(to + items.length) % items.length]?.focus(); };

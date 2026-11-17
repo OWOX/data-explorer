@@ -498,6 +498,37 @@ describe('the AI group', () => {
     expect(items[3]!.querySelector('svg')).not.toBeNull();
   });
 
+  test.each([
+    ['Claude', 'https://claude.ai/directory/owox-data-marts'],
+    ['ChatGPT', 'https://chatgpt.com/plugins/plugin_asdk_app_6a3e81be8f8481918e1e2cd1d7ea09c4?q=owox'],
+  ])('%s has an external-link button that opens its OWOX listing and copies nothing', async (name, url) => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    const link = await within(data()).findByRole('button', { name: `Open OWOX in ${name}` });
+    expect(link.closest('.dm-export-ai')).not.toBeNull();
+    await userEvent.click(link);
+    expect(t.open).toHaveBeenCalledWith(url);
+    expect(t.open).toHaveBeenCalledTimes(1);
+    expect(within(data()).queryByText(/Prompt copied/)).toBeNull();
+  });
+
+  test('the provider link is reached from its item with ArrowRight and Tab, and Enter opens it', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    const item = await within(data()).findByRole('menuitem', { name: 'Claude' });
+    item.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(within(data()).getByRole('button', { name: 'Open OWOX in Claude' })).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    expect(t.open).toHaveBeenCalledWith('https://claude.ai/directory/owox-data-marts');
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(item).toHaveFocus();
+  });
+
   test('choosing Claude copies the prompt, says so, and "Show prompt" opens it read-only with a Copy button', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     setClipboard(writeText);
