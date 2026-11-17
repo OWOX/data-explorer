@@ -108,7 +108,7 @@ export function sanitizeAggregation(a: Aggregation, fields: readonly Field[]): A
 /** A shown column the grouped query cannot carry: an array, JSON, struct or geography field, or a calculated one, with no rule of its own. It would become a GROUP BY key. */
 export function ungroupableColumn(fields: readonly Field[], a: Aggregation): Field | null {
   if (!isGrouped(a)) return null;
-  return fields.find((f) => (f.isCalculated || f.category === 'other') && !a.aggregations.some((r) => r.column === f.name) && !a.dateTrunc.some((r) => r.column === f.name)) ?? null;
+  return fields.find((f) => f.category === 'other' && !a.aggregations.some((r) => r.column === f.name) && !a.dateTrunc.some((r) => r.column === f.name)) ?? null;
 }
 
 /** The rules of the columns still shown. */

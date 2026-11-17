@@ -181,7 +181,7 @@ test('an array field takes no function; with one shown the grouped query is not 
   expect(await within(data()).findByText(/"tags" can't be grouped/)).toBeInTheDocument();
   expect(t.queries.length).toBe(before);
   expect(within(data()).queryByText(/groups?$/)).toBeNull();
-  expect(within(data()).queryByRole('button', { name: /^Export/ })).toBeNull();
+  expect(document.querySelector('.dm-export')).toBeNull();
   // hiding it brings the groups back
   await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
   await userEvent.click(await screen.findByLabelText('tags'));
@@ -197,4 +197,31 @@ test('a calculated field has no Sigma, and a saved rule on one is dropped', asyn
   expect(within(data()).queryByRole('button', { name: 'Aggregate margin' })).toBeNull();
   expect(headers().some((h) => h.startsWith('margin · '))).toBe(false);
   expect(t.queries.every((q) => !q.o.aggregation)).toBe(true);
+});
+
+test('a visible calculated column does not block the grouped query: it is sent and Export stays', async () => {
+  const t = setup({ fields: [{ name: 'zz_gain', type: 'NUMERIC', calculated: { expression: 'amount - 1' } }] });
+  await ready();
+  await showColumn('Amount');
+  await showColumn('zz_gain');
+  await aggregate('Amount', 'Sum');
+  await sumLoaded();
+  expect(t.queries.at(-1)!.o.column).toContain('zz_gain');
+  expect(within(data()).queryByText(/can't be grouped/)).toBeNull();
+  expect(document.querySelector('.dm-export')).not.toBeNull();
+  expect(within(data()).queryByRole('button', { name: 'Aggregate zz_gain' })).toBeNull();
+});
+
+test('the implicit first-key sort is sent but shows no arrow and no aria-sort; a click then sorts that column', async () => {
+  const t = setup();
+  await ready();
+  await showColumn('Amount');
+  await aggregate('Amount', 'Sum');
+  await sumLoaded();
+  expect(t.queries.at(-1)!.o.sort).toEqual([{ column: 'id', direction: 'asc' }]);
+  const th = within(data()).getByRole('button', { name: /^Sort by id,/ }).closest('th')!;
+  expect(th).toHaveAttribute('aria-sort', 'none');
+  expect(within(th).getByRole('button', { name: /currently not sorted/ })).toBeInTheDocument();
+  await userEvent.click(within(th).getByRole('button', { name: /^Sort by id,/ }));
+  await waitFor(() => expect(within(data()).getByRole('button', { name: /^Sort by id,/ }).closest('th')).toHaveAttribute('aria-sort', 'ascending'));
 });

@@ -4,7 +4,7 @@ import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pend
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PAGE_SIZE } from '../../config';
 import { withJoined, type JoinedSource } from '../../api/blendable';
-import { AGG_LABELS, allowedFunctions, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, sanitizeAggregation, ungroupableColumn, type AggFn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
+import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, sanitizeAggregation, ungroupableColumn, type AggFn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
 import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
 import type { ColumnFilter } from '../../filters/build';
 import { cycleSort, defaultSort, sortsOnColumns, type SortKey } from '../../model/sort';
@@ -247,7 +247,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const gridSorts = useMemo<SortKey[]>(() => (grouped ? (own?.length ? own : firstKey ? [{ field: firstKey, direction: 'asc' }] : []) : sorts), [grouped, own, sorts, firstKey]);
   const pks = primaryKeys(native);
   const wanted = shown.flatMap((name) => schema.find((f) => f.name === name) ?? []);
-  // A shown array, JSON, struct or calculated column with no rule would be a GROUP BY key the warehouse or the backend refuses: no grouped query goes out until it is hidden.
+  // A shown array, JSON or struct column with no rule would be a GROUP BY key the warehouse or the backend refuses: no grouped query goes out until it is hidden.
   const blocked = ungroupableColumn(wanted, aggNow);
   const query = useMemo(() => buildRowQuery(schema, shown, Object.values(filters), limit, gridSorts, aggNow), [schema, shown, filters, gridSorts, limit, aggNow]);
   // A folded band reads nothing: the query it last read stays, and a change made meanwhile is read once it opens.
@@ -273,7 +273,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     setLimit(PAGE_SIZE);
   }, [agg, columnStore, martId]);
   // Shown columns that cannot take part in a grouped query: another column's Apply would group the rows and strand them.
-  const blockers = useMemo(() => onScreen.filter((f) => (f.isCalculated || f.category === 'other') && allowedFunctions(f).length === 0).map((f) => ({ name: f.name, title: columnTitle(f) })), [onScreen]);
+  const blockers = useMemo(() => onScreen.filter((f) => f.category === 'other').map((f) => ({ name: f.name, title: columnTitle(f) })), [onScreen]);
   const columns = useMemo<GridColumn[]>(() => outputs.map((o) => {
     const field = shownByName.get(o.column)!;
     const name = field.name;
@@ -310,7 +310,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // While the member has no sort of their own, a click replaces the default with that column ascending (the
   // default's own column included), so a default never rides along as a second sort; after that the normal cycle.
   const toggleSort = useCallback((field: string) => { setOwn((cur) => (cur === null ? [{ field, direction: 'asc' }] : cycleSort(cur, field))); setLimit(PAGE_SIZE); }, []);
-  const env = useMemo(() => ({ sorts: gridSorts, toggleSort }), [gridSorts, toggleSort]);
+  // The implicit first-key sort is sent and exported but not shown: no arrow, no aria-sort, so the first click is not a no-op.
+  const shownSorts = useMemo(() => (grouped ? (own ?? []) : gridSorts), [grouped, own, gridSorts]);
+  const env = useMemo(() => ({ sorts: shownSorts, toggleSort }), [shownSorts, toggleSort]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
   const changeColumns = (picked: string[]) => {
     const cols = orderColumns(picked, sources, defaultColumns(native));
@@ -406,14 +408,14 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               </tr>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                {hg.headers.map((h) => <th key={h.id} aria-sort={outputByKey.get(h.column.id)?.sortable ? sortOf(gridSorts, outputByKey.get(h.column.id)!.column) : 'none'} className={`dm-th ${edges.has(h.column.id) ? 'dm-th-edge' : ''} ${maxWidthOf(byName.get(outputByKey.get(h.column.id)!.column)!)} overflow-hidden px-3 py-2 text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
+                {hg.headers.map((h) => <th key={h.id} aria-sort={outputByKey.get(h.column.id)?.sortable ? sortOf(shownSorts, outputByKey.get(h.column.id)!.column) : 'none'} className={`dm-th ${edges.has(h.column.id) ? 'dm-th-edge' : ''} ${maxWidthOf(byName.get(outputByKey.get(h.column.id)!.column)!)} overflow-hidden px-3 py-2 text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
                 {/* Takes the width the columns leave over, so the line under the header runs the whole card. */}
                 <th aria-hidden className="dm-th w-full p-0" />
               </tr>
             ))}
           </thead>
           <tbody>
-            {blocked ? <tr><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON, struct and calculated fields take no aggregation.`}</td></tr>
+            {blocked ? <tr><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`}</td></tr>
               : error ? <tr><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} /></td></tr>
               : !rows ? <tr><td colSpan={outputs.length + 1}><Skeleton rows={8} /></td></tr>
               : rows.length === 0 ? <tr><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground">{hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.'}</td></tr>
