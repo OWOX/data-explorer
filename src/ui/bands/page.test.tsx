@@ -1091,7 +1091,7 @@ describe('the Data band loading bar', () => {
   const bar = () => within(data()).queryByRole('progressbar', { name: 'Loading rows' });
 
   test('shows on the first load (with the skeleton), on Refresh, on a sort change and on Load more, and never rests on the page', async () => {
-    const delay = { ms: 200 };
+    const delay = { ms: 1500 };
     await mountWith(slow(delay));
     const first = await within(data()).findByRole('progressbar', { name: 'Loading rows' });
     expect(first).toHaveClass('dm-progress');
@@ -1099,8 +1099,6 @@ describe('the Data band loading bar', () => {
     await within(data()).findByRole('table');
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await waitFor(() => expect(bar()).toBeNull());
-    // Long enough that the bar is still there when a slow machine looks for it.
-    delay.ms = 1500;
 
     await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
     await within(data()).findByRole('progressbar', { name: 'Loading rows' });
