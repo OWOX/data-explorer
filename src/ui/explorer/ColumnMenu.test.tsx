@@ -1,9 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
+import { HOVER_MS } from './ColumnMenu';
 import { openColumnMenu, openSubmenu } from './menu-test-utils';
 import { placeBeside, placeBelow } from './menuPlacement';
 
@@ -160,11 +161,11 @@ describe('the column menu', () => {
     expect(within(data()).getByLabelText('Column menu Amount')).not.toHaveClass('dm-ctl-on');
   });
 
-  test('Automatic over a project pick is stored as the member\'s own auto, so it beats the pick; with no pick it removes the choice', async () => {
+  test('Automatic is always stored as the member\'s own auto, so a later AI pick cannot override it; an AI pick alone does not light the icon', async () => {
     const ctx = setup({ amount: { kind: 'money', currency: 'GBP' } });
     await showAmount();
     await waitFor(() => expect(cellsOf('Amount')[0]).toMatch(/£/));
-    expect(within(data()).getByLabelText('Column menu Amount')).toHaveClass('dm-ctl-on');
+    expect(within(data()).getByLabelText('Column menu Amount')).not.toHaveClass('dm-ctl-on');
     await openSubmenu(within(data()), 'Amount', 'Format');
     await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Money' }));
     const money = await screen.findByRole('menu', { name: 'Money Amount' });
@@ -175,6 +176,8 @@ describe('the column menu', () => {
     await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Automatic' }));
     await waitFor(() => expect(cellsOf('Amount')[0]).not.toMatch(/£/));
     expect(await ctx.collections<Record<string, unknown>>('column-formats-member').get('orders')).toMatchObject({ document: { amount: { kind: 'auto' } } });
+    // with no project pick Automatic is stored too, and the icon stays off
+    expect(within(data()).getByLabelText('Column menu Amount')).not.toHaveClass('dm-ctl-on');
   });
 
   test('an AI-picked currency outside the four is listed in the Money submenu', async () => {
@@ -247,5 +250,116 @@ describe('the column menu', () => {
     await openColumnMenu(within(data()), 'status');
     await userEvent.click(document.body);
     await waitFor(() => expect(open()).toHaveLength(0));
+  });
+
+  test('Escape in the Filter editor closes the submenu and keeps focus in the menu; the next Escape returns focus to the icon', async () => {
+    setup();
+    await ready();
+    const icon = within(data()).getByLabelText('Column menu id');
+    await userEvent.click(icon);
+    const menu = await screen.findByRole('menu', { name: 'Menu of id' });
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Filter' }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter of id' });
+    await waitFor(() => expect(panel.contains(document.activeElement)).toBe(true));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Filter of id' })).toBeNull();
+    expect(within(menu).getByRole('menuitem', { name: 'Filter' })).toHaveFocus();
+    await userEvent.keyboard('{Escape}');
+    expect(open()).toHaveLength(0);
+    expect(icon).toHaveFocus();
+  });
+
+  test('a scroll or a resize outside the menu closes it; a scroll inside does not', async () => {
+    setup();
+    await ready();
+    await openColumnMenu(within(data()), 'status');
+    fireEvent.scroll(screen.getByRole('menu', { name: 'Menu of status' }));
+    expect(open()).toHaveLength(1);
+    fireEvent.scroll(document.body);
+    await waitFor(() => expect(open()).toHaveLength(0));
+    await openColumnMenu(within(data()), 'status');
+    fireEvent(window, new Event('resize'));
+    await waitFor(() => expect(open()).toHaveLength(0));
+  });
+
+  test('the menu stays open, and its header is not rebuilt, while a setting changes', async () => {
+    setup();
+    await ready();
+    const icon = within(data()).getByLabelText('Column menu status');
+    await userEvent.click(icon);
+    await screen.findByRole('menu', { name: 'Menu of status' });
+    // a keyboard click on another title sorts without a pointer press outside the menu
+    fireEvent.click(within(data()).getByRole('button', { name: /^Sort by id,/ }));
+    await within(data()).findByLabelText('Sorted A to Z: id');
+    expect(open()).toHaveLength(1);
+    expect(within(data()).getByLabelText('Column menu status')).toBe(icon);
+  });
+
+  test('Tab in the menu closes it and returns focus to the icon; Tab in the Filter editor keeps its own order', async () => {
+    setup();
+    await ready();
+    const icon = within(data()).getByLabelText('Column menu status');
+    await userEvent.click(icon);
+    await screen.findByRole('menu', { name: 'Menu of status' });
+    await userEvent.tab();
+    await waitFor(() => expect(open()).toHaveLength(0));
+    expect(icon).toHaveFocus();
+    await openSubmenu(within(data()), 'status', 'Filter');
+    const panel = await screen.findByRole('dialog', { name: 'Filter of status' });
+    await userEvent.tab();
+    expect(panel.contains(document.activeElement)).toBe(true);
+    expect(screen.getByRole('menu', { name: 'Menu of status' })).toBeInTheDocument();
+  });
+
+  test('hover intent: another row replaces the open submenu only after resting on it, and never over an edit; a click is immediate', async () => {
+    setup();
+    await ready();
+    const menu = await openColumnMenu(within(data()), 'status');
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Filter' }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter of status' });
+    await userEvent.type(within(panel).getByLabelText('Value'), 'x');
+    await userEvent.hover(within(menu).getByRole('menuitem', { name: 'Sort' }));
+    await new Promise((r) => setTimeout(r, HOVER_MS + 150));
+    expect(screen.queryByRole('menu', { name: 'Sort status' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Filter of status' })).toBeInTheDocument();
+    // a click is immediate, edits or not
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Sort' }));
+    expect(await screen.findByRole('menu', { name: 'Sort status' })).toBeInTheDocument();
+  });
+
+  test('hover intent: with nothing edited, hovering another row switches after the delay, not at once', async () => {
+    setup();
+    await ready();
+    const menu = await openColumnMenu(within(data()), 'status');
+    await userEvent.hover(within(menu).getByRole('menuitem', { name: 'Sort' }));
+    await screen.findByRole('menu', { name: 'Sort status' });
+    await userEvent.hover(within(menu).getByRole('menuitem', { name: 'Filter' }));
+    expect(screen.queryByRole('dialog', { name: 'Filter of status' })).toBeNull();
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Filter of status' })).toBeInTheDocument());
+  });
+
+  test('the Sort submenu lines Remove sort up with the checked rows', async () => {
+    setup();
+    await ready();
+    await openSubmenu(within(data()), 'status', 'Sort');
+    const sort = await screen.findByRole('menu', { name: 'Sort status' });
+    const remove = within(sort).getByRole('menuitem', { name: 'Remove sort' });
+    expect(remove.querySelector('.dm-menu-check')).not.toBeNull();
+    expect(sort.querySelectorAll('.dm-menu-check')).toHaveLength(3);
+  });
+
+  test('Hide column moves focus to the next column\'s menu icon, or the previous one for the last column', async () => {
+    setup();
+    await ready();
+    const icons = () => within(data()).getAllByLabelText(/^Column menu /).map((e) => e.getAttribute('aria-label'));
+    const first = icons();
+    let menu = await openColumnMenu(within(data()), first[1]!.replace('Column menu ', ''));
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
+    await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe(first[2]));
+    const last = icons().at(-1)!;
+    menu = await openColumnMenu(within(data()), last.replace('Column menu ', ''));
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
+    await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe(icons().at(-1)));
+    expect(document.activeElement?.getAttribute('aria-label')).not.toBe(last);
   });
 });

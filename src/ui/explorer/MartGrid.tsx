@@ -188,7 +188,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     return () => { live = false; };
   }, [blendable, martId, initialSources]);
   const schema = useMemo(() => withJoined(native, sources), [native, sources]);
-  const { formatOf, hasProjectPick, setMember: setFormat } = useColumnFormats(martId, schema, model.marts.get(martId)?.title);
+  const { formatOf, memberFormat, setMember: setFormat } = useColumnFormats(martId, schema, model.marts.get(martId)?.title);
   // The cells read the latest formats through a ref, so a format change repaints cells without rebuilding the column defs (and remounting the headers).
   const formatOfRef = useRef(formatOf);
   formatOfRef.current = formatOf;
@@ -395,7 +395,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     draftOf: (column) => draftOf(column, aggNow),
     blockerFor: (name) => blockers.find((b) => b.name !== name)?.title,
     changeAgg,
-    formatOf, hasProjectPick, setFormat,
+    formatOf, memberFormat, setFormat,
     // The same rule as the Fields picker: the last column, and the last of the main mart's while a joined mart is shown, stay.
     canHide: (name) => shown.length > 1 && !(several && ownOn === 1 && ownNames.has(name)),
     hide: (name) => changeColumns(shown.filter((n) => n !== name)),

@@ -1360,10 +1360,12 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(within(row()).getByLabelText('About Customer').closest('dt')).toHaveClass('dm-reveal-host');
   });
 
-  test('the Fields icon of a tab shows on hover or focus of the tab only (opacity, so the keyboard still reaches it)', async () => {
+  test('the Fields icon of a tab is always on screen, in the same green and size as the column menu icons', async () => {
     const grid = await ordersGrid();
     const icon = within(grid).getByRole('button', { name: 'Fields of Orders' });
-    expect(icon).toHaveClass('dm-reveal');
+    expect(icon).not.toHaveClass('dm-reveal');
+    expect(icon).toHaveClass('dm-ctl', 'dm-ctl-lg');
+    expect(within(grid).getByLabelText('Column menu id')).toHaveClass('dm-ctl', 'dm-ctl-lg');
     expect(icon.closest('th')).toHaveClass('dm-gh');
   });
 

@@ -12,14 +12,14 @@ vi.mock('../state/store', () => ({ useServices: () => ({ ctx }) }));
 const f = (name: string, category: Field['category'], type: string): Field => ({ name, alias: null, type, category, description: null, isPrimaryKey: false });
 const schema: Schema = [f('rate', 'number', 'FLOAT64'), f('amount', 'number', 'NUMERIC')];
 
-function setup(answer: () => Promise<unknown>, opts: { failReads?: number } = {}) {
+function setup(answer: () => Promise<unknown>, opts: { failReads?: number; delayMs?: number } = {}) {
   const docs = new Map<string, unknown>();
   const gets = { n: 0 };
   const doGenerate = vi.fn(async () => ({ content: [{ type: 'text', text: JSON.stringify(await answer()) }] }));
   ctx = {
     ...stubCtx(),
     credentials: { ai: { fast: { doGenerate } } },
-    collections: <T,>(name: string) => ({ get: async (id: string) => { if (gets.n++ < (opts.failReads ?? 0)) throw new Error('down'); return docs.has(`${name}/${id}`) ? { document: docs.get(`${name}/${id}`) as T } : null; }, put: async (id: string, d: T) => { docs.set(`${name}/${id}`, d); } }),
+    collections: <T,>(name: string) => ({ get: async (id: string) => { if (opts.delayMs) await new Promise((r) => setTimeout(r, opts.delayMs)); if (gets.n++ < (opts.failReads ?? 0)) throw new Error('down'); return docs.has(`${name}/${id}`) ? { document: docs.get(`${name}/${id}`) as T } : null; }, put: async (id: string, d: T) => { docs.set(`${name}/${id}`, d); } }),
   } as unknown as Ctx;
   return { doGenerate, docs, gets };
 }
@@ -161,4 +161,16 @@ test('an unreadable document is not cached as empty: nothing is asked, and the n
   await new Promise((r) => setTimeout(r, 10));
   const b = renderHook(() => useColumnFormats('m1', schema, 'Orders'));
   await waitFor(() => expect(b.result.current.formatOf('rate', 'FLOAT64')).toEqual({ kind: 'plain' }));
+});
+
+test('a read that fails after everyone has left is retried on the next subscribe', async () => {
+  const s = setup(async () => ({}), { failReads: 1, delayMs: 30 });
+  const first = renderHook(() => useColumnFormats('m-retry', schema, 'Orders'));
+  first.unmount();
+  // the teardown has run; the read then fails
+  await new Promise((r) => setTimeout(r, 120));
+  const before = s.gets.n;
+  const second = renderHook(() => useColumnFormats('m-retry', schema, 'Orders'));
+  await waitFor(() => expect(s.gets.n).toBeGreaterThan(before));
+  second.unmount();
 });

@@ -657,9 +657,11 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
     return pick.map((e) => getComputedStyle(e).borderRadius);
   });
   expect(radii.every((r) => r === '0px')).toBe(true);
-  // the filter icon is 20% under the old 14px
-  const icon = data.locator('.dm-th .dm-icon').first();
-  expect(await icon.evaluate((e) => Math.round(e.getBoundingClientRect().width * 10) / 10)).toBe(11.2);
+  // the column menu icon and the Fields icon are 15px; the (i) and the active indicators stay 20% under the old 14px
+  const size = (l: Locator) => l.evaluate((e) => Math.round(e.getBoundingClientRect().width * 10) / 10);
+  expect(await size(data.locator('[data-menu-icon] .dm-icon').first())).toBe(15);
+  expect(await size(data.getByRole('button', { name: 'Fields of Orders' }).locator('.dm-icon'))).toBe(15);
+  expect(await size(data.locator('.dm-th .dm-col-info .dm-icon').first())).toBe(11.2);
   // no row highlight on hover
   const second = data.locator('tbody tr').nth(1).locator('td').first();
   const before = await second.evaluate((e) => getComputedStyle(e.parentElement!).backgroundColor);
@@ -721,7 +723,6 @@ test('a numeric filter applied through the popover (> 400) leaves fewer rows', a
   await page.getByLabel(/Amount/).check();
   await page.keyboard.press('Escape');
   await expect(data.getByLabel('Column menu Amount')).toBeVisible();
-  const before = await data.getByRole('row').count();
   await openColumnSub(data, 'Amount', 'Filter');
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Operator').selectOption('gt');
@@ -729,7 +730,11 @@ test('a numeric filter applied through the popover (> 400) leaves fewer rows', a
   await dialog.getByRole('button', { name: 'Apply' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(data.getByLabel('Filter Amount')).toHaveClass(/dm-ctl-on/);
-  await expect.poll(async () => data.getByRole('row').count()).toBeLessThan(before);
+  // Amount is the sixth column: every row left has an amount above 400 (waits for the cells, not a row count)
+  await expect.poll(async () => {
+    const texts = await data.locator('tbody tr td:nth-child(7)').allTextContents();
+    return texts.length > 0 && texts.every((t) => parseFloat(t.replace(/[^\d.]/g, '')) > 400);
+  }).toBe(true);
 });
 
 test('the opened search grows leftwards in the header: the title stays, the actions stay on screen', async ({ page }) => {

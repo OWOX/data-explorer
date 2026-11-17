@@ -34,7 +34,7 @@ function createEntry(ctx: Ctx, martId: string) {
     const schema = [...byName.values()];
     return { schema, title: first.title };
   };
-  const signature = (schema: Schema) => schema.map((f) => f.name).join('\0');
+  const signature = (schema: Schema) => schema.map((f) => f.name).sort().join('\0');
   let loadFailed = false;
   // The ask in flight and the columns it was made for; others are asked about once it finishes.
   let run: { ctl: AbortController; sig: string } | null = null;
@@ -69,6 +69,8 @@ function createEntry(ctx: Ctx, martId: string) {
       loadFailed = stored.failed === true;
       // An unreadable document is not an empty one: nothing is asked, and the next subscribe after a full teardown reads again.
       ready = !loadFailed;
+      // The teardown has already run (everyone left during the read): nobody will reset the failure later, so it is reset here.
+      if (loadFailed && subscribers === 0) { started = false; loadFailed = false; }
       set({ member: { ...member, ...formats.member }, project: stored.project });
       schedule();
     });
@@ -121,7 +123,7 @@ function entryFor(ctx: Ctx, martId: string): Entry {
 }
 
 /** A mart's column formats: the member's choice, else the project's pick, else `auto`. Shared by every view of the mart. */
-export function useColumnFormats(martId: string, schema: Schema = NO_SCHEMA, martTitle = martId): { formatOf(column: string, type: string): Format; /** Whether the project (an AI pick) has a format for the column other than `auto`. */ hasProjectPick(column: string): boolean; setMember(column: string, f: Format | null): void } {
+export function useColumnFormats(martId: string, schema: Schema = NO_SCHEMA, martTitle = martId): { formatOf(column: string, type: string): Format; /** The member's own format for the column, if any (an AI pick is not one). */ memberFormat(column: string): Format | undefined; setMember(column: string, f: Format | null): void } {
   const { ctx } = useServices();
   const entry = useMemo(() => entryFor(ctx, martId), [ctx, martId]);
   const formats = useSyncExternalStore(entry.subscribe, entry.get);
@@ -131,6 +133,6 @@ export function useColumnFormats(martId: string, schema: Schema = NO_SCHEMA, mar
     return isValidFormat(f, type) ? f : AUTO;
   }, [formats]);
   const setMember = useCallback((column: string, f: Format | null) => entry.setMember(column, f), [entry]);
-  const hasProjectPick = useCallback((column: string) => { const f = formats.project[column]; return !!f && f.kind !== 'auto'; }, [formats]);
-  return { formatOf, hasProjectPick, setMember };
+  const memberFormat = useCallback((column: string) => formats.member[column], [formats]);
+  return { formatOf, memberFormat, setMember };
 }

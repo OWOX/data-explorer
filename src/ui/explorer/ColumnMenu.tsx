@@ -29,8 +29,8 @@ export type ColumnMenuEnv = {
   blockerFor: (field: string) => string | undefined;
   changeAgg: (column: string, draft: AggregationDraft) => void;
   formatOf: (column: string, type: string) => Format;
-  /** Whether the project (the AI) picked a format for the column, so `Automatic` has to be stored to beat it. */
-  hasProjectPick: (column: string) => boolean;
+  /** The member's own format for the column. An AI pick is not one, so it never lights the menu icon. */
+  memberFormat: (column: string) => Format | undefined;
   setFormat: (column: string, f: Format | null) => void;
   canHide: (field: string) => boolean;
   hide: (field: string) => void;
@@ -41,10 +41,18 @@ export type ColumnMenuEnv = {
 const NOOP = () => undefined;
 export const ColumnMenuEnvContext = createContext<ColumnMenuEnv>({
   sorts: [], setSort: NOOP, filters: {}, setFilter: NOOP, isAggregated: () => false, draftOf: () => ({ functions: [], bucket: null, timeZone: null }), blockerFor: () => undefined,
-  changeAgg: NOOP, formatOf: () => ({ kind: 'auto' }), hasProjectPick: () => false, setFormat: NOOP, canHide: () => true, hide: NOOP, typeOf: (f) => f.type,
+  changeAgg: NOOP, formatOf: () => ({ kind: 'auto' }), memberFormat: () => undefined, setFormat: NOOP, canHide: () => true, hide: NOOP, typeOf: (f) => f.type,
 });
 
 export const FORMAT_LABELS: Record<Format['kind'], string> = { auto: 'Automatic', plain: 'Plain number', percent: 'Percent', money: 'Money', date: 'Date', datetime: 'Date time', time: 'Time' };
+/** How long the pointer rests on another row before its submenu replaces the open one. */
+export const HOVER_MS = 300;
+/** One pending hover switch: a new one replaces the last, and `clear` drops it. */
+class HoverIntent {
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  after(ms: number, fn: () => void) { this.clear(); this.timer = setTimeout(fn, ms); }
+  clear() { clearTimeout(this.timer); this.timer = undefined; }
+}
 export const CURRENCIES = ['USD', 'EUR', 'GBP', 'UAH'];
 
 /** The currencies the Money submenu lists: the four fixed ones, then the current one (an AI pick or an old choice) when it is another. */
@@ -58,7 +66,7 @@ const ITEM = '[role="menuitem"], [role="menuitemradio"]';
  * One floating panel of the menu, drawn in a portal on the body and kept inside the viewport (flipped left or up when it has no room).
  * Escape, and for a submenu Left, are handled here: the deepest open panel takes the key, so Escape closes the submenu first, then the menu.
  */
-function Panel({ anchor, mode, role, label, onEscape, onLeave, onPlaced, focusSeq, className = '', children }: { anchor: HTMLElement; mode: 'below' | 'beside'; role: 'menu' | 'dialog'; label: string; onEscape: () => void; onLeave?: () => void; /** Called once the panel has its place, so a submenu can be measured from its rows. */ onPlaced?: () => void; focusSeq: number; className?: string; children: ReactNode }) {
+function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onPlaced, focusSeq, className = '', children }: { anchor: HTMLElement; mode: 'below' | 'beside'; role: 'menu' | 'dialog'; label: string; onEscape: () => void; onLeave?: () => void; /** Tab in a menu closes it (the editors keep their own Tab order). */ onTab?: () => void; /** Called once the panel has its place, so a submenu can be measured from its rows. */ onPlaced?: () => void; focusSeq: number; className?: string; children: ReactNode }) {
   const el = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<Place | null>(null);
   const place = useCallback(() => {
@@ -84,6 +92,7 @@ function Panel({ anchor, mode, role, label, onEscape, onLeave, onPlaced, focusSe
   }, [focusSeq, pos !== null]); // eslint-disable-line react-hooks/exhaustive-deps
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onEscape(); return; }
+    if (e.key === 'Tab' && role === 'menu' && onTab && (e.target as HTMLElement).closest('[data-column-menu]') === e.currentTarget) { e.preventDefault(); e.stopPropagation(); onTab(); return; }
     const item = (e.target as HTMLElement).closest<HTMLElement>(ITEM);
     // Arrow keys move through this panel's own rows; a field inside a form keeps its keys.
     if (role !== 'menu' || !item || item.closest('[role="menu"]') !== e.currentTarget) return;
@@ -97,7 +106,7 @@ function Panel({ anchor, mode, role, label, onEscape, onLeave, onPlaced, focusSe
     else if (e.key === 'ArrowLeft' && onLeave) { e.preventDefault(); e.stopPropagation(); onLeave(); }
   };
   return createPortal(
-    <div ref={el} role={role} aria-label={label} tabIndex={-1} data-column-menu="" data-side={pos?.side} onKeyDown={onKeyDown}
+    <div ref={el} role={role} aria-label={label} tabIndex={-1} data-column-menu="" data-side={pos?.side} onKeyDown={onKeyDown} onInput={() => { if (el.current) el.current.dataset.edited = ''; }} onChange={() => { if (el.current) el.current.dataset.edited = ''; }}
       style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? 'visible' : 'hidden' }}
       className={`dm-menu ${className}`}>
       {children}
@@ -108,17 +117,17 @@ function Panel({ anchor, mode, role, label, onEscape, onLeave, onPlaced, focusSe
 
 const Divider = () => <div role="separator" className="dm-menu-sep" />;
 
-function Row({ label, check, checked, sub, expanded, haspopup, disabled, rowRef, onActivate, onOpen, onHover }: {
-  label: string; check?: boolean; checked?: boolean; sub?: boolean; expanded?: boolean; haspopup?: 'menu' | 'dialog'; disabled?: boolean;
-  rowRef?: (el: HTMLElement | null) => void; onActivate: (row: HTMLElement) => void; onOpen?: (row: HTMLElement) => void; onHover?: (row: HTMLElement) => void;
+function Row({ label, check, slot, checked, sub, expanded, haspopup, disabled, onLeaveRow, rowRef, onActivate, onOpen, onHover }: {
+  label: string; check?: boolean; /** Keeps the check column's room without being a choice row. */ slot?: boolean; checked?: boolean; sub?: boolean; expanded?: boolean; haspopup?: 'menu' | 'dialog'; disabled?: boolean;
+  onLeaveRow?: () => void; rowRef?: (el: HTMLElement | null) => void; onActivate: (row: HTMLElement) => void; onOpen?: (row: HTMLElement) => void; onHover?: (row: HTMLElement) => void;
 }) {
   return (
     <button type="button" role={check ? 'menuitemradio' : 'menuitem'} aria-checked={check ? !!checked : undefined} aria-haspopup={sub ? haspopup ?? 'menu' : undefined} aria-expanded={sub ? !!expanded : undefined}
       disabled={disabled} tabIndex={-1} ref={rowRef} className="dm-menu-row"
       onClick={(e) => onActivate(e.currentTarget)}
-      onMouseEnter={(e) => onHover?.(e.currentTarget)}
+      onMouseEnter={(e) => onHover?.(e.currentTarget)} onMouseLeave={onLeaveRow}
       onKeyDown={(e) => { if (sub && e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); onOpen?.(e.currentTarget); } }}>
-      {check && <span className="dm-menu-check" aria-hidden>{checked && <Check className="size-4" />}</span>}
+      {(check || slot) && <span className="dm-menu-check" aria-hidden>{checked && <Check className="size-4" />}</span>}
       <span className="dm-menu-label">{label}</span>
       {sub && <ChevronRight aria-hidden className="dm-menu-arrow size-4" />}
     </button>
@@ -127,7 +136,7 @@ function Row({ label, check, checked, sub, expanded, haspopup, disabled, rowRef,
 
 type Sub = { key: SubKey; row: HTMLElement; seq: number };
 
-function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; output: Output; anchor: HTMLElement; initial: SubKey | null; onClose: () => void }) {
+function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; output: Output; anchor: HTMLElement; initial: SubKey | null; onClose: (refocus?: boolean) => void }) {
   const env = useContext(ColumnMenuEnvContext);
   const title = columnTitle(field);
   const type = env.typeOf(field, output);
@@ -145,24 +154,43 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
     const row = initial ? rows.current.get(initial) : undefined;
     if (initial && row) setSub({ key: initial, row, seq: 1 });
   };
-  const open = (key: SubKey, row: HTMLElement, focus: boolean) => { setMoney(null); setSub((cur) => ({ key, row, seq: focus ? (cur?.key === key ? cur.seq : 0) + 1 : cur?.key === key ? cur.seq : 0 })); };
-  const hoverOther = () => { setSub(null); setMoney(null); };
+  const open = (key: SubKey, row: HTMLElement, focus: boolean) => { intent.clear(); setMoney(null); setSub((cur) => ({ key, row, seq: focus ? (cur?.key === key ? cur.seq : 0) + 1 : cur?.key === key ? cur.seq : 0 })); };
+  // Hover intent: a submenu is replaced only after the pointer has rested on another row for HOVER_MS, and never while the open one
+  // holds a focused field or an edit. A click or a key switches at once.
+  const [intent] = useState(() => new HoverIntent());
+  useEffect(() => () => intent.clear(), [intent]);
+  const editing = () => [...document.querySelectorAll<HTMLElement>('[data-column-menu][role="dialog"]')].some((p) => 'edited' in p.dataset || (p.contains(document.activeElement) && !!document.activeElement?.matches('input, select, textarea')));
+  const later = (apply: () => void) => intent.after(HOVER_MS, () => { if (!editing()) apply(); });
+  const hoverRow = (k: SubKey, row: HTMLElement) => { if (sub?.key === k) intent.clear(); else if (!sub) open(k, row, false); else later(() => open(k, row, false)); };
+  const hoverOther = () => { if (sub) later(() => { setSub(null); setMoney(null); }); };
+  const leaveRow = () => intent.clear();
   const closeSub = () => { const row = sub?.row; setSub(null); setMoney(null); row?.focus(); };
   const current = env.formatOf(field.name, type);
-  const choose = (f: Format | null) => { env.setFormat(field.name, f); onClose(); };
+  // After Hide column the column is gone: focus goes to the next column's menu icon, or the previous one when it was the last.
+  const hide = () => {
+    const head = anchor.closest('thead');
+    const icons = head ? [...head.querySelectorAll<HTMLElement>('[data-menu-icon]')] : [];
+    const mine = anchor.closest('.dm-hdr-controls')?.querySelector('[data-menu-icon]');
+    const at = mine ? icons.indexOf(mine as HTMLElement) : -1;
+    const label = (icons[at + 1] ?? icons[at - 1])?.getAttribute('aria-label');
+    env.hide(field.name);
+    onClose(false);
+    if (label && head) setTimeout(() => [...head.querySelectorAll<HTMLElement>('[data-menu-icon]')].find((i) => i.getAttribute('aria-label') === label)?.focus(), 0);
+  };
+  const choose = (f: Format) => { env.setFormat(field.name, f); onClose(); };
   const dir = env.sorts.find((s) => s.field === field.name)?.direction ?? null;
   const rowFor = (k: SubKey, label: string, haspopup: 'menu' | 'dialog') => (
-    <Row key={k} label={label} sub haspopup={haspopup} expanded={sub?.key === k} rowRef={ref(k)} onActivate={(r) => open(k, r, true)} onOpen={(r) => open(k, r, true)} onHover={(r) => open(k, r, false)} />
+    <Row key={k} label={label} sub haspopup={haspopup} expanded={sub?.key === k} rowRef={ref(k)} onActivate={(r) => open(k, r, true)} onOpen={(r) => open(k, r, true)} onHover={(r) => hoverRow(k, r)} onLeaveRow={leaveRow} />
   );
   return (
     <>
-      <Panel anchor={anchor} mode="below" role="menu" label={`Menu of ${title}`} onEscape={() => (sub ? closeSub() : onClose())} onPlaced={placeDone} focusSeq={rootSeq} className="dm-menu-root">
+      <Panel anchor={anchor} mode="below" role="menu" label={`Menu of ${title}`} onEscape={() => (sub ? closeSub() : onClose())} onTab={() => onClose()} onPlaced={placeDone} focusSeq={rootSeq} className="dm-menu-root">
         {rowFor('filter', 'Filter', 'dialog')}
         {aggregable && rowFor('aggregate', 'Aggregate', 'dialog')}
         {formats.length > 0 && rowFor('format', 'Format', 'menu')}
         {output.sortable && rowFor('sort', 'Sort', 'menu')}
         <Divider />
-        <Row label="Hide column" disabled={!env.canHide(field.name)} onActivate={() => { env.hide(field.name); onClose(); }} onHover={hoverOther} />
+        <Row label="Hide column" disabled={!env.canHide(field.name)} onActivate={hide} onHover={hoverOther} onLeaveRow={leaveRow} />
       </Panel>
       {placed && sub?.key === 'filter' && (
         <Panel anchor={sub.row} mode="beside" role="dialog" label={`Filter of ${title}`} onEscape={closeSub} focusSeq={sub.seq} className="dm-menu-editor">
@@ -182,25 +210,25 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
         </Panel>
       )}
       {placed && sub?.key === 'sort' && (
-        <Panel anchor={sub.row} mode="beside" role="menu" label={`Sort ${title}`} onEscape={closeSub} onLeave={closeSub} focusSeq={sub.seq}>
+        <Panel anchor={sub.row} mode="beside" role="menu" label={`Sort ${title}`} onEscape={closeSub} onLeave={closeSub} onTab={() => onClose()} focusSeq={sub.seq}>
           <Row check checked={dir === 'asc'} label="Sort A → Z" onActivate={() => { env.setSort(field.name, 'asc'); onClose(); }} />
           <Row check checked={dir === 'desc'} label="Sort Z → A" onActivate={() => { env.setSort(field.name, 'desc'); onClose(); }} />
-          <Row label="Remove sort" disabled={!dir} onActivate={() => { env.setSort(field.name, null); onClose(); }} />
+          <Row slot label="Remove sort" disabled={!dir} onActivate={() => { env.setSort(field.name, null); onClose(); }} />
         </Panel>
       )}
       {placed && sub?.key === 'format' && (
-        <Panel anchor={sub.row} mode="beside" role="menu" label={`Format ${title}`} onEscape={closeSub} onLeave={closeSub} focusSeq={sub.seq}>
+        <Panel anchor={sub.row} mode="beside" role="menu" label={`Format ${title}`} onEscape={closeSub} onLeave={closeSub} onTab={() => onClose()} focusSeq={sub.seq}>
           {formats.map((kind) => kind === 'money' ? (
             <Row key={kind} check checked={current.kind === 'money'} sub expanded={!!money} label={FORMAT_LABELS.money}
               onActivate={(r) => setMoney({ row: r, seq: 1 })} onOpen={(r) => setMoney({ row: r, seq: 1 })} onHover={(r) => setMoney((c) => c ?? { row: r, seq: 0 })} />
           ) : (
             <Row key={kind} check checked={current.kind === kind} label={FORMAT_LABELS[kind]} onHover={() => setMoney(null)}
-              onActivate={() => choose(kind === 'auto' ? (env.hasProjectPick(field.name) ? { kind: 'auto' } : null) : { kind } as Format)} />
+              onActivate={() => choose({ kind } as Format)} />
           ))}
         </Panel>
       )}
       {placed && sub?.key === 'format' && money && (
-        <Panel anchor={money.row} mode="beside" role="menu" label={`Money ${title}`} onEscape={() => { const r = money.row; setMoney(null); r.focus(); }} onLeave={() => { const r = money.row; setMoney(null); r.focus(); }} focusSeq={money.seq}>
+        <Panel anchor={money.row} mode="beside" role="menu" label={`Money ${title}`} onTab={() => onClose()} onEscape={() => { const r = money.row; setMoney(null); r.focus(); }} onLeave={() => { const r = money.row; setMoney(null); r.focus(); }} focusSeq={money.seq}>
           {currenciesFor(current).map((c) => <Row key={c} check checked={current.kind === 'money' && current.currency === c} label={c} onActivate={() => choose({ kind: 'money', currency: c })} />)}
         </Panel>
       )}
@@ -221,7 +249,9 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
   const at = env.sorts.findIndex((s) => s.field === field.name);
   const direction = at < 0 ? null : env.sorts[at]!.direction;
   const type = env.typeOf(field, output);
-  const formatOn = keepsUnit(output.fn) && formatsFor(type).length > 0 && env.formatOf(field.name, type).kind !== 'auto';
+  // Active means the member set something: an AI project pick does not light the icon.
+  const own = env.memberFormat(field.name);
+  const formatOn = keepsUnit(output.fn) && formatsFor(type).length > 0 && !!own && own.kind !== 'auto' && env.formatOf(field.name, type).kind !== 'auto';
   const active = !!filter || aggOn || (output.sortable && !!direction) || formatOn;
   const close = useCallback((refocus = true) => { setMenu(null); if (refocus) icon.current?.focus(); }, []);
   const toggle = (anchor: HTMLElement, sub: SubKey | null) => setMenu((cur) => (cur && cur.sub === sub ? null : { anchor, sub }));
@@ -258,7 +288,7 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
         </button>
       )}
       <button ref={icon} type="button" aria-label={`Column menu ${title}`} aria-haspopup="menu" aria-expanded={!!menu} data-menu-icon
-        className={active ? 'dm-ctl dm-ctl-on' : 'dm-ctl'} onClick={(e) => toggle(e.currentTarget, null)}>
+        className={active ? 'dm-ctl dm-ctl-lg dm-ctl-on' : 'dm-ctl dm-ctl-lg'} onClick={(e) => toggle(e.currentTarget, null)}>
         <FilterLinesIcon className="dm-icon" />
       </button>
       {menu && <MenuPopup key={menu.sub ?? 'root'} field={field} output={output} anchor={menu.anchor} initial={menu.sub} onClose={close} />}
