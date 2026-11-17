@@ -94,5 +94,21 @@ export function formatValue(v: unknown): string {
   return String(v);
 }
 
-/** The text a grid cell shows for a value of a warehouse type, whole (never clipped): the viewer's date format for a temporal value, else the value as stored. The cell and the copy to the clipboard both use it. */
-export const displayText = (v: unknown, type?: string): string => (type ? formatTemporal(v, type) : null) ?? formatValue(v);
+const NUMERIC_TYPES = new Set(['INTEGER', 'INT', 'INT64', 'BIGINT', 'SMALLINT', 'TINYINT', 'FLOAT', 'FLOAT64', 'REAL', 'DOUBLE', 'DOUBLE PRECISION', 'NUMERIC', 'BIGNUMERIC', 'DECIMAL']);
+export const isNumericType = (type?: string) => !!type && NUMERIC_TYPES.has(type.trim().toUpperCase());
+
+/**
+ * A number with thousands separators, as Google Sheets shows it: 1223 is "1,223", -1234567.5 is "-1,234,567.5". Works on the
+ * value's own digits (a NUMERIC arrives as a string and may not fit a double), so nothing is rounded. Null when it is not a
+ * plain number (an exponent, NaN, text): the value is then shown as it is.
+ */
+export function formatNumber(v: unknown): string | null {
+  const text = typeof v === 'number' ? (Number.isFinite(v) ? String(v) : null) : typeof v === 'string' ? v.trim() : null;
+  const m = text ? /^([+-]?)(\d+)(\.\d+)?$/.exec(text) : null;
+  if (!m) return null;
+  return `${m[1] === '-' ? '-' : ''}${m[2]!.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}${m[3] ?? ''}`;
+}
+
+/** The text a grid cell shows for a value of a warehouse type, whole (never clipped): the viewer's date format for a temporal value, a number with thousands separators, else the value as stored. The cell and the copy to the clipboard both use it. */
+export const displayText = (v: unknown, type?: string): string =>
+  (type ? formatTemporal(v, type) ?? (isNumericType(type) ? formatNumber(v) : null) : null) ?? formatValue(v);

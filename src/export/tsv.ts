@@ -7,7 +7,8 @@ import { displayText } from '../ui/format';
 // Tabs and line breaks become spaces: Sheets and Excel do not reliably keep a quoted line break from plain text.
 const clean = (s: string) => s.replace(/[\t\r\n]+/g, ' ');
 
-const PLAIN_NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
+// A grouped number ("-1,223.5") is a plain number too: spreadsheets read it as one.
+const PLAIN_NUMBER = /^[+-]?((\d{1,3}(,\d{3})+|\d+)(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
 // Text a spreadsheet would run as a formula, or read a leading ' of as its text prefix, gets a leading apostrophe.
 // Plain numbers stay as they are. Full-width ＝＋－＠ are not covered on purpose: neither app evaluates them on paste.
 const guard = (t: string) => (/^[=+\-@']/.test(t) && !PLAIN_NUMBER.test(t) ? `'${t}` : t);

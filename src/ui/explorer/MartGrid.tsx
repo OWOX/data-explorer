@@ -4,6 +4,7 @@ import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pend
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PAGE_SIZE } from '../../config';
 import { columnLetter } from './columnLetters';
+import { isNumericType } from '../format';
 import { withJoined, type JoinedSource } from '../../api/blendable';
 import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, sanitizeAggregation, ungroupableColumn, type AggFn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
 import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
@@ -412,6 +413,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // row's first column) and gets the 2px frame; the fill handle sits at the block's far corner.
   const anchor = sel && sel.kind !== 'cell' ? (sel.kind === 'col' ? { row: 0, col: sel.from } : { row: sel.from, col: 0 }) : null;
   const corner = span ? (span.kind === 'col' ? { row: rowCount - 1, col: span.hi } : { row: span.hi, col: outputs.length - 1 }) : null;
+  // Numbers sit on the right of their cells, as in Sheets (a bucketed date or a Combined list is not a number).
+  const numericOutput = (key: string) => { const o = outputByKey.get(key); const f = o && byName.get(o.column); return !!o && !!f && !o.bucket && isNumericType(outputType(f, o.fn)); };
   const inBlock = (ri: number, ci: number) => (span?.kind === 'col' ? inCols(ci) : span?.kind === 'row' ? inRows(ri) : false);
   // Which sides of a cell lie on the block's outer edge, where the 2px frame is drawn.
   const edges = (ri: number, ci: number) => {
@@ -502,7 +505,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
                   onClick={pks.length && !grouped ? () => dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }) : undefined}
                   className={`${pks.length && !grouped ? 'cursor-pointer' : ''}`}>
                   <th aria-hidden data-chrome data-selected={rowMark(ri)} onClick={(e) => { pickHeader('row', ri, e.shiftKey); if (e.shiftKey) e.stopPropagation(); }} className="dm-chrome">{ri + 1}</th>
-                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={cellSel?.row === ri && cellSel.col === ci ? '' : undefined} data-range={inBlock(ri, ci) ? '' : undefined} data-active={anchor?.row === ri && anchor.col === ci ? '' : undefined} data-handle={corner?.row === ri && corner.col === ci ? '' : undefined} data-edge={edges(ri, ci)} onClick={() => setSelected({ kind: 'cell', row: ri, col: ci })} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
+                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={cellSel?.row === ri && cellSel.col === ci ? '' : undefined} data-range={inBlock(ri, ci) ? '' : undefined} data-active={anchor?.row === ri && anchor.col === ci ? '' : undefined} data-handle={corner?.row === ri && corner.col === ci ? '' : undefined} data-edge={edges(ri, ci)} onClick={() => setSelected({ kind: 'cell', row: ri, col: ci })} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap${numericOutput(c.column.id) ? ' text-right' : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
                   <td aria-hidden className="p-0" />
                 </tr>
               ))}

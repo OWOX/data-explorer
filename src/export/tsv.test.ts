@@ -77,6 +77,12 @@ test('plain numbers keep their sign and are not prefixed', () => {
   expect(cellText(-5)).toBe('-5');
 });
 
+test('a number copies as the grid shows it, grouped, and a grouped negative is not taken for a formula', () => {
+  expect(cellText(-1223.5, 'FLOAT64')).toBe('-1,223.5');
+  expect(cellText(1234567, 'INT64')).toBe('1,234,567');
+  expect(cellText('-1,2', 'STRING')).toBe("'-1,2");
+});
+
 test('a header is guarded too', () => {
   expect(buildTsv([f('x', { alias: '=x' })], [{ x: '=y' }])).toBe("'=x\n'=y");
 });
