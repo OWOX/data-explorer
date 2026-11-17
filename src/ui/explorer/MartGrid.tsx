@@ -193,10 +193,6 @@ const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Obje
 
 function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, initialAgg, onChange, onRows, paused }: { paused: boolean; martId: string; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: boolean) => void }) {
   const { columnStore, blendable } = useServices();
-  const { formatOf } = useColumnFormats(martId);
-  // The cells read the latest formats through a ref, so a format change repaints cells without rebuilding the column defs (and remounting the headers).
-  const formatOfRef = useRef(formatOf);
-  formatOfRef.current = formatOf;
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
   const [sources, setSources] = useState<JoinedSource[]>(initialSources ?? []);
@@ -207,6 +203,10 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     return () => { live = false; };
   }, [blendable, martId, initialSources]);
   const schema = useMemo(() => withJoined(native, sources), [native, sources]);
+  const { formatOf } = useColumnFormats(martId, schema, model.marts.get(martId)?.title);
+  // The cells read the latest formats through a ref, so a format change repaints cells without rebuilding the column defs (and remounting the headers).
+  const formatOfRef = useRef(formatOf);
+  formatOfRef.current = formatOf;
   const [{ modelVersion }, dispatch] = useStore();
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
   const [visible, setVisible] = useState(initialColumns);

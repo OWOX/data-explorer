@@ -14,8 +14,8 @@ export interface FormatStore {
   load(martId: string): Promise<Formats>;
   /** Saves the member's format for a column; null removes the choice. Never throws. */
   setMember(martId: string, column: string, f: Format | null): Promise<void>;
-  /** Merges project picks into the mart's document. Never throws. */
-  setProject(martId: string, picks: FormatDoc): Promise<void>;
+  /** Merges project picks into the mart's document; with `keep`, a column already picked keeps its pick. Never throws. */
+  setProject(martId: string, picks: FormatDoc, opts?: { keep?: boolean }): Promise<void>;
 }
 
 export function formatStore(ctx: Ctx): FormatStore {
@@ -48,6 +48,6 @@ export function formatStore(ctx: Ctx): FormatStore {
       if (f) next[column] = f; else delete next[column];
       return next;
     }),
-    setProject: (martId, picks) => write(project, `p/${martId}`, martId, (doc) => ({ ...doc, ...clean(picks) })),
+    setProject: (martId, picks, opts) => write(project, `p/${martId}`, martId, (doc) => (opts?.keep ? { ...clean(picks), ...doc } : { ...doc, ...clean(picks) })),
   };
 }
