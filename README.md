@@ -4,7 +4,7 @@
 
 A plugin for [OWOX Data Marts](https://docs.owox.com/). One page, four bands: **Data Sources, Data Marts, Data, Row**.
 
-![Data Explorer: Data Sources, Data, the Orders rows with joined Customers, Products and Stores columns, and one order open](docs/data-explorer.svg)
+![Data Explorer: Data Sources, Data Marts, the Orders data with joined Customers, Products and Stores columns, and one order open](docs/data-explorer.svg)
 
 ## The challenge
 
