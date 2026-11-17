@@ -146,8 +146,8 @@ describe('the pipeline', () => {
     t.view();
     await ready();
     await search('paid orders last month');
-    await waitFor(() => expect(within(data()).getByLabelText('Filter created_at')).toHaveClass('text-primary'));
-    expect(within(data()).getByLabelText('Filter status')).toHaveClass('text-primary');
+    await waitFor(() => expect(within(data()).getByLabelText('Filter created_at')).toHaveClass('dm-ctl-on'));
+    expect(within(data()).getByLabelText('Filter status')).toHaveClass('dm-ctl-on');
     // rows arrive through the normal grid load, with the filters on the query
     await waitFor(() => expect(rows.some((r) => JSON.stringify(r).includes('relative_date') && JSON.stringify(r).includes('"paid"'))).toBe(true));
   });
@@ -160,7 +160,7 @@ describe('the pipeline', () => {
     t.view();
     await ready();
     await search('orders please');
-    await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('text-primary'));
+    await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('dm-ctl-on'));
     expect(within(data()).queryByLabelText('Filter ghost')).toBeNull();
   });
 
@@ -180,9 +180,9 @@ describe('the pipeline', () => {
     t.view();
     await ready();
     await search('paid orders last month');
-    await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('text-primary'));
+    await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('dm-ctl-on'));
     await undo();
-    await waitFor(() => expect(within(data()).getByLabelText('Filter status')).not.toHaveClass('text-primary'));
+    await waitFor(() => expect(within(data()).getByLabelText('Filter status')).not.toHaveClass('dm-ctl-on'));
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
   });
 

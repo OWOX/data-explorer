@@ -126,7 +126,7 @@ test('the column filter control shows only a mark, never the filter text; the de
   rerender(<TooltipProvider><FilterPopover field={ts} value={{ field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 30 } }} onChange={vi.fn()} /></TooltipProvider>);
   const button = screen.getByRole('button', { name: 'Filter Amount' });
   expect(button).toHaveTextContent('');
-  expect(button).toHaveClass('text-primary');
+  expect(button).toHaveClass('dm-ctl-on');
   // the filled funnel, not the outline one
   expect(button.querySelector('svg')!.innerHTML).not.toBe(outline);
   expect(button.querySelector('path')!.getAttribute('d')).toMatch(/^M4\.25 5\.61/);

@@ -82,8 +82,8 @@ test('smart search with AI: finds a mart by meaning, applies the filters it asks
   await expect(band(page, 'data').getByRole('cell', { name: /@example\.com$/ }).first()).toBeVisible();
   await search(page, 'paid orders last month');
   await expect(heading(page)).toHaveText(['Orders']);
-  await expect(band(page, 'data').getByLabel('Filter status')).toHaveClass(/text-primary/);
-  await expect(band(page, 'data').getByLabel('Filter created_at')).toHaveClass(/text-primary/);
+  await expect(band(page, 'data').getByLabel('Filter status')).toHaveClass(/dm-ctl-on/);
+  await expect(band(page, 'data').getByLabel('Filter created_at')).toHaveClass(/dm-ctl-on/);
   await expect(band(page, 'data').getByRole('cell', { name: 'paid', exact: true }).first()).toBeVisible();
   await expect(band(page, 'data').getByRole('cell', { name: 'new', exact: true })).toHaveCount(0);
   await expect(band(page, 'marts').getByRole('note', { name: 'AI search hint' })).toHaveCount(0);
@@ -254,7 +254,7 @@ test('sort a column descending, then add a second sort', async ({ page }) => {
   await expect(firstCell()).toHaveText('450');
   await data.getByRole('button', { name: /^Sort by status,/ }).click();
   await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
-  await expect(data.getByRole('columnheader', { name: /status/ }).locator('.dm-sort-mark')).toHaveText('2');
+  await expect(data.getByRole('columnheader', { name: /status/ }).locator('[data-sort-mark]')).toHaveText('2');
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(firstCell()).toHaveText('1');
 });
@@ -505,7 +505,7 @@ test('selecting a mart adds a text field and a metric; the filter mark carries n
   await page.getByLabel('Value').fill('3');
   await page.getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByLabel('Filter id')).toHaveText('');
-  await expect(data.getByLabel('Filter id')).toHaveClass(/text-primary/);
+  await expect(data.getByLabel('Filter id')).toHaveClass(/dm-ctl-on/);
 });
 
 test('the Data band shows the marts connected to a joined mart', async ({ page }) => {
@@ -680,4 +680,22 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
   await expect(data.locator('tbody th[data-selected]')).toHaveText('3');
   await page.keyboard.press('Escape');
   await expect(data.locator('td[data-selected]')).toHaveCount(0);
+  // Sheets' look: the selected header is #d3e3fd with #041e49 bold text, and the cell has a fill handle
+  await second.click();
+  const lit = data.locator('thead .dm-letter[data-selected]');
+  await expect(lit).toHaveCSS('background-color', 'rgb(211, 227, 253)');
+  await expect(lit).toHaveCSS('color', 'rgb(4, 30, 73)');
+  await expect(lit).toHaveCSS('font-weight', '700');
+  await expect(data.locator('td[data-selected]')).toHaveCSS('outline-color', 'rgb(26, 115, 232)');
+  const handle = await data.locator('td[data-selected]').evaluate((e) => { const c = getComputedStyle(e, '::after'); return [c.content, c.width, c.height, c.backgroundColor]; });
+  expect(handle).toEqual(['""', '7px', '7px', 'rgb(26, 115, 232)']);
+  // a click on a column letter selects the whole column: tinted cells, the letter in the strong blue
+  await data.locator('thead .dm-letter[data-chrome]').nth(1).click();
+  const colCells = data.locator('tbody td[data-range]');
+  expect(await colCells.count()).toBe(await data.locator('tbody th[data-chrome]').count());
+  await expect(colCells.first()).toHaveCSS('background-color', 'rgb(232, 240, 254)');
+  await expect(data.locator('thead .dm-letter[data-selected="full"]')).toHaveCSS('background-color', 'rgb(11, 87, 208)');
+  await expect(data.locator('thead .dm-letter[data-selected="full"]')).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await page.keyboard.press('Escape');
+  await expect(colCells).toHaveCount(0);
 });
