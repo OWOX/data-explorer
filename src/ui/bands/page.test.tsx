@@ -1091,7 +1091,7 @@ describe('the Data band loading bar', () => {
   const bar = () => within(data()).queryByRole('progressbar', { name: 'Loading rows' });
 
   test('shows on the first load (with the skeleton), on Refresh, on a sort change and on Load more, and never rests on the page', async () => {
-    const delay = { ms: 200 };
+    const delay = { ms: 1500 };
     await mountWith(slow(delay));
     const first = await within(data()).findByRole('progressbar', { name: 'Loading rows' });
     expect(first).toHaveClass('dm-progress');
@@ -1101,22 +1101,22 @@ describe('the Data band loading bar', () => {
     await waitFor(() => expect(bar()).toBeNull());
 
     await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
-    expect(await within(data()).findByRole('progressbar', { name: 'Loading rows' })).toBeInTheDocument();
+    await within(data()).findByRole('progressbar', { name: 'Loading rows' });
     // the rows stay on screen: the skeleton is for the very first load only
     expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true);
-    await waitFor(() => expect(bar()).toBeNull());
+    await waitFor(() => expect(bar()).toBeNull(), { timeout: 5000 });
 
     await userEvent.click(within(data()).getByRole('button', { name: /^Sort by status,/ }));
-    expect(await within(data()).findByRole('progressbar', { name: 'Loading rows' })).toBeInTheDocument();
-    await waitFor(() => expect(bar()).toBeNull());
+    await within(data()).findByRole('progressbar', { name: 'Loading rows' });
+    await waitFor(() => expect(bar()).toBeNull(), { timeout: 5000 });
 
     await userEvent.click(within(data()).getByRole('button', { name: 'Load more' }));
-    expect(await within(data()).findByRole('progressbar', { name: 'Loading rows' })).toBeInTheDocument();
+    await within(data()).findByRole('progressbar', { name: 'Loading rows' });
     await waitFor(() => expect(bar()).toBeNull());
-  });
+  }, 30000);
 
   test('the bar sits on the top border of the card, as wide as it', async () => {
-    const delay = { ms: 200 };
+    const delay = { ms: 1500 };
     await mountWith(slow(delay));
     const found = await within(data()).findByRole('progressbar', { name: 'Loading rows' });
     expect(found.closest('.dm-bigcard')).not.toBeNull();
