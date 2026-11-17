@@ -113,7 +113,7 @@ test('the page header is the title with Undo and Redo and no Refresh; the filter
   await expect(header.getByRole('button', { name: 'Undo' })).toBeDisabled();
   await expect(header.getByRole('button', { name: 'Redo' })).toBeDisabled();
   await expect(header.getByRole('button', { name: /Refresh/ })).toHaveCount(0);
-  await expect(band(page, 'marts').locator('.dm-band-tools label.dm-search')).toBeVisible();
+  await expect(band(page, 'marts').locator('.dm-band-tools button.dm-search-btn')).toBeVisible();
   // Data Sources starts folded
   await expect(band(page, 'sources')).toHaveClass(/folded/);
 });
