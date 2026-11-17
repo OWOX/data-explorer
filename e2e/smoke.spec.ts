@@ -619,3 +619,25 @@ test('a Sum on Amount groups the rows by the other columns; the badge counts gro
   await page.getByRole('dialog').getByRole('button', { name: 'Clear' }).click();
   await expect(data.getByText(/200\+ records/)).toBeVisible();
 });
+
+test('folding a band does not move its header: the title sits at the same x/y folded and open', async ({ page }) => {
+  await ordersGrid(page);
+  for (const id of ['sources', 'marts', 'data', 'row'] as const) {
+    const b = band(page, id);
+    const title = b.locator('.dm-band-title');
+    const fold = b.locator('.dm-band-fold');
+    const state = async () => (await fold.getAttribute('aria-expanded')) === 'true';
+    // Relative to the band: bands above it changing height moves the whole band, not its header.
+    const box = async () => { const t = (await title.boundingBox())!; const o = (await b.boundingBox())!; return { x: t.x - o.x, y: t.y - o.y }; };
+    const wasOpen = await state();
+    const before = await box();
+    await fold.click();
+    await expect.poll(state).toBe(!wasOpen);
+    await page.waitForTimeout(350);
+    const after = await box();
+    expect(Math.abs(after.x - before.x), `${id} x`).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(after.y - before.y), `${id} y`).toBeLessThanOrEqual(0.5);
+    await fold.click();
+    await page.waitForTimeout(350);
+  }
+});

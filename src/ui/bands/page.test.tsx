@@ -519,7 +519,7 @@ describe('search, contexts and refresh', () => {
     const tools = marts().querySelector('.dm-band-tools')!;
     const kinds = [...tools.children].map((c) => (c.matches('button.dm-search-btn') ? 'search' : c.querySelector('summary')?.firstChild?.textContent));
     expect(kinds).toEqual(['search', 'Storage']);
-    const head = marts().querySelector('.dm-band-head')!;
+    const head = marts().querySelector('.dm-band-titlegroup')!;
     const order = [...head.children].map((c) => c.className.split(' ')[0]);
     expect(order.indexOf('dm-context-filter')).toBe(order.indexOf('dm-hint') + 1);
   });
@@ -610,7 +610,7 @@ describe('folding and lines', () => {
   test('a band folds from its chevron', async () => {
     await ordersGrid();
     await userEvent.click(within(data()).getByRole('button', { name: /^Hide / }));
-    expect(within(data()).queryByRole('table')).toBeNull();
+    await waitFor(() => expect(within(data()).queryByRole('table')).toBeNull());
   });
 
   test('folding the Data band and unfolding it does not ask for the rows again', async () => {
@@ -619,7 +619,7 @@ describe('folding and lines', () => {
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     const before = calls.length;
     await userEvent.click(within(data()).getByRole('button', { name: /^Hide / }));
-    expect(within(data()).queryByRole('table')).toBeNull();
+    await waitFor(() => expect(within(data()).queryByRole('table')).toBeNull());
     await userEvent.click(within(data()).getByRole('button', { name: /^Show / }));
     await within(data()).findByRole('table');
     await settle();
@@ -687,7 +687,8 @@ describe('folding and lines', () => {
       fireEvent.animationEnd(canvas);
       await waitFor(() => expect(drawn()).toBeGreaterThan(0));
       await userEvent.click(within(marts()).getByRole('button', { name: /^Hide / }));
-      expect(martCard('Customers')).not.toBeVisible();
+      // The body collapses over 200ms, and leaves the page when that is done.
+      await waitFor(() => expect(martCard('Customers')).not.toBeVisible());
       fireEvent.animationEnd(canvas);
       await waitFor(() => expect(drawn()).toBe(0));
     } finally { vi.restoreAllMocks(); }
@@ -807,7 +808,7 @@ describe('column headers and band toolbars', () => {
     const grid = await ordersGrid();
     expect(grid.querySelector('.dm-bigcard')).toContainElement(within(grid).getByRole('table'));
     await userEvent.click(within(head(grid)).getByRole('button', { name: 'Hide Data' }));
-    expect(within(grid).queryByRole('button', { name: 'Reset' })).toBeNull();
+    await waitFor(() => expect(within(grid).queryByRole('button', { name: 'Reset' })).toBeNull());
   });
 
   test('unfolding the band brings back exactly one set of controls', async () => {
