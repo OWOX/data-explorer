@@ -3,7 +3,7 @@ import { Table2 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import type { Model } from '../../model/types';
 import { useStore, type GridState } from '../../state/store';
-import { recordsLabel } from '../format';
+import { groupsLabel, recordsLabel } from '../format';
 import { MartGrid } from '../explorer/MartGrid';
 import { Band } from './Band';
 import { PickedIcon } from './picked';
@@ -20,12 +20,12 @@ export function DataBand({ model, joined, folded, onFold, loading = null }: { mo
   if (!held && shownId !== martId) setShownId(martId);
   const gridId = held ? shownId : martId;
   const gridMart = gridId ? model.marts.get(gridId) : undefined;
-  const [rows, setRows] = useState<{ id: string; label: string } | null>(null);
-  const showRows = useCallback((label: string | null) => { if (gridId) setRows(label === null ? null : { id: gridId, label }); }, [gridId]);
+  const [rows, setRows] = useState<{ id: string; label: string; grouped: boolean } | null>(null);
+  const showRows = useCallback((label: string | null, grouped = false) => { if (gridId) setRows(label === null ? null : { id: gridId, label, grouped }); }, [gridId]);
   const save = useCallback((grid: GridState) => { if (gridId) dispatch({ type: 'saveGrid', martId: gridId, grid }); }, [dispatch, gridId]);
 
   return (
-    <Band id="band-data" icon={<PickedIcon icon={mart?.icon} fallback={Table2} size={18} />} title={mart ? [mart.title, ...joined.map((id) => model.marts.get(id)?.title ?? id)].join(' + ') : 'Rows'} total={mart && rows?.id === mart.id ? recordsLabel(rows.label) : undefined} hint="The rows of the selected data mart. Click a row to open it below." folded={folded} onFold={onFold} grid={false} loading={loading}>
+    <Band id="band-data" icon={<PickedIcon icon={mart?.icon} fallback={Table2} size={18} />} title={mart ? [mart.title, ...joined.map((id) => model.marts.get(id)?.title ?? id)].join(' + ') : 'Rows'} total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint="The rows of the selected data mart. Click a row to open it below." folded={folded} onFold={onFold} grid={false} loading={loading}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (

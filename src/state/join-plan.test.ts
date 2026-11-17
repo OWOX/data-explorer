@@ -226,3 +226,11 @@ describe('what a mart showed when it left the grid comes back', () => {
     expect(plan.remember.some((r) => r.martId === 'customers')).toBe(false);
   });
 });
+
+test('taking a joined mart out drops its aggregation rules with its columns', () => {
+  const grid = g(['id', 'customers__city', 'customers__id'], { aggregations: [{ column: 'customers__id', function: 'COUNT' }, { column: 'id', function: 'COUNT' }], dateTrunc: [] });
+  const out = withoutMart(grid, ordersSources, 'customers', ['id']).grid;
+  expect(out.columns).toEqual(['id']);
+  expect(out.aggregations).toEqual([{ column: 'id', function: 'COUNT' }]);
+  expect(out.dateTrunc).toBeUndefined();
+});

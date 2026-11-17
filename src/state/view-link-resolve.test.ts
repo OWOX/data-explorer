@@ -13,16 +13,16 @@ const model: Model = {
   storages: [{ id: 's1', title: 'S1', type: 'BQ' }, { id: 's2', title: 'S2', type: 'BQ' }],
   failedStorages: [],
 };
-const field = (name: string) => ({ name, alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false }) as Schema[number];
+const field = (name: string) => ({ name, alias: null, type: name === 'total' ? 'INT64' : 'STRING', category: name === 'total' ? 'number' : 'string', description: null, isPrimaryKey: false }) as Schema[number];
 const schema: Schema = ['id', 'total', 'customer__name'].map(field);
 const folded = { sources: false, marts: false, data: false, row: false };
 const view = (patch: Partial<DecodedView> = {}): DecodedView => ({
-  sourceKey: 'src1', martId: 'm1', record: { id: 1 }, search: 'q', contextIds: ['c1'], storageIds: ['s1'], folded, dropped: 0,
+  sourceKey: 'src1', martId: 'm1', record: { id: 1 }, search: 'q', contextIds: ['c1'], storageIds: ['s1'], folded, dropped: 0, droppedAggregations: 0,
   grid: { columns: ['id', 'total'], filters: { id: { field: 'id', op: 'eq', value: 1 } }, sorts: [{ field: 'id', direction: 'asc' }], limit: 400 },
   ...patch,
 });
 const read = async () => schema;
-const none: Skipped = { mart: false, source: false, columns: 0, filters: 0, sorts: 0, contexts: 0, storages: 0 };
+const none: Skipped = { mart: false, source: false, columns: 0, filters: 0, sorts: 0, aggregations: 0, contexts: 0, storages: 0 };
 
 describe('resolveView', () => {
   it('keeps a fully valid view as is', async () => {
@@ -85,6 +85,43 @@ describe('resolveView', () => {
     const { apply, skipped } = await resolveView(view({ grid }), model, read);
     expect(apply.grid).toEqual({ columns: ['id', 'customer__name'], filters: { id: grid.filters.id }, sorts: [grid.sorts[0]], limit: 200 });
     expect(skipped).toMatchObject({ columns: 1, filters: 1, sorts: 1 });
+  });
+
+  it('drops rules on columns the schema lacks, counts them, and keeps the rest', async () => {
+    const grid = {
+      columns: ['id', 'total', 'gone'], filters: {}, sorts: null, limit: 200,
+      aggregations: [{ column: 'total', function: 'SUM' as const }, { column: 'gone', function: 'AVG' as const }],
+      dateTrunc: [{ column: 'gone2', unit: 'DAY' as const }],
+    };
+    const { apply, skipped } = await resolveView(view({ grid }), model, read);
+    expect(apply.grid).toEqual({ columns: ['id', 'total'], filters: {}, sorts: null, limit: 200, aggregations: [{ column: 'total', function: 'SUM' }] });
+    expect(skipped).toMatchObject({ columns: 1, aggregations: 2 });
+  });
+
+  it('a rule on a column that was never shown is dropped too', async () => {
+    const grid = { columns: ['id'], filters: {}, sorts: null, limit: 200, aggregations: [{ column: 'total', function: 'SUM' as const }] };
+    const { apply, skipped } = await resolveView(view({ grid }), model, read);
+    expect(apply.grid!.aggregations).toBeUndefined();
+    expect(skipped.aggregations).toBe(1);
+  });
+
+  it('rules the field cannot take are dropped and counted: a function it does not allow, a calculated field, a bucket on a text field, a bucket next to a function', async () => {
+    const fieldOf = (name: string, patch: Partial<Schema[number]> = {}) => ({ ...field(name), ...patch }) as Schema[number];
+    const typed: Schema = [fieldOf('id'), fieldOf('amount', { type: 'INT64', category: 'number' }), fieldOf('margin', { type: 'INT64', category: 'number', isCalculated: true }), fieldOf('tags', { type: 'STRING', category: 'other' }), fieldOf('day', { type: 'DATE', category: 'date' })];
+    const grid = {
+      columns: ['id', 'amount', 'margin', 'tags', 'day'], filters: {}, sorts: null, limit: 200,
+      aggregations: [{ column: 'amount', function: 'SUM' as const }, { column: 'amount', function: 'STRING_AGG' as const }, { column: 'margin', function: 'SUM' as const }, { column: 'tags', function: 'COUNT' as const }],
+      dateTrunc: [{ column: 'id', unit: 'DAY' as const }, { column: 'amount', unit: 'DAY' as const }, { column: 'day', unit: 'MONTH' as const, timeZone: 'UTC' }],
+    };
+    const { apply, skipped } = await resolveView(view({ grid }), model, async () => typed);
+    expect(apply.grid!.aggregations).toEqual([{ column: 'amount', function: 'SUM' }]);
+    expect(apply.grid!.dateTrunc).toEqual([{ column: 'day', unit: 'MONTH' }]);
+    expect(skipped.aggregations).toBe(3 + 2);
+  });
+
+  it('the codec dropped functions and buckets count under aggregations, not columns', async () => {
+    const { skipped } = await resolveView(view({ droppedAggregations: 4 }), model, read);
+    expect(skipped).toMatchObject({ columns: 0, aggregations: 4 });
   });
 
   it('counts the codec dropped entries under columns', async () => {
@@ -150,8 +187,8 @@ describe('skippedMessage', () => {
       .toBe("Some parts of this link aren't available to you: 1 column, 1 filter, 1 sort, 1 context, 1 storage.");
   });
   it('uses plural and keeps the order', () => {
-    expect(skippedMessage({ mart: true, source: true, columns: 2, filters: 3, sorts: 4, contexts: 5, storages: 6 }))
-      .toBe("Some parts of this link aren't available to you: the data mart, the source, 2 columns, 3 filters, 4 sorts, 5 contexts, 6 storages.");
+    expect(skippedMessage({ mart: true, source: true, columns: 2, filters: 3, sorts: 4, aggregations: 1, contexts: 5, storages: 6 }))
+      .toBe("Some parts of this link aren't available to you: the data mart, the source, 2 columns, 3 filters, 4 sorts, 1 aggregation, 5 contexts, 6 storages.");
   });
   it('lists only what was skipped', () => {
     expect(skippedMessage({ ...none, source: true, sorts: 2 })).toBe("Some parts of this link aren't available to you: the source, 2 sorts.");

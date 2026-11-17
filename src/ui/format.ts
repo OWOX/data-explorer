@@ -27,6 +27,9 @@ export const count = (n: number, noun: string): string => `${num(n)} ${noun}${n 
 /** "11.1K records", "1 record": the badge text for a row count already shortened by the caller. */
 export const recordsLabel = (amount: string): string => `${amount} ${amount === '1' ? 'record' : 'records'}`;
 
+/** "3 groups", "1 group": the badge text of a grouped grid, whose rows are groups. */
+export const groupsLabel = (amount: string): string => `${amount} ${amount === '1' ? 'group' : 'groups'}`;
+
 const DATE_ONLY = new Set(['DATE']);
 // Wall-clock types carry no zone, so there is nothing to convert from.
 const WALL_CLOCK = new Set(['DATETIME', 'TIMESTAMP_NTZ']);

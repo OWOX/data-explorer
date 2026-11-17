@@ -62,3 +62,13 @@ test('a REPEATED field is category other, so it only offers blank filters', asyn
   const schema = await createSchemaLoader(stubCtx({ getJson })).get('a');
   expect(schema.map((f) => [f.name, f.category])).toEqual([['tags', 'other'], ['name', 'string']]);
 });
+
+test('get() carries a field\'s allowed aggregations, only the functions this build knows', async () => {
+  const getJson = vi.fn(async () => ({ id: 'a', schema: { fields: [
+    { name: 'amount', type: 'NUMERIC', allowedAggregations: ['P50', 'SUM', 'FUTURE'] },
+    { name: 'plain', type: 'NUMERIC' },
+  ] } }));
+  const s = await createSchemaLoader(stubCtx({ getJson })).get('a');
+  expect(s[0]!.allowedAggregations).toEqual(['SUM', 'P50']);
+  expect('allowedAggregations' in s[1]!).toBe(false);
+});

@@ -1,3 +1,4 @@
+import type { AggregationRule, DateTruncRule } from '../model/aggregation';
 import { createContext, useContext, useMemo, useReducer, type Dispatch, type ReactNode } from 'react';
 import { createBlendableLoader, type BlendableLoader } from '../api/blendable';
 import { createExporter, type Exporter } from '../api/exports';
@@ -26,7 +27,7 @@ export type Selection = {
 export type Entry = Selection & { grids?: Record<string, GridState | null> };
 
 /** What the Data band's grid keeps per mart for the session. */
-export type GridState = { columns: string[]; filters: Record<string, ColumnFilter>; /** null: the member set none, so the grid opens in the default order (newest date first); a list, even an empty one, is their own. */ sorts: SortKey[] | null; limit: number };
+export type GridState = { columns: string[]; filters: Record<string, ColumnFilter>; /** null: the member set none, so the grid opens in the default order (newest date first); a list, even an empty one, is their own. */ sorts: SortKey[] | null; limit: number; /** Functions per column, in the order chosen; any of these or a bucket groups the rows. */ aggregations?: AggregationRule[]; /** One date bucket per date column. */ dateTrunc?: DateTruncRule[] };
 
 export type State = {
   selection: Selection;
@@ -113,7 +114,7 @@ export function reducer(state: State, a: Action): State {
       const next = move(state, { sourceKey, martId: target.martId, record: null, filters: target.filters });
       const saved = state.grids[target.martId];
       const filters = Object.fromEntries(target.filters.map((f) => [f.field, f]));
-      return { ...next, grids: { ...next.grids, [target.martId]: { columns: saved?.columns ?? [], filters, sorts: saved?.sorts ?? null, limit: PAGE_SIZE } } };
+      return { ...next, grids: { ...next.grids, [target.martId]: { columns: saved?.columns ?? [], filters, sorts: saved?.sorts ?? null, limit: PAGE_SIZE, ...(saved?.aggregations ? { aggregations: saved.aggregations } : {}), ...(saved?.dateTrunc ? { dateTrunc: saved.dateTrunc } : {}) } } };
     }
     case 'undo': {
       // Entries naming a mart or source a refresh removed are skipped.

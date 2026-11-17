@@ -1,3 +1,4 @@
+import { AGG_LABELS, BUCKET_LABELS, type Aggregation } from '../model/aggregation';
 import { presetName } from '../filters/catalogue';
 import type { ColumnFilter } from '../filters/build';
 import type { SortKey } from '../model/sort';
@@ -42,6 +43,18 @@ export function describeFilter(f: ColumnFilter): string {
   return f.value === undefined ? `${field} ${word}` : `${field} ${word} ${quoted(f.value)}`;
 }
 
+/** "Amount": sum, average / "Created at": by month (time zone "UTC"), in plain words, the names and the zone quoted. */
+function aggregationLines(fields: string[], agg: Aggregation | undefined): string[] {
+  const lines: string[] = [];
+  for (const column of fields) {
+    const fns = (agg?.aggregations ?? []).filter((r) => r.column === column).map((r) => AGG_LABELS[r.function].toLowerCase());
+    const bucket = agg?.dateTrunc.find((r) => r.column === column);
+    if (fns.length) lines.push(`- ${quoted(column)}: ${fns.join(', ')}`);
+    else if (bucket) lines.push(`- ${quoted(column)}: by ${BUCKET_LABELS[bucket.unit].toLowerCase()}${bucket.timeZone ? ` (time zone ${quoted(bucket.timeZone)})` : ''}`);
+  }
+  return lines.length ? [`Aggregations (group by every other field):\n${lines.join('\n')}`] : [];
+}
+
 export type AiPromptInput = {
   projectId: string;
   /** The project's name when it is known; the id stands in otherwise. */
@@ -50,6 +63,8 @@ export type AiPromptInput = {
   martTitle: string;
   schema: Schema;
   visible: string[];
+  /** Functions and date buckets on the columns; the other columns are group keys. */
+  aggregation?: Aggregation;
   filters: ColumnFilter[];
   sorts: SortKey[];
 };
@@ -65,6 +80,7 @@ export function buildAiPrompt(p: AiPromptInput): string {
     `Using the OWOX Data Marts connector, in the OWOX project ${quoted(p.projectTitle?.trim() || p.projectId)} (project id ${quoted(p.projectId)}):`,
     `Query the data mart ${quoted(p.martTitle)} (id ${quoted(p.martId)}).`,
     `Fields: ${fields.map(quoted).join(', ')}.`,
+    ...aggregationLines(fields, p.aggregation),
     p.filters.length ? `Filters:\n${p.filters.map((f) => `- ${describeFilter(f)}`).join('\n')}` : 'Filters: none',
     `Sort: ${sorts.length ? sorts.join(', then ') : 'none'}.`,
     'Show the result as a table, and say if rows were truncated.',

@@ -9,7 +9,8 @@ import type { ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
 import type { Schema } from '../../model/types';
 import type { Row } from '../../sdk/types';
-import { buildTsv } from '../../export/tsv';
+import { buildTsv, tsvColumns } from '../../export/tsv';
+import type { Aggregation } from '../../model/aggregation';
 import type { DestinationDto } from '../../sdk/types';
 import { buildAiPrompt } from '../../api/ai-prompt';
 import { useServices, useStore } from '../../state/store';
@@ -19,7 +20,7 @@ import { GoogleSheetsIcon } from '../google-sheets-icon';
 import { Tooltip } from '../Tooltip';
 import { copyText } from './clipboard';
 
-type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; filters: ColumnFilter[]; sorts: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean };
+type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; filters: ColumnFilter[]; sorts: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean };
 type Result = { kind: 'ok' | 'timeout' | 'error'; text: string; url?: string };
 
 type Assistant = 'Claude' | 'ChatGPT';
@@ -160,7 +161,7 @@ export function ExportMenu(p: Props) {
     // A spreadsheet an earlier attempt made and left unused is reused, also after the menu was remounted.
     const left = exporter.made(p.martId, destination.id);
     const source: ExportSource = wanted.kind === 'new' && left ? { kind: 'existing', target: left } : wanted;
-    const { payload, notes } = buildReportPayload(p.schema, p.visible, p.filters, p.sorts);
+    const { payload, notes } = buildReportPayload(p.schema, p.visible, p.filters, p.sorts, p.aggregation);
     setResult(null);
     setCopied(null);
     setData(null);
@@ -172,7 +173,7 @@ export function ExportMenu(p: Props) {
 
   async function copyPrompt(assistant: Assistant) {
     closeMenu();
-    const prompt = buildAiPrompt({ projectId: ctx.projectId, martId: p.martId, martTitle: p.martTitle, schema: p.schema, visible: p.visible, filters: p.filters, sorts: p.sorts });
+    const prompt = buildAiPrompt({ projectId: ctx.projectId, martId: p.martId, martTitle: p.martTitle, schema: p.schema, visible: p.visible, aggregation: p.aggregation, filters: p.filters, sorts: p.sorts });
     const home = gen.current;
     const ok = await copyText(prompt);
     if (gen.current !== home) return;
@@ -188,7 +189,7 @@ export function ExportMenu(p: Props) {
     closeMenu();
     if (!p.rows?.length || p.loading) return;
     const fields = p.visible.flatMap((name) => p.schema.find((f) => f.name === name) ?? []);
-    const tsv = buildTsv(fields, p.rows);
+    const tsv = buildTsv(tsvColumns(fields, p.aggregation), p.rows);
     const home = gen.current;
     const ok = await copyText(tsv);
     if (gen.current !== home) return;

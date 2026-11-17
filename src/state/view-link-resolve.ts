@@ -1,5 +1,6 @@
 import { PAGE_SIZE } from '../config';
 import type { ColumnFilter } from '../filters/build';
+import { keepVisible, sanitizeAggregation } from '../model/aggregation';
 import type { Model, Schema } from '../model/types';
 import type { GridState, Selection } from './store';
 import type { DecodedView } from './view-link';
@@ -13,12 +14,13 @@ export type AppliedView = {
   folded: DecodedView['folded'];
 };
 
-export type Skipped = { mart: boolean; source: boolean; columns: number; filters: number; sorts: number; contexts: number; storages: number };
+export type Skipped = { mart: boolean; source: boolean; columns: number; filters: number; sorts: number; aggregations: number; contexts: number; storages: number };
 
 const clampLimit = (n: number) => Math.min(PAGE_SIZE * 10, Math.max(PAGE_SIZE, Math.round(n / PAGE_SIZE) * PAGE_SIZE));
 
 /** Prunes the grid to the fields on offer; with no column left it opens with its defaults. */
-function pruneGrid(grid: GridState, offered: Set<string>, skipped: Skipped): GridState | null {
+function pruneGrid(grid: GridState, schema: Schema, skipped: Skipped): GridState | null {
+  const offered = new Set(schema.map((f) => f.name));
   const columns = grid.columns.filter((c) => offered.has(c));
   skipped.columns += grid.columns.length - columns.length;
   const filters: Record<string, ColumnFilter> = {};
@@ -32,8 +34,17 @@ function pruneGrid(grid: GridState, offered: Set<string>, skipped: Skipped): Gri
     // An empty list means the member chose no sort, so a list emptied by pruning goes back to the default order.
     sorts = kept.length || !sorts.length ? kept : null;
   }
-  // Every column dropped means no grid; filters and sorts were still counted above.
-  return columns.length ? { ...grid, columns, filters, sorts } : null;
+  // Rules on a column that is gone are left out; every column dropped means no grid (filters and sorts were still counted above).
+  // Then what the backend would refuse: a function the field does not allow, a calculated field, a bucket on a column that cannot take one.
+  const agg = sanitizeAggregation(keepVisible({ aggregations: grid.aggregations ?? [], dateTrunc: grid.dateTrunc ?? [] }, columns), schema);
+  skipped.aggregations += (grid.aggregations?.length ?? 0) + (grid.dateTrunc?.length ?? 0) - agg.aggregations.length - agg.dateTrunc.length;
+  if (!columns.length) return null;
+  const out: GridState = { ...grid, columns, filters, sorts };
+  delete out.aggregations;
+  delete out.dateTrunc;
+  if (agg.aggregations.length) out.aggregations = agg.aggregations;
+  if (agg.dateTrunc.length) out.dateTrunc = agg.dateTrunc;
+  return out;
 }
 
 /** Checks a decoded view against what this member can see. Never throws; what can't be shown is counted in `skipped`. */
@@ -43,7 +54,7 @@ export async function resolveView(
   readGrid: (martId: string) => Promise<Schema | null>,
 ): Promise<{ apply: AppliedView; skipped: Skipped }> {
   // Entries the codec dropped are counted under columns, whatever they were.
-  const skipped: Skipped = { mart: false, source: false, columns: view.dropped, filters: 0, sorts: 0, contexts: 0, storages: 0 };
+  const skipped: Skipped = { mart: false, source: false, columns: view.dropped, filters: 0, sorts: 0, aggregations: view.droppedAggregations, contexts: 0, storages: 0 };
 
   const mart = view.martId ? model.marts.get(view.martId) : undefined;
   const martId = mart?.accessible ? mart.id : null;
@@ -72,7 +83,7 @@ export async function resolveView(
   if (martId && view.grid) {
     const g = { ...view.grid, limit: clampLimit(view.grid.limit) };
     const schema = await readGrid(martId).catch(() => null);
-    grid = schema ? pruneGrid(g, new Set(schema.map((f) => f.name)), skipped) : g;
+    grid = schema ? pruneGrid(g, schema, skipped) : g;
   }
 
   return { apply: { selection, grid, search: view.search, contextIds, storageIds, folded: view.folded }, skipped };
@@ -88,6 +99,7 @@ export function skippedMessage(s: Skipped): string | null {
     s.columns > 0 && plural(s.columns, 'column', 'columns'),
     s.filters > 0 && plural(s.filters, 'filter', 'filters'),
     s.sorts > 0 && plural(s.sorts, 'sort', 'sorts'),
+    s.aggregations > 0 && plural(s.aggregations, 'aggregation', 'aggregations'),
     s.contexts > 0 && plural(s.contexts, 'context', 'contexts'),
     s.storages > 0 && plural(s.storages, 'storage', 'storages'),
   ].filter(Boolean);

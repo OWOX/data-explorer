@@ -1,5 +1,6 @@
 import type { ColumnFilter, FilterValue } from '../filters/build';
 import type { OpId } from '../filters/catalogue';
+import { AGGREGATE_FUNCTIONS, DATE_BUCKETS, isTimeZone, type AggFn, type AggregationRule, type DateBucket, type DateTruncRule } from '../model/aggregation';
 import type { GridState } from './store';
 import type { SortKey } from '../model/sort';
 
@@ -19,6 +20,8 @@ export type DecodedView = {
   folded: Folded;
   grid: GridState | null;
   dropped: number;
+  /** The aggregation functions and date buckets left out (malformed, repeated, past the cap), counted apart from `dropped`. */
+  droppedAggregations: number;
 };
 
 // A plain name, or [index into P, field suffix].
@@ -33,8 +36,11 @@ type ViewLinkV1 = {
   ctx: string[];
   st: string[] | null;
   f: Folded;
-  g: null | { c: Col[]; fl: [Col, string, unknown?][]; s: [Col, 1 | -1][] | null; l: number };
+  g: null | { c: Col[]; fl: [Col, string, unknown?][]; s: [Col, 1 | -1][] | null; l: number; /** Aggregations: [column, function]. */ ag?: [Col, AggFn][]; /** Date buckets: [column, unit, time zone?]. */ dt?: [Col, DateBucket, string?][] };
 };
+
+/** At most this many aggregation rules and this many date buckets are read from a link; the rest count as dropped. */
+export const MAX_AGG_RULES = 64;
 
 const ROUTE_PATH = '/v';
 const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
@@ -83,7 +89,7 @@ const splitName = (name: string): [string, string] | null => {
   return i > 0 && i + 2 < name.length ? [name.slice(0, i), name.slice(i + 2)] : null;
 };
 
-export async function encodeViewLink(view: Omit<DecodedView, 'dropped'>): Promise<string> {
+export async function encodeViewLink(view: Omit<DecodedView, 'dropped' | 'droppedAggregations'>): Promise<string> {
   const P: string[] = [];
   const col = (name: string): Col => {
     const parts = splitName(name);
@@ -108,6 +114,8 @@ export async function encodeViewLink(view: Omit<DecodedView, 'dropped'>): Promis
       fl: Object.entries(g.filters).map(([field, f]) => (f.value === undefined ? [col(field), f.op] : [col(field), f.op, f.value])),
       s: g.sorts && g.sorts.map((x) => [col(x.field), x.direction === 'asc' ? 1 : -1]),
       l: g.limit,
+      ...(g.aggregations?.length ? { ag: g.aggregations.map((r): [Col, AggFn] => [col(r.column), r.function]) } : {}),
+      ...(g.dateTrunc?.length ? { dt: g.dateTrunc.map((r): [Col, DateBucket, string?] => (r.timeZone ? [col(r.column), r.unit, r.timeZone] : [col(r.column), r.unit])) } : {}),
     },
   };
   const packed = await pipe(new TextEncoder().encode(JSON.stringify(payload)), new CompressionStream('deflate-raw'));
@@ -155,6 +163,7 @@ function shape(raw: unknown): DecodedView {
   if (!(g === null || isObject(g))) throw new Error('bad grid');
 
   let dropped = 0;
+  let droppedAggregations = 0;
   let record: Record<string, unknown> | null = null;
   if (r !== null) {
     if (isPlain(r) && Object.keys(r).length > 0 && Object.entries(r).every(([k, x]) => !(k in Object.prototype) && isScalar(x))) record = r;
@@ -193,7 +202,29 @@ function shape(raw: unknown): DecodedView {
         if (field === null) dropped++; else sorts.push({ field, direction: (e as unknown[])[1] === 1 ? 'asc' : 'desc' });
       }
     }
-    grid = { columns, filters: Object.fromEntries(filterEntries),  sorts, limit: g.l };
+    // Rules with an unknown function or bucket, a bad column, a repeat, or past the cap are left out and counted.
+    const aggregations: AggregationRule[] = [];
+    const dateTrunc: DateTruncRule[] = [];
+    const seen = new Set<string>();
+    if (g.ag !== undefined && !Array.isArray(g.ag)) throw new Error('bad aggregations');
+    if (g.dt !== undefined && !Array.isArray(g.dt)) throw new Error('bad buckets');
+    for (const [i, e] of ((g.ag as unknown[] | undefined) ?? []).entries()) {
+      const column = Array.isArray(e) && e.length === 2 && (AGGREGATE_FUNCTIONS as readonly unknown[]).includes(e[1]) ? name(e[0]) : null;
+      if (column === null || UNSAFE_KEYS.has(column) || i >= MAX_AGG_RULES || seen.has(`${column}\0${(e as unknown[])[1]}`)) { droppedAggregations++; continue; }
+      seen.add(`${column}\0${(e as unknown[])[1]}`);
+      aggregations.push({ column, function: (e as unknown[])[1] as AggFn });
+    }
+    const bucketed = new Set<string>();
+    for (const [i, e] of ((g.dt as unknown[] | undefined) ?? []).entries()) {
+      const ok = Array.isArray(e) && (e.length === 2 || e.length === 3) && (DATE_BUCKETS as readonly unknown[]).includes(e[1]) && (e[2] === undefined || isTimeZone(e[2]));
+      const column = ok ? name((e as unknown[])[0]) : null;
+      // One bucket per column, and a date takes functions or a bucket, never both.
+      if (column === null || UNSAFE_KEYS.has(column) || i >= MAX_AGG_RULES || bucketed.has(column) || aggregations.some((r) => r.column === column)) { droppedAggregations++; continue; }
+      bucketed.add(column);
+      const zone = (e as unknown[])[2] as string | undefined;
+      dateTrunc.push({ column, unit: (e as unknown[])[1] as DateBucket, ...(zone ? { timeZone: zone } : {}) });
+    }
+    grid = { columns, filters: Object.fromEntries(filterEntries), sorts, limit: g.l, ...(aggregations.length ? { aggregations } : {}), ...(dateTrunc.length ? { dateTrunc } : {}) };
   }
 
   return {
@@ -206,5 +237,6 @@ function shape(raw: unknown): DecodedView {
     folded: { sources: f.sources as boolean, marts: f.marts as boolean, data: f.data as boolean, row: f.row as boolean },
     grid,
     dropped,
+    droppedAggregations,
   };
 }

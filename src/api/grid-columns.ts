@@ -1,10 +1,11 @@
+import { AGGREGATE_FUNCTIONS, DATE_BUCKETS, isTimeZone, NO_AGGREGATION, type Aggregation } from '../model/aggregation';
 import type { Ctx } from '../sdk/types';
 
 export const GRID_COLUMNS_COLLECTION = 'grid-columns';
 export const SAVE_DEBOUNCE_MS = 500;
 /** The joined fields last chosen for each joined data mart, per main data mart: `{ customers: ['customers__city'] }`. An empty list means "none, use the default next time". */
 export type Picks = Record<string, string[]>;
-type ColumnsDoc = { columns: string[]; at: string; picks?: Picks; lastShown?: string[] };
+type ColumnsDoc = { columns: string[]; at: string; picks?: Picks; lastShown?: string[]; aggregations?: unknown; dateTrunc?: unknown };
 
 export interface ColumnStore {
   /** The member's saved column names for a mart, or null when there are none or the read failed. */
@@ -19,9 +20,23 @@ export interface ColumnStore {
   loadLastShown(martId: string): Promise<string[] | null>;
   /** Remembers the own field names a mart was showing when it left the grid; null forgets them. Saved with the same pause as `save`. */
   saveLastShown(martId: string, fields: string[] | null): void;
+  /** The member's saved aggregations and date buckets for a mart (none when absent or the read failed). */
+  loadAggregation(martId: string): Promise<Aggregation>;
+  /** What `loadAggregation` read, with this session's changes. */
+  aggregation(martId: string): Aggregation;
+  /** Saves the grid's aggregations and date buckets with the same pause as `save`. */
+  saveAggregation(martId: string, aggregation: Aggregation): void;
   /** Saves after a short pause; the last call for a mart wins. `picks` merges into the remembered joined picks. Never throws. */
   save(martId: string, columns: string[], picks?: Picks): void;
 }
+
+const validAggregation = (doc: { aggregations?: unknown; dateTrunc?: unknown } | undefined): Aggregation => {
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null && typeof (x as { column?: unknown }).column === 'string') : []);
+  const aggregations = list(doc?.aggregations).flatMap((r) => ((AGGREGATE_FUNCTIONS as readonly unknown[]).includes(r.function) ? [{ column: r.column as string, function: r.function as never }] : []));
+  // A bucket needs a known unit and, when it has a time zone, one the backend accepts; a column takes functions or a bucket, never both.
+  const dateTrunc = list(doc?.dateTrunc).flatMap((r) => ((DATE_BUCKETS as readonly unknown[]).includes(r.unit) && (r.timeZone === undefined || isTimeZone(r.timeZone)) && !aggregations.some((a) => a.column === r.column) ? [{ column: r.column as string, unit: r.unit as never, ...(r.timeZone !== undefined ? { timeZone: r.timeZone as string } : {}) }] : []));
+  return aggregations.length || dateTrunc.length ? { aggregations, dateTrunc } : NO_AGGREGATION;
+};
 
 const validPicks = (raw: unknown): Picks => {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
@@ -34,6 +49,7 @@ export function createColumnStore(ctx: Ctx): ColumnStore {
   const picked = new Map<string, Picks>();
   const patches = new Map<string, Picks>();
   const shownBy = new Map<string, string[] | null>();
+  const aggBy = new Map<string, Aggregation>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
   const reads = new Map<string, Promise<string[] | null>>();
@@ -49,6 +65,7 @@ export function createColumnStore(ctx: Ctx): ColumnStore {
       // A save that landed while the read was out is newer than what it read.
       if (!cache.has(martId)) cache.set(martId, columns);
       if (!picked.has(martId)) picked.set(martId, validPicks(doc?.picks));
+      if (!aggBy.has(martId)) aggBy.set(martId, validAggregation(doc));
       if (!shownBy.has(martId)) shownBy.set(martId, Array.isArray(doc?.lastShown) ? doc.lastShown.filter((x): x is string => typeof x === 'string') : null);
       return cache.get(martId)!;
     } catch {
@@ -59,7 +76,7 @@ export function createColumnStore(ctx: Ctx): ColumnStore {
   }
 
   function load(martId: string): Promise<string[] | null> {
-    if (cache.has(martId) && picked.has(martId) && shownBy.has(martId)) return Promise.resolve(cache.get(martId)!);
+    if (cache.has(martId) && picked.has(martId) && shownBy.has(martId) && aggBy.has(martId)) return Promise.resolve(cache.get(martId)!);
     // Concurrent loads (StrictMode mounts twice) share one read.
     let pending = reads.get(martId);
     if (!pending) { pending = read(martId); reads.set(martId, pending); }
@@ -79,6 +96,15 @@ export function createColumnStore(ctx: Ctx): ColumnStore {
       return picksOf(martId);
     },
     picks: picksOf,
+    aggregation: (martId) => aggBy.get(martId) ?? NO_AGGREGATION,
+    async loadAggregation(martId) {
+      if (!aggBy.has(martId)) await load(martId);
+      return aggBy.get(martId) ?? NO_AGGREGATION;
+    },
+    saveAggregation(martId, aggregation) {
+      aggBy.set(martId, aggregation);
+      schedule(martId);
+    },
     lastShown: (martId) => shownBy.get(martId) ?? null,
     async loadLastShown(martId) {
       if (!shownBy.has(martId)) await load(martId);
@@ -102,14 +128,15 @@ export function createColumnStore(ctx: Ctx): ColumnStore {
       Promise.resolve()
         .then(async () => {
           // What was never read is read first, so a save of one part does not erase the others.
-          if (!readOk.has(martId) || !picked.has(martId) || !shownBy.has(martId)) await load(martId);
+          if (!readOk.has(martId) || !picked.has(martId) || !shownBy.has(martId) || !aggBy.has(martId)) await load(martId);
           // The stored doc could not be read: writing would replace it with what this session knows alone. The change stays in memory.
           if (!readOk.has(martId)) return;
           const merged = picksOf(martId);
           picked.set(martId, merged);
           patches.delete(martId);
           const shown = shownBy.get(martId);
-          await col.put(martId, { columns: cache.get(martId) ?? [], at: new Date().toISOString(), ...(Object.keys(merged).length ? { picks: merged } : {}), ...(shown ? { lastShown: shown } : {}) });
+          const agg = aggBy.get(martId) ?? NO_AGGREGATION;
+          await col.put(martId, { columns: cache.get(martId) ?? [], at: new Date().toISOString(), ...(Object.keys(merged).length ? { picks: merged } : {}), ...(shown ? { lastShown: shown } : {}), ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}) });
         })
         .catch((e) => console.warn('Saving the column selection failed', e));
     }, SAVE_DEBOUNCE_MS));

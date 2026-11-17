@@ -42,12 +42,14 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
       const joined = await blendable.get(martId).catch(() => [] as JoinedSource[]);
       sources.set(martId, joined);
       const have = latest.current.grids[martId];
+      const agg = await columnStore.loadAggregation(martId);
+      const aggFields = agg.aggregations.length || agg.dateTrunc.length ? { ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}) } : {};
       if (have && have.columns.length > 0) grids.set(martId, have);
       else {
         const saved = (await columnStore.load(martId)) ?? [];
         const offered = new Set([...own, ...joined.flatMap((s) => s.fields)].map((f) => f.name));
         const kept = saved.filter((c) => offered.has(c));
-        grids.set(martId, { filters: {}, sorts: null, limit: PAGE_SIZE, ...have, columns: kept.length ? kept : defaultColumns(own) });
+        grids.set(martId, { filters: {}, sorts: null, limit: PAGE_SIZE, ...aggFields, ...have, columns: kept.length ? kept : defaultColumns(own) });
       }
       picks.set(martId, await columnStore.loadPicks(martId));
       await columnStore.loadLastShown(martId);
