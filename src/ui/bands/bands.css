@@ -335,14 +335,18 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 /* The selected cell: Sheets' blue frame drawn inside the cell so nothing shifts, and the fill handle at its bottom-right corner
    (a 7px blue square ringed in white, half outside the cell: the selected cell is the one that may overflow). */
 .dm-grid td[data-selected] { outline: 2px solid var(--sheet-select); outline-offset: -2px; position: relative; z-index: 1; overflow: visible; }
-.dm-grid td[data-selected]::after { content: ''; position: absolute; right: -4px; bottom: -4px; width: 7px; height: 7px; box-sizing: content-box; background: var(--sheet-select); border: 1px solid #fff; border-radius: 1px; pointer-events: none; }
-/* Whole columns or rows: a light tint and a 2px frame around the block, drawn by the cells on its edges. */
+.dm-grid td[data-selected]::after { content: ''; position: absolute; right: -4px; bottom: -4px; width: 7px; height: 7px; box-sizing: content-box; background: var(--sheet-select); border: 1px solid #fff; border-radius: 50%; pointer-events: none; }
+/* Whole columns or rows, as Sheets draws a range: a light tint and a thin 1px frame around the block (drawn by the cells on
+   its edges), the 2px frame on the active cell only, and the fill handle at the block's far corner. */
 .dm-grid td[data-range] { background: var(--sheet-range-bg); position: relative; }
 .dm-grid td[data-range]::after { content: ''; position: absolute; inset: 0; pointer-events: none; border: 0 solid var(--sheet-select); }
-.dm-grid td[data-edge~='t']::after { border-top-width: 2px; }
-.dm-grid td[data-edge~='b']::after { border-bottom-width: 2px; }
-.dm-grid td[data-edge~='l']::after { border-left-width: 2px; }
-.dm-grid td[data-edge~='r']::after { border-right-width: 2px; }
+.dm-grid td[data-edge~='t']::after { border-top-width: 1px; }
+.dm-grid td[data-edge~='b']::after { border-bottom-width: 1px; }
+.dm-grid td[data-edge~='l']::after { border-left-width: 1px; }
+.dm-grid td[data-edge~='r']::after { border-right-width: 1px; }
+.dm-grid td[data-active] { outline: 2px solid var(--sheet-select); outline-offset: -2px; z-index: 1; }
+.dm-grid td[data-handle] { overflow: visible; z-index: 2; }
+.dm-grid td[data-handle]::before { content: ''; position: absolute; right: -4px; bottom: -4px; width: 7px; height: 7px; box-sizing: content-box; background: var(--sheet-select); border: 1px solid #fff; border-radius: 50%; pointer-events: none; }
 .dm-grid thead .dm-letter, .dm-grid tbody th[data-chrome] { cursor: default; user-select: none; }
 .dm-grid td, .dm-grid .dm-th { height: 21px; padding: 0 3px; vertical-align: middle; }
 .dm-grid .dm-th-fill, .dm-grid .dm-gh-fill { padding: 0; }

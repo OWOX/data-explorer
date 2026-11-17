@@ -408,6 +408,10 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // A header is lit light when a cell (or a block crossing it) is selected, and strong when it is itself fully selected.
   const colMark = (i: number) => (span?.kind === 'col' ? (inCols(i) ? 'full' : undefined) : span?.kind === 'row' ? '' : inCols(i) ? '' : undefined);
   const rowMark = (i: number) => (span?.kind === 'row' ? (inRows(i) ? 'full' : undefined) : span?.kind === 'col' ? '' : inRows(i) ? '' : undefined);
+  // In a block, as in Sheets: the active cell is where the selection started (the clicked column's first row, or the clicked
+  // row's first column) and gets the 2px frame; the fill handle sits at the block's far corner.
+  const anchor = sel && sel.kind !== 'cell' ? (sel.kind === 'col' ? { row: 0, col: sel.from } : { row: sel.from, col: 0 }) : null;
+  const corner = span ? (span.kind === 'col' ? { row: rowCount - 1, col: span.hi } : { row: span.hi, col: outputs.length - 1 }) : null;
   const inBlock = (ri: number, ci: number) => (span?.kind === 'col' ? inCols(ci) : span?.kind === 'row' ? inRows(ri) : false);
   // Which sides of a cell lie on the block's outer edge, where the 2px frame is drawn.
   const edges = (ri: number, ci: number) => {
@@ -498,7 +502,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
                   onClick={pks.length && !grouped ? () => dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }) : undefined}
                   className={`${pks.length && !grouped ? 'cursor-pointer' : ''}`}>
                   <th aria-hidden data-chrome data-selected={rowMark(ri)} onClick={(e) => { pickHeader('row', ri, e.shiftKey); if (e.shiftKey) e.stopPropagation(); }} className="dm-chrome">{ri + 1}</th>
-                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={cellSel?.row === ri && cellSel.col === ci ? '' : undefined} data-range={inBlock(ri, ci) ? '' : undefined} data-edge={edges(ri, ci)} onClick={() => setSelected({ kind: 'cell', row: ri, col: ci })} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
+                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={cellSel?.row === ri && cellSel.col === ci ? '' : undefined} data-range={inBlock(ri, ci) ? '' : undefined} data-active={anchor?.row === ri && anchor.col === ci ? '' : undefined} data-handle={corner?.row === ri && corner.col === ci ? '' : undefined} data-edge={edges(ri, ci)} onClick={() => setSelected({ kind: 'cell', row: ri, col: ci })} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
                   <td aria-hidden className="p-0" />
                 </tr>
               ))}

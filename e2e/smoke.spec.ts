@@ -696,6 +696,13 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
   await expect(colCells.first()).toHaveCSS('background-color', 'rgb(232, 240, 254)');
   await expect(data.locator('thead .dm-letter[data-selected="full"]')).toHaveCSS('background-color', 'rgb(11, 87, 208)');
   await expect(data.locator('thead .dm-letter[data-selected="full"]')).toHaveCSS('color', 'rgb(255, 255, 255)');
+  // as in Sheets: a thin 1px frame around the column, the 2px frame on its first cell only, the fill handle at the bottom
+  expect(await colCells.first().evaluate((e) => getComputedStyle(e, '::after').borderLeftWidth)).toBe('1px');
+  await expect(data.locator('tbody td[data-active]')).toHaveCount(1);
+  await expect(data.locator('tbody td[data-active]')).toHaveCSS('outline-width', '2px');
+  await expect(data.locator('tbody tr').first().locator('td[data-active]')).toHaveCount(1);
+  await expect(data.locator('tbody td[data-handle]')).toHaveCount(1);
+  expect(await data.locator('tbody td[data-handle]').evaluate((e) => getComputedStyle(e, '::before').borderRadius)).toBe('50%');
   await page.keyboard.press('Escape');
   await expect(colCells).toHaveCount(0);
 });
