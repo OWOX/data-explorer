@@ -22,8 +22,13 @@ const CONTROL = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028\u2029\u202A-\u20
 /** Text copied from OWOX (a title, a field name, a filter value) as one JSON string: no control character, at most 200 characters, so it cannot end its line or read as an instruction. */
 export const quoted = (v: unknown): string => {
   if (typeof v === 'number' || typeof v === 'boolean') return JSON.stringify(v);
-  return JSON.stringify(String(v ?? '').replace(CONTROL, ' ').slice(0, MAX_TEXT));
+  return JSON.stringify(cleanText(v));
 };
+
+/** Text copied from OWOX with no control character and at most `max` characters (200 by default). */
+export function cleanText(v: unknown, max = MAX_TEXT): string {
+  return String(v ?? '').replace(CONTROL, ' ').slice(0, max);
+}
 
 /** One filter as a plain sentence; the field and every value are quoted data: "created_at" is in the last 30 days. */
 export function describeFilter(f: ColumnFilter): string {

@@ -19,7 +19,7 @@ export type Skipped = { mart: boolean; source: boolean; columns: number; filters
 const clampLimit = (n: number) => Math.min(PAGE_SIZE * 10, Math.max(PAGE_SIZE, Math.round(n / PAGE_SIZE) * PAGE_SIZE));
 
 /** Prunes the grid to the fields on offer; with no column left it opens with its defaults. */
-function pruneGrid(grid: GridState, schema: Schema, skipped: Skipped): GridState | null {
+export function pruneGrid(grid: GridState, schema: Schema, skipped: Skipped): GridState | null {
   const offered = new Set(schema.map((f) => f.name));
   const columns = grid.columns.filter((c) => offered.has(c));
   skipped.columns += grid.columns.length - columns.length;

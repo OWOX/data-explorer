@@ -2,6 +2,7 @@
   "name": "Data Explorer",
   "description": "Browse data marts, their relationships and their rows.",
   "delivery": { "type": "remote", "url": "https://owox.github.io/data-explorer/" },
+  "credentials": [{ "id": "ai", "models": ["fast", "reasoning"], "optional": true }],
   "collections": [
     { "name": "row-counts", "scope": "member" },
     { "name": "grid-columns", "scope": "member" },
