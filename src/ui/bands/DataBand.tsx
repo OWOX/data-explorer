@@ -6,7 +6,6 @@ import { useStore, type GridState } from '../../state/store';
 import { groupsLabel, recordsLabel } from '../format';
 import { MartGrid } from '../explorer/MartGrid';
 import { Band } from './Band';
-import { PickedIcon } from './picked';
 
 export function DataBand({ model, folded, onFold, loading = null }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null }) {
   const [{ selection, grids }, dispatch] = useStore();
@@ -25,7 +24,7 @@ export function DataBand({ model, folded, onFold, loading = null }: { model: Mod
   const save = useCallback((grid: GridState) => { if (gridId) dispatch({ type: 'saveGrid', martId: gridId, grid }); }, [dispatch, gridId]);
 
   return (
-    <Band id="band-data" icon={<PickedIcon icon={mart?.icon} fallback={Table2} size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint="The rows of the selected data mart. Click a row to open it below." folded={folded} onFold={onFold} grid={false} loading={loading}>
+    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint="The rows of the selected data mart. Click a row to open it below." folded={folded} onFold={onFold} grid={false} loading={loading}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (
