@@ -403,6 +403,8 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 /* The filter and aggregation editors inside the menu: Google Sheets' dialog look (Google Sans 14px, 36px controls, green primary, outlined secondary). */
 .dm-menu-editor { --btn-line: #dadce0; --btn-off-bg: #f1f3f4; --btn-off-fg: #80868b; font: 400 14px/20px 'Google Sans', Roboto, Arial, sans-serif; background: var(--menu-bg); color: var(--menu-fg); }
 :root.dark .dm-menu-editor { --btn-line: #5f6368; --btn-off-bg: #3c4043; --btn-off-fg: #9aa0a6; }
+/* A wheel or trackpad flick that runs past the end of a form must not chain to the page: that scroll would close the menu with Apply still unpressed. */
+.dm-menu, .dm-menu-editor [data-popover-body] { overscroll-behavior: contain; }
 .dm-menu-editor [data-popover-body] { padding: 16px; }
 .dm-menu-editor form, .dm-menu-editor [role='group'] { font: inherit; }
 .dm-menu-editor .text-xs { font-size: 12px; line-height: 16px; }
