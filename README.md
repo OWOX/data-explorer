@@ -12,7 +12,7 @@ A question about one order, one customer or one campaign ends in a row. The fiel
 
 ## What this gives you
 
-🔎 **Find the data mart.** Search titles in the Data Marts band, or click context badges to narrow it. Select a connector in Data Sources to see only the data marts it feeds, or pick storages in the Storage filter.
+🔎 **Find the data mart.** Click the search icon in the Data Marts band and describe what you need. The search asks OWOX's own search first and, when the project has an AI model, finds data marts by meaning and sets up the view too. Or click context badges to narrow the band. Select a connector in Data Sources to see only the data marts it feeds, or pick storages in the Storage filter.
 
 🗺️ **See what it joins to.** The Data Marts band shows the selected data mart and every data mart joined to it, with lines for the joins and the sources. Each card shows its record count, data quality, freshness and contexts.
 
@@ -67,6 +67,8 @@ The first group of the Export menu has one item, "Copy to clipboard" (lucide `Co
 5. Values that would start a spreadsheet formula (a leading `=`, `+`, `-` or `@`, other than a plain number) are copied with a leading apostrophe so they paste as text.
 
 ### Export to an AI
+
+Each of the two items has a small external-link button at its right end. It opens the OWOX app's listing in that assistant (`claude.ai/directory/owox-data-marts` or the ChatGPT plugin page) through the host, so you can add the OWOX Data Marts connector there. The button is reachable with the keyboard: ArrowRight from the item, or Tab. Its label and tooltip read "Open OWOX in Claude" and "Open OWOX in ChatGPT". Choosing the item itself still copies the prompt.
 
 The AI group lists Claude and ChatGPT. Choosing one copies a plain-text prompt built from the grid as it is, and shows "Prompt copied. Paste it into Claude" next to the button with a "Show prompt" link. The link opens a dialog with the prompt in a read-only textarea (selected on focus) and a Copy button. The copy tries `navigator.clipboard.writeText`, then a hidden textarea and `document.execCommand('copy')`; when the sandboxed iframe blocks both, the dialog opens at once.
 
@@ -138,6 +140,21 @@ npm run e2e     # Playwright smoke tests of the bands
 1. Tag the commit `vX.Y.Z`.
 2. Publish a GitHub Release. The Pages workflow builds and deploys the site.
 3. In OWOX: Plugins, then Publish Plugin, then `owox/data-explorer`.
+
+## Smart search
+
+The search icon in the Data Marts band opens an input with a go button (an arrow) at its end. Enter or go runs the search. Escape closes the box and changes nothing that is applied. While results show, the query stays visible with an x that clears it and brings the band back. A query takes 2 to 256 characters, the limits of OWOX's search.
+
+1. **OWOX search first.** The plugin calls `GET /api/search` with `q`, `entityTypes=DATA_MART`, `excludeDrafts=true` and `limit=5`, the engine behind the OWOX MCP tool `get_relevant_data_marts_by_prompt`. It keeps the data marts that are in the plugin's model and that you can open, ranked by the engine's score, five at most.
+2. **AI discovery.** If the search finds nothing (or fails) and the project has an AI model, the model picks up to five data marts from the catalogue (id, title and a short description of each, 200 marts at most). Every id it returns is checked against the model.
+3. **AI view.** If a data mart was found and a model is there, the model proposes the best data mart's view: columns, filters, sorts and, when the query asks for totals, aggregations. It can use the same filters as the grid, date presets included (yesterday, last month, last 30 days). The answer goes through the same checks a view link gets: a field that is not in the mart, an operator the field does not offer, a value of the wrong shape or a function the field does not allow is dropped, and the rest applies.
+4. **Result.** The found data marts show first, in rank order, and the best becomes the main data mart with the view applied. The whole result is one Undo step.
+5. **No AI.** Without an AI model the endpoint's result is used alone and no error shows. One quiet line under the search suggests connecting AI; dismissing it is remembered per member in the `preferences` collection (document `search`). The line shows only when no AI is configured. A model that fails or takes longer than 20 seconds is treated as missing for that search, with no error and no line.
+6. **Nothing found** shows "No data marts match." and falls back to matching titles.
+
+Searching reads no rows and calls no `traverseData`. Only the normal grid load after the view is applied reads rows, as it does for any selection. The model is the `ai` credential in `plugin.json` (`fast` and `reasoning`, optional): the plugin uses `reasoning`, else `fast`, and calls the model's `doGenerate` directly with a JSON response format. Everything copied from OWOX that goes into a prompt (titles, descriptions, field names) travels as strings inside one JSON document, with control characters removed and a length cap, and the instructions say it is data, never instructions.
+
+In mock mode (`?mock`) the search and the model are fakes: `/api/search` scores titles and descriptions, and the fake AI answers from keywords ("who are our buyers" finds Customers, "paid orders last month" filters Orders). Add `&ai=0` for a project with no AI configured.
 
 ## Limitations (v1)
 

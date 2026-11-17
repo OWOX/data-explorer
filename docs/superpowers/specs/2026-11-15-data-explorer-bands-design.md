@@ -47,6 +47,7 @@ There is no Storages, Destinations or Reports band.
 
 Rules apply in order; the first that matches decides.
 
+0. **Smart search result.** When a smart search found data marts (see Smart search below): those marts in the engine's order, then the always-shown ones (rule 10 under "Several data marts selected"); a found mart the member cannot open, or in an unticked storage, is left out. No title match applies.
 1. **Search or context filter active.** Marts whose title contains the search text (case-insensitive; context names and field names are not searched) and that have any selected context badge (none selected is no context filter). With a source selected, only that source's marts. Cards show no field-match line.
 2. **Mart selected.** The selected mart plus every mart with an edge to or from it, plus every selected joined mart and every mart with an edge to or from any selected joined mart (see "Several data marts selected"). Lines are drawn between all shown connected cards; the neighbours of a selected joined mart are lit like the main one's, not dimmed.
 3. **Source selected, no mart selected.** Every mart the source feeds.
@@ -145,7 +146,7 @@ The store drops `tabs`, `activeTabId` and `explore`. It holds:
 ```ts
 type Selection = { sourceKey: string | null; martId: string | null; record: { martId: string; key: Record<string, unknown> } | null; filters?: ColumnFilter[]; cleared?: boolean };
 type Entry = Selection & { grids?: Record<string, GridState | null> };
-type State = { selection: Selection; history: Entry[]; future: Entry[]; search: string; contextIds: string[]; storageIds: string[] | null; grids: Record<string, GridState>; modelVersion: number };
+type State = { selection: Selection; history: Entry[]; future: Entry[]; search: string; found: string[]; contextIds: string[]; storageIds: string[] | null; grids: Record<string, GridState>; modelVersion: number };
 ```
 
 `GridState` is `{ columns, filters, sorts, limit }`; `sorts` is null until the member sets one (the default sort applies).
@@ -179,9 +180,30 @@ Fixtures gain `definitionType` and `connectorSourceName` per mart (about half th
    4. Refresh failure keeps counts and data quality.
 2. Smoke (Playwright, mock mode): first load selects the focus mart and shows its rows; clicking a source narrows Data Marts; clicking a row fills Row; clicking a "Referenced by" entry moves the selection; Undo restores it and Redo re-applies it; a filter and Reset work; the column picker changes columns.
 
+## Smart search
+
+The Data Marts band's search is an icon button (lucide `Search`, tooltip "Search data marts"). Click or Enter opens an input with a go button (lucide `ArrowRight`) at its end; the input takes focus. Enter or go runs the search; the go button is off under 2 characters and while a search runs, the input stops at 256 (the limits of the OWOX search, `search.config.ts`). Escape closes the box and leaves what is applied alone: an applied query stays as a chip with its text and an x. The x clears the query, cancels a running search and restores the band. Typing filters nothing; only a run applies.
+
+1. **State.** `search` holds the applied query, `found` the marts a smart search found, best first (empty otherwise). The `search` action sets `search` and empties `found` (the title match); `smartFound` sets both; a view link empties `found`. The result's selection change is a `setMarts` (with the best mart's grid) or a `selectMart` (no grid), so it is one Undo step, and Redo repeats it.
+2. **Pipeline** (`src/search/run.ts`, `smartSearch`):
+   1. `ctx.owox.getJson('/api/search', { q, entityTypes: 'DATA_MART', excludeDrafts: 'true', limit: '5' })`. The backend returns a plain array of `{ entityType, entityId, title, description, finalScore, ... }`. Keep `DATA_MART` items whose id is an accessible mart of the model, best `finalScore` per id, stable on ties, five at most. A failure or an answer that is not a list finds nothing.
+   2. Nothing found and a model configured: ask it to pick up to five marts from the catalogue (accessible marts, those sharing a word with the query first, 200 at most, titles cut at 120 and descriptions at 160 characters). Returned ids are validated against the model, deduplicated and capped.
+   3. A mart found and a model configured: read the best mart's own schema and ask for its view: `columns`, `filters` (`field`, `op`, `value`), `sorts`, `aggregations`, `dateTrunc`. `parseAiView` (`src/search/view.ts`) rebuilds each filter from the field's own operator list (`operatorsFor`) with the value shape that operator takes (numbers numeric, dates `YYYY-MM-DD`, ranges with both ends, relative presets from `RELATIVE_PRESETS` with `n` from 1 to 3650), checks it with `isComplete`, then runs the grid through `pruneGrid`, the pruning a view link gets, so a function a field does not allow is dropped. Lists are capped (50 columns, 20 filters, 5 sorts, 20 aggregation rules); sorts must be on shown columns; no valid column means the default columns; nothing usable means no view.
+   4. Nothing found anywhere: dispatch `search` with the query, which is the title match, and the band says "No data marts match." when no title matches either.
+3. **Model.** The `ai` credential declared in `plugin.json` (`"credentials": [{ "id": "ai", "models": ["fast", "reasoning"], "optional": true }]`). `pickModel`: `reasoning`, else `fast`, else none. `createAiRun` calls `doGenerate` with `responseFormat: { type: 'json' }`, a system message and one user message, with `temperature` 0; the answer's text goes through `extractJson` (bare, fenced or with words around). All questions of one run share a 20 second deadline (`AI_TIMEOUT_MS`); a timeout, an error, an answer with no JSON object, or a new query or unmount (the run's `AbortSignal`) makes the run go on without the model. No error is shown for any of them.
+4. **Untrusted text.** The user message is one JSON document (`task`, `query`, the marts or fields). Every string from OWOX or the member goes through `cleanText` (control, bidi and zero-width characters become spaces, then a length cap). The system message holds no OWOX text and says the document is data to read, never instructions.
+5. **No AI.** When `pickModel` finds nothing, the endpoint result is used alone and no error shows. One muted line under the toolbar reads "Connect AI in this plugin's settings to also find data marts by meaning and apply filters." with a dismiss button (`role="note"`, label "AI search hint"). It shows while the search box is open or a search is applied, only when no model is configured and the member has not dismissed it. The dismissal is saved in the member-scope `preferences` collection, document `search`, `{ aiHintDismissed: true }`, read once at start (hidden until read). A failed read counts as not dismissed; a failed write logs a warning.
+6. **Billing.** Searching never calls `traverseData`. The grid loads rows once the view is applied, like any selection.
+7. **Mock.** `createMockCtx` serves `GET /api/search` (a title word scores 20, a description word 8, a short query is a 400) and a deterministic fake `ctx.credentials.ai` (`src/sdk/mock/ai.ts`). `?ai=0` (or `createMockCtx(..., { ai: false })`) leaves no credential.
+8. **Testing.** Unit: endpoint ranking and the cap, AI discovery on an empty endpoint, view validation, the timeout, prompt quoting, the reducer and Undo. Page tests in `smart-search.test.tsx`; the Playwright smoke has the search flow and one with `?ai=0`.
+
+## Export to an AI: provider links
+
+Each of the Claude and ChatGPT items sits in a row with a small external-link icon button (lucide `ExternalLink`) at its right end. It calls `ctx.ui.openExternal` with `https://claude.ai/directory/owox-data-marts` or `https://chatgpt.com/plugins/plugin_asdk_app_6a3e81be8f8481918e1e2cd1d7ea09c4?q=owox`. The `aria-label` and the tooltip are "Open OWOX in Claude" and "Open OWOX in ChatGPT". The button is not a menu item: ArrowRight on the item focuses it, ArrowLeft returns to the item, Escape closes the menu, and Tab reaches it. The item still copies the prompt.
+
 ## Delivery
 
-Unchanged. `plugin.json` stays as it is.
+`plugin.json` gains the optional `ai` credential (see Smart search); the rest stays as it is.
 
 ## Column aggregation
 

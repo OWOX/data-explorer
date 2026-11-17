@@ -47,12 +47,63 @@ test('a source click narrows the marts; clicking it again returns', async ({ pag
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
 });
 
-test('search narrows the marts', async ({ page }) => {
+const heading = (page: Page) => band(page, 'data').locator('thead tr[data-group-row] th[data-group]');
+const search = async (page: Page, q: string) => {
+  const marts = band(page, 'marts');
+  const box = marts.getByRole('textbox', { name: 'Search data marts' });
+  if (!(await box.isVisible())) await marts.getByRole('button', { name: /^Search data marts/ }).click();
+  await box.fill(q);
+  await box.press('Enter');
+};
+
+test('search finds the marts through OWOX search and makes the best one the main mart', async ({ page }) => {
   await ordersGrid(page);
-  await page.getByLabel('Search data marts').fill('campaign');
+  await band(page, 'marts').getByRole('button', { name: 'Search data marts' }).click();
+  await expect(band(page, 'marts').getByRole('textbox', { name: 'Search data marts' })).toBeFocused();
+  await search(page, 'campaign');
+  await expect(heading(page)).toHaveText(['Campaigns']);
   await expect(band(page, 'marts').getByText('Campaigns', { exact: true })).toBeVisible();
-  // The main mart's card stays; a mart that does not match goes.
+  // The marts that do not match go, and the query stays on screen.
   await expect(band(page, 'marts').getByText('Customers', { exact: true })).toHaveCount(0);
+  await expect(band(page, 'marts').getByRole('textbox', { name: 'Search data marts' })).toHaveValue('campaign');
+  // Escape closes the box and keeps the result; the x clears it and restores the band.
+  await page.keyboard.press('Escape');
+  await expect(band(page, 'marts').getByRole('button', { name: 'Search data marts: campaign' })).toBeVisible();
+  await expect(heading(page)).toHaveText(['Campaigns']);
+  await band(page, 'marts').getByRole('button', { name: 'Clear search' }).click();
+  await expect(band(page, 'marts').getByRole('button', { name: 'Search data marts', exact: true })).toBeVisible();
+  await expect(heading(page)).toHaveText(['Campaigns']);
+});
+
+test('smart search with AI: finds a mart by meaning, applies the filters it asks for, and Undo takes the whole result back', async ({ page }) => {
+  await ordersGrid(page);
+  await search(page, 'who are our buyers');
+  await expect(heading(page)).toHaveText(['Customers']);
+  await expect(band(page, 'data').getByRole('cell', { name: /@example\.com$/ }).first()).toBeVisible();
+  await search(page, 'paid orders last month');
+  await expect(heading(page)).toHaveText(['Orders']);
+  await expect(band(page, 'data').getByLabel('Filter status')).toHaveClass(/text-primary/);
+  await expect(band(page, 'data').getByLabel('Filter created_at')).toHaveClass(/text-primary/);
+  await expect(band(page, 'data').getByRole('cell', { name: 'paid', exact: true }).first()).toBeVisible();
+  await expect(band(page, 'data').getByRole('cell', { name: 'new', exact: true })).toHaveCount(0);
+  await expect(band(page, 'marts').getByRole('note', { name: 'AI search hint' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(heading(page)).toHaveText(['Customers']);
+});
+
+test('smart search with no AI configured: no error, the hint shows once and stays dismissed, nothing found says so', async ({ page }) => {
+  await page.goto('/?mock&ai=0');
+  await ordersGrid(page);
+  await search(page, 'products');
+  await expect(heading(page)).toHaveText(['Products']);
+  const hint = band(page, 'marts').getByRole('note', { name: 'AI search hint' });
+  await expect(hint).toHaveText(/Connect AI in this plugin's settings/);
+  await hint.getByRole('button', { name: 'Dismiss the AI hint' }).click();
+  await expect(hint).toHaveCount(0);
+  await search(page, 'who are our buyers');
+  await expect(band(page, 'marts').getByText('No data marts match.')).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(hint).toHaveCount(0);
 });
 
 test('the page header is the title with Undo and Redo and no Refresh; the filters are in the Data band', async ({ page }) => {
