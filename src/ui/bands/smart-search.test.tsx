@@ -5,13 +5,15 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { Ctx } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
+import { decodeViewLink } from '../../state/view-link';
 import { App } from '../App';
 
 type Mock = ReturnType<typeof createMockCtx>;
 
-function setup(opts: { ai?: boolean; wrap?: (ctx: Mock) => Ctx; ctx?: Ctx } = {}) {
+// A loaded CI runner must not turn a slow model into a timeout, so the AI budget is large unless a test is about the timeout.
+function setup(opts: { ai?: boolean; wrap?: (ctx: Mock) => Ctx; ctx?: Ctx; aiTimeoutMs?: number } = {}) {
   const ctx = opts.ctx ?? (opts.wrap ?? ((c: Mock): Ctx => c))(createMockCtx(demoFixtures(), { latencyMs: 0, ai: opts.ai }));
-  const view = () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
+  const view = () => render(<AppServices ctx={ctx} aiTimeoutMs={opts.aiTimeoutMs ?? 60_000}><StoreProvider><App /></StoreProvider></AppServices>);
   return { ctx, view };
 }
 const band = (id: string) => document.getElementById(id)!;
@@ -55,15 +57,29 @@ describe('the search box', () => {
     expect(within(marts()).getByRole('textbox', { name: 'Search data marts' })).toHaveFocus();
   });
 
-  test('keeps to the backend limits: go is off under 2 characters and the input stops at 256', async () => {
-    setup().view();
+  test('go is off while the box is empty, the input stops at the backend limit of 256, and one character is a title match with no search call', async () => {
+    const t = setup();
+    t.view();
     await ready();
+    const spy = vi.spyOn(t.ctx.owox, 'getJson');
     const box = await openSearch();
-    await userEvent.type(box, 'a');
     expect(within(marts()).getByRole('button', { name: 'Search' })).toBeDisabled();
-    await userEvent.type(box, '{Enter}');
-    expect(within(marts()).getByRole('textbox')).toHaveValue('a');
     expect(box).toHaveAttribute('maxlength', '256');
+    await userEvent.type(box, 'p{Enter}');
+    await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
+    expect(within(marts()).getByText('Orders')).toBeInTheDocument();
+    expect(spy).not.toHaveBeenCalledWith('/api/search', expect.anything());
+  });
+
+  test('typing GA4 still lists every mart with that title after the found ones', async () => {
+    const fx = demoFixtures();
+    fx.marts.find((m) => m.id === 'sessions')!.title = 'Sessions GA4';
+    fx.marts.find((m) => m.id === 'campaigns')!.title = 'Campaigns GA4';
+    const ctx = createMockCtx(fx, { latencyMs: 0, ai: false });
+    setup({ ctx }).view();
+    await ready();
+    await search('ga4');
+    await waitFor(() => expect(cardTitles()).toEqual(expect.arrayContaining(['Sessions GA4', 'Campaigns GA4'])));
   });
 
   test('Enter and the go button both run the search; the query stays on screen with an x that clears it and restores the band', async () => {
@@ -104,7 +120,7 @@ describe('the pipeline', () => {
     const spy = vi.spyOn(t.ctx.owox, 'getJson');
     await search('orders');
     await waitFor(() => expect(headings()).toBe('Orders'));
-    expect(spy).toHaveBeenCalledWith('/api/search', { q: 'orders', entityTypes: 'DATA_MART', excludeDrafts: 'true', limit: '5' });
+    expect(spy).toHaveBeenCalledWith('/api/search', { q: 'orders', entityTypes: 'DATA_MART', excludeDrafts: 'true', limit: '10' });
     // the engine ranks a title hit above a description hit (the mock scores a title word 20, a description word 8); cards that leave are gone once their transition ends
     await waitFor(() => expect(cardTitles()).toHaveLength(5));
     expect(cardTitles()).toEqual(['Orders', 'Order Items', 'Customers', 'Returns', 'Payments']);
@@ -192,7 +208,7 @@ describe('the pipeline', () => {
 
   test('a model that never answers is treated as no AI for that run: the endpoint result shows, no error, no hint', async () => {
     const hang = { doGenerate: () => new Promise<never>(() => {}) };
-    const t = setup({ wrap: (c) => ({ ...c, credentials: { ai: { ...hang, fast: hang, reasoning: hang } } }) });
+    const t = setup({ aiTimeoutMs: 300, wrap: (c) => ({ ...c, credentials: { ai: { ...hang, fast: hang, reasoning: hang } } }) });
     t.view();
     await ready();
     await search('customers');
@@ -210,6 +226,8 @@ describe('the pipeline', () => {
     const box = await openSearch();
     await userEvent.type(box, 'customers{Enter}');
     await waitFor(() => expect(first).toBeDefined());
+    // go stays enabled while a search runs: a new query cancels it
+    expect(within(marts()).getByRole('button', { name: 'Search' })).toBeEnabled();
     await userEvent.clear(box);
     await userEvent.type(box, 'products{Enter}');
     await waitFor(() => expect(first!.aborted).toBe(true));
@@ -268,4 +286,17 @@ test('the search itself never reads rows: only the grid load after applying does
   await waitFor(() => expect(headings()).toBe('Customers'));
   await waitFor(() => expect(reads.slice(before).every((id) => id === 'customers' || id === 'orders')).toBe(true));
   expect(reads.slice(before).filter((id) => id !== 'customers')).toEqual([]);
+});
+
+test('the copied link carries the found marts, so opening it does not filter titles by the question', async () => {
+  setup({ ai: false }).view();
+  await ready();
+  await search('paid orders last month');
+  await waitFor(() => expect(headings()).toBe('Orders'));
+  await userEvent.click(screen.getByRole('button', { name: /copy link/i }));
+  await waitFor(() => expect(window.__copiedLink).toBeDefined());
+  const view = await decodeViewLink(window.__copiedLink!);
+  expect(typeof view).toBe('object');
+  expect((view as { found: string[] }).found[0]).toBe('orders');
+  expect((view as { found: string[] }).found.length).toBeGreaterThan(1);
 });

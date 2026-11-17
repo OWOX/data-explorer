@@ -253,13 +253,13 @@ export function ExportMenu(p: Props) {
             ))}
             <div role="group" aria-label="Assistants" className="dm-export-ai">
               {([['Claude', ClaudeIcon], ['ChatGPT', ChatGptIcon]] as const).map(([name, Icon]) => (
-                <div key={name} className="dm-export-ai-row" onMouseEnter={() => setOpenDest(null)}>
+                <div key={name} role="none" className="dm-export-ai-row" onMouseEnter={() => setOpenDest(null)}>
                   <button type="button" role="menuitem" data-lvl="1" data-action={name} className="dm-export-item" onClick={() => void copyPrompt(name)}>
                     <Icon size={16} />
                     <span className="dm-filter-label">{name}</span>
                   </button>
                   <Tooltip content={`Open OWOX in ${name}`}>
-                    <button type="button" data-link={name} className="dm-export-link" aria-label={`Open OWOX in ${name}`} onClick={() => void ctx.ui.openExternal(PROVIDER_LISTING[name]).catch(() => undefined)}>
+                    <button type="button" role="menuitem" data-link={name} className="dm-export-link" aria-label={`Open OWOX in ${name}`} onClick={() => void ctx.ui.openExternal(PROVIDER_LISTING[name]).catch(() => undefined)}>
                       <ExternalLink size={14} />
                     </button>
                   </Tooltip>

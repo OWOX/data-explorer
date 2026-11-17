@@ -2,7 +2,7 @@ import type { SchemaLoader } from '../api/schemas';
 import type { Model } from '../model/types';
 import type { Ctx } from '../sdk/types';
 import type { GridState } from '../state/store';
-import { AiUnavailable, createAiRun, pickModel } from './ai';
+import { AiUnavailable, createAiRun, pickModels } from './ai';
 import { MAX_FOUND, searchEndpoint } from './endpoint';
 import { discoveryQuestion, viewQuestion } from './prompts';
 import { parseAiView } from './view';
@@ -36,7 +36,7 @@ function validIds(answer: Record<string, unknown>, model: Model): string[] {
  */
 export async function smartSearch(deps: SearchDeps, query: string): Promise<SearchOutcome> {
   const { ctx, model, schemas, signal } = deps;
-  const ai = pickModel(ctx);
+  const ai = pickModels(ctx);
   let ids = await searchEndpoint(ctx, query, model, signal);
   if (!ai) return { ids, grid: null, ai: 'none' };
   const run = createAiRun(ai, signal, deps.timeoutMs);
@@ -44,14 +44,14 @@ export async function smartSearch(deps: SearchDeps, query: string): Promise<Sear
   try {
     if (ids.length === 0) {
       const q = discoveryQuestion(query, [...model.marts.values()]);
-      ids = validIds(await run.ask(q.system, q.user), model);
+      ids = validIds(await run.ask('discover', q.system, q.user), model);
     }
     const best = ids[0] ? model.marts.get(ids[0]) : undefined;
     if (best) {
       const schema = await schemas.get(best.id);
       if (schema.length) {
         const q = viewQuestion(query, best, schema);
-        grid = parseAiView(await run.ask(q.system, q.user), schema);
+        grid = parseAiView(await run.ask('view', q.system, q.user), schema);
       }
     }
   } catch (e) {

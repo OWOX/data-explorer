@@ -46,7 +46,7 @@ export function SearchBox({ smart, label }: { smart: SmartSearch; label: string 
       {(draft || applied) && <button type="button" className="dm-search-x" aria-label="Clear search" onClick={() => { smart.clear(); input.current?.focus(); }}><X size={14} /></button>}
       <Tooltip content={smart.problem ?? 'Search'}>
         <span className="dm-search-go">
-          <button type="submit" aria-label="Search" disabled={busy || !!smart.problem}>{busy ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}</button>
+          <button type="submit" aria-label="Search" disabled={!!smart.problem}>{busy ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}</button>
         </span>
       </Tooltip>
     </form>

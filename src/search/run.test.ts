@@ -41,7 +41,7 @@ describe('smartSearch', () => {
     // the endpoint found marts, so the model was asked only for the view, of the best one
     expect(t.calls.map((c) => c.task)).toEqual(['view']);
     expect((t.calls[0] as unknown as { dataMart: { id: string } }).dataMart.id).toBe('orders');
-    expect(vi.mocked(t.ctx.owox.getJson)).toHaveBeenCalledWith('/api/search', { q: 'paid orders', entityTypes: 'DATA_MART', excludeDrafts: 'true', limit: '5' });
+    expect(vi.mocked(t.ctx.owox.getJson)).toHaveBeenCalledWith('/api/search', { q: 'paid orders', entityTypes: 'DATA_MART', excludeDrafts: 'true', limit: '10' });
   });
 
   test('an empty endpoint goes to AI discovery; its ids are checked against the model and capped; then the view', async () => {
@@ -85,7 +85,7 @@ describe('smartSearch', () => {
   test('a model that never answers is unavailable after the timeout, with the endpoint result kept', async () => {
     const t = setup({ search: [hit('orders', 1)] });
     t.ctx.credentials!.ai!.reasoning!.doGenerate = () => new Promise(() => {});
-    const out = await smartSearch({ ...t.deps, timeoutMs: 20 }, 'orders');
+    const out = await smartSearch({ ...t.deps, timeoutMs: 40 }, 'orders');
     expect(out).toEqual({ ids: ['orders'], grid: null, ai: 'unavailable' });
   });
 

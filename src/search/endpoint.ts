@@ -6,11 +6,13 @@ export const MIN_QUERY = 2;
 export const MAX_QUERY = 256;
 /** Marts a search shows. */
 export const MAX_FOUND = 5;
+/** Asked of the engine: more than are shown, since ids the model does not hold (or the member cannot open) are dropped after. */
+const REQUEST_LIMIT = 10;
 
 /** Why a query cannot be sent, or null when it can. */
 export function queryProblem(q: string): string | null {
   const n = q.trim().length;
-  if (n < MIN_QUERY) return `Type at least ${MIN_QUERY} characters.`;
+  if (n < 1) return 'Type what you are looking for.';
   if (n > MAX_QUERY) return `Use at most ${MAX_QUERY} characters.`;
   return null;
 }
@@ -21,10 +23,11 @@ export function queryProblem(q: string): string | null {
  */
 export async function searchEndpoint(ctx: Ctx, query: string, model: Model, signal?: AbortSignal): Promise<string[]> {
   const q = query.trim();
-  if (queryProblem(q)) return [];
+  // A one-character query is a title match only: the backend refuses under its minimum.
+  if (q.length < MIN_QUERY || queryProblem(q)) return [];
   let body: unknown;
   try {
-    body = await ctx.owox.getJson<unknown>('/api/search', { q, entityTypes: 'DATA_MART', excludeDrafts: 'true', limit: String(MAX_FOUND) });
+    body = await ctx.owox.getJson<unknown>('/api/search', { q, entityTypes: 'DATA_MART', excludeDrafts: 'true', limit: String(REQUEST_LIMIT) });
   } catch (e) {
     console.warn('The OWOX search failed', e);
     return [];

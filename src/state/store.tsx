@@ -186,11 +186,11 @@ export function useStore(): [State, Dispatch<Action>] {
   return v;
 }
 
-type Services = { ctx: Ctx; schemas: SchemaLoader; blendable: BlendableLoader; counter: RowCounter; columnStore: ColumnStore; exporter: Exporter; preferences: Preferences };
+type Services = { /** The whole budget of a search's AI questions in ms; the default when absent (tests shorten or lengthen it). */ aiTimeoutMs?: number; ctx: Ctx; schemas: SchemaLoader; blendable: BlendableLoader; counter: RowCounter; columnStore: ColumnStore; exporter: Exporter; preferences: Preferences };
 const ServicesCtx = createContext<Services | null>(null);
 
-export function AppServices({ ctx, children }: { ctx: Ctx; children: ReactNode }) {
-  const value = useMemo(() => ({ ctx, schemas: createSchemaLoader(ctx), blendable: createBlendableLoader(ctx), counter: createRowCounter(ctx), columnStore: createColumnStore(ctx), exporter: createExporter(ctx), preferences: createPreferences(ctx) }), [ctx]);
+export function AppServices({ ctx, aiTimeoutMs, children }: { ctx: Ctx; aiTimeoutMs?: number; children: ReactNode }) {
+  const value = useMemo(() => ({ aiTimeoutMs, ctx, schemas: createSchemaLoader(ctx), blendable: createBlendableLoader(ctx), counter: createRowCounter(ctx), columnStore: createColumnStore(ctx), exporter: createExporter(ctx), preferences: createPreferences(ctx) }), [ctx, aiTimeoutMs]);
   return <ServicesCtx.Provider value={value}>{children}</ServicesCtx.Provider>;
 }
 

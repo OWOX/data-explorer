@@ -14,8 +14,9 @@ const ctxReturning = (value: unknown) => {
 describe('queryProblem', () => {
   test('the backend takes 2 to 256 characters of the trimmed query', () => {
     expect([MIN_QUERY, MAX_QUERY]).toEqual([2, 256]);
-    expect(queryProblem('a')).not.toBeNull();
-    expect(queryProblem('  a  ')).not.toBeNull();
+    // the box takes one character (a title match); the endpoint is only asked from two
+    expect(queryProblem('   ')).not.toBeNull();
+    expect(queryProblem('a')).toBeNull();
     expect(queryProblem('ab')).toBeNull();
     expect(queryProblem('x'.repeat(256))).toBeNull();
     expect(queryProblem('x'.repeat(257))).not.toBeNull();
@@ -26,7 +27,7 @@ describe('searchEndpoint', () => {
   test('asks the search engine for published data marts, five at most, with the trimmed query', async () => {
     const { ctx, getJson } = ctxReturning([]);
     await searchEndpoint(ctx, '  orders by month ', model());
-    expect(getJson).toHaveBeenCalledWith('/api/search', { q: 'orders by month', entityTypes: 'DATA_MART', excludeDrafts: 'true', limit: '5' });
+    expect(getJson).toHaveBeenCalledWith('/api/search', { q: 'orders by month', entityTypes: 'DATA_MART', excludeDrafts: 'true', limit: '10' });
   });
 
   test('ranks by score, keeps only marts the member can open in the model, drops repeats and other entity types, and caps at five', async () => {
@@ -51,7 +52,7 @@ describe('searchEndpoint', () => {
     const failing = { owox: { getJson: vi.fn(async () => { throw new Error('500'); }) } } as unknown as Ctx;
     expect(await searchEndpoint(failing, 'ab', model(mart('a')))).toEqual([]);
     const { ctx, getJson } = ctxReturning([hit('a', 1)]);
-    expect(await searchEndpoint(ctx, 'a', model(mart('a')))).toEqual([]);
+    expect(await searchEndpoint(ctx, ' a ', model(mart('a')))).toEqual([]);
     expect(getJson).not.toHaveBeenCalled();
   });
 

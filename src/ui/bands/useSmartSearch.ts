@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Model } from '../../model/types';
-import { pickModel } from '../../search/ai';
-import { queryProblem } from '../../search/endpoint';
+import { pickModels } from '../../search/ai';
+import { MIN_QUERY, queryProblem } from '../../search/endpoint';
 import { smartSearch } from '../../search/run';
 import { sourceOfModel, useServices, useStore } from '../../state/store';
 
@@ -12,14 +12,14 @@ import { sourceOfModel, useServices, useStore } from '../../state/store';
  */
 export function useSmartSearch(model: Model) {
   const [state, dispatch] = useStore();
-  const { ctx, schemas, preferences } = useServices();
+  const { ctx, schemas, preferences, aiTimeoutMs } = useServices();
   const applied = state.search.trim();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   // Hidden until the stored choice has been read, so a member who dismissed it never sees it flash.
   const [hintDismissed, setHintDismissed] = useState(true);
-  const aiConfigured = useMemo(() => pickModel(ctx) !== null, [ctx]);
+  const aiConfigured = useMemo(() => pickModels(ctx) !== null, [ctx]);
   const latest = useRef({ selection: state.selection, model });
   useEffect(() => { latest.current = { selection: state.selection, model }; });
   const running = useRef<AbortController | null>(null);
@@ -36,13 +36,22 @@ export function useSmartSearch(model: Model) {
   const run = useCallback(async (raw: string) => {
     const query = raw.trim();
     if (queryProblem(query)) return;
+    // A new query cancels the one that is running.
     running.current?.abort();
+    // One character is a title match only: the search engine takes two or more.
+    if (query.length < MIN_QUERY) {
+      running.current = null;
+      setBusy(false);
+      dispatch({ type: 'search', q: query });
+      return;
+    }
     const ctl = new AbortController();
     running.current = ctl;
-    ctx.signal.addEventListener('abort', () => ctl.abort(), { once: true });
+    const onHostAbort = () => ctl.abort();
+    ctx.signal.addEventListener('abort', onHostAbort, { once: true });
     setBusy(true);
     try {
-      const out = await smartSearch({ ctx, model: latest.current.model, schemas, signal: ctl.signal }, query);
+      const out = await smartSearch({ ctx, model: latest.current.model, schemas, signal: ctl.signal, timeoutMs: aiTimeoutMs }, query);
       if (ctl.signal.aborted) return;
       const best = out.ids[0];
       if (!best) {
@@ -57,9 +66,10 @@ export function useSmartSearch(model: Model) {
       if (out.grid) dispatch({ type: 'setMarts', selection: { sourceKey, martId: best, record: null }, grids: { [best]: out.grid } });
       else dispatch({ type: 'selectMart', id: best, sourceOf: sourceOfModel(current) });
     } finally {
+      ctx.signal.removeEventListener('abort', onHostAbort);
       if (running.current === ctl) { running.current = null; setBusy(false); }
     }
-  }, [ctx, schemas, dispatch]);
+  }, [ctx, schemas, dispatch, aiTimeoutMs]);
 
   return {
     /** The query on screen as a result: set while a search is applied, whichever way it was answered. */
@@ -71,7 +81,7 @@ export function useSmartSearch(model: Model) {
     problem: queryProblem(draft),
     openBox: () => { setDraft(applied); setOpen(true); },
     closeBox: () => { setDraft(applied); setOpen(false); },
-    submit: () => { if (!busy && !queryProblem(draft)) void run(draft); },
+    submit: () => { if (!queryProblem(draft)) void run(draft); },
     clear: () => { cancel(); setDraft(''); if (state.search || state.found.length) dispatch({ type: 'search', q: '' }); },
     /** The one-line hint that suggests plugging AI in: only while the search is in use, only without a model, until dismissed. */
     hintVisible: (open || applied !== '') && !aiConfigured && !hintDismissed,

@@ -222,3 +222,9 @@ test('with no mart found the title match applies as before', () => {
   const model = modelOf(['alpha', 'beta'], []);
   expect(computeVisible({ model, selection: sel(), search: 'alp', contextIds: [], found: [] }).ids).toEqual(['alpha']);
 });
+
+test('after the found marts come the marts whose title matches the query, without repeats', () => {
+  const model = modelOf(['a', 'b', 'c', 'd'], [], [{ title: 'Sessions GA4' }, { title: 'Ads' }, { title: 'GA4 events' }, { title: 'GA4 secret', accessible: false }]);
+  const r = computeVisible({ model, selection: sel({ martId: 'b' }), search: 'ga4', contextIds: [], found: ['b', 'c'] });
+  expect(r.ids).toEqual(['b', 'c', 'a']);
+});

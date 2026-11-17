@@ -1,15 +1,19 @@
 import type { AiModel, Ctx } from '../sdk/types';
 
-/** One search run waits this long for the model, all its questions together; past it the run goes on as if no AI were configured. */
-export const AI_TIMEOUT_MS = import.meta.env.MODE === 'test' ? 400 : 20_000;
+/** One search run waits this long for the models, all its questions together; past it the run goes on as if no AI were configured. */
+export const AI_TIMEOUT_MS = 30_000;
 
 /** The model could not answer this run (a timeout, an error, an answer that is no JSON, or the run was cancelled). Never shown to the member. */
 export class AiUnavailable extends Error {}
 
-/** The `reasoning` model when the project has one, else `fast`, else null (no AI configured). */
-export function pickModel(ctx: Ctx): AiModel | null {
+export type Models = { fast?: AiModel; reasoning?: AiModel };
+
+/** The models the project configured: `fast` and `reasoning`, whichever exist. null when there is no AI. */
+export function pickModels(ctx: Ctx): Models | null {
   const ai = ctx.credentials?.ai;
-  return ai?.reasoning ?? ai?.fast ?? null;
+  const fast = ai?.fast;
+  const reasoning = ai?.reasoning;
+  return fast || reasoning ? { ...(fast ? { fast } : {}), ...(reasoning ? { reasoning } : {}) } : null;
 }
 
 /** The first JSON object in a model's answer: bare, in a code fence, or with words around it. undefined when there is none. */
@@ -32,42 +36,60 @@ export function extractJson(text: string): unknown {
   return undefined;
 }
 
-/** The questions one search run puts to the model. They share one deadline, and the run's signal cancels the one in flight. */
-export function createAiRun(model: AiModel, signal: AbortSignal, timeoutMs = AI_TIMEOUT_MS) {
-  const deadline = Date.now() + timeoutMs;
+/** Which model a question prefers: picking marts is easy (fast), setting up a view is the one that benefits from reasoning. */
+export type Role = 'discover' | 'view';
+/** The share of the run's budget one question may take, so a slow first question leaves the second a chance. */
+const SHARE: Record<Role, number> = { discover: 0.4, view: 0.7 };
+
+/** The questions one search run puts to the models. They share one budget; the run's signal cancels the call in flight. */
+export function createAiRun(models: Models, signal: AbortSignal, totalMs = AI_TIMEOUT_MS) {
+  const deadline = Date.now() + totalMs;
+
+  async function call(model: AiModel, system: string, user: string, ms: number): Promise<Record<string, unknown>> {
+    if (ms <= 0 || signal.aborted) throw new AiUnavailable('no time left');
+    const ctl = new AbortController();
+    const stop = () => ctl.abort();
+    signal.addEventListener('abort', stop, { once: true });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unavailable = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => { ctl.abort(); reject(new AiUnavailable('timeout')); }, ms);
+      ctl.signal.addEventListener('abort', () => reject(new AiUnavailable('aborted')), { once: true });
+    });
+    unavailable.catch(() => undefined);
+    try {
+      // No output cap: a reasoning model's thinking counts toward it, and a small cap ends the answer before the JSON.
+      const answer = Promise.resolve(model.doGenerate({
+        prompt: [{ role: 'system', content: system }, { role: 'user', content: [{ type: 'text', text: user }] }],
+        responseFormat: { type: 'json' },
+        temperature: 0,
+        abortSignal: ctl.signal,
+      }));
+      answer.catch(() => undefined);
+      const result = await Promise.race([answer, unavailable]);
+      const text = result.content.flatMap((c) => (c.type === 'text' && typeof c.text === 'string' ? [c.text] : [])).join('');
+      const json = extractJson(text);
+      if (json === undefined) throw new AiUnavailable('no JSON in the answer');
+      return json as Record<string, unknown>;
+    } catch (e) {
+      throw e instanceof AiUnavailable ? e : new AiUnavailable(e instanceof Error ? e.message : String(e));
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', stop);
+    }
+  }
+
   return {
-    /** The model's JSON answer; AiUnavailable for anything else. */
-    async ask(system: string, user: string): Promise<Record<string, unknown>> {
-      const left = deadline - Date.now();
-      if (left <= 0 || signal.aborted) throw new AiUnavailable('no time left');
-      const call = new AbortController();
-      const stop = () => call.abort();
-      signal.addEventListener('abort', stop, { once: true });
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const unavailable = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => { call.abort(); reject(new AiUnavailable('timeout')); }, left);
-        call.signal.addEventListener('abort', () => reject(new AiUnavailable('aborted')), { once: true });
-      });
+    /** The model's JSON answer; AiUnavailable for anything else. A `reasoning` model that fails (not cancelled) is retried once on `fast` in what is left of the budget. */
+    async ask(role: Role, system: string, user: string): Promise<Record<string, unknown>> {
+      const order = role === 'discover' ? [models.fast ?? models.reasoning] : [models.reasoning ?? models.fast];
+      const first = order[0];
+      if (!first) throw new AiUnavailable('no model');
+      const own = Math.min(deadline - Date.now(), totalMs * SHARE[role]);
       try {
-        const answer = Promise.resolve(model.doGenerate({
-          prompt: [{ role: 'system', content: system }, { role: 'user', content: [{ type: 'text', text: user }] }],
-          responseFormat: { type: 'json' },
-          temperature: 0,
-          maxOutputTokens: 1200,
-          abortSignal: call.signal,
-        }));
-        answer.catch(() => undefined);
-        const result = await Promise.race([answer, unavailable]);
-        const text = result.content.flatMap((c) => (c.type === 'text' && typeof c.text === 'string' ? [c.text] : [])).join('');
-        const json = extractJson(text);
-        if (json === undefined) throw new AiUnavailable('no JSON in the answer');
-        return json as Record<string, unknown>;
+        return await call(first, system, user, own);
       } catch (e) {
-        throw e instanceof AiUnavailable ? e : new AiUnavailable(e instanceof Error ? e.message : String(e));
-      } finally {
-        clearTimeout(timer);
-        signal.removeEventListener('abort', stop);
-        unavailable.catch(() => undefined);
+        if (signal.aborted || first !== models.reasoning || !models.fast || models.fast === first) throw e;
+        return call(models.fast, system, user, deadline - Date.now());
       }
     },
   };
