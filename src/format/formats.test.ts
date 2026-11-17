@@ -1,5 +1,5 @@
 import { displayText } from '../ui/format';
-import { formatsFor, formatValue, isValidFormat, resolveFormat, type Format } from './formats';
+import { formatsFor, formatValue, isValidFormat, resolveFormat, type Format, keepsUnit } from './formats';
 
 const auto: Format = { kind: 'auto' };
 const money = (currency: string): Format => ({ kind: 'money', currency });
@@ -80,4 +80,9 @@ describe('formatValue', () => {
     expect(formatValue('2026-03-12', 'DATE', { kind: 'date' })).toBe(displayText('2026-03-12', 'DATE'));
     expect(formatValue('not a date', 'TIMESTAMP', { kind: 'time' })).toBe('not a date');
   });
+});
+
+test('keepsUnit: counts and combined text lose the column format, the rest keep it', () => {
+  for (const fn of [undefined, 'SUM', 'MIN', 'MAX', 'AVG', 'P25', 'P50', 'P75', 'P95']) expect(keepsUnit(fn)).toBe(true);
+  for (const fn of ['COUNT', 'COUNT_DISTINCT', 'STRING_AGG']) expect(keepsUnit(fn)).toBe(false);
 });

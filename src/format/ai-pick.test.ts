@@ -46,9 +46,9 @@ test('asks with title, name, alias and description, no values; stores valid pick
   expect(doc.columns[0]).toMatchObject({ alias: 'Revenue', description: 'Order total' });
 });
 
-test('invalid kinds, currencies and shapes are dropped; auto is not stored', async () => {
+test('invalid kinds, currencies and shapes are dropped; auto is stored so later sessions do not ask again', async () => {
   const s = setup({ amount: { kind: 'money', currency: 'ZZZZ' }, rate: { kind: 'bogus' }, created: { kind: 'auto' } });
-  expect(await run(s)).toEqual({});
+  expect(await run(s)).toEqual({ created: { kind: 'auto' } });
   const t = setup({ amount: { kind: 'money' }, rate: 'percent', created: { kind: 'money', currency: 'USD' } });
   expect(await run(t)).toEqual({});
 });
@@ -82,11 +82,21 @@ test('a failure or a non-JSON answer is silent', async () => {
   expect(warn).not.toHaveBeenCalled();
 });
 
-test('asks once per mart per session; an aborted ask is taken back', async () => {
+test('asks once per column per mart per session; a column that joins later is asked on its own', async () => {
   const s = setup({ rate: { kind: 'percent' } });
   await run(s);
   await run(s, {});
   expect(s.doGenerate).toHaveBeenCalledTimes(1);
+  const joined = f('c.revenue', 'number', 'NUMERIC', { joined: { martId: 'c', label: 'Customers', aliasPath: 'c' } });
+  await run(s, {}, [...schema, joined]);
+  expect(s.doGenerate).toHaveBeenCalledTimes(2);
+  const user = (s.doGenerate.mock.calls[1]![0].prompt[1] as { content: { text: string }[] }).content[0]!.text;
+  expect(JSON.parse(user).columns.map((c: { id: string }) => c.id)).toEqual(['c.revenue']);
+});
+
+test('an aborted ask is taken back', async () => {
+  const s = setup({ rate: { kind: 'percent' } });
+  void s;
   resetAiPickSession();
   const ctl = new AbortController();
   const slow = setup({ rate: { kind: 'percent' } });

@@ -22,6 +22,11 @@ export function formatsFor(type: string): Format['kind'][] {
   return [];
 }
 
+/** Whether an aggregated output still has the column's unit: a count or a combined text does not, so it gets no column format. */
+export function keepsUnit(fn: string | undefined): boolean {
+  return fn !== 'COUNT' && fn !== 'COUNT_DISTINCT' && fn !== 'STRING_AGG';
+}
+
 /** Whether a value read from storage or an AI answer is a well-formed format, whatever column it is for. */
 export function isFormat(f: unknown): f is Format {
   if (typeof f !== 'object' || f === null) return false;

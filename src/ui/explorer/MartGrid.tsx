@@ -2,6 +2,7 @@ import { columnVisibilityFeature, flexRender, tableFeatures, useTable, type Colu
 import { ArrowDown, ArrowUp, Box, Info, RefreshCw, RotateCcw, X } from 'lucide-react';
 import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pending-focus';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { AUTO, keepsUnit } from '../../format/formats';
 import { useColumnFormats } from '../../format/useColumnFormats';
 import { PAGE_SIZE } from '../../config';
 import { columnLetter } from './columnLetters';
@@ -330,7 +331,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       ),
       cell: ({ row }) => (o.bucket
         ? <BucketValue value={row.original[o.key]} unit={o.bucket} />
-        : <CellValue row={row.original} field={o.key} type={outputType(field, o.fn)} format={formatOfRef.current(o.column, outputType(field, o.fn))} />),
+        : <CellValue row={row.original} field={o.key} type={outputType(field, o.fn)} format={keepsUnit(o.fn) ? formatOfRef.current(o.column, outputType(field, o.fn)) : AUTO} />),
     };
   }), [outputs, shownByName, filters, aggNow, changeAgg, blockers]);
 
