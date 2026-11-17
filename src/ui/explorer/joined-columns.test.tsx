@@ -8,6 +8,7 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
+import { openSubmenu } from './menu-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
 const BLEND = '/api/data-marts/orders/blendable-schema';
@@ -94,7 +95,7 @@ test('a joined column filters and sorts by its blended name, with the filters it
   await t.seeded;
   t.view();
   await waitFor(() => expect(headers()).toEqual(['id', 'email', 'city']));
-  await userEvent.click(within(data()).getByLabelText('Filter Stores · city'));
+  await openSubmenu(within(data()), 'Stores · city', 'Filter');
   expect(await screen.findByRole('option', { name: 'contains' })).toBeInTheDocument(); // a string: the string operators
   await userEvent.selectOptions(screen.getByLabelText('Operator'), 'eq');
   await userEvent.type(screen.getByLabelText('Value'), 'Berlin');
@@ -161,7 +162,7 @@ test('a filter popover the reader has open stays open when the joined marts arri
   t.view();
   await openPicker();
   await userEvent.keyboard('{Escape}');
-  await userEvent.click(await within(data()).findByLabelText('Filter status'));
+  await openSubmenu(within(data()), 'status', 'Filter');
   expect(await screen.findByLabelText('Operator')).toBeInTheDocument();
   release();
   await waitFor(() => expect(t.reads).toHaveLength(1));
@@ -199,4 +200,17 @@ test('a saved list with joined columns and none of the main mart\'s own gets the
   await t.seeded;
   t.view();
   await waitFor(() => expect(headers()).toEqual(['id', 'Customer', 'Product', 'Store', 'status', 'email', 'SKU']));
+});
+
+test('Hide column focuses the neighbour by field, even when two columns share a title', async () => {
+  const t = setup(['id', 'customers__id', 'status']);
+  await t.seeded;
+  t.view();
+  await waitFor(() => expect(headers()).toEqual(['id', 'status', 'id']));
+  const icons = () => [...data().querySelectorAll<HTMLElement>('[data-menu-icon]')];
+  await waitFor(() => expect(icons().map((i) => i.dataset.field)).toEqual(['id', 'status', 'customers__id']));
+  await userEvent.click(icons()[1]!);
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Hide column' }));
+  await waitFor(() => expect(document.activeElement).toBe(icons().find((i) => i.dataset.field === 'customers__id')));
+  expect(document.activeElement).not.toBe(icons().find((i) => i.dataset.field === 'id'));
 });

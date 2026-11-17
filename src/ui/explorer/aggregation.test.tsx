@@ -6,6 +6,7 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { SchemaFieldDto, TraverseOptions } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
+import { openSubmenu } from './menu-test-utils';
 
 function setup(opts: { fields?: SchemaFieldDto[]; saved?: Record<string, unknown>; gate?: Promise<void> } = {}) {
   const fixtures = demoFixtures();
@@ -43,7 +44,7 @@ async function showColumn(label: string | RegExp) {
 
 /** Opens the aggregation popover of a column, ticks the functions and applies. */
 async function aggregate(column: string, ...functions: string[]) {
-  await userEvent.click(await within(data()).findByRole('button', { name: `Aggregate ${column}` }));
+  await openSubmenu(within(data()), column, 'Aggregate');
   const dialog = await screen.findByRole('dialog');
   for (const f of functions) await userEvent.click(within(dialog).getByLabelText(f));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
@@ -89,7 +90,7 @@ test('a date takes one bucket instead of functions, and shows the bucket start b
   const t = setup();
   await ready();
   await showColumn(/created_at/);
-  await userEvent.click(await within(data()).findByRole('button', { name: 'Aggregate created_at' }));
+  await openSubmenu(within(data()), 'created_at', 'Aggregate');
   const dialog = await screen.findByRole('dialog');
   await userEvent.selectOptions(within(dialog).getByLabelText('Group by bucket'), 'MONTH');
   await userEvent.selectOptions(within(dialog).getByLabelText('Time zone'), 'UTC');
@@ -112,7 +113,7 @@ test('the Sigma stays on while a column is aggregated; Clear ungroups; Reset kee
   await userEvent.click(within(data()).getByRole('button', { name: 'Reset' }));
   expect(headers().some((h) => h.startsWith('Amount · Sum'))).toBe(true);
   await waitFor(() => expect(t.puts.some((p) => p.id === 'orders' && JSON.stringify(p.doc.aggregations) === JSON.stringify([{ column: 'amount', function: 'SUM' }]))).toBe(true), { timeout: 3000 });
-  await userEvent.click(within(data()).getByRole('button', { name: 'Aggregate Amount' }));
+  await openSubmenu(within(data()), 'Amount', 'Aggregate');
   await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Clear' }));
   await waitFor(() => expect(headers()).toContain('Amount'));
   expect(within(data()).getByText(/records$/)).toBeInTheDocument();
@@ -122,13 +123,13 @@ test('the popover is headed "Aggregation"; Clear is an outline button left of Ca
   setup();
   await ready();
   await showColumn('Amount');
-  await userEvent.click(await within(data()).findByRole('button', { name: 'Aggregate Amount' }));
+  await openSubmenu(within(data()), 'Amount', 'Aggregate');
   const dialog = await screen.findByRole('dialog', { name: 'Aggregation of Amount' });
   expect(within(dialog).getByText('Aggregation', { selector: '.dm-popover-title' })).toBeInTheDocument();
   expect(within(dialog).queryByText('Amount', { selector: '.dm-popover-title' })).toBeNull();
   const clear = within(dialog).getByRole('button', { name: 'Clear' });
   expect(clear).toBeDisabled();
-  expect(clear.className).toContain('border');
+  expect(clear.className).toContain('dm-btn-secondary');
   const buttons = within(dialog).getAllByRole('button').map((b) => b.textContent);
   expect(buttons.slice(-3)).toEqual(['Clear', 'Cancel', 'Apply']);
   await userEvent.click(within(dialog).getByLabelText('Sum'));
@@ -140,7 +141,7 @@ test('the filter popover of an aggregated column says it filters before aggregat
   await ready();
   await showColumn('Amount');
   await aggregate('Amount', 'Sum');
-  await userEvent.click(await within(data()).findByLabelText('Filter Amount'));
+  await openSubmenu(within(data()), 'Amount', 'Filter');
   expect(await screen.findByText('Filters rows before they are aggregated')).toBeInTheDocument();
 });
 
@@ -180,7 +181,7 @@ test('an array field takes no function; with one shown the grouped query is not 
   await showColumn('tags');
   expect(within(data()).queryByRole('button', { name: 'Aggregate tags' })).toBeNull();
   // Apply is off while tags is shown: grouping would make it a GROUP BY key
-  await userEvent.click(await within(data()).findByRole('button', { name: 'Aggregate Amount' }));
+  await openSubmenu(within(data()), 'Amount', 'Aggregate');
   const dialog = await screen.findByRole('dialog');
   await userEvent.click(within(dialog).getByLabelText('Sum'));
   expect(within(dialog).getByRole('button', { name: 'Apply' })).toBeDisabled();

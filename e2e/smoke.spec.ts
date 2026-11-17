@@ -12,6 +12,12 @@ async function ordersGrid(page: Page) {
   return data;
 }
 
+/** Opens a column's menu and its first-level row (Filter, Aggregate, Format, Sort). */
+async function openColumnSub(data: Locator, title: string, row: 'Filter' | 'Aggregate' | 'Format' | 'Sort') {
+  await data.getByLabel(`Column menu ${title}`).click();
+  await data.page().getByRole('menuitem', { name: row, exact: true }).click();
+}
+
 /** Orders joins Customers, so clicking it adds it to the grid; clicking Orders then promotes Customers to the main mart. */
 async function makeMain(page: Page, title: string) {
   await martCard(page, title).click();
@@ -147,7 +153,7 @@ test('a band hint tooltip draws above the cards below it', async ({ page }) => {
 
 test('filter, reset, columns, a row fills the Row band, Back returns', async ({ page }) => {
   const data = await ordersGrid(page);
-  await data.getByLabel('Filter id').click();
+  await openColumnSub(data, 'id', 'Filter');
   await page.getByLabel('Operator').selectOption('lte');
   await page.getByLabel('Value').fill('3');
   await page.getByRole('button', { name: 'Apply' }).click();
@@ -222,7 +228,7 @@ test('a date column filter opens on presets; a preset applies at once and names 
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
   await page.getByLabel(/created_at/).check();
   await page.keyboard.press('Escape');
-  await data.getByLabel('Filter created_at').click();
+  await openColumnSub(data, 'created_at', 'Filter');
   await expect(page.getByRole('group', { name: 'Date presets' }).getByRole('button')).toHaveCount(14);
   await page.getByRole('button', { name: 'Last 30 days' }).click();
   await expect(page.getByRole('group', { name: 'Date presets' })).toHaveCount(0);
@@ -416,7 +422,7 @@ test('opening the Fields picker by mouse leaves every (?) hidden until a row is 
 test('a filter popover is at most 20rem tall and keeps its title while the list scrolls', async ({ page }) => {
   const data = await ordersGrid(page);
   await tick(page, 'created_at');
-  await data.getByLabel('Filter created_at').click();
+  await openColumnSub(data, 'created_at', 'Filter');
   const body = page.locator('[data-popover-body]');
   await expect(body).toBeVisible();
   const box = await page.locator('[data-popover-body]').evaluate((el) => (el.parentElement as HTMLElement).getBoundingClientRect().height);
@@ -435,7 +441,7 @@ test('a joined column: tick Customers · email in the picker, and it filters', a
   await tick(page, 'email', 'Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
   await expect(data.getByRole('row').nth(3)).toContainText('@example.com');
-  await data.getByLabel('Filter Customers · email').click();
+  await openColumnSub(data, 'Customers · email', 'Filter');
   await page.getByLabel('Value').fill('anna');
   await page.getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByRole('row').nth(3)).toContainText('anna');
@@ -502,7 +508,7 @@ test('selecting a mart adds a text field and a metric; the filter mark carries n
   await martCard(page, 'Products').click();
   await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', 'Products']);
   await expect(data.locator('thead tr[data-group-row] th[data-group]').nth(1)).toHaveAttribute('colspan', '2');
-  await data.getByLabel('Filter id').click();
+  await openColumnSub(data, 'id', 'Filter');
   await page.getByLabel('Value').fill('3');
   await page.getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByLabel('Filter id')).toHaveText('');
@@ -525,7 +531,7 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   await expect(data.getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
   await tick(page, 'email', 'Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
-  await data.getByLabel('Filter id').click();
+  await openColumnSub(data, 'id', 'Filter');
   await page.getByLabel('Operator').selectOption('lte');
   await page.getByLabel('Value').fill('3');
   await page.getByRole('button', { name: 'Apply' }).click();
@@ -564,8 +570,7 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
 test('a copied view link keeps a Sum on Amount: the opener sees the grouped grid', async ({ page, context }) => {
   const data = await ordersGrid(page);
   await tick(page, 'Amount');
-  await data.getByRole('button', { name: 'Aggregate Amount' }).hover();
-  await data.getByRole('button', { name: 'Aggregate Amount' }).click();
+  await openColumnSub(data, 'Amount', 'Aggregate');
   await page.getByRole('dialog').getByLabel('Sum').check();
   await page.getByRole('dialog').getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByRole('columnheader', { name: /Amount · Sum/ })).toBeVisible();
@@ -604,8 +609,7 @@ test('a link to a data mart the opener cannot see shows a notice and the page st
 test('a Sum on Amount groups the rows by the other columns; the badge counts groups and a group opens no record', async ({ page }) => {
   const data = await ordersGrid(page);
   await tick(page, 'Amount');
-  await data.getByRole('button', { name: 'Aggregate Amount' }).hover();
-  await data.getByRole('button', { name: 'Aggregate Amount' }).click();
+  await openColumnSub(data, 'Amount', 'Aggregate');
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Sum').check();
   await dialog.getByRole('button', { name: 'Apply' }).click();
@@ -653,9 +657,11 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
     return pick.map((e) => getComputedStyle(e).borderRadius);
   });
   expect(radii.every((r) => r === '0px')).toBe(true);
-  // the filter icon is 20% under the old 14px
-  const icon = data.locator('.dm-th .dm-icon').first();
-  expect(await icon.evaluate((e) => Math.round(e.getBoundingClientRect().width * 10) / 10)).toBe(11.2);
+  // the column menu icon and the Fields icon are 15px; the (i) and the active indicators stay 20% under the old 14px
+  const size = (l: Locator) => l.evaluate((e) => Math.round(e.getBoundingClientRect().width * 10) / 10);
+  expect(await size(data.locator('[data-menu-icon] .dm-icon').first())).toBe(15);
+  expect(await size(data.getByRole('button', { name: 'Fields of Orders' }).locator('.dm-icon'))).toBe(15);
+  expect(await size(data.locator('.dm-th .dm-col-info .dm-icon').first())).toBe(11.2);
   // no row highlight on hover
   const second = data.locator('tbody tr').nth(1).locator('td').first();
   const before = await second.evaluate((e) => getComputedStyle(e.parentElement!).backgroundColor);
@@ -716,16 +722,19 @@ test('a numeric filter applied through the popover (> 400) leaves fewer rows', a
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
   await page.getByLabel(/Amount/).check();
   await page.keyboard.press('Escape');
-  await expect(data.getByLabel('Filter Amount')).toBeVisible();
-  const before = await data.getByRole('row').count();
-  await data.getByLabel('Filter Amount').click();
+  await expect(data.getByLabel('Column menu Amount')).toBeVisible();
+  await openColumnSub(data, 'Amount', 'Filter');
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Operator').selectOption('gt');
   await dialog.getByLabel('Value').fill('400');
   await dialog.getByRole('button', { name: 'Apply' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(data.getByLabel('Filter Amount')).toHaveClass(/dm-ctl-on/);
-  await expect.poll(async () => data.getByRole('row').count()).toBeLessThan(before);
+  // Amount is the sixth column: every row left has an amount above 400 (waits for the cells, not a row count)
+  await expect.poll(async () => {
+    const texts = await data.locator('tbody tr td:nth-child(7)').allTextContents();
+    return texts.length > 0 && texts.every((t) => parseFloat(t.replace(/[^\d.]/g, '')) > 400);
+  }).toBe(true);
 });
 
 test('the opened search grows leftwards in the header: the title stays, the actions stay on screen', async ({ page }) => {
@@ -760,4 +769,93 @@ test('a no-primary-key mart shows a warning next to the Data (i), not a block ab
   await page.keyboard.press('Enter');
   await expect(band(page, 'data').getByRole('note', { name: /no primary key/ })).toBeVisible();
   await expect(band(page, 'data').getByText('Preview only', { exact: false })).toHaveCount(0);
+});
+
+test('the column menu and its Format submenu stay inside the window at the rightmost column; Money changes the cells', async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 520 });
+  const data = await ordersGrid(page);
+  await tick(page, 'Amount');
+  const menuIcon = data.getByLabel('Column menu Amount');
+  await menuIcon.scrollIntoViewIfNeeded();
+  await menuIcon.click();
+  const inside = async (name: string) => {
+    const box = (await page.getByRole('menu', { name }).boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(640);
+    expect(box.y + box.height).toBeLessThanOrEqual(520);
+  };
+  await inside('Menu of Amount');
+  await page.getByRole('menuitem', { name: 'Format', exact: true }).click();
+  await inside('Format Amount');
+  await expect(page.getByRole('menuitemradio', { name: 'Automatic' })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('menuitemradio', { name: 'Money' }).click();
+  await inside('Money Amount');
+  await page.getByRole('menuitemradio', { name: 'USD' }).click();
+  await expect(page.getByRole('menu', { name: 'Menu of Amount' })).toHaveCount(0);
+  await expect(data.getByRole('row').nth(2).getByRole('cell', { name: /^(US)?\$[\d,]+\.\d\d$/ })).toHaveCount(1);
+  await expect(menuIcon).toHaveClass(/dm-ctl-on/);
+  // Escape closes the submenu first, then the menu
+  await menuIcon.click();
+  await page.getByRole('menuitem', { name: 'Sort', exact: true }).click();
+  await expect(page.getByRole('menu', { name: 'Sort Amount' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu', { name: 'Sort Amount' })).toHaveCount(0);
+  await expect(page.getByRole('menu', { name: 'Menu of Amount' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu', { name: 'Menu of Amount' })).toHaveCount(0);
+});
+
+test('full screen: the Data band alone fills the plugin area, its title stays, Escape leaves', async ({ page }) => {
+  const data = await ordersGrid(page);
+  const cell = data.locator('tbody td').nth(1);
+  await cell.click();
+  await data.getByRole('button', { name: 'Full screen' }).click();
+  await expect(data.getByRole('button', { name: 'Exit full screen' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('header.dm-page-header')).toBeHidden();
+  await expect(band(page, 'marts')).toBeHidden();
+  await expect(band(page, 'sources')).toBeHidden();
+  await expect(band(page, 'row')).toBeHidden();
+  await expect(data.getByRole('heading', { name: 'Data' })).toBeVisible();
+  await expect(data.locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  // The band covers the viewport, and the grid scroller takes what the title row leaves.
+  const view = page.viewportSize()!;
+  const box = (await data.boundingBox())!;
+  expect(box).toMatchObject({ x: 0, y: 0, width: view.width, height: view.height });
+  const head = (await data.locator('.dm-band-head').boundingBox())!;
+  const scroller = (await data.locator('.dm-grid-root').boundingBox())!;
+  expect(scroller.height).toBeGreaterThan(view.height - head.height - 60);
+  expect(scroller.height).toBeLessThanOrEqual(view.height - head.height);
+  // The same grid: its selected cell is still selected.
+  await expect(cell).toHaveAttribute('data-selected', '');
+  // Popovers and dialogs sit above the band: what opens in full screen can be clicked.
+  const onTop = (el: Locator) => el.evaluate((dlg) => {
+    const r = dlg.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 20));
+    return hit && dlg.contains(hit) ? 'ok' : `blocked by ${hit?.tagName}.${hit?.className}`;
+  });
+  await data.getByRole('button', { name: /^Fields of/ }).first().click();
+  const fields = page.getByRole('dialog');
+  await expect(fields).toBeVisible();
+  expect(await onTop(fields)).toBe('ok');
+  await page.keyboard.press('Escape');
+  await expect(fields).toHaveCount(0);
+  await data.getByText('Export', { exact: true }).click();
+  const exportMenu = data.locator('details[open] [role=menu]').first();
+  await expect(exportMenu).toBeVisible();
+  expect(await onTop(exportMenu)).toBe('ok');
+  await page.keyboard.press('Escape');
+  await expect(data.getByRole('button', { name: 'Exit full screen' })).toBeVisible();
+  // Escape closes an open column menu first, and only then full screen.
+  await data.getByLabel('Column menu status').click();
+  await expect(page.getByRole('menu', { name: 'Menu of status' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu', { name: 'Menu of status' })).toHaveCount(0);
+  await expect(data.getByRole('button', { name: 'Exit full screen' })).toBeVisible();
+  await data.locator('.dm-band-head').click();
+  await page.keyboard.press('Escape');
+  await expect(data.getByRole('button', { name: 'Full screen' })).toBeVisible();
+  await expect(page.locator('header.dm-page-header')).toBeVisible();
+  await expect(band(page, 'marts')).toBeVisible();
+  await expect(cell).toHaveAttribute('data-selected', '');
 });

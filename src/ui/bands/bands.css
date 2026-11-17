@@ -83,14 +83,14 @@
 :root.dark .dm-band-count { background: color-mix(in oklab, white 8%, transparent); }
 .dm-band-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 /* CollapsibleCardHeader's chevron: a 1.75rem round button at the far right. */
-.dm-band-fold {
+.dm-band-fold, .dm-band-full {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
   width: 1.75rem; height: 1.75rem; padding: 0; border: 0; border-radius: 999px; background: none;
   color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
   cursor: pointer; transition: color 200ms, background-color 200ms;
 }
-.dm-band-fold:hover { color: var(--foreground); background: color-mix(in oklab, var(--border) 50%, transparent); }
-:root.dark .dm-band-fold:hover { background: color-mix(in oklab, white 4%, transparent); }
+.dm-band-fold:hover, .dm-band-full:hover { color: var(--foreground); background: color-mix(in oklab, var(--border) 50%, transparent); }
+:root.dark .dm-band-fold:hover, :root.dark .dm-band-full:hover { background: color-mix(in oklab, white 4%, transparent); }
 .dm-band-fold svg { transition: rotate 200ms; }
 .dm-band-fold-open { rotate: 180deg; }
 /* A card grows out of a point when it arrives and collapses back into one when it stops matching.
@@ -368,8 +368,6 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-gh-edge { box-shadow: inset -1px 0 0 var(--grid-line-strong), inset 0 -1px 0 var(--grid-line); }
 .dm-gh-fill { box-shadow: inset 0 -1px 0 var(--grid-line); }
 .dm-gh:hover .dm-reveal, .dm-gh:has(:focus-visible) .dm-reveal { opacity: 1; }
-.dm-gx-cols { color: var(--muted-foreground); border-radius: 4px; }
-.dm-gx-cols:hover { color: var(--foreground); background: var(--accent); }
 .dm-gx { color: var(--muted-foreground); border-radius: 4px; }
 .dm-gx:hover { color: var(--foreground); background: var(--accent); }
 
@@ -388,6 +386,54 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-ctl { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 1px; min-width: 16px; height: 16px; padding: 0 1px; border-radius: 4px; background: transparent; color: var(--sheet-green); }
 .dm-ctl:hover { background: color-mix(in srgb, var(--sheet-green) 12%, transparent); }
 .dm-ctl-on, .dm-ctl-on:hover { background: var(--sheet-green); color: var(--sheet-green-fg); }
+/* The column menu icon and the picker icon beside the data mart title: the same green, the same 15px glyph. */
+.dm-ctl-lg .dm-icon { width: 15px; height: 15px; }
+/* The column menu: Google Sheets' look (white panel, 4px radius, soft shadow, 32px rows, 14px Google Sans on #202124, #f1f3f4 hover,
+   #dadce0 dividers). A submenu is another panel beside its row. */
+.dm-menu {
+  --menu-bg: #fff; --menu-fg: #202124; --menu-hover: #f1f3f4; --menu-line: #dadce0; --menu-muted: #5f6368;
+  position: fixed; z-index: 60; box-sizing: border-box; display: flex; flex-direction: column; min-width: 160px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto;
+  padding: 8px 0; border-radius: 4px; background: var(--menu-bg); color: var(--menu-fg); box-shadow: 0 2px 6px rgba(60, 64, 67, .3);
+  font: 400 14px/20px 'Google Sans', Roboto, Arial, sans-serif; outline: none;
+}
+:root.dark .dm-menu { --menu-bg: #2d2e30; --menu-fg: #e8eaed; --menu-hover: #3c4043; --menu-line: #5f6368; --menu-muted: #9aa0a6; box-shadow: 0 2px 6px rgba(0, 0, 0, .6); }
+.dm-menu-root { min-width: 200px; }
+/* The filter and aggregation forms keep the app's own tokens inside the Sheets-style frame. */
+.dm-menu-editor { width: 18rem; max-height: min(20rem, calc(100vh - 16px)); padding: 0; overflow: hidden; }
+/* The filter and aggregation editors inside the menu: Google Sheets' dialog look (Google Sans 14px, 36px controls, green primary, outlined secondary). */
+.dm-menu-editor { --btn-line: #dadce0; --btn-off-bg: #f1f3f4; --btn-off-fg: #80868b; font: 400 14px/20px 'Google Sans', Roboto, Arial, sans-serif; background: var(--menu-bg); color: var(--menu-fg); }
+:root.dark .dm-menu-editor { --btn-line: #5f6368; --btn-off-bg: #3c4043; --btn-off-fg: #9aa0a6; }
+.dm-menu-editor [data-popover-body] { padding: 16px; }
+.dm-menu-editor form, .dm-menu-editor [role='group'] { font: inherit; }
+.dm-menu-editor .text-xs { font-size: 12px; line-height: 16px; }
+.dm-menu-editor .text-sm { font-size: 14px; line-height: 20px; }
+.dm-menu-editor .text-muted-foreground { color: var(--menu-muted); }
+.dm-menu-editor .dm-popover-title { top: -16px; margin: -16px -16px 0; padding: 16px 16px 4px; background: var(--menu-bg); color: var(--menu-muted); font-size: 12px; font-weight: 500; line-height: 16px; }
+.dm-menu-editor input:not([type='checkbox']), .dm-menu-editor select { box-sizing: border-box; height: 36px; padding: 0 12px; border: 1px solid var(--btn-line); border-radius: 4px; background: var(--menu-bg); color: var(--menu-fg); font: inherit; }
+.dm-menu-editor select { padding-right: 28px; }
+.dm-menu-editor input::placeholder { color: var(--menu-muted); }
+.dm-menu-editor input:not([type='checkbox']):focus-visible, .dm-menu-editor select:focus-visible { outline: none; border-color: var(--sheet-green); box-shadow: inset 0 0 0 1px var(--sheet-green); }
+.dm-menu-editor input[type='checkbox'] { accent-color: var(--sheet-green); }
+.dm-menu-editor .dm-btn { box-sizing: border-box; height: 36px; padding: 0 24px; border: 0; border-radius: 4px; font: 500 14px/20px 'Google Sans', Roboto, Arial, sans-serif; cursor: pointer; white-space: nowrap; }
+.dm-menu-editor .dm-btn-sm { height: 28px; padding: 0 12px; }
+.dm-menu-editor .dm-btn-primary { background: var(--sheet-green); color: var(--sheet-green-fg); }
+.dm-menu-editor .dm-btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--sheet-green) 88%, black); }
+.dm-menu-editor .dm-btn-secondary { border: 1px solid var(--btn-line); background: transparent; color: var(--sheet-green); }
+.dm-menu-editor .dm-btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--sheet-green) 6%, transparent); }
+.dm-menu-editor .dm-btn:disabled { background: var(--btn-off-bg); color: var(--btn-off-fg); border-color: transparent; cursor: default; opacity: 1; }
+.dm-menu-editor .dm-btn:focus-visible { outline: 2px solid var(--sheet-green); outline-offset: 2px; }
+.dm-menu-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.dm-menu-row { display: flex; width: 100%; height: 32px; flex-shrink: 0; align-items: center; gap: 8px; padding: 0 16px; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; white-space: nowrap; }
+.dm-menu-row:hover, .dm-menu-row:focus-visible, .dm-menu-row[aria-expanded='true'] { background: var(--menu-hover); outline: none; }
+.dm-menu-row:disabled { color: var(--menu-muted); opacity: .5; cursor: default; background: transparent; }
+.dm-menu-icon { display: inline-flex; width: 18px; height: 18px; flex-shrink: 0; align-items: center; justify-content: center; margin-right: 4px; box-sizing: border-box; border: 1px solid var(--sheet-green); border-radius: 3px; background: transparent; color: var(--sheet-green); }
+.dm-menu-icon svg { width: 12px; height: 12px; }
+.dm-menu-icon[data-on] { background: var(--sheet-green); color: var(--sheet-green-fg); }
+.dm-menu-label { flex: 1 1 auto; }
+.dm-menu-check { display: inline-flex; width: 16px; flex-shrink: 0; justify-content: center; margin-left: -4px; color: var(--sheet-green); }
+.dm-menu-arrow { flex-shrink: 0; margin-right: -6px; color: var(--menu-muted); }
+.dm-menu-sep { height: 0; margin: 8px 0; border-top: 1px solid var(--menu-line); }
+.dm-menu-row[role='menuitemradio'], .dm-menu-row[aria-checked] { padding-left: 16px; }
 /* No hover on touch: the actions stay on screen there. */
 @media (hover: none) and (pointer: coarse) { .dm-reveal { opacity: 1; } }
 
@@ -536,3 +582,12 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
   transition: width 240ms ease-out, background 240ms ease-out;
 }
 .dm-loadbar-done span { background: #d9eed7; }
+
+/* --- full screen: the Data band alone, fixed over the plugin area, its title row on top and the grid under it --- */
+/* Nothing is unmounted: the other bands and the header are only hidden, so the grid keeps its selection and scroll. */
+.dm-full .dm-page-header, .dm-full .dm-canvas > :not(#band-data) { display: none; }
+.dm-full #band-data { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; border-radius: 0; border-bottom: 0; background: var(--background); }
+.dm-full #band-data .dm-band-reveal { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+.dm-full #band-data .dm-band-reveal-in { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0.5rem; }
+.dm-full #band-data .dm-bigcard { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.dm-full #band-data .dm-grid-frame { max-height: none !important; flex: 1 1 0; }

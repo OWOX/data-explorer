@@ -1,5 +1,6 @@
 import { Box, RefreshCw } from 'lucide-react';
 import { useContext, useEffect, useState } from 'react';
+import { useColumnFormats } from '../../format/useColumnFormats';
 import { readRows } from '../../api/rows';
 import type { Model, Schema } from '../../model/types';
 import { joinFilters } from '../../records/relationships';
@@ -27,6 +28,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
   const [state, setState] = useState<{ ver: number; schema: Schema | null; row: Row | null | undefined; error: unknown }>({ ver: -1, schema: null, row: undefined, error: null });
   const [relSchemas, setRelSchemas] = useState(new Map<string, Schema>());
   const incoming = useIncomingLinks(martId, model.edges);
+  const { formatOf } = useColumnFormats(martId, state.schema ?? undefined, model.marts.get(martId)?.title);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -72,7 +74,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
         {state.schema.map((f) => (
           <div key={f.name} className="contents">
             <dt className="dm-reveal-host flex min-w-0 items-start text-muted-foreground"><FieldLabel field={f} wrap /></dt>
-            <dd className="min-w-0 break-words"><CellValue row={row} field={f.name} type={f.type} wrap /></dd>
+            <dd className="min-w-0 break-words"><CellValue row={row} field={f.name} type={f.type} format={formatOf(f.name, f.type)} wrap /></dd>
           </div>
         ))}
       </dl>

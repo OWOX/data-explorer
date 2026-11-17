@@ -1,7 +1,9 @@
 import { columnVisibilityFeature, flexRender, tableFeatures, useTable, type ColumnDef } from '@tanstack/react-table';
-import { ArrowDown, ArrowUp, Box, Info, RefreshCw, RotateCcw, X } from 'lucide-react';
+import { Box, Info, RefreshCw, RotateCcw, X } from 'lucide-react';
 import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pending-focus';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { AUTO, keepsUnit } from '../../format/formats';
+import { useColumnFormats } from '../../format/useColumnFormats';
 import { PAGE_SIZE } from '../../config';
 import { columnLetter } from './columnLetters';
 import { isNumericType } from '../format';
@@ -9,7 +11,7 @@ import { withJoined, type JoinedSource } from '../../api/blendable';
 import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, sanitizeAggregation, ungroupableColumn, type AggFn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
 import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
 import type { ColumnFilter } from '../../filters/build';
-import { cycleSort, defaultSort, sortsOnColumns, type SortKey } from '../../model/sort';
+import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKey } from '../../model/sort';
 import { orderColumns } from '../../state/column-order';
 import { joinedMartIds, ownNamesIn } from '../../state/join-plan';
 import type { Model, Schema } from '../../model/types';
@@ -23,10 +25,9 @@ import { BandTools, BandToolsSlot } from '../bands/BandTools';
 import { CardClickContext } from '../bands/CardClick';
 import { PickedIcon } from '../bands/picked';
 import { CellValue } from './CellValue';
-import { AggregationPopover } from './AggregationPopover';
+import { ColumnControls, ColumnMenuEnvContext, type ColumnMenuEnv } from './ColumnMenu';
 import { ColumnPicker } from './ColumnPicker';
 import { ExportMenu } from './ExportMenu';
-import { FilterPopover } from './FilterPopover';
 import { buildRowQuery, defaultColumns, useMartRows } from './useMartRows';
 
 function useSchema(martId: string, version: number) {
@@ -161,21 +162,6 @@ function SortTitle({ field, output }: { field: Schema[number]; output: Output })
   return <OverflowTip text={label} extra={field.joined || output.fn ? undefined : fieldTitle(field)} measure={(el) => el.querySelector('.truncate')}>{button}</OverflowTip>;
 }
 
-/** Sheets' sort control at the right end of the header: a green arrow on hover, a green square with a white arrow (and its precedence number) while sorted.
- * Decorative for assistive tech: the title button above it carries the name and the keyboard. */
-function SortMark({ field, output }: { field: Schema[number]; output: Output }) {
-  const { sorts, toggleSort } = useContext(GridEnv);
-  if (!output.sortable) return null;
-  const at = sorts.findIndex((s) => s.field === field.name);
-  const current = at < 0 ? null : sorts[at]!.direction;
-  const Arrow = current === 'desc' ? ArrowDown : ArrowUp;
-  return (
-    <span aria-hidden data-sort-mark onClick={() => toggleSort(field.name)} className={current ? 'dm-ctl dm-ctl-on dm-reveal-on cursor-pointer' : 'dm-ctl dm-reveal cursor-pointer'}>
-      <Arrow className="dm-icon" />{current && sorts.length > 1 && <span className="text-[9px] leading-none tabular-nums">{at + 1}</span>}
-    </span>
-  );
-}
-
 /** The type an aggregated output has: a count is a whole number, an average or percentile a decimal, Combined text; the rest keep the field's. */
 const outputType = (field: Schema[number], fn: AggFn | undefined): string => {
   if (fn === 'COUNT' || fn === 'COUNT_DISTINCT') return 'INTEGER';
@@ -202,6 +188,10 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     return () => { live = false; };
   }, [blendable, martId, initialSources]);
   const schema = useMemo(() => withJoined(native, sources), [native, sources]);
+  const { formatOf, memberFormat, setMember: setFormat } = useColumnFormats(martId, schema, model.marts.get(martId)?.title);
+  // The cells read the latest formats through a ref, so a format change repaints cells without rebuilding the column defs (and remounting the headers).
+  const formatOfRef = useRef(formatOf);
+  formatOfRef.current = formatOf;
   const [{ modelVersion }, dispatch] = useStore();
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
   const [visible, setVisible] = useState(initialColumns);
@@ -294,10 +284,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const blockers = useMemo(() => onScreen.filter((f) => f.category === 'other').map((f) => ({ name: f.name, title: columnTitle(f) })), [onScreen]);
   const columns = useMemo<GridColumn[]>(() => outputs.map((o) => {
     const field = shownByName.get(o.column)!;
-    const name = field.name;
-    // The filter, the info and the aggregation belong to the column: they sit on its first output only.
+    // The menu and the info belong to the column: they sit on its first output only.
     const lead = outputs.find((x) => x.column === o.column) === o;
-    const aggregated = aggNow.aggregations.some((r) => r.column === o.column) || aggNow.dateTrunc.some((r) => r.column === o.column);
     return {
       id: o.key,
       header: () => (
@@ -311,27 +299,29 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
             </Tooltip>
           )}
           <span aria-hidden className="dm-hdr-spacer" />
-          <span className="dm-hdr-controls">
-            {lead && (
-              <FilterPopover field={field} aggregated={aggregated} value={filters[name]} onChange={(f) => {
-                setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; });
-                setLimit(PAGE_SIZE);
-              }} />
-            )}
-            {lead && <AggregationPopover field={field} value={draftOf(o.column, aggNow)} blocker={blockers.find((b) => b.name !== field.name)?.title} onApply={(d) => changeAgg(o.column, d)} />}
-            <SortMark field={field} output={o} />
-          </span>
+          {lead && <ColumnControls field={field} output={o} />}
         </div>
       ),
       cell: ({ row }) => (o.bucket
         ? <BucketValue value={row.original[o.key]} unit={o.bucket} />
-        : <CellValue row={row.original} field={o.key} type={outputType(field, o.fn)} />),
+        : <CellValue row={row.original} field={o.key} type={outputType(field, o.fn)} format={keepsUnit(o.fn) ? formatOfRef.current(o.column, outputType(field, o.fn)) : AUTO} />),
     };
-  }), [outputs, shownByName, filters, aggNow, changeAgg, blockers]);
+  }), [outputs, shownByName]);
 
   // While the member has no sort of their own, a click replaces the default with that column ascending (the
   // default's own column included), so a default never rides along as a second sort; after that the normal cycle.
   const toggleSort = useCallback((field: string) => { setOwn((cur) => (cur === null ? [{ field, direction: 'asc' }] : cycleSort(cur, field))); setLimit(PAGE_SIZE); }, []);
+  // The menu's sort choices. With no sort of the member's own, a choice replaces the default (as a title click does); after that it sets the
+  // column's direction where it stands in the order of precedence, or adds it last, which is what the title's first click does. Removing
+  // drops the column, and removing the default's own column leaves the member's own empty list (no sort at all).
+  const setSort = useCallback((field: string, direction: SortDirection | null) => {
+    setOwn((cur) => {
+      if (direction === null) return cur === null ? [] : cur.filter((s) => s.field !== field);
+      if (cur === null) return [{ field, direction }];
+      return cur.some((s) => s.field === field) ? cur.map((s) => (s.field === field ? { field, direction } : s)) : [...cur, { field, direction }];
+    });
+    setLimit(PAGE_SIZE);
+  }, []);
   // The implicit first-key sort is sent and exported but not shown: no arrow, no aria-sort, so the first click is not a no-op.
   const shownSorts = useMemo(() => (grouped ? (own ?? []) : gridSorts), [grouped, own, gridSorts]);
   const env = useMemo(() => ({ sorts: shownSorts, toggleSort }), [shownSorts, toggleSort]);
@@ -398,6 +388,19 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const fieldsOf = (id: string) => (id === martId ? native : sources.filter((x) => x.martId === id).flatMap((x) => x.fields));
   const hasFilters = Object.keys(filters).length > 0;
   const hasSorts = own !== null;
+  const menuEnv: ColumnMenuEnv = {
+    sorts: shownSorts, setSort, filters,
+    setFilter: (name, f) => { setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; }); setLimit(PAGE_SIZE); },
+    isAggregated: (column) => aggNow.aggregations.some((r) => r.column === column) || aggNow.dateTrunc.some((r) => r.column === column),
+    draftOf: (column) => draftOf(column, aggNow),
+    blockerFor: (name) => blockers.find((b) => b.name !== name)?.title,
+    changeAgg,
+    formatOf, memberFormat, setFormat,
+    // The same rule as the Fields picker: the last column, and the last of the main mart's while a joined mart is shown, stay.
+    canHide: (name) => shown.length > 1 && !(several && ownOn === 1 && ownNames.has(name)),
+    hide: (name) => changeColumns(shown.filter((n) => n !== name)),
+    typeOf: (f, o) => outputType(f, o.fn),
+  };
   // The selection, as Google Sheets has it: a cell (a frame and a fill handle), a block of cells (shift-click or Shift+Arrow: `to` is
   // the far end, the cell stays active), or whole columns or rows (a tint and a frame around the block); its column letters and row
   // numbers are lit. `from` is where a shift-click on a header extends from.
@@ -480,7 +483,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
 
   return (
     <GridEnv.Provider value={env}>
-    <div className="flex max-h-[32rem] min-h-0 flex-col">
+    <ColumnMenuEnvContext.Provider value={menuEnv}>
+    <div className="dm-grid-frame flex max-h-[32rem] min-h-0 flex-col">
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { setFilters({}); setParked({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
@@ -540,6 +544,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
         {!error && !blocked && hasMore && <div className="p-3 text-center"><button type="button" onClick={() => setLimit((l) => l + PAGE_SIZE)} className="rounded-md border px-3 py-1 text-sm hover:bg-accent">Load more</button></div>}
       </div>
     </div>
+    </ColumnMenuEnvContext.Provider>
     </GridEnv.Provider>
   );
 }

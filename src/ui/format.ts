@@ -36,13 +36,14 @@ const DATE_ONLY = new Set(['DATE']);
 const WALL_CLOCK = new Set(['DATETIME', 'TIMESTAMP_NTZ']);
 const MOMENT = new Set(['TIMESTAMP', 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMPTZ', 'TIMESTAMP_LTZ', 'TIMESTAMP_TZ', ...WALL_CLOCK]);
 
-let cached: { day: Intl.DateTimeFormat; moment: Intl.DateTimeFormat } | undefined;
+let cached: { day: Intl.DateTimeFormat; moment: Intl.DateTimeFormat; time: Intl.DateTimeFormat } | undefined;
 /** The viewer's locale and time zone, built once. The tests change the zone and reset it. */
 export const resetFormats = () => { cached = undefined; };
 function formats() {
   cached ??= {
     day: new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }),
     moment: new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }),
+    time: new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }),
   };
   return cached;
 }
@@ -62,9 +63,9 @@ const ZONE = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
  *
  * A DATE is a calendar day and is built from its own digits, so it never moves with the zone. A
  * TIMESTAMP is an instant and is converted; with no zone in the text it is read as UTC. A DATETIME is
- * a wall-clock time and is shown as written.
+ * a wall-clock time and is shown as written. `style` narrows a moment to its date or its time of day ('auto' and 'datetime' keep both).
  */
-export function formatTemporal(value: unknown, type: string): string | null {
+export function formatTemporal(value: unknown, type: string, style: 'auto' | 'date' | 'datetime' | 'time' = 'auto'): string | null {
   if (typeof value !== 'string') return null;
   const text = value.trim();
   const t = type.trim().toUpperCase();
@@ -84,7 +85,9 @@ export function formatTemporal(value: unknown, type: string): string | null {
   // "+00" and "+0530" become "+00:00" and "+05:30"; no zone is UTC, except for a wall-clock type.
   const offset = /^[+-]\d{2}$/.test(zone) ? `${zone}:00` : /^[+-]\d{4}$/.test(zone) ? `${zone.slice(0, 3)}:${zone.slice(3)}` : zone;
   const date = new Date(`${m[1]}T${m[2]}${offset || (WALL_CLOCK.has(t) ? '' : 'Z')}`);
-  return Number.isNaN(date.getTime()) ? null : formats().moment.format(date);
+  if (Number.isNaN(date.getTime())) return null;
+  const f = formats();
+  return (style === 'date' ? f.day : style === 'time' ? f.time : f.moment).format(date);
 }
 
 export function formatValue(v: unknown): string {

@@ -1,9 +1,6 @@
-import { Sigma } from 'lucide-react';
 import { useState } from 'react';
 import { AGG_LABELS, BUCKET_LABELS, DATE_BUCKETS, allowedFunctions, canBucket, canZone, type AggFn, type AggregationDraft, type DateBucket } from '../../model/aggregation';
-import { columnTitle } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
-import { Popover } from '../Popover';
 import { Select } from '../Select';
 
 /** A small curated list, as the OWOX report picker offers; the value is checked again by the backend. */
@@ -62,29 +59,11 @@ export function AggregationEditor({ field, value, blocker, onApply, onCancel }: 
       {allowed.length === 0 && !bucketable && <p className="text-xs text-muted-foreground">No aggregation is allowed for this field.</p>}
       {stranded && <p role="alert" className="text-xs text-destructive">{`"${blocker}" can't be grouped. Hide it to aggregate.`}</p>}
       <p className="text-xs text-muted-foreground">Filters still apply to the rows before they are aggregated.</p>
-      <div className="flex items-center justify-end gap-2">
-        <button type="button" disabled={!had && fns.length === 0 && bucket === null} onClick={() => onApply({ functions: [], bucket: null, timeZone: null })} className="rounded-md border px-2.5 py-1 text-sm hover:bg-accent disabled:opacity-50">Clear</button>
-        <button type="button" onClick={onCancel} className="rounded-md border px-2.5 py-1 text-sm hover:bg-accent">Cancel</button>
-        <button type="submit" disabled={(!had && ordered.length === 0 && bucket === null) || stranded} className="rounded-md bg-primary px-2.5 py-1 text-sm text-primary-foreground disabled:opacity-50">Apply</button>
+      <div className="dm-menu-actions">
+        <button type="button" disabled={!had && fns.length === 0 && bucket === null} onClick={() => onApply({ functions: [], bucket: null, timeZone: null })} className="dm-btn dm-btn-secondary">Clear</button>
+        <button type="button" onClick={onCancel} className="dm-btn dm-btn-secondary">Cancel</button>
+        <button type="submit" disabled={(!had && ordered.length === 0 && bucket === null) || stranded} className="dm-btn dm-btn-primary">Apply</button>
       </div>
     </form>
-  );
-}
-
-/** The Sigma on a column title: shown on hover or focus, and kept on in the primary colour while the column has a function or a bucket. */
-export function AggregationPopover({ field, value, blocker, onApply }: { field: Field; value: AggregationDraft; blocker?: string; onApply: (d: AggregationDraft) => void }) {
-  const [open, setOpen] = useState(false);
-  const on = value.functions.length > 0 || value.bucket !== null;
-  const allowed = allowedFunctions(field);
-  if (allowed.length === 0 && !canBucket(field)) return null;
-  const tip = on ? `Aggregation: ${value.bucket ? `by ${BUCKET_LABELS[value.bucket].toLowerCase()}` : value.functions.map((f) => AGG_LABELS[f]).join(', ')}` : 'Aggregate';
-  return (
-    <Popover open={open} onOpenChange={setOpen} tip={tip} label={`Aggregation of ${columnTitle(field)}`} trigger={
-      <button type="button" aria-label={`Aggregate ${columnTitle(field)}`} className={on ? 'dm-ctl dm-ctl-on dm-reveal dm-reveal-on' : 'dm-ctl dm-reveal'}>
-        <Sigma className="dm-icon" />
-      </button>
-    }>
-      <AggregationEditor key={JSON.stringify(value)} field={field} value={value} blocker={blocker} onApply={(d) => { onApply(d); setOpen(false); }} onCancel={() => setOpen(false)} />
-    </Popover>
   );
 }

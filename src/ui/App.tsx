@@ -58,9 +58,25 @@ function AppBody() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferences]);
   // Precedence: a band the member clicked, then the view link's fold, then the saved one, then the default.
+  // Full screen shows the Data band alone. It is never saved: a page always opens in the normal layout.
+  const [fs, setFs] = useState(false);
   const [touched, setTouched] = useState<Partial<Record<Fold, boolean>>>({});
   const [linkFolds, setLinkFolds] = useState<Partial<Record<Fold, boolean>>>({});
   const folded = (band: Fold) => touched[band] ?? linkFolds[band] ?? folds[band] ?? DEFAULT_FOLDED[band];
+  if (fs && folded('data')) setFs(false);
+  useEffect(() => {
+    if (!fs) return;
+    // Bubble phase, after the menus, popovers and editors have had the key: whatever handled it stopped or prevented it.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const t = e.target instanceof Element ? e.target : null;
+      if (t?.closest('[role=menu], [role=dialog], input, textarea, select, [contenteditable=""], [contenteditable=true]')) return;
+      if (document.querySelector('[data-column-menu], details[open]')) return;
+      setFs(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [fs]);
   const link = useViewLink(model, { sources: folded('sources'), marts: folded('marts'), data: folded('data'), row: folded('row') });
   // A page that opens from a view link has one more step: the link's own read. Link folds win over saved ones for this visit and are never written.
   const [hasLink] = useState(link.pending);
@@ -145,7 +161,7 @@ function AppBody() {
 
   return (
     <SmartSearchScope model={model}>
-    <div className="dm-page">
+    <div className={`dm-page${fs ? ' dm-full' : ''}`}>
       <Header
         search={<HeaderSearch />}
         hint={<HeaderSearchHint />}
@@ -175,7 +191,7 @@ function AppBody() {
           loading={loading}
         >
           {/* While the bar shows, neither band reads anything: the saved folds are not known yet, and one saved as folded must not read rows first. */}
-          <DataBand model={model} folded={folded('data')} onFold={() => toggle('data')} loading={loading} />
+          <DataBand model={model} folded={folded('data')} onFold={() => toggle('data')} loading={loading} fullScreen={{ on: fs, onToggle: () => setFs((f) => !f) }} />
           <RowBand model={model} folded={folded('row')} onFold={() => toggle('row')} loading={loading} />
         </CardBands>
       </main>

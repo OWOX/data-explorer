@@ -1,5 +1,5 @@
 // A band: the titled strip a page section sits in, with its count, hint, controls and fold.
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { num } from '../format';
 import { Hint } from '../Tooltip';
@@ -21,6 +21,7 @@ export function Band({
   onFold,
   grid = true,
   loading = null,
+  fullScreen,
   children,
 }: {
   id: string;
@@ -39,6 +40,8 @@ export function Band({
   grid?: boolean;
   /** While the page is still reading: 0 to 1 draws a load bar in place of the body (the header is already there); null shows the body. */
   loading?: number | null;
+  /** An icon in the title row that fills the plugin area with this band. While it is on, the band cannot be folded: the fold control and the header click go. */
+  fullScreen?: { on: boolean; onToggle: () => void };
   children: ReactNode;
 }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
@@ -65,6 +68,7 @@ export function Band({
           // Everything in here that does its own thing keeps doing it; the space between is the
           // fold. The chevron is a button, so it is skipped here and fires its own handler once.
           if ((e.target as HTMLElement).closest('button, a, input, label, summary, details, .dm-hint')) return;
+          if (fullScreen?.on) return;
           onFold();
         }}
       >
@@ -78,15 +82,29 @@ export function Band({
         <div className="dm-band-actions">
           {/* Filtering what you cannot see answers nothing, so the controls fold with the content. */}
           {!folded && <div className="dm-band-tools">{toolbar}{!grid && <span ref={setSlot} className="contents" />}</div>}
-          <button
-            type="button"
-            className="dm-band-fold"
-            onClick={onFold}
-            aria-expanded={!folded}
-            aria-label={folded ? `Show ${title}` : `Hide ${title}`}
-          >
-            <ChevronDown size={16} className={folded ? undefined : 'dm-band-fold-open'} />
-          </button>
+          {fullScreen && !folded && (
+            <button
+              type="button"
+              className="dm-band-full"
+              onClick={fullScreen.onToggle}
+              aria-pressed={fullScreen.on}
+              aria-label={fullScreen.on ? 'Exit full screen' : 'Full screen'}
+              title={fullScreen.on ? 'Exit full screen (Esc)' : 'Full screen'}
+            >
+              {fullScreen.on ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+          )}
+          {!fullScreen?.on && (
+            <button
+              type="button"
+              className="dm-band-fold"
+              onClick={onFold}
+              aria-expanded={!folded}
+              aria-label={folded ? `Show ${title}` : `Hide ${title}`}
+            >
+              <ChevronDown size={16} className={folded ? undefined : 'dm-band-fold-open'} />
+            </button>
+          )}
         </div>
       </header>
       <div className={`dm-band-reveal${folded ? '' : ' open'}${settled ? ' settled' : ''}`}>

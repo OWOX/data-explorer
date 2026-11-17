@@ -5,6 +5,7 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
+import { openSubmenu } from '../explorer/menu-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
 
@@ -293,7 +294,7 @@ describe('the grid', () => {
 
   test('filter then reset', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByLabelText('Filter id'));
+    await openSubmenu(within(grid), 'id', 'Filter');
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
     await userEvent.type(screen.getByLabelText('Value'), '3');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
@@ -311,7 +312,7 @@ describe('the grid', () => {
 
   test('going back to a mart restores its filters', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByLabelText('Filter id'));
+    await openSubmenu(within(grid), 'id', 'Filter');
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
     await userEvent.type(screen.getByLabelText('Value'), '3');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
@@ -338,7 +339,7 @@ describe('the grid', () => {
     await within(data()).findByText('Orders');
     await waitFor(() => expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('dm-ctl-on'));
     await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
-    await userEvent.click(within(data()).getByLabelText('Filter id'));
+    await openSubmenu(within(data()), 'id', 'Filter');
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
     await userEvent.type(screen.getByLabelText('Value'), '1000');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
@@ -373,13 +374,13 @@ describe('the grid', () => {
 
   test('a filter with no matches keeps the header, so the filter can be cleared', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByLabelText('Filter id'));
+    await openSubmenu(within(grid), 'id', 'Filter');
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'eq');
     await userEvent.type(screen.getByLabelText('Value'), '999999');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
     expect(await within(grid).findByText('No rows match the filters.')).toBeInTheDocument();
     expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(5);
-    await userEvent.click(within(grid).getByLabelText('Filter id'));
+    await openSubmenu(within(grid), 'id', 'Filter');
     await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
     await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(202));
   });
@@ -388,7 +389,7 @@ describe('the grid', () => {
     await mountWith(overrideTraverse((real) => (id, o) => (o.limit === 201 ? Promise.reject(new Error('read failed')) : real(id, o))));
     expect(await within(data()).findByText('read failed')).toBeInTheDocument();
     expect(within(data()).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(5);
-    expect(within(data()).getByLabelText('Filter id')).toBeInTheDocument();
+    expect(within(data()).getByLabelText('Column menu id')).toBeInTheDocument();
   });
 
   test('hiding a column does not read the mart again', async () => {
@@ -759,7 +760,7 @@ describe('column headers and band toolbars', () => {
     await userEvent.hover(customer);
     expect((await screen.findAllByText('customer_id')).length).toBeGreaterThan(0);
     expect(within(grid).queryByText('customer_id')).toBeNull();
-    expect(within(grid).getByLabelText('Filter Customer')).toBeInTheDocument();
+    expect(within(grid).getByLabelText('Column menu Customer')).toBeInTheDocument();
     const id = within(grid).getByText('id', { selector: 'span.truncate' });
     expect(id).not.toHaveAttribute('title');
   });
@@ -785,12 +786,10 @@ describe('column headers and band toolbars', () => {
     expect((await screen.findAllByText('Who placed the order.')).length).toBeGreaterThan(0);
   });
 
-  test('an active filter keeps its icon on screen, an idle one reveals on hover', async () => {
+  test('the filter icon shows only while a filter is set, and then stays on screen', async () => {
     const grid = await ordersGrid();
-    const idle = within(grid).getByLabelText('Filter id');
-    expect(idle).toHaveClass('dm-reveal');
-    expect(idle).not.toHaveClass('dm-reveal-on');
-    await userEvent.click(idle);
+    expect(within(grid).queryByLabelText('Filter id')).toBeNull();
+    await openSubmenu(within(grid), 'id', 'Filter');
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
     await userEvent.type(screen.getByLabelText('Value'), '3');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
@@ -802,7 +801,7 @@ describe('column headers and band toolbars', () => {
     const grid = await ordersGrid();
     const bar = head(grid);
     for (const name of ['Reset', 'Refresh']) expect(within(bar).getByRole('button', { name })).toBeInTheDocument();
-    await userEvent.click(within(grid).getByLabelText('Filter id'));
+    await openSubmenu(within(grid), 'id', 'Filter');
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
     await userEvent.type(screen.getByLabelText('Value'), '3');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
@@ -1004,7 +1003,7 @@ describe('column sort', () => {
     await settle();
     const grid = data();
     const before = calls.filter((c) => c.id === 'orders').length;
-    await userEvent.click(within(grid).getByLabelText('Filter Customer'));
+    await openSubmenu(within(grid), 'Customer', 'Filter');
     await userEvent.keyboard('{Escape}');
     await userEvent.hover(within(grid).getByLabelText('About Customer'));
     await userEvent.click(within(grid).getByLabelText('About Customer'));
@@ -1361,10 +1360,12 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(within(row()).getByLabelText('About Customer').closest('dt')).toHaveClass('dm-reveal-host');
   });
 
-  test('the Fields icon of a tab shows on hover or focus of the tab only (opacity, so the keyboard still reaches it)', async () => {
+  test('the Fields icon of a tab is always on screen, in the same green and size as the column menu icons', async () => {
     const grid = await ordersGrid();
     const icon = within(grid).getByRole('button', { name: 'Fields of Orders' });
-    expect(icon).toHaveClass('dm-reveal');
+    expect(icon).not.toHaveClass('dm-reveal');
+    expect(icon).toHaveClass('dm-ctl', 'dm-ctl-lg');
+    expect(within(grid).getByLabelText('Column menu id')).toHaveClass('dm-ctl', 'dm-ctl-lg');
     expect(icon.closest('th')).toHaveClass('dm-gh');
   });
 
@@ -1377,14 +1378,14 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(first()).toContain('Orders');
   });
 
-  test('a filter popover is capped at 20rem with its title pinned above the scrolling body', async () => {
+  test('a filter panel is capped at 20rem (bands.css .dm-menu-editor) with its title pinned above the scrolling body', async () => {
     await ordersGrid();
     await search('daily');
     fireEvent.click(await within(marts()).findByText('Daily KPIs'));
     await within(data()).findByText('Daily KPIs');
-    await userEvent.click(await within(data()).findByLabelText('Filter day'));
+    await openSubmenu(within(data()), 'day', 'Filter');
     const body = (await screen.findByRole('group', { name: 'Filter day' })).closest('[data-popover-body]')!;
-    expect(body.parentElement!.className).toContain('max-h-[min(20rem,var(--radix-popover-content-available-height))]');
+    expect(body.parentElement).toHaveClass('dm-menu-editor');
     expect(body.className).toContain('overflow-y-auto');
     expect(body.querySelector('.dm-popover-title')).toHaveTextContent(/^Filter$/);
   });
@@ -1566,11 +1567,13 @@ describe('whole column and row selection, and the header layout', () => {
 
   test('a filter, an aggregation and a sort in use are green squares; idle ones are not', async () => {
     const grid = await ordersGrid();
-    expect(within(grid).getByLabelText('Filter id')).not.toHaveClass('dm-ctl-on');
-    expect(within(grid).getByLabelText('Filter id')).toHaveClass('dm-ctl');
+    expect(within(grid).queryByLabelText('Filter id')).toBeNull();
+    expect(within(grid).getByLabelText('Column menu id')).not.toHaveClass('dm-ctl-on');
+    expect(within(grid).getByLabelText('Column menu id')).toHaveClass('dm-ctl');
     await userEvent.click(sortBtn(grid, 'status'));
     await waitFor(() => expect(header(grid, 'status').querySelector('[data-sort-mark]')).toHaveClass('dm-ctl-on'));
-    expect(header(grid, 'id').querySelector('[data-sort-mark]')).not.toHaveClass('dm-ctl-on');
+    expect(within(grid).getByLabelText('Column menu status')).toHaveClass('dm-ctl-on');
+    expect(header(grid, 'id').querySelector('[data-sort-mark]')).toBeNull();
   });
 
   test('a header reads: title, then the (i), then a spacer, then the controls at the right', async () => {
@@ -1588,7 +1591,7 @@ describe('whole column and row selection, and the header layout', () => {
     expect(controls).toBe(kids.length - 1);
     const info = at((e) => e.getAttribute('aria-label')?.startsWith('About ') ?? false);
     expect(info).toBe(1);
-    expect(hdr.querySelector('.dm-hdr-controls [aria-label^="Filter"]')).not.toBeNull();
+    expect(hdr.querySelector('.dm-hdr-controls [aria-label^="Column menu"]')).not.toBeNull();
   });
 });
 

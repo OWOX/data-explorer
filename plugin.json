@@ -7,6 +7,8 @@
     { "name": "row-counts", "scope": "member" },
     { "name": "grid-columns", "scope": "member" },
     { "name": "exports", "scope": "member" },
-    { "name": "preferences", "scope": "member" }
+    { "name": "preferences", "scope": "member" },
+    { "name": "column-formats-project", "scope": "project" },
+    { "name": "column-formats-member", "scope": "member" }
   ]
 }
