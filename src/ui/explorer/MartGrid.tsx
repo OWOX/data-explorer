@@ -4,6 +4,7 @@ import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pend
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PAGE_SIZE } from '../../config';
 import { columnLetter } from './columnLetters';
+import { isNumericType } from '../format';
 import { withJoined, type JoinedSource } from '../../api/blendable';
 import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, sanitizeAggregation, ungroupableColumn, type AggFn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
 import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
@@ -150,16 +151,29 @@ function SortTitle({ field, output }: { field: Schema[number]; output: Output })
   const label = outputLabel(field, output);
   // Inside a data mart's group the group row names the mart, so the title is the field alone.
   const shown = output.fn ? `${fieldLabel(field)} · ${AGG_LABELS[output.fn]}` : fieldLabel(field);
-  const Arrow = current === 'desc' ? ArrowDown : ArrowUp;
   if (!output.sortable) return <OverflowTip text={label} measure={(el) => el.querySelector('.truncate')}><span className="inline-flex min-w-0 items-center font-medium"><span className="truncate">{shown}</span></span></OverflowTip>;
   const button = (
     <button type="button" onClick={() => toggleSort(field.name)} aria-label={`Sort by ${label}, currently ${current ? DIRECTION_NAME[current] : 'not sorted'}${current && sorts.length > 1 ? `, sort ${at + 1} of ${sorts.length}` : ''}`}
       className="dm-sort inline-flex min-w-0 items-center gap-1 font-medium">
       <span className="truncate">{shown}</span>
-      {current && <span className="dm-sort-mark inline-flex items-center"><Arrow className="size-3.5" aria-hidden />{sorts.length > 1 && <span className="text-[10px] tabular-nums">{at + 1}</span>}</span>}
     </button>
   );
   return <OverflowTip text={label} extra={field.joined || output.fn ? undefined : fieldTitle(field)} measure={(el) => el.querySelector('.truncate')}>{button}</OverflowTip>;
+}
+
+/** Sheets' sort control at the right end of the header: a green arrow on hover, a green square with a white arrow (and its precedence number) while sorted.
+ * Decorative for assistive tech: the title button above it carries the name and the keyboard. */
+function SortMark({ field, output }: { field: Schema[number]; output: Output }) {
+  const { sorts, toggleSort } = useContext(GridEnv);
+  if (!output.sortable) return null;
+  const at = sorts.findIndex((s) => s.field === field.name);
+  const current = at < 0 ? null : sorts[at]!.direction;
+  const Arrow = current === 'desc' ? ArrowDown : ArrowUp;
+  return (
+    <span aria-hidden data-sort-mark onClick={() => toggleSort(field.name)} className={current ? 'dm-ctl dm-ctl-on dm-reveal-on cursor-pointer' : 'dm-ctl dm-reveal cursor-pointer'}>
+      <Arrow className="dm-icon" />{current && sorts.length > 1 && <span className="text-[9px] leading-none tabular-nums">{at + 1}</span>}
+    </span>
+  );
 }
 
 /** The type an aggregated output has: a count is a whole number, an average or percentile a decimal, Combined text; the rest keep the field's. */
@@ -287,15 +301,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     return {
       id: o.key,
       header: () => (
-        <div className="flex min-w-0 items-center gap-1">
+        <div className="dm-hdr">
           <SortTitle field={field} output={o} />
-          {lead && (
-            <FilterPopover field={field} aggregated={aggregated} value={filters[name]} onChange={(f) => {
-              setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; });
-              setLimit(PAGE_SIZE);
-            }} />
-          )}
-          {lead && <AggregationPopover field={field} value={draftOf(o.column, aggNow)} blocker={blockers.find((b) => b.name !== field.name)?.title} onApply={(d) => changeAgg(o.column, d)} />}
           {lead && field.description?.trim() && (
             <Tooltip content={field.description}>
               <button type="button" aria-label={`About ${columnTitle(field)}`} className="dm-reveal dm-col-info">
@@ -303,6 +310,17 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               </button>
             </Tooltip>
           )}
+          <span aria-hidden className="dm-hdr-spacer" />
+          <span className="dm-hdr-controls">
+            {lead && (
+              <FilterPopover field={field} aggregated={aggregated} value={filters[name]} onChange={(f) => {
+                setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; });
+                setLimit(PAGE_SIZE);
+              }} />
+            )}
+            {lead && <AggregationPopover field={field} value={draftOf(o.column, aggNow)} blocker={blockers.find((b) => b.name !== field.name)?.title} onApply={(d) => changeAgg(o.column, d)} />}
+            <SortMark field={field} output={o} />
+          </span>
         </div>
       ),
       cell: ({ row }) => (o.bucket
@@ -378,10 +396,35 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const fieldsOf = (id: string) => (id === martId ? native : sources.filter((x) => x.martId === id).flatMap((x) => x.fields));
   const hasFilters = Object.keys(filters).length > 0;
   const hasSorts = own !== null;
-  // The selected cell, as Google Sheets has it: a frame on the cell, its column letter and row number lit.
-  const [selected, setSelected] = useState<{ row: number; col: number } | null>(null);
+  // The selection, as Google Sheets has it: a cell (a frame and a fill handle), or whole columns or rows (a tint and a frame
+  // around the block); its column letters and row numbers are lit. `from` is where a shift-click extends from.
+  type Selection = { kind: 'cell'; row: number; col: number } | { kind: 'col' | 'row'; from: number; to: number };
+  const [selected, setSelected] = useState<Selection | null>(null);
   const rowCount = rows?.length ?? 0;
-  const sel = selected && selected.row < rowCount && selected.col < outputs.length ? selected : null;
+  const sel = selected && (selected.kind === 'cell' ? selected.row < rowCount && selected.col < outputs.length : selected.kind === 'col' ? Math.max(selected.from, selected.to) < outputs.length && rowCount > 0 : Math.max(selected.from, selected.to) < rowCount) ? selected : null;
+  const cellSel = sel?.kind === 'cell' ? sel : null;
+  const span = sel && sel.kind !== 'cell' ? { kind: sel.kind, lo: Math.min(sel.from, sel.to), hi: Math.max(sel.from, sel.to) } : null;
+  const inCols = (i: number) => (cellSel ? cellSel.col === i : span?.kind === 'col' ? i >= span.lo && i <= span.hi : false);
+  const inRows = (i: number) => (cellSel ? cellSel.row === i : span?.kind === 'row' ? i >= span.lo && i <= span.hi : false);
+  // A header is lit light when a cell (or a block crossing it) is selected, and strong when it is itself fully selected.
+  const colMark = (i: number) => (span?.kind === 'col' ? (inCols(i) ? 'full' : undefined) : span?.kind === 'row' ? '' : inCols(i) ? '' : undefined);
+  const rowMark = (i: number) => (span?.kind === 'row' ? (inRows(i) ? 'full' : undefined) : span?.kind === 'col' ? '' : inRows(i) ? '' : undefined);
+  // In a block, as in Sheets: the active cell is where the selection started (the clicked column's first row, or the clicked
+  // row's first column) and gets the 2px frame; the fill handle sits at the block's far corner.
+  const anchor = sel && sel.kind !== 'cell' ? (sel.kind === 'col' ? { row: 0, col: sel.from } : { row: sel.from, col: 0 }) : null;
+  const corner = span ? (span.kind === 'col' ? { row: rowCount - 1, col: span.hi } : { row: span.hi, col: outputs.length - 1 }) : null;
+  // Numbers sit on the right of their cells, as in Sheets (a bucketed date or a Combined list is not a number).
+  const numericOutput = (key: string) => { const o = outputByKey.get(key); const f = o && byName.get(o.column); return !!o && !!f && !o.bucket && isNumericType(outputType(f, o.fn)); };
+  const inBlock = (ri: number, ci: number) => (span?.kind === 'col' ? inCols(ci) : span?.kind === 'row' ? inRows(ri) : false);
+  // Which sides of a cell lie on the block's outer edge, where the 2px frame is drawn.
+  const edges = (ri: number, ci: number) => {
+    if (!span || !inBlock(ri, ci)) return undefined;
+    const out: string[] = [];
+    if (span.kind === 'col') { if (ci === span.lo) out.push('l'); if (ci === span.hi) out.push('r'); if (ri === 0) out.push('t'); if (ri === rowCount - 1) out.push('b'); }
+    else { if (ri === span.lo) out.push('t'); if (ri === span.hi) out.push('b'); if (ci === 0) out.push('l'); if (ci === outputs.length - 1) out.push('r'); }
+    return out.join(' ');
+  };
+  const pickHeader = (kind: 'col' | 'row', i: number, extend: boolean) => setSelected((cur) => (extend && cur && cur.kind === kind ? { kind, from: cur.from, to: i } : { kind, from: i, to: i }));
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const box = scroller.current;
@@ -391,7 +434,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     box.style.scrollPaddingTop = `${head.current?.offsetHeight ?? 0}px`;
     box.style.scrollPaddingLeft = '46px';
     cell.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-  }, [sel?.row, sel?.col]);
+  }, [cellSel?.row, cellSel?.col]);
   const onGridKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     // Popovers render outside the grid but their events bubble here; fields and the header keep their own keys.
@@ -402,8 +445,10 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     // Keys on a button or link inside a cell are theirs; the grid itself and a cell move the selection.
     if (target !== e.currentTarget && target.closest('button, a, [role=button]')) return;
     e.preventDefault();
-    const at = sel ?? { row: 0, col: 0 };
-    setSelected(sel ? { row: Math.min(rowCount - 1, Math.max(0, at.row + step[0]!)), col: Math.min(outputs.length - 1, Math.max(0, at.col + step[1]!)) } : at);
+    // From a whole column or row the keys land on a single cell: the first one of the block's last column or row.
+    const at = !sel ? null : sel.kind === 'cell' ? sel : sel.kind === 'col' ? { row: 0, col: sel.to } : { row: sel.to, col: 0 };
+    const to = at ?? { row: 0, col: 0 };
+    setSelected({ kind: 'cell', row: at ? Math.min(rowCount - 1, Math.max(0, to.row + step[0]!)) : to.row, col: at ? Math.min(outputs.length - 1, Math.max(0, to.col + step[1]!)) : to.col });
   };
 
   return (
@@ -421,13 +466,13 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
           <thead ref={head} className="dm-head sticky top-0 z-10">
             <tr aria-hidden data-chrome>
               <th data-chrome rowSpan={3} className="dm-chrome dm-corner" />
-              {outputs.map((o, i) => <th key={o.key} data-chrome data-selected={sel?.col === i ? '' : undefined} className="dm-chrome dm-letter">{columnLetter(i)}</th>)}
+              {outputs.map((o, i) => <th key={o.key} data-chrome data-selected={colMark(i)} onClick={(e) => pickHeader('col', i, e.shiftKey)} className="dm-chrome dm-letter">{columnLetter(i)}</th>)}
               <th data-chrome className="dm-chrome dm-letter w-full" />
             </tr>
             <tr data-group-row>
                 {groups.map((g, i) => (
                   <th key={g.id} data-group={g.id} colSpan={g.span} scope="colgroup" className="dm-gh dm-gh-edge overflow-hidden px-1 py-1 text-left font-semibold">
-                    <div className="flex min-w-0 items-center gap-1.5">
+                    <div className="flex min-w-0 items-center gap-1">
                       <span className="inline-flex shrink-0 text-muted-foreground"><PickedIcon icon={g.icon} fallback={Box} size={14} /></span>
                       <span className="truncate">{g.title}</span>
                       <ColumnPicker title={g.title} fields={fieldsOf(g.id)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} />
@@ -459,8 +504,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
                 <tr key={r.id}
                   onClick={pks.length && !grouped ? () => dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }) : undefined}
                   className={`${pks.length && !grouped ? 'cursor-pointer' : ''}`}>
-                  <th aria-hidden data-chrome data-selected={sel?.row === ri ? '' : undefined} className="dm-chrome">{ri + 1}</th>
-                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={sel?.row === ri && sel.col === ci ? '' : undefined} onClick={() => setSelected({ row: ri, col: ci })} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
+                  <th aria-hidden data-chrome data-selected={rowMark(ri)} onClick={(e) => { pickHeader('row', ri, e.shiftKey); if (e.shiftKey) e.stopPropagation(); }} className="dm-chrome">{ri + 1}</th>
+                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={cellSel?.row === ri && cellSel.col === ci ? '' : undefined} data-range={inBlock(ri, ci) ? '' : undefined} data-active={anchor?.row === ri && anchor.col === ci ? '' : undefined} data-handle={corner?.row === ri && corner.col === ci ? '' : undefined} data-edge={edges(ri, ci)} onClick={() => setSelected({ kind: 'cell', row: ri, col: ci })} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap${numericOutput(c.column.id) ? ' text-right' : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
                   <td aria-hidden className="p-0" />
                 </tr>
               ))}

@@ -323,14 +323,32 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-icon { width: 11.2px; height: 11.2px; }
 /* Sheets' chrome: column letters on top, row numbers on the left, both decorative. The numbers stay on the left
    when the grid scrolls sideways; the letters travel with the header. */
-.dm-grid .dm-chrome { background: var(--sheet-chrome-bg); color: var(--sheet-chrome-text); text-align: center; font-weight: 400; padding: 0; height: 21px; box-shadow: inset -1px -1px 0 var(--grid-line-strong); }
+/* Sheets draws its letters and row numbers smaller than the cells: about 11px against the cells' 10pt. */
+.dm-grid .dm-chrome { font-size: 11px; background: var(--sheet-chrome-bg); color: var(--sheet-chrome-text); text-align: center; font-weight: 400; padding: 0; height: 21px; box-shadow: inset -1px -1px 0 var(--grid-line-strong); }
 .dm-grid thead .dm-chrome { box-shadow: inset -1px -1px 0 var(--grid-line-strong); }
-.dm-grid tbody .dm-chrome { position: sticky; left: 0; z-index: 1; width: 46px; min-width: 46px; max-width: 46px; }
-.dm-grid .dm-corner { position: sticky; left: 0; z-index: 3; width: 46px; min-width: 46px; max-width: 46px; }
+.dm-grid tbody .dm-chrome { position: sticky; left: 0; z-index: 3; width: 46px; min-width: 46px; max-width: 46px; }
+/* The row numbers sit above a selected cell (z 1-2) scrolling under them sideways; all stay under the sticky header (z 10). */
+.dm-grid .dm-corner { position: sticky; left: 0; z-index: 4; width: 46px; min-width: 46px; max-width: 46px; }
 .dm-grid thead .dm-letter { position: relative; z-index: 0; }
 .dm-grid .dm-chrome[data-selected] { background: var(--sheet-sel-bg); color: var(--sheet-sel-text); font-weight: 700; }
-/* The selected cell: Sheets' blue frame, drawn inside the cell so nothing shifts. */
-.dm-grid td[data-selected] { outline: 2px solid var(--sheet-select); outline-offset: -2px; }
+/* A whole column or row (or a range of them) selected: its header is the strong blue, the others it crosses stay light. */
+.dm-grid .dm-chrome[data-selected='full'] { background: var(--sheet-full-bg); color: var(--sheet-full-text); font-weight: 700; }
+/* The selected cell: Sheets' blue frame drawn inside the cell so nothing shifts, and the fill handle at its bottom-right corner
+   (a 7px blue square ringed in white, half outside the cell: the selected cell is the one that may overflow). */
+.dm-grid td[data-selected] { outline: 2px solid var(--sheet-select); outline-offset: -2px; position: relative; z-index: 1; overflow: visible; }
+.dm-grid td[data-selected]::after { content: ''; position: absolute; right: -4px; bottom: -4px; width: 7px; height: 7px; box-sizing: content-box; background: var(--sheet-select); border: 1px solid #fff; border-radius: 50%; pointer-events: none; }
+/* Whole columns or rows, as Sheets draws a range: a light tint and a thin 1px frame around the block (drawn by the cells on
+   its edges), the 2px frame on the active cell only, and the fill handle at the block's far corner. */
+.dm-grid td[data-range] { background: var(--sheet-range-bg); position: relative; }
+.dm-grid td[data-range]::after { content: ''; position: absolute; inset: 0; pointer-events: none; border: 0 solid var(--sheet-select); }
+.dm-grid td[data-edge~='t']::after { border-top-width: 1px; }
+.dm-grid td[data-edge~='b']::after { border-bottom-width: 1px; }
+.dm-grid td[data-edge~='l']::after { border-left-width: 1px; }
+.dm-grid td[data-edge~='r']::after { border-right-width: 1px; }
+.dm-grid td[data-active] { outline: 2px solid var(--sheet-select); outline-offset: -2px; z-index: 1; }
+.dm-grid td[data-handle] { overflow: visible; z-index: 2; }
+.dm-grid td[data-handle]::before { content: ''; position: absolute; right: -4px; bottom: -4px; width: 7px; height: 7px; box-sizing: content-box; background: var(--sheet-select); border: 1px solid #fff; border-radius: 50%; pointer-events: none; }
+.dm-grid thead .dm-letter, .dm-grid tbody th[data-chrome] { cursor: default; user-select: none; }
 .dm-grid td, .dm-grid .dm-th { height: 21px; padding: 0 3px; vertical-align: middle; }
 .dm-grid .dm-th-fill, .dm-grid .dm-gh-fill { padding: 0; }
 .dm-grid .truncate { line-height: 20px; }
@@ -361,6 +379,14 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-reveal-on, .dm-reveal[aria-expanded='true'], .dm-reveal[data-state='delayed-open'], .dm-reveal[data-state='instant-open'] { opacity: 1; }
 .dm-col-info { color: var(--muted-foreground); }
 .dm-col-info:hover { color: var(--foreground); }
+/* The title cell, as in Sheets' filtered header: the title, its (i), a spacer, then the filter, aggregation and sort controls
+   at the right end. A control is a green line icon; once it is doing something it is a small green square with a white icon. */
+.dm-hdr { display: flex; min-width: 0; align-items: center; gap: 4px; }
+.dm-hdr-spacer { flex: 1 1 0; min-width: 8px; }
+.dm-hdr-controls { display: inline-flex; flex-shrink: 0; align-items: center; gap: 2px; }
+.dm-ctl { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 1px; min-width: 16px; height: 16px; padding: 0 1px; border-radius: 4px; background: transparent; color: var(--sheet-green); }
+.dm-ctl:hover { background: color-mix(in srgb, var(--sheet-green) 12%, transparent); }
+.dm-ctl-on, .dm-ctl-on:hover { background: var(--sheet-green); color: var(--sheet-green-fg); }
 /* No hover on touch: the actions stay on screen there. */
 @media (hover: none) and (pointer: coarse) { .dm-reveal { opacity: 1; } }
 
@@ -478,7 +504,7 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 /* --- column sort: the title is a button, its arrow stays on screen while a sort is applied --------- */
 .dm-sort { cursor: pointer; text-align: left; }
 .dm-sort:hover { color: var(--foreground); }
-.dm-sort-mark { color: var(--primary); gap: 1px; flex-shrink: 0; }
+
 
 /* A field label and its (?): the label, a 4px gap, then the glyph centred on the label's first line (the slot is one
    line high, whatever the label does when it wraps). The glyph is there only while the row (`dm-reveal-host`) is

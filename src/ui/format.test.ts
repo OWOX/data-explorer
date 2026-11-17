@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { compactNumber, count, formatTemporal, recordsLabel, relativeTime, resetFormats } from './format';
+import { compactNumber, count, displayText, formatNumber, formatTemporal, recordsLabel, relativeTime, resetFormats } from './format';
 
 test.each([[0, '0'], [999, '999'], [1200, '1.2K'], [12400, '12.4K'], [3_400_000, '3.4M'], [2_000_000_000, '2B']])('%d → %s', (n, s) => {
   expect(compactNumber(n)).toBe(s);
@@ -71,5 +71,25 @@ describe('formatTemporal', () => {
     expect(formatTemporal(null, 'TIMESTAMP')).toBeNull();
     expect(formatTemporal(1700000000, 'TIMESTAMP')).toBeNull();
     expect(formatTemporal('2026-03-12', 'STRING')).toBeNull();
+  });
+});
+
+describe('formatNumber', () => {
+  test('groups thousands like Sheets and keeps every digit', () => {
+    expect(formatNumber(1223)).toBe('1,223');
+    expect(formatNumber(-1234567.5)).toBe('-1,234,567.5');
+    expect(formatNumber('12345678901234567890.123')).toBe('12,345,678,901,234,567,890.123');
+    expect(formatNumber(999)).toBe('999');
+    expect(formatNumber(0)).toBe('0');
+    expect(formatNumber('+42')).toBe('42');
+  });
+  test('leaves what is not a plain number to be shown as it is', () => {
+    for (const v of [1e21, NaN, Infinity, 'abc', '1e5', '', null, undefined, true]) expect(formatNumber(v)).toBeNull();
+  });
+  test('displayText formats numbers by type only', () => {
+    expect(displayText(1223, 'INT64')).toBe('1,223');
+    expect(displayText('1223', 'NUMERIC')).toBe('1,223');
+    expect(displayText(1223, 'STRING')).toBe('1223');
+    expect(displayText(1223)).toBe('1223');
   });
 });

@@ -45,7 +45,7 @@ test('a value that fits has no tooltip', async () => {
 test('a cell is never a button, whatever the field is', () => {
   view(<CellValue row={{ customer_id: 7 }} field="customer_id" type="INT64" />);
   expect(screen.queryByRole('button')).toBeNull();
-  expect(screen.getByText('7')).not.toHaveClass('text-primary');
+  expect(screen.getByText('7')).not.toHaveClass('dm-ctl-on');
 });
 
 test('an array value (a one-to-many joined field) shows its values joined with a comma, and a string shows as it comes', () => {

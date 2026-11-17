@@ -43,8 +43,13 @@
   --sheet-chrome-bg: #f8f9fa;
   --sheet-chrome-text: #444444;
   --sheet-sel-bg: #d3e3fd;
-  --sheet-sel-text: #0b57d0;
+  --sheet-sel-text: #041e49;
   --sheet-select: #1a73e8;
+  --sheet-range-bg: #e8f0fe;
+  --sheet-full-bg: #0b57d0;
+  --sheet-full-text: #ffffff;
+  --sheet-green: #188038;
+  --sheet-green-fg: #ffffff;
 }
 
 .dark {
@@ -69,8 +74,13 @@
   --sheet-chrome-bg: #1b2433;
   --sheet-chrome-text: #a8b3c4;
   --sheet-sel-bg: #1d3a63;
-  --sheet-sel-text: #a8c7fa;
+  --sheet-sel-text: #d3e3fd;
   --sheet-select: #8ab4f8;
+  --sheet-range-bg: #16294a;
+  --sheet-full-bg: #8ab4f8;
+  --sheet-full-text: #0b1220;
+  --sheet-green: #81c995;
+  --sheet-green-fg: #0b1220;
 }
 
 html, body { margin: 0; background: transparent; }

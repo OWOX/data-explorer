@@ -77,6 +77,13 @@ test('plain numbers keep their sign and are not prefixed', () => {
   expect(cellText(-5)).toBe('-5');
 });
 
+test('a number copies as plain digits (a grouped one would paste 1000 times smaller in a comma-decimal locale)', () => {
+  expect(cellText(-1223.5, 'FLOAT64')).toBe('-1223.5');
+  expect(cellText(1234567, 'INT64')).toBe('1234567');
+  expect(cellText('-1,223', 'STRING')).toBe('-1,223');
+  expect(cellText('-1,2', 'STRING')).toBe("'-1,2");
+});
+
 test('a header is guarded too', () => {
   expect(buildTsv([f('x', { alias: '=x' })], [{ x: '=y' }])).toBe("'=x\n'=y");
 });

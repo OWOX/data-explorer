@@ -179,7 +179,7 @@ describe('the four bands', () => {
     await waitFor(() => expect(entry).toBeEnabled());
     await userEvent.click(entry);
     await within(data()).findByText('Orders');
-    await waitFor(() => expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary'));
+    await waitFor(() => expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('dm-ctl-on'));
     expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
     // 3. a record of the filtered Orders
     await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
@@ -190,7 +190,7 @@ describe('the four bands', () => {
 
     await back(); // Orders, filtered, no record
     await waitFor(() => expect(within(row()).getByText('Select a row.')).toBeInTheDocument());
-    expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary');
+    expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('dm-ctl-on');
     expect(filterActive()).toBeEnabled();
     await back(); // the Customers record
     expect(await within(row()).findByRole('heading', { name: customerHeading.textContent! })).toBeInTheDocument();
@@ -336,18 +336,18 @@ describe('the grid', () => {
     await waitFor(() => expect(entry).toBeEnabled());
     await userEvent.click(entry); // Orders, filtered by customer_id
     await within(data()).findByText('Orders');
-    await waitFor(() => expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary'));
+    await waitFor(() => expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('dm-ctl-on'));
     await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
     await userEvent.click(within(data()).getByLabelText('Filter id'));
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
     await userEvent.type(screen.getByLabelText('Value'), '1000');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-    await waitFor(() => expect(within(data()).getByLabelText('Filter id')).toHaveClass('text-primary'));
+    await waitFor(() => expect(within(data()).getByLabelText('Filter id')).toHaveClass('dm-ctl-on'));
     await goTo('Order Items'); // away, to a mart Orders cannot join
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await within(data()).findByText('Orders');
-    await waitFor(() => expect(within(data()).getByLabelText('Filter id')).toHaveClass('text-primary'));
-    expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary');
+    await waitFor(() => expect(within(data()).getByLabelText('Filter id')).toHaveClass('dm-ctl-on'));
+    expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('dm-ctl-on');
   });
 
   test('a mart without a primary key is preview only', async () => {
@@ -925,13 +925,13 @@ describe('column sort', () => {
     await userEvent.click(sortBtn(grid, 'status'));
     await waitFor(() => expect(header(grid, 'status')).toHaveAttribute('aria-sort', 'ascending'));
     expect(sortBtn(grid, 'status')).toHaveAccessibleName('Sort by status, currently ascending');
-    expect(header(grid, 'status').querySelector('svg.lucide-arrow-up')).not.toBeNull();
+    expect(header(grid, 'status').querySelector('[data-sort-mark].dm-ctl-on svg.lucide-arrow-up')).not.toBeNull();
     await userEvent.click(sortBtn(grid, 'status'));
     await waitFor(() => expect(header(grid, 'status')).toHaveAttribute('aria-sort', 'descending'));
-    expect(header(grid, 'status').querySelector('svg.lucide-arrow-down')).not.toBeNull();
+    expect(header(grid, 'status').querySelector('[data-sort-mark].dm-ctl-on svg.lucide-arrow-down')).not.toBeNull();
     await userEvent.click(sortBtn(grid, 'status'));
     await waitFor(() => expect(header(grid, 'status')).toHaveAttribute('aria-sort', 'none'));
-    expect(header(grid, 'status').querySelector('svg.lucide-arrow-up, svg.lucide-arrow-down')).toBeNull();
+    expect(header(grid, 'status').querySelector('[data-sort-mark].dm-ctl-on')).toBeNull();
   });
 
   test('sorting reorders the rows: id descending puts the last row first', async () => {
@@ -1159,7 +1159,7 @@ describe('the default sort', () => {
     await userEvent.click(screen.getByLabelText('created_at'));
     const head = await within(data()).findByRole('button', { name: /^Sort by created_at, currently descending/ });
     expect(head.closest('th')).toHaveAttribute('aria-sort', 'descending');
-    expect(head.querySelector('svg.lucide-arrow-down')).not.toBeNull();
+    expect(head.closest('th')!.querySelector('[data-sort-mark].dm-ctl-on svg.lucide-arrow-down')).not.toBeNull();
   });
 
   test('a date column among the visible ones is the default, with its arrow from the start', async () => {
@@ -1417,3 +1417,91 @@ describe('the grid chrome', () => {
     expect(grid.querySelector('tbody tr')!.className).not.toContain('hover:');
   });
 });
+
+describe('whole column and row selection, and the header layout', () => {
+  const sortBtn = (grid: HTMLElement, label: string) => within(grid).getByRole('button', { name: new RegExp(`^Sort by ${label},`) });
+  const header = (grid: HTMLElement, label: string) => sortBtn(grid, label).closest('th')!;
+  const cellsOfCol = (grid: HTMLElement, c: number) => [...grid.querySelectorAll('tbody tr')].map((tr) => tr.querySelectorAll('td')[c]!).filter((td) => !td.getAttribute('aria-hidden'));
+
+  test('a click on a column letter marks every cell of that column and lights the letter strongly', async () => {
+    const grid = await ordersGrid();
+    const letter = [...grid.querySelectorAll<HTMLElement>('thead .dm-letter[data-chrome]')].find((e) => e.textContent === 'B')!;
+    await userEvent.click(letter);
+    const col = cellsOfCol(grid, 1);
+    expect(col.length).toBeGreaterThan(2);
+    expect(col.every((td) => td.hasAttribute('data-range'))).toBe(true);
+    expect(grid.querySelectorAll('tbody td[data-range]')).toHaveLength(col.length);
+    expect(col[0]).toHaveAttribute('data-edge', 'l r t');
+    expect(col[1]).toHaveAttribute('data-edge', 'l r');
+    expect(letter).toHaveAttribute('data-selected', 'full');
+    expect(grid.querySelectorAll('thead .dm-letter[data-selected]')).toHaveLength(1);
+    expect(grid.querySelector('td[data-selected]')).toBeNull();
+    // shift extends to a range of columns
+    const d = [...grid.querySelectorAll<HTMLElement>('thead .dm-letter[data-chrome]')].find((e) => e.textContent === 'D')!;
+    fireEvent.click(d, { shiftKey: true });
+    expect(grid.querySelectorAll('thead .dm-letter[data-selected="full"]')).toHaveLength(3);
+    // Escape clears, arrows leave a whole column for one cell
+    const box = grid.querySelector<HTMLElement>('.dm-grid-root')!;
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(grid.querySelector('[data-range]')).toBeNull();
+    await userEvent.click(letter);
+    fireEvent.keyDown(box, { key: 'ArrowDown' });
+    expect(grid.querySelector('[data-range]')).toBeNull();
+    expect(grid.querySelectorAll('td[data-selected]')).toHaveLength(1);
+  });
+
+  test('a click on a row number marks every cell of that row and still opens the record', async () => {
+    const grid = await ordersGrid();
+    const number = [...grid.querySelectorAll<HTMLElement>('tbody th[data-chrome]')][1]!;
+    await userEvent.click(number);
+    const tr = number.closest('tr')!;
+    const cells = [...tr.querySelectorAll('td')].filter((td) => !td.getAttribute('aria-hidden'));
+    expect(cells.every((td) => td.hasAttribute('data-range'))).toBe(true);
+    expect(grid.querySelectorAll('tbody td[data-range]')).toHaveLength(cells.length);
+    expect(number).toHaveAttribute('data-selected', 'full');
+    expect(await within(row()).findByRole('heading', { name: /^Orders · 2$/ })).toBeInTheDocument();
+  });
+
+  test('shift-click on a row number extends the rows and opens no other record', async () => {
+    const grid = await ordersGrid();
+    const numbers = [...grid.querySelectorAll<HTMLElement>('tbody th[data-chrome]')];
+    await userEvent.click(numbers[1]!);
+    expect(await within(row()).findByRole('heading', { name: /^Orders · 2$/ })).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.keyboard('{Shift>}');
+    await user.click(numbers[3]!);
+    await user.keyboard('{/Shift}');
+    expect(numbers.slice(1, 4).every((n) => n.getAttribute('data-selected') === 'full')).toBe(true);
+    // the record stays the one first opened: the shift-click does not open row 4
+    await new Promise((r) => setTimeout(r, 300));
+    expect(within(row()).getByRole('heading', { name: /^Orders · 2$/ })).toBeInTheDocument();
+  });
+
+  test('a filter, an aggregation and a sort in use are green squares; idle ones are not', async () => {
+    const grid = await ordersGrid();
+    expect(within(grid).getByLabelText('Filter id')).not.toHaveClass('dm-ctl-on');
+    expect(within(grid).getByLabelText('Filter id')).toHaveClass('dm-ctl');
+    await userEvent.click(sortBtn(grid, 'status'));
+    await waitFor(() => expect(header(grid, 'status').querySelector('[data-sort-mark]')).toHaveClass('dm-ctl-on'));
+    expect(header(grid, 'id').querySelector('[data-sort-mark]')).not.toHaveClass('dm-ctl-on');
+  });
+
+  test('a header reads: title, then the (i), then a spacer, then the controls at the right', async () => {
+    const grid = await ordersGrid();
+    // Customer has a description, so its header has the (i)
+    const hdr = header(grid, 'Customer').querySelector('.dm-hdr')!;
+    const kids = [...hdr.children];
+    const at = (pred: (e: Element) => boolean) => kids.findIndex(pred);
+    const title = at((e) => e.matches('button.dm-sort, span.inline-flex') || !!e.querySelector('.truncate'));
+    const spacer = at((e) => e.classList.contains('dm-hdr-spacer'));
+    const controls = at((e) => e.classList.contains('dm-hdr-controls'));
+    expect(title).toBe(0);
+    expect(spacer).toBeGreaterThan(title);
+    expect(controls).toBe(spacer + 1);
+    expect(controls).toBe(kids.length - 1);
+    const info = at((e) => e.getAttribute('aria-label')?.startsWith('About ') ?? false);
+    expect(info).toBe(1);
+    expect(hdr.querySelector('.dm-hdr-controls [aria-label^="Filter"]')).not.toBeNull();
+  });
+});
+
