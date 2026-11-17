@@ -642,3 +642,39 @@ test('folding a band does not move its header: the title sits at the same x/y fo
     await page.waitForTimeout(350);
   }
 });
+
+test('the grid looks like a sheet: square corners, small header icons, no hover highlight, a selectable cell', async ({ page }) => {
+  const data = await ordersGrid(page);
+  await expect(data.getByRole('cell', { name: '1', exact: true }).first()).toBeVisible();
+  const radii = await data.evaluate((el) => {
+    const card = el.querySelector('.dm-bigcard') ?? el.closest('.dm-bigcard') ?? el;
+    const pick = [card, el.querySelector('.dm-grid-root'), el.querySelector('thead'), el.querySelector('table')].filter((e): e is Element => !!e);
+    return pick.map((e) => getComputedStyle(e).borderRadius);
+  });
+  expect(radii.every((r) => r === '0px')).toBe(true);
+  // the filter icon is 20% under the old 14px
+  const icon = data.locator('.dm-th .dm-icon').first();
+  expect(await icon.evaluate((e) => Math.round(e.getBoundingClientRect().width * 10) / 10)).toBe(11.2);
+  // no row highlight on hover
+  const second = data.locator('tbody tr').nth(1).locator('td').first();
+  const before = await second.evaluate((e) => getComputedStyle(e.parentElement!).backgroundColor);
+  await second.hover();
+  expect(await second.evaluate((e) => getComputedStyle(e.parentElement!).backgroundColor)).toBe(before);
+  // the letters sit above the tabs, the numbers on the left
+  await expect(data.locator('thead .dm-letter[data-chrome]').first()).toHaveText('A');
+  await expect(data.locator('tbody th[data-chrome]').first()).toHaveText('1');
+  // a click selects: a 2px blue frame, the letter and number lit
+  await second.click();
+  const cell = data.locator('td[data-selected]');
+  await expect(cell).toHaveCSS('outline-width', '2px');
+  await expect(cell).toHaveCSS('outline-color', 'rgb(26, 115, 232)');
+  await expect(data.locator('thead .dm-letter[data-selected]')).toHaveText('A');
+  await expect(data.locator('tbody th[data-selected]')).toHaveText('2');
+  await expect(data.locator('thead .dm-letter[data-selected]')).toHaveCSS('background-color', 'rgb(211, 227, 253)');
+  await page.keyboard.press('ArrowRight');
+  await expect(data.locator('thead .dm-letter[data-selected]')).toHaveText('B');
+  await page.keyboard.press('ArrowDown');
+  await expect(data.locator('tbody th[data-selected]')).toHaveText('3');
+  await page.keyboard.press('Escape');
+  await expect(data.locator('td[data-selected]')).toHaveCount(0);
+});

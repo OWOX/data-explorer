@@ -1373,3 +1373,47 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(body.querySelector('.dm-popover-title')).toHaveTextContent(/^Filter$/);
   });
 });
+
+describe('the grid chrome', () => {
+  const letters = (grid: HTMLElement) => [...grid.querySelectorAll('thead .dm-letter[data-chrome]')].map((e) => e.textContent).filter(Boolean);
+  const selectedCell = (grid: HTMLElement) => grid.querySelector('td[data-selected]');
+
+  test('one letter per column and a number per row, all decorative', async () => {
+    const grid = await ordersGrid();
+    const columns = within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup').length;
+    expect(letters(grid)).toEqual(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].slice(0, columns));
+    const numbers = [...grid.querySelectorAll('tbody th[data-chrome]')].map((e) => e.textContent);
+    expect(numbers.slice(0, 3)).toEqual(['1', '2', '3']);
+    expect(grid.querySelector('thead tr[data-chrome]')).toHaveAttribute('aria-hidden', 'true');
+    expect(grid.querySelector('tbody th[data-chrome]')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  test('a click selects the cell and lights its letter and number, and still opens the row', async () => {
+    const grid = await ordersGrid();
+    const cell = within(grid).getAllByRole('row')[3]!.querySelectorAll('td')[1]!;
+    await userEvent.click(cell);
+    expect(selectedCell(grid)).toBe(cell);
+    expect(grid.querySelectorAll('[data-chrome][data-selected]')).toHaveLength(2);
+    expect(grid.querySelector('thead .dm-letter[data-selected]')).toHaveTextContent('B');
+    expect(grid.querySelector('tbody th[data-selected]')).toHaveTextContent('2');
+    expect(await within(row()).findByRole('heading', { name: /^Orders · 2$/ })).toBeInTheDocument();
+  });
+
+  test('arrow keys move the selection, Escape clears it, and rows do not highlight on hover', async () => {
+    const grid = await ordersGrid();
+    const box = grid.querySelector<HTMLElement>('.dm-grid-root')!;
+    expect(box).toHaveAttribute('tabindex', '0');
+    await userEvent.click(within(grid).getAllByRole('row')[2]!.querySelectorAll('td')[0]!);
+    expect(grid.querySelector('tbody th[data-selected]')).toHaveTextContent('1');
+    fireEvent.keyDown(box, { key: 'ArrowDown' });
+    fireEvent.keyDown(box, { key: 'ArrowRight' });
+    expect(grid.querySelector('tbody th[data-selected]')).toHaveTextContent('2');
+    expect(grid.querySelector('thead .dm-letter[data-selected]')).toHaveTextContent('B');
+    fireEvent.keyDown(box, { key: 'ArrowUp' });
+    fireEvent.keyDown(box, { key: 'ArrowUp' });
+    expect(grid.querySelector('tbody th[data-selected]')).toHaveTextContent('1');
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(selectedCell(grid)).toBeNull();
+    expect(grid.querySelector('tbody tr')!.className).not.toContain('hover:');
+  });
+});

@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Box, Info, RefreshCw, RotateCcw, X } from 'lucide-r
 import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pending-focus';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PAGE_SIZE } from '../../config';
+import { columnLetter } from './columnLetters';
 import { withJoined, type JoinedSource } from '../../api/blendable';
 import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, sanitizeAggregation, ungroupableColumn, type AggFn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
 import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
@@ -124,6 +125,9 @@ const GridEnv = createContext<{ sorts: SortKey[]; toggleSort: (field: string) =>
 
 /** How wide a column may grow before its text is clipped: free text is allowed the most room. */
 const maxWidthOf = (field: Pick<Schema[number], 'category'>) => (field.category === 'string' || field.category === 'other' ? 'max-w-[24rem]' : field.category === 'number' || field.category === 'boolean' ? 'max-w-[12rem]' : 'max-w-[16rem]');
+
+/** The blank row-number cell of a row that is not a data row (a message, the loading skeleton). */
+const Gutter = () => <th aria-hidden data-chrome className="dm-chrome" />;
 
 const DIRECTION_NAME = { asc: 'ascending', desc: 'descending' } as const;
 /** A grouped value of a date bucket: the bucket start, shown by the bucket. */
@@ -295,7 +299,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
           {lead && field.description?.trim() && (
             <Tooltip content={field.description}>
               <button type="button" aria-label={`About ${columnTitle(field)}`} className="dm-reveal dm-col-info">
-                <Info className="size-3.5" />
+                <Info className="dm-icon" />
               </button>
             </Tooltip>
           )}
@@ -374,6 +378,33 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const fieldsOf = (id: string) => (id === martId ? native : sources.filter((x) => x.martId === id).flatMap((x) => x.fields));
   const hasFilters = Object.keys(filters).length > 0;
   const hasSorts = own !== null;
+  // The selected cell, as Google Sheets has it: a frame on the cell, its column letter and row number lit.
+  const [selected, setSelected] = useState<{ row: number; col: number } | null>(null);
+  const rowCount = rows?.length ?? 0;
+  const sel = selected && selected.row < rowCount && selected.col < outputs.length ? selected : null;
+  const scroller = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = scroller.current;
+    const cell = box?.querySelector<HTMLElement>('td[data-selected]');
+    if (!box || !cell) return;
+    // The sticky header and number column cover the box's edges: the cell is kept clear of them.
+    box.style.scrollPaddingTop = `${head.current?.offsetHeight ?? 0}px`;
+    box.style.scrollPaddingLeft = '46px';
+    cell.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [sel?.row, sel?.col]);
+  const onGridKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    // Popovers render outside the grid but their events bubble here; fields and the header keep their own keys.
+    if (!e.currentTarget.contains(target) || target.closest('thead, input, textarea, select') || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === 'Escape') { if (sel) { e.preventDefault(); setSelected(null); } return; }
+    const step = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[e.key];
+    if (!step || rowCount === 0 || outputs.length === 0) return;
+    // Keys on a button or link inside a cell are theirs; the grid itself and a cell move the selection.
+    if (target !== e.currentTarget && target.closest('button, a, [role=button]')) return;
+    e.preventDefault();
+    const at = sel ?? { row: 0, col: 0 };
+    setSelected(sel ? { row: Math.min(rowCount - 1, Math.max(0, at.row + step[0]!)), col: Math.min(outputs.length - 1, Math.max(0, at.col + step[1]!)) } : at);
+  };
 
   return (
     <GridEnv.Provider value={env}>
@@ -385,9 +416,14 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       </BandTools>
       {pks.length === 0 && !grouped && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
-      <div className={`min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
+      <div ref={scroller} tabIndex={0} onKeyDown={onGridKey} className={`dm-grid-root min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
         <table className="dm-grid w-full border-collapse">
           <thead ref={head} className="dm-head sticky top-0 z-10">
+            <tr aria-hidden data-chrome>
+              <th data-chrome rowSpan={3} className="dm-chrome dm-corner" />
+              {outputs.map((o, i) => <th key={o.key} data-chrome data-selected={sel?.col === i ? '' : undefined} className="dm-chrome dm-letter">{columnLetter(i)}</th>)}
+              <th data-chrome className="dm-chrome dm-letter w-full" />
+            </tr>
             <tr data-group-row>
                 {groups.map((g, i) => (
                   <th key={g.id} data-group={g.id} colSpan={g.span} scope="colgroup" className="dm-gh dm-gh-edge overflow-hidden px-1 py-1 text-left font-semibold">
@@ -415,15 +451,16 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
             ))}
           </thead>
           <tbody>
-            {blocked ? <tr><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`}</td></tr>
-              : error ? <tr><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} /></td></tr>
-              : !rows ? <tr><td colSpan={outputs.length + 1}><Skeleton rows={8} /></td></tr>
-              : rows.length === 0 ? <tr><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground">{hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.'}</td></tr>
-              : table.getRowModel().rows.map((r) => (
+            {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`}</td></tr>
+              : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} /></td></tr>
+              : !rows ? <tr><Gutter /><td colSpan={outputs.length + 1}><Skeleton rows={8} /></td></tr>
+              : rows.length === 0 ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground">{hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.'}</td></tr>
+              : table.getRowModel().rows.map((r, ri) => (
                 <tr key={r.id}
                   onClick={pks.length && !grouped ? () => dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }) : undefined}
-                  className={`${pks.length && !grouped ? 'cursor-pointer hover:bg-accent' : ''}`}>
-                  {r.getVisibleCells().map((c) => <td key={c.id} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
+                  className={`${pks.length && !grouped ? 'cursor-pointer' : ''}`}>
+                  <th aria-hidden data-chrome data-selected={sel?.row === ri ? '' : undefined} className="dm-chrome">{ri + 1}</th>
+                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={sel?.row === ri && sel.col === ci ? '' : undefined} onClick={() => setSelected({ row: ri, col: ci })} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
                   <td aria-hidden className="p-0" />
                 </tr>
               ))}
