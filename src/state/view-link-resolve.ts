@@ -15,7 +15,7 @@ export type AppliedView = {
   folded: DecodedView['folded'];
 };
 
-export type Skipped = { mart: boolean; source: boolean; columns: number; filters: number; sorts: number; aggregations: number; contexts: number; storages: number };
+export type Skipped = { mart: boolean; source: boolean; columns: number; filters: number; sorts: number; aggregations: number; contexts: number; storages: number; /** The link names marts a search found and none of them is available. */ found: boolean };
 
 const clampLimit = (n: number) => Math.min(PAGE_SIZE * 10, Math.max(PAGE_SIZE, Math.round(n / PAGE_SIZE) * PAGE_SIZE));
 
@@ -55,7 +55,7 @@ export async function resolveView(
   readGrid: (martId: string) => Promise<Schema | null>,
 ): Promise<{ apply: AppliedView; skipped: Skipped }> {
   // Entries the codec dropped are counted under columns, whatever they were.
-  const skipped: Skipped = { mart: false, source: false, columns: view.dropped, filters: 0, sorts: 0, aggregations: view.droppedAggregations, contexts: 0, storages: 0 };
+  const skipped: Skipped = { mart: false, source: false, columns: view.dropped, filters: 0, sorts: 0, aggregations: view.droppedAggregations, contexts: 0, storages: 0, found: false };
 
   const mart = view.martId ? model.marts.get(view.martId) : undefined;
   const martId = mart?.accessible ? mart.id : null;
@@ -87,7 +87,13 @@ export async function resolveView(
     grid = schema ? pruneGrid(g, schema, skipped) : g;
   }
 
-  return { apply: { selection, grid, search: view.search, found: (view.found ?? []).filter((id) => model.marts.get(id)?.accessible), contextIds, storageIds, folded: view.folded }, skipped };
+  // A link that names found marts shows `search` only as the box's text: with none of them available to this member it would
+  // be a title filter by a question, so the search is left out and the notice says a part of the link was.
+  const found = (view.found ?? []).filter((id) => model.marts.get(id)?.accessible);
+  const lostFound = (view.found?.length ?? 0) > 0 && found.length === 0;
+  if (lostFound) skipped.found = true;
+
+  return { apply: { selection, grid, search: lostFound ? '' : view.search, found, contextIds, storageIds, folded: view.folded }, skipped };
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -96,6 +102,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export function skippedMessage(s: Skipped): string | null {
   const items = [
     s.mart && 'the data mart',
+    s.found && 'the data marts the search found',
     s.source && 'the source',
     s.columns > 0 && plural(s.columns, 'column', 'columns'),
     s.filters > 0 && plural(s.filters, 'filter', 'filters'),

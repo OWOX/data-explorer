@@ -76,10 +76,30 @@ describe('createAiRun', () => {
   });
 
   test('a slow reasoning model leaves the retry on fast the rest of the budget', async () => {
-    const reasoning: AiModel = { doGenerate: () => new Promise(() => {}) };
-    const fast = textModel('{"m":"fast"}');
-    // view share is 70% of 100ms; the retry runs in the 30ms left
-    expect(await createAiRun({ fast, reasoning }, live(), 100).ask('view', 's', 'u')).toEqual({ m: 'fast' });
+    vi.useFakeTimers();
+    try {
+      const reasoning: AiModel = { doGenerate: () => new Promise(() => {}) };
+      const fast = textModel('{"m":"fast"}');
+      const answer = createAiRun({ fast, reasoning }, live(), 1000).ask('view', 's', 'u');
+      // the view's share is 700 ms; the retry runs in the 300 ms left
+      await vi.advanceTimersByTimeAsync(700);
+      expect(await answer).toEqual({ m: 'fast' });
+      expect(fast.doGenerate).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
+  });
+
+  test('temperature goes to the fast model only', async () => {
+    const fast = textModel('{}');
+    const reasoning = textModel('{}');
+    const run = createAiRun({ fast, reasoning }, live());
+    await run.ask('discover', 's', 'u');
+    await run.ask('view', 's', 'u');
+    expect(vi.mocked(fast.doGenerate).mock.calls[0]![0].temperature).toBe(0);
+    expect(vi.mocked(reasoning.doGenerate).mock.calls[0]![0]).not.toHaveProperty('temperature');
+    const failing: AiModel = { doGenerate: async () => { throw new Error('x'); } };
+    const retry = textModel('{}');
+    await createAiRun({ fast: retry, reasoning: failing }, live()).ask('view', 's', 'u');
+    expect(vi.mocked(retry.doGenerate).mock.calls[0]![0].temperature).toBe(0);
   });
 
   test('the budget is shared by every question of one run', async () => {

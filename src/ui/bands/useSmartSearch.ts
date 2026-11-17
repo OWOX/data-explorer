@@ -23,6 +23,7 @@ export function useSmartSearch(model: Model) {
   const latest = useRef({ selection: state.selection, model });
   useEffect(() => { latest.current = { selection: state.selection, model }; });
   const running = useRef<AbortController | null>(null);
+  const runningQuery = useRef<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -31,12 +32,13 @@ export function useSmartSearch(model: Model) {
   }, [preferences]);
   useEffect(() => () => running.current?.abort(), []);
 
-  const cancel = useCallback(() => { running.current?.abort(); running.current = null; setBusy(false); }, []);
+  const cancel = useCallback(() => { running.current?.abort(); running.current = null; runningQuery.current = null; setBusy(false); }, []);
 
   const run = useCallback(async (raw: string) => {
     const query = raw.trim();
     if (queryProblem(query)) return;
-    // A new query cancels the one that is running.
+    // The same query as the one in flight changes nothing; a different one cancels it.
+    if (running.current && runningQuery.current === query) return;
     running.current?.abort();
     // One character is a title match only: the search engine takes two or more.
     if (query.length < MIN_QUERY) {
@@ -47,6 +49,7 @@ export function useSmartSearch(model: Model) {
     }
     const ctl = new AbortController();
     running.current = ctl;
+    runningQuery.current = query;
     const onHostAbort = () => ctl.abort();
     ctx.signal.addEventListener('abort', onHostAbort, { once: true });
     setBusy(true);
@@ -67,7 +70,7 @@ export function useSmartSearch(model: Model) {
       else dispatch({ type: 'selectMart', id: best, sourceOf: sourceOfModel(current) });
     } finally {
       ctx.signal.removeEventListener('abort', onHostAbort);
-      if (running.current === ctl) { running.current = null; setBusy(false); }
+      if (running.current === ctl) { running.current = null; runningQuery.current = null; setBusy(false); }
     }
   }, [ctx, schemas, dispatch, aiTimeoutMs]);
 

@@ -22,7 +22,7 @@ const view = (patch: Partial<DecodedView> = {}): DecodedView => ({
   ...patch,
 });
 const read = async () => schema;
-const none: Skipped = { mart: false, source: false, columns: 0, filters: 0, sorts: 0, aggregations: 0, contexts: 0, storages: 0 };
+const none: Skipped = { mart: false, source: false, columns: 0, filters: 0, sorts: 0, aggregations: 0, contexts: 0, storages: 0, found: false };
 
 describe('resolveView', () => {
   it('keeps a fully valid view as is', async () => {
@@ -187,7 +187,7 @@ describe('skippedMessage', () => {
       .toBe("Some parts of this link aren't available to you: 1 column, 1 filter, 1 sort, 1 context, 1 storage.");
   });
   it('uses plural and keeps the order', () => {
-    expect(skippedMessage({ mart: true, source: true, columns: 2, filters: 3, sorts: 4, aggregations: 1, contexts: 5, storages: 6 }))
+    expect(skippedMessage({ mart: true, source: true, columns: 2, filters: 3, sorts: 4, aggregations: 1, contexts: 5, storages: 6, found: false }))
       .toBe("Some parts of this link aren't available to you: the data mart, the source, 2 columns, 3 filters, 4 sorts, 1 aggregation, 5 contexts, 6 storages.");
   });
   it('lists only what was skipped', () => {
@@ -200,5 +200,20 @@ describe('resolveView found marts', () => {
     const { apply } = await resolveView(view({ found: ['m3', 'nope', 'm2', 'm1'] }), model, read);
     expect(apply.found).toEqual(['m3', 'm1']);
     expect((await resolveView(view(), model, read)).apply.found).toEqual([]);
+  });
+});
+
+describe('resolveView when no found mart is available', () => {
+  it('does not turn the question into a title filter: the search is left out and the link says a part was skipped', async () => {
+    const { apply, skipped } = await resolveView(view({ search: 'paid orders last month', found: ['nope', 'm2'] }), model, read);
+    expect(apply.found).toEqual([]);
+    expect(apply.search).toBe('');
+    expect(skipped.found).toBe(true);
+    expect(skippedMessage(skipped)).toMatch(/the data marts the search found/);
+  });
+  it('keeps the search text when at least one found mart is available', async () => {
+    const { apply, skipped } = await resolveView(view({ search: 'orders', found: ['nope', 'm1'] }), model, read);
+    expect(apply.search).toBe('orders');
+    expect(skipped.found).toBe(false);
   });
 });

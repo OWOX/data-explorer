@@ -300,3 +300,19 @@ test('the copied link carries the found marts, so opening it does not filter tit
   expect((view as { found: string[] }).found[0]).toBe('orders');
   expect((view as { found: string[] }).found.length).toBeGreaterThan(1);
 });
+
+test('submitting the query that is already running changes nothing: no restart, no second AI call', async () => {
+  let calls = 0;
+  const slow = { doGenerate: () => { calls += 1; return new Promise<never>(() => {}); } };
+  const t = setup({ wrap: (c) => ({ ...c, credentials: { ai: { ...slow, fast: slow, reasoning: slow } } }) });
+  const gets = vi.spyOn(t.ctx.owox, 'getJson');
+  t.view();
+  await ready();
+  const box = await openSearch();
+  await userEvent.type(box, 'customers{Enter}');
+  await waitFor(() => expect(calls).toBe(1));
+  await userEvent.click(within(marts()).getByRole('button', { name: 'Search' }));
+  await userEvent.type(box, '{Enter}');
+  expect(calls).toBe(1);
+  expect(gets.mock.calls.filter(([p]) => p === '/api/search')).toHaveLength(1);
+});

@@ -118,6 +118,6 @@ export function parseAiView(raw: unknown, schema: Schema): GridState | null {
   if (!columns.length && !Object.keys(filters).length && !sorts.length && !aggregations.length && !dateTrunc.length) return null;
 
   const grid: GridState = { columns: shown, filters, sorts: sorts.length ? sorts : null, limit: PAGE_SIZE, ...(aggregations.length ? { aggregations } : {}), ...(dateTrunc.length ? { dateTrunc } : {}) };
-  const skipped: Skipped = { mart: false, source: false, columns: 0, filters: 0, sorts: 0, aggregations: 0, contexts: 0, storages: 0 };
+  const skipped: Skipped = { mart: false, source: false, columns: 0, filters: 0, sorts: 0, aggregations: 0, contexts: 0, storages: 0, found: false };
   return pruneGrid(grid, schema, skipped);
 }

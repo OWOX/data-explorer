@@ -45,7 +45,7 @@ const SHARE: Record<Role, number> = { discover: 0.4, view: 0.7 };
 export function createAiRun(models: Models, signal: AbortSignal, totalMs = AI_TIMEOUT_MS) {
   const deadline = Date.now() + totalMs;
 
-  async function call(model: AiModel, system: string, user: string, ms: number): Promise<Record<string, unknown>> {
+  async function call(model: AiModel, system: string, user: string, ms: number, temperature?: number): Promise<Record<string, unknown>> {
     if (ms <= 0 || signal.aborted) throw new AiUnavailable('no time left');
     const ctl = new AbortController();
     const stop = () => ctl.abort();
@@ -61,7 +61,8 @@ export function createAiRun(models: Models, signal: AbortSignal, totalMs = AI_TI
       const answer = Promise.resolve(model.doGenerate({
         prompt: [{ role: 'system', content: system }, { role: 'user', content: [{ type: 'text', text: user }] }],
         responseFormat: { type: 'json' },
-        temperature: 0,
+        // A reasoning model may refuse a temperature, so only the fast model gets one.
+        ...(temperature === undefined ? {} : { temperature }),
         abortSignal: ctl.signal,
       }));
       answer.catch(() => undefined);
@@ -86,10 +87,10 @@ export function createAiRun(models: Models, signal: AbortSignal, totalMs = AI_TI
       if (!first) throw new AiUnavailable('no model');
       const own = Math.min(deadline - Date.now(), totalMs * SHARE[role]);
       try {
-        return await call(first, system, user, own);
+        return await call(first, system, user, own, first === models.reasoning ? undefined : 0);
       } catch (e) {
         if (signal.aborted || first !== models.reasoning || !models.fast || models.fast === first) throw e;
-        return call(models.fast, system, user, deadline - Date.now());
+        return call(models.fast, system, user, deadline - Date.now(), 0);
       }
     },
   };
