@@ -1304,9 +1304,11 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(status.className).toContain('max-w-[24rem]');
     const id = within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup').find((h) => h.textContent === 'id')!;
     expect(id.className).toContain('max-w-[12rem]');
-    expect(grid.querySelector('thead th[aria-hidden]')!.className).toContain('w-full');
+    expect(grid.querySelector('thead tr:not([data-group-row]) th[aria-hidden]')!.className).toContain('w-full');
     // The line under the header is a shadow on every header cell (the filler too), so it survives a sticky header over a scrolling body.
-    expect(grid.querySelector('thead th[aria-hidden]')!.className).toContain('dm-th');
+    expect(grid.querySelector('thead tr:not([data-group-row]) th[aria-hidden]')!.className).toContain('dm-th');
+    // The tab row has its own filler, which carries the line under the tabs to the card's edge.
+    expect(grid.querySelector('thead tr[data-group-row] th[aria-hidden]')!.className).toContain('dm-gh-fill');
     for (const h of within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')) expect(h.className).toContain('dm-th');
   });
 
