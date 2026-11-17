@@ -16,8 +16,9 @@ const guard = (t: string) => (/^[=+\-@']/.test(t) && !PLAIN_NUMBER.test(t) ? `'$
 const quote = (t: string) => (t.includes('"') ? `"${t.replace(/"/g, '""')}"` : t);
 const field = (s: string) => quote(guard(clean(s)));
 
-/** One cell as the grid shows it, whole, with no tab or line break left in it, no formula start and quotes escaped. */
-export const cellText = (v: unknown, type?: string): string => field(displayText(v, type));
+/** One cell as the grid shows it (numbers ungrouped), whole, with no tab or line break left in it, no formula start and quotes escaped. */
+// Numbers are copied as plain digits, not grouped as the grid shows them: see displayText.
+export const cellText = (v: unknown, type?: string): string => field(displayText(v, type, { group: false }));
 
 export type TsvColumn = { key: string; title: string; type?: string; bucket?: DateBucket };
 

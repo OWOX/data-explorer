@@ -1462,6 +1462,21 @@ describe('whole column and row selection, and the header layout', () => {
     expect(await within(row()).findByRole('heading', { name: /^Orders · 2$/ })).toBeInTheDocument();
   });
 
+  test('shift-click on a row number extends the rows and opens no other record', async () => {
+    const grid = await ordersGrid();
+    const numbers = [...grid.querySelectorAll<HTMLElement>('tbody th[data-chrome]')];
+    await userEvent.click(numbers[1]!);
+    expect(await within(row()).findByRole('heading', { name: /^Orders · 2$/ })).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.keyboard('{Shift>}');
+    await user.click(numbers[3]!);
+    await user.keyboard('{/Shift}');
+    expect(numbers.slice(1, 4).every((n) => n.getAttribute('data-selected') === 'full')).toBe(true);
+    // the record stays the one first opened: the shift-click does not open row 4
+    await new Promise((r) => setTimeout(r, 300));
+    expect(within(row()).getByRole('heading', { name: /^Orders · 2$/ })).toBeInTheDocument();
+  });
+
   test('a filter, an aggregation and a sort in use are green squares; idle ones are not', async () => {
     const grid = await ordersGrid();
     expect(within(grid).getByLabelText('Filter id')).not.toHaveClass('dm-ctl-on');
@@ -1473,7 +1488,8 @@ describe('whole column and row selection, and the header layout', () => {
 
   test('a header reads: title, then the (i), then a spacer, then the controls at the right', async () => {
     const grid = await ordersGrid();
-    const hdr = header(grid, 'status').querySelector('.dm-hdr')!;
+    // Customer has a description, so its header has the (i)
+    const hdr = header(grid, 'Customer').querySelector('.dm-hdr')!;
     const kids = [...hdr.children];
     const at = (pred: (e: Element) => boolean) => kids.findIndex(pred);
     const title = at((e) => e.matches('button.dm-sort, span.inline-flex') || !!e.querySelector('.truncate'));
@@ -1484,7 +1500,7 @@ describe('whole column and row selection, and the header layout', () => {
     expect(controls).toBe(spacer + 1);
     expect(controls).toBe(kids.length - 1);
     const info = at((e) => e.getAttribute('aria-label')?.startsWith('About ') ?? false);
-    if (info >= 0) expect(info).toBe(1);
+    expect(info).toBe(1);
     expect(hdr.querySelector('.dm-hdr-controls [aria-label^="Filter"]')).not.toBeNull();
   });
 });

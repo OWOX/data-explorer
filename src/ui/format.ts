@@ -1,3 +1,4 @@
+import { categorizeFieldType } from '../model/field-category';
 export function compactNumber(n: number): string {
   const abs = Math.abs(n);
   const fmt = (v: number, s: string) => `${Number(v.toFixed(1)).toString()}${s}`;
@@ -94,8 +95,7 @@ export function formatValue(v: unknown): string {
   return String(v);
 }
 
-const NUMERIC_TYPES = new Set(['INTEGER', 'INT', 'INT64', 'BIGINT', 'SMALLINT', 'TINYINT', 'FLOAT', 'FLOAT64', 'REAL', 'DOUBLE', 'DOUBLE PRECISION', 'NUMERIC', 'BIGNUMERIC', 'DECIMAL']);
-export const isNumericType = (type?: string) => !!type && NUMERIC_TYPES.has(type.trim().toUpperCase());
+export const isNumericType = (type?: string) => !!type && categorizeFieldType(type) === 'number';
 
 /**
  * A number with thousands separators, as Google Sheets shows it: 1223 is "1,223", -1234567.5 is "-1,234,567.5". Works on the
@@ -109,6 +109,10 @@ export function formatNumber(v: unknown): string | null {
   return `${m[1] === '-' ? '-' : ''}${m[2]!.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}${m[3] ?? ''}`;
 }
 
-/** The text a grid cell shows for a value of a warehouse type, whole (never clipped): the viewer's date format for a temporal value, a number with thousands separators, else the value as stored. The cell and the copy to the clipboard both use it. */
-export const displayText = (v: unknown, type?: string): string =>
-  (type ? formatTemporal(v, type) ?? (isNumericType(type) ? formatNumber(v) : null) : null) ?? formatValue(v);
+/**
+ * The text a grid cell shows for a value of a warehouse type, whole (never clipped): the viewer's date format for a temporal value,
+ * a number with thousands separators, else the value as stored. `group: false` keeps a number's plain digits: the clipboard uses it,
+ * because a pasted "1,223" reads as 1.223 in a spreadsheet set to a comma-decimal locale (uk-UA, de-DE).
+ */
+export const displayText = (v: unknown, type?: string, { group = true }: { group?: boolean } = {}): string =>
+  (type ? formatTemporal(v, type) ?? (group && isNumericType(type) ? formatNumber(v) : null) : null) ?? formatValue(v);
