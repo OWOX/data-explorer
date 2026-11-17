@@ -1099,24 +1099,26 @@ describe('the Data band loading bar', () => {
     await within(data()).findByRole('table');
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await waitFor(() => expect(bar()).toBeNull());
+    // Long enough that the bar is still there when a slow machine looks for it.
+    delay.ms = 1500;
 
     await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
-    expect(await within(data()).findByRole('progressbar', { name: 'Loading rows' })).toBeInTheDocument();
+    await within(data()).findByRole('progressbar', { name: 'Loading rows' });
     // the rows stay on screen: the skeleton is for the very first load only
     expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true);
-    await waitFor(() => expect(bar()).toBeNull());
+    await waitFor(() => expect(bar()).toBeNull(), { timeout: 5000 });
 
     await userEvent.click(within(data()).getByRole('button', { name: /^Sort by status,/ }));
-    expect(await within(data()).findByRole('progressbar', { name: 'Loading rows' })).toBeInTheDocument();
-    await waitFor(() => expect(bar()).toBeNull());
+    await within(data()).findByRole('progressbar', { name: 'Loading rows' });
+    await waitFor(() => expect(bar()).toBeNull(), { timeout: 5000 });
 
     await userEvent.click(within(data()).getByRole('button', { name: 'Load more' }));
-    expect(await within(data()).findByRole('progressbar', { name: 'Loading rows' })).toBeInTheDocument();
+    await within(data()).findByRole('progressbar', { name: 'Loading rows' });
     await waitFor(() => expect(bar()).toBeNull());
-  });
+  }, 30000);
 
   test('the bar sits on the top border of the card, as wide as it', async () => {
-    const delay = { ms: 200 };
+    const delay = { ms: 1500 };
     await mountWith(slow(delay));
     const found = await within(data()).findByRole('progressbar', { name: 'Loading rows' });
     expect(found.closest('.dm-bigcard')).not.toBeNull();
