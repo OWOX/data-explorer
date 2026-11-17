@@ -48,7 +48,7 @@ const data = () => document.getElementById('band-data')!;
 const titleHeaders = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden') && h.getAttribute('scope') !== 'colgroup');
 const bodyRows = () => within(data()).getAllByRole('row').filter((r) => r.querySelector('td'));
 const headers = () => titleHeaders().map((h) => h.textContent);
-const openPicker = async (mart = 'Orders') => { const name = `Columns of ${mart}`; await waitFor(() => expect(within(data()).getByRole('button', { name })).toBeInTheDocument()); await userEvent.click(within(data()).getByRole('button', { name })); };
+const openPicker = async (mart = 'Orders') => { const name = `Fields of ${mart}`; await waitFor(() => expect(within(data()).getByRole('button', { name })).toBeInTheDocument()); await userEvent.click(within(data()).getByRole('button', { name })); };
 
 test('the joined data marts are read when a mart becomes main, once per mart, and the picker opening asks nothing more', async () => {
   const t = setup(null);
@@ -80,7 +80,7 @@ test('a joined tab lists that mart\'s fields with a count, each with its descrip
   await openPicker('Customers');
   const picker = within(await screen.findByRole('dialog'));
   expect(picker.getAllByRole('checkbox').map((c) => c.closest('label')!.textContent)).toEqual(['id', 'name', 'email', 'city', 'Country']);
-  expect(picker.getByText(/Customers · 1\/5/)).toBeInTheDocument();
+  expect(picker.getByText(/Fields · 1\/5/)).toBeInTheDocument();
   expect(picker.getByLabelText('About name')).toBeInTheDocument();
   await userEvent.click(picker.getByLabelText('city'));
   await waitFor(() => expect(headers()).toEqual(['id', 'email', 'city']));

@@ -185,7 +185,7 @@ test('a remembered report with an unrecognised target is not updated and nothing
 });
 
 const martCard = (title: string) => within(document.getElementById('band-marts')!).getByText(title).closest('article')!;
-const headingText = () => within(data()).getByRole('heading').textContent;
+const headingText = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!).join(' + ');
 /** A mart the main one can join is added to its grid first, so clicking the main card then promotes it. */
 const toMart = async (title: string) => {
   const main = headingText()!;

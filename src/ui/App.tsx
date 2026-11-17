@@ -171,7 +171,7 @@ function AppBody() {
           loading={loading}
         >
           {/* While the bar shows, neither band reads anything: the saved folds are not known yet, and one saved as folded must not read rows first. */}
-          <DataBand model={model} joined={joined} folded={folded('data')} onFold={() => toggle('data')} loading={loading} />
+          <DataBand model={model} folded={folded('data')} onFold={() => toggle('data')} loading={loading} />
           <RowBand model={model} folded={folded('row')} onFold={() => toggle('row')} loading={loading} />
         </CardBands>
       </main>

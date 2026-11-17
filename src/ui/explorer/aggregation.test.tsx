@@ -35,7 +35,7 @@ const sumCell = () => { const at = headers().findIndex((h) => h.startsWith('Amou
 const sumLoaded = () => waitFor(() => expect(sumCell()).toMatch(/\d/));
 
 async function showColumn(label: string | RegExp) {
-  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
   await userEvent.click(await screen.findByLabelText(label));
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -132,7 +132,7 @@ test('a column no longer shown loses its rules', async () => {
   await ready();
   await showColumn('Amount');
   await aggregate('Amount', 'Sum');
-  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
   await userEvent.click(await screen.findByLabelText('Amount'));
   await waitFor(() => expect(headers()).not.toContain('Amount · Sum'));
   await waitFor(() => expect(t.queries.at(-1)!.o.aggregation).toBeUndefined());
@@ -171,7 +171,7 @@ test('an array field takes no function; with one shown the grouped query is not 
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   // hide tags, group, then show tags again: nothing grouped is sent
-  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
   await userEvent.click(await screen.findByLabelText('tags'));
   await userEvent.keyboard('{Escape}');
   await aggregate('Amount', 'Sum');
@@ -183,7 +183,7 @@ test('an array field takes no function; with one shown the grouped query is not 
   expect(within(data()).queryByText(/groups?$/)).toBeNull();
   expect(document.querySelector('.dm-export')).toBeNull();
   // hiding it brings the groups back
-  await userEvent.click(within(data()).getByRole('button', { name: 'Columns of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
   await userEvent.click(await screen.findByLabelText('tags'));
   await userEvent.keyboard('{Escape}');
   await sumLoaded();
