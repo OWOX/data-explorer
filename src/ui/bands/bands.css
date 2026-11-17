@@ -403,9 +403,9 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-menu-row { display: flex; width: 100%; height: 32px; flex-shrink: 0; align-items: center; gap: 8px; padding: 0 16px; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; white-space: nowrap; }
 .dm-menu-row:hover, .dm-menu-row:focus-visible, .dm-menu-row[aria-expanded='true'] { background: var(--menu-hover); outline: none; }
 .dm-menu-row:disabled { color: var(--menu-muted); opacity: .5; cursor: default; background: transparent; }
-.dm-menu-icon { display: inline-flex; width: 18px; height: 18px; flex-shrink: 0; align-items: center; justify-content: center; margin-right: 4px; box-sizing: border-box; border: 1px solid #188038; border-radius: 3px; background: transparent; color: #188038; }
+.dm-menu-icon { display: inline-flex; width: 18px; height: 18px; flex-shrink: 0; align-items: center; justify-content: center; margin-right: 4px; box-sizing: border-box; border: 1px solid var(--sheet-green); border-radius: 3px; background: transparent; color: var(--sheet-green); }
 .dm-menu-icon svg { width: 12px; height: 12px; }
-.dm-menu-icon[data-on] { background: #188038; color: #fff; }
+.dm-menu-icon[data-on] { background: var(--sheet-green); color: var(--sheet-green-fg); }
 .dm-menu-label { flex: 1 1 auto; }
 .dm-menu-check { display: inline-flex; width: 16px; flex-shrink: 0; justify-content: center; margin-left: -4px; color: var(--sheet-green); }
 .dm-menu-arrow { flex-shrink: 0; margin-right: -6px; color: var(--menu-muted); }

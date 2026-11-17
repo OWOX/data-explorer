@@ -419,6 +419,19 @@ describe('the column menu icons', () => {
     menu = await openColumnMenu(within(data()), 'Amount');
     expect(state(menu, 'Format')).toBe(true);
   });
+  test('an aggregation fills the Aggregate icon only', async () => {
+    setup();
+    await showAmount();
+    await openSubmenu(within(data()), 'Amount', 'Aggregate');
+    const dialog = await screen.findByRole('dialog', { name: 'Aggregation of Amount' });
+    await userEvent.click(within(dialog).getByLabelText('Sum'));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+    await within(data()).findByLabelText('Aggregate Amount');
+    await waitFor(() => expect(open()).toHaveLength(0));
+    const menu = await openColumnMenu(within(data()), 'Amount');
+    expect(state(menu, 'Aggregate')).toBe(true);
+    for (const name of ['Filter', 'Format', 'Hide column']) expect(state(menu, name)).toBe(false);
+  });
   test('a sort fills the Sort icon', async () => {
     setup();
     await ready();
