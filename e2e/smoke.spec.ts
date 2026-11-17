@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
 
 async function ordersGrid(page: Page) {
   const data = band(page, 'data');
-  await expect(data.locator('thead tr[data-group-row] th').first()).toHaveText('Orders');
+  await expect(data.locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
   await expect(data.getByRole('row')).toHaveCount(202);
   return data;
 }
@@ -15,9 +15,9 @@ async function ordersGrid(page: Page) {
 /** Orders joins Customers, so clicking it adds it to the grid; clicking Orders then promotes Customers to the main mart. */
 async function makeMain(page: Page, title: string) {
   await martCard(page, title).click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th')).toHaveText(['Orders', title]);
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', title]);
   await martCard(page, 'Orders').click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th')).toHaveText([title]);
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText([title]);
 }
 
 const unfoldSources = (page: Page) => page.getByRole('button', { name: 'Show Data Sources' }).click();
@@ -44,7 +44,7 @@ test('a source click narrows the marts; clicking it again returns', async ({ pag
   await expect(band(page, 'marts').getByText('Sessions', { exact: true })).toHaveCount(0);
   await expect(band(page, 'data').getByText('Select a data mart.')).toBeVisible();
   await shopify.click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th').first()).toHaveText('Orders');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
 });
 
 test('search narrows the marts', async ({ page }) => {
@@ -117,10 +117,10 @@ test('filter, reset, columns, a row fills the Row band, Back returns', async ({ 
 test('a card click on a mart Orders cannot join selects it alone, and Back restores the previous one', async ({ page }) => {
   await ordersGrid(page);
   await martCard(page, 'Order Items').click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th').first()).toHaveText('Order Items');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');
   await expect(martCard(page, 'Order Items')).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th').first()).toHaveText('Orders');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
 });
 
 test('a reference column shows the stored value as plain text; Referenced by opens the referencing mart, and Undo restores the record', async ({ page }) => {
@@ -134,10 +134,10 @@ test('a reference column shows the stored value as plain text; Referenced by ope
   // nothing in the record is a link, and nothing says "via"
   await expect(row.locator('dd button')).toHaveCount(0);
   await row.getByRole('region', { name: 'Referenced by' }).getByRole('button', { name: /^Orders/ }).click();
-  await expect(data.locator('thead tr[data-group-row] th')).toHaveText(['Orders', 'Customers']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', 'Customers']);
   await expect(row.getByText('Select a row.')).toBeVisible();
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(data.locator('thead tr[data-group-row] th')).toHaveText(['Customers']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Customers']);
   await expect(row.getByRole('heading', { name: /^Customers · \d+$/ })).toBeVisible();
 });
 
@@ -150,7 +150,7 @@ test('the storage filter drops the marts of an unticked storage and leaves the s
   await expect(band(page, 'marts').getByText('Payments', { exact: true })).toHaveCount(0);
   await expect(band(page, 'marts').getByText('Customers', { exact: true })).toBeVisible();
   await expect(martCard(page, 'Orders')).toHaveAttribute('aria-pressed', 'true');
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th').first()).toHaveText('Orders');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
 });
 
 test('rows open newest date first, and Reset returns to it', async ({ page }) => {
@@ -184,13 +184,13 @@ test('a date column filter opens on presets; a preset applies at once and names 
 test('Undo and Redo step through the selection', async ({ page }) => {
   await ordersGrid(page);
   await martCard(page, 'Order Items').click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th').first()).toHaveText('Order Items');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th').first()).toHaveText('Orders');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
   await page.getByRole('button', { name: 'Redo' }).click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th').first()).toHaveText('Order Items');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');
   await page.keyboard.press('Alt+ArrowLeft');
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th').first()).toHaveText('Orders');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
 });
 
 test('sort a column descending, then add a second sort', async ({ page }) => {
@@ -258,7 +258,7 @@ test('Copy to clipboard: the loaded rows are copied as TSV and the status says s
 
 test('selecting a joinable mart adds its first text column; deselecting removes it; reselecting restores the same field', async ({ page }) => {
   const data = await ordersGrid(page);
-  const title = (t: string) => expect(data.locator('thead tr[data-group-row] th')).toHaveText(t.split(' + '));
+  const title = (t: string) => expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(t.split(' + '));
   await martCard(page, 'Customers').click();
   await title('Orders + Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · name/ })).toBeVisible();
@@ -278,13 +278,13 @@ test('selecting a joinable mart adds its first text column; deselecting removes 
 test('deselecting the main mart promotes the next joined one; a mart the main one cannot join becomes the main one', async ({ page }) => {
   const data = await ordersGrid(page);
   await martCard(page, 'Customers').click();
-  await expect(data.locator('thead tr[data-group-row] th')).toHaveText(['Orders', 'Customers']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', 'Customers']);
   await martCard(page, 'Orders').click();
-  await expect(data.locator('thead tr[data-group-row] th')).toHaveText(['Customers']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Customers']);
   await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
   // Customers cannot join Sessions, so it becomes the main mart, alone
   await martCard(page, 'Sessions').click();
-  await expect(data.locator('thead tr[data-group-row] th')).toHaveText(['Sessions']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Sessions']);
 });
 
 /** Waits for a body cell under "Amount · Sum" with a number in it (the grouped rows have arrived) and returns its text. */
@@ -323,7 +323,7 @@ test('a long value is clipped inside its column, the header line spans the card,
   await span.hover();
   await expect(page.getByRole('tooltip').first()).toContainText('ga4.');
   // the line under the header reaches the right edge of the card
-  const filler = data.locator('thead th[aria-hidden]');
+  const filler = data.locator('thead tr:not([data-group-row]) th[aria-hidden]');
   const card = await data.locator('.dm-bigcard').boundingBox();
   const line = await filler.boundingBox();
   expect(line!.x + line!.width).toBeGreaterThanOrEqual(card!.x + card!.width - 3);
@@ -417,18 +417,18 @@ test('a table wider than the page scrolls inside its card and never widens the b
 test('a group row names each selected mart; the x on a joined group removes it and deselects its card', async ({ page }) => {
   const data = await ordersGrid(page);
   // one tab spanning the columns, no x while it is the only mart
-  await expect(data.locator('thead tr[data-group-row] th')).toHaveText(['Orders']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders']);
   await expect(data.getByRole('button', { name: 'Remove Orders from the grid' })).toHaveCount(0);
   await martCard(page, 'Customers').click();
-  const groups = data.locator('thead tr[data-group-row] th');
+  const groups = data.locator('thead tr[data-group-row] th[data-group]');
   await expect(groups).toHaveText(['Orders', 'Customers']);
   const x = data.getByRole('button', { name: 'Remove Customers from the grid' });
   await expect(x).toHaveCSS('opacity', '0');
   await groups.nth(1).hover();
   await expect(x).toHaveCSS('opacity', '1');
   await x.click();
-  await expect(data.locator('thead tr[data-group-row] th').first()).toHaveText('Orders');
-  await expect(data.locator('thead tr[data-group-row] th')).toHaveText(['Orders']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders']);
   await expect(martCard(page, 'Customers')).not.toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -447,8 +447,8 @@ test('the Fields picker is on each tab and lists only that mart; the toolbar has
 test('selecting a mart adds a text field and a metric; the filter mark carries no text', async ({ page }) => {
   const data = await ordersGrid(page);
   await martCard(page, 'Products').click();
-  await expect(data.locator('thead tr[data-group-row] th')).toHaveText(['Orders', 'Products']);
-  await expect(data.locator('thead tr[data-group-row] th').nth(1)).toHaveAttribute('colspan', '2');
+  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', 'Products']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group]').nth(1)).toHaveAttribute('colspan', '2');
   await data.getByLabel('Filter id').click();
   await page.getByLabel('Value').fill('3');
   await page.getByRole('button', { name: 'Apply' }).click();
@@ -488,7 +488,7 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   const opened = await context.newPage();
   await opened.goto(`/?mock&route=${encodeURIComponent(link)}`);
   const grid = band(opened, 'data');
-  await expect(grid.locator('thead tr[data-group-row] th')).toHaveText(['Orders', 'Customers']);
+  await expect(grid.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', 'Customers']);
   await expect(grid.getByRole('row')).toHaveCount(5);
   await expect(grid.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
   await expect(grid.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
@@ -500,9 +500,9 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   await expect.poll(() => new URL(opened.url()).searchParams.has('route')).toBe(false);
   await opened.reload();
   // Wait for the default view to finish loading, then check the link was not reapplied.
-  await expect(band(opened, 'data').locator('thead tr[data-group-row] th').first()).toHaveText('Orders');
+  await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
   await expect(band(opened, 'data').getByRole('row').nth(1)).toBeVisible();
-  await expect(band(opened, 'data').locator('thead tr[data-group-row] th')).toHaveText(['Orders']);
+  await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders']);
   await expect(band(opened, 'data').getByRole('row')).not.toHaveCount(5);
   await expect(opened.getByRole('status')).toHaveCount(0);
   expect(new URL(opened.url()).searchParams.has('route')).toBe(false);
@@ -541,11 +541,11 @@ test('a link to a data mart the opener cannot see shows a notice and the page st
   const notice = opened.getByRole('status').filter({ hasText: "Some parts of this link aren't available to you" });
   await expect(notice).toBeVisible();
   await expect(notice).toContainText('the data mart');
-  await expect(band(opened, 'data').locator('thead tr[data-group-row] th').first()).toHaveText('Orders');
+  await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
   await notice.getByRole('button', { name: 'Dismiss' }).click();
   await expect(notice).toHaveCount(0);
   await martCard(opened, 'Order Items').click();
-  await expect(band(opened, 'data').locator('thead tr[data-group-row] th').first()).toHaveText('Order Items');
+  await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');
 });
 
 test('a Sum on Amount groups the rows by the other columns; the badge counts groups and a group opens no record', async ({ page }) => {

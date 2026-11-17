@@ -306,8 +306,10 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-grid td { box-shadow: inset -1px -1px 0 var(--grid-line); }
 .dm-grid .dm-th:last-child { box-shadow: inset 0 -1px 0 var(--grid-line-strong); }
 .dm-grid td:last-child { box-shadow: inset 0 -1px 0 var(--grid-line); }
-/* The group row above the titles: a divider between data marts, and the remove button shown with the row's hover or focus. */
-.dm-gh-edge { box-shadow: inset -1px 0 0 var(--grid-line-strong); }
+/* The group row above the titles: a divider between data marts, a line under the row (the filler cell carries it to the
+   card's edge), and the remove button shown with the row's hover or focus. */
+.dm-gh-edge { box-shadow: inset -1px 0 0 var(--grid-line-strong), inset 0 -1px 0 var(--grid-line); }
+.dm-gh-fill { box-shadow: inset 0 -1px 0 var(--grid-line); }
 .dm-gh:hover .dm-reveal, .dm-gh:has(:focus-visible) .dm-reveal { opacity: 1; }
 .dm-gx-cols { color: var(--muted-foreground); border-radius: 4px; }
 .dm-gx-cols:hover { color: var(--foreground); background: var(--accent); }
