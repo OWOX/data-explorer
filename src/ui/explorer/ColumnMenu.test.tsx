@@ -376,3 +376,56 @@ describe('the column menu', () => {
     expect(document.activeElement?.getAttribute('aria-label')).not.toBe(last);
   });
 });
+
+describe('the column menu icons', () => {
+  const state = (menu: HTMLElement, name: string) => {
+    const row = within(menu).getByRole('menuitem', { name });
+    const chip = row.querySelector('.dm-menu-icon')!;
+    expect(chip).not.toBeNull();
+    expect(chip).toHaveAttribute('aria-hidden', 'true');
+    expect(chip.querySelector('svg')).not.toBeNull();
+    const on = chip.hasAttribute('data-on');
+    expect(row.hasAttribute('data-active')).toBe(on);
+    expect(row.getAttribute('aria-description')).toBe(on ? 'Active' : null);
+    return on;
+  };
+  test('every first-level row has an icon, all outlined when nothing is set; Hide column is never active', async () => {
+    setup();
+    await showAmount();
+    const menu = await openColumnMenu(within(data()), 'Amount');
+    for (const name of ['Filter', 'Aggregate', 'Format', 'Sort', 'Hide column']) expect(state(menu, name)).toBe(false);
+  });
+  test('a filter fills the Filter icon only', async () => {
+    setup();
+    await ready();
+    await openSubmenu(within(data()), 'id', 'Filter');
+    await userEvent.selectOptions(await screen.findByLabelText('Operator'), 'lte');
+    await userEvent.type(screen.getByLabelText('Value'), '3');
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(open()).toHaveLength(0));
+    const menu = await openColumnMenu(within(data()), 'id');
+    expect(state(menu, 'Filter')).toBe(true);
+    for (const name of ['Aggregate', 'Sort', 'Hide column']) expect(state(menu, name)).toBe(false);
+  });
+  test('an AI Format pick leaves the Format icon outlined; a member Percent fills it', async () => {
+    setup({ amount: { kind: 'money', currency: 'GBP' } });
+    await showAmount();
+    await waitFor(() => expect(cellsOf('Amount')[0]).toMatch(/£/));
+    let menu = await openColumnMenu(within(data()), 'Amount');
+    expect(state(menu, 'Format')).toBe(false);
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Format' }));
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Percent' }));
+    await waitFor(() => expect(open()).toHaveLength(0));
+    menu = await openColumnMenu(within(data()), 'Amount');
+    expect(state(menu, 'Format')).toBe(true);
+  });
+  test('a sort fills the Sort icon', async () => {
+    setup();
+    await ready();
+    await openSubmenu(within(data()), 'status', 'Sort');
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Sort A → Z' }));
+    const menu = await openColumnMenu(within(data()), 'status');
+    expect(state(menu, 'Sort')).toBe(true);
+    expect(state(menu, 'Filter')).toBe(false);
+  });
+});

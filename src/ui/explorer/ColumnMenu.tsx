@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Check, ChevronRight, Sigma } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronRight, EyeOff, Hash, Sigma } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { formatsFor, keepsUnit, type Format } from '../../format/formats';
@@ -115,18 +115,27 @@ function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onPlaced, 
   );
 }
 
+const aggOn = (d: AggregationDraft) => d.functions.length > 0 || d.bucket !== null;
+/** The member set a format of their own on a column that has formats. An AI project pick does not count. */
+function formatActive(env: ColumnMenuEnv, field: Field, output: Output, type: string): boolean {
+  const own = env.memberFormat(field.name);
+  return keepsUnit(output.fn) && formatsFor(type).length > 0 && !!own && own.kind !== 'auto' && env.formatOf(field.name, type).kind !== 'auto';
+}
+
 const Divider = () => <div role="separator" className="dm-menu-sep" />;
 
-function Row({ label, check, slot, checked, sub, expanded, haspopup, disabled, onLeaveRow, rowRef, onActivate, onOpen, onHover }: {
-  label: string; check?: boolean; /** Keeps the check column's room without being a choice row. */ slot?: boolean; checked?: boolean; sub?: boolean; expanded?: boolean; haspopup?: 'menu' | 'dialog'; disabled?: boolean;
+function Row({ label, icon, active, check, slot, checked, sub, expanded, haspopup, disabled, onLeaveRow, rowRef, onActivate, onOpen, onHover }: {
+  label: string; /** A first-level glyph in its own slot: outlined, or filled when the member has set this on the column. */ icon?: ReactNode; active?: boolean; check?: boolean; /** Keeps the check column's room without being a choice row. */ slot?: boolean; checked?: boolean; sub?: boolean; expanded?: boolean; haspopup?: 'menu' | 'dialog'; disabled?: boolean;
   onLeaveRow?: () => void; rowRef?: (el: HTMLElement | null) => void; onActivate: (row: HTMLElement) => void; onOpen?: (row: HTMLElement) => void; onHover?: (row: HTMLElement) => void;
 }) {
   return (
     <button type="button" role={check ? 'menuitemradio' : 'menuitem'} aria-checked={check ? !!checked : undefined} aria-haspopup={sub ? haspopup ?? 'menu' : undefined} aria-expanded={sub ? !!expanded : undefined}
+      aria-description={icon && active ? 'Active' : undefined} data-active={icon && active ? '' : undefined}
       disabled={disabled} tabIndex={-1} ref={rowRef} className="dm-menu-row"
       onClick={(e) => onActivate(e.currentTarget)}
       onMouseEnter={(e) => onHover?.(e.currentTarget)} onMouseLeave={onLeaveRow}
       onKeyDown={(e) => { if (sub && e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); onOpen?.(e.currentTarget); } }}>
+      {icon && <span className="dm-menu-icon" data-on={active ? '' : undefined} aria-hidden>{icon}</span>}
       {(check || slot) && <span className="dm-menu-check" aria-hidden>{checked && <Check className="size-4" />}</span>}
       <span className="dm-menu-label">{label}</span>
       {sub && <ChevronRight aria-hidden className="dm-menu-arrow size-4" />}
@@ -187,8 +196,10 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
   };
   const choose = (f: Format) => { env.setFormat(field.name, f); onClose(); };
   const dir = env.sorts.find((s) => s.field === field.name)?.direction ?? null;
+  const on: Record<SubKey, boolean> = { filter: !!env.filters[field.name], aggregate: aggOn(env.draftOf(field.name)), format: formatActive(env, field, output, type), sort: output.sortable && !!dir };
+  const glyph: Record<SubKey, ReactNode> = { filter: <FilterAltIcon />, aggregate: <Sigma />, format: <Hash />, sort: <ArrowUpDown /> };
   const rowFor = (k: SubKey, label: string, haspopup: 'menu' | 'dialog') => (
-    <Row key={k} label={label} sub haspopup={haspopup} expanded={sub?.key === k} rowRef={ref(k)} onActivate={(r) => open(k, r, true)} onOpen={(r) => open(k, r, true)} onHover={(r) => hoverRow(k, r)} onLeaveRow={leaveRow} />
+    <Row key={k} label={label} icon={glyph[k]} active={on[k]} sub haspopup={haspopup} expanded={sub?.key === k} rowRef={ref(k)} onActivate={(r) => open(k, r, true)} onOpen={(r) => open(k, r, true)} onHover={(r) => hoverRow(k, r)} onLeaveRow={leaveRow} />
   );
   return (
     <>
@@ -198,7 +209,7 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
         {formats.length > 0 && rowFor('format', 'Format', 'menu')}
         {output.sortable && rowFor('sort', 'Sort', 'menu')}
         <Divider />
-        <Row label="Hide column" disabled={!env.canHide(field.name)} onActivate={hide} onHover={hoverOther} onLeaveRow={leaveRow} />
+        <Row label="Hide column" icon={<EyeOff />} disabled={!env.canHide(field.name)} onActivate={hide} onHover={hoverOther} onLeaveRow={leaveRow} />
       </Panel>
       {placed && sub?.key === 'filter' && (
         <Panel anchor={sub.row} mode="beside" role="dialog" label={`Filter of ${title}`} onEscape={closeSub} focusSeq={sub.seq} className="dm-menu-editor">
@@ -256,14 +267,13 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
   const title = columnTitle(field);
   const filter = env.filters[field.name];
   const draft = env.draftOf(field.name);
-  const aggOn = draft.functions.length > 0 || draft.bucket !== null;
+  const aggregated = aggOn(draft);
   const at = env.sorts.findIndex((s) => s.field === field.name);
   const direction = at < 0 ? null : env.sorts[at]!.direction;
   const type = env.typeOf(field, output);
   // Active means the member set something: an AI project pick does not light the icon.
-  const own = env.memberFormat(field.name);
-  const formatOn = keepsUnit(output.fn) && formatsFor(type).length > 0 && !!own && own.kind !== 'auto' && env.formatOf(field.name, type).kind !== 'auto';
-  const active = !!filter || aggOn || (output.sortable && !!direction) || formatOn;
+  const formatOn = formatActive(env, field, output, type);
+  const active = !!filter || aggregated || (output.sortable && !!direction) || formatOn;
   const close = useCallback((refocus = true) => { setMenu(null); if (refocus) icon.current?.focus(); }, []);
   const toggle = (anchor: HTMLElement, sub: SubKey | null) => setMenu((cur) => (cur && cur.sub === sub ? null : { anchor, sub }));
   useEffect(() => {
@@ -286,7 +296,7 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
           </button>
         </Tooltip>
       )}
-      {aggOn && (
+      {aggregated && (
         <Tooltip content={`Aggregation: ${draft.bucket ? `by ${BUCKET_LABELS[draft.bucket].toLowerCase()}` : draft.functions.map((f) => AGG_LABELS[f]).join(', ')}`}>
           <button type="button" aria-label={`Aggregate ${title}`} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, 'aggregate')}>
             <Sigma className="dm-icon" />
