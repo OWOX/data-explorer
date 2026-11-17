@@ -14,8 +14,13 @@ async function ordersGrid(page: Page) {
 
 /** Opens a column's menu and its first-level row (Filter, Aggregate, Format, Sort). */
 async function openColumnSub(data: Locator, title: string, row: 'Filter' | 'Aggregate' | 'Format' | 'Sort') {
-  await data.getByLabel(`Column menu ${title}`).click();
-  await data.page().getByRole('menuitem', { name: row, exact: true }).click();
+  const icon = data.getByLabel(`Column menu ${title}`);
+  // A scroll closes an open menu, and a narrow grid scrolls to reveal the icon: retry until the row holds still.
+  await expect(async () => {
+    await icon.scrollIntoViewIfNeeded();
+    await icon.click();
+    await data.page().getByRole('menuitem', { name: row, exact: true }).click({ timeout: 2000 });
+  }).toPass({ timeout: 15_000 });
 }
 
 /** Orders joins Customers, so clicking it adds it to the grid; clicking Orders then promotes Customers to the main mart. */
@@ -419,20 +424,72 @@ test('opening the Fields picker by mouse leaves every (?) hidden until a row is 
   await expect(dialog.locator('label', { hasText: 'Customer' }).locator('.dm-hint-slot')).toHaveCSS('opacity', '1');
 });
 
-test('a filter popover is at most 20rem tall and keeps its title while the list scrolls', async ({ page }) => {
+test('a filter popover is at most 20rem tall, has no title row, and its last button is reachable by scrolling', async ({ page }) => {
   const data = await ordersGrid(page);
   await tick(page, 'created_at');
   await openColumnSub(data, 'created_at', 'Filter');
   const body = page.locator('[data-popover-body]');
   await expect(body).toBeVisible();
-  const box = await page.locator('[data-popover-body]').evaluate((el) => (el.parentElement as HTMLElement).getBoundingClientRect().height);
+  await expect(body.locator('.dm-popover-title')).toHaveCount(0);
+  const panel = page.getByRole('dialog', { name: 'Filter of created_at' });
+  const box = await panel.evaluate((el) => el.getBoundingClientRect().height);
   expect(box).toBeLessThanOrEqual(20 * 16 + 1);
   expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
-  await body.evaluate((el) => { el.scrollTop = el.scrollHeight; });
-  const title = await body.locator('.dm-popover-title').boundingBox();
-  const top = await body.boundingBox();
-  expect(Math.abs(title!.y - top!.y)).toBeLessThanOrEqual(2);
+  const last = body.getByRole('button', { name: 'Is not blank' });
+  await last.scrollIntoViewIfNeeded();
+  const p = (await panel.boundingBox())!;
+  const l = (await last.boundingBox())!;
+  expect(l.y).toBeGreaterThanOrEqual(p.y - 1);
+  expect(l.y + l.height).toBeLessThanOrEqual(p.y + p.height + 1);
 });
+
+/** Every control of an open panel lies inside the panel and the viewport, so none is cropped. */
+async function expectFits(page: Page, name: string) {
+  const panel = page.getByRole('dialog', { name });
+  await expect(panel).toBeVisible();
+  const view = page.viewportSize()!;
+  const p = (await panel.boundingBox())!;
+  expect(p.x).toBeGreaterThanOrEqual(0);
+  expect(p.x + p.width).toBeLessThanOrEqual(view.width);
+  const scroller = panel.locator('[data-popover-body]');
+  expect(await scroller.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  for (const c of await panel.locator('button, input, select').all()) {
+    const b = await c.boundingBox();
+    if (!b) continue;
+    expect(b.x).toBeGreaterThanOrEqual(p.x - 0.5);
+    expect(b.x + b.width).toBeLessThanOrEqual(p.x + p.width + 0.5);
+    expect(b.x + b.width).toBeLessThanOrEqual(view.width);
+  }
+}
+
+for (const width of [320, 360]) {
+  test(`at ${width}px wide the Filter and Aggregate panels keep every button inside the panel and the viewport`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 700 });
+    const data = await ordersGrid(page);
+    await tick(page, 'created_at');
+    // Filter: presets (with the "Last N days" Apply), the operator form, and Aggregate with its date buckets
+    await openColumnSub(data, 'Store', 'Filter');
+    await expectFits(page, 'Filter of Store');
+    await page.getByRole('dialog', { name: 'Filter of Store' }).getByLabel('Value').fill('1');
+    await expectFits(page, 'Filter of Store');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await openColumnSub(data, 'created_at', 'Filter');
+    await expectFits(page, 'Filter of created_at');
+    await page.getByRole('dialog', { name: 'Filter of created_at' }).getByRole('button', { name: 'Custom range…' }).click();
+    await expectFits(page, 'Filter of created_at');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await openColumnSub(data, 'Store', 'Aggregate');
+    await expectFits(page, 'Aggregation of Store');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await openColumnSub(data, 'created_at', 'Aggregate');
+    await expectFits(page, 'Aggregation of created_at');
+    await page.getByRole('dialog', { name: 'Aggregation of created_at' }).getByLabel('Group by bucket').selectOption({ index: 1 });
+    await expectFits(page, 'Aggregation of created_at');
+  });
+}
 
 test('a joined column: tick Customers · email in the picker, and it filters', async ({ page }) => {
   const data = await ordersGrid(page);
@@ -620,9 +677,11 @@ test('a Sum on Amount groups the rows by the other columns; the badge counts gro
   await expect(data.getByText(/records$/)).toHaveCount(0);
   await data.getByRole('row').nth(2).click();
   await expect(band(page, 'row').getByText('Grouped rows have no single record.')).toBeVisible();
-  // clearing it brings the rows back
+  // unticking everything and applying brings the rows back
   await data.getByRole('button', { name: 'Aggregate Amount' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Clear' }).click();
+  const dlg = page.getByRole('dialog');
+  await dlg.getByLabel('Sum').uncheck();
+  await dlg.getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByText(/200\+ records/)).toBeVisible();
 });
 

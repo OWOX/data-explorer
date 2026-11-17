@@ -8,8 +8,7 @@ export const TIME_ZONES = ['UTC', 'America/New_York', 'America/Los_Angeles', 'Am
 
 /**
  * What one column is aggregated by, ported from the OWOX report picker: any of the functions the field allows (each its own
- * output column), or for a date one bucket (Day to Year, with an optional time zone), never both. "No aggregation" leaves the column
- * a group key. Filters still apply to the raw rows, before they are grouped.
+ * output column), or for a date one bucket (Day to Year, with an optional time zone), never both. Unticking everything and applying removes it. Filters still apply to the raw rows, before they are grouped.
  */
 export function AggregationEditor({ field, value, blocker, onApply, onCancel }: { field: Field; value: AggregationDraft; /** The title of a shown column that cannot be grouped: while it is shown, a rule that would group the rows is not applied. */ blocker?: string; onApply: (d: AggregationDraft) => void; onCancel: () => void }) {
   const allowed = allowedFunctions(field);
@@ -26,7 +25,6 @@ export function AggregationEditor({ field, value, blocker, onApply, onCancel }: 
   const stranded = !!blocker && groups;
   return (
     <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); onApply({ functions: bucket ? [] : ordered, bucket, timeZone: bucket && zoneable ? zone : null }); }}>
-      <div className="dm-popover-title text-sm font-medium">Aggregation</div>
       {bucketable && (
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted-foreground" htmlFor={`bucket-${field.name}`}>Group by bucket</label>
@@ -60,7 +58,6 @@ export function AggregationEditor({ field, value, blocker, onApply, onCancel }: 
       {stranded && <p role="alert" className="text-xs text-destructive">{`"${blocker}" can't be grouped. Hide it to aggregate.`}</p>}
       <p className="text-xs text-muted-foreground">Filters still apply to the rows before they are aggregated.</p>
       <div className="dm-menu-actions">
-        <button type="button" disabled={!had && fns.length === 0 && bucket === null} onClick={() => onApply({ functions: [], bucket: null, timeZone: null })} className="dm-btn dm-btn-secondary">Clear</button>
         <button type="button" onClick={onCancel} className="dm-btn dm-btn-secondary">Cancel</button>
         <button type="submit" disabled={(!had && ordered.length === 0 && bucket === null) || stranded} className="dm-btn dm-btn-primary">Apply</button>
       </div>

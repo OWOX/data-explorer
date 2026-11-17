@@ -37,14 +37,13 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
   const isDay = field.type.trim().toUpperCase() === 'DATE';
   return (
     <div className="flex flex-col gap-0.5" role="group" aria-label={`Filter ${columnTitle(field)}`}>
-      <div className="dm-popover-title px-2 text-xs font-medium text-muted-foreground">Filter</div>
       <div className="flex flex-col gap-0.5" role="group" aria-label="Date presets">
         {DATE_PRESETS.map((pr) => {
           const active = isPreset(current, pr.rule);
           return <button key={pr.label} type="button" aria-pressed={active} onClick={() => apply(pr.rule)} className={`${item} ${active ? 'bg-accent font-medium' : ''}`}>{pr.label}</button>;
         })}
       </div>
-      <form className="flex items-center gap-1 px-2 py-1 text-sm" onSubmit={(e) => { e.preventDefault(); if (nOk) apply({ kind: 'last_n_days', n }); }}>
+      <form className="flex flex-wrap items-center gap-1 px-2 py-1 text-sm" onSubmit={(e) => { e.preventDefault(); if (nOk) apply({ kind: 'last_n_days', n }); }}>
         <span>Last</span>
         <input aria-label="N" className={`${input} w-16`} type="number" min={1} max={RELATIVE_MAX_N} value={Number.isNaN(n) ? '' : n} onChange={(e) => setN(e.target.valueAsNumber)} />
         <span>days</span>
@@ -75,7 +74,6 @@ function OperatorForm({ field, value, onApply, onClear, startOp }: EditorProps &
 
   return (
     <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); if (isComplete(draft, field)) onApply(draft); }}>
-      <div className="dm-popover-title text-xs font-medium text-muted-foreground">Filter</div>
       <Select aria-label="Operator" value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); }}>
         {ops.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
       </Select>
@@ -84,9 +82,9 @@ function OperatorForm({ field, value, onApply, onClear, startOp }: EditorProps &
       )}
       {def.value === 'date' && <input aria-label="Value" className={input} type={dateType} value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />}
       {(def.value === 'number-range' || def.value === 'date-range') && (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {(['from', 'to'] as const).map((k) => (
-            <input key={k} aria-label={k === 'from' ? 'From' : 'To'} className={input} type={def.value === 'number-range' ? 'number' : dateType}
+            <input key={k} aria-label={k === 'from' ? 'From' : 'To'} className={`${input} !w-auto min-w-0 flex-1 basis-40`} type={def.value === 'number-range' ? 'number' : dateType}
               value={range[k] ?? ''} onChange={(e) => setVal({ ...range, [k]: e.target.value })} />
           ))}
         </div>
