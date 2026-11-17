@@ -102,7 +102,7 @@ test('a date takes one bucket instead of functions, and shows the bucket start b
   await waitFor(() => expect(bodyRows()[0]!.querySelectorAll('td')[at]!.textContent).toMatch(/^[A-Z][a-z]{2} \d{4}$/));
 });
 
-test('the Sigma stays on while a column is aggregated; Clear aggregation ungroups; Reset keeps aggregations', async () => {
+test('the Sigma stays on while a column is aggregated; Clear ungroups; Reset keeps aggregations', async () => {
   const t = setup();
   await ready();
   await showColumn('Amount');
@@ -113,9 +113,26 @@ test('the Sigma stays on while a column is aggregated; Clear aggregation ungroup
   expect(headers().some((h) => h.startsWith('Amount · Sum'))).toBe(true);
   await waitFor(() => expect(t.puts.some((p) => p.id === 'orders' && JSON.stringify(p.doc.aggregations) === JSON.stringify([{ column: 'amount', function: 'SUM' }]))).toBe(true), { timeout: 3000 });
   await userEvent.click(within(data()).getByRole('button', { name: 'Aggregate Amount' }));
-  await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Clear aggregation' }));
+  await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Clear' }));
   await waitFor(() => expect(headers()).toContain('Amount'));
   expect(within(data()).getByText(/records$/)).toBeInTheDocument();
+});
+
+test('the popover is headed "Aggregation"; Clear is an outline button left of Cancel and Apply, off while nothing is set', async () => {
+  setup();
+  await ready();
+  await showColumn('Amount');
+  await userEvent.click(await within(data()).findByRole('button', { name: 'Aggregate Amount' }));
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByText('Aggregation', { selector: '.dm-popover-title' })).toBeInTheDocument();
+  expect(within(dialog).queryByText('Amount', { selector: '.dm-popover-title' })).toBeNull();
+  const clear = within(dialog).getByRole('button', { name: 'Clear' });
+  expect(clear).toBeDisabled();
+  expect(clear.className).toContain('border');
+  const buttons = within(dialog).getAllByRole('button').map((b) => b.textContent);
+  expect(buttons.slice(-3)).toEqual(['Clear', 'Cancel', 'Apply']);
+  await userEvent.click(within(dialog).getByLabelText('Sum'));
+  expect(clear).toBeEnabled();
 });
 
 test('the filter popover of an aggregated column says it filters before aggregating', async () => {

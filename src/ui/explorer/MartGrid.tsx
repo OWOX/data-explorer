@@ -283,7 +283,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     return {
       id: o.key,
       header: () => (
-        <div className="flex min-w-0 items-center gap-1">
+        <div className="flex min-w-0 items-center justify-start gap-1">
           <SortTitle field={field} output={o} />
           {lead && (
             <FilterPopover field={field} aggregated={aggregated} value={filters[name]} onChange={(f) => {
@@ -372,8 +372,6 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const ownNames = useMemo(() => new Set(native.map((f) => f.name)), [native]);
   const ownOn = shown.filter((n) => ownNames.has(n)).length;
   const fieldsOf = (id: string) => (id === martId ? native : sources.filter((x) => x.martId === id).flatMap((x) => x.fields));
-  // The first column of every group after the first carries a divider.
-  const edges = useMemo(() => { const out = new Set<string>(); let at = 0; groups.forEach((g, i) => { if (i > 0) out.add(outputs[at]!.key); at += g.span; }); return out; }, [groups, outputs]);
   const hasFilters = Object.keys(filters).length > 0;
   const hasSorts = own !== null;
 
@@ -388,7 +386,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       {pks.length === 0 && !grouped && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
       <div className={`min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
-        <table className="w-full border-collapse text-sm">
+        <table className="dm-grid w-full border-collapse text-xs">
           <thead ref={head} className="sticky top-0 z-10 bg-card">
             <tr data-group-row>
                 {groups.map((g, i) => (
@@ -408,7 +406,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               </tr>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                {hg.headers.map((h) => <th key={h.id} aria-sort={outputByKey.get(h.column.id)?.sortable ? sortOf(shownSorts, outputByKey.get(h.column.id)!.column) : 'none'} className={`dm-th ${edges.has(h.column.id) ? 'dm-th-edge' : ''} ${maxWidthOf(byName.get(outputByKey.get(h.column.id)!.column)!)} overflow-hidden px-3 py-2 text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
+                {hg.headers.map((h) => <th key={h.id} aria-sort={outputByKey.get(h.column.id)?.sortable ? sortOf(shownSorts, outputByKey.get(h.column.id)!.column) : 'none'} className={`dm-th ${maxWidthOf(byName.get(outputByKey.get(h.column.id)!.column)!)} overflow-hidden px-3 py-1 text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
                 {/* Takes the width the columns leave over, so the line under the header runs the whole card. */}
                 <th aria-hidden className="dm-th w-full p-0" />
               </tr>
@@ -422,8 +420,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               : table.getRowModel().rows.map((r) => (
                 <tr key={r.id}
                   onClick={pks.length && !grouped ? () => dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }) : undefined}
-                  className={`border-b ${pks.length && !grouped ? 'cursor-pointer hover:bg-accent' : ''}`}>
-                  {r.getVisibleCells().map((c) => <td key={c.id} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap px-3 py-1.5`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
+                  className={`${pks.length && !grouped ? 'cursor-pointer hover:bg-accent' : ''}`}>
+                  {r.getVisibleCells().map((c) => <td key={c.id} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap px-3 py-0.5`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
                   <td aria-hidden className="p-0" />
                 </tr>
               ))}

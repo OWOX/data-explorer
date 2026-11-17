@@ -810,9 +810,12 @@ describe('column headers and band toolbars', () => {
     expect(within(bar).queryByRole('button', { name: /Back/ })).toBeNull();
     expect(within(bar).getByRole('button', { name: 'Refresh' })).toBeInTheDocument();
     const lead = document.querySelector('.dm-page-header-lead')!;
-    expect([...lead.children].map((c) => c.tagName)).toEqual(['H1', 'DIV']);
-    expect(within(lead as HTMLElement).getByRole('button', { name: 'Undo' })).toBeEnabled();
-    expect(within(lead as HTMLElement).getByRole('button', { name: 'Redo' })).toBeDisabled();
+    expect([...lead.children].map((c) => c.tagName)).toEqual(['H1']);
+    const actions = document.querySelector<HTMLElement>('.dm-page-header-actions')!;
+    expect(within(actions).getByRole('button', { name: 'Undo' })).toBeEnabled();
+    expect(within(actions).getByRole('button', { name: 'Redo' })).toBeDisabled();
+    const names = within(actions).getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+    expect(names.slice(-3)).toEqual(['Undo', 'Redo', 'Copy link to this view']);
   });
 });
 
@@ -1319,6 +1322,22 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByText('status');
     expect(within(row()).getByLabelText('About Customer').closest('dt')).toHaveClass('dm-reveal-host');
+  });
+
+  test('the Fields icon of a tab shows on hover or focus of the tab only (opacity, so the keyboard still reaches it)', async () => {
+    const grid = await ordersGrid();
+    const icon = within(grid).getByRole('button', { name: 'Fields of Orders' });
+    expect(icon).toHaveClass('dm-reveal');
+    expect(icon.closest('th')).toHaveClass('dm-gh');
+  });
+
+  test('the main data mart is the first card, whatever the search says', async () => {
+    await ordersGrid();
+    const first = () => marts().querySelector('article')!.textContent;
+    expect(first()).toContain('Orders');
+    await userEvent.type(screen.getByLabelText('Search data marts'), 'Customers');
+    await waitFor(() => expect(within(marts()).queryByText('Products')).toBeNull());
+    expect(first()).toContain('Orders');
   });
 
   test('a filter popover is capped at 20rem with its title pinned above the scrolling body', async () => {

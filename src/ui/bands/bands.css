@@ -170,6 +170,12 @@
   border-radius: 0.375rem; background: var(--muted); color: var(--muted-foreground);
   font-size: 0.625rem; font-weight: 600; letter-spacing: 0.02em;
 }
+/* The open-in-OWOX link and the (i) of a data mart card show while the card is hovered or holds focus, or while their tooltip is
+   open. Opacity, not display, so the keyboard still reaches them. */
+.dm-card-reveal { display: inline-flex; opacity: 0; transition: opacity 120ms; }
+.dm-node:hover .dm-card-reveal, .dm-node:focus-visible .dm-card-reveal, .dm-node:has(:focus-visible) .dm-card-reveal,
+.dm-card-reveal:has([data-state='delayed-open'], [data-state='instant-open']) { opacity: 1; }
+@media (hover: none) and (pointer: coarse) { .dm-card-reveal { opacity: 1; } }
 .dm-link { display: inline-flex; color: var(--muted-foreground); }
 .dm-link:hover { color: var(--foreground); }
 
@@ -221,19 +227,6 @@ button.dm-mark { cursor: pointer; }
 .dm-node[aria-pressed='true']:hover {
   border-color: var(--tone);
   box-shadow: 0 0 0 1px var(--tone);
-}
-/* A joined data mart of the selected one (its fields are columns of the grid): the same family, lighter. A dashed tinted border
-   and a small plus, where the main one has the solid ring. */
-.dm-node.dm-joined[aria-pressed='true'],
-.dm-node.dm-joined[aria-pressed='true']:hover {
-  border-style: dashed; border-color: var(--tone);
-  background: color-mix(in oklab, var(--primary) 7%, var(--card));
-  box-shadow: none;
-}
-.dm-joined-mark {
-  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
-  width: 1rem; height: 1rem; border-radius: 999px;
-  background: var(--primary); color: var(--primary-foreground); font-size: 0.75rem; line-height: 1; font-weight: 600;
 }
 /* A data mart the member cannot open: still a card, but plainly not one to expect anything from. */
 .dm-noaccess { opacity: 0.6; filter: grayscale(0.8); }
@@ -307,10 +300,14 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 
 /* The line under the header is a shadow on each header cell, not a border: sticky cells lose collapsed borders as the body
    scrolls under them, a shadow travels with the cell. */
-.dm-th { box-shadow: inset 0 -1px 0 var(--border); }
+.dm-th { box-shadow: inset -1px -1px 0 var(--grid-line-strong); }
+/* Inside the grid every cell has a 1px line on its right and bottom (shadows, so they hold on sticky cells); the
+   card's own border is the outer edge, so the filler cell at the end and the last row draw no extra line there. */
+.dm-grid td { box-shadow: inset -1px -1px 0 var(--grid-line); }
+.dm-grid .dm-th:last-child { box-shadow: inset 0 -1px 0 var(--grid-line-strong); }
+.dm-grid td:last-child { box-shadow: inset 0 -1px 0 var(--grid-line); }
 /* The group row above the titles: a divider between data marts, and the remove button shown with the row's hover or focus. */
-.dm-th-edge { box-shadow: inset 0 -1px 0 var(--border), inset 1px 0 0 var(--border); }
-.dm-gh-edge { box-shadow: inset 1px 0 0 var(--border); }
+.dm-gh-edge { box-shadow: inset 1px 0 0 var(--grid-line-strong); }
 .dm-gh:hover .dm-reveal, .dm-gh:focus-within .dm-reveal { opacity: 1; }
 .dm-gx-cols { color: var(--muted-foreground); border-radius: 4px; }
 .dm-gx-cols:hover { color: var(--foreground); background: var(--accent); }
@@ -325,7 +322,7 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-col-info { color: var(--muted-foreground); }
 .dm-col-info:hover { color: var(--foreground); }
 /* No hover on touch: the actions stay on screen there. */
-@media (hover: none) { .dm-reveal { opacity: 1; } }
+@media (hover: none) and (pointer: coarse) { .dm-reveal { opacity: 1; } }
 
 /* A search box that matches the filter controls beside it. */
 .dm-search {
@@ -397,7 +394,6 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-export-item svg { color: var(--muted-foreground); flex-shrink: 0; }
 .dm-export-copy { margin-bottom: 0.25rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
 .dm-export-ai { margin-top: 0.25rem; border-top: 1px solid var(--border); padding-top: 0.25rem; }
-.dm-export-heading { padding: 0.125rem 0.375rem; color: var(--muted-foreground); font-size: 0.6875rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
 .dm-export-kind { color: var(--muted-foreground); font-size: 0.6875rem; }
 /* The cascading menu: the first level lists the destinations, and a flyout beside the row holds its reports.
    The menu itself must not clip the flyout, so it does not scroll (a menu of destinations is short). */
@@ -424,7 +420,7 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-fieldlabel { display: inline-flex; align-items: flex-start; gap: 0.25rem; min-width: 0; max-width: 100%; line-height: 1.25rem; }
 .dm-hint-slot { display: inline-flex; flex-shrink: 0; align-items: center; height: 1.25rem; opacity: 0; transition: opacity 120ms; }
 .dm-reveal-host:hover .dm-hint-slot, .dm-reveal-host:focus-within .dm-hint-slot { opacity: 1; }
-@media (hover: none) { .dm-hint-slot { opacity: 1; } }
+@media (hover: none) and (pointer: coarse) { .dm-hint-slot { opacity: 1; } }
 
 /* Inputs in a popover: the focus ring is drawn inside the border, so the popover's own clipping never cuts it. */
 .dm-input:focus-visible { outline: none; border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }

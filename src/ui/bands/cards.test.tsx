@@ -88,6 +88,14 @@ describe('MartCard', () => {
     expect(container.querySelector('.dm-logo svg')).not.toBeNull();
   });
 
+  test('the open link and the (i) of a card sit in a reveal wrapper (shown by hover or focus of the card, still focusable)', () => {
+    const { container } = renderMart();
+    for (const name of ['Open in OWOX', 'Description']) {
+      expect(screen.getByLabelText(name).closest('.dm-card-reveal')).not.toBeNull();
+      expect(screen.getByLabelText(name).closest('article')).toBe(container.querySelector('article'));
+    }
+  });
+
   test('title, id, tone, description hint, quality and freshness', () => {
     const { container } = renderMart();
     expect(screen.getByText('Orders')).toBeInTheDocument();

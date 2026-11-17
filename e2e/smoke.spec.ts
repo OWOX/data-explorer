@@ -553,6 +553,6 @@ test('a Sum on Amount groups the rows by the other columns; the badge counts gro
   await expect(band(page, 'row').getByText('Grouped rows have no single record.')).toBeVisible();
   // clearing it brings the rows back
   await data.getByRole('button', { name: 'Aggregate Amount' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Clear aggregation' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Clear' }).click();
   await expect(data.getByText(/200\+ records/)).toBeVisible();
 });

@@ -198,3 +198,10 @@ test('the main mart stays in the band when a search or a context does not match 
   expect(computeVisible({ model: m, selection: sel({ martId: 'm' }), search: 'apple', contextIds: [] }).ids).toEqual(['m', 'a']);
   expect(computeVisible({ model: m, selection: sel({ martId: 'm' }), search: '', contextIds: ['c1'] }).ids).toEqual(['m', 'a']);
 });
+
+test('the main mart is the first id whatever the search, the context or the ranking says', () => {
+  const m = modelOf(['z', 'a', 'b'], [e('a', 'b'), e('b', 'a'), e('a', 'z')], [{ title: 'Zeta' }, { title: 'Alpha', contextIds: ['c1'] }, { title: 'Beta', contextIds: ['c1'] }]);
+  for (const [search, contextIds] of [['', []], ['a', []], ['', ['c1']], ['beta', ['c1']]] as const) {
+    expect(computeVisible({ model: m, selection: sel({ martId: 'z' }), search, contextIds: [...contextIds] }).ids[0]).toBe('z');
+  }
+});

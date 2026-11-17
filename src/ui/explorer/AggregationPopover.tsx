@@ -29,7 +29,7 @@ export function AggregationEditor({ field, value, blocker, onApply, onCancel }: 
   const stranded = !!blocker && groups;
   return (
     <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); onApply({ functions: bucket ? [] : ordered, bucket, timeZone: bucket && zoneable ? zone : null }); }}>
-      <div className="dm-popover-title text-sm font-medium">{columnTitle(field)}</div>
+      <div className="dm-popover-title text-sm font-medium">Aggregation</div>
       {bucketable && (
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted-foreground" htmlFor={`bucket-${field.name}`}>Group by bucket</label>
@@ -62,12 +62,10 @@ export function AggregationEditor({ field, value, blocker, onApply, onCancel }: 
       {allowed.length === 0 && !bucketable && <p className="text-xs text-muted-foreground">No aggregation is allowed for this field.</p>}
       {stranded && <p role="alert" className="text-xs text-destructive">{`"${blocker}" can't be grouped. Hide it to aggregate.`}</p>}
       <p className="text-xs text-muted-foreground">Filters still apply to the rows before they are aggregated.</p>
-      <div className="flex items-center justify-between gap-2">
-        <button type="button" disabled={!had && fns.length === 0 && bucket === null} onClick={() => onApply({ functions: [], bucket: null, timeZone: null })} className="rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50">Clear aggregation</button>
-        <div className="flex gap-2">
-          <button type="button" onClick={onCancel} className="rounded-md border px-2.5 py-1 text-sm hover:bg-accent">Cancel</button>
-          <button type="submit" disabled={(!had && ordered.length === 0 && bucket === null) || stranded} className="rounded-md bg-primary px-2.5 py-1 text-sm text-primary-foreground disabled:opacity-50">Apply</button>
-        </div>
+      <div className="flex items-center justify-end gap-2">
+        <button type="button" disabled={!had && fns.length === 0 && bucket === null} onClick={() => onApply({ functions: [], bucket: null, timeZone: null })} className="rounded-md border px-2.5 py-1 text-sm hover:bg-accent disabled:opacity-50">Clear</button>
+        <button type="button" onClick={onCancel} className="rounded-md border px-2.5 py-1 text-sm hover:bg-accent">Cancel</button>
+        <button type="submit" disabled={(!had && ordered.length === 0 && bucket === null) || stranded} className="rounded-md bg-primary px-2.5 py-1 text-sm text-primary-foreground disabled:opacity-50">Apply</button>
       </div>
     </form>
   );

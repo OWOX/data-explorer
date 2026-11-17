@@ -52,7 +52,10 @@ test('with no Google Sheets destination Export is still a menu, with the AI grou
   await rowsLoaded();
   await userEvent.click(await within(data()).findByText('Export'));
   expect(within(data()).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Claude', 'ChatGPT']);
-  expect(within(data()).getByRole('group', { name: 'AI' })).toBeInTheDocument();
+  // no "AI" sub-header: Claude and ChatGPT follow a separator only
+  expect(within(data()).queryByText('AI')).toBeNull();
+  expect(within(data()).getByRole('menuitem', { name: 'Claude' }).closest('.dm-export-ai')).not.toBeNull();
+  expect(data().querySelector('[data-action="copy"] svg')).toHaveClass('lucide-copy');
 });
 
 test('one destination and no report: the button is still a menu; New report makes the spreadsheet, the report, runs it and opens the sheet', async () => {
@@ -619,13 +622,13 @@ describe('Copy to clipboard', () => {
     expect(await screen.findByRole('menuitem', { name: 'Copy to clipboard' })).toBeEnabled();
   });
 
-  test('it is the first group, above the destinations and the AI group, with the clipboard icon', async () => {
+  test('it is the first group, above the destinations and the assistants, with the copy icon', async () => {
     const t = setup(1);
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     const item = await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' });
-    expect(item.querySelector('svg.lucide-clipboard-copy')).not.toBeNull();
+    expect(item.querySelector('svg.lucide-copy')).not.toBeNull();
     expect(within(data()).getAllByRole('menuitem')[0]).toBe(item);
   });
 

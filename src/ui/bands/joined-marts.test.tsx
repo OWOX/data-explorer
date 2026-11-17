@@ -39,7 +39,7 @@ const ready = async () => { await waitFor(() => expect(headers()).toHaveLength(5
 const click = async (name: string) => { await within(marts()).findByText(name); fireEvent.click(card(name)); };
 const undo = () => userEvent.click(screen.getByRole('button', { name: 'Undo' }));
 
-test('selecting a joinable data mart adds its first text column, titles the grid "Orders + Customers" and styles the card as joined', async () => {
+test('selecting a joinable data mart adds its first text column, titles the grid "Orders + Customers" and the card looks like the main one', async () => {
   setup();
   await ready();
   await click('Customers');
@@ -49,7 +49,8 @@ test('selecting a joinable data mart adds its first text column, titles the grid
   expect(card('Customers')).toHaveClass('dm-joined');
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'true');
   expect(card('Orders')).not.toHaveClass('dm-joined');
-  expect(within(card('Customers')).getByRole('note', { name: 'Joined' })).toBeInTheDocument();
+  expect(within(card('Customers')).queryByRole('note', { name: 'Joined' })).toBeNull();
+  expect(card('Customers')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('selecting it again takes its columns out, and a third time brings back the same fields', async () => {
