@@ -159,6 +159,12 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
   // holds a focused field or an edit. A click or a key switches at once.
   const [intent] = useState(() => new HoverIntent());
   useEffect(() => () => intent.clear(), [intent]);
+  // A click inside a dialog panel (Custom range, On, an operator) is an edit as well, so hover intent leaves the form alone.
+  useEffect(() => {
+    const mark = (e: MouseEvent) => { (e.target as Element | null)?.closest<HTMLElement>('[data-column-menu][role="dialog"]')?.setAttribute('data-edited', ''); };
+    document.addEventListener('click', mark, true);
+    return () => document.removeEventListener('click', mark, true);
+  }, []);
   const editing = () => [...document.querySelectorAll<HTMLElement>('[data-column-menu][role="dialog"]')].some((p) => 'edited' in p.dataset || (p.contains(document.activeElement) && !!document.activeElement?.matches('input, select, textarea')));
   const later = (apply: () => void) => intent.after(HOVER_MS, () => { if (!editing()) apply(); });
   const hoverRow = (k: SubKey, row: HTMLElement) => { if (sub?.key === k) intent.clear(); else if (!sub) open(k, row, false); else later(() => open(k, row, false)); };
@@ -172,10 +178,12 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
     const icons = head ? [...head.querySelectorAll<HTMLElement>('[data-menu-icon]')] : [];
     const mine = anchor.closest('.dm-hdr-controls')?.querySelector('[data-menu-icon]');
     const at = mine ? icons.indexOf(mine as HTMLElement) : -1;
-    const label = (icons[at + 1] ?? icons[at - 1])?.getAttribute('aria-label');
+    // By field name: two columns of different data marts can share a title.
+    const target = (icons[at + 1] ?? icons[at - 1])?.dataset.field;
     env.hide(field.name);
     onClose(false);
-    if (label && head) setTimeout(() => [...head.querySelectorAll<HTMLElement>('[data-menu-icon]')].find((i) => i.getAttribute('aria-label') === label)?.focus(), 0);
+    window.clearTimeout(focusTimer);
+    if (target && head) focusTimer = window.setTimeout(() => { if (head.isConnected) [...head.querySelectorAll<HTMLElement>('[data-menu-icon]')].find((i) => i.dataset.field === target)?.focus(); }, 0);
   };
   const choose = (f: Format) => { env.setFormat(field.name, f); onClose(); };
   const dir = env.sorts.find((s) => s.field === field.name)?.direction ?? null;
@@ -237,6 +245,9 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
 }
 
 /** What a column's header shows at its right end: an icon for each active filter, aggregation and sort, then the green menu icon. Each opens the column menu. */
+/** The pending focus after Hide column. The menu that set it is gone by then, so it lives here; a new hide or an unmounted header cancels it. */
+let focusTimer: number | undefined;
+
 export function ColumnControls({ field, output }: { field: Field; output: Output }) {
   const env = useContext(ColumnMenuEnvContext);
   const [menu, setMenu] = useState<{ anchor: HTMLElement; sub: SubKey | null } | null>(null);
@@ -287,7 +298,7 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
           <Arrow className="dm-icon" />{env.sorts.length > 1 && <span className="text-[9px] leading-none tabular-nums">{at + 1}</span>}
         </button>
       )}
-      <button ref={icon} type="button" aria-label={`Column menu ${title}`} aria-haspopup="menu" aria-expanded={!!menu} data-menu-icon
+      <button ref={icon} type="button" aria-label={`Column menu ${title}`} aria-haspopup="menu" aria-expanded={!!menu} data-menu-icon data-field={field.name}
         className={active ? 'dm-ctl dm-ctl-lg dm-ctl-on' : 'dm-ctl dm-ctl-lg'} onClick={(e) => toggle(e.currentTarget, null)}>
         <FilterLinesIcon className="dm-icon" />
       </button>

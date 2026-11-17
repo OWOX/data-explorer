@@ -828,6 +828,24 @@ test('full screen: the Data band alone fills the plugin area, its title stays, E
   expect(scroller.height).toBeLessThanOrEqual(view.height - head.height);
   // The same grid: its selected cell is still selected.
   await expect(cell).toHaveAttribute('data-selected', '');
+  // Popovers and dialogs sit above the band: what opens in full screen can be clicked.
+  const onTop = (el: Locator) => el.evaluate((dlg) => {
+    const r = dlg.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 20));
+    return hit && dlg.contains(hit) ? 'ok' : `blocked by ${hit?.tagName}.${hit?.className}`;
+  });
+  await data.getByRole('button', { name: /^Fields of/ }).first().click();
+  const fields = page.getByRole('dialog');
+  await expect(fields).toBeVisible();
+  expect(await onTop(fields)).toBe('ok');
+  await page.keyboard.press('Escape');
+  await expect(fields).toHaveCount(0);
+  await data.getByText('Export', { exact: true }).click();
+  const exportMenu = data.locator('details[open] [role=menu]').first();
+  await expect(exportMenu).toBeVisible();
+  expect(await onTop(exportMenu)).toBe('ok');
+  await page.keyboard.press('Escape');
+  await expect(data.getByRole('button', { name: 'Exit full screen' })).toBeVisible();
   // Escape closes an open column menu first, and only then full screen.
   await data.getByLabel('Column menu status').click();
   await expect(page.getByRole('menu', { name: 'Menu of status' })).toBeVisible();

@@ -201,3 +201,16 @@ test('a saved list with joined columns and none of the main mart\'s own gets the
   t.view();
   await waitFor(() => expect(headers()).toEqual(['id', 'Customer', 'Product', 'Store', 'status', 'email', 'SKU']));
 });
+
+test('Hide column focuses the neighbour by field, even when two columns share a title', async () => {
+  const t = setup(['id', 'customers__id', 'status']);
+  await t.seeded;
+  t.view();
+  await waitFor(() => expect(headers()).toEqual(['id', 'status', 'id']));
+  const icons = () => [...data().querySelectorAll<HTMLElement>('[data-menu-icon]')];
+  await waitFor(() => expect(icons().map((i) => i.dataset.field)).toEqual(['id', 'status', 'customers__id']));
+  await userEvent.click(icons()[1]!);
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Hide column' }));
+  await waitFor(() => expect(document.activeElement).toBe(icons().find((i) => i.dataset.field === 'customers__id')));
+  expect(document.activeElement).not.toBe(icons().find((i) => i.dataset.field === 'id'));
+});

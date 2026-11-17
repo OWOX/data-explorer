@@ -1,4 +1,4 @@
-import { render, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
@@ -9,11 +9,12 @@ import { openColumnMenu } from '../explorer/menu-test-utils';
 const data = () => document.getElementById('band-data')!;
 const page = () => document.querySelector('.dm-page')!;
 
-async function mount() {
-  render(<AppServices ctx={createMockCtx(demoFixtures(), { latencyMs: 0 })}><StoreProvider><App /></StoreProvider></AppServices>);
+async function mount(ctx = createMockCtx(demoFixtures(), { latencyMs: 0 })) {
+  const view = render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
   await waitFor(() => expect(document.querySelector('.dm-loadbar')).toBeNull());
   await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(5));
+  return view;
 }
 const enter = () => userEvent.click(within(data()).getByRole('button', { name: 'Full screen' }));
 const exitButton = () => within(data()).queryByRole('button', { name: 'Exit full screen' });
@@ -64,10 +65,20 @@ test('Escape inside an open column menu closes the menu and stays in full screen
   expect(page()).not.toHaveClass('dm-full');
 });
 
-test('full screen is not saved: a new page opens in the normal layout', async () => {
-  await mount();
+test('full screen is not saved: the same project and member open in the normal layout', async () => {
+  const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  const first = await mount(ctx);
   await enter();
-  document.body.innerHTML = '';
-  await mount();
+  expect(page()).toHaveClass('dm-full');
+  first.unmount();
+  await mount(ctx);
   expect(page()).not.toHaveClass('dm-full');
+});
+
+test('the Data hint says an opened row is seen after leaving full screen', async () => {
+  await mount();
+  expect(within(data()).getByLabelText('About Data')).toHaveAttribute('aria-label');
+  await enter();
+  await userEvent.hover(within(data()).getByLabelText('About Data'));
+  expect(await screen.findByText(/Exit full screen to see an opened row/)).toBeInTheDocument();
 });

@@ -141,7 +141,7 @@ Format changes only what the grid shows.
 
 ### Full screen
 
-The icon at the right of the Data band title (next to the fold chevron) makes the Data band fill the plugin area: 100% of its height, the title row on top, the grid taking the rest and scrolling inside it. The page header and the other bands are hidden, not removed, so the grid keeps its selection, scroll position and filters. The same icon or Escape leaves. Escape does nothing to full screen while a menu, popover or dialog is open, or while a field has focus: it closes that first. With a cell selected and the grid focused, the first Escape clears the selection. The fold chevron is hidden while the band is full screen. Full screen is not saved: the page always opens in the normal layout.
+The icon at the right of the Data band title (next to the fold chevron) makes the Data band fill the plugin area: 100% of its height, the title row on top, the grid taking the rest and scrolling inside it. The page header and the other bands are hidden, not removed, so the grid keeps its selection, scroll position and filters. The same icon or Escape leaves. Escape does nothing to full screen while a menu, popover or dialog is open, or while a field has focus: it closes that first. With a cell selected and the grid focused, the first Escape clears the selection. The fold chevron is hidden while the band is full screen. Opening a row (a click on it) does not leave full screen; the Row band is hidden with the rest, so exit to see the opened row (the Data hint says so). Full screen is not saved: the page always opens in the normal layout.
 
 ## Develop
 

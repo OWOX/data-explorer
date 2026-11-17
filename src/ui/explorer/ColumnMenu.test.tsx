@@ -348,6 +348,19 @@ describe('the column menu', () => {
     expect(sort.querySelectorAll('.dm-menu-check')).toHaveLength(3);
   });
 
+  test('a click inside the Filter panel marks it edited, so hovering another row does not replace it', async () => {
+    setup();
+    await ready();
+    await openSubmenu(within(data()), 'status', 'Filter');
+    const panel = await screen.findByRole('dialog', { name: 'Filter of status' });
+    expect(panel).not.toHaveAttribute('data-edited');
+    await userEvent.click(panel);
+    await waitFor(() => expect(panel).toHaveAttribute('data-edited'));
+    await userEvent.hover(screen.getByRole('menuitem', { name: 'Sort' }));
+    await new Promise((r) => setTimeout(r, HOVER_MS + 150));
+    expect(screen.queryByRole('dialog', { name: 'Filter of status' })).not.toBeNull();
+  });
+
   test('Hide column moves focus to the next column\'s menu icon, or the previous one for the last column', async () => {
     setup();
     await ready();
