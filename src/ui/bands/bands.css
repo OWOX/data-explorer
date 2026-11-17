@@ -399,7 +399,7 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 :root.dark .dm-menu { --menu-bg: #2d2e30; --menu-fg: #e8eaed; --menu-hover: #3c4043; --menu-line: #5f6368; --menu-muted: #9aa0a6; box-shadow: 0 2px 6px rgba(0, 0, 0, .6); }
 .dm-menu-root { min-width: 200px; }
 /* The filter and aggregation forms keep the app's own tokens inside the Sheets-style frame. */
-.dm-menu-editor { width: max-content; min-width: 16rem; max-width: calc(100vw - 16px); max-height: min(20rem, calc(100vh - 16px)); padding: 0; overflow: hidden; }
+.dm-menu-editor { width: max-content; min-width: 16rem; max-width: min(28rem, calc(100vw - 16px)); max-height: min(20rem, calc(100vh - 16px)); padding: 0; overflow: hidden; }
 /* The filter and aggregation editors inside the menu: Google Sheets' dialog look (Google Sans 14px, 36px controls, green primary, outlined secondary). */
 .dm-menu-editor { --btn-line: #dadce0; --btn-off-bg: #f1f3f4; --btn-off-fg: #80868b; font: 400 14px/20px 'Google Sans', Roboto, Arial, sans-serif; background: var(--menu-bg); color: var(--menu-fg); }
 :root.dark .dm-menu-editor { --btn-line: #5f6368; --btn-off-bg: #3c4043; --btn-off-fg: #9aa0a6; }

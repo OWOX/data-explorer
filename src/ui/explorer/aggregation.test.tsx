@@ -140,7 +140,7 @@ test('the popover has no title row and no Clear; Apply is off while nothing is s
 });
 
 test('with an aggregation set, unticking everything keeps Apply on, and applying it removes the aggregation', async () => {
-  const t = setup();
+  setup();
   await ready();
   await showColumn('Amount');
   await aggregate('Amount', 'Sum');
@@ -153,7 +153,6 @@ test('with an aggregation set, unticking everything keeps Apply on, and applying
   await userEvent.click(apply);
   await waitFor(() => expect(headers()).toContain('Amount'));
   expect(within(data()).getByText(/records$/)).toBeInTheDocument();
-  void t;
 });
 
 test('the filter popover of an aggregated column says it filters before aggregating', async () => {
