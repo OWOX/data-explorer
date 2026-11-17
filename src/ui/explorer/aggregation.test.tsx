@@ -103,7 +103,7 @@ test('a date takes one bucket instead of functions, and shows the bucket start b
   await waitFor(() => expect(bodyRows()[0]!.querySelectorAll('td')[at]!.textContent).toMatch(/^[A-Z][a-z]{2} \d{4}$/));
 });
 
-test('the Sigma stays on while a column is aggregated; Clear ungroups; Reset keeps aggregations', async () => {
+test('the Sigma stays on while a column is aggregated; unticking all and applying ungroups; Reset keeps aggregations', async () => {
   const t = setup();
   await ready();
   await showColumn('Amount');
@@ -114,26 +114,46 @@ test('the Sigma stays on while a column is aggregated; Clear ungroups; Reset kee
   expect(headers().some((h) => h.startsWith('Amount · Sum'))).toBe(true);
   await waitFor(() => expect(t.puts.some((p) => p.id === 'orders' && JSON.stringify(p.doc.aggregations) === JSON.stringify([{ column: 'amount', function: 'SUM' }]))).toBe(true), { timeout: 3000 });
   await openSubmenu(within(data()), 'Amount', 'Aggregate');
-  await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Clear' }));
+  const dlg = await screen.findByRole('dialog');
+  await userEvent.click(within(dlg).getByLabelText('Sum'));
+  await userEvent.click(within(dlg).getByRole('button', { name: 'Apply' }));
   await waitFor(() => expect(headers()).toContain('Amount'));
   expect(within(data()).getByText(/records$/)).toBeInTheDocument();
 });
 
-test('the popover is headed "Aggregation"; Clear is an outline button left of Cancel and Apply, off while nothing is set', async () => {
+test('the popover has no title row and no Clear; Apply is off while nothing is set, on once something is ticked', async () => {
   setup();
   await ready();
   await showColumn('Amount');
   await openSubmenu(within(data()), 'Amount', 'Aggregate');
   const dialog = await screen.findByRole('dialog', { name: 'Aggregation of Amount' });
-  expect(within(dialog).getByText('Aggregation', { selector: '.dm-popover-title' })).toBeInTheDocument();
-  expect(within(dialog).queryByText('Amount', { selector: '.dm-popover-title' })).toBeNull();
-  const clear = within(dialog).getByRole('button', { name: 'Clear' });
-  expect(clear).toBeDisabled();
-  expect(clear.className).toContain('dm-btn-secondary');
+  expect(dialog.querySelector('.dm-popover-title')).toBeNull();
+  expect(within(dialog).queryByRole('button', { name: 'Clear' })).toBeNull();
   const buttons = within(dialog).getAllByRole('button').map((b) => b.textContent);
-  expect(buttons.slice(-3)).toEqual(['Clear', 'Cancel', 'Apply']);
+  expect(buttons.slice(-2)).toEqual(['Cancel', 'Apply']);
+  const apply = within(dialog).getByRole('button', { name: 'Apply' });
+  expect(apply).toBeDisabled();
   await userEvent.click(within(dialog).getByLabelText('Sum'));
-  expect(clear).toBeEnabled();
+  expect(apply).toBeEnabled();
+  await userEvent.click(within(dialog).getByLabelText('Sum'));
+  expect(apply).toBeDisabled();
+});
+
+test('with an aggregation set, unticking everything keeps Apply on, and applying it removes the aggregation', async () => {
+  const t = setup();
+  await ready();
+  await showColumn('Amount');
+  await aggregate('Amount', 'Sum');
+  await sumLoaded();
+  await openSubmenu(within(data()), 'Amount', 'Aggregate');
+  const dialog = await screen.findByRole('dialog', { name: 'Aggregation of Amount' });
+  await userEvent.click(within(dialog).getByLabelText('Sum'));
+  const apply = within(dialog).getByRole('button', { name: 'Apply' });
+  expect(apply).toBeEnabled();
+  await userEvent.click(apply);
+  await waitFor(() => expect(headers()).toContain('Amount'));
+  expect(within(data()).getByText(/records$/)).toBeInTheDocument();
+  void t;
 });
 
 test('the filter popover of an aggregated column says it filters before aggregating', async () => {

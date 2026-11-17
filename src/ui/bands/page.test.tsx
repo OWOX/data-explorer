@@ -1378,7 +1378,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(first()).toContain('Orders');
   });
 
-  test('a filter panel is capped at 20rem (bands.css .dm-menu-editor) with its title pinned above the scrolling body', async () => {
+  test('a filter panel is capped at 20rem (bands.css .dm-menu-editor) with no title row above the scrolling body', async () => {
     await ordersGrid();
     await search('daily');
     fireEvent.click(await within(marts()).findByText('Daily KPIs'));
@@ -1387,7 +1387,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     const body = (await screen.findByRole('group', { name: 'Filter day' })).closest('[data-popover-body]')!;
     expect(body.parentElement).toHaveClass('dm-menu-editor');
     expect(body.className).toContain('overflow-y-auto');
-    expect(body.querySelector('.dm-popover-title')).toHaveTextContent(/^Filter$/);
+    expect(body.querySelector('.dm-popover-title')).toBeNull();
   });
 });
 
