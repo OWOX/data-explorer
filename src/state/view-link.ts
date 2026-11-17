@@ -15,6 +15,8 @@ export type DecodedView = {
   martId: string | null;
   record: Record<string, unknown> | null;
   search: string;
+  /** The marts a smart search found, best first (at most 5); absent for a link of a plain view. */
+  found?: string[];
   contextIds: string[];
   storageIds: string[] | null;
   folded: Folded;
@@ -33,6 +35,8 @@ type ViewLinkV1 = {
   m: string | null;
   r: Record<string, unknown> | null;
   q: string;
+  /** The marts a smart search found: with them `q` is only the text shown in the box, not a title filter. */
+  fd?: string[];
   ctx: string[];
   st: string[] | null;
   f: Folded;
@@ -41,6 +45,8 @@ type ViewLinkV1 = {
 
 /** At most this many aggregation rules and this many date buckets are read from a link; the rest count as dropped. */
 export const MAX_AGG_RULES = 64;
+/** At most this many found marts are carried by a link. */
+export const MAX_FOUND_IDS = 5;
 
 const ROUTE_PATH = '/v';
 const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
@@ -106,6 +112,7 @@ export async function encodeViewLink(view: Omit<DecodedView, 'dropped' | 'droppe
     m: view.martId,
     r: view.record,
     q: view.search,
+    ...(view.found?.length ? { fd: view.found.slice(0, MAX_FOUND_IDS) } : {}),
     ctx: view.contextIds,
     st: view.storageIds,
     f: view.folded,
@@ -154,7 +161,7 @@ export async function decodeViewLink(route: string | undefined): Promise<Decoded
 /** Checks the top-level types, then drops malformed entries one by one. Throws on a bad top level. */
 function shape(raw: unknown): DecodedView {
   if (!isObject(raw) || raw.v !== 1) throw new Error('bad version');
-  const { P, src, m, r, q, ctx, st, f, g } = raw;
+  const { P, src, m, r, q, ctx, st, f, g, fd } = raw;
   if (!isStringList(P)) throw new Error('bad P');
   if (!(src === null || typeof src === 'string') || !(m === null || typeof m === 'string')) throw new Error('bad ids');
   if (!(r === null || isObject(r)) || typeof q !== 'string') throw new Error('bad record or search');
@@ -227,11 +234,13 @@ function shape(raw: unknown): DecodedView {
     grid = { columns, filters: Object.fromEntries(filterEntries), sorts, limit: g.l, ...(aggregations.length ? { aggregations } : {}), ...(dateTrunc.length ? { dateTrunc } : {}) };
   }
 
+  const found = Array.isArray(fd) ? [...new Set(fd.filter((x): x is string => typeof x === 'string'))].slice(0, MAX_FOUND_IDS) : [];
   return {
     sourceKey: src,
     martId: m,
     record,
     search: q,
+    ...(found.length ? { found } : {}),
     contextIds: keepStrings(ctx),
     storageIds: st === null ? null : keepStrings(st),
     folded: { sources: f.sources as boolean, marts: f.marts as boolean, data: f.data as boolean, row: f.row as boolean },

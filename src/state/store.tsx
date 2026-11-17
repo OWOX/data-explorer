@@ -69,7 +69,7 @@ export type Action =
   | { type: 'setMarts'; selection: Selection; grids: Record<string, GridState> }
   | { type: 'saveGrid'; martId: string; grid: GridState }
   /** A view link opens: everything it carries is set at once. No history entry, so Undo has nothing to undo. */
-  | { type: 'applyView'; selection: Selection; grid: GridState | null; search: string; contextIds: string[]; storageIds: string[] | null }
+  | { type: 'applyView'; selection: Selection; grid: GridState | null; search: string; found?: string[]; contextIds: string[]; storageIds: string[] | null }
   | { type: 'refreshModel' };
 
 export const HISTORY_LIMIT = 20;
@@ -162,7 +162,7 @@ export function reducer(state: State, a: Action): State {
       ...state,
       selection: a.selection,
       search: a.search,
-      found: [],
+      found: a.found ?? [],
       contextIds: a.contextIds,
       storageIds: a.storageIds,
       grids: a.grid && a.selection.martId ? { ...state.grids, [a.selection.martId]: a.grid } : state.grids,

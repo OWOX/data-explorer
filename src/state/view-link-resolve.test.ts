@@ -194,3 +194,11 @@ describe('skippedMessage', () => {
     expect(skippedMessage({ ...none, source: true, sorts: 2 })).toBe("Some parts of this link aren't available to you: the source, 2 sorts.");
   });
 });
+
+describe('resolveView found marts', () => {
+  it('keeps the found marts the member can open, in order, and none when the link has none', async () => {
+    const { apply } = await resolveView(view({ found: ['m3', 'nope', 'm2', 'm1'] }), model, read);
+    expect(apply.found).toEqual(['m3', 'm1']);
+    expect((await resolveView(view(), model, read)).apply.found).toEqual([]);
+  });
+});

@@ -9,6 +9,7 @@ export type AppliedView = {
   selection: Selection;
   grid: GridState | null;
   search: string;
+  found: string[];
   contextIds: string[];
   storageIds: string[] | null;
   folded: DecodedView['folded'];
@@ -86,7 +87,7 @@ export async function resolveView(
     grid = schema ? pruneGrid(g, schema, skipped) : g;
   }
 
-  return { apply: { selection, grid, search: view.search, contextIds, storageIds, folded: view.folded }, skipped };
+  return { apply: { selection, grid, search: view.search, found: (view.found ?? []).filter((id) => model.marts.get(id)?.accessible), contextIds, storageIds, folded: view.folded }, skipped };
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
