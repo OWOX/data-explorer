@@ -28,7 +28,7 @@ const data = () => document.getElementById('band-data')!;
 const row = () => document.getElementById('band-row')!;
 const headers = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden') && h.getAttribute('scope') !== 'colgroup').map((h) => h.textContent!);
 const bodyRows = () => within(data()).getAllByRole('row').filter((r) => r.querySelector('td'));
-const ready = async () => { await waitFor(() => expect(headers()).toHaveLength(5)); await waitFor(() => expect(bodyRows().length).toBeGreaterThan(1)); };
+const ready = async () => { await waitFor(() => expect(headers()).toHaveLength(5)); await waitFor(() => expect(bodyRows().some((r) => r.querySelector('td')?.textContent)).toBe(true)); };
 
 /** The first body cell under "Amount · Sum": text with a digit means the grouped rows have arrived. */
 const sumCell = () => { const at = headers().findIndex((h) => h.startsWith('Amount · Sum')); return at < 0 ? '' : (bodyRows()[0]?.querySelectorAll('td')[at]?.textContent ?? ''); };
@@ -123,7 +123,7 @@ test('the popover is headed "Aggregation"; Clear is an outline button left of Ca
   await ready();
   await showColumn('Amount');
   await userEvent.click(await within(data()).findByRole('button', { name: 'Aggregate Amount' }));
-  const dialog = await screen.findByRole('dialog');
+  const dialog = await screen.findByRole('dialog', { name: 'Aggregation of Amount' });
   expect(within(dialog).getByText('Aggregation', { selector: '.dm-popover-title' })).toBeInTheDocument();
   expect(within(dialog).queryByText('Amount', { selector: '.dm-popover-title' })).toBeNull();
   const clear = within(dialog).getByRole('button', { name: 'Clear' });

@@ -79,7 +79,7 @@ export function AggregationPopover({ field, value, blocker, onApply }: { field: 
   if (allowed.length === 0 && !canBucket(field)) return null;
   const tip = on ? `Aggregation: ${value.bucket ? `by ${BUCKET_LABELS[value.bucket].toLowerCase()}` : value.functions.map((f) => AGG_LABELS[f]).join(', ')}` : 'Aggregate';
   return (
-    <Popover open={open} onOpenChange={setOpen} tip={tip} trigger={
+    <Popover open={open} onOpenChange={setOpen} tip={tip} label={`Aggregation of ${columnTitle(field)}`} trigger={
       <button type="button" aria-label={`Aggregate ${columnTitle(field)}`} className={on ? 'dm-reveal dm-reveal-on text-primary' : 'dm-reveal text-muted-foreground hover:text-foreground'}>
         <Sigma className="size-3.5" />
       </button>

@@ -134,10 +134,10 @@ test('a reference column shows the stored value as plain text; Referenced by ope
   // nothing in the record is a link, and nothing says "via"
   await expect(row.locator('dd button')).toHaveCount(0);
   await row.getByRole('region', { name: 'Referenced by' }).getByRole('button', { name: /^Orders/ }).click();
-  await expect(data.locator('thead tr[data-group-row] th').first()).toHaveText(/^Orders/);
+  await expect(data.locator('thead tr[data-group-row] th')).toHaveText(['Orders', 'Customers']);
   await expect(row.getByText('Select a row.')).toBeVisible();
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(data.locator('thead tr[data-group-row] th').first()).toHaveText('Customers');
+  await expect(data.locator('thead tr[data-group-row] th')).toHaveText(['Customers']);
   await expect(row.getByRole('heading', { name: /^Customers · \d+$/ })).toBeVisible();
 });
 
@@ -262,7 +262,7 @@ test('selecting a joinable mart adds its first text column; deselecting removes 
   await martCard(page, 'Customers').click();
   await title('Orders + Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · name/ })).toBeVisible();
-  await expect(martCard(page, 'Customers')).toHaveClass(/dm-joined/);
+  await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
   // choose a second field, take the mart out, bring it back
   await tick(page, 'email', 'Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
@@ -280,11 +280,11 @@ test('deselecting the main mart promotes the next joined one; a mart the main on
   await martCard(page, 'Customers').click();
   await expect(data.locator('thead tr[data-group-row] th')).toHaveText(['Orders', 'Customers']);
   await martCard(page, 'Orders').click();
-  await expect(data.locator('thead tr[data-group-row] th').first()).toHaveText('Customers');
+  await expect(data.locator('thead tr[data-group-row] th')).toHaveText(['Customers']);
   await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
   // Customers cannot join Sessions, so it becomes the main mart, alone
   await martCard(page, 'Sessions').click();
-  await expect(data.locator('thead tr[data-group-row] th').first()).toHaveText('Sessions');
+  await expect(data.locator('thead tr[data-group-row] th')).toHaveText(['Sessions']);
 });
 
 /** Waits for a body cell under "Amount · Sum" with a number in it (the grouped rows have arrived) and returns its text. */
@@ -346,6 +346,18 @@ test('the (?) after a field label shows only while its row is hovered', async ({
   expect(glyph!.x - (label!.x + label!.width)).toBeGreaterThanOrEqual(3);
   expect(glyph!.x - (label!.x + label!.width)).toBeLessThanOrEqual(6);
   expect(Math.abs((glyph!.y + glyph!.height / 2) - (label!.y + label!.height / 2))).toBeLessThanOrEqual(2);
+});
+
+test('opening the Fields picker by mouse leaves every (?) hidden until a row is hovered', async ({ page }) => {
+  const data = await ordersGrid(page);
+  await data.getByRole('button', { name: 'Fields of Orders' }).click();
+  const dialog = page.getByRole('dialog');
+  await page.mouse.move(2, 2);
+  const slots = dialog.locator('.dm-hint-slot');
+  await expect(slots).not.toHaveCount(0);
+  for (const slot of await slots.all()) await expect(slot).toHaveCSS('opacity', '0');
+  await dialog.getByText('Customer', { exact: true }).hover();
+  await expect(dialog.locator('label', { hasText: 'Customer' }).locator('.dm-hint-slot')).toHaveCSS('opacity', '1');
 });
 
 test('a filter popover is at most 20rem tall and keeps its title while the list scrolls', async ({ page }) => {
@@ -417,7 +429,7 @@ test('a group row names each selected mart; the x on a joined group removes it a
   await x.click();
   await expect(data.locator('thead tr[data-group-row] th').first()).toHaveText('Orders');
   await expect(data.locator('thead tr[data-group-row] th')).toHaveText(['Orders']);
-  await expect(martCard(page, 'Customers')).not.toHaveClass(/dm-joined/);
+  await expect(martCard(page, 'Customers')).not.toHaveAttribute('aria-pressed', 'true');
 });
 
 test('the Fields picker is on each tab and lists only that mart; the toolbar has none', async ({ page }) => {

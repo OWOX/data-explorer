@@ -283,7 +283,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     return {
       id: o.key,
       header: () => (
-        <div className="flex min-w-0 items-center justify-start gap-1">
+        <div className="flex min-w-0 items-center gap-1">
           <SortTitle field={field} output={o} />
           {lead && (
             <FilterPopover field={field} aggregated={aggregated} value={filters[name]} onChange={(f) => {
@@ -390,7 +390,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
           <thead ref={head} className="sticky top-0 z-10 bg-card">
             <tr data-group-row>
                 {groups.map((g, i) => (
-                  <th key={g.id} data-group={g.id} colSpan={g.span} scope="colgroup" className={`dm-gh overflow-hidden px-3 pb-0.5 pt-2 text-left text-xs font-semibold ${i > 0 ? 'dm-gh-edge' : ''}`}>
+                  <th key={g.id} data-group={g.id} colSpan={g.span} scope="colgroup" className={`dm-gh overflow-hidden px-3 pb-0.5 pt-2 text-left text-xs font-semibold dm-gh-edge`}>
                     <div className="flex min-w-0 items-center gap-1.5">
                       <span className="inline-flex shrink-0 text-muted-foreground"><PickedIcon icon={g.icon} fallback={Box} size={14} /></span>
                       <span className="truncate">{g.title}</span>

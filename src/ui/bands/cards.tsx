@@ -158,7 +158,7 @@ export function MartCard({
       data-node
       data-tone={dqCardTone(quality)}
       aria-pressed={selected || joined}
-      className={cardClass(lit, aside, [mart.accessible ? '' : 'dm-noaccess', joined && !selected ? 'dm-joined' : '', transition?.className ?? ''].filter(Boolean).join(' '))}
+      className={cardClass(lit, aside, [mart.accessible ? '' : 'dm-noaccess', transition?.className ?? ''].filter(Boolean).join(' '))}
       {...(transition?.leaving ? { 'data-leaving': '' } : {})}
       {...selectable(onSelect)}
     >

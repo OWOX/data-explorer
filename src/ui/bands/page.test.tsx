@@ -319,7 +319,7 @@ describe('the grid', () => {
     await userEvent.click(entry); // Orders, filtered by customer_id
     await within(data()).findByText('Orders');
     await waitFor(() => expect(within(data()).getByLabelText('Filter Customer')).toHaveClass('text-primary'));
-    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(0));
+    await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
     await userEvent.click(within(data()).getByLabelText('Filter id'));
     await userEvent.selectOptions(screen.getByLabelText('Operator'), 'lte');
     await userEvent.type(screen.getByLabelText('Value'), '1000');
@@ -625,7 +625,7 @@ describe('folding and lines', () => {
     await settle();
     expect(rowQueries()).toHaveLength(before);
     await userEvent.click(within(data()).getByRole('button', { name: /^Show / }));
-    await within(data()).findByText('Stores');
+    await waitFor(() => expect(within(data()).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent)).toEqual(['Orders', 'Customers', 'Stores']));
     await settle();
     const fresh = rowQueries().slice(before);
     // The grid's own rows query: one, with the joined columns in it.

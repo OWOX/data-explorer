@@ -43,7 +43,7 @@ const exportNew = async () => {
   await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
   return dialog;
 };
-const rowsLoaded = () => waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(1));
+const rowsLoaded = () => waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
 const REPORT: ExportedReport = { reportId: 'mock-report-1', destinationId: 'd-sheets-team', spreadsheetId: 'mock-sheet-1', sheetId: 0, title: 'Orders weekly' };
 
 test('with no Google Sheets destination Export is still a menu, with the AI group and no destination row', async () => {
