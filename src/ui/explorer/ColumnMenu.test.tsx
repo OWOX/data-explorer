@@ -87,6 +87,9 @@ describe('the column menu', () => {
     const active = await within(data()).findByLabelText('Filter id');
     expect(active).toHaveClass('dm-ctl-on');
     expect(within(data()).getByLabelText('Column menu id')).toHaveClass('dm-ctl-on');
+    expect(active).toHaveTextContent('');
+    await userEvent.hover(active);
+    expect((await screen.findAllByText('Filter: ≤ 3')).length).toBeGreaterThan(0);
     await userEvent.click(active);
     const panel = await screen.findByRole('dialog', { name: 'Filter of id' });
     expect(within(panel).getByLabelText('Value')).toHaveValue(3);

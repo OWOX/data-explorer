@@ -558,4 +558,3 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
   transition: width 240ms ease-out, background 240ms ease-out;
 }
 .dm-loadbar-done span { background: #d9eed7; }
-[data-menu-icon] .dm-icon { width: 14px; height: 14px; }

@@ -12,6 +12,12 @@ async function ordersGrid(page: Page) {
   return data;
 }
 
+/** Opens a column's menu and its first-level row (Filter, Aggregate, Format, Sort). */
+async function openColumnSub(data: Locator, title: string, row: 'Filter' | 'Aggregate' | 'Format' | 'Sort') {
+  await data.getByLabel(`Column menu ${title}`).click();
+  await data.page().getByRole('menuitem', { name: row, exact: true }).click();
+}
+
 /** Orders joins Customers, so clicking it adds it to the grid; clicking Orders then promotes Customers to the main mart. */
 async function makeMain(page: Page, title: string) {
   await martCard(page, title).click();
@@ -147,7 +153,7 @@ test('a band hint tooltip draws above the cards below it', async ({ page }) => {
 
 test('filter, reset, columns, a row fills the Row band, Back returns', async ({ page }) => {
   const data = await ordersGrid(page);
-  await data.getByLabel('Filter id').click();
+  await openColumnSub(data, 'id', 'Filter');
   await page.getByLabel('Operator').selectOption('lte');
   await page.getByLabel('Value').fill('3');
   await page.getByRole('button', { name: 'Apply' }).click();
@@ -222,7 +228,7 @@ test('a date column filter opens on presets; a preset applies at once and names 
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
   await page.getByLabel(/created_at/).check();
   await page.keyboard.press('Escape');
-  await data.getByLabel('Filter created_at').click();
+  await openColumnSub(data, 'created_at', 'Filter');
   await expect(page.getByRole('group', { name: 'Date presets' }).getByRole('button')).toHaveCount(14);
   await page.getByRole('button', { name: 'Last 30 days' }).click();
   await expect(page.getByRole('group', { name: 'Date presets' })).toHaveCount(0);
@@ -416,7 +422,7 @@ test('opening the Fields picker by mouse leaves every (?) hidden until a row is 
 test('a filter popover is at most 20rem tall and keeps its title while the list scrolls', async ({ page }) => {
   const data = await ordersGrid(page);
   await tick(page, 'created_at');
-  await data.getByLabel('Filter created_at').click();
+  await openColumnSub(data, 'created_at', 'Filter');
   const body = page.locator('[data-popover-body]');
   await expect(body).toBeVisible();
   const box = await page.locator('[data-popover-body]').evaluate((el) => (el.parentElement as HTMLElement).getBoundingClientRect().height);
@@ -435,7 +441,7 @@ test('a joined column: tick Customers · email in the picker, and it filters', a
   await tick(page, 'email', 'Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
   await expect(data.getByRole('row').nth(3)).toContainText('@example.com');
-  await data.getByLabel('Filter Customers · email').click();
+  await openColumnSub(data, 'Customers · email', 'Filter');
   await page.getByLabel('Value').fill('anna');
   await page.getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByRole('row').nth(3)).toContainText('anna');
@@ -502,7 +508,7 @@ test('selecting a mart adds a text field and a metric; the filter mark carries n
   await martCard(page, 'Products').click();
   await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', 'Products']);
   await expect(data.locator('thead tr[data-group-row] th[data-group]').nth(1)).toHaveAttribute('colspan', '2');
-  await data.getByLabel('Filter id').click();
+  await openColumnSub(data, 'id', 'Filter');
   await page.getByLabel('Value').fill('3');
   await page.getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByLabel('Filter id')).toHaveText('');
@@ -525,7 +531,7 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   await expect(data.getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
   await tick(page, 'email', 'Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
-  await data.getByLabel('Filter id').click();
+  await openColumnSub(data, 'id', 'Filter');
   await page.getByLabel('Operator').selectOption('lte');
   await page.getByLabel('Value').fill('3');
   await page.getByRole('button', { name: 'Apply' }).click();
@@ -564,8 +570,7 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
 test('a copied view link keeps a Sum on Amount: the opener sees the grouped grid', async ({ page, context }) => {
   const data = await ordersGrid(page);
   await tick(page, 'Amount');
-  await data.getByRole('button', { name: 'Aggregate Amount' }).hover();
-  await data.getByRole('button', { name: 'Aggregate Amount' }).click();
+  await openColumnSub(data, 'Amount', 'Aggregate');
   await page.getByRole('dialog').getByLabel('Sum').check();
   await page.getByRole('dialog').getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByRole('columnheader', { name: /Amount · Sum/ })).toBeVisible();
@@ -604,8 +609,7 @@ test('a link to a data mart the opener cannot see shows a notice and the page st
 test('a Sum on Amount groups the rows by the other columns; the badge counts groups and a group opens no record', async ({ page }) => {
   const data = await ordersGrid(page);
   await tick(page, 'Amount');
-  await data.getByRole('button', { name: 'Aggregate Amount' }).hover();
-  await data.getByRole('button', { name: 'Aggregate Amount' }).click();
+  await openColumnSub(data, 'Amount', 'Aggregate');
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Sum').check();
   await dialog.getByRole('button', { name: 'Apply' }).click();
@@ -716,9 +720,9 @@ test('a numeric filter applied through the popover (> 400) leaves fewer rows', a
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
   await page.getByLabel(/Amount/).check();
   await page.keyboard.press('Escape');
-  await expect(data.getByLabel('Filter Amount')).toBeVisible();
+  await expect(data.getByLabel('Column menu Amount')).toBeVisible();
   const before = await data.getByRole('row').count();
-  await data.getByLabel('Filter Amount').click();
+  await openColumnSub(data, 'Amount', 'Filter');
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Operator').selectOption('gt');
   await dialog.getByLabel('Value').fill('400');

@@ -10,6 +10,7 @@ import type { SortDirection, SortKey } from '../../model/sort';
 import type { Field } from '../../model/types';
 import { AggregationEditor } from './AggregationEditor';
 import { FilterAltIcon } from './FilterAltIcon';
+import { Tooltip } from '../Tooltip';
 import { FilterEditor } from './FilterEditor';
 import { FilterLinesIcon } from './FilterLinesIcon';
 import { placeBeside, placeBelow, type Place } from './menuPlacement';
@@ -238,14 +239,18 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
   return (
     <span ref={controls} className="dm-hdr-controls">
       {filter && (
-        <button type="button" aria-label={`Filter ${title}`} title={`Filter: ${describeFilter(field, filter)}`} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, 'filter')}>
-          <FilterAltIcon className="dm-icon" />
-        </button>
+        <Tooltip content={`Filter: ${describeFilter(field, filter)}`}>
+          <button type="button" aria-label={`Filter ${title}`} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, 'filter')}>
+            <FilterAltIcon className="dm-icon" />
+          </button>
+        </Tooltip>
       )}
       {aggOn && (
-        <button type="button" aria-label={`Aggregate ${title}`} title={`Aggregation: ${draft.bucket ? `by ${BUCKET_LABELS[draft.bucket].toLowerCase()}` : draft.functions.map((f) => AGG_LABELS[f]).join(', ')}`} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, 'aggregate')}>
-          <Sigma className="dm-icon" />
-        </button>
+        <Tooltip content={`Aggregation: ${draft.bucket ? `by ${BUCKET_LABELS[draft.bucket].toLowerCase()}` : draft.functions.map((f) => AGG_LABELS[f]).join(', ')}`}>
+          <button type="button" aria-label={`Aggregate ${title}`} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, 'aggregate')}>
+            <Sigma className="dm-icon" />
+          </button>
+        </Tooltip>
       )}
       {output.sortable && direction && (
         <button type="button" data-sort-mark aria-label={`Sorted ${direction === 'asc' ? 'A to Z' : 'Z to A'}: ${title}`} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, 'sort')}>
