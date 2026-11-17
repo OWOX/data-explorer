@@ -49,29 +49,29 @@ test('a source click narrows the marts; clicking it again returns', async ({ pag
 
 const heading = (page: Page) => band(page, 'data').locator('thead tr[data-group-row] th[data-group]');
 const search = async (page: Page, q: string) => {
-  const marts = band(page, 'marts');
-  const box = marts.getByRole('textbox', { name: 'Search data marts' });
-  if (!(await box.isVisible())) await marts.getByRole('button', { name: /^Search data marts/ }).click();
+  const header = page.locator('header.dm-page-header');
+  const box = header.getByRole('textbox', { name: 'Search data marts' });
+  if (!(await box.isVisible())) await header.getByRole('button', { name: /^Search data marts/ }).click();
   await box.fill(q);
   await box.press('Enter');
 };
 
 test('search finds the marts through OWOX search and makes the best one the main mart', async ({ page }) => {
   await ordersGrid(page);
-  await band(page, 'marts').getByRole('button', { name: 'Search data marts' }).click();
-  await expect(band(page, 'marts').getByRole('textbox', { name: 'Search data marts' })).toBeFocused();
+  await page.locator('header.dm-page-header').getByRole('button', { name: 'Search data marts' }).click();
+  await expect(page.locator('header.dm-page-header').getByRole('textbox', { name: 'Search data marts' })).toBeFocused();
   await search(page, 'campaign');
   await expect(heading(page)).toHaveText(['Campaigns']);
   await expect(band(page, 'marts').getByText('Campaigns', { exact: true })).toBeVisible();
   // The marts that do not match go, and the query stays on screen.
   await expect(band(page, 'marts').getByText('Customers', { exact: true })).toHaveCount(0);
-  await expect(band(page, 'marts').getByRole('textbox', { name: 'Search data marts' })).toHaveValue('campaign');
+  await expect(page.locator('header.dm-page-header').getByRole('textbox', { name: 'Search data marts' })).toHaveValue('campaign');
   // Escape closes the box and keeps the result; the x clears it and restores the band.
   await page.keyboard.press('Escape');
-  await expect(band(page, 'marts').getByRole('button', { name: 'Search data marts: campaign' })).toBeVisible();
+  await expect(page.locator('header.dm-page-header').getByRole('button', { name: 'Search data marts: campaign' })).toBeVisible();
   await expect(heading(page)).toHaveText(['Campaigns']);
-  await band(page, 'marts').getByRole('button', { name: 'Clear search' }).click();
-  await expect(band(page, 'marts').getByRole('button', { name: 'Search data marts', exact: true })).toBeVisible();
+  await page.locator('header.dm-page-header').getByRole('button', { name: 'Clear search' }).click();
+  await expect(page.locator('header.dm-page-header').getByRole('button', { name: 'Search data marts', exact: true })).toBeVisible();
   await expect(heading(page)).toHaveText(['Campaigns']);
 });
 
@@ -708,4 +708,21 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
   expect(await data.locator('tbody td[data-handle]').evaluate((e) => getComputedStyle(e, '::before').borderRadius)).toBe('50%');
   await page.keyboard.press('Escape');
   await expect(colCells).toHaveCount(0);
+});
+
+test('a numeric filter applied through the popover (> 400) leaves fewer rows', async ({ page }) => {
+  const data = await ordersGrid(page);
+  await data.getByRole('button', { name: 'Fields of Orders' }).click();
+  await page.getByLabel(/Amount/).check();
+  await page.keyboard.press('Escape');
+  await expect(data.getByLabel('Filter Amount')).toBeVisible();
+  const before = await data.getByRole('row').count();
+  await data.getByLabel('Filter Amount').click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Operator').selectOption('gt');
+  await dialog.getByLabel('Value').fill('400');
+  await dialog.getByRole('button', { name: 'Apply' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(data.getByLabel('Filter Amount')).toHaveClass(/dm-ctl-on/);
+  await expect.poll(async () => data.getByRole('row').count()).toBeLessThan(before);
 });

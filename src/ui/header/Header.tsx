@@ -11,6 +11,10 @@ type HeaderProps = {
   error?: unknown;
   onRetry?: () => void;
   failedStorages?: Failed[];
+  /** The smart search, the first of the actions: an icon that opens a box expanding leftwards. */
+  search?: ReactNode;
+  /** A line under the header row, for the search's AI hint. */
+  hint?: ReactNode;
   /** Undo and Redo, drawn in the actions, before the copy-link button. */
   history?: ReactNode;
   /** Copies a link to the current view; no button without it (a host with no page links). */
@@ -20,7 +24,7 @@ type HeaderProps = {
   onDismissNotice?: () => void;
 };
 
-export function Header({ error, onRetry, failedStorages = [], history, onCopyLink, notice, onDismissNotice }: HeaderProps) {
+export function Header({ error, onRetry, failedStorages = [], search, hint, history, onCopyLink, notice, onDismissNotice }: HeaderProps) {
   const [, dispatch] = useStore();
   return (
     <header className="dm-page-header">
@@ -36,6 +40,7 @@ export function Header({ error, onRetry, failedStorages = [], history, onCopyLin
             <button type="button" onClick={() => dispatch({ type: 'refreshModel' })} className="rounded border px-2 py-0.5 text-foreground hover:bg-accent">Retry</button>
           </div>
         )}
+        {search}
         {history}
         {onCopyLink && (
           <Tooltip content="Copy link to this view">
@@ -43,6 +48,7 @@ export function Header({ error, onRetry, failedStorages = [], history, onCopyLin
           </Tooltip>
         )}
       </div>
+      {hint}
       {notice && (
         <div role="status" className="flex w-full items-center justify-between gap-2 rounded-md border bg-muted px-3 py-1.5 text-sm">
           <span>{notice}</span>

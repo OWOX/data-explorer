@@ -11,6 +11,7 @@ import { LoadingBands } from './bands/LoadingBands';
 import { ErrorBox } from './ErrorBox';
 import { Header } from './header/Header';
 import { HistoryButtons } from './header/HistoryButtons';
+import { HeaderSearch, HeaderSearchHint, SmartSearchScope } from './bands/SmartSearchScope';
 import { TooltipProvider } from './Tooltip';
 import { useJoinSources } from './useJoinSources';
 import { useViewLink } from './useViewLink';
@@ -143,8 +144,11 @@ function AppBody() {
   }
 
   return (
+    <SmartSearchScope model={model}>
     <div className="dm-page">
       <Header
+        search={<HeaderSearch />}
+        hint={<HeaderSearchHint />}
         failedStorages={model.failedStorages}
         error={error}
         onRetry={reload}
@@ -176,5 +180,6 @@ function AppBody() {
         </CardBands>
       </main>
     </div>
+    </SmartSearchScope>
   );
 }

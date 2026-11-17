@@ -355,7 +355,20 @@ describe('the grid', () => {
     await within(data()).findByRole('table');
     await search('daily');
     fireEvent.click(await within(marts()).findByText('Daily KPIs'));
-    expect(await screen.findByText('Preview only: this data mart has no primary key.')).toBeInTheDocument();
+    const warning = await within(data()).findByRole('note', { name: NO_PK });
+    expect(warning).toBeInTheDocument();
+    // The sentence is gone from above the grid; it is the warning's tooltip and the end of the (i) hint.
+    expect(within(data()).queryByText(NO_PK)).toBeNull();
+    await userEvent.hover(warning);
+    expect((await screen.findAllByText(NO_PK)).length).toBeGreaterThan(0);
+    await userEvent.unhover(warning);
+    await userEvent.hover(within(data()).getByRole('note', { name: 'About Data' }));
+    expect((await screen.findAllByText(new RegExp(`Click a row to open it below\\. ${NO_PK}`))).length).toBeGreaterThan(0);
+  });
+
+  test('a mart with a primary key shows no warning, and neither does a grouped grid', async () => {
+    await ordersGrid();
+    expect(within(data()).queryByRole('note', { name: NO_PK })).toBeNull();
   });
 
   test('a filter with no matches keeps the header, so the filter can be cleared', async () => {
@@ -482,14 +495,17 @@ describe('the record', () => {
   });
 });
 
+const NO_PK = 'Preview only: this data mart has no primary key.';
+
 describe('search, contexts and refresh', () => {
-  test('the page header is the title with no Refresh button; the search lives in the Data Marts band', async () => {
+  test('the page header is the title and the actions (the search first) with no Refresh button', async () => {
     await ordersGrid();
     const header = document.querySelector('header.dm-page-header')!;
     expect(within(header as HTMLElement).getByRole('heading', { level: 1, name: 'Data Explorer' })).toHaveClass('dm-page-header-title');
     expect(within(header as HTMLElement).queryByRole('button', { name: /Refresh/ })).toBeNull();
     expect(header.querySelector('input')).toBeNull();
-    expect(within(marts()).getByLabelText('Search data marts')).toBeInTheDocument();
+    expect(within(header as HTMLElement).getByRole('button', { name: 'Search data marts' })).toBeInTheDocument();
+    expect(within(marts()).queryByLabelText('Search data marts')).toBeNull();
     expect(document.querySelector('main.dm-page-content')).not.toBeNull();
   });
 
@@ -514,11 +530,11 @@ describe('search, contexts and refresh', () => {
     expect(within(marts()).getByText('Campaigns').closest('article')!.querySelector('.dm-badge-shrink')).toBeNull();
   });
 
-  test('the toolbar holds the search, then Storage; the Contexts badges sit in the title row after the hint', async () => {
+  test('the toolbar holds Storage (the search is in the page header); the Contexts badges sit in the title row after the hint', async () => {
     await ordersGrid();
     const tools = marts().querySelector('.dm-band-tools')!;
     const kinds = [...tools.children].map((c) => (c.matches('button.dm-search-btn') ? 'search' : c.querySelector('summary')?.firstChild?.textContent));
-    expect(kinds).toEqual(['search', 'Storage']);
+    expect(kinds).toEqual(['Storage']);
     const head = marts().querySelector('.dm-band-titlegroup')!;
     const order = [...head.children].map((c) => c.className.split(' ')[0]);
     expect(order.indexOf('dm-context-filter')).toBe(order.indexOf('dm-hint') + 1);
@@ -1291,7 +1307,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     await search('stores');
     await within(marts()).findByText('Stores');
     await goTo('Stores');
-    expect(await screen.findByText('Preview only: this data mart has no primary key.')).toBeInTheDocument();
+    expect(await within(data()).findByRole('note', { name: NO_PK })).toBeInTheDocument();
     await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
     expect(within(data()).queryByText(/Unknown column/)).toBeNull();
     await userEvent.click(within(data()).getAllByRole('row')[2]!);

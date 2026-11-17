@@ -44,7 +44,7 @@ function useSchema(martId: string, version: number) {
 export type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
 
 /** The grid for one mart: loads the schema, then reads rows. Key it by mart id. */
-export function MartGrid({ martId, model, seed, onChange, onRows, paused = false }: { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null, grouped?: boolean) => void; /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
+export function MartGrid({ martId, model, seed, onChange, onRows, paused = false }: { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: boolean) => void; /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
   const [schemaVersion, setSchemaVersion] = useState(0);
   const { schema, error } = useSchema(martId, schemaVersion);
   if (error) return <div className="p-4"><ErrorBox error={error} onRetry={() => setSchemaVersion((v) => v + 1)} /></div>;
@@ -190,7 +190,7 @@ const sameGrid = (a: GridState, b: GridState) => stable(a) === stable(b);
 
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
-function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, initialAgg, onChange, onRows, paused }: { paused: boolean; martId: string; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null, grouped?: boolean) => void }) {
+function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, initialAgg, onChange, onRows, paused }: { paused: boolean; martId: string; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: boolean) => void }) {
   const { columnStore, blendable } = useServices();
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
@@ -350,7 +350,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   };
   const table = useTable({ features, data: rows ?? [], columns });
   const rowsLabel = rows ? `${rows.length}${hasMore ? '+' : ''}` : null;
-  useEffect(() => { onRows?.(rowsLabel, grouped); }, [rowsLabel, grouped]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The Data band's title row shows the no-primary-key warning, so it is told whether this grid is a plain preview.
+  const noKey = pks.length === 0 && !grouped;
+  useEffect(() => { onRows?.(rowsLabel, grouped, noKey); }, [rowsLabel, grouped, noKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const cardClick = useContext(CardClickContext);
   // One cell per data mart over its columns, main first; only when a joined mart is on screen.
   const groups = useMemo(() => {
@@ -459,7 +461,6 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
         <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} sorts={gridSorts} rows={rows} hasMore={hasMore} loading={loading} />}
       </BandTools>
-      {pks.length === 0 && !grouped && <div className="border-b bg-muted px-3 py-1.5 text-xs text-muted-foreground">Preview only: this data mart has no primary key.</div>}
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
       <div ref={scroller} tabIndex={0} onKeyDown={onGridKey} className={`dm-grid-root min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
         <table className="dm-grid w-full border-collapse">
