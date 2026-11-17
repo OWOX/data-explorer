@@ -765,3 +765,38 @@ test('a no-primary-key mart shows a warning next to the Data (i), not a block ab
   await expect(band(page, 'data').getByRole('note', { name: /no primary key/ })).toBeVisible();
   await expect(band(page, 'data').getByText('Preview only', { exact: false })).toHaveCount(0);
 });
+
+test('the column menu and its Format submenu stay inside the window at the rightmost column; Money changes the cells', async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 520 });
+  const data = await ordersGrid(page);
+  await tick(page, 'Amount');
+  const menuIcon = data.getByLabel('Column menu Amount');
+  await menuIcon.scrollIntoViewIfNeeded();
+  await menuIcon.click();
+  const inside = async (name: string) => {
+    const box = (await page.getByRole('menu', { name }).boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(640);
+    expect(box.y + box.height).toBeLessThanOrEqual(520);
+  };
+  await inside('Menu of Amount');
+  await page.getByRole('menuitem', { name: 'Format', exact: true }).click();
+  await inside('Format Amount');
+  await expect(page.getByRole('menuitemradio', { name: 'Automatic' })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('menuitemradio', { name: 'Money' }).click();
+  await inside('Money Amount');
+  await page.getByRole('menuitemradio', { name: 'USD' }).click();
+  await expect(page.getByRole('menu', { name: 'Menu of Amount' })).toHaveCount(0);
+  await expect(data.getByRole('row').nth(2).getByRole('cell', { name: /^(US)?\$[\d,]+\.\d\d$/ })).toHaveCount(1);
+  await expect(menuIcon).toHaveClass(/dm-ctl-on/);
+  // Escape closes the submenu first, then the menu
+  await menuIcon.click();
+  await page.getByRole('menuitem', { name: 'Sort', exact: true }).click();
+  await expect(page.getByRole('menu', { name: 'Sort Amount' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu', { name: 'Sort Amount' })).toHaveCount(0);
+  await expect(page.getByRole('menu', { name: 'Menu of Amount' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu', { name: 'Menu of Amount' })).toHaveCount(0);
+});
