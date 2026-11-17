@@ -1493,6 +1493,77 @@ describe('whole column and row selection, and the header layout', () => {
     expect(within(row()).getByRole('heading', { name: /^Orders · 2$/ })).toBeInTheDocument();
   });
 
+  describe('shift-click and Shift+Arrow make a block of cells', () => {
+    const bodyCell = (grid: HTMLElement, r: number, c: number) => grid.querySelectorAll('tbody tr')[r]!.querySelectorAll('td')[c]!;
+    const selectedCell = (grid: HTMLElement) => grid.querySelector('td[data-selected]');
+    const lit = (grid: HTMLElement) => ({
+      letters: [...grid.querySelectorAll('thead .dm-letter[data-selected]')].map((e) => [e.textContent, e.getAttribute('data-selected')]),
+      numbers: [...grid.querySelectorAll('tbody th[data-selected]')].map((e) => [e.textContent, e.getAttribute('data-selected')]),
+    });
+
+    test('shift-click on another cell: the first cell stays active, the block is tinted and framed, handle at the far corner, headers lit lightly, no other record opens', async () => {
+      const grid = await ordersGrid();
+      await userEvent.click(bodyCell(grid, 1, 1));
+      expect(await within(row()).findByRole('heading', { name: /^Orders · 2$/ })).toBeInTheDocument();
+      const user = userEvent.setup();
+      await user.keyboard('{Shift>}');
+      await user.click(bodyCell(grid, 3, 3));
+      await user.keyboard('{/Shift}');
+      const block = [1, 2, 3].flatMap((r) => [1, 2, 3].map((c) => bodyCell(grid, r, c)));
+      expect(block.every((td) => td.hasAttribute('data-range'))).toBe(true);
+      expect(grid.querySelectorAll('tbody td[data-range]')).toHaveLength(9);
+      expect(grid.querySelectorAll('tbody td[data-active]')).toHaveLength(1);
+      expect(bodyCell(grid, 1, 1)).toHaveAttribute('data-active');
+      expect(grid.querySelectorAll('tbody td[data-handle]')).toHaveLength(1);
+      expect(bodyCell(grid, 3, 3)).toHaveAttribute('data-handle');
+      expect(bodyCell(grid, 1, 1)).toHaveAttribute('data-edge', 'l t');
+      expect(bodyCell(grid, 2, 2)).toHaveAttribute('data-edge', '');
+      expect(bodyCell(grid, 3, 3)).toHaveAttribute('data-edge', 'r b');
+      expect(grid.querySelector('td[data-selected]')).toBeNull();
+      expect(lit(grid)).toEqual({ letters: [['B', ''], ['C', ''], ['D', '']], numbers: [['2', ''], ['3', ''], ['4', '']] });
+      await new Promise((r) => setTimeout(r, 300));
+      expect(within(row()).getByRole('heading', { name: /^Orders · 2$/ })).toBeInTheDocument();
+    });
+
+    test('the block can run up and left of the first cell; the first cell is still the active one', async () => {
+      const grid = await ordersGrid();
+      await userEvent.click(bodyCell(grid, 3, 3));
+      fireEvent.click(bodyCell(grid, 1, 2), { shiftKey: true });
+      expect(grid.querySelectorAll('tbody td[data-range]')).toHaveLength(6);
+      expect(bodyCell(grid, 3, 3)).toHaveAttribute('data-active');
+      expect(bodyCell(grid, 3, 3)).toHaveAttribute('data-handle');
+      expect(bodyCell(grid, 1, 2)).toHaveAttribute('data-edge', 'l t');
+    });
+
+    test('Shift+Arrow grows and shrinks the block from the active cell; a plain click or Escape ends it', async () => {
+      const grid = await ordersGrid();
+      const box = grid.querySelector<HTMLElement>('.dm-grid-root')!;
+      await userEvent.click(bodyCell(grid, 1, 1));
+      fireEvent.keyDown(box, { key: 'ArrowDown', shiftKey: true });
+      fireEvent.keyDown(box, { key: 'ArrowRight', shiftKey: true });
+      fireEvent.keyDown(box, { key: 'ArrowRight', shiftKey: true });
+      expect(grid.querySelectorAll('tbody td[data-range]')).toHaveLength(6);
+      expect(bodyCell(grid, 1, 1)).toHaveAttribute('data-active');
+      expect(bodyCell(grid, 2, 3)).toHaveAttribute('data-handle');
+      fireEvent.keyDown(box, { key: 'ArrowUp', shiftKey: true });
+      fireEvent.keyDown(box, { key: 'ArrowLeft', shiftKey: true });
+      expect(grid.querySelectorAll('tbody td[data-range]')).toHaveLength(2);
+      fireEvent.keyDown(box, { key: 'ArrowLeft', shiftKey: true });
+      // back on the active cell: a single selected cell again, no block
+      expect(grid.querySelector('[data-range]')).toBeNull();
+      expect(selectedCell(grid)).toBe(bodyCell(grid, 1, 1));
+      fireEvent.keyDown(box, { key: 'ArrowDown', shiftKey: true });
+      fireEvent.keyDown(box, { key: 'Escape' });
+      expect(grid.querySelector('[data-range]')).toBeNull();
+      expect(selectedCell(grid)).toBeNull();
+      await userEvent.click(bodyCell(grid, 1, 1));
+      fireEvent.keyDown(box, { key: 'ArrowDown', shiftKey: true });
+      await userEvent.click(bodyCell(grid, 2, 2));
+      expect(grid.querySelector('[data-range]')).toBeNull();
+      expect(selectedCell(grid)).toBe(bodyCell(grid, 2, 2));
+    });
+  });
+
   test('a filter, an aggregation and a sort in use are green squares; idle ones are not', async () => {
     const grid = await ordersGrid();
     expect(within(grid).getByLabelText('Filter id')).not.toHaveClass('dm-ctl-on');
