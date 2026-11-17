@@ -97,8 +97,8 @@ function AppBody() {
   const mainFilters = mainId ? state.grids[mainId]?.filters : undefined;
   const filtered = useMemo(() => (joinSources && mainFilters ? joinedMartIds(Object.keys(mainFilters), joinSources) : []), [joinSources, mainFilters]);
   const visible = useMemo(
-    () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds: state.contextIds, storageIds, joined, filtered }) : null),
-    [model, state.selection, state.search, state.contextIds, storageIds, joined, filtered],
+    () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds: state.contextIds, storageIds, joined, filtered, found: state.found }) : null),
+    [model, state.selection, state.search, state.found, state.contextIds, storageIds, joined, filtered],
   );
   const { dq, counts, request, recount } = useCardStatus(model, visible?.ids ?? [], state.modelVersion);
 

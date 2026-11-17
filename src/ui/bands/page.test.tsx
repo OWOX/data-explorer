@@ -16,8 +16,24 @@ function ModelReload() {
 }
 const reloadModel = () => userEvent.click(screen.getByRole('button', { name: 'Reload model (test probe)' }));
 
+// These tests drive the search as a title filter: the OWOX search finds nothing and no AI is configured, so the title match answers.
+// The smart search itself is covered in smart-search.test.tsx.
+const titleSearchOnly = (ctx: Ctx): Ctx => ({ ...ctx, credentials: {}, owox: { ...ctx.owox, getJson: ((path: string, q?: Record<string, string>) => (path === '/api/search' ? Promise.resolve([]) : ctx.owox.getJson(path, q))) as Ctx['owox']['getJson'] } });
+/** Opens the search, types the query and runs it. */
+async function search(q: string) {
+  if (!screen.queryByRole('textbox', { name: 'Search data marts' })) {
+    const chip = screen.queryByRole('button', { name: /^Search data marts: / });
+    await userEvent.click(chip ?? screen.getByRole('button', { name: 'Search data marts' }));
+  }
+  const box = screen.getByRole('textbox', { name: 'Search data marts' });
+  await userEvent.clear(box);
+  await userEvent.type(box, `${q}{Enter}`);
+}
+/** The x on the search: clears the query and restores the band. */
+const clearSearch = () => userEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+
 async function mountWith(wrap: (ctx: Mock) => Ctx = (c) => c, fixtures = demoFixtures()) {
-  const view = render(<AppServices ctx={wrap(createMockCtx(fixtures, { latencyMs: 0 }))}><StoreProvider><App /><ModelReload /></StoreProvider></AppServices>);
+  const view = render(<AppServices ctx={titleSearchOnly(wrap(createMockCtx(fixtures, { latencyMs: 0 })))}><StoreProvider><App /><ModelReload /></StoreProvider></AppServices>);
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
   await waitFor(() => expect(document.querySelector('.dm-loadbar')).toBeNull());
   return view;
@@ -41,7 +57,7 @@ async function goTo(title: string) {
   await waitFor(() => expect(mainNow() || headingText() === `${main} + ${title}`).toBe(true));
   if (!mainNow()) {
     // A search that does not match the main mart hides its card.
-    if (!within(marts()).queryByText(main)) await userEvent.clear(screen.getByLabelText('Search data marts'));
+    if (!within(marts()).queryByText(main)) await clearSearch();
     fireEvent.click(await within(marts()).findByText(main).then((el) => el.closest('article')!));
   }
   await waitFor(() => expect(mainNow()).toBe(true));
@@ -221,7 +237,8 @@ describe('the four bands', () => {
     const grid = await ordersGrid();
     await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
-    fireEvent.keyDown(screen.getByLabelText('Search data marts'), { key: 'z', ctrlKey: true });
+    await userEvent.click(screen.getByRole('button', { name: 'Search data marts' }));
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Search data marts' }), { key: 'z', ctrlKey: true });
     await settle();
     expect(within(row()).getByRole('heading', { name: /^Orders · 1$/ })).toBeInTheDocument();
     fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
@@ -246,7 +263,8 @@ describe('the four bands', () => {
     const grid = await ordersGrid();
     await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
-    fireEvent.keyDown(screen.getByLabelText('Search data marts'), { key: 'ArrowLeft', altKey: true });
+    await userEvent.click(screen.getByRole('button', { name: 'Search data marts' }));
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Search data marts' }), { key: 'ArrowLeft', altKey: true });
     await settle();
     expect(within(row()).getByRole('heading', { name: /^Orders · 1$/ })).toBeInTheDocument();
     fireEvent.keyDown(document, { key: 'ArrowLeft', altKey: true });
@@ -335,7 +353,7 @@ describe('the grid', () => {
   test('a mart without a primary key is preview only', async () => {
     await mountApp();
     await within(data()).findByRole('table');
-    await userEvent.type(screen.getByLabelText('Search data marts'), 'daily');
+    await search('daily');
     fireEvent.click(await within(marts()).findByText('Daily KPIs'));
     expect(await screen.findByText('Preview only: this data mart has no primary key.')).toBeInTheDocument();
   });
@@ -430,7 +448,7 @@ describe('the record', () => {
   test('a record nobody references has no Referenced by section', async () => {
     await mountApp();
     await within(data()).findByRole('table');
-    await userEvent.type(screen.getByLabelText('Search data marts'), 'order items');
+    await search('order items');
     fireEvent.click(await within(marts()).findByText('Order Items'));
     await within(data()).findByText('Order Items');
     await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
@@ -457,7 +475,7 @@ describe('the record', () => {
     expect(recordReads()).toBe(before + 1);
     expect(gridReads()).toBe(gridBefore + 1);
     // Nothing else re-reads: a hover, a search that hides nothing relevant, or a second settle.
-    await userEvent.type(screen.getByLabelText('Search data marts'), 'a');
+    await search('a');
     await settle();
     expect(recordReads()).toBe(before + 1);
     expect(gridReads()).toBe(gridBefore + 1);
@@ -477,21 +495,21 @@ describe('search, contexts and refresh', () => {
 
   test('search narrows the marts and keeps the selection, its card included', async () => {
     await ordersGrid();
-    await userEvent.type(screen.getByLabelText('Search data marts'), 'zzzz');
+    await search('zzzz');
     await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
     expect(within(marts()).getByText('Orders')).toBeInTheDocument();
     expect(within(data()).getByText('Orders')).toBeInTheDocument();
-    await userEvent.clear(screen.getByLabelText('Search data marts'));
+    await clearSearch();
     expect(await within(marts()).findByText('Customers')).toBeInTheDocument();
   });
 
   test('the search reads the title only: a context name finds nothing', async () => {
     await ordersGrid();
-    await userEvent.type(screen.getByLabelText('Search data marts'), 'marketing');
+    await search('marketing');
     await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
     expect(within(marts()).queryByText('Campaigns')).toBeNull();
-    await userEvent.clear(screen.getByLabelText('Search data marts'));
-    await userEvent.type(screen.getByLabelText('Search data marts'), 'campaign');
+    await clearSearch();
+    await search('campaign');
     expect(await within(marts()).findByText('Campaigns')).toBeInTheDocument();
     expect(within(marts()).getByText('Campaigns').closest('article')!.querySelector('.dm-badge-shrink')).toBeNull();
   });
@@ -499,7 +517,7 @@ describe('search, contexts and refresh', () => {
   test('the toolbar holds the search, then Storage; the Contexts badges sit in the title row after the hint', async () => {
     await ordersGrid();
     const tools = marts().querySelector('.dm-band-tools')!;
-    const kinds = [...tools.children].map((c) => (c.matches('label.dm-search') ? 'search' : c.querySelector('summary')?.firstChild?.textContent));
+    const kinds = [...tools.children].map((c) => (c.matches('button.dm-search-btn') ? 'search' : c.querySelector('summary')?.firstChild?.textContent));
     expect(kinds).toEqual(['search', 'Storage']);
     const head = marts().querySelector('.dm-band-titlegroup')!;
     const order = [...head.children].map((c) => c.className.split(' ')[0]);
@@ -1147,7 +1165,7 @@ describe('the default sort', () => {
   test('a date column among the visible ones is the default, with its arrow from the start', async () => {
     const calls = await spyOnTraverse();
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
-    await userEvent.type(screen.getByLabelText('Search data marts'), 'daily');
+    await search('daily');
     fireEvent.click(await within(marts()).findByText('Daily KPIs'));
     const day = await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
     expect(day.closest('th')).toHaveAttribute('aria-sort', 'descending');
@@ -1168,7 +1186,7 @@ describe('the default sort', () => {
   test('with the default on a visible column, a click on another column replaces it, and a click on the default column goes ascending', async () => {
     const calls = await spyOnTraverse();
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
-    await userEvent.type(screen.getByLabelText('Search data marts'), 'daily');
+    await search('daily');
     fireEvent.click(await within(marts()).findByText('Daily KPIs'));
     await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
     const sortOf = () => calls.filter((c) => c.id === 'daily_kpis').at(-1)!.o.sort;
@@ -1185,7 +1203,7 @@ describe('the default sort', () => {
 
   test('a mart with no date field has no default sort beyond its key', async () => {
     const calls = await spyOnTraverse();
-    await userEvent.type(screen.getByLabelText('Search data marts'), 'product');
+    await search('product');
     await within(marts()).findByText('Products');
     await goTo('Products');
     await waitFor(() => expect(calls.some((c) => c.id === 'products' && c.o.limit === 201)).toBe(true));
@@ -1270,7 +1288,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     const queries: { id: string; o: { column?: string[]; sort?: { column: string }[] } }[] = [];
     await mountWith(overrideTraverse((real) => (id, o) => { queries.push({ id, o }); return real(id, o); }), f);
     await within(data()).findByRole('table');
-    await userEvent.type(screen.getByLabelText('Search data marts'), 'stores');
+    await search('stores');
     await within(marts()).findByText('Stores');
     await goTo('Stores');
     expect(await screen.findByText('Preview only: this data mart has no primary key.')).toBeInTheDocument();
@@ -1338,14 +1356,14 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     await ordersGrid();
     const first = () => marts().querySelector('article')!.textContent;
     expect(first()).toContain('Orders');
-    await userEvent.type(screen.getByLabelText('Search data marts'), 'Customers');
+    await search('Customers');
     await waitFor(() => expect(within(marts()).queryByText('Products')).toBeNull());
     expect(first()).toContain('Orders');
   });
 
   test('a filter popover is capped at 20rem with its title pinned above the scrolling body', async () => {
     await ordersGrid();
-    await userEvent.type(screen.getByLabelText('Search data marts'), 'daily');
+    await search('daily');
     fireEvent.click(await within(marts()).findByText('Daily KPIs'));
     await within(data()).findByText('Daily KPIs');
     await userEvent.click(await within(data()).findByLabelText('Filter day'));

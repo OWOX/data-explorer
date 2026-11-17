@@ -1,13 +1,15 @@
 import type { AvailableSourceDto, BlendableSchemaDto, BlendedFieldDto, Ctx, EdgeDto, Row, TraverseOptions } from '../types';
 import { aggregateRows } from './aggregate';
 import { matchesFilter } from './evaluate';
+import { createFakeAi } from './ai';
 import { demoFixtures, type Fixtures } from './fixtures';
+import { mockSearch } from './search';
 
 declare global { interface Window { __copiedLink?: string; __routeSet?: string } }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: number; runMs?: number } = {}): Ctx {
+export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: number; runMs?: number; /** false: no AI credential, as in a project that has not configured one. */ ai?: boolean } = {}): Ctx {
   const latency = opts.latencyMs ?? 0;
   const byId = new Map(f.marts.map((m) => [m.id, m]));
   const docs = new Map<string, unknown>();
@@ -153,6 +155,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         history.replaceState(history.state, '', url);
       },
     },
+    credentials: opts.ai === false ? {} : { ai: createFakeAi() },
     collections: <T,>(name: string) => ({
       get: async (id: string) => { const k = `${name}/${id}`; return docs.has(k) ? { document: docs.get(k) as T } : null; },
       put: async (id: string, d: T) => { docs.set(`${name}/${id}`, d); return d; },
@@ -175,6 +178,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
       },
       destinations: { list: () => slow(() => f.destinations) },
       getJson: <T,>(path: string, query?: Record<string, string>) => slow(() => {
+        if (path === '/api/search') return mockSearch(f, query) as T;
         if (path === '/api/data-destinations') return f.destinations as T;
         const byMart = /^\/api\/reports\/data-mart\/([^/]+)$/.exec(path);
         if (byMart) return [...reports.values()].filter((r) => r.dataMartId === decodeURIComponent(byMart[1]!)) as T;

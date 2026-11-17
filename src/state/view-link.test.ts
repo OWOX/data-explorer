@@ -210,3 +210,20 @@ describe('view link codec', () => {
     });
   });
 });
+
+describe('found marts in a link', () => {
+  it('a smart search link carries the found ids, in order, and a link without them decodes without the field', async () => {
+    const withFound = { ...base, found: ['m3', 'm1', 'm2'] };
+    expect(await decodeViewLink(await encodeViewLink(withFound))).toEqual({ ...withFound, dropped: 0, droppedAggregations: 0 });
+    const plain = await decodeViewLink(await encodeViewLink(base));
+    expect(plain).not.toHaveProperty('found');
+    expect(await decodeViewLink(await route(valid()))).not.toHaveProperty('found');
+  });
+
+  it('on decode the ids are strings only, at most five, with no repeats, and a bad list is ignored', async () => {
+    const r = (await decodeViewLink(await route(valid({ fd: ['a', 3, 'a', 'b', null, 'c', 'd', 'e', 'f'] })))) as DecodedView;
+    expect(r.found).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(await decodeViewLink(await route(valid({ fd: 'nope' })))).not.toHaveProperty('found');
+    expect(await decodeViewLink(await route(valid({ fd: [] })))).not.toHaveProperty('found');
+  });
+});

@@ -107,3 +107,26 @@ test('a field hidden for reporting is rejected like the backend does, in column,
   await expect(ctx.owox.postJson('/api/reports', { dataMartId: 'customers', columnConfig: ['id', 'internal_flag'] })).rejects.toThrow(/Unknown column/);
   await expect(readRows(ctx, 'customers', { column: ['id', 'email'], limit: 1 })).resolves.toHaveLength(1);
 });
+
+test('the mock /api/search ranks a title hit above a description hit, honours limit and refuses a one-letter query', async () => {
+  const ctx = createMockCtx(demoFixtures());
+  const hits = await ctx.owox.getJson<{ entityId: string; finalScore: number }[]>('/api/search', { q: 'orders', entityTypes: 'DATA_MART', excludeDrafts: 'true', limit: '3' });
+  expect(hits).toHaveLength(3);
+  expect(hits[0]!.entityId).toBe('orders');
+  expect(hits.map((h) => h.finalScore)).toEqual([...hits.map((h) => h.finalScore)].sort((a, b) => b - a));
+  expect(await ctx.owox.getJson('/api/search', { q: 'zzzz qqqq' })).toEqual([]);
+  await expect(ctx.owox.getJson('/api/search', { q: 'a' })).rejects.toThrow(/between 2 and 256/);
+});
+
+test('the mock AI answers deterministically from the question document; ai: false leaves no credential', async () => {
+  const ai = createMockCtx(demoFixtures()).credentials!.ai!;
+  expect(ai.reasoning).toBeDefined();
+  const ask = async (doc: object) => JSON.parse((await ai.doGenerate({ prompt: [{ role: 'user', content: [{ type: 'text', text: JSON.stringify(doc) }] }] })).content[0]!.text!);
+  expect(await ask({ task: 'discover', query: 'who are our buyers', dataMarts: [{ id: 'orders' }, { id: 'customers' }] })).toEqual({ ids: ['customers'] });
+  const fields = [{ name: 'id', category: 'number' }, { name: 'status', category: 'string' }, { name: 'amount', category: 'number' }, { name: 'created_at', category: 'date' }];
+  expect(await ask({ task: 'view', query: 'paid orders last month', fields })).toMatchObject({
+    filters: [{ field: 'created_at', op: 'relative', value: { kind: 'last_month' } }, { field: 'status', op: 'eq', value: 'paid' }],
+  });
+  expect(await ask({ task: 'view', query: 'biggest orders', fields })).toMatchObject({ sorts: [{ field: 'amount', direction: 'desc' }] });
+  expect(createMockCtx(demoFixtures(), { ai: false }).credentials?.ai).toBeUndefined();
+});

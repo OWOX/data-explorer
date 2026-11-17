@@ -58,7 +58,7 @@ export function useViewLink(model: Model | null, currentFolds: DecodedView['fold
     (async () => {
       try {
         const { apply, skipped } = await resolveView(decoded, model, readGrid);
-        dispatch({ type: 'applyView', selection: apply.selection, grid: apply.grid, search: apply.search, contextIds: apply.contextIds, storageIds: apply.storageIds });
+        dispatch({ type: 'applyView', selection: apply.selection, grid: apply.grid, search: apply.search, found: apply.found, contextIds: apply.contextIds, storageIds: apply.storageIds });
         setFolded(apply.folded);
         const message = skippedMessage(skipped);
         if (message) setNotice(message);
@@ -78,6 +78,7 @@ export function useViewLink(model: Model | null, currentFolds: DecodedView['fold
         martId: selection.martId,
         record: selection.record?.pk ?? null,
         search: state.search,
+        found: state.found,
         contextIds: state.contextIds,
         storageIds: state.storageIds,
         folded: currentFolds,

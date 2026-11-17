@@ -258,3 +258,38 @@ test('applyView sets no grid without one or without a main mart', () => {
   expect(none.selection).toEqual(sel({ sourceKey: 'Shopify' }));
   expect(reducer(s(), { ...a, selection: sel(), grid: null }).selection).toEqual(sel());
 });
+
+describe('smart search', () => {
+  const grid = { columns: ['id', 'status'], filters: {}, sorts: null, limit: 200 };
+  const start = () => s({ selection: sel({ martId: 'a' }) });
+  const found = (st: State, extra: object = {}) => reducer(st, { type: 'smartFound', query: 'big orders', ids: ['b', 'a'], ...extra });
+
+  test('smartFound keeps the query, the found marts in order, and the filter-by-title text out of the way', () => {
+    const next = found(start());
+    expect(next.search).toBe('big orders');
+    expect(next.found).toEqual(['b', 'a']);
+    expect(next.history).toEqual([]);
+  });
+
+  test('typing a title search, clearing, or opening a view link drops the found marts', () => {
+    const base = found(start());
+    expect(reducer(base, { type: 'search', q: 'x' }).found).toEqual([]);
+    expect(reducer(base, { type: 'search', q: '' }).found).toEqual([]);
+    expect(reducer(base, { type: 'applyView', selection: sel({ martId: 'a' }), grid: null, search: '', contextIds: [], storageIds: null }).found).toEqual([]);
+  });
+
+  test('the result is one Undo step: the new main mart and its grid come back out together', () => {
+    const before = reducer(start(), { type: 'saveGrid', martId: 'a', grid });
+    let st = found(before);
+    st = reducer(st, { type: 'setMarts', selection: sel({ martId: 'b' }), grids: { b: { ...grid, filters: { status: { field: 'status', op: 'eq', value: 'paid' } } } } });
+    expect(st.selection.martId).toBe('b');
+    expect(st.history).toHaveLength(before.history.length + 1);
+    const undone = reducer(st, { type: 'undo' });
+    expect(undone.selection.martId).toBe('a');
+    expect(undone.grids.b).toBeUndefined();
+    expect(undone.grids.a).toEqual(grid);
+    const redone = reducer(undone, { type: 'redo' });
+    expect(redone.selection.martId).toBe('b');
+    expect(redone.grids.b?.filters.status?.value).toBe('paid');
+  });
+});

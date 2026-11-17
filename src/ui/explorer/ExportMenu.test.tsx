@@ -51,7 +51,7 @@ test('with no Google Sheets destination Export is still a menu, with the AI grou
   t.view();
   await rowsLoaded();
   await userEvent.click(await within(data()).findByText('Export'));
-  expect(within(data()).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Claude', 'ChatGPT']);
+  expect(within(data()).getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link')).map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Claude', 'ChatGPT']);
   // no "AI" sub-header: Claude and ChatGPT follow a separator only
   expect(within(data()).queryByText('AI')).toBeNull();
   expect(within(data()).getByRole('menuitem', { name: 'Claude' }).closest('.dm-export-ai')).not.toBeNull();
@@ -375,7 +375,7 @@ describe('the cascading menu', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    const rows = await within(data()).findAllByRole('menuitem');
+    const rows = (await within(data()).findAllByRole('menuitem')).filter((r) => !r.hasAttribute('data-link'));
     expect(rows.map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Team Sheets', 'Finance Sheets', 'Claude', 'ChatGPT']);
     for (const r of rows.slice(1, 3)) expect(r.querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull();
     expect(within(data()).queryByText('Google Sheets')).toBeNull();
@@ -492,10 +492,41 @@ describe('the AI group', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    const items = await within(data()).findAllByRole('menuitem');
+    const items = (await within(data()).findAllByRole('menuitem')).filter((r) => !r.hasAttribute('data-link'));
     expect(items.map((i) => i.textContent)).toEqual(['Copy to clipboard', 'Team Sheets', 'Claude', 'ChatGPT']);
     expect(items[2]!.querySelector('svg path[fill="#D97757"]')).not.toBeNull();
     expect(items[3]!.querySelector('svg')).not.toBeNull();
+  });
+
+  test.each([
+    ['Claude', 'https://claude.ai/directory/owox-data-marts'],
+    ['ChatGPT', 'https://chatgpt.com/plugins/plugin_asdk_app_6a3e81be8f8481918e1e2cd1d7ea09c4?q=owox'],
+  ])('%s has an external-link button that opens its OWOX listing and copies nothing', async (name, url) => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    const link = await within(data()).findByRole('menuitem', { name: `Open OWOX in ${name}` });
+    expect(link.closest('.dm-export-ai')).not.toBeNull();
+    await userEvent.click(link);
+    expect(t.open).toHaveBeenCalledWith(url);
+    expect(t.open).toHaveBeenCalledTimes(1);
+    expect(within(data()).queryByText(/Prompt copied/)).toBeNull();
+  });
+
+  test('the provider link is reached from its item with ArrowRight and Tab, and Enter opens it', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    const item = await within(data()).findByRole('menuitem', { name: 'Claude' });
+    item.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(within(data()).getByRole('menuitem', { name: 'Open OWOX in Claude' })).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    expect(t.open).toHaveBeenCalledWith('https://claude.ai/directory/owox-data-marts');
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(item).toHaveFocus();
   });
 
   test('choosing Claude copies the prompt, says so, and "Show prompt" opens it read-only with a Copy button', async () => {

@@ -6,7 +6,8 @@ export async function bootContext(): Promise<Ctx | 'outside-host'> {
     const { createMockCtx } = await import('./mock/ctx');
     const { demoFixtures } = await import('./mock/fixtures');
     const sheets = new URLSearchParams(location.search).get('sheets');
-    return createMockCtx(demoFixtures({ sheets: sheets === '0' || sheets === '1' ? Number(sheets) as 0 | 1 : 2 }), { latencyMs: 250 });
+    // ?ai=0 is a project with no AI configured.
+    return createMockCtx(demoFixtures({ sheets: sheets === '0' || sheets === '1' ? Number(sheets) as 0 | 1 : 2 }), { latencyMs: 250, ai: new URLSearchParams(location.search).get('ai') !== '0' });
   }
   try {
     return (await connect()) as unknown as Ctx;
@@ -25,5 +26,6 @@ export async function _typeCheck() {
   const _route: Ctx['route'] = sdk.route;
   const _copy: Ctx['ui']['copyLink'] = sdk.ui.copyLink.bind(sdk.ui);
   const _setRoute: Ctx['ui']['setRoute'] = sdk.ui.setRoute.bind(sdk.ui);
-  return [_check, _destinations, _put, _route, _copy, _setRoute] as const;
+  const _credentials: Ctx['credentials'] = sdk.credentials;
+  return [_check, _destinations, _put, _route, _copy, _setRoute, _credentials] as const;
 }

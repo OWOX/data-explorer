@@ -123,6 +123,19 @@ export type DqSummariesResponseDto = { items: { dataMartId: string; summary: DqS
 /** A data destination as the list endpoint returns it (the fields the plugin reads). */
 export type DestinationDto = { id: string; title: string; type: string; availableForUse?: boolean };
 
+/** The one call the plugin makes on a language model. The SDK's LanguageModelV4 satisfies it structurally. */
+export interface AiModel {
+  doGenerate(options: {
+    prompt: ({ role: 'system'; content: string } | { role: 'user'; content: { type: 'text'; text: string }[] })[];
+    responseFormat?: { type: 'json' };
+    temperature?: number;
+    maxOutputTokens?: number;
+    abortSignal?: AbortSignal;
+  }): PromiseLike<{ content: { type: string; text?: string }[] }>;
+}
+/** The logical `ai` credential: the handle itself is the fast model, `reasoning` is there when declared. Absent when no AI is configured. */
+export type AiCredential = AiModel & { readonly fast?: AiModel; readonly reasoning?: AiModel };
+
 export interface CollectionLike<T> {
   get(id: string): Promise<{ document: T } | null>;
   put(id: string, document: T): Promise<unknown>;
@@ -135,6 +148,8 @@ export interface Ctx {
   /** The route the host opened the plugin with; undefined when the host has no page links. */
   readonly route?: string;
   readonly ui: { openExternal(url: string): Promise<void>; copyLink?(path?: string): Promise<void>; setRoute?(path: string): void };
+  /** Declared, installation-bound credentials (SDK 0.43); undefined on a host without them. `ai` is absent until the project maintainer configures it. */
+  readonly credentials?: { readonly ai?: AiCredential };
   collections<T>(name: string): CollectionLike<T>;
   readonly owox: {
     storages: { list(): Promise<StorageDto[]> };

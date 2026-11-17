@@ -205,3 +205,26 @@ test('the main mart is the first id whatever the search, the context or the rank
     expect(computeVisible({ model: m, selection: sel({ martId: 'z' }), search, contextIds: [...contextIds] }).ids[0]).toBe('z');
   }
 });
+
+test('a smart search shows the marts it found, in its order, and not the title match', () => {
+  const model = modelOf(['a', 'b', 'c', 'd'], [e('a', 'b')]);
+  const r = computeVisible({ model, selection: sel({ martId: 'c' }), search: 'who buys', contextIds: [], found: ['c', 'a', 'd'] });
+  expect(r.ids).toEqual(['c', 'a', 'd']);
+});
+
+test('a smart search leaves out a found mart whose storage is unticked or that the member cannot open, but keeps the joined and filtered ones', () => {
+  const model = modelOf(['a', 'b', 'c', 'j'], [], [{ storageId: 's1' }, { storageId: 's2' }, { accessible: false }, {}]);
+  const r = computeVisible({ model, selection: sel({ martId: 'a' }), search: 'q', contextIds: [], storageIds: ['s1'], found: ['a', 'b', 'c'], joined: ['j'] });
+  expect(r.ids).toEqual(['a', 'j']);
+});
+
+test('with no mart found the title match applies as before', () => {
+  const model = modelOf(['alpha', 'beta'], []);
+  expect(computeVisible({ model, selection: sel(), search: 'alp', contextIds: [], found: [] }).ids).toEqual(['alpha']);
+});
+
+test('after the found marts come the marts whose title matches the query, without repeats', () => {
+  const model = modelOf(['a', 'b', 'c', 'd'], [], [{ title: 'Sessions GA4' }, { title: 'Ads' }, { title: 'GA4 events' }, { title: 'GA4 secret', accessible: false }]);
+  const r = computeVisible({ model, selection: sel({ martId: 'b' }), search: 'ga4', contextIds: [], found: ['b', 'c'] });
+  expect(r.ids).toEqual(['b', 'c', 'a']);
+});

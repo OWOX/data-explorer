@@ -40,6 +40,8 @@ export type VisibleInput = {
   joined?: string[];
   /** Marts that carry a filter of the grid without being a selected joined mart: shown too, after the joined ones. */
   filtered?: string[];
+  /** The marts a smart search found, best first: with any, the band shows these (and the always-shown ones) instead of matching titles. */
+  found?: string[];
 };
 export type VisibleResult = {
   ids: string[];
@@ -48,7 +50,7 @@ export type VisibleResult = {
 };
 
 /** Which marts the Data Marts band shows, by the first rule that applies (spec, "Which marts show"). */
-export function computeVisible({ model, selection, search, contextIds, storageIds = null, joined = [], filtered = [] }: VisibleInput): VisibleResult {
+export function computeVisible({ model, selection, search, contextIds, storageIds = null, joined = [], filtered = [], found = [] }: VisibleInput): VisibleResult {
   const inbound = inboundCounts(model.edges);
   // A mart in an unticked storage is out of every rule below, the selected one included.
   const inStorage = (id: string) => storageIds === null || storageIds.includes(model.marts.get(id)?.storageId ?? '');
@@ -76,6 +78,13 @@ export function computeVisible({ model, selection, search, contextIds, storageId
   // The main mart is one of them (unless its storage is unticked, which takes it out of every rule).
   const always = [...new Set([...(selectedId && inStorage(selectedId) ? [selectedId] : []), ...joined, ...filtered])].filter((id) => model.marts.has(id));
   const withJoined = (ids: string[]) => (selectedId ? [...new Set([...ids, ...always])] : ids);
+
+  // 0. A smart search found marts: those, best first, then the marts whose title matches the query, then the marts that are always shown.
+  if (found.length > 0) {
+    const hits = found.filter((id) => model.marts.get(id)?.accessible && inStorage(id));
+    const titled = accessible.filter((m) => matchesSearch(m, search) && matchesContexts(m, contextIds)).map((m) => m.id);
+    return { ids: [...new Set([...hits, ...titled, ...always])], focusId };
+  }
 
   // 1. A search, or a selected context badge: the matches, narrowed to the selected source.
   if (search.trim() || contextIds.length > 0) {
