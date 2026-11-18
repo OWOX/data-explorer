@@ -11,7 +11,10 @@ test.each([
   ['INTEGER', 'number'], ['LONG', 'number'], ['SHORT', 'number'], ['BYTE', 'number'], ['  string ', 'string'],
   ['TIMESTAMP_LTZ', 'date'], ['TIMESTAMP_TZ(9)', 'date'], ['TIMESTAMP(3)', 'date'], ['TIMESTAMP WITHOUT TIME ZONE', 'date'],
   ['TIME WITHOUT TIME ZONE', 'time'], ['TIME(3)', 'time'], ['BOOLEAN', 'boolean'],
+  // mid-name parameters (Trino, Athena, Postgres format_type)
+  ['timestamp(3) with time zone', 'date'], ['TIMESTAMP(6) WITHOUT TIME ZONE', 'date'], ['time(6) with time zone', 'time'], ['TIME(3) WITHOUT TIME ZONE', 'time'],
   // complex types stay other
+  ['MAP(VARCHAR, ARRAY(INTEGER))', 'other'], ['STRUCT<a TIMESTAMP(3), b INT64>', 'other'],
   ['ARRAY<INT64>', 'other'], ['ARRAY(INTEGER)', 'other'], ['STRUCT<a INT64>', 'other'], ['ROW(a INTEGER)', 'other'], ['MAP<STRING,INT>', 'other'],
   ['VARIANT', 'other'], ['OBJECT', 'other'], ['GEOGRAPHY', 'other'], ['BYTES', 'other'], ['BINARY', 'other'], ['VARBINARY', 'other'], ['', 'other'],
 ])('%s is %s', (type, category) => {

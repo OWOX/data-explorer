@@ -15,7 +15,12 @@ const BOOL = new Set(['BOOLEAN', 'BOOL']);
 
 /** A warehouse type in one spelling: trimmed, upper case, single spaces, with a trailing parameter list such as (10,2) or (255) removed. */
 export function normalizeType(type: string): string {
-  return type.trim().toUpperCase().replace(/\s+/g, ' ').replace(/\s*\([^()]*\)$/, '');
+  return type
+    .trim()
+    .toUpperCase()
+    .replace(/\s*\([^()]*\)/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Whether the type is a calendar day without a time of day (DATE), as opposed to a moment. */
