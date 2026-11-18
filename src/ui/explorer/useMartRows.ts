@@ -40,7 +40,8 @@ export function buildRowQuery(schema: Schema, visible: string[], filters: Column
 }
 
 /** The query behind the rows on the grid, for Copy SQL. */
-export type GridRun = { state: 'none' } | { state: 'running' } | { state: 'failed' } | { state: 'done'; runId: string | null };
+/** `paused`: Charts holds the grid's query back, and a key it has not read yet will not run until Table is back. */
+export type GridRun = { state: 'none' } | { state: 'paused' } | { state: 'running' } | { state: 'failed' } | { state: 'done'; runId: string | null };
 
 type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null; shape: string; runId: string | null };
 /** What the rows are rows of: plain rows, or groups over these columns and rules. Rows of one shape never stand in for another's. */
@@ -81,6 +82,6 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
   // Except rows of another shape (ungrouped rows under a grouped query, or the reverse, or other group keys): they would be read
   // with the wrong headers and counted with the wrong label, so nothing is shown until the new rows arrive.
   const stale = loading && state.shape !== shapeOf(options);
-  const run: GridRun = !options ? { state: 'none' } : loading ? { state: 'running' } : state.error ? { state: 'failed' } : { state: 'done', runId: state.runId };
+  const run: GridRun = !options ? { state: 'none' } : loading && paused ? { state: 'paused' } : loading ? { state: 'running' } : state.error ? { state: 'failed' } : { state: 'done', runId: state.runId };
   return { rows: stale ? null : state.rows, loading, error: loading ? null : state.error, hasMore: stale ? false : state.hasMore, run };
 }

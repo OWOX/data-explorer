@@ -93,6 +93,7 @@ export function ExportMenu(p: Props) {
   const sqlReady = sqlHave && 'sql' in sqlHave.result ? sqlHave.result.sql : null;
   const sqlOff = sqlReady ? null
     : run.state === 'none' ? 'The grid has not run a query yet'
+    : run.state === 'paused' ? 'Switch to Table to copy its SQL'
     : run.state === 'running' ? "The grid's query is still running"
     : run.state === 'failed' ? "The grid's query failed"
     : !runId ? 'OWOX did not report a run for this query'

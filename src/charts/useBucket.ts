@@ -1,4 +1,4 @@
-import type { DateBucket } from '../model/aggregation';
+import { allowedFunctions, type DateBucket } from '../model/aggregation';
 import type { Field } from '../model/types';
 import type { TraverseFilter } from '../sdk/types';
 import { pickBucket } from './fields';
@@ -11,9 +11,11 @@ import { useChartQuery } from './useChartQuery';
  * need it wait, so no query goes out with a guessed bucket.
  */
 export function useBucket(martId: string, date: Field | null, chosen: DateBucket | 'AUTO', filter: TraverseFilter[], version: number, paused: boolean) {
-  const auto = chosen === 'AUTO' && !!date && !paused;
-  const range = useChartQuery(martId, auto ? rangeQuery(date, filter) : null, version);
+  // A date whose governance forbids MIN or MAX cannot be ranged (OWOX refuses the query): Auto then uses months.
+  const rangeable = !!date && ['MIN', 'MAX'].every((fn) => allowedFunctions(date).includes(fn as 'MIN' | 'MAX'));
+  const auto = chosen === 'AUTO' && rangeable && !paused;
+  const range = useChartQuery(martId, auto ? rangeQuery(date!, filter) : null, version);
   const row = range.rows?.[0];
-  const bucket: DateBucket | null = chosen !== 'AUTO' ? chosen : date && range.rows ? pickBucket(row?.[rangeKeys(date).min], row?.[rangeKeys(date).max]) : null;
+  const bucket: DateBucket | null = chosen !== 'AUTO' ? chosen : !date ? null : !rangeable ? 'MONTH' : range.rows ? pickBucket(row?.[rangeKeys(date).min], row?.[rangeKeys(date).max]) : null;
   return { bucket, error: range.error, retry: range.retry };
 }
