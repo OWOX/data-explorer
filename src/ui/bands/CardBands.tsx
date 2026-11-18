@@ -94,17 +94,18 @@ export function CardBands({
     const ticked = (id: string) => storageIds === null || storageIds.includes(model.marts.get(id)?.storageId ?? '');
     return neighbours(ghostOf, model.edges).filter((id) => !shownIds.has(id) && model.marts.get(id)?.accessible && ticked(id));
   }, [ghostOf, model, shownIds, storageIds]);
-  const ghostKey = ghostIds.join('|');
   // A mart card's element id is `dm-<id>` (see martElementId).
   const hoveredMart = hovered?.startsWith('dm-') ? hovered.slice(3) : null;
-  const overGhost = hoveredMart !== null && ghostKey.split('|').includes(hoveredMart);
-  // Adjusted while rendering, so the ghosts of a newly hovered card show at once.
-  if (hoveredMart && !overGhost && shownIds.has(hoveredMart) && hoveredMart !== ghostOf) setGhostOf(hoveredMart);
+  const overGhost = hoveredMart !== null && ghostIds.includes(hoveredMart);
+  const overShown = hoveredMart !== null && shownIds.has(hoveredMart);
+  // With no ghosts showing, a hovered card shows its own at once (adjusted while rendering).
+  if (ghostOf === null && overShown) setGhostOf(hoveredMart);
   useEffect(() => {
-    if (overGhost || (hoveredMart && shownIds.has(hoveredMart))) return;
-    const t = setTimeout(() => setGhostOf(null), 400);
+    if (overGhost || (overShown && hoveredMart === ghostOf)) return;
+    // Resting on another shown card switches the ghosts after 400 ms, so crossing it on the way to a ghost keeps them; leaving clears them after the same grace.
+    const t = setTimeout(() => setGhostOf(overShown ? hoveredMart : null), 400);
     return () => clearTimeout(t);
-  }, [hoveredMart, overGhost, shownIds]);
+  }, [hoveredMart, overGhost, overShown, ghostOf]);
 
   const idsKey = [...visible.ids, ...ghostIds].join('|');
   // Memoised: a new array rebuilds every path, and the lines would blink on each hover.
@@ -245,6 +246,7 @@ export function CardBands({
               aside={aside.has(el)}
               unjoinable={unjoinableFor(id)}
               mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
+              onMakeMain={mainId && id !== mainId ? () => void click(id, { mode: 'makeMain' }) : undefined}
               onSelect={() => void click(id)}
               onOpenApp={() => onOpenApp(id)}
               onRetryCount={() => undefined}

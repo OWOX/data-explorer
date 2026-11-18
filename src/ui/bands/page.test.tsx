@@ -1685,4 +1685,46 @@ describe('ghost cards on hover', () => {
     fireEvent.click(ghost);
     expect(await within(ghost).findByRole('status')).toHaveTextContent("Can't join Orders.");
   });
+
+  test('crossing another card on the way to a ghost keeps the ghosts', async () => {
+    await mountWith();
+    await within(marts()).findByText('Customers');
+    fireEvent.pointerOver(cardOf('Customers'));
+    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
+    fireEvent.pointerOver(cardOf('Products'));
+    fireEvent.pointerOver(ghost);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(within(marts()).getByText('Sessions')).toBeInTheDocument();
+  });
+
+  test('resting on another card for over 400 ms switches the ghosts', async () => {
+    await mountWith();
+    await within(marts()).findByText('Customers');
+    fireEvent.pointerOver(cardOf('Customers'));
+    await within(marts()).findByText('Sessions');
+    fireEvent.pointerOver(cardOf('Products'));
+    await waitFor(() => expect(within(marts()).queryByText('Sessions')).toBeNull(), { timeout: 1500 });
+  });
+
+  test('the make-main button on a ghost makes it the main data mart', async () => {
+    await mountWith();
+    await within(marts()).findByText('Customers');
+    fireEvent.pointerOver(cardOf('Customers'));
+    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
+    await userEvent.click(within(ghost).getByRole('button', { name: 'Make main data mart' }));
+    await waitFor(() => expect(headingText()).toBe('Sessions'));
+  });
+
+  test('ghosts do not change the band total and request no row count', async () => {
+    const calls = await spyOnTraverse();
+    await within(marts()).findByText('Customers');
+    const total = () => document.querySelector('#band-marts .dm-band-count')!.textContent;
+    const before = total();
+    fireEvent.pointerOver(cardOf('Customers'));
+    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
+    await settle();
+    expect(total()).toBe(before);
+    const sessions = ghost.id.slice(3);
+    expect(calls.filter((c) => c.id === sessions)).toEqual([]);
+  });
 });
