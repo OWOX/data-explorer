@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { describeFilter } from '../../filters/catalogue';
 import { FilterEditor } from './FilterEditor';
-import { HOVER_MS } from './MenuParts';
+import { HOVER_MS, Panel } from './MenuParts';
 import type { ColumnFilter } from '../../filters/build';
 import type { Field } from '../../model/types';
 
@@ -34,7 +34,7 @@ const open = (field: Field, value?: ColumnFilter) => {
   return { onApply, onClear };
 };
 
-const rows = () => [...screen.getByRole('group', { name: /^Filter / }).querySelectorAll('[role^="menuitem"]')].map((b) => b.textContent);
+const rows = () => [...screen.getByRole('menu', { name: /^Filter / }).querySelectorAll('[role^="menuitem"]')].map((b) => b.textContent);
 const flyout = async (name: 'Last…' | 'This…') => { await userEvent.click(screen.getByRole('menuitemradio', { name })); return screen.findByRole('menu', { name }); };
 
 test('a date column opens on one list: Today, Yesterday, the Last… and This… flyouts, Custom range, then the other operators', () => {
@@ -42,7 +42,7 @@ test('a date column opens on one list: Today, Yesterday, the Last… and This…
   expect(rows()).toEqual(['Today', 'Yesterday', 'Last…', 'This…', 'Custom range…', 'Before…', 'After…', 'Is blank', 'Is not blank']);
   expect(screen.getByRole('menuitemradio', { name: 'Last…' })).toHaveAttribute('aria-haspopup', 'menu');
   expect(screen.queryByLabelText('Operator')).toBeNull();
-  expect(screen.queryByRole('menu')).toBeNull();
+  expect(screen.queryByRole('menu', { name: 'Last…' })).toBeNull();
   expect(document.querySelector('[role="separator"]')).not.toBeNull();
 });
 
@@ -262,4 +262,56 @@ test('a date column: After… with a day applies', async () => {
   await userEvent.type(box, '2026-01-02');
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
   expect(onApply).toHaveBeenCalledWith({ field: 'day', op: 'after', value: '2026-01-02' });
+});
+
+test('a form that replaces the list drops the flyout: Presets does not bring it back anchored to a gone row', async () => {
+  open(ts);
+  await userEvent.hover(screen.getByRole('menuitemradio', { name: 'Last…' }));
+  await screen.findByRole('menu', { name: 'Last…' });
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Custom range…' }));
+  expect(screen.queryByRole('menu', { name: 'Last…' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: '← Presets' }));
+  await new Promise((r) => setTimeout(r, HOVER_MS + 100));
+  expect(screen.queryByRole('menu', { name: 'Last…' })).toBeNull();
+  expect(screen.getByRole('menuitemradio', { name: 'Last…' })).toHaveAttribute('aria-expanded', 'false');
+});
+
+const inDialog = () => render(
+  <Panel anchor={document.body} mode="beside" role="dialog" label="Filter of created_at" onEscape={vi.fn()} focusSeq={0}>
+    <FilterEditor field={ts} value={undefined} onApply={vi.fn()} onClear={vi.fn()} />
+  </Panel>,
+);
+
+test('Up and Down move through the first-level rows of the date filter, Home and End jump', async () => {
+  inDialog();
+  screen.getByRole('menuitemradio', { name: 'Today' }).focus();
+  await userEvent.keyboard('{ArrowDown}');
+  expect(screen.getByRole('menuitemradio', { name: 'Yesterday' })).toHaveFocus();
+  await userEvent.keyboard('{ArrowDown}');
+  expect(screen.getByRole('menuitemradio', { name: 'Last…' })).toHaveFocus();
+  await userEvent.keyboard('{ArrowUp}{ArrowUp}');
+  expect(screen.getByRole('menuitemradio', { name: 'Today' })).toHaveFocus();
+  await userEvent.keyboard('{End}');
+  expect(screen.getByRole('menuitemradio', { name: 'Is not blank' })).toHaveFocus();
+  await userEvent.keyboard('{Home}');
+  expect(screen.getByRole('menuitemradio', { name: 'Today' })).toHaveFocus();
+});
+
+test('Tab past the last control of the Last… panel, and Shift+Tab before its first, return to the Last… row', async () => {
+  inDialog();
+  const row = screen.getByRole('menuitemradio', { name: 'Last…' });
+  const last = await flyout('Last…');
+  const apply = within(last).getByRole('button', { name: 'Apply' });
+  apply.focus();
+  await userEvent.tab();
+  expect(row).toHaveFocus();
+  await userEvent.click(row);
+  await waitFor(() => expect(within(last).getByRole('menuitemradio', { name: 'Last 7 days' })).toHaveFocus());
+  await userEvent.tab({ shift: true });
+  expect(row).toHaveFocus();
+  const thisRow = screen.getByRole('menuitemradio', { name: 'This…' });
+  const tw = await flyout('This…');
+  await waitFor(() => expect(within(tw).getByRole('menuitemradio', { name: 'This week' })).toHaveFocus());
+  await userEvent.tab();
+  expect(thisRow).toHaveFocus();
 });

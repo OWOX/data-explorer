@@ -20,7 +20,7 @@ export const ITEM = '[role="menuitem"], [role="menuitemradio"]';
  * One floating panel of the menu, drawn in a portal on the body and kept inside the viewport (flipped left or up when it has no room).
  * Escape, and for a submenu Left, are handled here: the deepest open panel takes the key, so Escape closes the submenu first, then the menu.
  */
-export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onPlaced, focusSeq, form, className = '', children }: { anchor: HTMLElement; mode: 'below' | 'beside'; role: 'menu' | 'dialog'; label: string; onEscape: () => void; onLeave?: () => void; /** Tab in a menu closes it (the editors keep their own Tab order). */ onTab?: () => void; /** Called once the panel has its place, so a submenu can be measured from its rows. */ onPlaced?: () => void; focusSeq: number; /** The panel holds a form: a click or a focus in it counts as an edit, so hover intent leaves it open. */ form?: boolean; className?: string; children: ReactNode }) {
+export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onPlaced, returnTo, focusSeq, form, className = '', children }: { anchor: HTMLElement; mode: 'below' | 'beside'; role: 'menu' | 'dialog'; label: string; onEscape: () => void; onLeave?: () => void; /** Tab in a menu closes it (the editors keep their own Tab order). */ onTab?: () => void; /** Called once the panel has its place, so a submenu can be measured from its rows. */ onPlaced?: () => void; /** A submenu in a dialog keeps Tab inside the dialog's order: Tab past its last control, or Shift+Tab before its first, returns focus to this row. */ returnTo?: HTMLElement; focusSeq: number; /** The panel holds a form: a click or a focus in it counts as an edit, so hover intent leaves it open. */ form?: boolean; className?: string; children: ReactNode }) {
   const el = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<Place | null>(null);
   const place = useCallback(() => {
@@ -50,18 +50,26 @@ export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onP
   }, [focusSeq, pos !== null]); // eslint-disable-line react-hooks/exhaustive-deps
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onEscape(); return; }
+    if (e.key === 'Tab' && returnTo && (e.target as HTMLElement).closest('[data-column-menu]') === e.currentTarget) {
+      const tabbable = [...e.currentTarget.querySelectorAll<HTMLElement>('input, select, textarea, button')].filter((n) => !(n as HTMLButtonElement).disabled && n.tabIndex >= 0);
+      const at = tabbable.indexOf(e.target as HTMLElement);
+      if (e.shiftKey ? at <= 0 : at === -1 ? tabbable.length === 0 : at === tabbable.length - 1) { e.preventDefault(); e.stopPropagation(); returnTo.focus(); }
+      return;
+    }
     if (e.key === 'Tab' && role === 'menu' && onTab && (e.target as HTMLElement).closest('[data-column-menu]') === e.currentTarget) { e.preventDefault(); e.stopPropagation(); onTab(); return; }
     const item = (e.target as HTMLElement).closest<HTMLElement>(ITEM);
     // Arrow keys move through this panel's own rows; a field inside a form keeps its keys.
-    if (role !== 'menu' || !item || item.closest('[role="menu"]') !== e.currentTarget) return;
-    const items = [...e.currentTarget.querySelectorAll<HTMLElement>(ITEM)].filter((n) => n.closest('[role="menu"]') === e.currentTarget && !(n as HTMLButtonElement).disabled);
+    // A dialog panel may hold a role="menu" list of rows (the date filter's presets): its arrows work the same.
+    const list = item?.closest<HTMLElement>('[role="menu"]');
+    if (!item || !list || (role === 'menu' ? list !== e.currentTarget : !e.currentTarget.contains(list))) return;
+    const items = [...list.querySelectorAll<HTMLElement>(ITEM)].filter((n) => n.closest('[role="menu"]') === list && !(n as HTMLButtonElement).disabled);
     const at = items.indexOf(item);
     const go = (to: number) => { e.preventDefault(); e.stopPropagation(); items[(to + items.length) % items.length]?.focus(); };
     if (e.key === 'ArrowDown') go(at + 1);
     else if (e.key === 'ArrowUp') go(at - 1);
     else if (e.key === 'Home') go(0);
     else if (e.key === 'End') go(items.length - 1);
-    else if (e.key === 'ArrowLeft' && onLeave) { e.preventDefault(); e.stopPropagation(); onLeave(); }
+    else if (e.key === 'ArrowLeft' && onLeave && role === 'menu') { e.preventDefault(); e.stopPropagation(); onLeave(); }
   };
   return createPortal(
     <div ref={el} role={role} aria-label={label} tabIndex={-1} data-column-menu="" data-form={form ? '' : undefined} data-side={pos?.side} onKeyDown={onKeyDown} onInput={() => { if (el.current) el.current.dataset.edited = ''; }} onChange={() => { if (el.current) el.current.dataset.edited = ''; }}

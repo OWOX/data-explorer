@@ -240,10 +240,10 @@ test('a date column filter opens on presets; a preset applies at once and names 
   await page.getByLabel(/created_at/).click();
   await page.keyboard.press('Escape');
   await openColumnSub(data, 'created_at', 'Filter');
-  await expect(page.getByRole('group', { name: 'Filter created_at' }).locator('[role^="menuitem"]')).toHaveCount(9);
+  await expect(page.getByRole('menu', { name: 'Filter created_at', exact: true }).locator('[role^="menuitem"]')).toHaveCount(9);
   await page.getByRole('menuitemradio', { name: 'Last…' }).click();
   await page.getByRole('menuitemradio', { name: 'Last 30 days' }).click();
-  await expect(page.getByRole('group', { name: 'Filter created_at' })).toHaveCount(0);
+  await expect(page.getByRole('menu', { name: 'Filter created_at', exact: true })).toHaveCount(0);
   await expect(data.getByLabel('Filter created_at')).toHaveText('');
   await data.getByLabel('Filter created_at').hover();
   await expect(page.getByRole('tooltip').first()).toContainText('Filter: Last 30 days');

@@ -39,10 +39,12 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
   useEffect(() => () => intent.clear(), [intent]);
   // A flyout closed by the keyboard leaves the pointer resting on its row (on a narrow screen, where it covered the row, the browser then reports a hover): that row stays closed until the pointer leaves it.
   const closedRow = useRef<HTMLElement | null>(null);
+  // A form replaces the list and its row, so the flyout anchored to that row and any pending hover go with it.
+  const goForm = (op: OpId | null) => { intent.clear(); closedRow.current = null; setFly(null); setForm(op); };
   if (form) {
     return (
       <div className="flex flex-col gap-2">
-        <button type="button" onClick={() => setForm(null)} className="self-start text-xs text-muted-foreground hover:text-foreground">← Presets</button>
+        <button type="button" onClick={() => goForm(null)} className="self-start text-xs text-muted-foreground hover:text-foreground">← Presets</button>
         <OperatorForm field={field} value={value} onApply={onApply} onClear={onClear} startOp={form} />
       </div>
     );
@@ -69,21 +71,21 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
   );
   const factor = toRule(1, unit).n;
   return (
-    <div className="dm-menu-flush" role="group" aria-label={`Filter ${columnTitle(field)}`}>
+    <div className="dm-menu-flush" role="menu" aria-label={`Filter ${columnTitle(field)}`}>
       {preset('Today')}
       {preset('Yesterday')}
       {group('last')}
       {group('this')}
-      <Row {...plain} slot label="Custom range…" onActivate={() => setForm('between')} />
+      <Row {...plain} slot label="Custom range…" onActivate={() => goForm('between')} />
       {dash}
-      {isDay && <Row {...plain} slot label="On…" onActivate={() => setForm('on')} />}
-      {REST.map((r) => <Row key={r.op} {...plain} slot label={r.label} onActivate={() => setForm(r.op)} />)}
+      {isDay && <Row {...plain} slot label="On…" onActivate={() => goForm('on')} />}
+      {REST.map((r) => <Row key={r.op} {...plain} slot label={r.label} onActivate={() => goForm(r.op)} />)}
       {(['is_blank', 'is_not_blank'] as const).map((op) => (
         <Row key={op} {...plain} check checked={value?.op === op} label={op === 'is_blank' ? 'Is blank' : 'Is not blank'} onActivate={() => onApply({ field: field.name, op })} />
       ))}
       {value && <>{dash}<Row {...plain} slot label="Clear" onActivate={onClear} /></>}
       {fly && (
-        <Panel anchor={fly.row} mode="beside" role="menu" label={GROUPS[fly.key].title} onEscape={closeFly} onLeave={closeFly} focusSeq={fly.seq} className="dm-menu-editor dm-menu-fly" form={fly.key === 'last'}>
+        <Panel anchor={fly.row} mode="beside" role="menu" returnTo={fly.row} label={GROUPS[fly.key].title} onEscape={closeFly} onLeave={closeFly} focusSeq={fly.seq} className="dm-menu-editor dm-menu-fly" form={fly.key === 'last'}>
           <div className="dm-menu-list">{GROUPS[fly.key].labels.map((l) => preset(l, true))}</div>
           {fly.key === 'last' && (
             <form className="dm-menu-fly-form" onSubmit={(e) => { e.preventDefault(); if (nOk) apply(rule); }}>

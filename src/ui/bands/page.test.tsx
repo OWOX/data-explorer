@@ -1385,7 +1385,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     fireEvent.click(await within(marts()).findByText('Daily KPIs'));
     await within(data()).findByText('Daily KPIs');
     await openSubmenu(within(data()), 'day', 'Filter');
-    const body = (await screen.findByRole('group', { name: 'Filter day' })).closest('[data-popover-body]')!;
+    const body = (await screen.findByRole('menu', { name: 'Filter day' })).closest('[data-popover-body]')!;
     expect(body.parentElement).toHaveClass('dm-menu-editor');
     expect(body.className).toContain('overflow-y-auto');
     expect(body.querySelector('.dm-popover-title')).toBeNull();

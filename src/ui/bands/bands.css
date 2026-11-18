@@ -412,7 +412,7 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 /* A wheel or trackpad flick that runs past the end of a form must not chain to the page: that scroll would close the menu with Apply still unpressed. */
 .dm-menu, .dm-menu-editor [data-popover-body] { overscroll-behavior: contain; }
 .dm-menu-editor [data-popover-body] { padding: 16px; }
-.dm-menu-editor form, .dm-menu-editor [role='group'] { font: inherit; }
+.dm-menu-editor form, .dm-menu-editor [role='group'], .dm-menu-editor .dm-menu-flush { font: inherit; }
 .dm-menu-editor .text-xs { font-size: 12px; line-height: 16px; }
 .dm-menu-editor .text-sm { font-size: 14px; line-height: 20px; }
 .dm-menu-editor .text-muted-foreground { color: var(--menu-muted); }
@@ -432,7 +432,7 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-menu-editor .dm-btn { flex-shrink: 0; }
 .dm-menu-editor .dm-menu-flush { margin: -8px -16px; display: flex; flex-direction: column; }
 .dm-menu-fly { max-height: min(28rem, calc(100vh - 16px)); }
-.dm-menu-list { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0; }
+.dm-menu-list { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 0; }
 .dm-menu-fly-form { display: flex; flex-shrink: 0; align-items: center; gap: 8px; margin-top: 4px; padding: 8px 16px 8px; border-top: 1px solid var(--menu-line); }
 .dm-menu-fly-form .dm-select { flex: 1 1 auto; }
 .dm-menu-fly-form input[type='number'] { width: 4rem; flex: 0 0 auto; }
