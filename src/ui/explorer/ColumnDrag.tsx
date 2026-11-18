@@ -59,14 +59,21 @@ function useColumnDrag({ scroller, head, groupOf, onMove }: Options): ColumnDrag
       setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
     };
     // After a drag that ended without a drop (Escape, a column with nowhere to go) the release still sends a click: swallow it.
+    // Armed only until the next pointer event: a release that never comes (the window lost focus) must not eat a later, unrelated click.
+    let disarm: () => void = () => undefined;
     const swallowAfterRelease = () => {
-      const done = (ev: Event) => {
+      disarm();
+      const off = () => {
         window.removeEventListener('pointerup', done, true);
         window.removeEventListener('pointercancel', done, true);
-        if (ev.type === 'pointerup') swallowNextClick();
+        window.removeEventListener('pointerdown', done, true);
+        disarm = () => undefined;
       };
+      const done = (ev: Event) => { off(); if (ev.type === 'pointerup') swallowNextClick(); };
       window.addEventListener('pointerup', done, true);
       window.addEventListener('pointercancel', done, true);
+      window.addEventListener('pointerdown', done, true);
+      disarm = off;
     };
     const contentX = (clientX: number) => clientX - box.getBoundingClientRect().left + box.scrollLeft;
     // The columns as measured on screen: the outputs of one aggregated column sit side by side and count as one.
@@ -102,13 +109,15 @@ function useColumnDrag({ scroller, head, groupOf, onMove }: Options): ColumnDrag
       const table = thead.parentElement;
       const layerLeft = box.scrollLeft + gutter;
       const height = Math.max(0, Math.min(box.clientHeight, table ? table.offsetHeight - box.scrollTop : Infinity));
-      const dropAt = drag.changes ? (others[slot]?.left ?? hi) : null;
+      const layerWidth = Math.max(0, box.clientWidth - gutter);
+      // The gap's place in the layer; a gap scrolled out of it (under the gutter, or past the right edge) has no bar.
+      const gap = drag.changes ? (others[slot]?.left ?? hi) - layerLeft : null;
       setView({
-        layer: { left: layerLeft, top: box.scrollTop, width: Math.max(0, box.clientWidth - gutter), height },
+        layer: { left: layerLeft, top: box.scrollTop, width: layerWidth, height },
         shade: { left: me.left - layerLeft, width },
         ghost: { left: ghost - layerLeft, width },
-        // The 3px bar is centred on the gap; at the layer's left edge it is kept whole.
-        drop: dropAt === null ? null : Math.max(0, dropAt - layerLeft - 1.5),
+        // The 3px bar is centred on the gap, and kept whole at either edge of the layer.
+        drop: gap === null || gap < -1 || gap > layerWidth + 1 ? null : Math.min(Math.max(0, gap - 1.5), Math.max(0, layerWidth - 3)),
       });
     };
     const tick = () => {
@@ -189,7 +198,7 @@ function useColumnDrag({ scroller, head, groupOf, onMove }: Options): ColumnDrag
       window.addEventListener('keydown', key, true);
     };
     thead.addEventListener('pointerdown', down);
-    return () => { thead.removeEventListener('pointerdown', down); stop(); };
+    return () => { thead.removeEventListener('pointerdown', down); stop(); disarm(); };
   }, [scroller, head]);
   return view;
 }

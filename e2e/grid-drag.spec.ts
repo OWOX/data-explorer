@@ -95,6 +95,14 @@ test('dragging a header in Charts mode moves the column too', async ({ page }) =
   await expect.poll(() => titles(page)).toEqual([order[1], order[0], ...order.slice(2)]);
 });
 
+// Holds the pointer at an edge until the auto-scroll has run its course (or there was nothing to scroll).
+const settled = (page: Page, done: (el: HTMLElement) => boolean) => async () => {
+  const root = data(page).locator('.dm-grid-root');
+  await expect.poll(() => root.evaluate(done), { timeout: 10_000 }).toBe(true);
+};
+const scrolledToEnd = (page: Page) => settled(page, (el) => el.scrollLeft >= el.scrollWidth - el.clientWidth - 1);
+const scrolledToStart = (page: Page) => settled(page, (el) => el.scrollLeft <= 1);
+
 async function addCustomers(page: Page) {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
@@ -120,14 +128,14 @@ test('a column dragged past the right edge (the grid scrolls) stays the last of 
   const own = order.filter((c) => !c.startsWith('customers__'));
   expect(joined.length).toBeGreaterThan(0);
   const box = (await data(page).locator('.dm-grid-root').boundingBox())!;
-  await dragHeader(page, own[0]!, { x: box.x + box.width - 5, y: box.y + 40 }, async () => { await page.waitForTimeout(400); });
+  await dragHeader(page, own[0]!, { x: box.x + box.width - 5, y: box.y + 40 }, scrolledToEnd(page));
   await expect.poll(() => titles(page)).toEqual([...own.slice(1), own[0]!, ...joined]);
 });
 
 test('a joined column dragged far left stays first in its own group, after the main mart\'s columns', async ({ page }) => {
   const { own, joined } = await joinedLayout(page);
   const box = (await data(page).locator('.dm-grid-root').boundingBox())!;
-  await dragHeader(page, joined[joined.length - 1]!, { x: box.x + 5, y: box.y + 40 }, async () => { await page.waitForTimeout(400); });
+  await dragHeader(page, joined[joined.length - 1]!, { x: box.x + 5, y: box.y + 40 }, scrolledToStart(page));
   await expect.poll(() => titles(page)).toEqual([...own, joined[joined.length - 1]!, ...joined.slice(0, -1)]);
 });
 
