@@ -69,11 +69,13 @@ export function MartCards({ martId, mart, main, r, scores, bucket, filter, versi
     valueText: textOf(c, s, formatOf),
   }));
   return (
-    <div className="flex min-w-0 flex-1 flex-wrap gap-2">
+    // Cards ask for 9rem (basis) but may shrink. Inline-size containment keeps their text out of the column's minimum width,
+    // so a narrow group keeps its Table width instead of being stretched by the cards.
+    <div className="flex min-w-0 flex-1 flex-wrap gap-2 [contain:inline-size]">
       {cards.map((c) => (
-        <div key={c.id} data-card={c.id} className="min-w-[9rem] flex-1 rounded-md border px-3 py-2">
+        <div key={c.id} data-card={c.id} className="min-w-0 flex-1 basis-36 overflow-hidden rounded-md border px-3 py-2">
           <div className="dm-muted truncate text-xs">{c.label}</div>
-          {row ? <div className="text-lg font-semibold tabular-nums">{textOf(c, row, formatOf)}</div> : <Skeleton rows={1} />}
+          {row ? <div className="truncate text-lg font-semibold tabular-nums">{textOf(c, row, formatOf)}</div> : <Skeleton rows={1} />}
           {spark.rows && spark.rows.length > 0 && <Sparkline points={points(c)} ariaLabel={`${c.label} trend`} />}
         </div>
       ))}

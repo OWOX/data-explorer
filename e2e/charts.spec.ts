@@ -8,6 +8,8 @@ test('Charts mode shows scorecards, a stacked time series and a pie, and Table b
   await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
   await page.getByLabel(/created_at/i).click();
   await page.keyboard.press('Escape');
+  const widths = () => data(page).locator('th[data-group]').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
+  const tableWidths = await widths();
   await data(page).getByRole('radio', { name: 'Charts' }).click();
   await expect(data(page).getByText('Records', { exact: true }).first()).toBeVisible();
   const group = data(page).locator('td[data-chart-group]').first();
@@ -18,7 +20,10 @@ test('Charts mode shows scorecards, a stacked time series and a pie, and Table b
   expect(Math.abs(gx - hx)).toBeLessThanOrEqual(1);
   const series = data(page).locator('svg[data-orientation]');
   await expect(series).toHaveAttribute('data-orientation', 'vertical');
+  // The scorecards must not make a group wider than the same group in Table.
+  (await widths()).forEach((w, i) => expect(w).toBeLessThanOrEqual(tableWidths[i]!));
   await page.screenshot({ path: 'tmp/charts-e2e.png' });
+  await page.screenshot({ path: 'tmp/charts-e2e-full.png', fullPage: true });
 
   await data(page).getByRole('button', { name: 'Time series options' }).click();
   await page.getByRole('menuitem', { name: 'Stack by' }).click();
@@ -31,4 +36,22 @@ test('Charts mode shows scorecards, a stacked time series and a pie, and Table b
 
   await data(page).getByRole('radio', { name: 'Table' }).click();
   await expect(data(page).getByRole('row')).toHaveCount(202);
+});
+
+test('a one-column group is no wider in Charts than in Table', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  // The picker may close after each change: open it again for every column that goes.
+  for (const name of ['status', 'Customer', 'Product', 'Store']) {
+    await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
+    await page.getByLabel(name, { exact: true }).click();
+    await page.keyboard.press('Escape');
+  }
+  await expect(data(page).getByRole('columnheader', { name: /^Sort by/ })).toHaveCount(1); // only id is left
+  const width = () => data(page).locator('th[data-group]').first().evaluate((e) => Math.round(e.getBoundingClientRect().width));
+  const table = await width();
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  // Loaded: the loading skeleton has a floor of its own.
+  await expect(data(page).locator('[data-card]').first().getByText('450')).toBeVisible();
+  expect(await width()).toBeLessThanOrEqual(table);
+  await page.screenshot({ path: 'tmp/charts-e2e-narrow.png' });
 });
