@@ -189,9 +189,16 @@ test('a remembered report with an unrecognised target is not updated and nothing
 
 const martCard = (title: string) => within(document.getElementById('band-marts')!).getByText(title).closest('article')!;
 const headingText = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!).join(' + ');
-/** A mart the main one can join is added to its grid first, so clicking the main card then promotes it. */
+/** A mart the main one can join is added to its grid first, so clicking the main card then promotes it; one it cannot join is reached through the search. */
 const toMart = async (title: string) => {
   const main = headingText()!;
+  const card = within(document.getElementById('band-marts')!).queryByText(title)?.closest('article');
+  if (!card || card.classList.contains('dm-unjoinable')) {
+    if (!screen.queryByRole('textbox', { name: 'Search data marts' })) await userEvent.click(screen.getByRole('button', { name: 'Search data marts' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Search data marts' }), `${title}{Enter}`);
+    await waitFor(() => expect(headingText() === title || headingText()!.startsWith(`${title} + `)).toBe(true));
+    return;
+  }
   fireEvent.click(martCard(title));
   // A mart that comes back as main shows the joined marts it was left with.
   const mainNow = () => headingText() === title || headingText()!.startsWith(`${title} + `);

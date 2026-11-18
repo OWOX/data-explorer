@@ -15,6 +15,11 @@ function ModelReload() {
   const [, dispatch] = useStore();
   return <button type="button" onClick={() => dispatch({ type: 'refreshModel' })}>Reload model (test probe)</button>;
 }
+// A mart nobody here can open cannot be made main from the page; this probe selects it the way a restored view would.
+function SelectSecretLedger() {
+  const [, dispatch] = useStore();
+  return <button type="button" onClick={() => dispatch({ type: 'selectMart', id: 'secret_ledger', sourceOf: () => null })}>Select Secret Ledger (test probe)</button>;
+}
 const reloadModel = () => userEvent.click(screen.getByRole('button', { name: 'Reload model (test probe)' }));
 
 // These tests drive the search as a title filter: the OWOX search finds nothing and no AI is configured, so the title match answers.
@@ -34,7 +39,7 @@ async function search(q: string) {
 const clearSearch = () => userEvent.click(screen.getByRole('button', { name: 'Clear search' }));
 
 async function mountWith(wrap: (ctx: Mock) => Ctx = (c) => c, fixtures = demoFixtures()) {
-  const view = render(<AppServices ctx={titleSearchOnly(wrap(createMockCtx(fixtures, { latencyMs: 0 })))}><StoreProvider><App /><ModelReload /></StoreProvider></AppServices>);
+  const view = render(<AppServices ctx={titleSearchOnly(wrap(createMockCtx(fixtures, { latencyMs: 0 })))}><StoreProvider><App /><ModelReload /><SelectSecretLedger /></StoreProvider></AppServices>);
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
   await waitFor(() => expect(document.querySelector('.dm-loadbar')).toBeNull());
   return view;
@@ -49,9 +54,19 @@ const sources = () => band('band-sources');
 const martCard = (title: string) => within(marts()).getByText(title).closest('article')!;
 
 const headingText = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!).join(' + ');
+/** Presses the make-main button on a card: the way to a mart the main one cannot join. */
+async function makeMain(title: string) {
+  await within(marts()).findByText(title);
+  await userEvent.click(within(martCard(title)).getByRole('button', { name: 'Make main data mart' }));
+}
 /** Makes a mart the main one: a mart the main one can join is added to its grid first, so clicking the main card then promotes it. */
 async function goTo(title: string) {
   const main = headingText()!;
+  if (martCard(title).classList.contains('dm-unjoinable')) {
+    await makeMain(title);
+    await waitFor(() => expect(headingText() === title || headingText()!.startsWith(`${title} + `)).toBe(true));
+    return;
+  }
   fireEvent.click(martCard(title));
   // A mart that comes back as main shows the joined marts it was left with.
   const mainNow = () => headingText() === title || headingText()!.startsWith(`${title} + `);
@@ -272,17 +287,20 @@ describe('the four bands', () => {
     await waitFor(() => expect(within(row()).getByText('Select a row.')).toBeInTheDocument());
   });
 
-  test('a connected mart the member cannot open shows as No access, and its Data band says so', async () => {
+  test('a connected mart the member cannot open is not offered in the band, and when it is selected anyway the card shows No access and the Data band says so', async () => {
     const fixtures = demoFixtures();
     fixtures.edges.push({ id: 'e-orders-secret', sourceDataMartId: 'orders', targetDataMartId: 'secret_ledger', joinConditions: [{ sourceFieldName: 'id', targetFieldName: 'id' }] });
     await mountWith((c) => c, fixtures);
     await within(data()).findByRole('table');
+    // The main mart cannot join a mart nobody here can open, so once the joins are read the band does not list it.
+    await waitFor(() => expect(within(marts()).queryByText('Secret Ledger')).toBeNull());
+    await userEvent.click(screen.getByRole('button', { name: 'Select Secret Ledger (test probe)' }));
     const card = (await within(marts()).findByText('Secret Ledger')).closest('article')!;
     expect(within(card).getByText('No access')).toBeInTheDocument();
-    fireEvent.click(card);
     expect(await within(data()).findByText('You do not have access to this data mart')).toBeInTheDocument();
     expect(within(data()).queryByRole('table')).toBeNull();
   });
+
 });
 
 describe('the grid', () => {
@@ -344,7 +362,8 @@ describe('the grid', () => {
     await userEvent.type(screen.getByLabelText('Value'), '1000');
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(within(data()).getByLabelText('Filter id')).toHaveClass('dm-ctl-on'));
-    await goTo('Order Items'); // away, to a mart Orders cannot join
+    await search('order items'); // away, to a mart Orders cannot join: the band lists it only for a search
+    await goTo('Order Items');
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await within(data()).findByText('Orders');
     await waitFor(() => expect(within(data()).getByLabelText('Filter id')).toHaveClass('dm-ctl-on'));
@@ -355,7 +374,7 @@ describe('the grid', () => {
     await mountApp();
     await within(data()).findByRole('table');
     await search('daily');
-    fireEvent.click(await within(marts()).findByText('Daily KPIs'));
+    await makeMain('Daily KPIs');
     const warning = await within(data()).findByRole('note', { name: NO_PK });
     expect(warning).toBeInTheDocument();
     // The sentence is gone from above the grid; it is the warning's tooltip and the end of the (i) hint.
@@ -463,7 +482,7 @@ describe('the record', () => {
     await mountApp();
     await within(data()).findByRole('table');
     await search('order items');
-    fireEvent.click(await within(marts()).findByText('Order Items'));
+    await makeMain('Order Items');
     await within(data()).findByText('Order Items');
     await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
     await userEvent.click(within(data()).getAllByRole('row')[2]!);
@@ -879,7 +898,7 @@ describe('the storage filter', () => {
 
   test('a selected mart in an unticked storage leaves the Data Marts band but stays in the Data band', async () => {
     await ordersGrid();
-    await userEvent.click(within(martCard('Orders').closest('section')!).getByText('Payments'));
+    await makeMain('Payments');
     await within(data()).findByText('Payments');
     await userEvent.click(within(storageMenu()).getByRole('option', { name: /Sales Lake/ }));
     await waitFor(() => expect(within(marts()).queryByText('Payments')).toBeNull());
@@ -1181,7 +1200,7 @@ describe('the default sort', () => {
     const calls = await spyOnTraverse();
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await search('daily');
-    fireEvent.click(await within(marts()).findByText('Daily KPIs'));
+    await makeMain('Daily KPIs');
     const day = await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
     expect(day.closest('th')).toHaveAttribute('aria-sort', 'descending');
     expect(calls.filter((c) => c.id === 'daily_kpis').at(-1)!.o.sort).toEqual([{ column: 'day', direction: 'desc' }]);
@@ -1202,7 +1221,7 @@ describe('the default sort', () => {
     const calls = await spyOnTraverse();
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await search('daily');
-    fireEvent.click(await within(marts()).findByText('Daily KPIs'));
+    await makeMain('Daily KPIs');
     await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
     const sortOf = () => calls.filter((c) => c.id === 'daily_kpis').at(-1)!.o.sort;
     await userEvent.click(within(data()).getByRole('button', { name: /^Sort by revenue,/ }));
@@ -1382,7 +1401,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
   test('a filter panel is capped at 20rem (bands.css .dm-menu-editor) with no title row above the scrolling body', async () => {
     await ordersGrid();
     await search('daily');
-    fireEvent.click(await within(marts()).findByText('Daily KPIs'));
+    await makeMain('Daily KPIs');
     await within(data()).findByText('Daily KPIs');
     await openSubmenu(within(data()), 'day', 'Filter');
     const body = (await screen.findByRole('menu', { name: 'Filter day' })).closest('[data-popover-body]')!;
@@ -1597,3 +1616,15 @@ describe('whole column and row selection, and the header layout', () => {
   });
 });
 
+
+test('a mart the main one cannot join is dimmed in a search, and a click explains instead of switching', async () => {
+  await mountWith();
+  await search('Order Items');
+  const marts = document.getElementById('band-marts')!;
+  const items = (await within(marts).findByText('Order Items')).closest('article')!;
+  expect(items).toHaveClass('dm-unjoinable');
+  fireEvent.click(items);
+  expect(await within(items).findByRole('status')).toHaveTextContent("Can't join Orders. Drag it onto Orders to make it the main data mart.");
+  expect(marts.querySelector('article')).toHaveTextContent('Orders');
+  expect(within(document.getElementById('band-data')!).queryAllByRole('columnheader').some((h) => h.textContent === 'Order Items')).toBe(false);
+});

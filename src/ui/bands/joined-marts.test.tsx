@@ -98,14 +98,26 @@ test('deselecting the main data mart promotes the next joined one, which brings 
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('clicking a data mart the main one cannot join makes it the main one, alone', async () => {
+test('the make-main button makes a joined mart the main one, and Undo takes it back in one step', async () => {
   setup();
   await ready();
   await click('Customers');
   await waitFor(() => expect(title()).toBe('Orders + Customers'));
-  await click('Order Items');
-  await waitFor(() => expect(title()).toBe('Order Items'));
-  expect(within(marts()).queryByRole('note', { name: 'Joined' })).toBeNull();
+  await userEvent.click(within(card('Customers')).getByRole('button', { name: 'Make main data mart' }));
+  await waitFor(() => expect(groupTitles()[0]).toBe('Customers'));
+  // The old main leaves the band once the card animation ends.
+  await waitFor(() => expect(marts().querySelector('article')).toBe(card('Customers')));
+  await undo();
+  await waitFor(() => expect(title()).toBe('Orders + Customers'));
+});
+
+test('with Orders main, the band lists the marts it can join at any depth, and not Order Items', async () => {
+  setup();
+  await ready();
+  await within(marts()).findByText('Countries');
+  await within(marts()).findByText('Categories');
+  expect(within(marts()).queryByText('Order Items')).toBeNull();
+  expect(marts().querySelector('article')).toBe(card('Orders'));
 });
 
 test('with no joined mart, deselecting the main one leaves nothing selected', async () => {
@@ -166,6 +178,8 @@ test('promoting back to Orders leaves it alone: the joined columns it was left w
   await waitFor(() => expect(title()).toBe('Orders + Customers'));
   await click('Orders');
   await waitFor(() => expect(title()).toBe('Customers'));
+  // Customers cannot join Orders, so a click on Orders would do nothing: it is reached through its Data Source, which leaves no main mart to join.
+  fireEvent.click(within(document.getElementById('band-sources')!).getByText('Shopify').closest('article')!);
   await click('Orders');
   await waitFor(() => expect(title()).toBe('Orders'));
   expect(headers()).toHaveLength(5);
@@ -300,17 +314,19 @@ test('the last own column of the main mart cannot be unticked while a joined mar
   expect(groupTitles()).toEqual(['Orders', 'Customers']);
 });
 
-test('the Data Marts band shows the marts connected to a joined mart, not only the main one\'s', async () => {
+test('a mart reachable through a joined mart is listed from the start and lights like its neighbour once that mart is joined', async () => {
   setup();
   await ready();
-  await waitFor(() => expect(within(marts()).queryByText('Countries')).toBeNull());
+  // Orders reaches Countries through Customers, so the band lists it before Customers is joined, unlit.
+  await within(marts()).findByText('Countries');
+  expect(card('Countries')).not.toHaveClass('lit');
   await click('Customers');
-  await waitFor(() => expect(within(marts()).getByText('Countries')).toBeInTheDocument());
-  expect(within(marts()).getByText('Sessions')).toBeInTheDocument();
-  // lit like the main one's neighbours, so the canvas does not dim them
   await waitFor(() => expect(card('Countries')).toHaveClass('lit'));
+  // Sessions hangs off Customers but the main mart cannot join it, so the band does not list it.
+  expect(within(marts()).queryByText('Sessions')).toBeNull();
   await click('Customers');
-  await waitFor(() => expect(within(marts()).queryByText('Countries')).toBeNull());
+  await waitFor(() => expect(card('Countries')).not.toHaveClass('lit'));
+  expect(within(marts()).getByText('Countries')).toBeInTheDocument();
 });
 
 test('a mart that leaves the grid remembers its own field names in its own grid-columns document', async () => {
