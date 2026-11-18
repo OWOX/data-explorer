@@ -19,6 +19,7 @@ const Gutter = () => <th aria-hidden data-chrome className="dm-chrome" />;
 /**
  * The Charts mode's `<tbody>`: a strip of scorecards, one cell per data mart under that mart's header, then the panels
  * on a row of their own, as wide as the visible grid and pinned left so a wide table does not push them out of view.
+ * The panels sit side by side while each still gets 30rem, and stack when the band is narrower.
  * Settings load once per mart; a fallback `resolveCharts` picks is never written back, only the member's own changes are.
  */
 export function ChartsBody({ martId, schema, shown, agg, filter, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth }: {
@@ -73,7 +74,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
       <tr data-chart-strip>
         <Gutter />
         {groups.map((g, i) => (
-          <td key={g.id} colSpan={g.span} data-chart-group={g.id} className="align-top p-2">
+          <td key={g.id} colSpan={g.span} data-chart-group={g.id} className="align-top p-3">
             <div className="flex items-start gap-1">
               <MartCards martId={martId} mart={cf.marts[i]!} main={g.id === martId} r={r} scores={scores} bucket={bucket} filter={filter} version={version} paused={idle} hasFilters={hasFilters} formatOf={formatOf} />
               {g.id === martId && settings && <ChartMenu name="Scorecards" items={items} />}
@@ -85,7 +86,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
       <tr data-chart-panels-row>
         <td colSpan={columns + 2} className="p-0">
           {/* Sticky and as wide as the scroller shows, so the panels stay in view however wide the table is. */}
-          <div data-chart-panels className="sticky left-0 flex flex-col gap-6 p-2" style={{ width: scrollerWidth }}>
+          <div data-chart-panels className="dm-chart-panels sticky left-0" style={{ width: scrollerWidth }}>
             {r.date && r.measure && <TimeSeriesPanel {...panelProps} bucket={bucket} range={{ error: rangeError, retry: retryRange }}
               onChange={(p) => change((cur) => ({ ...cur, timeSeries: { ...cur.timeSeries, ...p } }))} />}
             {r.pieMetric && r.pieDimension && <PiePanel {...panelProps} onChange={(p) => change((cur) => ({ ...cur, pie: { ...cur.pie, ...p } }))} />}

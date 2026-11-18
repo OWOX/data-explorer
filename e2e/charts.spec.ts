@@ -54,3 +54,27 @@ test('a one-column group shows its scorecard value in full', async ({ page }) =>
   expect(await value.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
   await page.screenshot({ path: 'tmp/charts-e2e-narrow.png' });
 });
+
+test('the time series and the pie sit side by side when the band is wide, and Charts keep the table area', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  const frame = data(page).locator('.dm-grid-frame');
+  const tableHeight = (await frame.boundingBox())!.height;
+  for (const name of [/created_at/i, /^Amount$/]) {
+    await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
+    await page.getByLabel(name).click();
+    await page.keyboard.press('Escape');
+  }
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  const panels = data(page).locator('section.dm-chart');
+  await expect(panels).toHaveCount(2);
+  await expect(data(page).locator('svg[data-orientation]')).toBeVisible();
+  const [a, b] = [(await panels.nth(0).boundingBox())!, (await panels.nth(1).boundingBox())!];
+  // One row of two at 1440px: same top, the pie to the right of the time series.
+  expect(Math.abs(a.y - b.y)).toBeLessThanOrEqual(1);
+  expect(b.x).toBeGreaterThan(a.x + a.width - 1);
+  expect(Math.round((await frame.boundingBox())!.height)).toBe(Math.round(tableHeight));
+  await page.screenshot({ path: 'tmp/charts-e2e-side.png' });
+  await page.setViewportSize({ width: 900, height: 900 });
+  // The panels take the scroller's width once its resize is observed: wait for them to stack.
+  await expect.poll(async () => { const [c, d] = [(await panels.nth(0).boundingBox())!, (await panels.nth(1).boundingBox())!]; return d.y >= c.y + c.height - 1; }).toBe(true);
+});
