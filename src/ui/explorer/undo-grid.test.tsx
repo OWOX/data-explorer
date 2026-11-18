@@ -139,3 +139,24 @@ test('Cmd+Z works with focus inside the grid', async () => {
   await userEvent.keyboard('{Meta>}z{/Meta}');
   await waitFor(() => expect(filterButton()).toBeNull());
 });
+
+test('Cmd+Z does nothing while a column menu or the Fields picker is open', async () => {
+  setup(); await ready();
+  await applyStoreFilter();
+  await openSubmenu(within(data()), 'Store', 'Filter');
+  const dialog = await screen.findByRole('dialog');
+  // Focus on the dialog itself, not on an input: the shortcut is still left alone.
+  await userEvent.keyboard('{Meta>}z{/Meta}');
+  expect(filterButton()).not.toBeNull();
+  expect(undo()).toBeEnabled();
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(dialog).not.toBeInTheDocument());
+  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+  await screen.findByRole('dialog');
+  await userEvent.keyboard('{Meta>}z{/Meta}');
+  expect(filterButton()).not.toBeNull();
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await userEvent.keyboard('{Meta>}z{/Meta}');
+  await waitFor(() => expect(filterButton()).toBeNull());
+});

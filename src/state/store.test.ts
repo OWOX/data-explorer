@@ -315,6 +315,14 @@ describe('editGrid', () => {
     expect(reducer(undone, { type: 'editGrid', martId: 'a', grid: grid({ sorts: [] }) }).future).toEqual([]);
   });
 
+  test('an edit that only reorders keys is no step', () => {
+    const f = (o: object) => ({ a: { field: 'a', op: 'eq', value: '1', ...o } as ColumnFilter });
+    const st = s({ selection: sel({ martId: 'a' }), grids: { a: { limit: 100, sorts: null, filters: f({}), columns: ['a', 'b'] } } });
+    const same = { columns: ['a', 'b'], filters: { a: { value: '1', op: 'eq', field: 'a' } as ColumnFilter }, sorts: null, limit: 100 } as GridState;
+    expect(reducer(st, { type: 'editGrid', martId: 'a', grid: same })).toBe(st);
+    expect(reducer(st, { type: 'editGrid', martId: 'a', grid: { ...same, columns: ['b', 'a'] } })).not.toBe(st);
+  });
+
   test('undo restores the previous grid and redo the new one', () => {
     const edited = reducer(base(), { type: 'editGrid', martId: 'a', grid: filtered });
     const undone = reducer(edited, { type: 'undo' });

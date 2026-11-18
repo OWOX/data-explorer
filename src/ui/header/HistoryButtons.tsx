@@ -14,6 +14,11 @@ export const isMac = () => {
 export const undoTip = (mac: boolean) => (mac ? 'Undo (⌘Z)' : 'Undo (Ctrl+Z)');
 export const redoTip = (mac: boolean) => (mac ? 'Redo (⇧⌘Z)' : 'Redo (Ctrl+Shift+Z)');
 
+/** A column menu, an editor, the Fields picker or any other popover: while one is open the grid behind it must not change under its draft. */
+const OPEN_POPOVER = '[data-column-menu], [role="dialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]';
+const insidePopover = (e: KeyboardEvent) =>
+  (e.target instanceof Element && !!e.target.closest(OPEN_POPOVER)) || (document.activeElement instanceof Element && !!document.activeElement.closest(OPEN_POPOVER));
+
 export function HistoryButtons({ model }: { model: Model }) {
   const [{ history, future }, dispatch] = useStore();
   const canUndo = history.length > 0;
@@ -27,6 +32,7 @@ export function HistoryButtons({ model }: { model: Model }) {
     const onKey = (e: KeyboardEvent) => {
       // Alt+Arrow and Ctrl/Cmd+Z are the word-jump and the text undo while typing in a field: leave them to the field.
       if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+      if (insidePopover(e)) return;
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key.toLowerCase();
       let act: 'undo' | 'redo' | null = null;

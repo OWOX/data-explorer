@@ -161,7 +161,7 @@ export function reducer(state: State, a: Action): State {
     }
     case 'editGrid': {
       const before = state.grids[a.martId] ?? null;
-      if (JSON.stringify(before) === JSON.stringify(a.grid)) return state;
+      if (deepEqual(before, a.grid)) return state;
       return { ...state, grids: { ...state.grids, [a.martId]: a.grid }, history: [...state.history, { ...cur, grids: { [a.martId]: before } }].slice(-HISTORY_LIMIT), future: [] };
     }
     case 'saveGrid': return { ...state, grids: { ...state.grids, [a.martId]: a.grid } };
@@ -176,6 +176,16 @@ export function reducer(state: State, a: Action): State {
     };
     case 'refreshModel': return { ...state, modelVersion: state.modelVersion + 1 };
   }
+}
+
+/** Structural equality for plain JSON values: key order does not matter, and a key holding undefined is the same as a missing one. */
+export function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) || Array.isArray(b)) return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => deepEqual(x, b[i]));
+  const ka = Object.keys(a).filter((k) => (a as Record<string, unknown>)[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => (b as Record<string, unknown>)[k] !== undefined);
+  return ka.length === kb.length && ka.every((k) => deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
 }
 
 export const sourceOfModel = (model: Model): SourceOf => (id) => model.marts.get(id)?.sourceKey ?? null;
