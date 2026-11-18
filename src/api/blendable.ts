@@ -22,6 +22,8 @@ export interface BlendableLoader {
   peek(martId: string): JoinedSource[] | undefined;
   /** Forget one mart's joined sources (and a read in flight), so the next ask reads the backend again. */
   invalidate(martId: string): void;
+  /** Called whenever a mart's joined sources were forgotten, so a holder of its own copy reads them again. */
+  subscribe(fn: () => void): () => void;
   clear(): void;
 }
 
@@ -48,7 +50,6 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
       description: b.description?.trim() ? b.description : null,
       isPrimaryKey: false,
       ...(Array.isArray(b.postJoinAggregations) ? { postJoinAggregations: knownFunctions(b.postJoinAggregations) } : {}),
-      ...(!Array.isArray(b.postJoinAggregations) && Array.isArray(b.allowedAggregations) ? { allowedAggregations: knownFunctions(b.allowedAggregations) } : {}),
       joined: { martId: source.martId, label: source.label, aliasPath: source.aliasPath, originalName: b.originalFieldName },
     });
   }
@@ -58,6 +59,7 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
 export function createBlendableLoader(ctx: Ctx): BlendableLoader {
   const done = new Map<string, JoinedSource[]>();
   const inflight = new Map<string, Promise<JoinedSource[]>>();
+  const listeners = new Set<() => void>();
   return {
     get(martId) {
       const hit = done.get(martId);
@@ -71,7 +73,8 @@ export function createBlendableLoader(ctx: Ctx): BlendableLoader {
       return p;
     },
     peek: (martId) => done.get(martId),
-    invalidate(martId) { done.delete(martId); inflight.delete(martId); },
+    invalidate(martId) { done.delete(martId); inflight.delete(martId); listeners.forEach((l) => l()); },
+    subscribe(fn) { listeners.add(fn); return () => { listeners.delete(fn); }; },
     clear() { done.clear(); },
   };
 }

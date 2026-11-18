@@ -81,7 +81,8 @@ test('a joined field carries the join\'s post-join aggregations ([] means none),
   const [a, b, d, e] = sources[0]!.fields;
   expect(a!.postJoinAggregations).toEqual(['MAX']);
   expect(b!.postJoinAggregations).toEqual([]);
-  expect(d!.allowedAggregations).toEqual(['SUM']);
+  // The backend's blended field has no own list: one that arrives anyway is not read.
+  expect('allowedAggregations' in d!).toBe(false);
   expect('postJoinAggregations' in e! || 'allowedAggregations' in e!).toBe(false);
 });
 
@@ -92,4 +93,35 @@ test('a null post-join list is read as no list, not a crash', () => {
   });
   expect(sources).toHaveLength(1);
   expect('postJoinAggregations' in sources[0]!.fields[0]!).toBe(false);
+});
+
+const oneSource = { availableSources: [{ aliasPath: 'c', title: 'C', depth: 1, dataMartId: 'u', isIncluded: true, isAccessibleForReporting: true }], blendedFields: [{ name: 'c__a', aliasPath: 'c', sourceDataMartId: 'u', originalFieldName: 'a', type: 'STRING' }] };
+
+test('invalidate forgets a mart, so the next get reads again, and tells subscribers', async () => {
+  const getJson = vi.fn(async () => oneSource);
+  const loader = createBlendableLoader(stubCtx({ getJson }));
+  const told = vi.fn();
+  loader.subscribe(told);
+  await loader.get('m');
+  await loader.get('m');
+  expect(getJson).toHaveBeenCalledTimes(1);
+  loader.invalidate('m');
+  expect(loader.peek('m')).toBeUndefined();
+  expect(told).toHaveBeenCalledTimes(1);
+  await loader.get('m');
+  expect(getJson).toHaveBeenCalledTimes(2);
+});
+
+test('a read that was in flight when the mart was invalidated is not remembered', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const getJson = vi.fn(async () => { if (getJson.mock.calls.length === 1) await gate; return oneSource; });
+  const loader = createBlendableLoader(stubCtx({ getJson }));
+  const stale = loader.get('m');
+  loader.invalidate('m');
+  release();
+  await stale;
+  expect(loader.peek('m')).toBeUndefined();
+  await loader.get('m');
+  expect(getJson).toHaveBeenCalledTimes(2);
 });

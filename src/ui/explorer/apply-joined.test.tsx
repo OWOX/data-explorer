@@ -221,12 +221,14 @@ test('a joined filter adopted from the store before the joined marts load is app
 async function renderNarrowing() {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const realGet = base.owox.getJson.bind(base.owox);
-  const state = { reads: 0, post: ['COUNT', 'COUNT_DISTINCT', 'STRING_AGG'] };
+  // `gone`: the joined field is no longer served; `failSchema`: the main mart's schema read fails.
+  const state = { reads: 0, schemaReads: 0, gone: false, failSchema: false, post: ['COUNT', 'COUNT_DISTINCT', 'STRING_AGG'] };
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const ctx = { ...base, owox: { ...base.owox, getJson: (async (path: string, q?: Record<string, string>) => {
+    if (path === '/api/data-marts/orders') { state.schemaReads += 1; if (state.failSchema) throw new Error('schema is down'); }
     const dto = await realGet<BlendableSchemaDto>(path, q);
-    if (path.endsWith('/blendable-schema')) { state.reads += 1; dto.blendedFields = dto.blendedFields?.map((f) => (f.name === 'customers__email' ? { ...f, postJoinAggregations: state.post } : f)); }
+    if (path.endsWith('/blendable-schema')) { state.reads += 1; dto.blendedFields = dto.blendedFields?.filter((f) => !(state.gone && f.name === 'customers__email')).map((f) => (f.name === 'customers__email' ? { ...f, postJoinAggregations: state.post } : f)); }
     return dto;
   }) as typeof base.owox.getJson, dataMarts: { ...base.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { queries.push(o); return real(id, o); } } } };
   await base.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: ['id', 'status', 'customers__email'], at: 'then' });
@@ -238,10 +240,66 @@ async function renderNarrowing() {
 test('Refresh reads the joined marts again, so a Join Settings change is picked up', async () => {
   const { state } = await renderNarrowing();
   const before = state.reads;
+  const schemaBefore = state.schemaReads;
   state.post = ['COUNT'];
   await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
   await waitFor(() => expect(state.reads).toBeGreaterThan(before));
+  expect(state.schemaReads).toBeGreaterThan(schemaBefore);
   await openSubmenu(within(data()), 'Customers · email', 'Aggregate');
   const dialog = await screen.findByRole('dialog');
   expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual(['Count']);
+});
+
+const refresh = () => userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+const toast = () => document.getElementById('dm-toast-stack')!;
+
+test('a Refresh that narrows the functions a field allows removes the applied rule and says so', async () => {
+  const { state, queries } = await renderNarrowing();
+  await openSubmenu(within(data()), 'Customers · email', 'Aggregate');
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.click(within(dialog).getByLabelText('Count Unique'));
+  await userEvent.click(within(dialog).getByLabelText('Combined'));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(queries.at(-1)?.aggregation).toEqual([{ column: 'customers__email', function: 'COUNT_DISTINCT' }, { column: 'customers__email', function: 'STRING_AGG' }]));
+  state.post = ['COUNT', 'COUNT_DISTINCT'];
+  await refresh();
+  await waitFor(() => expect(queries.at(-1)?.aggregation).toEqual([{ column: 'customers__email', function: 'COUNT_DISTINCT' }]));
+  expect(await within(toast()).findByText(/Combined is no longer allowed on Customers · email; it was removed\./)).toBeInTheDocument();
+});
+
+test('a Refresh that takes a joined field away parks its filter, says so, and applies it again when the field is back', async () => {
+  const { state, queries } = await renderNarrowing();
+  await openSubmenu(within(data()), 'Customers · email', 'Filter');
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.selectOptions(within(dialog).getByLabelText('Operator'), 'contains');
+  await userEvent.type(within(dialog).getByLabelText('Value'), 'a');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(queries.at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a' }]));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  state.gone = true;
+  await refresh();
+  expect(await within(toast()).findByText(/filter on Customers · email is paused/)).toBeInTheDocument();
+  await waitFor(() => expect(queries.at(-1)?.filter ?? []).toEqual([]));
+  expect(within(data()).getByRole('button', { name: 'Reset' })).toBeDisabled();
+  state.gone = false;
+  await refresh();
+  await waitFor(() => expect(queries.at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a' }]));
+});
+
+test('a Refresh that cannot read the schema keeps the grid and says so in the toast', async () => {
+  const { state } = await renderNarrowing();
+  state.failSchema = true;
+  await refresh();
+  expect(await within(toast()).findByText(/Refresh failed: schema is down/)).toBeInTheDocument();
+  expect(headers()).toHaveLength(3);
+  expect(within(data()).queryByRole('alert')).toBeNull();
+});
+
+test('the Fields cards follow a Refresh: a joined mart whose field is gone is no longer joined', async () => {
+  const { state } = await renderNarrowing();
+  const customers = () => within(document.getElementById('band-marts')!).getByText('Customers').closest('article')!;
+  await waitFor(() => expect(customers()).toHaveAttribute('aria-pressed', 'true'));
+  state.gone = true;
+  await refresh();
+  await waitFor(() => expect(customers()).toHaveAttribute('aria-pressed', 'false'));
 });

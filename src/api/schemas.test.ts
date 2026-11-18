@@ -72,3 +72,31 @@ test('get() carries a field\'s allowed aggregations, only the functions this bui
   expect(s[0]!.allowedAggregations).toEqual(['SUM', 'P50']);
   expect('allowedAggregations' in s[1]!).toBe(false);
 });
+
+test('invalidate forgets a mart, so the next get reads the backend again', async () => {
+  const getJson = vi.fn(async (path: string) => detail(path.split('/').pop()!));
+  const loader = createSchemaLoader(stubCtx({ getJson }));
+  await loader.get('a');
+  loader.invalidate('a');
+  expect(loader.peek('a')).toBeUndefined();
+  await loader.get('a');
+  expect(getJson).toHaveBeenCalledTimes(2);
+});
+
+test('a read that was in flight when the mart was invalidated is not remembered, and does not notify', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const getJson = vi.fn(async (path: string) => { if (getJson.mock.calls.length === 1) await gate; return detail(path.split('/').pop()!); });
+  const loader = createSchemaLoader(stubCtx({ getJson }));
+  const told = vi.fn();
+  loader.subscribe(told);
+  const stale = loader.get('a');
+  loader.invalidate('a');
+  release();
+  await stale;
+  expect(loader.peek('a')).toBeUndefined();
+  expect(told).not.toHaveBeenCalled();
+  await loader.get('a');
+  expect(getJson).toHaveBeenCalledTimes(2);
+  expect(loader.peek('a')).toBeDefined();
+});
