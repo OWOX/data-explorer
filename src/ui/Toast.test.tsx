@@ -4,14 +4,15 @@ import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { Toast, TOAST_MS } from './Toast';
 
-test('a toast is a status in the page corner with its action and a dismiss button', async () => {
+test('a toast is a status at the top center with its action and a dismiss button', async () => {
   const onDismiss = vi.fn();
   render(<Toast onDismiss={onDismiss} stamp="a" action={<button type="button">Show prompt</button>}>Prompt copied</Toast>);
   const status = screen.getByRole('status');
   expect(status).toHaveTextContent('Prompt copied');
   // Only the text is announced, not the buttons.
   expect(status).not.toContainElement(screen.getByRole('button', { name: 'Dismiss' }));
-  expect(document.getElementById('dm-toast-stack')).toHaveClass('fixed');
+  expect(document.getElementById('dm-toast-stack')).toHaveClass('fixed', 'top-4', 'left-1/2');
+  expect(document.getElementById('dm-toast-stack')).not.toHaveClass('bottom-4');
   expect(screen.getByRole('button', { name: 'Show prompt' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
   expect(onDismiss).toHaveBeenCalledTimes(1);
@@ -126,4 +127,15 @@ test('two toasts at once share one stack, so neither covers the other', () => {
   expect(stack).toContainElement(screen.getByText('Second'));
   expect(stack).toHaveClass('flex-col');
   expect(screen.getByText('First').parentElement).not.toBe(screen.getByText('Second').parentElement);
+});
+
+test('tone colours the card, and no tone leaves it neutral', () => {
+  const { rerender } = render(<Toast onDismiss={() => undefined} stamp="a">Plain</Toast>);
+  const card = () => screen.getByRole('status').parentElement!;
+  expect(card()).toHaveClass('dm-toast-card');
+  expect(card()).not.toHaveAttribute('data-tone');
+  for (const tone of ['success', 'error', 'info'] as const) {
+    rerender(<Toast onDismiss={() => undefined} stamp="a" tone={tone}>Plain</Toast>);
+    expect(card()).toHaveAttribute('data-tone', tone);
+  }
 });

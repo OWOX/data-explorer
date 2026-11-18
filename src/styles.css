@@ -54,6 +54,9 @@
   --sheet-full-text: #ffffff;
   --sheet-green: #188038;
   --sheet-green-fg: #ffffff;
+  --toast-success-bg: #ecfdf5; --toast-success-fg: #166534; --toast-success-border: #d6dfe6;
+  --toast-error-bg: #fee2e2; --toast-error-fg: #991b1b; --toast-error-border: #ead1d1;
+  --toast-info-bg: #e8edfb; --toast-info-fg: #1d4ed8; --toast-info-border: #cad5f6;
 }
 
 .dark {
@@ -88,7 +91,20 @@
   --sheet-full-text: #0b1220;
   --sheet-green: #81c995;
   --sheet-green-fg: #0b1220;
+  --toast-success-bg: #0b2a1b; --toast-success-fg: #86efac; --toast-success-border: #14532d;
+  --toast-error-bg: #3b1219; --toast-error-fg: #fca5a5; --toast-error-border: #7f1d1d;
+  --toast-info-bg: #14234d; --toast-info-fg: #93c5fd; --toast-info-border: #1e3a8a;
 }
+
+/* Toast card, in the host app's react-hot-toast look: a pill, no shadow, a 1px bottom border only. */
+.dm-toast-card {
+  max-width: 800px; box-sizing: border-box; border-radius: 32px; box-shadow: none;
+  padding: 0.4rem 1rem; font-size: 0.875rem;
+  border-bottom: 1px solid var(--border); background: var(--background); color: var(--foreground);
+}
+.dm-toast-card[data-tone='success'] { background: var(--toast-success-bg); color: var(--toast-success-fg); border-bottom-color: var(--toast-success-border); }
+.dm-toast-card[data-tone='error'] { background: var(--toast-error-bg); color: var(--toast-error-fg); border-bottom-color: var(--toast-error-border); }
+.dm-toast-card[data-tone='info'] { background: var(--toast-info-bg); color: var(--toast-info-fg); border-bottom-color: var(--toast-info-border); }
 
 html, body { margin: 0; background: transparent; }
 body { color: var(--foreground); font-family: var(--font-sans); }

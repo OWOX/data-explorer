@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
-import type { ExportedReport } from '../../api/exports';
+import { POLL_INTERVAL_MS, POLL_TIMEOUT_MS, type StoredReport } from '../../api/exports';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { Ctx } from '../../sdk/types';
@@ -15,7 +15,7 @@ import type { GridRun } from './useMartRows';
 
 type Call = string;
 
-function setup(sheets: 0 | 1 | 2, remembered: ExportedReport[] = [], runMs?: number) {
+function setup(sheets: 0 | 1 | 2, remembered: StoredReport[] = [], runMs?: number) {
   const base = createMockCtx(demoFixtures({ sheets }), { latencyMs: 0, runMs });
   const calls: Call[] = [];
   const open = vi.fn(async () => {});
@@ -34,32 +34,41 @@ function setup(sheets: 0 | 1 | 2, remembered: ExportedReport[] = [], runMs?: num
   const view = () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
   return { ctx, calls, open, view, seeded };
 }
+type T = ReturnType<typeof setup>;
 const data = () => document.getElementById('band-data')!;
-/** Export, the one destination, New report…, and Export in the dialog. */
-const exportNew = async () => {
+/** A report OWOX has: the mock numbers them mock-report-1, 2, ... in the order they are made. */
+const makeReport = (t: T, title: string, destination = 'd-sheets-team', spreadsheetId = 'mock-sheet-1') =>
+  t.ctx.owox.postJson('/api/reports', { title, dataMartId: 'orders', dataDestinationAccess: { id: destination }, destinationConfig: { spreadsheetId, sheetId: 0 } });
+const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+/** Export, then the destination: its dialog opens. */
+const openDialog = async (destination: RegExp | string = /Team Sheets/, name = 'Export to Team Sheets') => {
   await userEvent.click(await within(data()).findByText('Export'));
-  await userEvent.click(await within(data()).findByRole('menuitem', { name: /Team Sheets/ }));
-  await userEvent.click(await within(data()).findByRole('menuitem', { name: /New report/ }));
-  const dialog = await screen.findByRole('dialog', { name: 'New report' });
+  await userEvent.click(await within(data()).findByRole('menuitem', { name: destination }));
+  return screen.findByRole('dialog', { name });
+};
+/** The dialog with its default choice (a new spreadsheet), exported. */
+const exportNew = async () => {
+  const dialog = await openDialog();
   await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
   return dialog;
 };
 const rowsLoaded = () => waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
-const REPORT: ExportedReport = { reportId: 'mock-report-1', destinationId: 'd-sheets-team', spreadsheetId: 'mock-sheet-1', sheetId: 0, title: 'Orders weekly' };
+const REPORT: StoredReport = { reportId: 'mock-report-1' };
 
-test('with no Google Sheets destination Export is still a menu, with the AI group and no destination row', async () => {
+test('with no Google Sheets destination Export is still a menu: the assistants, one separator, then the copy items', async () => {
   const t = setup(0);
   t.view();
   await rowsLoaded();
   await userEvent.click(await within(data()).findByText('Export'));
-  expect(within(data()).getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link')).map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Claude', 'ChatGPT', 'Copy SQL']);
-  // no "AI" sub-header: Claude and ChatGPT follow a separator only
+  expect(within(data()).getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link')).map((r) => r.textContent)).toEqual(['Claude', 'ChatGPT', 'Copy to clipboard', 'Copy SQL']);
+  expect(within(data()).getAllByRole('separator')).toHaveLength(1);
+  // no "AI" sub-header
   expect(within(data()).queryByText('AI')).toBeNull();
   expect(within(data()).getByRole('menuitem', { name: 'Claude' }).closest('.dm-export-ai')).not.toBeNull();
   expect(data().querySelector('[data-action="copy"] svg')).toHaveClass('lucide-copy');
 });
 
-test('one destination and no report: the button is still a menu; New report makes the spreadsheet, the report, runs it and opens the sheet', async () => {
+test('one destination and no report: the destination opens the dialog; Export makes the spreadsheet, the report, runs it and opens the sheet', async () => {
   const t = setup(1);
   t.view();
   await rowsLoaded();
@@ -72,6 +81,7 @@ test('one destination and no report: the button is still a menu; New report make
   // The outcome is a persistent toast with a Dismiss button, not text in the Data band's title row.
   const toast = outcome.closest('#dm-toast-stack > div') as HTMLElement;
   expect(data().contains(toast)).toBe(false);
+  expect(toast).toHaveAttribute('data-tone', 'success');
   expect(within(data()).queryByText(/Exported to/)).toBeNull();
   await userEvent.click(within(toast).getByRole('button', { name: 'Dismiss' }));
   expect(screen.queryByText(/Exported to "Orders/)).toBeNull();
@@ -89,65 +99,591 @@ test('the Export button carries the archive-restore icon, and the Google Sheets 
   expect(item.querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull();
 });
 
-test('two destinations: the first level lists them, each with its New report entry', async () => {
-  const t = setup(2);
-  t.view();
-  await rowsLoaded();
-  await userEvent.click(await within(data()).findByText('Export'));
-  expect(await within(data()).findByRole('menuitem', { name: /Team Sheets/ })).toBeInTheDocument();
-  expect(within(data()).getByRole('menuitem', { name: /Finance Sheets/ })).toBeInTheDocument();
-  expect(within(data()).queryByText(/Looker/)).toBeNull();
-  expect(within(data()).queryByRole('menuitem', { name: /New report/ })).toBeNull();
-  await userEvent.click(within(data()).getByRole('menuitem', { name: /Finance Sheets/ }));
-  expect(within(data()).getByRole('menuitem', { name: /New report/ })).toBeInTheDocument();
+describe('the menu', () => {
+  test('order: Claude, ChatGPT, a separator, one row per destination, a separator, Copy to clipboard, Copy SQL; no chevron, no flyout', async () => {
+    const t = setup(2);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    const rows = (await within(data()).findAllByRole('menuitem')).filter((r) => !r.hasAttribute('data-link'));
+    expect(rows.map((r) => r.textContent)).toEqual(['Claude', 'ChatGPT', 'Team Sheets', 'Finance Sheets', 'Copy to clipboard', 'Copy SQL']);
+    for (const r of rows.slice(2, 4)) { expect(r.querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull(); expect(r.querySelectorAll('svg')).toHaveLength(1); expect(r).not.toHaveAttribute('aria-haspopup'); }
+    expect(within(data()).queryByText('Google Sheets')).toBeNull();
+    expect(within(data()).queryByText(/Looker/)).toBeNull();
+    // The separators sit between the groups.
+    const menu = within(data()).getByRole('menu');
+    expect([...menu.children].map((c) => c.getAttribute('role') === 'separator' ? '-' : c.getAttribute('aria-label'))).toEqual(['Assistants', '-', 'Destinations', '-', 'Copy']);
+    // Hovering a destination opens nothing.
+    await userEvent.hover(rows[2]!);
+    expect(within(data()).queryByRole('menu', { name: 'Team Sheets' })).toBeNull();
+    // the Export button itself has no Sheets icon
+    expect((await within(data()).findByText('Export')).closest('summary')!.querySelector('svg[viewBox="0 0 48 48"]')).toBeNull();
+  });
+
+  test('a destination closes the menu and opens its dialog, titled with the destination', async () => {
+    const t = setup(2);
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog(/Finance Sheets/, 'Export to Finance Sheets');
+    expect(within(dialog).getByRole('heading', { name: 'Export to Finance Sheets' })).toBeInTheDocument();
+    expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
+  });
+
+  test('keyboard: arrows walk the rows, Enter and Space on a destination open its dialog', async () => {
+    const t = setup(2);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    const team = await within(data()).findByRole('menuitem', { name: /Team Sheets/ });
+    team.focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(within(data()).getByRole('menuitem', { name: /Finance Sheets/ })).toHaveFocus();
+    await userEvent.keyboard('{ArrowUp}{ArrowUp}');
+    expect(within(data()).getByRole('menuitem', { name: 'ChatGPT' })).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(team).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    await screen.findByRole('dialog', { name: 'Export to Team Sheets' });
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await userEvent.click(await within(data()).findByText('Export'));
+    const finance = await within(data()).findByRole('menuitem', { name: /Finance Sheets/ });
+    finance.focus();
+    await userEvent.keyboard(' ');
+    await screen.findByRole('dialog', { name: 'Export to Finance Sheets' });
+  });
+
+  test('on the Export button, ArrowDown or Enter focuses the first row and Escape closes the menu', async () => {
+    const t = setup(2);
+    t.view();
+    await rowsLoaded();
+    const summary = (await within(data()).findByText('Export')).closest('summary')!;
+    summary.focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(document.querySelector('details.dm-export')).toHaveAttribute('open');
+    expect(within(data()).getByRole('menuitem', { name: 'Claude' })).toHaveFocus();
+    summary.focus();
+    await userEvent.keyboard('{Escape}');
+    expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
+    summary.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(within(data()).getByRole('menuitem', { name: 'Claude' })).toHaveFocus();
+    await userEvent.keyboard('{Escape}');
+    expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
+  });
+
+  test('a press outside the menu closes it; a press inside does not', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const details = document.querySelector('details.dm-export')!;
+    await userEvent.click(await within(data()).findByText('Export'));
+    expect(details).toHaveAttribute('open');
+    fireEvent.pointerDown(within(data()).getByRole('menuitem', { name: 'Claude' }));
+    expect(details).toHaveAttribute('open');
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(details).not.toHaveAttribute('open'));
+  });
+
+  test('the window losing focus (a click in the host page) closes it', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const details = document.querySelector('details.dm-export')!;
+    await userEvent.click(await within(data()).findByText('Export'));
+    expect(details).toHaveAttribute('open');
+    fireEvent.blur(window);
+    await waitFor(() => expect(details).not.toHaveAttribute('open'));
+  });
+
+  test('the outside-press and blur handlers that were added are removed when the menu unmounts', async () => {
+    const docAdd = vi.spyOn(document, 'addEventListener');
+    const winAdd = vi.spyOn(window, 'addEventListener');
+    const t = setup(1);
+    const view = t.view();
+    await rowsLoaded();
+    const press = docAdd.mock.calls.find(([type]) => type === 'pointerdown')!;
+    const blur = winAdd.mock.calls.find(([type]) => type === 'blur')!;
+    expect(press[2]).toBe(true);
+    const docRemove = vi.spyOn(document, 'removeEventListener');
+    const winRemove = vi.spyOn(window, 'removeEventListener');
+    view.unmount();
+    expect(docRemove.mock.calls.some(([type, fn, opt]) => type === 'pointerdown' && fn === press[1] && opt === true)).toBe(true);
+    expect(winRemove.mock.calls.some(([type, fn]) => type === 'blur' && fn === blur[1])).toBe(true);
+    [docAdd, winAdd, docRemove, winRemove].forEach((s) => s.mockRestore());
+  });
 });
 
-test('a remembered report is offered as an update, which PUTs it and runs it', async () => {
-  const t = setup(1, [REPORT]);
-  await t.seeded;
-  t.view();
-  await rowsLoaded();
-  // seed the mock report the remembered entry points at
-  await t.ctx.owox.postJson('/api/reports', { title: 'Orders weekly', dataMartId: 'orders' });
-  await openMenu();
-  await userEvent.click(await within(data()).findByRole('menuitem', { name: /Update “Orders weekly”/ }));
-  await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 5000 });
-  const writes = t.calls.filter((c) => /^(PUT|POST \/api\/reports\/)/.test(c));
-  expect(writes).toEqual(['PUT /api/reports/mock-report-1', 'POST /api/reports/mock-report-1/run']);
+describe('the export dialog', () => {
+  const radios = (dialog: HTMLElement) => within(dialog).getAllByRole('radio').filter((r) => r.getAttribute('name') === 'dm-export-target');
+  const labelOf = (r: HTMLElement) => r.closest('label')!.textContent;
+
+  test('without a recent report: New spreadsheet, Existing spreadsheet, Update existing report, the first chosen, with a title field', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    expect(radios(dialog).map(labelOf)).toEqual(['New spreadsheet', 'Existing spreadsheet', 'Update existing report']);
+    expect(radios(dialog)[0]).toBeChecked();
+    expect((within(dialog).getByLabelText('Report title') as HTMLInputElement).value).toMatch(/^Orders · Data Explorer · \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    expect(within(dialog).queryByLabelText('Spreadsheet link')).toBeNull();
+  });
+
+  test('the title field shows for options 1 and 2, the link for option 2, and neither for option 3', async () => {
+    const t = setup(1, [REPORT]);
+    await t.seeded;
+    await makeReport(t, 'Orders weekly');
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await userEvent.click(within(dialog).getByLabelText('Existing spreadsheet'));
+    expect(within(dialog).getByLabelText('Report title')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Spreadsheet link')).toBeInTheDocument();
+    expect(within(dialog).getByText(/Share it with the destination’s account as Editor/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByLabelText('Update existing report'));
+    expect(within(dialog).queryByLabelText('Report title')).toBeNull();
+    expect(within(dialog).queryByLabelText('Spreadsheet link')).toBeNull();
+    expect(await within(dialog).findByLabelText(/Orders weekly/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByLabelText('New spreadsheet'));
+    expect(within(dialog).getByLabelText('Report title')).toBeInTheDocument();
+  });
+
+  test('a bad link is refused, a good one is used without creating a spreadsheet', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await userEvent.click(within(dialog).getByLabelText('Existing spreadsheet'));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(/Paste the link/);
+    await userEvent.type(within(dialog).getByLabelText('Spreadsheet link'), 'https://docs.google.com/spreadsheets/d/mine/edit#gid=5');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mine/edit#gid=5'), { timeout: 5000 });
+    expect(t.calls.some((c) => c.includes('google-sheets/documents'))).toBe(false);
+  });
+
+  test('an empty title is refused for a new spreadsheet', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await userEvent.clear(within(dialog).getByLabelText('Report title'));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Give the report a title.');
+  });
+
+  test('a recently used report puts Update existing report first, chosen, with the report preselected and a Recently used badge on it alone', async () => {
+    const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(3) }, { reportId: 'mock-report-2', usedAt: daysAgo(1) }, { reportId: 'mock-report-3', usedAt: daysAgo(20) }, { reportId: 'mock-report-4' }]);
+    await t.seeded;
+    await makeReport(t, 'Older');
+    await makeReport(t, 'Newest');
+    await makeReport(t, 'Oldest recent');
+    await makeReport(t, 'Never used');
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    expect(radios(dialog).map(labelOf)).toEqual(['Update existing report', 'New spreadsheet', 'Existing spreadsheet']);
+    await waitFor(() => expect(within(dialog).getAllByRole('radio').filter((r) => r.getAttribute('name') === 'dm-export-report')).toHaveLength(4));
+    const reports = within(dialog).getAllByRole('radio').filter((r) => r.getAttribute('name') === 'dm-export-report');
+    // Most recent first, never used last.
+    expect(reports.map((r) => r.closest('label')!.textContent)).toEqual(['NewestRecently used', 'Older', 'Oldest recent', 'Never used']);
+    expect(radios(dialog)[0]).toBeChecked();
+    expect(reports[0]).toBeChecked();
+    expect(within(dialog).getAllByText('Recently used')).toHaveLength(1);
+    expect(within(dialog).queryByLabelText('Report title')).toBeNull();
+  });
+
+  test('exporting the preselected report updates it: PUT, run, the sheet opens, and usedAt is stored', async () => {
+    const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(2) }]);
+    await t.seeded;
+    await makeReport(t, 'Orders weekly');
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await waitFor(() => expect(within(dialog).getByLabelText(/Orders weekly/)).toBeChecked());
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 5000 });
+    expect(t.calls.filter((c) => /^(PUT|POST \/api\/reports\/)/.test(c))).toEqual(['PUT /api/reports/mock-report-1', 'POST /api/reports/mock-report-1/run']);
+    const doc = (await t.ctx.collections<{ reports: StoredReport[] }>('exports').get('orders'))!.document.reports;
+    expect(doc).toHaveLength(1);
+    expect(Date.now() - Date.parse(doc[0]!.usedAt!)).toBeLessThan(60_000);
+  });
+
+  test('a report made by an export is offered, chosen and marked recent in the next dialog', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await exportNew();
+    await waitFor(() => expect(t.open).toHaveBeenCalled(), { timeout: 5000 });
+    const dialog = await openDialog();
+    expect(await within(dialog).findByRole('radio', { name: /Orders · Data Explorer · .*Recently used/ })).toBeChecked();
+    expect(radios(dialog)[0]).toBeChecked();
+  });
+
+  test('a usedAt in the future is not recent', async () => {
+    const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(-3) }]);
+    await t.seeded;
+    await makeReport(t, 'Orders weekly');
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await waitFor(() => expect(within(dialog).queryByText('Loading reports…')).toBeNull());
+    expect(radios(dialog).map(labelOf)[0]).toBe('New spreadsheet');
+  });
+
+  test('when the remembered document is already known the first paint has the final order', async () => {
+    const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(1) }]);
+    await t.seeded;
+    await makeReport(t, 'Orders weekly');
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    // The first live read means the document has been read.
+    await waitFor(() => expect(t.calls).toContain('GET /api/reports/mock-report-1'));
+    await userEvent.click(within(data()).getByRole('menuitem', { name: /Team Sheets/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Export to Team Sheets' });
+    expect(radios(dialog).map(labelOf)).toEqual(['Update existing report', 'New spreadsheet', 'Existing spreadsheet']);
+    expect(radios(dialog)[0]).toBeChecked();
+  });
+
+  test('an export started from the untouched dialog does not move it: same option, order and title field while it runs', async () => {
+    const t = setup(1);
+    const real = t.ctx.owox.postJson;
+    (t.ctx.owox as { postJson: Ctx['owox']['postJson'] }).postJson = ((path: string, body: unknown) => (path.endsWith('/run') ? (t.calls.push(`POST ${path}`), new Promise(() => {})) : real(path, body))) as Ctx['owox']['postJson'];
+    t.view();
+    await rowsLoaded();
+    const dialog = await exportNew();
+    await waitFor(() => expect(t.calls).toContain('POST /api/reports/mock-report-1/run'));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(radios(dialog).map(labelOf)).toEqual(['New spreadsheet', 'Existing spreadsheet', 'Update existing report']);
+    expect(radios(dialog)[0]).toBeChecked();
+    expect(within(dialog).getByLabelText('Report title')).toBeInTheDocument();
+  });
+
+  test('focus: the checked radio takes it on open, Tab stays inside, and Escape returns it to the Export button', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await waitFor(() => expect(radios(dialog)[0]).toHaveFocus());
+    // Native tabbing: the three radios are one stop, so the cycle is radio, Cancel, Export, title, radio.
+    const stop = async () => { await userEvent.tab(); return document.activeElement; };
+    expect(await stop()).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(await stop()).toBe(within(dialog).getByRole('button', { name: 'Export' }));
+    expect(await stop()).toBe(within(dialog).getByLabelText('Report title'));
+    expect(await stop()).toBe(radios(dialog)[0]);
+    await userEvent.tab({ shift: true });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.querySelector('details.dm-export summary')).toHaveFocus();
+  });
+
+  test('when an untouched option 3 moves back, the focus goes to the newly checked radio', async () => {
+    const t = setup(2, [{ reportId: 'mock-report-1', usedAt: daysAgo(1) }]);
+    await t.seeded;
+    await makeReport(t, 'On finance', 'd-sheets-finance');
+    const real = t.ctx.owox.getJson;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    t.view();
+    await rowsLoaded();
+    (t.ctx.owox as { getJson: Ctx['owox']['getJson'] }).getJson = (async (path: string, q?: Record<string, string>) => {
+      if (path === '/api/reports/mock-report-1') await gate;
+      return real(path, q);
+    }) as Ctx['owox']['getJson'];
+    const dialog = await openDialog();
+    await waitFor(() => expect(radios(dialog).map(labelOf)[0]).toBe('Update existing report'));
+    await waitFor(() => expect(radios(dialog)[0]).toHaveFocus());
+    act(() => release());
+    await waitFor(() => expect(radios(dialog).map(labelOf)[0]).toBe('New spreadsheet'));
+    expect(within(dialog).getByLabelText('New spreadsheet')).toBeChecked();
+    expect(within(dialog).getByLabelText('New spreadsheet')).toHaveFocus();
+  });
+
+  test('Shift+Tab with the focus on the page body pulls it into the dialog, onto its last stop', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await waitFor(() => expect(radios(dialog)[0]).toHaveFocus());
+    (document.activeElement as HTMLElement).blur();
+    await userEvent.tab({ shift: true });
+    expect(within(dialog).getByRole('button', { name: 'Export' })).toHaveFocus();
+  });
+
+  test('Tab with the focus on the page body pulls it back into the dialog', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await waitFor(() => expect(radios(dialog)[0]).toHaveFocus());
+    (document.activeElement as HTMLElement).blur();
+    expect(document.body).toHaveFocus();
+    await userEvent.tab();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+
+  test('Cancel returns focus to the Export button too', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(document.querySelector('details.dm-export summary')).toHaveFocus();
+  });
+
+  test.each([[59, true], [61, false]])('the 60 day boundary: used %i days ago, recent is %s', async (days, recent) => {
+    const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(days) }]);
+    await t.seeded;
+    await makeReport(t, 'Orders weekly');
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await waitFor(() => expect(within(dialog).queryByText('Loading reports…')).toBeNull());
+    expect(radios(dialog).map(labelOf)[0]).toBe(recent ? 'Update existing report' : 'New spreadsheet');
+    if (recent) expect(await within(dialog).findAllByText('Recently used')).toHaveLength(1);
+    else expect(within(dialog).queryAllByText('Recently used')).toHaveLength(0);
+  });
+
+  test('reports of another destination are not listed, and a recent one there moves option 3 back to last when the reads finish', async () => {
+    const t = setup(2, [{ reportId: 'mock-report-1', usedAt: daysAgo(1) }, { reportId: 'mock-report-2', usedAt: daysAgo(70) }]);
+    await t.seeded;
+    await makeReport(t, 'On finance', 'd-sheets-finance');
+    await makeReport(t, 'On team');
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    // The recent report is on the other destination, so this one ends up with a new spreadsheet.
+    await waitFor(() => expect(radios(dialog).map(labelOf)).toEqual(['New spreadsheet', 'Existing spreadsheet', 'Update existing report']));
+    expect(radios(dialog)[0]).toBeChecked();
+    await userEvent.click(within(dialog).getByLabelText('Update existing report'));
+    expect(await within(dialog).findByLabelText(/On team/)).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText(/On finance/)).toBeNull();
+    // Its report is not marked recent: it is only the recent one that gets the badge.
+    expect(within(dialog).queryByText('Recently used')).toBeNull();
+  });
+
+  test.each([
+    [false, ['New spreadsheet', 'Existing spreadsheet', 'Update existing report'], [true, false, false]],
+    [true, ['Update existing report', 'New spreadsheet', 'Existing spreadsheet'], [false, false, true]],
+  ])('option 3 starts first and chosen before the reads return, then the recent report turns out to be elsewhere; member touched it: %s', async (touch, labels, checked) => {
+    const t = setup(2, [{ reportId: 'mock-report-1', usedAt: daysAgo(1) }]);
+    await t.seeded;
+    await makeReport(t, 'On finance', 'd-sheets-finance');
+    const real = t.ctx.owox.getJson;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    t.view();
+    await rowsLoaded();
+    (t.ctx.owox as { getJson: Ctx['owox']['getJson'] }).getJson = (async (path: string, q?: Record<string, string>) => {
+      if (path === '/api/reports/mock-report-1') await gate;
+      return real(path, q);
+    }) as Ctx['owox']['getJson'];
+    const dialog = await openDialog();
+    await waitFor(() => expect(radios(dialog).map(labelOf)[0]).toBe('Update existing report'));
+    expect(radios(dialog)[0]).toBeChecked();
+    // Touching means clicking any radio; the member here picks Existing spreadsheet.
+    if (touch) await userEvent.click(within(dialog).getByLabelText('Existing spreadsheet'));
+    act(() => release());
+    await waitFor(() => expect(within(dialog).queryByText('Loading reports…')).toBeNull());
+    await waitFor(() => expect(radios(dialog).map(labelOf)).toEqual(labels));
+    expect(radios(dialog).map((r) => (r as HTMLInputElement).checked)).toEqual(checked);
+  });
+
+  test('while the reads are pending option 3 shows a skeleton with "Loading reports…" and nothing to choose; each report appears as its own read returns', async () => {
+    const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(1) }, { reportId: 'mock-report-2', usedAt: daysAgo(2) }]);
+    await t.seeded;
+    await makeReport(t, 'First');
+    await makeReport(t, 'Second');
+    t.view();
+    await rowsLoaded();
+    const real = t.ctx.owox.getJson;
+    const gates: Record<string, () => void> = {};
+    (t.ctx.owox as { getJson: Ctx['owox']['getJson'] }).getJson = (async (path: string, q?: Record<string, string>) => {
+      if (/^\/api\/reports\/mock-report-[12]$/.test(path)) await new Promise<void>((r) => { gates[path] = r; });
+      return real(path, q);
+    }) as Ctx['owox']['getJson'];
+    const dialog = await openDialog();
+    expect(await within(dialog).findByText('Loading reports…')).toBeInTheDocument();
+    expect(dialog.querySelectorAll('[data-skeleton]').length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByRole('radio').filter((r) => r.getAttribute('name') === 'dm-export-report')).toHaveLength(0);
+    // Exporting with nothing to choose says so and sends nothing.
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Pick a report to update.');
+    expect(t.calls.some((c) => c.startsWith('PUT'))).toBe(false);
+    await waitFor(() => expect(Object.keys(gates)).toHaveLength(2));
+    act(() => gates['/api/reports/mock-report-2']!());
+    expect(await within(dialog).findByLabelText(/Second/)).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText(/First/)).toBeNull();
+    expect(within(dialog).getByText('Loading reports…')).toBeInTheDocument();
+    act(() => gates['/api/reports/mock-report-1']!());
+    expect(await within(dialog).findByLabelText(/First/)).toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).queryByText('Loading reports…')).toBeNull());
+  });
+
+  test('a failed read shows "Couldn’t load" with Retry, which reads that report again', async () => {
+    const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(1) }]);
+    await t.seeded;
+    await makeReport(t, 'Orders weekly');
+    t.view();
+    await rowsLoaded();
+    const real = t.ctx.owox.getJson;
+    let fail = true;
+    (t.ctx.owox as { getJson: Ctx['owox']['getJson'] }).getJson = (async (path: string, q?: Record<string, string>) => {
+      if (path === '/api/reports/mock-report-1' && fail) throw new Error('network down');
+      return real(path, q);
+    }) as Ctx['owox']['getJson'];
+    const dialog = await openDialog();
+    // A failed read counts as finished and not here: the dialog falls back to a new spreadsheet, and the failed row waits in option 3.
+    await waitFor(() => expect(radios(dialog)[0]).toBeChecked());
+    await waitFor(() => expect(radios(dialog).map(labelOf)[0]).toBe('New spreadsheet'));
+    await userEvent.click(within(dialog).getByLabelText('Update existing report'));
+    expect(await within(dialog).findByText('Couldn’t load')).toBeInTheDocument();
+    fail = false;
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Retry' }));
+    expect(await within(dialog).findByLabelText(/Orders weekly/)).toBeInTheDocument();
+    expect(within(dialog).queryByText('Couldn’t load')).toBeNull();
+  });
+
+  test('a report OWOX no longer has (404) is dropped from the list and the stored document', async () => {
+    const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(1) }, { reportId: 'mock-report-2', usedAt: daysAgo(2) }]);
+    await t.seeded;
+    await makeReport(t, 'Still here');
+    t.view();
+    await rowsLoaded();
+    // mock-report-2 does not exist.
+    const dialog = await openDialog();
+    expect(await within(dialog).findByLabelText(/Still here/)).toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).queryByText('Loading reports…')).toBeNull());
+    await waitFor(async () => expect((await t.ctx.collections<{ reports: StoredReport[] }>('exports').get('orders'))?.document.reports.map((r) => r.reportId)).toEqual(['mock-report-1']));
+  });
+
+  test('when the only remembered report is gone the dialog stops loading and option 3 says there is nothing to update', async () => {
+    const t = setup(1, [REPORT]);
+    await t.seeded;
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await waitFor(() => expect(within(dialog).queryByText('Loading reports…')).toBeNull());
+    expect(radios(dialog)[0]).toBeChecked();
+    expect(radios(dialog)[2]).toBeDisabled();
+    await waitFor(async () => expect((await t.ctx.collections<{ reports: StoredReport[] }>('exports').get('orders'))?.document.reports).toEqual([]));
+  });
+
+  test('a stored read that works while the live load failed still ends: the reads are started again', async () => {
+    const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(1) }]);
+    await t.seeded;
+    await makeReport(t, 'Orders weekly');
+    const col = t.ctx.collections<{ reports: StoredReport[] }>('exports');
+    const realGet = col.get.bind(col);
+    let first = true;
+    // The first document read (the one the live load makes) fails; the next ones work.
+    // Only the exports collection is wrapped, and only until the test ends.
+    const realCollections = t.ctx.collections;
+    const spy = vi.spyOn(t.ctx, 'collections').mockImplementation(((name: string) => (name === 'exports' ? { ...col, get: async (id: string) => { if (first) { first = false; throw new Error('storage hiccup'); } return realGet(id); } } : realCollections(name))) as never);
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    expect(await within(dialog).findByLabelText(/Orders weekly/, undefined, { timeout: 4000 })).toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).queryByText('Loading reports…')).toBeNull());
+    spy.mockRestore();
+  });
+
+  test('the live reads start on the first opening of the menu, run once, and are not repeated by later openings', async () => {
+    const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(100) }]);
+    await t.seeded;
+    await makeReport(t, 'Orders weekly');
+    t.view();
+    await rowsLoaded();
+    expect(t.calls.filter((c) => c === 'GET /api/reports/mock-report-1')).toHaveLength(0);
+    const summary = (await within(data()).findByText('Export')).closest('summary')!;
+    await userEvent.click(summary);
+    await waitFor(() => expect(t.calls.filter((c) => c === 'GET /api/reports/mock-report-1')).toHaveLength(1));
+    await userEvent.click(summary);
+    await userEvent.click(summary);
+    await userEvent.click(within(data()).getByRole('menuitem', { name: /Team Sheets/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Export to Team Sheets' });
+    await within(dialog).findByLabelText('Update existing report');
+    expect(t.calls.filter((c) => c === 'GET /api/reports/mock-report-1')).toHaveLength(1);
+  });
+
+  test('a report with an unrecognised spreadsheet is listed but disabled, and cannot be updated', async () => {
+    const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(1) }]);
+    await t.seeded;
+    await makeReport(t, 'Odd one', 'd-sheets-team', '../../url?q=https://evil.example');
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await userEvent.click(within(dialog).getByLabelText('Update existing report'));
+    const row = await within(dialog).findByLabelText(/Odd one/);
+    expect(row).toBeDisabled();
+    expect(within(dialog).getByText('Unrecognised spreadsheet')).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Pick a report to update.');
+    expect(t.open).not.toHaveBeenCalled();
+    expect(t.calls.some((c) => c.startsWith('PUT'))).toBe(false);
+  });
+
+  test('updating a report OWOX no longer has shows the error toast, drops the report and leaves the dialog open', async () => {
+    const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(1) }]);
+    await t.seeded;
+    await makeReport(t, 'Orders weekly');
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await waitFor(() => expect(within(dialog).getByLabelText(/Orders weekly/)).toBeChecked());
+    const realPut = t.ctx.owox.putJson;
+    (t.ctx.owox as { putJson: Ctx['owox']['putJson'] }).putJson = (async () => { throw Object.assign(new Error('Not found'), { payload: { status: 404 } }); }) as Ctx['owox']['putJson'];
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    const toast = (await screen.findByText('This report no longer exists in OWOX')).closest('[data-tone]');
+    expect(toast).toHaveAttribute('data-tone', 'error');
+    expect(screen.getByRole('dialog', { name: 'Export to Team Sheets' })).toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).queryByLabelText(/Orders weekly/)).toBeNull());
+    await waitFor(async () => expect((await t.ctx.collections<{ reports: StoredReport[] }>('exports').get('orders'))?.document.reports).toEqual([]));
+    (t.ctx.owox as { putJson: Ctx['owox']['putJson'] }).putJson = realPut;
+  });
+
+  test('a run that outlasts the wait is an info toast, "Still running"', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const t = setup(1, [], 10 * 60_000);
+      t.view();
+      await rowsLoaded();
+      await exportNew();
+      await waitFor(() => expect(t.calls).toContain('POST /api/reports/mock-report-1/run'));
+      await act(async () => { await vi.advanceTimersByTimeAsync(POLL_TIMEOUT_MS + 3 * POLL_INTERVAL_MS); });
+      await waitFor(() => expect(document.querySelector('[data-tone="info"]')).toHaveTextContent(/Still running/));
+    } finally { vi.useRealTimers(); }
+  });
+
+  test('a failed run is an error toast', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const real = t.ctx.owox.postJson;
+    (t.ctx.owox as { postJson: Ctx['owox']['postJson'] }).postJson = ((path: string, body: unknown) => (path.endsWith('/run') ? Promise.reject(new Error('run refused')) : real(path, body))) as Ctx['owox']['postJson'];
+    await exportNew();
+    const toast = (await screen.findByText(/The run could not be followed: run refused/)).closest('[data-tone]');
+    expect(toast).toHaveAttribute('data-tone', 'error');
+  });
+
+  test('Enter in the title exports, and does nothing while an export is running', async () => {
+    const t = setup(1, [REPORT]);
+    await t.seeded;
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    const title = within(dialog).getByLabelText('Report title');
+    await userEvent.type(title, '{Enter}');
+    await waitFor(() => expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1), { timeout: 5000 });
+    await userEvent.type(title, '{Enter}');
+    await new Promise((r) => setTimeout(r, 200));
+    expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1);
+  });
 });
 
-test('a remembered report OWOX no longer has is not offered', async () => {
-  const t = setup(1, [REPORT]);
-  await t.seeded;
-  t.view();
-  await rowsLoaded();
-  await openMenu();
-  await waitFor(() => expect(within(data()).queryByRole('menuitem', { name: /Update/ })).toBeNull());
-  expect(within(data()).getByRole('menuitem', { name: /New report/ })).toBeInTheDocument();
-  await waitFor(async () => expect((await t.ctx.collections<{ reports: ExportedReport[] }>('exports').get('orders'))?.document.reports).toEqual([]));
-});
-
-test('New report… opens the dialog; a bad link is refused, a good one is used without creating a spreadsheet', async () => {
-  const t = setup(1, [REPORT]);
-  await t.seeded;
-  t.view();
-  await rowsLoaded();
-  await t.ctx.owox.postJson('/api/reports', { title: 'x', dataMartId: 'orders' });
-  await openMenu();
-  await userEvent.click(await within(data()).findByRole('menuitem', { name: /New report/ }));
-  const dialog = await screen.findByRole('dialog', { name: 'New report' });
-  expect((within(dialog).getByLabelText('Report title') as HTMLInputElement).value).toMatch(/^Orders · Data Explorer · \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
-  await userEvent.click(within(dialog).getByLabelText('Existing spreadsheet'));
-  expect(within(dialog).getByText(/Share it with the destination’s account as Editor/)).toBeInTheDocument();
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
-  expect(within(dialog).getByRole('alert')).toHaveTextContent(/Paste the link/);
-  await userEvent.type(within(dialog).getByLabelText('Spreadsheet link'), 'https://docs.google.com/spreadsheets/d/mine/edit#gid=5');
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
-  await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mine/edit#gid=5'), { timeout: 5000 });
-  expect(t.calls.some((c) => c.includes('google-sheets/documents'))).toBe(false);
-});
-
-test('when the spreadsheet cannot be created the New report dialog opens with the message', async () => {
+test('when the spreadsheet cannot be created the dialog opens with the message', async () => {
   const t = setup(1);
   const real = t.ctx.owox.postJson;
   (t.ctx.owox as { postJson: Ctx['owox']['postJson'] }).postJson = ((path: string, body: unknown) => (path.endsWith('/google-sheets/documents') ? Promise.reject(new Error('No Drive folder is configured')) : real(path, body))) as Ctx['owox']['postJson'];
@@ -159,16 +695,14 @@ test('when the spreadsheet cannot be created the New report dialog opens with th
   expect(t.calls.some((c) => c === 'POST /api/reports')).toBe(false);
 });
 
-test('a failure after the report exists closes the dialog and reports in the header, so a retry cannot make a second report', async () => {
+test('a failure after the report exists closes the dialog and reports in a toast, so a retry cannot make a second report', async () => {
   const t = setup(1, [REPORT]);
   await t.seeded;
   t.view();
   await rowsLoaded();
   const real = t.ctx.owox.postJson;
   (t.ctx.owox as { postJson: Ctx['owox']['postJson'] }).postJson = ((path: string, body: unknown) => (path.endsWith('/run') ? Promise.reject(new Error('run refused')) : real(path, body))) as Ctx['owox']['postJson'];
-  await openMenu();
-  await userEvent.click(await within(data()).findByRole('menuitem', { name: /New report/ }));
-  const dialog = await screen.findByRole('dialog', { name: 'New report' });
+  const dialog = await openDialog();
   await userEvent.click(within(dialog).getByLabelText('Existing spreadsheet'));
   await userEvent.type(within(dialog).getByLabelText('Spreadsheet link'), 'https://docs.google.com/spreadsheets/d/e/2PACX-abc/pubhtml');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
@@ -179,19 +713,6 @@ test('a failure after the report exists closes the dialog and reports in the hea
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(await screen.findByText(/The run could not be followed: run refused/)).toBeInTheDocument();
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
-});
-
-test('a remembered report with an unrecognised target is not updated and nothing is opened', async () => {
-  const t = setup(1, [{ ...REPORT, spreadsheetId: '../../url?q=https://evil.example' }]);
-  await t.seeded;
-  t.view();
-  await rowsLoaded();
-  await t.ctx.owox.postJson('/api/reports', { title: 'x', dataMartId: 'orders' });
-  await openMenu();
-  await userEvent.click(await within(data()).findByRole('menuitem', { name: /Update/ }));
-  expect(await screen.findByText(/unrecognised spreadsheet/)).toBeInTheDocument();
-  expect(t.open).not.toHaveBeenCalled();
-  expect(t.calls.some((c) => c.startsWith('PUT'))).toBe(false);
 });
 
 const martCard = (title: string) => within(document.getElementById('band-marts')!).getByText(title).closest('article')!;
@@ -213,12 +734,6 @@ const toMart = async (title: string) => {
   if (!mainNow()) fireEvent.click(martCard(main));
   await waitFor(() => expect(mainNow()).toBe(true));
 };
-/** Export, then the one destination: the first level lists destinations and its reports open in a flyout. */
-const openMenu = async (destination: RegExp | string = /Team Sheets/) => {
-  await userEvent.click(await within(data()).findByText('Export'));
-  await userEvent.click(await within(data()).findByRole('menuitem', { name: destination }));
-};
-
 
 test('leaving the mart and coming back keeps the export busy: no second export, and the outcome opens the sheet', async () => {
   const t = setup(1, [], 8000); // a run long enough to still be going after two mart changes on a slow machine
@@ -270,9 +785,7 @@ async function newReportFailing(fail: () => Error) {
     if (path === '/api/reports' && !failed) { failed = true; t.calls.push(`POST ${path}`); return Promise.reject(fail()); }
     return real(path, body);
   }) as Ctx['owox']['postJson'];
-  await openMenu();
-  await userEvent.click(await within(data()).findByRole('menuitem', { name: /New report/ }));
-  const dialog = await screen.findByRole('dialog', { name: 'New report' });
+  const dialog = await openDialog();
   await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
   return { t, dialog };
 }
@@ -305,31 +818,6 @@ test('a timeout on the report step closes the dialog and warns that the report m
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
 });
 
-test('Update stays disabled until the live check of the remembered reports has finished, so no stale title is sent', async () => {
-  const t = setup(1, [REPORT]);
-  await t.seeded;
-  t.view();
-  await rowsLoaded();
-  await t.ctx.owox.postJson('/api/reports', { title: 'Renamed in OWOX', dataMartId: 'orders' });
-  const real = t.ctx.owox.getJson;
-  let release: () => void = () => {};
-  const gate = new Promise<void>((r) => { release = r; });
-  (t.ctx.owox as { getJson: Ctx['owox']['getJson'] }).getJson = (async (path: string, q?: Record<string, string>) => {
-    if (path === '/api/reports/mock-report-1') await gate;
-    return real(path, q);
-  }) as Ctx['owox']['getJson'];
-  await openMenu();
-  const update = await within(data()).findByRole('menuitem', { name: /Update/ });
-  expect(update).toBeDisabled();
-  expect(update).toHaveTextContent('Checking…');
-  await userEvent.click(update);
-  expect(t.calls.some((c) => c.startsWith('PUT'))).toBe(false);
-  release();
-  await waitFor(() => expect(within(data()).getByRole('menuitem', { name: /Update “Renamed in OWOX”/ })).toBeEnabled());
-  await userEvent.click(within(data()).getByRole('menuitem', { name: /Update “Renamed in OWOX”/ }));
-  await waitFor(() => expect(t.calls).toContain('PUT /api/reports/mock-report-1'), { timeout: 5000 });
-});
-
 test('the spreadsheet a failed report step left is reused even after the menu was remounted', async () => {
   const { t, dialog } = await newReportFailing(() => new Error('report refused'));
   await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('report refused'));
@@ -342,18 +830,6 @@ test('the spreadsheet a failed report step left is reused even after the menu wa
   expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1);
 }, 15000);
 
-test('Update is disabled from the first render of an opened menu, before any toggle handler ran', async () => {
-  const t = setup(1, [REPORT]);
-  await t.seeded;
-  t.view();
-  await rowsLoaded();
-  await t.ctx.owox.postJson('/api/reports', { title: 'Orders weekly', dataMartId: 'orders' });
-  await within(data()).findByText('Export');
-  // The menu is still closed (no toggle ran); its flyout, opened on the destination row, is disabled from its first render.
-  fireEvent.mouseEnter(within(data()).getByRole('menuitem', { name: /Team Sheets/, hidden: true }).closest('.dm-cascade-row')!);
-  expect(within(data()).getByRole('menuitem', { name: /Update/, hidden: true })).toBeDisabled();
-});
-
 test('a spreadsheet left behind on one destination is not reused for another destination', async () => {
   const t = setup(2);
   const real = t.ctx.owox.postJson;
@@ -364,18 +840,15 @@ test('a spreadsheet left behind on one destination is not reused for another des
   }) as Ctx['owox']['postJson'];
   t.view();
   await rowsLoaded();
-  const openNew = async (dest: RegExp) => {
-    await userEvent.click(await within(data()).findByText('Export'));
-    await userEvent.click(await within(data()).findByRole('menuitem', { name: dest }));
-    await userEvent.click(await within(data()).findByRole('menuitem', { name: /New report/ }));
-    const dialog = await screen.findByRole('dialog', { name: 'New report' });
+  const openNew = async (dest: 'Team Sheets' | 'Finance Sheets') => {
+    const dialog = await openDialog(new RegExp(dest), `Export to ${dest}`);
     await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
     return dialog;
   };
-  const dialog = await openNew(/Team Sheets/);
+  const dialog = await openNew('Team Sheets');
   await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('report refused'));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-  await openNew(/Finance Sheets/);
+  await openNew('Finance Sheets');
   await waitFor(() => expect(t.open).toHaveBeenCalled(), { timeout: 6000 });
   expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toEqual([
     'POST /api/data-destinations/d-sheets-team/google-sheets/documents',
@@ -383,133 +856,19 @@ test('a spreadsheet left behind on one destination is not reused for another des
   ]);
 }, 15000);
 
-describe('the cascading menu', () => {
-  test('each destination row is the Google Sheets icon and its title, with no "Google Sheets" text label', async () => {
-    const t = setup(2);
-    t.view();
-    await rowsLoaded();
-    await userEvent.click(await within(data()).findByText('Export'));
-    const rows = (await within(data()).findAllByRole('menuitem')).filter((r) => !r.hasAttribute('data-link'));
-    expect(rows.map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Team Sheets', 'Finance Sheets', 'Claude', 'ChatGPT', 'Copy SQL']);
-    for (const r of rows.slice(1, 3)) expect(r.querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull();
-    expect(within(data()).queryByText('Google Sheets')).toBeNull();
-    // the Export button itself does not
-    expect((await within(data()).findByText('Export')).closest('summary')!.querySelector('svg[viewBox="0 0 48 48"]')).toBeNull();
-  });
-
-  test('hovering a destination opens its flyout beside it, with New report', async () => {
-    const t = setup(2);
-    t.view();
-    await rowsLoaded();
-    await userEvent.click(await within(data()).findByText('Export'));
-    expect(within(data()).queryByRole('menu', { name: 'Team Sheets' })).toBeNull();
-    await userEvent.hover(await within(data()).findByRole('menuitem', { name: /Team Sheets/ }));
-    const sub = await within(data()).findByRole('menu', { name: 'Team Sheets' });
-    expect(sub.closest('.dm-cascade-row')).toBe(within(data()).getByRole('menuitem', { name: /Team Sheets/ }).closest('.dm-cascade-row'));
-    expect(within(sub).getByRole('menuitem', { name: /New report/ })).toBeInTheDocument();
-    await userEvent.hover(within(data()).getByRole('menuitem', { name: /Finance Sheets/ }));
-    expect(within(data()).queryByRole('menu', { name: 'Team Sheets' })).toBeNull();
-    expect(within(data()).getByRole('menu', { name: 'Finance Sheets' })).toBeInTheDocument();
-  });
-
-  test('with one destination and remembered reports the first level still lists that destination, and its flyout holds the update', async () => {
-    const t = setup(1, [REPORT]);
-    await t.seeded;
-    t.view();
-    await rowsLoaded();
-    await t.ctx.owox.postJson('/api/reports', { title: 'Orders weekly', dataMartId: 'orders' });
-    await userEvent.click(await within(data()).findByText('Export'));
-    const first = await within(data()).findByRole('menuitem', { name: /Team Sheets/ });
-    expect(within(data()).queryByRole('menuitem', { name: /Update/ })).toBeNull();
-    await userEvent.click(first);
-    expect(await within(data()).findByRole('menuitem', { name: /Update “Orders weekly”/ })).toBeInTheDocument();
-  });
-
-  test('the flyout goes to the left when there is no room on the right', async () => {
-    const t = setup(2);
-    t.view();
-    await rowsLoaded();
-    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-      const w = this.classList.contains('dm-cascade-sub') ? 250 : 200;
-      const left = this.classList.contains('dm-cascade-row') ? 1000 : 0;
-      return { left, right: left + w, width: w, top: 0, bottom: 0, height: 0, x: left, y: 0, toJSON: () => ({}) } as DOMRect;
-    });
-    try {
-      await userEvent.click(await within(data()).findByText('Export'));
-      await userEvent.hover(await within(data()).findByRole('menuitem', { name: /Team Sheets/ }));
-      const sub = await within(data()).findByRole('menu', { name: 'Team Sheets' });
-      await waitFor(() => expect(sub).toHaveClass('dm-cascade-left'));
-    } finally { rect.mockRestore(); }
-  });
-
-  test('keyboard: arrows walk a level, ArrowRight or Enter opens the flyout, Escape closes a level at a time', async () => {
-    const t = setup(2);
-    t.view();
-    await rowsLoaded();
-    await userEvent.click(await within(data()).findByText('Export'));
-    const team = await within(data()).findByRole('menuitem', { name: /Team Sheets/ });
-    team.focus();
-    await userEvent.keyboard('{ArrowDown}');
-    expect(within(data()).getByRole('menuitem', { name: /Finance Sheets/ })).toHaveFocus();
-    await userEvent.keyboard('{ArrowUp}{ArrowRight}');
-    const sub = await within(data()).findByRole('menu', { name: 'Team Sheets' });
-    await waitFor(() => expect(within(sub).getByRole('menuitem', { name: /New report/ })).toHaveFocus());
-    await userEvent.keyboard('{Escape}');
-    expect(within(data()).queryByRole('menu', { name: 'Team Sheets' })).toBeNull();
-    expect(within(data()).getByRole('menuitem', { name: /Team Sheets/ })).toHaveFocus();
-    await userEvent.keyboard('{Enter}');
-    await within(data()).findByRole('menu', { name: 'Team Sheets' });
-    await userEvent.keyboard('{ArrowLeft}');
-    expect(within(data()).queryByRole('menu', { name: 'Team Sheets' })).toBeNull();
-    await userEvent.keyboard('{Escape}');
-    expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
-  });
-
-  test('on the Export button, ArrowDown or Enter focuses the first row and Escape closes the menu', async () => {
-    const t = setup(2);
-    t.view();
-    await rowsLoaded();
-    const summary = (await within(data()).findByText('Export')).closest('summary')!;
-    summary.focus();
-    await userEvent.keyboard('{ArrowDown}');
-    expect(document.querySelector('details.dm-export')).toHaveAttribute('open');
-    expect(within(data()).getByRole('menuitem', { name: /Copy to clipboard/ })).toHaveFocus();
-    summary.focus();
-    await userEvent.keyboard('{Escape}');
-    expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
-    summary.focus();
-    await userEvent.keyboard('{Enter}');
-    expect(within(data()).getByRole('menuitem', { name: /Copy to clipboard/ })).toHaveFocus();
-  });
-
-  test('ArrowRight on a row whose flyout the pointer already opened moves focus into it', async () => {
-    const t = setup(2);
-    t.view();
-    await rowsLoaded();
-    await userEvent.click(await within(data()).findByText('Export'));
-    const team = await within(data()).findByRole('menuitem', { name: /Team Sheets/ });
-    await userEvent.hover(team);
-    const sub = await within(data()).findByRole('menu', { name: 'Team Sheets' });
-    expect(sub.contains(document.activeElement)).toBe(false);
-    team.focus();
-    await userEvent.keyboard('{ArrowRight}');
-    await waitFor(() => expect(within(sub).getByRole('menuitem', { name: /New report/ })).toHaveFocus());
-  });
-});
-
 describe('the AI group', () => {
   const setClipboard = (writeText: unknown) => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: writeText ? { writeText } : undefined });
   afterEach(() => { setClipboard(undefined); Object.defineProperty(document, 'execCommand', { configurable: true, value: undefined }); });
 
-  test('Claude and ChatGPT follow the Google Sheets destinations, each under its own icon', async () => {
+  test('Claude and ChatGPT come first, each under its own icon', async () => {
     const t = setup(1);
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     const items = (await within(data()).findAllByRole('menuitem')).filter((r) => !r.hasAttribute('data-link'));
-    expect(items.map((i) => i.textContent)).toEqual(['Copy to clipboard', 'Team Sheets', 'Claude', 'ChatGPT', 'Copy SQL']);
-    expect(items[2]!.querySelector('svg path[fill="#D97757"]')).not.toBeNull();
-    expect(items[3]!.querySelector('svg')).not.toBeNull();
+    expect(items.map((i) => i.textContent)).toEqual(['Claude', 'ChatGPT', 'Team Sheets', 'Copy to clipboard', 'Copy SQL']);
+    expect(items[0]!.querySelector('svg path[fill="#D97757"]')).not.toBeNull();
+    expect(items[1]!.querySelector('svg')).not.toBeNull();
   });
 
   test.each([
@@ -672,14 +1031,16 @@ describe('Copy to clipboard', () => {
     expect(await screen.findByRole('menuitem', { name: 'Copy to clipboard' })).toBeEnabled();
   });
 
-  test('it is the first group, above the destinations and the assistants, with the copy icon', async () => {
+  test('it follows the destinations, with the copy icon, and Copy SQL comes right after it', async () => {
     const t = setup(1);
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     const item = await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' });
     expect(item.querySelector('svg.lucide-copy')).not.toBeNull();
-    expect(within(data()).getAllByRole('menuitem')[0]).toBe(item);
+    const all = within(data()).getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link'));
+    expect(all.slice(-2).map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Copy SQL']);
+    expect(item.closest('[role="group"]')!.previousElementSibling).toHaveAttribute('role', 'separator');
   });
 
   test('choosing it copies the loaded rows as TSV with a header row and says how many', async () => {
@@ -753,20 +1114,11 @@ describe('Copy to clipboard', () => {
     await waitFor(() => expect(within(data()).getByRole('menuitem', { name: 'Copy SQL' })).toBeEnabled());
     item.focus();
     await userEvent.keyboard('{ArrowDown}');
-    expect(within(data()).getByRole('menuitem', { name: /Team Sheets/ })).toHaveFocus();
-    await userEvent.keyboard('{ArrowUp}{ArrowUp}');
     expect(within(data()).getByRole('menuitem', { name: 'Copy SQL' })).toHaveFocus();
-  });
-
-  test('a destination still opens its own flyout with the copy group above it', async () => {
-    const t = setup(2);
-    t.view();
-    await rowsLoaded();
-    await userEvent.click(await within(data()).findByText('Export'));
-    const fin = await within(data()).findByRole('menuitem', { name: /Finance Sheets/ });
-    fin.focus();
-    await userEvent.keyboard('{ArrowRight}');
-    expect(await within(data()).findByRole('menu', { name: 'Finance Sheets' })).toBeInTheDocument();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(within(data()).getByRole('menuitem', { name: 'Claude' })).toHaveFocus();
+    await userEvent.keyboard('{ArrowUp}');
+    expect(within(data()).getByRole('menuitem', { name: 'Copy SQL' })).toHaveFocus();
   });
 
   describe('the toast timer never closes a dialog', () => {
@@ -826,12 +1178,12 @@ describe('Copy SQL', () => {
   };
   const sqlItem = () => screen.findByRole('menuitem', { name: 'Copy SQL' });
 
-  test('it is the last item, after a separator', async () => {
+  test('it is the last item, right after Copy to clipboard', async () => {
     lone(undefined);
     await userEvent.click(await screen.findByText('Export'));
     const items = screen.getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link'));
     expect(items.at(-1)).toHaveTextContent('Copy SQL');
-    expect((await sqlItem()).closest('[role="group"]')!.previousElementSibling).toHaveAttribute('role', 'separator');
+    expect(items.at(-2)).toHaveTextContent('Copy to clipboard');
   });
 
   test.each([
@@ -989,25 +1341,8 @@ describe('Copy SQL', () => {
   test('ArrowUp from the first item wraps past a disabled Copy SQL to the last enabled item', async () => {
     lone({ state: 'running' });
     await userEvent.click(await screen.findByText('Export'));
-    (await screen.findByRole('menuitem', { name: 'Copy to clipboard' })).focus();
+    (await screen.findByRole('menuitem', { name: 'Claude' })).focus();
     await userEvent.keyboard('{ArrowUp}');
-    expect(screen.getByRole('menuitem', { name: 'ChatGPT' })).toHaveFocus();
+    expect(screen.getByRole('menuitem', { name: 'Copy to clipboard' })).toHaveFocus();
   });
-});
-
-test('New report: Enter in the title exports, and does nothing while an export is running', async () => {
-  const t = setup(1, [REPORT]);
-  await t.seeded;
-  t.view();
-  await rowsLoaded();
-  await openMenu();
-  await userEvent.click(await within(data()).findByRole('menuitem', { name: /New report/ }));
-  const dialog = await screen.findByRole('dialog', { name: 'New report' });
-  const title = within(dialog).getByLabelText('Report title');
-  await userEvent.type(title, '{Enter}');
-  expect(title.isConnected).toBe(true);
-  await userEvent.type(title, '{Enter}');
-  await waitFor(() => expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1), { timeout: 5000 });
-  await new Promise((r) => setTimeout(r, 200));
-  expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1);
 });
