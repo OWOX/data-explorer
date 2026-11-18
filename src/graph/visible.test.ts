@@ -1,6 +1,6 @@
 import type { Edge, Mart, Model, Source } from '../model/types';
 import type { Selection } from '../state/store';
-import { computeVisible, inboundCounts, neighbours, pickFocus } from './visible';
+import { computeVisible, inboundCounts, neighbours, pickFocus, type VisibleInput } from './visible';
 
 const e = (source: string, target: string): Edge => ({ id: `${source}-${target}`, source, target, joins: [] });
 const mart = (id: string, extra: Partial<Mart> = {}): Mart => ({ id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null, ...extra });
@@ -227,4 +227,66 @@ test('after the found marts come the marts whose title matches the query, withou
   const model = modelOf(['a', 'b', 'c', 'd'], [], [{ title: 'Sessions GA4' }, { title: 'Ads' }, { title: 'GA4 events' }, { title: 'GA4 secret', accessible: false }]);
   const r = computeVisible({ model, selection: sel({ martId: 'b' }), search: 'ga4', contextIds: [], found: ['b', 'c'] });
   expect(r.ids).toEqual(['b', 'c', 'a']);
+});
+
+const runWith = (model: Model, selection: Selection, o: Partial<VisibleInput> = {}) =>
+  computeVisible({ model, selection, search: '', contextIds: [], ...o });
+
+describe('joinable', () => {
+  test('rule 2 with the joinable set known: the main mart and every mart it can join, at any depth', () => {
+    const m = modelOf(['a', 'b', 'c', 'd', 'z'], [e('a', 'b'), e('b', 'c'), e('z', 'a')]);
+    const r = runWith(m, sel({ martId: 'a' }), { joinable: ['b', 'c'] });
+    expect(r.ids[0]).toBe('a');
+    expect(new Set(r.ids)).toEqual(new Set(['a', 'b', 'c']));
+    expect(r.joinable).toEqual(new Set(['b', 'c']));
+  });
+
+  test('rule 2 falls back to one hop while the joinable set is loading', () => {
+    const m = modelOf(['a', 'b', 'c', 'z'], [e('a', 'b'), e('b', 'c'), e('z', 'a')]);
+    const r = runWith(m, sel({ martId: 'a' }), { joinable: null });
+    expect(new Set(r.ids)).toEqual(new Set(['a', 'b', 'z']));
+    expect(r.joinable).toBeNull();
+  });
+
+  test('rule 2 leaves out joinable marts the member cannot open', () => {
+    const m = modelOf(['a', 'b'], [e('a', 'b')], [{}, { accessible: false }]);
+    expect(runWith(m, sel({ martId: 'a' }), { joinable: ['b'] }).ids).toEqual(['a']);
+  });
+
+  test('rule 0: the main mart and its joined marts come before the smart search hits', () => {
+    const m = modelOf(['a', 'b', 'c', 'd'], [e('a', 'b')]);
+    const r = runWith(m, sel({ martId: 'a' }), { found: ['c', 'd'], joined: ['b'], search: 'zzz' });
+    expect(r.ids).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  test('rule 0 with a main mart in an unticked storage: the head holds only the joined marts', () => {
+    const m = modelOf(['a', 'b', 'c', 'd'], [e('a', 'b')], [{ storageId: 's2' }, {}, {}, {}]);
+    const r = runWith(m, sel({ martId: 'a' }), { found: ['c', 'd'], joined: ['b'], search: 'zzz', storageIds: ['s'] });
+    expect(r.ids).toEqual(['b', 'c', 'd']);
+  });
+
+  test('rule 2 with a joinable set that is empty shows the main mart and the always-shown marts only', () => {
+    const m = modelOf(['a', 'b', 'c', 'd'], [e('a', 'b'), e('a', 'c')]);
+    const r = runWith(m, sel({ martId: 'a' }), { joinable: [], filtered: ['d'] });
+    expect(r.ids).toEqual(['a', 'd']);
+    expect(r.joinable).toEqual(new Set());
+  });
+
+  test('rule 1 lists every match and reports the joinable set for dimming', () => {
+    const m = modelOf(['a', 'b', 'c'], [e('a', 'b')]);
+    const r = runWith(m, sel({ martId: 'a' }), { search: 'c', joinable: ['b'] });
+    expect(r.ids).toEqual(['a', 'c']);
+    expect(r.joinable).toEqual(new Set(['b']));
+  });
+
+  test('with no main mart the joinable set is null', () => {
+    const m = modelOf(['a', 'b'], [e('a', 'b')], [{ sourceKey: 's1' }, { sourceKey: 's1' }], [{ key: 's1', name: 'S', logo: null, martIds: ['a', 'b'] }]);
+    expect(runWith(m, sel({ sourceKey: 's1' }), { joinable: ['b'] }).joinable).toBeNull();
+  });
+
+  test('a main mart in an unticked storage is not put first, and the joinable band still renders', () => {
+    const m = modelOf(['a', 'b'], [e('a', 'b')], [{ storageId: 's2' }, {}]);
+    const r = runWith(m, sel({ martId: 'a' }), { joinable: ['b'], storageIds: ['s'] });
+    expect(r.ids).toEqual(['b']);
+  });
 });

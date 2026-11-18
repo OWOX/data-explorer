@@ -134,3 +134,31 @@ test('rows of another shape are not shown while the new query is in flight; the 
   rerender({ o: opts(['id', 'a']) });
   expect(result.current.rows).toBeNull(); // and back
 });
+
+test('the run of the last query: none, running, done with its run id, failed', async () => {
+  let open!: () => void;
+  const gate = new Promise<void>((r) => { open = r; });
+  const traverseData = vi.fn(async () => { await gate; return { ...traversalOf([{ id: 1 }]), runId: 'r-7' }; });
+  const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
+  const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
+  const options: TraverseOptions = { column: ['id'], limit: 3 };
+
+  const none = renderHook(() => useMartRows('orders', null, 0), { wrapper });
+  expect(none.result.current.run).toEqual({ state: 'none' });
+
+  const { result } = renderHook(() => useMartRows('orders', options, 0), { wrapper });
+  expect(result.current.run).toEqual({ state: 'running' });
+  open();
+  await waitFor(() => expect(result.current.run).toEqual({ state: 'done', runId: 'r-7' }));
+
+  const failing = stubCtx({ dataMarts: { list: vi.fn(), traverseData: vi.fn(async () => { throw new Error('boom'); }) } });
+  const failWrap = ({ children }: { children: ReactNode }) => <AppServices ctx={failing}><StoreProvider>{children}</StoreProvider></AppServices>;
+  const failed = renderHook(() => useMartRows('orders', options, 0), { wrapper: failWrap });
+  await waitFor(() => expect(failed.result.current.run).toEqual({ state: 'failed' }));
+});
+
+test('a host that sends no run id gives done with a null run id', async () => {
+  const { wrapper } = hookCtx();
+  const { result } = renderHook(() => useMartRows('orders', { column: ['id'], limit: 3 }, 0), { wrapper });
+  await waitFor(() => expect(result.current.run).toEqual({ state: 'done', runId: null }));
+});

@@ -316,7 +316,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // A folded band reads nothing: the query it last read stays, and a change made meanwhile is read once it opens.
   const [asked, setAsked] = useState(query);
   if (!paused && !blocked && asked !== query) setAsked(query);
-  const { rows: read, loading: reading, error, hasMore } = useMartRows(martId, asked, version);
+  const { rows: read, loading: reading, error, hasMore, run } = useMartRows(martId, asked, version);
   const rows = blocked ? null : read;
   const loading = reading && !blocked;
   // The fields on screen, kept as the same array until one of them changes: a joined mart arriving later (the picker reads it
@@ -599,7 +599,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { markEdit(); setFilters({}); setParked({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => { onRefresh(); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
-        {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} sorts={gridSorts} rows={rows} hasMore={hasMore} loading={loading} />}
+        {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} sorts={gridSorts} rows={rows} hasMore={hasMore} loading={loading} run={run} />}
       </BandTools>
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
       <div ref={scroller} tabIndex={0} onKeyDown={onGridKey} onCopy={onCopy} className={`dm-grid-root min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
