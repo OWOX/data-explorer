@@ -240,14 +240,16 @@ test('a date column filter opens on presets; a preset applies at once and names 
   await page.getByLabel(/created_at/).click();
   await page.keyboard.press('Escape');
   await openColumnSub(data, 'created_at', 'Filter');
-  await expect(page.getByRole('group', { name: 'Date presets' }).getByRole('button')).toHaveCount(14);
-  await page.getByRole('button', { name: 'Last 30 days' }).click();
-  await expect(page.getByRole('group', { name: 'Date presets' })).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Filter created_at' }).locator('[role^="menuitem"]')).toHaveCount(9);
+  await page.getByRole('menuitemradio', { name: 'Last…' }).click();
+  await page.getByRole('menuitemradio', { name: 'Last 30 days' }).click();
+  await expect(page.getByRole('group', { name: 'Filter created_at' })).toHaveCount(0);
   await expect(data.getByLabel('Filter created_at')).toHaveText('');
   await data.getByLabel('Filter created_at').hover();
   await expect(page.getByRole('tooltip').first()).toContainText('Filter: Last 30 days');
   await data.getByLabel('Filter created_at').click();
-  await expect(page.getByRole('button', { name: 'Last 30 days' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('menuitemradio', { name: 'Last…' }).click();
+  await expect(page.getByRole('menuitemradio', { name: 'Last 30 days' })).toHaveAttribute('aria-checked', 'true');
 });
 
 test('Undo and Redo step through the selection', async ({ page }) => {
@@ -430,7 +432,7 @@ test('opening the Fields picker by mouse leaves every (?) hidden until a row is 
   await expect(dialog.locator('.dm-checklist-row', { hasText: 'Customer' }).locator('.dm-hint-slot')).toHaveCSS('opacity', '1');
 });
 
-test('a filter popover is at most 20rem tall, has no title row, and its last button is reachable by scrolling', async ({ page }) => {
+test('a filter popover is at most 20rem tall, has no title row, and its last row is inside it', async ({ page }) => {
   const data = await ordersGrid(page);
   await tick(page, 'created_at');
   await openColumnSub(data, 'created_at', 'Filter');
@@ -440,8 +442,8 @@ test('a filter popover is at most 20rem tall, has no title row, and its last but
   const panel = page.getByRole('dialog', { name: 'Filter of created_at' });
   const box = await panel.evaluate((el) => el.getBoundingClientRect().height);
   expect(box).toBeLessThanOrEqual(20 * 16 + 1);
-  expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
-  const last = body.getByRole('button', { name: 'Is not blank' });
+  // The date list is short now (the presets moved to flyouts), so it fits; its last row is still inside the panel.
+  const last = body.getByRole('menuitemradio', { name: 'Is not blank' });
   await last.scrollIntoViewIfNeeded();
   const p = (await panel.boundingBox())!;
   const l = (await last.boundingBox())!;
@@ -482,7 +484,16 @@ for (const width of [320, 360]) {
     await page.keyboard.press('Escape');
     await openColumnSub(data, 'created_at', 'Filter');
     await expectFits(page, 'Filter of created_at');
-    await page.getByRole('dialog', { name: 'Filter of created_at' }).getByRole('button', { name: 'Custom range…' }).click();
+    await page.getByRole('menuitemradio', { name: 'Last…' }).click();
+    const lastPanel = page.getByRole('menu', { name: 'Last…' });
+    await expect(lastPanel).toBeVisible();
+    const lb = (await lastPanel.boundingBox())!;
+    expect(lb.x).toBeGreaterThanOrEqual(0);
+    expect(lb.x + lb.width).toBeLessThanOrEqual(width);
+    await expect(lastPanel.getByRole('button', { name: 'Apply' })).toBeInViewport();
+    await page.keyboard.press('Escape');
+    await expect(lastPanel).toHaveCount(0);
+    await page.getByRole('dialog', { name: 'Filter of created_at' }).getByRole('menuitem', { name: 'Custom range…' }).click();
     await expectFits(page, 'Filter of created_at');
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');

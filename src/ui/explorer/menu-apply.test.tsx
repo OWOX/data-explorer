@@ -47,11 +47,14 @@ test('Filter Apply: Last N days applies', async () => {
   setup(); await ready(); await show('created_at');
   await openSubmenu(within(data()), 'created_at', 'Filter');
   const dialog = await screen.findByRole('dialog');
-  const n = within(dialog).getByLabelText('N');
+  await userEvent.click(within(dialog).getByRole('menuitemradio', { name: 'Last…' }));
+  const last = await screen.findByRole('menu', { name: 'Last…' });
+  const n = within(last).getByLabelText('N');
   await userEvent.clear(n);
   await userEvent.type(n, '5');
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  await userEvent.click(within(last).getByRole('button', { name: 'Apply' }));
   await closed();
+  expect(screen.queryByRole('menu', { name: 'Last…' })).toBeNull();
   expect(await within(data()).findByRole('button', { name: /^Filter created_at/ })).toBeInTheDocument();
 });
 
@@ -59,7 +62,7 @@ test('Filter Apply: a custom date range applies', async () => {
   setup(); await ready(); await show('created_at');
   await openSubmenu(within(data()), 'created_at', 'Filter');
   const dialog = await screen.findByRole('dialog');
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Custom range…' }));
+  await userEvent.click(within(dialog).getByRole('menuitem', { name: 'Custom range…' }));
   fireEvent.change(within(dialog).getByLabelText('From'), { target: { value: '2026-01-01T00:00' } });
   fireEvent.change(within(dialog).getByLabelText('To'), { target: { value: '2026-12-31T00:00' } });
   await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));

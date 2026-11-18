@@ -269,6 +269,42 @@ describe('the column menu', () => {
     expect(icon).toHaveFocus();
   });
 
+  test('the Last… panel is a third level: clicks and scrolls inside it keep the menu, Escape closes only it, then the Filter panel, then the menu', async () => {
+    setup();
+    await ready();
+    await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+    await userEvent.click(await screen.findByLabelText(/created_at/));
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const icon = await within(data()).findByLabelText('Column menu created_at');
+    await userEvent.click(icon);
+    const menu = await screen.findByRole('menu', { name: 'Menu of created_at' });
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Filter' }));
+    const filter = await screen.findByRole('dialog', { name: 'Filter of created_at' });
+    await userEvent.click(within(filter).getByRole('menuitemradio', { name: 'Last…' }));
+    const last = await screen.findByRole('menu', { name: 'Last…' });
+    expect(last).toHaveAttribute('data-column-menu');
+    // A press and a scroll inside the third panel are inside the menu.
+    fireEvent.pointerDown(within(last).getByLabelText('N'));
+    fireEvent.scroll(last);
+    await userEvent.selectOptions(within(last).getByLabelText('Unit'), 'weeks');
+    expect(screen.getByRole('menu', { name: 'Last…' })).toBeInTheDocument();
+    expect(screen.getByRole('menu', { name: 'Menu of created_at' })).toBeInTheDocument();
+    // A resize repositions it and keeps it open.
+    fireEvent(window, new Event('resize'));
+    expect(screen.getByRole('menu', { name: 'Last…' })).toBeInTheDocument();
+    within(last).getByLabelText('N').focus();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('menu', { name: 'Last…' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Filter of created_at' })).toBeInTheDocument();
+    expect(within(filter).getByRole('menuitemradio', { name: 'Last…' })).toHaveFocus();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Filter of created_at' })).toBeNull();
+    expect(screen.getByRole('menu', { name: 'Menu of created_at' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(open()).toHaveLength(0);
+  });
+
   test('a scroll of the page or of a scroller holding the column closes the menu; any other scroll does not', async () => {
     setup();
     await ready();

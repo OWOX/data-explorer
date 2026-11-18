@@ -48,17 +48,32 @@ test('Aggregate: a long function list scrolls to Apply, and wheeling past its en
   await expect.poll(async () => data(page).getByRole('row').count()).toBeLessThan(50);
 });
 
-test('Filter on a date: the presets scroll to Last N days and its Apply, and wheeling past the end does not close the menu', async ({ page }) => {
+test('Filter on a date: Last… opens a third panel whose form shows Apply, with a unit dropdown, and wheeling past its end does not close the menu', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await tick(page, 'created_at');
   const dialog = await openSub(page, 'created_at', 'Filter');
-  await wheelPastEnd(page, dialog);
+  await click(page, dialog.getByRole('menuitemradio', { name: 'Last…' }));
+  const last = page.getByRole('menu', { name: 'Last…' });
+  await expect(last).toBeVisible();
+  const box = (await last.boundingBox())!;
+  const view = page.viewportSize()!;
+  expect(box.x + box.width).toBeLessThanOrEqual(view.width);
+  expect(box.y + box.height).toBeLessThanOrEqual(view.height);
+  await wheelPastEnd(page, last);
+  await expect(page.getByRole('menu', { name: 'Last…' })).toBeVisible();
   await expect(page.getByRole('dialog')).toBeVisible();
-  await dialog.getByLabel('N').scrollIntoViewIfNeeded();
-  await click(page, dialog.getByLabel('N'));
+  const apply = last.getByRole('button', { name: 'Apply' });
+  await expect(apply).toBeInViewport();
+  await click(page, last.getByLabel('N', { exact: true }));
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.type('5');
-  await click(page, dialog.getByRole('button', { name: 'Apply' }));
+  await last.getByLabel('Unit').selectOption('weeks');
+  await click(page, apply);
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('menu', { name: 'Last…' })).toHaveCount(0);
   await expect(data(page).getByRole('button', { name: /^Filter created_at/ })).toBeVisible();
+  await data(page).getByRole('button', { name: /^Filter created_at/ }).click();
+  await click(page, page.getByRole('dialog').getByRole('menuitemradio', { name: 'Last…' }));
+  await expect(page.getByRole('menu', { name: 'Last…' }).getByLabel('Unit')).toHaveValue('weeks');
+  await expect(page.getByRole('menu', { name: 'Last…' }).getByLabel('N', { exact: true })).toHaveValue('5');
 });

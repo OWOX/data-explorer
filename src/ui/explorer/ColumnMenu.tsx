@@ -1,6 +1,5 @@
-import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronRight, EyeOff, Funnel, Hash, Sigma } from 'lucide-react';
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { ArrowDown, ArrowUp, ArrowUpDown, EyeOff, Funnel, Hash, Sigma } from 'lucide-react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { formatsFor, keepsUnit, type Format } from '../../format/formats';
 import { describeFilter } from '../../filters/catalogue';
 import type { ColumnFilter } from '../../filters/build';
@@ -12,7 +11,8 @@ import { AggregationEditor } from './AggregationEditor';
 import { Tooltip } from '../Tooltip';
 import { FilterEditor } from './FilterEditor';
 import { FilterLinesIcon } from './FilterLinesIcon';
-import { placeBeside, placeBelow, type Place } from './menuPlacement';
+import { HOVER_MS, HoverIntent, Panel, Row } from './MenuParts';
+export { HOVER_MS };
 
 export type SubKey = 'filter' | 'aggregate' | 'format' | 'sort';
 
@@ -44,79 +44,10 @@ export const ColumnMenuEnvContext = createContext<ColumnMenuEnv>({
 });
 
 export const FORMAT_LABELS: Record<Format['kind'], string> = { auto: 'Automatic', plain: 'Plain number', percent: 'Percent', money: 'Money', date: 'Date', datetime: 'Date time', time: 'Time' };
-/** How long the pointer rests on another row before its submenu replaces the open one. */
-export const HOVER_MS = 300;
-/** One pending hover switch: a new one replaces the last, and `clear` drops it. */
-class HoverIntent {
-  private timer: ReturnType<typeof setTimeout> | undefined;
-  after(ms: number, fn: () => void) { this.clear(); this.timer = setTimeout(fn, ms); }
-  clear() { clearTimeout(this.timer); this.timer = undefined; }
-}
 export const CURRENCIES = ['USD', 'EUR', 'GBP', 'UAH'];
 
 /** The currencies the Money submenu lists: the four fixed ones, then the current one (an AI pick or an old choice) when it is another. */
 export const currenciesFor = (current: Format): string[] => (current.kind === 'money' && !CURRENCIES.includes(current.currency) ? [...CURRENCIES, current.currency] : CURRENCIES);
-
-const viewport = () => ({ width: window.innerWidth, height: window.innerHeight });
-const boxOf = (el: HTMLElement) => el.getBoundingClientRect();
-const ITEM = '[role="menuitem"], [role="menuitemradio"]';
-
-/**
- * One floating panel of the menu, drawn in a portal on the body and kept inside the viewport (flipped left or up when it has no room).
- * Escape, and for a submenu Left, are handled here: the deepest open panel takes the key, so Escape closes the submenu first, then the menu.
- */
-function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onPlaced, focusSeq, className = '', children }: { anchor: HTMLElement; mode: 'below' | 'beside'; role: 'menu' | 'dialog'; label: string; onEscape: () => void; onLeave?: () => void; /** Tab in a menu closes it (the editors keep their own Tab order). */ onTab?: () => void; /** Called once the panel has its place, so a submenu can be measured from its rows. */ onPlaced?: () => void; focusSeq: number; className?: string; children: ReactNode }) {
-  const el = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<Place | null>(null);
-  const place = useCallback(() => {
-    const node = el.current;
-    if (!node) return;
-    const size = { width: node.offsetWidth, height: node.offsetHeight };
-    const next = (mode === 'below' ? placeBelow : placeBeside)(boxOf(anchor), size, viewport());
-    setPos((cur) => (cur && cur.left === next.left && cur.top === next.top && cur.side === next.side ? cur : next));
-  }, [anchor, mode]);
-  useLayoutEffect(() => { place(); });
-  const placedNow = pos !== null;
-  useLayoutEffect(() => { if (placedNow) onPlaced?.(); }, [placedNow]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    window.addEventListener('resize', place);
-    return () => window.removeEventListener('resize', place);
-  }, [place]);
-  useEffect(() => {
-    if (typeof ResizeObserver === 'undefined' || !el.current) return;
-    const ro = new ResizeObserver(place);
-    ro.observe(el.current);
-    return () => ro.disconnect();
-  }, [place]);
-  useEffect(() => {
-    if (!focusSeq || !pos) return;
-    const first = el.current?.querySelector<HTMLElement>(`${ITEM}, input, select, button:not(:disabled)`);
-    (first ?? el.current)?.focus({ preventScroll: true });
-  }, [focusSeq, pos !== null]); // eslint-disable-line react-hooks/exhaustive-deps
-  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onEscape(); return; }
-    if (e.key === 'Tab' && role === 'menu' && onTab && (e.target as HTMLElement).closest('[data-column-menu]') === e.currentTarget) { e.preventDefault(); e.stopPropagation(); onTab(); return; }
-    const item = (e.target as HTMLElement).closest<HTMLElement>(ITEM);
-    // Arrow keys move through this panel's own rows; a field inside a form keeps its keys.
-    if (role !== 'menu' || !item || item.closest('[role="menu"]') !== e.currentTarget) return;
-    const items = [...e.currentTarget.querySelectorAll<HTMLElement>(ITEM)].filter((n) => n.closest('[role="menu"]') === e.currentTarget && !(n as HTMLButtonElement).disabled);
-    const at = items.indexOf(item);
-    const go = (to: number) => { e.preventDefault(); e.stopPropagation(); items[(to + items.length) % items.length]?.focus(); };
-    if (e.key === 'ArrowDown') go(at + 1);
-    else if (e.key === 'ArrowUp') go(at - 1);
-    else if (e.key === 'Home') go(0);
-    else if (e.key === 'End') go(items.length - 1);
-    else if (e.key === 'ArrowLeft' && onLeave) { e.preventDefault(); e.stopPropagation(); onLeave(); }
-  };
-  return createPortal(
-    <div ref={el} role={role} aria-label={label} tabIndex={-1} data-column-menu="" data-side={pos?.side} onKeyDown={onKeyDown} onInput={() => { if (el.current) el.current.dataset.edited = ''; }} onChange={() => { if (el.current) el.current.dataset.edited = ''; }}
-      style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? 'visible' : 'hidden' }}
-      className={`dm-menu ${className}`}>
-      {children}
-    </div>,
-    document.body,
-  );
-}
 
 const aggOn = (d: AggregationDraft) => d.functions.length > 0 || d.bucket !== null;
 /** The member set a format of their own on a column that has formats. An AI project pick does not count. */
@@ -126,25 +57,6 @@ function formatActive(env: ColumnMenuEnv, field: Field, output: Output, type: st
 }
 
 const Divider = () => <div role="separator" className="dm-menu-sep" />;
-
-function Row({ label, icon, active, check, slot, checked, sub, expanded, haspopup, disabled, onLeaveRow, rowRef, onActivate, onOpen, onHover }: {
-  label: string; /** A first-level glyph in its own slot: outlined, or filled when the member has set this on the column. */ icon?: ReactNode; active?: boolean; check?: boolean; /** Keeps the check column's room without being a choice row. */ slot?: boolean; checked?: boolean; sub?: boolean; expanded?: boolean; haspopup?: 'menu' | 'dialog'; disabled?: boolean;
-  onLeaveRow?: () => void; rowRef?: (el: HTMLElement | null) => void; onActivate: (row: HTMLElement) => void; onOpen?: (row: HTMLElement) => void; onHover?: (row: HTMLElement) => void;
-}) {
-  return (
-    <button type="button" role={check ? 'menuitemradio' : 'menuitem'} aria-checked={check ? !!checked : undefined} aria-haspopup={sub ? haspopup ?? 'menu' : undefined} aria-expanded={sub ? !!expanded : undefined}
-      aria-description={icon && active ? 'Active' : undefined} data-active={icon && active ? '' : undefined}
-      disabled={disabled} tabIndex={-1} ref={rowRef} className="dm-menu-row"
-      onClick={(e) => onActivate(e.currentTarget)}
-      onMouseEnter={(e) => onHover?.(e.currentTarget)} onMouseLeave={onLeaveRow}
-      onKeyDown={(e) => { if (sub && e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); onOpen?.(e.currentTarget); } }}>
-      {icon && <span className="dm-menu-icon" data-on={active ? '' : undefined} aria-hidden>{icon}</span>}
-      {(check || slot) && <span className="dm-menu-check" aria-hidden>{checked && <Check className="size-4" />}</span>}
-      <span className="dm-menu-label">{label}</span>
-      {sub && <ChevronRight aria-hidden className="dm-menu-arrow size-4" />}
-    </button>
-  );
-}
 
 type Sub = { key: SubKey; row: HTMLElement; seq: number };
 
@@ -171,13 +83,13 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
   // holds a focused field or an edit. A click or a key switches at once.
   const [intent] = useState(() => new HoverIntent());
   useEffect(() => () => intent.clear(), [intent]);
-  // A click inside a dialog panel (Custom range, On, an operator) is an edit as well, so hover intent leaves the form alone.
+  // A click inside a dialog panel (Custom range, On, an operator) is an edit as well, but a click on a row is a choice, not an edit, so hover intent leaves the form alone.
   useEffect(() => {
-    const mark = (e: MouseEvent) => { (e.target as Element | null)?.closest<HTMLElement>('[data-column-menu][role="dialog"]')?.setAttribute('data-edited', ''); };
+    const mark = (e: MouseEvent) => { const t = e.target as Element | null; if (t?.closest('.dm-menu-row')) return; t?.closest<HTMLElement>('[data-column-menu][role="dialog"], [data-column-menu][data-form]')?.setAttribute('data-edited', ''); };
     document.addEventListener('click', mark, true);
     return () => document.removeEventListener('click', mark, true);
   }, []);
-  const editing = () => [...document.querySelectorAll<HTMLElement>('[data-column-menu][role="dialog"]')].some((p) => 'edited' in p.dataset || (p.contains(document.activeElement) && !!document.activeElement?.matches('input, select, textarea')));
+  const editing = () => [...document.querySelectorAll<HTMLElement>('[data-column-menu][role="dialog"], [data-column-menu][data-form]')].some((p) => 'edited' in p.dataset || (p.contains(document.activeElement) && !!document.activeElement?.matches('input, select, textarea')));
   const later = (apply: () => void) => intent.after(HOVER_MS, () => { if (!editing()) apply(); });
   const hoverRow = (k: SubKey, row: HTMLElement) => { if (sub?.key === k) intent.clear(); else if (!sub) open(k, row, false); else later(() => open(k, row, false)); };
   const hoverOther = () => { if (sub) later(() => { setSub(null); setMoney(null); }); };

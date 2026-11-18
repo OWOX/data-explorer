@@ -91,14 +91,42 @@ export const DATE_PRESETS: { label: string; rule: RelativeDatePreset }[] = [
 
 const sameRule = (a: RelativeDatePreset, b: RelativeDatePreset) => JSON.stringify(a) === JSON.stringify(b);
 
-/** The name of a relative rule: its preset's label, or "Last 45 days" for a number the presets do not cover. */
+export type RelativeUnit = 'days' | 'weeks' | 'months' | 'quarters' | 'years';
+export const RELATIVE_UNITS: { unit: RelativeUnit; label: string }[] = [
+  { unit: 'days', label: 'days' }, { unit: 'weeks', label: 'weeks' }, { unit: 'months', label: 'months' }, { unit: 'quarters', label: 'quarters' }, { unit: 'years', label: 'years' },
+];
+
+/** "Last [n] [unit]" as the API's rule: it only has days and months, so weeks are 7 days, quarters 3 months and years 12 months. */
+export function toRule(n: number, unit: RelativeUnit): Extract<RelativeDatePreset, { n: number }> {
+  switch (unit) {
+    case 'days': return { kind: 'last_n_days', n };
+    case 'weeks': return { kind: 'last_n_days', n: n * 7 };
+    case 'months': return { kind: 'last_n_months', n };
+    case 'quarters': return { kind: 'last_n_months', n: n * 3 };
+    case 'years': return { kind: 'last_n_months', n: n * 12 };
+  }
+}
+
+/** The form a stored rule reopens on: the largest unit that divides it evenly. Rules with no count have no form. */
+export function fromRule(rule: RelativeDatePreset | undefined): { n: number; unit: RelativeUnit } | undefined {
+  if (!rule || typeof rule !== 'object') return undefined;
+  if (rule.kind === 'last_n_days' && Number.isInteger(rule.n)) return rule.n % 7 === 0 ? { n: rule.n / 7, unit: 'weeks' } : { n: rule.n, unit: 'days' };
+  if (rule.kind === 'last_n_months' && Number.isInteger(rule.n)) {
+    if (rule.n % 12 === 0) return { n: rule.n / 12, unit: 'years' };
+    if (rule.n % 3 === 0) return { n: rule.n / 3, unit: 'quarters' };
+    return { n: rule.n, unit: 'months' };
+  }
+  return undefined;
+}
+
+/** The name of a relative rule: its preset's label, or "Last 3 weeks" for a number the presets do not cover. */
 export function presetName(rule: RelativeDatePreset): string {
   // A link can carry any JSON here; a rule with no string kind has no name.
   if (typeof rule !== 'object' || rule === null || typeof rule.kind !== 'string') return '';
   const hit = DATE_PRESETS.find((p) => sameRule(p.rule, rule));
   if (hit) return hit.label;
-  if (rule.kind === 'last_n_days') return `Last ${rule.n} ${rule.n === 1 ? 'day' : 'days'}`;
-  if (rule.kind === 'last_n_months') return `Last ${rule.n} ${rule.n === 1 ? 'month' : 'months'}`;
+  const form = fromRule(rule);
+  if (form) return `Last ${form.n} ${form.n === 1 ? form.unit.slice(0, -1) : form.unit}`;
   return RELATIVE_PRESETS.find((p) => p.kind === rule.kind)?.label ?? rule.kind;
 }
 

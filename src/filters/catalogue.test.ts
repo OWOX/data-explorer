@@ -20,7 +20,7 @@ test('time, boolean and other', () => {
   expect(ids(f('JSON', 'other'))).toEqual(['is_blank', 'is_not_blank']);
 });
 
-import { DATE_PRESETS, isPreset, presetName } from './catalogue';
+import { DATE_PRESETS, fromRule, isPreset, presetName, toRule } from './catalogue';
 import { isComplete, toTraverseFilters } from './build';
 
 describe('date presets', () => {
@@ -48,8 +48,39 @@ describe('date presets', () => {
     expect(presetName({ kind: 'last_n_days', n: 30 })).toBe('Last 30 days');
     expect(presetName({ kind: 'last_n_days', n: 45 })).toBe('Last 45 days');
     expect(presetName({ kind: 'last_n_days', n: 1 })).toBe('Last 1 day');
-    expect(presetName({ kind: 'last_n_months', n: 3 })).toBe('Last 3 months');
+    expect(presetName({ kind: 'last_n_months', n: 5 })).toBe('Last 5 months');
+    expect(presetName({ kind: 'last_n_days', n: 21 })).toBe('Last 3 weeks');
+    expect(presetName({ kind: 'last_n_days', n: 28 })).toBe('Last 4 weeks');
+    expect(presetName({ kind: 'last_n_months', n: 3 })).toBe('Last 1 quarter');
+    expect(presetName({ kind: 'last_n_months', n: 24 })).toBe('Last 2 years');
     expect(presetName({ kind: 'this_week' })).toBe('This week');
+  });
+
+  test('toRule maps a unit onto the two rules the API has', () => {
+    expect(toRule(5, 'days')).toEqual({ kind: 'last_n_days', n: 5 });
+    expect(toRule(3, 'weeks')).toEqual({ kind: 'last_n_days', n: 21 });
+    expect(toRule(5, 'months')).toEqual({ kind: 'last_n_months', n: 5 });
+    expect(toRule(2, 'quarters')).toEqual({ kind: 'last_n_months', n: 6 });
+    expect(toRule(2, 'years')).toEqual({ kind: 'last_n_months', n: 24 });
+  });
+
+  test('fromRule reopens a rule on the largest unit that divides it', () => {
+    expect(fromRule({ kind: 'last_n_days', n: 5 })).toEqual({ n: 5, unit: 'days' });
+    expect(fromRule({ kind: 'last_n_days', n: 21 })).toEqual({ n: 3, unit: 'weeks' });
+    expect(fromRule({ kind: 'last_n_months', n: 5 })).toEqual({ n: 5, unit: 'months' });
+    expect(fromRule({ kind: 'last_n_months', n: 6 })).toEqual({ n: 2, unit: 'quarters' });
+    expect(fromRule({ kind: 'last_n_months', n: 24 })).toEqual({ n: 2, unit: 'years' });
+    expect(fromRule({ kind: 'this_week' })).toBeUndefined();
+    expect(fromRule(undefined)).toBeUndefined();
+  });
+
+  test('every unit round-trips through the rule', () => {
+    for (const unit of ['days', 'weeks', 'months', 'quarters', 'years'] as const) {
+      for (const n of [1, 2, 5]) expect(toRule(n, unit)).toBeDefined();
+    }
+    expect(fromRule(toRule(2, 'quarters'))).toEqual({ n: 2, unit: 'quarters' });
+    expect(fromRule(toRule(2, 'years'))).toEqual({ n: 2, unit: 'years' });
+    expect(fromRule(toRule(3, 'weeks'))).toEqual({ n: 3, unit: 'weeks' });
   });
 
   test('presetName tolerates a malformed rule', () => {

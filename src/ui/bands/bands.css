@@ -429,6 +429,12 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-menu-editor .dm-btn:disabled { background: var(--btn-off-bg); color: var(--btn-off-fg); border-color: transparent; cursor: default; opacity: 1; }
 .dm-menu-editor .dm-btn:focus-visible { outline: 2px solid var(--sheet-green); outline-offset: 2px; }
 .dm-menu-editor .dm-btn { flex-shrink: 0; }
+.dm-menu-editor .dm-menu-flush { margin: -8px -16px; display: flex; flex-direction: column; }
+.dm-menu-fly { max-height: min(28rem, calc(100vh - 16px)); }
+.dm-menu-list { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0; }
+.dm-menu-fly-form { display: flex; flex-shrink: 0; align-items: center; gap: 8px; margin-top: 4px; padding: 8px 16px 8px; border-top: 1px solid var(--menu-line); }
+.dm-menu-fly-form .dm-select { flex: 1 1 auto; }
+.dm-menu-fly-form input[type='number'] { width: 4rem; flex: 0 0 auto; }
 .dm-menu-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .dm-menu-row { display: flex; width: 100%; height: 32px; flex-shrink: 0; align-items: center; gap: 8px; padding: 0 16px; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; white-space: nowrap; }
 .dm-menu-row:hover, .dm-menu-row:focus-visible, .dm-menu-row[aria-expanded='true'] { background: var(--menu-hover); outline: none; }
