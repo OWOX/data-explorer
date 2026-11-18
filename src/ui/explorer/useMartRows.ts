@@ -12,12 +12,12 @@ export function defaultColumns(schema: Schema): string[] {
 }
 
 /**
- * Grouped (a function or a bucket on a visible column): exactly the visible columns, in grid order, each function its own output;
+ * Grouped (a function or a bucket on a visible column): exactly the visible columns, in schema order (a column move must not change the query), each function its own output;
  * every column without a rule is a group key. Primary keys are not added and no key tie-breaker sorts are, since a key would split the groups.
  */
 function buildGroupedQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, sorts: SortKey[], agg: Aggregation): TraverseOptions {
-  const known = new Set(schema.map((f) => f.name));
-  const column = visible.filter((n) => known.has(n));
+  const shown = new Set(visible);
+  const column = schema.map((f) => f.name).filter((n) => shown.has(n));
   const filter = toTraverseFilters(schema, filters);
   const aggregations = agg.aggregations.filter((r) => column.includes(r.column));
   const dateTrunc = agg.dateTrunc.filter((r) => column.includes(r.column));

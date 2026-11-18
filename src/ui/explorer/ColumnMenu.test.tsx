@@ -58,11 +58,11 @@ describe('placement', () => {
 });
 
 describe('the column menu', () => {
-  test('opens from the icon with Filter, Aggregate, Format, Sort and Hide column in that order; text columns have no Format', async () => {
+  test('opens from the icon with Filter, Aggregate, Format, Sort, Move left, Move right and Hide column in that order; text columns have no Format', async () => {
     setup();
     await ready();
     const menu = await openColumnMenu(within(data()), 'status');
-    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Filter', 'Aggregate', 'Sort', 'Hide column']);
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Filter', 'Aggregate', 'Sort', 'Move left', 'Move right', 'Hide column']);
     for (const name of ['Filter', 'Aggregate', 'Sort']) expect(within(menu).getByRole('menuitem', { name })).toHaveAttribute('aria-haspopup');
     expect(within(menu).getByRole('menuitem', { name: 'Sort' })).toHaveAttribute('aria-expanded', 'false');
     await userEvent.keyboard('{Escape}');
@@ -73,7 +73,7 @@ describe('the column menu', () => {
     setup();
     await showAmount();
     const menu = await openColumnMenu(within(data()), 'Amount');
-    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Filter', 'Aggregate', 'Format', 'Sort', 'Hide column']);
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Filter', 'Aggregate', 'Format', 'Sort', 'Move left', 'Move right', 'Hide column']);
   });
 
   test('a filter icon appears only with a filter, and opens the menu with the Filter submenu open', async () => {
@@ -458,7 +458,7 @@ describe('the column menu icons', () => {
     setup();
     await showAmount();
     const menu = await openColumnMenu(within(data()), 'Amount');
-    for (const name of ['Filter', 'Aggregate', 'Format', 'Sort', 'Hide column']) expect(state(menu, name)).toBe(false);
+    for (const name of ['Filter', 'Aggregate', 'Format', 'Sort', 'Move left', 'Move right', 'Hide column']) expect(state(menu, name)).toBe(false);
   });
   test('a filter fills the Filter icon only', async () => {
     setup();
@@ -470,7 +470,7 @@ describe('the column menu icons', () => {
     await waitFor(() => expect(open()).toHaveLength(0));
     const menu = await openColumnMenu(within(data()), 'id');
     expect(state(menu, 'Filter')).toBe(true);
-    for (const name of ['Aggregate', 'Sort', 'Hide column']) expect(state(menu, name)).toBe(false);
+    for (const name of ['Aggregate', 'Sort', 'Move left', 'Move right', 'Hide column']) expect(state(menu, name)).toBe(false);
   });
   test('an AI Format pick leaves the Format icon outlined; a member Percent fills it', async () => {
     setup({ amount: { kind: 'money', currency: 'GBP' } });
@@ -495,7 +495,7 @@ describe('the column menu icons', () => {
     await waitFor(() => expect(open()).toHaveLength(0));
     const menu = await openColumnMenu(within(data()), 'Amount');
     expect(state(menu, 'Aggregate')).toBe(true);
-    for (const name of ['Filter', 'Format', 'Sort', 'Hide column']) expect(state(menu, name)).toBe(false);
+    for (const name of ['Filter', 'Format', 'Sort', 'Move left', 'Move right', 'Hide column']) expect(state(menu, name)).toBe(false);
   });
   test('a sort fills the Sort icon', async () => {
     setup();

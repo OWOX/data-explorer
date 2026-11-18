@@ -9,6 +9,7 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useServices } from '../../state/store';
 import { App } from '../App';
 import { SAVED_COLUMNS_WAIT_MS } from './MartGrid';
+import { openColumnMenu } from './menu-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
 const SAVED = 'grid-columns';
@@ -142,4 +143,19 @@ test('a load slower than 3 s falls back to the defaults and the late result is i
     await vi.advanceTimersByTimeAsync(200);
     expect(headers()).toHaveLength(5);
   } finally { vi.useRealTimers(); }
+});
+
+test('a moved column is saved, and a fresh mount reading the same store shows the saved order', async () => {
+  const t = setup(['id', 'status', 'amount']);
+  await t.seeded;
+  const first = t.view();
+  await waitFor(() => expect(headers()).toHaveLength(3));
+  const menu = await openColumnMenu(within(document.getElementById('band-data')!), 'id');
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Move right' }));
+  await waitFor(() => expect(headers().join()).toMatch(/status.*id.*Amount/));
+  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: ['status', 'id', 'amount'], at: expect.any(String) }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
+  first.unmount();
+  t.view();
+  await waitFor(() => expect(headers()).toHaveLength(3));
+  expect(headers().join()).toMatch(/status.*id.*Amount/);
 });

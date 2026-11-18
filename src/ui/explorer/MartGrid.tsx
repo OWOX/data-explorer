@@ -14,7 +14,7 @@ import { toTraverseFilters, type ColumnFilter } from '../../filters/build';
 import { ChartsBody } from '../../charts/ChartsBody';
 import { useWidth } from '../../charts/useWidth';
 import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKey } from '../../model/sort';
-import { orderColumns } from '../../state/column-order';
+import { groupMap, moveColumn, moveColumnBy, orderColumns } from '../../state/column-order';
 import { joinedMartIds, ownNamesIn } from '../../state/join-plan';
 import type { Model, Schema } from '../../model/types';
 import { primaryKeys } from '../../records/relationships';
@@ -30,6 +30,7 @@ import { CardClickContext } from '../bands/CardClick';
 import { PickedIcon } from '../bands/picked';
 import { CellValue } from './CellValue';
 import { selectionTsv, type GridSelection } from './copySelection';
+import { ColumnDragLayer } from './ColumnDrag';
 import { ColumnControls, ColumnMenuEnvContext, type ColumnMenuEnv } from './ColumnMenu';
 import { ColumnPicker } from './ColumnPicker';
 import { ExportMenu } from './ExportMenu';
@@ -202,6 +203,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const [{ modelVersion }, dispatch] = useStore();
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
   const [visible, setVisible] = useState(initialColumns);
+  // Cell or whole-column selection (see below); a changed column order or set drops it.
+  const [selected, setSelected] = useState<GridSelection | null>(null);
   // The functions and date buckets on columns: any of them groups the rows.
   const [agg, setAgg] = useState<Aggregation>(initialAgg);
   // A filter on a field this visit does not offer (a joined field whose marts could not be read, or one a Refresh took away) is not applied,
@@ -276,7 +279,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       setView(saved.view);
       setVisible(saved.columns);
       setAgg(aggOf(saved));
-      if (!sameList(saved.columns, visible)) setAdopted([...saved.columns]);
+      if (!sameList(saved.columns, visible)) { setAdopted([...saved.columns]); setSelected(null); }
       else if (JSON.stringify(aggOf(saved)) !== JSON.stringify(agg)) setAdoptedAgg({ ...aggOf(saved) });
       setFilters(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => offeredNow(k))));
       setParked(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => !offeredNow(k))));
@@ -304,7 +307,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   if (said.length) setNote({ text: said.join(' ') });
   const grouped = isGrouped(aggNow);
   // Grouped with no sort of the member's own: the first group key ascending, so "Load more" pages never reshuffle.
-  const firstKey = shown.find((n) => !aggNow.aggregations.some((r) => r.column === n));
+  // From the schema's order, not the grid's: moving a column must not change the query.
+  const firstKey = schema.find((f) => shown.includes(f.name) && !aggNow.aggregations.some((r) => r.column === f.name))?.name;
   const gridSorts = useMemo<SortKey[]>(() => (grouped ? (own?.length ? own : firstKey ? [{ field: firstKey, direction: 'asc' }] : []) : sorts), [grouped, own, sorts, firstKey]);
   const pks = primaryKeys(native);
   const wanted = shown.flatMap((name) => schema.find((f) => f.name === name) ?? []);
@@ -414,6 +418,14 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     // A joined mart that has just left remembers what it was showing, as its own field names.
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
   };
+  // A moved column keeps its sorts, filters and functions: only the order changes, and it is one Undo step. The cell selection is dropped (its columns moved).
+  const reorder = (cols: string[]) => {
+    if (cols === shown) return;
+    markEdit();
+    setVisible(cols);
+    columnStore.save(martId, cols);
+    setSelected(null);
+  };
   const table = useTable({ features, data: rows ?? [], columns });
   const rowsLabel = rows ? `${rows.length}${hasMore ? '+' : ''}` : null;
   // The Data band's title row shows the no-primary-key warning, so it is told whether this grid is a plain preview.
@@ -475,6 +487,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     // The same rule as the Fields picker: the last column, and the last of the main mart's while a joined mart is shown, stay.
     canHide: (name) => shown.length > 1 && !(several && ownOn === 1 && ownNames.has(name)),
     hide: (name) => changeColumns(shown.filter((n) => n !== name)),
+    canMove: (name, dir) => moveColumnBy(shown, name, dir, sources) !== shown,
+    move: (name, dir) => reorder(moveColumnBy(shown, name, dir, sources)),
     typeOf: (f, o) => outputType(f, o.fn),
     sortable: !charts,
   };
@@ -482,8 +496,6 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // the far end, the cell stays active), or whole columns or rows (a tint and a frame around the block); its column letters and row
   // numbers are lit. `from` is where a shift-click on a header extends from.
   type Cell = { row: number; col: number };
-  type Selection = GridSelection;
-  const [selected, setSelected] = useState<Selection | null>(null);
   const rowCount = rows?.length ?? 0;
   const inside = (c: Cell) => c.row < rowCount && c.col < outputs.length;
   // Charts has no cells to select: nothing stays lit from the table (it is cleared below too, so Table opens without it).
@@ -519,6 +531,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const pickHeader = (kind: 'col' | 'row', i: number, extend: boolean) => setSelected((cur) => (extend && cur && cur.kind === kind ? { kind, from: cur.from, to: i } : { kind, from: i, to: i }));
   // Measured for the charts: their panels are as wide as the visible grid, not the (wider) table.
   const { ref: scroller, width: scrollerWidth } = useWidth<HTMLDivElement>(charts);
+  const owner = useMemo(() => groupMap(sources), [sources]);
   const traverseFilters = useMemo(() => toTraverseFilters(schema, Object.values(filters)), [schema, filters]);
   // A click selects the cell; a shift-click stretches a block from the active cell (the one a click or a header selected) to this one,
   // and does not open another record.
@@ -650,7 +663,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               </tr>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                {hg.headers.map((h) => <th key={h.id} aria-sort={!charts && outputByKey.get(h.column.id)?.sortable ? sortOf(shownSorts, outputByKey.get(h.column.id)!.column) : 'none'} className={`dm-th ${maxWidthOf(byName.get(outputByKey.get(h.column.id)!.column)!)} overflow-hidden text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
+                {hg.headers.map((h) => <th key={h.id} data-column={outputByKey.get(h.column.id)!.column} aria-sort={!charts && outputByKey.get(h.column.id)?.sortable ? sortOf(shownSorts, outputByKey.get(h.column.id)!.column) : 'none'} className={`dm-th ${maxWidthOf(byName.get(outputByKey.get(h.column.id)!.column)!)} overflow-hidden text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
                 {/* Takes the width the columns leave over, so the line under the header runs the whole card. */}
                 <th aria-hidden className="dm-th dm-th-fill w-full p-0" />
               </tr>
@@ -674,6 +687,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               ))}
           </tbody>}
         </table>
+        <ColumnDragLayer scroller={scroller} head={head} groupOf={owner} onMove={(name, before) => reorder(moveColumn(shown, name, before, sources))} />
         {!charts && !error && !blocked && hasMore && <div className="p-3 text-center"><button type="button" onClick={() => setLimit((l) => l + PAGE_SIZE)} className="rounded-md border px-3 py-1 text-sm hover:bg-accent">Load more</button></div>}
       </div>
     </div>

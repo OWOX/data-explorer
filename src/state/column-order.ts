@@ -19,3 +19,40 @@ export function orderColumns(columns: string[], sources: JoinedSource[], fallbac
   // The first data mart is always the main one: a list that has joined columns and none of its own gets the mart's default columns first.
   return [...(own.length === 0 && groups.size > 0 ? fallbackOwn : own), ...[...groups.values()].flat()];
 }
+
+/** The data mart a column belongs to: a joined mart's id, or '' for the main mart's own columns (so a mart joined to itself is its own group). */
+export function groupMap(sources: JoinedSource[]): (name: string) => string {
+  const owner = new Map<string, string>();
+  for (const s of sources) for (const f of s.fields) if (!owner.has(f.name)) owner.set(f.name, s.martId);
+  return (name) => owner.get(name) ?? '';
+}
+
+/**
+ * Moves `name` to just before `before` (`null`: to the end of its data mart's group). A column never leaves its group, so a `before` from
+ * another mart is refused. A refused or no-op move returns the same array, so callers can tell nothing changed by identity.
+ */
+export function moveColumn(columns: string[], name: string, before: string | null, sources: JoinedSource[]): string[] {
+  const at = columns.indexOf(name);
+  if (at < 0 || before === name) return columns;
+  const group = groupMap(sources);
+  if (before !== null && (!columns.includes(before) || group(before) !== group(name))) return columns;
+  const rest = columns.filter((c) => c !== name);
+  let to = at;
+  if (before !== null) to = rest.indexOf(before);
+  else {
+    const last = rest.reduce((end, c, i) => (group(c) === group(name) ? i : end), -1);
+    if (last >= 0) to = last + 1;
+  }
+  const next = [...rest.slice(0, to), name, ...rest.slice(to)];
+  return next.every((c, i) => c === columns[i]) ? columns : next;
+}
+
+/** One step left (-1) or right (1) among the columns of the same data mart; the same array at the group's edge. */
+export function moveColumnBy(columns: string[], name: string, dir: -1 | 1, sources: JoinedSource[]): string[] {
+  const group = groupMap(sources);
+  const mine = columns.filter((c) => group(c) === group(name));
+  const i = mine.indexOf(name);
+  if (i < 0) return columns;
+  if (dir < 0) return i === 0 ? columns : moveColumn(columns, name, mine[i - 1]!, sources);
+  return i === mine.length - 1 ? columns : moveColumn(columns, name, mine[i + 2] ?? null, sources);
+}

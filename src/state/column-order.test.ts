@@ -1,6 +1,6 @@
 import type { JoinedSource } from '../api/blendable';
 import type { Field } from '../model/types';
-import { orderColumns } from './column-order';
+import { groupMap, moveColumn, moveColumnBy, orderColumns } from './column-order';
 
 const f = (name: string, martId: string): Field => ({ name, alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId, label: martId, aliasPath: martId } });
 const src = (aliasPath: string, martId: string, names: string[]): JoinedSource => ({ aliasPath, martId, label: martId, depth: 1, fields: names.map((n) => f(n, martId)), uniqueCount: false });
@@ -33,4 +33,57 @@ test('with no sources every column is the main mart\'s own', () => {
 
 test('a new field of an earlier mart joins that mart\'s group, a new mart goes last', () => {
   expect(orderColumns(['id', 'customers__id', 'products__sku', 'customers__city'], sources)).toEqual(['id', 'customers__id', 'customers__city', 'products__sku']);
+});
+
+describe('moveColumn', () => {
+  const list = ['id', 'total', 'status', 'customers__id', 'customers__city', 'products__sku', 'products__price'];
+
+  test('moves a column before another one of its own group', () => {
+    expect(moveColumn(list, 'status', 'id', sources)).toEqual(['status', 'id', 'total', 'customers__id', 'customers__city', 'products__sku', 'products__price']);
+    expect(moveColumn(list, 'id', 'status', sources)).toEqual(['total', 'id', 'status', 'customers__id', 'customers__city', 'products__sku', 'products__price']);
+  });
+
+  test('null puts the column last in its own group, not at the end of the list', () => {
+    expect(moveColumn(list, 'id', null, sources)).toEqual(['total', 'status', 'id', 'customers__id', 'customers__city', 'products__sku', 'products__price']);
+    expect(moveColumn(list, 'customers__id', null, sources)).toEqual(['id', 'total', 'status', 'customers__city', 'customers__id', 'products__sku', 'products__price']);
+  });
+
+  test('works inside a joined group', () => {
+    expect(moveColumn(list, 'products__price', 'products__sku', sources)).toEqual(['id', 'total', 'status', 'customers__id', 'customers__city', 'products__price', 'products__sku']);
+  });
+
+  test('a move into another data mart\'s group is refused with the same array', () => {
+    expect(moveColumn(list, 'id', 'customers__city', sources)).toBe(list);
+    expect(moveColumn(list, 'customers__id', 'status', sources)).toBe(list);
+    expect(moveColumn(list, 'products__sku', 'customers__id', sources)).toBe(list);
+  });
+
+  test('a no-op or unknown name returns the same array', () => {
+    expect(moveColumn(list, 'total', 'total', sources)).toBe(list);
+    expect(moveColumn(list, 'total', 'status', sources)).toBe(list);
+    expect(moveColumn(list, 'status', null, sources)).toBe(list);
+    expect(moveColumn(list, 'nope', 'id', sources)).toBe(list);
+    expect(moveColumn(list, 'id', 'nope', sources)).toBe(list);
+  });
+
+  test('a lone column of its group stays', () => {
+    expect(moveColumn(['id', 'products__sku'], 'products__sku', null, sources)).toEqual(['id', 'products__sku']);
+  });
+
+  test('moveColumnBy steps within the group and stops at its edges', () => {
+    expect(moveColumnBy(list, 'total', 1, sources)).toEqual(['id', 'status', 'total', 'customers__id', 'customers__city', 'products__sku', 'products__price']);
+    expect(moveColumnBy(list, 'total', -1, sources)).toEqual(['total', 'id', 'status', 'customers__id', 'customers__city', 'products__sku', 'products__price']);
+    expect(moveColumnBy(list, 'id', -1, sources)).toBe(list);
+    expect(moveColumnBy(list, 'status', 1, sources)).toBe(list);
+    expect(moveColumnBy(list, 'customers__id', -1, sources)).toBe(list);
+    expect(moveColumnBy(list, 'products__sku', 1, sources)).toEqual(['id', 'total', 'status', 'customers__id', 'customers__city', 'products__price', 'products__sku']);
+  });
+});
+
+test('groupMap: a mart joined to itself is its own group, apart from the main mart\'s columns', () => {
+  const group = groupMap([src('self', 'orders', ['self__id', 'self__total'])]);
+  expect(group('id')).toBe('');
+  expect(group('self__id')).toBe('orders');
+  const list = ['id', 'total', 'self__id', 'self__total'];
+  expect(moveColumn(list, 'id', 'self__id', [src('self', 'orders', ['self__id', 'self__total'])])).toBe(list);
 });
