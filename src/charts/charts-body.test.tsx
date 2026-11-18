@@ -50,6 +50,11 @@ async function charts(opts?: Parameters<typeof setup>[0]) {
 }
 const cardNames = (el: HTMLElement | null) => [...(el?.querySelectorAll('[data-card]') ?? [])].map((c) => c.querySelector('div')!.textContent);
 
+test('Charts: the body is a direct child of the table, so the headers stay in it', async () => {
+  await charts();
+  expect(group('orders')!.closest('tbody')!.parentElement!.tagName).toBe('TABLE');
+});
+
 test('Charts: each data mart has its own cards in its group cell, Records first', async () => {
   await charts();
   await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Records', 'Amount · Sum']));
