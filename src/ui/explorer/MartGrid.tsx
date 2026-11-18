@@ -518,7 +518,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   };
   const pickHeader = (kind: 'col' | 'row', i: number, extend: boolean) => setSelected((cur) => (extend && cur && cur.kind === kind ? { kind, from: cur.from, to: i } : { kind, from: i, to: i }));
   // Measured for the charts: their panels are as wide as the visible grid, not the (wider) table.
-  const { ref: scroller, width: scrollerWidth } = useWidth<HTMLDivElement>();
+  const { ref: scroller, width: scrollerWidth } = useWidth<HTMLDivElement>(charts);
   const traverseFilters = useMemo(() => toTraverseFilters(schema, Object.values(filters)), [schema, filters]);
   // A click selects the cell; a shift-click stretches a block from the active cell (the one a click or a header selected) to this one,
   // and does not open another record.
