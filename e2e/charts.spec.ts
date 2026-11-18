@@ -38,7 +38,7 @@ test('Charts mode shows scorecards, a stacked time series and a pie, and Table b
   await expect(data(page).getByRole('row')).toHaveCount(202);
 });
 
-test('a one-column group is no wider in Charts than in Table', async ({ page }) => {
+test('a one-column group shows its scorecard value in full', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   // The picker may close after each change: open it again for every column that goes.
   for (const name of ['status', 'Customer', 'Product', 'Store']) {
@@ -47,11 +47,10 @@ test('a one-column group is no wider in Charts than in Table', async ({ page }) 
     await page.keyboard.press('Escape');
   }
   await expect(data(page).getByRole('columnheader', { name: /^Sort by/ })).toHaveCount(1); // only id is left
-  const width = () => data(page).locator('th[data-group]').first().evaluate((e) => Math.round(e.getBoundingClientRect().width));
-  const table = await width();
   await data(page).getByRole('radio', { name: 'Charts' }).click();
-  // Loaded: the loading skeleton has a floor of its own.
-  await expect(data(page).locator('[data-card]').first().getByText('450')).toBeVisible();
-  expect(await width()).toBeLessThanOrEqual(table);
+  const value = data(page).locator('[data-card-value]').first();
+  await expect(value).toHaveText('450');
+  // A number must never be clipped: a cut value reads as another number.
+  expect(await value.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
   await page.screenshot({ path: 'tmp/charts-e2e-narrow.png' });
 });
