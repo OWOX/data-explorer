@@ -944,6 +944,47 @@ describe('Copy SQL', () => {
     expect(await sqlItem()).toBeEnabled();
   });
 
+  describe('the outcome is a note like the other copy actions', () => {
+    beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }); });
+    afterEach(() => { vi.useRealTimers(); });
+    const run = (): GridRun => ({ state: 'done', runId: 'r1' });
+    const get = async () => ({ additionalParams: { httpData: { executionSqlQuery: 'SELECT 1' } } });
+    const SAID = 'SQL copied. It is the query the grid ran, with its page LIMIT.';
+    const FAILED = 'Could not copy. Copy the SQL by hand';
+
+    test('the SQL copied note goes after the six seconds', async () => {
+      const u = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      setClipboard(vi.fn().mockResolvedValue(undefined));
+      lone(run(), get);
+      await u.click(await screen.findByText('Export'));
+      await waitFor(async () => expect(await sqlItem()).toBeEnabled());
+      await u.click(await sqlItem());
+      const said = await screen.findByText(SAID);
+      await u.unhover(said);
+      act(() => { vi.advanceTimersByTime(6100); });
+      expect(screen.queryByText(SAID)).toBeNull();
+    });
+
+    test('a failed write shows the note, and "Show SQL" reopens the dialog the toast then holds', async () => {
+      Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false });
+      const u = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      setClipboard(undefined);
+      lone(run(), get);
+      await u.click(await screen.findByText('Export'));
+      await waitFor(async () => expect(await sqlItem()).toBeEnabled());
+      await u.click(await sqlItem());
+      await screen.findByRole('dialog', { name: 'SQL' });
+      expect(screen.getByText(FAILED)).toBeInTheDocument();
+      act(() => { vi.advanceTimersByTime(20_000); });
+      expect(screen.getByRole('dialog', { name: 'SQL' })).toBeInTheDocument();
+      expect(screen.getByText(FAILED)).toBeInTheDocument();
+      await u.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'SQL' })).toBeNull());
+      await u.click(await screen.findByRole('button', { name: 'Show SQL' }));
+      expect(await screen.findByRole('dialog', { name: 'SQL' })).toBeInTheDocument();
+    });
+  });
+
   test('ArrowUp from the first item wraps past a disabled Copy SQL to the last enabled item', async () => {
     lone({ state: 'running' });
     await userEvent.click(await screen.findByText('Export'));

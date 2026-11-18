@@ -36,6 +36,8 @@ const PROVIDER_LISTING: Record<Assistant, string> = {
 type Copied = { assistant: Assistant; prompt: string; ok: boolean };
 /** The grid's rows as TSV, and whether they reached the clipboard. */
 type CopiedData = { tsv: string; count: number; more: boolean; ok: boolean };
+/** The SQL Copy SQL copied, and whether it reached the clipboard. */
+type CopiedSql = { sql: string; ok: boolean };
 
 const STAGE_LABEL: Record<Stage, string> = { sheet: 'Creating the spreadsheet…', report: 'Saving the report…', run: 'Running the report…' };
 const MAYBE_CREATED = 'The report may have been created; check OWOX before trying again.';
@@ -56,10 +58,11 @@ export function ExportMenu(p: Props) {
   const [promptOpen, setPromptOpen] = useState(false);
   const [data, setData] = useState<CopiedData | null>(null);
   const [dataOpen, setDataOpen] = useState(false);
-  const [sqlText, setSqlText] = useState<string | null>(null);
+  const [sqlCopied, setSqlCopied] = useState<CopiedSql | null>(null);
+  const [sqlOpen, setSqlOpen] = useState(false);
   // A copied prompt belongs to the mart it was built from (adjust state during render).
   const [copiedFor, setCopiedFor] = useState(p.martId);
-  if (copiedFor !== p.martId) { setCopiedFor(p.martId); setCopied(null); setPromptOpen(false); setData(null); setDataOpen(false); setSqlText(null); }
+  if (copiedFor !== p.martId) { setCopiedFor(p.martId); setCopied(null); setPromptOpen(false); setData(null); setDataOpen(false); setSqlCopied(null); setSqlOpen(false); }
   const run = p.run ?? { state: 'none' as const };
   const runId = run.state === 'done' ? run.runId : null;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -209,6 +212,7 @@ export function ExportMenu(p: Props) {
     setResult(null);
     setCopied(null);
     setData(null);
+    setSqlCopied(null);
     if (source.kind === 'update' && !sheetUrl(source.report)) { setResult({ kind: 'error', text: UNRECOGNISED }); return; }
     setDialog((cur) => (cur ? { ...cur, error: undefined } : cur));
     void exporter.run({ martId: p.martId, destination, title, source, payload, notes, signal: ctx.signal }).catch(() => undefined);
@@ -223,6 +227,7 @@ export function ExportMenu(p: Props) {
     if (gen.current !== home) return;
     setResult(null);
     setData(null);
+    setSqlCopied(null);
     setCopied({ assistant, prompt, ok });
     // Neither way of copying worked (the sandbox may block both): the prompt is shown to be copied by hand.
     if (!ok) setPromptOpen(true);
@@ -239,6 +244,7 @@ export function ExportMenu(p: Props) {
     if (gen.current !== home) return;
     setResult(null);
     setCopied(null);
+    setSqlCopied(null);
     setData({ tsv, count: p.rows.length, more: p.hasMore, ok });
     if (!ok) setDataOpen(true);
   }
@@ -253,10 +259,12 @@ export function ExportMenu(p: Props) {
     const home = gen.current;
     const ok = await copyText(sql);
     if (gen.current !== home) return;
+    setResult(null);
     setCopied(null);
     setData(null);
-    if (ok) setResult({ kind: 'ok', text: 'SQL copied. It is the query the grid ran, with its page LIMIT.' });
-    else { setResult(null); setSqlText(sql); }
+    setSqlCopied({ sql, ok });
+    // Neither way of copying worked: the SQL is shown to be copied by hand.
+    if (!ok) setSqlOpen(true);
   }
 
   async function openMenu(open: boolean) {
@@ -271,15 +279,15 @@ export function ExportMenu(p: Props) {
   }
 
   // One toast: an export outcome (it stays until dismissed), else the copied data or prompt (it hides itself).
-  const note = busy ? null : result ?? copied ?? data;
-  const dismissNote = () => { if (result) setResult(null); else if (copied) { setCopied(null); setPromptOpen(false); } else { setData(null); setDataOpen(false); } };
-  const noteBody = !note ? null : result ? <ExportResultText result={result} /> : copied ? <CopiedNoteText copied={copied} /> : data ? <CopiedDataText data={data} /> : null;
-  const noteAction = !note ? undefined : result ? <ExportResultLink result={result} /> : copied ? <button type="button" onClick={() => setPromptOpen(true)} className="shrink-0 underline">Show prompt</button> : data && !data.ok ? <button type="button" onClick={() => setDataOpen(true)} className="shrink-0 underline">Show data</button> : undefined;
+  const note = busy ? null : result ?? copied ?? data ?? sqlCopied;
+  const dismissNote = () => { if (result) setResult(null); else if (copied) { setCopied(null); setPromptOpen(false); } else if (data) { setData(null); setDataOpen(false); } else { setSqlCopied(null); setSqlOpen(false); } };
+  const noteBody = !note ? null : result ? <ExportResultText result={result} /> : copied ? <CopiedNoteText copied={copied} /> : data ? <CopiedDataText data={data} /> : sqlCopied ? <CopiedSqlText sqlCopied={sqlCopied} /> : null;
+  const noteAction = !note ? undefined : result ? <ExportResultLink result={result} /> : copied ? <button type="button" onClick={() => setPromptOpen(true)} className="shrink-0 underline">Show prompt</button> : data && !data.ok ? <button type="button" onClick={() => setDataOpen(true)} className="shrink-0 underline">Show data</button> : sqlCopied && !sqlCopied.ok ? <button type="button" onClick={() => setSqlOpen(true)} className="shrink-0 underline">Show SQL</button> : undefined;
 
   return (
     <>
       <span role="status" className="text-xs text-muted-foreground">{busy}</span>
-      <Toast onDismiss={dismissNote} returnTo={() => menu.current?.querySelector('summary')} action={noteAction} persistent={!busy && !!result} hold={promptOpen || dataOpen} stamp={note}>{noteBody}</Toast>
+      <Toast onDismiss={dismissNote} returnTo={() => menu.current?.querySelector('summary')} action={noteAction} persistent={!busy && !!result} hold={promptOpen || dataOpen || sqlOpen} stamp={note}>{noteBody}</Toast>
       <details ref={menu} className="dm-filter dm-export" name="dm-filter" onToggle={(e) => openMenu(e.currentTarget.open)} {...(busy ? { 'aria-disabled': true } : {})}>
           <summary onClick={(e) => { if (busy) e.preventDefault(); }} onKeyDown={onSummaryKey}>{label}<ChevronDown size={14} /></summary>
           <div className="dm-filter-menu dm-cascade" role="menu" data-level="1" onKeyDown={onMenuKey}>
@@ -344,7 +352,7 @@ export function ExportMenu(p: Props) {
         </details>
       {promptOpen && copied && <TextDialog name="Prompt" heading={`Prompt for ${copied.assistant}`} note={`Paste it into ${copied.assistant} with the OWOX Data Marts connector turned on. Copying writes nothing to OWOX.`} areaLabel="Prompt text" text={copied.prompt} onClose={() => { setPromptOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {dataOpen && data && <TextDialog name="Copy the data" note="Select the text and copy it, then paste it into a sheet. Copying writes nothing to OWOX." areaLabel="Data text" text={data.tsv} onClose={() => { setDataOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
-      {sqlText && <TextDialog name="SQL" note="Select the SQL and copy it. Copying writes nothing to OWOX." areaLabel="SQL text" text={sqlText} onClose={() => { setSqlText(null); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
+      {sqlOpen && sqlCopied && <TextDialog name="SQL" note="Select the SQL and copy it. Copying writes nothing to OWOX." areaLabel="SQL text" text={sqlCopied.sql} onClose={() => { setSqlOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {dialog && <NewReportDialog key={dialog.seq} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
     </>
   );
@@ -473,6 +481,16 @@ function TextDialog({ name, heading = name, note, areaLabel, text, onClose }: { 
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** "SQL copied", or what is left to do when the clipboard was out of reach. */
+function CopiedSqlText({ sqlCopied }: { sqlCopied: CopiedSql }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {sqlCopied.ok ? <Check className="size-3.5 shrink-0" aria-hidden /> : <AlertTriangle className="size-3.5 shrink-0" aria-hidden />}
+      {sqlCopied.ok ? 'SQL copied. It is the query the grid ran, with its page LIMIT.' : 'Could not copy. Copy the SQL by hand'}
+    </span>
   );
 }
 
