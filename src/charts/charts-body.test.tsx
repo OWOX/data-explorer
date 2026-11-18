@@ -72,7 +72,8 @@ test('a long number shows short on its card, the exact value in a tooltip and to
   expect(amount.textContent).not.toBe(exact);
   expect(amount.textContent!.length).toBeLessThan(exact.length);
   expect(amount).toHaveAttribute('aria-label', `Amount · Sum: ${exact}`);
-  await userEvent.hover(amount);
+  expect(amount).toHaveAttribute('role', 'note');
+  amount.focus();
   expect((await screen.findAllByText(exact)).length).toBeGreaterThan(0);
   const records = group('orders')!.querySelector<HTMLElement>('[data-card^="records:"] [data-card-value]')!;
   expect(records.textContent).toBe('450');

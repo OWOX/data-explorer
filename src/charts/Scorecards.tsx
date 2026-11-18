@@ -54,11 +54,15 @@ function CardValue({ card, row, formatOf }: { card: Card; row: Row; formatOf: Fo
   const full = textOf(card, row, formatOf);
   const short = shortOf(card, row, formatOf);
   const cls = 'text-lg font-semibold tabular-nums';
-  if (short === null || short === full) return <div data-card-value className={cls}>{full}</div>;
+  // A short form that is no shorter (1e21 is "1e+21" in full) is not worth a hover.
+  if (short === null || short.length >= full.length) return <div data-card-value className={cls}>{full}</div>;
+  // As Hint does: a focusable note, so the exact value is named for screen readers and opens by keyboard too.
   return (
-    <Tooltip content={full}>
-      <div data-card-value data-exact={full} tabIndex={0} aria-label={`${card.label}: ${full}`} className={`${cls} w-fit cursor-default`}>{short}</div>
-    </Tooltip>
+    <div className={cls}>
+      <Tooltip content={full}>
+        <span data-card-value data-exact={full} role="note" tabIndex={0} aria-label={`${card.label}: ${full}`} className="cursor-default">{short}</span>
+      </Tooltip>
+    </div>
   );
 }
 
