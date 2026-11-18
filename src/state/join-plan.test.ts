@@ -1,6 +1,6 @@
 import type { JoinedSource } from '../api/blendable';
 import type { Field } from '../model/types';
-import { defaultJoinFields, fieldsFor, isIdField, joinedMartIds, planClick, withoutMart, type PlanEnv } from './join-plan';
+import { defaultJoinFields, fieldsFor, inUsePaths, isIdField, joinedMartIds, planClick, sourceOfMart, withoutMart, type PlanEnv } from './join-plan';
 import type { GridState } from './store';
 
 const f = (name: string, category: Field['category'], martId: string): Field => ({ name, alias: null, type: 'STRING', category, description: null, isPrimaryKey: false, joined: { martId, label: martId, aliasPath: martId, originalName: name.slice(martId.length + 2) } });
@@ -233,4 +233,35 @@ test('taking a joined mart out drops its aggregation rules with its columns', ()
   expect(out.columns).toEqual(['id']);
   expect(out.aggregations).toEqual([{ column: 'id', function: 'COUNT' }]);
   expect(out.dateTrunc).toBeUndefined();
+});
+
+describe('the path a mart joins by', () => {
+  const direct = src('stores', 'stores', [f('stores__city', 'string', 'stores')], 1);
+  const viaCustomers = src('customers.stores', 'stores', [f('customers__stores__city', 'string', 'stores')], 2);
+  const viaProducts = src('products.stores', 'stores', [f('products__stores__city', 'string', 'stores')], 2);
+  const customers = src('customers', 'customers', [f('customers__city', 'string', 'customers')], 1);
+  const products = src('products', 'products', [f('products__sku', 'string', 'products')], 1);
+
+  test('a direct join to the main mart wins', () => {
+    expect(sourceOfMart([customers, direct, viaCustomers], 'stores', new Set(['', 'customers']))?.aliasPath).toBe('stores');
+  });
+
+  test('with no direct join, the path through a mart in use wins over one listed first', () => {
+    expect(sourceOfMart([customers, products, viaProducts, viaCustomers], 'stores', new Set(['', 'customers']))?.aliasPath).toBe('customers.stores');
+  });
+
+  test('with no path through a mart in use, the first (shallowest) path', () => {
+    expect(sourceOfMart([customers, products, viaProducts, viaCustomers], 'stores', new Set(['']))?.aliasPath).toBe('products.stores');
+    expect(sourceOfMart([customers, products, viaProducts, viaCustomers], 'stores')?.aliasPath).toBe('products.stores');
+  });
+
+  test('the paths in use are the main mart\'s and those of the joined columns', () => {
+    expect(inUsePaths(['id', 'customers__city'], [customers, products])).toEqual(new Set(['', 'customers']));
+  });
+
+  test('clicking a mart joins it through the joined mart closest to the main one', () => {
+    const sources = [customers, products, viaProducts, viaCustomers];
+    const e = { ...env({ orders: g(['id', 'customers__city']) }, 'orders'), sourcesOf: (id: string) => (id === 'orders' ? sources : []) };
+    expect(planClick(e, 'stores').grids.orders!.columns).toContain('customers__stores__city');
+  });
 });

@@ -23,8 +23,27 @@ export function joinedMartIds(columns: string[], sources: JoinedSource[]): strin
 /** Every blended field name of a joined mart, over all the alias paths that reach it. */
 const namesOf = (sources: JoinedSource[], martId: string) => new Set(sources.filter((s) => s.martId === martId).flatMap((s) => s.fields.map((f) => f.name)));
 
-/** A mart reachable by several alias paths uses the shallowest source, then the first (the list is already in that order). */
-export const sourceOfMart = (sources: JoinedSource[], martId: string): JoinedSource | undefined => sources.find((s) => s.martId === martId);
+/** The alias path a path hangs from: '' for a mart the main one joins directly. */
+export const parentPath = (aliasPath: string): string => {
+  const i = aliasPath.lastIndexOf('.');
+  return i < 0 ? '' : aliasPath.slice(0, i);
+};
+
+/** The alias paths a grid uses: '' for the main mart, and the path of each joined field among the columns. */
+export function inUsePaths(columns: string[], sources: JoinedSource[]): Set<string> {
+  const pathOf = new Map<string, string>();
+  for (const s of sources) for (const f of s.fields) if (!pathOf.has(f.name)) pathOf.set(f.name, s.aliasPath);
+  return new Set(['', ...columns.flatMap((c) => (pathOf.has(c) ? [pathOf.get(c)!] : []))]);
+}
+
+/**
+ * The source a mart joins by. Given the paths in use, a path that hangs from one of them, the closest to the main mart
+ * (the list is sorted by depth, so the first such path); else, or without them, the shallowest path.
+ */
+export const sourceOfMart = (sources: JoinedSource[], martId: string, inUse?: Set<string>): JoinedSource | undefined => {
+  const paths = sources.filter((s) => s.martId === martId);
+  return (inUse && paths.find((s) => inUse.has(parentPath(s.aliasPath)))) || paths[0];
+};
 
 export const isJoinable = (sources: JoinedSource[], martId: string) => sources.some((s) => s.martId === martId);
 
@@ -67,8 +86,8 @@ export const ownColumnsIn = (columns: string[], sources: JoinedSource[]): string
  * those the source offers, in that order, else the default. With nothing remembered, what was last chosen for the pair
  * (those the source still offers), else its first non-ID text field and first non-ID metric.
  */
-export function fieldsFor(sources: JoinedSource[], martId: string, remembered: string[] | undefined, shown: string[] | null = null): string[] {
-  const source = sourceOfMart(sources, martId);
+export function fieldsFor(sources: JoinedSource[], martId: string, remembered: string[] | undefined, shown: string[] | null = null, inUse?: Set<string>): string[] {
+  const source = sourceOfMart(sources, martId, inUse);
   if (shown && source) {
     const byOwn = new Map(source.fields.map((f) => [ownNameOf(f), f.name] as const));
     const mapped = shown.flatMap((n) => (byOwn.has(n) ? [byOwn.get(n)!] : []));
@@ -191,7 +210,7 @@ export function planClick(env: PlanEnv, id: string): Plan {
     for (const r of rest) {
       if (!isJoinable(nextSources, r)) { remember.push({ martId: r, fields: ownNamesIn(grid.columns, sources, r) }); continue; }
       if (have.has(r)) continue;
-      columns = [...columns, ...fieldsFor(nextSources, r, nextPicks[r], ownNamesIn(grid.columns, sources, r)).filter((n) => !columns.includes(n))];
+      columns = [...columns, ...fieldsFor(nextSources, r, nextPicks[r], ownNamesIn(grid.columns, sources, r), inUsePaths(columns, nextSources)).filter((n) => !columns.includes(n))];
     }
     columns = orderColumns(columns, nextSources, env.ownColumns(next));
     const changed = columns.length !== nextGrid.columns.length || columns.some((c, i) => c !== nextGrid.columns[i]);
@@ -210,7 +229,7 @@ export function planClick(env: PlanEnv, id: string): Plan {
   }
 
   if (isJoinable(sources, id)) {
-    const columns = orderColumns([...grid.columns, ...fieldsFor(sources, id, env.picksOf(main)[id], shownOf(id)).filter((n) => !grid.columns.includes(n))], sources, env.ownColumns(main));
+    const columns = orderColumns([...grid.columns, ...fieldsFor(sources, id, env.picksOf(main)[id], shownOf(id), inUsePaths(grid.columns, sources)).filter((n) => !grid.columns.includes(n))], sources, env.ownColumns(main));
     return { selection: env.selection, grids: { [main]: { ...grid, columns } }, saves: [{ martId: main, columns }], remember: [] };
   }
 
