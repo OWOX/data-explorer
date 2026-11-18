@@ -381,7 +381,7 @@ describe('the grid', () => {
     expect(await within(grid).findByText('No rows match the filters.')).toBeInTheDocument();
     expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(5);
     await openSubmenu(within(grid), 'id', 'Filter');
-    await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Clear' }));
     await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(202));
   });
 
@@ -398,7 +398,7 @@ describe('the grid', () => {
     await settle();
     const before = calls.filter((c) => c.id === 'orders').length;
     await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
-    await userEvent.click(screen.getAllByRole('checkbox').filter((c) => (c as HTMLInputElement).checked).at(-1)!);
+    await userEvent.click(screen.getAllByRole('option').filter((c) => c.getAttribute('aria-selected') === 'true').at(-1)!);
     await waitFor(() => expect(within(data()).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(4));
     await settle();
     expect(calls.filter((c) => c.id === 'orders')).toHaveLength(before);
@@ -861,15 +861,15 @@ describe('the storage filter', () => {
     await ordersGrid();
     const menu = storageMenu();
     expect(within(menu).getByText('All')).toBeInTheDocument();
-    expect(within(menu).getByRole('checkbox', { name: /Demo Warehouse/ })).toBeChecked();
-    expect(within(menu).getByRole('checkbox', { name: /Sales Lake/ })).toBeChecked();
-    expect(within(menu).getByRole('checkbox', { name: /Sales Lake/ }).closest('label')).toHaveTextContent('4');
+    expect(within(menu).getByRole('option', { name: /Demo Warehouse/ })).toHaveAttribute('aria-selected', 'true');
+    expect(within(menu).getByRole('option', { name: /Sales Lake/ })).toHaveAttribute('aria-selected', 'true');
+    expect(within(menu).getByRole('option', { name: /Sales Lake/ })).toHaveTextContent('4');
   });
 
   test('unticking Sales Lake removes Payments from the band; the Data band keeps the selected mart, with no history entry', async () => {
     await ordersGrid();
     expect(within(marts()).getByText('Payments')).toBeInTheDocument();
-    await userEvent.click(within(storageMenu()).getByRole('checkbox', { name: /Sales Lake/ }));
+    await userEvent.click(within(storageMenu()).getByRole('option', { name: /Sales Lake/ }));
     await waitFor(() => expect(within(marts()).queryByText('Payments')).toBeNull());
     expect(within(marts()).getByText('Customers')).toBeInTheDocument();
     expect(martCard('Orders')).toHaveAttribute('aria-pressed', 'true');
@@ -881,7 +881,7 @@ describe('the storage filter', () => {
     await ordersGrid();
     await userEvent.click(within(martCard('Orders').closest('section')!).getByText('Payments'));
     await within(data()).findByText('Payments');
-    await userEvent.click(within(storageMenu()).getByRole('checkbox', { name: /Sales Lake/ }));
+    await userEvent.click(within(storageMenu()).getByRole('option', { name: /Sales Lake/ }));
     await waitFor(() => expect(within(marts()).queryByText('Payments')).toBeNull());
     expect(within(data()).getByText('Payments')).toBeInTheDocument();
   });
@@ -912,7 +912,7 @@ describe('the storage filter', () => {
       },
     }));
     await within(data()).findByRole('table');
-    await userEvent.click(within(storageMenu()).getByLabelText('Select all'));
+    await userEvent.click(within(storageMenu()).getByRole('button', { name: 'Clear' }));
     await waitFor(() => expect(within(marts()).queryByText('Orders')).toBeNull());
     hide.current = true;
     await reloadModel();
@@ -1349,23 +1349,24 @@ describe('hidden fields, clipped cells and the field (?)', () => {
   test('the (?) after a field label is revealed by its row, in the picker and in the Row band', async () => {
     const grid = await ordersGrid();
     await userEvent.click(within(grid).getByRole('button', { name: 'Fields of Orders' }));
-    const hint = screen.getAllByLabelText('About Customer').find((el) => el.closest('label'))!;
-    expect(hint.closest('label')).toHaveClass('dm-reveal-host');
+    const hint = screen.getAllByLabelText('About Customer').find((el) => el.closest('.dm-checklist-row'))!;
+    expect(hint.closest('.dm-checklist-row')).toHaveClass('dm-reveal-host');
     expect(hint.closest('.dm-hint-slot')).not.toBeNull();
-    // right after the label, in the same inline box
-    expect(hint.closest('.dm-fieldlabel')).not.toBeNull();
+    // beside the option, not inside it
+    expect(hint.closest('[role="option"]')).toBeNull();
     await userEvent.keyboard('{Escape}');
     await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByText('status');
     expect(within(row()).getByLabelText('About Customer').closest('dt')).toHaveClass('dm-reveal-host');
   });
 
-  test('the Fields icon of a tab is always on screen, in the same green and size as the column menu icons', async () => {
+  test('the Fields icon of a tab shows on hover of its cell, in the same green and size as the column menu icons', async () => {
     const grid = await ordersGrid();
     const icon = within(grid).getByRole('button', { name: 'Fields of Orders' });
-    expect(icon).not.toHaveClass('dm-reveal');
+    expect(icon).toHaveClass('dm-reveal');
+    expect(icon).not.toHaveClass('dm-reveal-on');
     expect(icon).toHaveClass('dm-ctl', 'dm-ctl-lg');
-    expect(within(grid).getByLabelText('Column menu id')).toHaveClass('dm-ctl', 'dm-ctl-lg');
+    expect(within(grid).getByLabelText('Column menu id')).toHaveClass('dm-ctl', 'dm-ctl-lg', 'dm-reveal');
     expect(icon.closest('th')).toHaveClass('dm-gh');
   });
 
@@ -1384,7 +1385,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     fireEvent.click(await within(marts()).findByText('Daily KPIs'));
     await within(data()).findByText('Daily KPIs');
     await openSubmenu(within(data()), 'day', 'Filter');
-    const body = (await screen.findByRole('group', { name: 'Filter day' })).closest('[data-popover-body]')!;
+    const body = (await screen.findByRole('menu', { name: 'Filter day' })).closest('[data-popover-body]')!;
     expect(body.parentElement).toHaveClass('dm-menu-editor');
     expect(body.className).toContain('overflow-y-auto');
     expect(body.querySelector('.dm-popover-title')).toBeNull();
@@ -1565,14 +1566,15 @@ describe('whole column and row selection, and the header layout', () => {
     });
   });
 
-  test('a filter, an aggregation and a sort in use are green squares; idle ones are not', async () => {
+  test('a filter, an aggregation and a sort in use are green line icons and keep the menu icon on; idle ones are not', async () => {
     const grid = await ordersGrid();
     expect(within(grid).queryByLabelText('Filter id')).toBeNull();
     expect(within(grid).getByLabelText('Column menu id')).not.toHaveClass('dm-ctl-on');
+    expect(within(grid).getByLabelText('Column menu id')).not.toHaveClass('dm-reveal-on');
     expect(within(grid).getByLabelText('Column menu id')).toHaveClass('dm-ctl');
     await userEvent.click(sortBtn(grid, 'status'));
     await waitFor(() => expect(header(grid, 'status').querySelector('[data-sort-mark]')).toHaveClass('dm-ctl-on'));
-    expect(within(grid).getByLabelText('Column menu status')).toHaveClass('dm-ctl-on');
+    expect(within(grid).getByLabelText('Column menu status')).toHaveClass('dm-ctl-on', 'dm-reveal-on');
     expect(header(grid, 'id').querySelector('[data-sort-mark]')).toBeNull();
   });
 

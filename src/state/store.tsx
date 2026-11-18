@@ -68,6 +68,8 @@ export type Action =
   /** The main data mart, the joined ones (their columns in the main grid) and the grids they leave behind change in one step Undo covers. */
   | { type: 'setMarts'; selection: Selection; grids: Record<string, GridState> }
   | { type: 'saveGrid'; martId: string; grid: GridState }
+  /** The member changed the grid (a filter, a sort, an aggregation, a column shown or hidden, Reset): stored like `saveGrid`, and one step Undo covers. */
+  | { type: 'editGrid'; martId: string; grid: GridState }
   /** A view link opens: everything it carries is set at once. No history entry, so Undo has nothing to undo. */
   | { type: 'applyView'; selection: Selection; grid: GridState | null; search: string; found?: string[]; contextIds: string[]; storageIds: string[] | null }
   | { type: 'refreshModel' };
@@ -157,6 +159,11 @@ export function reducer(state: State, a: Action): State {
       if (JSON.stringify(a.selection) === JSON.stringify(cur) && JSON.stringify(before) === JSON.stringify(a.grids)) return state;
       return { ...state, selection: a.selection, grids: { ...state.grids, ...a.grids }, history: [...state.history, { ...cur, grids: before }].slice(-HISTORY_LIMIT), future: [] };
     }
+    case 'editGrid': {
+      const before = state.grids[a.martId] ?? null;
+      if (deepEqual(before, a.grid)) return state;
+      return { ...state, grids: { ...state.grids, [a.martId]: a.grid }, history: [...state.history, { ...cur, grids: { [a.martId]: before } }].slice(-HISTORY_LIMIT), future: [] };
+    }
     case 'saveGrid': return { ...state, grids: { ...state.grids, [a.martId]: a.grid } };
     case 'applyView': return {
       ...state,
@@ -169,6 +176,16 @@ export function reducer(state: State, a: Action): State {
     };
     case 'refreshModel': return { ...state, modelVersion: state.modelVersion + 1 };
   }
+}
+
+/** Structural equality for plain JSON values: key order does not matter, and a key holding undefined is the same as a missing one. */
+export function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) || Array.isArray(b)) return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => deepEqual(x, b[i]));
+  const ka = Object.keys(a).filter((k) => (a as Record<string, unknown>)[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => (b as Record<string, unknown>)[k] !== undefined);
+  return ka.length === kb.length && ka.every((k) => deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
 }
 
 export const sourceOfModel = (model: Model): SourceOf => (id) => model.marts.get(id)?.sourceKey ?? null;

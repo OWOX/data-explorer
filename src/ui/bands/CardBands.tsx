@@ -11,7 +11,7 @@ import { useStore } from '../../state/store';
 import { storageMark } from '../storage-icons';
 import { Band } from './Band';
 import { MultiSelect } from './MultiSelect';
-import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
+import { ContextBadges } from './ContextBadges';
 import { useSmartSearchScope } from './SmartSearchScope';
 import { PointerTip } from '../Tooltip';
 import { CardClickContext } from './CardClick';
@@ -142,16 +142,7 @@ export function CardBands({
 
   // A badge per context, in the title row: click to select it. Offered once the project has a context.
   const contextBadges = model.contexts.length === 0 ? undefined : (
-    <div className="dm-context-filter" role="group" aria-label="Contexts">
-      {[...model.contexts].sort((a, b) => a.name.localeCompare(b.name)).map((c) => {
-        const on = contextIds.includes(c.id);
-        return (
-          <button key={c.id} type="button" aria-pressed={on} className="dm-badge dm-badge-toggle" onClick={() => dispatch({ type: 'toggleContext', id: c.id })}>
-            <PickedIcon icon={c.icon} fallback={DEFAULT_CONTEXT_ICON} size={12} />{c.name}
-          </button>
-        );
-      })}
-    </div>
+    <ContextBadges contexts={model.contexts} selectedIds={contextIds} onToggle={(id) => dispatch({ type: 'toggleContext', id })} />
   );
 
   // A search nothing answered and no title matches: the selected mart is still shown, so the band is not empty, but it says so.

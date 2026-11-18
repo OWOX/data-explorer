@@ -1,10 +1,12 @@
-import { useState } from 'react';
-import { DATE_PRESETS, RELATIVE_MAX_N, RELATIVE_PRESETS, isDateTimeField, isPreset, operatorsFor, type OpId } from '../../filters/catalogue';
+import { useEffect, useRef, useState } from 'react';
+import { DATE_PRESETS, RELATIVE_MAX_N, RELATIVE_PRESETS, RELATIVE_UNITS, fromRule, isDateTimeField, isPreset, operatorsFor, toRule, type OpId, type RelativeUnit } from '../../filters/catalogue';
 import { isComplete, type ColumnFilter, type FilterValue } from '../../filters/build';
 import { columnTitle } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
+import { isDayType } from '../../model/field-category';
 import type { RelativeDatePreset } from '../../sdk/types';
 import { Select } from '../Select';
+import { HOVER_MS, HoverIntent, Panel, Row } from './MenuParts';
 
 const input = 'dm-input h-8 w-full rounded-md border bg-background px-2 text-sm';
 
@@ -15,49 +17,88 @@ export function FilterEditor(p: EditorProps) {
   return p.field.category === 'date' ? <DateFilterEditor {...p} /> : <OperatorForm {...p} />;
 }
 
-const item = 'flex w-full items-center rounded-md px-2 py-1 text-left text-sm hover:bg-accent';
 const REST: { op: OpId; label: string }[] = [{ op: 'before', label: 'Before…' }, { op: 'after', label: 'After…' }];
+const LAST_LABELS = ['Last 7 days', 'Last 14 days', 'Last 30 days', 'Last 90 days', 'Last week', 'Last month', 'Last quarter', 'Last 12 months'];
+const THIS_LABELS = ['This week', 'This month', 'This quarter', 'This year'];
+const GROUPS = { last: { title: 'Last…', labels: LAST_LABELS }, this: { title: 'This…', labels: THIS_LABELS } } as const;
+type Group = keyof typeof GROUPS;
+type Fly = { key: Group; row: HTMLElement; seq: number };
+const inGroup = (rule: RelativeDatePreset | undefined, key: Group) => !!rule && (key === 'last' ? rule.kind === 'last_week' || rule.kind === 'last_month' || rule.kind === 'last_quarter' || rule.kind === 'last_n_days' || rule.kind === 'last_n_months' : rule.kind.startsWith('this_'));
+const dash = <div role="separator" className="dm-menu-sep" />;
 
 function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
   // A filter that is not a preset (a range, a day) reopens on its own form, with a way back to the presets.
   const [form, setForm] = useState<OpId | null>(value && value.op !== 'relative' && value.op !== 'is_blank' && value.op !== 'is_not_blank' ? value.op : null);
   const current = value?.op === 'relative' ? (value.value as RelativeDatePreset) : undefined;
-  const customN = current && current.kind === 'last_n_days' && !DATE_PRESETS.some((p) => isPreset(current, p.rule)) ? current.n : 7;
-  const [n, setN] = useState<number>(customN);
+  const custom = current && !DATE_PRESETS.some((p) => isPreset(current, p.rule)) ? fromRule(current) : undefined;
+  const [n, setN] = useState<number>(custom?.n ?? 7);
+  const [unit, setUnit] = useState<RelativeUnit>(custom?.unit ?? 'days');
+  const [fly, setFly] = useState<Fly | null>(null);
+  // Hover intent as in the column menu: a flyout is replaced only once the pointer has rested on another row, and never while a field in it is being edited.
+  const [intent] = useState(() => new HoverIntent());
+  useEffect(() => () => intent.clear(), [intent]);
+  // A flyout closed by the keyboard leaves the pointer resting on its row (on a narrow screen, where it covered the row, the browser then reports a hover): that row stays closed until the pointer leaves it.
+  const closedRow = useRef<HTMLElement | null>(null);
+  // A form replaces the list and its row, so the flyout anchored to that row and any pending hover go with it.
+  const goForm = (op: OpId | null) => { intent.clear(); closedRow.current = null; setFly(null); setForm(op); };
   if (form) {
     return (
       <div className="flex flex-col gap-2">
-        <button type="button" onClick={() => setForm(null)} className="self-start text-xs text-muted-foreground hover:text-foreground">← Presets</button>
+        <button type="button" onClick={() => goForm(null)} className="self-start text-xs text-muted-foreground hover:text-foreground">← Presets</button>
         <OperatorForm field={field} value={value} onApply={onApply} onClear={onClear} startOp={form} />
       </div>
     );
   }
   const apply = (rule: RelativeDatePreset) => onApply({ field: field.name, op: 'relative', value: rule });
-  const nOk = Number.isInteger(n) && n > 0 && n <= RELATIVE_MAX_N;
-  const isDay = field.type.trim().toUpperCase() === 'DATE';
+  const rule = toRule(n, unit);
+  const nOk = Number.isInteger(n) && n > 0 && rule.n <= RELATIVE_MAX_N;
+  const isDay = isDayType(field.type);
+  const editing = () => [...document.querySelectorAll<HTMLElement>('[data-column-menu][data-form]')].some((p) => 'edited' in p.dataset || (p.contains(document.activeElement) && !!document.activeElement?.matches('input, select, textarea')));
+  const open = (key: Group, row: HTMLElement, focus: boolean) => { intent.clear(); closedRow.current = null; setFly((cur) => ({ key, row, seq: focus ? (cur?.key === key ? cur.seq : 0) + 1 : cur?.key === key ? cur.seq : 0 })); };
+  const hoverGroup = (key: Group, row: HTMLElement) => { if (closedRow.current === row) return; if (fly?.key === key) intent.clear(); else if (!fly) open(key, row, false); else intent.after(HOVER_MS, () => { if (!editing()) open(key, row, false); }); };
+  const hoverOther = () => { if (fly) intent.after(HOVER_MS, () => { if (!editing()) setFly(null); }); };
+  const closeFly = () => { const row = fly?.row; closedRow.current = row ?? null; setFly(null); row?.focus(); };
+  const leave = () => { intent.clear(); closedRow.current = null; };
+  const plain = { tabbable: true, onHover: hoverOther, onLeaveRow: leave } as const;
+  // Rows in the flyout itself must not close it when the pointer rests on them.
+  const preset = (label: string, inFly = false) => {
+    const pr = DATE_PRESETS.find((p) => p.label === label)!;
+    return <Row key={label} {...(inFly ? { tabbable: false } : plain)} check checked={isPreset(current, pr.rule)} label={label} onActivate={() => apply(pr.rule)} />;
+  };
+  const group = (key: Group) => (
+    <Row key={key} tabbable check checked={inGroup(current, key)} sub expanded={fly?.key === key} label={GROUPS[key].title}
+      onActivate={(r) => open(key, r, true)} onOpen={(r) => open(key, r, true)} onHover={(r) => hoverGroup(key, r)} onLeaveRow={leave} />
+  );
+  const factor = toRule(1, unit).n;
   return (
-    <div className="flex flex-col gap-0.5" role="group" aria-label={`Filter ${columnTitle(field)}`}>
-      <div className="flex flex-col gap-0.5" role="group" aria-label="Date presets">
-        {DATE_PRESETS.map((pr) => {
-          const active = isPreset(current, pr.rule);
-          return <button key={pr.label} type="button" aria-pressed={active} onClick={() => apply(pr.rule)} className={`${item} ${active ? 'bg-accent font-medium' : ''}`}>{pr.label}</button>;
-        })}
-      </div>
-      <form className="flex flex-wrap items-center gap-1 px-2 py-1 text-sm" onSubmit={(e) => { e.preventDefault(); if (nOk) apply({ kind: 'last_n_days', n }); }}>
-        <span>Last</span>
-        <input aria-label="N" className={`${input} w-16`} type="number" min={1} max={RELATIVE_MAX_N} value={Number.isNaN(n) ? '' : n} onChange={(e) => setN(e.target.valueAsNumber)} />
-        <span>days</span>
-        <button type="submit" disabled={!nOk} className="dm-btn dm-btn-primary dm-btn-sm ml-auto">Apply</button>
-      </form>
-      <button type="button" onClick={() => setForm('between')} className={item}>Custom range…</button>
-      <hr className="my-1" />
-      {isDay && <button type="button" onClick={() => setForm('on')} className={item}>On…</button>}
-      {REST.map((r) => <button key={r.op} type="button" onClick={() => setForm(r.op)} className={item}>{r.label}</button>)}
-      {(['is_blank', 'is_not_blank'] as const).map((op) => {
-        const active = value?.op === op;
-        return <button key={op} type="button" aria-pressed={active} onClick={() => onApply({ field: field.name, op })} className={`${item} ${active ? 'bg-accent font-medium' : ''}`}>{op === 'is_blank' ? 'Is blank' : 'Is not blank'}</button>;
-      })}
-      {value && <button type="button" onClick={onClear} className="dm-btn dm-btn-secondary mt-2 self-end">Clear</button>}
+    <div className="dm-menu-flush" role="menu" aria-label={`Filter ${columnTitle(field)}`}>
+      {preset('Today')}
+      {preset('Yesterday')}
+      {group('last')}
+      {group('this')}
+      <Row {...plain} slot label="Custom range…" onActivate={() => goForm('between')} />
+      {dash}
+      {isDay && <Row {...plain} slot label="On…" onActivate={() => goForm('on')} />}
+      {REST.map((r) => <Row key={r.op} {...plain} slot label={r.label} onActivate={() => goForm(r.op)} />)}
+      {(['is_blank', 'is_not_blank'] as const).map((op) => (
+        <Row key={op} {...plain} check checked={value?.op === op} label={op === 'is_blank' ? 'Is blank' : 'Is not blank'} onActivate={() => onApply({ field: field.name, op })} />
+      ))}
+      {value && <>{dash}<Row {...plain} slot label="Clear" onActivate={onClear} /></>}
+      {fly && (
+        <Panel anchor={fly.row} mode="beside" role="menu" returnTo={fly.row} label={GROUPS[fly.key].title} onEscape={closeFly} onLeave={closeFly} focusSeq={fly.seq} className="dm-menu-editor dm-menu-fly" form={fly.key === 'last'}>
+          <div className="dm-menu-list">{GROUPS[fly.key].labels.map((l) => preset(l, true))}</div>
+          {fly.key === 'last' && (
+            <form className="dm-menu-fly-form" onSubmit={(e) => { e.preventDefault(); if (nOk) apply(rule); }}>
+              <span>Last</span>
+              <input aria-label="N" className="w-16" type="number" min={1} max={Math.floor(RELATIVE_MAX_N / factor)} value={Number.isNaN(n) ? '' : n} onChange={(e) => setN(e.target.valueAsNumber)} />
+              <Select aria-label="Unit" value={unit} onChange={(e) => setUnit(e.target.value as RelativeUnit)}>
+                {RELATIVE_UNITS.map((u) => <option key={u.unit} value={u.unit}>{u.label}</option>)}
+              </Select>
+              <button type="submit" disabled={!nOk} className="dm-btn dm-btn-primary dm-btn-sm">Apply</button>
+            </form>
+          )}
+        </Panel>
+      )}
     </div>
   );
 }

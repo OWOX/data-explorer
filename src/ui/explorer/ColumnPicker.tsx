@@ -1,7 +1,9 @@
 import { Columns3 } from 'lucide-react';
 import type { Field } from '../../model/types';
 import { Popover } from '../Popover';
-import { FieldLabel } from './FieldLabel';
+import { fieldLabel } from '../../model/fieldLabel';
+import { SheetsChecklist, type ChecklistItem } from '../SheetsChecklist';
+import { FieldHint, FieldLabel } from './FieldLabel';
 
 /**
  * The columns of one data mart's tab: only that mart's fields (the main mart's own, or a joined mart's blended ones).
@@ -18,23 +20,32 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange }:
 }) {
   const set = new Set(visible);
   const mine = new Set(fields.map((f) => f.name));
-  const toggle = (name: string) => {
-    const next = set.has(name) ? visible.filter((c) => c !== name) : [...visible, name];
-    onChange(main ? [...fields.map((f) => f.name).filter((n) => next.includes(n)), ...next.filter((n) => !mine.has(n))] : next);
-  };
   const ticked = fields.filter((f) => set.has(f.name)).length;
+  const apply = (picked: string[]) => {
+    const keep = new Set(picked);
+    const others = visible.filter((c) => !mine.has(c));
+    let next = main
+      ? [...fields.map((f) => f.name).filter((n) => keep.has(n)), ...others]
+      : [...visible.filter((c) => !mine.has(c) || keep.has(c)), ...picked.filter((n) => !set.has(n))];
+    // Clear never leaves the grid without a column.
+    if (next.length === 0) next = visible.slice(0, 1);
+    onChange(next);
+  };
+  const items: ChecklistItem[] = fields.map((f) => ({
+    value: f.name,
+    text: fieldLabel(f),
+    label: <FieldLabel field={f} hint={false} />,
+    extra: <FieldHint field={f} decorative />,
+    description: f.description?.trim() || undefined,
+    disabled: set.has(f.name) && (visible.length === 1 || locked(f.name)),
+  }));
   return (
     <Popover align="start" tip="Fields" trigger={
-      <button type="button" aria-label={`Fields of ${title}`} className="dm-ctl dm-ctl-lg"><Columns3 className="dm-icon" aria-hidden /></button>
+      <button type="button" aria-label={`Fields of ${title}`} className="dm-ctl dm-ctl-lg dm-reveal"><Columns3 className="dm-icon" aria-hidden /></button>
     }>
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-2">
         <p className="dm-popover-title text-xs font-medium text-muted-foreground">Fields · {ticked}/{fields.length}</p>
-        {fields.map((f) => (
-          <label key={f.name} className="dm-reveal-host flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={set.has(f.name)} disabled={set.has(f.name) && (visible.length === 1 || locked(f.name))} onChange={() => toggle(f.name)} />
-            <FieldLabel field={f} />
-          </label>
-        ))}
+        <SheetsChecklist label={`Fields of ${title}`} items={items} selected={visible.filter((c) => mine.has(c))} onChange={apply} />
       </div>
     </Popover>
   );

@@ -58,11 +58,13 @@ export function TipLines({ lines }: { lines: ReactNode[] }) {
 }
 
 /** The (i), or the (?) for a field's description: a focusable glyph that opens the shared bubble. */
-export function Hint({ text, label, kind = 'info' }: { text: ReactNode; label: string; kind?: 'info' | 'help' }) {
+export function Hint({ text, label, kind = 'info', decorative = false }: { text: ReactNode; label: string; kind?: 'info' | 'help'; /** A pointer-only copy: hidden from assistive tech and not a Tab stop, for a row whose own element carries the description. */ decorative?: boolean }) {
   const Glyph = kind === 'help' ? CircleHelp : Info;
   return (
     <Tooltip content={text}>
-      <span className="dm-hint" tabIndex={0} role="note" aria-label={label}><Glyph size={14} /></span>
+      {decorative
+        ? <span className="dm-hint" aria-hidden="true" aria-label={label}><Glyph size={14} /></span>
+        : <span className="dm-hint" tabIndex={0} role="note" aria-label={label}><Glyph size={14} /></span>}
     </Tooltip>
   );
 }

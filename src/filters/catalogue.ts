@@ -1,4 +1,5 @@
 import type { Field } from '../model/types';
+import { isDayType } from '../model/field-category';
 import type { RelativeDatePreset } from '../sdk/types';
 
 export type OpId = 'contains' | 'not_contains' | 'eq' | 'neq' | 'starts_with' | 'ends_with' | 'gt' | 'gte' | 'lt' | 'lte' | 'between' | 'on' | 'before' | 'after' | 'relative' | 'is_true' | 'is_false' | 'is_blank' | 'is_not_blank';
@@ -42,7 +43,7 @@ export function operatorsFor(field: Field): OpDef[] {
   switch (field.category) {
     case 'string': return STRING;
     case 'number': return NUMBER;
-    case 'date': return dateOps(field.type.trim().toUpperCase() === 'DATE', true);
+    case 'date': return dateOps(isDayType(field.type), true);
     case 'time': return dateOps(false, false);
     case 'boolean': return [
       { id: 'is_true', label: 'is true', value: 'none' },
@@ -90,14 +91,44 @@ export const DATE_PRESETS: { label: string; rule: RelativeDatePreset }[] = [
 
 const sameRule = (a: RelativeDatePreset, b: RelativeDatePreset) => JSON.stringify(a) === JSON.stringify(b);
 
-/** The name of a relative rule: its preset's label, or "Last 45 days" for a number the presets do not cover. */
+export type RelativeUnit = 'days' | 'weeks' | 'months' | 'quarters' | 'years';
+export const RELATIVE_UNITS: { unit: RelativeUnit; label: string }[] = [
+  { unit: 'days', label: 'days' }, { unit: 'weeks', label: 'weeks' }, { unit: 'months', label: 'months' }, { unit: 'quarters', label: 'quarters' }, { unit: 'years', label: 'years' },
+];
+
+/** "Last [n] [unit]" as the API's rule: it only has days and months, so weeks are 7 days, quarters 3 months and years 12 months. */
+export function toRule(n: number, unit: RelativeUnit): Extract<RelativeDatePreset, { n: number }> {
+  switch (unit) {
+    case 'days': return { kind: 'last_n_days', n };
+    case 'weeks': return { kind: 'last_n_days', n: n * 7 };
+    case 'months': return { kind: 'last_n_months', n };
+    case 'quarters': return { kind: 'last_n_months', n: n * 3 };
+    case 'years': return { kind: 'last_n_months', n: n * 12 };
+  }
+}
+
+/** The form a stored rule reopens on: the largest unit that divides it evenly. Rules with no count have no form. */
+export function fromRule(rule: RelativeDatePreset | undefined): { n: number; unit: RelativeUnit } | undefined {
+  if (!rule || typeof rule !== 'object') return undefined;
+  if (rule.kind === 'last_n_days' && Number.isInteger(rule.n)) return rule.n % 7 === 0 ? { n: rule.n / 7, unit: 'weeks' } : { n: rule.n, unit: 'days' };
+  if (rule.kind === 'last_n_months' && Number.isInteger(rule.n)) {
+    if (rule.n % 12 === 0) return { n: rule.n / 12, unit: 'years' };
+    if (rule.n % 3 === 0) return { n: rule.n / 3, unit: 'quarters' };
+    return { n: rule.n, unit: 'months' };
+  }
+  return undefined;
+}
+
+/** The name of a relative rule: its preset's label, or "Last 3 weeks" for a number the presets do not cover. */
 export function presetName(rule: RelativeDatePreset): string {
   // A link can carry any JSON here; a rule with no string kind has no name.
   if (typeof rule !== 'object' || rule === null || typeof rule.kind !== 'string') return '';
   const hit = DATE_PRESETS.find((p) => sameRule(p.rule, rule));
   if (hit) return hit.label;
-  if (rule.kind === 'last_n_days') return `Last ${rule.n} ${rule.n === 1 ? 'day' : 'days'}`;
-  if (rule.kind === 'last_n_months') return `Last ${rule.n} ${rule.n === 1 ? 'month' : 'months'}`;
+  const form = fromRule(rule);
+  // "Last 1 quarter" would read like the calendar preset "Last quarter": a count of one week, quarter or year is named in the rule's own unit.
+  if (form && form.n === 1 && form.unit !== 'days' && form.unit !== 'months' && 'n' in rule) return `Last ${rule.n} ${rule.kind === 'last_n_days' ? 'days' : 'months'}`;
+  if (form) return `Last ${form.n} ${form.n === 1 ? form.unit.slice(0, -1) : form.unit}`;
   return RELATIVE_PRESETS.find((p) => p.kind === rule.kind)?.label ?? rule.kind;
 }
 
@@ -108,7 +139,7 @@ export const isPreset = (value: unknown, rule: RelativeDatePreset): boolean => t
 export const RELATIVE_MAX_N = 3650;
 
 /** A date-category field that carries a time of day (DATETIME, TIMESTAMP and their time-zone variants). */
-export const isDateTimeField = (field: Field) => field.category === 'date' && field.type.trim().toUpperCase() !== 'DATE';
+export const isDateTimeField = (field: Field) => field.category === 'date' && !isDayType(field.type);
 
 /** What an applied filter says, for the tooltip on the header's filter mark: "Last 30 days", "equals Berlin", "between 1 and 5". */
 export function describeFilter(field: Field, filter: { op: OpId; value?: unknown }): string {

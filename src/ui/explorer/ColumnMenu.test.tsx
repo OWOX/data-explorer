@@ -4,7 +4,7 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
-import { HOVER_MS } from './ColumnMenu';
+import { HOVER_MS, menuIconClass } from './ColumnMenu';
 import { openColumnMenu, openSubmenu } from './menu-test-utils';
 import { placeBeside, placeBelow } from './menuPlacement';
 
@@ -269,17 +269,82 @@ describe('the column menu', () => {
     expect(icon).toHaveFocus();
   });
 
-  test('a scroll or a resize outside the menu closes it; a scroll inside does not', async () => {
+  test('the Last… panel is a third level: clicks and scrolls inside it keep the menu, Escape closes only it, then the Filter panel, then the menu', async () => {
     setup();
     await ready();
+    await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+    await userEvent.click(await screen.findByLabelText(/created_at/));
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const icon = await within(data()).findByLabelText('Column menu created_at');
+    await userEvent.click(icon);
+    const menu = await screen.findByRole('menu', { name: 'Menu of created_at' });
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Filter' }));
+    const filter = await screen.findByRole('dialog', { name: 'Filter of created_at' });
+    await userEvent.click(within(filter).getByRole('menuitemradio', { name: 'Last…' }));
+    const last = await screen.findByRole('menu', { name: 'Last…' });
+    expect(last).toHaveAttribute('data-column-menu');
+    // A press and a scroll inside the third panel are inside the menu.
+    fireEvent.pointerDown(within(last).getByLabelText('N'));
+    fireEvent.scroll(last);
+    await userEvent.selectOptions(within(last).getByLabelText('Unit'), 'weeks');
+    expect(screen.getByRole('menu', { name: 'Last…' })).toBeInTheDocument();
+    expect(screen.getByRole('menu', { name: 'Menu of created_at' })).toBeInTheDocument();
+    // A resize repositions it and keeps it open.
+    fireEvent(window, new Event('resize'));
+    expect(screen.getByRole('menu', { name: 'Last…' })).toBeInTheDocument();
+    within(last).getByLabelText('N').focus();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('menu', { name: 'Last…' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Filter of created_at' })).toBeInTheDocument();
+    expect(within(filter).getByRole('menuitemradio', { name: 'Last…' })).toHaveFocus();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Filter of created_at' })).toBeNull();
+    expect(screen.getByRole('menu', { name: 'Menu of created_at' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(open()).toHaveLength(0);
+  });
+
+  test('a scroll of the page or of a scroller holding the column closes the menu; any other scroll does not', async () => {
+    setup();
+    await ready();
+    const icon = within(data()).getByLabelText('Column menu status');
     await openColumnMenu(within(data()), 'status');
     fireEvent.scroll(screen.getByRole('menu', { name: 'Menu of status' }));
     expect(open()).toHaveLength(1);
-    fireEvent.scroll(document.body);
+    const elsewhere = document.createElement('div');
+    document.body.appendChild(elsewhere);
+    fireEvent.scroll(elsewhere);
+    expect(open()).toHaveLength(1);
+    elsewhere.remove();
+    fireEvent.scroll(icon.closest('th')!.parentElement!);
     await waitFor(() => expect(open()).toHaveLength(0));
     await openColumnMenu(within(data()), 'status');
-    fireEvent(window, new Event('resize'));
+    fireEvent.scroll(document);
     await waitFor(() => expect(open()).toHaveLength(0));
+  });
+
+  test('a resize keeps the menu open and moves it to fit the new viewport', async () => {
+    setup();
+    await ready();
+    const real = HTMLElement.prototype.getBoundingClientRect;
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute('data-menu-icon') ? ({ left: 500, right: 520, top: 10, bottom: 30, width: 20, height: 20, x: 500, y: 10, toJSON: () => ({}) } as DOMRect) : real.call(this);
+    });
+    const width = window.innerWidth;
+    try {
+      // The test setup makes every element 1000px wide: it fits at 500px in a 1600px viewport, and must flip left in a 1200px one.
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1600 });
+      const menu = await openColumnMenu(within(data()), 'status');
+      await waitFor(() => expect(menu.style.left).toBe('500px'));
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+      fireEvent(window, new Event('resize'));
+      await waitFor(() => expect(menu.style.left).toBe('8px'));
+      expect(open()).toHaveLength(1);
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+      spy.mockRestore();
+    }
   });
 
   test('the menu stays open, and its header is not rebuilt, while a setting changes', async () => {
@@ -440,5 +505,15 @@ describe('the column menu icons', () => {
     const menu = await openColumnMenu(within(data()), 'status');
     expect(state(menu, 'Sort')).toBe(true);
     expect(state(menu, 'Filter')).toBe(false);
+  });
+});
+
+describe('menuIconClass', () => {
+  test('a column with an active action keeps the menu icon on; an idle one reveals it on hover', () => {
+    expect(menuIconClass(true).split(' ')).toEqual(expect.arrayContaining(['dm-ctl-on', 'dm-reveal', 'dm-reveal-on']));
+    const idle = menuIconClass(false).split(' ');
+    expect(idle).toContain('dm-reveal');
+    expect(idle).not.toContain('dm-reveal-on');
+    expect(idle).not.toContain('dm-ctl-on');
   });
 });

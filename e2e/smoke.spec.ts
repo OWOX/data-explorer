@@ -12,13 +12,19 @@ async function ordersGrid(page: Page) {
   return data;
 }
 
+/** The menu icon shows while its header cell is hovered: hover the cell, then click the icon. */
+async function clickMenuIcon(icon: Locator) {
+  await icon.scrollIntoViewIfNeeded();
+  await icon.locator('xpath=ancestor::th').hover();
+  await icon.click();
+}
+
 /** Opens a column's menu and its first-level row (Filter, Aggregate, Format, Sort). */
 async function openColumnSub(data: Locator, title: string, row: 'Filter' | 'Aggregate' | 'Format' | 'Sort') {
   const icon = data.getByLabel(`Column menu ${title}`);
   // A scroll closes an open menu, and a narrow grid scrolls to reveal the icon: retry until the row holds still.
   await expect(async () => {
-    await icon.scrollIntoViewIfNeeded();
-    await icon.click();
+    await clickMenuIcon(icon);
     await data.page().getByRole('menuitem', { name: row, exact: true }).click({ timeout: 2000 });
   }).toPass({ timeout: 15_000 });
 }
@@ -166,7 +172,7 @@ test('filter, reset, columns, a row fills the Row band, Back returns', async ({ 
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(data.getByRole('row')).toHaveCount(202);
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel(/amount/i).check();
+  await page.getByLabel(/amount/i).click();
   await expect(data.getByRole('columnheader')).toHaveCount(7);
   await page.keyboard.press('Escape');
   await data.getByRole('row').nth(2).click();
@@ -209,7 +215,7 @@ test('the storage filter drops the marts of an unticked storage and leaves the s
   await expect(band(page, 'marts').getByText('Payments', { exact: true })).toBeVisible();
   const menu = band(page, 'marts').locator('details.dm-filter', { hasText: 'Storage' });
   await menu.locator('summary').click();
-  await menu.getByRole('checkbox', { name: /Sales Lake/ }).uncheck();
+  await menu.getByRole('option', { name: /Sales Lake/ }).click();
   await expect(band(page, 'marts').getByText('Payments', { exact: true })).toHaveCount(0);
   await expect(band(page, 'marts').getByText('Customers', { exact: true })).toBeVisible();
   await expect(martCard(page, 'Orders')).toHaveAttribute('aria-pressed', 'true');
@@ -223,7 +229,7 @@ test('rows open newest date first, and Reset returns to it', async ({ page }) =>
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'none');
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel(/created_at/).check();
+  await page.getByLabel(/created_at/).click();
   await page.keyboard.press('Escape');
   await expect(data.getByRole('columnheader', { name: /created_at/ })).toHaveAttribute('aria-sort', 'descending');
 });
@@ -231,17 +237,19 @@ test('rows open newest date first, and Reset returns to it', async ({ page }) =>
 test('a date column filter opens on presets; a preset applies at once and names the filter', async ({ page }) => {
   const data = await ordersGrid(page);
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel(/created_at/).check();
+  await page.getByLabel(/created_at/).click();
   await page.keyboard.press('Escape');
   await openColumnSub(data, 'created_at', 'Filter');
-  await expect(page.getByRole('group', { name: 'Date presets' }).getByRole('button')).toHaveCount(14);
-  await page.getByRole('button', { name: 'Last 30 days' }).click();
-  await expect(page.getByRole('group', { name: 'Date presets' })).toHaveCount(0);
+  await expect(page.getByRole('menu', { name: 'Filter created_at', exact: true }).locator('[role^="menuitem"]')).toHaveCount(9);
+  await page.getByRole('menuitemradio', { name: 'Last…' }).click();
+  await page.getByRole('menuitemradio', { name: 'Last 30 days' }).click();
+  await expect(page.getByRole('menu', { name: 'Filter created_at', exact: true })).toHaveCount(0);
   await expect(data.getByLabel('Filter created_at')).toHaveText('');
   await data.getByLabel('Filter created_at').hover();
   await expect(page.getByRole('tooltip').first()).toContainText('Filter: Last 30 days');
   await data.getByLabel('Filter created_at').click();
-  await expect(page.getByRole('button', { name: 'Last 30 days' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('menuitemradio', { name: 'Last…' }).click();
+  await expect(page.getByRole('menuitemradio', { name: 'Last 30 days' })).toHaveAttribute('aria-checked', 'true');
 });
 
 test('Undo and Redo step through the selection', async ({ page }) => {
@@ -366,7 +374,7 @@ async function groupedSum(grid: Locator): Promise<string> {
 
 async function tick(page: Page, label: string | RegExp, group?: string) {
   await band(page, 'data').getByRole('button', { name: `Fields of ${group ?? 'Orders'}` }).click();
-  await page.getByRole('dialog').getByLabel(label, { exact: true }).check();
+  await page.getByRole('dialog').getByLabel(label, { exact: true }).click();
   await page.keyboard.press('Escape');
 }
 
@@ -421,10 +429,10 @@ test('opening the Fields picker by mouse leaves every (?) hidden until a row is 
   await expect(slots).not.toHaveCount(0);
   for (const slot of await slots.all()) await expect(slot).toHaveCSS('opacity', '0');
   await dialog.getByText('Customer', { exact: true }).hover();
-  await expect(dialog.locator('label', { hasText: 'Customer' }).locator('.dm-hint-slot')).toHaveCSS('opacity', '1');
+  await expect(dialog.locator('.dm-checklist-row', { hasText: 'Customer' }).locator('.dm-hint-slot')).toHaveCSS('opacity', '1');
 });
 
-test('a filter popover is at most 20rem tall, has no title row, and its last button is reachable by scrolling', async ({ page }) => {
+test('a filter popover is at most 20rem tall, has no title row, and its last row is inside it', async ({ page }) => {
   const data = await ordersGrid(page);
   await tick(page, 'created_at');
   await openColumnSub(data, 'created_at', 'Filter');
@@ -434,8 +442,8 @@ test('a filter popover is at most 20rem tall, has no title row, and its last but
   const panel = page.getByRole('dialog', { name: 'Filter of created_at' });
   const box = await panel.evaluate((el) => el.getBoundingClientRect().height);
   expect(box).toBeLessThanOrEqual(20 * 16 + 1);
-  expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
-  const last = body.getByRole('button', { name: 'Is not blank' });
+  // The date list is short now (the presets moved to flyouts), so it fits; its last row is still inside the panel.
+  const last = body.getByRole('menuitemradio', { name: 'Is not blank' });
   await last.scrollIntoViewIfNeeded();
   const p = (await panel.boundingBox())!;
   const l = (await last.boundingBox())!;
@@ -476,7 +484,16 @@ for (const width of [320, 360]) {
     await page.keyboard.press('Escape');
     await openColumnSub(data, 'created_at', 'Filter');
     await expectFits(page, 'Filter of created_at');
-    await page.getByRole('dialog', { name: 'Filter of created_at' }).getByRole('button', { name: 'Custom range…' }).click();
+    await page.getByRole('menuitemradio', { name: 'Last…' }).click();
+    const lastPanel = page.getByRole('menu', { name: 'Last…' });
+    await expect(lastPanel).toBeVisible();
+    const lb = (await lastPanel.boundingBox())!;
+    expect(lb.x).toBeGreaterThanOrEqual(0);
+    expect(lb.x + lb.width).toBeLessThanOrEqual(width);
+    await expect(lastPanel.getByRole('button', { name: 'Apply' })).toBeInViewport();
+    await page.keyboard.press('Escape');
+    await expect(lastPanel).toHaveCount(0);
+    await page.getByRole('dialog', { name: 'Filter of created_at' }).getByRole('menuitem', { name: 'Custom range…' }).click();
     await expectFits(page, 'Filter of created_at');
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
@@ -555,7 +572,7 @@ test('the Fields picker is on each tab and lists only that mart; the toolbar has
   await data.getByRole('button', { name: 'Fields of Customers' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText(/^Fields · \d+\/\d+$/)).toBeVisible();
-  await expect(dialog.getByRole('checkbox')).toHaveCount(5);
+  await expect(dialog.getByRole('option')).toHaveCount(5);
   await expect(dialog.getByLabel('email', { exact: true })).toBeVisible();
   await expect(dialog.getByLabel('status', { exact: true })).toHaveCount(0);
 });
@@ -628,7 +645,7 @@ test('a copied view link keeps a Sum on Amount: the opener sees the grouped grid
   const data = await ordersGrid(page);
   await tick(page, 'Amount');
   await openColumnSub(data, 'Amount', 'Aggregate');
-  await page.getByRole('dialog').getByLabel('Sum').check();
+  await page.getByRole('dialog').getByLabel('Sum').click();
   await page.getByRole('dialog').getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByRole('columnheader', { name: /Amount · Sum/ })).toBeVisible();
   await page.getByRole('button', { name: 'Copy link to this view' }).click();
@@ -668,7 +685,7 @@ test('a Sum on Amount groups the rows by the other columns; the badge counts gro
   await tick(page, 'Amount');
   await openColumnSub(data, 'Amount', 'Aggregate');
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Sum').check();
+  await dialog.getByLabel('Sum').click();
   await dialog.getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByRole('columnheader', { name: /Amount · Sum/ })).toBeVisible();
   // a real grouped value: a sum of order amounts is a positive number
@@ -680,7 +697,7 @@ test('a Sum on Amount groups the rows by the other columns; the badge counts gro
   // unticking everything and applying brings the rows back
   await data.getByRole('button', { name: 'Aggregate Amount' }).click();
   const dlg = page.getByRole('dialog');
-  await dlg.getByLabel('Sum').uncheck();
+  await dlg.getByLabel('Sum').click();
   await dlg.getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByText(/200\+ records/)).toBeVisible();
 });
@@ -779,7 +796,7 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
 test('a numeric filter applied through the popover (> 400) leaves fewer rows', async ({ page }) => {
   const data = await ordersGrid(page);
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel(/Amount/).check();
+  await page.getByLabel(/Amount/).click();
   await page.keyboard.press('Escape');
   await expect(data.getByLabel('Column menu Amount')).toBeVisible();
   await openColumnSub(data, 'Amount', 'Filter');
@@ -835,8 +852,7 @@ test('the column menu and its Format submenu stay inside the window at the right
   const data = await ordersGrid(page);
   await tick(page, 'Amount');
   const menuIcon = data.getByLabel('Column menu Amount');
-  await menuIcon.scrollIntoViewIfNeeded();
-  await menuIcon.click();
+  await clickMenuIcon(menuIcon);
   const inside = async (name: string) => {
     const box = (await page.getByRole('menu', { name }).boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(0);
@@ -906,7 +922,7 @@ test('full screen: the Data band alone fills the plugin area, its title stays, E
   await page.keyboard.press('Escape');
   await expect(data.getByRole('button', { name: 'Exit full screen' })).toBeVisible();
   // Escape closes an open column menu first, and only then full screen.
-  await data.getByLabel('Column menu status').click();
+  await clickMenuIcon(data.getByLabel('Column menu status'));
   await expect(page.getByRole('menu', { name: 'Menu of status' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menu', { name: 'Menu of status' })).toHaveCount(0);
@@ -917,4 +933,42 @@ test('full screen: the Data band alone fills the plugin area, its title stays, E
   await expect(page.locator('header.dm-page-header')).toBeVisible();
   await expect(band(page, 'marts')).toBeVisible();
   await expect(cell).toHaveAttribute('data-selected', '');
+});
+
+test('the column menu icon and the Fields icon are invisible at rest, show on header hover and on keyboard focus, and the menu icon stays on for a filtered column', async ({ page }) => {
+  const data = await ordersGrid(page);
+  const opacity = (l: Locator) => l.evaluate((el) => getComputedStyle(el).opacity);
+  const menuIcon = data.getByLabel('Column menu id');
+  const fields = data.getByLabel('Fields of Orders');
+  await page.mouse.move(0, 0);
+  await expect.poll(() => opacity(menuIcon)).toBe('0');
+  await expect.poll(() => opacity(fields)).toBe('0');
+  await menuIcon.locator('xpath=ancestor::th').hover();
+  await expect.poll(() => opacity(menuIcon)).toBe('1');
+  await fields.locator('xpath=ancestor::th').hover();
+  await expect.poll(() => opacity(fields)).toBe('1');
+  // Keyboard: move the pointer away, focus the control before each one with the mouse-free Tab.
+  await page.mouse.move(0, 0);
+  for (const icon of [menuIcon, fields]) {
+    await expect.poll(() => opacity(icon)).toBe('0');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await icon.evaluate((el) => {
+      const all = [...document.querySelectorAll<HTMLElement>('button, a, input, [tabindex]')].filter((n) => !n.hasAttribute('disabled'));
+      all[Math.max(0, all.indexOf(el as HTMLElement) - 1)]?.focus();
+    });
+    for (let i = 0; i < 3 && !(await icon.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press('Tab');
+    expect(await icon.evaluate((el) => el === document.activeElement)).toBe(true);
+    await expect.poll(() => opacity(icon)).toBe('1');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  }
+  // An active filter keeps the menu icon on at rest.
+  await openColumnSub(data, 'id', 'Filter');
+  await page.getByLabel('Value').fill('3');
+  await page.getByRole('button', { name: 'Apply' }).click();
+  await expect(data.getByLabel('Filter id')).toBeVisible();
+  await page.mouse.move(0, 0);
+  await expect.poll(() => opacity(data.getByLabel('Column menu id'))).toBe('1');
+  await expect.poll(() => opacity(data.getByLabel('Filter id'))).toBe('1');
+  await expect.poll(() => opacity(data.getByLabel('Column menu status'))).toBe('0');
 });

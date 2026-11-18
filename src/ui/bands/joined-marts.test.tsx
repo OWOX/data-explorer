@@ -141,7 +141,7 @@ test('unticking the last field of a joined mart in the picker deselects it; tick
   await waitFor(() => expect(headers()).toHaveLength(6));
   await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Customers' }));
   const group = await screen.findByRole('dialog');
-  await userEvent.click(within(group).getByRole('checkbox', { checked: true }));
+  await userEvent.click(within(group).getByRole('option', { selected: true }));
   await waitFor(() => expect(title()).toBe('Orders'));
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'false');
   expect(within(data()).queryByRole('button', { name: 'Fields of Customers' })).toBeNull();
@@ -296,7 +296,7 @@ test('the last own column of the main mart cannot be unticked while a joined mar
   await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
   for (const label of ['id', 'Customer', 'Product', 'Store']) await userEvent.click(await screen.findByLabelText(label));
   await waitFor(() => expect(headers()).toEqual(['status', 'name']));
-  expect(screen.getByLabelText('status')).toBeDisabled();
+  expect(screen.getByRole('option', { name: 'status' })).toHaveAttribute('aria-disabled', 'true');
   expect(groupTitles()).toEqual(['Orders', 'Customers']);
 });
 

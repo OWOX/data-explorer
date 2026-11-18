@@ -1,5 +1,6 @@
 import { describe } from 'vitest';
-import { initialState, reducer, type State } from './store';
+import type { ColumnFilter } from '../filters/build';
+import { HISTORY_LIMIT, initialState, reducer, type GridState, type State } from './store';
 
 const s = (patch: Partial<State> = {}): State => ({ ...initialState, ...patch });
 const feeds: Record<string, string | null> = { a: 'Shopify', b: 'Shopify', c: 'GA4', d: null };
@@ -291,5 +292,59 @@ describe('smart search', () => {
     const redone = reducer(undone, { type: 'redo' });
     expect(redone.selection.martId).toBe('b');
     expect(redone.grids.b?.filters.status?.value).toBe('paid');
+  });
+});
+
+describe('editGrid', () => {
+  const grid = (over: Partial<GridState> = {}): GridState => ({ columns: ['a', 'b'], filters: {}, sorts: null, limit: 100, ...over });
+  const filtered = grid({ filters: { a: { field: 'a', op: 'eq', value: '1' } as ColumnFilter } });
+  const base = () => s({ selection: sel({ martId: 'a' }), grids: { a: grid() } });
+
+  test('stores the grid and pushes the previous one as a step', () => {
+    const st = reducer(base(), { type: 'editGrid', martId: 'a', grid: filtered });
+    expect(st.grids.a).toBe(filtered);
+    expect(st.history).toEqual([{ ...sel({ martId: 'a' }), grids: { a: grid() } }]);
+    expect(st.future).toEqual([]);
+  });
+
+  test('an edit that changes nothing is no step, and a new edit empties Redo', () => {
+    const st = base();
+    expect(reducer(st, { type: 'editGrid', martId: 'a', grid: grid() })).toBe(st);
+    const undone = reducer(reducer(st, { type: 'editGrid', martId: 'a', grid: filtered }), { type: 'undo' });
+    expect(undone.future).toHaveLength(1);
+    expect(reducer(undone, { type: 'editGrid', martId: 'a', grid: grid({ sorts: [] }) }).future).toEqual([]);
+  });
+
+  test('an edit that only reorders keys is no step', () => {
+    const f = (o: object) => ({ a: { field: 'a', op: 'eq', value: '1', ...o } as ColumnFilter });
+    const st = s({ selection: sel({ martId: 'a' }), grids: { a: { limit: 100, sorts: null, filters: f({}), columns: ['a', 'b'] } } });
+    const same = { columns: ['a', 'b'], filters: { a: { value: '1', op: 'eq', field: 'a' } as ColumnFilter }, sorts: null, limit: 100 } as GridState;
+    expect(reducer(st, { type: 'editGrid', martId: 'a', grid: same })).toBe(st);
+    expect(reducer(st, { type: 'editGrid', martId: 'a', grid: { ...same, columns: ['b', 'a'] } })).not.toBe(st);
+  });
+
+  test('undo restores the previous grid and redo the new one', () => {
+    const edited = reducer(base(), { type: 'editGrid', martId: 'a', grid: filtered });
+    const undone = reducer(edited, { type: 'undo' });
+    expect(undone.grids.a).toEqual(grid());
+    expect(undone.history).toEqual([]);
+    const redone = reducer(undone, { type: 'redo' });
+    expect(redone.grids.a).toEqual(filtered);
+    expect(redone.history).toHaveLength(1);
+  });
+
+  test('a mart with no grid yet goes back to none on undo', () => {
+    const edited = reducer(s({ selection: sel({ martId: 'a' }) }), { type: 'editGrid', martId: 'a', grid: filtered });
+    expect(reducer(edited, { type: 'undo' }).grids.a).toBeUndefined();
+  });
+
+  test('saveGrid stays out of the history', () => {
+    expect(reducer(base(), { type: 'saveGrid', martId: 'a', grid: filtered }).history).toEqual([]);
+  });
+
+  test('history keeps at most HISTORY_LIMIT steps', () => {
+    let st = base();
+    for (let i = 0; i < HISTORY_LIMIT + 5; i++) st = reducer(st, { type: 'editGrid', martId: 'a', grid: grid({ limit: 100 + i + 1 }) });
+    expect(st.history).toHaveLength(HISTORY_LIMIT);
   });
 });

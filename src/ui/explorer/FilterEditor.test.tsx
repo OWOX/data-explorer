@@ -1,8 +1,9 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { describeFilter } from '../../filters/catalogue';
 import { FilterEditor } from './FilterEditor';
+import { HOVER_MS, Panel } from './MenuParts';
 import type { ColumnFilter } from '../../filters/build';
 import type { Field } from '../../model/types';
 
@@ -33,53 +34,136 @@ const open = (field: Field, value?: ColumnFilter) => {
   return { onApply, onClear };
 };
 
-test('a date column opens on the presets, in order, then Custom range and the other operators below a divider', () => {
+const rows = () => [...screen.getByRole('menu', { name: /^Filter / }).querySelectorAll('[role^="menuitem"]')].map((b) => b.textContent);
+const flyout = async (name: 'Last…' | 'This…') => { await userEvent.click(screen.getByRole('menuitemradio', { name })); return screen.findByRole('menu', { name }); };
+
+test('a date column opens on one list: Today, Yesterday, the Last… and This… flyouts, Custom range, then the other operators', () => {
   open(ts);
-  const names = within(screen.getByRole('group', { name: 'Date presets' })).getAllByRole('button').map((b) => b.textContent);
-  expect(names).toEqual(['Today', 'Yesterday', 'Last 7 days', 'Last 14 days', 'Last 30 days', 'Last 90 days', 'This week', 'Last week', 'This month', 'Last month', 'This quarter', 'Last quarter', 'This year', 'Last 12 months']);
-  expect(screen.getAllByRole('button', { pressed: undefined }).filter((b) => !b.closest('[aria-label="Date presets"]') && b.hasAttribute('type') && !['Apply', 'Clear'].includes(b.textContent!)).map((b) => b.textContent)).toEqual(['Custom range…', 'Before…', 'After…', 'Is blank', 'Is not blank']);
+  expect(rows()).toEqual(['Today', 'Yesterday', 'Last…', 'This…', 'Custom range…', 'Before…', 'After…', 'Is blank', 'Is not blank']);
+  expect(screen.getByRole('menuitemradio', { name: 'Last…' })).toHaveAttribute('aria-haspopup', 'menu');
   expect(screen.queryByLabelText('Operator')).toBeNull();
-  expect(document.querySelector('hr')).not.toBeNull();
+  expect(screen.queryByRole('menu', { name: 'Last…' })).toBeNull();
+  expect(document.querySelector('[role="separator"]')).not.toBeNull();
 });
 
 test('a DATE column also offers On', () => {
   open(day);
-  expect(screen.getAllByRole('button', { pressed: undefined }).filter((b) => !b.closest('[aria-label="Date presets"]') && b.hasAttribute('type') && !['Apply', 'Clear'].includes(b.textContent!)).map((b) => b.textContent)).toEqual(['Custom range…', 'On…', 'Before…', 'After…', 'Is blank', 'Is not blank']);
+  expect(rows()).toEqual(['Today', 'Yesterday', 'Last…', 'This…', 'Custom range…', 'On…', 'Before…', 'After…', 'Is blank', 'Is not blank']);
+});
+
+test('Last… opens a panel of presets then the Last [n] [unit] form; This… lists four presets', async () => {
+  open(ts);
+  const last = await flyout('Last…');
+  expect(within(last).getAllByRole('menuitemradio').map((b) => b.textContent)).toEqual(['Last 7 days', 'Last 14 days', 'Last 30 days', 'Last 90 days', 'Last week', 'Last month', 'Last quarter', 'Last 12 months']);
+  expect(within(last).getByLabelText('Unit')).toHaveValue('days');
+  expect(within(last).getAllByRole('option').map((o) => o.textContent)).toEqual(['days', 'weeks', 'months', 'quarters', 'years']);
+  expect(within(last).getByRole('button', { name: 'Apply' })).toBeVisible();
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'This…' }));
+  const thisMenu = await screen.findByRole('menu', { name: 'This…' });
+  expect(within(thisMenu).getAllByRole('menuitemradio').map((b) => b.textContent)).toEqual(['This week', 'This month', 'This quarter', 'This year']);
+  expect(screen.queryByRole('menu', { name: 'Last…' })).toBeNull();
 });
 
 test.each([
-  ['Today', { kind: 'today' }], ['Yesterday', { kind: 'yesterday' }],
-  ['Last 7 days', { kind: 'last_n_days', n: 7 }], ['Last 14 days', { kind: 'last_n_days', n: 14 }], ['Last 30 days', { kind: 'last_n_days', n: 30 }], ['Last 90 days', { kind: 'last_n_days', n: 90 }],
-  ['This week', { kind: 'this_week' }], ['Last week', { kind: 'last_week' }], ['This month', { kind: 'this_month' }], ['Last month', { kind: 'last_month' }],
-  ['This quarter', { kind: 'this_quarter' }], ['Last quarter', { kind: 'last_quarter' }], ['This year', { kind: 'this_year' }], ['Last 12 months', { kind: 'last_n_months', n: 12 }],
-])('clicking "%s" applies it at once as a relative rule', async (label, rule) => {
+  ['Today', { kind: 'today' }, null], ['Yesterday', { kind: 'yesterday' }, null],
+  ['Last 7 days', { kind: 'last_n_days', n: 7 }, 'Last…'], ['Last 14 days', { kind: 'last_n_days', n: 14 }, 'Last…'], ['Last 30 days', { kind: 'last_n_days', n: 30 }, 'Last…'], ['Last 90 days', { kind: 'last_n_days', n: 90 }, 'Last…'],
+  ['Last week', { kind: 'last_week' }, 'Last…'], ['Last month', { kind: 'last_month' }, 'Last…'], ['Last quarter', { kind: 'last_quarter' }, 'Last…'], ['Last 12 months', { kind: 'last_n_months', n: 12 }, 'Last…'],
+  ['This week', { kind: 'this_week' }, 'This…'], ['This month', { kind: 'this_month' }, 'This…'], ['This quarter', { kind: 'this_quarter' }, 'This…'], ['This year', { kind: 'this_year' }, 'This…'],
+] as const)('clicking "%s" applies it at once as a relative rule', async (label, rule, group) => {
   const { onApply } = open(ts);
-  await userEvent.click(screen.getByRole('button', { name: label, pressed: false }));
+  if (group) await flyout(group);
+  await userEvent.click(screen.getByRole('menuitemradio', { name: label, checked: false }));
   expect(onApply).toHaveBeenCalledWith({ field: 'created_at', op: 'relative', value: rule });
 });
 
-test('the active preset is highlighted when reopened', () => {
-  open(ts, { field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 30 } });
-  expect(screen.getByRole('button', { name: 'Last 30 days' })).toHaveAttribute('aria-pressed', 'true');
-  expect(screen.getByRole('button', { name: 'Last 7 days' })).toHaveAttribute('aria-pressed', 'false');
-  expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+test('the active preset is checked in its panel, and its group row is checked too', async () => {
+  const { onClear } = open(ts, { field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 30 } });
+  expect(screen.getByRole('menuitemradio', { name: 'Last…' })).toBeChecked();
+  expect(screen.getByRole('menuitemradio', { name: 'This…' })).not.toBeChecked();
+  expect(screen.getByRole('menuitemradio', { name: 'Today' })).not.toBeChecked();
+  await flyout('Last…');
+  expect(screen.getByRole('menuitemradio', { name: 'Last 30 days' })).toBeChecked();
+  expect(screen.getByRole('menuitemradio', { name: 'Last 7 days' })).not.toBeChecked();
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Clear' }));
+  expect(onClear).toHaveBeenCalled();
 });
 
-test('Last N days takes any N, up to 3650', async () => {
+test('Last [n] [unit]: days apply as days, weeks as 7n days, quarters and years as months', async () => {
   const { onApply } = open(ts);
-  expect(screen.getByLabelText('N')).toHaveAttribute('max', '3650');
-  await userEvent.clear(screen.getByLabelText('N'));
-  await userEvent.type(screen.getByLabelText('N'), '4000');
-  expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
-  await userEvent.clear(screen.getByLabelText('N'));
-  await userEvent.type(screen.getByLabelText('N'), '45');
-  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(onApply).toHaveBeenCalledWith({ field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 45 } });
+  const last = await flyout('Last…');
+  const n = within(last).getByLabelText('N');
+  expect(n).toHaveAttribute('max', '3650');
+  await userEvent.clear(n);
+  await userEvent.type(n, '4000');
+  expect(within(last).getByRole('button', { name: 'Apply' })).toBeDisabled();
+  await userEvent.clear(n);
+  await userEvent.type(n, '45');
+  await userEvent.click(within(last).getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenLastCalledWith({ field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 45 } });
+  await userEvent.clear(n);
+  await userEvent.type(n, '3');
+  const unit = within(last).getByLabelText('Unit');
+  await userEvent.selectOptions(unit, 'weeks');
+  await userEvent.click(within(last).getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenLastCalledWith({ field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 21 } });
+  await userEvent.selectOptions(unit, 'months');
+  await userEvent.click(within(last).getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenLastCalledWith({ field: 'created_at', op: 'relative', value: { kind: 'last_n_months', n: 3 } });
+  await userEvent.selectOptions(unit, 'quarters');
+  await userEvent.click(within(last).getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenLastCalledWith({ field: 'created_at', op: 'relative', value: { kind: 'last_n_months', n: 9 } });
+  await userEvent.selectOptions(unit, 'years');
+  await userEvent.click(within(last).getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenLastCalledWith({ field: 'created_at', op: 'relative', value: { kind: 'last_n_months', n: 36 } });
+});
+
+test('the limit applies to the converted count: 600 weeks is 4200 days, so Apply is off', async () => {
+  open(ts);
+  const last = await flyout('Last…');
+  await userEvent.selectOptions(within(last).getByLabelText('Unit'), 'weeks');
+  expect(within(last).getByLabelText('N')).toHaveAttribute('max', '521');
+  await userEvent.clear(within(last).getByLabelText('N'));
+  await userEvent.type(within(last).getByLabelText('N'), '600');
+  expect(within(last).getByRole('button', { name: 'Apply' })).toBeDisabled();
+});
+
+test.each([
+  [{ kind: 'last_n_days', n: 21 }, '3', 'weeks'], [{ kind: 'last_n_days', n: 45 }, '45', 'days'],
+  [{ kind: 'last_n_months', n: 24 }, '2', 'years'], [{ kind: 'last_n_months', n: 6 }, '2', 'quarters'], [{ kind: 'last_n_months', n: 5 }, '5', 'months'],
+] as const)('a saved %j reopens as %s %s', async (rule, n, unit) => {
+  open(ts, { field: 'created_at', op: 'relative', value: rule });
+  const last = await flyout('Last…');
+  expect(within(last).getByLabelText('N')).toHaveValue(Number(n));
+  expect(within(last).getByLabelText('Unit')).toHaveValue(unit);
+});
+
+test('Escape in the Last… panel closes only that panel; Left does too', async () => {
+  open(ts);
+  await flyout('Last…');
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByRole('menu', { name: 'Last…' })).toBeNull();
+  expect(screen.getByRole('menuitemradio', { name: 'Last…' })).toHaveFocus();
+  screen.getByRole('menuitemradio', { name: 'Last…' }).focus();
+  await userEvent.keyboard('{ArrowRight}');
+  const last = await screen.findByRole('menu', { name: 'Last…' });
+  await waitFor(() => expect(within(last).getByRole('menuitemradio', { name: 'Last 7 days' })).toHaveFocus());
+  await userEvent.keyboard('{ArrowLeft}');
+  expect(screen.queryByRole('menu', { name: 'Last…' })).toBeNull();
+});
+
+test('the flyout stays while the pointer rests on its own rows, and closes after it rests on another first-level row', async () => {
+  open(ts);
+  const last = await flyout('Last…');
+  await userEvent.hover(within(last).getByRole('menuitemradio', { name: 'Last 30 days' }));
+  await new Promise((r) => setTimeout(r, HOVER_MS + 150));
+  expect(screen.getByRole('menu', { name: 'Last…' })).toBeInTheDocument();
+  await userEvent.hover(screen.getByRole('menuitemradio', { name: 'Today' }));
+  await waitFor(() => expect(screen.queryByRole('menu', { name: 'Last…' })).toBeNull());
 });
 
 test('Custom range opens from and to inputs and applies between', async () => {
   const { onApply } = open(day);
-  await userEvent.click(screen.getByRole('button', { name: 'Custom range…' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Custom range…' }));
   expect(screen.getByLabelText('From')).toHaveAttribute('type', 'date');
   await userEvent.type(screen.getByLabelText('From'), '2026-01-01');
   await userEvent.type(screen.getByLabelText('To'), '2026-01-31');
@@ -89,16 +173,16 @@ test('Custom range opens from and to inputs and applies between', async () => {
 
 test('a timestamp range uses datetime-local inputs, and Presets goes back', async () => {
   open(ts);
-  await userEvent.click(screen.getByRole('button', { name: 'After…' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'After…' }));
   expect(screen.getByLabelText('Value')).toHaveAttribute('type', 'datetime-local');
   expect(screen.getByLabelText('Operator')).toHaveValue('after');
   await userEvent.click(screen.getByRole('button', { name: '← Presets' }));
-  expect(within(screen.getByRole('group', { name: 'Date presets' })).getAllByRole('button')).toHaveLength(14);
+  expect(rows()).toHaveLength(9);
 });
 
 test('Is blank applies at once; a saved range reopens on its own form', async () => {
   const blank = open(ts);
-  await userEvent.click(screen.getByRole('button', { name: 'Is blank' }));
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Is blank' }));
   expect(blank.onApply).toHaveBeenCalledWith({ field: 'created_at', op: 'is_blank' });
   document.body.innerHTML = '';
   open(ts, { field: 'created_at', op: 'between', value: { from: '2026-01-01T00:00', to: '2026-01-31T00:00' } });
@@ -125,11 +209,10 @@ test('describeFilter reads an applied filter in words', () => {
   expect(describeFilter(ts, { op: 'is_blank' })).toBe('is blank');
 });
 
-test('the panel is a group of buttons, not a menu; Is blank shows its active state', () => {
+test('Is blank shows its checked state', () => {
   open(ts, { field: 'created_at', op: 'is_blank' });
-  expect(screen.queryByRole('menu')).toBeNull();
-  expect(screen.getByRole('button', { name: 'Is blank' })).toHaveAttribute('aria-pressed', 'true');
-  expect(screen.getByRole('button', { name: 'Is not blank' })).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.getByRole('menuitemradio', { name: 'Is blank' })).toBeChecked();
+  expect(screen.getByRole('menuitemradio', { name: 'Is not blank' })).not.toBeChecked();
 });
 
 test('there is no title row, and a select draws our own chevron over a native select with no arrow', () => {
@@ -174,9 +257,61 @@ test('a string column: contains "abc" applies', async () => {
 test('a date column: After… with a day applies', async () => {
   const onApply = vi.fn();
   render(<FilterEditor field={day} value={undefined} onApply={onApply} onClear={vi.fn()} />);
-  await userEvent.click(screen.getByRole('button', { name: 'After…' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'After…' }));
   const box = screen.getByLabelText('Value');
   await userEvent.type(box, '2026-01-02');
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
   expect(onApply).toHaveBeenCalledWith({ field: 'day', op: 'after', value: '2026-01-02' });
+});
+
+test('a form that replaces the list drops the flyout: Presets does not bring it back anchored to a gone row', async () => {
+  open(ts);
+  await userEvent.hover(screen.getByRole('menuitemradio', { name: 'Last…' }));
+  await screen.findByRole('menu', { name: 'Last…' });
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Custom range…' }));
+  expect(screen.queryByRole('menu', { name: 'Last…' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: '← Presets' }));
+  await new Promise((r) => setTimeout(r, HOVER_MS + 100));
+  expect(screen.queryByRole('menu', { name: 'Last…' })).toBeNull();
+  expect(screen.getByRole('menuitemradio', { name: 'Last…' })).toHaveAttribute('aria-expanded', 'false');
+});
+
+const inDialog = () => render(
+  <Panel anchor={document.body} mode="beside" role="dialog" label="Filter of created_at" onEscape={vi.fn()} focusSeq={0}>
+    <FilterEditor field={ts} value={undefined} onApply={vi.fn()} onClear={vi.fn()} />
+  </Panel>,
+);
+
+test('Up and Down move through the first-level rows of the date filter, Home and End jump', async () => {
+  inDialog();
+  screen.getByRole('menuitemradio', { name: 'Today' }).focus();
+  await userEvent.keyboard('{ArrowDown}');
+  expect(screen.getByRole('menuitemradio', { name: 'Yesterday' })).toHaveFocus();
+  await userEvent.keyboard('{ArrowDown}');
+  expect(screen.getByRole('menuitemradio', { name: 'Last…' })).toHaveFocus();
+  await userEvent.keyboard('{ArrowUp}{ArrowUp}');
+  expect(screen.getByRole('menuitemradio', { name: 'Today' })).toHaveFocus();
+  await userEvent.keyboard('{End}');
+  expect(screen.getByRole('menuitemradio', { name: 'Is not blank' })).toHaveFocus();
+  await userEvent.keyboard('{Home}');
+  expect(screen.getByRole('menuitemradio', { name: 'Today' })).toHaveFocus();
+});
+
+test('Tab past the last control of the Last… panel, and Shift+Tab before its first, return to the Last… row', async () => {
+  inDialog();
+  const row = screen.getByRole('menuitemradio', { name: 'Last…' });
+  const last = await flyout('Last…');
+  const apply = within(last).getByRole('button', { name: 'Apply' });
+  apply.focus();
+  await userEvent.tab();
+  expect(row).toHaveFocus();
+  await userEvent.click(row);
+  await waitFor(() => expect(within(last).getByRole('menuitemradio', { name: 'Last 7 days' })).toHaveFocus());
+  await userEvent.tab({ shift: true });
+  expect(row).toHaveFocus();
+  const thisRow = screen.getByRole('menuitemradio', { name: 'This…' });
+  const tw = await flyout('This…');
+  await waitFor(() => expect(within(tw).getByRole('menuitemradio', { name: 'This week' })).toHaveFocus());
+  await userEvent.tab();
+  expect(thisRow).toHaveFocus();
 });

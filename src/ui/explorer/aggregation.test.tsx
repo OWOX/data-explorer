@@ -6,7 +6,7 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { SchemaFieldDto, TraverseOptions } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
-import { openSubmenu } from './menu-test-utils';
+import { openColumnMenu, openSubmenu } from './menu-test-utils';
 
 function setup(opts: { fields?: SchemaFieldDto[]; saved?: Record<string, unknown>; gate?: Promise<void> } = {}) {
   const fixtures = demoFixtures();
@@ -95,7 +95,7 @@ test('a date takes one bucket instead of functions, and shows the bucket start b
   await userEvent.selectOptions(within(dialog).getByLabelText('Group by bucket'), 'MONTH');
   await userEvent.selectOptions(within(dialog).getByLabelText('Time zone'), 'UTC');
   // a bucket and functions exclude each other
-  expect(within(dialog).getByLabelText('Min')).not.toBeChecked();
+  expect(within(dialog).getByRole('option', { name: 'Min' })).toHaveAttribute('aria-selected', 'false');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
   await waitFor(() => expect(t.queries.at(-1)!.o.dateTrunc).toEqual([{ column: 'created_at', unit: 'MONTH', timeZone: 'UTC' }]));
   expect(t.queries.at(-1)!.o.aggregation).toBeUndefined();
@@ -121,14 +121,14 @@ test('the Sigma stays on while a column is aggregated; unticking all and applyin
   expect(within(data()).getByText(/records$/)).toBeInTheDocument();
 });
 
-test('the popover has no title row and no Clear; Apply is off while nothing is set, on once something is ticked', async () => {
+test('the popover has no title row, a Sheets-style Select all and Clear on its function list; Apply is off while nothing is set, on once something is ticked', async () => {
   setup();
   await ready();
   await showColumn('Amount');
   await openSubmenu(within(data()), 'Amount', 'Aggregate');
   const dialog = await screen.findByRole('dialog', { name: 'Aggregation of Amount' });
   expect(dialog.querySelector('.dm-popover-title')).toBeNull();
-  expect(within(dialog).queryByRole('button', { name: 'Clear' })).toBeNull();
+  expect(within(dialog).getByRole('button', { name: 'Clear' })).toBeInTheDocument();
   const buttons = within(dialog).getAllByRole('button').map((b) => b.textContent);
   expect(buttons.slice(-2)).toEqual(['Cancel', 'Apply']);
   const apply = within(dialog).getByRole('button', { name: 'Apply' });
@@ -261,4 +261,43 @@ test('the implicit first-key sort is sent but shows no arrow and no aria-sort; a
   expect(within(th).getByRole('button', { name: /currently not sorted/ })).toBeInTheDocument();
   await userEvent.click(within(th).getByRole('button', { name: /^Sort by id,/ }));
   await waitFor(() => expect(within(data()).getByRole('button', { name: /^Sort by id,/ }).closest('th')).toHaveAttribute('aria-sort', 'ascending'));
+});
+
+test('Undo of an aggregation alone is saved: the stored columns doc no longer groups', async () => {
+  const t = setup();
+  await ready();
+  await showColumn('Amount');
+  await aggregate('Amount', 'Sum');
+  await waitFor(() => expect(t.puts.some((p) => JSON.stringify(p.doc.aggregations) === JSON.stringify([{ column: 'amount', function: 'SUM' }]))).toBe(true), { timeout: 3000 });
+  await userEvent.keyboard('{Meta>}z{/Meta}');
+  await waitFor(() => expect(headers().some((h) => h.startsWith('Amount · Sum'))).toBe(false));
+  await waitFor(() => expect(t.puts.at(-1)!.doc.aggregations ?? []).toEqual([]), { timeout: 3000 });
+});
+
+test('Undo of an aggregation twice in a row is saved both times (apply Sum, Undo, apply Sum, Undo)', async () => {
+  const t = setup();
+  await ready();
+  await showColumn('Amount');
+  const sum = JSON.stringify([{ column: 'amount', function: 'SUM' }]);
+  for (let round = 0; round < 2; round++) {
+    await aggregate('Amount', 'Sum');
+    await waitFor(() => expect(t.puts.at(-1)!.doc.aggregations && JSON.stringify(t.puts.at(-1)!.doc.aggregations)).toBe(sum), { timeout: 3000 });
+    await userEvent.keyboard('{Meta>}z{/Meta}');
+    await waitFor(() => expect(headers().some((h) => h.startsWith('Amount · Sum'))).toBe(false));
+    await waitFor(() => expect(t.puts.at(-1)!.doc.aggregations ?? []).toEqual([]), { timeout: 3000 });
+  }
+});
+
+test('Undo of hiding a column twice in a row is saved both times (hide, Undo, hide, Undo)', async () => {
+  const t = setup();
+  await ready();
+  for (let round = 0; round < 2; round++) {
+    const menu = await openColumnMenu(within(data()), 'Store');
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
+    await waitFor(() => expect(headers().some((h) => h.startsWith('Store'))).toBe(false));
+    await waitFor(() => expect(t.puts.at(-1)!.doc.columns).not.toContain('store_id'), { timeout: 3000 });
+    await userEvent.keyboard('{Meta>}z{/Meta}');
+    await waitFor(() => expect(headers().some((h) => h.startsWith('Store'))).toBe(true));
+    await waitFor(() => expect(t.puts.at(-1)!.doc.columns).toContain('store_id'), { timeout: 3000 });
+  }
 });

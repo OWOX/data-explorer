@@ -79,7 +79,7 @@ const specs: Spec[] = [
   {
     id: 'orders', connectorSourceName: 'Shopify', icon: 'orders', count: 450,
     description: 'Customer orders with status, amount and creation time.',
-    fields: [pk(), f('customer_id', 'INT64', { alias: 'Customer', description: 'Who placed the order.' }), f('product_id', 'INT64', { alias: 'Product' }), f('store_id', 'INT64', { alias: 'Store' }), f('status', 'STRING'), f('amount', 'NUMERIC', { alias: 'Amount' }), f('created_at', 'TIMESTAMP'), f('is_gift', 'BOOL'), f('acquisition_session_id', 'STRING', { alias: 'Acquisition Session ID', description: 'The web session that brought the buyer.' }), f('net_revenue', 'NUMERIC', { alias: 'Net Revenue' })],
+    fields: [pk(), f('customer_id', 'INT64', { alias: 'Customer', description: 'Who placed the order.' }), f('product_id', 'INT64', { alias: 'Product' }), f('store_id', 'INT64', { alias: 'Store' }), f('status', 'STRING'), f('amount', 'NUMERIC', { alias: 'Amount' }), f('created_at', 'TIMESTAMP'), f('is_gift', 'BOOL'), f('acquisition_session_id', 'STRING', { alias: 'Acquisition Session ID', description: 'The web session that brought the buyer.' }), f('net_revenue', 'NUMERIC', { alias: 'Net Revenue', allowedAggregations: ['SUM', 'AVG', 'MIN', 'MAX', 'ANY_VALUE', 'P25', 'P50', 'P75', 'P95'] })],
     row: (i, r) => ({
       id: i,
       customer_id: i === 7 || i === 150 || i === 300 ? null : pick(r, 60),

@@ -30,42 +30,38 @@ test('rows show their label and count', () => {
 
 test('unticking a ticked row removes it', async () => {
   const onChange = mount(['a', 'b']);
-  await userEvent.click(screen.getByRole('checkbox', { name: /Alpha/ }));
+  await userEvent.click(screen.getByRole('option', { name: /Alpha/ }));
   expect(onChange).toHaveBeenLastCalledWith(['b']);
 });
 
 test('ticking an unticked row adds it', async () => {
   const onChange = mount(['b']);
-  await userEvent.click(screen.getByRole('checkbox', { name: /Alpha/ }));
+  await userEvent.click(screen.getByRole('option', { name: /Alpha/ }));
   expect(onChange).toHaveBeenLastCalledWith(['b', 'a']);
 });
 
-test('Select all toggles between every option and none', async () => {
+test('Clear empties the menu', async () => {
   const all = mount(['a', 'b']);
-  await userEvent.click(screen.getByLabelText('Select all'));
+  await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
   expect(all).toHaveBeenLastCalledWith([]);
 });
 
 test('Select all from a partial or empty menu ticks everything', async () => {
   const onChange = mount([]);
-  await userEvent.click(screen.getByLabelText('Select all'));
+  await userEvent.click(screen.getByRole('button', { name: 'Select all 2' }));
   expect(onChange).toHaveBeenLastCalledWith(['a', 'b']);
 });
 
 test('only narrows to one option', async () => {
   const onChange = mount(['a', 'b']);
-  await userEvent.click(screen.getByRole('button', { name: 'Only Beta' }));
+  await userEvent.click(screen.getByLabelText('Only Beta'));
   expect(onChange).toHaveBeenLastCalledWith(['b']);
 });
 
-test('Select all is indeterminate when only some rows are ticked', () => {
-  const { unmount } = render(<MultiSelect label="Storage" options={options} selected={['a']} onChange={() => {}} />);
-  expect((screen.getByLabelText('Select all') as HTMLInputElement).indeterminate).toBe(true);
-  unmount();
-  render(<MultiSelect label="Storage" options={options} selected={['a', 'b']} onChange={() => {}} />);
-  const box = screen.getByLabelText('Select all') as HTMLInputElement;
-  expect(box.indeterminate).toBe(false);
-  expect(box.checked).toBe(true);
+test('ticked rows are aria-selected', () => {
+  mount(['a']);
+  expect(screen.getByRole('option', { name: /Alpha/ })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('option', { name: /Beta/ })).toHaveAttribute('aria-selected', 'false');
 });
 
 test('no options, no control', () => {

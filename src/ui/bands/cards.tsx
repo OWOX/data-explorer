@@ -89,6 +89,7 @@ export function SourceCard({
 }
 
 function CountBadge({ count, onRetry }: { count: CountState; onRetry: () => void }) {
+  // The row reserves one badge's height (bands.css), so the count arriving or turning out empty does not move the bands below.
   if (count.state === 'idle') return null;
   if (count.state === 'loading') {
     return <span className="dm-badge" aria-label="Counting records"><LoaderCircle className="dm-spin" size={12} /></span>;

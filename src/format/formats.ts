@@ -1,4 +1,4 @@
-import { categorizeFieldType } from '../model/field-category';
+import { categorizeFieldType, isDayType } from '../model/field-category';
 import { displayText, formatTemporal } from '../ui/format';
 
 export type Format =
@@ -18,7 +18,7 @@ const CURRENCY = /^[A-Z]{3}$/;
 export function formatsFor(type: string): Format['kind'][] {
   const category = categorizeFieldType(type);
   if (category === 'number') return ['auto', 'plain', 'percent', 'money'];
-  if (category === 'date') return type.trim().toUpperCase() === 'DATE' ? ['auto', 'date'] : ['auto', 'date', 'datetime', 'time'];
+  if (category === 'date') return isDayType(type) ? ['auto', 'date'] : ['auto', 'date', 'datetime', 'time'];
   return [];
 }
 
