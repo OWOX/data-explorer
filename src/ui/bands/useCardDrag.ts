@@ -11,15 +11,22 @@ const START_PX = 5;
  * becomes a drag past 5 px; a release over the main card calls `onDrop`. A release elsewhere, Escape or a cancelled pointer
  * end the drag with no change. The click the browser sends after a drag is swallowed, so it does not also toggle the card.
  */
-export function useCardDrag(canvas: RefObject<HTMLElement | null>, mainId: string | null, titleOf: (id: string) => string, onDrop: (id: string) => void): CardDrag | null {
+export function useCardDrag(canvas: RefObject<HTMLElement | null>, mainId: string | null, titleOf: (id: string) => string, onDrop: (id: string) => void, canDrag: (id: string) => boolean): CardDrag | null {
   const [drag, setDrag] = useState<CardDrag | null>(null);
-  const latest = useRef({ mainId, titleOf, onDrop });
-  useEffect(() => { latest.current = { mainId, titleOf, onDrop }; });
+  const latest = useRef({ mainId, titleOf, onDrop, canDrag });
+  useEffect(() => { latest.current = { mainId, titleOf, onDrop, canDrag }; });
   useEffect(() => {
     const root = canvas.current;
     if (!root) return;
     let press: { id: string; x: number; y: number } | null = null;
     let dragging = false;
+    // Escape ended a drag: the release that follows still gets its click swallowed, and does nothing else.
+    let cancelled = false;
+    const swallowNextClick = () => {
+      const swallow = (c: MouseEvent) => { c.stopPropagation(); c.preventDefault(); };
+      window.addEventListener('click', swallow, { capture: true, once: true });
+      setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
+    };
     const overMain = (x: number, y: number) => {
       const main = latest.current.mainId;
       const hit = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(x, y) : null;
@@ -31,30 +38,31 @@ export function useCardDrag(canvas: RefObject<HTMLElement | null>, mainId: strin
       const t = e.target instanceof Element ? e.target : null;
       if (!t || t.closest('button, a, input, [data-ghost]')) return;
       const id = t.closest<HTMLElement>('[data-mart-id]')?.dataset.martId;
-      if (!id || id === latest.current.mainId) return;
+      if (!id || id === latest.current.mainId || !latest.current.canDrag(id)) return;
+      cancelled = false;
+      dragging = false;
       press = { id, x: e.clientX, y: e.clientY };
     };
     const move = (e: PointerEvent) => {
       if (!press) return;
+      // The release happened out of our sight: let go of the drag.
+      if (!(e.buttons & 1)) { end(); return; }
       if (!dragging && Math.hypot(e.clientX - press.x, e.clientY - press.y) < START_PX) return;
       dragging = true;
       e.preventDefault();
       setDrag({ id: press.id, title: latest.current.titleOf(press.id), x: e.clientX, y: e.clientY, overMain: overMain(e.clientX, e.clientY) });
     };
     const up = (e: PointerEvent) => {
+      if (cancelled) { cancelled = false; swallowNextClick(); return; }
       if (!press) return;
       const { id } = press;
       const wasDrag = dragging;
       const dropped = wasDrag && overMain(e.clientX, e.clientY);
       end();
-      if (wasDrag) {
-        const swallow = (c: MouseEvent) => { c.stopPropagation(); c.preventDefault(); };
-        window.addEventListener('click', swallow, { capture: true, once: true });
-        setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
-      }
+      if (wasDrag) swallowNextClick();
       if (dropped) latest.current.onDrop(id);
     };
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && press) end(); };
+    const key = (e: KeyboardEvent) => { if (e.key !== 'Escape' || !press) return; cancelled = dragging; end(); };
     root.addEventListener('pointerdown', down);
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);

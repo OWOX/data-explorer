@@ -76,7 +76,7 @@ export function CardBands({
   const [hovered, setHovered] = useState<string | null>(null);
   const [wireTip, setWireTip] = useState<{ text: string; x: number; y: number } | null>(null);
   const click = useCardClick(model);
-  const drag = useCardDrag(canvas, selection.martId, (id) => model.marts.get(id)?.title ?? id, (id) => void click(id, { mode: 'makeMain' }));
+  const drag = useCardDrag(canvas, selection.martId, (id) => model.marts.get(id)?.title ?? id, (id) => void click(id, { mode: 'makeMain' }), (id) => model.marts.get(id)?.accessible === true);
 
   // Escape lets go of the hovered card; what is selected only changes by clicks and Back.
   useEffect(() => {

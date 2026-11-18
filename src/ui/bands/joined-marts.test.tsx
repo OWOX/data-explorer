@@ -405,7 +405,7 @@ test('after the main group is removed, focus moves to the new main tab\'s Column
 
 describe('dragging a card onto the main card', () => {
   const pointer = (type: string, target: Window | Document | Node | Element, x: number, y: number) =>
-    fireEvent(target, new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y }));
+    fireEvent(target, new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y }));
   let hit: Element | null = null;
   beforeEach(() => { (document as { elementFromPoint?: unknown }).elementFromPoint = () => hit; });
   afterEach(() => { delete (document as { elementFromPoint?: unknown }).elementFromPoint; hit = null; });
@@ -418,6 +418,7 @@ describe('dragging a card onto the main card', () => {
     pointer('pointerdown', card('Customers'), 0, 0);
     pointer('pointermove', window, 30, 0);
     expect(card('Orders')).toHaveClass('dm-drop-target');
+    expect(card('Orders')).toHaveClass('dm-drop-hot');
     pointer('pointerup', window, 30, 0);
     fireEvent.click(card('Customers'));
     await waitFor(() => expect(groupTitles()[0] ?? title()).toBe('Customers'));
@@ -438,9 +439,26 @@ describe('dragging a card onto the main card', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     hit = card('Orders');
     pointer('pointerup', window, 30, 0);
+    // The click that follows the release must not join Customers either.
+    fireEvent.click(card('Customers'));
     await new Promise((r) => setTimeout(r, 100));
     expect(title()).toBe('Orders');
     expect(card('Orders')).not.toHaveClass('dm-drop-target');
+  });
+
+  test('a plain click after a finished drag still works', async () => {
+    setup();
+    await ready();
+    await within(marts()).findByText('Customers');
+    hit = marts();
+    pointer('pointerdown', card('Customers'), 0, 0);
+    pointer('pointermove', window, 30, 0);
+    pointer('pointerup', window, 30, 0);
+    fireEvent.click(card('Customers'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(title()).toBe('Orders');
+    fireEvent.click(card('Customers'));
+    await waitFor(() => expect(title()).toBe('Orders + Customers'));
   });
 
   test('a press that moves less than 5 px is a click', async () => {
