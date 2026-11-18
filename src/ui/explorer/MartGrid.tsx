@@ -281,7 +281,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   useLayoutEffect(() => {
     const el = frame.current;
     if (charts || !el) return;
-    const measure = () => { const h = el.getBoundingClientRect().height; if (h > 0) setTableHeight(h); };
+    // Full screen stretches the frame: that height is not the table's, so it is not kept.
+    const measure = () => { const h = el.getBoundingClientRect().height; if (h > 0 && !el.closest('.dm-full')) setTableHeight(h); };
     measure();
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     ro?.observe(el);
