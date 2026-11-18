@@ -9,6 +9,9 @@ import { useServices, useStore } from '../state/store';
 export function useJoinSources(martId: string | null): JoinedSource[] | null {
   const { blendable } = useServices();
   const [{ modelVersion }] = useStore();
+  // The grid's Refresh forgets a mart's joined sources: this copy is read again on the same signal.
+  const [forgotten, setForgotten] = useState(0);
+  useEffect(() => blendable.subscribe(() => setForgotten((n) => n + 1)), [blendable]);
   const [read, setRead] = useState<{ id: string; version: number; sources: JoinedSource[] } | null>(null);
   useEffect(() => {
     if (!martId) return;
@@ -18,7 +21,7 @@ export function useJoinSources(martId: string | null): JoinedSource[] | null {
       () => { if (live) setRead({ id: martId, version: modelVersion, sources: [] }); },
     );
     return () => { live = false; };
-  }, [blendable, martId, modelVersion]);
+  }, [blendable, martId, modelVersion, forgotten]);
   if (!martId) return null;
   if (read?.id === martId) return read.sources;
   return blendable.peek(martId) ?? null;

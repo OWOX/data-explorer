@@ -45,8 +45,7 @@ export function AggregationEditor({ field, value, blocker, onApply, onCancel }: 
         </div>
       )}
       {allowed.length > 0 && (
-        <fieldset className="flex flex-col gap-1">
-          <legend className="pb-1 text-xs text-muted-foreground">{bucketable ? 'Or aggregate by' : 'Aggregate by'}</legend>
+        <fieldset aria-label={bucketable ? 'Or aggregate by' : 'Aggregate by'} className="flex flex-col gap-1">
           <SheetsChecklist label={bucketable ? 'Or aggregate by' : 'Aggregate by'} items={allowed.map((fn) => ({ value: fn, text: AGG_LABELS[fn] }))} selected={bucket ? [] : fns} onChange={pick} />
         </fieldset>
       )}

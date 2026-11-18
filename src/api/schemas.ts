@@ -10,6 +10,8 @@ export interface SchemaLoader {
   peek(id: string): Schema | undefined;
   prefetch(ids: string[], priority?: string[]): Promise<void>;
   subscribe(fn: () => void): () => void;
+  /** Forget one mart's schema (and a read in flight), so the next ask reads the backend again. */
+  invalidate(id: string): void;
   clear(): void;
 }
 
@@ -41,11 +43,10 @@ export function createSchemaLoader(ctx: Ctx): SchemaLoader {
             ...(f.calculated !== undefined ? { isCalculated: true } : {}),
             ...(Array.isArray(f.allowedAggregations) ? { allowedAggregations: knownFunctions(f.allowedAggregations) } : {}),
           }));
-        done.set(id, schema);
-        listeners.forEach((l) => l());
+        if (inflight.get(id) === p) { done.set(id, schema); listeners.forEach((l) => l()); }
         return schema;
       })
-      .finally(() => inflight.delete(id));
+      .finally(() => { if (inflight.get(id) === p) inflight.delete(id); });
     inflight.set(id, p);
     return p;
   }
@@ -59,6 +60,7 @@ export function createSchemaLoader(ctx: Ctx): SchemaLoader {
       await runPool(ordered, SCHEMA_CONCURRENCY, get);
     },
     subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+    invalidate(id) { done.delete(id); inflight.delete(id); },
     clear() { done.clear(); },
   };
 }

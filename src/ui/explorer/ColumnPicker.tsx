@@ -1,4 +1,5 @@
 import { Columns3 } from 'lucide-react';
+import { useState } from 'react';
 import type { Field } from '../../model/types';
 import { Popover } from '../Popover';
 import { fieldLabel } from '../../model/fieldLabel';
@@ -20,8 +21,19 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange }:
 }) {
   const set = new Set(visible);
   const mine = new Set(fields.map((f) => f.name));
-  const ticked = fields.filter((f) => set.has(f.name)).length;
+  // A joined mart whose last field is unticked stays on the grid while the popup is open (Clear, then a new tick, keeps it); it leaves when the popup closes with nothing ticked.
+  const [open, setOpen] = useState(false);
+  const [emptied, setEmptied] = useState(false);
   const apply = (picked: string[]) => {
+    if (!main && picked.length === 0) { setEmptied(true); return; }
+    setEmptied(false);
+    commit(picked);
+  };
+  const onOpenChange = (o: boolean) => {
+    setOpen(o);
+    if (!o && emptied) { setEmptied(false); commit([]); }
+  };
+  const commit = (picked: string[]) => {
     const keep = new Set(picked);
     const others = visible.filter((c) => !mine.has(c));
     let next = main
@@ -40,12 +52,11 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange }:
     disabled: set.has(f.name) && (visible.length === 1 || locked(f.name)),
   }));
   return (
-    <Popover align="start" tip="Fields" trigger={
+    <Popover align="start" tip="Fields" open={open} onOpenChange={onOpenChange} trigger={
       <button type="button" aria-label={`Fields of ${title}`} className="dm-ctl dm-ctl-lg dm-reveal"><Columns3 className="dm-icon" aria-hidden /></button>
     }>
       <div className="flex flex-col gap-2">
-        <p className="dm-popover-title text-xs font-medium text-muted-foreground">Fields · {ticked}/{fields.length}</p>
-        <SheetsChecklist label={`Fields of ${title}`} items={items} selected={visible.filter((c) => mine.has(c))} onChange={apply} />
+        <SheetsChecklist label={`Fields of ${title}`} items={items} selected={emptied ? [] : visible.filter((c) => mine.has(c))} onChange={apply} />
       </div>
     </Popover>
   );

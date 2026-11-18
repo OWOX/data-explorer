@@ -81,13 +81,50 @@ test('a joined tab lists that mart\'s fields with a count, each with its descrip
   await openPicker('Customers');
   const picker = within(await screen.findByRole('dialog'));
   expect(picker.getAllByRole('option').map((c) => c.textContent)).toEqual(['id', 'name', 'email', 'city', 'Country']);
-  expect(picker.getByText(/Fields · 1\/5/)).toBeInTheDocument();
+  expect(picker.queryByText(/Fields ·/)).toBeNull();
   expect(picker.getByLabelText('About name')).toBeInTheDocument();
   await userEvent.click(picker.getByLabelText('city'));
   await waitFor(() => expect(headers()).toEqual(['id', 'email', 'city']));
   await waitFor(() => expect(t.orderQueries().at(-1)!.o.column).toContain('customers__city'));
   const at = headers().indexOf('city');
   await waitFor(() => expect(bodyRows()[0]!.querySelectorAll('td')[at]!.textContent).toBeTruthy());
+});
+
+test('Clear in a joined mart\'s picker only unticks: a tick afterwards keeps the mart', async () => {
+  const t = setup(['id', 'customers__email']);
+  await t.seeded;
+  t.view();
+  await openPicker('Customers');
+  const picker = within(await screen.findByRole('dialog'));
+  await userEvent.click(picker.getByRole('button', { name: 'Clear' }));
+  expect(picker.getAllByRole('option').every((o) => o.getAttribute('aria-selected') === 'false')).toBe(true);
+  // The mart is still on the grid while the popup is open.
+  expect(headers()).toEqual(['id', 'email']);
+  await userEvent.click(picker.getByLabelText('city'));
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(headers()).toEqual(['id', 'city']));
+});
+
+test('Clear in a joined mart\'s picker removes the mart only when the popup closes with nothing ticked', async () => {
+  const t = setup(['id', 'customers__email']);
+  await t.seeded;
+  t.view();
+  await openPicker('Customers');
+  const picker = within(await screen.findByRole('dialog'));
+  await userEvent.click(picker.getByRole('button', { name: 'Clear' }));
+  expect(headers()).toEqual(['id', 'email']);
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(headers()).toEqual(['id']));
+});
+
+test('Clear in the main mart\'s picker still leaves a column', async () => {
+  const t = setup(['id', 'status']);
+  await t.seeded;
+  t.view();
+  await openPicker();
+  const picker = within(await screen.findByRole('dialog'));
+  await userEvent.click(picker.getByRole('button', { name: 'Clear' }));
+  await waitFor(() => expect(headers().length).toBe(1));
 });
 
 test('a joined column filters and sorts by its blended name, with the filters its own type has', async () => {

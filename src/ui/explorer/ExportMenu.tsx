@@ -17,6 +17,7 @@ import { useServices, useStore } from '../../state/store';
 import { ChatGptIcon } from '../chatgpt-icon';
 import { ClaudeIcon } from '../claude-icon';
 import { GoogleSheetsIcon } from '../google-sheets-icon';
+import { Toast } from '../Toast';
 import { Tooltip } from '../Tooltip';
 import { copyText } from './clipboard';
 
@@ -217,12 +218,16 @@ export function ExportMenu(p: Props) {
     finally { if (check === checks.current) setVerified(true); }
   }
 
+  // One toast: an export outcome (it stays until dismissed), else the copied data or prompt (it hides itself).
+  const note = busy ? null : result ?? copied ?? data;
+  const dismissNote = () => { if (result) setResult(null); else if (copied) { setCopied(null); setPromptOpen(false); } else { setData(null); setDataOpen(false); } };
+  const noteBody = !note ? null : result ? <ExportResultText result={result} /> : copied ? <CopiedNoteText copied={copied} /> : data ? <CopiedDataText data={data} /> : null;
+  const noteAction = !note ? undefined : result ? <ExportResultLink result={result} /> : copied ? <button type="button" onClick={() => setPromptOpen(true)} className="shrink-0 underline">Show prompt</button> : data && !data.ok ? <button type="button" onClick={() => setDataOpen(true)} className="shrink-0 underline">Show data</button> : undefined;
+
   return (
     <>
-      {busy && <span role="status" className="text-xs text-muted-foreground">{busy}</span>}
-      {!busy && result && <ExportResult result={result} onDismiss={() => setResult(null)} />}
-      {!busy && !result && !copied && data && <CopiedDataNote data={data} onShow={() => setDataOpen(true)} onDismiss={() => { setData(null); setDataOpen(false); }} />}
-      {!busy && !result && copied && <CopiedNote copied={copied} onShow={() => setPromptOpen(true)} onDismiss={() => { setCopied(null); setPromptOpen(false); }} />}
+      <span role="status" className="text-xs text-muted-foreground">{busy}</span>
+      <Toast onDismiss={dismissNote} returnTo={() => menu.current?.querySelector('summary')} action={noteAction} persistent={!busy && !!result} hold={promptOpen || dataOpen} stamp={note}>{noteBody}</Toast>
       <details ref={menu} className="dm-filter dm-export" name="dm-filter" onToggle={(e) => openMenu(e.currentTarget.open)} {...(busy ? { 'aria-disabled': true } : {})}>
           <summary onClick={(e) => { if (busy) e.preventDefault(); }} onKeyDown={onSummaryKey}>{label}<ChevronDown size={14} /></summary>
           <div className="dm-filter-menu dm-cascade" role="menu" data-level="1" onKeyDown={onMenuKey}>
@@ -354,14 +359,12 @@ export function ExportMenu(p: Props) {
   }
 }
 
-/** "Prompt copied. Paste it into Claude", with a way to read it. When the clipboard was out of reach the prompt is in the dialog instead. */
-function CopiedNote({ copied, onShow, onDismiss }: { copied: Copied; onShow: () => void; onDismiss: () => void }) {
+/** "Prompt copied. Paste it into Claude". When the clipboard was out of reach the prompt is in the dialog instead. */
+function CopiedNoteText({ copied }: { copied: Copied }) {
   return (
-    <span role="status" className="inline-flex max-w-96 items-center gap-1 text-xs text-muted-foreground">
-      {copied.ok ? <Check className="size-3.5 shrink-0" /> : <AlertTriangle className="size-3.5 shrink-0" />}
-      <span className="truncate">{copied.ok ? `Prompt copied. Paste it into ${copied.assistant}` : `Could not copy. Copy the prompt, then paste it into ${copied.assistant}`}</span>
-      <button type="button" onClick={onShow} className="shrink-0 underline">Show prompt</button>
-      <button type="button" aria-label="Dismiss" onClick={onDismiss} className="shrink-0 px-1">×</button>
+    <span className="inline-flex items-center gap-1.5">
+      {copied.ok ? <Check className="size-3.5 shrink-0" aria-hidden /> : <AlertTriangle className="size-3.5 shrink-0" aria-hidden />}
+      {copied.ok ? `Prompt copied. Paste it into ${copied.assistant}` : `Could not copy. Copy the prompt, then paste it into ${copied.assistant}`}
     </span>
   );
 }
@@ -404,27 +407,29 @@ function TextDialog({ name, heading = name, note, areaLabel, text, onClose }: { 
 }
 
 /** "Copied N rows", or what is left to do when the clipboard was out of reach. */
-function CopiedDataNote({ data, onShow, onDismiss }: { data: CopiedData; onShow: () => void; onDismiss: () => void }) {
+function CopiedDataText({ data }: { data: CopiedData }) {
   const rows = `${data.count} ${data.count === 1 ? 'row' : 'rows'}`;
   return (
-    <span role="status" className="inline-flex max-w-96 items-center gap-1 text-xs text-muted-foreground">
-      {data.ok ? <Check className="size-3.5 shrink-0" /> : <AlertTriangle className="size-3.5 shrink-0" />}
-      <span className="truncate">{!data.ok ? 'Could not copy. Copy the data by hand' : data.more ? `Copied the first ${rows}. Load more to copy more.` : `Copied ${rows}`}</span>
-      {!data.ok && <button type="button" onClick={onShow} className="shrink-0 underline">Show data</button>}
-      <button type="button" aria-label="Dismiss" onClick={onDismiss} className="shrink-0 px-1">×</button>
+    <span className="inline-flex items-center gap-1.5">
+      {data.ok ? <Check className="size-3.5 shrink-0" aria-hidden /> : <AlertTriangle className="size-3.5 shrink-0" aria-hidden />}
+      {!data.ok ? 'Could not copy. Copy the data by hand' : data.more ? `Copied the first ${rows}. Load more to copy more.` : `Copied ${rows}`}
     </span>
   );
 }
 
-function ExportResult({ result, onDismiss }: { result: Result; onDismiss: () => void }) {
+/** The outcome of a Google Sheets export, as the toast's text. */
+function ExportResultText({ result }: { result: Result }) {
   const Icon = result.kind === 'ok' ? Check : AlertTriangle;
   return (
-    <span role="status" className={`inline-flex max-w-96 items-center gap-1 text-xs ${result.kind === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}>
-      <Icon className="size-3.5 shrink-0" /><Tooltip content={result.text}><span className="truncate">{result.text}</span></Tooltip>
-      {result.url && <a href={result.url} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-0.5 underline">{result.kind === 'timeout' ? 'Still running — open the sheet' : 'Open the sheet'}<ExternalLink className="size-3" /></a>}
-      <button type="button" aria-label="Dismiss" onClick={onDismiss} className="shrink-0 px-1">×</button>
+    <span className={`inline-flex items-start gap-1.5 ${result.kind === 'error' ? 'text-destructive' : ''}`}>
+      <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden /><span className="min-w-0 break-words">{result.text}</span>
     </span>
   );
+}
+
+function ExportResultLink({ result }: { result: Result }) {
+  if (!result.url) return null;
+  return <a href={result.url} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-0.5 underline">{result.kind === 'timeout' ? 'Still running — open the sheet' : 'Open the sheet'}<ExternalLink className="size-3" /></a>;
 }
 
 function NewReportDialog({ destination, title, initialError, busy, onCancel, onExport }: {

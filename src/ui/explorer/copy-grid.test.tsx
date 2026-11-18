@@ -78,3 +78,52 @@ test('a copy from a field or a text range inside a cell is left alone', async ()
   expect(copy(scroller())).toBeNull();
   window.getSelection()!.removeAllRanges();
 });
+
+test('dragging from one cell to another selects the block and opens no record', async () => {
+  setup(); await ready();
+  const rows = dataRows();
+  const from = cellsOf(rows[0]!)[0]!;
+  const to = cellsOf(rows[2]!)[1]!;
+  const down = fireEvent.mouseDown(from, { button: 0 });
+  // Native text selection is cancelled.
+  expect(down).toBe(false);
+  fireEvent.mouseEnter(cellsOf(rows[1]!)[1]!, { buttons: 1 });
+  fireEvent.mouseEnter(to, { buttons: 1 });
+  fireEvent.mouseUp(to);
+  fireEvent.click(to);
+  const expected = [0, 1, 2].map((r) => cellsOf(rows[r]!).slice(0, 2).map((c) => c.textContent).join('\t')).join('\n');
+  expect(copy(scroller())!.text).toBe(expected);
+  expect(document.querySelector('[data-range]')).not.toBeNull();
+  expect(document.querySelectorAll('td[data-range]')).toHaveLength(6);
+});
+
+test('a drag that comes back to its first cell is a plain cell', async () => {
+  setup(); await ready();
+  const rows = dataRows();
+  const from = cellsOf(rows[0]!)[0]!;
+  fireEvent.mouseDown(from, { button: 0 });
+  fireEvent.mouseEnter(cellsOf(rows[1]!)[0]!, { buttons: 1 });
+  fireEvent.mouseEnter(from, { buttons: 1 });
+  fireEvent.mouseUp(from);
+  expect(document.querySelectorAll('td[data-range]')).toHaveLength(0);
+  expect(document.querySelectorAll('td[data-selected]')).toHaveLength(1);
+});
+
+test('a button released outside the frame ends the drag: hovering on no longer extends it and the next click is a plain click', async () => {
+  setup(); await ready();
+  const rows = dataRows();
+  const from = cellsOf(rows[0]!)[0]!;
+  fireEvent.mouseDown(from, { button: 0 });
+  fireEvent.mouseEnter(cellsOf(rows[1]!)[1]!, { buttons: 1 });
+  expect(document.querySelectorAll('td[data-range]')).toHaveLength(4);
+  // No mouseup reaches the window; the next hover reports no button held.
+  fireEvent.mouseEnter(cellsOf(rows[2]!)[1]!, { buttons: 0 });
+  fireEvent.mouseEnter(cellsOf(rows[3]!)[1]!, { buttons: 0 });
+  expect(document.querySelectorAll('td[data-range]')).toHaveLength(4);
+  // dragMoved is cleared after a tick, so the click on a cell selects it instead of being swallowed.
+  await new Promise((r) => setTimeout(r, 5));
+  const target = cellsOf(rows[3]!)[0]!;
+  fireEvent.click(target);
+  expect(document.querySelectorAll('td[data-range]')).toHaveLength(0);
+  expect(target).toHaveAttribute('data-selected');
+});
