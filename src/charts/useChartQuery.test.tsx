@@ -69,3 +69,47 @@ test('null options run nothing', () => {
   expect(result.current).toMatchObject({ rows: null, error: null, loading: false });
   expect(traverseData).not.toHaveBeenCalled();
 });
+
+test('two hooks mounted together with the same key share one read', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ a: 1 }]));
+  const wrapper = setup(traverseData);
+  const both = renderHook(() => [useChartQuery('m', opts(), 0), useChartQuery('m', opts(), 0)] as const, { wrapper });
+  await waitFor(() => expect(both.result.current[0].rows).toEqual([{ a: 1 }]));
+  await waitFor(() => expect(both.result.current[1].rows).toEqual([{ a: 1 }]));
+  expect(traverseData).toHaveBeenCalledTimes(1);
+});
+
+test('option objects with the same content in another key order share one read', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ a: 1 }]));
+  const a: TraverseOptions = { column: ['a'], limit: 5, aggregation: [{ column: 'a', function: 'SUM' }, { column: 'b', function: 'MIN' }] };
+  const b: TraverseOptions = { aggregation: [{ function: 'SUM', column: 'a' }, { function: 'MIN', column: 'b' }], limit: 5, column: ['a'] };
+  const both = renderHook(() => [useChartQuery('m', a, 0), useChartQuery('m', b, 0)] as const, { wrapper: setup(traverseData) });
+  await waitFor(() => expect(both.result.current[1].rows).toEqual([{ a: 1 }]));
+  expect(traverseData).toHaveBeenCalledTimes(1);
+});
+
+test('a shared read is cancelled only when its last reader leaves', async () => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((r) => { release = r; });
+  const cancel = vi.fn(async () => {});
+  const slow: Traversal = { async *rowChunks() { await gate; yield [{ a: 1 }] as Row[]; }, cancel };
+  const traverseData = vi.fn(async () => slow);
+  const wrapper = setup(traverseData);
+  const one = renderHook(() => useChartQuery('m', opts(), 0), { wrapper });
+  const two = renderHook(() => useChartQuery('m', opts(), 0), { wrapper });
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
+  one.unmount();
+  await act(async () => { await Promise.resolve(); });
+  expect(cancel).not.toHaveBeenCalled();
+  two.unmount();
+  await act(async () => { release(); await Promise.resolve(); });
+  await waitFor(() => expect(cancel).toHaveBeenCalled());
+  expect(traverseData).toHaveBeenCalledTimes(1);
+});
+
+test('a rejection with no reason still ends loading with an error', async () => {
+  const traverseData = vi.fn(async () => { throw undefined; });
+  const { result } = renderHook(() => useChartQuery('m', opts(), 0), { wrapper: setup(traverseData) });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect((result.current.error as Error).message).toBe('Query failed');
+});
