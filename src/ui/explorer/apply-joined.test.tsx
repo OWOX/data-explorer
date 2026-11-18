@@ -134,3 +134,34 @@ test('the applied state is still there after the saves settle (no revert from th
   expect(headers().some((h) => h?.includes('Count Unique'))).toBe(true);
   expect(queries.at(-1)?.aggregation).toHaveLength(1);
 });
+
+test('a rejected rows request shows its error in the grid and keeps the edit visible', async () => {
+  const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
+  const ctx = { ...base, owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => (o.aggregation?.length ? Promise.reject(new Error('HAVING on joined sleeve not supported')) : real(id, o)) } } };
+  await base.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: ['id', 'status', 'customers__email'], at: 'then' });
+  render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
+  await waitFor(() => expect(headers()).toHaveLength(3));
+  await openSubmenu(within(data()), 'Customers · email', 'Aggregate');
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.click(within(dialog).getByLabelText('Count Unique'));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  expect(await within(data()).findByText(/HAVING on joined sleeve/)).toBeInTheDocument();
+  expect(headers().some((h) => h?.includes('Count Unique'))).toBe(true);
+  expect(within(data()).getByRole('button', { name: 'Aggregate Customers · email' })).toBeInTheDocument();
+});
+
+test.each([
+  ['postJoinAggregations SUM/AVG/MIN/MAX', { postJoinAggregations: ['SUM', 'AVG', 'MIN', 'MAX'] }],
+  ['no governance lists at all', {}],
+])('a joined INTEGER field (%s) offers the numeric functions, never the string list', async (_n, extra) => {
+  const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  const realGet = base.owox.getJson.bind(base.owox);
+  const ctx = { ...base, owox: { ...base.owox, getJson: (async (path: string, q?: Record<string, string>) => { const dto = await realGet<BlendableSchemaDto>(path, q); if (path.endsWith('/blendable-schema')) dto.blendedFields = dto.blendedFields?.map((f) => (f.name === 'customers__email' ? { ...f, type: 'INTEGER', alias: 'Sessions before signup', ...extra } : f)); return dto; }) as typeof base.owox.getJson } };
+  await base.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: ['id', 'status', 'customers__email'], at: 'then' });
+  render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
+  await waitFor(() => expect(headers()).toHaveLength(3));
+  await openSubmenu(within(data()), 'Customers · Sessions before signup', 'Aggregate');
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual(['Sum', 'Average', 'Min', 'Max']);
+});
