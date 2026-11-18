@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { readRows } from '../../api/rows';
 import { toTraverseFilters, type ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
@@ -44,7 +44,8 @@ type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor
 const shapeOf = (o: TraverseOptions | null): string => (o?.aggregation?.length || o?.dateTrunc?.length ? JSON.stringify([o.column, o.aggregation, o.dateTrunc]) : 'plain');
 type Query = { dataKey: string; columns: string[]; key: string };
 
-export function useMartRows(martId: string, options: TraverseOptions | null, version: number) {
+/** `paused` keeps the key (and the rows) but reads nothing; what was read for a key is not read again when the pause ends. */
+export function useMartRows(martId: string, options: TraverseOptions | null, version: number, paused = false) {
   const { ctx } = useServices();
   const [state, setState] = useState<RowsState>({ rows: null, error: null, hasMore: false, doneFor: null, shape: 'plain' });
   // Each traverseData call is a billed warehouse run. Everything but the column list (filters, sort, limit,
@@ -59,17 +60,18 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
     setQuery({ dataKey, columns: columns ?? [], key: `${dataKey}:${(columns ?? []).join(',')}` });
   }
   const key = query.key;
+  const readKey = useRef<string | null>(null);
   useEffect(() => {
-    if (!options) return;
+    if (!options || paused || readKey.current === key) return;
     const ac = new AbortController();
     const pageLimit = (options.limit ?? 1) - 1;
     readRows(ctx, martId, options, { signal: ac.signal }).then(
-      (rows) => { if (!ac.signal.aborted) setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options) }); },
+      (rows) => { if (!ac.signal.aborted) { readKey.current = key; setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options) }); } },
       (error) => { if (!ac.signal.aborted) setState({ rows: null, error, hasMore: false, doneFor: key, shape: shapeOf(options) }); },
     );
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx, martId, key]);
+  }, [ctx, martId, key, paused]);
   // The previous rows stay visible while a newer request is in flight; an old error does not.
   const loading = state.doneFor !== key;
   // Except rows of another shape (ungrouped rows under a grouped query, or the reverse, or other group keys): they would be read

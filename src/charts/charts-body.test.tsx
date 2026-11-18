@@ -19,11 +19,13 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const puts = vi.fn();
+  const gridPuts = vi.fn();
   const ctx: Ctx = {
     ...base,
     owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); return id === 'orders' && opts.fail?.(o) ? Promise.reject(new Error('range failed')) : real(id, o); } } },
     collections: <T,>(name: string) => {
       const c = base.collections<T>(name);
+      if (name === GRID_COLUMNS_COLLECTION) return { get: (id: string) => c.get(id), put: (id: string, d: T) => { gridPuts(id, d); return c.put(id, d); } };
       return name === CHARTS_COLLECTION ? { get: (id: string) => (opts.gate ? opts.gate.then(() => c.get(id)) : c.get(id)), put: (id: string, d: T) => { puts(id, d); return c.put(id, d); } } : c;
     },
   };
@@ -31,7 +33,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
     ctx.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: opts.columns ?? COLUMNS, at: 'then' }),
     opts.charts ? ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', opts.charts) : undefined,
   ]);
-  return { queries, puts, seeded, view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
+  return { queries, puts, gridPuts, seeded, view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
 }
 
 const data = () => document.getElementById('band-data')!;
@@ -42,6 +44,7 @@ async function charts(opts?: Parameters<typeof setup>[0]) {
   await t.seeded;
   t.view();
   t.puts.mockClear();
+  t.gridPuts.mockClear();
   await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
   const seen = t.queries.length;
   await userEvent.click(radio('Charts'));
@@ -86,6 +89,17 @@ test('a filter set from a column header changes the chart queries', async () => 
   await userEvent.type(within(dialog).getByLabelText('Value'), 'paid');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
   await waitFor(() => expect(t.queries.at(-1)!.filter).toEqual(expect.arrayContaining([expect.objectContaining({ column: 'status' })])));
+});
+
+test('Table, Charts, Table reads the grid rows once and writes no columns', async () => {
+  const t = await charts();
+  await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
+  await userEvent.click(radio('Table'));
+  await waitFor(() => expect(within(data()).getAllByRole('button', { name: /^Sort by/ }).length).toBeGreaterThan(0));
+  await new Promise((r) => setTimeout(r, 100));
+  // The grid's own query is the only one with a page limit of 201 (200 + 1).
+  expect(t.queries.filter((q) => q.limit === 201)).toHaveLength(1);
+  expect(t.gridPuts).not.toHaveBeenCalled();
 });
 
 test('Charts has no sort buttons or Sort row; Table has them again', async () => {
@@ -145,7 +159,7 @@ test('a change cannot be made before the saved settings load, and one made after
 
 const panel = (name: string) => screen.getByRole('button', { name: `${name} options` });
 const series = () => new Set([...data().querySelectorAll('rect[data-series]')].map((r) => r.getAttribute('data-series')));
-const withDims = [...COLUMNS, 'acquisition_session_id'];
+const withDims = [...COLUMNS, 'products__title'];
 
 test('time series: stacking by a dimension draws several series and saves the choice', async () => {
   const t = await charts();
@@ -174,7 +188,7 @@ test('the Horizontal bars button turns the chart and saves', async () => {
 });
 
 test('a stack with more than 8 values adds an Other series from a not_in query; fewer than 8 sends none', async () => {
-  const many = await charts({ columns: withDims, charts: { timeSeries: { stack: 'acquisition_session_id' } } });
+  const many = await charts({ columns: withDims, charts: { timeSeries: { stack: 'products__title' } } });
   await waitFor(() => expect(series().has('Other')).toBe(true));
   expect(series().size).toBe(9);
   const q = many.queries.find((o) => o.filter?.some((f) => f.operator === 'not_in'));
@@ -200,9 +214,9 @@ test('pie menu: a chosen dimension redraws the pie and saves', async () => {
   await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
   await userEvent.click(panel('Pie'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
-  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Acquisition Session ID' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Products · Name' }));
   await waitFor(() => expect(data().querySelector('[data-slice="Other"]')).not.toBeNull());
-  expect(t.puts).toHaveBeenCalledWith('orders', { pie: { dimension: 'acquisition_session_id' } });
+  expect(t.puts).toHaveBeenCalledWith('orders', { pie: { dimension: 'products__title' } });
 });
 
 test('a chart menu closes on scroll', async () => {

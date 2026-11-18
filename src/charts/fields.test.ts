@@ -37,6 +37,15 @@ describe('chartFields', () => {
   });
 });
 
+describe('id fields', () => {
+  it('are neither metrics nor dimensions', () => {
+    const s = [f('amount', 'number'), f('customer_id', 'number'), f('Id', 'number'), f('order_id', 'string'), f('pk', 'number', { isPrimaryKey: true }), f('channel', 'string'), f('ref', 'string', { alias: 'Order ID' })];
+    const r = chartFields(s, s.map((x) => x.name), NO_AGGREGATION, 'M', ['M']);
+    expect(r.metrics.map((m) => m.field.name)).toEqual(['amount']);
+    expect(r.dimensions.map((d) => d.name)).toEqual(['channel']);
+  });
+});
+
 describe('pickBucket', () => {
   it.each([
     ['2026-01-01', '2026-02-15', 'DAY'],

@@ -272,9 +272,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // A folded band reads nothing: the query it last read stays, and a change made meanwhile is read once it opens.
   const [asked, setAsked] = useState(query);
   if (!paused && !blocked && asked !== query) setAsked(query);
-  // Charts read their own queries: the grid's rows query is not run, so no billed read is wasted.
+  // Charts read their own queries: the grid's rows query is paused (not dropped, which would change its key and re-read on the way back to Table).
   const charts = view === 'charts';
-  const { rows: read, loading: reading, error, hasMore } = useMartRows(martId, charts ? null : asked, version);
+  const { rows: read, loading: reading, error, hasMore } = useMartRows(martId, asked, version, charts);
   const rows = blocked || charts ? null : read;
   const loading = reading && !blocked && !charts;
   // The fields on screen, kept as the same array until one of them changes: a joined mart arriving later (the picker reads it

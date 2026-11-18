@@ -1,6 +1,7 @@
 // Which shown columns the charts draw: metrics (numbers), dimensions (text, booleans) and dates, grouped by the data mart they belong to.
 import { AGGREGATE_FUNCTIONS, allowedFunctions, canBucket, type AggFn, type Aggregation, type DateBucket } from '../model/aggregation';
 import type { Field } from '../model/types';
+import { isIdField } from '../state/join-plan';
 
 export type Metric = { field: Field; fn: AggFn; martId: string };
 export type ChartMart = { martId: string; aliasPath: string; hasPk: boolean; metrics: Metric[]; dates: Field[]; dimensions: Field[] };
@@ -28,7 +29,7 @@ export function chartFields(schema: Field[], shown: string[], agg: Aggregation, 
     // Blended fields carry no key flag: a joined mart has a key when the backend says a unique count works on its alias path.
     const hasPk = martId === mainMartId ? schema.some((f) => f.isPrimaryKey && martOf(f, mainMartId) === martId) : !!uniqueCountPaths?.has(aliasPath);
     const metrics = own.flatMap((f): Metric[] => {
-      if (f.category !== 'number' || f.isPrimaryKey || f.isCalculated) return [];
+      if (f.category !== 'number' || isIdField(f) || f.isCalculated) return [];
       const fn = metricFn(f, agg);
       return fn ? [{ field: f, fn, martId }] : [];
     });
@@ -38,7 +39,7 @@ export function chartFields(schema: Field[], shown: string[], agg: Aggregation, 
       hasPk,
       metrics,
       dates: own.filter((f) => canBucket(f)),
-      dimensions: own.filter((f) => (f.category === 'string' || f.category === 'boolean') && !f.isPrimaryKey),
+      dimensions: own.filter((f) => (f.category === 'string' || f.category === 'boolean') && !isIdField(f)),
     };
   });
   return { marts, metrics: marts.flatMap((m) => m.metrics), dimensions: marts.flatMap((m) => m.dimensions), dates: marts.flatMap((m) => m.dates) };
