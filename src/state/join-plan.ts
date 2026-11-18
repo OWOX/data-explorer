@@ -84,7 +84,8 @@ export const ownColumnsIn = (columns: string[], sources: JoinedSource[]): string
 /**
  * The fields a joined mart comes back with. What it showed when it last left a grid (`shown`, its own field names) wins:
  * those the source offers, in that order, else the default. With nothing remembered, what was last chosen for the pair
- * (those the source still offers), else its first non-ID text field and first non-ID metric.
+ * (those the source still offers), else its first non-ID text field and first non-ID metric. The path is the one
+ * `sourceOfMart` picks for the paths in use.
  */
 export function fieldsFor(sources: JoinedSource[], martId: string, remembered: string[] | undefined, shown: string[] | null = null, inUse?: Set<string>): string[] {
   const source = sourceOfMart(sources, martId, inUse);

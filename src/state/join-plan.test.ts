@@ -264,4 +264,17 @@ describe('the path a mart joins by', () => {
     const e = { ...env({ orders: g(['id', 'customers__city']) }, 'orders'), sourcesOf: (id: string) => (id === 'orders' ? sources : []) };
     expect(planClick(e, 'stores').grids.orders!.columns).toContain('customers__stores__city');
   });
+
+  test('a promoted mart joins a remaining mart through the path from a mart in use, not the first listed', () => {
+    const ordersSrc = [customers, src('stores', 'stores', [f('stores__city', 'string', 'stores')])];
+    const countries = src('countries', 'countries', [f('countries__name', 'string', 'countries')]);
+    const nextSources = [countries, products, viaProducts, src('countries.stores', 'stores', [f('countries__stores__city', 'string', 'stores')], 2)];
+    const e = {
+      ...env({ orders: g(['id', 'customers__city', 'stores__city']), customers: g(['id', 'countries__name']) }, 'orders'),
+      sourcesOf: (id: string) => (id === 'orders' ? ordersSrc : id === 'customers' ? nextSources : []),
+    };
+    const columns = planClick(e, 'orders').grids.customers!.columns;
+    expect(columns).toContain('countries__stores__city');
+    expect(columns).not.toContain('products__stores__city');
+  });
 });
