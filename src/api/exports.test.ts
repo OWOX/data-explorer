@@ -395,6 +395,35 @@ describe('exporter', () => {
     expect(realGet).toBeDefined();
   });
 
+  test('a load whose stored read failed leaves no cache behind: the next load reads again', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }]);
+    liveGet(ctx);
+    const col = ctx.collections<{ reports: StoredReport[] }>('exports');
+    vi.spyOn(col, 'get').mockRejectedValueOnce(new Error('offline'));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const ex = createExporter({ ...ctx, collections: () => col } as typeof ctx);
+    ex.load('orders');
+    await vi.waitFor(() => expect(col.get).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(ex.entries('orders')).toEqual([]);
+    ex.load('orders');
+    await allReady(ex);
+    expect(ex.entries('orders').map((e) => e.reportId)).toEqual(['a']);
+  });
+
+  test('a change that throws does not block later changes, and its caller sees the error', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }, { reportId: 'b' }]);
+    liveGet(ctx);
+    const ex = createExporter(ctx);
+    ex.load('orders');
+    await allReady(ex);
+    const off = ex.subscribe('orders', () => { throw new Error('listener broke'); });
+    await expect(ex.forget('orders', 'a')).rejects.toThrow('listener broke');
+    off();
+    await ex.forget('orders', 'b');
+    expect(await stored(ctx)).toEqual([]);
+  });
+
   test('an update whose PUT is a 404 forgets the report and throws a gone ExportError at the report step', async () => {
     const remembered = { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'sheet1', sheetId: 7, title: 'Old' };
     const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'r1' }, { reportId: 'r2' }]);

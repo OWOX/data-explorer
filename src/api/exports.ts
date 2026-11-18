@@ -217,7 +217,8 @@ export function createExporter(ctx: Ctx): Exporter {
       }
       try { await col.put(martId, { reports: next }); } catch (e) { console.warn('Saving the exported reports failed', e); }
     });
-    chains.set(martId, run);
+    // A change that threw does not block the later ones; its caller still gets the error.
+    chains.set(martId, run.catch(() => undefined));
     return run;
   }
   const touch = (martId: string, reportId: string, usedAt: string) => mutate(martId, (l) => (l.some((r) => r.reportId === reportId) ? l.map((r) => (r.reportId === reportId ? { reportId, usedAt } : r)) : [...l, { reportId, usedAt }]));
@@ -262,7 +263,11 @@ export function createExporter(ctx: Ctx): Exporter {
     // When the document is already known the entries are there at once, so a re-read never shows an empty list.
     const known = docs.get(martId);
     if (known) { start(known); return; }
-    void readDoc(martId).then((list) => { if (list && caches.get(martId) === cache) start(list); });
+    void readDoc(martId).then((list) => {
+      if (caches.get(martId) !== cache) return;
+      // A failed read leaves no cache behind, so the next load tries again.
+      if (list) start(list); else caches.delete(martId);
+    });
   }
 
   const destinationConfig = (t: SheetTarget) => ({ type: 'google-sheets-config', spreadsheetId: t.spreadsheetId, sheetId: t.sheetId });
