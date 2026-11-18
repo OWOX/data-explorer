@@ -126,6 +126,8 @@ export function presetName(rule: RelativeDatePreset): string {
   const hit = DATE_PRESETS.find((p) => sameRule(p.rule, rule));
   if (hit) return hit.label;
   const form = fromRule(rule);
+  // "Last 1 quarter" would read like the calendar preset "Last quarter": a count of one week, quarter or year is named in the rule's own unit.
+  if (form && form.n === 1 && form.unit !== 'days' && form.unit !== 'months' && 'n' in rule) return `Last ${rule.n} ${rule.kind === 'last_n_days' ? 'days' : 'months'}`;
   if (form) return `Last ${form.n} ${form.n === 1 ? form.unit.slice(0, -1) : form.unit}`;
   return RELATIVE_PRESETS.find((p) => p.kind === rule.kind)?.label ?? rule.kind;
 }

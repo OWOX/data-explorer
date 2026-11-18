@@ -51,7 +51,9 @@ describe('date presets', () => {
     expect(presetName({ kind: 'last_n_months', n: 5 })).toBe('Last 5 months');
     expect(presetName({ kind: 'last_n_days', n: 21 })).toBe('Last 3 weeks');
     expect(presetName({ kind: 'last_n_days', n: 28 })).toBe('Last 4 weeks');
-    expect(presetName({ kind: 'last_n_months', n: 3 })).toBe('Last 1 quarter');
+    expect(presetName({ kind: 'last_n_months', n: 3 })).toBe('Last 3 months');
+    expect(presetName({ kind: 'last_n_days', n: 7 })).toBe('Last 7 days');
+    expect(presetName({ kind: 'last_n_months', n: 12 })).toBe('Last 12 months');
     expect(presetName({ kind: 'last_n_months', n: 24 })).toBe('Last 2 years');
     expect(presetName({ kind: 'this_week' })).toBe('This week');
   });
