@@ -196,7 +196,7 @@ test('a click on a mart Orders cannot join explains instead of switching; its ma
   await martCard(page, 'Orders').hover();
   const ghost = band(page, 'marts').locator('article', { hasText: 'Order Items' }).first();
   await ghost.click();
-  await expect(ghost.getByRole('status')).toContainText("Can't join Orders. Drag it onto Orders to make it the main data mart.");
+  await expect(ghost.getByRole('status')).toContainText("Can't join Orders. Use Make main data mart to make it the main data mart.");
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
   await makeMainViaGhost(page, 'Orders', 'Order Items');
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');

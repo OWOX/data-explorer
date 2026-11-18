@@ -33,13 +33,14 @@ export function useCardDrag(canvas: RefObject<HTMLElement | null>, mainId: strin
       return !!main && !!hit?.closest(`#${CSS.escape(martElementId(main))}`);
     };
     const end = () => { press = null; dragging = false; setDrag(null); };
+    const cancel = () => { cancelled = false; end(); };
     const down = (e: PointerEvent) => {
+      cancelled = false;
       if (e.button !== 0 || !latest.current.mainId) return;
       const t = e.target instanceof Element ? e.target : null;
       if (!t || t.closest('button, a, input, [data-ghost]')) return;
       const id = t.closest<HTMLElement>('[data-mart-id]')?.dataset.martId;
       if (!id || id === latest.current.mainId || !latest.current.canDrag(id)) return;
-      cancelled = false;
       dragging = false;
       press = { id, x: e.clientX, y: e.clientY };
     };
@@ -66,13 +67,13 @@ export function useCardDrag(canvas: RefObject<HTMLElement | null>, mainId: strin
     root.addEventListener('pointerdown', down);
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', end);
+    window.addEventListener('pointercancel', cancel);
     document.addEventListener('keydown', key);
     return () => {
       root.removeEventListener('pointerdown', down);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', end);
+      window.removeEventListener('pointercancel', cancel);
       document.removeEventListener('keydown', key);
     };
   }, [canvas]);

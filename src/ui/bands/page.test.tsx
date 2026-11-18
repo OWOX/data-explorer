@@ -1705,7 +1705,7 @@ describe('ghost cards on hover', () => {
     const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
     expect(ghost).toHaveClass('dm-unjoinable');
     fireEvent.click(ghost);
-    expect(await within(ghost).findByRole('status')).toHaveTextContent("Can't join Orders.");
+    expect(await within(ghost).findByRole('status')).toHaveTextContent("Can't join Orders. Use Make main data mart to make it the main data mart.");
   });
 
   test('crossing another card on the way to a ghost keeps the ghosts', async () => {

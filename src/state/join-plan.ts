@@ -267,7 +267,8 @@ export function planMakeMain(env: PlanEnv, id: string): Plan {
   };
   const mainShown = ownColumnsIn(grid.columns, sources);
   if (isJoinable(nextSources, main)) add(main, mainShown);
-  else remember.push({ martId: main, fields: mainShown });
+  // Nothing shown is nothing to remember: an empty entry would wipe what the old main last showed.
+  else if (mainShown.length > 0) remember.push({ martId: main, fields: mainShown });
   for (const r of joinedMartIds(grid.columns, sources)) {
     if (r === id) continue;
     const shown = ownNamesIn(grid.columns, sources, r);

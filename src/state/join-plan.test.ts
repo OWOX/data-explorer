@@ -115,6 +115,11 @@ describe('planMakeMain', () => {
     expect(plan.remember).toEqual([]);
   });
 
+  test('an old main that showed no own columns and cannot be reached does not wipe its remembered fields', () => {
+    const plan = planMakeMain(envM({ orders: g(['customers__city']), products2: g(['id']) }, 'orders'), 'products2');
+    expect(plan.remember.some((r) => r.martId === 'orders')).toBe(false);
+  });
+
   test('a joined mart made main shows the fields it had as joined, as its own columns', () => {
     const e = { ...envM({ orders: g(['id', 'customers__city', 'customers__email']), customers: g(['id']) }, 'orders'), ownNames: () => ['id', 'city', 'email'] };
     expect(planMakeMain(e, 'customers').grids.customers!.columns.slice(0, 2)).toEqual(['city', 'email']);
