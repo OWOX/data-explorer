@@ -9,7 +9,6 @@ import { columnTitle } from '../../model/fieldLabel';
 import type { SortDirection, SortKey } from '../../model/sort';
 import type { Field } from '../../model/types';
 import { AggregationEditor } from './AggregationEditor';
-import { FilterAltIcon } from './FilterAltIcon';
 import { Tooltip } from '../Tooltip';
 import { FilterEditor } from './FilterEditor';
 import { FilterLinesIcon } from './FilterLinesIcon';
@@ -306,7 +305,7 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
       {filter && (
         <Tooltip content={`Filter: ${describeFilter(field, filter)}`}>
           <button type="button" aria-label={`Filter ${title}`} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, 'filter')}>
-            <FilterAltIcon className="dm-icon" />
+            <Funnel className="dm-icon" />
           </button>
         </Tooltip>
       )}

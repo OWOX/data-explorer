@@ -35,7 +35,8 @@
   display: flex; flex-wrap: wrap; align-items: center; align-content: center; justify-content: space-between;
   gap: 0.5rem 1rem; padding: 1rem; cursor: pointer;
 }
-.dm-band-titlegroup { display: flex; align-items: center; gap: 0.5rem; align-self: center; min-width: 0; flex: 1 1 auto; }
+/* A fixed basis, not auto: the badges in here must not decide whether the toolbar wraps, or their width and the wrap would chase each other. */
+.dm-band-titlegroup { display: flex; align-items: center; gap: 0.5rem; align-self: center; min-width: 0; flex: 1 1 18rem; }
 .dm-band-actions { display: flex; align-items: center; gap: 0.5rem; align-self: center; margin-left: auto; min-width: 0; }
 /* CollapsibleCardContent: px-4 pt-1, with the air under it the card's p-0 leaves out. */
 .dm-band-reveal { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 0fr; transition: grid-template-rows 200ms; }
@@ -136,7 +137,8 @@
 .dm-tip-lines > span:first-child { font-weight: 500; }
 
 /* The context badges in the Data Marts title row: Data Flow's chip, a button that toggles. */
-.dm-context-filter { position: relative; display: flex; flex: 1 1 0; flex-wrap: nowrap; align-items: center; gap: 0.25rem; min-width: 0; overflow: hidden; }
+/* Takes whatever width is left (basis 0), never less than a "+NN more" chip, so what it holds cannot move the toolbar. */
+.dm-context-filter { position: relative; display: flex; flex: 1 1 0; flex-wrap: nowrap; align-items: center; gap: 0.25rem; min-width: 5.5rem; overflow: hidden; }
 .dm-context-filter .dm-badge { flex-shrink: 0; white-space: nowrap; }
 /* The measuring copy of the badges: laid out at natural width, never seen. */
 .dm-context-probe { position: absolute; top: 0; left: 0; display: flex; gap: 0.25rem; width: max-content; visibility: hidden; pointer-events: none; }
@@ -388,8 +390,7 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-hdr-controls { display: inline-flex; flex-shrink: 0; align-items: center; gap: 2px; }
 .dm-ctl { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 1px; min-width: 16px; height: 16px; padding: 0 1px; border-radius: 4px; background: transparent; color: var(--sheet-green); }
 .dm-ctl:hover { background: var(--accent); }
-/* An active control stays a plain green line icon: no fill, no border. */
-.dm-ctl-on, .dm-ctl-on:hover { color: var(--sheet-green); }
+/* An active control (.dm-ctl-on) stays a plain green line icon: no fill, no border, same as idle. */
 /* The column menu icon and the picker icon beside the data mart title: the same green, the same 15px glyph. */
 .dm-ctl-lg .dm-icon { width: 15px; height: 15px; }
 /* The column menu: Google Sheets' look (white panel, 4px radius, soft shadow, 32px rows, 14px Google Sans on #202124, #f1f3f4 hover,

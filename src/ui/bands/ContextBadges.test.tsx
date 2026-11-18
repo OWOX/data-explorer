@@ -43,5 +43,5 @@ test('a narrow row keeps what fits and puts the rest behind a "+N more" chip', a
 test('a selected context behind the chip lights it', () => {
   layout(150);
   render(<ContextBadges contexts={contexts} selectedIds={['delta']} onToggle={() => {}} />);
-  expect(screen.getByRole('button', { name: '3 more contexts' })).toHaveAttribute('data-on');
+  expect(screen.getByRole('button', { name: '3 more contexts, 1 selected' })).toHaveAttribute('data-on');
 });

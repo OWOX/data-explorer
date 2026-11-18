@@ -29,12 +29,17 @@ export function ContextBadges({ contexts, selectedIds, onToggle }: { contexts: C
     measure();
     const ro = new ResizeObserver(measure);
     if (box.current) ro.observe(box.current);
-    return () => ro.disconnect();
+    // The probe's widths change when a web font swaps in, which the box does not notice.
+    if (probe.current) ro.observe(probe.current);
+    let live = true;
+    void document.fonts?.ready.then(() => { if (live) measure(); });
+    return () => { live = false; ro.disconnect(); };
     // `key` stands for the contexts: a rename or a new one changes the widths.
   }, [key]);
 
   const shown = sorted.slice(0, kept);
   const hidden = sorted.slice(kept);
+  const hiddenOn = hidden.filter((c) => selectedIds.includes(c.id)).length;
   const badge = (c: Context) => (
     <button key={c.id} type="button" aria-pressed={selectedIds.includes(c.id)} className="dm-badge dm-badge-toggle" onClick={() => onToggle(c.id)}>
       <PickedIcon icon={c.icon} fallback={DEFAULT_CONTEXT_ICON} size={12} />{c.name}
@@ -46,7 +51,7 @@ export function ContextBadges({ contexts, selectedIds, onToggle }: { contexts: C
       {shown.map(badge)}
       {hidden.length > 0 && (
         <Popover align="start" label="More contexts" trigger={
-          <button type="button" data-context-more data-on={hidden.some((c) => selectedIds.includes(c.id)) ? '' : undefined} className="dm-badge dm-badge-toggle" aria-label={`${hidden.length} more contexts`}>
+          <button type="button" data-context-more data-on={hidden.some((c) => selectedIds.includes(c.id)) ? '' : undefined} className="dm-badge dm-badge-toggle" aria-label={`${hidden.length} more contexts${hiddenOn > 0 ? `, ${hiddenOn} selected` : ''}`}>
             {chipBody(hidden.length)}
           </button>
         }>

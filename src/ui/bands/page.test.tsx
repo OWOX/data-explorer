@@ -1569,7 +1569,8 @@ describe('whole column and row selection, and the header layout', () => {
   test('a filter, an aggregation and a sort in use are green line icons and keep the menu icon on; idle ones are not', async () => {
     const grid = await ordersGrid();
     expect(within(grid).queryByLabelText('Filter id')).toBeNull();
-    expect(within(grid).getByLabelText('Column menu id')).not.toHaveClass('dm-ctl-on', 'dm-reveal-on');
+    expect(within(grid).getByLabelText('Column menu id')).not.toHaveClass('dm-ctl-on');
+    expect(within(grid).getByLabelText('Column menu id')).not.toHaveClass('dm-reveal-on');
     expect(within(grid).getByLabelText('Column menu id')).toHaveClass('dm-ctl');
     await userEvent.click(sortBtn(grid, 'status'));
     await waitFor(() => expect(header(grid, 'status').querySelector('[data-sort-mark]')).toHaveClass('dm-ctl-on'));

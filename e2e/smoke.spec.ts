@@ -923,3 +923,41 @@ test('full screen: the Data band alone fills the plugin area, its title stays, E
   await expect(band(page, 'marts')).toBeVisible();
   await expect(cell).toHaveAttribute('data-selected', '');
 });
+
+test('the column menu icon and the Fields icon are invisible at rest, show on header hover and on keyboard focus, and the menu icon stays on for a filtered column', async ({ page }) => {
+  const data = await ordersGrid(page);
+  const opacity = (l: Locator) => l.evaluate((el) => getComputedStyle(el).opacity);
+  const menuIcon = data.getByLabel('Column menu id');
+  const fields = data.getByLabel('Fields of Orders');
+  await page.mouse.move(0, 0);
+  await expect.poll(() => opacity(menuIcon)).toBe('0');
+  await expect.poll(() => opacity(fields)).toBe('0');
+  await menuIcon.locator('xpath=ancestor::th').hover();
+  await expect.poll(() => opacity(menuIcon)).toBe('1');
+  await fields.locator('xpath=ancestor::th').hover();
+  await expect.poll(() => opacity(fields)).toBe('1');
+  // Keyboard: move the pointer away, focus the control before each one with the mouse-free Tab.
+  await page.mouse.move(0, 0);
+  for (const icon of [menuIcon, fields]) {
+    await expect.poll(() => opacity(icon)).toBe('0');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await icon.evaluate((el) => {
+      const all = [...document.querySelectorAll<HTMLElement>('button, a, input, [tabindex]')].filter((n) => !n.hasAttribute('disabled'));
+      all[Math.max(0, all.indexOf(el as HTMLElement) - 1)]?.focus();
+    });
+    for (let i = 0; i < 3 && !(await icon.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press('Tab');
+    expect(await icon.evaluate((el) => el === document.activeElement)).toBe(true);
+    await expect.poll(() => opacity(icon)).toBe('1');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  }
+  // An active filter keeps the menu icon on at rest.
+  await openColumnSub(data, 'id', 'Filter');
+  await page.getByLabel('Value').fill('3');
+  await page.getByRole('button', { name: 'Apply' }).click();
+  await expect(data.getByLabel('Filter id')).toBeVisible();
+  await page.mouse.move(0, 0);
+  await expect.poll(() => opacity(data.getByLabel('Column menu id'))).toBe('1');
+  await expect.poll(() => opacity(data.getByLabel('Filter id'))).toBe('1');
+  await expect.poll(() => opacity(data.getByLabel('Column menu status'))).toBe('0');
+});
