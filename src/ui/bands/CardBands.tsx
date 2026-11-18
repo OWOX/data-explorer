@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DqSummary, Mart, Model, Source } from '../../model/types';
 import { matchesSearch } from '../../graph/search';
 import { storageOptions } from '../../graph/storages';
-import type { VisibleResult } from '../../graph/visible';
+import { neighbours, type VisibleResult } from '../../graph/visible';
 import { useRememberLeaving } from '../../state/leaving';
 import { useStore } from '../../state/store';
 import { storageMark } from '../storage-icons';
@@ -75,6 +75,9 @@ export function CardBands({
   const canvas = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [wireTip, setWireTip] = useState<{ text: string; x: number; y: number } | null>(null);
+  // The mart whose hidden neighbours show as ghosts. It follows the hovered card; a ghost being hovered keeps it, and leaving
+  // waits 400 ms, so the pointer can cross the gap to a ghost.
+  const [ghostOf, setGhostOf] = useState<string | null>(null);
   const click = useCardClick(model);
   const drag = useCardDrag(canvas, selection.martId, (id) => model.marts.get(id)?.title ?? id, (id) => void click(id, { mode: 'makeMain' }), (id) => model.marts.get(id)?.accessible === true);
 
@@ -85,7 +88,25 @@ export function CardBands({
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  const idsKey = visible.ids.join('|');
+  const shownIds = useMemo(() => new Set(visible.ids), [visible.ids]);
+  const ghostIds = useMemo(() => {
+    if (!ghostOf) return [];
+    const ticked = (id: string) => storageIds === null || storageIds.includes(model.marts.get(id)?.storageId ?? '');
+    return neighbours(ghostOf, model.edges).filter((id) => !shownIds.has(id) && model.marts.get(id)?.accessible && ticked(id));
+  }, [ghostOf, model, shownIds, storageIds]);
+  const ghostKey = ghostIds.join('|');
+  // A mart card's element id is `dm-<id>` (see martElementId).
+  const hoveredMart = hovered?.startsWith('dm-') ? hovered.slice(3) : null;
+  const overGhost = hoveredMart !== null && ghostKey.split('|').includes(hoveredMart);
+  // Adjusted while rendering, so the ghosts of a newly hovered card show at once.
+  if (hoveredMart && !overGhost && shownIds.has(hoveredMart) && hoveredMart !== ghostOf) setGhostOf(hoveredMart);
+  useEffect(() => {
+    if (overGhost || (hoveredMart && shownIds.has(hoveredMart))) return;
+    const t = setTimeout(() => setGhostOf(null), 400);
+    return () => clearTimeout(t);
+  }, [hoveredMart, overGhost, shownIds]);
+
+  const idsKey = [...visible.ids, ...ghostIds].join('|');
   // Memoised: a new array rebuilds every path, and the lines would blink on each hover.
   const wires = useMemo<Wire[]>(() => {
     const ids = idsKey ? idsKey.split('|') : [];
@@ -150,6 +171,7 @@ export function CardBands({
   // A search nothing answered and no title matches: the selected mart is still shown, so the band is not empty, but it says so.
   const noMatch = smart.applied !== '' && found.length === 0 && ![...model.marts.values()].some((m) => m.accessible && matchesSearch(m, smart.applied));
 
+  const unjoinableFor = (id: string) => !!selection.martId && visible.joinable !== null && id !== selection.martId && !joined.includes(id) && !visible.joinable.has(id);
   const contextsOf = (ids: string[]) => model.contexts.filter((c) => ids.includes(c.id));
 
   return (
@@ -178,7 +200,6 @@ export function CardBands({
           const id = mart.id;
           const el = martElementId(id);
           const mainId = selection.martId;
-          const unjoinable = !!mainId && visible.joinable !== null && id !== mainId && !joined.includes(id) && !visible.joinable.has(id);
           return (
             <MartCard
               key={id}
@@ -192,7 +213,7 @@ export function CardBands({
               joined={joined.includes(id)}
               lit={lit.has(el)}
               aside={aside.has(el)}
-              unjoinable={unjoinable}
+              unjoinable={unjoinableFor(id)}
               dropTarget={drag !== null && selection.martId === id}
               dropHot={drag !== null && drag.overMain && selection.martId === id}
               mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
@@ -203,6 +224,33 @@ export function CardBands({
               onNeedCount={() => onRequestCount(id)}
             />
           );
+        })}
+        {ghostIds.flatMap((id) => {
+          const mart = model.marts.get(id);
+          if (!mart) return [];
+          const el = martElementId(id);
+          const mainId = selection.martId;
+          return [
+            <MartCard
+              key={`ghost-${id}`}
+              mart={mart}
+              ghost
+              contexts={contextsOf(mart.contextIds)}
+              count={{ state: 'idle' }}
+              quality={dq.get(id)}
+              freshness={mart.dataLastUpdatedAt}
+              selected={false}
+              joined={false}
+              lit={lit.has(el)}
+              aside={aside.has(el)}
+              unjoinable={unjoinableFor(id)}
+              mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
+              onSelect={() => void click(id)}
+              onOpenApp={() => onOpenApp(id)}
+              onRetryCount={() => undefined}
+              onNeedCount={() => undefined}
+            />,
+          ];
         })}
       </Band>
       <CardClickContext.Provider value={click}>{children}</CardClickContext.Provider>

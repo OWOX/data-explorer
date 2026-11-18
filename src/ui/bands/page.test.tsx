@@ -1639,3 +1639,50 @@ test('with a mart nobody can open as the main one, a click on another card makes
   fireEvent.click((await within(marts()).findByText('Orders')).closest('article')!);
   await waitFor(() => expect(headingText()).toBe('Orders'));
 });
+
+describe('ghost cards on hover', () => {
+  const marts = () => document.getElementById('band-marts')!;
+  const cardOf = (t: string) => within(marts()).getByText(t).closest('article')!;
+
+  test('hovering a card shows its neighbours that are not in the band, dashed, after the last card', async () => {
+    await mountWith();
+    await within(marts()).findByText('Customers');
+    expect(within(marts()).queryByText('Sessions')).toBeNull();
+    fireEvent.pointerOver(cardOf('Customers'));
+    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
+    expect(ghost).toHaveClass('dm-ghost');
+    expect(ghost).toHaveAttribute('data-ghost');
+    const all = [...marts().querySelectorAll('article')];
+    expect(all.indexOf(ghost)).toBeGreaterThan(all.indexOf(cardOf('Customers')));
+  });
+
+  test('the ghosts stay while the pointer crosses to them, and go once it leaves', async () => {
+    await mountWith();
+    await within(marts()).findByText('Customers');
+    fireEvent.pointerOver(cardOf('Customers'));
+    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
+    fireEvent.pointerOver(marts());
+    fireEvent.pointerOver(ghost);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(within(marts()).getByText('Sessions')).toBeInTheDocument();
+    fireEvent.pointerLeave(document.querySelector('.dm-canvas')!);
+    await waitFor(() => expect(within(marts()).queryByText('Sessions')).toBeNull());
+  });
+
+  test('keyboard focus on a card shows the same ghosts', async () => {
+    await mountWith();
+    await within(marts()).findByText('Customers');
+    fireEvent.focus(cardOf('Customers'));
+    expect(await within(marts()).findByText('Sessions')).toBeInTheDocument();
+  });
+
+  test('a ghost of a mart the main one cannot join is dimmed and explains on click', async () => {
+    await mountWith();
+    await within(marts()).findByText('Customers');
+    fireEvent.pointerOver(cardOf('Customers'));
+    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
+    expect(ghost).toHaveClass('dm-unjoinable');
+    fireEvent.click(ghost);
+    expect(await within(ghost).findByRole('status')).toHaveTextContent("Can't join Orders.");
+  });
+});
