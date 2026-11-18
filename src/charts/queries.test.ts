@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { pieOtherQuery, rangeKeys, rangeQuery, scorecardsQuery, seriesOtherQuery, seriesQuery, sparklineQuery, topValuesQuery, uniqueKey, metricKey } from './queries';
 import type { ChartMart, Metric } from './fields';
+import type { Measure } from './queries';
 import type { Field } from '../model/types';
 
 const f = (name: string, category: Field['category'], extra: Partial<Field> = {}): Field => ({ name, alias: null, type: category === 'number' ? 'FLOAT' : category === 'date' ? 'DATE' : 'STRING', category, description: null, isPrimaryKey: false, ...extra });
 const amount: Metric = { field: f('amount', 'number'), fn: 'SUM', martId: 'M' };
 const ltv: Metric = { field: f('c__ltv', 'number', { joined: { martId: 'C', label: 'Customers', aliasPath: 'c.x' } }), fn: 'AVG', martId: 'C' };
 const date = f('date', 'date');
+const amt: Measure = { kind: 'metric', metric: amount };
+const records: Measure = { kind: 'records', aliasPath: '' };
 const channel = f('channel', 'string');
 const flt = [{ column: 'channel', operator: 'eq' as const, value: 'web' }];
 const main: ChartMart = { martId: 'M', aliasPath: '', hasPk: true, metrics: [amount], dates: [date], dimensions: [channel] };
@@ -28,21 +31,28 @@ describe('queries', () => {
     expect(rangeQuery(date, [])).toEqual({ column: ['date'], aggregation: [{ column: 'date', function: 'MIN' }, { column: 'date', function: 'MAX' }] });
   });
   it('top values: blank excluded, metric desc, 8', () => {
-    expect(topValuesQuery(channel, amount, [])).toEqual({ column: ['channel', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' }], filter: [{ column: 'channel', operator: 'is_not_blank' }], sort: [{ column: 'amount', direction: 'desc' }], limit: 8 });
+    expect(topValuesQuery(channel, amt, [])).toEqual({ column: ['channel', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' }], filter: [{ column: 'channel', operator: 'is_not_blank' }], sort: [{ column: 'amount', direction: 'desc' }], limit: 8 });
   });
   it('series stacked: in top values; other: not_in', () => {
-    const s = seriesQuery(date, 'MONTH', amount, flt, { dim: channel, top: ['a', 'b'] });
+    const s = seriesQuery(date, 'MONTH', amt, flt, { dim: channel, top: ['a', 'b'] });
     expect(s.column).toEqual(['date', 'channel', 'amount']);
     expect(s.filter).toEqual([...flt, { column: 'channel', operator: 'is_not_blank' }, { column: 'channel', operator: 'in', value: ['a', 'b'] }]);
     expect(s.sort).toEqual([{ column: 'date', direction: 'asc' }]);
     expect(s.dateTrunc?.[0]).toMatchObject({ column: 'date', unit: 'MONTH' });
-    const o = seriesOtherQuery(date, 'MONTH', amount, flt, channel, ['a', 'b']);
+    const o = seriesOtherQuery(date, 'MONTH', amt, flt, channel, ['a', 'b']);
     expect(o.column).toEqual(['date', 'amount']);
     expect(o.filter?.at(-1)).toEqual({ column: 'channel', operator: 'not_in', value: ['a', 'b'] });
   });
   it('series without a stack keeps the grid filter only, and omits an empty one', () => {
-    expect(seriesQuery(date, 'DAY', amount, flt).filter).toEqual(flt);
-    expect('filter' in seriesQuery(date, 'DAY', amount, [])).toBe(false);
+    expect(seriesQuery(date, 'DAY', amt, flt).filter).toEqual(flt);
+    expect('filter' in seriesQuery(date, 'DAY', amt, [])).toBe(false);
+  });
+  it('records measure: a unique count with no column, sorted by its key', () => {
+    expect(topValuesQuery(channel, records, [])).toMatchObject({ column: ['channel'], uniqueCount: [''], sort: [{ column: 'Unique Count', direction: 'desc' }], limit: 8 });
+    expect('aggregation' in topValuesQuery(channel, records, [])).toBe(false);
+    const s = seriesQuery(date, 'DAY', records, [], { dim: channel, top: ['a'] });
+    expect([s.column, s.uniqueCount]).toEqual([['date', 'channel'], ['']]);
+    expect(seriesOtherQuery(date, 'DAY', records, [], channel, ['a'])).toMatchObject({ column: ['date'], uniqueCount: [''] });
   });
   it('pie other: the metric over the values outside the top', () => {
     expect(pieOtherQuery(amount, [], channel, ['a'])).toEqual({ column: ['amount'], aggregation: [{ column: 'amount', function: 'SUM' }], filter: [{ column: 'channel', operator: 'is_not_blank' }, { column: 'channel', operator: 'not_in', value: ['a'] }] });
@@ -53,7 +63,7 @@ describe('queries', () => {
   });
   it('a zone rides only on a type with a time of day', () => {
     const ts = f('at', 'date', { type: 'TIMESTAMP' });
-    expect(seriesQuery(ts, 'DAY', amount, []).dateTrunc?.[0]).toHaveProperty('timeZone');
-    expect(seriesQuery(date, 'DAY', amount, []).dateTrunc?.[0]).not.toHaveProperty('timeZone');
+    expect(seriesQuery(ts, 'DAY', amt, []).dateTrunc?.[0]).toHaveProperty('timeZone');
+    expect(seriesQuery(date, 'DAY', amt, []).dateTrunc?.[0]).not.toHaveProperty('timeZone');
   });
 });

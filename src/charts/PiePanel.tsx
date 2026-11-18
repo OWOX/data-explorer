@@ -17,7 +17,7 @@ export function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, for
   martId: string; cf: ChartFields; r: ResolvedCharts; filter: TraverseFilter[]; version: number; idle: boolean; hasFilters: boolean; formatOf: Formatter; ready: boolean; onChange: (patch: Patch) => void;
 }) {
   const { pieMetric: metric, pieDimension: dim } = r;
-  const top = useChartQuery(martId, !idle ? topValuesQuery(dim!, metric!, filter) : null, version);
+  const top = useChartQuery(martId, !idle ? topValuesQuery(dim!, { kind: 'metric', metric: metric! }, filter) : null, version);
   const names = top.rows?.map((row) => String(row[dim!.name]));
   const needOther = names?.length === TOP_N;
   const other = useChartQuery(martId, !idle && needOther ? pieOtherQuery(metric!, filter, dim!, names!) : null, version);

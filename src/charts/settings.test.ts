@@ -48,4 +48,18 @@ describe('resolveCharts', () => {
   });
 });
 
+describe('measure', () => {
+  const pk = { ...cf, marts: [{ martId: 'M', aliasPath: '', hasPk: true, metrics: [], dates: [], dimensions: [] }] };
+  it('is the saved metric, else records when saved and keyed, else the first metric', () => {
+    expect(resolveCharts({ timeSeries: { metric: 'qty' } }, pk).measure).toMatchObject({ kind: 'metric', metric: { field: { name: 'qty' } } });
+    expect(resolveCharts({ timeSeries: { metric: 'records' } }, pk).measure?.kind).toBe('records');
+    expect(resolveCharts({ timeSeries: { metric: 'records' } }, cf).measure).toMatchObject({ kind: 'metric', metric: { field: { name: 'amount' } } });
+    expect(resolveCharts({}, pk).measure).toMatchObject({ kind: 'metric' });
+  });
+  it('is records with a key and no metric, null without either', () => {
+    expect(resolveCharts({}, { ...pk, metrics: [] }).measure?.kind).toBe('records');
+    expect(resolveCharts({}, { marts: [], metrics: [], dimensions: [], dates: [] }).measure).toBeNull();
+  });
+});
+
 it('recordsCardId', () => expect(recordsCardId('M')).toBe('records:M'));

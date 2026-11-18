@@ -86,7 +86,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
         <td colSpan={columns + 2} className="p-0">
           {/* Sticky and as wide as the scroller shows, so the panels stay in view however wide the table is. */}
           <div data-chart-panels className="sticky left-0 flex flex-col gap-6 p-2" style={{ width: scrollerWidth }}>
-            {r.date && r.metric && <TimeSeriesPanel {...panelProps} bucket={bucket} range={{ error: rangeError, retry: retryRange }}
+            {r.date && r.measure && <TimeSeriesPanel {...panelProps} bucket={bucket} range={{ error: rangeError, retry: retryRange }}
               onChange={(p) => change((cur) => ({ ...cur, timeSeries: { ...cur.timeSeries, ...p } }))} />}
             {r.pieMetric && r.pieDimension && <PiePanel {...panelProps} onChange={(p) => change((cur) => ({ ...cur, pie: { ...cur.pie, ...p } }))} />}
           </div>

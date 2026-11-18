@@ -6,12 +6,20 @@ import type { ChartMart, Metric } from './fields';
 
 export const TOP_N = 8;
 
+/** What a time series or top list counts: a metric, or the main mart's records (its unique count). */
+export type Measure = { kind: 'metric'; metric: Metric } | { kind: 'records'; aliasPath: '' };
+export const RECORDS: Measure = { kind: 'records', aliasPath: '' };
+
 export const metricKey = (m: Metric): string => aggregatedKey(m.field.name, m.fn);
 /** The row key of a mart's unique count (the backend's contract: each dot of the alias path becomes `_`). */
 export const uniqueKey = (aliasPath: string): string => (aliasPath === '' ? 'Unique Count' : `${aliasPath.replaceAll('.', '_')}__unique_count`);
+export const measureKey = (m: Measure): string => (m.kind === 'metric' ? metricKey(m.metric) : uniqueKey(m.aliasPath));
 export const rangeKeys = (date: Field): { min: string; max: string } => ({ min: aggregatedKey(date.name, 'MIN'), max: aggregatedKey(date.name, 'MAX') });
 
 const withFilter = (o: TraverseOptions, filter: TraverseFilter[]): TraverseOptions => (filter.length ? { ...o, filter } : o);
+// A metric reads its column with an aggregation; records read the unique count and name no column.
+const measureColumns = (m: Measure): string[] => (m.kind === 'metric' ? [m.metric.field.name] : []);
+const measureParts = (m: Measure): Pick<TraverseOptions, 'aggregation' | 'uniqueCount'> => (m.kind === 'metric' ? { aggregation: aggs([m.metric]) } : { uniqueCount: [m.aliasPath] });
 const aggs = (metrics: Metric[]) => metrics.map((m) => ({ column: m.field.name, function: m.fn }));
 
 // The same zone rule the grid uses: only a type with a time of day can be converted, and only to a valid IANA name.
@@ -53,29 +61,29 @@ const notBlank = (dim: Field): TraverseFilter => ({ column: dim.name, operator: 
 // A boolean dimension's values arrive as booleans; the filter takes strings.
 const list = (top: string[]): string[] => top.map(String);
 
-export function topValuesQuery(dim: Field, metric: Metric, filter: TraverseFilter[]): TraverseOptions {
+export function topValuesQuery(dim: Field, measure: Measure, filter: TraverseFilter[]): TraverseOptions {
   return {
-    column: [dim.name, metric.field.name],
-    aggregation: aggs([metric]),
+    column: [dim.name, ...measureColumns(measure)],
+    ...measureParts(measure),
     filter: [...filter, notBlank(dim)],
-    sort: [{ column: metric.field.name, direction: 'desc' }],
+    sort: [{ column: measure.kind === 'metric' ? measure.metric.field.name : measureKey(measure), direction: 'desc' }],
     limit: TOP_N,
   };
 }
 
-export function seriesQuery(date: Field, bucket: DateBucket, metric: Metric, filter: TraverseFilter[], stack?: { dim: Field; top: string[] }): TraverseOptions {
+export function seriesQuery(date: Field, bucket: DateBucket, measure: Measure, filter: TraverseFilter[], stack?: { dim: Field; top: string[] }): TraverseOptions {
   const o: TraverseOptions = {
-    column: stack ? [date.name, stack.dim.name, metric.field.name] : [date.name, metric.field.name],
-    aggregation: aggs([metric]),
+    column: [date.name, ...(stack ? [stack.dim.name] : []), ...measureColumns(measure)],
+    ...measureParts(measure),
     dateTrunc: [truncRule(date, bucket)],
     sort: [{ column: date.name, direction: 'asc' }],
   };
   return withFilter(o, stack ? [...filter, notBlank(stack.dim), { column: stack.dim.name, operator: 'in', value: list(stack.top) }] : filter);
 }
 
-export function seriesOtherQuery(date: Field, bucket: DateBucket, metric: Metric, filter: TraverseFilter[], dim: Field, top: string[]): TraverseOptions {
+export function seriesOtherQuery(date: Field, bucket: DateBucket, measure: Measure, filter: TraverseFilter[], dim: Field, top: string[]): TraverseOptions {
   return withFilter(
-    { column: [date.name, metric.field.name], aggregation: aggs([metric]), dateTrunc: [truncRule(date, bucket)], sort: [{ column: date.name, direction: 'asc' }] },
+    { column: [date.name, ...measureColumns(measure)], ...measureParts(measure), dateTrunc: [truncRule(date, bucket)], sort: [{ column: date.name, direction: 'asc' }] },
     [...filter, notBlank(dim), { column: dim.name, operator: 'not_in', value: list(top) }],
   );
 }
