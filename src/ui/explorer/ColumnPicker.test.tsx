@@ -44,3 +44,27 @@ test('the Fields hint is a pointer shortcut: not in the Tab order, and the optio
   expect(tabbable).toEqual([]);
   expect(hint.closest('[aria-hidden="true"]') ?? hint.querySelector('[aria-hidden="true"]')).not.toBeNull();
 });
+
+test('main mart: unticking keeps the order the grid has', async () => {
+  const onChange = await open(['city', 'id', 'name']);
+  await userEvent.click(screen.getByLabelText('id'));
+  expect(onChange).toHaveBeenLastCalledWith(['city', 'name']);
+});
+
+test('main mart: a ticked field goes after the nearest schema predecessor that is shown, else first', async () => {
+  const a = await open(['city', 'id']);
+  await userEvent.click(screen.getByLabelText('name'));
+  expect(a).toHaveBeenLastCalledWith(['city', 'id', 'name']);
+});
+
+test('main mart: a field before every shown one goes first', async () => {
+  const onChange = await open(['city', 'name']);
+  await userEvent.click(screen.getByLabelText('id'));
+  expect(onChange).toHaveBeenLastCalledWith(['id', 'city', 'name']);
+});
+
+test('main mart: a never-reordered grid ends up in schema order', async () => {
+  const onChange = await open(['id', 'city']);
+  await userEvent.click(screen.getByLabelText('name'));
+  expect(onChange).toHaveBeenLastCalledWith(['id', 'name', 'city']);
+});

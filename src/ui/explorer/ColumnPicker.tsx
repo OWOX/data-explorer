@@ -8,8 +8,10 @@ import { FieldHint, FieldLabel } from './FieldLabel';
 
 /**
  * The columns of one data mart's tab: only that mart's fields (the main mart's own, or a joined mart's blended ones).
- * `onChange` gets the whole grid's column list. A joined mart's new field goes last (the grid groups it with its mart);
- * the main mart's own fields keep the schema's order. `locked` names the ticked fields that cannot be unticked.
+ * `onChange` gets the whole grid's column list. A joined mart's new field goes last (the grid groups it with its mart).
+ * The main mart's own fields that stay keep the order they have on the grid (the member may have dragged them); a newly
+ * ticked one goes right after the nearest field before it in the schema that is shown, or first when none is, so a grid
+ * that was never reordered stays in schema order. `locked` names the ticked fields that cannot be unticked.
  */
 export function ColumnPicker({ title, fields, main, visible, locked, onChange }: {
   title: string;
@@ -33,11 +35,24 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange }:
     setOpen(o);
     if (!o && emptied) { setEmptied(false); commit([]); }
   };
+  const ownInOrder = (keep: Set<string>) => {
+    const schema = fields.map((f) => f.name);
+    const own = visible.filter((c) => mine.has(c) && keep.has(c));
+    for (const n of schema.filter((x) => keep.has(x) && !set.has(x))) {
+      let at = 0;
+      for (let j = schema.indexOf(n) - 1; j >= 0; j--) {
+        const k = own.indexOf(schema[j]!);
+        if (k >= 0) { at = k + 1; break; }
+      }
+      own.splice(at, 0, n);
+    }
+    return own;
+  };
   const commit = (picked: string[]) => {
     const keep = new Set(picked);
     const others = visible.filter((c) => !mine.has(c));
     let next = main
-      ? [...fields.map((f) => f.name).filter((n) => keep.has(n)), ...others]
+      ? [...ownInOrder(keep), ...others]
       : [...visible.filter((c) => !mine.has(c) || keep.has(c)), ...picked.filter((n) => !set.has(n))];
     // Clear never leaves the grid without a column.
     if (next.length === 0) next = visible.slice(0, 1);

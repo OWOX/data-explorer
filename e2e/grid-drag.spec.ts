@@ -201,3 +201,14 @@ test('a move is one Undo step', async ({ page }) => {
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect.poll(() => titles(page)).toEqual(order);
 });
+
+test('ticking a field in the main picker keeps the dragged order', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  const order = await dragFirstPastSecond(page);
+  const moved = [order[1], order[0], ...order.slice(2)];
+  await expect.poll(() => titles(page)).toEqual(moved);
+  await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
+  await page.getByRole('dialog').getByLabel('Amount', { exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await titles(page)).filter((c) => c !== 'amount')).toEqual(moved);
+});
