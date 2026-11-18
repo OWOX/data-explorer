@@ -47,3 +47,88 @@ test('checklist rows use the column menu font and row height', async ({ page }) 
   expect(o.size).toBe(m.size);
   expect(o.height).toBe(m.height);
 });
+
+// Dragging a field header moves the column, as in Google Sheets.
+const titles = (page: Page) => data(page).locator('th.dm-th[data-column]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.column!));
+const header = (page: Page, column: string) => data(page).locator(`th.dm-th[data-column="${column}"]`);
+const indicator = (page: Page) => data(page).locator('[data-drop-indicator]');
+
+async function dragHeader(page: Page, from: string, to: { x: number; y: number }, check?: () => Promise<void>) {
+  const p = await centre(header(page, from));
+  await page.mouse.move(p.x, p.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 12 });
+  if (check) await check();
+  await page.mouse.up();
+}
+
+async function dragFirstPastSecond(page: Page) {
+  const order = await titles(page);
+  const second = (await header(page, order[1]!).boundingBox())!;
+  const y = second.y + second.height / 2;
+  await dragHeader(page, order[0]!, { x: second.x + second.width - 4, y }, async () => {
+    await expect(data(page).locator('[data-drag-ghost]')).toBeVisible();
+    await expect(data(page).locator('[data-drag-shade]')).toBeVisible();
+    await expect(indicator(page)).toBeVisible();
+    const b = (await indicator(page).boundingBox())!;
+    expect(b.width).toBeGreaterThanOrEqual(3);
+    expect(b.height).toBeGreaterThan(100);
+  });
+  return order;
+}
+
+test('dragging a header in Table mode moves the column and shows the drop line', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  const order = await dragFirstPastSecond(page);
+  await expect.poll(() => titles(page)).toEqual([order[1], order[0], ...order.slice(2)]);
+  await expect(indicator(page)).toHaveCount(0);
+  // No sort came with the drag.
+  await expect(data(page).locator('th[aria-sort="ascending"], th[aria-sort="descending"]')).toHaveCount(0);
+});
+
+test('dragging a header in Charts mode moves the column too', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  await expect(data(page).getByText('Records', { exact: true }).first()).toBeVisible();
+  const order = await dragFirstPastSecond(page);
+  await expect.poll(() => titles(page)).toEqual([order[1], order[0], ...order.slice(2)]);
+});
+
+test('a column dragged far right stays the last of its own data mart, before a joined mart\'s columns', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
+  await expect(data(page).getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
+  const order = await titles(page);
+  const joined = order.filter((c) => c.startsWith('customers__'));
+  expect(joined.length).toBeGreaterThan(0);
+  const own = order.filter((c) => !c.startsWith('customers__'));
+  const last = (await header(page, joined[joined.length - 1]!).boundingBox())!;
+  const scroller = (await data(page).locator('.dm-grid-root').boundingBox())!;
+  await dragHeader(page, own[0]!, { x: Math.min(last.x + last.width - 2, scroller.x + scroller.width - 50), y: last.y + last.height / 2 });
+  await expect.poll(() => titles(page)).toEqual([...own.slice(1), own[0]!, ...joined]);
+});
+
+test('a click on a header without movement still sorts', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  const order = await titles(page);
+  const th = header(page, order[1]!);
+  const p = await centre(th.locator('.dm-sort'));
+  await page.mouse.move(p.x, p.y);
+  await page.mouse.down();
+  await page.mouse.move(p.x + 2, p.y);
+  await page.mouse.up();
+  await expect(th).toHaveAttribute('aria-sort', 'ascending');
+  expect(await titles(page)).toEqual(order);
+});
+
+test('Escape cancels a drag', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  const order = await titles(page);
+  const second = (await header(page, order[1]!).boundingBox())!;
+  await dragHeader(page, order[0]!, { x: second.x + second.width - 4, y: second.y + 10 }, async () => {
+    await expect(indicator(page)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(data(page).locator('[data-drag-ghost]')).toHaveCount(0);
+  });
+  expect(await titles(page)).toEqual(order);
+});
