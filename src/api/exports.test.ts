@@ -316,6 +316,29 @@ describe('exporter', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  test('a report an export just made gets an entry (and a read) at once, while the export is still running', async () => {
+    vi.useFakeTimers();
+    try {
+      const { ctx } = exportCtx();
+      const ex = createExporter(ctx);
+      ex.load('orders');
+      await vi.advanceTimersByTimeAsync(0);
+      const p = ex.run({ martId: 'orders', destination: dest, title: 'T', source: { kind: 'new' }, payload });
+      await vi.advanceTimersByTimeAsync(10);
+      expect(ex.entries('orders').map((e) => e.reportId)).toEqual(['r1']);
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+      await p;
+    } finally { vi.useRealTimers(); }
+  });
+
+  test('storedNow is undefined until the document was read, then the remembered reports', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a', usedAt: '2026-01-01T00:00:00.000Z' }]);
+    const ex = createExporter(ctx);
+    expect(ex.storedNow('orders')).toBeUndefined();
+    await ex.stored('orders');
+    expect(ex.storedNow('orders')).toEqual([{ reportId: 'a', usedAt: '2026-01-01T00:00:00.000Z' }]);
+  });
+
   const liveGet = (ctx: ReturnType<typeof stubCtx>) => (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => live(path.split('/').pop()!));
   const allReady = (ex: ReturnType<typeof createExporter>) => vi.waitFor(() => { const e = ex.entries('orders'); expect(e.length > 0 && e.every((x) => x.state === 'ready')).toBe(true); });
 

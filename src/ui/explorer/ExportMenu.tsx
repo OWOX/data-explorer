@@ -45,7 +45,7 @@ const MAYBE_CREATED = 'The report may have been created; check OWOX before tryin
 const UNRECOGNISED = 'This report targets an unrecognised spreadsheet.';
 /** A report used within this long counts as recently used. */
 export const RECENT_MS = 60 * 24 * 60 * 60 * 1000;
-const isRecent = (usedAt: string | undefined, now = Date.now()) => { const t = usedAt ? Date.parse(usedAt) : NaN; return Number.isFinite(t) && now - t <= RECENT_MS; };
+const isRecent = (usedAt: string | undefined, now = Date.now()) => { const t = usedAt ? Date.parse(usedAt) : NaN; return Number.isFinite(t) && t <= now && now - t <= RECENT_MS; };
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** "Export" in the Data band header: a menu of one "Copy to clipboard" item, the Google Sheets destinations, then Claude and ChatGPT, each of which copies a prompt, and last "Copy SQL", which copies the SQL the grid ran. */
@@ -105,8 +105,6 @@ export function ExportMenu(p: Props) {
   // Bumped when the mart changes or the menu goes away: an export finishing later is no longer in front of the member.
   const gen = useRef(0);
   useEffect(() => { gen.current += 1; return () => { gen.current += 1; }; }, [p.martId]);
-  // The marts whose menu was opened: their reports are read live from then on, and again after a model reload.
-  const opened = useRef(new Set<string>());
   const menu = useRef<HTMLDetailsElement>(null);
 
   // Listed once per session; a model reload (Retry on a failed storage) lists them again.
@@ -116,13 +114,9 @@ export function ExportMenu(p: Props) {
     if (seenVersion.current !== modelVersion) {
       seenVersion.current = modelVersion;
       exporter.invalidate();
-      // invalidate() only drops the caches: a mart whose reports were being shown reads them again.
-      if (opened.current.has(p.martId)) exporter.load(p.martId);
     }
     exporter.destinations().then((d) => live && setDestinations(d), (e) => { if (live) { console.warn('Listing the Google Sheets destinations failed', e); setDestinations([]); } });
     return () => { live = false; };
-    // The mart is read only when the version changed, from the render that saw the change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exporter, modelVersion]);
   // The menu closes on a press anywhere outside it, and when the host page outside the plugin frame is clicked (the window loses focus).
   useEffect(() => {
@@ -263,7 +257,6 @@ export function ExportMenu(p: Props) {
     if (!open) return;
     setOpening((n) => n + 1);
     // The live reads of this mart's reports start on its first opening and stay for the session.
-    opened.current.add(p.martId);
     exporter.load(p.martId);
   }
 
@@ -343,7 +336,7 @@ export function ExportMenu(p: Props) {
       {promptOpen && copied && <TextDialog name="Prompt" heading={`Prompt for ${copied.assistant}`} note={`Paste it into ${copied.assistant} with the OWOX Data Marts connector turned on. Copying writes nothing to OWOX.`} areaLabel="Prompt text" text={copied.prompt} onClose={() => { setPromptOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {dataOpen && data && <TextDialog name="Copy the data" note="Select the text and copy it, then paste it into a sheet. Copying writes nothing to OWOX." areaLabel="Data text" text={data.tsv} onClose={() => { setDataOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {sqlOpen && sqlCopied && <TextDialog name="SQL" note="Select the SQL and copy it. Copying writes nothing to OWOX." areaLabel="SQL text" text={sqlCopied.sql} onClose={() => { setSqlOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
-      {dialog && <ExportDialog key={dialog.seq} exporter={exporter} martId={p.martId} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
+      {dialog && <ExportDialog key={dialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} exporter={exporter} martId={p.martId} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
     </>
   );
 
@@ -478,7 +471,7 @@ function useMartReports(exporter: Exporter, martId: string) {
   const subscribe = useCallback((cb: () => void) => exporter.subscribe(martId, cb), [exporter, martId]);
   const entries = useSyncExternalStore(subscribe, () => exporter.entries(martId));
   // The remembered ids and usedAt are known without OWOX; read again whenever the entries change so a dropped report leaves them too.
-  const [stored, setStored] = useState<StoredReport[] | null>(null);
+  const [stored, setStored] = useState<StoredReport[] | null>(() => exporter.storedNow(martId) ?? null);
   useEffect(() => {
     let live = true;
     void exporter.stored(martId).then((l) => { if (live) setStored(l); });
@@ -495,8 +488,8 @@ const byUsedAt = (a: { usedAt?: string }, b: { usedAt?: string }) => (b.usedAt ?
 
 type Option = 1 | 2 | 3;
 
-function ExportDialog({ exporter, martId, destination, title, initialError, busy, onCancel, onExport }: {
-  exporter: Exporter; martId: string; destination: DestinationDto; title: string; initialError?: string; busy: boolean; onCancel: () => void; onExport: (title: string, source: ExportSource) => void;
+function ExportDialog({ exporter, martId, destination, title, initialError, busy, onCancel, onExport, returnFocus }: {
+  returnFocus: () => void; exporter: Exporter; martId: string; destination: DestinationDto; title: string; initialError?: string; busy: boolean; onCancel: () => void; onExport: (title: string, source: ExportSource) => void;
 }) {
   const [name, setName] = useState(title);
   const [url, setUrl] = useState('');
@@ -512,6 +505,22 @@ function ExportDialog({ exporter, martId, destination, title, initialError, busy
     document.addEventListener('keydown', esc);
     return () => document.removeEventListener('keydown', esc);
   }, [onCancel]);
+  // The checked radio takes focus when the dialog opens; focus goes back to the Export button however it closes.
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    box.current?.querySelector<HTMLElement>('input[type="radio"]:checked')?.focus();
+    return returnFocus;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Tab cycles inside the dialog: focus never leaves it behind the backdrop.
+  const trap = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab') return;
+    const items = [...e.currentTarget.querySelectorAll<HTMLElement>('input:not([disabled]), button:not([disabled])')];
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const next = e.shiftKey ? (at <= 0 ? items.length - 1 : at - 1) : (at < 0 || at === items.length - 1 ? 0 : at + 1);
+    e.preventDefault();
+    items[next]?.focus();
+  };
 
   const loadingCount = entries.filter((e) => e.state === 'loading').length;
   const loading = pending || loadingCount > 0;
@@ -519,8 +528,8 @@ function ExportDialog({ exporter, martId, destination, title, initialError, busy
   const listed: ReportEntry[] = entries.filter((e) => e.state === 'failed' || (e.state === 'ready' && e.report!.destinationId === destination.id)).sort(byUsedAt);
   const readable = (e: ReportEntry) => e.state === 'ready' && sheetUrl(e.report!) !== null;
   const recentHere = listed.find((e) => readable(e) && isRecent(e.usedAt));
-  // Until the live reads say otherwise (also when one failed, so it can be retried), a recently used report anywhere in the mart may be in this destination.
-  const recentUnknown = (stored ?? []).some((r) => isRecent(r.usedAt) && !entries.some((e) => e.reportId === r.reportId && e.state === 'ready'));
+  // Until its live read has finished (a failed read counts as finished), a recently used report anywhere in the mart may be in this destination.
+  const recentUnknown = (stored ?? []).some((r) => isRecent(r.usedAt) && !entries.some((e) => e.reportId === r.reportId && e.state !== 'loading'));
   const leading = !!recentHere || recentUnknown;
   const option: Option = picked?.option ?? (leading ? 3 : 1);
   const chosenId = picked?.reportId ?? recentHere?.reportId;
@@ -528,20 +537,25 @@ function ExportDialog({ exporter, martId, destination, title, initialError, busy
   const noReports = !loading && listed.length === 0;
   const order: Option[] = (picked ? picked.first : leading) ? [3, 1, 2] : [1, 2, 3];
 
+  /** Exporting fixes the member's choice and the order, so the list changing during the run does not move the dialog. */
+  function go(title: string, source: ExportSource) {
+    setPicked((cur) => cur ?? { option, reportId: chosenId, first: leading });
+    onExport(title, source);
+  }
   function submit() {
     if (busy) return;
     if (option === 3) {
       if (!chosen?.report) return setError('Pick a report to update.');
       setError(null);
-      return onExport(chosen.report.title, { kind: 'update', report: chosen.report });
+      return go(chosen.report.title, { kind: 'update', report: chosen.report });
     }
     if (!name.trim()) return setError('Give the report a title.');
-    if (option === 1) { setError(null); return onExport(name.trim(), { kind: 'new' }); }
+    if (option === 1) { setError(null); return go(name.trim(), { kind: 'new' }); }
     if (isPublishedSheetUrl(url)) return setError('That is a published-to-web link. Open the spreadsheet itself and paste its address bar link.');
     const target = parseSheetUrl(url);
     if (!target) return setError('Paste the link of a Google spreadsheet (docs.google.com/spreadsheets/d/…).');
     setError(null);
-    onExport(name.trim(), { kind: 'existing', target });
+    go(name.trim(), { kind: 'existing', target });
   }
 
   const radio = (n: Option, label: string, disabled = false) => (
@@ -586,7 +600,7 @@ function ExportDialog({ exporter, martId, destination, title, initialError, busy
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel}>
+    <div ref={box} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel} onKeyDown={trap}>
       <ActionForm role="dialog" aria-modal="true" aria-label={`Export to ${destination.title}`} onAction={submit} onClick={(e) => e.stopPropagation()} className="flex w-[28rem] max-w-[92vw] flex-col gap-3 rounded-lg border bg-background p-4 text-sm shadow-lg">
         <h2 className="text-base font-semibold">Export to {destination.title}</h2>
         {option !== 3 && (

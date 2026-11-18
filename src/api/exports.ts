@@ -144,6 +144,8 @@ export interface Exporter {
   invalidate(): void;
   /** The remembered reports for a mart (ids and `usedAt`), without any OWOX call. */
   stored(martId: string): Promise<StoredReport[]>;
+  /** The remembered reports when the document is already known (no wait), else undefined. */
+  storedNow(martId: string): StoredReport[] | undefined;
   /** Starts the live reads of a mart's remembered reports, all in parallel. Once per mart per session: later calls do nothing until `invalidate()` or an export to the mart finishes. */
   load(martId: string): void;
   /** The session cache for a mart: empty before `load`; reports OWOX no longer has (404) are removed here and from the stored document. The same array is returned until something changes. */
@@ -214,8 +216,16 @@ export function createExporter(ctx: Ctx): Exporter {
       docs.set(martId, next);
       const cache = caches.get(martId);
       if (cache) {
-        cache.entries = next.flatMap((r) => { const e = cache.entries.find((x) => x.reportId === r.reportId); return e ? [{ ...e, usedAt: r.usedAt, ...(e.report ? { report: { ...e.report, usedAt: r.usedAt } } : {}) }] : []; });
+        const fresh: string[] = [];
+        cache.entries = next.flatMap((r) => {
+          const e = cache.entries.find((x) => x.reportId === r.reportId);
+          if (e) return [{ ...e, usedAt: r.usedAt, ...(e.report ? { report: { ...e.report, usedAt: r.usedAt } } : {}) }];
+          // A report new to the cache (an export just made it) is read like the others, so it never sits without an entry.
+          fresh.push(r.reportId);
+          return [{ reportId: r.reportId, usedAt: r.usedAt, state: 'loading' as const }];
+        });
         emit(martId);
+        fresh.forEach((id) => { void read(martId, cache, id); });
       }
       try { await col.put(martId, { reports: next }); } catch (e) { console.warn('Saving the exported reports failed', e); }
     });
@@ -294,6 +304,7 @@ export function createExporter(ctx: Ctx): Exporter {
     },
     invalidate() { destinations = null; const marts = [...caches.keys()]; caches.clear(); marts.forEach(emit); },
     stored: async (martId) => [...(await stored(martId))],
+    storedNow: (martId) => { const known = docs.get(martId); return known && [...known]; },
     load,
     entries: (martId) => caches.get(martId)?.entries ?? NONE,
     subscribe(martId, cb) {

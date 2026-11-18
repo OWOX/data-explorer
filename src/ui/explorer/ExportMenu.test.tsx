@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
-import type { StoredReport } from '../../api/exports';
+import { POLL_INTERVAL_MS, POLL_TIMEOUT_MS, type StoredReport } from '../../api/exports';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { Ctx } from '../../sdk/types';
@@ -196,18 +196,15 @@ describe('the menu', () => {
     await waitFor(() => expect(details).not.toHaveAttribute('open'));
   });
 
-  test('the outside listeners are removed when the menu unmounts', async () => {
-    const add = vi.spyOn(window, 'addEventListener');
+  test('after the menu unmounts, a press outside and a window blur do nothing', async () => {
     const t = setup(1);
     const view = t.view();
     await rowsLoaded();
-    const blur = add.mock.calls.find(([type]) => type === 'blur');
-    expect(blur).toBeDefined();
-    const remove = vi.spyOn(window, 'removeEventListener');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     view.unmount();
-    expect(remove.mock.calls.some(([type, fn]) => type === 'blur' && fn === blur![1])).toBe(true);
-    add.mockRestore();
-    remove.mockRestore();
+    expect(() => { fireEvent.pointerDown(document.body); fireEvent.blur(window); }).not.toThrow();
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
   });
 });
 
@@ -317,6 +314,70 @@ describe('the export dialog', () => {
     expect(radios(dialog)[0]).toBeChecked();
   });
 
+  test('a usedAt in the future is not recent', async () => {
+    const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(-3) }]);
+    await t.seeded;
+    await makeReport(t, 'Orders weekly');
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await waitFor(() => expect(within(dialog).queryByText('Loading reports…')).toBeNull());
+    expect(radios(dialog).map(labelOf)[0]).toBe('New spreadsheet');
+  });
+
+  test('when the remembered document is already known the first paint has the final order', async () => {
+    const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(1) }]);
+    await t.seeded;
+    await makeReport(t, 'Orders weekly');
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    // The first live read means the document has been read.
+    await waitFor(() => expect(t.calls).toContain('GET /api/reports/mock-report-1'));
+    await userEvent.click(within(data()).getByRole('menuitem', { name: /Team Sheets/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Export to Team Sheets' });
+    expect(radios(dialog).map(labelOf)).toEqual(['Update existing report', 'New spreadsheet', 'Existing spreadsheet']);
+    expect(radios(dialog)[0]).toBeChecked();
+  });
+
+  test('an export started from the untouched dialog does not move it: same option, order and title field while it runs', async () => {
+    const t = setup(1);
+    const real = t.ctx.owox.postJson;
+    (t.ctx.owox as { postJson: Ctx['owox']['postJson'] }).postJson = ((path: string, body: unknown) => (path.endsWith('/run') ? (t.calls.push(`POST ${path}`), new Promise(() => {})) : real(path, body))) as Ctx['owox']['postJson'];
+    t.view();
+    await rowsLoaded();
+    const dialog = await exportNew();
+    await waitFor(() => expect(t.calls).toContain('POST /api/reports/mock-report-1/run'));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(radios(dialog).map(labelOf)).toEqual(['New spreadsheet', 'Existing spreadsheet', 'Update existing report']);
+    expect(radios(dialog)[0]).toBeChecked();
+    expect(within(dialog).getByLabelText('Report title')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Loading reports…')).toBeNull();
+  });
+
+  test('focus: the checked radio takes it on open, Tab stays inside, and Escape returns it to the Export button', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await waitFor(() => expect(radios(dialog)[0]).toHaveFocus());
+    for (let i = 0; i < 12; i++) { await userEvent.tab(); expect(dialog.contains(document.activeElement)).toBe(true); }
+    await userEvent.tab({ shift: true });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.querySelector('details.dm-export summary')).toHaveFocus();
+  });
+
+  test('Cancel returns focus to the Export button too', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(document.querySelector('details.dm-export summary')).toHaveFocus();
+  });
+
   test.each([[59, true], [61, false]])('the 60 day boundary: used %i days ago, recent is %s', async (days, recent) => {
     const t = setup(1, [{ reportId: 'mock-report-1', usedAt: daysAgo(days) }]);
     await t.seeded;
@@ -419,6 +480,10 @@ describe('the export dialog', () => {
       return real(path, q);
     }) as Ctx['owox']['getJson'];
     const dialog = await openDialog();
+    // A failed read counts as finished and not here: the dialog falls back to a new spreadsheet, and the failed row waits in option 3.
+    await waitFor(() => expect(radios(dialog)[0]).toBeChecked());
+    await waitFor(() => expect(radios(dialog).map(labelOf)[0]).toBe('New spreadsheet'));
+    await userEvent.click(within(dialog).getByLabelText('Update existing report'));
     expect(await within(dialog).findByText('Couldn’t load')).toBeInTheDocument();
     fail = false;
     await userEvent.click(within(dialog).getByRole('button', { name: 'Retry' }));
@@ -522,6 +587,19 @@ describe('the export dialog', () => {
     await waitFor(() => expect(within(dialog).queryByLabelText(/Orders weekly/)).toBeNull());
     await waitFor(async () => expect((await t.ctx.collections<{ reports: StoredReport[] }>('exports').get('orders'))?.document.reports).toEqual([]));
     (t.ctx.owox as { putJson: Ctx['owox']['putJson'] }).putJson = realPut;
+  });
+
+  test('a run that outlasts the wait is an info toast, "Still running"', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const t = setup(1, [], 10 * 60_000);
+      t.view();
+      await rowsLoaded();
+      await exportNew();
+      await waitFor(() => expect(t.calls).toContain('POST /api/reports/mock-report-1/run'));
+      await act(async () => { await vi.advanceTimersByTimeAsync(POLL_TIMEOUT_MS + 3 * POLL_INTERVAL_MS); });
+      await waitFor(() => expect(document.querySelector('[data-tone="info"]')).toHaveTextContent(/Still running/));
+    } finally { vi.useRealTimers(); }
   });
 
   test('a failed run is an error toast', async () => {
