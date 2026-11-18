@@ -287,7 +287,7 @@ test('Export to Google Sheets: with one destination the menu lists it; New repor
   await data.getByRole('menuitem', { name: /Team Sheets/ }).click();
   await data.getByRole('menuitem', { name: /New report/ }).click();
   await page.getByRole('dialog', { name: 'New report' }).getByRole('button', { name: 'Export' }).click();
-  await expect(page.getByRole('status').getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', /spreadsheets\/d\/mock-sheet-1\/edit#gid=0/, { timeout: 10_000 });
+  await expect(page.locator('#dm-toast-stack').getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', /spreadsheets\/d\/mock-sheet-1\/edit#gid=0/, { timeout: 10_000 });
   await expect(data.getByRole('link', { name: /Open the sheet/ })).toHaveCount(0);
   expect((await popup).url()).toContain('mock-sheet-1');
   // The report is remembered, so the destination's flyout offers to update it.
@@ -311,7 +311,7 @@ test('Export to an AI: the prompt is copied, named in a status, and readable in 
   await data.getByRole('menuitem', { name: 'Claude', exact: true }).click();
   await expect(page.getByRole('status').getByText('Prompt copied. Paste it into Claude')).toBeVisible();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Query the data mart "Orders" (id "orders").');
-  await page.getByRole('status').getByRole('button', { name: 'Show prompt' }).click();
+  await page.locator('#dm-toast-stack').getByRole('button', { name: 'Show prompt' }).click();
   const area = page.getByRole('dialog', { name: 'Prompt' }).getByRole('textbox');
   await expect(area).toHaveValue(/read-only/);
   await expect(area).toHaveAttribute('readonly', '');
