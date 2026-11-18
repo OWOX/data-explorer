@@ -25,6 +25,7 @@ import { BandTools, BandToolsSlot } from '../bands/BandTools';
 import { CardClickContext } from '../bands/CardClick';
 import { PickedIcon } from '../bands/picked';
 import { CellValue } from './CellValue';
+import { selectionTsv, type GridSelection } from './copySelection';
 import { ColumnControls, ColumnMenuEnvContext, type ColumnMenuEnv } from './ColumnMenu';
 import { ColumnPicker } from './ColumnPicker';
 import { ExportMenu } from './ExportMenu';
@@ -405,7 +406,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // the far end, the cell stays active), or whole columns or rows (a tint and a frame around the block); its column letters and row
   // numbers are lit. `from` is where a shift-click on a header extends from.
   type Cell = { row: number; col: number };
-  type Selection = ({ kind: 'cell' } & Cell & { to?: Cell }) | { kind: 'col' | 'row'; from: number; to: number };
+  type Selection = GridSelection;
   const [selected, setSelected] = useState<Selection | null>(null);
   const rowCount = rows?.length ?? 0;
   const inside = (c: Cell) => c.row < rowCount && c.col < outputs.length;
@@ -459,6 +460,22 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     box.style.scrollPaddingLeft = '46px';
     cell.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }, [cellSel?.row, cellSel?.col, cellSel?.to?.row, cellSel?.to?.col]);
+  // Ctrl/Cmd+C: the selection goes to the clipboard as tab-separated text, as it is displayed. The copy event needs no clipboard permission,
+  // so it works in the plugin's sandboxed frame. Fields, menus and a text range the reader selected inside a cell keep the browser's own copy.
+  const onCopy = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (!sel || !e.currentTarget.contains(target) || target.closest('thead, input, textarea, select, [role=menu], [role=dialog]')) return;
+    const range = window.getSelection();
+    if (range && !range.isCollapsed && range.anchorNode && e.currentTarget.contains(range.anchorNode)) return;
+    const body = e.currentTarget.querySelectorAll<HTMLTableRowElement>('tbody > tr');
+    const text = selectionTsv(sel, { rows: rowCount, cols: outputs.length }, {
+      cell: (r, c) => body[r]?.querySelectorAll(':scope > td:not([aria-hidden])')[c]?.textContent ?? '',
+      header: (c) => { const o = outputs[c]!; return outputLabel(byName.get(o.column)!, o); },
+    });
+    if (text === null) return;
+    e.clipboardData.setData('text/plain', text);
+    e.preventDefault();
+  };
   const onGridKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     // Popovers render outside the grid but their events bubble here; fields and the header keep their own keys.
@@ -491,7 +508,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
         {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} sorts={gridSorts} rows={rows} hasMore={hasMore} loading={loading} />}
       </BandTools>
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
-      <div ref={scroller} tabIndex={0} onKeyDown={onGridKey} className={`dm-grid-root min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
+      <div ref={scroller} tabIndex={0} onKeyDown={onGridKey} onCopy={onCopy} className={`dm-grid-root min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
         <table className="dm-grid w-full border-collapse">
           <thead ref={head} className="dm-head sticky top-0 z-10">
             <tr aria-hidden data-chrome>
