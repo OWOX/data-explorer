@@ -18,7 +18,9 @@ import type { Model, Schema } from '../../model/types';
 import { primaryKeys } from '../../records/relationships';
 import type { Row } from '../../sdk/types';
 import { sourceOfModel, useServices, useStore, type GridState } from '../../state/store';
-import { ErrorBox } from '../ErrorBox';
+import { ErrorBox, errorMessage } from '../ErrorBox';
+import { Toast } from '../Toast';
+import { removedAggregation, unappliedFilter } from './unapplied';
 import { Skeleton } from '../Skeleton';
 import { OverflowTip, Tooltip } from '../Tooltip';
 import { BandTools, BandToolsSlot } from '../bands/BandTools';
@@ -33,10 +35,14 @@ import { buildRowQuery, defaultColumns, useMartRows } from './useMartRows';
 
 function useSchema(martId: string, version: number) {
   const { schemas } = useServices();
-  const [s, setS] = useState<{ schema: Schema | null; error: unknown }>({ schema: schemas.peek(martId) ?? null, error: null });
+  // `error` is a first read that failed (nothing to show); `failure` is a later read (Refresh) that failed while a schema is on screen, which stays.
+  const [s, setS] = useState<{ schema: Schema | null; error: unknown; failure: unknown }>({ schema: schemas.peek(martId) ?? null, error: null, failure: null });
   useEffect(() => {
     let live = true;
-    schemas.get(martId).then((schema) => live && setS({ schema, error: null }), (error) => live && setS({ schema: null, error }));
+    schemas.get(martId).then(
+      (schema) => live && setS({ schema, error: null, failure: null }),
+      (error) => live && setS((cur) => (cur.schema ? { ...cur, failure: error } : { schema: null, error, failure: null })),
+    );
     return () => { live = false; };
   }, [schemas, martId, version]);
   return s;
@@ -48,10 +54,13 @@ export type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
 /** The grid for one mart: loads the schema, then reads rows. Key it by mart id. */
 export function MartGrid({ martId, model, seed, onChange, onRows, paused = false }: { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: boolean) => void; /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
   const [schemaVersion, setSchemaVersion] = useState(0);
-  const { schema, error } = useSchema(martId, schemaVersion);
+  const { schema, error, failure } = useSchema(martId, schemaVersion);
+  const { schemas, blendable } = useServices();
+  // Refresh also forgets what was read of this mart's schema and joins (Join Settings or a field list may have changed since).
+  const refreshMart = useCallback(() => { schemas.invalidate(martId); blendable.invalidate(martId); setSchemaVersion((v) => v + 1); }, [schemas, blendable, martId]);
   if (error) return <div className="p-4"><ErrorBox error={error} onRetry={() => setSchemaVersion((v) => v + 1)} /></div>;
   if (!schema) return <Skeleton rows={8} />;
-  return <SeededGrid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onRows={onRows} paused={paused} />;
+  return <SeededGrid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onRows={onRows} paused={paused} onRefresh={refreshMart} refreshError={failure} />;
 }
 
 /** A saved-columns read slower than this is given up on for this mount. */
@@ -74,7 +83,7 @@ const aggOf = (g: GridState | undefined): Aggregation => (g && (g.aggregations?.
  * A column saved from a joined mart waits for the joined marts to be read (inside the same 3 s): a read that
  * fails leaves those columns out of this visit without erasing them from what is saved.
  */
-function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null) => void; paused: boolean }) {
+function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null) => void; paused: boolean; onRefresh: () => void; refreshError: unknown }) {
   const { martId, schema, seed } = props;
   const { columnStore, blendable } = useServices();
   const [initial, setInitial] = useState<Initial | null>(() => {
@@ -177,17 +186,19 @@ const sameGrid = (a: GridState, b: GridState) => stable(a) === stable(b);
 
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
-function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, initialAgg, onChange, onRows, paused }: { paused: boolean; martId: string; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: boolean) => void }) {
+function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, initialAgg, onChange, onRows, paused, onRefresh, refreshError }: { paused: boolean; onRefresh: () => void; refreshError: unknown; martId: string; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: boolean) => void }) {
   const { columnStore, blendable } = useServices();
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
   const [sources, setSources] = useState<JoinedSource[]>(initialSources ?? []);
+  // Refresh raises the tick: the joined marts are read again (the loader's entry was dropped), even when the grid opened with them.
+  const [refreshTick, setRefreshTick] = useState(0);
   useEffect(() => {
-    if (initialSources) return;
+    if (initialSources && refreshTick === 0) return;
     let live = true;
     blendable.get(martId).then((s) => { if (live) setSources(s); }, () => undefined);
     return () => { live = false; };
-  }, [blendable, martId, initialSources]);
+  }, [blendable, martId, initialSources, refreshTick]);
   const schema = useMemo(() => withJoined(native, sources), [native, sources]);
   const { formatOf, memberFormat, setMember: setFormat } = useColumnFormats(martId, schema, model.marts.get(martId)?.title);
   // The cells read the latest formats through a ref, so a format change repaints cells without rebuilding the column defs (and remounting the headers).
@@ -198,11 +209,36 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const [visible, setVisible] = useState(initialColumns);
   // The functions and date buckets on columns: any of them groups the rows.
   const [agg, setAgg] = useState<Aggregation>(initialAgg);
-  // A saved filter on a field this visit does not offer (a joined field whose marts could not be read) is not applied, and not
-  // dropped from the kept copy either: it is parked, and written back with the live ones. It is not re-applied when the joined marts load later.
+  // A filter on a field this visit does not offer (a joined field whose marts could not be read, or one a Refresh took away) is not applied,
+  // and not dropped from the kept copy either: it is parked, and written back with the live ones. When the offered fields change,
+  // parked filters on fields now offered are applied after all, and filters on fields no longer offered are parked.
   const offeredNow = (name: string) => schema.some((f) => f.name === name);
   const [parked, setParked] = useState<Record<string, ColumnFilter>>(() => Object.fromEntries(Object.entries(seed.saved?.filters ?? {}).filter(([k]) => !offeredNow(k))));
   const [filters, setFilters] = useState<Record<string, ColumnFilter>>(() => Object.fromEntries(Object.entries(seed.saved?.filters ?? {}).filter(([k]) => offeredNow(k))));
+  const offeredKey = schema.map((f) => f.name).join('\u0000');
+  const [seenOffered, setSeenOffered] = useState({ key: offeredKey, schema });
+  // What this render has to tell the member (said once, in the toast below).
+  const said: string[] = [];
+  if (seenOffered.key !== offeredKey) {
+    setSeenOffered({ key: offeredKey, schema });
+    const back = Object.entries(parked).filter(([k]) => offeredNow(k));
+    const gone = Object.entries(filters).filter(([k]) => !offeredNow(k));
+    if (back.length || gone.length) {
+      setFilters((cur) => Object.fromEntries([...Object.entries(cur).filter(([k]) => offeredNow(k)), ...back]));
+      setParked(Object.fromEntries([...Object.entries(parked).filter(([k]) => !offeredNow(k)), ...gone]));
+    }
+    if (gone.length) {
+      const titles = gone.map(([k]) => { const was = seenOffered.schema.find((f) => f.name === k); return was ? columnTitle(was) : k; });
+      said.push(`The ${titles.length > 1 ? 'filters' : 'filter'} on ${titles.join(', ')} ${titles.length > 1 ? 'are' : 'is'} paused: ${titles.length > 1 ? 'those fields are' : 'that field is'} no longer offered.`);
+    }
+  }
+  // What the member applied that the request leaves out, said once in a toast: an incomplete filter, a function the field no longer allows, a failed Refresh.
+  const [note, setNote] = useState<{ text: string } | null>(null);
+  const [seenFailure, setSeenFailure] = useState(refreshError);
+  if (seenFailure !== refreshError) {
+    setSeenFailure(refreshError);
+    if (refreshError) said.push(`Refresh failed: ${errorMessage(refreshError)}. The grid shows what was read before.`);
+  }
   // null: the member has set no sort, so rows open newest date first. The default is judged once, from the columns the grid opened with.
   const [own, setOwn] = useState<SortKey[] | null>(() => (seed.saved?.sorts ? (sortsOnColumns(seed.saved.sorts, visible).length || !seed.saved.sorts.length ? sortsOnColumns(seed.saved.sorts, visible) : null) : null));
   const [fallback] = useState(() => defaultSort(native, visible));
@@ -261,7 +297,13 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const shown = useMemo(() => orderColumns(visible, sources, defaultColumns(native)), [visible, sources, native]);
   if (!sameList(shown, visible)) setVisible(shown);
   // Rules of a column that is no longer shown go with it; any function or bucket left groups the rows (no default order then: it may name nothing shown).
-  const aggNow = useMemo(() => sanitizeAggregation(keepVisible(agg, shown), schema), [agg, shown, schema]);
+  const keptAgg = useMemo(() => keepVisible(agg, shown), [agg, shown]);
+  const aggNow = useMemo(() => sanitizeAggregation(keptAgg, schema), [keptAgg, schema]);
+  // A rule that was applied and is dropped now (a Refresh narrowed the functions the field allows) is not silent: the toast says it was removed.
+  const removed = removedAggregation(keptAgg, aggNow, schema);
+  const [seenRemoved, setSeenRemoved] = useState('');
+  if (seenRemoved !== (removed?.key ?? '')) { setSeenRemoved(removed?.key ?? ''); if (removed) said.push(removed.text); }
+  if (said.length) setNote({ text: said.join(' ') });
   const grouped = isGrouped(aggNow);
   // Grouped with no sort of the member's own: the first group key ascending, so "Load more" pages never reshuffle.
   const firstKey = shown.find((n) => !aggNow.aggregations.some((r) => r.column === n));
@@ -279,8 +321,11 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const loading = reading && !blocked;
   // The fields on screen, kept as the same array until one of them changes: a joined mart arriving later (the picker reads it
   // when it opens) must not rebuild the headers, which would close a filter popover the reader has open.
-  const [onScreen, setOnScreen] = useState<Schema>([]);
-  if (wanted.length !== onScreen.length || wanted.some((f, i) => f !== onScreen[i])) setOnScreen(wanted);
+  const [kept, setOnScreen] = useState<Schema>([]);
+  const changed = wanted.length !== kept.length || wanted.some((f, i) => f !== kept[i]);
+  if (changed) setOnScreen(wanted);
+  // In the render that sees a change (a Refresh took a field away) the new fields are used at once: the kept list would still name the old ones.
+  const onScreen = changed ? wanted : kept;
   const byName = useMemo(() => new Map(schema.map((f) => [f.name, f])), [schema]);
   // One output per column, or one per function of an aggregated column.
   const outputs = useMemo(() => outputsOf(onScreen.map((f) => f.name), aggNow), [onScreen, aggNow]);
@@ -406,7 +451,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const hasSorts = own !== null;
   const menuEnv: ColumnMenuEnv = {
     sorts: shownSorts, setSort, filters,
-    setFilter: (name, f) => { markEdit(); setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; }); setLimit(PAGE_SIZE); },
+    setFilter: (name, f) => { const unapplied = f ? unappliedFilter(f, schema.find((x) => x.name === name)) : null; if (unapplied) setNote({ text: unapplied }); markEdit(); setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; }); setLimit(PAGE_SIZE); },
     isAggregated: (column) => aggNow.aggregations.some((r) => r.column === column) || aggNow.dateTrunc.some((r) => r.column === column),
     draftOf: (column) => draftOf(column, aggNow),
     blockerFor: (name) => blockers.find((b) => b.name !== name)?.title,
@@ -457,7 +502,40 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const scroller = useRef<HTMLDivElement>(null);
   // A click selects the cell; a shift-click stretches a block from the active cell (the one a click or a header selected) to this one,
   // and does not open another record.
+  // Drag-select: a press on a cell starts a block, moving over other cells stretches it, a release anywhere ends it.
+  const drag = useRef<Cell | null>(null);
+  const dragMoved = useRef(false);
+  const endDrag = () => {
+    drag.current = null;
+    // The click after a drag comes right after the release; a drag that ended elsewhere gets none, so the flag is cleared after it.
+    if (dragMoved.current) setTimeout(() => { dragMoved.current = false; }, 0);
+  };
+  useEffect(() => {
+    window.addEventListener('mouseup', endDrag);
+    return () => window.removeEventListener('mouseup', endDrag);
+  }, []);
+  const startDrag = (row: number, col: number, e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    if (e.shiftKey) { e.preventDefault(); scroller.current?.focus({ preventScroll: true }); return; }
+    if ((e.target as HTMLElement).closest('a, button, input, textarea, select')) return;
+    // No native text selection: the cells are what the drag selects.
+    e.preventDefault();
+    scroller.current?.focus({ preventScroll: true });
+    drag.current = { row, col };
+    dragMoved.current = false;
+  };
+  const dragOver = (row: number, col: number, e: React.MouseEvent) => {
+    const from = drag.current;
+    if (!from) return;
+    // The button was let go outside the frame (no mouseup reached the window): the drag is over.
+    if ((e.buttons & 1) === 0) { endDrag(); return; }
+    if (from.row === row && from.col === col && !dragMoved.current) return;
+    dragMoved.current = true;
+    setSelected(from.row === row && from.col === col ? { kind: 'cell', ...from } : { kind: 'cell', ...from, to: { row, col } });
+  };
   const pickCell = (row: number, col: number, e: React.MouseEvent) => {
+    // The click that ends a drag is no click on a cell: the block stays and no record opens.
+    if (dragMoved.current) { e.stopPropagation(); dragMoved.current = false; return; }
     if (e.shiftKey && sel) {
       e.stopPropagation();
       const from: Cell = sel.kind === 'cell' ? { row: sel.row, col: sel.col } : sel.kind === 'col' ? { row: 0, col: sel.from } : { row: sel.from, col: 0 };
@@ -517,9 +595,10 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     <GridEnv.Provider value={env}>
     <ColumnMenuEnvContext.Provider value={menuEnv}>
     <div className="dm-grid-frame flex max-h-[32rem] min-h-0 flex-col">
+      <Toast onDismiss={() => setNote(null)} stamp={note} returnTo={() => scroller.current}>{note?.text}</Toast>
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { markEdit(); setFilters({}); setParked({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
-        <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
+        <button type="button" onClick={() => { onRefresh(); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} sorts={gridSorts} rows={rows} hasMore={hasMore} loading={loading} run={run} />}
       </BandTools>
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
@@ -564,10 +643,10 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               : rows.length === 0 ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground">{hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.'}</td></tr>
               : table.getRowModel().rows.map((r, ri) => (
                 <tr key={r.id}
-                  onClick={pks.length && !grouped ? () => dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }) : undefined}
+                  onClick={pks.length && !grouped ? () => { if (dragMoved.current) return; dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }); } : undefined}
                   className={`${pks.length && !grouped ? 'cursor-pointer' : ''}`}>
                   <th aria-hidden data-chrome data-selected={rowMark(ri)} onClick={(e) => { pickHeader('row', ri, e.shiftKey); if (e.shiftKey) e.stopPropagation(); }} className="dm-chrome">{ri + 1}</th>
-                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={cellSel && !rect && cellSel.row === ri && cellSel.col === ci ? '' : undefined} data-moving={rect && cellSel?.to?.row === ri && cellSel.to.col === ci ? '' : undefined} data-range={inBlock(ri, ci) ? '' : undefined} data-active={anchor?.row === ri && anchor.col === ci ? '' : undefined} data-handle={corner?.row === ri && corner.col === ci ? '' : undefined} data-edge={edges(ri, ci)} onMouseDown={(e) => { if (e.shiftKey) { e.preventDefault(); scroller.current?.focus({ preventScroll: true }); } }} onClick={(e) => pickCell(ri, ci, e)} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap${numericOutput(c.column.id) ? ' text-right' : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
+                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={cellSel && !rect && cellSel.row === ri && cellSel.col === ci ? '' : undefined} data-moving={rect && cellSel?.to?.row === ri && cellSel.to.col === ci ? '' : undefined} data-range={inBlock(ri, ci) ? '' : undefined} data-active={anchor?.row === ri && anchor.col === ci ? '' : undefined} data-handle={corner?.row === ri && corner.col === ci ? '' : undefined} data-edge={edges(ri, ci)} onMouseDown={(e) => startDrag(ri, ci, e)} onMouseEnter={(e) => dragOver(ri, ci, e)} onClick={(e) => pickCell(ri, ci, e)} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap${numericOutput(c.column.id) ? ' text-right' : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
                   <td aria-hidden className="p-0" />
                 </tr>
               ))}
