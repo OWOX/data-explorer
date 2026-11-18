@@ -107,7 +107,7 @@ const codeOf = (e: unknown) => {
 export const reportMayExist = (e: unknown) => e instanceof ExportError && e.stage === 'report' && ['TIMEOUT', 'NETWORK_ERROR', 'HTTP_502', 'HTTP_504'].includes(e.code ?? '');
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /** The SDK transport puts the HTTP status on `payload`; a plain `status` is kept as a fallback. */
-const isNotFound = (e: unknown) => { const x = e as { payload?: { status?: number }; status?: number } | null; return (x?.payload?.status ?? x?.status) === 404; };
+export const isNotFound = (e: unknown) => { const x = e as { payload?: { status?: number }; status?: number } | null; return (x?.payload?.status ?? x?.status) === 404; };
 
 export type Outcome = { state: 'success' | 'failed' | 'timeout' | 'busy'; error?: string };
 export type ExportSource =

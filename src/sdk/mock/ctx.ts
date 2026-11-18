@@ -19,6 +19,10 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
   const reports = new Map<string, MockReport>();
   let sheetSerial = 0;
   let reportSerial = 0;
+  const runs = new Map<string, string>();
+  let runSeq = 0;
+  const mockSql = (id: string, o: TraverseOptions) =>
+    `SELECT ${(o.column ?? ['*']).map((c) => (c === '*' ? c : `\`${c}\``)).join(', ')}\nFROM \`mock.${id}\`${o.limit ? `\nLIMIT ${o.limit}` : ''}`;
   const notFound = (what: string) => Object.assign(new Error(`${what} not found`), { payload: { code: 'HTTP_ERROR', status: 404 } });
   const report = (id: string) => reports.get(id) ?? (() => { throw notFound('Report'); })();
   // How long a report run takes before it reports success.
@@ -170,7 +174,10 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         }))),
         traverseData: async (id, o) => {
           const rows = await slow(() => traverse(id, o));
+          const runId = `mock-run-${++runSeq}`;
+          runs.set(runId, mockSql(id, o));
           return {
+            runId,
             async *rowChunks() { for (let i = 0; i < rows.length; i += 100) { if (latency) await wait(latency / 4); yield rows.slice(i, i + 100); } },
             cancel: async () => {},
           };
@@ -180,6 +187,12 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
       getJson: <T,>(path: string, query?: Record<string, string>) => slow(() => {
         if (path === '/api/search') return mockSearch(f, query) as T;
         if (path === '/api/data-destinations') return f.destinations as T;
+        const run = /^\/api\/data-marts\/([^/]+)\/runs\/([^/]+)$/.exec(path);
+        if (run) {
+          const sql = runs.get(decodeURIComponent(run[2]!));
+          if (sql === undefined) throw notFound('Run');
+          return { id: decodeURIComponent(run[2]!), additionalParams: { httpData: { executionSqlQuery: sql } } } as T;
+        }
         const byMart = /^\/api\/reports\/data-mart\/([^/]+)$/.exec(path);
         if (byMart) return [...reports.values()].filter((r) => r.dataMartId === decodeURIComponent(byMart[1]!)) as T;
         const one = /^\/api\/reports\/([^/]+)$/.exec(path);

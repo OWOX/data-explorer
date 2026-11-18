@@ -39,14 +39,17 @@ export function buildRowQuery(schema: Schema, visible: string[], filters: Column
   return { column, ...(filter.length ? { filter } : {}), ...(sort.length ? { sort } : {}), limit: limit + 1 };
 }
 
-type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null; shape: string };
+/** The query behind the rows on the grid, for Copy SQL. */
+export type GridRun = { state: 'none' } | { state: 'running' } | { state: 'failed' } | { state: 'done'; runId: string | null };
+
+type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null; shape: string; runId: string | null };
 /** What the rows are rows of: plain rows, or groups over these columns and rules. Rows of one shape never stand in for another's. */
 const shapeOf = (o: TraverseOptions | null): string => (o?.aggregation?.length || o?.dateTrunc?.length ? JSON.stringify([o.column, o.aggregation, o.dateTrunc]) : 'plain');
 type Query = { dataKey: string; columns: string[]; key: string };
 
 export function useMartRows(martId: string, options: TraverseOptions | null, version: number) {
   const { ctx } = useServices();
-  const [state, setState] = useState<RowsState>({ rows: null, error: null, hasMore: false, doneFor: null, shape: 'plain' });
+  const [state, setState] = useState<RowsState>({ rows: null, error: null, hasMore: false, doneFor: null, shape: 'plain', runId: null });
   // Each traverseData call is a billed warehouse run. Everything but the column list (filters, sort, limit,
   // version) is the data key: when it changes the rows are re-read. When columns only shrink, the loaded rows
   // already hold them, so the query identity stays and nothing is fetched; a column that was never loaded re-reads.
@@ -63,9 +66,10 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
     if (!options) return;
     const ac = new AbortController();
     const pageLimit = (options.limit ?? 1) - 1;
-    readRows(ctx, martId, options, { signal: ac.signal }).then(
-      (rows) => { if (!ac.signal.aborted) setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options) }); },
-      (error) => { if (!ac.signal.aborted) setState({ rows: null, error, hasMore: false, doneFor: key, shape: shapeOf(options) }); },
+    let runId: string | null = null;
+    readRows(ctx, martId, options, { signal: ac.signal, onRunId: (id) => { runId = id ?? null; } }).then(
+      (rows) => { if (!ac.signal.aborted) setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options), runId }); },
+      (error) => { if (!ac.signal.aborted) setState({ rows: null, error, hasMore: false, doneFor: key, shape: shapeOf(options), runId: null }); },
     );
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -75,5 +79,6 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
   // Except rows of another shape (ungrouped rows under a grouped query, or the reverse, or other group keys): they would be read
   // with the wrong headers and counted with the wrong label, so nothing is shown until the new rows arrive.
   const stale = loading && state.shape !== shapeOf(options);
-  return { rows: stale ? null : state.rows, loading, error: loading ? null : state.error, hasMore: stale ? false : state.hasMore };
+  const run: GridRun = !options ? { state: 'none' } : loading ? { state: 'running' } : state.error ? { state: 'failed' } : { state: 'done', runId: state.runId };
+  return { rows: stale ? null : state.rows, loading, error: loading ? null : state.error, hasMore: stale ? false : state.hasMore, run };
 }
