@@ -91,17 +91,17 @@ Example: the main mart is Orders and Customers is joined. Stores is reachable as
 1. The Export menu ends with a separator and "Copy SQL", below Claude and ChatGPT.
 2. `Traversal` in `src/sdk/types.ts` gets `readonly runId?: string`. The OWOX client sets it from the `x-owox-run-id` header (`packages/api-client/src/traversal.ts`).
 3. `useMartRows` keeps the run id of the grid's latest first-page query.
-4. On click the plugin reads `GET /api/data-marts/<main>/runs/<runId>` with `ctx.owox.getJson` and copies `additionalParams.httpData.executionSqlQuery` to the clipboard.
-5. OWOX saves the run when the query ends. While the grid's query runs, the item says "Copying…" and waits for it. A 404 is retried 3 times, 1 s apart.
-6. The SQL is the query the grid ran, with its page `LIMIT`. The item's hint says so.
-7. The item is disabled with a reason in three cases: the grid has no query yet, the host gives no run id, or the run has no SQL.
+4. When the Export menu opens, the plugin reads `GET /api/data-marts/<main>/runs/<runId>` with `ctx.owox.getJson` and keeps `additionalParams.httpData.executionSqlQuery`. OWOX saves the run when the query ends, so a 404 is retried 3 times, 1 s apart. The result is cached per run id.
+5. The item is enabled only once that SQL is in hand. A click copies it to the clipboard.
+6. Until then, and whenever the SQL is unavailable, the item is shown disabled with the reason in its hint: the grid's query is still running, the grid has no query yet, the host gives no run id, the run could not be read, or the run has no SQL.
+7. The SQL is the query the grid ran, with its page `LIMIT`. The enabled item's hint says so.
 8. Copy SQL runs no query, bills nothing and writes nothing.
 
 ## Tests
 
 1. `src/graph/visible.test.ts`: main mart first under rules 0 to 4; rule 2 shows every joinable mart; rule 2 falls back to one hop while `joinable` is null; `unjoinable` under rules 0, 1 and 3.
 2. `src/state/join-plan.test.ts`: `planClick` ignores an unjoinable mart when a main mart is set; `planMakeMain` column order, kept and dropped marts, filters and sorts; `sourceOfMart` path choice, including the fallback.
-3. Page tests: the unjoinable tooltip, ghost cards on hover and focus, a click on a ghost, Copy SQL states (copying, copied, disabled).
+3. Page tests: the unjoinable tooltip, ghost cards on hover and focus, a click on a ghost, Copy SQL states (disabled with each reason, enabled, copied).
 4. One Playwright test: drag a card onto the main card and check the grid's first columns.
 5. Vitest runs with at most 4 threads.
 
