@@ -391,6 +391,18 @@ describe('exporter', () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 
+  test('a 404 read leaves the list even when the forget is refused because the document cannot be read again', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }, { reportId: 'b' }]);
+    const col = ctx.collections('exports');
+    let reads = 0;
+    // The first document read (the load) works; every later one (the forget's re-read) fails.
+    (ctx as { collections: unknown }).collections = () => ({ get: async (id: string) => { if (reads++ > 0) throw new Error('down'); return col.get(id); }, put: col.put });
+    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => { const id = path.split('/').pop()!; if (id === 'a') throw notFound(); return live(id); });
+    const ex = createExporter(ctx);
+    ex.load('orders');
+    await vi.waitFor(() => expect(ex.entries('orders').map((e) => [e.reportId, e.state])).toEqual([['b', 'ready']]));
+  });
+
   const liveGet = (ctx: ReturnType<typeof stubCtx>) => (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => live(path.split('/').pop()!));
   const allReady = (ex: ReturnType<typeof createExporter>) => vi.waitFor(() => { const e = ex.entries('orders'); expect(e.length > 0 && e.every((x) => x.state === 'ready')).toBe(true); });
 

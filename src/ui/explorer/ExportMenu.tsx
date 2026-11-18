@@ -540,7 +540,8 @@ function ExportDialog({ exporter, martId, destination, title, initialError, busy
     const back = (e: KeyboardEvent) => {
       if (e.key !== 'Tab' || !box.current || box.current.contains(document.activeElement)) return;
       e.preventDefault();
-      tabStops(box.current)[e.shiftKey ? -1 : 0]?.focus();
+      const stops = tabStops(box.current);
+      (e.shiftKey ? stops[stops.length - 1] : stops[0])?.focus();
     };
     document.addEventListener('keydown', back);
     return () => document.removeEventListener('keydown', back);

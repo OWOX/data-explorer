@@ -401,6 +401,17 @@ describe('the export dialog', () => {
     expect(within(dialog).getByLabelText('New spreadsheet')).toHaveFocus();
   });
 
+  test('Shift+Tab with the focus on the page body pulls it into the dialog, onto its last stop', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await waitFor(() => expect(radios(dialog)[0]).toHaveFocus());
+    (document.activeElement as HTMLElement).blur();
+    await userEvent.tab({ shift: true });
+    expect(within(dialog).getByRole('button', { name: 'Export' })).toHaveFocus();
+  });
+
   test('Tab with the focus on the page body pulls it back into the dialog', async () => {
     const t = setup(1);
     t.view();
