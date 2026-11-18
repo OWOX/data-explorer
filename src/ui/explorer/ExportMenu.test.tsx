@@ -1003,6 +1003,11 @@ test('New report: Enter in the title exports, and does nothing while an export i
   await openMenu();
   await userEvent.click(await within(data()).findByRole('menuitem', { name: /New report/ }));
   const dialog = await screen.findByRole('dialog', { name: 'New report' });
-  await userEvent.type(within(dialog).getByLabelText('Report title'), '{Enter}');
-  await waitFor(() => expect(t.calls.some((c) => c.includes('google-sheets/documents'))).toBe(true), { timeout: 5000 });
+  const title = within(dialog).getByLabelText('Report title');
+  await userEvent.type(title, '{Enter}');
+  expect(title.isConnected).toBe(true);
+  await userEvent.type(title, '{Enter}');
+  await waitFor(() => expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1), { timeout: 5000 });
+  await new Promise((r) => setTimeout(r, 200));
+  expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1);
 });
