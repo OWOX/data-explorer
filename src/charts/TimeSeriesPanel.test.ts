@@ -14,3 +14,8 @@ test('a money measure keeps its unit on the axis', () => {
   expect(tickText(5124.456, 'FLOAT', usd)).toMatch(/5,124\.46/);
   expect(tickText(5124.456, 'FLOAT', usd)).toMatch(/\$|US/);
 });
+
+test('a percent axis keeps the precision the format shows', () => {
+  expect(tickText(0.0347 / 3, 'FLOAT', { kind: 'percent' })).toBe('1.16%');
+  expect(tickText(0.004, 'FLOAT', { kind: 'percent' })).toBe('0.4%');
+});

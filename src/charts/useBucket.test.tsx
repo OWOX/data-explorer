@@ -70,3 +70,9 @@ test('a joined date without MIN after the join reads its months too', async () =
   const { result } = renderHook(() => useBucket('m', joined, 'AUTO', [], 0, false), { wrapper: wrap(traverseData) });
   await waitFor(() => expect(result.current.bucket).toBe('DAY'));
 });
+
+test('the last month counts to its end: Jan to Mar picks WEEK, not DAY', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ created_at: '2026-01-01' }, { created_at: '2026-02-01' }, { created_at: '2026-03-01' }]));
+  const { result } = renderHook(() => useBucket('m', ungoverned(), 'AUTO', [], 0, false), { wrapper: wrap(traverseData) });
+  await waitFor(() => expect(result.current.bucket).toBe('WEEK'));
+});

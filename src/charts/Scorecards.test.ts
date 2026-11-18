@@ -11,10 +11,13 @@ test('float noise from a sum is dropped at 15 significant digits', () => {
 });
 
 test('a string from the warehouse is exact and left as formatValue gives it', () => {
-  expect(text('116739.09999999996')).toBe(metricText(amount, 'SUM', '116739.09999999996', () => AUTO));
-  expect(text('116739.09999999996')).toContain('09999999996');
+  expect(text('116739.09999999996')).toBe('116,739.09999999996');
 });
 
 test('an integer is unchanged', () => {
   expect(text(1234567)).toBe('1,234,567');
+});
+
+test('from 1e15 a float keeps its real digits', () => {
+  expect(text(1234567890123456.5)).toBe('1,234,567,890,123,456.5');
 });

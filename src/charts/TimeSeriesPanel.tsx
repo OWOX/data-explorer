@@ -18,8 +18,8 @@ type Patch = NonNullable<ChartSettings['timeSeries']>;
 export const seriesColor = (i: number): string => `var(--dm-series-${i + 1})`;
 export const OTHER_COLOR = 'var(--dm-series-9)';
 
-/** An axis tick in the measure's format: short ($10.2K) when it has a short form, else the value rounded to 2 decimals (a tick is a drawing position, a fraction of the largest total). */
-export const tickText = (n: number, type: string, format: Format): string => compactValue(n, type, format) ?? formatValue(Number(n.toFixed(2)), type, format);
+/** An axis tick in the measure's format: short ($10.2K) when it has a short form, else the value (rounded to 2 decimals unless the format scales or rounds it itself; a tick is a drawing position, a fraction of the largest total). */
+export const tickText = (n: number, type: string, format: Format): string => compactValue(n, type, format) ?? formatValue(format.kind === 'percent' || format.kind === 'money' ? n : Number(n.toFixed(2)), type, format);
 
 /**
  * The metric over time, one bar per bucket, stacked by a dimension's top values plus "Other" when chosen. Each value on

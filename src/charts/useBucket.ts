@@ -5,6 +5,14 @@ import { pickBucket } from './fields';
 import { monthsQuery, rangeKeys, rangeQuery } from './queries';
 import { useChartQuery } from './useChartQuery';
 
+/** The first day of the month after a month's start (from its YYYY-MM prefix): the last month spans to there, so month starts do not understate the span. Only used to pick a bucket. */
+function monthEnd(v: unknown): unknown {
+  const m = /^(\d{4})-(\d{2})/.exec(String(v));
+  if (!m) return v;
+  const y = Number(m[1]) + (m[2] === '12' ? 1 : 0);
+  return `${String(y).padStart(4, '0')}-${String(m[2] === '12' ? 1 : Number(m[2]) + 1).padStart(2, '0')}-01`;
+}
+
 /**
  * The bucket the date charts use. A chosen bucket is used as it is; Auto reads the date's range once and picks the smallest
  * bucket with at most 60 buckets. `null` until it is known (or when there is no date, or the band is paused): the charts that
@@ -24,7 +32,7 @@ export function useBucket(martId: string, date: Field | null, chosen: DateBucket
     else {
       // Oldest and newest month; a blank date sorts apart from them, so it is skipped.
       const seen = read.rows.map((x) => x[date.name]).filter((v) => v !== null && v !== undefined && v !== '');
-      bucket = seen.length ? pickBucket(seen[0], seen[seen.length - 1]) : 'MONTH';
+      bucket = seen.length ? pickBucket(seen[0], monthEnd(seen[seen.length - 1])) : 'MONTH';
     }
   }
   return { bucket, error: read.error, retry: read.retry };

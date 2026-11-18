@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 /**
  * The wrapper's measured width. 600 until measured: jsdom has no layout, and the first paint needs some width.
@@ -22,7 +22,8 @@ export function useWidth<T extends HTMLElement>(active = true) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  useEffect(() => {
+  // Layout, so the catch-up width is in the same paint that turns Charts on.
+  useLayoutEffect(() => {
     live.current = active;
     if (active && latest.current !== null) setWidth(latest.current);
   }, [active]);
