@@ -38,12 +38,27 @@ test('BarChart horizontal: rows are 20px with a 2px gap, no legend for one serie
   expect(container.querySelector('.dm-chart-legend')).toBeNull();
 });
 
-test('BarChart tooltip text names the series, bucket and value', async () => {
+test('BarChart: hovering a bucket band lists every series with its text and share', async () => {
   const { container } = wrap(<BarChart series={two} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} />);
-  fireEvent.focus(container.querySelector('rect[data-series="B"]')!);
-  fireEvent.pointerMove(container.querySelector('rect[data-series="B"]')!);
-  // Radix opens on focus; the bubble is portaled.
-  expect((await screen.findAllByText('B · M1: v3')).length).toBeGreaterThan(0);
+  const band = container.querySelector('rect[data-bucket="2026-01"]')!;
+  fireEvent.focus(band);
+  expect((await screen.findAllByText(/A: v1 \(25%\)/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/B: v3 \(75%\)/)).length).toBeGreaterThan(0);
+});
+
+test('BarChart: a negative value does not push bars off the plot', () => {
+  const s: Series[] = [
+    { name: 'A', color: 'red', points: [pt(1, 10)] },
+    { name: 'B', color: 'blue', points: [pt(1, -5)] },
+  ];
+  const { container } = wrap(<BarChart series={s} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const rects = [...container.querySelectorAll('rect[data-series]')];
+  expect(rects.length).toBeGreaterThan(0);
+  for (const r of rects) {
+    const y = Number(r.getAttribute('y')); const h = Number(r.getAttribute('height'));
+    expect(y).toBeGreaterThanOrEqual(0);
+    expect(y + h).toBeLessThanOrEqual(8 + 240);
+  }
 });
 
 test('PieChart: 3 slices give 3 paths; one slice at 100% is a circle', () => {

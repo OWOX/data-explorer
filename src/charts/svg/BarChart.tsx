@@ -1,4 +1,4 @@
-import { Tooltip } from '../../ui/Tooltip';
+import { Tooltip, TipLines } from '../../ui/Tooltip';
 import { useWidth } from '../useWidth';
 import type { Point } from './Sparkline';
 
@@ -16,7 +16,7 @@ const CHAR_W = 6;
 export function BarChart({ series, orientation, ariaLabel, formatTick }: { series: Series[]; orientation: 'vertical' | 'horizontal'; ariaLabel: string; formatTick: (n: number) => string }) {
   const { ref, width } = useWidth<HTMLDivElement>();
   const xs = series[0]?.points ?? [];
-  const totals = xs.map((_, i) => series.reduce((sum, s) => sum + (s.points[i]?.y ?? 0), 0));
+  const totals = xs.map((_, i) => series.reduce((sum, s) => sum + Math.max(0, s.points[i]?.y ?? 0), 0));
   const max = Math.max(0, ...totals);
   const ticks = [0, 1, 2, 3].map((t) => (t / 3) * max);
   const vertical = orientation === 'vertical';
@@ -39,12 +39,26 @@ export function BarChart({ series, orientation, ariaLabel, formatTick }: { serie
       const at = offset;
       offset += size;
       const round = k === live.length - 1; // only the data end is rounded
-      const common = { 'data-series': s.name, fill: s.color, style: round ? { clipPath: `inset(0 round ${vertical ? `${RADIUS}px ${RADIUS}px 0 0` : `0 ${RADIUS}px ${RADIUS}px 0`})` } : undefined };
+      const common = { 'data-series': s.name, fill: s.color, style: { pointerEvents: 'none' as const, ...(round ? { clipPath: `inset(0 round ${vertical ? `${RADIUS}px ${RADIUS}px 0 0` : `0 ${RADIUS}px ${RADIUS}px 0`})` } : {}) } };
       const rect = vertical
         ? <rect {...common} x={left + i * band + GAP / 2} y={TOP + PLOT_H - at - seg} width={Math.max(1, band - GAP)} height={seg} />
         : <rect {...common} x={left + at} y={TOP + i * ROW_H + GAP / 2} width={seg} height={ROW_H - GAP} />;
-      return <Tooltip key={`${s.name}:${p.x}`} content={`${s.name} · ${p.label}: ${p.valueText}`}>{rect}</Tooltip>;
+      return rect;
     });
+  });
+
+  // One hover band per bucket, the full column (or row): a hairline segment would be unhittable. It sits behind the
+  // segments, which ignore the pointer. The share is a drawing ratio of the bucket's positive stack; the texts are as returned.
+  const bands = xs.map((p, i) => {
+    const rows = series.filter((s) => s.points[i]?.y != null);
+    const sum = totals[i] ?? 0;
+    const content = (
+      <TipLines lines={[p.label, ...rows.map((s) => (
+        <span key={s.name}><span className="dm-chart-swatch" style={{ background: s.color }} /> {s.name}: {s.points[i]!.valueText}{sum > 0 && s.points[i]!.y! > 0 ? ` (${Math.round((s.points[i]!.y! / sum) * 100)}%)` : ''}</span>
+      ))]} />
+    );
+    const geom = vertical ? { x: left + i * band, y: TOP, width: band, height: PLOT_H } : { x: left, y: TOP + i * ROW_H, width: plotW, height: ROW_H };
+    return <Tooltip key={p.x} content={content}><rect data-bucket={p.x} fill="transparent" {...geom} /></Tooltip>;
   });
 
   return (
@@ -66,6 +80,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick }: { serie
             ? <text key={p.x} className="dm-chart-text" x={left + i * band + band / 2} y={TOP + PLOT_H + 16} textAnchor="middle">{p.label}</text>
             : <text key={p.x} className="dm-chart-text" x={left - 6} y={TOP + i * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle">{p.label}</text>
         ) : null))}
+        {bands}
         {marks}
       </svg>
       {series.length > 1 && (
