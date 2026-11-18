@@ -544,7 +544,6 @@ function ExportDialog({ exporter, martId, destination, title, initialError, busy
     };
     document.addEventListener('keydown', back);
     return () => document.removeEventListener('keydown', back);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadingCount = entries.filter((e) => e.state === 'loading').length;
