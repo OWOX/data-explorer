@@ -15,6 +15,8 @@ import { useBucket } from './useBucket';
 
 /** The gutter cell of a row that is not a data row; the grid has the same one. */
 const Gutter = () => <th aria-hidden data-chrome className="dm-chrome" />;
+/** The gutter's width (`.dm-grid tbody .dm-chrome` in bands.css). */
+const GUTTER_PX = 46;
 
 /**
  * The Charts mode's `<tbody>`: a strip of scorecards, one cell per data mart under that mart's header, then the panels
@@ -84,9 +86,11 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
         <td aria-hidden className="p-0" />
       </tr>
       <tr data-chart-panels-row>
-        <td colSpan={columns + 2} className="p-0">
-          {/* Sticky and as wide as the scroller shows, so the panels stay in view however wide the table is. */}
-          <div data-chart-panels className="dm-chart-panels sticky left-0" style={{ width: scrollerWidth }}>
+        <Gutter />
+        <td colSpan={columns + 1} data-chart-panels-cell>
+          {/* Pinned just right of the row-number gutter and as wide as the rest of the scroller, so the panels line up with
+              the scorecards (the same 0.75rem inset) and stay in view however wide the table is. */}
+          <div data-chart-panels className="dm-chart-panels sticky" style={{ left: GUTTER_PX, width: Math.max(0, scrollerWidth - GUTTER_PX) }}>
             {r.date && r.measure && <TimeSeriesPanel {...panelProps} bucket={bucket} range={{ error: rangeError, retry: retryRange }}
               onChange={(p) => change((cur) => ({ ...cur, timeSeries: { ...cur.timeSeries, ...p } }))} />}
             {r.pieMetric && r.pieDimension && <PiePanel {...panelProps} onChange={(p) => change((cur) => ({ ...cur, pie: { ...cur.pie, ...p } }))} />}

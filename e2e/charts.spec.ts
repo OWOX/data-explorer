@@ -69,9 +69,14 @@ test('the time series and the pie sit side by side when the band is wide, and Ch
   await expect(panels).toHaveCount(2);
   await expect(data(page).locator('svg[data-orientation]')).toBeVisible();
   const [a, b] = [(await panels.nth(0).boundingBox())!, (await panels.nth(1).boundingBox())!];
-  // One row of two at 1440px: same top, the pie to the right of the time series.
+  // One row of two at 1440px: same top, the pie to the right of the time series, a clear gap between them.
   expect(Math.abs(a.y - b.y)).toBeLessThanOrEqual(1);
-  expect(b.x).toBeGreaterThan(a.x + a.width - 1);
+  expect(b.x - (a.x + a.width)).toBeGreaterThanOrEqual(16);
+  // The panels' left edge is the scorecards' left edge, and the panels end inside the band.
+  const card = (await data(page).locator('[data-card]').first().boundingBox())!;
+  expect(Math.abs(a.x - card.x)).toBeLessThanOrEqual(1);
+  const frameBox = (await frame.boundingBox())!;
+  expect(b.x + b.width).toBeLessThanOrEqual(frameBox.x + frameBox.width);
   expect(Math.round((await frame.boundingBox())!.height)).toBe(Math.round(tableHeight));
   // A long sum shows short; hovering it shows the exact value.
   const amount = data(page).locator('[data-card="amount"] [data-card-value]');
