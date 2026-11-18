@@ -65,6 +65,20 @@ test('Charts: each data mart has its own cards in its group cell, Records first'
   await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
 });
 
+test('a long number shows short on its card, the exact value in a tooltip and to screen readers; a short one shows in full', async () => {
+  await charts();
+  const amount = await waitFor(() => { const v = group('orders')!.querySelector<HTMLElement>('[data-card="amount"] [data-card-value]'); expect(v?.dataset.exact).toBeTruthy(); return v!; });
+  const exact = amount.dataset.exact!;
+  expect(amount.textContent).not.toBe(exact);
+  expect(amount.textContent!.length).toBeLessThan(exact.length);
+  expect(amount).toHaveAttribute('aria-label', `Amount · Sum: ${exact}`);
+  await userEvent.hover(amount);
+  expect((await screen.findAllByText(exact)).length).toBeGreaterThan(0);
+  const records = group('orders')!.querySelector<HTMLElement>('[data-card^="records:"] [data-card-value]')!;
+  expect(records.textContent).toBe('450');
+  expect(records.dataset.exact).toBeUndefined();
+});
+
 test('a date column draws a trend under each card; hiding it takes the trends away', async () => {
   await charts();
   await waitFor(() => expect(data().querySelectorAll('svg[aria-label*="trend"]').length).toBeGreaterThan(0));

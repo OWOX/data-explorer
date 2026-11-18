@@ -1,0 +1,29 @@
+// Scorecard numbers in short form (1.6M, $117K): the exact value stays one hover away.
+import { formatsFor, type Format } from '../format/formats';
+
+const plain = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+const money = new Map<string, Intl.NumberFormat | null>();
+function moneyCompact(currency: string): Intl.NumberFormat | null {
+  if (!money.has(currency)) {
+    try { money.set(currency, new Intl.NumberFormat(undefined, { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 })); } catch { money.set(currency, null); }
+  }
+  return money.get(currency)!;
+}
+
+const toNumber = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * The short form of a number of at least 1,000 in an automatic, plain or money format; null when the full text is short
+ * already, or the value is not a number, or its format is one compact notation would misstate (a percent, a date).
+ */
+export function compactValue(v: unknown, type: string, f: Format): string | null {
+  const n = toNumber(v);
+  if (n === null || Math.abs(n) < 1000) return null;
+  if (f.kind === 'money' && formatsFor(type).includes('money')) return moneyCompact(f.currency)?.format(n) ?? null;
+  if (f.kind === 'auto' || f.kind === 'plain' || !formatsFor(type).includes(f.kind)) return plain.format(n);
+  return null;
+}

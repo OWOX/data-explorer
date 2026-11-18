@@ -6,6 +6,8 @@ import type { Row, TraverseFilter } from '../sdk/types';
 import { ErrorBox } from '../ui/ErrorBox';
 import { formatNumber } from '../ui/format';
 import { Skeleton } from '../ui/Skeleton';
+import { Tooltip } from '../ui/Tooltip';
+import { compactValue } from './compact';
 import type { ChartFields, ChartMart, Metric } from './fields';
 import { metricKey, scorecardsQuery, sparklineQuery, uniqueKey } from './queries';
 import { recordsCardId, type ResolvedCharts } from './settings';
@@ -37,6 +39,27 @@ function textOf(card: Card, row: Row | undefined, formatOf: Formatter): string {
   const v = row[card.key];
   if (!card.field) return formatNumber(v) ?? (v === null || v === undefined ? '' : String(v));
   return metricText(card.field, card.fn!, v, formatOf);
+}
+
+/** The card's short value (1.6M) when the number is long enough to have one, in the unit the full text has. */
+function shortOf(card: Card, row: Row, formatOf: Formatter): string | null {
+  const v = row[card.key];
+  if (!card.field) return compactValue(v, 'INTEGER', AUTO);
+  const type = outputType(card.field, card.fn!);
+  return compactValue(v, type, keepsUnit(card.fn!) ? formatOf(card.field.name, type) : AUTO);
+}
+
+/** The value on a card: short when it can be, with the exact text in a tooltip and for screen readers. */
+function CardValue({ card, row, formatOf }: { card: Card; row: Row; formatOf: Formatter }) {
+  const full = textOf(card, row, formatOf);
+  const short = shortOf(card, row, formatOf);
+  const cls = 'text-lg font-semibold tabular-nums';
+  if (short === null || short === full) return <div data-card-value className={cls}>{full}</div>;
+  return (
+    <Tooltip content={full}>
+      <div data-card-value data-exact={full} tabIndex={0} aria-label={`${card.label}: ${full}`} className={`${cls} w-fit cursor-default`}>{short}</div>
+    </Tooltip>
+  );
 }
 
 /** A metric's value as the grid shows it: the output type's format, with the column's own unit only where the function keeps it. */
@@ -74,7 +97,7 @@ export function MartCards({ martId, mart, main, r, scores, bucket, filter, versi
       {cards.map((c) => (
         <div key={c.id} data-card={c.id} className="min-w-0 flex-1 basis-36 overflow-hidden rounded-md border px-3 py-2">
           <div className="dm-muted truncate text-xs" title={c.label}>{c.label}</div>
-          {row ? <div data-card-value className="text-lg font-semibold tabular-nums">{textOf(c, row, formatOf)}</div> : <Skeleton rows={1} />}
+          {row ? <CardValue card={c} row={row} formatOf={formatOf} /> : <Skeleton rows={1} />}
           {spark.rows && spark.rows.length > 0 && <Sparkline points={points(c)} ariaLabel={`${c.label} trend`} />}
         </div>
       ))}

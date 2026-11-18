@@ -73,6 +73,12 @@ test('the time series and the pie sit side by side when the band is wide, and Ch
   expect(Math.abs(a.y - b.y)).toBeLessThanOrEqual(1);
   expect(b.x).toBeGreaterThan(a.x + a.width - 1);
   expect(Math.round((await frame.boundingBox())!.height)).toBe(Math.round(tableHeight));
+  // A long sum shows short; hovering it shows the exact value.
+  const amount = data(page).locator('[data-card="amount"] [data-card-value]');
+  const exact = (await amount.getAttribute('data-exact'))!;
+  await expect(amount).toHaveText(/^[\d.,]+\s?[KMB]$/);
+  await amount.hover();
+  await expect(page.getByRole('tooltip').filter({ hasText: exact })).toBeVisible();
   await page.screenshot({ path: 'tmp/charts-e2e-side.png' });
   await page.setViewportSize({ width: 900, height: 900 });
   // The panels take the scroller's width once its resize is observed: wait for them to stack.
