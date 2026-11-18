@@ -8,9 +8,11 @@ import { PAGE_SIZE } from '../../config';
 import { columnLetter } from './columnLetters';
 import { isNumericType } from '../format';
 import { withJoined, type JoinedSource } from '../../api/blendable';
-import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, sanitizeAggregation, ungroupableColumn, type AggFn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
+import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
 import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
-import type { ColumnFilter } from '../../filters/build';
+import { toTraverseFilters, type ColumnFilter } from '../../filters/build';
+import { ChartsBody } from '../../charts/ChartsBody';
+import { useWidth } from '../../charts/useWidth';
 import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKey } from '../../model/sort';
 import { orderColumns } from '../../state/column-order';
 import { joinedMartIds, ownNamesIn } from '../../state/join-plan';
@@ -124,7 +126,8 @@ type GridColumn = ColumnDef<typeof features, Row>;
 
 // The sorts reach the header cells through context so they keep their identity when a sort changes:
 // a new header component would remount and close an open filter popover.
-const GridEnv = createContext<{ sorts: SortKey[]; toggleSort: (field: string) => void }>({ sorts: [], toggleSort: () => undefined });
+// `sortable` is off in Charts mode: the titles are plain text there.
+const GridEnv = createContext<{ sorts: SortKey[]; toggleSort: (field: string) => void; sortable: boolean }>({ sorts: [], toggleSort: () => undefined, sortable: true });
 
 /** How wide a column may grow before its text is clipped: free text is allowed the most room. */
 const maxWidthOf = (field: Pick<Schema[number], 'category'>) => (field.category === 'string' || field.category === 'other' ? 'max-w-[24rem]' : field.category === 'number' || field.category === 'boolean' ? 'max-w-[12rem]' : 'max-w-[16rem]');
@@ -147,13 +150,13 @@ const outputLabel = (field: Schema[number], o: Output) => (o.fn ? `${columnTitle
 /** The column title as a button: none, ascending, descending, none. The arrow (and its precedence number) stays on screen while a sort is applied.
  * An extra function of an aggregated column has no sort (the backend sorts an aggregated column by its first function). */
 function SortTitle({ field, output }: { field: Schema[number]; output: Output }) {
-  const { sorts, toggleSort } = useContext(GridEnv);
+  const { sorts, toggleSort, sortable } = useContext(GridEnv);
   const at = sorts.findIndex((s) => s.field === field.name);
   const current = at < 0 ? null : sorts[at]!.direction;
   const label = outputLabel(field, output);
   // Inside a data mart's group the group row names the mart, so the title is the field alone.
   const shown = output.fn ? `${fieldLabel(field)} · ${AGG_LABELS[output.fn]}` : fieldLabel(field);
-  if (!output.sortable) return <OverflowTip text={label} measure={(el) => el.querySelector('.truncate')}><span className="inline-flex min-w-0 items-center font-medium"><span className="truncate">{shown}</span></span></OverflowTip>;
+  if (!output.sortable || !sortable) return <OverflowTip text={label} measure={(el) => el.querySelector('.truncate')}><span className="inline-flex min-w-0 items-center font-medium"><span className="truncate">{shown}</span></span></OverflowTip>;
   const button = (
     <button type="button" onClick={() => toggleSort(field.name)} aria-label={`Sort by ${label}, currently ${current ? DIRECTION_NAME[current] : 'not sorted'}${current && sorts.length > 1 ? `, sort ${at + 1} of ${sorts.length}` : ''}`}
       className="dm-sort inline-flex min-w-0 items-center gap-1 font-medium">
@@ -162,14 +165,6 @@ function SortTitle({ field, output }: { field: Schema[number]; output: Output })
   );
   return <OverflowTip text={label} extra={field.joined || output.fn ? undefined : fieldTitle(field)} measure={(el) => el.querySelector('.truncate')}>{button}</OverflowTip>;
 }
-
-/** The type an aggregated output has: a count is a whole number, an average or percentile a decimal, Combined text; the rest keep the field's. */
-const outputType = (field: Schema[number], fn: AggFn | undefined): string => {
-  if (fn === 'COUNT' || fn === 'COUNT_DISTINCT') return 'INTEGER';
-  if (fn === 'STRING_AGG') return 'STRING';
-  if (fn === 'AVG' || fn === 'P25' || fn === 'P50' || fn === 'P75' || fn === 'P95') return 'FLOAT';
-  return field.type;
-};
 
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 const stable = (g: GridState) => JSON.stringify([g.columns, Object.entries(g.filters).sort(([a], [b]) => a.localeCompare(b)), g.sorts, g.limit, g.aggregations ?? [], g.dateTrunc ?? [], g.view ?? 'table']);
@@ -277,9 +272,11 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // A folded band reads nothing: the query it last read stays, and a change made meanwhile is read once it opens.
   const [asked, setAsked] = useState(query);
   if (!paused && !blocked && asked !== query) setAsked(query);
-  const { rows: read, loading: reading, error, hasMore } = useMartRows(martId, asked, version);
-  const rows = blocked ? null : read;
-  const loading = reading && !blocked;
+  // Charts read their own queries: the grid's rows query is not run, so no billed read is wasted.
+  const charts = view === 'charts';
+  const { rows: read, loading: reading, error, hasMore } = useMartRows(martId, charts ? null : asked, version);
+  const rows = blocked || charts ? null : read;
+  const loading = reading && !blocked && !charts;
   // The fields on screen, kept as the same array until one of them changes: a joined mart arriving later (the picker reads it
   // when it opens) must not rebuild the headers, which would close a filter popover the reader has open.
   const [onScreen, setOnScreen] = useState<Schema>([]);
@@ -342,7 +339,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   }, [markEdit]);
   // The implicit first-key sort is sent and exported but not shown: no arrow, no aria-sort, so the first click is not a no-op.
   const shownSorts = useMemo(() => (grouped ? (own ?? []) : gridSorts), [grouped, own, gridSorts]);
-  const env = useMemo(() => ({ sorts: shownSorts, toggleSort }), [shownSorts, toggleSort]);
+  const env = useMemo(() => ({ sorts: shownSorts, toggleSort, sortable: !charts }), [shownSorts, toggleSort, charts]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
   const changeColumns = (picked: string[]) => {
     const cols = orderColumns(picked, sources, defaultColumns(native));
@@ -419,6 +416,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     canHide: (name) => shown.length > 1 && !(several && ownOn === 1 && ownNames.has(name)),
     hide: (name) => changeColumns(shown.filter((n) => n !== name)),
     typeOf: (f, o) => outputType(f, o.fn),
+    sortable: !charts,
   };
   // The selection, as Google Sheets has it: a cell (a frame and a fill handle), a block of cells (shift-click or Shift+Arrow: `to` is
   // the far end, the cell stays active), or whole columns or rows (a tint and a frame around the block); its column letters and row
@@ -457,7 +455,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     return out.join(' ');
   };
   const pickHeader = (kind: 'col' | 'row', i: number, extend: boolean) => setSelected((cur) => (extend && cur && cur.kind === kind ? { kind, from: cur.from, to: i } : { kind, from: i, to: i }));
-  const scroller = useRef<HTMLDivElement>(null);
+  // Measured for the charts: their panels are as wide as the visible grid, not the (wider) table.
+  const { ref: scroller, width: scrollerWidth } = useWidth<HTMLDivElement>();
+  const traverseFilters = useMemo(() => toTraverseFilters(schema, Object.values(filters)), [schema, filters]);
   // A click selects the cell; a shift-click stretches a block from the active cell (the one a click or a header selected) to this one,
   // and does not open another record.
   const pickCell = (row: number, col: number, e: React.MouseEvent) => {
@@ -477,7 +477,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     box.style.scrollPaddingTop = `${head.current?.offsetHeight ?? 0}px`;
     box.style.scrollPaddingLeft = '46px';
     cell.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-  }, [cellSel?.row, cellSel?.col, cellSel?.to?.row, cellSel?.to?.col]);
+  }, [scroller, cellSel?.row, cellSel?.col, cellSel?.to?.row, cellSel?.to?.col]);
   // Ctrl/Cmd+C: the selection goes to the clipboard as tab-separated text, as it is displayed. The copy event needs no clipboard permission,
   // so it works in the plugin's sandboxed frame. Fields, menus and a text range the reader selected inside a cell keep the browser's own copy.
   const onCopy = (e: React.ClipboardEvent<HTMLDivElement>) => {
@@ -526,12 +526,12 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
         {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} sorts={gridSorts} rows={rows} hasMore={hasMore} loading={loading} />}
       </BandTools>
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
-      <div ref={scroller} tabIndex={0} onKeyDown={onGridKey} onCopy={onCopy} className={`dm-grid-root min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
+      <div ref={scroller} tabIndex={0} onKeyDown={charts ? undefined : onGridKey} onCopy={charts ? undefined : onCopy} className={`dm-grid-root min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
         <table className="dm-grid w-full border-collapse">
           <thead ref={head} className="dm-head sticky top-0 z-10">
             <tr aria-hidden data-chrome>
               <th data-chrome rowSpan={3} className="dm-chrome dm-corner" />
-              {outputs.map((o, i) => <th key={o.key} data-chrome data-selected={colMark(i)} onClick={(e) => pickHeader('col', i, e.shiftKey)} className="dm-chrome dm-letter">{columnLetter(i)}</th>)}
+              {outputs.map((o, i) => <th key={o.key} data-chrome data-selected={colMark(i)} onClick={charts ? undefined : (e) => pickHeader('col', i, e.shiftKey)} className="dm-chrome dm-letter">{columnLetter(i)}</th>)}
               <th data-chrome className="dm-chrome dm-letter w-full" />
             </tr>
             <tr data-group-row>
@@ -554,14 +554,15 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               </tr>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                {hg.headers.map((h) => <th key={h.id} aria-sort={outputByKey.get(h.column.id)?.sortable ? sortOf(shownSorts, outputByKey.get(h.column.id)!.column) : 'none'} className={`dm-th ${maxWidthOf(byName.get(outputByKey.get(h.column.id)!.column)!)} overflow-hidden text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
+                {hg.headers.map((h) => <th key={h.id} aria-sort={!charts && outputByKey.get(h.column.id)?.sortable ? sortOf(shownSorts, outputByKey.get(h.column.id)!.column) : 'none'} className={`dm-th ${maxWidthOf(byName.get(outputByKey.get(h.column.id)!.column)!)} overflow-hidden text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
                 {/* Takes the width the columns leave over, so the line under the header runs the whole card. */}
                 <th aria-hidden className="dm-th dm-th-fill w-full p-0" />
               </tr>
             ))}
           </thead>
           <tbody>
-            {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`}</td></tr>
+            {charts && !blocked ? <ChartsBody martId={martId} schema={schema} shown={shown} agg={aggNow} filter={traverseFilters} groups={groups} version={version} paused={paused} hasFilters={hasFilters} formatOf={formatOf} scrollerWidth={scrollerWidth} />
+              : blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`}</td></tr>
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} /></td></tr>
               : !rows ? <tr><Gutter /><td colSpan={outputs.length + 1}><Skeleton rows={8} /></td></tr>
               : rows.length === 0 ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground">{hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.'}</td></tr>
@@ -576,7 +577,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               ))}
           </tbody>
         </table>
-        {!error && !blocked && hasMore && <div className="p-3 text-center"><button type="button" onClick={() => setLimit((l) => l + PAGE_SIZE)} className="rounded-md border px-3 py-1 text-sm hover:bg-accent">Load more</button></div>}
+        {!charts && !error && !blocked && hasMore && <div className="p-3 text-center"><button type="button" onClick={() => setLimit((l) => l + PAGE_SIZE)} className="rounded-md border px-3 py-1 text-sm hover:bg-accent">Load more</button></div>}
       </div>
     </div>
     </ColumnMenuEnvContext.Provider>

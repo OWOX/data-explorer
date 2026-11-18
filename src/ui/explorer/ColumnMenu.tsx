@@ -35,6 +35,8 @@ export type ColumnMenuEnv = {
   hide: (field: string) => void;
   /** The warehouse type the column shows, after any aggregation function. */
   typeOf: (field: Field, output: Output) => string;
+  /** False in Charts mode: no sort row and no sort mark. Absent means true. */
+  sortable?: boolean;
 };
 
 const NOOP = () => undefined;
@@ -111,7 +113,8 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
   };
   const choose = (f: Format) => { env.setFormat(field.name, f); onClose(); };
   const dir = env.sorts.find((s) => s.field === field.name)?.direction ?? null;
-  const on: Record<SubKey, boolean> = { filter: !!env.filters[field.name], aggregate: aggOn(env.draftOf(field.name)), format: formatActive(env, field, output, type), sort: output.sortable && !!dir };
+  const canSort = output.sortable && env.sortable !== false;
+  const on: Record<SubKey, boolean> = { filter: !!env.filters[field.name], aggregate: aggOn(env.draftOf(field.name)), format: formatActive(env, field, output, type), sort: canSort && !!dir };
   const glyph: Record<SubKey, ReactNode> = { filter: <Funnel />, aggregate: <Sigma />, format: <Hash />, sort: <ArrowUpDown /> };
   const rowFor = (k: SubKey, label: string, haspopup: 'menu' | 'dialog') => (
     <Row key={k} label={label} icon={glyph[k]} active={on[k]} sub haspopup={haspopup} expanded={sub?.key === k} rowRef={ref(k)} onActivate={(r) => open(k, r, true)} onOpen={(r) => open(k, r, true)} onHover={(r) => hoverRow(k, r)} onLeaveRow={leaveRow} />
@@ -122,7 +125,7 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
         {rowFor('filter', 'Filter', 'dialog')}
         {aggregable && rowFor('aggregate', 'Aggregate', 'dialog')}
         {formats.length > 0 && rowFor('format', 'Format', 'menu')}
-        {output.sortable && rowFor('sort', 'Sort', 'menu')}
+        {canSort && rowFor('sort', 'Sort', 'menu')}
         <Divider />
         <Row label="Hide column" icon={<EyeOff />} disabled={!env.canHide(field.name)} onActivate={hide} onHover={hoverOther} onLeaveRow={leaveRow} />
       </Panel>
@@ -193,7 +196,8 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
   const type = env.typeOf(field, output);
   // Active means the member set something: an AI project pick does not light the icon.
   const formatOn = formatActive(env, field, output, type);
-  const active = !!filter || aggregated || (output.sortable && !!direction) || formatOn;
+  const canSort = output.sortable && env.sortable !== false;
+  const active = !!filter || aggregated || (canSort && !!direction) || formatOn;
   const close = useCallback((refocus = true) => { setMenu(null); if (refocus) icon.current?.focus(); }, []);
   const toggle = (anchor: HTMLElement, sub: SubKey | null) => setMenu((cur) => (cur && cur.sub === sub ? null : { anchor, sub }));
   useEffect(() => {
@@ -228,7 +232,7 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
           </button>
         </Tooltip>
       )}
-      {output.sortable && direction && (
+      {canSort && direction && (
         <button type="button" data-sort-mark aria-label={`Sorted ${direction === 'asc' ? 'A to Z' : 'Z to A'}: ${title}`} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, 'sort')}>
           <Arrow className="dm-icon" />{env.sorts.length > 1 && <span className="text-[9px] leading-none tabular-nums">{at + 1}</span>}
         </button>
