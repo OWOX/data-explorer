@@ -26,6 +26,8 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
   const mockSql = (id: string, o: TraverseOptions) =>
     `SELECT ${(o.column ?? ['*']).map((c) => (c === '*' ? c : `\`${c}\``)).join(', ')}\nFROM \`mock.${id}\`${o.limit ? `\nLIMIT ${o.limit}` : ''}`;
   const notFound = (what: string) => Object.assign(new Error(`${what} not found`), { payload: { code: 'HTTP_ERROR', status: 404 } });
+  /** OWOX answers a report with its destination as `dataDestinationAccess`, whatever the write called it (`dataDestinationId`). */
+  const accessOf = (body: unknown) => { const id = (body as { dataDestinationId?: string }).dataDestinationId; return id ? { dataDestinationAccess: { id } } : {}; };
   const report = (id: string) => reports.get(id) ?? (() => { throw notFound('Report'); })();
   // How long a report run takes before it reports success.
   const RUN_MS = opts.runMs ?? 1000;
@@ -250,7 +252,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         const cur = report(decodeURIComponent(m[1]!));
         const b = body as { columnConfig?: string[]; filterConfig?: { column: string }[] | null; sortConfig?: { column: string }[] | null };
         rejectHidden(cur.dataMartId, [...(b.columnConfig ?? []), ...(b.filterConfig ?? []).map((x) => x.column), ...(b.sortConfig ?? []).map((x) => x.column)]);
-        Object.assign(cur, body);
+        Object.assign(cur, body, accessOf(body));
         return cur as T;
       }),
       postJson: <T,>(path: string, body: unknown) => slow(() => {
@@ -264,7 +266,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
           const b = body as { dataMartId: string; columnConfig?: string[]; filterConfig?: { column: string }[] | null; sortConfig?: { column: string }[] | null };
           rejectHidden(b.dataMartId, [...(b.columnConfig ?? []), ...(b.filterConfig ?? []).map((x) => x.column), ...(b.sortConfig ?? []).map((x) => x.column)]);
           reportSerial += 1;
-          const r: MockReport = { ...(body as object), id: `mock-report-${reportSerial}`, dataMartId: (body as { dataMartId: string }).dataMartId, lastRunAt: null, lastRunStatus: null, lastRunError: null };
+          const r: MockReport = { ...(body as object), ...accessOf(body), id: `mock-report-${reportSerial}`, dataMartId: (body as { dataMartId: string }).dataMartId, lastRunAt: null, lastRunStatus: null, lastRunError: null };
           reports.set(r.id, r);
           return r as T;
         }

@@ -194,6 +194,8 @@ export function createExporter(ctx: Ctx): Exporter {
         const list = Array.isArray(found?.document.reports) ? found.document.reports.filter((r) => r && typeof r.reportId === 'string') : [];
         if (!docs.has(martId)) docs.set(martId, list.map((r) => ({ reportId: r.reportId, ...(typeof r.usedAt === 'string' ? { usedAt: r.usedAt } : {}) })));
       } catch (e) {
+        // A parallel read may have stored the document meanwhile: use it instead of failing.
+        if (docs.has(martId)) return docs.get(martId)!;
         console.warn('Reading the exported reports failed', e);
         return null;
       }

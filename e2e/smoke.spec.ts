@@ -293,28 +293,29 @@ test('sort a column descending, then add a second sort', async ({ page }) => {
   await expect(firstCell()).toHaveText('1');
 });
 
-test('Export to Google Sheets: with one destination the menu lists it; New report creates the report, runs it and opens the sheet', async ({ page }) => {
+test('Export to Google Sheets: the destination opens the dialog; Export creates the report, runs it and opens the sheet, and the next dialog offers it for update', async ({ page }) => {
   await page.goto('/?mock&sheets=1');
   const data = await ordersGrid(page);
   const popup = page.waitForEvent('popup');
   await data.getByText('Export', { exact: true }).click();
   await data.getByRole('menuitem', { name: /Team Sheets/ }).click();
-  await data.getByRole('menuitem', { name: /New report/ }).click();
-  await page.getByRole('dialog', { name: 'New report' }).getByRole('button', { name: 'Export' }).click();
+  await page.getByRole('dialog', { name: 'Export to Team Sheets' }).getByRole('button', { name: 'Export' }).click();
   await expect(page.locator('#dm-toast-stack').getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', /spreadsheets\/d\/mock-sheet-1\/edit#gid=0/, { timeout: 10_000 });
   await expect(data.getByRole('link', { name: /Open the sheet/ })).toHaveCount(0);
   expect((await popup).url()).toContain('mock-sheet-1');
-  // The report is remembered, so the destination's flyout offers to update it.
+  // The report is remembered and was just used, so the next dialog starts on updating it.
   await data.getByText('Export', { exact: true }).click();
-  await data.getByRole('menuitem', { name: /Team Sheets/ }).hover();
-  await expect(data.getByRole('menuitem', { name: /Update “Orders · Data Explorer · / })).toBeVisible();
+  await data.getByRole('menuitem', { name: /Team Sheets/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Export to Team Sheets' });
+  await expect(dialog.getByRole('radio', { name: /Orders · Data Explorer · / })).toBeChecked();
+  await expect(dialog.getByText('Recently used')).toBeVisible();
 });
 
 test('Export: with no Sheets destination the menu is still there, with the AI group', async ({ page }) => {
   await page.goto('/?mock&sheets=0');
   const data = await ordersGrid(page);
   await data.getByText('Export', { exact: true }).click();
-  await expect(data.locator('[role="menuitem"]:not([data-link])')).toHaveText(['Copy to clipboard', 'Claude', 'ChatGPT', 'Copy SQL']);
+  await expect(data.locator('[role="menuitem"]:not([data-link])')).toHaveText(['Claude', 'ChatGPT', 'Copy to clipboard', 'Copy SQL']);
   await expect(data.getByRole('menuitem', { name: 'Open OWOX in Claude' })).toBeVisible();
 });
 
