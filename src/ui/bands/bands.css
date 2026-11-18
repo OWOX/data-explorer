@@ -335,7 +335,7 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-grid { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 20px; letter-spacing: 0; color: var(--grid-text); }
 /* The grid's card has square corners at every corner, like a sheet. */
 .dm-bigcard:has(.dm-grid-root) { border-radius: 0; }
-.dm-grid-root { outline: none; }
+.dm-grid-root { outline: none; position: relative; }
 .dm-grid-root:focus-visible:not(:has([data-selected])) { outline: 2px solid var(--sheet-select); outline-offset: -2px; }
 /* A column's header actions are 20% smaller than the 14px they were. */
 .dm-icon { width: 11.2px; height: 11.2px; }
@@ -380,6 +380,14 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-grid .dm-th { height: 25px; padding-bottom: 4px; box-shadow: inset -1px 0 0 var(--grid-line-strong), inset 0 -4px 0 var(--grid-freeze); }
 .dm-grid .dm-th:last-child { box-shadow: inset 0 -4px 0 var(--grid-freeze); }
 .dm-grid td:last-child { box-shadow: inset 0 -1px 0 var(--grid-line); }
+/* Moving a column by its header, as in Sheets: the header shows a hand (the sort button keeps its pointer), the column stays shaded where
+   it stands, a ghost of it follows the pointer, and a thick bar marks the gap it will land in. All three are drawn over the scroller. */
+.dm-grid .dm-th[data-column] { cursor: grab; user-select: none; }
+body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user-select: none !important; }
+.dm-drag-shade, .dm-drag-ghost, .dm-drop-line { position: absolute; z-index: 20; pointer-events: none; }
+.dm-drag-shade { background: var(--drag-shade); }
+.dm-drag-ghost { background: var(--drag-ghost); border-inline: 1px solid var(--drag-line); box-sizing: border-box; }
+.dm-drop-line { width: 3px; background: var(--drag-line); }
 /* The group row above the titles: a divider between data marts, a line under the row (the filler cell carries it to the
    card's edge), and the remove button shown with the row's hover or focus. */
 .dm-gh-edge { box-shadow: inset -1px 0 0 var(--grid-line-strong), inset 0 -1px 0 var(--grid-line); }

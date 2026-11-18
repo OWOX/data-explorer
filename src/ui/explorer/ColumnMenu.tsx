@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ArrowUpDown, EyeOff, Funnel, Hash, Sigma } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, EyeOff, Funnel, Hash, Sigma } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { formatsFor, keepsUnit, type Format } from '../../format/formats';
 import { describeFilter } from '../../filters/catalogue';
@@ -33,6 +33,9 @@ export type ColumnMenuEnv = {
   setFormat: (column: string, f: Format | null) => void;
   canHide: (field: string) => boolean;
   hide: (field: string) => void;
+  /** Whether the column has a neighbour on that side inside its own data mart's group. */
+  canMove: (field: string, dir: -1 | 1) => boolean;
+  move: (field: string, dir: -1 | 1) => void;
   /** The warehouse type the column shows, after any aggregation function. */
   typeOf: (field: Field, output: Output) => string;
   /** False in Charts mode: no sort row and no sort mark. Absent means true. */
@@ -42,7 +45,7 @@ export type ColumnMenuEnv = {
 const NOOP = () => undefined;
 export const ColumnMenuEnvContext = createContext<ColumnMenuEnv>({
   sorts: [], setSort: NOOP, filters: {}, setFilter: NOOP, isAggregated: () => false, draftOf: () => ({ functions: [], bucket: null, timeZone: null }), blockerFor: () => undefined,
-  changeAgg: NOOP, formatOf: () => ({ kind: 'auto' }), memberFormat: () => undefined, setFormat: NOOP, canHide: () => true, hide: NOOP, typeOf: (f) => f.type,
+  changeAgg: NOOP, formatOf: () => ({ kind: 'auto' }), memberFormat: () => undefined, setFormat: NOOP, canHide: () => true, hide: NOOP, canMove: () => false, move: NOOP, typeOf: (f) => f.type,
 });
 
 export const FORMAT_LABELS: Record<Format['kind'], string> = { auto: 'Automatic', plain: 'Plain number', percent: 'Percent', money: 'Money', date: 'Date', datetime: 'Date time', time: 'Time' };
@@ -127,6 +130,8 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
         {formats.length > 0 && rowFor('format', 'Format', 'menu')}
         {canSort && rowFor('sort', 'Sort', 'menu')}
         <Divider />
+        <Row label="Move left" icon={<ArrowLeft />} disabled={!env.canMove(field.name, -1)} onActivate={() => { env.move(field.name, -1); onClose(); }} onHover={hoverOther} onLeaveRow={leaveRow} />
+        <Row label="Move right" icon={<ArrowRight />} disabled={!env.canMove(field.name, 1)} onActivate={() => { env.move(field.name, 1); onClose(); }} onHover={hoverOther} onLeaveRow={leaveRow} />
         <Row label="Hide column" icon={<EyeOff />} disabled={!env.canHide(field.name)} onActivate={hide} onHover={hoverOther} onLeaveRow={leaveRow} />
       </Panel>
       {placed && sub?.key === 'filter' && (

@@ -46,6 +46,9 @@
   --sheet-sel-bg: #d3e3fd;
   --sheet-sel-text: #041e49;
   --sheet-select: #1a73e8;
+  --drag-shade: rgba(95, 99, 104, 0.12);
+  --drag-ghost: rgba(95, 99, 104, 0.28);
+  --drag-line: #5f6368;
   --sheet-range-bg: #e8f0fe;
   --sheet-full-bg: #0b57d0;
   --sheet-full-text: #ffffff;
@@ -77,6 +80,9 @@
   --sheet-sel-bg: #1d3a63;
   --sheet-sel-text: #d3e3fd;
   --sheet-select: #8ab4f8;
+  --drag-shade: rgba(232, 234, 237, 0.1);
+  --drag-ghost: rgba(232, 234, 237, 0.25);
+  --drag-line: #bdc1c6;
   --sheet-range-bg: #16294a;
   --sheet-full-bg: #8ab4f8;
   --sheet-full-text: #0b1220;
