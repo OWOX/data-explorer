@@ -222,7 +222,10 @@ export function MartCard({
         {freshness && <Mark tone="idle" lines={[`Data updated ${relativeTime(freshness)}`]}><History size={14} /></Mark>}
         <Contexts contexts={contexts} />
       </div>
-      {hint && mainTitle && <span role="status" className="dm-card-hint">Can't join {mainTitle}. Drag it onto {mainTitle} to make it the main data mart.</span>}
+      {/* The live region stays mounted so a screen reader announces the hint when it appears. */}
+      <span aria-live="polite" className="dm-card-live">
+        {hint && unjoinable && mainTitle && <span role="status" className="dm-card-hint">Can't join {mainTitle}. Drag it onto {mainTitle} to make it the main data mart.</span>}
+      </span>
     </article>
   );
 }

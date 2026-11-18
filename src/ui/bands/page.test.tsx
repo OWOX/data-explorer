@@ -300,7 +300,6 @@ describe('the four bands', () => {
     expect(await within(data()).findByText('You do not have access to this data mart')).toBeInTheDocument();
     expect(within(data()).queryByRole('table')).toBeNull();
   });
-
 });
 
 describe('the grid', () => {
@@ -885,19 +884,21 @@ describe('the storage filter', () => {
     expect(within(menu).getByRole('option', { name: /Sales Lake/ })).toHaveTextContent('4');
   });
 
-  test('unticking Sales Lake removes Payments from the band; the Data band keeps the selected mart, with no history entry', async () => {
+  test('unticking Sales Lake removes Payments from the band; the selected Data Source stays selected', async () => {
     await ordersGrid();
-    expect(within(marts()).getByText('Payments')).toBeInTheDocument();
+    // Orders cannot join Payments, so the band lists it through its Data Source.
+    fireEvent.click(within(sources()).getByText('Shopify').closest('article')!);
+    await within(marts()).findByText('Payments');
     await userEvent.click(within(storageMenu()).getByRole('option', { name: /Sales Lake/ }));
     await waitFor(() => expect(within(marts()).queryByText('Payments')).toBeNull());
     expect(within(marts()).getByText('Customers')).toBeInTheDocument();
-    expect(martCard('Orders')).toHaveAttribute('aria-pressed', 'true');
-    expect(within(data()).getByText('Orders')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+    expect(within(sources()).getByText('Shopify').closest('article')).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('a selected mart in an unticked storage leaves the Data Marts band but stays in the Data band', async () => {
     await ordersGrid();
+    // The band lists Payments for a search; its make-main button makes it the main mart.
+    await search('payments');
     await makeMain('Payments');
     await within(data()).findByText('Payments');
     await userEvent.click(within(storageMenu()).getByRole('option', { name: /Sales Lake/ }));
@@ -1616,7 +1617,6 @@ describe('whole column and row selection, and the header layout', () => {
   });
 });
 
-
 test('a mart the main one cannot join is dimmed in a search, and a click explains instead of switching', async () => {
   await mountWith();
   await search('Order Items');
@@ -1627,4 +1627,15 @@ test('a mart the main one cannot join is dimmed in a search, and a click explain
   expect(await within(items).findByRole('status')).toHaveTextContent("Can't join Orders. Drag it onto Orders to make it the main data mart.");
   expect(marts.querySelector('article')).toHaveTextContent('Orders');
   expect(within(document.getElementById('band-data')!).queryAllByRole('columnheader').some((h) => h.textContent === 'Order Items')).toBe(false);
+});
+
+test('with a mart nobody can open as the main one, a click on another card makes it the main one', async () => {
+  const fixtures = demoFixtures();
+  fixtures.edges.push({ id: 'e-orders-secret', sourceDataMartId: 'orders', targetDataMartId: 'secret_ledger', joinConditions: [{ sourceFieldName: 'id', targetFieldName: 'id' }] });
+  await mountWith((c) => c, fixtures);
+  await within(data()).findByRole('table');
+  await userEvent.click(screen.getByRole('button', { name: 'Select Secret Ledger (test probe)' }));
+  await within(data()).findByText('You do not have access to this data mart');
+  fireEvent.click((await within(marts()).findByText('Orders')).closest('article')!);
+  await waitFor(() => expect(headingText()).toBe('Orders'));
 });

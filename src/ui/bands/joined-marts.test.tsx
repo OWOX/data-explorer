@@ -105,6 +105,7 @@ test('the make-main button makes a joined mart the main one, and Undo takes it b
   await waitFor(() => expect(title()).toBe('Orders + Customers'));
   await userEvent.click(within(card('Customers')).getByRole('button', { name: 'Make main data mart' }));
   await waitFor(() => expect(groupTitles()[0]).toBe('Customers'));
+  expect(title()).toBe('Customers');
   // The old main leaves the band once the card animation ends.
   await waitFor(() => expect(marts().querySelector('article')).toBe(card('Customers')));
   await undo();

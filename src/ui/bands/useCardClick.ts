@@ -39,7 +39,8 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
 
   const run = useCallback(async (id: string, options?: ClickOptions) => {
     const main = latest.current.selection.martId;
-    const makeMain = options?.mode === 'makeMain';
+    // With no readable main mart there is nothing to join to, so a click makes the clicked mart the main one.
+    const makeMain = options?.mode === 'makeMain' || (!!main && model.marts.get(main)?.accessible === false);
     const sources = new Map<string, JoinedSource[]>();
     const grids = new Map<string, GridState>();
     const picks = new Map<string, Picks>();
