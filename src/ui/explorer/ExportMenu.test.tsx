@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import type { ExportedReport } from '../../api/exports';
@@ -66,8 +66,14 @@ test('one destination and no report: the button is still a menu; New report make
   await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 5000 });
   const writes = t.calls.filter((c) => /^(POST|PUT) \/api\/(reports|data-destinations)/.test(c));
   expect(writes).toEqual(['POST /api/data-destinations/d-sheets-team/google-sheets/documents', 'POST /api/reports', 'POST /api/reports/mock-report-1/run']);
-  expect(await within(data()).findByText(/Exported to "Orders · Data Explorer · /)).toBeInTheDocument();
-  expect(within(data()).getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0');
+  const outcome = await screen.findByText(/Exported to "Orders · Data Explorer · /);
+  expect(screen.getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0');
+  // The outcome is a persistent toast with a Dismiss button, not text in the Data band's title row.
+  const toast = outcome.closest('[role="status"]') as HTMLElement;
+  expect(data().contains(toast)).toBe(false);
+  expect(within(data()).queryByText(/Exported to/)).toBeNull();
+  await userEvent.click(within(toast).getByRole('button', { name: 'Dismiss' }));
+  expect(screen.queryByText(/Exported to "Orders/)).toBeNull();
 });
 
 test('the Export button carries the archive-restore icon, and the Google Sheets icon stays on the destination rows', async () => {
@@ -170,7 +176,7 @@ test('a failure after the report exists closes the dialog and reports in the hea
   await userEvent.type(within(dialog).getByLabelText('Spreadsheet link'), 'https://docs.google.com/spreadsheets/d/mine/edit');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-  expect(await within(data()).findByText(/The run could not be followed: run refused/)).toBeInTheDocument();
+  expect(await screen.findByText(/The run could not be followed: run refused/)).toBeInTheDocument();
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
 });
 
@@ -182,7 +188,7 @@ test('a remembered report with an unrecognised target is not updated and nothing
   await t.ctx.owox.postJson('/api/reports', { title: 'x', dataMartId: 'orders' });
   await openMenu();
   await userEvent.click(await within(data()).findByRole('menuitem', { name: /Update/ }));
-  expect(await within(data()).findByText(/unrecognised spreadsheet/)).toBeInTheDocument();
+  expect(await screen.findByText(/unrecognised spreadsheet/)).toBeInTheDocument();
   expect(t.open).not.toHaveBeenCalled();
   expect(t.calls.some((c) => c.startsWith('PUT'))).toBe(false);
 });
@@ -220,7 +226,7 @@ test('leaving the mart and coming back keeps the export busy: no second export, 
   await userEvent.click(within(data()).getByText('Exporting…'));
   expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
   await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 15000 });
-  expect(await within(data()).findByText(/Exported to "Orders · Data Explorer · /)).toBeInTheDocument();
+  expect(await screen.findByText(/Exported to "Orders · Data Explorer · /)).toBeInTheDocument();
   await waitFor(() => expect(within(data()).queryByText('Exporting…')).toBeNull());
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
 }, 30000);
@@ -238,8 +244,8 @@ test('an export that finishes while the member is on another mart does not open 
   await new Promise((r) => setTimeout(r, 9000));
   expect(t.open).not.toHaveBeenCalled();
   await toMart('Orders');
-  expect(await within(data()).findByText(/Exported to "Orders · Data Explorer · /)).toBeInTheDocument();
-  expect(within(data()).getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0');
+  expect(await screen.findByText(/Exported to "Orders · Data Explorer · /)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0');
   expect(t.open).not.toHaveBeenCalled();
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
 }, 40000);
@@ -279,14 +285,14 @@ test.each([
 ])('%s on the report step is treated like a timeout: no retry', async (_n, extra) => {
   const { t } = await newReportFailing(() => Object.assign(new Error('gateway'), extra));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-  expect(await within(data()).findByText('The report may have been created; check OWOX before trying again.')).toBeInTheDocument();
+  expect(await screen.findByText('The report may have been created; check OWOX before trying again.')).toBeInTheDocument();
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
 });
 
 test('a timeout on the report step closes the dialog and warns that the report may exist, with no retry', async () => {
   const { t } = await newReportFailing(() => Object.assign(new Error('Request timed out'), { payload: { code: 'TIMEOUT' } }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-  expect(await within(data()).findByText('The report may have been created; check OWOX before trying again.')).toBeInTheDocument();
+  expect(await screen.findByText('The report may have been created; check OWOX before trying again.')).toBeInTheDocument();
   expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1);
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
 });
@@ -539,7 +545,7 @@ describe('the AI group', () => {
     await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
     expect(await screen.findByText('Prompt copied. Paste it into Claude')).toBeInTheDocument();
     // A standard toast, not a note in the Data band's title row.
-    const toast = screen.getByRole('status');
+    const toast = screen.getByText('Prompt copied. Paste it into Claude').closest('[role="status"]') as HTMLElement;
     expect(toast).toHaveTextContent('Prompt copied');
     expect(data().contains(toast)).toBe(false);
     expect(within(toast).getByRole('button', { name: 'Show prompt' })).toBeInTheDocument();
@@ -751,5 +757,47 @@ describe('Copy to clipboard', () => {
     fin.focus();
     await userEvent.keyboard('{ArrowRight}');
     expect(await within(data()).findByRole('menu', { name: 'Finance Sheets' })).toBeInTheDocument();
+  });
+
+  describe('the toast timer never closes a dialog', () => {
+    const rows: Row[] = [{ id: 1, note: 'a', customers__city: 'x' }];
+    beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }); });
+    afterEach(() => { vi.useRealTimers(); });
+    const user = () => userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+
+    test('"Show prompt" stays open past the six seconds, and the toast stays while its dialog is open', async () => {
+      setClipboard(vi.fn().mockResolvedValue(undefined));
+      lone(rows);
+      const u = user();
+      await u.click(await screen.findByText('Export'));
+      await u.click(await screen.findByRole('menuitem', { name: 'Claude' }));
+      const show = await screen.findByRole('button', { name: 'Show prompt' });
+      await u.click(show);
+      await screen.findByRole('dialog', { name: 'Prompt' });
+      act(() => { vi.advanceTimersByTime(20_000); });
+      expect(screen.getByRole('dialog', { name: 'Prompt' })).toBeInTheDocument();
+      expect(screen.getByText('Prompt copied. Paste it into Claude')).toBeInTheDocument();
+      // Closed, the toast runs out its time and only then goes.
+      await u.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Prompt' })).toBeNull());
+      // The pointer left the toast (hover holds it too).
+      await u.unhover(show);
+      act(() => { vi.advanceTimersByTime(6100); });
+      expect(screen.queryByText('Prompt copied. Paste it into Claude')).toBeNull();
+    });
+
+    test('with a blocked clipboard the manual-copy dialog stays open until it is closed', async () => {
+      Object.defineProperty(document, 'execCommand', { configurable: true, value: () => false });
+      lone(rows);
+      const u = user();
+      // userEvent.setup() installs its own clipboard stub; the blocked one goes in after it.
+      setClipboard(undefined);
+      await u.click(await screen.findByText('Export'));
+      await u.click(await screen.findByRole('menuitem', { name: 'Copy to clipboard' }));
+      await waitFor(() => expect(screen.getByRole('dialog', { name: 'Copy the data' })).toBeInTheDocument());
+      act(() => { vi.advanceTimersByTime(20_000); });
+      expect(screen.getByRole('dialog', { name: 'Copy the data' })).toBeInTheDocument();
+      expect(screen.getByText('Could not copy. Copy the data by hand')).toBeInTheDocument();
+    });
   });
 });

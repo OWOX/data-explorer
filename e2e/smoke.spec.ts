@@ -287,7 +287,8 @@ test('Export to Google Sheets: with one destination the menu lists it; New repor
   await data.getByRole('menuitem', { name: /Team Sheets/ }).click();
   await data.getByRole('menuitem', { name: /New report/ }).click();
   await page.getByRole('dialog', { name: 'New report' }).getByRole('button', { name: 'Export' }).click();
-  await expect(data.getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', /spreadsheets\/d\/mock-sheet-1\/edit#gid=0/, { timeout: 10_000 });
+  await expect(page.getByRole('status').getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', /spreadsheets\/d\/mock-sheet-1\/edit#gid=0/, { timeout: 10_000 });
+  await expect(data.getByRole('link', { name: /Open the sheet/ })).toHaveCount(0);
   expect((await popup).url()).toContain('mock-sheet-1');
   // The report is remembered, so the destination's flyout offers to update it.
   await data.getByText('Export', { exact: true }).click();
@@ -626,7 +627,7 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   await expect(grid.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
   await expect(grid.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
   await expect(martCard(opened, 'Orders')).toHaveAttribute('aria-pressed', 'true');
-  await expect(opened.getByRole('status')).toHaveCount(0);
+  await expect(opened.getByRole('status').filter({ hasText: /\S/ })).toHaveCount(0);
 
   // The address returns to the main page, so a reload doesn't reapply the link.
   await expect.poll(() => opened.evaluate(() => window.__routeSet)).toBe('/');
@@ -637,7 +638,7 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   await expect(band(opened, 'data').getByRole('row').nth(1)).toBeVisible();
   await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders']);
   await expect(band(opened, 'data').getByRole('row')).not.toHaveCount(5);
-  await expect(opened.getByRole('status')).toHaveCount(0);
+  await expect(opened.getByRole('status').filter({ hasText: /\S/ })).toHaveCount(0);
   expect(new URL(opened.url()).searchParams.has('route')).toBe(false);
 });
 

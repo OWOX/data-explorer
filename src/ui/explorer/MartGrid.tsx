@@ -222,7 +222,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     }
   }
   // What the member applied that the request leaves out (a function the column no longer allows, an incomplete filter), said once in a toast.
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useState<{ text: string } | null>(null);
   // null: the member has set no sort, so rows open newest date first. The default is judged once, from the columns the grid opened with.
   const [own, setOwn] = useState<SortKey[] | null>(() => (seed.saved?.sorts ? (sortsOnColumns(seed.saved.sorts, visible).length || !seed.saved.sorts.length ? sortsOnColumns(seed.saved.sorts, visible) : null) : null));
   const [fallback] = useState(() => defaultSort(native, visible));
@@ -310,7 +310,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const changeAgg = useCallback((column: string, draft: AggregationDraft) => {
     const next = applyDraft(column, draft, agg);
     const unapplied = unappliedAggregation(column, next, schema);
-    if (unapplied) setNote(unapplied);
+    if (unapplied) setNote({ text: unapplied });
     markEdit();
     setAgg(next);
     columnStore.saveAggregation(martId, next);
@@ -428,7 +428,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const hasSorts = own !== null;
   const menuEnv: ColumnMenuEnv = {
     sorts: shownSorts, setSort, filters,
-    setFilter: (name, f) => { const unapplied = f ? unappliedFilter(f, schema.find((x) => x.name === name)) : null; if (unapplied) setNote(unapplied); markEdit(); setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; }); setLimit(PAGE_SIZE); },
+    setFilter: (name, f) => { const unapplied = f ? unappliedFilter(f, schema.find((x) => x.name === name)) : null; if (unapplied) setNote({ text: unapplied }); markEdit(); setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; }); setLimit(PAGE_SIZE); },
     isAggregated: (column) => aggNow.aggregations.some((r) => r.column === column) || aggNow.dateTrunc.some((r) => r.column === column),
     draftOf: (column) => draftOf(column, aggNow),
     blockerFor: (name) => blockers.find((b) => b.name !== name)?.title,
@@ -482,14 +482,14 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // Drag-select: a press on a cell starts a block, moving over other cells stretches it, a release anywhere ends it.
   const drag = useRef<Cell | null>(null);
   const dragMoved = useRef(false);
+  const endDrag = () => {
+    drag.current = null;
+    // The click after a drag comes right after the release; a drag that ended elsewhere gets none, so the flag is cleared after it.
+    if (dragMoved.current) setTimeout(() => { dragMoved.current = false; }, 0);
+  };
   useEffect(() => {
-    const end = () => {
-      drag.current = null;
-      // The click after a drag comes right after the release; a drag that ended elsewhere gets none, so the flag is cleared after it.
-      if (dragMoved.current) setTimeout(() => { dragMoved.current = false; }, 0);
-    };
-    window.addEventListener('mouseup', end);
-    return () => window.removeEventListener('mouseup', end);
+    window.addEventListener('mouseup', endDrag);
+    return () => window.removeEventListener('mouseup', endDrag);
   }, []);
   const startDrag = (row: number, col: number, e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -501,9 +501,11 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     drag.current = { row, col };
     dragMoved.current = false;
   };
-  const dragOver = (row: number, col: number) => {
+  const dragOver = (row: number, col: number, e: React.MouseEvent) => {
     const from = drag.current;
     if (!from) return;
+    // The button was let go outside the frame (no mouseup reached the window): the drag is over.
+    if ((e.buttons & 1) === 0) { endDrag(); return; }
     if (from.row === row && from.col === col && !dragMoved.current) return;
     dragMoved.current = true;
     setSelected(from.row === row && from.col === col ? { kind: 'cell', ...from } : { kind: 'cell', ...from, to: { row, col } });
@@ -570,7 +572,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     <GridEnv.Provider value={env}>
     <ColumnMenuEnvContext.Provider value={menuEnv}>
     <div className="dm-grid-frame flex max-h-[32rem] min-h-0 flex-col">
-      {note && <Toast onDismiss={() => setNote(null)}>{note}</Toast>}
+      <Toast onDismiss={() => setNote(null)} stamp={note}>{note?.text}</Toast>
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { markEdit(); setFilters({}); setParked({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => { onRefresh(); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
@@ -621,7 +623,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
                   onClick={pks.length && !grouped ? () => { if (dragMoved.current) return; dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }); } : undefined}
                   className={`${pks.length && !grouped ? 'cursor-pointer' : ''}`}>
                   <th aria-hidden data-chrome data-selected={rowMark(ri)} onClick={(e) => { pickHeader('row', ri, e.shiftKey); if (e.shiftKey) e.stopPropagation(); }} className="dm-chrome">{ri + 1}</th>
-                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={cellSel && !rect && cellSel.row === ri && cellSel.col === ci ? '' : undefined} data-moving={rect && cellSel?.to?.row === ri && cellSel.to.col === ci ? '' : undefined} data-range={inBlock(ri, ci) ? '' : undefined} data-active={anchor?.row === ri && anchor.col === ci ? '' : undefined} data-handle={corner?.row === ri && corner.col === ci ? '' : undefined} data-edge={edges(ri, ci)} onMouseDown={(e) => startDrag(ri, ci, e)} onMouseEnter={() => dragOver(ri, ci)} onClick={(e) => pickCell(ri, ci, e)} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap${numericOutput(c.column.id) ? ' text-right' : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
+                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={cellSel && !rect && cellSel.row === ri && cellSel.col === ci ? '' : undefined} data-moving={rect && cellSel?.to?.row === ri && cellSel.to.col === ci ? '' : undefined} data-range={inBlock(ri, ci) ? '' : undefined} data-active={anchor?.row === ri && anchor.col === ci ? '' : undefined} data-handle={corner?.row === ri && corner.col === ci ? '' : undefined} data-edge={edges(ri, ci)} onMouseDown={(e) => startDrag(ri, ci, e)} onMouseEnter={(e) => dragOver(ri, ci, e)} onClick={(e) => pickCell(ri, ci, e)} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap${numericOutput(c.column.id) ? ' text-right' : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
                   <td aria-hidden className="p-0" />
                 </tr>
               ))}
