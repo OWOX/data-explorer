@@ -91,6 +91,8 @@
   color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
   cursor: pointer; transition: color 200ms, background-color 200ms;
 }
+/* The icon sits 6px inside the round hit area; pull the button in so the visible gap to its neighbour is the toolbar's 0.5rem. */
+.dm-band-actions > :not(.dm-band-fold) + .dm-band-fold { margin-left: -0.375rem; }
 .dm-band-fold:hover { color: var(--foreground); background: color-mix(in oklab, var(--border) 50%, transparent); }
 :root.dark .dm-band-fold:hover { background: color-mix(in oklab, white 4%, transparent); }
 .dm-band-fold svg { transition: rotate 200ms; }
