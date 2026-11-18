@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pieOtherQuery, rangeKeys, rangeQuery, scorecardsQuery, seriesOtherQuery, seriesQuery, sparklineQuery, topValuesQuery, uniqueKey, metricKey } from './queries';
+import { monthsQuery, pieOtherQuery, rangeKeys, rangeQuery, scorecardsQuery, seriesOtherQuery, seriesQuery, sparklineQuery, topValuesQuery, uniqueKey, metricKey } from './queries';
 import type { ChartMart, Metric } from './fields';
 import type { Measure } from './queries';
 import type { Field } from '../model/types';
@@ -29,6 +29,12 @@ describe('queries', () => {
     expect(metricKey(amount)).toBe('amount | SUM');
     expect(rangeKeys(date)).toEqual({ min: 'date | MIN', max: 'date | MAX' });
     expect(rangeQuery(date, [])).toEqual({ column: ['date'], aggregation: [{ column: 'date', function: 'MIN' }, { column: 'date', function: 'MAX' }] });
+  });
+  it('months: the date truncated to months, oldest first, no aggregation', () => {
+    const q = monthsQuery(date, flt);
+    expect(q).toMatchObject({ column: ['date'], dateTrunc: [{ column: 'date', unit: 'MONTH' }], sort: [{ column: 'date', direction: 'asc' }], filter: flt });
+    expect(q.aggregation).toBeUndefined();
+    expect('filter' in monthsQuery(date, [])).toBe(false);
   });
   it('top values: blank excluded, metric desc, 8', () => {
     expect(topValuesQuery(channel, amt, [])).toEqual({ column: ['channel', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' }], filter: [{ column: 'channel', operator: 'is_not_blank' }], sort: [{ column: 'amount', direction: 'desc' }], limit: 8 });

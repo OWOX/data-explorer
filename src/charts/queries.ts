@@ -44,6 +44,11 @@ export function rangeQuery(date: Field, filter: TraverseFilter[]): TraverseOptio
   return withFilter({ column: [date.name], aggregation: [{ column: date.name, function: 'MIN' }, { column: date.name, function: 'MAX' }] }, filter);
 }
 
+/** The date's distinct months, oldest first: Auto's range for a date whose governance forbids MIN or MAX (no aggregation, so none applies). */
+export function monthsQuery(date: Field, filter: TraverseFilter[]): TraverseOptions {
+  return withFilter({ column: [date.name], dateTrunc: [truncRule(date, 'MONTH')], sort: [{ column: date.name, direction: 'asc' }] }, filter);
+}
+
 export function sparklineQuery(mart: ChartMart, date: Field, bucket: DateBucket, filter: TraverseFilter[]): TraverseOptions | null {
   if (!mart.metrics.length && !mart.hasPk) return null;
   const o: TraverseOptions = {
