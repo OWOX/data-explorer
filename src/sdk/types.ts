@@ -105,6 +105,8 @@ export type AvailableSourceDto = {
   relationshipId?: string;
   isIncluded: boolean;
   isAccessibleForReporting: boolean;
+  /** Whether a uniqueCount on this alias path works: 'available', else why not ('no-primary-key', 'disconnected-primary-key', ...). */
+  uniqueCountAvailability?: string;
   mainGrainMultiplication?: 'none' | 'multiplies' | 'unknown';
 };
 export type BlendableSchemaDto = { blendedFields?: BlendedFieldDto[]; availableSources?: AvailableSourceDto[]; hiddenFieldNames?: string[] };

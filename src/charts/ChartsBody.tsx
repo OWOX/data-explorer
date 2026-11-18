@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { JoinedSource } from '../api/blendable';
 import type { Aggregation } from '../model/aggregation';
 import type { Format } from '../format/formats';
 import type { Schema } from '../model/types';
@@ -18,20 +19,30 @@ const Gutter = () => <th aria-hidden data-chrome className="dm-chrome" />;
  * on a row of their own, as wide as the visible grid and pinned left so a wide table does not push them out of view.
  * Settings load once per mart; a fallback `resolveCharts` picks is never written back, only the member's own changes are.
  */
-export function ChartsBody({ martId, schema, shown, agg, filter, groups, version, paused, hasFilters, formatOf, scrollerWidth }: {
-  martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; groups: { id: string; span: number; title: string }[]; version: number; paused: boolean; hasFilters: boolean;
+export function ChartsBody({ martId, schema, shown, agg, filter, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth }: {
+  martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; groups: { id: string; span: number; title: string }[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
   formatOf: (column: string, type: string) => Format; scrollerWidth: number;
 }) {
   const { chartSettings } = useServices();
   const [settings, setSettings] = useState<ChartSettings | null>(null);
+  // Changes apply over the latest doc (not a render's copy), so two quick changes both land.
+  const latest = useRef<ChartSettings | null>(null);
   useEffect(() => {
     let live = true;
-    chartSettings.load(martId).then((s) => { if (live) setSettings(s); });
+    chartSettings.load(martId).then((s) => { if (live) { latest.current = s; setSettings(s); } });
     return () => { live = false; };
   }, [chartSettings, martId]);
-  const change = (next: ChartSettings) => { setSettings(next); chartSettings.save(martId, next); };
+  // Only called once the doc has loaded (the menu is not shown before), so a change never replaces what was saved.
+  const change = (edit: (cur: ChartSettings) => ChartSettings) => {
+    if (!latest.current) return;
+    const next = edit(latest.current);
+    latest.current = next;
+    setSettings(next);
+    chartSettings.save(martId, next);
+  };
 
-  const cf = chartFields(schema, shown, agg, martId, groups.map((g) => g.id));
+  const uniqueCountPaths = new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath));
+  const cf = chartFields(schema, shown, agg, martId, groups.map((g) => g.id), uniqueCountPaths);
   const r = resolveCharts(settings ?? {}, cf);
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
   const idle = paused || !settings;
@@ -43,15 +54,15 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
     return <tbody><tr><Gutter /><td colSpan={columns + 1} className="p-4 text-sm text-muted-foreground">Show a number column to chart it.</td></tr></tbody>;
   }
 
-  const patch = (s: ChartSettings['scorecards']) => change({ ...settings, scorecards: { ...settings?.scorecards, ...s } });
-  const toggleCard = (id: string) => {
-    const hidden = new Set(settings?.scorecards?.hidden ?? []);
+  const patch = (edit: (cur: NonNullable<ChartSettings['scorecards']>) => NonNullable<ChartSettings['scorecards']>) => change((cur) => ({ ...cur, scorecards: edit(cur.scorecards ?? {}) }));
+  const toggleCard = (id: string) => patch((sc) => {
+    const hidden = new Set(sc.hidden ?? []);
     if (!hidden.delete(id)) hidden.add(id);
-    patch({ hidden: [...hidden] });
-  };
+    return { ...sc, hidden: [...hidden] };
+  });
   const items: MenuItem[] = [
     ...cf.marts.flatMap((m, i) => cardsOf(m).map((c): MenuItem => ({ kind: 'check', label: i === 0 ? c.label : `${groups[i]!.title} · ${c.label}`, checked: !r.hidden.has(c.id), onToggle: () => toggleCard(c.id) }))),
-    { kind: 'check', label: 'Sparklines', checked: r.sparklines, onToggle: () => patch({ sparklines: !r.sparklines }) },
+    { kind: 'check', label: 'Sparklines', checked: r.sparklines, onToggle: () => patch((sc) => ({ ...sc, sparklines: !(sc.sparklines ?? true) })) },
   ];
 
   return (
@@ -62,7 +73,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
           <td key={g.id} colSpan={g.span} data-chart-group={g.id} className="align-top p-2">
             <div className="flex items-start gap-1">
               <MartCards martId={martId} mart={cf.marts[i]!} main={g.id === martId} r={r} scores={scores} bucket={bucket} filter={filter} version={version} paused={idle} hasFilters={hasFilters} formatOf={formatOf} />
-              {g.id === martId && <ChartMenu name="Scorecards" items={items} />}
+              {g.id === martId && settings && <ChartMenu name="Scorecards" items={items} />}
             </div>
           </td>
         ))}

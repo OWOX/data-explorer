@@ -14,7 +14,7 @@ import type { ChartSettings } from './settings';
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
 const COLUMNS = ['id', 'status', 'amount', 'created_at', 'products__price'];
 
-function setup(opts: { charts?: ChartSettings; columns?: string[] } = {}) {
+function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void> } = {}) {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
@@ -24,7 +24,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[] } = {}) {
     owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); return real(id, o); } } },
     collections: <T,>(name: string) => {
       const c = base.collections<T>(name);
-      return name === CHARTS_COLLECTION ? { get: c.get, put: (id: string, d: T) => { puts(id, d); return c.put(id, d); } } : c;
+      return name === CHARTS_COLLECTION ? { get: (id: string) => (opts.gate ? opts.gate.then(() => c.get(id)) : c.get(id)), put: (id: string, d: T) => { puts(id, d); return c.put(id, d); } } : c;
     },
   };
   const seeded = Promise.all([
@@ -50,11 +50,10 @@ async function charts(opts?: Parameters<typeof setup>[0]) {
 }
 const cardNames = (el: HTMLElement | null) => [...(el?.querySelectorAll('[data-card]') ?? [])].map((c) => c.querySelector('div')!.textContent);
 
-// A joined field never carries isPrimaryKey (blendable.ts), so a joined mart has metric cards but no Records card.
 test('Charts: each data mart has its own cards in its group cell, Records first', async () => {
   await charts();
   await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Records', 'Amount · Sum']));
-  expect(cardNames(group('products'))).toEqual(['price · Sum']);
+  expect(cardNames(group('products'))).toEqual(['Records', 'price · Sum']);
   await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
 });
 
@@ -118,5 +117,23 @@ test('hiding a card from the Scorecards menu removes it and saves', async () => 
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Amount · Sum' }));
   await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Records']));
   expect(t.puts).toHaveBeenCalledWith('orders', { scorecards: { hidden: ['amount'] } });
-  expect(cardNames(group('products'))).toEqual(['price · Sum']);
+  expect(cardNames(group('products'))).toEqual(['Records', 'price · Sum']);
+});
+
+test('a change cannot be made before the saved settings load, and one made after keeps the rest of the doc', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const saved: ChartSettings = { timeSeries: { orientation: 'horizontal' }, pie: { dimension: 'status' } };
+  const t = setup({ charts: saved, gate });
+  await t.seeded;
+  t.view();
+  t.puts.mockClear();
+  await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
+  await userEvent.click(radio('Charts'));
+  await waitFor(() => expect(group('orders')).not.toBeNull());
+  expect(screen.queryByRole('button', { name: 'Scorecards options' })).toBeNull();
+  release();
+  await userEvent.click(await screen.findByRole('button', { name: 'Scorecards options' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Amount · Sum' }));
+  await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { ...saved, scorecards: { hidden: ['amount'] } }));
 });

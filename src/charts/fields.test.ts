@@ -31,8 +31,9 @@ describe('chartFields', () => {
     expect(r.metrics[0]!.fn).toBe('MIN'); // AGGREGATE_FUNCTIONS order
   });
   it('a joined mart with a primary key is hasPk', () => {
-    const s = [...schema, f('c__id', 'string', { isPrimaryKey: true, joined: { martId: 'C', label: 'Customers', aliasPath: 'c' } })];
-    expect(chartFields(s, ['c__ltv'], NO_AGGREGATION, 'M', ['M', 'C']).marts.find((m) => m.martId === 'C')!.hasPk).toBe(true);
+    const s = [...schema, f('c__ltv', 'number', { joined: { martId: 'C', label: 'Customers', aliasPath: 'c' } })];
+    expect(chartFields(s, ['c__ltv'], NO_AGGREGATION, 'M', ['M', 'C'], new Set(['c'])).marts.find((m) => m.martId === 'C')!.hasPk).toBe(true);
+    expect(chartFields(s, ['c__ltv'], NO_AGGREGATION, 'M', ['M', 'C']).marts.find((m) => m.martId === 'C')!.hasPk).toBe(false);
   });
 });
 

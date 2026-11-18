@@ -53,7 +53,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     const hops = joinTree(martId);
     const availableSources: AvailableSourceDto[] = hops.map((h) => {
       const t = byId.get(h.martId)!;
-      return { aliasPath: h.aliasPath, title: t.title, defaultAlias: t.title, depth: h.depth, dataMartId: t.id, relationshipId: h.edges.at(-1)!.id, isIncluded: true, isAccessibleForReporting: t.accessible, mainGrainMultiplication: 'none' };
+      return { aliasPath: h.aliasPath, title: t.title, defaultAlias: t.title, depth: h.depth, dataMartId: t.id, relationshipId: h.edges.at(-1)!.id, isIncluded: true, isAccessibleForReporting: t.accessible, uniqueCountAvailability: t.fields.some((x) => x.isPrimaryKey) ? 'available' : 'no-primary-key', mainGrainMultiplication: 'none' };
     });
     const blendedFields: BlendedFieldDto[] = hops.flatMap((h) => {
       const t = byId.get(h.martId)!;

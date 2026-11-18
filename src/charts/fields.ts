@@ -19,13 +19,14 @@ function metricFn(f: Field, agg: Aggregation): AggFn | null {
 }
 
 /** `shown` is the grid's shown column names in grid order; `schema` the blended schema; `mainMartId` the grid's mart. */
-export function chartFields(schema: Field[], shown: string[], agg: Aggregation, mainMartId: string, groupOrder: string[]): ChartFields {
+export function chartFields(schema: Field[], shown: string[], agg: Aggregation, mainMartId: string, groupOrder: string[], uniqueCountPaths?: ReadonlySet<string>): ChartFields {
   const by = new Map(schema.map((f) => [f.name, f]));
   const fields = shown.flatMap((n) => by.get(n) ?? []);
   const marts = groupOrder.map((martId): ChartMart => {
     const own = fields.filter((f) => martOf(f, mainMartId) === martId);
     const aliasPath = martId === mainMartId ? '' : (schema.find((f) => f.joined?.martId === martId)?.joined?.aliasPath ?? '');
-    const hasPk = schema.some((f) => f.isPrimaryKey && martOf(f, mainMartId) === martId);
+    // Blended fields carry no key flag: a joined mart has a key when the backend says a unique count works on its alias path.
+    const hasPk = martId === mainMartId ? schema.some((f) => f.isPrimaryKey && martOf(f, mainMartId) === martId) : !!uniqueCountPaths?.has(aliasPath);
     const metrics = own.flatMap((f): Metric[] => {
       if (f.category !== 'number' || f.isPrimaryKey || f.isCalculated) return [];
       const fn = metricFn(f, agg);
