@@ -102,6 +102,21 @@ test('Table, Charts, Table reads the grid rows once and writes no columns', asyn
   expect(t.gridPuts).not.toHaveBeenCalled();
 });
 
+test('a selection made in Table does not stay lit in Charts or when Table returns', async () => {
+  const t = setup();
+  await t.seeded;
+  t.view();
+  await waitFor(() => expect(data().querySelector('tbody td')?.textContent).toBeTruthy());
+  await userEvent.click(data().querySelector('tbody td')!);
+  expect(data().querySelector('[data-selected]')).not.toBeNull();
+  await userEvent.click(radio('Charts'));
+  await waitFor(() => expect(group('orders')).not.toBeNull());
+  expect(data().querySelector('[data-selected]')).toBeNull();
+  await userEvent.click(radio('Table'));
+  await waitFor(() => expect(data().querySelector('tbody td')?.textContent).toBeTruthy());
+  expect(data().querySelector('[data-selected]')).toBeNull();
+});
+
 test('Charts has no sort buttons or Sort row; Table has them again', async () => {
   await charts();
   expect(within(data()).queryAllByRole('button', { name: /^Sort by/ })).toHaveLength(0);
