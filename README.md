@@ -28,13 +28,15 @@ A question about one order, one customer or one campaign ends in a row. The fiel
 
 📤 **Take it to a sheet, or to an AI.** Copy to clipboard, the first item of the Export menu, copies the rows the grid has loaded as tab-separated text with a header row, so it pastes into Google Sheets or Excel as cells. It copies exactly what the grid shows (dates in your format, joined values separated by commas, nothing clipped) and runs no query, bills nothing and writes nothing. Export sends the grid as it is (columns, filters, sorting) to Google Sheets as an OWOX report, runs it and opens the sheet. Update reruns it later with the grid's new state. Claude and ChatGPT in the same menu each copy a prompt that asks, through the OWOX Data Marts connector, for the same rows. Copying writes nothing to OWOX.
 
+📊 **Charts.** The Data band switches between Table and Charts. Charts shows a strip of scorecards under each data mart's header: Records and one card per metric, each with a sparkline. Below it, a time series draws Records or a metric by a date field in buckets (Auto, or day to year), optionally stacked by a dimension (the top 8 values and Other), as vertical or horizontal bars. A pie shows a metric by a dimension, also the top 8 and Other. The ⋮ menu of each chart picks what it draws, and your choices are saved per member. OWOX computes every number; the plugin does no arithmetic.
+
 ## What it costs
 
-Every grid, record and record count is a `traverseData` query in your warehouse, and the warehouse bills it. A card asks for its count only when it scrolls into view, and counts are cached per member. Folded bands run no queries.
+Every grid, record and record count is a `traverseData` query in your warehouse, and the warehouse bills it. A card asks for its count only when it scrolls into view, and counts are cached per member. Folded bands run no queries. Each chart is a `traverseData` query, run only while Charts is shown and the band is open, and cached for the session.
 
 ## What it writes
 
-Nothing until you click Export to Google Sheets. It creates a spreadsheet, creates or updates your report and runs it. Copying a prompt for an AI writes nothing. Rows are never written. Per member, the plugin keeps record counts, your columns, which bands you folded and the reports you exported.
+Nothing until you click Export to Google Sheets. It creates a spreadsheet, creates or updates your report and runs it. Copying a prompt for an AI writes nothing. Rows are never written. Per member, the plugin keeps record counts, your columns, which bands you folded, the reports you exported and the chart options (`charts`).
 
 ## Install
 
