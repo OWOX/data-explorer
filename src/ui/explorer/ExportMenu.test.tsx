@@ -69,7 +69,7 @@ test('one destination and no report: the button is still a menu; New report make
   const outcome = await screen.findByText(/Exported to "Orders · Data Explorer · /);
   expect(screen.getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', 'https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0');
   // The outcome is a persistent toast with a Dismiss button, not text in the Data band's title row.
-  const toast = outcome.closest('[role="status"]') as HTMLElement;
+  const toast = outcome.closest('#dm-toast-stack > div') as HTMLElement;
   expect(data().contains(toast)).toBe(false);
   expect(within(data()).queryByText(/Exported to/)).toBeNull();
   await userEvent.click(within(toast).getByRole('button', { name: 'Dismiss' }));
@@ -545,7 +545,7 @@ describe('the AI group', () => {
     await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
     expect(await screen.findByText('Prompt copied. Paste it into Claude')).toBeInTheDocument();
     // A standard toast, not a note in the Data band's title row.
-    const toast = screen.getByText('Prompt copied. Paste it into Claude').closest('[role="status"]') as HTMLElement;
+    const toast = screen.getByText('Prompt copied. Paste it into Claude').closest('#dm-toast-stack > div') as HTMLElement;
     expect(toast).toHaveTextContent('Prompt copied');
     expect(data().contains(toast)).toBe(false);
     expect(within(toast).getByRole('button', { name: 'Show prompt' })).toBeInTheDocument();

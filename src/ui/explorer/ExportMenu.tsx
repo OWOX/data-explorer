@@ -226,8 +226,8 @@ export function ExportMenu(p: Props) {
 
   return (
     <>
-      {busy && <span role="status" className="text-xs text-muted-foreground">{busy}</span>}
-      <Toast onDismiss={dismissNote} action={noteAction} persistent={!busy && !!result} hold={promptOpen || dataOpen} stamp={note}>{noteBody}</Toast>
+      <span role="status" className="text-xs text-muted-foreground">{busy}</span>
+      <Toast onDismiss={dismissNote} returnTo={() => menu.current?.querySelector('summary')} action={noteAction} persistent={!busy && !!result} hold={promptOpen || dataOpen} stamp={note}>{noteBody}</Toast>
       <details ref={menu} className="dm-filter dm-export" name="dm-filter" onToggle={(e) => openMenu(e.currentTarget.open)} {...(busy ? { 'aria-disabled': true } : {})}>
           <summary onClick={(e) => { if (busy) e.preventDefault(); }} onKeyDown={onSummaryKey}>{label}<ChevronDown size={14} /></summary>
           <div className="dm-filter-menu dm-cascade" role="menu" data-level="1" onKeyDown={onMenuKey}>
