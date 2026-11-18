@@ -1,6 +1,7 @@
 import { ArrowRight, Loader2, Search, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { MAX_QUERY } from '../../search/endpoint';
+import { ActionForm } from '../ActionForm';
 import { Tooltip } from '../Tooltip';
 import type { SmartSearch } from './useSmartSearch';
 
@@ -30,7 +31,7 @@ export function SearchBox({ smart, label }: { smart: SmartSearch; label: string 
     );
   }
   return (
-    <form className="dm-search dm-search-open" role="search" aria-busy={busy} onSubmit={(e) => { e.preventDefault(); smart.submit(); }}>
+    <ActionForm className="dm-search dm-search-open" role="search" aria-busy={busy} onAction={() => { if (!smart.problem) smart.submit(); }}>
       <Search size={14} />
       <input
         ref={input}
@@ -46,10 +47,10 @@ export function SearchBox({ smart, label }: { smart: SmartSearch; label: string 
       {(draft || applied) && <button type="button" className="dm-search-x" aria-label="Clear search" onClick={() => { smart.clear(); input.current?.focus(); }}><X size={14} /></button>}
       <Tooltip content={smart.problem ?? 'Search'}>
         <span className="dm-search-go">
-          <button type="submit" aria-label="Search" disabled={!!smart.problem}>{busy ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}</button>
+          <button type="button" aria-label="Search" onClick={() => smart.submit()} disabled={!!smart.problem}>{busy ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}</button>
         </span>
       </Tooltip>
-    </form>
+    </ActionForm>
   );
 }
 

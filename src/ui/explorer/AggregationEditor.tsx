@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AGG_LABELS, BUCKET_LABELS, DATE_BUCKETS, allowedFunctions, canBucket, canZone, type AggFn, type AggregationDraft, type DateBucket } from '../../model/aggregation';
 import type { Field } from '../../model/types';
+import { ActionForm } from '../ActionForm';
 import { Select } from '../Select';
 import { SheetsChecklist } from '../SheetsChecklist';
 
@@ -24,8 +25,10 @@ export function AggregationEditor({ field, value, blocker, onApply, onCancel }: 
   const ordered = allowed.filter((f) => fns.includes(f));
   const groups = bucket !== null || ordered.length > 0;
   const stranded = !!blocker && groups;
+  const canApply = !((!had && ordered.length === 0 && bucket === null) || stranded);
+  const apply = () => { if (canApply) onApply({ functions: bucket ? [] : ordered, bucket, timeZone: bucket && zoneable ? zone : null }); };
   return (
-    <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); onApply({ functions: bucket ? [] : ordered, bucket, timeZone: bucket && zoneable ? zone : null }); }}>
+    <ActionForm className="flex flex-col gap-3" onAction={apply}>
       {bucketable && (
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted-foreground" htmlFor={`bucket-${field.name}`}>Group by bucket</label>
@@ -54,8 +57,8 @@ export function AggregationEditor({ field, value, blocker, onApply, onCancel }: 
       <p className="text-xs text-muted-foreground">Filters still apply to the rows before they are aggregated.</p>
       <div className="dm-menu-actions">
         <button type="button" onClick={onCancel} className="dm-btn dm-btn-secondary">Cancel</button>
-        <button type="submit" disabled={(!had && ordered.length === 0 && bucket === null) || stranded} className="dm-btn dm-btn-primary">Apply</button>
+        <button type="button" onClick={apply} disabled={!canApply} className="dm-btn dm-btn-primary">Apply</button>
       </div>
-    </form>
+    </ActionForm>
   );
 }
