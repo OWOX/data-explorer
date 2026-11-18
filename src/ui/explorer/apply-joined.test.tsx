@@ -153,7 +153,7 @@ test('a rejected rows request shows its error in the grid and keeps the edit vis
 
 test.each([
   ['postJoinAggregations SUM/AVG/MIN/MAX', { postJoinAggregations: ['SUM', 'AVG', 'MIN', 'MAX'] }],
-  ['no governance lists at all', {}],
+  ['no governance lists at all', { postJoinAggregations: undefined }],
 ])('a joined INTEGER field (%s) offers the numeric functions, never the string list', async (_n, extra) => {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const realGet = base.owox.getJson.bind(base.owox);
@@ -164,4 +164,47 @@ test.each([
   await openSubmenu(within(data()), 'Customers · Sessions before signup', 'Aggregate');
   const dialog = await screen.findByRole('dialog');
   expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual(['Sum', 'Average', 'Min', 'Max']);
+});
+
+async function renderWith(wrap: (base: ReturnType<typeof createMockCtx>) => ReturnType<typeof createMockCtx>, columns = ['id', 'status', 'customers__city']) {
+  const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  await base.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns, at: 'then' });
+  render(<AppServices ctx={wrap(base)}><StoreProvider><App /></StoreProvider></AppServices>);
+  await waitFor(() => expect(headers()).toHaveLength(columns.length));
+}
+const stripPostJoin = (base: ReturnType<typeof createMockCtx>) => {
+  const realGet = base.owox.getJson.bind(base.owox);
+  return { ...base, owox: { ...base.owox, getJson: (async (path: string, q?: Record<string, string>) => { const dto = await realGet<BlendableSchemaDto>(path, q); if (path.endsWith('/blendable-schema')) dto.blendedFields = dto.blendedFields?.map((f) => ({ ...f, postJoinAggregations: undefined })); return dto; }) as typeof base.owox.getJson } };
+};
+
+test('the mock mirrors the backend: a joined string field limited to Count and Count Unique offers just those', async () => {
+  await renderWith((b) => b);
+  await openSubmenu(within(data()), 'Customers · city', 'Aggregate');
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual(['Count', 'Count Unique']);
+});
+
+test('a joined field with no list in the blendable schema takes its own mart\'s list, not the string defaults', async () => {
+  await renderWith(stripPostJoin);
+  await openSubmenu(within(data()), 'Customers · city', 'Aggregate');
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual(['Count', 'Count Unique']);
+});
+
+test('the backend refusing a function shows its message in the grid, as a plain object too', async () => {
+  const refusing = (reject: (m: string) => unknown) => (base: ReturnType<typeof createMockCtx>) => {
+    const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
+    return { ...base, owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => (o.aggregation?.some((a) => a.function === 'STRING_AGG') ? Promise.reject(reject('Aggregation STRING_AGG is not allowed for field customers__city')) : real(id, o)) } } };
+  };
+  await renderWith(refusing((m) => ({ message: m, status: 400 })), ['id', 'status', 'customers__email']);
+  await openSubmenu(within(data()), 'Customers · email', 'Aggregate');
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.click(within(dialog).getByLabelText('Combined'));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  expect(await within(data()).findByText('Aggregation STRING_AGG is not allowed for field customers__city')).toBeInTheDocument();
+});
+
+test('the mock traverse refuses a function the field does not allow, like the backend', async () => {
+  const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  await expect(ctx.owox.dataMarts.traverseData('orders', { column: ['id', 'customers__city'], aggregation: [{ column: 'customers__city', function: 'STRING_AGG' }] })).rejects.toThrow('Aggregation STRING_AGG is not allowed for field customers__city');
 });

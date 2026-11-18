@@ -95,7 +95,7 @@ test('far right: many joined columns ticked, scrolled to the last one, Aggregate
   await page.keyboard.press('Escape');
   let dialog = await openSub(page, 'Customers · city', 'Aggregate');
   await click(page, dialog.getByLabel('Count Unique'));
-  await click(page, dialog.getByLabel('Combined'));
+  await click(page, dialog.getByLabel('Count', { exact: true }));
   await click(page, dialog.getByRole('button', { name: 'Apply' }));
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(data(page).getByRole('columnheader', { name: /city · Count Unique/ })).toBeVisible();

@@ -1,4 +1,6 @@
 import type { AvailableSourceDto, BlendableSchemaDto, BlendedFieldDto, Ctx, EdgeDto, Row, TraverseOptions } from '../types';
+import { allowedFunctions, knownFunctions } from '../../model/aggregation';
+import { categorizeFieldType } from '../../model/field-category';
 import { aggregateRows } from './aggregate';
 import { matchesFilter } from './evaluate';
 import { createFakeAi } from './ai';
@@ -60,6 +62,8 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
       return t.fields.filter((x) => !x.isHiddenForReporting).map((x): BlendedFieldDto => ({
         name: blendedName(h.aliasPath, x.name), sourceDataMartId: t.id, sourceDataMartTitle: t.title, originalFieldName: x.name, type: x.type,
         alias: x.alias ?? '', description: x.description ?? '', isHidden: false, isCalculated: false, aliasPath: h.aliasPath, outputPrefix: t.title, transitiveDepth: h.depth,
+        // The backend always sends the post-join list: the field's own override, else the type's defaults.
+        postJoinAggregations: governed(x),
       }));
     });
     const hiddenFieldNames = hops.flatMap((h) => byId.get(h.martId)!.fields.filter((x) => x.isHiddenForReporting).map((x) => blendedName(h.aliasPath, x.name)));
@@ -102,6 +106,18 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     return index;
   };
 
+  /** What the backend allows on a field: its own list, else the type's defaults. */
+  const governed = (x: { type: string; allowedAggregations?: string[] }): string[] => allowedFunctions({ category: categorizeFieldType(x.type), ...(x.allowedAggregations ? { allowedAggregations: knownFunctions(x.allowedAggregations) } : {}) });
+  function rejectUngoverned(martId: string, rules: { column: string; function: string }[]) {
+    const index = blendedIndex(martId);
+    const own = new Map(byId.get(martId)!.fields.map((x) => [x.name, x]));
+    for (const r of rules) {
+      const hit = index.get(r.column);
+      const field = hit ? byId.get(hit.hop.martId)!.fields.find((x) => x.name === hit.field) : own.get(r.column);
+      if (field && !governed(field).includes(r.function)) throw badRequest(`Aggregation ${r.function} is not allowed for field ${r.column}`);
+    }
+  }
+
   function traverse(id: string, o: TraverseOptions): Row[] {
     const m = byId.get(id);
     if (!m) throw new Error(`Data Mart ${id} not found`);
@@ -115,6 +131,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     if (o.uniqueCount) return [{ 'Unique Count': rows.length }];
     if (o.aggregation?.length || o.dateTrunc?.length) {
       if (!o.column?.length) throw badRequest('Aggregation requires an explicit column list');
+      rejectUngoverned(id, o.aggregation ?? []);
       const grouped = aggregateRows(rows, o.column, o.aggregation ?? [], o.dateTrunc ?? [], o.sort ?? []);
       return o.limit !== undefined ? grouped.slice(0, o.limit) : grouped;
     }

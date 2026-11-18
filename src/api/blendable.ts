@@ -1,7 +1,7 @@
-import { knownFunctions } from '../model/aggregation';
+import { knownFunctions, type AggFn } from '../model/aggregation';
 import { categorizeFieldType } from '../model/field-category';
 import type { Field, Schema } from '../model/types';
-import type { BlendableSchemaDto, Ctx } from '../sdk/types';
+import type { BlendableSchemaDto, Ctx, DataMartDetailDto } from '../sdk/types';
 
 /** The backend's `isArrayFieldType`: ARRAY, bare or with a parameter (`ARRAY<STRING>`). */
 const isArrayType = (type: string | undefined) => /^ARRAY(?:\s*[<(]|$)/i.test(type?.trim() ?? '');
@@ -53,6 +53,24 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
   return [...byPath.values()].filter((s) => s.fields.length > 0).sort((a, b) => a.depth - b.depth || a.label.localeCompare(b.label) || a.aliasPath.localeCompare(b.aliasPath));
 }
 
+/**
+ * A joined field the blendable schema gives no aggregation list for takes its own data mart's list, when that mart sets one:
+ * better than the type's defaults, which may offer a function the backend refuses. A mart that cannot be read leaves its fields as they are.
+ */
+async function withNativeGovernance(ctx: Ctx, sources: JoinedSource[]): Promise<JoinedSource[]> {
+  const unknown = (f: Field) => f.postJoinAggregations === undefined && f.allowedAggregations === undefined;
+  const martIds = [...new Set(sources.filter((s) => s.fields.some(unknown)).map((s) => s.martId))];
+  if (!martIds.length) return sources;
+  const lists = new Map<string, Map<string, AggFn[]>>();
+  await Promise.all(martIds.map(async (id) => {
+    try {
+      const d = await ctx.owox.getJson<DataMartDetailDto>(`/api/data-marts/${encodeURIComponent(id)}`);
+      lists.set(id, new Map((d.schema?.fields ?? []).flatMap((f) => (Array.isArray(f.allowedAggregations) ? [[f.name, knownFunctions(f.allowedAggregations)] as const] : []))));
+    } catch { /* the defaults stay */ }
+  }));
+  return sources.map((s) => ({ ...s, fields: s.fields.map((f) => { const own = unknown(f) ? lists.get(s.martId)?.get(f.joined?.originalName ?? '') : undefined; return own ? { ...f, allowedAggregations: own } : f; }) }));
+}
+
 export function createBlendableLoader(ctx: Ctx): BlendableLoader {
   const done = new Map<string, JoinedSource[]>();
   const inflight = new Map<string, Promise<JoinedSource[]>>();
@@ -63,7 +81,8 @@ export function createBlendableLoader(ctx: Ctx): BlendableLoader {
       const running = inflight.get(martId);
       if (running) return running;
       const p = ctx.owox.getJson<BlendableSchemaDto>(`/api/data-marts/${encodeURIComponent(martId)}/blendable-schema`)
-        .then((dto) => { const sources = joinedSources(dto); done.set(martId, sources); return sources; })
+        .then((dto) => withNativeGovernance(ctx, joinedSources(dto)))
+        .then((sources) => { done.set(martId, sources); return sources; })
         .finally(() => inflight.delete(martId));
       inflight.set(martId, p);
       return p;

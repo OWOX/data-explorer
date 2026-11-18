@@ -62,8 +62,10 @@ test('the loader reads once per mart, shares a read in flight, and does not reme
   const [a, b] = await Promise.all([loader.get('orders'), loader.get('orders')]);
   expect(a).toBe(b);
   await loader.get('orders');
-  expect(getJson).toHaveBeenCalledTimes(2);
-  expect(getJson).toHaveBeenLastCalledWith('/api/data-marts/orders/blendable-schema');
+  // Fields with no list also read their own mart (the fallback), which does not count as a second read of the blendable schema.
+  const schemaReads = getJson.mock.calls.filter(([path]) => String(path).endsWith('/blendable-schema'));
+  expect(schemaReads).toHaveLength(2);
+  expect(schemaReads.at(-1)).toEqual(['/api/data-marts/orders/blendable-schema']);
   loader.clear();
   expect(loader.peek('orders')).toBeUndefined();
 });
