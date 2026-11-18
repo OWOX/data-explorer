@@ -56,7 +56,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
   const columns = groups.reduce((n, g) => n + g.span, 0);
 
   if (cf.marts.every((m) => m.metrics.length === 0 && !m.hasPk)) {
-    return <tbody><tr><Gutter /><td colSpan={columns + 1} className="p-4 text-sm text-muted-foreground">Show a number column to chart it.</td></tr></tbody>;
+    return <tbody><tr><Gutter /><td colSpan={columns + 1} data-chart-empty className="text-sm text-muted-foreground">Show a number column to chart it.</td></tr></tbody>;
   }
 
   const patch = (edit: (cur: NonNullable<ChartSettings['scorecards']>) => NonNullable<ChartSettings['scorecards']>) => change((cur) => ({ ...cur, scorecards: edit(cur.scorecards ?? {}) }));
@@ -76,14 +76,14 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
       <tr data-chart-strip>
         <Gutter />
         {groups.map((g, i) => (
-          <td key={g.id} colSpan={g.span} data-chart-group={g.id} className="align-top p-3">
+          <td key={g.id} colSpan={g.span} data-chart-group={g.id}>
             <div className="flex items-start gap-1">
               <MartCards martId={martId} mart={cf.marts[i]!} main={g.id === martId} r={r} scores={scores} bucket={bucket} filter={filter} version={version} paused={idle} hasFilters={hasFilters} formatOf={formatOf} />
               {g.id === martId && settings && <ChartMenu name="Scorecards" items={items} />}
             </div>
           </td>
         ))}
-        <td aria-hidden className="p-0" />
+        <td aria-hidden />
       </tr>
       <tr data-chart-panels-row>
         <Gutter />

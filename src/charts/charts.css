@@ -25,11 +25,12 @@
 /* MartGrid sets the table's measured height inline; a grid opened in Charts has none and takes the 32rem cap. */
 .dm-grid-frame-charts { height: 32rem; }
 .dm-full #band-data .dm-grid-frame-charts { height: auto !important; }
-/* Side by side while each panel still gets 30rem, one per row below that. */
-/* The grid's own cell padding would win over a utility class: the scorecard cells get theirs here. */
+/* The grid's own td padding outranks utility classes: the Charts cells get theirs here. */
 .dm-grid td[data-chart-group] { padding: 0.75rem; vertical-align: top; }
 .dm-grid td[data-chart-panels-cell] { padding: 0; height: auto; }
-/* The same 0.75rem inset as the scorecard cells, so the left edges line up; 1.5rem between blocks either way. */
+.dm-grid td[data-chart-empty] { padding: 1rem; }
+/* Side by side while each panel still gets 30rem, one per row below that. The same 0.75rem inset as the scorecard
+   cells, so the left edges line up; 1.5rem between blocks either way. */
 .dm-chart-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); align-items: start; gap: 1.5rem; padding: 0.75rem 0.75rem 1.5rem; }
 .dm-chart { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; padding: 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem; }
 .dm-chart-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
