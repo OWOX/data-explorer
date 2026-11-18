@@ -227,3 +227,28 @@ describe('found marts in a link', () => {
     expect(await decodeViewLink(await route(valid({ fd: [] })))).not.toHaveProperty('found');
   });
 });
+
+describe('view mode in a link', () => {
+  const g = (over: Record<string, unknown> = {}) => ({ c: ['id'], fl: [], s: null, l: 100, ...over });
+  const decode = async (gridPart: unknown) => (await decodeViewLink(await route(valid({ g: gridPart })))) as DecodedView;
+
+  it('round trips the charts view', async () => {
+    const view = { ...base, grid: { ...base.grid!, view: 'charts' as const } };
+    expect(await decodeViewLink(await encodeViewLink(view))).toEqual({ ...view, dropped: 0, droppedAggregations: 0 });
+  });
+
+  it('a table grid has no view key', async () => {
+    const d = (await decodeViewLink(await encodeViewLink(base))) as DecodedView;
+    expect('view' in d.grid!).toBe(false);
+  });
+
+  it('a vw other than 1 is ignored and counted', async () => {
+    for (const vw of [2, 'x', null, true]) {
+      const d = await decode(g({ vw }));
+      expect('view' in d.grid!).toBe(false);
+      expect(d.dropped).toBe(1);
+    }
+    expect((await decode(g({ vw: 1 }))).grid!.view).toBe('charts');
+    expect((await decode(g())).dropped).toBe(0);
+  });
+});

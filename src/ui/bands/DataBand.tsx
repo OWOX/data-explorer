@@ -7,6 +7,7 @@ import { groupsLabel, recordsLabel } from '../format';
 import { Tooltip } from '../Tooltip';
 import { MartGrid } from '../explorer/MartGrid';
 import { Band } from './Band';
+import { ViewSwitch } from './ViewSwitch';
 
 /** Shown as the warning's tooltip and at the end of the band's (i). */
 export const NO_KEY_NOTE = 'Preview only: this data mart has no primary key.';
@@ -29,9 +30,18 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen }: 
   const showRows = useCallback((label: string | null, grouped = false, noKey = false) => { if (gridId) setRows(label === null ? null : { id: gridId, label, grouped, noKey }); }, [gridId]);
   const save = useCallback((grid: GridState, edit = false) => { if (gridId) dispatch({ type: edit ? 'editGrid' : 'saveGrid', martId: gridId, grid }); }, [dispatch, gridId]);
 
+  // The switch edits the stored grid, so it waits for the grid's first save; absent view is the table.
+  const saved = gridId ? grids[gridId] : undefined;
+  const setView = (v: 'table' | 'charts') => {
+    if (!gridId || !saved) return;
+    const rest = { ...saved };
+    delete rest.view;
+    dispatch({ type: 'editGrid', martId: gridId, grid: v === 'charts' ? { ...rest, view: 'charts' } : rest });
+  };
+
   const noKey = !!mart && rows?.id === mart.id && rows.noKey && !!gridMart?.accessible;
   return (
-    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={`${fullScreen?.on ? HINT_FULL : HINT}${noKey ? ` ${NO_KEY_NOTE}` : ''}`} afterHint={noKey ? <NoKeyWarning /> : undefined} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
+    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={`${fullScreen?.on ? HINT_FULL : HINT}${noKey ? ` ${NO_KEY_NOTE}` : ''}`} afterHint={<>{noKey && <NoKeyWarning />}{gridMart?.accessible && saved && <ViewSwitch value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} />}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (

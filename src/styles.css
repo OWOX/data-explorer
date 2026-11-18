@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import './ui/bands/bands.css';
+@import './charts/charts.css';
 
 @custom-variant dark (&:where(.dark, .dark *));
 

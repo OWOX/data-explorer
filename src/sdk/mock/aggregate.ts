@@ -58,7 +58,15 @@ function aggregate(fn: AggFn, values: unknown[]): unknown {
  * Groups `rows` by every listed column that has no function (a bucketed date by its bucket start); each function is its own
  * output named `"<column> | <TOKEN>"`. A sort rule names a group key, or an aggregated column (its first function).
  */
-export function aggregateRows(rows: Row[], columns: string[], aggregation: Rule[], dateTrunc: Trunc[], sort: { column: string; direction: 'asc' | 'desc' }[]): Row[] {
+export type UniqueSource = { key: string; pk: string[] };
+
+/** Distinct primary-key tuples among `rows`; a row whose key is all null does not count, and a source with no key counts rows. */
+export function distinctKeys(rows: Row[], pk: string[]): number {
+  if (!pk.length) return rows.length;
+  return new Set(rows.filter((r) => pk.some((k) => r[k] !== null && r[k] !== undefined)).map((r) => JSON.stringify(pk.map((k) => r[k] ?? null)))).size;
+}
+
+export function aggregateRows(rows: Row[], columns: string[], aggregation: Rule[], dateTrunc: Trunc[], sort: { column: string; direction: 'asc' | 'desc' }[], uniq: UniqueSource[] = []): Row[] {
   const fnsOf = (c: string) => aggregation.filter((r) => r.column === c).map((r) => r.function);
   const unitOf = (c: string) => dateTrunc.find((r) => r.column === c)?.unit;
   const keys = columns.filter((c) => fnsOf(c).length === 0);
@@ -69,10 +77,10 @@ export function aggregateRows(rows: Row[], columns: string[], aggregation: Rule[
     const g = groups.get(id);
     if (g) g.push(r); else groups.set(id, [r]);
   }
-  let out: Row[] = [...groups.values()].map((members) => Object.fromEntries(columns.flatMap((c) => {
+  let out: Row[] = [...groups.values()].map((members) => Object.fromEntries([...columns.flatMap((c) => {
     const fns = fnsOf(c);
     return fns.length ? fns.map((fn) => [aggregatedKey(c, fn), aggregate(fn, members.map((r) => r[c]))] as const) : [[c, keyValue(members[0]!, c)] as const];
-  })));
+  }), ...uniq.map((u) => [u.key, distinctKeys(members, u.pk)] as const)]));
   const sortKey = (column: string) => (fnsOf(column).length ? aggregatedKey(column, fnsOf(column)[0]!) : column);
   if (sort.length) {
     out = [...out].sort((x, y) => {
