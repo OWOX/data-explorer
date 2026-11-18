@@ -44,6 +44,9 @@ test('BarChart: hovering a bucket band lists every series with its text and shar
   fireEvent.focus(band);
   expect((await screen.findAllByText(/A: v1 \(25%\)/)).length).toBeGreaterThan(0);
   expect((await screen.findAllByText(/B: v3 \(75%\)/)).length).toBeGreaterThan(0);
+  const swatch = document.body.querySelector('[role="tooltip"] .dm-chart-swatch, .dm-hint-body .dm-chart-swatch') as HTMLElement;
+  expect(swatch).toHaveClass('dm-chart-swatch');
+  expect(swatch.style.background).toBe('red');
 });
 
 test('BarChart: a negative value does not push bars off the plot', () => {
