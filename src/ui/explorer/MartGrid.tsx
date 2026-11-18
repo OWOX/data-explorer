@@ -319,12 +319,13 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // Charts take the box the table last had (at most 32rem), so switching modes does not move the bands below.
   // A grid that opens in Charts has never measured a table: it takes the full 32rem.
   const frame = useRef<HTMLDivElement>(null);
-  const [tableHeight, setTableHeight] = useState<number | null>(null);
+  // A ref, not state: a re-render on every resize of the table would reach an open column menu and drop its Apply.
+  const tableHeight = useRef<number | null>(null);
   useLayoutEffect(() => {
     const el = frame.current;
     if (charts || !el) return;
     // Full screen stretches the frame: that height is not the table's, so it is not kept.
-    const measure = () => { const h = el.getBoundingClientRect().height; if (h > 0 && !el.closest('.dm-full')) setTableHeight(h); };
+    const measure = () => { const h = el.getBoundingClientRect().height; if (h > 0 && !el.closest('.dm-full')) tableHeight.current = h; };
     measure();
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     ro?.observe(el);
@@ -613,7 +614,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   return (
     <GridEnv.Provider value={env}>
     <ColumnMenuEnvContext.Provider value={menuEnv}>
-    <div ref={frame} className={`dm-grid-frame flex max-h-[32rem] min-h-0 flex-col${charts ? ' dm-grid-frame-charts' : ''}`} style={charts && tableHeight ? { height: tableHeight } : undefined}>
+    <div ref={frame} className={`dm-grid-frame flex max-h-[32rem] min-h-0 flex-col${charts ? ' dm-grid-frame-charts' : ''}`} style={charts && tableHeight.current ? { height: tableHeight.current } : undefined}>
       <Toast onDismiss={() => setNote(null)} stamp={note} returnTo={() => scroller.current}>{note?.text}</Toast>
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { markEdit(); setFilters({}); setParked({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
