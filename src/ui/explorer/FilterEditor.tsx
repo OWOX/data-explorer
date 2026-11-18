@@ -5,6 +5,7 @@ import { columnTitle } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { isDayType } from '../../model/field-category';
 import type { RelativeDatePreset } from '../../sdk/types';
+import { ActionForm } from '../ActionForm';
 import { Select } from '../Select';
 import { HOVER_MS, HoverIntent, Panel, Row } from './MenuParts';
 
@@ -88,14 +89,14 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
         <Panel anchor={fly.row} mode="beside" role="menu" returnTo={fly.row} label={GROUPS[fly.key].title} onEscape={closeFly} onLeave={closeFly} focusSeq={fly.seq} className="dm-menu-editor dm-menu-fly" form={fly.key === 'last'}>
           <div className="dm-menu-list">{GROUPS[fly.key].labels.map((l) => preset(l, true))}</div>
           {fly.key === 'last' && (
-            <form className="dm-menu-fly-form" onSubmit={(e) => { e.preventDefault(); if (nOk) apply(rule); }}>
+            <ActionForm className="dm-menu-fly-form" onAction={() => { if (nOk) apply(rule); }}>
               <span>Last</span>
               <input aria-label="N" className="w-16" type="number" min={1} max={Math.floor(RELATIVE_MAX_N / factor)} value={Number.isNaN(n) ? '' : n} onChange={(e) => setN(e.target.valueAsNumber)} />
               <Select aria-label="Unit" value={unit} onChange={(e) => setUnit(e.target.value as RelativeUnit)}>
                 {RELATIVE_UNITS.map((u) => <option key={u.unit} value={u.unit}>{u.label}</option>)}
               </Select>
-              <button type="submit" disabled={!nOk} className="dm-btn dm-btn-primary dm-btn-sm">Apply</button>
-            </form>
+              <button type="button" onClick={() => { if (nOk) apply(rule); }} disabled={!nOk} className="dm-btn dm-btn-primary dm-btn-sm">Apply</button>
+            </ActionForm>
           )}
         </Panel>
       )}
@@ -114,7 +115,7 @@ function OperatorForm({ field, value, onApply, onClear, startOp }: EditorProps &
   const dateType = field.category === 'time' ? 'time' : isDateTimeField(field) ? 'datetime-local' : 'date';
 
   return (
-    <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); if (isComplete(draft, field)) onApply(draft); }}>
+    <ActionForm className="flex flex-col gap-2" onAction={() => { if (isComplete(draft, field)) onApply(draft); }}>
       <Select aria-label="Operator" value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); }}>
         {ops.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
       </Select>
@@ -143,8 +144,8 @@ function OperatorForm({ field, value, onApply, onClear, startOp }: EditorProps &
       )}
       <div className="dm-menu-actions">
         <button type="button" onClick={onClear} className="dm-btn dm-btn-secondary">Clear</button>
-        <button type="submit" disabled={!isComplete(draft, field)} className="dm-btn dm-btn-primary">Apply</button>
+        <button type="button" onClick={() => { if (isComplete(draft, field)) onApply(draft); }} disabled={!isComplete(draft, field)} className="dm-btn dm-btn-primary">Apply</button>
       </div>
-    </form>
+    </ActionForm>
   );
 }

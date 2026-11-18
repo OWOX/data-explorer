@@ -19,6 +19,7 @@ import { ChatGptIcon } from '../chatgpt-icon';
 import { ClaudeIcon } from '../claude-icon';
 import { GoogleSheetsIcon } from '../google-sheets-icon';
 import { Toast } from '../Toast';
+import { ActionForm } from '../ActionForm';
 import { Tooltip } from '../Tooltip';
 import { copyText } from './clipboard';
 import type { GridRun } from './useMartRows';
@@ -287,7 +288,7 @@ export function ExportMenu(p: Props) {
 
   return (
     <>
-      <span role="status" className="text-xs text-muted-foreground">{busy}</span>
+      <span role="status" className="empty:absolute text-xs text-muted-foreground">{busy}</span>
       <Toast onDismiss={dismissNote} returnTo={() => menu.current?.querySelector('summary')} action={noteAction} persistent={!busy && !!result} hold={promptOpen || dataOpen || sqlOpen} stamp={note}>{noteBody}</Toast>
       <details ref={menu} className="dm-filter dm-export" name="dm-filter" onToggle={(e) => openMenu(e.currentTarget.open)} {...(busy ? { 'aria-disabled': true } : {})}>
           <summary onClick={(e) => { if (busy) e.preventDefault(); }} onKeyDown={onSummaryKey}>{label}<ChevronDown size={14} /></summary>
@@ -536,8 +537,8 @@ function NewReportDialog({ destination, title, initialError, busy, onCancel, onE
     return () => document.removeEventListener('keydown', esc);
   }, [onCancel]);
 
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
+  function submit() {
+    if (busy) return;
     if (!name.trim()) return setError('Give the report a title.');
     if (!existing) { setError(null); return onExport(name.trim(), { kind: 'new' }); }
     if (isPublishedSheetUrl(url)) return setError('That is a published-to-web link. Open the spreadsheet itself and paste its address bar link.');
@@ -549,7 +550,7 @@ function NewReportDialog({ destination, title, initialError, busy, onCancel, onE
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel}>
-      <form role="dialog" aria-modal="true" aria-label="New report" onSubmit={submit} onClick={(e) => e.stopPropagation()} className="flex w-[28rem] max-w-[92vw] flex-col gap-3 rounded-lg border bg-background p-4 text-sm shadow-lg">
+      <ActionForm role="dialog" aria-modal="true" aria-label="New report" onAction={submit} onClick={(e) => e.stopPropagation()} className="flex w-[28rem] max-w-[92vw] flex-col gap-3 rounded-lg border bg-background p-4 text-sm shadow-lg">
         <h2 className="text-base font-semibold">New report in {destination.title}</h2>
         <label className="flex flex-col gap-1">Report title
           <input value={name} onChange={(e) => setName(e.target.value)} className="h-8 rounded-md border bg-background px-2" />
@@ -570,9 +571,9 @@ function NewReportDialog({ destination, title, initialError, busy, onCancel, onE
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onCancel} className="h-8 rounded-md border px-3 hover:bg-accent">Cancel</button>
-          <button type="submit" disabled={busy} className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-3 text-primary-foreground disabled:opacity-50">{busy && <Loader2 className="size-4 animate-spin" />}Export</button>
+          <button type="button" onClick={submit} disabled={busy} className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-3 text-primary-foreground disabled:opacity-50">{busy && <Loader2 className="size-4 animate-spin" />}Export</button>
         </div>
-      </form>
+      </ActionForm>
     </div>,
     document.body,
   );

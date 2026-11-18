@@ -315,3 +315,19 @@ test('Tab past the last control of the Last… panel, and Shift+Tab before its f
   await userEvent.tab();
   expect(thisRow).toHaveFocus();
 });
+
+test('Last [n] [unit]: the Apply button and Enter in the N box apply a valid count; an empty or zero count does nothing', async () => {
+  const { onApply } = open(ts);
+  const last = await flyout('Last…');
+  const n = within(last).getByLabelText('N');
+  await userEvent.clear(n);
+  await userEvent.type(n, '5{Enter}');
+  expect(onApply).toHaveBeenCalledTimes(1);
+  await userEvent.click(within(last).getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledTimes(2);
+  await userEvent.clear(n);
+  await userEvent.type(n, '{Enter}');
+  await userEvent.type(n, '0{Enter}');
+  expect(within(last).getByRole('button', { name: 'Apply' })).toBeDisabled();
+  expect(onApply).toHaveBeenCalledTimes(2);
+});

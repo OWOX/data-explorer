@@ -14,6 +14,7 @@ export function Band({
   icon,
   title,
   total,
+  countLast,
   hint,
   afterHint,
   toolbar,
@@ -29,6 +30,8 @@ export function Band({
   icon: ReactNode;
   title: string;
   total?: number | string;
+  /** Put the count after afterHint (the Data band) instead of right after the title. */
+  countLast?: boolean;
   hint: string;
   /** Sits in the title row right after the hint, and wraps with it. */
   afterHint?: ReactNode;
@@ -55,6 +58,7 @@ export function Band({
     const t = window.setTimeout(() => { setGone(folded); setSettled(!folded); }, REVEAL_MS);
     return () => window.clearTimeout(t);
   }, [folded]);
+  const count = total !== undefined && <span className="dm-badge dm-band-count">{typeof total === 'number' ? num(total) : total}</span>;
   const hidden = folded && gone;
   // Taking the body out of the page moves no box the line layer watches, so tell it to look again.
   const section = useRef<HTMLElement>(null);
@@ -75,9 +79,10 @@ export function Band({
         <div className="dm-band-titlegroup">
           <span className="dm-band-icon">{icon}</span>
           <h2 className="dm-band-title" title={title}>{title}</h2>
-          {total !== undefined && <span className="dm-badge dm-band-count">{typeof total === 'number' ? num(total) : total}</span>}
+          {!countLast && count}
           <Hint text={hint} label={`About ${title}`} />
           {afterHint}
+          {countLast && count}
         </div>
         <div className="dm-band-actions">
           {/* Filtering what you cannot see answers nothing, so the controls fold with the content. */}
