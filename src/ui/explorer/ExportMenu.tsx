@@ -17,6 +17,7 @@ import { useServices, useStore } from '../../state/store';
 import { ChatGptIcon } from '../chatgpt-icon';
 import { ClaudeIcon } from '../claude-icon';
 import { GoogleSheetsIcon } from '../google-sheets-icon';
+import { Toast } from '../Toast';
 import { Tooltip } from '../Tooltip';
 import { copyText } from './clipboard';
 
@@ -357,12 +358,12 @@ export function ExportMenu(p: Props) {
 /** "Prompt copied. Paste it into Claude", with a way to read it. When the clipboard was out of reach the prompt is in the dialog instead. */
 function CopiedNote({ copied, onShow, onDismiss }: { copied: Copied; onShow: () => void; onDismiss: () => void }) {
   return (
-    <span role="status" className="inline-flex max-w-96 items-center gap-1 text-xs text-muted-foreground">
-      {copied.ok ? <Check className="size-3.5 shrink-0" /> : <AlertTriangle className="size-3.5 shrink-0" />}
-      <span className="truncate">{copied.ok ? `Prompt copied. Paste it into ${copied.assistant}` : `Could not copy. Copy the prompt, then paste it into ${copied.assistant}`}</span>
-      <button type="button" onClick={onShow} className="shrink-0 underline">Show prompt</button>
-      <button type="button" aria-label="Dismiss" onClick={onDismiss} className="shrink-0 px-1">×</button>
-    </span>
+    <Toast onDismiss={onDismiss} action={<button type="button" onClick={onShow} className="shrink-0 underline">Show prompt</button>}>
+      <span className="inline-flex items-center gap-1.5">
+        {copied.ok ? <Check className="size-3.5 shrink-0" aria-hidden /> : <AlertTriangle className="size-3.5 shrink-0" aria-hidden />}
+        {copied.ok ? `Prompt copied. Paste it into ${copied.assistant}` : `Could not copy. Copy the prompt, then paste it into ${copied.assistant}`}
+      </span>
+    </Toast>
   );
 }
 
@@ -407,12 +408,12 @@ function TextDialog({ name, heading = name, note, areaLabel, text, onClose }: { 
 function CopiedDataNote({ data, onShow, onDismiss }: { data: CopiedData; onShow: () => void; onDismiss: () => void }) {
   const rows = `${data.count} ${data.count === 1 ? 'row' : 'rows'}`;
   return (
-    <span role="status" className="inline-flex max-w-96 items-center gap-1 text-xs text-muted-foreground">
-      {data.ok ? <Check className="size-3.5 shrink-0" /> : <AlertTriangle className="size-3.5 shrink-0" />}
-      <span className="truncate">{!data.ok ? 'Could not copy. Copy the data by hand' : data.more ? `Copied the first ${rows}. Load more to copy more.` : `Copied ${rows}`}</span>
-      {!data.ok && <button type="button" onClick={onShow} className="shrink-0 underline">Show data</button>}
-      <button type="button" aria-label="Dismiss" onClick={onDismiss} className="shrink-0 px-1">×</button>
-    </span>
+    <Toast onDismiss={onDismiss} action={!data.ok ? <button type="button" onClick={onShow} className="shrink-0 underline">Show data</button> : undefined}>
+      <span className="inline-flex items-center gap-1.5">
+        {data.ok ? <Check className="size-3.5 shrink-0" aria-hidden /> : <AlertTriangle className="size-3.5 shrink-0" aria-hidden />}
+        {!data.ok ? 'Could not copy. Copy the data by hand' : data.more ? `Copied the first ${rows}. Load more to copy more.` : `Copied ${rows}`}
+      </span>
+    </Toast>
   );
 }
 

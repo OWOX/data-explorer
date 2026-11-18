@@ -308,9 +308,9 @@ test('Export to an AI: the prompt is copied, named in a status, and readable in 
   const data = await ordersGrid(page);
   await data.getByText('Export', { exact: true }).click();
   await data.getByRole('menuitem', { name: 'Claude', exact: true }).click();
-  await expect(data.getByText('Prompt copied. Paste it into Claude')).toBeVisible();
+  await expect(page.getByRole('status').getByText('Prompt copied. Paste it into Claude')).toBeVisible();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Query the data mart "Orders" (id "orders").');
-  await data.getByRole('button', { name: 'Show prompt' }).click();
+  await page.getByRole('status').getByRole('button', { name: 'Show prompt' }).click();
   const area = page.getByRole('dialog', { name: 'Prompt' }).getByRole('textbox');
   await expect(area).toHaveValue(/read-only/);
   await expect(area).toHaveAttribute('readonly', '');
@@ -322,7 +322,7 @@ test('Copy to clipboard: the loaded rows are copied as TSV and the status says s
   const data = await ordersGrid(page);
   await data.getByText('Export', { exact: true }).click();
   await data.getByRole('menuitem', { name: 'Copy to clipboard' }).click();
-  await expect(data.getByText(/^Copied (the first )?\d+ rows/)).toBeVisible();
+  await expect(page.getByRole('status').getByText(/^Copied (the first )?\d+ rows/)).toBeVisible();
   const text = await page.evaluate(() => navigator.clipboard.readText());
   expect(text.split('\n').length).toBeGreaterThan(2);
   expect(text.split('\n')[0]).toContain('\t');
@@ -571,7 +571,7 @@ test('the Fields picker is on each tab and lists only that mart; the toolbar has
   await martCard(page, 'Customers').click();
   await data.getByRole('button', { name: 'Fields of Customers' }).click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog.getByText(/^Fields · \d+\/\d+$/)).toBeVisible();
+  await expect(dialog.getByText(/^Fields · /)).toHaveCount(0);
   await expect(dialog.getByRole('option')).toHaveCount(5);
   await expect(dialog.getByLabel('email', { exact: true })).toBeVisible();
   await expect(dialog.getByLabel('status', { exact: true })).toHaveCount(0);

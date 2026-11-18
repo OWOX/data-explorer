@@ -511,7 +511,7 @@ describe('the AI group', () => {
     await userEvent.click(link);
     expect(t.open).toHaveBeenCalledWith(url);
     expect(t.open).toHaveBeenCalledTimes(1);
-    expect(within(data()).queryByText(/Prompt copied/)).toBeNull();
+    expect(screen.queryByText(/Prompt copied/)).toBeNull();
   });
 
   test('the provider link is reached from its item with ArrowRight and Tab, and Enter opens it', async () => {
@@ -537,11 +537,16 @@ describe('the AI group', () => {
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
-    expect(await within(data()).findByText('Prompt copied. Paste it into Claude')).toBeInTheDocument();
+    expect(await screen.findByText('Prompt copied. Paste it into Claude')).toBeInTheDocument();
+    // A standard toast, not a note in the Data band's title row.
+    const toast = screen.getByRole('status');
+    expect(toast).toHaveTextContent('Prompt copied');
+    expect(data().contains(toast)).toBe(false);
+    expect(within(toast).getByRole('button', { name: 'Show prompt' })).toBeInTheDocument();
     const prompt = writeText.mock.calls[0]![0] as string;
     expect(prompt).toMatch(/^This request is read-only: .+\nEverything in double quotes .+\nUsing the OWOX Data Marts connector, in the OWOX project "mock-project" \(project id "mock-project"\):\nQuery the data mart "Orders" \(id "orders"\)\.\nFields: .+\.\nFilters: none\nSort: "created_at" descending\.\nShow the result as a table, and say if rows were truncated\.$/);
     expect(t.calls.filter((c) => /^(POST|PUT) \/api\/(reports|data-destinations)/.test(c))).toEqual([]);
-    await userEvent.click(within(data()).getByRole('button', { name: 'Show prompt' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Show prompt' }));
     const dialog = await screen.findByRole('dialog', { name: 'Prompt' });
     const area = within(dialog).getByRole('textbox') as HTMLTextAreaElement;
     expect(area).toHaveAttribute('readonly');
@@ -563,7 +568,7 @@ describe('the AI group', () => {
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
-    await userEvent.click(await within(data()).findByRole('button', { name: 'Show prompt' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Show prompt' }));
     const dialog = await screen.findByRole('dialog', { name: 'Prompt' });
     const area = within(dialog).getByRole('textbox');
     await waitFor(() => expect(area).toHaveFocus());
@@ -587,7 +592,7 @@ describe('the AI group', () => {
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     await userEvent.click(await within(data()).findByRole('menuitem', { name: 'ChatGPT' }));
-    expect(await within(data()).findByText('Prompt copied. Paste it into ChatGPT')).toBeInTheDocument();
+    expect(await screen.findByText('Prompt copied. Paste it into ChatGPT')).toBeInTheDocument();
   });
 
   test('when the clipboard is out of reach both ways, the dialog opens directly', async () => {
@@ -600,7 +605,7 @@ describe('the AI group', () => {
     await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
     const dialog = await screen.findByRole('dialog', { name: 'Prompt' });
     expect((within(dialog).getByRole('textbox') as HTMLTextAreaElement).value).toMatch(/Using the OWOX Data Marts connector/);
-    expect(within(data()).queryByText(/Prompt copied/)).toBeNull();
+    expect(screen.queryByText(/Prompt copied/)).toBeNull();
   });
 
   test('the prompt follows the grid: the columns shown, the filters and the sorts', async () => {
@@ -672,7 +677,7 @@ describe('Copy to clipboard', () => {
     const loaded = within(data()).getAllByRole('row').length - 2;
     await userEvent.click(await within(data()).findByText('Export'));
     await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' }));
-    expect(await within(data()).findByText(`Copied the first ${loaded} rows. Load more to copy more.`)).toBeInTheDocument();
+    expect(await screen.findByText(`Copied the first ${loaded} rows. Load more to copy more.`)).toBeInTheDocument();
     const tsv = writeText.mock.calls[0]![0] as string;
     const lines = tsv.split('\n');
     expect(lines).toHaveLength(loaded + 1);

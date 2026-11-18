@@ -457,7 +457,38 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const scroller = useRef<HTMLDivElement>(null);
   // A click selects the cell; a shift-click stretches a block from the active cell (the one a click or a header selected) to this one,
   // and does not open another record.
+  // Drag-select: a press on a cell starts a block, moving over other cells stretches it, a release anywhere ends it.
+  const drag = useRef<Cell | null>(null);
+  const dragMoved = useRef(false);
+  useEffect(() => {
+    const end = () => {
+      drag.current = null;
+      // The click after a drag comes right after the release; a drag that ended elsewhere gets none, so the flag is cleared after it.
+      if (dragMoved.current) setTimeout(() => { dragMoved.current = false; }, 0);
+    };
+    window.addEventListener('mouseup', end);
+    return () => window.removeEventListener('mouseup', end);
+  }, []);
+  const startDrag = (row: number, col: number, e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    if (e.shiftKey) { e.preventDefault(); scroller.current?.focus({ preventScroll: true }); return; }
+    if ((e.target as HTMLElement).closest('a, button, input, textarea, select')) return;
+    // No native text selection: the cells are what the drag selects.
+    e.preventDefault();
+    scroller.current?.focus({ preventScroll: true });
+    drag.current = { row, col };
+    dragMoved.current = false;
+  };
+  const dragOver = (row: number, col: number) => {
+    const from = drag.current;
+    if (!from) return;
+    if (from.row === row && from.col === col && !dragMoved.current) return;
+    dragMoved.current = true;
+    setSelected(from.row === row && from.col === col ? { kind: 'cell', ...from } : { kind: 'cell', ...from, to: { row, col } });
+  };
   const pickCell = (row: number, col: number, e: React.MouseEvent) => {
+    // The click that ends a drag is no click on a cell: the block stays and no record opens.
+    if (dragMoved.current) { e.stopPropagation(); dragMoved.current = false; return; }
     if (e.shiftKey && sel) {
       e.stopPropagation();
       const from: Cell = sel.kind === 'cell' ? { row: sel.row, col: sel.col } : sel.kind === 'col' ? { row: 0, col: sel.from } : { row: sel.from, col: 0 };
@@ -564,10 +595,10 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               : rows.length === 0 ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground">{hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.'}</td></tr>
               : table.getRowModel().rows.map((r, ri) => (
                 <tr key={r.id}
-                  onClick={pks.length && !grouped ? () => dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }) : undefined}
+                  onClick={pks.length && !grouped ? () => { if (dragMoved.current) return; dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }); } : undefined}
                   className={`${pks.length && !grouped ? 'cursor-pointer' : ''}`}>
                   <th aria-hidden data-chrome data-selected={rowMark(ri)} onClick={(e) => { pickHeader('row', ri, e.shiftKey); if (e.shiftKey) e.stopPropagation(); }} className="dm-chrome">{ri + 1}</th>
-                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={cellSel && !rect && cellSel.row === ri && cellSel.col === ci ? '' : undefined} data-moving={rect && cellSel?.to?.row === ri && cellSel.to.col === ci ? '' : undefined} data-range={inBlock(ri, ci) ? '' : undefined} data-active={anchor?.row === ri && anchor.col === ci ? '' : undefined} data-handle={corner?.row === ri && corner.col === ci ? '' : undefined} data-edge={edges(ri, ci)} onMouseDown={(e) => { if (e.shiftKey) { e.preventDefault(); scroller.current?.focus({ preventScroll: true }); } }} onClick={(e) => pickCell(ri, ci, e)} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap${numericOutput(c.column.id) ? ' text-right' : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
+                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={cellSel && !rect && cellSel.row === ri && cellSel.col === ci ? '' : undefined} data-moving={rect && cellSel?.to?.row === ri && cellSel.to.col === ci ? '' : undefined} data-range={inBlock(ri, ci) ? '' : undefined} data-active={anchor?.row === ri && anchor.col === ci ? '' : undefined} data-handle={corner?.row === ri && corner.col === ci ? '' : undefined} data-edge={edges(ri, ci)} onMouseDown={(e) => startDrag(ri, ci, e)} onMouseEnter={() => dragOver(ri, ci)} onClick={(e) => pickCell(ri, ci, e)} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap${numericOutput(c.column.id) ? ' text-right' : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
                   <td aria-hidden className="p-0" />
                 </tr>
               ))}

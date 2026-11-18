@@ -142,6 +142,9 @@ test('unticking the last field of a joined mart in the picker deselects it; tick
   await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Customers' }));
   const group = await screen.findByRole('dialog');
   await userEvent.click(within(group).getByRole('option', { selected: true }));
+  // The mart stays while the popup is open and goes when it closes with nothing ticked.
+  expect(title()).toBe('Orders + Customers');
+  await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(title()).toBe('Orders'));
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'false');
   expect(within(data()).queryByRole('button', { name: 'Fields of Customers' })).toBeNull();

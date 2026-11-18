@@ -78,3 +78,33 @@ test('a copy from a field or a text range inside a cell is left alone', async ()
   expect(copy(scroller())).toBeNull();
   window.getSelection()!.removeAllRanges();
 });
+
+test('dragging from one cell to another selects the block and opens no record', async () => {
+  setup(); await ready();
+  const rows = dataRows();
+  const from = cellsOf(rows[0]!)[0]!;
+  const to = cellsOf(rows[2]!)[1]!;
+  const down = fireEvent.mouseDown(from, { button: 0 });
+  // Native text selection is cancelled.
+  expect(down).toBe(false);
+  fireEvent.mouseEnter(cellsOf(rows[1]!)[1]!);
+  fireEvent.mouseEnter(to);
+  fireEvent.mouseUp(to);
+  fireEvent.click(to);
+  const expected = [0, 1, 2].map((r) => cellsOf(rows[r]!).slice(0, 2).map((c) => c.textContent).join('\t')).join('\n');
+  expect(copy(scroller())!.text).toBe(expected);
+  expect(document.querySelector('[data-range]')).not.toBeNull();
+  expect(document.querySelectorAll('td[data-range]')).toHaveLength(6);
+});
+
+test('a drag that comes back to its first cell is a plain cell', async () => {
+  setup(); await ready();
+  const rows = dataRows();
+  const from = cellsOf(rows[0]!)[0]!;
+  fireEvent.mouseDown(from, { button: 0 });
+  fireEvent.mouseEnter(cellsOf(rows[1]!)[0]!);
+  fireEvent.mouseEnter(from);
+  fireEvent.mouseUp(from);
+  expect(document.querySelectorAll('td[data-range]')).toHaveLength(0);
+  expect(document.querySelectorAll('td[data-selected]')).toHaveLength(1);
+});
