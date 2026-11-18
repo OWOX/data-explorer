@@ -402,3 +402,56 @@ test('after the main group is removed, focus moves to the new main tab\'s Column
   await waitFor(() => expect(title()).toBe('Customers'));
   await waitFor(() => expect(document.activeElement).toBe(within(data()).getByRole('button', { name: 'Fields of Customers' })));
 });
+
+describe('dragging a card onto the main card', () => {
+  const pointer = (type: string, target: Window | Document | Node | Element, x: number, y: number) =>
+    fireEvent(target, new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y }));
+  let hit: Element | null = null;
+  beforeEach(() => { (document as { elementFromPoint?: unknown }).elementFromPoint = () => hit; });
+  afterEach(() => { delete (document as { elementFromPoint?: unknown }).elementFromPoint; hit = null; });
+
+  test('a drop on the main card makes the dragged mart main; the click that ends the drag does not also join it', async () => {
+    setup();
+    await ready();
+    await within(marts()).findByText('Customers');
+    hit = card('Orders');
+    pointer('pointerdown', card('Customers'), 0, 0);
+    pointer('pointermove', window, 30, 0);
+    expect(card('Orders')).toHaveClass('dm-drop-target');
+    pointer('pointerup', window, 30, 0);
+    fireEvent.click(card('Customers'));
+    await waitFor(() => expect(groupTitles()[0] ?? title()).toBe('Customers'));
+    // Orders may still be animating out; the first card that is not leaving is the new main one.
+    await waitFor(() => expect(marts().querySelector('article:not([data-leaving])')).toBe(card('Customers')));
+  });
+
+  test('a drop anywhere else, or Escape, changes nothing', async () => {
+    setup();
+    await ready();
+    await within(marts()).findByText('Customers');
+    hit = marts();
+    pointer('pointerdown', card('Customers'), 0, 0);
+    pointer('pointermove', window, 30, 0);
+    pointer('pointerup', window, 30, 0);
+    pointer('pointerdown', card('Customers'), 0, 0);
+    pointer('pointermove', window, 30, 0);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    hit = card('Orders');
+    pointer('pointerup', window, 30, 0);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(title()).toBe('Orders');
+    expect(card('Orders')).not.toHaveClass('dm-drop-target');
+  });
+
+  test('a press that moves less than 5 px is a click', async () => {
+    setup();
+    await ready();
+    await within(marts()).findByText('Customers');
+    hit = card('Orders');
+    pointer('pointerdown', card('Customers'), 0, 0);
+    pointer('pointermove', window, 3, 0);
+    pointer('pointerup', window, 3, 0);
+    fireEvent.click(card('Customers'));
+    await waitFor(() => expect(title()).toBe('Orders + Customers'));
+  });
+});

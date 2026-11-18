@@ -18,6 +18,7 @@ import { CardClickContext } from './CardClick';
 import { MartCard, SourceCard, martElementId, sourceElementId, type CountState } from './cards';
 import { useCardTransitions } from './transitions';
 import { useCardClick } from './useCardClick';
+import { useCardDrag } from './useCardDrag';
 import { litIds, useWires, type Wire } from './wires';
 
 const martId = (m: Mart) => m.id;
@@ -75,6 +76,7 @@ export function CardBands({
   const [hovered, setHovered] = useState<string | null>(null);
   const [wireTip, setWireTip] = useState<{ text: string; x: number; y: number } | null>(null);
   const click = useCardClick(model);
+  const drag = useCardDrag(canvas, selection.martId, (id) => model.marts.get(id)?.title ?? id, (id) => void click(id, { mode: 'makeMain' }));
 
   // Escape lets go of the hovered card; what is selected only changes by clicks and Back.
   useEffect(() => {
@@ -191,6 +193,8 @@ export function CardBands({
               lit={lit.has(el)}
               aside={aside.has(el)}
               unjoinable={unjoinable}
+              dropTarget={drag !== null && selection.martId === id}
+              dropHot={drag !== null && drag.overMain && selection.martId === id}
               mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
               onMakeMain={mainId && id !== mainId && mart.accessible ? () => void click(id, { mode: 'makeMain' }) : undefined}
               onSelect={() => void click(id)}
@@ -202,6 +206,7 @@ export function CardBands({
         })}
       </Band>
       <CardClickContext.Provider value={click}>{children}</CardClickContext.Provider>
+      {drag && <div className="dm-drag-ghost" style={{ left: drag.x + 8, top: drag.y + 8 }} aria-hidden>{drag.title}</div>}
       {wireTip && <PointerTip text={wireTip.text} x={wireTip.x} y={wireTip.y} />}
     </div>
   );

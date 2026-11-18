@@ -185,6 +185,8 @@
 .dm-node.dm-ghost { border-style: dashed; opacity: 0.6; }
 .dm-node.dm-drop-target { outline: 2px dashed var(--primary); outline-offset: 2px; }
 .dm-node.dm-drop-hot { outline-style: solid; }
+.dm-drag-ghost { position: fixed; z-index: 60; pointer-events: none; padding: 6px 10px; border-radius: 8px; font-size: 13px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 4px 12px rgb(0 0 0 / 0.18); }
+.dm-canvas [data-mart-id] { user-select: none; }
 .dm-card-hint { position: absolute; left: 8px; right: 8px; bottom: calc(100% + 4px); z-index: 5; padding: 6px 8px; border-radius: 6px; font-size: 12px; background: var(--popover); color: var(--popover-foreground); box-shadow: 0 2px 8px rgb(0 0 0 / 0.15); }
 /* The card under the pointer takes a 2px border in its own run-health colour — the ring is laid
    outside the 1px it already has, so nothing shifts. A card nothing has run stays grey. */
