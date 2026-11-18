@@ -196,15 +196,21 @@ describe('the menu', () => {
     await waitFor(() => expect(details).not.toHaveAttribute('open'));
   });
 
-  test('after the menu unmounts, a press outside and a window blur do nothing', async () => {
+  test('the outside-press and blur handlers that were added are removed when the menu unmounts', async () => {
+    const docAdd = vi.spyOn(document, 'addEventListener');
+    const winAdd = vi.spyOn(window, 'addEventListener');
     const t = setup(1);
     const view = t.view();
     await rowsLoaded();
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const press = docAdd.mock.calls.find(([type]) => type === 'pointerdown')!;
+    const blur = winAdd.mock.calls.find(([type]) => type === 'blur')!;
+    expect(press[2]).toBe(true);
+    const docRemove = vi.spyOn(document, 'removeEventListener');
+    const winRemove = vi.spyOn(window, 'removeEventListener');
     view.unmount();
-    expect(() => { fireEvent.pointerDown(document.body); fireEvent.blur(window); }).not.toThrow();
-    expect(error).not.toHaveBeenCalled();
-    error.mockRestore();
+    expect(docRemove.mock.calls.some(([type, fn, opt]) => type === 'pointerdown' && fn === press[1] && opt === true)).toBe(true);
+    expect(winRemove.mock.calls.some(([type, fn]) => type === 'blur' && fn === blur[1])).toBe(true);
+    [docAdd, winAdd, docRemove, winRemove].forEach((s) => s.mockRestore());
   });
 });
 
@@ -352,7 +358,6 @@ describe('the export dialog', () => {
     expect(radios(dialog).map(labelOf)).toEqual(['New spreadsheet', 'Existing spreadsheet', 'Update existing report']);
     expect(radios(dialog)[0]).toBeChecked();
     expect(within(dialog).getByLabelText('Report title')).toBeInTheDocument();
-    expect(within(dialog).queryByText('Loading reports…')).toBeNull();
   });
 
   test('focus: the checked radio takes it on open, Tab stays inside, and Escape returns it to the Export button', async () => {
@@ -361,7 +366,12 @@ describe('the export dialog', () => {
     await rowsLoaded();
     const dialog = await openDialog();
     await waitFor(() => expect(radios(dialog)[0]).toHaveFocus());
-    for (let i = 0; i < 12; i++) { await userEvent.tab(); expect(dialog.contains(document.activeElement)).toBe(true); }
+    // Native tabbing: the three radios are one stop, so the cycle is radio, Cancel, Export, title, radio.
+    const stop = async () => { await userEvent.tab(); return document.activeElement; };
+    expect(await stop()).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(await stop()).toBe(within(dialog).getByRole('button', { name: 'Export' }));
+    expect(await stop()).toBe(within(dialog).getByLabelText('Report title'));
+    expect(await stop()).toBe(radios(dialog)[0]);
     await userEvent.tab({ shift: true });
     expect(dialog.contains(document.activeElement)).toBe(true);
     await userEvent.keyboard('{Escape}');

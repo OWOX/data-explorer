@@ -515,7 +515,18 @@ function ExportDialog({ exporter, martId, destination, title, initialError, busy
   // Tab cycles inside the dialog: focus never leaves it behind the backdrop.
   const trap = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'Tab') return;
-    const items = [...e.currentTarget.querySelectorAll<HTMLElement>('input:not([disabled]), button:not([disabled])')];
+    // As the browser tabs: one stop per radio group (its checked radio, else its first enabled one).
+    const seen = new Set<string>();
+    const items = [...e.currentTarget.querySelectorAll<HTMLElement>('input, button, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')].filter((el) => {
+      if ((el as HTMLInputElement).disabled) return false;
+      const r = el as HTMLInputElement;
+      if (r.type !== 'radio' || !r.name) return true;
+      if (seen.has(r.name)) return false;
+      const group = [...e.currentTarget.querySelectorAll<HTMLInputElement>(`input[type="radio"]`)].filter((x) => x.name === r.name && !x.disabled);
+      if (group.some((x) => x.checked) ? !r.checked : group[0] !== r) return false;
+      seen.add(r.name);
+      return true;
+    });
     const at = items.indexOf(document.activeElement as HTMLElement);
     const next = e.shiftKey ? (at <= 0 ? items.length - 1 : at - 1) : (at < 0 || at === items.length - 1 ? 0 : at + 1);
     e.preventDefault();
