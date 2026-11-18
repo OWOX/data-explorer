@@ -76,7 +76,12 @@ export function ExportMenu(p: Props) {
     reading.current = key;
     void readRunSql(ctx, p.martId, runId).then((result) => {
       if (reading.current === key) reading.current = null;
-      setSqls((cur) => ({ ...cur, [runId]: { result, opening } }));
+      // SQL that was read stays whatever a later read says, and a result of an older opening never replaces a newer one's.
+      setSqls((cur) => {
+        const old = cur[runId];
+        if (old && ('sql' in old.result || old.opening > opening)) return cur;
+        return { ...cur, [runId]: { result, opening } };
+      });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menuOpen, runId, opening]);

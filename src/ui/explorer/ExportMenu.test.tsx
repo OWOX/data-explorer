@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import type { ExportedReport } from '../../api/exports';
@@ -854,6 +854,41 @@ describe('Copy SQL', () => {
     await userEvent.click(summary);
     await waitFor(async () => expect(await sqlItem()).toBeEnabled());
     expect(calls).toBe(2);
+  });
+
+  // Two reads of one run from two openings of the menu, each settled by the test.
+  const twoOpenings = async (): Promise<{ settle: (n: 0 | 1, how: 'ok' | 'fail') => void; summary: HTMLElement }> => {
+    const gates: ((how: 'ok' | 'fail') => void)[] = [];
+    let n = 0;
+    const get = () => new Promise((resolve, reject) => {
+      gates[n++] = (how) => (how === 'ok' ? resolve({ additionalParams: { httpData: { executionSqlQuery: 'SELECT 9' } } }) : reject(new Error('boom')));
+    });
+    lone({ state: 'done', runId: 'r1' }, get);
+    const summary = (await screen.findByText('Export')).closest('summary')!;
+    await userEvent.click(summary);
+    await waitFor(() => expect(n).toBe(1));
+    await userEvent.click(summary);
+    await userEvent.click(summary);
+    await waitFor(() => expect(n).toBe(2));
+    return { settle: (i, how) => act(() => gates[i]!(how)), summary };
+  };
+
+  test('a late failure of an older opening does not replace the reason of the newer one', async () => {
+    const t = await twoOpenings();
+    t.settle(1, 'fail');
+    await waitFor(async () => expect(await sqlItem()).toHaveAttribute('data-reason', 'The SQL could not be read from OWOX'));
+    t.settle(0, 'fail');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(await sqlItem()).toHaveAttribute('data-reason', 'The SQL could not be read from OWOX');
+  });
+
+  test('a failure never replaces SQL that was read', async () => {
+    const t = await twoOpenings();
+    t.settle(0, 'ok');
+    await waitFor(async () => expect(await sqlItem()).toBeEnabled());
+    t.settle(1, 'fail');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(await sqlItem()).toBeEnabled();
   });
 
   test('ArrowUp from the first item wraps past a disabled Copy SQL to the last enabled item', async () => {
