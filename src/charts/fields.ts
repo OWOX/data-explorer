@@ -48,11 +48,14 @@ export function chartFields(schema: Field[], shown: string[], agg: Aggregation, 
 const DAY_MS = 86_400_000;
 const SPAN_DAYS: [DateBucket, number][] = [['DAY', 1], ['WEEK', 7], ['MONTH', 30.44], ['QUARTER', 91.31], ['YEAR', 365.25]];
 
-/** The smallest bucket giving at most 60 buckets between two ISO dates or timestamps; DAY when either is missing or unparsable. */
+// The warehouse may answer 'YYYY-MM-DD HH:MM:SS UTC', which Date.parse reads in some engines and not in others.
+const parseStamp = (v: unknown): number => Date.parse(String(v ?? '').trim().replace(/ UTC$/, '').replace(/^(\d{4}-\d\d-\d\d) /, '$1T'));
+
+/** The smallest bucket giving at most 60 buckets between two ISO dates or timestamps; MONTH when either is missing or unparsable (DAY would draw far too many bars on an unknown span). */
 export function pickBucket(min: unknown, max: unknown): DateBucket {
-  const a = Date.parse(String(min ?? ''));
-  const b = Date.parse(String(max ?? ''));
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return 'DAY';
+  const a = parseStamp(min);
+  const b = parseStamp(max);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 'MONTH';
   // Only to choose a bucket: no value derived here is shown.
   const days = Math.abs(b - a) / DAY_MS + 1;
   return SPAN_DAYS.find(([, d]) => days / d <= MAX_BUCKETS)?.[0] ?? 'YEAR';
