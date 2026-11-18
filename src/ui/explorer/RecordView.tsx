@@ -53,7 +53,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
 
   const header = (
     <BandTools slot={slot}>
-      <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
+      <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
     </BandTools>
   );
 
