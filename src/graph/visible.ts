@@ -42,21 +42,26 @@ export type VisibleInput = {
   filtered?: string[];
   /** The marts a smart search found, best first: with any, the band shows these (and the always-shown ones) instead of matching titles. */
   found?: string[];
+  /** The marts the main mart can join, at any depth (its blendable sources); null while they load. */
+  joinable?: string[] | null;
 };
 export type VisibleResult = {
   ids: string[];
   /** The mart a first load selects: most inbound edges among the marts the member can open. */
   focusId: string | null;
+  /** With a main mart set and its joins read: the marts it can join. The band dims the rest. Null otherwise. */
+  joinable: Set<string> | null;
 };
 
 /** Which marts the Data Marts band shows, by the first rule that applies (spec, "Which marts show"). */
-export function computeVisible({ model, selection, search, contextIds, storageIds = null, joined = [], filtered = [], found = [] }: VisibleInput): VisibleResult {
+export function computeVisible({ model, selection, search, contextIds, storageIds = null, joined = [], filtered = [], found = [], joinable = null }: VisibleInput): VisibleResult {
   const inbound = inboundCounts(model.edges);
   // A mart in an unticked storage is out of every rule below, the selected one included.
   const inStorage = (id: string) => storageIds === null || storageIds.includes(model.marts.get(id)?.storageId ?? '');
   const accessible = [...model.marts.values()].filter((m) => m.accessible && inStorage(m.id));
   const focusId = pickFocus(accessible.map((m) => m.id), model.marts, inbound);
   const selectedId = selection.martId && model.marts.has(selection.martId) ? selection.martId : null;
+  const joinableSet = selectedId && joinable ? new Set(joinable) : null;
   const rankOf = (first: string | null) => rank(model.marts, inbound, first);
   const order = (ids: string[], first = selectedId) => ids.sort(rankOf(first));
   // Main first, then the selected joined marts, then everything else breadth first from them over the edges, so cards that are
@@ -79,11 +84,13 @@ export function computeVisible({ model, selection, search, contextIds, storageId
   const always = [...new Set([...(selectedId && inStorage(selectedId) ? [selectedId] : []), ...joined, ...filtered])].filter((id) => model.marts.has(id));
   const withJoined = (ids: string[]) => (selectedId ? [...new Set([...ids, ...always])] : ids);
 
-  // 0. A smart search found marts: those, best first, then the marts whose title matches the query, then the marts that are always shown.
+  // 0. A smart search found marts: the main mart and the joined marts first, then the hits, best first, then the marts whose title matches the query, then the marts that are always shown.
   if (found.length > 0) {
     const hits = found.filter((id) => model.marts.get(id)?.accessible && inStorage(id));
     const titled = accessible.filter((m) => matchesSearch(m, search) && matchesContexts(m, contextIds)).map((m) => m.id);
-    return { ids: [...new Set([...hits, ...titled, ...always])], focusId };
+    // The main mart first, then its joined marts, then the hits.
+    const head = always.filter((id) => id === selectedId || joined.includes(id));
+    return { ids: [...new Set([...head, ...hits, ...titled, ...always])], focusId, joinable: joinableSet };
   }
 
   // 1. A search, or a selected context badge: the matches, narrowed to the selected source.
@@ -96,21 +103,25 @@ export function computeVisible({ model, selection, search, contextIds, storageId
       if (!matchesSearch(mart, search)) continue;
       ids.push(mart.id);
     }
-    return { ids: arrange(withJoined(ids), selectedId), focusId };
+    return { ids: arrange(withJoined(ids), selectedId), focusId, joinable: joinableSet };
   }
 
-  // 2. A mart is selected: it and every mart joined to it, in either direction; with joined marts selected, every mart connected to any of them too.
+  // 2. A mart is selected: it and every mart it can join, at any depth. While those are read, its neighbours and the
+  // joined marts' neighbours stand in, so the band is not empty.
   if (selectedId) {
     const selected = [selectedId, ...joined.filter((id) => model.marts.has(id))];
-    return { ids: arrange(withJoined([...new Set([...selected, ...selected.flatMap((id) => neighbours(id, model.edges))])].filter(inStorage)), selectedId), focusId };
+    const reach = joinableSet
+      ? [...joinableSet].filter((id) => model.marts.get(id)?.accessible)
+      : selected.flatMap((id) => neighbours(id, model.edges));
+    return { ids: arrange(withJoined([...new Set([...selected, ...reach])].filter(inStorage)), selectedId), focusId, joinable: joinableSet };
   }
 
   // 3. Only a source is selected: every mart it feeds.
   if (selection.sourceKey) {
     const source = model.sources.find((s) => s.key === selection.sourceKey);
-    return { ids: order((source?.martIds ?? []).filter((id) => model.marts.has(id) && inStorage(id))), focusId };
+    return { ids: order((source?.martIds ?? []).filter((id) => model.marts.has(id) && inStorage(id))), focusId, joinable: joinableSet };
   }
 
   // 4. Nothing selected, which is only the moment before a first load selects the focus mart.
-  return { ids: focusId ? order([focusId, ...neighbours(focusId, model.edges)].filter(inStorage), focusId) : [], focusId };
+  return { ids: focusId ? order([focusId, ...neighbours(focusId, model.edges)].filter(inStorage), focusId) : [], focusId, joinable: joinableSet };
 }

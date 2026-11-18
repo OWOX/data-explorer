@@ -1,6 +1,6 @@
 import type { JoinedSource } from '../api/blendable';
 import type { Field } from '../model/types';
-import { defaultJoinFields, fieldsFor, isIdField, joinedMartIds, planClick, withoutMart, type PlanEnv } from './join-plan';
+import { defaultJoinFields, fieldsFor, inUsePaths, isIdField, joinedMartIds, planClick, planMakeMain, sourceOfMart, withoutMart, type PlanEnv } from './join-plan';
 import type { GridState } from './store';
 
 const f = (name: string, category: Field['category'], martId: string): Field => ({ name, alias: null, type: 'STRING', category, description: null, isPrimaryKey: false, joined: { martId, label: martId, aliasPath: martId, originalName: name.slice(martId.length + 2) } });
@@ -63,10 +63,9 @@ test('removing the only columns on screen brings the mart\'s own defaults back',
   expect(grid.columns).toEqual(['id', 'status']);
 });
 
-test('clicking a mart the main cannot join makes it the only selected mart', () => {
+test('clicking a mart the main cannot join changes nothing', () => {
   const plan = planClick(env({ orders: g(['id', 'customers__city']) }, 'orders'), 'products2');
-  expect(plan.selection).toEqual(sel('products2'));
-  expect(plan.grids).toEqual({});
+  expect(plan).toEqual({ selection: sel('orders'), grids: {}, saves: [], remember: [], noop: true });
 });
 
 test('with no main, a click selects it', () => {
@@ -93,12 +92,58 @@ test('a promoted mart that already shows the others keeps its own grid as it is'
   expect(plan.grids).toEqual({});
 });
 
-test('a mart the main one cannot join becomes the only selected mart: the joined columns it was left with go, and are remembered', () => {
+test('a mart made main: its own columns, the old main joined with what it showed, marts it cannot reach remembered', () => {
   const grids = { customers: g(['id', 'countries__name']), orders: g(['id', 'customers__city', 'products__sku'], { filters: { customers__city: { field: 'customers__city', op: 'eq', value: 'x' } } }) };
-  const plan = planClick(env(grids, 'customers'), 'orders');
+  const plan = planMakeMain(env(grids, 'customers'), 'orders');
   expect(plan.selection).toEqual(sel('orders'));
-  expect(plan.grids.orders).toEqual(g(['id']));
-  expect(plan.saves).toEqual([{ martId: 'orders', columns: ['id'], picks: { customers: ['customers__city'], products: ['products__sku'] } }]);
+  expect(plan.grids.orders).toEqual(g(['id', 'customers__id']));
+  expect(plan.saves).toEqual([{ martId: 'orders', columns: ['id', 'customers__id'] }]);
+  expect(plan.remember).toEqual([{ martId: 'countries', fields: ['name'] }]);
+});
+
+describe('planMakeMain', () => {
+  const customersBack = [src('orders', 'orders', [f('orders__status', 'string', 'orders'), f('orders__total', 'number', 'orders')]), ...customersSources];
+  const envM = (grids: Record<string, GridState>, main: string | null): PlanEnv => ({
+    ...env(grids, main),
+    sourcesOf: (id) => ({ orders: ordersSources, customers: customersBack } as Record<string, JoinedSource[]>)[id] ?? [],
+  });
+
+  test('its own columns first, then the old main with the columns it showed, then the joined marts it can reach', () => {
+    const plan = planMakeMain(envM({ orders: g(['id', 'status', 'customers__city', 'stores__city']), customers: g(['id', 'city']) }, 'orders'), 'customers');
+    expect(plan.selection.martId).toBe('customers');
+    expect(plan.grids.customers!.columns).toEqual(['id', 'city', 'orders__status', 'stores__city']);
+    expect(plan.remember).toEqual([]);
+  });
+
+  test('an old main that showed no own columns and cannot be reached does not wipe its remembered fields', () => {
+    const plan = planMakeMain(envM({ orders: g(['customers__city']), products2: g(['id']) }, 'orders'), 'products2');
+    expect(plan.remember.some((r) => r.martId === 'orders')).toBe(false);
+  });
+
+  test('a joined mart made main shows the fields it had as joined, as its own columns', () => {
+    const e = { ...envM({ orders: g(['id', 'customers__city', 'customers__email']), customers: g(['id']) }, 'orders'), ownNames: () => ['id', 'city', 'email'] };
+    expect(planMakeMain(e, 'customers').grids.customers!.columns.slice(0, 2)).toEqual(['city', 'email']);
+  });
+
+  test('a mart not on the grid brings what it showed when it last left one', () => {
+    const e = { ...envM({ orders: g(['id']), customers: g(['id']) }, 'orders'), ownNames: () => ['id', 'name'], lastShownOf: (id: string) => (id === 'customers' ? ['name'] : null) };
+    expect(planMakeMain(e, 'customers').grids.customers!.columns[0]).toBe('name');
+  });
+
+  test('the new main keeps its own filters and sorts on the new columns, and none of the old main\'s', () => {
+    const grids = {
+      orders: g(['id', 'status'], { filters: { status: { field: 'status', op: 'eq', value: 'paid' } } }),
+      customers: g(['id', 'city'], { filters: { city: { field: 'city', op: 'eq', value: 'Kyiv' }, gone: { field: 'gone', op: 'eq', value: 'x' } }, sorts: [{ field: 'city', direction: 'asc' }] }),
+    };
+    const next = planMakeMain(envM(grids, 'orders'), 'customers').grids.customers!;
+    expect(Object.keys(next.filters)).toEqual(['city']);
+    expect(next.sorts).toEqual([{ field: 'city', direction: 'asc' }]);
+  });
+
+  test('making the main mart main, or with no main mart, falls back sensibly', () => {
+    expect(planMakeMain(envM({}, 'orders'), 'orders').noop).toBe(true);
+    expect(planMakeMain(envM({}, null), 'orders').selection.martId).toBe('orders');
+  });
 });
 
 test('with no main, the clicked mart opens with none of its joined columns', () => {
@@ -186,10 +231,12 @@ describe('what a mart showed when it left the grid comes back', () => {
 
   test('a mart shown as joined and later clicked as main shows the same fields as its own columns', () => {
     shown.customers = ['name', 'email'];
-    const plan = planClick(withShown(env({ customers: g(['id', 'city']) }, 'stores')), 'customers');
+    const plan = planMakeMain(withShown(env({ customers: g(['id', 'city']) }, 'stores')), 'customers');
     expect(plan.selection.martId).toBe('customers');
-    expect(plan.grids.customers!.columns).toEqual(['name', 'email']);
-    expect(plan.saves).toEqual([{ martId: 'customers', columns: ['name', 'email'] }]);
+    // The old main (stores) now joins the new one, so its columns follow the own ones.
+    expect(plan.grids.customers!.columns.slice(0, 2)).toEqual(['name', 'email']);
+    expect(plan.saves[0]!.martId).toBe('customers');
+    expect(plan.saves[0]!.columns.slice(0, 2)).toEqual(['name', 'email']);
     expect(plan.remember).not.toContainEqual({ martId: 'customers', fields: null });
   });
 
@@ -202,7 +249,7 @@ describe('what a mart showed when it left the grid comes back', () => {
   });
 
   test('a main replaced by another mart, and its joined marts, remember what they showed', () => {
-    const plan = planClick(withShown(env({ orders: g(['id', 'customers__city']), order_items: g(['id']) }, 'orders')), 'order_items');
+    const plan = planMakeMain(withShown(env({ orders: g(['id', 'customers__city']), order_items: g(['id']) }, 'orders')), 'order_items');
     expect(plan.remember).toEqual(expect.arrayContaining([{ martId: 'orders', fields: ['id'] }, { martId: 'customers', fields: ['city'] }]));
   });
 
@@ -216,13 +263,15 @@ describe('what a mart showed when it left the grid comes back', () => {
     const stores = src('stores', 'stores', [f('stores__city', 'string', 'stores'), f('stores__zip', 'string', 'stores')]);
     const sources: Record<string, JoinedSource[]> = { orders: [stores], customers: [stores], z: [] };
     const base: PlanEnv = { selection: sel('customers'), sourceKeyFor: () => null, sourcesOf: (id) => sources[id] ?? [], gridOf: (id) => ({ customers: g(['id', 'stores__zip']), orders: g(['id', 'stores__city']) }[id] ?? g(['id'])), ownColumns: () => ['id'], picksOf: () => ({}) };
-    const plan = planClick(withShown(base), 'orders');
-    expect(plan.remember.filter((r) => r.martId === 'stores')).toEqual([{ martId: 'stores', fields: ['zip'] }]);
+    const plan = planMakeMain(withShown(base), 'orders');
+    // The new main (orders) can join stores, so stores is joined into it and not remembered as left.
+    expect(plan.remember.filter((r) => r.martId === 'stores')).toEqual([]);
+    expect(plan.grids.orders!.columns).toEqual(['id', 'stores__zip']);
   });
 
   test('a mart made main keeps what it remembered, so Undo has nothing to restore', () => {
     shown.customers = ['name'];
-    const plan = planClick(withShown(env({ customers: g(['id']) }, 'stores')), 'customers');
+    const plan = planMakeMain(withShown(env({ customers: g(['id']) }, 'stores')), 'customers');
     expect(plan.remember.some((r) => r.martId === 'customers')).toBe(false);
   });
 });
@@ -233,4 +282,48 @@ test('taking a joined mart out drops its aggregation rules with its columns', ()
   expect(out.columns).toEqual(['id']);
   expect(out.aggregations).toEqual([{ column: 'id', function: 'COUNT' }]);
   expect(out.dateTrunc).toBeUndefined();
+});
+
+describe('the path a mart joins by', () => {
+  const direct = src('stores', 'stores', [f('stores__city', 'string', 'stores')], 1);
+  const viaCustomers = src('customers.stores', 'stores', [f('customers__stores__city', 'string', 'stores')], 2);
+  const viaProducts = src('products.stores', 'stores', [f('products__stores__city', 'string', 'stores')], 2);
+  const customers = src('customers', 'customers', [f('customers__city', 'string', 'customers')], 1);
+  const products = src('products', 'products', [f('products__sku', 'string', 'products')], 1);
+
+  test('a direct join to the main mart wins', () => {
+    expect(sourceOfMart([customers, direct, viaCustomers], 'stores', new Set(['', 'customers']))?.aliasPath).toBe('stores');
+  });
+
+  test('with no direct join, the path through a mart in use wins over one listed first', () => {
+    expect(sourceOfMart([customers, products, viaProducts, viaCustomers], 'stores', new Set(['', 'customers']))?.aliasPath).toBe('customers.stores');
+  });
+
+  test('with no path through a mart in use, the first (shallowest) path', () => {
+    expect(sourceOfMart([customers, products, viaProducts, viaCustomers], 'stores', new Set(['']))?.aliasPath).toBe('products.stores');
+    expect(sourceOfMart([customers, products, viaProducts, viaCustomers], 'stores')?.aliasPath).toBe('products.stores');
+  });
+
+  test('the paths in use are the main mart\'s and those of the joined columns', () => {
+    expect(inUsePaths(['id', 'customers__city'], [customers, products])).toEqual(new Set(['', 'customers']));
+  });
+
+  test('clicking a mart joins it through the joined mart closest to the main one', () => {
+    const sources = [customers, products, viaProducts, viaCustomers];
+    const e = { ...env({ orders: g(['id', 'customers__city']) }, 'orders'), sourcesOf: (id: string) => (id === 'orders' ? sources : []) };
+    expect(planClick(e, 'stores').grids.orders!.columns).toContain('customers__stores__city');
+  });
+
+  test('a promoted mart joins a remaining mart through the path from a mart in use, not the first listed', () => {
+    const ordersSrc = [customers, src('stores', 'stores', [f('stores__city', 'string', 'stores')])];
+    const countries = src('countries', 'countries', [f('countries__name', 'string', 'countries')]);
+    const nextSources = [countries, products, viaProducts, src('countries.stores', 'stores', [f('countries__stores__city', 'string', 'stores')], 2)];
+    const e = {
+      ...env({ orders: g(['id', 'customers__city', 'stores__city']), customers: g(['id', 'countries__name']) }, 'orders'),
+      sourcesOf: (id: string) => (id === 'orders' ? ordersSrc : id === 'customers' ? nextSources : []),
+    };
+    const columns = planClick(e, 'orders').grids.customers!.columns;
+    expect(columns).toContain('countries__stores__city');
+    expect(columns).not.toContain('products__stores__city');
+  });
 });

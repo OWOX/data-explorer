@@ -37,6 +37,14 @@ async function makeMain(page: Page, title: string) {
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText([title]);
 }
 
+/** A mart the main one cannot join is not in the band: hover the card it relates to, and use the make-main button on its ghost. */
+async function makeMainViaGhost(page: Page, from: string, title: string) {
+  await martCard(page, from).hover();
+  const ghost = band(page, 'marts').locator('article', { hasText: title }).first();
+  await ghost.hover();
+  await ghost.getByRole('button', { name: 'Make main data mart' }).click();
+}
+
 const unfoldSources = (page: Page) => page.getByRole('button', { name: 'Show Data Sources' }).click();
 
 test('the first load selects Orders: its rows, its joined marts, the sources, badges and icons', async ({ page }) => {
@@ -183,9 +191,14 @@ test('filter, reset, columns, a row fills the Row band, Back returns', async ({ 
   await expect(row.getByText('Select a row.')).toBeVisible();
 });
 
-test('a card click on a mart Orders cannot join selects it alone, and Back restores the previous one', async ({ page }) => {
+test('a click on a mart Orders cannot join explains instead of switching; its make-main button selects it, and Back restores the previous one', async ({ page }) => {
   await ordersGrid(page);
-  await martCard(page, 'Order Items').click();
+  await martCard(page, 'Orders').hover();
+  const ghost = band(page, 'marts').locator('article', { hasText: 'Order Items' }).first();
+  await ghost.click();
+  await expect(ghost.getByRole('status')).toContainText("Can't join Orders. Use Make main data mart to make it the main data mart.");
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await makeMainViaGhost(page, 'Orders', 'Order Items');
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');
   await expect(martCard(page, 'Order Items')).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Undo' }).click();
@@ -212,14 +225,15 @@ test('a reference column shows the stored value as plain text; Referenced by ope
 
 test('the storage filter drops the marts of an unticked storage and leaves the selection alone', async ({ page }) => {
   await ordersGrid(page);
-  await expect(band(page, 'marts').getByText('Payments', { exact: true })).toBeVisible();
+  await makeMainViaGhost(page, 'Orders', 'Payments');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Payments');
+  await expect(band(page, 'marts').getByText('Customers', { exact: true })).toBeVisible();
   const menu = band(page, 'marts').locator('details.dm-filter', { hasText: 'Storage' });
   await menu.locator('summary').click();
-  await menu.getByRole('option', { name: /Sales Lake/ }).click();
-  await expect(band(page, 'marts').getByText('Payments', { exact: true })).toHaveCount(0);
-  await expect(band(page, 'marts').getByText('Customers', { exact: true })).toBeVisible();
-  await expect(martCard(page, 'Orders')).toHaveAttribute('aria-pressed', 'true');
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await menu.getByRole('option', { name: /Demo Warehouse/ }).click();
+  await expect(band(page, 'marts').getByText('Customers', { exact: true })).toHaveCount(0);
+  await expect(martCard(page, 'Payments')).toHaveAttribute('aria-pressed', 'true');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Payments');
 });
 
 test('rows open newest date first, and Reset returns to it', async ({ page }) => {
@@ -254,7 +268,7 @@ test('a date column filter opens on presets; a preset applies at once and names 
 
 test('Undo and Redo step through the selection', async ({ page }) => {
   await ordersGrid(page);
-  await martCard(page, 'Order Items').click();
+  await makeMainViaGhost(page, 'Orders', 'Order Items');
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
@@ -287,7 +301,8 @@ test('Export to Google Sheets: with one destination the menu lists it; New repor
   await data.getByRole('menuitem', { name: /Team Sheets/ }).click();
   await data.getByRole('menuitem', { name: /New report/ }).click();
   await page.getByRole('dialog', { name: 'New report' }).getByRole('button', { name: 'Export' }).click();
-  await expect(data.getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', /spreadsheets\/d\/mock-sheet-1\/edit#gid=0/, { timeout: 10_000 });
+  await expect(page.locator('#dm-toast-stack').getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', /spreadsheets\/d\/mock-sheet-1\/edit#gid=0/, { timeout: 10_000 });
+  await expect(data.getByRole('link', { name: /Open the sheet/ })).toHaveCount(0);
   expect((await popup).url()).toContain('mock-sheet-1');
   // The report is remembered, so the destination's flyout offers to update it.
   await data.getByText('Export', { exact: true }).click();
@@ -299,7 +314,7 @@ test('Export: with no Sheets destination the menu is still there, with the AI gr
   await page.goto('/?mock&sheets=0');
   const data = await ordersGrid(page);
   await data.getByText('Export', { exact: true }).click();
-  await expect(data.locator('[role="menuitem"]:not([data-link])')).toHaveText(['Copy to clipboard', 'Claude', 'ChatGPT']);
+  await expect(data.locator('[role="menuitem"]:not([data-link])')).toHaveText(['Copy to clipboard', 'Claude', 'ChatGPT', 'Copy SQL']);
   await expect(data.getByRole('menuitem', { name: 'Open OWOX in Claude' })).toBeVisible();
 });
 
@@ -308,9 +323,9 @@ test('Export to an AI: the prompt is copied, named in a status, and readable in 
   const data = await ordersGrid(page);
   await data.getByText('Export', { exact: true }).click();
   await data.getByRole('menuitem', { name: 'Claude', exact: true }).click();
-  await expect(data.getByText('Prompt copied. Paste it into Claude')).toBeVisible();
+  await expect(page.getByRole('status').getByText('Prompt copied. Paste it into Claude')).toBeVisible();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Query the data mart "Orders" (id "orders").');
-  await data.getByRole('button', { name: 'Show prompt' }).click();
+  await page.locator('#dm-toast-stack').getByRole('button', { name: 'Show prompt' }).click();
   const area = page.getByRole('dialog', { name: 'Prompt' }).getByRole('textbox');
   await expect(area).toHaveValue(/read-only/);
   await expect(area).toHaveAttribute('readonly', '');
@@ -322,7 +337,7 @@ test('Copy to clipboard: the loaded rows are copied as TSV and the status says s
   const data = await ordersGrid(page);
   await data.getByText('Export', { exact: true }).click();
   await data.getByRole('menuitem', { name: 'Copy to clipboard' }).click();
-  await expect(data.getByText(/^Copied (the first )?\d+ rows/)).toBeVisible();
+  await expect(page.getByRole('status').getByText(/^Copied (the first )?\d+ rows/)).toBeVisible();
   const text = await page.evaluate(() => navigator.clipboard.readText());
   expect(text.split('\n').length).toBeGreaterThan(2);
   expect(text.split('\n')[0]).toContain('\t');
@@ -347,16 +362,16 @@ test('selecting a joinable mart adds its first text column; deselecting removes 
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
 });
 
-test('deselecting the main mart promotes the next joined one; a mart the main one cannot join becomes the main one', async ({ page }) => {
+test('deselecting the main mart promotes the next joined one; make main on a mart the main one cannot join makes it main and keeps the old main joined', async ({ page }) => {
   const data = await ordersGrid(page);
   await martCard(page, 'Customers').click();
   await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', 'Customers']);
   await martCard(page, 'Orders').click();
   await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Customers']);
   await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
-  // Customers cannot join Sessions, so it becomes the main mart, alone
-  await martCard(page, 'Sessions').click();
-  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Sessions']);
+  // Customers cannot join Sessions, but Sessions can join Customers, so Customers stays as a joined mart
+  await makeMainViaGhost(page, 'Customers', 'Sessions');
+  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Sessions', 'Customers']);
 });
 
 /** Waits for a body cell under "Amount · Sum" with a number in it (the grouped rows have arrived) and returns its text. */
@@ -571,7 +586,7 @@ test('the Fields picker is on each tab and lists only that mart; the toolbar has
   await martCard(page, 'Customers').click();
   await data.getByRole('button', { name: 'Fields of Customers' }).click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog.getByText(/^Fields · \d+\/\d+$/)).toBeVisible();
+  await expect(dialog.getByText(/^Fields · /)).toHaveCount(0);
   await expect(dialog.getByRole('option')).toHaveCount(5);
   await expect(dialog.getByLabel('email', { exact: true })).toBeVisible();
   await expect(dialog.getByLabel('status', { exact: true })).toHaveCount(0);
@@ -589,11 +604,11 @@ test('selecting a mart adds a text field and a metric; the filter mark carries n
   await expect(data.getByLabel('Filter id')).toHaveClass(/dm-ctl-on/);
 });
 
-test('the Data band shows the marts connected to a joined mart', async ({ page }) => {
+test('the Data band lists the marts the main one joins at any depth', async ({ page }) => {
   await ordersGrid(page);
-  await expect(band(page, 'marts').getByText('Countries', { exact: true })).toHaveCount(0);
-  await martCard(page, 'Customers').click();
+  // Countries is two joins away from Orders (through Customers or Stores).
   await expect(band(page, 'marts').getByText('Countries', { exact: true })).toBeVisible();
+  await expect(band(page, 'marts').getByText('Sessions', { exact: true })).toHaveCount(0);
 });
 
 declare global { interface Window { __copiedLink?: string; __routeSet?: string } }
@@ -626,7 +641,7 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   await expect(grid.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
   await expect(grid.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
   await expect(martCard(opened, 'Orders')).toHaveAttribute('aria-pressed', 'true');
-  await expect(opened.getByRole('status')).toHaveCount(0);
+  await expect(opened.getByRole('status').filter({ hasText: /\S/ })).toHaveCount(0);
 
   // The address returns to the main page, so a reload doesn't reapply the link.
   await expect.poll(() => opened.evaluate(() => window.__routeSet)).toBe('/');
@@ -637,7 +652,7 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   await expect(band(opened, 'data').getByRole('row').nth(1)).toBeVisible();
   await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders']);
   await expect(band(opened, 'data').getByRole('row')).not.toHaveCount(5);
-  await expect(opened.getByRole('status')).toHaveCount(0);
+  await expect(opened.getByRole('status').filter({ hasText: /\S/ })).toHaveCount(0);
   expect(new URL(opened.url()).searchParams.has('route')).toBe(false);
 });
 
@@ -676,7 +691,7 @@ test('a link to a data mart the opener cannot see shows a notice and the page st
   await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
   await notice.getByRole('button', { name: 'Dismiss' }).click();
   await expect(notice).toHaveCount(0);
-  await martCard(opened, 'Order Items').click();
+  await makeMainViaGhost(opened, 'Orders', 'Order Items');
   await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');
 });
 

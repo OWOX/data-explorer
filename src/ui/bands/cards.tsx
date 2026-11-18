@@ -1,5 +1,5 @@
 // The cards themselves, ported from Data Flow: a source card and a data mart card.
-import { ExternalLink, History, LoaderCircle, Plug } from 'lucide-react';
+import { Crown, ExternalLink, History, LoaderCircle, Plug } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Context, DqSummary, Mart, Source } from '../../model/types';
 import { compactNumber, count as plural, num, recordsLabel, relativeTime } from '../format';
@@ -120,6 +120,12 @@ export function MartCard({
   lit,
   aside = false,
   transition,
+  unjoinable = false,
+  mainTitle,
+  ghost = false,
+  dropTarget = false,
+  dropHot = false,
+  onMakeMain,
   onSelect,
   onOpenApp,
   onRetryCount,
@@ -138,6 +144,18 @@ export function MartCard({
   /** Lit by a card other than the pinned one: drawn at half strength. */
   aside?: boolean;
   transition?: CardTransition;
+  /** The main mart cannot join this one: the card is dimmed, and a click explains instead of selecting. */
+  unjoinable?: boolean;
+  /** The title of the main mart, named in the unjoinable hint. */
+  mainTitle?: string;
+  /** The card is a hover ghost: a neighbour of the hovered card that is not in the band, drawn dashed while that card is hovered. It asks for no count and cannot be dragged. */
+  ghost?: boolean;
+  /** A drag is under way and this card accepts a drop. */
+  dropTarget?: boolean;
+  /** The dragged card is over this one. */
+  dropHot?: boolean;
+  /** Makes this mart the main one; when absent the card has no make-main button. */
+  onMakeMain?: () => void;
   onSelect: () => void;
   onOpenApp: () => void;
   onRetryCount: () => void;
@@ -149,25 +167,41 @@ export function MartCard({
   const need = useRef(onNeedCount);
   useEffect(() => { need.current = onNeedCount; });
   useEffect(() => {
-    if (!mart.accessible || !el.current) return;
+    if (!mart.accessible || ghost || !el.current) return;
     return whenInView(el.current, () => need.current());
-  }, [mart.accessible]);
+  }, [mart.accessible, ghost]);
+  const [hint, setHint] = useState(false);
+  useEffect(() => {
+    if (!hint) return;
+    const t = setTimeout(() => setHint(false), 3000);
+    return () => clearTimeout(t);
+  }, [hint]);
+  const choose = unjoinable ? () => setHint(true) : onSelect;
   return (
     <article
       ref={el}
       id={martElementId(mart.id)}
+      data-mart-id={mart.id}
       data-node
       data-tone={dqCardTone(quality)}
       aria-pressed={selected || joined}
-      className={cardClass(lit, aside, [mart.accessible ? '' : 'dm-noaccess', transition?.className ?? ''].filter(Boolean).join(' '))}
+      className={cardClass(lit, aside, [mart.accessible ? '' : 'dm-noaccess', unjoinable ? 'dm-unjoinable' : '', ghost ? 'dm-ghost' : '', dropTarget ? 'dm-drop-target' : '', dropHot ? 'dm-drop-hot' : '', transition?.className ?? ''].filter(Boolean).join(' '))}
       {...(transition?.leaving ? { 'data-leaving': '' } : {})}
-      {...selectable(onSelect)}
+      {...(ghost ? { 'data-ghost': '' } : {})}
+      {...selectable(choose)}
     >
       <div className="dm-node-head">
         {/* Only an icon someone picked: the default box on every card would say nothing. */}
         <PickedIcon icon={mart.icon} wrap="dm-logo" />
         <Tooltip content={mart.title}><span className="dm-node-title">{mart.title}</span></Tooltip>
-        <span className="dm-card-reveal ml-auto"><Tooltip content="Open this data mart">
+        {onMakeMain && (
+          <span className="dm-card-reveal ml-auto"><Tooltip content="Make main data mart">
+            <button type="button" aria-label="Make main data mart" className="dm-link" onClick={(e) => { e.stopPropagation(); onMakeMain(); }}>
+              <Crown size={14} />
+            </button>
+          </Tooltip></span>
+        )}
+        <span className={`dm-card-reveal${onMakeMain ? '' : ' ml-auto'}`}><Tooltip content="Open this data mart">
           <button
             type="button"
             aria-label="Open in OWOX"
@@ -188,6 +222,10 @@ export function MartCard({
         {freshness && <Mark tone="idle" lines={[`Data updated ${relativeTime(freshness)}`]}><History size={14} /></Mark>}
         <Contexts contexts={contexts} />
       </div>
+      {/* The live region stays mounted so a screen reader announces the hint when it appears. */}
+      <span aria-live="polite" className="dm-card-live">
+        {hint && unjoinable && mainTitle && <span role="status" className="dm-card-hint">{ghost ? `Can't join ${mainTitle}. Use Make main data mart to make it the main data mart.` : `Can't join ${mainTitle}. Drag it onto ${mainTitle} to make it the main data mart.`}</span>}
+      </span>
     </article>
   );
 }

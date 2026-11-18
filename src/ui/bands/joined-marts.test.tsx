@@ -98,14 +98,27 @@ test('deselecting the main data mart promotes the next joined one, which brings 
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('clicking a data mart the main one cannot join makes it the main one, alone', async () => {
+test('the make-main button makes a joined mart the main one, and Undo takes it back in one step', async () => {
   setup();
   await ready();
   await click('Customers');
   await waitFor(() => expect(title()).toBe('Orders + Customers'));
-  await click('Order Items');
-  await waitFor(() => expect(title()).toBe('Order Items'));
-  expect(within(marts()).queryByRole('note', { name: 'Joined' })).toBeNull();
+  await userEvent.click(within(card('Customers')).getByRole('button', { name: 'Make main data mart' }));
+  await waitFor(() => expect(groupTitles()[0]).toBe('Customers'));
+  expect(title()).toBe('Customers');
+  // The old main leaves the band once the card animation ends.
+  await waitFor(() => expect(marts().querySelector('article')).toBe(card('Customers')));
+  await undo();
+  await waitFor(() => expect(title()).toBe('Orders + Customers'));
+});
+
+test('with Orders main, the band lists the marts it can join at any depth, and not Order Items', async () => {
+  setup();
+  await ready();
+  await within(marts()).findByText('Countries');
+  await within(marts()).findByText('Categories');
+  expect(within(marts()).queryByText('Order Items')).toBeNull();
+  expect(marts().querySelector('article')).toBe(card('Orders'));
 });
 
 test('with no joined mart, deselecting the main one leaves nothing selected', async () => {
@@ -142,6 +155,9 @@ test('unticking the last field of a joined mart in the picker deselects it; tick
   await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Customers' }));
   const group = await screen.findByRole('dialog');
   await userEvent.click(within(group).getByRole('option', { selected: true }));
+  // The mart stays while the popup is open and goes when it closes with nothing ticked.
+  expect(title()).toBe('Orders + Customers');
+  await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(title()).toBe('Orders'));
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'false');
   expect(within(data()).queryByRole('button', { name: 'Fields of Customers' })).toBeNull();
@@ -166,6 +182,8 @@ test('promoting back to Orders leaves it alone: the joined columns it was left w
   await waitFor(() => expect(title()).toBe('Orders + Customers'));
   await click('Orders');
   await waitFor(() => expect(title()).toBe('Customers'));
+  // Customers cannot join Orders, so a click on Orders would do nothing: it is reached through its Data Source, which leaves no main mart to join.
+  fireEvent.click(within(document.getElementById('band-sources')!).getByText('Shopify').closest('article')!);
   await click('Orders');
   await waitFor(() => expect(title()).toBe('Orders'));
   expect(headers()).toHaveLength(5);
@@ -300,17 +318,19 @@ test('the last own column of the main mart cannot be unticked while a joined mar
   expect(groupTitles()).toEqual(['Orders', 'Customers']);
 });
 
-test('the Data Marts band shows the marts connected to a joined mart, not only the main one\'s', async () => {
+test('a mart reachable through a joined mart is listed from the start and lights like its neighbour once that mart is joined', async () => {
   setup();
   await ready();
-  await waitFor(() => expect(within(marts()).queryByText('Countries')).toBeNull());
+  // Orders reaches Countries through Customers, so the band lists it before Customers is joined, unlit.
+  await within(marts()).findByText('Countries');
+  expect(card('Countries')).not.toHaveClass('lit');
   await click('Customers');
-  await waitFor(() => expect(within(marts()).getByText('Countries')).toBeInTheDocument());
-  expect(within(marts()).getByText('Sessions')).toBeInTheDocument();
-  // lit like the main one's neighbours, so the canvas does not dim them
   await waitFor(() => expect(card('Countries')).toHaveClass('lit'));
+  // Sessions hangs off Customers but the main mart cannot join it, so the band does not list it.
+  expect(within(marts()).queryByText('Sessions')).toBeNull();
   await click('Customers');
-  await waitFor(() => expect(within(marts()).queryByText('Countries')).toBeNull());
+  await waitFor(() => expect(card('Countries')).not.toHaveClass('lit'));
+  expect(within(marts()).getByText('Countries')).toBeInTheDocument();
 });
 
 test('a mart that leaves the grid remembers its own field names in its own grid-columns document', async () => {
@@ -384,4 +404,75 @@ test('after the main group is removed, focus moves to the new main tab\'s Column
   fireEvent.click(await within(data()).findByRole('button', { name: 'Remove Orders from the grid' }));
   await waitFor(() => expect(title()).toBe('Customers'));
   await waitFor(() => expect(document.activeElement).toBe(within(data()).getByRole('button', { name: 'Fields of Customers' })));
+});
+
+describe('dragging a card onto the main card', () => {
+  const pointer = (type: string, target: Window | Document | Node | Element, x: number, y: number) =>
+    fireEvent(target, new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y }));
+  let hit: Element | null = null;
+  beforeEach(() => { (document as { elementFromPoint?: unknown }).elementFromPoint = () => hit; });
+  afterEach(() => { delete (document as { elementFromPoint?: unknown }).elementFromPoint; hit = null; });
+
+  test('a drop on the main card makes the dragged mart main; the click that ends the drag does not also join it', async () => {
+    setup();
+    await ready();
+    await within(marts()).findByText('Customers');
+    hit = card('Orders');
+    pointer('pointerdown', card('Customers'), 0, 0);
+    pointer('pointermove', window, 30, 0);
+    expect(card('Orders')).toHaveClass('dm-drop-target');
+    expect(card('Orders')).toHaveClass('dm-drop-hot');
+    pointer('pointerup', window, 30, 0);
+    fireEvent.click(card('Customers'));
+    await waitFor(() => expect(groupTitles()[0] ?? title()).toBe('Customers'));
+    // Orders may still be animating out; the first card that is not leaving is the new main one.
+    await waitFor(() => expect(marts().querySelector('article:not([data-leaving])')).toBe(card('Customers')));
+  });
+
+  test('a drop anywhere else, or Escape, changes nothing', async () => {
+    setup();
+    await ready();
+    await within(marts()).findByText('Customers');
+    hit = marts();
+    pointer('pointerdown', card('Customers'), 0, 0);
+    pointer('pointermove', window, 30, 0);
+    pointer('pointerup', window, 30, 0);
+    pointer('pointerdown', card('Customers'), 0, 0);
+    pointer('pointermove', window, 30, 0);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    hit = card('Orders');
+    pointer('pointerup', window, 30, 0);
+    // The click that follows the release must not join Customers either.
+    fireEvent.click(card('Customers'));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(title()).toBe('Orders');
+    expect(card('Orders')).not.toHaveClass('dm-drop-target');
+  });
+
+  test('a plain click after a finished drag still works', async () => {
+    setup();
+    await ready();
+    await within(marts()).findByText('Customers');
+    hit = marts();
+    pointer('pointerdown', card('Customers'), 0, 0);
+    pointer('pointermove', window, 30, 0);
+    pointer('pointerup', window, 30, 0);
+    fireEvent.click(card('Customers'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(title()).toBe('Orders');
+    fireEvent.click(card('Customers'));
+    await waitFor(() => expect(title()).toBe('Orders + Customers'));
+  });
+
+  test('a press that moves less than 5 px is a click', async () => {
+    setup();
+    await ready();
+    await within(marts()).findByText('Customers');
+    hit = card('Orders');
+    pointer('pointerdown', card('Customers'), 0, 0);
+    pointer('pointermove', window, 3, 0);
+    pointer('pointerup', window, 3, 0);
+    fireEvent.click(card('Customers'));
+    await waitFor(() => expect(title()).toBe('Orders + Customers'));
+  });
 });

@@ -33,6 +33,8 @@ export type Row = Record<string, unknown>;
 export interface Traversal {
   rowChunks(): AsyncIterable<Row[]>;
   cancel(): Promise<void>;
+  /** The run OWOX recorded for this read (`x-owox-run-id`); absent on a host that does not send it. */
+  readonly runId?: string;
 }
 
 export type StorageDto = { id: string; title: string; type: string };

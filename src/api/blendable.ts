@@ -22,6 +22,10 @@ export interface BlendableLoader {
   /** The joined sources of a mart; read once per mart (a failure is not remembered, so the next ask reads again). */
   get(martId: string): Promise<JoinedSource[]>;
   peek(martId: string): JoinedSource[] | undefined;
+  /** Forget one mart's joined sources (and a read in flight), so the next ask reads the backend again. */
+  invalidate(martId: string): void;
+  /** Called whenever a mart's joined sources were forgotten, so a holder of its own copy reads them again. */
+  subscribe(fn: () => void): () => void;
   clear(): void;
 }
 
@@ -47,8 +51,7 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
       category: isArrayType(b.sourceFieldType) ? 'other' : categorizeFieldType(b.type),
       description: b.description?.trim() ? b.description : null,
       isPrimaryKey: false,
-      ...(b.postJoinAggregations !== undefined ? { postJoinAggregations: knownFunctions(b.postJoinAggregations) } : {}),
-      ...(b.postJoinAggregations === undefined && Array.isArray(b.allowedAggregations) ? { allowedAggregations: knownFunctions(b.allowedAggregations) } : {}),
+      ...(Array.isArray(b.postJoinAggregations) ? { postJoinAggregations: knownFunctions(b.postJoinAggregations) } : {}),
       joined: { martId: source.martId, label: source.label, aliasPath: source.aliasPath, originalName: b.originalFieldName },
     });
   }
@@ -58,6 +61,7 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
 export function createBlendableLoader(ctx: Ctx): BlendableLoader {
   const done = new Map<string, JoinedSource[]>();
   const inflight = new Map<string, Promise<JoinedSource[]>>();
+  const listeners = new Set<() => void>();
   return {
     get(martId) {
       const hit = done.get(martId);
@@ -65,12 +69,14 @@ export function createBlendableLoader(ctx: Ctx): BlendableLoader {
       const running = inflight.get(martId);
       if (running) return running;
       const p = ctx.owox.getJson<BlendableSchemaDto>(`/api/data-marts/${encodeURIComponent(martId)}/blendable-schema`)
-        .then((dto) => { const sources = joinedSources(dto); done.set(martId, sources); return sources; })
-        .finally(() => inflight.delete(martId));
+        .then((dto) => { const sources = joinedSources(dto); if (inflight.get(martId) === p) done.set(martId, sources); return sources; })
+        .finally(() => { if (inflight.get(martId) === p) inflight.delete(martId); });
       inflight.set(martId, p);
       return p;
     },
     peek: (martId) => done.get(martId),
+    invalidate(martId) { done.delete(martId); inflight.delete(martId); listeners.forEach((l) => l()); },
+    subscribe(fn) { listeners.add(fn); return () => { listeners.delete(fn); }; },
     clear() { done.clear(); },
   };
 }

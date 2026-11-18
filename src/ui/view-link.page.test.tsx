@@ -9,6 +9,10 @@ import { AppServices, StoreProvider, useStore, type GridState, type State } from
 import { decodeViewLink, encodeViewLink } from '../state/view-link';
 import { App } from './App';
 
+// Toasts keep their status region mounted, so a notice is the status region with text in it.
+const notice = () => screen.queryAllByRole('status').find((e) => e.textContent?.trim()) ?? null;
+const findNotice = () => waitFor(() => { const n = notice(); if (!n) throw new Error('no notice'); return n; });
+
 // Records dispatched actions in one shared list so a test can check their order against setRoute.
 const order = vi.hoisted(() => ({ log: [] as string[] }));
 vi.mock('../state/store', async (importOriginal) => {
@@ -89,14 +93,14 @@ describe('opening a view link', () => {
 
   test('an unknown mart shows the notice and falls back to the first-load pick', async () => {
     setup(await encodeViewLink({ ...view, martId: 'gone', grid: null }));
-    expect(await screen.findByRole('status')).toHaveTextContent("Some parts of this link aren't available to you: the data mart.");
+    expect(await findNotice()).toHaveTextContent("Some parts of this link aren't available to you: the data mart.");
     await waitFor(() => expect(box.latest.selection.martId).not.toBeNull());
     expect(box.latest.selection.martId).not.toBe('gone');
   });
 
   test('columns the member cannot see are pruned and counted', async () => {
     setup(await encodeViewLink({ ...view, grid: { ...grid, columns: ['id', 'nope', 'customers__name'] } }));
-    expect(await screen.findByRole('status')).toHaveTextContent('1 column');
+    expect(await findNotice()).toHaveTextContent('1 column');
     await waitFor(() => expect(box.latest.grids['orders']?.columns).toEqual(['id', 'customers__name']));
   });
 
@@ -112,21 +116,21 @@ describe('opening a view link', () => {
 
   test('an unreadable link shows the unreadable notice', async () => {
     setup('/v?s=%%%');
-    expect(await screen.findByRole('status')).toHaveTextContent("This link couldn't be read. Showing the default view.");
+    expect(await findNotice()).toHaveTextContent("This link couldn't be read. Showing the default view.");
     await waitFor(() => expect(box.latest.selection.martId).not.toBeNull());
   });
 
   test('a notice can be dismissed', async () => {
     setup('/v?s=%%%');
     await userEvent.click(await screen.findByRole('button', { name: 'Dismiss' }));
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(notice()).toBeNull();
   });
 
   test('a plain route opens normally with no notice', async () => {
     setup('/');
     await loaded();
     await waitFor(() => expect(box.latest.selection.martId).not.toBeNull());
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(notice()).toBeNull();
   });
 });
 
@@ -163,7 +167,7 @@ describe('forgetting the route', () => {
   test('an unreadable link sets the route to / once', async () => {
     const calls: string[] = [];
     setup('/v?s=%%%', undefined, false, (p) => calls.push(p));
-    await screen.findByRole('status');
+    await findNotice();
     await waitFor(() => expect(calls).toEqual(['/']));
     await new Promise((r) => setTimeout(r, 100));
     expect(calls).toEqual(['/']);
@@ -207,7 +211,7 @@ describe('copying a link', () => {
   test('a rejected copy shows a notice', async () => {
     setup('/', async () => { throw new Error('no'); });
     await userEvent.click(await screen.findByRole('button', { name: 'Copy link to this view' }));
-    expect(await screen.findByRole('status')).toHaveTextContent("The link couldn't be copied.");
+    expect(await findNotice()).toHaveTextContent("The link couldn't be copied.");
   });
 
   test('no chain button without a route', async () => {
