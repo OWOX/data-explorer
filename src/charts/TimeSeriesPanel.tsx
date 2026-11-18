@@ -1,8 +1,10 @@
 import { ChartBar, ChartColumn } from 'lucide-react';
-import { BUCKET_LABELS, DATE_BUCKETS, formatBucket, type DateBucket } from '../model/aggregation';
+import { AUTO, formatValue, keepsUnit, type Format } from '../format/formats';
+import { BUCKET_LABELS, DATE_BUCKETS, formatBucket, outputType, type DateBucket } from '../model/aggregation';
 import { columnTitle, fieldLabel } from '../model/fieldLabel';
 import type { Row, TraverseFilter } from '../sdk/types';
 import { formatNumber } from '../ui/format';
+import { compactValue } from './compact';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { ChartPanel } from './ChartPanel';
 import type { ChartFields } from './fields';
@@ -16,8 +18,8 @@ type Patch = NonNullable<ChartSettings['timeSeries']>;
 export const seriesColor = (i: number): string => `var(--dm-series-${i + 1})`;
 export const OTHER_COLOR = 'var(--dm-series-9)';
 
-/** Drawing positions only: a tick is a fraction of the largest total, so it is rounded to read as a number. */
-const tick = (n: number): string => formatNumber(Number(n.toFixed(2))) ?? String(n);
+/** An axis tick in the measure's format: short ($10.2K) when it has a short form, else the value rounded to 2 decimals (a tick is a drawing position, a fraction of the largest total). */
+export const tickText = (n: number, type: string, format: Format): string => compactValue(n, type, format) ?? formatValue(Number(n.toFixed(2)), type, format);
 
 /**
  * The metric over time, one bar per bucket, stacked by a dimension's top values plus "Other" when chosen. Each value on
@@ -60,6 +62,10 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
     return [...names!.map((n, i) => pivot(n, seriesColor(i), rowsOf(n), xs)), ...(hasOther ? [pivot('Other', OTHER_COLOR, other.rows ?? [], xs)] : [])];
   };
 
+  // The axis follows the measure as its values do: a metric's output type and format, Records an integer count.
+  const [tickType, tickFormat]: [string, Format] = measure!.kind === 'metric'
+    ? (() => { const f = measure!.metric.field; const t = outputType(f, measure!.metric.fn); return [t, keepsUnit(measure!.metric.fn) ? formatOf(f.name, t) : AUTO] as [string, Format]; })()
+    : ['INTEGER', AUTO];
   const id = (f: { name: string }) => f.name;
   // Records first (the main mart's key), then the shown metrics.
   const measures = [...(cf.marts[0]?.hasPk ? [{ value: 'records', label: 'Records' }] : []), ...cf.metrics.map((m) => ({ value: id(m.field), label: metricLabel(m) }))];
@@ -82,7 +88,7 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
       empty={emptyNow ? (hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.') : null}
       note={stack ? `Rows with a blank ${fieldLabel(stack)} are not shown.` : undefined}
       actions={ready && <>{orient('vertical', 'Vertical bars', ChartColumn)}{orient('horizontal', 'Horizontal bars', ChartBar)}<ChartMenu name="Time series" items={items} /></>}>
-      {series.rows && <BarChart series={chart()} orientation={r.orientation} ariaLabel={full} formatTick={tick} />}
+      {series.rows && <BarChart series={chart()} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} />}
     </ChartPanel>
   );
 }
