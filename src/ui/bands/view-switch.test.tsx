@@ -38,3 +38,10 @@ test('arrow keys move between the two', async () => {
   await userEvent.keyboard('{ArrowLeft}');
   await waitFor(() => expect(radio('Table')).toHaveAttribute('aria-checked', 'true'));
 });
+
+test('a click on the switch itself (not a radio) does not fold the band', async () => {
+  await setup();
+  await userEvent.click(within(data()).getByRole('radiogroup', { name: 'Show data as' }));
+  expect(screen.getByRole('button', { name: 'Hide Data' })).toBeInTheDocument();
+  expect(radio('Table')).toBeVisible();
+});

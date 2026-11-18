@@ -19,7 +19,8 @@ export function ViewSwitch({ value, onChange }: { value: Mode; onChange: (v: Mod
     refs.current[next]?.focus();
   };
   return (
-    <div role="radiogroup" aria-label="Show data as" className="dm-seg">
+    // A click on the group's own border would otherwise reach the band header, which folds the band.
+    <div role="radiogroup" aria-label="Show data as" className="dm-seg" onClick={(e) => e.stopPropagation()}>
       {OPTIONS.map(({ value: v, label, icon: Icon }, i) => (
         // Roving tabindex: only the checked radio is a tab stop.
         <button key={v} ref={(el) => { refs.current[i] = el; }} type="button" role="radio" aria-checked={value === v} tabIndex={value === v ? 0 : -1} onClick={() => onChange(v)} onKeyDown={(e) => move(e, i)}>

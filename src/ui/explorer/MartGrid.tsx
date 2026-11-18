@@ -426,7 +426,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const [selected, setSelected] = useState<Selection | null>(null);
   const rowCount = rows?.length ?? 0;
   const inside = (c: Cell) => c.row < rowCount && c.col < outputs.length;
-  const sel = selected && (selected.kind === 'cell' ? inside(selected) && (!selected.to || inside(selected.to)) : selected.kind === 'col' ? Math.max(selected.from, selected.to) < outputs.length && rowCount > 0 : Math.max(selected.from, selected.to) < rowCount) ? selected : null;
+  // Charts has no cells to select: nothing stays lit from the table (it is cleared below too, so Table opens without it).
+  const sel = !charts && selected && (selected.kind === 'cell' ? inside(selected) && (!selected.to || inside(selected.to)) : selected.kind === 'col' ? Math.max(selected.from, selected.to) < outputs.length && rowCount > 0 : Math.max(selected.from, selected.to) < rowCount) ? selected : null;
+  if (charts && selected) setSelected(null);
   const cellSel = sel?.kind === 'cell' ? sel : null;
   // A block of cells: its rectangle. A single cell has none (it has the plain frame).
   const rect = cellSel?.to && (cellSel.to.row !== cellSel.row || cellSel.to.col !== cellSel.col)
