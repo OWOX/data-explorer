@@ -261,7 +261,7 @@ describe('what a mart showed when it left the grid comes back', () => {
     const plan = planMakeMain(withShown(base), 'orders');
     // The new main (orders) can join stores, so stores is joined into it and not remembered as left.
     expect(plan.remember.filter((r) => r.martId === 'stores')).toEqual([]);
-    expect(plan.grids.orders!.columns).toContain('stores__zip');
+    expect(plan.grids.orders!.columns).toEqual(['id', 'stores__zip']);
   });
 
   test('a mart made main keeps what it remembered, so Undo has nothing to restore', () => {
