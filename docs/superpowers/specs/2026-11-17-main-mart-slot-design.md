@@ -39,7 +39,7 @@ Today rule 2 shows the main mart, the joined marts and the one-hop neighbours of
 
 ### Rules 0, 1 and 3 (search, context badge, Data Sources)
 
-They list the same marts as today. With a main mart set, each card that is not the main mart and not in `joinable` is drawn dimmed (`unjoinable` on `MartCard`). `computeVisible` returns the set as `unjoinable: Set<string>`, so the card does not decide it.
+They list the same marts as today. With a main mart set, each card that is not the main mart, not joined and not in `joinable` is drawn dimmed (`unjoinable` on `MartCard`). `computeVisible` returns `joinable: Set<string> | null`, and `CardBands` derives the dimmed cards from it, ghost cards included.
 
 ### Click
 
@@ -58,8 +58,8 @@ They list the same marts as today. With a main mart set, each card that is not t
    2. the old main as a joined mart, if the new main can join it, with the old main's own columns that the joined source offers;
    3. every other joined mart the new main can reach, with the fields it showed;
    4. joined marts the new main cannot reach are dropped with their filters and sorts.
-5. Filters and sorts on kept columns stay. Each dropped mart's fields are remembered with `saveLastShown`, as a removal does today.
-6. Keyboard: the card's menu gets "Make main data mart", which does the same as a drop.
+5. The new main keeps the filters and sorts of its own grid that sit on the new columns. Filters and sorts of the old main's grid do not carry over, because each main names the same field differently (`customers__city` on Orders is `city` on Customers). Each dropped mart's fields are remembered with `saveLastShown`, as a removal does today.
+6. Keyboard and touch: each card other than the main one gets a "Make main data mart" button next to "Open in OWOX", which does the same as a drop.
 
 The plan is a new `planMakeMain` in `src/state/join-plan.ts`, next to `planClick`, and it returns the same shape (`selection`, `grids`, `saves`, `remember`). `useCardClick` gets a `makeMain(id)` that loads what the plan needs the way `run` does now.
 
