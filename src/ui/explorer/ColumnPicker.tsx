@@ -35,7 +35,8 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange }:
     value: f.name,
     text: fieldLabel(f),
     label: <FieldLabel field={f} hint={false} />,
-    extra: <FieldHint field={f} />,
+    extra: <FieldHint field={f} decorative />,
+    description: f.description?.trim() || undefined,
     disabled: set.has(f.name) && (visible.length === 1 || locked(f.name)),
   }));
   return (

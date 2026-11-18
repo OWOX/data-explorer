@@ -54,7 +54,7 @@ test('Select all from a partial or empty menu ticks everything', async () => {
 
 test('only narrows to one option', async () => {
   const onChange = mount(['a', 'b']);
-  await userEvent.click(screen.getByRole('button', { name: 'Only Beta' }));
+  await userEvent.click(screen.getByLabelText('Only Beta'));
   expect(onChange).toHaveBeenLastCalledWith(['b']);
 });
 

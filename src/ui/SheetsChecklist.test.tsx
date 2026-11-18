@@ -123,20 +123,40 @@ test('typing a character on a row moves it to the search box', async () => {
   expect(screen.getByRole('searchbox')).toHaveValue('r');
 });
 
-test('an extra beside a row does not toggle it, and the listbox holds only groups of options', async () => {
+test('an extra beside a row does not toggle it, and the listbox holds only options', async () => {
   const spy = vi.fn();
   const list = [{ value: 'a', text: 'Alpha', extra: <button type="button">About Alpha</button> }, ...items.slice(1)];
   render(<Harness initial={[]} list={list} spy={spy} />);
   await userEvent.click(screen.getByRole('button', { name: 'About Alpha' }));
   expect(spy).not.toHaveBeenCalled();
   expect(screen.getByRole('option', { name: 'Alpha' }).querySelector('button')).toBeNull();
+  const box = screen.getByRole('listbox');
+  expect(box.querySelectorAll('[role="group"]')).toHaveLength(0);
+  expect(Array.from(box.children).every((row) => row.getAttribute('role') === 'presentation' || row.tagName === 'P')).toBe(true);
+});
+
+test('a description is the option\'s, and the only button is hidden from assistive tech', () => {
+  const list = [{ value: 'a', text: 'Alpha', description: 'The first', only: () => undefined }, ...items.slice(1)];
+  render(<Harness initial={[]} list={list} />);
+  expect(screen.getByRole('option', { name: 'Alpha' })).toHaveAttribute('aria-description', 'The first');
+  expect(screen.getByRole('option', { name: 'Alpha' })).toHaveAttribute('aria-keyshortcuts', 'Shift+Enter');
+  expect(screen.queryByRole('button', { name: 'Only Alpha' })).toBeNull();
+  expect(screen.getByLabelText('Only Alpha')).toHaveAttribute('tabindex', '-1');
+});
+
+test('Tab from the active option leaves the list in one press', async () => {
+  const list = items.map((i) => ({ ...i, only: () => undefined, extra: <span aria-hidden tabIndex={-1}>?</span> }));
+  render(<><Harness initial={[]} list={list} /><button type="button">After</button></>);
+  screen.getByRole('option', { name: 'Beta' }).focus();
+  await userEvent.tab();
+  expect(screen.getByRole('button', { name: 'After' })).toHaveFocus();
 });
 
 test('"only" picks one row by its button or by Shift+Enter, and is not a Tab stop', async () => {
   const spy = vi.fn();
   const list = items.map((i) => ({ ...i, only: () => spy(i.value) }));
   render(<Harness initial={['a', 'b']} list={list} />);
-  const btn = screen.getByRole('button', { name: 'Only Gamma' });
+  const btn = screen.getByLabelText('Only Gamma');
   expect(btn).toHaveAttribute('tabindex', '-1');
   await userEvent.click(btn);
   expect(spy).toHaveBeenLastCalledWith('c');

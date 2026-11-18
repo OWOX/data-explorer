@@ -17,8 +17,8 @@ export function FieldLabel({ field, wrap = false, hint = true }: { field: Pick<F
 }
 
 /** The (?) with a field's description, or nothing when it has none. */
-export function FieldHint({ field }: { field: Pick<Field, 'name' | 'alias' | 'description'> }) {
+export function FieldHint({ field, decorative = false }: { field: Pick<Field, 'name' | 'alias' | 'description'>; decorative?: boolean }) {
   const description = field.description?.trim();
   if (!description) return null;
-  return <span className="dm-hint-slot"><Hint kind="help" text={description} label={`About ${fieldLabel(field)}`} /></span>;
+  return <span className="dm-hint-slot"><Hint kind="help" text={description} label={`About ${fieldLabel(field)}`} decorative={decorative} /></span>;
 }

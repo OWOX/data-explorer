@@ -9,9 +9,11 @@ export type ChecklistItem = {
   label?: ReactNode;
   /** A selected disabled row cannot be unticked (Clear skips it); an unselected one cannot be ticked. */
   disabled?: boolean;
-  /** Beside the row, outside the option (so it is not interactive content inside it): a hint glyph, say. Clicking it does not toggle. */
+  /** Beside the row, outside the option (so it is not interactive content inside it): a hint glyph, say. Clicking it does not toggle. It is hidden from assistive tech and not a Tab stop, so put what it says in `description`. */
   extra?: ReactNode;
-  /** Makes this the only chosen row. Shown as an "only" button on hover, focus and touch (not a Tab stop), and bound to Shift+Enter on the row. */
+  /** What a screen reader says after the row's name (the text an `extra` hint shows). */
+  description?: string;
+  /** Makes this the only chosen row. Shown as a pointer-only "only" button on hover, focus and touch (hidden from assistive tech, not a Tab stop), and bound to Shift+Enter on the row. */
   only?: () => void;
 };
 
@@ -108,12 +110,13 @@ export function SheetsChecklist({ items, selected, onChange, label }: {
         {shown.map((item) => {
           const sel = on.has(item.value);
           return (
-            <div key={item.value} role="group" className="dm-checklist-row dm-reveal-host">
+            <div key={item.value} role="presentation" className="dm-checklist-row dm-reveal-host">
               <div
                 role="option"
                 aria-selected={sel}
                 aria-disabled={item.disabled || undefined}
                 aria-label={item.text}
+                aria-description={item.description}
                 aria-keyshortcuts={item.only ? 'Shift+Enter' : undefined}
                 tabIndex={item.value === stop ? 0 : -1}
                 className="dm-checklist-opt"
@@ -125,7 +128,7 @@ export function SheetsChecklist({ items, selected, onChange, label }: {
                 <span className="dm-checklist-label">{item.label ?? item.text}</span>
               </div>
               {item.extra}
-              {item.only && <button type="button" tabIndex={-1} className="dm-filter-only" aria-label={`Only ${item.text}`} onClick={item.only}>only</button>}
+              {item.only && <button type="button" tabIndex={-1} aria-hidden="true" aria-label={`Only ${item.text}`} className="dm-filter-only" onClick={item.only}>only</button>}
             </div>
           );
         })}
