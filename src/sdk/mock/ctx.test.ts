@@ -130,3 +130,24 @@ test('the mock AI answers deterministically from the question document; ai: fals
   expect(await ask({ task: 'view', query: 'biggest orders', fields })).toMatchObject({ sorts: [{ field: 'amount', direction: 'desc' }] });
   expect(createMockCtx(demoFixtures(), { ai: false }).credentials?.ai).toBeUndefined();
 });
+
+test('uniqueCount with grouping counts distinct primary keys per group', async () => {
+  const ctx = createMockCtx(demoFixtures());
+  const rows = await readRows(ctx, 'orders', { column: ['status'], uniqueCount: [''] });
+  expect(rows.length).toBeGreaterThan(1);
+  expect(rows.reduce((n, r) => n + Number(r['Unique Count']), 0)).toBe(450);
+  const byYear = await readRows(ctx, 'orders', { column: ['created_at'], dateTrunc: [{ column: 'created_at', unit: 'YEAR' }], uniqueCount: [''] });
+  expect(byYear.length).toBeGreaterThan(0);
+  for (const r of byYear) expect(typeof r['Unique Count']).toBe('number');
+});
+
+test('uniqueCount names a joined source by its alias path', async () => {
+  const rows = await readRows(createMockCtx(demoFixtures()), 'orders', { uniqueCount: ['', 'customers'] });
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toHaveProperty('Unique Count', 450);
+  const customers = Number(rows[0]!.customers__unique_count);
+  expect(customers).toBeGreaterThan(0);
+  expect(customers).toBeLessThanOrEqual(450);
+  const nested = await readRows(createMockCtx(demoFixtures()), 'orders', { column: ['status'], uniqueCount: ['customers.countries'] });
+  expect(nested[0]).toHaveProperty('customers_countries__unique_count');
+});

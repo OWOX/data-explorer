@@ -4,6 +4,7 @@ import { createBlendableLoader, type BlendableLoader } from '../api/blendable';
 import { createExporter, type Exporter } from '../api/exports';
 import { createColumnStore, type ColumnStore } from '../api/grid-columns';
 import { createPreferences, type Preferences } from '../api/preferences';
+import { createChartSettings, type ChartSettingsStore } from '../api/chart-settings';
 import { createRowCounter, type RowCounter } from '../api/row-counts';
 import { createSchemaLoader, type SchemaLoader } from '../api/schemas';
 import { PAGE_SIZE } from '../config';
@@ -27,7 +28,7 @@ export type Selection = {
 export type Entry = Selection & { grids?: Record<string, GridState | null> };
 
 /** What the Data band's grid keeps per mart for the session. */
-export type GridState = { columns: string[]; filters: Record<string, ColumnFilter>; /** null: the member set none, so the grid opens in the default order (newest date first); a list, even an empty one, is their own. */ sorts: SortKey[] | null; limit: number; /** Functions per column, in the order chosen; any of these or a bucket groups the rows. */ aggregations?: AggregationRule[]; /** One date bucket per date column. */ dateTrunc?: DateTruncRule[] };
+export type GridState = { columns: string[]; filters: Record<string, ColumnFilter>; /** null: the member set none, so the grid opens in the default order (newest date first); a list, even an empty one, is their own. */ sorts: SortKey[] | null; limit: number; /** Functions per column, in the order chosen; any of these or a bucket groups the rows. */ aggregations?: AggregationRule[]; /** One date bucket per date column. */ dateTrunc?: DateTruncRule[]; /** Absent is the table. Part of the grid state so Undo and the view link carry it; never written to the member's grid-columns store. */ view?: 'charts' };
 
 export type State = {
   selection: Selection;
@@ -203,11 +204,11 @@ export function useStore(): [State, Dispatch<Action>] {
   return v;
 }
 
-type Services = { /** The whole budget of a search's AI questions in ms; the default when absent (tests shorten or lengthen it). */ aiTimeoutMs?: number; ctx: Ctx; schemas: SchemaLoader; blendable: BlendableLoader; counter: RowCounter; columnStore: ColumnStore; exporter: Exporter; preferences: Preferences };
+type Services = { /** The whole budget of a search's AI questions in ms; the default when absent (tests shorten or lengthen it). */ aiTimeoutMs?: number; ctx: Ctx; schemas: SchemaLoader; blendable: BlendableLoader; counter: RowCounter; columnStore: ColumnStore; exporter: Exporter; preferences: Preferences; chartSettings: ChartSettingsStore };
 const ServicesCtx = createContext<Services | null>(null);
 
 export function AppServices({ ctx, aiTimeoutMs, children }: { ctx: Ctx; aiTimeoutMs?: number; children: ReactNode }) {
-  const value = useMemo(() => ({ aiTimeoutMs, ctx, schemas: createSchemaLoader(ctx), blendable: createBlendableLoader(ctx), counter: createRowCounter(ctx), columnStore: createColumnStore(ctx), exporter: createExporter(ctx), preferences: createPreferences(ctx) }), [ctx, aiTimeoutMs]);
+  const value = useMemo(() => ({ aiTimeoutMs, ctx, schemas: createSchemaLoader(ctx), blendable: createBlendableLoader(ctx), counter: createRowCounter(ctx), columnStore: createColumnStore(ctx), exporter: createExporter(ctx), preferences: createPreferences(ctx), chartSettings: createChartSettings(ctx) }), [ctx, aiTimeoutMs]);
   return <ServicesCtx.Provider value={value}>{children}</ServicesCtx.Provider>;
 }
 

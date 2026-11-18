@@ -836,6 +836,7 @@ describe('Copy SQL', () => {
 
   test.each([
     [undefined, 'The grid has not run a query yet'],
+    [{ state: 'paused' } as GridRun, 'Switch to Table to copy its SQL'],
     [{ state: 'running' } as GridRun, "The grid's query is still running"],
     [{ state: 'failed' } as GridRun, "The grid's query failed"],
     [{ state: 'done', runId: null } as GridRun, 'OWOX did not report a run for this query'],

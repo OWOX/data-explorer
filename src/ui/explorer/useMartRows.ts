@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { readRows } from '../../api/rows';
 import { toTraverseFilters, type ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
@@ -40,14 +40,16 @@ export function buildRowQuery(schema: Schema, visible: string[], filters: Column
 }
 
 /** The query behind the rows on the grid, for Copy SQL. */
-export type GridRun = { state: 'none' } | { state: 'running' } | { state: 'failed' } | { state: 'done'; runId: string | null };
+/** `paused`: Charts holds the grid's query back, and a key it has not read yet will not run until Table is back. */
+export type GridRun = { state: 'none' } | { state: 'paused' } | { state: 'running' } | { state: 'failed' } | { state: 'done'; runId: string | null };
 
 type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null; shape: string; runId: string | null };
 /** What the rows are rows of: plain rows, or groups over these columns and rules. Rows of one shape never stand in for another's. */
 const shapeOf = (o: TraverseOptions | null): string => (o?.aggregation?.length || o?.dateTrunc?.length ? JSON.stringify([o.column, o.aggregation, o.dateTrunc]) : 'plain');
 type Query = { dataKey: string; columns: string[]; key: string };
 
-export function useMartRows(martId: string, options: TraverseOptions | null, version: number) {
+/** `paused` keeps the key (and the rows) but reads nothing; what was read for a key is not read again when the pause ends. */
+export function useMartRows(martId: string, options: TraverseOptions | null, version: number, paused = false) {
   const { ctx } = useServices();
   const [state, setState] = useState<RowsState>({ rows: null, error: null, hasMore: false, doneFor: null, shape: 'plain', runId: null });
   // Each traverseData call is a billed warehouse run. Everything but the column list (filters, sort, limit,
@@ -62,23 +64,24 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
     setQuery({ dataKey, columns: columns ?? [], key: `${dataKey}:${(columns ?? []).join(',')}` });
   }
   const key = query.key;
+  const readKey = useRef<string | null>(null);
   useEffect(() => {
-    if (!options) return;
+    if (!options || paused || readKey.current === key) return;
     const ac = new AbortController();
     const pageLimit = (options.limit ?? 1) - 1;
     let runId: string | null = null;
     readRows(ctx, martId, options, { signal: ac.signal, onRunId: (id) => { runId = id ?? null; } }).then(
-      (rows) => { if (!ac.signal.aborted) setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options), runId }); },
+      (rows) => { if (!ac.signal.aborted) { readKey.current = key; setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options), runId }); } },
       (error) => { if (!ac.signal.aborted) setState({ rows: null, error, hasMore: false, doneFor: key, shape: shapeOf(options), runId: null }); },
     );
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx, martId, key]);
+  }, [ctx, martId, key, paused]);
   // The previous rows stay visible while a newer request is in flight; an old error does not.
   const loading = state.doneFor !== key;
   // Except rows of another shape (ungrouped rows under a grouped query, or the reverse, or other group keys): they would be read
   // with the wrong headers and counted with the wrong label, so nothing is shown until the new rows arrive.
   const stale = loading && state.shape !== shapeOf(options);
-  const run: GridRun = !options ? { state: 'none' } : loading ? { state: 'running' } : state.error ? { state: 'failed' } : { state: 'done', runId: state.runId };
+  const run: GridRun = !options ? { state: 'none' } : loading && paused ? { state: 'paused' } : loading ? { state: 'running' } : state.error ? { state: 'failed' } : { state: 'done', runId: state.runId };
   return { rows: stale ? null : state.rows, loading, error: loading ? null : state.error, hasMore: stale ? false : state.hasMore, run };
 }

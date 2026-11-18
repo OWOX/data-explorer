@@ -14,6 +14,8 @@ export type JoinedSource = {
   label: string;
   depth: number;
   fields: Field[];
+  /** A uniqueCount on this alias path works (the backend says `available`): the joined mart has a usable primary key. */
+  uniqueCount: boolean;
 };
 
 export interface BlendableLoader {
@@ -36,7 +38,7 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
   offered.forEach((s) => labelUses.set(nameOf(s), (labelUses.get(nameOf(s)) ?? 0) + 1));
   for (const s of offered) {
     const base = nameOf(s);
-    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, fields: [] });
+    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, fields: [], uniqueCount: s.uniqueCountAvailability === 'available' });
   }
   for (const b of dto.blendedFields ?? []) {
     const source = byPath.get(b.aliasPath);

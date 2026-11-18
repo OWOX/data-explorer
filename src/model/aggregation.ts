@@ -168,3 +168,11 @@ export function formatBucket(value: unknown, unit: DateBucket, locale?: string):
 
 /** The names the backend sent that this build knows, in the canonical order. */
 export const knownFunctions = (names: readonly string[]): AggFn[] => AGGREGATE_FUNCTIONS.filter((f) => names.includes(f));
+
+/** The type an aggregated output has: a count is a whole number, an average or percentile a decimal, Combined text; the rest keep the field's. */
+export const outputType = (field: Pick<Field, 'type'>, fn: AggFn | undefined): string => {
+  if (fn === 'COUNT' || fn === 'COUNT_DISTINCT') return 'INTEGER';
+  if (fn === 'STRING_AGG') return 'STRING';
+  if (fn === 'AVG' || fn === 'P25' || fn === 'P50' || fn === 'P75' || fn === 'P95') return 'FLOAT';
+  return field.type;
+};

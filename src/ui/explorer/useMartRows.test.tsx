@@ -162,3 +162,14 @@ test('a host that sends no run id gives done with a null run id', async () => {
   const { result } = renderHook(() => useMartRows('orders', { column: ['id'], limit: 3 }, 0), { wrapper });
   await waitFor(() => expect(result.current.run).toEqual({ state: 'done', runId: null }));
 });
+
+test('a paused grid (Charts) reports its unread query as paused, not running, and reads nothing', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ id: 1 }]));
+  const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
+  const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
+  const q: TraverseOptions = { column: ['id'], limit: 201 };
+  const { result } = renderHook(() => useMartRows('m', q, 0, true), { wrapper });
+  expect(result.current.run).toEqual({ state: 'paused' });
+  await new Promise((r) => setTimeout(r, 0));
+  expect(traverseData).not.toHaveBeenCalled();
+});
