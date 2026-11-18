@@ -48,6 +48,10 @@ describe('resolveCharts', () => {
     expect([only.pieMetric?.field.name, only.metric?.field.name]).toEqual(['amount', 'price']);
     expect(resolveCharts({}, { ...cf, metrics: [{ field: noSum, fn: 'MIN', martId: 'M' }] }).pieMetric).toBeNull();
   });
+  it('the pie always sums, whatever function the grid shows', () => {
+    const r = resolveCharts({}, { ...cf, metrics: [{ field: f('amount', 'number'), fn: 'AVG', martId: 'M' }] });
+    expect([r.pieMetric?.fn, r.metric?.fn]).toEqual(['SUM', 'AVG']);
+  });
   it('is null everywhere with nothing shown', () => {
     const r = resolveCharts({}, { marts: [], metrics: [], dimensions: [], dates: [] });
     expect([r.date, r.metric, r.pieMetric, r.pieDimension]).toEqual([null, null, null, null]);

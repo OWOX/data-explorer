@@ -41,7 +41,7 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
 
   // Other only when the not_in query returned a value: an all-null row would be an empty series with a legend entry.
   const hasOther = needOther && !!other.rows?.some((x) => x[measureKey(measure!)] != null);
-  const label = measure!.kind === 'metric' ? metricLabel(measure!.metric) : 'Records';
+  const label = measure!.kind === 'metric' ? metricLabel(measure!.metric) : 'Unique Records';
   const failed = [{ error: range.error, retry: range.retry }, top, series, other].find((q) => q.error);
   const emptyNow = stack ? top.rows?.length === 0 : series.rows?.length === 0;
   const loading = !emptyNow && (!bucket || !series.rows || (needOther && !other.rows));
@@ -68,7 +68,7 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
     : ['INTEGER', AUTO];
   const id = (f: { name: string }) => f.name;
   // Records first (the main mart's key), then the shown metrics.
-  const measures = [...(cf.marts[0]?.hasPk ? [{ value: 'records', label: 'Records' }] : []), ...cf.metrics.map((m) => ({ value: id(m.field), label: metricLabel(m) }))];
+  const measures = [...(cf.marts[0]?.hasPk ? [{ value: 'records', label: 'Unique Records' }] : []), ...cf.metrics.map((m) => ({ value: id(m.field), label: metricLabel(m) }))];
   const items: MenuItem[] = [
     ...(cf.dates.length > 1 ? [{ kind: 'radio', label: 'Date field', value: date ? id(date) : '', options: cf.dates.map((d) => ({ value: id(d), label: columnTitle(d) })), onPick: (v: string) => onChange({ date: v }) } as MenuItem] : []),
     { kind: 'radio', label: 'Bucket', value: r.bucket, options: [{ value: 'AUTO', label: 'Auto' }, ...DATE_BUCKETS.map((b) => ({ value: b, label: BUCKET_LABELS[b] }))], onPick: (v) => onChange({ bucket: v as Patch['bucket'] }) },

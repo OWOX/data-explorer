@@ -35,6 +35,7 @@ export function resolveCharts(s: ChartSettings, cf: ChartFields): ResolvedCharts
   const bucket = ts.bucket;
   const hasPk = cf.marts[0]?.hasPk ?? false;
   const named = cf.metrics.find((m) => m.field.name === ts.metric);
+  const pie = pieMetrics(cf);
   const metricNamed = (name?: string) => cf.metrics.find((m) => m.field.name === name) ?? cf.metrics[0] ?? null;
   return {
     hidden: new Set(s.scorecards?.hidden ?? []),
@@ -45,7 +46,7 @@ export function resolveCharts(s: ChartSettings, cf: ChartFields): ResolvedCharts
     measure: ts.metric === 'records' && hasPk ? RECORDS : named ? { kind: 'metric', metric: named } : cf.metrics[0] ? { kind: 'metric', metric: cf.metrics[0] } : hasPk ? RECORDS : null,
     stack: cf.dimensions.find((d) => d.name === ts.stack) ?? null,
     orientation: ts.orientation === 'horizontal' ? 'horizontal' : 'vertical',
-    pieMetric: pieMetrics(cf).find((m) => m.field.name === s.pie?.metric) ?? pieMetrics(cf)[0] ?? null,
+    pieMetric: pie.find((m) => m.field.name === s.pie?.metric) ?? pie[0] ?? null,
     pieDimension: cf.dimensions.find((d) => d.name === s.pie?.dimension) ?? cf.dimensions[0] ?? null,
   };
 }
