@@ -69,7 +69,9 @@ function CardValue({ card, row, formatOf }: { card: Card; row: Row; formatOf: Fo
 /** A metric's value as the grid shows it: the output type's format, with the column's own unit only where the function keeps it. */
 export function metricText(field: Field, fn: AggFn, v: unknown, formatOf: Formatter): string {
   const type = outputType(field, fn);
-  return formatValue(v, type, keepsUnit(fn) ? formatOf(field.name, type) : AUTO);
+  // A float sum carries binary noise (116739.09999999996); 15 significant digits is float64's own precision. Strings are exact.
+  const shown = typeof v === 'number' && Number.isFinite(v) && !Number.isInteger(v) ? Number(v.toPrecision(15)) : v;
+  return formatValue(shown, type, keepsUnit(fn) ? formatOf(field.name, type) : AUTO);
 }
 
 export const numberOf = (v: unknown): number | null => {
