@@ -24,7 +24,8 @@ query; the plugin does no arithmetic on values.
 1. A segmented control with two buttons, `Table` and `Charts` (lucide `Table2`, `ChartColumn`), `role="radiogroup"`,
    sits in the Data band header right of the title. Table is the default.
 2. The mode lives in the grid state (`GridState.view?: 'charts'`, absent = table). It is an Undo step, it is in the
-   copied view link, and it is saved with the grid like the columns are. A fresh open with no saved grid is Table.
+   copied view link (`vw: 1`). It is not written to the member's `grid-columns` store, so opening the plugin afresh
+   shows Table.
 
 ## Fields
 
