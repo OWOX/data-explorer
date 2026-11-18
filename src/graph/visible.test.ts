@@ -259,6 +259,19 @@ describe('joinable', () => {
     expect(r.ids).toEqual(['a', 'b', 'c', 'd']);
   });
 
+  test('rule 0 with a main mart in an unticked storage: the head holds only the joined marts', () => {
+    const m = modelOf(['a', 'b', 'c', 'd'], [e('a', 'b')], [{ storageId: 's2' }, {}, {}, {}]);
+    const r = runWith(m, sel({ martId: 'a' }), { found: ['c', 'd'], joined: ['b'], search: 'zzz', storageIds: ['s'] });
+    expect(r.ids).toEqual(['b', 'c', 'd']);
+  });
+
+  test('rule 2 with a joinable set that is empty shows the main mart and the always-shown marts only', () => {
+    const m = modelOf(['a', 'b', 'c', 'd'], [e('a', 'b'), e('a', 'c')]);
+    const r = runWith(m, sel({ martId: 'a' }), { joinable: [], filtered: ['d'] });
+    expect(r.ids).toEqual(['a', 'd']);
+    expect(r.joinable).toEqual(new Set());
+  });
+
   test('rule 1 lists every match and reports the joinable set for dimming', () => {
     const m = modelOf(['a', 'b', 'c'], [e('a', 'b')]);
     const r = runWith(m, sel({ martId: 'a' }), { search: 'c', joinable: ['b'] });

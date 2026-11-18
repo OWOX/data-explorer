@@ -1641,6 +1641,27 @@ test('with a mart nobody can open as the main one, a click on another card makes
   await waitFor(() => expect(headingText()).toBe('Orders'));
 });
 
+test('a click on an unreadable main card deselects it', async () => {
+  const fixtures = demoFixtures();
+  fixtures.edges.push({ id: 'e-orders-secret', sourceDataMartId: 'orders', targetDataMartId: 'secret_ledger', joinConditions: [{ sourceFieldName: 'id', targetFieldName: 'id' }] });
+  await mountWith((c) => c, fixtures);
+  await within(data()).findByRole('table');
+  await userEvent.click(screen.getByRole('button', { name: 'Select Secret Ledger (test probe)' }));
+  await within(data()).findByText('You do not have access to this data mart');
+  fireEvent.click((await within(marts()).findByText('Secret Ledger')).closest('article')!);
+  await waitFor(() => expect(within(data()).queryByText('You do not have access to this data mart')).toBeNull());
+});
+
+test('a failed read of the main mart joins leaves the one-hop band with nothing dimmed', async () => {
+  await mountWith((c) => ({ ...c, owox: { ...c.owox, getJson: ((path: string, q?: Record<string, string>) => (path.endsWith('/blendable-schema') ? Promise.reject(new Error('blendable down')) : c.owox.getJson(path, q))) as Ctx['owox']['getJson'] } }));
+  await within(data()).findByRole('table');
+  await within(marts()).findByText('Customers');
+  // Let the failed read settle.
+  await new Promise((r) => setTimeout(r, 50));
+  expect(within(marts()).getAllByRole('article').length).toBeGreaterThan(1);
+  expect(marts().querySelectorAll('.dm-unjoinable')).toHaveLength(0);
+});
+
 describe('ghost cards on hover', () => {
   const marts = () => document.getElementById('band-marts')!;
   const cardOf = (t: string) => within(marts()).getByText(t).closest('article')!;

@@ -4,22 +4,23 @@ import { useServices, useStore } from '../state/store';
 
 /**
  * The data marts a mart can join, read when it becomes the main mart (once per mart per session, from the blendable schema;
- * nothing is billed). Null until known; a failed read counts as nothing to join, and is asked again the next time.
+ * nothing is billed). `sources` is null until known; a failed read leaves `sources` empty and sets `failed`, so the caller can tell
+ * "could not read" from "joins nothing". A failed read is asked again the next time.
  */
-export function useJoinSources(martId: string | null): JoinedSource[] | null {
+export function useJoinSources(martId: string | null): { sources: JoinedSource[] | null; failed: boolean } {
   const { blendable } = useServices();
   const [{ modelVersion }] = useStore();
-  const [read, setRead] = useState<{ id: string; version: number; sources: JoinedSource[] } | null>(null);
+  const [read, setRead] = useState<{ id: string; version: number; sources: JoinedSource[]; failed: boolean } | null>(null);
   useEffect(() => {
     if (!martId) return;
     let live = true;
     blendable.get(martId).then(
-      (sources) => { if (live) setRead({ id: martId, version: modelVersion, sources }); },
-      () => { if (live) setRead({ id: martId, version: modelVersion, sources: [] }); },
+      (sources) => { if (live) setRead({ id: martId, version: modelVersion, sources, failed: false }); },
+      () => { if (live) setRead({ id: martId, version: modelVersion, sources: [], failed: true }); },
     );
     return () => { live = false; };
   }, [blendable, martId, modelVersion]);
-  if (!martId) return null;
-  if (read?.id === martId) return read.sources;
-  return blendable.peek(martId) ?? null;
+  if (!martId) return { sources: null, failed: false };
+  if (read?.id === martId) return { sources: read.sources, failed: read.failed };
+  return { sources: blendable.peek(martId) ?? null, failed: false };
 }
