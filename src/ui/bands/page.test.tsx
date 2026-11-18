@@ -1307,7 +1307,8 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(within(grid).queryByText('internal_flag')).toBeNull();
     await userEvent.click(within(grid).getByRole('button', { name: 'Fields of Customers' }));
     expect(screen.queryByText('internal_flag')).toBeNull();
-    expect(screen.queryByRole('separator')).toBeNull();
+    // The Export menu has its own separator, so only the picker's are looked at.
+    expect(screen.queryAllByRole('separator').filter((x) => !x.closest('.dm-export'))).toEqual([]);
     await userEvent.keyboard('{Escape}');
     await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByText('email');

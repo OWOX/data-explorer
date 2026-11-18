@@ -11,6 +11,7 @@ import { TooltipProvider } from '../Tooltip';
 import type { Schema } from '../../model/types';
 import type { Row } from '../../sdk/types';
 import { ExportMenu } from './ExportMenu';
+import type { GridRun } from './useMartRows';
 
 type Call = string;
 
@@ -51,7 +52,7 @@ test('with no Google Sheets destination Export is still a menu, with the AI grou
   t.view();
   await rowsLoaded();
   await userEvent.click(await within(data()).findByText('Export'));
-  expect(within(data()).getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link')).map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Claude', 'ChatGPT']);
+  expect(within(data()).getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link')).map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Claude', 'ChatGPT', 'Copy SQL']);
   // no "AI" sub-header: Claude and ChatGPT follow a separator only
   expect(within(data()).queryByText('AI')).toBeNull();
   expect(within(data()).getByRole('menuitem', { name: 'Claude' }).closest('.dm-export-ai')).not.toBeNull();
@@ -383,7 +384,7 @@ describe('the cascading menu', () => {
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     const rows = (await within(data()).findAllByRole('menuitem')).filter((r) => !r.hasAttribute('data-link'));
-    expect(rows.map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Team Sheets', 'Finance Sheets', 'Claude', 'ChatGPT']);
+    expect(rows.map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Team Sheets', 'Finance Sheets', 'Claude', 'ChatGPT', 'Copy SQL']);
     for (const r of rows.slice(1, 3)) expect(r.querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull();
     expect(within(data()).queryByText('Google Sheets')).toBeNull();
     // the Export button itself does not
@@ -500,7 +501,7 @@ describe('the AI group', () => {
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     const items = (await within(data()).findAllByRole('menuitem')).filter((r) => !r.hasAttribute('data-link'));
-    expect(items.map((i) => i.textContent)).toEqual(['Copy to clipboard', 'Team Sheets', 'Claude', 'ChatGPT']);
+    expect(items.map((i) => i.textContent)).toEqual(['Copy to clipboard', 'Team Sheets', 'Claude', 'ChatGPT', 'Copy SQL']);
     expect(items[2]!.querySelector('svg path[fill="#D97757"]')).not.toBeNull();
     expect(items[3]!.querySelector('svg')).not.toBeNull();
   });
@@ -737,11 +738,13 @@ describe('Copy to clipboard', () => {
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     const item = await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' });
+    // Copy SQL is the last stop once OWOX has the grid's SQL; ArrowUp from the first row wraps to it.
+    await waitFor(() => expect(within(data()).getByRole('menuitem', { name: 'Copy SQL' })).toBeEnabled());
     item.focus();
     await userEvent.keyboard('{ArrowDown}');
     expect(within(data()).getByRole('menuitem', { name: /Team Sheets/ })).toHaveFocus();
     await userEvent.keyboard('{ArrowUp}{ArrowUp}');
-    expect(within(data()).getByRole('menuitem', { name: 'ChatGPT' })).toHaveFocus();
+    expect(within(data()).getByRole('menuitem', { name: 'Copy SQL' })).toHaveFocus();
   });
 
   test('a destination still opens its own flyout with the copy group above it', async () => {
@@ -753,5 +756,70 @@ describe('Copy to clipboard', () => {
     fin.focus();
     await userEvent.keyboard('{ArrowRight}');
     expect(await within(data()).findByRole('menu', { name: 'Finance Sheets' })).toBeInTheDocument();
+  });
+});
+
+describe('Copy SQL', () => {
+  const setClipboard = (writeText: unknown) => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: writeText ? { writeText } : undefined });
+  afterEach(() => { delete (navigator as { clipboard?: unknown }).clipboard; });
+  const ORDERS: Schema = [{ name: 'id', type: 'INTEGER', category: 'number' }] as Schema;
+  const lone = (run: GridRun | undefined, getJson?: (path: string) => Promise<unknown>) => {
+    const ctx = createMockCtx(demoFixtures({ sheets: 0 }), { latencyMs: 0 });
+    const real = ctx.owox.getJson.bind(ctx.owox);
+    const c = getJson ? { ...ctx, owox: { ...ctx.owox, getJson: ((p: string, q?: Record<string, string>) => (p.includes('/runs/') ? getJson(p) : real(p, q))) as typeof ctx.owox.getJson } } : ctx;
+    const tree = (r: GridRun | undefined) => <AppServices ctx={c}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={ORDERS} visible={['id']} filters={[]} sorts={[]} rows={[{ id: 1 }]} hasMore={false} run={r} /></StoreProvider></TooltipProvider></AppServices>;
+    const view = render(tree(run));
+    return { view, rerun: (r: GridRun) => view.rerender(tree(r)) };
+  };
+  const sqlItem = () => screen.findByRole('menuitem', { name: 'Copy SQL' });
+
+  test('it is the last item, after a separator', async () => {
+    lone(undefined);
+    await userEvent.click(await screen.findByText('Export'));
+    const items = screen.getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link'));
+    expect(items.at(-1)).toHaveTextContent('Copy SQL');
+    expect((await sqlItem()).closest('[role="group"]')!.previousElementSibling).toHaveAttribute('role', 'separator');
+  });
+
+  test.each([
+    [undefined, 'The grid has not run a query yet'],
+    [{ state: 'running' } as GridRun, "The grid's query is still running"],
+    [{ state: 'failed' } as GridRun, "The grid's query failed"],
+    [{ state: 'done', runId: null } as GridRun, 'OWOX did not report a run for this query'],
+  ])('disabled with the reason: %j', async (run, reason) => {
+    lone(run);
+    await userEvent.click(await screen.findByText('Export'));
+    const item = await sqlItem();
+    expect(item).toBeDisabled();
+    expect(item).toHaveAttribute('data-reason', reason);
+  });
+
+  test('reads the run when the menu opens, then copies the SQL and says so', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    setClipboard(writeText);
+    const get = vi.fn(async () => ({ additionalParams: { httpData: { executionSqlQuery: 'SELECT 1' } } }));
+    lone({ state: 'done', runId: 'r1' }, get);
+    await userEvent.click(await screen.findByText('Export'));
+    await waitFor(async () => expect(await sqlItem()).toBeEnabled());
+    expect(get).toHaveBeenCalledWith('/api/data-marts/orders/runs/r1');
+    await userEvent.click(await sqlItem());
+    expect(writeText).toHaveBeenCalledWith('SELECT 1');
+    expect(await screen.findByText('SQL copied. It is the query the grid ran, with its page LIMIT.')).toBeInTheDocument();
+  });
+
+  test('a run with no SQL leaves it disabled with the reason', async () => {
+    lone({ state: 'done', runId: 'r1' }, async () => ({ additionalParams: { httpData: {} } }));
+    await userEvent.click(await screen.findByText('Export'));
+    await waitFor(async () => expect(await sqlItem()).toHaveAttribute('data-reason', 'OWOX did not record the SQL of this query'));
+  });
+
+  test('a query that ends while the menu is open enables it without reopening', async () => {
+    const get = vi.fn(async () => ({ additionalParams: { httpData: { executionSqlQuery: 'SELECT 3' } } }));
+    const { rerun } = lone({ state: 'running' }, get);
+    await userEvent.click(await screen.findByText('Export'));
+    expect(await sqlItem()).toHaveAttribute('data-reason', "The grid's query is still running");
+    rerun({ state: 'done', runId: 'r1' });
+    await waitFor(async () => expect(await sqlItem()).toBeEnabled());
+    expect(document.querySelector('details.dm-export')).toHaveAttribute('open');
   });
 });

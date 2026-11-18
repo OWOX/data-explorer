@@ -1,4 +1,4 @@
-import { AlertTriangle, ArchiveRestore, Check, ChevronDown, Copy, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArchiveRestore, Check, ChevronDown, Code, Copy, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -13,14 +13,16 @@ import { buildTsv, tsvColumns } from '../../export/tsv';
 import type { Aggregation } from '../../model/aggregation';
 import type { DestinationDto } from '../../sdk/types';
 import { buildAiPrompt } from '../../api/ai-prompt';
+import { readRunSql, type RunSql } from '../../api/run-sql';
 import { useServices, useStore } from '../../state/store';
 import { ChatGptIcon } from '../chatgpt-icon';
 import { ClaudeIcon } from '../claude-icon';
 import { GoogleSheetsIcon } from '../google-sheets-icon';
 import { Tooltip } from '../Tooltip';
 import { copyText } from './clipboard';
+import type { GridRun } from './useMartRows';
 
-type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; filters: ColumnFilter[]; sorts: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean };
+type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; filters: ColumnFilter[]; sorts: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun };
 type Result = { kind: 'ok' | 'timeout' | 'error'; text: string; url?: string };
 
 type Assistant = 'Claude' | 'ChatGPT';
@@ -39,7 +41,7 @@ const MAYBE_CREATED = 'The report may have been created; check OWOX before tryin
 const UNRECOGNISED = 'This report targets an unrecognised spreadsheet.';
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** "Export" in the Data band header: a menu of one "Copy to clipboard" item, the Google Sheets destinations, then Claude and ChatGPT, each of which copies a prompt. */
+/** "Export" in the Data band header: a menu of one "Copy to clipboard" item, the Google Sheets destinations, then Claude and ChatGPT, each of which copies a prompt, and last "Copy SQL", which copies the SQL the grid ran. */
 export function ExportMenu(p: Props) {
   const { ctx, exporter } = useServices();
   const [{ modelVersion }] = useStore();
@@ -53,9 +55,34 @@ export function ExportMenu(p: Props) {
   const [promptOpen, setPromptOpen] = useState(false);
   const [data, setData] = useState<CopiedData | null>(null);
   const [dataOpen, setDataOpen] = useState(false);
+  const [sqlText, setSqlText] = useState<string | null>(null);
   // A copied prompt belongs to the mart it was built from (adjust state during render).
   const [copiedFor, setCopiedFor] = useState(p.martId);
-  if (copiedFor !== p.martId) { setCopiedFor(p.martId); setCopied(null); setPromptOpen(false); setData(null); setDataOpen(false); }
+  if (copiedFor !== p.martId) { setCopiedFor(p.martId); setCopied(null); setPromptOpen(false); setData(null); setDataOpen(false); setSqlText(null); }
+  const run = p.run ?? { state: 'none' as const };
+  const runId = run.state === 'done' ? run.runId : null;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [sqlOf, setSqlOf] = useState<{ runId: string; result: RunSql } | null>(null);
+  // The SQL is read once the menu is open and the grid's query has a run; a failed read is tried again on the next open.
+  const reading = useRef<string | null>(null);
+  useEffect(() => {
+    if (!menuOpen || !runId || reading.current === runId) return;
+    if (sqlOf?.runId === runId && sqlOf.result && 'sql' in sqlOf.result) return;
+    reading.current = runId;
+    void readRunSql(ctx, p.martId, runId).then((result) => {
+      if (reading.current === runId) reading.current = null;
+      setSqlOf({ runId, result });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuOpen, runId]);
+  const sqlReady = runId && sqlOf?.runId === runId && sqlOf.result && 'sql' in sqlOf.result ? sqlOf.result.sql : null;
+  const sqlOff = sqlReady ? null
+    : run.state === 'none' ? 'The grid has not run a query yet'
+    : run.state === 'running' ? "The grid's query is still running"
+    : run.state === 'failed' ? "The grid's query failed"
+    : !runId ? 'OWOX did not report a run for this query'
+    : sqlOf?.runId === runId && sqlOf.result && 'reason' in sqlOf.result ? sqlOf.result.reason
+    : 'Reading the SQL from OWOX…';
   const seq = useRef(0);
   // Bumped when the mart changes or the menu goes away: an export finishing later is no longer in front of the member.
   const gen = useRef(0);
@@ -208,7 +235,20 @@ export function ExportMenu(p: Props) {
   const copyOff = noRows ? 'No rows to copy' : p.loading ? 'Rows are loading' : null;
   const label = busy ? <><Loader2 className="size-4 animate-spin" />Exporting…</> : <><ArchiveRestore className="size-4" />Export</>;
 
+  /** Copies the SQL the grid ran. Nothing is queried and nothing is written. */
+  async function copySql(sql: string) {
+    closeMenu();
+    const home = gen.current;
+    const ok = await copyText(sql);
+    if (gen.current !== home) return;
+    setCopied(null);
+    setData(null);
+    if (ok) setResult({ kind: 'ok', text: 'SQL copied. It is the query the grid ran, with its page LIMIT.' });
+    else { setResult(null); setSqlText(sql); }
+  }
+
   async function openMenu(open: boolean) {
+    setMenuOpen(open);
     if (!open) { checks.current += 1; setVerified(false); return; }
     setOpenDest(null);
     // Reports OWOX no longer has are dropped before they are offered.
@@ -266,10 +306,28 @@ export function ExportMenu(p: Props) {
                 </div>
               ))}
             </div>
+            <div role="separator" className="dm-menu-sep" />
+            <div role="group" aria-label="SQL" className="dm-export-sql">
+              {sqlOff ? (
+                <Tooltip content={sqlOff}>
+                  <span className="block" onMouseEnter={() => setOpenDest(null)}>
+                    <button type="button" role="menuitem" data-lvl="1" data-action="sql" data-reason={sqlOff} disabled className="dm-export-item w-full"><Code size={16} /><span className="dm-filter-label">Copy SQL</span></button>
+                  </span>
+                </Tooltip>
+              ) : (
+                <Tooltip content="The SQL the grid ran, with its page LIMIT">
+                  <button type="button" role="menuitem" data-lvl="1" data-action="sql" className="dm-export-item" onMouseEnter={() => setOpenDest(null)} onClick={() => void copySql(sqlReady!)}>
+                    <Code size={16} />
+                    <span className="dm-filter-label">Copy SQL</span>
+                  </button>
+                </Tooltip>
+              )}
+            </div>
           </div>
         </details>
       {promptOpen && copied && <TextDialog name="Prompt" heading={`Prompt for ${copied.assistant}`} note={`Paste it into ${copied.assistant} with the OWOX Data Marts connector turned on. Copying writes nothing to OWOX.`} areaLabel="Prompt text" text={copied.prompt} onClose={() => { setPromptOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {dataOpen && data && <TextDialog name="Copy the data" note="Select the text and copy it, then paste it into a sheet. Copying writes nothing to OWOX." areaLabel="Data text" text={data.tsv} onClose={() => { setDataOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
+      {sqlText && <TextDialog name="SQL" note="Select the SQL and copy it. Copying writes nothing to OWOX." areaLabel="SQL text" text={sqlText} onClose={() => { setSqlText(null); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {dialog && <NewReportDialog key={dialog.seq} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
     </>
   );
