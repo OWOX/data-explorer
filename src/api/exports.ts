@@ -177,7 +177,8 @@ export function createExporter(ctx: Ctx): Exporter {
   const col = ctx.collections<ExportsDoc>(EXPORTS_COLLECTION);
   /** The stored document per mart, read once. */
   const docs = new Map<string, StoredReport[]>();
-  type MartCache = { entries: ReportEntry[] };
+  /** `started` is false until the stored document has been read and its reports listed; a change before that is picked up by the start itself. */
+  type MartCache = { entries: ReportEntry[]; started: boolean };
   const caches = new Map<string, MartCache>();
   const listeners = new Map<string, Set<() => void>>();
   let destinations: Promise<DestinationDto[]> | null = null;
@@ -187,22 +188,30 @@ export function createExporter(ctx: Ctx): Exporter {
 
   const emit = (martId: string) => listeners.get(martId)?.forEach((l) => l());
 
-  /** The stored document, read once; null when the read failed (not cached, so the next call tries again, and nothing is written meanwhile). */
-  async function readDoc(martId: string): Promise<StoredReport[] | null> {
-    if (!docs.has(martId)) {
-      try {
-        const found = await col.get(martId);
-        // Older documents carried more fields: only the id and a string `usedAt` are kept.
-        const list = Array.isArray(found?.document.reports) ? found.document.reports.filter((r) => r && typeof r.reportId === 'string') : [];
-        if (!docs.has(martId)) docs.set(martId, list.map((r) => ({ reportId: r.reportId, ...(typeof r.usedAt === 'string' ? { usedAt: r.usedAt } : {}) })));
-      } catch (e) {
-        // A parallel read may have stored the document meanwhile: use it instead of failing.
-        if (docs.has(martId)) return docs.get(martId)!;
-        console.warn('Reading the exported reports failed', e);
-        return null;
-      }
+  /** The stored document as the slim list; older documents carried more fields, so only the id and a string `usedAt` are kept. */
+  const parseDoc = (found: { document: ExportsDoc } | null | undefined): StoredReport[] =>
+    (Array.isArray(found?.document.reports) ? found!.document.reports.filter((r) => r && typeof r.reportId === 'string') : [])
+      .map((r) => ({ reportId: r.reportId, ...(typeof r.usedAt === 'string' ? { usedAt: r.usedAt } : {}) }));
+  const reading = new Map<string, Promise<StoredReport[] | null>>();
+  /** The stored document, read once (concurrent first reads share one request); null when the read failed (not cached, so the next call tries again, and nothing is written meanwhile). */
+  function readDoc(martId: string): Promise<StoredReport[] | null> {
+    const known = docs.get(martId);
+    if (known) return Promise.resolve(known);
+    let p = reading.get(martId);
+    if (!p) {
+      p = (async () => {
+        try {
+          const list = parseDoc(await col.get(martId));
+          if (!docs.has(martId)) docs.set(martId, list);
+        } catch (e) {
+          console.warn('Reading the exported reports failed', e);
+          return null;
+        }
+        return docs.get(martId)!;
+      })().finally(() => { reading.delete(martId); });
+      reading.set(martId, p);
     }
-    return docs.get(martId)!;
+    return p;
   }
   const stored = async (martId: string) => (await readDoc(martId)) ?? [];
   /** One write at a time per mart: each change is computed from the list the previous one left, and its put finishes before the next starts. */
@@ -210,12 +219,14 @@ export function createExporter(ctx: Ctx): Exporter {
   /** Changes the stored list and keeps the live entries in step. Does nothing while the stored document could not be read. */
   function mutate(martId: string, fn: (list: StoredReport[]) => StoredReport[]): Promise<void> {
     const run = (chains.get(martId) ?? Promise.resolve()).then(async () => {
-      const current = await readDoc(martId);
-      if (!current) return;
+      // Another tab may have written since: the list is read again here, and a write is refused when that read fails.
+      let current: StoredReport[];
+      try { current = parseDoc(await col.get(martId)); } catch (e) { console.warn('Reading the exported reports failed', e); return; }
       const next = fn(current);
       docs.set(martId, next);
+      let emitError: unknown;
       const cache = caches.get(martId);
-      if (cache) {
+      if (cache?.started) {
         const fresh: string[] = [];
         cache.entries = next.flatMap((r) => {
           const e = cache.entries.find((x) => x.reportId === r.reportId);
@@ -224,10 +235,12 @@ export function createExporter(ctx: Ctx): Exporter {
           fresh.push(r.reportId);
           return [{ reportId: r.reportId, usedAt: r.usedAt, state: 'loading' as const }];
         });
-        emit(martId);
+        try { emit(martId); } catch (e) { emitError = e; }
         fresh.forEach((id) => { void read(martId, cache, id); });
       }
       try { await col.put(martId, { reports: next }); } catch (e) { console.warn('Saving the exported reports failed', e); }
+      // A listener that threw is the caller's error, but only after the change was saved.
+      if (emitError) throw emitError;
     });
     // A change that threw does not block the later ones; its caller still gets the error.
     chains.set(martId, run.catch(() => undefined));
@@ -265,9 +278,10 @@ export function createExporter(ctx: Ctx): Exporter {
   }
   function load(martId: string) {
     if (caches.has(martId)) return;
-    const cache: MartCache = { entries: [] };
+    const cache: MartCache = { entries: [], started: false };
     caches.set(martId, cache);
     const start = (list: StoredReport[]) => {
+      cache.started = true;
       cache.entries = list.map((r) => ({ reportId: r.reportId, usedAt: r.usedAt, state: 'loading' as const }));
       emit(martId);
       list.forEach((r) => { void read(martId, cache, r.reportId); });
@@ -352,9 +366,11 @@ export function createExporter(ctx: Ctx): Exporter {
         const r = source.report;
         try {
           await ctx.owox.putJson(`/api/reports/${encodeURIComponent(r.reportId)}`, {
-            title: r.title, dataDestinationId: r.destinationId, destinationConfig: destinationConfig(r), ...payload,
-            // PUT replaces the report: what an earlier edit in OWOX left behind must not change the sheet.
+            title: r.title, dataDestinationId: r.destinationId, destinationConfig: destinationConfig(r),
+            // PUT replaces the report: what an earlier edit in OWOX left behind must not change the sheet, so these reset
+            // unless the payload carries them (a grouped grid's aggregation and date rules).
             limitConfig: null, aggregationConfig: null, dateTruncConfig: null, uniqueCountConfig: null,
+            ...payload,
           });
         } catch (e) {
           if (isNotFound(e)) { await forget(martId, r.reportId); throw new ExportError('report', REPORT_GONE, undefined, undefined, true); }

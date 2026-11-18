@@ -379,6 +379,40 @@ describe('the export dialog', () => {
     expect(document.querySelector('details.dm-export summary')).toHaveFocus();
   });
 
+  test('when an untouched option 3 moves back, the focus goes to the newly checked radio', async () => {
+    const t = setup(2, [{ reportId: 'mock-report-1', usedAt: daysAgo(1) }]);
+    await t.seeded;
+    await makeReport(t, 'On finance', 'd-sheets-finance');
+    const real = t.ctx.owox.getJson;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    t.view();
+    await rowsLoaded();
+    (t.ctx.owox as { getJson: Ctx['owox']['getJson'] }).getJson = (async (path: string, q?: Record<string, string>) => {
+      if (path === '/api/reports/mock-report-1') await gate;
+      return real(path, q);
+    }) as Ctx['owox']['getJson'];
+    const dialog = await openDialog();
+    await waitFor(() => expect(radios(dialog).map(labelOf)[0]).toBe('Update existing report'));
+    await waitFor(() => expect(radios(dialog)[0]).toHaveFocus());
+    act(() => release());
+    await waitFor(() => expect(radios(dialog).map(labelOf)[0]).toBe('New spreadsheet'));
+    expect(within(dialog).getByLabelText('New spreadsheet')).toBeChecked();
+    expect(within(dialog).getByLabelText('New spreadsheet')).toHaveFocus();
+  });
+
+  test('Tab with the focus on the page body pulls it back into the dialog', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const dialog = await openDialog();
+    await waitFor(() => expect(radios(dialog)[0]).toHaveFocus());
+    (document.activeElement as HTMLElement).blur();
+    expect(document.body).toHaveFocus();
+    await userEvent.tab();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+
   test('Cancel returns focus to the Export button too', async () => {
     const t = setup(1);
     t.view();

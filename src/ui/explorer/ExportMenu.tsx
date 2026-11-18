@@ -513,25 +513,39 @@ function ExportDialog({ exporter, martId, destination, title, initialError, busy
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Tab cycles inside the dialog: focus never leaves it behind the backdrop.
-  const trap = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Tab') return;
+  const tabStops = (root: HTMLElement) => {
     // As the browser tabs: one stop per radio group (its checked radio, else its first enabled one).
     const seen = new Set<string>();
-    const items = [...e.currentTarget.querySelectorAll<HTMLElement>('input, button, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')].filter((el) => {
+    return [...root.querySelectorAll<HTMLElement>('input, button, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')].filter((el) => {
       if ((el as HTMLInputElement).disabled) return false;
       const r = el as HTMLInputElement;
       if (r.type !== 'radio' || !r.name) return true;
       if (seen.has(r.name)) return false;
-      const group = [...e.currentTarget.querySelectorAll<HTMLInputElement>(`input[type="radio"]`)].filter((x) => x.name === r.name && !x.disabled);
+      const group = [...root.querySelectorAll<HTMLInputElement>('input[type="radio"]')].filter((x) => x.name === r.name && !x.disabled);
       if (group.some((x) => x.checked) ? !r.checked : group[0] !== r) return false;
       seen.add(r.name);
       return true;
     });
+  };
+  const trap = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab') return;
+    const items = tabStops(e.currentTarget);
     const at = items.indexOf(document.activeElement as HTMLElement);
     const next = e.shiftKey ? (at <= 0 ? items.length - 1 : at - 1) : (at < 0 || at === items.length - 1 ? 0 : at + 1);
     e.preventDefault();
     items[next]?.focus();
   };
+  // Focus that fell out of the dialog (onto the page body, for instance when the focused radio was disabled) is pulled back on the next Tab.
+  useEffect(() => {
+    const back = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !box.current || box.current.contains(document.activeElement)) return;
+      e.preventDefault();
+      tabStops(box.current)[e.shiftKey ? -1 : 0]?.focus();
+    };
+    document.addEventListener('keydown', back);
+    return () => document.removeEventListener('keydown', back);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadingCount = entries.filter((e) => e.state === 'loading').length;
   const loading = pending || loadingCount > 0;
@@ -546,6 +560,16 @@ function ExportDialog({ exporter, martId, destination, title, initialError, busy
   const chosenId = picked?.reportId ?? recentHere?.reportId;
   const chosen = option === 3 ? listed.find((e) => e.reportId === chosenId && readable(e)) : undefined;
   const noReports = !loading && listed.length === 0;
+  // An untouched dialog whose option 3 moves back takes the focus with it, so it is not left on a radio that is gone or on the page body.
+  const wasLeading = useRef(leading);
+  useEffect(() => {
+    if (wasLeading.current && !leading && !picked) {
+      const at = document.activeElement;
+      if (!at || at === document.body || box.current?.contains(at)) box.current?.querySelector<HTMLElement>('input[name="dm-export-target"]:checked')?.focus();
+    }
+    wasLeading.current = leading;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leading]);
   const order: Option[] = (picked ? picked.first : leading) ? [3, 1, 2] : [1, 2, 3];
 
   /** Exporting fixes the member's choice and the order, so the list changing during the run does not move the dialog. */

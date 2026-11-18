@@ -275,7 +275,7 @@ describe('exporter', () => {
     (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => live(path.split('/').pop()!));
     const ex = createExporter(ctx);
     ex.load('orders');
-    await vi.waitFor(() => expect(ex.entries('orders').every((e) => e.state === 'ready')).toBe(true));
+    await vi.waitFor(() => expect(ex.entries('orders').length === 2 && ex.entries('orders').every((e) => e.state === 'ready')).toBe(true));
     const cb = vi.fn();
     ex.subscribe('orders', cb);
     await ex.forget('orders', 'a');
@@ -337,6 +337,58 @@ describe('exporter', () => {
     expect(ex.storedNow('orders')).toBeUndefined();
     await ex.stored('orders');
     expect(ex.storedNow('orders')).toEqual([{ reportId: 'a', usedAt: '2026-01-01T00:00:00.000Z' }]);
+  });
+
+  test('a grouped update PUT carries the aggregation and date rules; an ungrouped one resets them to null', async () => {
+    const remembered = { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'sheet1', sheetId: 7, title: 'Old' };
+    for (const grouped of [true, false]) {
+      const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'r1' }]);
+      const ex = createExporter(ctx);
+      const rules = { aggregationConfig: [{ column: 'id', function: 'COUNT' }], dateTruncConfig: [{ column: 'd', granularity: 'MONTH' }] };
+      vi.useFakeTimers();
+      try {
+        const p = ex.run({ martId: 'orders', destination: dest, title: 'Old', source: { kind: 'update', report: remembered }, payload: { ...payload, ...(grouped ? rules : {}) } as ReportPayload });
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+        await p;
+      } finally { vi.useRealTimers(); }
+      const body = (ctx.owox.putJson as ReturnType<typeof vi.fn>).mock.calls[0]![1] as Record<string, unknown>;
+      if (grouped) expect(body).toMatchObject({ ...rules, limitConfig: null, uniqueCountConfig: null });
+      else expect(body).toMatchObject({ aggregationConfig: null, dateTruncConfig: null, limitConfig: null, uniqueCountConfig: null });
+    }
+  });
+
+  test('a report another tab stored since the first read survives a local change', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }]);
+    const ex = createExporter(ctx);
+    await ex.stored('orders');
+    await ctx.collections('exports').put('orders', { reports: [{ reportId: 'a' }, { reportId: 'elsewhere', usedAt: NOW }] });
+    await ex.forget('orders', 'a');
+    expect(await stored(ctx)).toEqual([{ reportId: 'elsewhere', usedAt: NOW }]);
+  });
+
+  test('a change is refused when the document cannot be read again, and nothing is written', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }]);
+    const base = ctx.collections;
+    const col = base('exports');
+    const put = vi.fn(col.put);
+    let fail = false;
+    (ctx as { collections: unknown }).collections = () => ({ get: async (id: string) => { if (fail) throw new Error('down'); return col.get(id); }, put });
+    const ex = createExporter(ctx);
+    await ex.stored('orders');
+    fail = true;
+    await ex.forget('orders', 'a');
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  test('a load and a stored call in the same tick make one document read', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }]);
+    const col = ctx.collections('exports');
+    const get = vi.fn(col.get);
+    (ctx as { collections: unknown }).collections = () => ({ get, put: col.put });
+    const ex = createExporter(ctx);
+    ex.load('orders');
+    await ex.stored('orders');
+    expect(get).toHaveBeenCalledTimes(1);
   });
 
   const liveGet = (ctx: ReturnType<typeof stubCtx>) => (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => live(path.split('/').pop()!));
