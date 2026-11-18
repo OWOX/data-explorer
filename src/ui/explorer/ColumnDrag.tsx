@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 
-/** What the overlays draw, in the scroller's content coordinates (so they scroll with the grid). */
+/**
+ * What the overlays draw. The layer is the part of the scroller's content that is on screen right of the row-number gutter (so nothing
+ * paints over the gutter, and it scrolls with the grid); the other numbers are relative to the layer's left edge.
+ */
 export type ColumnDragView = {
-  column: string;
+  layer: { left: number; top: number; width: number; height: number };
   /** Where the column stands: stays shaded. */
   shade: { left: number; width: number };
   /** Follows the pointer, kept inside the column's data mart. */
   ghost: { left: number; width: number };
   /** Where the column lands, or null when dropping it would change nothing. */
   drop: number | null;
-  top: number;
-  height: number;
-  lineHeight: number;
 };
 
 /** A press becomes a drag once the pointer has moved this far, so a click stays a click. */
@@ -30,12 +30,18 @@ type Options = {
   onMove: (column: string, before: string | null) => void;
 };
 
+/** The overlay state lives here, not in the grid: every pointer move re-renders this small layer and nothing else. */
+export function ColumnDragLayer(props: Options) {
+  const view = useColumnDrag(props);
+  return view ? <ColumnDragOverlay view={view} /> : null;
+}
+
 /**
  * Dragging a field header sideways moves its column, as in Google Sheets. The press must be on a `th.dm-th[data-column]` and not on
  * its controls (menu, info); past 4 px it becomes a drag, and the click the browser sends after it is swallowed so no sort toggles.
  * The drop slot is clamped to the column's own data mart. Escape or a cancelled pointer end the drag with no change.
  */
-export function useColumnDrag({ scroller, head, groupOf, onMove }: Options): ColumnDragView | null {
+function useColumnDrag({ scroller, head, groupOf, onMove }: Options): ColumnDragView | null {
   const [view, setView] = useState<ColumnDragView | null>(null);
   const latest = useRef({ groupOf, onMove });
   useEffect(() => { latest.current = { groupOf, onMove }; });
@@ -47,12 +53,20 @@ export function useColumnDrag({ scroller, head, groupOf, onMove }: Options): Col
     let drag: { column: string; cols: Col[]; at: number; grab: number; before: string | null; changes: boolean } | null = null;
     let last = { x: 0, y: 0 };
     let raf = 0;
-    // Escape ended a drag: the release that follows still gets its click swallowed, and does nothing else.
-    let cancelled = false;
     const swallowNextClick = () => {
       const swallow = (c: MouseEvent) => { c.stopPropagation(); c.preventDefault(); };
       window.addEventListener('click', swallow, { capture: true, once: true });
       setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
+    };
+    // After a drag that ended without a drop (Escape, a column with nowhere to go) the release still sends a click: swallow it.
+    const swallowAfterRelease = () => {
+      const done = (ev: Event) => {
+        window.removeEventListener('pointerup', done, true);
+        window.removeEventListener('pointercancel', done, true);
+        if (ev.type === 'pointerup') swallowNextClick();
+      };
+      window.addEventListener('pointerup', done, true);
+      window.addEventListener('pointercancel', done, true);
     };
     const contentX = (clientX: number) => clientX - box.getBoundingClientRect().left + box.scrollLeft;
     // The columns as measured on screen: the outputs of one aggregated column sit side by side and count as one.
@@ -83,16 +97,18 @@ export function useColumnDrag({ scroller, head, groupOf, onMove }: Options): Col
       while (slot < others.length && px > (others[slot]!.left + others[slot]!.right) / 2) slot++;
       drag.before = others[slot]?.name ?? null;
       drag.changes = drag.before !== (cols[at + 1]?.name ?? null);
+      // Right of the sticky row-number gutter, and no lower than the last row (not onto Load more).
+      const gutter = thead.querySelector<HTMLElement>('.dm-corner')?.getBoundingClientRect().width ?? 0;
       const table = thead.parentElement;
-      const bottom = Math.min(box.scrollTop + box.clientHeight, table ? table.offsetHeight : Infinity);
+      const layerLeft = box.scrollLeft + gutter;
+      const height = Math.max(0, Math.min(box.clientHeight, table ? table.offsetHeight - box.scrollTop : Infinity));
+      const dropAt = drag.changes ? (others[slot]?.left ?? hi) : null;
       setView({
-        column: drag.column,
-        shade: { left: me.left, width },
-        ghost: { left: ghost, width },
-        drop: drag.changes ? (others[slot]?.left ?? hi) : null,
-        top: box.scrollTop,
-        height: box.clientHeight,
-        lineHeight: Math.max(0, bottom - box.scrollTop),
+        layer: { left: layerLeft, top: box.scrollTop, width: Math.max(0, box.clientWidth - gutter), height },
+        shade: { left: me.left - layerLeft, width },
+        ghost: { left: ghost - layerLeft, width },
+        // The 3px bar is centred on the gap; at the layer's left edge it is kept whole.
+        drop: dropAt === null ? null : Math.max(0, dropAt - layerLeft - 1.5),
       });
     };
     const tick = () => {
@@ -138,28 +154,28 @@ export function useColumnDrag({ scroller, head, groupOf, onMove }: Options): Col
       last = { x: e.clientX, y: e.clientY };
       if (!drag) {
         if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < START_PX) return;
-        if (!start(press.column)) { press = null; return; }
+        // Past the threshold the press is no click, even when the column has nowhere to go.
+        if (!start(press.column)) { stop(); swallowAfterRelease(); return; }
       }
       e.preventDefault();
       update();
     }
     function up() {
-      if (cancelled) { cancelled = false; swallowNextClick(); return; }
       const d = drag;
       const was = !!d;
       stop();
       if (was) swallowNextClick();
       if (d && d.changes) latest.current.onMove(d.column, d.before);
     }
-    function cancel() { cancelled = false; stop(); }
+    function cancel() { stop(); }
     function key(e: KeyboardEvent) {
       if (e.key !== 'Escape' || !press) return;
-      cancelled = !!drag;
-      if (drag) { e.preventDefault(); e.stopPropagation(); }
+      const was = !!drag;
+      if (was) { e.preventDefault(); e.stopPropagation(); }
       stop();
+      if (was) swallowAfterRelease();
     }
     const down = (e: PointerEvent) => {
-      cancelled = false;
       // Touch keeps scrolling the grid.
       if (e.button !== 0 || e.pointerType === 'touch') return;
       const t = e.target instanceof Element ? e.target : null;
@@ -179,12 +195,12 @@ export function useColumnDrag({ scroller, head, groupOf, onMove }: Options): Col
 }
 
 /** The three overlays of a column drag: the shade where the column stands, the ghost under the pointer, and the drop line. */
-export function ColumnDragOverlay({ view }: { view: ColumnDragView }) {
+function ColumnDragOverlay({ view }: { view: ColumnDragView }) {
   return (
-    <>
-      <div aria-hidden data-drag-shade className="dm-drag-shade" style={{ left: view.shade.left, width: view.shade.width, top: view.top, height: view.height }} />
-      <div aria-hidden data-drag-ghost className="dm-drag-ghost" style={{ left: view.ghost.left, width: view.ghost.width, top: view.top, height: view.height }} />
-      {view.drop !== null && <div aria-hidden data-drop-indicator className="dm-drop-line" style={{ left: view.drop - 1.5, top: view.top, height: view.lineHeight }} />}
-    </>
+    <div aria-hidden className="dm-col-layer" style={view.layer}>
+      <div data-drag-shade className="dm-col-shade" style={view.shade} />
+      <div data-drag-ghost className="dm-col-ghost" style={view.ghost} />
+      {view.drop !== null && <div data-drop-indicator className="dm-col-drop" style={{ left: view.drop }} />}
+    </div>
   );
 }

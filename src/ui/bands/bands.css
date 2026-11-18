@@ -384,10 +384,11 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
    it stands, a ghost of it follows the pointer, and a thick bar marks the gap it will land in. All three are drawn over the scroller. */
 .dm-grid .dm-th[data-column] { cursor: grab; user-select: none; }
 body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user-select: none !important; }
-.dm-drag-shade, .dm-drag-ghost, .dm-drop-line { position: absolute; z-index: 20; pointer-events: none; }
-.dm-drag-shade { background: var(--drag-shade); }
-.dm-drag-ghost { background: var(--drag-ghost); border-inline: 1px solid var(--drag-line); box-sizing: border-box; }
-.dm-drop-line { width: 3px; background: var(--drag-line); }
+.dm-grid-root .dm-col-layer { position: absolute; z-index: 20; pointer-events: none; overflow: hidden; }
+.dm-grid-root .dm-col-shade, .dm-grid-root .dm-col-ghost, .dm-grid-root .dm-col-drop { position: absolute; top: 0; height: 100%; }
+.dm-grid-root .dm-col-shade { background: var(--drag-shade); }
+.dm-grid-root .dm-col-ghost { background: var(--drag-ghost); border-inline: 1px solid var(--drag-line); box-sizing: border-box; }
+.dm-grid-root .dm-col-drop { width: 3px; background: var(--drag-line); }
 /* The group row above the titles: a divider between data marts, a line under the row (the filler cell carries it to the
    card's edge), and the remove button shown with the row's hover or focus. */
 .dm-gh-edge { box-shadow: inset -1px 0 0 var(--grid-line-strong), inset 0 -1px 0 var(--grid-line); }

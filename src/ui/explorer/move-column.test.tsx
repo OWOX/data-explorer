@@ -7,6 +7,7 @@ import { App } from '../App';
 import { openColumnMenu } from './menu-test-utils';
 
 const data = () => document.getElementById('band-data')!;
+const order = () => [...data().querySelectorAll<HTMLElement>('th.dm-th[data-column]')].map((h) => h.dataset.column!);
 const headers = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden') && h.getAttribute('scope') !== 'colgroup').map((h) => h.textContent!);
 const ready = () => waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
 
@@ -38,9 +39,16 @@ test('Move left is disabled on the first column, Move right on the last of its g
   expect(within(first).getByRole('menuitem', { name: 'Move left' })).toBeDisabled();
   expect(within(first).getByRole('menuitem', { name: 'Move right' })).toBeEnabled();
   await userEvent.keyboard('{Escape}');
-  const names = headers();
-  const lastTitle = names[names.length - 1]!.replace(/[^\w ].*$/, '').trim();
+  const lastTitle = headers()[headers().length - 1]!.trim();
   const last = await openColumnMenu(within(data()), lastTitle);
   expect(within(last).getByRole('menuitem', { name: 'Move right' })).toBeDisabled();
   expect(within(last).getByRole('menuitem', { name: 'Move left' })).toBeEnabled();
+});
+
+test('after Move right the focus is on the moved column\'s menu button', async () => {
+  setup(); await ready();
+  const menu = await openColumnMenu(within(data()), 'id');
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Move right' }));
+  await waitFor(() => expect(order()[1]).toBe('id'));
+  await waitFor(() => expect(document.activeElement).toBe(within(data()).getByLabelText('Column menu id')));
 });

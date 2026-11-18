@@ -30,7 +30,7 @@ import { CardClickContext } from '../bands/CardClick';
 import { PickedIcon } from '../bands/picked';
 import { CellValue } from './CellValue';
 import { selectionTsv, type GridSelection } from './copySelection';
-import { ColumnDragOverlay, useColumnDrag } from './ColumnDrag';
+import { ColumnDragLayer } from './ColumnDrag';
 import { ColumnControls, ColumnMenuEnvContext, type ColumnMenuEnv } from './ColumnMenu';
 import { ColumnPicker } from './ColumnPicker';
 import { ExportMenu } from './ExportMenu';
@@ -203,6 +203,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const [{ modelVersion }, dispatch] = useStore();
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
   const [visible, setVisible] = useState(initialColumns);
+  // Cell or whole-column selection (see below); a changed column order or set drops it.
+  const [selected, setSelected] = useState<GridSelection | null>(null);
   // The functions and date buckets on columns: any of them groups the rows.
   const [agg, setAgg] = useState<Aggregation>(initialAgg);
   // A filter on a field this visit does not offer (a joined field whose marts could not be read, or one a Refresh took away) is not applied,
@@ -277,7 +279,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       setView(saved.view);
       setVisible(saved.columns);
       setAgg(aggOf(saved));
-      if (!sameList(saved.columns, visible)) setAdopted([...saved.columns]);
+      if (!sameList(saved.columns, visible)) { setAdopted([...saved.columns]); setSelected(null); }
       else if (JSON.stringify(aggOf(saved)) !== JSON.stringify(agg)) setAdoptedAgg({ ...aggOf(saved) });
       setFilters(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => offeredNow(k))));
       setParked(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => !offeredNow(k))));
@@ -415,7 +417,6 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     // A joined mart that has just left remembers what it was showing, as its own field names.
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
   };
-  const [selected, setSelected] = useState<Selection | null>(null);
   // A moved column keeps its sorts, filters and functions: only the order changes, and it is one Undo step. The cell selection is dropped (its columns moved).
   const reorder = (cols: string[]) => {
     if (cols === shown) return;
@@ -494,7 +495,6 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // the far end, the cell stays active), or whole columns or rows (a tint and a frame around the block); its column letters and row
   // numbers are lit. `from` is where a shift-click on a header extends from.
   type Cell = { row: number; col: number };
-  type Selection = GridSelection;
   const rowCount = rows?.length ?? 0;
   const inside = (c: Cell) => c.row < rowCount && c.col < outputs.length;
   // Charts has no cells to select: nothing stays lit from the table (it is cleared below too, so Table opens without it).
@@ -531,7 +531,6 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // Measured for the charts: their panels are as wide as the visible grid, not the (wider) table.
   const { ref: scroller, width: scrollerWidth } = useWidth<HTMLDivElement>(charts);
   const owner = (column: string) => byName.get(column)?.joined?.martId ?? martId;
-  const dragView = useColumnDrag({ scroller, head, groupOf: owner, onMove: (name, before) => reorder(moveColumn(shown, name, before, sources)) });
   const traverseFilters = useMemo(() => toTraverseFilters(schema, Object.values(filters)), [schema, filters]);
   // A click selects the cell; a shift-click stretches a block from the active cell (the one a click or a header selected) to this one,
   // and does not open another record.
@@ -687,7 +686,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               ))}
           </tbody>}
         </table>
-        {dragView && <ColumnDragOverlay view={dragView} />}
+        <ColumnDragLayer scroller={scroller} head={head} groupOf={owner} onMove={(name, before) => reorder(moveColumn(shown, name, before, sources))} />
         {!charts && !error && !blocked && hasMore && <div className="p-3 text-center"><button type="button" onClick={() => setLimit((l) => l + PAGE_SIZE)} className="rounded-md border px-3 py-1 text-sm hover:bg-accent">Load more</button></div>}
       </div>
     </div>

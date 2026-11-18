@@ -114,6 +114,14 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
     window.clearTimeout(focusTimer);
     if (target && head) focusTimer = window.setTimeout(() => { if (head.isConnected) [...head.querySelectorAll<HTMLElement>('[data-menu-icon]')].find((i) => i.dataset.field === target)?.focus(); }, 0);
   };
+  // After Move left / right the headers are rebuilt: focus goes to the moved column's menu icon.
+  const moveBy = (d: -1 | 1) => {
+    const head = anchor.closest('thead');
+    env.move(field.name, d);
+    onClose(false);
+    window.clearTimeout(focusTimer);
+    if (head) focusTimer = window.setTimeout(() => { if (head.isConnected) [...head.querySelectorAll<HTMLElement>('[data-menu-icon]')].find((i) => i.dataset.field === field.name)?.focus(); }, 0);
+  };
   const choose = (f: Format) => { env.setFormat(field.name, f); onClose(); };
   const dir = env.sorts.find((s) => s.field === field.name)?.direction ?? null;
   const canSort = output.sortable && env.sortable !== false;
@@ -130,8 +138,8 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
         {formats.length > 0 && rowFor('format', 'Format', 'menu')}
         {canSort && rowFor('sort', 'Sort', 'menu')}
         <Divider />
-        <Row label="Move left" icon={<ArrowLeft />} disabled={!env.canMove(field.name, -1)} onActivate={() => { env.move(field.name, -1); onClose(); }} onHover={hoverOther} onLeaveRow={leaveRow} />
-        <Row label="Move right" icon={<ArrowRight />} disabled={!env.canMove(field.name, 1)} onActivate={() => { env.move(field.name, 1); onClose(); }} onHover={hoverOther} onLeaveRow={leaveRow} />
+        <Row label="Move left" icon={<ArrowLeft />} disabled={!env.canMove(field.name, -1)} onActivate={() => moveBy(-1)} onHover={hoverOther} onLeaveRow={leaveRow} />
+        <Row label="Move right" icon={<ArrowRight />} disabled={!env.canMove(field.name, 1)} onActivate={() => moveBy(1)} onHover={hoverOther} onLeaveRow={leaveRow} />
         <Row label="Hide column" icon={<EyeOff />} disabled={!env.canHide(field.name)} onActivate={hide} onHover={hoverOther} onLeaveRow={leaveRow} />
       </Panel>
       {placed && sub?.key === 'filter' && (
