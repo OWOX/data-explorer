@@ -2,6 +2,7 @@
 import { Crown, ExternalLink, History, LoaderCircle, Plug } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Context, DqSummary, Mart, Source } from '../../model/types';
+import { COUNT_CONCURRENCY } from '../../config';
 import { compactNumber, count as plural, num, recordsLabel, relativeTime } from '../format';
 import { dqCardTone, dqVisual } from '../icons';
 import { Hint, TipLines, Tooltip } from '../Tooltip';
@@ -15,6 +16,7 @@ export const martElementId = (id: string) => `dm-${id}`;
 
 export type CountState =
   | { state: 'idle' }
+  | { state: 'queued' }
   | { state: 'loading' }
   | { state: 'ok'; value: number | null }
   | { state: 'error'; message: string };
@@ -88,11 +90,19 @@ export function SourceCard({
   );
 }
 
-function CountBadge({ count, onRetry }: { count: CountState; onRetry: () => void }) {
+function CountBadge({ count, countable, onRetry }: { count: CountState; countable: boolean; onRetry: () => void }) {
+  // A card that is never counted (a ghost) shows no badge, or it would wait for ever.
+  if (!countable) return null;
   // The row reserves one badge's height (bands.css), so the count arriving or turning out empty does not move the bands below.
-  if (count.state === 'idle') return null;
+  if (count.state === 'idle' || count.state === 'queued') {
+    return (
+      <Tooltip content={`Waiting to count records. Up to ${COUNT_CONCURRENCY} data marts count at a time.`}>
+        <span className="dm-badge" aria-label="Waiting to count records">—</span>
+      </Tooltip>
+    );
+  }
   if (count.state === 'loading') {
-    return <span className="dm-badge" aria-label="Counting records"><LoaderCircle className="dm-spin" size={12} /></span>;
+    return <Tooltip content="Counting records…"><span className="dm-badge" aria-label="Counting records"><LoaderCircle className="dm-spin" size={12} /></span></Tooltip>;
   }
   if (count.state === 'error') {
     return (
@@ -105,7 +115,9 @@ function CountBadge({ count, onRetry }: { count: CountState; onRetry: () => void
       </Tooltip>
     );
   }
-  if (count.value === null) return null;
+  if (count.value === null) {
+    return <Tooltip content="Can't count records: this data mart has no primary key and no text or boolean field."><span className="dm-badge">—</span></Tooltip>;
+  }
   return <Tooltip content={recordsLabel(num(count.value))}><span className="dm-badge">{recordsLabel(compactNumber(count.value))}</span></Tooltip>;
 }
 
@@ -214,7 +226,7 @@ export function MartCard({
         {mart.description && <span className="dm-card-reveal"><Hint text={mart.description} label="Description" /></span>}
       </div>
       <div className="dm-badges dm-badges-row">
-        {mart.accessible ? <CountBadge count={count} onRetry={onRetryCount} /> : <span className="dm-badge">No access</span>}
+        {mart.accessible ? <CountBadge count={count} countable={!ghost} onRetry={onRetryCount} /> : <span className="dm-badge">No access</span>}
       </div>
       <div className="dm-node-foot">
         <QualityMark summary={quality} />

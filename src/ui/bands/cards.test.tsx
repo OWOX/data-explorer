@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Database } from 'lucide-react';
 import { vi } from 'vitest';
@@ -120,6 +120,32 @@ describe('MartCard', () => {
     await userEvent.click(screen.getByText('—'));
     expect(props.onRetryCount).toHaveBeenCalledTimes(1);
     expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
+  test('a card waiting for its count shows a dash that says why', async () => {
+    for (const state of ['idle', 'queued'] as const) {
+      const { unmount } = renderMart({ count: { state } });
+      const badge = screen.getByLabelText('Waiting to count records');
+      expect(badge).toHaveTextContent('—');
+      await userEvent.hover(badge);
+      expect((await screen.findAllByText('Waiting to count records. Up to 4 data marts count at a time.')).length).toBeGreaterThan(0);
+      unmount();
+    }
+  });
+
+  test('a count that cannot be made shows a dash that says why', async () => {
+    renderMart({ count: { state: 'ok', value: null } });
+    await userEvent.hover(screen.getByText('—'));
+    expect((await screen.findAllByText("Can't count records: this data mart has no primary key and no text or boolean field.")).length).toBeGreaterThan(0);
+  });
+
+  test('a ghost card and an inaccessible card show no count badge', () => {
+    renderMart({ ghost: true, count: { state: 'idle' } });
+    expect(screen.queryByText('—')).toBeNull();
+    cleanup();
+    renderMart({ mart: { ...mart, accessible: false }, count: { state: 'idle' } });
+    expect(screen.queryByText('—')).toBeNull();
+    expect(screen.getByText('No access')).toBeInTheDocument();
   });
 
   test('a count of one is a record, not records', () => {

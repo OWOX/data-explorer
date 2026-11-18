@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { loadDqSummaries } from '../api/data-quality';
 import { FIRST_STEPS, loadModel, type LoadProgress } from '../api/model';
 import { COUNT_CONCURRENCY } from '../config';
@@ -43,6 +43,8 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
   const lastModel = useRef(model);
   const queue = useRef<{ id: string; recount: boolean; seq: number }[]>([]);
   const active = useRef(0);
+  // The latest visible ids, read by the drain: a card that left the band is not worth a request.
+  const visible = useRef(visibleIds);
   // The newest request per card: an older count that finishes late must not overwrite a newer value.
   const seqs = useRef({ next: 0, latest: new Map<string, number>() });
 
@@ -61,6 +63,18 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
   // One pool of COUNT_CONCURRENCY for every request, whenever it arrives.
   const pump = useCallback(() => {
     const drain = () => {
+      // Requests for cards no longer shown are dropped, so they cannot hold up the cards that are.
+      const gone = queue.current.filter((q) => !visible.current.includes(q.id));
+      if (gone.length) {
+        queue.current = queue.current.filter((q) => visible.current.includes(q.id));
+        const ids = new Set(gone.map((q) => q.id));
+        ids.forEach((id) => asked.current.delete(id));
+        setCounts((c) => {
+          const next = new Map(c);
+          ids.forEach((id) => { if (next.get(id)?.state === 'queued') next.delete(id); });
+          return next;
+        });
+      }
       while (active.current < COUNT_CONCURRENCY && queue.current.length) {
         const next = queue.current.shift()!;
         active.current++;
@@ -76,6 +90,8 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
     seqs.current.latest.set(id, seq);
     const waiting = queue.current.find((q) => q.id === id);
     if (waiting) { waiting.recount ||= recount; waiting.seq = seq; } else queue.current.push({ id, recount, seq });
+    // Only a card with no count yet shows the wait; a recount keeps its old value until it starts.
+    setCounts((c) => (c.has(id) ? c : new Map(c).set(id, { state: 'queued' })));
     pump();
   }, [pump]);
 
@@ -88,6 +104,13 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
   }, [enqueue]);
 
   const key = visibleIds.join('|');
+  // A layout effect, so a card that just mounted and asks from its own effect sees the new set.
+  useLayoutEffect(() => { visible.current = visibleIds; });
+  useEffect(() => {
+    pump();
+    // pump is stable; this runs when the visible set changes, so stale requests are pruned with no new one
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
   useEffect(() => {
     if (!model) return;
     // A new model after a refresh: reload what is on screen. A failed reload never gets here, so
