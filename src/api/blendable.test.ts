@@ -62,10 +62,8 @@ test('the loader reads once per mart, shares a read in flight, and does not reme
   const [a, b] = await Promise.all([loader.get('orders'), loader.get('orders')]);
   expect(a).toBe(b);
   await loader.get('orders');
-  // Fields with no list also read their own mart (the fallback), which does not count as a second read of the blendable schema.
-  const schemaReads = getJson.mock.calls.filter(([path]) => String(path).endsWith('/blendable-schema'));
-  expect(schemaReads).toHaveLength(2);
-  expect(schemaReads.at(-1)).toEqual(['/api/data-marts/orders/blendable-schema']);
+  expect(getJson).toHaveBeenCalledTimes(2);
+  expect(getJson).toHaveBeenLastCalledWith('/api/data-marts/orders/blendable-schema');
   loader.clear();
   expect(loader.peek('orders')).toBeUndefined();
 });
@@ -85,4 +83,13 @@ test('a joined field carries the join\'s post-join aggregations ([] means none),
   expect(b!.postJoinAggregations).toEqual([]);
   expect(d!.allowedAggregations).toEqual(['SUM']);
   expect('postJoinAggregations' in e! || 'allowedAggregations' in e!).toBe(false);
+});
+
+test('a null post-join list is read as no list, not a crash', () => {
+  const sources = joinedSources({
+    availableSources: [{ aliasPath: 'c', title: 'C', depth: 1, dataMartId: 'u', isIncluded: true, isAccessibleForReporting: true }],
+    blendedFields: [{ name: 'c__a', aliasPath: 'c', sourceDataMartId: 'u', originalFieldName: 'a', type: 'NUMERIC', postJoinAggregations: null as unknown as string[] }],
+  });
+  expect(sources).toHaveLength(1);
+  expect('postJoinAggregations' in sources[0]!.fields[0]!).toBe(false);
 });

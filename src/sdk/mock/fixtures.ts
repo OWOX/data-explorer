@@ -97,7 +97,7 @@ const specs: Spec[] = [
   {
     id: 'customers', connectorSourceName: 'Shopify', icon: 'customers', count: 60,
     description: 'People who placed orders, with their home country.',
-    fields: [pk(), f('name', 'STRING', { description: 'Full name as given at checkout.' }), f('email', 'STRING'), f('city', 'STRING', { allowedAggregations: ['COUNT', 'COUNT_DISTINCT'] }), f('country_code', 'STRING', { alias: 'Country' }), f('internal_flag', 'STRING', { isHiddenForReporting: true })],
+    fields: [pk(), f('name', 'STRING', { description: 'Full name as given at checkout.' }), f('email', 'STRING'), f('city', 'STRING'), f('country_code', 'STRING', { alias: 'Country' }), f('internal_flag', 'STRING', { isHiddenForReporting: true })],
     row: (i) => {
       const first = FIRST[i % FIRST.length]!;
       const last = LAST[Math.floor(i / FIRST.length) % LAST.length]!;

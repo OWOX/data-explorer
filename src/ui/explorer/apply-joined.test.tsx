@@ -1,11 +1,11 @@
 import { StrictMode } from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GRID_COLUMNS_COLLECTION } from '../../api/grid-columns';
 import type { BlendableSchemaDto, TraverseOptions } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
-import { AppServices, StoreProvider } from '../../state/store';
+import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
 import { openSubmenu } from './menu-test-utils';
 
@@ -172,23 +172,11 @@ async function renderWith(wrap: (base: ReturnType<typeof createMockCtx>) => Retu
   render(<AppServices ctx={wrap(base)}><StoreProvider><App /></StoreProvider></AppServices>);
   await waitFor(() => expect(headers()).toHaveLength(columns.length));
 }
-const stripPostJoin = (base: ReturnType<typeof createMockCtx>) => {
-  const realGet = base.owox.getJson.bind(base.owox);
-  return { ...base, owox: { ...base.owox, getJson: (async (path: string, q?: Record<string, string>) => { const dto = await realGet<BlendableSchemaDto>(path, q); if (path.endsWith('/blendable-schema')) dto.blendedFields = dto.blendedFields?.map((f) => ({ ...f, postJoinAggregations: undefined })); return dto; }) as typeof base.owox.getJson } };
-};
-
-test('the mock mirrors the backend: a joined string field limited to Count and Count Unique offers just those', async () => {
+test('the mock mirrors the backend: a joined string field offers the string defaults of its effective type', async () => {
   await renderWith((b) => b);
   await openSubmenu(within(data()), 'Customers · city', 'Aggregate');
   const dialog = await screen.findByRole('dialog');
-  expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual(['Count', 'Count Unique']);
-});
-
-test('a joined field with no list in the blendable schema takes its own mart\'s list, not the string defaults', async () => {
-  await renderWith(stripPostJoin);
-  await openSubmenu(within(data()), 'Customers · city', 'Aggregate');
-  const dialog = await screen.findByRole('dialog');
-  expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual(['Count', 'Count Unique']);
+  expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual(['Count', 'Count Unique', 'Combined', 'Sample']);
 });
 
 test('the backend refusing a function shows its message in the grid, as a plain object too', async () => {
@@ -206,5 +194,54 @@ test('the backend refusing a function shows its message in the grid, as a plain 
 
 test('the mock traverse refuses a function the field does not allow, like the backend', async () => {
   const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
-  await expect(ctx.owox.dataMarts.traverseData('orders', { column: ['id', 'customers__city'], aggregation: [{ column: 'customers__city', function: 'STRING_AGG' }] })).rejects.toThrow('Aggregation STRING_AGG is not allowed for field customers__city');
+  await expect(ctx.owox.dataMarts.traverseData('orders', { column: ['id', 'customers__city'], aggregation: [{ column: 'customers__city', function: 'SUM' }] })).rejects.toThrow('Aggregation SUM is not allowed for field customers__city');
+});
+
+test('a joined filter adopted from the store before the joined marts load is applied once they arrive', async () => {
+  const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const realGet = base.owox.getJson.bind(base.owox);
+  const queries: TraverseOptions[] = [];
+  const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
+  const ctx = { ...base, owox: { ...base.owox, getJson: (async (path: string, q?: Record<string, string>) => { if (path.endsWith('/blendable-schema')) await gate; return realGet(path, q); }) as typeof base.owox.getJson, dataMarts: { ...base.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { queries.push(o); return real(id, o); } } } };
+  await base.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: ['id', 'status'], at: 'then' });
+  let dispatch!: ReturnType<typeof useStore>[1];
+  const Probe = () => { dispatch = useStore()[1]; return null; };
+  render(<AppServices ctx={ctx}><StoreProvider><Probe /><App /></StoreProvider></AppServices>);
+  await waitFor(() => expect(headers()).toHaveLength(2));
+  act(() => dispatch({ type: 'saveGrid', martId: 'orders', grid: { columns: ['id', 'status'], filters: { customers__email: { field: 'customers__email', op: 'contains', value: 'a' } }, sorts: null, limit: 50 } }));
+  await new Promise((r) => setTimeout(r, 50));
+  expect(queries.every((q) => !q.filter?.length)).toBe(true);
+  release();
+  await waitFor(() => expect(queries.at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a' }]));
+});
+
+// The blendable schema the backend serves changes between reads: Join Settings narrowed the list for customers__email.
+async function renderNarrowing() {
+  const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  const realGet = base.owox.getJson.bind(base.owox);
+  const state = { reads: 0, post: ['COUNT', 'COUNT_DISTINCT', 'STRING_AGG'] };
+  const queries: TraverseOptions[] = [];
+  const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
+  const ctx = { ...base, owox: { ...base.owox, getJson: (async (path: string, q?: Record<string, string>) => {
+    const dto = await realGet<BlendableSchemaDto>(path, q);
+    if (path.endsWith('/blendable-schema')) { state.reads += 1; dto.blendedFields = dto.blendedFields?.map((f) => (f.name === 'customers__email' ? { ...f, postJoinAggregations: state.post } : f)); }
+    return dto;
+  }) as typeof base.owox.getJson, dataMarts: { ...base.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { queries.push(o); return real(id, o); } } } };
+  await base.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: ['id', 'status', 'customers__email'], at: 'then' });
+  render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
+  await waitFor(() => expect(headers()).toHaveLength(3));
+  return { state, queries };
+}
+
+test('Refresh reads the joined marts again, so a Join Settings change is picked up', async () => {
+  const { state } = await renderNarrowing();
+  const before = state.reads;
+  state.post = ['COUNT'];
+  await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+  await waitFor(() => expect(state.reads).toBeGreaterThan(before));
+  await openSubmenu(within(data()), 'Customers · email', 'Aggregate');
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual(['Count']);
 });

@@ -1,7 +1,7 @@
-import { knownFunctions, type AggFn } from '../model/aggregation';
+import { knownFunctions } from '../model/aggregation';
 import { categorizeFieldType } from '../model/field-category';
 import type { Field, Schema } from '../model/types';
-import type { BlendableSchemaDto, Ctx, DataMartDetailDto } from '../sdk/types';
+import type { BlendableSchemaDto, Ctx } from '../sdk/types';
 
 /** The backend's `isArrayFieldType`: ARRAY, bare or with a parameter (`ARRAY<STRING>`). */
 const isArrayType = (type: string | undefined) => /^ARRAY(?:\s*[<(]|$)/i.test(type?.trim() ?? '');
@@ -20,6 +20,8 @@ export interface BlendableLoader {
   /** The joined sources of a mart; read once per mart (a failure is not remembered, so the next ask reads again). */
   get(martId: string): Promise<JoinedSource[]>;
   peek(martId: string): JoinedSource[] | undefined;
+  /** Forget one mart's joined sources (and a read in flight), so the next ask reads the backend again. */
+  invalidate(martId: string): void;
   clear(): void;
 }
 
@@ -45,30 +47,12 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
       category: isArrayType(b.sourceFieldType) ? 'other' : categorizeFieldType(b.type),
       description: b.description?.trim() ? b.description : null,
       isPrimaryKey: false,
-      ...(b.postJoinAggregations !== undefined ? { postJoinAggregations: knownFunctions(b.postJoinAggregations) } : {}),
-      ...(b.postJoinAggregations === undefined && Array.isArray(b.allowedAggregations) ? { allowedAggregations: knownFunctions(b.allowedAggregations) } : {}),
+      ...(Array.isArray(b.postJoinAggregations) ? { postJoinAggregations: knownFunctions(b.postJoinAggregations) } : {}),
+      ...(!Array.isArray(b.postJoinAggregations) && Array.isArray(b.allowedAggregations) ? { allowedAggregations: knownFunctions(b.allowedAggregations) } : {}),
       joined: { martId: source.martId, label: source.label, aliasPath: source.aliasPath, originalName: b.originalFieldName },
     });
   }
   return [...byPath.values()].filter((s) => s.fields.length > 0).sort((a, b) => a.depth - b.depth || a.label.localeCompare(b.label) || a.aliasPath.localeCompare(b.aliasPath));
-}
-
-/**
- * A joined field the blendable schema gives no aggregation list for takes its own data mart's list, when that mart sets one:
- * better than the type's defaults, which may offer a function the backend refuses. A mart that cannot be read leaves its fields as they are.
- */
-async function withNativeGovernance(ctx: Ctx, sources: JoinedSource[]): Promise<JoinedSource[]> {
-  const unknown = (f: Field) => f.postJoinAggregations === undefined && f.allowedAggregations === undefined;
-  const martIds = [...new Set(sources.filter((s) => s.fields.some(unknown)).map((s) => s.martId))];
-  if (!martIds.length) return sources;
-  const lists = new Map<string, Map<string, AggFn[]>>();
-  await Promise.all(martIds.map(async (id) => {
-    try {
-      const d = await ctx.owox.getJson<DataMartDetailDto>(`/api/data-marts/${encodeURIComponent(id)}`);
-      lists.set(id, new Map((d.schema?.fields ?? []).flatMap((f) => (Array.isArray(f.allowedAggregations) ? [[f.name, knownFunctions(f.allowedAggregations)] as const] : []))));
-    } catch { /* the defaults stay */ }
-  }));
-  return sources.map((s) => ({ ...s, fields: s.fields.map((f) => { const own = unknown(f) ? lists.get(s.martId)?.get(f.joined?.originalName ?? '') : undefined; return own ? { ...f, allowedAggregations: own } : f; }) }));
 }
 
 export function createBlendableLoader(ctx: Ctx): BlendableLoader {
@@ -81,13 +65,13 @@ export function createBlendableLoader(ctx: Ctx): BlendableLoader {
       const running = inflight.get(martId);
       if (running) return running;
       const p = ctx.owox.getJson<BlendableSchemaDto>(`/api/data-marts/${encodeURIComponent(martId)}/blendable-schema`)
-        .then((dto) => withNativeGovernance(ctx, joinedSources(dto)))
-        .then((sources) => { done.set(martId, sources); return sources; })
-        .finally(() => inflight.delete(martId));
+        .then((dto) => { const sources = joinedSources(dto); if (inflight.get(martId) === p) done.set(martId, sources); return sources; })
+        .finally(() => { if (inflight.get(martId) === p) inflight.delete(martId); });
       inflight.set(martId, p);
       return p;
     },
     peek: (martId) => done.get(martId),
+    invalidate(martId) { done.delete(martId); inflight.delete(martId); },
     clear() { done.clear(); },
   };
 }
