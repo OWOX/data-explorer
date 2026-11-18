@@ -41,3 +41,10 @@ test('an Enter a child already handled is left alone', () => {
   fireEvent.keyDown(screen.getByLabelText('Value'), { key: 'Enter' });
   expect(onAction).not.toHaveBeenCalled();
 });
+
+test('Enter that commits an IME composition (Safari: keyCode 229) is ignored', () => {
+  const onAction = vi.fn();
+  render(<ActionForm onAction={onAction}><input aria-label="Value" /></ActionForm>);
+  fireEvent.keyDown(screen.getByLabelText('Value'), { key: 'Enter', keyCode: 229 });
+  expect(onAction).not.toHaveBeenCalled();
+});

@@ -19,9 +19,7 @@ async function boxes(page: Page) {
 for (const mode of ['Table', 'Charts']) {
   test(`${mode}: the Data band toolbar buttons are evenly spaced`, async ({ page }) => {
     await data(page).getByRole('radio', { name: mode }).click();
-    await page.screenshot({ path: `tmp/band-toolbar-${mode}.png`, clip: { x: 700, y: 0, width: 740, height: 200 } });
     const b = await boxes(page);
-    console.log(mode, JSON.stringify(b));
     expect(b.length).toBe(4);
     const gaps = b.slice(1).map((c, i) => c.x - b[i]!.r);
     gaps.forEach((g) => expect(Math.abs(g - gaps[0]!)).toBeLessThanOrEqual(1));
@@ -42,8 +40,5 @@ for (const width of [1440, 800]) {
     const hint = await data(page).locator('.dm-band-titlegroup .dm-hint').boundingBox();
     expect(badge!.x).toBeGreaterThan(sw!.x + sw!.width);
     expect(hint!.x).toBeLessThan(sw!.x);
-    await data(page).locator('.dm-band-head').screenshot({ path: `tmp/band-head-Table-${width}.png` });
-    await data(page).getByRole('radio', { name: 'Charts' }).click();
-    await data(page).locator('.dm-band-head').screenshot({ path: `tmp/band-head-Charts-${width}.png` });
   });
 }

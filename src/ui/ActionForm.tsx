@@ -8,7 +8,7 @@ type Props = Omit<HTMLAttributes<HTMLDivElement>, 'onKeyDown'> & { onAction: () 
 
 export function ActionForm({ onAction, children, ...rest }: Props) {
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Enter' || e.defaultPrevented || e.nativeEvent.isComposing) return;
+    if (e.key !== 'Enter' || e.defaultPrevented || e.nativeEvent.isComposing || e.keyCode === 229) return;
     const t = e.target;
     if (!(t instanceof HTMLInputElement) || !TEXTUAL.has(t.type)) return;
     e.preventDefault();

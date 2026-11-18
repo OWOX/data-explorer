@@ -994,3 +994,15 @@ describe('Copy SQL', () => {
     expect(screen.getByRole('menuitem', { name: 'ChatGPT' })).toHaveFocus();
   });
 });
+
+test('New report: Enter in the title exports, and does nothing while an export is running', async () => {
+  const t = setup(1, [REPORT]);
+  await t.seeded;
+  t.view();
+  await rowsLoaded();
+  await openMenu();
+  await userEvent.click(await within(data()).findByRole('menuitem', { name: /New report/ }));
+  const dialog = await screen.findByRole('dialog', { name: 'New report' });
+  await userEvent.type(within(dialog).getByLabelText('Report title'), '{Enter}');
+  await waitFor(() => expect(t.calls.some((c) => c.includes('google-sheets/documents'))).toBe(true), { timeout: 5000 });
+});
