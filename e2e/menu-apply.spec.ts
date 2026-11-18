@@ -8,7 +8,7 @@ async function centre(loc: Locator) { const b = (await loc.boundingBox())!; retu
 async function click(page: Page, loc: Locator) { const p = await centre(loc); await page.mouse.move(p.x, p.y, { steps: 8 }); await page.mouse.down(); await page.mouse.up(); }
 async function tick(page: Page, label: string) {
   await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByRole('dialog').getByLabel(label, { exact: true }).check();
+  await page.getByRole('dialog').getByLabel(label, { exact: true }).click();
   await page.keyboard.press('Escape');
 }
 async function openSub(page: Page, column: string, row: 'Filter' | 'Aggregate') {
@@ -39,6 +39,7 @@ test('Aggregate: a long function list scrolls to Apply, and wheeling past its en
   await dialog.getByLabel('Sum').scrollIntoViewIfNeeded();
   await click(page, dialog.getByLabel('Sum'));
   await expect(apply).toBeEnabled();
+  await apply.scrollIntoViewIfNeeded();
   await click(page, apply);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(data(page).getByRole('columnheader', { name: /Net Revenue · Sum/ })).toBeVisible();

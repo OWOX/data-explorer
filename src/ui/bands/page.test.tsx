@@ -381,7 +381,7 @@ describe('the grid', () => {
     expect(await within(grid).findByText('No rows match the filters.')).toBeInTheDocument();
     expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(5);
     await openSubmenu(within(grid), 'id', 'Filter');
-    await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Clear' }));
     await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(202));
   });
 
@@ -398,7 +398,7 @@ describe('the grid', () => {
     await settle();
     const before = calls.filter((c) => c.id === 'orders').length;
     await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
-    await userEvent.click(screen.getAllByRole('checkbox').filter((c) => (c as HTMLInputElement).checked).at(-1)!);
+    await userEvent.click(screen.getAllByRole('option').filter((c) => c.getAttribute('aria-selected') === 'true').at(-1)!);
     await waitFor(() => expect(within(data()).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(4));
     await settle();
     expect(calls.filter((c) => c.id === 'orders')).toHaveLength(before);
@@ -861,15 +861,15 @@ describe('the storage filter', () => {
     await ordersGrid();
     const menu = storageMenu();
     expect(within(menu).getByText('All')).toBeInTheDocument();
-    expect(within(menu).getByRole('checkbox', { name: /Demo Warehouse/ })).toBeChecked();
-    expect(within(menu).getByRole('checkbox', { name: /Sales Lake/ })).toBeChecked();
-    expect(within(menu).getByRole('checkbox', { name: /Sales Lake/ }).closest('label')).toHaveTextContent('4');
+    expect(within(menu).getByRole('option', { name: /Demo Warehouse/ })).toHaveAttribute('aria-selected', 'true');
+    expect(within(menu).getByRole('option', { name: /Sales Lake/ })).toHaveAttribute('aria-selected', 'true');
+    expect(within(menu).getByRole('option', { name: /Sales Lake/ })).toHaveTextContent('4');
   });
 
   test('unticking Sales Lake removes Payments from the band; the Data band keeps the selected mart, with no history entry', async () => {
     await ordersGrid();
     expect(within(marts()).getByText('Payments')).toBeInTheDocument();
-    await userEvent.click(within(storageMenu()).getByRole('checkbox', { name: /Sales Lake/ }));
+    await userEvent.click(within(storageMenu()).getByRole('option', { name: /Sales Lake/ }));
     await waitFor(() => expect(within(marts()).queryByText('Payments')).toBeNull());
     expect(within(marts()).getByText('Customers')).toBeInTheDocument();
     expect(martCard('Orders')).toHaveAttribute('aria-pressed', 'true');
@@ -881,7 +881,7 @@ describe('the storage filter', () => {
     await ordersGrid();
     await userEvent.click(within(martCard('Orders').closest('section')!).getByText('Payments'));
     await within(data()).findByText('Payments');
-    await userEvent.click(within(storageMenu()).getByRole('checkbox', { name: /Sales Lake/ }));
+    await userEvent.click(within(storageMenu()).getByRole('option', { name: /Sales Lake/ }));
     await waitFor(() => expect(within(marts()).queryByText('Payments')).toBeNull());
     expect(within(data()).getByText('Payments')).toBeInTheDocument();
   });
@@ -912,7 +912,7 @@ describe('the storage filter', () => {
       },
     }));
     await within(data()).findByRole('table');
-    await userEvent.click(within(storageMenu()).getByLabelText('Select all'));
+    await userEvent.click(within(storageMenu()).getByRole('button', { name: 'Clear' }));
     await waitFor(() => expect(within(marts()).queryByText('Orders')).toBeNull());
     hide.current = true;
     await reloadModel();
@@ -1349,8 +1349,8 @@ describe('hidden fields, clipped cells and the field (?)', () => {
   test('the (?) after a field label is revealed by its row, in the picker and in the Row band', async () => {
     const grid = await ordersGrid();
     await userEvent.click(within(grid).getByRole('button', { name: 'Fields of Orders' }));
-    const hint = screen.getAllByLabelText('About Customer').find((el) => el.closest('label'))!;
-    expect(hint.closest('label')).toHaveClass('dm-reveal-host');
+    const hint = screen.getAllByLabelText('About Customer').find((el) => el.closest('.dm-checklist-row'))!;
+    expect(hint.closest('.dm-checklist-row')).toHaveClass('dm-reveal-host');
     expect(hint.closest('.dm-hint-slot')).not.toBeNull();
     // right after the label, in the same inline box
     expect(hint.closest('.dm-fieldlabel')).not.toBeNull();

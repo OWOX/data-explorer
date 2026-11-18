@@ -26,7 +26,7 @@ test('Aggregate Apply: a numeric column with the nine governed functions ticks S
   setup(); await ready(); await show('Net Revenue');
   await openSubmenu(within(data()), 'Net Revenue', 'Aggregate');
   const dialog = await screen.findByRole('dialog');
-  expect(within(dialog).getAllByRole('checkbox')).toHaveLength(9);
+  expect(within(dialog).getAllByRole('option')).toHaveLength(9);
   await userEvent.click(within(dialog).getByLabelText('Sum'));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
   await closed();

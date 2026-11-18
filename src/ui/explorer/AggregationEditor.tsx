@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AGG_LABELS, BUCKET_LABELS, DATE_BUCKETS, allowedFunctions, canBucket, canZone, type AggFn, type AggregationDraft, type DateBucket } from '../../model/aggregation';
 import type { Field } from '../../model/types';
 import { Select } from '../Select';
+import { SheetsChecklist } from '../SheetsChecklist';
 
 /** A small curated list, as the OWOX report picker offers; the value is checked again by the backend. */
 export const TIME_ZONES = ['UTC', 'America/New_York', 'America/Los_Angeles', 'America/Sao_Paulo', 'Europe/London', 'Europe/Kyiv', 'Europe/Berlin', 'Asia/Jerusalem', 'Asia/Kolkata', 'Asia/Tokyo', 'Australia/Sydney'];
@@ -18,7 +19,7 @@ export function AggregationEditor({ field, value, blocker, onApply, onCancel }: 
   const [bucket, setBucket] = useState<DateBucket | null>(value.bucket);
   const [zone, setZone] = useState<string | null>(value.timeZone);
   const had = value.functions.length > 0 || value.bucket !== null;
-  const toggle = (fn: AggFn, on: boolean) => { setBucket(null); setZone(null); setFns((cur) => (on ? [...cur.filter((f) => f !== fn), fn] : cur.filter((f) => f !== fn))); };
+  const pick = (next: string[]) => { setBucket(null); setZone(null); setFns(next as AggFn[]); };
   const choose = (unit: DateBucket | null) => { setBucket(unit); if (unit === null) setZone(null); else setFns([]); };
   const ordered = allowed.filter((f) => fns.includes(f));
   const groups = bucket !== null || ordered.length > 0;
@@ -46,12 +47,7 @@ export function AggregationEditor({ field, value, blocker, onApply, onCancel }: 
       {allowed.length > 0 && (
         <fieldset className="flex flex-col gap-1">
           <legend className="pb-1 text-xs text-muted-foreground">{bucketable ? 'Or aggregate by' : 'Aggregate by'}</legend>
-          {allowed.map((fn) => (
-            <label key={fn} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={!bucket && fns.includes(fn)} onChange={(e) => toggle(fn, e.target.checked)} />
-              {AGG_LABELS[fn]}
-            </label>
-          ))}
+          <SheetsChecklist label={bucketable ? 'Or aggregate by' : 'Aggregate by'} items={allowed.map((fn) => ({ value: fn, text: AGG_LABELS[fn] }))} selected={bucket ? [] : fns} onChange={pick} />
         </fieldset>
       )}
       {allowed.length === 0 && !bucketable && <p className="text-xs text-muted-foreground">No aggregation is allowed for this field.</p>}

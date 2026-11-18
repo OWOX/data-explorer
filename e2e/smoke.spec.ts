@@ -172,7 +172,7 @@ test('filter, reset, columns, a row fills the Row band, Back returns', async ({ 
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(data.getByRole('row')).toHaveCount(202);
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel(/amount/i).check();
+  await page.getByLabel(/amount/i).click();
   await expect(data.getByRole('columnheader')).toHaveCount(7);
   await page.keyboard.press('Escape');
   await data.getByRole('row').nth(2).click();
@@ -215,7 +215,7 @@ test('the storage filter drops the marts of an unticked storage and leaves the s
   await expect(band(page, 'marts').getByText('Payments', { exact: true })).toBeVisible();
   const menu = band(page, 'marts').locator('details.dm-filter', { hasText: 'Storage' });
   await menu.locator('summary').click();
-  await menu.getByRole('checkbox', { name: /Sales Lake/ }).uncheck();
+  await menu.getByRole('option', { name: /Sales Lake/ }).click();
   await expect(band(page, 'marts').getByText('Payments', { exact: true })).toHaveCount(0);
   await expect(band(page, 'marts').getByText('Customers', { exact: true })).toBeVisible();
   await expect(martCard(page, 'Orders')).toHaveAttribute('aria-pressed', 'true');
@@ -229,7 +229,7 @@ test('rows open newest date first, and Reset returns to it', async ({ page }) =>
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'none');
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel(/created_at/).check();
+  await page.getByLabel(/created_at/).click();
   await page.keyboard.press('Escape');
   await expect(data.getByRole('columnheader', { name: /created_at/ })).toHaveAttribute('aria-sort', 'descending');
 });
@@ -237,7 +237,7 @@ test('rows open newest date first, and Reset returns to it', async ({ page }) =>
 test('a date column filter opens on presets; a preset applies at once and names the filter', async ({ page }) => {
   const data = await ordersGrid(page);
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel(/created_at/).check();
+  await page.getByLabel(/created_at/).click();
   await page.keyboard.press('Escape');
   await openColumnSub(data, 'created_at', 'Filter');
   await expect(page.getByRole('group', { name: 'Date presets' }).getByRole('button')).toHaveCount(14);
@@ -372,7 +372,7 @@ async function groupedSum(grid: Locator): Promise<string> {
 
 async function tick(page: Page, label: string | RegExp, group?: string) {
   await band(page, 'data').getByRole('button', { name: `Fields of ${group ?? 'Orders'}` }).click();
-  await page.getByRole('dialog').getByLabel(label, { exact: true }).check();
+  await page.getByRole('dialog').getByLabel(label, { exact: true }).click();
   await page.keyboard.press('Escape');
 }
 
@@ -427,7 +427,7 @@ test('opening the Fields picker by mouse leaves every (?) hidden until a row is 
   await expect(slots).not.toHaveCount(0);
   for (const slot of await slots.all()) await expect(slot).toHaveCSS('opacity', '0');
   await dialog.getByText('Customer', { exact: true }).hover();
-  await expect(dialog.locator('label', { hasText: 'Customer' }).locator('.dm-hint-slot')).toHaveCSS('opacity', '1');
+  await expect(dialog.locator('.dm-checklist-row', { hasText: 'Customer' }).locator('.dm-hint-slot')).toHaveCSS('opacity', '1');
 });
 
 test('a filter popover is at most 20rem tall, has no title row, and its last button is reachable by scrolling', async ({ page }) => {
@@ -561,7 +561,7 @@ test('the Fields picker is on each tab and lists only that mart; the toolbar has
   await data.getByRole('button', { name: 'Fields of Customers' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText(/^Fields · \d+\/\d+$/)).toBeVisible();
-  await expect(dialog.getByRole('checkbox')).toHaveCount(5);
+  await expect(dialog.getByRole('option')).toHaveCount(5);
   await expect(dialog.getByLabel('email', { exact: true })).toBeVisible();
   await expect(dialog.getByLabel('status', { exact: true })).toHaveCount(0);
 });
@@ -634,7 +634,7 @@ test('a copied view link keeps a Sum on Amount: the opener sees the grouped grid
   const data = await ordersGrid(page);
   await tick(page, 'Amount');
   await openColumnSub(data, 'Amount', 'Aggregate');
-  await page.getByRole('dialog').getByLabel('Sum').check();
+  await page.getByRole('dialog').getByLabel('Sum').click();
   await page.getByRole('dialog').getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByRole('columnheader', { name: /Amount · Sum/ })).toBeVisible();
   await page.getByRole('button', { name: 'Copy link to this view' }).click();
@@ -674,7 +674,7 @@ test('a Sum on Amount groups the rows by the other columns; the badge counts gro
   await tick(page, 'Amount');
   await openColumnSub(data, 'Amount', 'Aggregate');
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Sum').check();
+  await dialog.getByLabel('Sum').click();
   await dialog.getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByRole('columnheader', { name: /Amount · Sum/ })).toBeVisible();
   // a real grouped value: a sum of order amounts is a positive number
@@ -686,7 +686,7 @@ test('a Sum on Amount groups the rows by the other columns; the badge counts gro
   // unticking everything and applying brings the rows back
   await data.getByRole('button', { name: 'Aggregate Amount' }).click();
   const dlg = page.getByRole('dialog');
-  await dlg.getByLabel('Sum').uncheck();
+  await dlg.getByLabel('Sum').click();
   await dlg.getByRole('button', { name: 'Apply' }).click();
   await expect(data.getByText(/200\+ records/)).toBeVisible();
 });
@@ -785,7 +785,7 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
 test('a numeric filter applied through the popover (> 400) leaves fewer rows', async ({ page }) => {
   const data = await ordersGrid(page);
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel(/Amount/).check();
+  await page.getByLabel(/Amount/).click();
   await page.keyboard.press('Escape');
   await expect(data.getByLabel('Column menu Amount')).toBeVisible();
   await openColumnSub(data, 'Amount', 'Filter');

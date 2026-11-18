@@ -95,7 +95,7 @@ test('a date takes one bucket instead of functions, and shows the bucket start b
   await userEvent.selectOptions(within(dialog).getByLabelText('Group by bucket'), 'MONTH');
   await userEvent.selectOptions(within(dialog).getByLabelText('Time zone'), 'UTC');
   // a bucket and functions exclude each other
-  expect(within(dialog).getByLabelText('Min')).not.toBeChecked();
+  expect(within(dialog).getByRole('option', { name: 'Min' })).toHaveAttribute('aria-selected', 'false');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
   await waitFor(() => expect(t.queries.at(-1)!.o.dateTrunc).toEqual([{ column: 'created_at', unit: 'MONTH', timeZone: 'UTC' }]));
   expect(t.queries.at(-1)!.o.aggregation).toBeUndefined();
@@ -121,14 +121,14 @@ test('the Sigma stays on while a column is aggregated; unticking all and applyin
   expect(within(data()).getByText(/records$/)).toBeInTheDocument();
 });
 
-test('the popover has no title row and no Clear; Apply is off while nothing is set, on once something is ticked', async () => {
+test('the popover has no title row, a Sheets-style Select all and Clear on its function list; Apply is off while nothing is set, on once something is ticked', async () => {
   setup();
   await ready();
   await showColumn('Amount');
   await openSubmenu(within(data()), 'Amount', 'Aggregate');
   const dialog = await screen.findByRole('dialog', { name: 'Aggregation of Amount' });
   expect(dialog.querySelector('.dm-popover-title')).toBeNull();
-  expect(within(dialog).queryByRole('button', { name: 'Clear' })).toBeNull();
+  expect(within(dialog).getByRole('button', { name: 'Clear' })).toBeInTheDocument();
   const buttons = within(dialog).getAllByRole('button').map((b) => b.textContent);
   expect(buttons.slice(-2)).toEqual(['Cancel', 'Apply']);
   const apply = within(dialog).getByRole('button', { name: 'Apply' });
