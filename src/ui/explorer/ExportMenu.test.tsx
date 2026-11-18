@@ -108,7 +108,7 @@ test('a remembered report is offered as an update, which PUTs it and runs it', a
   t.view();
   await rowsLoaded();
   // seed the mock report the remembered entry points at
-  await t.ctx.owox.postJson('/api/reports', { title: 'Orders weekly', dataMartId: 'orders' });
+  await t.ctx.owox.postJson('/api/reports', { title: 'Orders weekly', dataMartId: 'orders', dataDestinationAccess: { id: 'd-sheets-team' }, destinationConfig: { spreadsheetId: 'mock-sheet-1', sheetId: 0 } });
   await openMenu();
   await userEvent.click(await within(data()).findByRole('menuitem', { name: /Update “Orders weekly”/ }));
   await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 5000 });
@@ -132,7 +132,7 @@ test('New report… opens the dialog; a bad link is refused, a good one is used 
   await t.seeded;
   t.view();
   await rowsLoaded();
-  await t.ctx.owox.postJson('/api/reports', { title: 'x', dataMartId: 'orders' });
+  await t.ctx.owox.postJson('/api/reports', { title: 'x', dataMartId: 'orders', dataDestinationAccess: { id: 'd-sheets-team' }, destinationConfig: { spreadsheetId: '../../url?q=https://evil.example', sheetId: 0 } });
   await openMenu();
   await userEvent.click(await within(data()).findByRole('menuitem', { name: /New report/ }));
   const dialog = await screen.findByRole('dialog', { name: 'New report' });
@@ -186,7 +186,7 @@ test('a remembered report with an unrecognised target is not updated and nothing
   await t.seeded;
   t.view();
   await rowsLoaded();
-  await t.ctx.owox.postJson('/api/reports', { title: 'x', dataMartId: 'orders' });
+  await t.ctx.owox.postJson('/api/reports', { title: 'x', dataMartId: 'orders', dataDestinationAccess: { id: 'd-sheets-team' }, destinationConfig: { spreadsheetId: '../../url?q=https://evil.example', sheetId: 0 } });
   await openMenu();
   await userEvent.click(await within(data()).findByRole('menuitem', { name: /Update/ }));
   expect(await screen.findByText(/unrecognised spreadsheet/)).toBeInTheDocument();
@@ -305,12 +305,12 @@ test('a timeout on the report step closes the dialog and warns that the report m
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
 });
 
-test('Update stays disabled until the live check of the remembered reports has finished, so no stale title is sent', async () => {
+test('Update is not offered until the live read of the remembered reports has finished, so no stale title is sent', async () => {
   const t = setup(1, [REPORT]);
   await t.seeded;
   t.view();
   await rowsLoaded();
-  await t.ctx.owox.postJson('/api/reports', { title: 'Renamed in OWOX', dataMartId: 'orders' });
+  await t.ctx.owox.postJson('/api/reports', { title: 'Renamed in OWOX', dataMartId: 'orders', dataDestinationAccess: { id: 'd-sheets-team' }, destinationConfig: { spreadsheetId: 'mock-sheet-1', sheetId: 0 } });
   const real = t.ctx.owox.getJson;
   let release: () => void = () => {};
   const gate = new Promise<void>((r) => { release = r; });
@@ -319,10 +319,9 @@ test('Update stays disabled until the live check of the remembered reports has f
     return real(path, q);
   }) as Ctx['owox']['getJson'];
   await openMenu();
-  const update = await within(data()).findByRole('menuitem', { name: /Update/ });
-  expect(update).toBeDisabled();
-  expect(update).toHaveTextContent('Checking…');
-  await userEvent.click(update);
+  // Reports are offered only once their live read has returned, so a stale title is never sent.
+  await userEvent.click(await within(data()).findByRole('menuitem', { name: /Team Sheets/ }));
+  expect(within(data()).queryByRole('menuitem', { name: /Update/ })).toBeNull();
   expect(t.calls.some((c) => c.startsWith('PUT'))).toBe(false);
   release();
   await waitFor(() => expect(within(data()).getByRole('menuitem', { name: /Update “Renamed in OWOX”/ })).toBeEnabled());
@@ -342,16 +341,16 @@ test('the spreadsheet a failed report step left is reused even after the menu wa
   expect(t.calls.filter((c) => c.includes('google-sheets/documents'))).toHaveLength(1);
 }, 15000);
 
-test('Update is disabled from the first render of an opened menu, before any toggle handler ran', async () => {
+test('Update is not offered before the menu was opened and the live reads ran', async () => {
   const t = setup(1, [REPORT]);
   await t.seeded;
   t.view();
   await rowsLoaded();
-  await t.ctx.owox.postJson('/api/reports', { title: 'Orders weekly', dataMartId: 'orders' });
+  await t.ctx.owox.postJson('/api/reports', { title: 'Orders weekly', dataMartId: 'orders', dataDestinationAccess: { id: 'd-sheets-team' }, destinationConfig: { spreadsheetId: 'mock-sheet-1', sheetId: 0 } });
   await within(data()).findByText('Export');
   // The menu is still closed (no toggle ran); its flyout, opened on the destination row, is disabled from its first render.
   fireEvent.mouseEnter(within(data()).getByRole('menuitem', { name: /Team Sheets/, hidden: true }).closest('.dm-cascade-row')!);
-  expect(within(data()).getByRole('menuitem', { name: /Update/, hidden: true })).toBeDisabled();
+  expect(within(data()).queryByRole('menuitem', { name: /Update/, hidden: true })).toBeNull();
 });
 
 test('a spreadsheet left behind on one destination is not reused for another destination', async () => {
@@ -417,7 +416,7 @@ describe('the cascading menu', () => {
     await t.seeded;
     t.view();
     await rowsLoaded();
-    await t.ctx.owox.postJson('/api/reports', { title: 'Orders weekly', dataMartId: 'orders' });
+    await t.ctx.owox.postJson('/api/reports', { title: 'Orders weekly', dataMartId: 'orders', dataDestinationAccess: { id: 'd-sheets-team' }, destinationConfig: { spreadsheetId: 'mock-sheet-1', sheetId: 0 } });
     await userEvent.click(await within(data()).findByText('Export'));
     const first = await within(data()).findByRole('menuitem', { name: /Team Sheets/ });
     expect(within(data()).queryByRole('menuitem', { name: /Update/ })).toBeNull();

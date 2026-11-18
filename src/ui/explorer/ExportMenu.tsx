@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as Rea
 import { createPortal } from 'react-dom';
 import {
   buildReportPayload, exportTitle, ExportError, isPublishedSheetUrl, parseSheetUrl, reportMayExist, sheetUrl,
-  type ExportedReport, type ExportSource, type Flight, type Stage,
+  type ExportedReport, type Exporter, type ExportSource, type Flight, type Stage,
 } from '../../api/exports';
 import type { ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
@@ -43,6 +43,20 @@ type CopiedSql = { sql: string; ok: boolean };
 const STAGE_LABEL: Record<Stage, string> = { sheet: 'Creating the spreadsheet…', report: 'Saving the report…', run: 'Running the report…' };
 const MAYBE_CREATED = 'The report may have been created; check OWOX before trying again.';
 const UNRECOGNISED = 'This report targets an unrecognised spreadsheet.';
+/** The reports whose live read has finished and succeeded. Today's menu needs the whole list at once; the dialog rework shows rows as they arrive. */
+async function settledReports(exporter: Exporter, martId: string): Promise<ExportedReport[]> {
+  exporter.load(martId);
+  const pick = async () => {
+    const ids = (await exporter.stored(martId)).map((r) => r.reportId);
+    const entries = exporter.entries(martId);
+    return ids.every((id) => { const e = entries.find((x) => x.reportId === id); return e && e.state !== 'loading'; }) ? entries.flatMap((e) => (e.report ? [e.report] : [])) : null;
+  };
+  const now = await pick();
+  if (now) return now;
+  return new Promise((resolve) => {
+    const off = exporter.subscribe(martId, () => { void pick().then((r) => { if (r) { off(); resolve(r); } }); });
+  });
+}
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** "Export" in the Data band header: a menu of one "Copy to clipboard" item, the Google Sheets destinations, then Claude and ChatGPT, each of which copies a prompt, and last "Copy SQL", which copies the SQL the grid ran. */
@@ -121,11 +135,6 @@ export function ExportMenu(p: Props) {
     return () => { live = false; };
   }, [exporter, modelVersion]);
   useEffect(() => {
-    let live = true;
-    exporter.reports(p.martId).then((list) => live && setReports({ martId: p.martId, list }));
-    return () => { live = false; };
-  }, [exporter, p.martId]);
-  useEffect(() => {
     const close = (e: MouseEvent) => { if (menu.current?.open && !menu.current.contains(e.target as Node)) menu.current.open = false; };
     document.addEventListener('click', close);
     return () => document.removeEventListener('click', close);
@@ -165,7 +174,7 @@ export function ExportMenu(p: Props) {
       unsubscribe();
       if (!here()) return;
       exporter.acknowledge(martId);
-      setReports({ martId, list: await exporter.reports(martId) });
+      setReports({ martId, list: await settledReports(exporter, martId) });
       const url = sheetUrl(report) ?? undefined;
       const note = notes.length ? ` ${notes.join(' ')}` : '';
       setDialog(null);
@@ -199,7 +208,7 @@ export function ExportMenu(p: Props) {
         // Past this point the report exists (and may be running): a retry from the dialog would make a second one.
         setDialog(null);
         setResult({ kind: 'error', text: e instanceof ExportError && e.stage === 'run' ? `The run could not be followed: ${text}` : text });
-        const list = await exporter.reports(martId).catch(() => []);
+        const list = await settledReports(exporter, martId).catch(() => []);
         if (here()) setReports({ martId, list });
       }
     }).finally(() => { if (here()) setBusy(null); });
@@ -276,7 +285,7 @@ export function ExportMenu(p: Props) {
     setOpenDest(null);
     // Reports OWOX no longer has are dropped before they are offered.
     const check = ++checks.current;
-    try { setReports({ martId: p.martId, list: await exporter.reports(p.martId, true) }); } catch { /* the remembered list stays */ }
+    try { setReports({ martId: p.martId, list: await settledReports(exporter, p.martId) }); } catch { /* the remembered list stays */ }
     finally { if (check === checks.current) setVerified(true); }
   }
 

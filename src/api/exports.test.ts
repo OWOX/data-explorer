@@ -2,7 +2,7 @@ import { vi } from 'vitest';
 import type { ColumnFilter } from '../filters/build';
 import type { Field, Schema } from '../model/types';
 import type { SortKey } from '../model/sort';
-import { createExporter, buildReportPayload, exportTitle, ExportError, isPublishedSheetUrl, parseSheetUrl, POLL_INTERVAL_MS, POLL_TIMEOUT_MS, sheetUrl, type ExportedReport, type ReportPayload } from './exports';
+import { createExporter, buildReportPayload, exportTitle, ExportError, isPublishedSheetUrl, parseSheetUrl, POLL_INTERVAL_MS, POLL_TIMEOUT_MS, sheetUrl, isGone, type ReportPayload, type StoredReport } from './exports';
 import { stubCtx } from './test-ctx';
 
 const f = (name: string, type: string, category: Field['category'], extra: Partial<Field> = {}): Field => ({ name, alias: null, type, category, description: null, isPrimaryKey: false, ...extra });
@@ -79,11 +79,16 @@ test.each([
   ['../../url?q=https://evil.example', 0], ['a?b', 0], ['a#b', 0], ['a/b', 0], ['', 0], ['ok', -1], ['ok', NaN], ['ok', 1.5], ['ok', Infinity],
 ])('sheetUrl refuses %j / %s', (spreadsheetId, sheetId) => { expect(sheetUrl({ spreadsheetId, sheetId })).toBeNull(); });
 
+const stored = (ctx: ReturnType<typeof stubCtx>, martId = 'orders') => ctx.collections<{ reports: StoredReport[] }>('exports').get(martId).then((d) => d?.document.reports);
+const NOW = '2026-03-01T10:00:00.000Z';
+const live = (id: string, over: object = {}) => ({ id, title: `T-${id}`, dataDestinationAccess: { id: 'd1' }, destinationConfig: { spreadsheetId: `s-${id}`, sheetId: 1 }, ...over });
+const notFound = () => Object.assign(new Error('Report not found'), { payload: { code: 'HTTP_ERROR', status: 404 } });
+
 const dest = { id: 'd1', title: 'Team Sheets', type: 'GOOGLE_SHEETS' };
 const payload: ReportPayload = { columnConfig: ['id'], filterConfig: null, sortConfig: null, autoAggregationOptOut: ['id'] };
 
 /** A ctx whose reports run for `runs` polls before they finish with `final`. */
-function exportCtx(final: { status: string; error?: string } = { status: 'SUCCESS' }, runs = 1, stored: ExportedReport[] = []) {
+function exportCtx(final: { status: string; error?: string } = { status: 'SUCCESS' }, runs = 1, stored: StoredReport[] = []) {
   const calls: string[] = [];
   let polls = -1;
   let lastRunAt: string | null = '2026-01-01T00:00:00.000Z';
@@ -133,9 +138,10 @@ describe('exporter', () => {
       expect(stages).toEqual(['sheet', 'report', 'run']);
       expect(calls.filter((c) => !c.startsWith('GET /api/reports/r1'))).toEqual(['POST /api/data-destinations/d1/google-sheets/documents', 'POST /api/reports', 'POST /api/reports/r1/run']);
       expect(ctx.owox.postJson).toHaveBeenCalledWith('/api/reports', { title: 'T', dataMartId: 'orders', dataDestinationId: 'd1', destinationConfig: { type: 'google-sheets-config', spreadsheetId: 'sheet1', sheetId: 7 }, ...payload });
-      expect(report).toEqual({ reportId: 'r1', destinationId: 'd1', spreadsheetId: 'sheet1', sheetId: 7, title: 'T' });
-      expect(await ex.reports('orders')).toEqual([report]);
-      expect((await ctx.collections<{ reports: ExportedReport[] }>('exports').get('orders'))?.document.reports).toEqual([report]);
+      expect(report).toEqual({ reportId: 'r1', destinationId: 'd1', spreadsheetId: 'sheet1', sheetId: 7, title: 'T', usedAt: expect.any(String) });
+      // Only the id and usedAt are stored.
+      expect(await stored(ctx)).toEqual([{ reportId: 'r1', usedAt: report.usedAt }]);
+      expect(await ex.stored('orders')).toEqual([{ reportId: 'r1', usedAt: report.usedAt }]);
       expect(ctx.owox.dataMarts.traverseData).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
   });
@@ -154,11 +160,13 @@ describe('exporter', () => {
   test('an update PUTs the remembered report with the current state and runs it', async () => {
     vi.useFakeTimers();
     try {
-      const remembered: ExportedReport = { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'sheet1', sheetId: 7, title: 'Old' };
-      const { ctx, calls } = exportCtx({ status: 'SUCCESS' }, 1, [remembered]);
+      const remembered = { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'sheet1', sheetId: 7, title: 'Old' };
+      const { ctx, calls } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'r1' }]);
       const p = createExporter(ctx).run({ martId: 'orders', destination: dest, title: 'Old', source: { kind: 'update', report: remembered }, payload });
       await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
-      await p;
+      const { report } = await p;
+      expect(report.usedAt).toEqual(expect.any(String));
+      expect((await stored(ctx))).toEqual([{ reportId: 'r1', usedAt: report.usedAt }]);
       expect(calls.filter((c) => !c.startsWith('GET'))).toEqual(['PUT /api/reports/r1', 'POST /api/reports/r1/run']);
       expect(ctx.owox.putJson).toHaveBeenCalledWith('/api/reports/r1', expect.objectContaining({ title: 'Old', dataDestinationId: 'd1', destinationConfig: { type: 'google-sheets-config', spreadsheetId: 'sheet1', sheetId: 7 }, columnConfig: ['id'], autoAggregationOptOut: ['id'], limitConfig: null }));
       expect(ctx.owox.postJson).not.toHaveBeenCalledWith('/api/reports', expect.anything());
@@ -172,7 +180,7 @@ describe('exporter', () => {
     const err = await ex.run({ martId: 'orders', destination: dest, title: 'T', source: { kind: 'new' }, payload }).catch((e) => e);
     expect(err).toBeInstanceOf(ExportError);
     expect(err).toMatchObject({ stage: 'sheet', message: 'No Drive folder is configured' });
-    expect(await ex.reports('orders')).toEqual([]);
+    expect(await ex.stored('orders')).toEqual([]);
   });
 
   test('polling: an ERROR run reports its message', async () => {
@@ -195,48 +203,150 @@ describe('exporter', () => {
     } finally { vi.useRealTimers(); }
   });
 
-  test('a remembered report OWOX no longer has is dropped and the cleaned list is saved; other errors keep it', async () => {
-    const keep: ExportedReport = { reportId: 'keep', destinationId: 'd1', spreadsheetId: 'a', sheetId: 0, title: 'Keep' };
-    const gone: ExportedReport = { reportId: 'gone', destinationId: 'd1', spreadsheetId: 'b', sheetId: 0, title: 'Gone' };
-    const flaky: ExportedReport = { reportId: 'flaky', destinationId: 'd1', spreadsheetId: 'c', sheetId: 0, title: 'Flaky' };
-    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [keep, gone, flaky]);
-    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
-      if (path === '/api/reports/gone') throw Object.assign(new Error('Report not found'), { payload: { code: 'HTTP_ERROR', status: 404 } });
-      if (path === '/api/reports/flaky') throw Object.assign(new Error('Bad gateway'), { payload: { code: 'HTTP_ERROR', status: 502 } });
-      return { id: 'keep' };
-    });
+  test('reading tolerates old documents: only the id and a string usedAt are kept, and the next save writes the slim shape', async () => {
+    const { ctx } = exportCtx();
+    await ctx.collections('exports').put('orders', { reports: [{ reportId: 'a', destinationId: 'd1', spreadsheetId: 's', sheetId: 0, title: 'A', usedAt: NOW }, { reportId: 'b', title: 'B', usedAt: 5 }, null, { nope: 1 }] });
     const ex = createExporter(ctx);
-    expect(await ex.reports('orders', true)).toEqual([keep, flaky]);
-    expect((await ctx.collections<{ reports: ExportedReport[] }>('exports').get('orders'))?.document.reports).toEqual([keep, flaky]);
+    expect(await ex.stored('orders')).toEqual([{ reportId: 'a', usedAt: NOW }, { reportId: 'b' }]);
+    await ex.forget('orders', 'b');
+    expect(await stored(ctx)).toEqual([{ reportId: 'a', usedAt: NOW }]);
   });
 
-  test('verifying marks a live target that is not a plain id as unrecognised instead of storing it', async () => {
-    const stale: ExportedReport = { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'old', sheetId: 0, title: 'Old' };
-    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [stale]);
-    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'r1', destinationConfig: { spreadsheetId: '../../url?q=https://evil.example', sheetId: 0 } });
-    const [r] = await createExporter(ctx).reports('orders', true);
-    expect(r).toMatchObject({ reportId: 'r1', spreadsheetId: '', sheetId: 0 });
-    expect(sheetUrl(r!)).toBeNull();
+  test('load reads every remembered report live, in parallel, once; entries go loading then ready with the live data and stored usedAt', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a', usedAt: NOW }, { reportId: 'b' }]);
+    const resolvers: Record<string, (v: unknown) => void> = {};
+    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation((path: string) => new Promise((res) => { resolvers[path.split('/').pop()!] = res; }));
+    const ex = createExporter(ctx);
+    const seen = vi.fn();
+    ex.subscribe('orders', seen);
+    expect(ex.entries('orders')).toEqual([]);
+    ex.load('orders');
+    ex.load('orders');
+    await vi.waitFor(() => expect(Object.keys(resolvers)).toEqual(['a', 'b']));
+    expect(ctx.owox.getJson).toHaveBeenCalledTimes(2);
+    expect(ex.entries('orders')).toEqual([{ reportId: 'a', usedAt: NOW, state: 'loading' }, { reportId: 'b', state: 'loading' }]);
+    resolvers.b!(live('b', { dataDestinationAccess: { id: 'd2' } }));
+    await vi.waitFor(() => expect(ex.entries('orders')[1]!.state).toBe('ready'));
+    expect(ex.entries('orders')[0]!.state).toBe('loading');
+    expect(ex.entries('orders')[1]!.report).toEqual({ reportId: 'b', destinationId: 'd2', spreadsheetId: 's-b', sheetId: 1, title: 'T-b' });
+    resolvers.a!(live('a'));
+    await vi.waitFor(() => expect(ex.entries('orders')[0]!.state).toBe('ready'));
+    expect(ex.entries('orders')[0]!.report).toEqual({ reportId: 'a', destinationId: 'd1', spreadsheetId: 's-a', sheetId: 1, title: 'T-a', usedAt: NOW });
+    expect(seen).toHaveBeenCalled();
+    // A later load reads nothing.
+    ex.load('orders');
+    expect(ctx.owox.getJson).toHaveBeenCalledTimes(2);
+  });
+
+  test('a 404 read drops the report from the entries and the stored document; another error is failed, and retry re-reads only that report', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'keep' }, { reportId: 'gone' }, { reportId: 'flaky' }]);
+    let flaky = true;
+    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+      if (path === '/api/reports/gone') throw notFound();
+      if (path === '/api/reports/flaky' && flaky) throw Object.assign(new Error('Bad gateway'), { payload: { code: 'HTTP_ERROR', status: 502 } });
+      return live(path.split('/').pop()!);
+    });
+    const ex = createExporter(ctx);
+    ex.load('orders');
+    await vi.waitFor(() => expect(ex.entries('orders').map((e) => `${e.reportId}:${e.state}`)).toEqual(['keep:ready', 'flaky:failed']));
+    expect(await stored(ctx)).toEqual([{ reportId: 'keep' }, { reportId: 'flaky' }]);
+    flaky = false;
+    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockClear();
+    ex.retry('orders', 'flaky');
+    await vi.waitFor(() => expect(ex.entries('orders')[1]!.state).toBe('ready'));
+    expect(ctx.owox.getJson).toHaveBeenCalledTimes(1);
+    ex.retry('orders', 'keep');
+    expect(ctx.owox.getJson).toHaveBeenCalledTimes(1);
+  });
+
+  test('a live target that is not a plain id is listed as unrecognised instead of being passed on', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'r1' }]);
+    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockResolvedValue(live('r1', { destinationConfig: { spreadsheetId: '../../url?q=https://evil.example', sheetId: 0 } }));
+    const ex = createExporter(ctx);
+    ex.load('orders');
+    await vi.waitFor(() => expect(ex.entries('orders')[0]!.state).toBe('ready'));
+    const r = ex.entries('orders')[0]!.report!;
+    expect(r).toMatchObject({ spreadsheetId: '', sheetId: 0 });
+    expect(sheetUrl(r)).toBeNull();
+  });
+
+  test('forget removes the report from the cache and the document; subscribers are told', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }, { reportId: 'b' }]);
+    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => live(path.split('/').pop()!));
+    const ex = createExporter(ctx);
+    ex.load('orders');
+    await vi.waitFor(() => expect(ex.entries('orders').every((e) => e.state === 'ready')).toBe(true));
+    const cb = vi.fn();
+    ex.subscribe('orders', cb);
+    await ex.forget('orders', 'a');
+    expect(ex.entries('orders').map((e) => e.reportId)).toEqual(['b']);
+    expect(await stored(ctx)).toEqual([{ reportId: 'b' }]);
+    expect(cb).toHaveBeenCalled();
+  });
+
+  test('invalidate drops every mart\'s live cache and tells subscribers; load reads again', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }]);
+    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => live(path.split('/').pop()!));
+    const ex = createExporter(ctx);
+    ex.load('orders');
+    await vi.waitFor(() => expect(ex.entries('orders')[0]?.state).toBe('ready'));
+    const cb = vi.fn();
+    ex.subscribe('orders', cb);
+    ex.invalidate();
+    expect(cb).toHaveBeenCalled();
+    expect(ex.entries('orders')).toEqual([]);
+    ex.load('orders');
+    await vi.waitFor(() => expect(ex.entries('orders')[0]?.state).toBe('ready'));
+    expect(ctx.owox.getJson).toHaveBeenCalledTimes(2);
+  });
+
+  test('after an export settles, the mart\'s reports are read again', async () => {
+    vi.useFakeTimers();
+    try {
+      const { ctx } = exportCtx();
+      const ex = createExporter(ctx);
+      ex.load('orders');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(ex.entries('orders')).toEqual([]);
+      const p = ex.run({ martId: 'orders', destination: dest, title: 'T', source: { kind: 'new' }, payload });
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+      await p;
+      await vi.advanceTimersByTimeAsync(0);
+      expect(ex.entries('orders').map((e) => e.reportId)).toEqual(['r1']);
+    } finally { vi.useRealTimers(); }
+  });
+
+  test('an update whose PUT is a 404 forgets the report and throws a gone ExportError at the report step', async () => {
+    const remembered = { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'sheet1', sheetId: 7, title: 'Old' };
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'r1' }, { reportId: 'r2' }]);
+    (ctx.owox.putJson as ReturnType<typeof vi.fn>).mockRejectedValue(notFound());
+    const ex = createExporter(ctx);
+    const err = await ex.run({ martId: 'orders', destination: dest, title: 'Old', source: { kind: 'update', report: remembered }, payload }).catch((e) => e);
+    expect(err).toBeInstanceOf(ExportError);
+    expect(isGone(err)).toBe(true);
+    expect(err).toMatchObject({ stage: 'report', message: 'This report no longer exists in OWOX' });
+    expect(await stored(ctx)).toEqual([{ reportId: 'r2' }]);
+    expect(ctx.owox.postJson).not.toHaveBeenCalled();
+    expect(isGone(new ExportError('report', 'x'))).toBe(false);
+  });
+
+  test('an update that fails for another reason is not gone and keeps the report', async () => {
+    const remembered = { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'sheet1', sheetId: 7, title: 'Old' };
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'r1' }]);
+    (ctx.owox.putJson as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('boom'));
+    const err = await createExporter(ctx).run({ martId: 'orders', destination: dest, title: 'Old', source: { kind: 'update', report: remembered }, payload }).catch((e) => e);
+    expect(isGone(err)).toBe(false);
+    expect(await stored(ctx)).toEqual([{ reportId: 'r1' }]);
   });
 
   test('a report that is already running is not run again', async () => {
-    const remembered: ExportedReport = { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'sheet1', sheetId: 7, title: 'Old' };
-    const { ctx, calls } = exportCtx({ status: 'SUCCESS' }, 1, [remembered]);
+    const remembered = { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'sheet1', sheetId: 7, title: 'Old' };
+    const { ctx, calls } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'r1' }]);
     (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'r1', lastRunAt: '2026-01-01T00:00:00.000Z', lastRunStatus: 'RUNNING' });
     const { outcome } = await createExporter(ctx).run({ martId: 'orders', destination: dest, title: 'Old', source: { kind: 'update', report: remembered }, payload });
     expect(outcome.state).toBe('busy');
     expect(calls.some((c) => c.endsWith('/run'))).toBe(false);
     expect(ctx.owox.putJson).toHaveBeenCalled();
-  });
-
-  test('verifying takes the live title, destination and sheet over the remembered copy', async () => {
-    const stale: ExportedReport = { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'old', sheetId: 0, title: 'Old' };
-    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [stale]);
-    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'r1', title: 'Renamed', dataDestinationAccess: { id: 'd2' }, destinationConfig: { spreadsheetId: 'new', sheetId: 4 } });
-    const ex = createExporter(ctx);
-    const live = { reportId: 'r1', destinationId: 'd2', spreadsheetId: 'new', sheetId: 4, title: 'Renamed' };
-    expect(await ex.reports('orders', true)).toEqual([live]);
-    expect((await ctx.collections<{ reports: ExportedReport[] }>('exports').get('orders'))?.document.reports).toEqual([live]);
   });
 
   test('a failure while following the run is an ExportError at the run step, after the report was remembered', async () => {
@@ -249,7 +359,7 @@ describe('exporter', () => {
     const ex = createExporter(ctx);
     const err = await ex.run({ martId: 'orders', destination: dest, title: 'T', source: { kind: 'new' }, payload }).catch((e) => e);
     expect(err).toMatchObject({ stage: 'run', message: 'run refused' });
-    expect(await ex.reports('orders')).toHaveLength(1);
+    expect(await ex.stored('orders')).toHaveLength(1);
   });
 
   test('one export at a time per mart: a second run is refused while the first is in flight, and the flight can be followed', async () => {
