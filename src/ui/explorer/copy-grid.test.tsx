@@ -58,6 +58,19 @@ test('a whole row is that row\'s cells', async () => {
   expect(copy(scroller())!.text).toBe(cellsOf(rows[2]!).map((c) => c.textContent).join('\t'));
 });
 
+test('a click on the data mart title drops a whole column or row selection', async () => {
+  setup(); await ready();
+  const title = () => data().querySelector<HTMLElement>('th[data-group] .truncate')!;
+  await userEvent.click(within(data()).getAllByText('A')[0]!.closest('th')!);
+  expect(data().querySelector('thead .dm-letter[data-selected]')).not.toBeNull();
+  await userEvent.click(title());
+  expect(data().querySelector('[data-selected]')).toBeNull();
+  await userEvent.click(dataRows()[2]!.querySelector('th')!);
+  expect(data().querySelector('[data-selected]')).not.toBeNull();
+  await userEvent.click(title());
+  expect(data().querySelector('[data-selected]')).toBeNull();
+});
+
 test('nothing is selected: the browser copies as usual', async () => {
   setup(); await ready();
   expect(copy(scroller())).toBeNull();

@@ -8,6 +8,9 @@ export type ChartMart = { martId: string; aliasPath: string; hasPk: boolean; met
 export type ChartFields = { marts: ChartMart[]; metrics: Metric[]; dimensions: Field[]; dates: Field[] };
 export const MAX_BUCKETS = 60;
 
+/** A pie shows parts of a whole, so it only takes metrics the warehouse may sum. */
+export const pieMetrics = (cf: ChartFields): Metric[] => cf.metrics.filter((m) => allowedFunctions(m.field).includes('SUM'));
+
 const martOf = (f: Field, main: string) => f.joined?.martId ?? main;
 
 // The grid's own Σ function wins, so a chart and the grid never disagree about what a column means.

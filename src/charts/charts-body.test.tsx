@@ -60,8 +60,8 @@ test('Charts: the body is a direct child of the table, so the headers stay in it
 
 test('Charts: each data mart has its own cards in its group cell, Records first', async () => {
   await charts();
-  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Records', 'Amount · Sum']));
-  expect(cardNames(group('products'))).toEqual(['Records', 'price · Sum']);
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Unique Records', 'Amount · Sum']));
+  expect(cardNames(group('products'))).toEqual(['Unique Records', 'price · Sum']);
   await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
 });
 
@@ -154,7 +154,7 @@ test('folding the Data band in Charts mode asks for nothing new', async () => {
 
 test('a saved choice that names nothing shown falls back for this view and writes nothing', async () => {
   const t = await charts({ charts: { scorecards: { hidden: ['not_a_field'] } } });
-  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Records', 'Amount · Sum']));
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Unique Records', 'Amount · Sum']));
   await new Promise((r) => setTimeout(r, 50));
   expect(t.puts).not.toHaveBeenCalled();
 });
@@ -164,9 +164,9 @@ test('hiding a card from the Scorecards menu removes it and saves', async () => 
   await waitFor(() => expect(cardNames(group('orders'))).toContain('Amount · Sum'));
   await userEvent.click(screen.getByRole('button', { name: 'Scorecards options' }));
   await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Amount · Sum' }));
-  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Records']));
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Unique Records']));
   expect(t.puts).toHaveBeenCalledWith('orders', { scorecards: { hidden: ['amount'] } });
-  expect(cardNames(group('products'))).toEqual(['Records', 'price · Sum']);
+  expect(cardNames(group('products'))).toEqual(['Unique Records', 'price · Sum']);
 });
 
 test('a change cannot be made before the saved settings load, and one made after keeps the rest of the doc', async () => {

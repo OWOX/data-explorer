@@ -14,7 +14,6 @@ export function Band({
   icon,
   title,
   total,
-  countLast,
   hint,
   afterHint,
   toolbar,
@@ -30,8 +29,6 @@ export function Band({
   icon: ReactNode;
   title: string;
   total?: number | string;
-  /** Put the count after afterHint (the Data band) instead of right after the title. */
-  countLast?: boolean;
   hint: string;
   /** Sits in the title row right after the hint, and wraps with it. */
   afterHint?: ReactNode;
@@ -79,10 +76,9 @@ export function Band({
         <div className="dm-band-titlegroup">
           <span className="dm-band-icon">{icon}</span>
           <h2 className="dm-band-title" title={title}>{title}</h2>
-          {!countLast && count}
+          {count}
           <Hint text={hint} label={`About ${title}`} />
           {afterHint}
-          {countLast && count}
         </div>
         <div className="dm-band-actions">
           {/* Filtering what you cannot see answers nothing, so the controls fold with the content. */}

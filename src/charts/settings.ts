@@ -1,7 +1,7 @@
 // Member-saved chart choices and how they resolve against the columns shown now.
 import { DATE_BUCKETS, type DateBucket } from '../model/aggregation';
 import type { Field } from '../model/types';
-import type { ChartFields, Metric } from './fields';
+import { pieMetrics, type ChartFields, type Metric } from './fields';
 import { RECORDS, type Measure } from './queries';
 
 export type Orientation = 'vertical' | 'horizontal';
@@ -45,7 +45,7 @@ export function resolveCharts(s: ChartSettings, cf: ChartFields): ResolvedCharts
     measure: ts.metric === 'records' && hasPk ? RECORDS : named ? { kind: 'metric', metric: named } : cf.metrics[0] ? { kind: 'metric', metric: cf.metrics[0] } : hasPk ? RECORDS : null,
     stack: cf.dimensions.find((d) => d.name === ts.stack) ?? null,
     orientation: ts.orientation === 'horizontal' ? 'horizontal' : 'vertical',
-    pieMetric: metricNamed(s.pie?.metric),
+    pieMetric: pieMetrics(cf).find((m) => m.field.name === s.pie?.metric) ?? pieMetrics(cf)[0] ?? null,
     pieDimension: cf.dimensions.find((d) => d.name === s.pie?.dimension) ?? cf.dimensions[0] ?? null,
   };
 }

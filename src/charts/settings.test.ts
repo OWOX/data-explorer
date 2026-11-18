@@ -42,6 +42,12 @@ describe('resolveCharts', () => {
     const r = resolveCharts({ timeSeries: { bucket: 'HOUR' as never, orientation: 'x' as never } }, cf);
     expect([r.bucket, r.orientation]).toEqual(['AUTO', 'vertical']);
   });
+  it('the pie takes only metrics that may be summed: a saved one that may not falls back to the first that may', () => {
+    const noSum = { ...f('price', 'number'), allowedAggregations: ['MIN', 'MAX'] as const } as unknown as Field;
+    const only = resolveCharts({ pie: { metric: 'price' } }, { ...cf, metrics: [{ field: noSum, fn: 'MIN', martId: 'M' }, ...cf.metrics] });
+    expect([only.pieMetric?.field.name, only.metric?.field.name]).toEqual(['amount', 'price']);
+    expect(resolveCharts({}, { ...cf, metrics: [{ field: noSum, fn: 'MIN', martId: 'M' }] }).pieMetric).toBeNull();
+  });
   it('is null everywhere with nothing shown', () => {
     const r = resolveCharts({}, { marts: [], metrics: [], dimensions: [], dates: [] });
     expect([r.date, r.metric, r.pieMetric, r.pieDimension]).toEqual([null, null, null, null]);

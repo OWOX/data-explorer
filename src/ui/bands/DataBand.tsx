@@ -41,7 +41,7 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen }: 
 
   const noKey = !!mart && rows?.id === mart.id && rows.noKey && !!gridMart?.accessible;
   return (
-    <Band id="band-data" countLast icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={`${fullScreen?.on ? HINT_FULL : HINT}${noKey ? ` ${NO_KEY_NOTE}` : ''}`} afterHint={<>{noKey && <NoKeyWarning />}{gridMart?.accessible && saved && <ViewSwitch value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} />}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
+    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={`${fullScreen?.on ? HINT_FULL : HINT}${noKey ? ` ${NO_KEY_NOTE}` : ''}`} afterHint={<>{noKey && <NoKeyWarning />}{gridMart?.accessible && saved && <ViewSwitch value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} />}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (

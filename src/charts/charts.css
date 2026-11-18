@@ -11,9 +11,11 @@
   --dm-series-7: #86B5EA;
   --dm-series-8: #A0D49A;
   --dm-series-9: #C5C5C5;
+  --dm-chart-frame: #9E9E9E;
 }
 .dark {
   --dm-series-9: #606060;
+  --dm-chart-frame: #6B6B6B;
 }
 
 /* MartGrid sets the table's measured height inline; a grid opened in Charts has none and takes the 32rem cap. */
@@ -26,11 +28,14 @@
 /* Side by side while each panel still gets 30rem, one per row below that. The same 0.75rem inset as the scorecard
    cells, so the left edges line up; 1.5rem between blocks either way. */
 .dm-chart-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); align-items: start; gap: 1.5rem; padding: 0.75rem 0.75rem 1.5rem; }
-.dm-chart { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; padding: 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem; }
+/* As a Google Sheets chart or scorecard: a square frame in a mid grey, darker than the grid's own lines. */
+.dm-scorecard { border: 1px solid var(--dm-chart-frame); border-radius: 0; }
+.dm-chart { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; padding: 0.75rem; border: 1px solid var(--dm-chart-frame); border-radius: 0; }
 .dm-chart-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.dm-chart-titlegroup { display: flex; align-items: center; gap: 0.375rem; min-width: 0; }
 .dm-chart-title { font-size: 0.875rem; font-weight: 600; }
 .dm-chart-actions { display: flex; align-items: center; gap: 0.5rem; }
-.dm-chart-empty, .dm-chart-note { font-size: 0.75rem; }
+.dm-chart-empty { font-size: 0.75rem; }
 
 /* Axes and gridlines stay quiet; text never wears a series colour. */
 .dm-chart-grid { stroke: var(--border); stroke-width: 1; }
