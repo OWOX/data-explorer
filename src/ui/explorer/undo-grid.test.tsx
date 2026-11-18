@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMockCtx } from '../../sdk/mock/ctx';
@@ -5,6 +6,9 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
 import { openColumnMenu, openSubmenu } from './menu-test-utils';
+
+const headers = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden') && h.getAttribute('scope') !== 'colgroup').map((h) => h.textContent!);
+const undo = () => screen.getByRole('button', { name: 'Undo' });
 
 // Grid edits are Undo steps: Cmd/Ctrl+Z puts the grid back, Cmd/Ctrl+Shift+Z re-applies the edit.
 function setup() {
@@ -60,4 +64,78 @@ test('hiding a column is a step: Undo brings the column back', async () => {
 test('opening the grid and seeding it is not a step', async () => {
   setup(); await ready();
   expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+});
+
+test('a sort is exactly one step', async () => {
+  setup(); await ready();
+  await userEvent.click(within(data()).getByRole('button', { name: /^Sort by Store/ }));
+  await waitFor(() => expect(undo()).toBeEnabled());
+  await userEvent.click(undo());
+  expect(undo()).toBeDisabled();
+});
+
+test('an aggregation is exactly one step: Undo takes the Sum off and nothing more', async () => {
+  setup(); await ready();
+  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+  await userEvent.click(await screen.findByLabelText('Amount'));
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(headers()).toContain('Amount'));
+  await openSubmenu(within(data()), 'Amount', 'Aggregate');
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.click(within(dialog).getByLabelText('Sum'));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(headers().some((h) => h.startsWith('Amount · Sum'))).toBe(true));
+  await userEvent.keyboard('{Meta>}z{/Meta}');
+  await waitFor(() => expect(headers()).toContain('Amount'));
+  expect(headers().some((h) => h.startsWith('Amount · Sum'))).toBe(false);
+});
+
+test('Reset is exactly one step: Undo brings the filter back', async () => {
+  setup(); await ready();
+  await applyStoreFilter();
+  await userEvent.click(within(data()).getByRole('button', { name: 'Reset' }));
+  await waitFor(() => expect(filterButton()).toBeNull());
+  await userEvent.click(undo());
+  await waitFor(() => expect(filterButton()).not.toBeNull());
+});
+
+test('Load more is not a step', async () => {
+  setup(); await ready();
+  await userEvent.click(within(data()).getByRole('button', { name: 'Load more' }));
+  await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(201));
+  expect(undo()).toBeDisabled();
+});
+
+test('Ctrl+Y redoes on a platform that is not a Mac', async () => {
+  const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32');
+  try {
+    setup(); await ready();
+    await applyStoreFilter();
+    await userEvent.keyboard('{Control>}z{/Control}');
+    await waitFor(() => expect(filterButton()).toBeNull());
+    await userEvent.keyboard('{Control>}y{/Control}');
+    await waitFor(() => expect(filterButton()).not.toBeNull());
+  } finally { platform.mockRestore(); }
+});
+
+test('Cmd+Z is left to the filter Value input while it has focus', async () => {
+  setup(); await ready();
+  await applyStoreFilter();
+  await openSubmenu(within(data()), 'Store', 'Filter');
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.click(within(dialog).getByLabelText('Value'));
+  await userEvent.keyboard('{Meta>}z{/Meta}');
+  expect(filterButton()).not.toBeNull();
+  expect(undo()).toBeEnabled();
+});
+
+test('Cmd+Z works with focus inside the grid', async () => {
+  setup(); await ready();
+  await applyStoreFilter();
+  // The column letter selects the column in the grid without opening a record (a row click would be a selection step of its own).
+  await userEvent.click(within(data()).getAllByText('A')[0]!.closest('th')!);
+  expect(data().contains(document.activeElement) && document.activeElement !== data()).toBe(true);
+  await userEvent.keyboard('{Meta>}z{/Meta}');
+  await waitFor(() => expect(filterButton()).toBeNull());
 });

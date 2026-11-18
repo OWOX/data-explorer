@@ -41,11 +41,14 @@ test('a shift-clicked block is rows by newline and cells by tab', async () => {
 
 test('a whole column is its title and every value', async () => {
   setup(); await ready();
-  await userEvent.click(within(data()).getAllByText('A')[0]!.closest('th')!);
+  const th = within(data()).getAllByText('A')[0]!.closest('th')!;
+  await userEvent.click(th);
+  // The visible title is the first labelled column header (the letter header above it is not a title).
+  const label = within(data()).getAllByRole('columnheader').find((h) => h.querySelector('.dm-hdr'))!.querySelector('.dm-hdr')!.textContent!.trim();
   const lines = copy(scroller())!.text.split('\n');
   expect(lines).toHaveLength(dataRows().length + 1);
   expect(lines.slice(1)).toEqual(dataRows().map((r) => cellsOf(r)[0]!.textContent));
-  expect(lines[0]).toBeTruthy();
+  expect(lines[0]).toBe(label);
 });
 
 test('a whole row is that row\'s cells', async () => {

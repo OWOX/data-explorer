@@ -210,9 +210,11 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const [limit, setLimit] = useState(() => seed.saved?.limit ?? PAGE_SIZE);
   const [ownVersion, setVersion] = useState(0);
   // Set by a change the member makes to what the grid shows (a filter, a sort, an aggregation, columns, Reset): the save that follows is one Undo step.
-  // Paging, seeding and what is adopted from the page are not edits. Cleared at the next tick so an edit that changed nothing does not mark a later change.
-  const editing = useRef(false);
-  const markEdit = useCallback(() => { editing.current = true; setTimeout(() => { editing.current = false; }, 0); }, []);
+  // Paging, seeding and what is adopted from the page are not edits. The counter is bumped in the handler that makes the change, so both
+  // land in one render; the save effect compares it with the last value it saw (an edit that changed nothing saves an identical grid the store drops).
+  const [editSeq, setEditSeq] = useState(0);
+  const seenSeq = useRef(0);
+  const markEdit = useCallback(() => setEditSeq((n) => n + 1), []);
   // A model reload re-reads what is shown too: its counter joins the grid's own, and each only ever goes up.
   const version = ownVersion + modelVersion;
   // Re-seed the filters when a followed link asks for new ones on this same mart (adjust state during render).
@@ -231,6 +233,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const [seenSaved, setSeenSaved] = useState(seed.saved);
   // Columns adopted from the page (Undo, Redo, a card click) are the member's columns now: they are saved like a picker change.
   const [adopted, setAdopted] = useState<string[] | null>(null);
+  // An aggregation adopted alone (Undo of a function or bucket) is persisted too, so a reopened plugin does not read the stale one.
+  const [adoptedAgg, setAdoptedAgg] = useState<Aggregation | null>(null);
   if (seed.saved !== seenSaved) {
     setSeenSaved(seed.saved);
     const saved = seed.saved;
@@ -238,6 +242,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       setVisible(saved.columns);
       setAgg(aggOf(saved));
       if (!sameList(saved.columns, visible)) setAdopted(saved.columns);
+      else if (JSON.stringify(aggOf(saved)) !== JSON.stringify(agg)) setAdoptedAgg(aggOf(saved));
       setFilters(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => offeredNow(k))));
       setParked(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => !offeredNow(k))));
       setOwn(saved.sorts);
@@ -247,7 +252,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
 
   useEffect(() => { if (adopted) { columnStore.save(martId, adopted); columnStore.saveAggregation(martId, agg); } }, [adopted, columnStore, martId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { const edit = editing.current; editing.current = false; onChange({ columns: visible, filters: { ...parked, ...filters }, sorts: own, limit, ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}) }, edit); }, [visible, filters, parked, own, limit, agg]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (adoptedAgg) columnStore.saveAggregation(martId, adoptedAgg); }, [adoptedAgg, columnStore, martId]);
+
+  useEffect(() => { const edit = editSeq !== seenSeq.current; seenSeq.current = editSeq; onChange({ columns: visible, filters: { ...parked, ...filters }, sorts: own, limit, ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}) }, edit); }, [visible, filters, parked, own, limit, agg, editSeq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every data mart's columns sit together: the main mart's own, then each joined mart's in the order it was added.
   const shown = useMemo(() => orderColumns(visible, sources, defaultColumns(native)), [visible, sources, native]);

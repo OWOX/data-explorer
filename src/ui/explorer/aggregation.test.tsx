@@ -262,3 +262,14 @@ test('the implicit first-key sort is sent but shows no arrow and no aria-sort; a
   await userEvent.click(within(th).getByRole('button', { name: /^Sort by id,/ }));
   await waitFor(() => expect(within(data()).getByRole('button', { name: /^Sort by id,/ }).closest('th')).toHaveAttribute('aria-sort', 'ascending'));
 });
+
+test('Undo of an aggregation alone is saved: the stored columns doc no longer groups', async () => {
+  const t = setup();
+  await ready();
+  await showColumn('Amount');
+  await aggregate('Amount', 'Sum');
+  await waitFor(() => expect(t.puts.some((p) => JSON.stringify(p.doc.aggregations) === JSON.stringify([{ column: 'amount', function: 'SUM' }]))).toBe(true), { timeout: 3000 });
+  await userEvent.keyboard('{Meta>}z{/Meta}');
+  await waitFor(() => expect(headers().some((h) => h.startsWith('Amount · Sum'))).toBe(false));
+  await waitFor(() => expect(t.puts.at(-1)!.doc.aggregations ?? []).toEqual([]), { timeout: 3000 });
+});
