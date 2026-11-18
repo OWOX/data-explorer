@@ -113,9 +113,10 @@ function AppBody() {
   // Marts whose fields carry a filter (applied or parked) are shown too, whether or not a column of theirs is on the grid.
   const mainFilters = mainId ? state.grids[mainId]?.filters : undefined;
   const filtered = useMemo(() => (joinSources && mainFilters ? joinedMartIds(Object.keys(mainFilters), joinSources) : []), [joinSources, mainFilters]);
+  const joinable = useMemo(() => (joinSources ? [...new Set(joinSources.map((s) => s.martId))] : null), [joinSources]);
   const visible = useMemo(
-    () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds: state.contextIds, storageIds, joined, filtered, found: state.found }) : null),
-    [model, state.selection, state.search, state.found, state.contextIds, storageIds, joined, filtered],
+    () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds: state.contextIds, storageIds, joined, filtered, found: state.found, joinable }) : null),
+    [model, state.selection, state.search, state.found, state.contextIds, storageIds, joined, filtered, joinable],
   );
   const { dq, counts, request, recount } = useCardStatus(model, visible?.ids ?? [], state.modelVersion);
 

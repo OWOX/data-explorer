@@ -170,11 +170,13 @@ export function CardBands({
           return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => { rememberLeaving(null); dispatch({ type: 'selectSource', key: source.key }); }} />;
         })}
       </Band>
-      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={visible.ids.length} hint="The selected data mart and every mart joined to it, or what the search and the filters match." afterHint={contextBadges} toolbar={storageFilter} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
+      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={visible.ids.length} hint="The main data mart first, and every mart it can join; or what the search and the filters match. Drag a card onto the main one to make it main." afterHint={contextBadges} toolbar={storageFilter} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
         {(visible.ids.length === 0 || noMatch) && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
         {martCards.items.map((mart) => {
           const id = mart.id;
           const el = martElementId(id);
+          const mainId = selection.martId;
+          const unjoinable = !!mainId && visible.joinable !== null && id !== mainId && !joined.includes(id) && !visible.joinable.has(id);
           return (
             <MartCard
               key={id}
@@ -188,6 +190,9 @@ export function CardBands({
               joined={joined.includes(id)}
               lit={lit.has(el)}
               aside={aside.has(el)}
+              unjoinable={unjoinable}
+              mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
+              onMakeMain={mainId && id !== mainId && mart.accessible ? () => void click(id, { mode: 'makeMain' }) : undefined}
               onSelect={() => void click(id)}
               onOpenApp={() => onOpenApp(id)}
               onRetryCount={() => onRetryCount(id)}

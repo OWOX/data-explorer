@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { JoinedSource } from '../../api/blendable';
 import type { Picks } from '../../api/grid-columns';
 import { PAGE_SIZE } from '../../config';
-import { isJoinable, joinedMartIds, planClick } from '../../state/join-plan';
+import { joinedMartIds, planClick, planMakeMain } from '../../state/join-plan';
 import { sourceOfModel, useServices, useStore, type GridState, type State } from '../../state/store';
 import type { Model } from '../../model/types';
 import { defaultColumns } from '../explorer/useMartRows';
@@ -12,7 +12,12 @@ import { defaultColumns } from '../explorer/useMartRows';
  * What the plan needs (the joined marts of the main one and of the next main, their grids, the remembered picks) is read first;
  * the whole change is then one store step, so Undo takes it back as one.
  */
-export type ClickOptions = { /** The click only takes a mart out: it does nothing when the mart is no longer the main or a joined one when it runs (a double click on a remove button). */ only?: 'deselect' };
+export type ClickOptions = {
+  /** The click only takes a mart out: it does nothing when the mart is no longer the main or a joined one when it runs (a double click on a remove button). */
+  only?: 'deselect';
+  /** The mart becomes the main one (a drop on the main card, or its make-main button). */
+  mode?: 'makeMain';
+};
 
 export function useCardClick(model: Model): (id: string, options?: ClickOptions) => Promise<void> {
   const [state, dispatch] = useStore();
@@ -34,6 +39,7 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
 
   const run = useCallback(async (id: string, options?: ClickOptions) => {
     const main = latest.current.selection.martId;
+    const makeMain = options?.mode === 'makeMain';
     const sources = new Map<string, JoinedSource[]>();
     const grids = new Map<string, GridState>();
     const picks = new Map<string, Picks>();
@@ -61,8 +67,8 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
         if (next) await load(next);
       }
     }
-    // A mart that becomes the only selected one is stripped of the joined columns it was left with.
-    if (id !== main && !(main && isJoinable(sources.get(main)!, id))) await load(id);
+    // The plan reads the clicked mart's grid only when it may become the main mart.
+    if (id !== main && (makeMain || !main)) await load(id);
     // The mart being added or made main brings what it showed when it last left a grid.
     if (id !== main) await columnStore.loadLastShown(id);
     const now = latest.current;
@@ -75,7 +81,7 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
     }
     const sourceOf = sourceOfModel(model);
     const fresh = (martId: string) => { const g = now.grids[martId]; return g && g.columns.length > 0 ? g : grids.get(martId); };
-    const plan = planClick({
+    const plan = (makeMain ? planMakeMain : planClick)({
       selection: now.selection,
       sourceKeyFor: (martId) => (now.selection.sourceKey && sourceOf(martId) === now.selection.sourceKey ? now.selection.sourceKey : null),
       sourcesOf: (martId) => sources.get(martId) ?? [],
@@ -85,6 +91,7 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
       lastShownOf: (martId) => columnStore.lastShown(martId),
       ownNames: (martId) => (schemas.peek(martId) ?? []).map((f) => f.name),
     }, id);
+    if (plan.noop) { await rendered(); return; }
     if (Object.keys(plan.grids).length === 0 && plan.selection.martId && !plan.selection.cleared) dispatch({ type: 'selectMart', id: plan.selection.martId, sourceOf });
     else dispatch({ type: 'setMarts', selection: plan.selection, grids: plan.grids });
     for (const save of plan.saves) columnStore.save(save.martId, save.columns, save.picks);
