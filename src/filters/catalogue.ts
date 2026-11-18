@@ -1,4 +1,5 @@
 import type { Field } from '../model/types';
+import { isDayType } from '../model/field-category';
 import type { RelativeDatePreset } from '../sdk/types';
 
 export type OpId = 'contains' | 'not_contains' | 'eq' | 'neq' | 'starts_with' | 'ends_with' | 'gt' | 'gte' | 'lt' | 'lte' | 'between' | 'on' | 'before' | 'after' | 'relative' | 'is_true' | 'is_false' | 'is_blank' | 'is_not_blank';
@@ -42,7 +43,7 @@ export function operatorsFor(field: Field): OpDef[] {
   switch (field.category) {
     case 'string': return STRING;
     case 'number': return NUMBER;
-    case 'date': return dateOps(field.type.trim().toUpperCase() === 'DATE', true);
+    case 'date': return dateOps(isDayType(field.type), true);
     case 'time': return dateOps(false, false);
     case 'boolean': return [
       { id: 'is_true', label: 'is true', value: 'none' },
@@ -108,7 +109,7 @@ export const isPreset = (value: unknown, rule: RelativeDatePreset): boolean => t
 export const RELATIVE_MAX_N = 3650;
 
 /** A date-category field that carries a time of day (DATETIME, TIMESTAMP and their time-zone variants). */
-export const isDateTimeField = (field: Field) => field.category === 'date' && field.type.trim().toUpperCase() !== 'DATE';
+export const isDateTimeField = (field: Field) => field.category === 'date' && !isDayType(field.type);
 
 /** What an applied filter says, for the tooltip on the header's filter mark: "Last 30 days", "equals Berlin", "between 1 and 5". */
 export function describeFilter(field: Field, filter: { op: OpId; value?: unknown }): string {

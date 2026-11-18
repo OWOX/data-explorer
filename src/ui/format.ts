@@ -1,4 +1,4 @@
-import { categorizeFieldType } from '../model/field-category';
+import { categorizeFieldType, normalizeType } from '../model/field-category';
 export function compactNumber(n: number): string {
   const abs = Math.abs(n);
   const fmt = (v: number, s: string) => `${Number(v.toFixed(1)).toString()}${s}`;
@@ -33,8 +33,8 @@ export const groupsLabel = (amount: string): string => `${amount} ${amount === '
 
 const DATE_ONLY = new Set(['DATE']);
 // Wall-clock types carry no zone, so there is nothing to convert from.
-const WALL_CLOCK = new Set(['DATETIME', 'TIMESTAMP_NTZ']);
-const MOMENT = new Set(['TIMESTAMP', 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMPTZ', 'TIMESTAMP_LTZ', 'TIMESTAMP_TZ', ...WALL_CLOCK]);
+const WALL_CLOCK = new Set(['DATETIME', 'TIMESTAMP_NTZ', 'TIMESTAMP WITHOUT TIME ZONE']);
+const MOMENT = new Set(['TIMESTAMP', 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMP WITH LOCAL TIME ZONE', 'TIMESTAMPTZ', 'TIMESTAMP_LTZ', 'TIMESTAMP_TZ', ...WALL_CLOCK]);
 
 let cached: { day: Intl.DateTimeFormat; moment: Intl.DateTimeFormat; time: Intl.DateTimeFormat } | undefined;
 /** The viewer's locale and time zone, built once. The tests change the zone and reset it. */
@@ -68,7 +68,7 @@ const ZONE = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
 export function formatTemporal(value: unknown, type: string, style: 'auto' | 'date' | 'datetime' | 'time' = 'auto'): string | null {
   if (typeof value !== 'string') return null;
   const text = value.trim();
-  const t = type.trim().toUpperCase();
+  const t = normalizeType(type);
   if (DATE_ONLY.has(t)) {
     const m = /^(\d{4})-(\d{2})-(\d{2})(?![\d])/.exec(text);
     if (!m) return null;

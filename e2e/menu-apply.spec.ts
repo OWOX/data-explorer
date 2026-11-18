@@ -42,6 +42,9 @@ test('Aggregate: a long function list scrolls to Apply, and wheeling past its en
   await click(page, apply);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(data(page).getByRole('columnheader', { name: /Net Revenue · Sum/ })).toBeVisible();
+  await expect(data(page).getByRole('button', { name: 'Aggregate Net Revenue' })).toBeVisible();
+  // The rows are grouped now: the 200 order rows collapse to far fewer.
+  await expect.poll(async () => data(page).getByRole('row').count()).toBeLessThan(50);
 });
 
 test('Filter on a date: the presets scroll to Last N days and its Apply, and wheeling past the end does not close the menu', async ({ page }) => {

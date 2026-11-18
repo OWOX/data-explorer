@@ -1,6 +1,7 @@
 // Column aggregation in the Data grid: a port of the OWOX web app's report column picker (aggregation governance,
 // applyAggregationDraft, aggregation labels) and of the traverseData row keys (`"<column> | <TOKEN>"`).
 import type { Field, FieldCategory } from './types';
+import { isDayType } from './field-category';
 
 export const AGGREGATE_FUNCTIONS = ['SUM', 'AVG', 'MIN', 'MAX', 'COUNT', 'COUNT_DISTINCT', 'STRING_AGG', 'ANY_VALUE', 'P25', 'P50', 'P75', 'P95'] as const;
 export type AggFn = (typeof AGGREGATE_FUNCTIONS)[number];
@@ -62,7 +63,7 @@ export function allowedFunctions(field: Pick<Field, 'category' | 'allowedAggrega
 /** A column that can be grouped by a date bucket: DATE, DATETIME and TIMESTAMP (not TIME). */
 export const canBucket = (field: Pick<Field, 'category' | 'isCalculated'>): boolean => field.category === 'date' && !field.isCalculated;
 /** A bucket carries a time zone only on a type with a time of day: a plain DATE cannot be converted. */
-export const canZone = (field: Pick<Field, 'category' | 'type' | 'isCalculated'>): boolean => field.category === 'date' && !field.isCalculated && field.type.trim().toUpperCase() !== 'DATE';
+export const canZone = (field: Pick<Field, 'category' | 'type' | 'isCalculated'>): boolean => field.category === 'date' && !field.isCalculated && !isDayType(field.type);
 
 /** What the popover edits for one column: several functions, or one bucket (never both). */
 export type AggregationDraft = { functions: AggFn[]; bucket: DateBucket | null; timeZone: string | null };

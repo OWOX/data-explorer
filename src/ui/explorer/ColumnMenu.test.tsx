@@ -269,17 +269,46 @@ describe('the column menu', () => {
     expect(icon).toHaveFocus();
   });
 
-  test('a scroll or a resize outside the menu closes it; a scroll inside does not', async () => {
+  test('a scroll of the page or of a scroller holding the column closes the menu; any other scroll does not', async () => {
     setup();
     await ready();
+    const icon = within(data()).getByLabelText('Column menu status');
     await openColumnMenu(within(data()), 'status');
     fireEvent.scroll(screen.getByRole('menu', { name: 'Menu of status' }));
     expect(open()).toHaveLength(1);
-    fireEvent.scroll(document.body);
+    const elsewhere = document.createElement('div');
+    document.body.appendChild(elsewhere);
+    fireEvent.scroll(elsewhere);
+    expect(open()).toHaveLength(1);
+    elsewhere.remove();
+    fireEvent.scroll(icon.closest('th')!.parentElement!);
     await waitFor(() => expect(open()).toHaveLength(0));
     await openColumnMenu(within(data()), 'status');
-    fireEvent(window, new Event('resize'));
+    fireEvent.scroll(document);
     await waitFor(() => expect(open()).toHaveLength(0));
+  });
+
+  test('a resize keeps the menu open and moves it to fit the new viewport', async () => {
+    setup();
+    await ready();
+    const real = HTMLElement.prototype.getBoundingClientRect;
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute('data-menu-icon') ? ({ left: 500, right: 520, top: 10, bottom: 30, width: 20, height: 20, x: 500, y: 10, toJSON: () => ({}) } as DOMRect) : real.call(this);
+    });
+    const width = window.innerWidth;
+    try {
+      // The test setup makes every element 1000px wide: it fits at 500px in a 1600px viewport, and must flip left in a 1200px one.
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1600 });
+      const menu = await openColumnMenu(within(data()), 'status');
+      await waitFor(() => expect(menu.style.left).toBe('500px'));
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 });
+      fireEvent(window, new Event('resize'));
+      await waitFor(() => expect(menu.style.left).toBe('8px'));
+      expect(open()).toHaveLength(1);
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+      spy.mockRestore();
+    }
   });
 
   test('the menu stays open, and its header is not rebuilt, while a setting changes', async () => {

@@ -1,6 +1,7 @@
 import type { ColumnFilter } from '../filters/build';
 import { isDateTimeField } from '../filters/catalogue';
 import type { Edge, Field, Schema } from '../model/types';
+import { isDayType } from '../model/field-category';
 import type { Row } from '../sdk/types';
 
 export function primaryKeys(schema: Schema): string[] {
@@ -33,7 +34,7 @@ export function equalsFilter(field: Field | undefined, name: string, value: unkn
   const v = value as string | number;
   if (field?.category === 'boolean') return { field: name, op: isTrue(value) ? 'is_true' : 'is_false' };
   if (field?.category === 'time' || (field && isDateTimeField(field))) return { field: name, op: 'between', value: { from: v, to: v } };
-  if (field?.type.trim().toUpperCase() === 'DATE') return { field: name, op: 'on', value: v };
+  if (field && isDayType(field.type)) return { field: name, op: 'on', value: v };
   return { field: name, op: 'eq', value: v };
 }
 

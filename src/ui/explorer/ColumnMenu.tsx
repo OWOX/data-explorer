@@ -80,6 +80,10 @@ function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onPlaced, 
   const placedNow = pos !== null;
   useLayoutEffect(() => { if (placedNow) onPlaced?.(); }, [placedNow]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [place]);
+  useEffect(() => {
     if (typeof ResizeObserver === 'undefined' || !el.current) return;
     const ro = new ResizeObserver(place);
     ro.observe(el.current);
@@ -283,13 +287,18 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
   const toggle = (anchor: HTMLElement, sub: SubKey | null) => setMenu((cur) => (cur && cur.sub === sub ? null : { anchor, sub }));
   useEffect(() => {
     if (!menu) return;
-    // Outside the menu, a press closes it; so does a scroll or resize, since a fixed menu would be left behind its column.
+    // Outside the menu, a press closes it; so does a scroll of anything that holds the column (a fixed menu would be left behind it).
+    // A resize only repositions the panels (each listens for it): on a touch screen the on-screen keyboard resizes the viewport.
     const down = (e: Event) => { const t = e.target as Element; if (!t.closest?.('[data-column-menu]') && !controls.current?.contains(t)) setMenu(null); };
-    const away = (e: Event) => { if (!(e.target instanceof Element && e.target.closest('[data-column-menu]'))) setMenu(null); };
+    const away = (e: Event) => {
+      const t = e.target;
+      if (t instanceof Node && t !== document && (t as Element).closest?.('[data-column-menu]')) return;
+      const holder = controls.current;
+      if (t === document || (t instanceof Node && holder && t.contains(holder))) setMenu(null);
+    };
     document.addEventListener('pointerdown', down, true);
     window.addEventListener('scroll', away, true);
-    window.addEventListener('resize', away);
-    return () => { document.removeEventListener('pointerdown', down, true); window.removeEventListener('scroll', away, true); window.removeEventListener('resize', away); };
+    return () => { document.removeEventListener('pointerdown', down, true); window.removeEventListener('scroll', away, true); };
   }, [menu]);
   const Arrow = direction === 'desc' ? ArrowDown : ArrowUp;
   return (

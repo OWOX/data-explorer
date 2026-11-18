@@ -3,6 +3,7 @@ import { DATE_PRESETS, RELATIVE_MAX_N, RELATIVE_PRESETS, isDateTimeField, isPres
 import { isComplete, type ColumnFilter, type FilterValue } from '../../filters/build';
 import { columnTitle } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
+import { isDayType } from '../../model/field-category';
 import type { RelativeDatePreset } from '../../sdk/types';
 import { Select } from '../Select';
 
@@ -34,7 +35,7 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
   }
   const apply = (rule: RelativeDatePreset) => onApply({ field: field.name, op: 'relative', value: rule });
   const nOk = Number.isInteger(n) && n > 0 && n <= RELATIVE_MAX_N;
-  const isDay = field.type.trim().toUpperCase() === 'DATE';
+  const isDay = isDayType(field.type);
   return (
     <div className="flex flex-col gap-0.5" role="group" aria-label={`Filter ${columnTitle(field)}`}>
       <div className="flex flex-col gap-0.5" role="group" aria-label="Date presets">
