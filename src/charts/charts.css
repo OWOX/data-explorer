@@ -1,25 +1,19 @@
-/* Chart colours: eight categories in fixed order, the ninth is the neutral "Other". */
+/* Chart colours: the OWOX palette. Its six base hues come first; the seventh and eighth segments take
+   the third-row tints of the first two, since the palette has six hues and a chart shows eight.
+   The ninth is the neutral "Other". The palette has no dark variant, so only "Other" changes there. */
 :root {
-  --dm-series-1: #2a78d6;
-  --dm-series-2: #eb6834;
-  --dm-series-3: #1baf7a;
-  --dm-series-4: #eda100;
-  --dm-series-5: #e87ba4;
-  --dm-series-6: #008300;
-  --dm-series-7: #6250d6;
-  --dm-series-8: #e34948;
-  --dm-series-9: #8a8984;
+  --dm-series-1: #4286DE;
+  --dm-series-2: #6ABA5C;
+  --dm-series-3: #F5C344;
+  --dm-series-4: #E9883C;
+  --dm-series-5: #E15241;
+  --dm-series-6: #9F4DB6;
+  --dm-series-7: #86B5EA;
+  --dm-series-8: #A0D49A;
+  --dm-series-9: #C5C5C5;
 }
 .dark {
-  --dm-series-1: #3987e5;
-  --dm-series-2: #d95926;
-  --dm-series-3: #199e70;
-  --dm-series-4: #c98500;
-  --dm-series-5: #d55181;
-  --dm-series-6: #008300;
-  --dm-series-7: #9085e9;
-  --dm-series-8: #e66767;
-  --dm-series-9: #76756f;
+  --dm-series-9: #606060;
 }
 
 /* MartGrid sets the table's measured height inline; a grid opened in Charts has none and takes the 32rem cap. */
