@@ -6,7 +6,7 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { SchemaFieldDto, TraverseOptions } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
-import { openSubmenu } from './menu-test-utils';
+import { openColumnMenu, openSubmenu } from './menu-test-utils';
 
 function setup(opts: { fields?: SchemaFieldDto[]; saved?: Record<string, unknown>; gate?: Promise<void> } = {}) {
   const fixtures = demoFixtures();
@@ -272,4 +272,32 @@ test('Undo of an aggregation alone is saved: the stored columns doc no longer gr
   await userEvent.keyboard('{Meta>}z{/Meta}');
   await waitFor(() => expect(headers().some((h) => h.startsWith('Amount · Sum'))).toBe(false));
   await waitFor(() => expect(t.puts.at(-1)!.doc.aggregations ?? []).toEqual([]), { timeout: 3000 });
+});
+
+test('Undo of an aggregation twice in a row is saved both times (apply Sum, Undo, apply Sum, Undo)', async () => {
+  const t = setup();
+  await ready();
+  await showColumn('Amount');
+  const sum = JSON.stringify([{ column: 'amount', function: 'SUM' }]);
+  for (let round = 0; round < 2; round++) {
+    await aggregate('Amount', 'Sum');
+    await waitFor(() => expect(t.puts.at(-1)!.doc.aggregations && JSON.stringify(t.puts.at(-1)!.doc.aggregations)).toBe(sum), { timeout: 3000 });
+    await userEvent.keyboard('{Meta>}z{/Meta}');
+    await waitFor(() => expect(headers().some((h) => h.startsWith('Amount · Sum'))).toBe(false));
+    await waitFor(() => expect(t.puts.at(-1)!.doc.aggregations ?? []).toEqual([]), { timeout: 3000 });
+  }
+});
+
+test('Undo of hiding a column twice in a row is saved both times (hide, Undo, hide, Undo)', async () => {
+  const t = setup();
+  await ready();
+  for (let round = 0; round < 2; round++) {
+    const menu = await openColumnMenu(within(data()), 'Store');
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
+    await waitFor(() => expect(headers().some((h) => h.startsWith('Store'))).toBe(false));
+    await waitFor(() => expect(t.puts.at(-1)!.doc.columns).not.toContain('store_id'), { timeout: 3000 });
+    await userEvent.keyboard('{Meta>}z{/Meta}');
+    await waitFor(() => expect(headers().some((h) => h.startsWith('Store'))).toBe(true));
+    await waitFor(() => expect(t.puts.at(-1)!.doc.columns).toContain('store_id'), { timeout: 3000 });
+  }
 });

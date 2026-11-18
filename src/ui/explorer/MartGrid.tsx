@@ -232,6 +232,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // holds is adopted when it is not what the grid already shows. The grid's own changes reach the store through the effect below.
   const [seenSaved, setSeenSaved] = useState(seed.saved);
   // Columns adopted from the page (Undo, Redo, a card click) are the member's columns now: they are saved like a picker change.
+  // Each adoption is a fresh array (and below a fresh object), so two in a row with equal content still re-run the save effect.
   const [adopted, setAdopted] = useState<string[] | null>(null);
   // An aggregation adopted alone (Undo of a function or bucket) is persisted too, so a reopened plugin does not read the stale one.
   const [adoptedAgg, setAdoptedAgg] = useState<Aggregation | null>(null);
@@ -241,8 +242,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     if (saved && saved.columns.length > 0 && !sameGrid(saved, { columns: visible, filters: { ...parked, ...filters }, sorts: own, limit, aggregations: agg.aggregations, dateTrunc: agg.dateTrunc })) {
       setVisible(saved.columns);
       setAgg(aggOf(saved));
-      if (!sameList(saved.columns, visible)) setAdopted(saved.columns);
-      else if (JSON.stringify(aggOf(saved)) !== JSON.stringify(agg)) setAdoptedAgg(aggOf(saved));
+      if (!sameList(saved.columns, visible)) setAdopted([...saved.columns]);
+      else if (JSON.stringify(aggOf(saved)) !== JSON.stringify(agg)) setAdoptedAgg({ ...aggOf(saved) });
       setFilters(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => offeredNow(k))));
       setParked(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => !offeredNow(k))));
       setOwn(saved.sorts);
