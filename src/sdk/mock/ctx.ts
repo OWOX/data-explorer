@@ -1,5 +1,5 @@
 import type { AvailableSourceDto, BlendableSchemaDto, BlendedFieldDto, Ctx, EdgeDto, Row, TraverseOptions } from '../types';
-import { aggregateRows } from './aggregate';
+import { aggregateRows, distinctKeys, type UniqueSource } from './aggregate';
 import { matchesFilter } from './evaluate';
 import { createFakeAi } from './ai';
 import { demoFixtures, type Fixtures } from './fixtures';
@@ -109,13 +109,20 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     // Columns, filters and sorts may name fields of joined marts: those are read off the joined row and added to each row.
     rejectHidden(id, [...(o.column ?? []), ...(o.filter ?? []).map((x) => x.column), ...(o.sort ?? []).map((x) => x.column)]);
     const index = blendedIndex(id);
-    const wanted = [...new Set([...(o.column ?? []), ...(o.filter ?? []).map((x) => x.column), ...(o.sort ?? []).map((x) => x.column)].filter((n) => index.has(n)))];
+    // A unique count per source: the main mart (`''`) by its primary key, a joined one by its alias path, its key read off the joined row.
+    const uniq: UniqueSource[] = (o.uniqueCount ?? []).map((path) => {
+      if (!path) return { key: 'Unique Count', pk: m.fields.filter((x) => x.isPrimaryKey).map((x) => x.name) };
+      const hop = joinTree(id).find((h) => h.aliasPath === path);
+      if (!hop) throw badRequest(`Unknown source: ${path}`);
+      return { key: `${path.replaceAll('.', '_')}__unique_count`, pk: byId.get(hop.martId)!.fields.filter((x) => x.isPrimaryKey).map((x) => blendedName(path, x.name)) };
+    });
+    const wanted = [...new Set([...(o.column ?? []), ...(o.filter ?? []).map((x) => x.column), ...(o.sort ?? []).map((x) => x.column), ...uniq.flatMap((u) => u.pk)].filter((n) => index.has(n)))];
     const source = wanted.length ? m.rows.map((r) => ({ ...r, ...Object.fromEntries(wanted.map((n) => [n, blendedValue(r, index.get(n)!.hop, index.get(n)!.field)])) })) : m.rows;
     let rows = source.filter((r) => (o.filter ?? []).every((flt) => matchesFilter(r, flt)));
-    if (o.uniqueCount) return [{ 'Unique Count': rows.length }];
-    if (o.aggregation?.length || o.dateTrunc?.length) {
+    if (uniq.length && !o.column?.length) return [Object.fromEntries(uniq.map((u) => [u.key, distinctKeys(rows, u.pk)]))];
+    if (uniq.length || o.aggregation?.length || o.dateTrunc?.length) {
       if (!o.column?.length) throw badRequest('Aggregation requires an explicit column list');
-      const grouped = aggregateRows(rows, o.column, o.aggregation ?? [], o.dateTrunc ?? [], o.sort ?? []);
+      const grouped = aggregateRows(rows, o.column, o.aggregation ?? [], o.dateTrunc ?? [], o.sort ?? [], uniq);
       return o.limit !== undefined ? grouped.slice(0, o.limit) : grouped;
     }
     const keys = o.sort ?? [];

@@ -32,3 +32,9 @@ test('sort names a group key, or an aggregated column by its first function', ()
   const keys = aggregateRows(rows, ['status', 'amount'], [{ column: 'amount', function: 'SUM' }], [], [{ column: 'status', direction: 'asc' }]);
   expect(keys.map((r) => r.status)).toEqual(['open', 'paid']);
 });
+
+test('a unique count per group counts distinct key tuples and skips all-null keys', () => {
+  const r = [{ g: 'a', id: 1 }, { g: 'a', id: 1 }, { g: 'a', id: 2 }, { g: 'b', id: null }];
+  const out = aggregateRows(r, ['g'], [], [], [{ column: 'Unique Count', direction: 'desc' }], [{ key: 'Unique Count', pk: ['id'] }]);
+  expect(out).toEqual([{ g: 'a', 'Unique Count': 2 }, { g: 'b', 'Unique Count': 0 }]);
+});
