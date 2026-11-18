@@ -28,7 +28,7 @@ export type Selection = {
 export type Entry = Selection & { grids?: Record<string, GridState | null> };
 
 /** What the Data band's grid keeps per mart for the session. */
-export type GridState = { columns: string[]; filters: Record<string, ColumnFilter>; /** null: the member set none, so the grid opens in the default order (newest date first); a list, even an empty one, is their own. */ sorts: SortKey[] | null; limit: number; /** Functions per column, in the order chosen; any of these or a bucket groups the rows. */ aggregations?: AggregationRule[]; /** One date bucket per date column. */ dateTrunc?: DateTruncRule[] };
+export type GridState = { columns: string[]; filters: Record<string, ColumnFilter>; /** null: the member set none, so the grid opens in the default order (newest date first); a list, even an empty one, is their own. */ sorts: SortKey[] | null; limit: number; /** Functions per column, in the order chosen; any of these or a bucket groups the rows. */ aggregations?: AggregationRule[]; /** One date bucket per date column. */ dateTrunc?: DateTruncRule[]; /** Absent is the table. Part of the grid state so Undo and the view link carry it; never written to the member's grid-columns store. */ view?: 'charts' };
 
 export type State = {
   selection: Selection;

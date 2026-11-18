@@ -631,3 +631,10 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-checklist-row .dm-filter-only { opacity: 0; }
 .dm-checklist-row:hover .dm-filter-only, .dm-checklist-row:focus-within .dm-filter-only { opacity: 1; }
 @media (hover: none) { .dm-checklist-row .dm-filter-only { opacity: 1; } }
+
+/* Table / Charts switch in the Data band header. */
+.dm-seg { display: inline-flex; height: 28px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.dm-seg button { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0 0.625rem; font-size: 0.8125rem; color: var(--muted-foreground); }
+.dm-seg button + button { border-left: 1px solid var(--border); }
+.dm-seg button[aria-checked='true'] { background: var(--accent); color: var(--accent-foreground); }
+.dm-seg button:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }

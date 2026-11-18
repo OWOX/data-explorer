@@ -172,7 +172,7 @@ const outputType = (field: Schema[number], fn: AggFn | undefined): string => {
 };
 
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
-const stable = (g: GridState) => JSON.stringify([g.columns, Object.entries(g.filters).sort(([a], [b]) => a.localeCompare(b)), g.sorts, g.limit, g.aggregations ?? [], g.dateTrunc ?? []]);
+const stable = (g: GridState) => JSON.stringify([g.columns, Object.entries(g.filters).sort(([a], [b]) => a.localeCompare(b)), g.sorts, g.limit, g.aggregations ?? [], g.dateTrunc ?? [], g.view ?? 'table']);
 const sameGrid = (a: GridState, b: GridState) => stable(a) === stable(b);
 
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
@@ -208,6 +208,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const [fallback] = useState(() => defaultSort(native, visible));
   const sorts = own ?? fallback;
   const [limit, setLimit] = useState(() => seed.saved?.limit ?? PAGE_SIZE);
+  // Table or charts. Only the page (the switch, Undo, a view link) changes it, so it lives with the grid state but not in columnStore.
+  const [view, setView] = useState<GridState['view']>(() => seed.saved?.view);
   const [ownVersion, setVersion] = useState(0);
   // Set by a change the member makes to what the grid shows (a filter, a sort, an aggregation, columns, Reset): the save that follows is one Undo step.
   // Paging, seeding and what is adopted from the page are not edits. The counter is bumped in the handler that makes the change, so both
@@ -239,7 +241,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   if (seed.saved !== seenSaved) {
     setSeenSaved(seed.saved);
     const saved = seed.saved;
-    if (saved && saved.columns.length > 0 && !sameGrid(saved, { columns: visible, filters: { ...parked, ...filters }, sorts: own, limit, aggregations: agg.aggregations, dateTrunc: agg.dateTrunc })) {
+    if (saved && saved.columns.length > 0 && !sameGrid(saved, { columns: visible, filters: { ...parked, ...filters }, sorts: own, limit, aggregations: agg.aggregations, dateTrunc: agg.dateTrunc, ...(view ? { view } : {}) })) {
+      setView(saved.view);
       setVisible(saved.columns);
       setAgg(aggOf(saved));
       if (!sameList(saved.columns, visible)) setAdopted([...saved.columns]);
@@ -255,7 +258,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
 
   useEffect(() => { if (adoptedAgg) columnStore.saveAggregation(martId, adoptedAgg); }, [adoptedAgg, columnStore, martId]);
 
-  useEffect(() => { const edit = editSeq !== seenSeq.current; seenSeq.current = editSeq; onChange({ columns: visible, filters: { ...parked, ...filters }, sorts: own, limit, ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}) }, edit); }, [visible, filters, parked, own, limit, agg, editSeq]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const edit = editSeq !== seenSeq.current; seenSeq.current = editSeq; onChange({ columns: visible, filters: { ...parked, ...filters }, sorts: own, limit, ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}), ...(view ? { view } : {}) }, edit); }, [visible, filters, parked, own, limit, agg, view, editSeq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every data mart's columns sit together: the main mart's own, then each joined mart's in the order it was added.
   const shown = useMemo(() => orderColumns(visible, sources, defaultColumns(native)), [visible, sources, native]);
