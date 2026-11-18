@@ -58,7 +58,7 @@ test('Charts: the body is a direct child of the table, so the headers stay in it
   expect(group('orders')!.closest('tbody')!.parentElement!.tagName).toBe('TABLE');
 });
 
-test('Charts: each data mart has its own cards in its group cell, Records first', async () => {
+test('Charts: each data mart has its own cards in its group cell, Unique Records first', async () => {
   await charts();
   await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Unique Records', 'Amount · Sum']));
   expect(cardNames(group('products'))).toEqual(['Unique Records', 'price · Sum']);
@@ -275,24 +275,24 @@ test('a failed Auto range query shows Retry on the time series, which reads agai
   expect(t.queries.length).toBeGreaterThan(before);
 });
 
-test('a date and a key with no metric shown still get a Records time series', async () => {
+test('a date and a key with no metric shown still get a Unique Records time series', async () => {
   const t = await charts({ columns: ['id', 'status', 'created_at'], charts: { scorecards: { sparklines: false } } }); // no sparklines: they send the same shape
-  await waitFor(() => expect(data().querySelector('svg[aria-label="Records by day"], svg[aria-label^="Records by"]')).not.toBeNull());
-  expect(screen.getByRole('heading', { name: /^Records by / })).toBeInTheDocument();
+  await waitFor(() => expect(data().querySelector('svg[aria-label="Unique Records by day"], svg[aria-label^="Unique Records by"]')).not.toBeNull());
+  expect(screen.getByRole('heading', { name: /^Unique Records by / })).toBeInTheDocument();
   const q = t.queries.find((o) => o.dateTrunc && o.uniqueCount?.[0] === '');
   expect(q).toMatchObject({ uniqueCount: [''], dateTrunc: [expect.objectContaining({ column: 'created_at' })] });
   expect(q?.aggregation).toBeUndefined();
   expect(data().querySelector('rect[data-series]')).not.toBeNull();
 });
 
-test('choosing Records from the Metric menu saves timeSeries.metric records', async () => {
+test('choosing Unique Records from the Metric menu saves timeSeries.metric records', async () => {
   const t = await charts();
   await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
   await userEvent.click(panel('Time series'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
   const opts = await screen.findAllByRole('menuitemradio');
-  expect(opts[0]).toHaveAccessibleName('Records');
+  expect(opts[0]).toHaveAccessibleName('Unique Records');
   await userEvent.click(opts[0]!);
-  await waitFor(() => expect(screen.getByRole('heading', { name: /^Records by / })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole('heading', { name: /^Unique Records by / })).toBeInTheDocument());
   expect(t.puts).toHaveBeenCalledWith('orders', { timeSeries: { metric: 'records' } });
 });

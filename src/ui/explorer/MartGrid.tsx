@@ -645,7 +645,12 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
             </tr>
             <tr data-group-row>
                 {groups.map((g, i) => (
-                  <th key={g.id} data-group={g.id} colSpan={g.span} scope="colgroup" onClick={() => { if (selected?.kind === 'col' || selected?.kind === 'row') setSelected(null); }} className="dm-gh dm-gh-edge overflow-hidden px-1 py-1 text-left font-semibold">
+                  <th key={g.id} data-group={g.id} colSpan={g.span} scope="colgroup" onClick={(e) => {
+                    // Only the title itself: the Fields and Remove buttons, and clicks inside the Fields popover (portalled, but bubbling through React), keep the selection.
+                    const t = e.target as HTMLElement;
+                    if (!e.currentTarget.contains(t) || t.closest('button')) return;
+                    if (selected?.kind === 'col' || selected?.kind === 'row') setSelected(null);
+                  }} className="dm-gh dm-gh-edge overflow-hidden px-1 py-1 text-left font-semibold">
                     <div className="flex min-w-0 items-center gap-1">
                       <span className="inline-flex shrink-0 text-muted-foreground"><PickedIcon icon={g.icon} fallback={Box} size={14} /></span>
                       <span className="truncate">{g.title}</span>
