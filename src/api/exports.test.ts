@@ -316,6 +316,85 @@ describe('exporter', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  const liveGet = (ctx: ReturnType<typeof stubCtx>) => (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => live(path.split('/').pop()!));
+  const allReady = (ex: ReturnType<typeof createExporter>) => vi.waitFor(() => { const e = ex.entries('orders'); expect(e.length > 0 && e.every((x) => x.state === 'ready')).toBe(true); });
+
+  test('concurrent forgets both survive, in the document and in the entries', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }, { reportId: 'b' }, { reportId: 'c' }]);
+    liveGet(ctx);
+    const ex = createExporter(ctx);
+    ex.load('orders');
+    await allReady(ex);
+    await Promise.all([ex.forget('orders', 'a'), ex.forget('orders', 'b')]);
+    expect(await stored(ctx)).toEqual([{ reportId: 'c' }]);
+    expect(ex.entries('orders').map((e) => e.reportId)).toEqual(['c']);
+  });
+
+  test('an update touching usedAt while another report is forgotten keeps both changes, and the entry carries the new usedAt', async () => {
+    vi.useFakeTimers();
+    try {
+      const remembered = { reportId: 'a', destinationId: 'd1', spreadsheetId: 's-a', sheetId: 1, title: 'T-a' };
+      const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }, { reportId: 'b' }]);
+      (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+        const ran = (ctx.owox.postJson as ReturnType<typeof vi.fn>).mock.calls.some((c) => String(c[0]).endsWith('/run'));
+        return { ...live(path.split('/').pop()!), lastRunAt: ran ? '2026-02-01T00:00:00.000Z' : '2026-01-01T00:00:00.000Z', lastRunStatus: 'SUCCESS' };
+      });
+      const ex = createExporter(ctx);
+      ex.load('orders');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(ex.entries('orders').every((e) => e.state === 'ready')).toBe(true);
+      const p = ex.run({ martId: 'orders', destination: dest, title: 'T-a', source: { kind: 'update', report: remembered }, payload });
+      void ex.forget('orders', 'b');
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+      const { report } = await p;
+      await vi.advanceTimersByTimeAsync(0);
+      expect(await stored(ctx)).toEqual([{ reportId: 'a', usedAt: report.usedAt }]);
+      expect(ex.entries('orders')).toMatchObject([{ reportId: 'a', usedAt: report.usedAt, state: 'ready', report: { usedAt: report.usedAt } }]);
+    } finally { vi.useRealTimers(); }
+  });
+
+  test('a read that returns after invalidate() is ignored', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }]);
+    let release: (v: unknown) => void = () => {};
+    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementationOnce(() => new Promise((r) => { release = r; }));
+    const ex = createExporter(ctx);
+    ex.load('orders');
+    await vi.waitFor(() => expect(ex.entries('orders')).toHaveLength(1));
+    ex.invalidate();
+    release(live('a'));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(ex.entries('orders')).toEqual([]);
+  });
+
+  test('an update whose PUT is a 404 also removes the entry from the cache', async () => {
+    const remembered = { reportId: 'a', destinationId: 'd1', spreadsheetId: 's-a', sheetId: 1, title: 'T-a' };
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }, { reportId: 'b' }]);
+    liveGet(ctx);
+    const ex = createExporter(ctx);
+    ex.load('orders');
+    await allReady(ex);
+    (ctx.owox.putJson as ReturnType<typeof vi.fn>).mockRejectedValue(notFound());
+    await ex.run({ martId: 'orders', destination: dest, title: 'T-a', source: { kind: 'update', report: remembered }, payload }).catch(() => undefined);
+    await vi.waitFor(() => expect(ex.entries('orders').map((e) => e.reportId)).toEqual(['b']));
+  });
+
+  test('a failed read of the stored document is not cached and nothing is written over it; the next call reads again', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }]);
+    liveGet(ctx);
+    const col = ctx.collections<{ reports: StoredReport[] }>('exports');
+    const realGet = col.get.bind(col);
+    const put = vi.spyOn(col, 'put');
+    const get = vi.spyOn(col, 'get').mockRejectedValueOnce(new Error('offline'));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const ctx2 = { ...ctx, collections: () => col } as typeof ctx;
+    const ex = createExporter(ctx2);
+    await ex.forget('orders', 'a');
+    expect(put).not.toHaveBeenCalled();
+    expect(await ex.stored('orders')).toEqual([{ reportId: 'a' }]);
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(realGet).toBeDefined();
+  });
+
   test('an update whose PUT is a 404 forgets the report and throws a gone ExportError at the report step', async () => {
     const remembered = { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'sheet1', sheetId: 7, title: 'Old' };
     const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'r1' }, { reportId: 'r2' }]);

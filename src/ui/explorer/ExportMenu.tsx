@@ -43,18 +43,23 @@ type CopiedSql = { sql: string; ok: boolean };
 const STAGE_LABEL: Record<Stage, string> = { sheet: 'Creating the spreadsheet…', report: 'Saving the report…', run: 'Running the report…' };
 const MAYBE_CREATED = 'The report may have been created; check OWOX before trying again.';
 const UNRECOGNISED = 'This report targets an unrecognised spreadsheet.';
-/** The reports whose live read has finished and succeeded. Today's menu needs the whole list at once; the dialog rework shows rows as they arrive. */
-async function settledReports(exporter: Exporter, martId: string): Promise<ExportedReport[]> {
-  exporter.load(martId);
-  const pick = async () => {
-    const ids = (await exporter.stored(martId)).map((r) => r.reportId);
-    const entries = exporter.entries(martId);
-    return ids.every((id) => { const e = entries.find((x) => x.reportId === id); return e && e.state !== 'loading'; }) ? entries.flatMap((e) => (e.report ? [e.report] : [])) : null;
-  };
-  const now = await pick();
-  if (now) return now;
+/** The reports whose live read has finished and succeeded. Today's menu needs the whole list at once; the dialog rework shows rows as they arrive. Resolves with [] when `signal` aborts; never holds a subscription after it settles. */
+function settledReports(exporter: Exporter, martId: string, signal?: AbortSignal): Promise<ExportedReport[]> {
   return new Promise((resolve) => {
-    const off = exporter.subscribe(martId, () => { void pick().then((r) => { if (r) { off(); resolve(r); } }); });
+    let off: (() => void) | null = null;
+    const finish = (list: ExportedReport[]) => { off?.(); off = null; signal?.removeEventListener('abort', onAbort); resolve(list); };
+    const onAbort = () => finish([]);
+    const check = async () => {
+      // After invalidate() the cache is empty: ask for the reads again.
+      exporter.load(martId);
+      const ids = (await exporter.stored(martId)).map((r) => r.reportId);
+      const entries = exporter.entries(martId);
+      if (off && ids.every((id) => { const e = entries.find((x) => x.reportId === id); return e && e.state !== 'loading'; })) finish(entries.flatMap((e) => (e.report ? [e.report] : [])));
+    };
+    if (signal?.aborted) { resolve([]); return; }
+    signal?.addEventListener('abort', onAbort, { once: true });
+    off = exporter.subscribe(martId, () => { void check(); });
+    void check();
   });
 }
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -174,7 +179,8 @@ export function ExportMenu(p: Props) {
       unsubscribe();
       if (!here()) return;
       exporter.acknowledge(martId);
-      setReports({ martId, list: await settledReports(exporter, martId) });
+      // The outcome comes first; the list is refreshed when its reads are done.
+      void settledReports(exporter, martId, ctx.signal).then((list) => { if (here()) setReports({ martId, list }); });
       const url = sheetUrl(report) ?? undefined;
       const note = notes.length ? ` ${notes.join(' ')}` : '';
       setDialog(null);
@@ -208,8 +214,7 @@ export function ExportMenu(p: Props) {
         // Past this point the report exists (and may be running): a retry from the dialog would make a second one.
         setDialog(null);
         setResult({ kind: 'error', text: e instanceof ExportError && e.stage === 'run' ? `The run could not be followed: ${text}` : text });
-        const list = await settledReports(exporter, martId).catch(() => []);
-        if (here()) setReports({ martId, list });
+        void settledReports(exporter, martId, ctx.signal).then((list) => { if (here()) setReports({ martId, list }); });
       }
     }).finally(() => { if (here()) setBusy(null); });
   }
@@ -285,8 +290,11 @@ export function ExportMenu(p: Props) {
     setOpenDest(null);
     // Reports OWOX no longer has are dropped before they are offered.
     const check = ++checks.current;
-    try { setReports({ martId: p.martId, list: await settledReports(exporter, p.martId) }); } catch { /* the remembered list stays */ }
-    finally { if (check === checks.current) setVerified(true); }
+    void settledReports(exporter, p.martId, ctx.signal).then((list) => {
+      if (check !== checks.current) return;
+      setReports({ martId: p.martId, list });
+      setVerified(true);
+    });
   }
 
   // One toast: an export outcome (it stays until dismissed), else the copied data or prompt (it hides itself).

@@ -185,7 +185,8 @@ export function createExporter(ctx: Ctx): Exporter {
 
   const emit = (martId: string) => listeners.get(martId)?.forEach((l) => l());
 
-  async function stored(martId: string): Promise<StoredReport[]> {
+  /** The stored document, read once; null when the read failed (not cached, so the next call tries again, and nothing is written meanwhile). */
+  async function readDoc(martId: string): Promise<StoredReport[] | null> {
     if (!docs.has(martId)) {
       try {
         const found = await col.get(martId);
@@ -194,21 +195,30 @@ export function createExporter(ctx: Ctx): Exporter {
         if (!docs.has(martId)) docs.set(martId, list.map((r) => ({ reportId: r.reportId, ...(typeof r.usedAt === 'string' ? { usedAt: r.usedAt } : {}) })));
       } catch (e) {
         console.warn('Reading the exported reports failed', e);
-        if (!docs.has(martId)) docs.set(martId, []);
+        return null;
       }
     }
     return docs.get(martId)!;
   }
-  /** Changes the stored list (in memory at once, then written) and keeps the live entries in step. */
-  async function mutate(martId: string, fn: (list: StoredReport[]) => StoredReport[]) {
-    const next = fn(await stored(martId));
-    docs.set(martId, next);
-    const cache = caches.get(martId);
-    if (cache) {
-      cache.entries = next.flatMap((r) => { const e = cache.entries.find((x) => x.reportId === r.reportId); return e ? [{ ...e, usedAt: r.usedAt, ...(e.report ? { report: { ...e.report, usedAt: r.usedAt } } : {}) }] : []; });
-      emit(martId);
-    }
-    try { await col.put(martId, { reports: next }); } catch (e) { console.warn('Saving the exported reports failed', e); }
+  const stored = async (martId: string) => (await readDoc(martId)) ?? [];
+  /** One write at a time per mart: each change is computed from the list the previous one left, and its put finishes before the next starts. */
+  const chains = new Map<string, Promise<void>>();
+  /** Changes the stored list and keeps the live entries in step. Does nothing while the stored document could not be read. */
+  function mutate(martId: string, fn: (list: StoredReport[]) => StoredReport[]): Promise<void> {
+    const run = (chains.get(martId) ?? Promise.resolve()).then(async () => {
+      const current = await readDoc(martId);
+      if (!current) return;
+      const next = fn(current);
+      docs.set(martId, next);
+      const cache = caches.get(martId);
+      if (cache) {
+        cache.entries = next.flatMap((r) => { const e = cache.entries.find((x) => x.reportId === r.reportId); return e ? [{ ...e, usedAt: r.usedAt, ...(e.report ? { report: { ...e.report, usedAt: r.usedAt } } : {}) }] : []; });
+        emit(martId);
+      }
+      try { await col.put(martId, { reports: next }); } catch (e) { console.warn('Saving the exported reports failed', e); }
+    });
+    chains.set(martId, run);
+    return run;
   }
   const touch = (martId: string, reportId: string, usedAt: string) => mutate(martId, (l) => (l.some((r) => r.reportId === reportId) ? l.map((r) => (r.reportId === reportId ? { reportId, usedAt } : r)) : [...l, { reportId, usedAt }]));
   const forget = (martId: string, reportId: string) => mutate(martId, (l) => l.filter((r) => r.reportId !== reportId));
@@ -244,12 +254,15 @@ export function createExporter(ctx: Ctx): Exporter {
     if (caches.has(martId)) return;
     const cache: MartCache = { entries: [] };
     caches.set(martId, cache);
-    void stored(martId).then((list) => {
-      if (caches.get(martId) !== cache) return;
+    const start = (list: StoredReport[]) => {
       cache.entries = list.map((r) => ({ reportId: r.reportId, usedAt: r.usedAt, state: 'loading' as const }));
       emit(martId);
       list.forEach((r) => { void read(martId, cache, r.reportId); });
-    });
+    };
+    // When the document is already known the entries are there at once, so a re-read never shows an empty list.
+    const known = docs.get(martId);
+    if (known) { start(known); return; }
+    void readDoc(martId).then((list) => { if (list && caches.get(martId) === cache) start(list); });
   }
 
   const destinationConfig = (t: SheetTarget) => ({ type: 'google-sheets-config', spreadsheetId: t.spreadsheetId, sheetId: t.sheetId });
@@ -293,13 +306,13 @@ export function createExporter(ctx: Ctx): Exporter {
 
     run(a) {
       if (flights.has(a.martId)) return Promise.reject(new Error('An export for this data mart is already in progress.'));
-      const listeners = new Set<(s: Stage) => void>();
+      const stageListeners = new Set<(s: Stage) => void>();
       const flight: Flight = {
         stage: a.source.kind === 'new' ? 'sheet' : 'report', sourceKind: a.source.kind, notes: a.notes ?? [], settled: false,
         promise: undefined as unknown as Promise<RunResult>,
-        subscribe(cb) { listeners.add(cb); return () => listeners.delete(cb); },
+        subscribe(cb) { stageListeners.add(cb); return () => stageListeners.delete(cb); },
       };
-      const onStage = (s: Stage) => { flight.stage = s; a.onStage?.(s); listeners.forEach((l) => l(s)); };
+      const onStage = (s: Stage) => { flight.stage = s; a.onStage?.(s); stageListeners.forEach((l) => l(s)); };
       flight.promise = execute({ ...a, onStage }).finally(() => {
         flight.settled = true;
         // The report may have changed in OWOX (or be gone): read the mart's reports again.
