@@ -145,3 +145,29 @@ test('a refresh while counts are queued or in flight counts each card once per g
   expect(Math.max(...perId.values())).toBeLessThanOrEqual(2);
   expect(traverseData).toHaveBeenCalledTimes(12); // 8 first-generation (4 in flight + 4 queued, upgraded) + 4 re-asked in flight
 });
+
+test('a queued card shows queued, and a request for a card that left the band is dropped so the visible one counts first', async () => {
+  const ids = Array.from({ length: 12 }, (_, i) => `m${i}`);
+  const gates: (() => void)[] = [];
+  const traverseData = vi.fn(() => new Promise<ReturnType<typeof traversalOf>>((r) => { gates.push(() => r(traversalOf([{ 'Unique Count': 7 }]))); }));
+  const model = modelOf(ids);
+  const { result, rerender } = renderHook(({ vis }) => useCardStatus(model, vis, 0), { wrapper: setup(traverseData), initialProps: { vis: ids } });
+  act(() => ids.forEach((id) => result.current.request(id)));
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
+  expect(result.current.counts.get('m0')).toEqual({ state: 'loading' });
+  expect(result.current.counts.get('m11')).toEqual({ state: 'queued' });
+
+  // The band narrows to a card that was queued last: the others are dropped, not waited behind.
+  rerender({ vis: ['m11'] });
+  act(() => gates.shift()!());
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(5));
+  expect(result.current.counts.get('m11')).toEqual({ state: 'loading' });
+  gates.forEach((g) => g());
+  await new Promise((r) => setTimeout(r, 20));
+  expect(traverseData).toHaveBeenCalledTimes(5);
+
+  // Shown again, a dropped card asks again.
+  rerender({ vis: ['m11', 'm5'] });
+  act(() => result.current.request('m5'));
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(6));
+});
