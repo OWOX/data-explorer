@@ -301,3 +301,23 @@ test('Undo of hiding a column twice in a row is saved both times (hide, Undo, hi
     await waitFor(() => expect(t.puts.at(-1)!.doc.columns).toContain('store_id'), { timeout: 3000 });
   }
 });
+
+test('in grouped mode Move right reads nothing new: the cells follow their headers', async () => {
+  const t = setup();
+  await ready();
+  await showColumn('Amount');
+  await aggregate('Amount', 'Sum');
+  await sumLoaded();
+  const cellOf = (title: string) => bodyRows()[0]!.querySelectorAll('td')[headers().indexOf(title)]!.textContent;
+  const before = headers();
+  const id = cellOf('id');
+  const status = cellOf('status');
+  const reads = t.queries.length;
+  const menu = await openColumnMenu(within(data()), 'id');
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Move right' }));
+  await waitFor(() => expect(headers()).toEqual([before[1], before[0], ...before.slice(2)]));
+  expect(t.queries.length).toBe(reads);
+  expect(cellOf('id')).toBe(id);
+  expect(cellOf('status')).toBe(status);
+  expect(sumCell()).toMatch(/\d/);
+});

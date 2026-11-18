@@ -1,6 +1,6 @@
 import type { JoinedSource } from '../api/blendable';
 import type { Field } from '../model/types';
-import { moveColumn, moveColumnBy, orderColumns } from './column-order';
+import { groupMap, moveColumn, moveColumnBy, orderColumns } from './column-order';
 
 const f = (name: string, martId: string): Field => ({ name, alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId, label: martId, aliasPath: martId } });
 const src = (aliasPath: string, martId: string, names: string[]): JoinedSource => ({ aliasPath, martId, label: martId, depth: 1, fields: names.map((n) => f(n, martId)), uniqueCount: false });
@@ -78,4 +78,12 @@ describe('moveColumn', () => {
     expect(moveColumnBy(list, 'customers__id', -1, sources)).toBe(list);
     expect(moveColumnBy(list, 'products__sku', 1, sources)).toEqual(['id', 'total', 'status', 'customers__id', 'customers__city', 'products__price', 'products__sku']);
   });
+});
+
+test('groupMap: a mart joined to itself is its own group, apart from the main mart\'s columns', () => {
+  const group = groupMap([src('self', 'orders', ['self__id', 'self__total'])]);
+  expect(group('id')).toBe('');
+  expect(group('self__id')).toBe('orders');
+  const list = ['id', 'total', 'self__id', 'self__total'];
+  expect(moveColumn(list, 'id', 'self__id', [src('self', 'orders', ['self__id', 'self__total'])])).toBe(list);
 });

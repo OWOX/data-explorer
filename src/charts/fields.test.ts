@@ -22,6 +22,15 @@ describe('chartFields', () => {
     expect(r.dimensions.map((d) => d.name)).toEqual(['channel', 'c__city']);
     expect(r.dates.map((d) => d.name)).toEqual(['date']);
   });
+  it('does not depend on the order of the shown columns (a column move changes no chart)', () => {
+    const shown = ['id', 'date', 'amount', 'qty', 'channel', 'c__city', 'c__ltv'];
+    const a = chartFields(schema, shown, NO_AGGREGATION, 'M', ['M', 'C']);
+    const b = chartFields(schema, [...shown].reverse(), NO_AGGREGATION, 'M', ['M', 'C']);
+    expect(b.metrics.map((m) => m.field.name)).toEqual(a.metrics.map((m) => m.field.name));
+    expect(b.metrics[0]!.field.name).toBe('amount');
+    expect(b.dates.map((d) => d.name)).toEqual(a.dates.map((d) => d.name));
+    expect(b.dimensions.map((d) => d.name)).toEqual(a.dimensions.map((d) => d.name));
+  });
   it('uses the grid Σ function of a column', () => {
     const r = chartFields(schema, ['amount'], { aggregations: [{ column: 'amount', function: 'AVG' }, { column: 'amount', function: 'MAX' }], dateTrunc: [] }, 'M', ['M']);
     expect(r.metrics[0]!.fn).toBe('AVG');

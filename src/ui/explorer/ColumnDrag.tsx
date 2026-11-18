@@ -50,7 +50,7 @@ function useColumnDrag({ scroller, head, groupOf, onMove }: Options): ColumnDrag
     const box = scroller.current;
     if (!thead || !box) return;
     let press: { column: string; x: number; y: number } | null = null;
-    let drag: { column: string; cols: Col[]; at: number; grab: number; before: string | null; changes: boolean } | null = null;
+    let drag: { column: string; grab: number; before: string | null; changes: boolean } | null = null;
     let last = { x: 0, y: 0 };
     let raf = 0;
     const swallowNextClick = () => {
@@ -91,7 +91,11 @@ function useColumnDrag({ scroller, head, groupOf, onMove }: Options): ColumnDrag
     };
     const update = () => {
       if (!drag) return;
-      const { cols, at } = drag;
+      // Measured on every update: rows arriving mid-drag change the auto-layout widths. The dragged column is found again by name.
+      const group = latest.current.groupOf(drag.column);
+      const cols = measure().filter((c) => latest.current.groupOf(c.name) === group);
+      const at = cols.findIndex((c) => c.name === drag!.column);
+      if (at < 0) return;
       const me = cols[at]!;
       const px = contentX(last.x);
       const width = me.right - me.left;
@@ -149,7 +153,7 @@ function useColumnDrag({ scroller, head, groupOf, onMove }: Options): ColumnDrag
       const at = cols.findIndex((c) => c.name === column);
       // A column alone in its data mart has nowhere to go: the press stays a click.
       if (at < 0 || cols.length < 2) return false;
-      drag = { column, cols, at, grab: contentX(press!.x) - cols[at]!.left, before: null, changes: false };
+      drag = { column, grab: contentX(press!.x) - cols[at]!.left, before: null, changes: false };
       document.body.classList.add('dm-col-dragging');
       window.getSelection()?.removeAllRanges();
       box.addEventListener('scroll', update);

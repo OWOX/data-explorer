@@ -19,10 +19,11 @@ function metricFn(f: Field, agg: Aggregation): AggFn | null {
   return AGGREGATE_FUNCTIONS.find((fn) => allowed.includes(fn)) ?? null;
 }
 
-/** `shown` is the grid's shown column names in grid order; `schema` the blended schema; `mainMartId` the grid's mart. */
+/** `shown` is the grid's shown column names (their order does not matter: the charts follow the schema's, so a column move changes nothing); `schema` the blended schema; `mainMartId` the grid's mart. */
 export function chartFields(schema: Field[], shown: string[], agg: Aggregation, mainMartId: string, groupOrder: string[], uniqueCountPaths?: ReadonlySet<string>): ChartFields {
   const by = new Map(schema.map((f) => [f.name, f]));
-  const fields = shown.flatMap((n) => by.get(n) ?? []);
+  const on = new Set(shown);
+  const fields = [...by.values()].filter((f) => on.has(f.name));
   const marts = groupOrder.map((martId): ChartMart => {
     const own = fields.filter((f) => martOf(f, mainMartId) === martId);
     const aliasPath = martId === mainMartId ? '' : (schema.find((f) => f.joined?.martId === martId)?.joined?.aliasPath ?? '');

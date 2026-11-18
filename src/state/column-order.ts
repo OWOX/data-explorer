@@ -20,8 +20,8 @@ export function orderColumns(columns: string[], sources: JoinedSource[], fallbac
   return [...(own.length === 0 && groups.size > 0 ? fallbackOwn : own), ...[...groups.values()].flat()];
 }
 
-/** The data mart a column belongs to: a joined mart's id, or '' for the main mart's own columns. */
-function groupMap(sources: JoinedSource[]): (name: string) => string {
+/** The data mart a column belongs to: a joined mart's id, or '' for the main mart's own columns (so a mart joined to itself is its own group). */
+export function groupMap(sources: JoinedSource[]): (name: string) => string {
   const owner = new Map<string, string>();
   for (const s of sources) for (const f of s.fields) if (!owner.has(f.name)) owner.set(f.name, s.martId);
   return (name) => owner.get(name) ?? '';

@@ -14,7 +14,7 @@ import { toTraverseFilters, type ColumnFilter } from '../../filters/build';
 import { ChartsBody } from '../../charts/ChartsBody';
 import { useWidth } from '../../charts/useWidth';
 import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKey } from '../../model/sort';
-import { moveColumn, moveColumnBy, orderColumns } from '../../state/column-order';
+import { groupMap, moveColumn, moveColumnBy, orderColumns } from '../../state/column-order';
 import { joinedMartIds, ownNamesIn } from '../../state/join-plan';
 import type { Model, Schema } from '../../model/types';
 import { primaryKeys } from '../../records/relationships';
@@ -307,7 +307,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   if (said.length) setNote({ text: said.join(' ') });
   const grouped = isGrouped(aggNow);
   // Grouped with no sort of the member's own: the first group key ascending, so "Load more" pages never reshuffle.
-  const firstKey = shown.find((n) => !aggNow.aggregations.some((r) => r.column === n));
+  // From the schema's order, not the grid's: moving a column must not change the query.
+  const firstKey = schema.find((f) => shown.includes(f.name) && !aggNow.aggregations.some((r) => r.column === f.name))?.name;
   const gridSorts = useMemo<SortKey[]>(() => (grouped ? (own?.length ? own : firstKey ? [{ field: firstKey, direction: 'asc' }] : []) : sorts), [grouped, own, sorts, firstKey]);
   const pks = primaryKeys(native);
   const wanted = shown.flatMap((name) => schema.find((f) => f.name === name) ?? []);
@@ -530,7 +531,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const pickHeader = (kind: 'col' | 'row', i: number, extend: boolean) => setSelected((cur) => (extend && cur && cur.kind === kind ? { kind, from: cur.from, to: i } : { kind, from: i, to: i }));
   // Measured for the charts: their panels are as wide as the visible grid, not the (wider) table.
   const { ref: scroller, width: scrollerWidth } = useWidth<HTMLDivElement>(charts);
-  const owner = (column: string) => byName.get(column)?.joined?.martId ?? martId;
+  const owner = useMemo(() => groupMap(sources), [sources]);
   const traverseFilters = useMemo(() => toTraverseFilters(schema, Object.values(filters)), [schema, filters]);
   // A click selects the cell; a shift-click stretches a block from the active cell (the one a click or a header selected) to this one,
   // and does not open another record.
