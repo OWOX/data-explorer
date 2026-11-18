@@ -27,7 +27,7 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen }: 
   const gridMart = gridId ? model.marts.get(gridId) : undefined;
   const [rows, setRows] = useState<{ id: string; label: string; grouped: boolean; noKey: boolean } | null>(null);
   const showRows = useCallback((label: string | null, grouped = false, noKey = false) => { if (gridId) setRows(label === null ? null : { id: gridId, label, grouped, noKey }); }, [gridId]);
-  const save = useCallback((grid: GridState) => { if (gridId) dispatch({ type: 'saveGrid', martId: gridId, grid }); }, [dispatch, gridId]);
+  const save = useCallback((grid: GridState, edit = false) => { if (gridId) dispatch({ type: edit ? 'editGrid' : 'saveGrid', martId: gridId, grid }); }, [dispatch, gridId]);
 
   const noKey = !!mart && rows?.id === mart.id && rows.noKey && !!gridMart?.accessible;
   return (

@@ -68,6 +68,8 @@ export type Action =
   /** The main data mart, the joined ones (their columns in the main grid) and the grids they leave behind change in one step Undo covers. */
   | { type: 'setMarts'; selection: Selection; grids: Record<string, GridState> }
   | { type: 'saveGrid'; martId: string; grid: GridState }
+  /** The member changed the grid (a filter, a sort, an aggregation, a column shown or hidden, Reset): stored like `saveGrid`, and one step Undo covers. */
+  | { type: 'editGrid'; martId: string; grid: GridState }
   /** A view link opens: everything it carries is set at once. No history entry, so Undo has nothing to undo. */
   | { type: 'applyView'; selection: Selection; grid: GridState | null; search: string; found?: string[]; contextIds: string[]; storageIds: string[] | null }
   | { type: 'refreshModel' };
@@ -156,6 +158,11 @@ export function reducer(state: State, a: Action): State {
       const before = valuesOf(state.grids, Object.keys(a.grids));
       if (JSON.stringify(a.selection) === JSON.stringify(cur) && JSON.stringify(before) === JSON.stringify(a.grids)) return state;
       return { ...state, selection: a.selection, grids: { ...state.grids, ...a.grids }, history: [...state.history, { ...cur, grids: before }].slice(-HISTORY_LIMIT), future: [] };
+    }
+    case 'editGrid': {
+      const before = state.grids[a.martId] ?? null;
+      if (JSON.stringify(before) === JSON.stringify(a.grid)) return state;
+      return { ...state, grids: { ...state.grids, [a.martId]: a.grid }, history: [...state.history, { ...cur, grids: { [a.martId]: before } }].slice(-HISTORY_LIMIT), future: [] };
     }
     case 'saveGrid': return { ...state, grids: { ...state.grids, [a.martId]: a.grid } };
     case 'applyView': return {

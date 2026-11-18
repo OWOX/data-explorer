@@ -6,6 +6,14 @@ import type { Model } from '../../model/types';
 import { useStore } from '../../state/store';
 import { Tooltip } from '../Tooltip';
 
+/** Mac keyboards show the shortcuts with the command and shift glyphs; everywhere else they are spelled out. */
+export const isMac = () => {
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+  return /mac|iphone|ipad/i.test(nav.userAgentData?.platform || navigator.platform || '');
+};
+export const undoTip = (mac: boolean) => (mac ? 'Undo (⌘Z)' : 'Undo (Ctrl+Z)');
+export const redoTip = (mac: boolean) => (mac ? 'Redo (⇧⌘Z)' : 'Redo (Ctrl+Shift+Z)');
+
 export function HistoryButtons({ model }: { model: Model }) {
   const [{ history, future }, dispatch] = useStore();
   const canUndo = history.length > 0;
@@ -25,6 +33,7 @@ export function HistoryButtons({ model }: { model: Model }) {
       if (e.altKey && !mod && e.key === 'ArrowLeft') act = 'undo';
       else if (e.altKey && !mod && e.key === 'ArrowRight') act = 'redo';
       else if (mod && !e.altKey && key === 'z') act = e.shiftKey ? 'redo' : 'undo';
+      else if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && key === 'y' && !isMac()) act = 'redo';
       if (!act) return;
       if (act === 'undo' ? !canUndo : !canRedo) return;
       e.preventDefault();
@@ -35,13 +44,14 @@ export function HistoryButtons({ model }: { model: Model }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canUndo, canRedo, dispatch, model]);
 
+  const mac = isMac();
   const button = 'inline-flex size-8 items-center justify-center rounded-md border hover:bg-accent disabled:opacity-50 disabled:hover:bg-transparent';
   return (
     <div className="dm-page-history" role="group" aria-label="History">
-      <Tooltip content="Undo (Alt+Left)">
+      <Tooltip content={undoTip(mac)}>
         <button type="button" aria-label="Undo" disabled={!canUndo} onClick={undo} className={button}><Undo2 className="size-4" /></button>
       </Tooltip>
-      <Tooltip content="Redo (Alt+Right)">
+      <Tooltip content={redoTip(mac)}>
         <button type="button" aria-label="Redo" disabled={!canRedo} onClick={redo} className={button}><Redo2 className="size-4" /></button>
       </Tooltip>
     </div>
