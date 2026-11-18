@@ -39,7 +39,7 @@ export function MultiSelect({ label, options, selected, onChange }: {
     value: o.value,
     text: o.label,
     label: <>{o.icon && <o.icon size={14} />}<span className="dm-filter-label">{o.label}</span>{o.count !== undefined && <span className="dm-badge">{num(o.count)}</span>}</>,
-    extra: <button type="button" className="dm-filter-only" aria-label={`Only ${o.label}`} onClick={() => onChange([o.value])}>only</button>,
+    only: () => onChange([o.value]),
   }));
 
   return (

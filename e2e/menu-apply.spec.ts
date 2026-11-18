@@ -21,6 +21,19 @@ async function openSub(page: Page, column: string, row: 'Filter' | 'Aggregate') 
   await expect(dialog).toBeVisible();
   return dialog;
 }
+/** The panel sits inside the window, and its Apply is on screen without any scrolling. */
+async function expectApplyOnScreen(page: Page, panel: Locator) {
+  const box = (await panel.boundingBox())!;
+  const view = page.viewportSize()!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(view.width);
+  expect(box.y + box.height).toBeLessThanOrEqual(view.height);
+  const apply = panel.getByRole('button', { name: 'Apply' });
+  await expect(apply).toBeInViewport({ ratio: 1 });
+  const a = (await apply.boundingBox())!;
+  expect(a.y + a.height).toBeLessThanOrEqual(box.y + box.height);
+}
 /** Wheels over the panel until its form is at the end, then keeps going the way trackpad momentum does. */
 async function wheelPastEnd(page: Page, dialog: Locator) {
   const p = await centre(dialog);
@@ -32,6 +45,8 @@ test('Aggregate: a long function list scrolls to Apply, and wheeling past its en
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await tick(page, 'Net Revenue');
   const dialog = await openSub(page, 'Net Revenue', 'Aggregate');
+  await expect(dialog.getByRole('option')).toHaveCount(9);
+  await expectApplyOnScreen(page, dialog);
   await wheelPastEnd(page, dialog);
   await expect(page.getByRole('dialog')).toBeVisible();
   const apply = dialog.getByRole('button', { name: 'Apply' });
@@ -39,13 +54,22 @@ test('Aggregate: a long function list scrolls to Apply, and wheeling past its en
   await dialog.getByLabel('Sum').scrollIntoViewIfNeeded();
   await click(page, dialog.getByLabel('Sum'));
   await expect(apply).toBeEnabled();
-  await apply.scrollIntoViewIfNeeded();
+  await expectApplyOnScreen(page, dialog);
   await click(page, apply);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(data(page).getByRole('columnheader', { name: /Net Revenue · Sum/ })).toBeVisible();
   await expect(data(page).getByRole('button', { name: 'Aggregate Net Revenue' })).toBeVisible();
   // The rows are grouped now: the 200 order rows collapse to far fewer.
   await expect.poll(async () => data(page).getByRole('row').count()).toBeLessThan(50);
+});
+
+test('Filter forms keep Apply on screen as soon as they open', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  const dialog = await openSub(page, 'status', 'Filter');
+  await expect(dialog.getByRole('button', { name: 'Apply' })).toBeVisible();
+  await expectApplyOnScreen(page, dialog);
+  await wheelPastEnd(page, dialog);
+  await expectApplyOnScreen(page, dialog);
 });
 
 test('Filter on a date: Last… opens a third panel whose form shows Apply, with a unit dropdown, and wheeling past its end does not close the menu', async ({ page }) => {

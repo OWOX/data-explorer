@@ -1352,8 +1352,8 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     const hint = screen.getAllByLabelText('About Customer').find((el) => el.closest('.dm-checklist-row'))!;
     expect(hint.closest('.dm-checklist-row')).toHaveClass('dm-reveal-host');
     expect(hint.closest('.dm-hint-slot')).not.toBeNull();
-    // right after the label, in the same inline box
-    expect(hint.closest('.dm-fieldlabel')).not.toBeNull();
+    // beside the option, not inside it
+    expect(hint.closest('[role="option"]')).toBeNull();
     await userEvent.keyboard('{Escape}');
     await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByText('status');

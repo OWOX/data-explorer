@@ -3,7 +3,7 @@ import type { Field } from '../../model/types';
 import { Popover } from '../Popover';
 import { fieldLabel } from '../../model/fieldLabel';
 import { SheetsChecklist, type ChecklistItem } from '../SheetsChecklist';
-import { FieldLabel } from './FieldLabel';
+import { FieldHint, FieldLabel } from './FieldLabel';
 
 /**
  * The columns of one data mart's tab: only that mart's fields (the main mart's own, or a joined mart's blended ones).
@@ -34,7 +34,8 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange }:
   const items: ChecklistItem[] = fields.map((f) => ({
     value: f.name,
     text: fieldLabel(f),
-    label: <FieldLabel field={f} />,
+    label: <FieldLabel field={f} hint={false} />,
+    extra: <FieldHint field={f} />,
     disabled: set.has(f.name) && (visible.length === 1 || locked(f.name)),
   }));
   return (
