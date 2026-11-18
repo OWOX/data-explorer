@@ -275,8 +275,14 @@ export function createExporter(ctx: Ctx): Exporter {
       if (isNotFound(e)) {
         if (caches.get(martId) !== cache) return;
         await forget(martId, reportId);
-        // The forget is refused when the stored document cannot be read again; the report is gone in OWOX all the same, so it leaves the list.
-        if (caches.get(martId) === cache && cache.entries.some((x) => x.reportId === reportId)) { cache.entries = cache.entries.filter((x) => x.reportId !== reportId); emit(martId); }
+        // The forget is refused when the stored document cannot be read again; the report is gone in OWOX all the same, so it leaves the list
+        // and the in-memory document (nothing is written), which keeps a listener from waiting for an entry that will never come.
+        if (caches.get(martId) === cache && cache.entries.some((x) => x.reportId === reportId)) {
+          const d = docs.get(martId);
+          if (d) docs.set(martId, d.filter((r) => r.reportId !== reportId));
+          cache.entries = cache.entries.filter((x) => x.reportId !== reportId);
+          emit(martId);
+        }
       }
       else patch(martId, cache, reportId, (x) => ({ reportId: x.reportId, usedAt: x.usedAt, state: 'failed' }));
     }

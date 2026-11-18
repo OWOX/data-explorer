@@ -401,6 +401,8 @@ describe('exporter', () => {
     const ex = createExporter(ctx);
     ex.load('orders');
     await vi.waitFor(() => expect(ex.entries('orders').map((e) => [e.reportId, e.state])).toEqual([['b', 'ready']]));
+    expect(ex.storedNow('orders')?.map((r) => r.reportId)).toEqual(['b']);
+    expect((await ex.stored('orders')).map((r) => r.reportId)).toEqual(['b']);
   });
 
   const liveGet = (ctx: ReturnType<typeof stubCtx>) => (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => live(path.split('/').pop()!));
