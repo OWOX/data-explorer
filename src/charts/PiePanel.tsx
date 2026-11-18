@@ -2,7 +2,7 @@ import { columnTitle, fieldLabel } from '../model/fieldLabel';
 import type { TraverseFilter } from '../sdk/types';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { ChartPanel } from './ChartPanel';
-import type { ChartFields } from './fields';
+import { pieMetrics, type ChartFields } from './fields';
 import { metricKey, pieOtherQuery, TOP_N, topValuesQuery } from './queries';
 import { metricLabel, metricText, numberOf, type Formatter } from './Scorecards';
 import type { ChartSettings, ResolvedCharts } from './settings';
@@ -32,7 +32,7 @@ export function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, for
     ...(needOther && other.rows?.[0] && other.rows[0][key] != null ? [slice('Other', other.rows[0][key], OTHER_COLOR)] : []),
   ];
   const items: MenuItem[] = [
-    { kind: 'radio', label: 'Metric', value: metric!.field.name, options: cf.metrics.map((m) => ({ value: m.field.name, label: metricLabel(m) })), onPick: (v) => onChange({ metric: v }) },
+    { kind: 'radio', label: 'Metric', value: metric!.field.name, options: pieMetrics(cf).map((m) => ({ value: m.field.name, label: metricLabel(m) })), onPick: (v) => onChange({ metric: v }) },
     { kind: 'radio', label: 'Dimension', value: dim!.name, options: cf.dimensions.map((d) => ({ value: d.name, label: columnTitle(d) })), onPick: (v) => onChange({ dimension: v }) },
   ];
   const title = `${metricLabel(metric!)} by ${fieldLabel(dim!)}`;

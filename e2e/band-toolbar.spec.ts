@@ -32,13 +32,13 @@ for (const mode of ['Table', 'Charts']) {
 
 // Charts mode loads no rows, so the badge is absent there (as before); only Table can assert the order.
 for (const width of [1440, 800]) {
-  test(`Table at ${width}px: the records badge follows the view switch in the Data band header`, async ({ page }) => {
+  test(`Table at ${width}px: the records badge sits between the Data title and its hint`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await expect(data(page).locator('.dm-band-count')).toBeVisible();
-    const sw = await data(page).getByRole('radio', { name: 'Charts' }).boundingBox();
+    const title = await data(page).locator('.dm-band-title').boundingBox();
     const badge = await data(page).locator('.dm-band-count').boundingBox();
     const hint = await data(page).locator('.dm-band-titlegroup .dm-hint').boundingBox();
-    expect(badge!.x).toBeGreaterThan(sw!.x + sw!.width);
-    expect(hint!.x).toBeLessThan(sw!.x);
+    expect(badge!.x).toBeGreaterThan(title!.x + title!.width);
+    expect(hint!.x).toBeGreaterThan(badge!.x + badge!.width);
   });
 }

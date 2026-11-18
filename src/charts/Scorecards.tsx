@@ -22,7 +22,7 @@ export const metricLabel = (m: Metric): string => `${fieldLabel(m.field)} · ${A
 /** A mart's cards: its record count (when it has a primary key), then one per metric. */
 export function cardsOf(mart: ChartMart): Card[] {
   return [
-    ...(mart.hasPk ? [{ id: recordsCardId(mart.martId), label: 'Records', key: uniqueKey(mart.aliasPath) }] : []),
+    ...(mart.hasPk ? [{ id: recordsCardId(mart.martId), label: 'Unique Records', key: uniqueKey(mart.aliasPath) }] : []),
     ...mart.metrics.map((m) => ({ id: m.field.name, label: metricLabel(m), key: metricKey(m), field: m.field, fn: m.fn })),
   ];
 }
@@ -101,7 +101,7 @@ export function MartCards({ martId, mart, main, r, scores, bucket, filter, versi
     // Cards ask for 9rem (basis) but may shrink; only the label truncates, so the value's own width is the floor and a number is never cut.
     <div className="flex min-w-0 flex-1 flex-wrap gap-2">
       {cards.map((c) => (
-        <div key={c.id} data-card={c.id} className="min-w-0 flex-1 basis-36 overflow-hidden rounded-md border px-3 py-2">
+        <div key={c.id} data-card={c.id} className="dm-scorecard min-w-0 flex-1 basis-36 overflow-hidden px-3 py-2">
           <div className="dm-muted truncate text-xs" title={c.label}>{c.label}</div>
           {row ? <CardValue card={c} row={row} formatOf={formatOf} /> : <Skeleton rows={1} />}
           {spark.rows && spark.rows.length > 0 && <Sparkline points={points(c)} ariaLabel={`${c.label} trend`} />}
