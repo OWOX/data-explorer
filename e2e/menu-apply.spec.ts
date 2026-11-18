@@ -106,8 +106,6 @@ test('a column ticked in Fields can have its menu opened right away, and the men
   await tick(page, 'Net Revenue');
   const icon = data(page).getByLabel('Column menu Net Revenue', { exact: true });
   await icon.scrollIntoViewIfNeeded();
-  // The grid keeps re-laying out for a moment after a column arrives (the header slides a few pixels): a click aimed before it settles lands on the wrong element.
-  await expect.poll(async () => { const y = (await icon.boundingBox())?.y; await page.waitForTimeout(250); return y === (await icon.boundingBox())?.y; }).toBe(true);
   await icon.locator('xpath=ancestor::th').hover();
   await click(page, icon);
   const menu = page.getByRole('menu');
