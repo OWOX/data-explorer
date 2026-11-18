@@ -9,6 +9,8 @@ import { chartFields } from './fields';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { cardsOf, MartCards, useScorecards } from './Scorecards';
 import { resolveCharts, type ChartSettings } from './settings';
+import { PiePanel } from './PiePanel';
+import { TimeSeriesPanel } from './TimeSeriesPanel';
 import { useBucket } from './useBucket';
 
 /** The gutter cell of a row that is not a data row; the grid has the same one. */
@@ -46,7 +48,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
   const r = resolveCharts(settings ?? {}, cf);
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
   const idle = paused || !settings;
-  const { bucket } = useBucket(martId, r.date, r.bucket, filter, version, idle);
+  const { bucket, error: rangeError, retry: retryRange } = useBucket(martId, r.date, r.bucket, filter, version, idle);
   const scores = useScorecards(martId, cf, filter, version, idle);
   const columns = groups.reduce((n, g) => n + g.span, 0);
 
@@ -60,6 +62,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
     if (!hidden.delete(id)) hidden.add(id);
     return { ...sc, hidden: [...hidden] };
   });
+  const panelProps = { martId, cf, r, filter, version, idle, hasFilters, formatOf, ready: !!settings };
   const items: MenuItem[] = [
     ...cf.marts.flatMap((m, i) => cardsOf(m).map((c): MenuItem => ({ kind: 'check', label: i === 0 ? c.label : `${groups[i]!.title} · ${c.label}`, checked: !r.hidden.has(c.id), onToggle: () => toggleCard(c.id) }))),
     { kind: 'check', label: 'Sparklines', checked: r.sparklines, onToggle: () => patch((sc) => ({ ...sc, sparklines: !(sc.sparklines ?? true) })) },
@@ -81,8 +84,12 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
       </tr>
       <tr data-chart-panels-row>
         <td colSpan={columns + 2} className="p-0">
-          {/* Sticky and as wide as the scroller shows, so the panels stay in view however wide the table is. The time series and pie go in here. */}
-          <div data-chart-panels className="sticky left-0 p-2" style={{ width: scrollerWidth }} />
+          {/* Sticky and as wide as the scroller shows, so the panels stay in view however wide the table is. */}
+          <div data-chart-panels className="sticky left-0 flex flex-col gap-6 p-2" style={{ width: scrollerWidth }}>
+            {r.date && r.metric && <TimeSeriesPanel {...panelProps} bucket={bucket} range={{ error: rangeError, retry: retryRange }}
+              onChange={(p) => change((cur) => ({ ...cur, timeSeries: { ...cur.timeSeries, ...p } }))} />}
+            {r.pieMetric && r.pieDimension && <PiePanel {...panelProps} onChange={(p) => change((cur) => ({ ...cur, pie: { ...cur.pie, ...p } }))} />}
+          </div>
         </td>
       </tr>
     </tbody>

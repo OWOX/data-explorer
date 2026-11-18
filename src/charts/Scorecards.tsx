@@ -6,7 +6,7 @@ import type { Row, TraverseFilter } from '../sdk/types';
 import { ErrorBox } from '../ui/ErrorBox';
 import { formatNumber } from '../ui/format';
 import { Skeleton } from '../ui/Skeleton';
-import type { ChartFields, ChartMart } from './fields';
+import type { ChartFields, ChartMart, Metric } from './fields';
 import { metricKey, scorecardsQuery, sparklineQuery, uniqueKey } from './queries';
 import { recordsCardId, type ResolvedCharts } from './settings';
 import { Sparkline, type Point } from './svg/Sparkline';
@@ -14,11 +14,14 @@ import { useChartQuery, type ChartResult } from './useChartQuery';
 
 export type Card = { id: string; label: string; key: string; field?: Field; fn?: AggFn };
 
+/** How a metric is named wherever it shows: on its card, in a chart title and in a menu. */
+export const metricLabel = (m: Metric): string => `${fieldLabel(m.field)} · ${AGG_LABELS[m.fn]}`;
+
 /** A mart's cards: its record count (when it has a primary key), then one per metric. */
 export function cardsOf(mart: ChartMart): Card[] {
   return [
     ...(mart.hasPk ? [{ id: recordsCardId(mart.martId), label: 'Records', key: uniqueKey(mart.aliasPath) }] : []),
-    ...mart.metrics.map((m) => ({ id: m.field.name, label: `${fieldLabel(m.field)} · ${AGG_LABELS[m.fn]}`, key: metricKey(m), field: m.field, fn: m.fn })),
+    ...mart.metrics.map((m) => ({ id: m.field.name, label: metricLabel(m), key: metricKey(m), field: m.field, fn: m.fn })),
   ];
 }
 
@@ -27,17 +30,22 @@ export function useScorecards(martId: string, cf: ChartFields, filter: TraverseF
   return useChartQuery(martId, paused ? null : scorecardsQuery(cf.marts, filter), version);
 }
 
-type Formatter = (column: string, type: string) => Format;
+export type Formatter = (column: string, type: string) => Format;
 
 function textOf(card: Card, row: Row | undefined, formatOf: Formatter): string {
   if (!row) return '';
   const v = row[card.key];
   if (!card.field) return formatNumber(v) ?? (v === null || v === undefined ? '' : String(v));
-  const type = outputType(card.field, card.fn);
-  return formatValue(v, type, keepsUnit(card.fn) ? formatOf(card.field.name, type) : AUTO);
+  return metricText(card.field, card.fn!, v, formatOf);
 }
 
-const numberOf = (v: unknown): number | null => {
+/** A metric's value as the grid shows it: the output type's format, with the column's own unit only where the function keeps it. */
+export function metricText(field: Field, fn: AggFn, v: unknown, formatOf: Formatter): string {
+  const type = outputType(field, fn);
+  return formatValue(v, type, keepsUnit(fn) ? formatOf(field.name, type) : AUTO);
+}
+
+export const numberOf = (v: unknown): number | null => {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;

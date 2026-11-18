@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { GRID_COLUMNS_COLLECTION } from '../api/grid-columns';
@@ -14,14 +14,14 @@ import type { ChartSettings } from './settings';
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
 const COLUMNS = ['id', 'status', 'amount', 'created_at', 'products__price'];
 
-function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void> } = {}) {
+function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean } = {}) {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const puts = vi.fn();
   const ctx: Ctx = {
     ...base,
-    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); return real(id, o); } } },
+    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); return id === 'orders' && opts.fail?.(o) ? Promise.reject(new Error('range failed')) : real(id, o); } } },
     collections: <T,>(name: string) => {
       const c = base.collections<T>(name);
       return name === CHARTS_COLLECTION ? { get: (id: string) => (opts.gate ? opts.gate.then(() => c.get(id)) : c.get(id)), put: (id: string, d: T) => { puts(id, d); return c.put(id, d); } } : c;
@@ -114,7 +114,7 @@ test('hiding a card from the Scorecards menu removes it and saves', async () => 
   const t = await charts();
   await waitFor(() => expect(cardNames(group('orders'))).toContain('Amount · Sum'));
   await userEvent.click(screen.getByRole('button', { name: 'Scorecards options' }));
-  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Amount · Sum' }));
+  await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Amount · Sum' }));
   await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Records']));
   expect(t.puts).toHaveBeenCalledWith('orders', { scorecards: { hidden: ['amount'] } });
   expect(cardNames(group('products'))).toEqual(['Records', 'price · Sum']);
@@ -134,6 +134,94 @@ test('a change cannot be made before the saved settings load, and one made after
   expect(screen.queryByRole('button', { name: 'Scorecards options' })).toBeNull();
   release();
   await userEvent.click(await screen.findByRole('button', { name: 'Scorecards options' }));
-  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Amount · Sum' }));
+  await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Amount · Sum' }));
   await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { ...saved, scorecards: { hidden: ['amount'] } }));
+});
+
+const panel = (name: string) => screen.getByRole('button', { name: `${name} options` });
+const series = () => new Set([...data().querySelectorAll('rect[data-series]')].map((r) => r.getAttribute('data-series')));
+const withDims = [...COLUMNS, 'acquisition_session_id'];
+
+test('time series: stacking by a dimension draws several series and saves the choice', async () => {
+  const t = await charts();
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  await userEvent.click(panel('Time series'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Stack by' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'status' }));
+  await waitFor(() => expect(series().size).toBeGreaterThan(1));
+  expect(t.puts).toHaveBeenCalledWith('orders', { timeSeries: { stack: 'status' } });
+});
+
+test('time series without a stack is one series', async () => {
+  await charts();
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  expect(series().size).toBe(1);
+});
+
+test('the Horizontal bars button turns the chart and saves', async () => {
+  const t = await charts();
+  await waitFor(() => expect(data().querySelector('svg[data-orientation=vertical]')).not.toBeNull());
+  expect(screen.getByRole('button', { name: 'Vertical bars' })).toHaveAttribute('aria-pressed', 'true');
+  await userEvent.click(screen.getByRole('button', { name: 'Horizontal bars' }));
+  await waitFor(() => expect(data().querySelector('svg[data-orientation=horizontal]')).not.toBeNull());
+  expect(screen.getByRole('button', { name: 'Horizontal bars' })).toHaveAttribute('aria-pressed', 'true');
+  expect(t.puts).toHaveBeenCalledWith('orders', { timeSeries: { orientation: 'horizontal' } });
+});
+
+test('a stack with more than 8 values adds an Other series from a not_in query; fewer than 8 sends none', async () => {
+  const many = await charts({ columns: withDims, charts: { timeSeries: { stack: 'acquisition_session_id' } } });
+  await waitFor(() => expect(series().has('Other')).toBe(true));
+  expect(series().size).toBe(9);
+  const q = many.queries.find((o) => o.filter?.some((f) => f.operator === 'not_in'));
+  expect(((q?.filter?.find((f) => f.operator === 'not_in') ?? {}) as { value?: unknown[] }).value).toHaveLength(8);
+});
+
+test('a stack with fewer than 8 values sends no not_in query', async () => {
+  const t = await charts({ charts: { timeSeries: { stack: 'status' } } });
+  await waitFor(() => expect(series().size).toBeGreaterThan(1));
+  expect(series().has('Other')).toBe(false);
+  expect(t.queries.some((o) => o.filter?.some((f) => f.operator === 'not_in'))).toBe(false);
+});
+
+test('a saved pie dimension that is not shown falls back to the first dimension and writes nothing', async () => {
+  const t = await charts({ charts: { pie: { dimension: 'not_shown' } } });
+  await waitFor(() => expect(data().querySelector('svg[aria-label="Amount · Sum by status"]')).not.toBeNull());
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  expect(t.puts).not.toHaveBeenCalled();
+});
+
+test('pie menu: a chosen dimension redraws the pie and saves', async () => {
+  const t = await charts({ columns: withDims });
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  await userEvent.click(panel('Pie'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Acquisition Session ID' }));
+  await waitFor(() => expect(data().querySelector('[data-slice="Other"]')).not.toBeNull());
+  expect(t.puts).toHaveBeenCalledWith('orders', { pie: { dimension: 'acquisition_session_id' } });
+});
+
+test('a chart menu closes on scroll', async () => {
+  await charts();
+  await userEvent.click(panel('Scorecards'));
+  expect(await screen.findByRole('menu', { name: 'Scorecards menu' })).toBeInTheDocument();
+  fireEvent.scroll(document);
+  await waitFor(() => expect(screen.queryByRole('menu', { name: 'Scorecards menu' })).toBeNull());
+});
+
+test('the card checklist rows are checkboxes', async () => {
+  await charts();
+  await userEvent.click(panel('Scorecards'));
+  expect(await screen.findByRole('menuitemcheckbox', { name: 'Sparklines' })).toHaveAttribute('aria-checked', 'true');
+  expect(screen.queryAllByRole('menuitemradio')).toHaveLength(0);
+});
+
+test('a failed Auto range query shows Retry on the time series, which reads again', async () => {
+  let broken = true;
+  const t = await charts({ fail: (o) => broken && !!o.aggregation?.some((a) => a.function === 'MIN') && !o.dateTrunc });
+  const retry = await screen.findByRole('button', { name: 'Retry' });
+  broken = false;
+  const before = t.queries.length;
+  await userEvent.click(retry);
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  expect(t.queries.length).toBeGreaterThan(before);
 });
