@@ -130,6 +130,8 @@ export type Plan = {
   saves: { martId: string; columns: string[]; picks?: Picks }[];
   /** Marts that left the grid, with the own field names each was showing (null: forget what was remembered). */
   remember: { martId: string; fields: string[] | null }[];
+  /** Nothing to do: the caller dispatches nothing. */
+  noop?: true;
 };
 
 export type PlanEnv = {
@@ -234,5 +236,55 @@ export function planClick(env: PlanEnv, id: string): Plan {
     return { selection: env.selection, grids: { [main]: { ...grid, columns } }, saves: [{ martId: main, columns }], remember: [] };
   }
 
-  return becomeMain(env, id, leaveAll(main, sources, grid));
+  // A mart the main one cannot join does not replace it. The member drags it onto the main card for that (planMakeMain).
+  return { selection: env.selection, grids: {}, saves: [], remember: [], noop: true };
+}
+
+/**
+ * A mart dropped onto the main card becomes the main mart. Its own columns come first: what it shows as joined now, else
+ * what it showed when it last left a grid, else its grid's own columns, else its defaults. The old main follows as a joined
+ * mart with the columns it showed, if the new main can join it, then every joined mart the new main can reach. A mart it
+ * cannot reach is dropped and remembered. The new main keeps its own grid's filters and sorts on the new columns; the old
+ * main's do not carry over, because each main names the same field differently.
+ */
+export function planMakeMain(env: PlanEnv, id: string): Plan {
+  const main = env.selection.martId;
+  if (!main) return becomeMain(env, id);
+  if (id === main) return { selection: env.selection, grids: {}, saves: [], remember: [], noop: true };
+  const sources = env.sourcesOf(main);
+  const grid = env.gridOf(main);
+  const nextSources = env.sourcesOf(id);
+  const nextGrid = env.gridOf(id);
+  const offered = new Set(env.ownNames?.(id) ?? []);
+  const shownNow = ownNamesIn(grid.columns, sources, id).filter((n) => offered.has(n));
+  const last = (env.lastShownOf ?? noShown)(id)?.filter((n) => offered.has(n)) ?? [];
+  const own = ownColumnsIn(nextGrid.columns, nextSources);
+  let columns = shownNow.length ? shownNow : last.length ? last : own.length ? own : env.ownColumns(id);
+  const remember: Plan['remember'] = [];
+  const add = (martId: string, shown: string[]) => {
+    const names = fieldsFor(nextSources, martId, undefined, shown, inUsePaths(columns, nextSources));
+    columns = [...columns, ...names.filter((n) => !columns.includes(n))];
+  };
+  const mainShown = ownColumnsIn(grid.columns, sources);
+  if (isJoinable(nextSources, main)) add(main, mainShown);
+  else remember.push({ martId: main, fields: mainShown });
+  for (const r of joinedMartIds(grid.columns, sources)) {
+    if (r === id) continue;
+    const shown = ownNamesIn(grid.columns, sources, r);
+    if (isJoinable(nextSources, r)) add(r, shown);
+    else remember.push({ martId: r, fields: shown });
+  }
+  columns = orderColumns(columns, nextSources, env.ownColumns(id));
+  const filters = Object.fromEntries(Object.entries(nextGrid.filters).filter(([k]) => columns.includes(k)));
+  const kept = nextGrid.sorts && sortsOnColumns(nextGrid.sorts, columns);
+  const agg = keepVisible({ aggregations: nextGrid.aggregations ?? [], dateTrunc: nextGrid.dateTrunc ?? [] }, columns);
+  const next: GridState = {
+    ...nextGrid,
+    columns,
+    filters,
+    sorts: nextGrid.sorts && nextGrid.sorts.length > 0 && kept!.length === 0 ? null : kept,
+    aggregations: agg.aggregations.length ? agg.aggregations : undefined,
+    dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined,
+  };
+  return { selection: { sourceKey: env.sourceKeyFor(id), martId: id, record: null }, grids: { [id]: next }, saves: [{ martId: id, columns }], remember };
 }
