@@ -1,7 +1,7 @@
 import { columnVisibilityFeature, flexRender, tableFeatures, useTable, type ColumnDef } from '@tanstack/react-table';
 import { Box, Info, RefreshCw, RotateCcw, X } from 'lucide-react';
 import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pending-focus';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AUTO, keepsUnit } from '../../format/formats';
 import { useColumnFormats } from '../../format/useColumnFormats';
 import { PAGE_SIZE } from '../../config';
@@ -274,6 +274,19 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   if (!paused && !blocked && asked !== query) setAsked(query);
   // Charts read their own queries: the grid's rows query is paused (not dropped, which would change its key and re-read on the way back to Table).
   const charts = view === 'charts';
+  // Charts take the box the table last had (at most 32rem), so switching modes does not move the bands below.
+  // A grid that opens in Charts has never measured a table: it takes the full 32rem.
+  const frame = useRef<HTMLDivElement>(null);
+  const [tableHeight, setTableHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = frame.current;
+    if (charts || !el) return;
+    const measure = () => { const h = el.getBoundingClientRect().height; if (h > 0) setTableHeight(h); };
+    measure();
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [charts]);
   const { rows: read, loading: reading, error, hasMore } = useMartRows(martId, asked, version, charts);
   const rows = blocked || charts ? null : read;
   const loading = reading && !blocked && !charts;
@@ -521,7 +534,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   return (
     <GridEnv.Provider value={env}>
     <ColumnMenuEnvContext.Provider value={menuEnv}>
-    <div className={`dm-grid-frame flex max-h-[32rem] min-h-0 flex-col${charts ? ' dm-grid-frame-charts' : ''}`}>
+    <div ref={frame} className={`dm-grid-frame flex max-h-[32rem] min-h-0 flex-col${charts ? ' dm-grid-frame-charts' : ''}`} style={charts && tableHeight ? { height: tableHeight } : undefined}>
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { markEdit(); setFilters({}); setParked({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>

@@ -22,12 +22,12 @@
   --dm-series-9: #76756f;
 }
 
-/* Charts take the box the table has at its tallest, so switching modes does not move the bands below. */
+/* Without a measured table (a grid opened in Charts) the area is the table's tallest; MartGrid sets the measured height inline. */
 .dm-grid-frame-charts { height: 32rem; }
-.dm-full #band-data .dm-grid-frame-charts { height: auto; }
+.dm-full #band-data .dm-grid-frame-charts { height: auto !important; }
 /* Side by side while each panel still gets 30rem, one per row below that. */
 .dm-chart-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); align-items: start; gap: 1rem; padding: 0.25rem 0.75rem 1rem; }
-.dm-chart { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; padding: 1rem; border: 1px solid var(--border); border-radius: 0.5rem; }
+.dm-chart { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; padding: 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem; }
 .dm-chart-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .dm-chart-title { font-size: 0.875rem; font-weight: 600; }
 .dm-chart-actions { display: flex; align-items: center; gap: 0.5rem; }
