@@ -62,26 +62,32 @@ export function ExportMenu(p: Props) {
   const run = p.run ?? { state: 'none' as const };
   const runId = run.state === 'done' ? run.runId : null;
   const [menuOpen, setMenuOpen] = useState(false);
-  const [sqlOf, setSqlOf] = useState<{ runId: string; result: RunSql } | null>(null);
-  // The SQL is read once the menu is open and the grid's query has a run; a failed read is tried again on the next open.
+  // What was read of each run's SQL, by run id, and in which opening of the menu; a late read of an older run never hides a newer one.
+  const [sqls, setSqls] = useState<Record<string, { result: RunSql; opening: number }>>({});
+  const [opening, setOpening] = useState(0);
+  // The SQL is read once the menu is open and the grid's query has a run; a failed read is tried again on the next opening.
   const reading = useRef<string | null>(null);
   useEffect(() => {
-    if (!menuOpen || !runId || reading.current === runId) return;
-    if (sqlOf?.runId === runId && sqlOf.result && 'sql' in sqlOf.result) return;
-    reading.current = runId;
+    if (!menuOpen || !runId) return;
+    const have = sqls[runId];
+    if (have && ('sql' in have.result || have.opening === opening)) return;
+    const key = `${runId}/${opening}`;
+    if (reading.current === key) return;
+    reading.current = key;
     void readRunSql(ctx, p.martId, runId).then((result) => {
-      if (reading.current === runId) reading.current = null;
-      setSqlOf({ runId, result });
+      if (reading.current === key) reading.current = null;
+      setSqls((cur) => ({ ...cur, [runId]: { result, opening } }));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [menuOpen, runId]);
-  const sqlReady = runId && sqlOf?.runId === runId && sqlOf.result && 'sql' in sqlOf.result ? sqlOf.result.sql : null;
+  }, [menuOpen, runId, opening]);
+  const sqlHave = runId ? sqls[runId] : undefined;
+  const sqlReady = sqlHave && 'sql' in sqlHave.result ? sqlHave.result.sql : null;
   const sqlOff = sqlReady ? null
     : run.state === 'none' ? 'The grid has not run a query yet'
     : run.state === 'running' ? "The grid's query is still running"
     : run.state === 'failed' ? "The grid's query failed"
     : !runId ? 'OWOX did not report a run for this query'
-    : sqlOf?.runId === runId && sqlOf.result && 'reason' in sqlOf.result ? sqlOf.result.reason
+    : sqlHave && 'reason' in sqlHave.result && sqlHave.opening === opening ? sqlHave.result.reason
     : 'Reading the SQL from OWOX…';
   const seq = useRef(0);
   // Bumped when the mart changes or the menu goes away: an export finishing later is no longer in front of the member.
@@ -249,6 +255,7 @@ export function ExportMenu(p: Props) {
 
   async function openMenu(open: boolean) {
     setMenuOpen(open);
+    if (open) setOpening((n) => n + 1);
     if (!open) { checks.current += 1; setVerified(false); return; }
     setOpenDest(null);
     // Reports OWOX no longer has are dropped before they are offered.

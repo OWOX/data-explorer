@@ -822,4 +822,45 @@ describe('Copy SQL', () => {
     await waitFor(async () => expect(await sqlItem()).toBeEnabled());
     expect(document.querySelector('details.dm-export')).toHaveAttribute('open');
   });
+
+  test('reads that resolve out of order never hide the newer run', async () => {
+    let release!: () => void;
+    const slow = new Promise<void>((r) => { release = r; });
+    const get = async (path: string) => {
+      if (path.endsWith('/r1')) { await slow; return { additionalParams: { httpData: { executionSqlQuery: 'SELECT old' } } }; }
+      return { additionalParams: { httpData: { executionSqlQuery: 'SELECT new' } } };
+    };
+    const { rerun } = lone({ state: 'done', runId: 'r1' }, get);
+    await userEvent.click(await screen.findByText('Export'));
+    rerun({ state: 'done', runId: 'r2' });
+    await waitFor(async () => expect(await sqlItem()).toBeEnabled());
+    release();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(await sqlItem()).toBeEnabled();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    setClipboard(writeText);
+    await userEvent.click(await sqlItem());
+    expect(writeText).toHaveBeenCalledWith('SELECT new');
+  });
+
+  test('a read that fails says so, is tried again on the next opening and then enables the item', async () => {
+    let calls = 0;
+    const get = async () => { calls += 1; if (calls === 1) throw new Error('boom'); return { additionalParams: { httpData: { executionSqlQuery: 'SELECT 2' } } }; };
+    lone({ state: 'done', runId: 'r1' }, get);
+    const summary = (await screen.findByText('Export')).closest('summary')!;
+    await userEvent.click(summary);
+    await waitFor(async () => expect(await sqlItem()).toHaveAttribute('data-reason', 'The SQL could not be read from OWOX'));
+    await userEvent.click(summary);
+    await userEvent.click(summary);
+    await waitFor(async () => expect(await sqlItem()).toBeEnabled());
+    expect(calls).toBe(2);
+  });
+
+  test('ArrowUp from the first item wraps past a disabled Copy SQL to the last enabled item', async () => {
+    lone({ state: 'running' });
+    await userEvent.click(await screen.findByText('Export'));
+    (await screen.findByRole('menuitem', { name: 'Copy to clipboard' })).focus();
+    await userEvent.keyboard('{ArrowUp}');
+    expect(screen.getByRole('menuitem', { name: 'ChatGPT' })).toHaveFocus();
+  });
 });
