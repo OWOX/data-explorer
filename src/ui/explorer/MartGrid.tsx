@@ -477,7 +477,12 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const hasFilters = Object.keys(filters).length > 0;
   const hasSorts = own !== null;
   /** A click on a chart mark: the same step as a filter edit (so Undo covers it), one filter per column. */
-  const applyChartFilters = (add: ColumnFilter[]) => { markEdit(); setFilters((cur) => ({ ...cur, ...Object.fromEntries(add.map((f) => [f.field, f])) })); setLimit(PAGE_SIZE); };
+  const applyChartFilters = (add: ColumnFilter[]) => {
+    // A filter the column cannot take as it stands (a blank value) is left out, with the same note a filter edit gives.
+    const usable = add.filter((f) => { const field = schema.find((x) => x.name === f.field); const unapplied = unappliedFilter(f, field); if (unapplied) setNote({ text: unapplied }); return !!field && !unapplied; });
+    if (!usable.length) return;
+    markEdit(); setFilters((cur) => ({ ...cur, ...Object.fromEntries(usable.map((f) => [f.field, f])) })); setLimit(PAGE_SIZE);
+  };
   const [menuRequest, setMenuRequest] = useState<{ key: string; seq: number } | null>(null);
   const menuEnv: ColumnMenuEnv = {
     menuRequest,

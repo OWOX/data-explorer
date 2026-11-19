@@ -5,7 +5,7 @@ import { GRID_COLUMNS_COLLECTION } from '../api/grid-columns';
 import { CHARTS_COLLECTION } from '../api/chart-settings';
 import { createMockCtx } from '../sdk/mock/ctx';
 import { demoFixtures } from '../sdk/mock/fixtures';
-import type { Ctx, TraverseOptions } from '../sdk/types';
+import type { Ctx, Row, TraverseOptions } from '../sdk/types';
 import { AppServices, StoreProvider } from '../state/store';
 import { App } from '../ui/App';
 import { openColumnMenu, openSubmenu } from '../ui/explorer/menu-test-utils';
@@ -14,7 +14,7 @@ import type { ChartSettings } from './settings';
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
 const COLUMNS = ['id', 'status', 'amount', 'created_at', 'products__price'];
 
-function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean } = {}) {
+function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row } = {}) {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
@@ -22,7 +22,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
   const gridPuts = vi.fn();
   const ctx: Ctx = {
     ...base,
-    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); return id === 'orders' && opts.fail?.(o) ? Promise.reject(new Error('range failed')) : real(id, o); } } },
+    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('range failed')); const tr = real(id, o); const map = opts.mapRow; return map ? tr.then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map(map); } })) : tr; } } },
     collections: <T,>(name: string) => {
       const c = base.collections<T>(name);
       if (name === GRID_COLUMNS_COLLECTION) return { get: (id: string) => c.get(id), put: (id: string, d: T) => { gridPuts(id, d); return c.put(id, d); } };
@@ -371,4 +371,32 @@ test('clicking a bar bucket filters the date column to a between over that bucke
     expect(f?.operator).toBe('between');
     expect(((f as { value: { from: string } }).value).from.startsWith(start)).toBe(true);
   });
+});
+
+let blanks = 0;
+test('a pie slice whose value is blank is not turned into a filter: no filter, no Undo step, a note says so', async () => {
+  await charts({ charts: { pie: { metric: 'records', dimension: 'status' } }, mapRow: (r) => ('status' in r ? { ...r, status: ' '.repeat(++blanks) } : r) });
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  const undoWas = (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement).disabled;
+  await userEvent.click(data().querySelector('[data-slice]')!);
+  expect(await screen.findByText(/filter on .*not applied/i)).toBeInTheDocument();
+  expect(statusFilter()).toBeNull();
+  expect((screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement).disabled).toBe(undoWas);
+});
+
+test('the pie tooltip shows each share, except for another mart’s Unique Records whose slices overlap', async () => {
+  const own = await charts({ charts: { pie: { metric: 'records', dimension: 'status' } } });
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  fireEvent.focus(data().querySelector('[data-slice]')!);
+  expect((await screen.findAllByText(/\(\d+%\)/)).length).toBeGreaterThan(0);
+  expect(own.queries.length).toBeGreaterThan(0);
+});
+
+test('a pie of another mart’s Unique Records hides the share in the tooltip', async () => {
+  await charts({ charts: { pie: { metric: 'records:products', dimension: 'status' } } });
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  const slice = data().querySelector('[data-slice]')!;
+  fireEvent.focus(slice);
+  expect((await screen.findAllByText(new RegExp(`^${slice.getAttribute('data-slice')}: `))).length).toBeGreaterThan(0);
+  expect(screen.queryByText(/\(\d+%\)/)).toBeNull();
 });

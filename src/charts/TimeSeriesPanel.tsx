@@ -5,12 +5,12 @@ import { BUCKET_LABELS, DATE_BUCKETS, formatBucket, outputType, type DateBucket 
 import { columnTitle, fieldLabel } from '../model/fieldLabel';
 import type { Row, TraverseFilter } from '../sdk/types';
 import { formatNumber } from '../ui/format';
-import { bucketFilter, dimensionFilter } from './clickFilters';
+import { bucketFilter, dimensionFilter, isBucketDate } from './clickFilters';
 import { compactValue } from './compact';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { ChartPanel } from './ChartPanel';
 import { measuresOf, type ChartFields } from './fields';
-import { measureKey, seriesOtherQuery, seriesQuery, TOP_N, topValuesQuery } from './queries';
+import { bucketZone, measureKey, seriesOtherQuery, seriesQuery, TOP_N, topValuesQuery } from './queries';
 import { measureLabel, measureOptions, metricText, numberOf, type Formatter } from './Scorecards';
 import { measureId, type ChartSettings, type ResolvedCharts } from './settings';
 import { BarChart, type Series } from './svg/BarChart';
@@ -93,8 +93,8 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
       {series.rows && (() => {
         const shown = chart();
         // The bucket's date range, plus (stacked) the segment's value of the stack dimension.
-        const pick = (x: string, i?: number) => onFilter([bucketFilter(date!, x, bucket!), ...(stack && i !== undefined && !shown[i]!.other ? [dimensionFilter(stack, shown[i]!.name)] : [])]);
-        return <BarChart series={shown} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={bucket ? pick : undefined} />;
+        const pick = (x: string, i?: number) => onFilter([bucketFilter(date!, x, bucket!, bucketZone(date!)), ...(stack && i !== undefined && !shown[i]!.other ? [dimensionFilter(stack, shown[i]!.name)] : [])]);
+        return <BarChart series={shown} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={bucket ? pick : undefined} canPick={isBucketDate} stacked={!!stack} />;
       })()}
     </ChartPanel>
   );

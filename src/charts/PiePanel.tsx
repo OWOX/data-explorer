@@ -38,13 +38,15 @@ export function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, for
     { kind: 'radio', label: 'Metric', value: measureId(measure!, cf.marts[0]?.martId ?? ''), options: measureOptions(cf, pieMeasures(cf)), onPick: (v) => onChange({ metric: v }) },
     { kind: 'radio', label: 'Dimension', value: dim!.name, options: cf.dimensions.map((d) => ({ value: d.name, label: columnTitle(d) })), onPick: (v) => onChange({ dimension: v }) },
   ];
+  // A records measure of another mart than the dimension's counts each mart's rows per slice: the slices overlap, so a share of their sum would mislead.
+  const showShare = !(measure!.kind === 'records' && measure!.martId !== (dim!.joined?.martId ?? martId));
   const title = `${measureLabel(cf, measure!)} by ${fieldLabel(dim!)}`;
   return (
     <ChartPanel title={title} loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})}
       empty={emptyNow ? (hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.') : null}
       note={`Rows with a blank ${fieldLabel(dim!)} are not shown.`}
       actions={ready && <ChartMenu name="Pie" items={items} />}>
-      {top.rows && <PieChart slices={slices()} ariaLabel={title} onPick={(name) => onFilter([dimensionFilter(dim!, name)])} />}
+      {top.rows && <PieChart slices={slices()} ariaLabel={title} onPick={(name) => onFilter([dimensionFilter(dim!, name)])} showShare={showShare} />}
     </ChartPanel>
   );
 }

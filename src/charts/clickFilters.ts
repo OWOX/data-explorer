@@ -20,7 +20,35 @@ export function dimensionFilter(dim: Field, value: string): ColumnFilter {
   return { field: dim.name, op: 'eq', value };
 }
 
-/** The grid filter for a click on a time-series bucket: the date column between the bucket's first and last day. */
-export function bucketFilter(date: Field, start: string, bucket: DateBucket): ColumnFilter {
-  return { field: date.name, op: 'between', value: { from: start.slice(0, 10), to: bucketEnd(start, bucket) } };
+const BUCKET_LABEL = /^\d{4}-\d{2}-\d{2}/;
+/** Whether a bucket's x is a date label; a blank bucket reads "null" and has no range to filter to. */
+export const isBucketDate = (x: string): boolean => BUCKET_LABEL.test(x);
+
+/** `ts` (UTC ms) as the wall clock in `zone`, read back as if it were UTC: the difference to `ts` is the zone's offset then. */
+function zoneOffset(ts: number, zone: string): number {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(new Date(ts)).map((x) => [x.type, Number(x.value)]));
+  return Date.UTC(p.year!, p.month! - 1, p.day!, p.hour!, p.minute!, p.second!) - ts;
+}
+
+/** The UTC instant (ms) of 00:00 on the calendar day `day` (`YYYY-MM-DD`) in `zone`, DST-aware. */
+function localMidnight(day: string, zone: string): number {
+  const [y, m, d] = day.split('-').map(Number) as [number, number, number];
+  const guess = Date.UTC(y, m - 1, d);
+  const first = guess - zoneOffset(guess, zone);
+  const second = guess - zoneOffset(first, zone);
+  return second;
+}
+
+const stamp = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+const nextDay = (day: string) => { const [y, m, d] = day.split('-').map(Number) as [number, number, number]; return iso(new Date(Date.UTC(y, m - 1, d + 1))); };
+
+/**
+ * The grid filter for a click on a time-series bucket. Unzoned: the date column between the bucket's first and last day.
+ * Zoned (`zone`, the one the series was bucketed in): UTC instants, from the bucket's local midnight to one second before the next one.
+ */
+export function bucketFilter(date: Field, start: string, bucket: DateBucket, zone?: string): ColumnFilter {
+  const from = start.slice(0, 10);
+  const to = bucketEnd(start, bucket);
+  if (!zone) return { field: date.name, op: 'between', value: { from, to } };
+  return { field: date.name, op: 'between', value: { from: stamp(localMidnight(from, zone)), to: stamp(localMidnight(nextDay(to), zone) - 1000) } };
 }

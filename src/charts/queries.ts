@@ -22,9 +22,13 @@ const measureParts = (m: Measure): Pick<TraverseOptions, 'aggregation' | 'unique
 const aggs = (metrics: Metric[]) => metrics.map((m) => ({ column: m.field.name, function: m.fn }));
 
 // The same zone rule the grid uses: only a type with a time of day can be converted, and only to a valid IANA name.
+/** The IANA zone a date column's buckets are cut in (the browser's), or undefined when they are not zoned. Shared by the series queries and the click filters. */
+export function bucketZone(date: Field, zone: string = Intl.DateTimeFormat().resolvedOptions().timeZone): string | undefined {
+  return canZone(date) && isTimeZone(zone) ? zone : undefined;
+}
 function truncRule(date: Field, unit: DateBucket) {
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return { column: date.name, unit, ...(canZone(date) && isTimeZone(zone) ? { timeZone: zone } : {}) };
+  const zone = bucketZone(date);
+  return { column: date.name, unit, ...(zone ? { timeZone: zone } : {}) };
 }
 
 /** `null` when there is nothing to count. */

@@ -88,3 +88,44 @@ test('ChartPanel shows the error and Retry calls onRetry; empty text shows; the 
   expect(screen.queryByText('Top 8')).toBeNull();
   expect(screen.getByRole('note', { name: 'About T' }).closest('.dm-chart-head')).not.toBeNull();
 });
+
+const px = (x: string, y: number): Point => ({ x, y, label: x, valueText: `v${y}` });
+
+test('BarChart: with clickable buckets the svg is a group and every band is the tab stop; a blank bucket is not clickable; segments are mouse only', () => {
+  const s: Series[] = [
+    { name: 'A', color: 'red', points: [px('2026-01-01', 1), px('null', 2)] },
+    { name: 'B', color: 'blue', points: [px('2026-01-01', 3), px('null', 4)] },
+  ];
+  const { container } = wrap(<BarChart series={s} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} onPick={() => {}} canPick={(x) => x !== 'null'} stacked />);
+  expect(container.querySelector('svg')).toHaveAttribute('role', 'group');
+  expect(container.querySelector('svg')).toHaveAttribute('aria-label', 'b');
+  const band = container.querySelector('rect[data-bucket="2026-01-01"]')!;
+  expect(band).toHaveAttribute('tabindex', '0');
+  expect(band.getAttribute('aria-label')).toMatch(/^Filter to /);
+  const blank = container.querySelector('rect[data-bucket="null"]')!;
+  expect(blank.hasAttribute('tabindex')).toBe(false);
+  expect(blank.hasAttribute('role')).toBe(false);
+  expect(container.querySelectorAll('rect[data-series][tabindex]')).toHaveLength(0);
+});
+
+test('BarChart: a single stacked series still counts as stacked when the caller says so; no onPick keeps role img', () => {
+  const one: Series[] = [{ name: 'A', color: 'red', points: [px('2026-01-01', 1)] }];
+  const a = wrap(<BarChart series={one} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} />);
+  expect(a.container.querySelector('svg')).toHaveAttribute('role', 'img');
+  a.unmount();
+  const b = wrap(<BarChart series={one} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} onPick={() => {}} stacked />);
+  expect(b.container.querySelector('svg')).toHaveAttribute('role', 'group');
+  expect(b.container.querySelectorAll('rect[data-series][tabindex]')).toHaveLength(0);
+});
+
+test('PieChart: clickable slices make the svg a group; share can be hidden', async () => {
+  const slices = [{ name: 'a', value: 1, valueText: 'v1', color: 'red' }, { name: 'b', value: 3, valueText: 'v3', color: 'blue' }];
+  const g = wrap(<PieChart slices={slices} ariaLabel="p" onPick={() => {}} showShare={false} />);
+  expect(g.container.querySelector('svg')).toHaveAttribute('role', 'group');
+  fireEvent.focus(g.container.querySelector('[data-slice="a"]')!);
+  expect((await screen.findAllByText('a: v1')).length).toBeGreaterThan(0);
+  expect(screen.queryByText(/25%/)).toBeNull();
+  g.unmount();
+  const i = wrap(<PieChart slices={slices} ariaLabel="p" />);
+  expect(i.container.querySelector('svg')).toHaveAttribute('role', 'img');
+});
