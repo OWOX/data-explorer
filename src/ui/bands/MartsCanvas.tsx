@@ -103,7 +103,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
       out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}` });
     }
     const from = ghostOf !== null ? tree.nodes.get(ghostOf) : undefined;
-    if (from) for (const g of ghosts) out.push({ id: `ghost:${g.aliasPath}`, from: martElementId(from.martId, from.path), to: martElementId(g.martId), kind: 'relationship', title: `${title(from.martId)} → ${title(g.martId)}`, dashed: true });
+    if (from) for (const g of ghosts) out.push({ id: `ghost:${g.aliasPath}`, from: martElementId(from.martId, from.path), to: martElementId(g.martId, g.aliasPath), kind: 'relationship', title: `${title(from.martId)} → ${title(g.martId)}`, dashed: true });
     return out;
     // `key` stands for tree, ghostOf and ghosts: the memo must not rebuild on every hover.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -146,7 +146,10 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               selected={node.path === ''}
               joined={node.path !== ''}
               path={node.path}
-              onRemove={node.path === '' ? undefined : () => { void click(node.martId, { removePaths: subtreePaths(tree, node.path) }); }}
+              onRemove={node.path === '' ? undefined : () => {
+                const parent = tree.nodes.get(node.parent!)!;
+                void click(node.martId, { removePaths: subtreePaths(tree, node.path) }).then(() => setFocusCard({ martId: parent.martId, path: parent.path }), () => undefined);
+              }}
               lit={false}
               onSelect={() => setPinned(node.path)}
               onOpenApp={() => onOpenApp(mart.id)}
@@ -167,6 +170,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
             <MartCard
               mart={mart}
               ghost
+              path={g.aliasPath}
               contexts={contextsOf(mart.contextIds)}
               count={{ state: 'idle' }}
               quality={dq.get(mart.id)}

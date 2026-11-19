@@ -49,8 +49,8 @@ test('hovering a card shows its ghosts; clicking a ghost adds that mart through 
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
   await userEvent.hover(el('orders')!);
-  await waitFor(() => expect(ghosts()).toEqual(expect.arrayContaining(['dm-customers', 'dm-products', 'dm-stores'])));
-  await userEvent.click(marts().querySelector<HTMLElement>('article#dm-customers[data-ghost]')!);
+  await waitFor(() => expect(ghosts()).toEqual(expect.arrayContaining(['dm-customers@customers', 'dm-products@products', 'dm-stores@stores'])));
+  await userEvent.click(marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="customers"]')!);
   await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
   expect(el('customers', 'customers')).not.toBeNull();
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
@@ -115,13 +115,13 @@ const joinCountriesUnderCustomers = async () => {
   await waitFor(() => expect(el('orders')).not.toBeNull());
   vi.spyOn(marts().querySelector('.dm-tree')!, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) });
   await userEvent.hover(el('orders')!);
-  await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article#dm-customers[data-ghost]'); expect(g).not.toBeNull(); return g!; }));
+  await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="customers"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
   await userEvent.hover(el('orders')!);
-  await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article#dm-stores[data-ghost]'); expect(g).not.toBeNull(); return g!; }));
+  await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="stores"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores']));
   await userEvent.hover(el('customers', 'customers')!);
-  await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article#dm-countries[data-ghost]'); expect(g).not.toBeNull(); return g!; }));
+  await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="countries"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores', 'Countries']));
 };
 
@@ -253,7 +253,7 @@ test('adding a mart with Enter on a ghost moves focus to its new card', async ()
   await toCanvas();
   await waitFor(() => expect(el('orders')).not.toBeNull());
   await userEvent.hover(el('orders')!);
-  const ghost = await waitFor(() => { const g = marts().querySelector<HTMLElement>('article#dm-customers[data-ghost]'); expect(g).not.toBeNull(); return g!; });
+  const ghost = await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="customers"]'); expect(g).not.toBeNull(); return g!; });
   ghost.focus();
   await userEvent.keyboard('{Enter}');
   await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
@@ -271,14 +271,13 @@ const countriesUnderBoth = async () => {
   await waitFor(() => expect(el('countries', 'stores.countries')).not.toBeNull());
   expect(el('countries', 'customers.countries')).toBeNull();
   await userEvent.hover(el('customers', 'customers')!);
-  await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article#dm-countries[data-ghost]'); expect(g).not.toBeNull(); return g!; }));
+  await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="countries"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(el('countries', 'customers.countries')).not.toBeNull());
 };
 
 test('a mart already under another parent is still offered as a ghost, and adding it gives two cards', async () => {
   await countriesUnderBoth();
   expect(marts().querySelectorAll('article[data-mart-id="countries"]:not([data-ghost])')).toHaveLength(2);
-  expect(el('countries', 'stores.countries')).not.toBeNull();
 });
 
 test('x on a joined card removes its path and the subtree, the same mart elsewhere stays, Undo restores both', async () => {
@@ -292,4 +291,24 @@ test('x on a joined card removes its path and the subtree, the same mart elsewhe
   await waitFor(() => expect(el('stores', 'stores')).not.toBeNull());
   expect(el('countries', 'stores.countries')).not.toBeNull();
   expect(el('countries', 'customers.countries')).not.toBeNull();
+});
+
+test('the x moves focus to the parent card', async () => {
+  await countriesUnderBoth();
+  const remove = within(el('countries', 'customers.countries')!).getByRole('button', { name: /remove countries/i });
+  remove.focus();
+  await userEvent.keyboard('{Enter}');
+  await waitFor(() => expect(el('countries', 'customers.countries')).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(el('customers', 'customers')));
+});
+
+test('with Customers joined, the source line reaches its path card', async () => {
+  setup();
+  await ready();
+  await toCanvas();
+  await waitFor(() => expect(el('orders')).not.toBeNull());
+  await userEvent.hover(el('orders')!);
+  await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="customers"]'); expect(g).not.toBeNull(); return g!; }));
+  await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+  await waitFor(() => expect(document.querySelector('#wires path.source[data-to="dm-customers@customers"]')).not.toBeNull());
 });

@@ -126,17 +126,22 @@ export function CardBands({
     return () => clearTimeout(t);
   }, [hoveredMart, overGhost, overShown, ghostOf]);
 
+  // The report tree: in Canvas a joined mart is a node per alias path, and a source line reaches each of them.
+  const mainFor = selection.martId;
+  const canvasTree = useMemo(() => (mainFor ? buildJoinTree(mainFor, mainColumns, joinSources ?? []) : null), [mainFor, mainColumns, joinSources]);
   const idsKey = [...visible.ids, ...ghostIds].join('|');
+  const treeKey = canvasTree ? [...canvasTree.nodes.keys()].join('>') : '';
   // Memoised: a new array rebuilds every path, and the lines would blink on each hover.
   const wires = useMemo<Wire[]>(() => {
     const ids = idsKey ? idsKey.split('|') : [];
     const shown = new Set(ids);
     const known = new Set(model.sources.map((s) => s.key));
     const out: Wire[] = [];
-    for (const id of ids) {
+    const targets = view === 'canvas' && canvasTree ? [...canvasTree.nodes.values()].map((n) => ({ id: n.martId, path: n.path })) : ids.map((id) => ({ id, path: '' }));
+    for (const { id, path } of targets) {
       const mart = model.marts.get(id);
       if (mart?.sourceKey && known.has(mart.sourceKey)) {
-        out.push({ id: `source:${mart.sourceKey}>${id}`, from: sourceElementId(mart.sourceKey), to: martElementId(id), kind: 'source', title: `${model.sources.find((s) => s.key === mart.sourceKey)?.name ?? mart.sourceKey} → ${mart.title}` });
+        out.push({ id: `source:${mart.sourceKey}>${id}${path ? `@${path}` : ''}`, from: sourceElementId(mart.sourceKey), to: martElementId(id, path || undefined), kind: 'source', title: `${model.sources.find((s) => s.key === mart.sourceKey)?.name ?? mart.sourceKey} → ${mart.title}` });
       }
     }
     if (view === 'canvas') return out;
@@ -145,7 +150,9 @@ export function CardBands({
       out.push({ id: `edge:${e.id}`, from: martElementId(e.source), to: martElementId(e.target), kind: 'relationship', title: e.joins.map((j) => `${j.sourceField} → ${j.targetField}`).join(', ') });
     }
     return out;
-  }, [idsKey, model, view]);
+  // `treeKey` stands for canvasTree.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey, treeKey, model, view]);
 
   const pinned = useMemo(() => {
     if (selection.martId && idsKey.split('|').includes(selection.martId)) return martElementId(selection.martId);
@@ -156,7 +163,7 @@ export function CardBands({
   // The same array until the set or its order changes, so the memos below do not rebuild on every render.
   const joinedKey = joinedProp.join('|');
   const joined = useMemo(() => (joinedKey ? joinedKey.split('|') : []), [joinedKey]);
-  useWires(canvas, wires, { pinned, hovered, also: joined }, useMemo(() => revisionOf(idsKey), [idsKey]));
+  useWires(canvas, wires, { pinned, hovered, also: joined }, useMemo(() => revisionOf(idsKey + treeKey), [idsKey, treeKey]));
 
   const { lit, aside } = useMemo(() => {
     // The cards of the selected joined marts light their own neighbours too, so a mart connected only to a joined one is not dimmed.
@@ -193,8 +200,7 @@ export function CardBands({
   const noMatch = smart.applied !== '' && found.length === 0 && ![...model.marts.values()].some((m) => m.accessible && matchesSearch(m, smart.applied));
 
   // In Canvas the band counts the marts of the report tree.
-  const mainFor = selection.martId;
-  const reportSize = useMemo(() => (mainFor ? buildJoinTree(mainFor, mainColumns, joinSources ?? []).nodes.size : 0), [mainFor, mainColumns, joinSources]);
+  const reportSize = canvasTree ? canvasTree.nodes.size : 0;
 
   const unjoinableFor = (id: string) => !!selection.martId && visible.joinable !== null && id !== selection.martId && !joined.includes(id) && !visible.joinable.has(id);
   const contextsOf = (ids: string[]) => model.contexts.filter((c) => ids.includes(c.id));

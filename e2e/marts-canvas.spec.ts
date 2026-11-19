@@ -8,15 +8,15 @@ test('canvas: add marts through ghosts, move countries from customers to stores,
 
   // Add customers and stores through the main card's ghosts, then countries through customers.
   await marts.locator('article#dm-orders').hover();
-  await marts.locator('article[data-ghost]#dm-customers').click();
-  await expect(marts.locator('article[data-ghost]#dm-customers')).toHaveCount(0);
+  await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
+  await expect(marts.locator('article[data-ghost][data-mart-id="customers"]')).toHaveCount(0);
   await marts.locator('article#dm-orders').hover();
-  await expect(marts.locator('article[data-ghost]#dm-stores')).toBeVisible();
-  await marts.locator('article[data-ghost]#dm-stores').click();
-  await expect(marts.locator('article[data-ghost]#dm-stores')).toHaveCount(0);
+  await expect(marts.locator('article[data-ghost][data-mart-id="stores"]')).toBeVisible();
+  await marts.locator('article[data-ghost][data-mart-id="stores"]').click();
+  await expect(marts.locator('article[data-ghost][data-mart-id="stores"]')).toHaveCount(0);
   await marts.locator('[id="dm-customers@customers"]').hover();
-  await expect(marts.locator('article[data-ghost]#dm-countries')).toBeVisible();
-  await marts.locator('article[data-ghost]#dm-countries').click();
+  await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toBeVisible();
+  await marts.locator('article[data-ghost][data-mart-id="countries"]').click();
   await expect(page.locator('#tree-wires path[data-from="dm-customers@customers"][data-to="dm-countries@customers.countries"]')).toHaveCount(1);
   await expect(page.locator('#band-data').getByText('Countries', { exact: true })).toHaveCount(1);
 
