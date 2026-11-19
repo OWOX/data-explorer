@@ -1,6 +1,6 @@
 import type { JoinedSource } from '../api/blendable';
 import type { Field } from '../model/types';
-import { planAddAt, planRejoin, defaultJoinFields, fieldsFor, inUsePaths, isIdField, joinedMartIds, planClick, planMakeMain, sourceOfMart, withoutMart, type PlanEnv } from './join-plan';
+import { joinedPaths, withoutPaths, planAddAt, planRejoin, defaultJoinFields, fieldsFor, inUsePaths, isIdField, joinedMartIds, planClick, planMakeMain, sourceOfMart, withoutMart, type PlanEnv } from './join-plan';
 import type { GridState } from './store';
 
 const f = (name: string, category: Field['category'], martId: string): Field => ({ name, alias: null, type: 'STRING', category, description: null, isPrimaryKey: false, joined: { martId, label: martId, aliasPath: martId, originalName: name.slice(martId.length + 2) } });
@@ -358,4 +358,48 @@ test('planRejoin swaps columns, filters, sorts and aggregations to the new path 
 
 test('planRejoin with no moves returns the grid unchanged', () => {
   expect(planRejoin(base, rjSources, new Map(), ['id'])).toEqual(base);
+});
+
+describe('joinedPaths', () => {
+  const ps = [js('a'), js('b'), js('a.c'), js('b.c')];
+  test('lists the alias paths of the columns in the order each first appears, once', () => {
+    expect(joinedPaths(['id', jc('b.c'), jc('a'), jc('b.c', 'n'), jc('a.c')], ps)).toEqual(['b.c', 'a', 'a.c']);
+  });
+  test('the main mart own columns are no path', () => {
+    expect(joinedPaths(['id'], ps)).toEqual([]);
+  });
+});
+
+describe('withoutPaths', () => {
+  const ps = [js('a'), js('a.c'), js('b'), js('b.c')];
+  const two: GridState = {
+    columns: ['id', jc('a.c'), jc('a.c', 'n'), jc('b.c'), jc('b.c', 'n')],
+    filters: { [jc('a.c')]: { field: jc('a.c'), op: 'eq', value: 'x' }, [jc('b.c')]: { field: jc('b.c'), op: 'eq', value: 'y' } },
+    sorts: [{ field: jc('a.c', 'n'), direction: 'desc' }, { field: jc('b.c', 'n'), direction: 'asc' }],
+    limit: 100,
+    aggregations: [{ column: jc('a.c', 'n'), function: 'SUM' }, { column: jc('b.c', 'n'), function: 'SUM' }],
+    dateTrunc: [{ column: jc('a.c'), unit: 'month' } as never, { column: jc('b.c'), unit: 'month' } as never],
+  };
+  test('removing a.c keeps the columns, filters, sorts and aggregations of b.c', () => {
+    const out = withoutPaths(two, ps, ['a.c'], ['id']);
+    expect(out.columns).toEqual(['id', jc('b.c'), jc('b.c', 'n')]);
+    expect(Object.keys(out.filters)).toEqual([jc('b.c')]);
+    expect(out.sorts).toEqual([{ field: jc('b.c', 'n'), direction: 'asc' }]);
+    expect(out.aggregations).toEqual([{ column: jc('b.c', 'n'), function: 'SUM' }]);
+    expect(out.dateTrunc).toEqual([{ column: jc('b.c'), unit: 'month' }]);
+  });
+  test('removing several paths takes them all, and sorts left empty become null', () => {
+    const out = withoutPaths({ ...two, sorts: [{ field: jc('a.c', 'n'), direction: 'desc' }] }, ps, ['a.c', 'b.c'], ['id']);
+    expect(out.columns).toEqual(['id']);
+    expect(out.filters).toEqual({});
+    expect(out.sorts).toBeNull();
+    expect(out.aggregations).toBeUndefined();
+    expect(out.dateTrunc).toBeUndefined();
+  });
+  test('a grid left with no column gets the own ones', () => {
+    expect(withoutPaths(g([jc('a.c')]), ps, ['a.c'], ['id', 'status']).columns).toEqual(['id', 'status']);
+  });
+  test('a path that holds none of the columns changes nothing', () => {
+    expect(withoutPaths(two, ps, ['b'], ['id']).columns).toEqual(two.columns);
+  });
 });

@@ -24,9 +24,11 @@ test('a path whose parent is not in use hangs from the deepest in-use ancestor, 
   expect(t.nodes.get('')!.children).toEqual(['a.c.d']);
 });
 
-test('a mart reached by two in-use paths is placed once: the shallowest, ties to the first in column order', () => {
+test('a mart reached by two in-use paths is a node on each path', () => {
   const t = buildJoinTree('main', ['id', col('a'), col('b'), col('b.c'), col('a.c')], sources);
-  expect([...t.nodes.values()].filter((n) => n.martId === 'c').map((n) => n.path)).toEqual(['b.c']);
+  expect([...t.nodes.values()].filter((n) => n.martId === 'c').map((n) => n.path).sort()).toEqual(['a.c', 'b.c']);
+  expect(t.nodes.get('a.c')).toMatchObject({ parent: 'a' });
+  expect(t.nodes.get('b.c')).toMatchObject({ parent: 'b' });
 });
 
 test('subtreePaths lists the node and everything under it', () => {
@@ -83,4 +85,29 @@ test('rejoin: a target with two relations to the mart takes the one the subtree 
   const r = rejoinTargets(t, s5, 'a.c');
   expect(r.map((x) => x.target)).toEqual(['b']);
   expect([...r[0]!.moves]).toEqual([['a.c', 'b.c2'], ['a.c.d', 'b.c2.d']]);
+});
+
+test('ghosts: a mart already in the report on another path is still offered on this path', () => {
+  const t = buildJoinTree('main', ['id', col('a'), col('b'), col('b.c')], sources);
+  expect(ghostSources(t, sources, 'a').map((s) => s.aliasPath)).toEqual(['a.c']);
+  expect(ghostSources(t, sources, 'b').map((s) => s.aliasPath)).toEqual(['b.x']);
+});
+
+test('ghosts: a path that is already a node is not offered, and a path is offered once', () => {
+  const dup = [...sources, src('a.c')];
+  const t = buildJoinTree('main', ['id', col('a')], dup);
+  expect(ghostSources(t, dup, 'a').map((s) => s.aliasPath)).toEqual(['a.c']);
+  const t2 = buildJoinTree('main', ['id', col('a'), col('a.c')], dup);
+  expect(ghostSources(t2, dup, 'a')).toEqual([]);
+});
+
+test('rejoin: no target when the new path is already a node outside the subtree', () => {
+  const t = buildJoinTree('main', ['id', col('a'), col('b'), col('a.c'), col('b.c')], sources);
+  expect(rejoinTargets(t, sources, 'a.c')).toEqual([]);
+});
+
+test('rejoin: no target when a rewritten subtree path is already a node outside the subtree', () => {
+  const s6 = [...sources, src('b.c.d')].sort((p, q) => p.depth - q.depth);
+  const t = buildJoinTree('main', ['id', col('a'), col('b'), col('a.c'), col('a.c.d'), col('b.c.d')], s6);
+  expect(rejoinTargets(t, s6, 'a.c')).toEqual([]);
 });

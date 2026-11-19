@@ -20,6 +20,18 @@ export function joinedMartIds(columns: string[], sources: JoinedSource[]): strin
   return out;
 }
 
+/** The alias paths a grid's columns use, in the order their first column appears. */
+export function joinedPaths(columns: string[], sources: JoinedSource[]): string[] {
+  const pathOf = new Map<string, string>();
+  for (const s of sources) for (const f of s.fields) if (!pathOf.has(f.name)) pathOf.set(f.name, s.aliasPath);
+  const out: string[] = [];
+  for (const c of columns) {
+    const p = pathOf.get(c);
+    if (p !== undefined && !out.includes(p)) out.push(p);
+  }
+  return out;
+}
+
 /** Every blended field name of a joined mart, over all the alias paths that reach it. */
 const namesOf = (sources: JoinedSource[], martId: string) => new Set(sources.filter((s) => s.martId === martId).flatMap((s) => s.fields.map((f) => f.name)));
 
@@ -120,6 +132,23 @@ export function withoutMart(grid: GridState, sources: JoinedSource[], martId: st
       filters: Object.fromEntries(Object.entries(grid.filters).filter(([k]) => !names.has(k))),
       sorts: grid.sorts && grid.sorts.length > 0 && kept!.length === 0 ? null : kept,
     },
+  };
+}
+
+/** The grid with every field of these exact alias paths taken out: columns, filters, sorts, aggregations, buckets. A grid left with no column gets `own`. */
+export function withoutPaths(grid: GridState, sources: JoinedSource[], paths: string[], own: string[]): GridState {
+  const gone = new Set(sources.filter((s) => paths.includes(s.aliasPath)).flatMap((s) => s.fields.map((f) => f.name)));
+  let columns = grid.columns.filter((c) => !gone.has(c));
+  if (columns.length === 0) columns = own;
+  const kept = grid.sorts && sortsOnColumns(grid.sorts, columns);
+  const agg = keepVisible({ aggregations: grid.aggregations ?? [], dateTrunc: grid.dateTrunc ?? [] }, columns);
+  return {
+    ...grid,
+    columns,
+    aggregations: agg.aggregations.length ? agg.aggregations : undefined,
+    dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined,
+    filters: Object.fromEntries(Object.entries(grid.filters).filter(([k]) => !gone.has(k))),
+    sorts: grid.sorts && grid.sorts.length > 0 && kept!.length === 0 ? null : kept,
   };
 }
 
