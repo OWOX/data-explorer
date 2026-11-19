@@ -88,7 +88,8 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
     }
     const sourceOf = sourceOfModel(model);
     const fresh = (martId: string) => { const g = now.grids[martId]; return g && g.columns.length > 0 ? g : grids.get(martId); };
-    if (options?.removePaths && main) {
+    if (options?.removePaths) {
+      if (!main) return;
       const sourcesNow = sources.get(main) ?? [];
       const g = fresh(main) ?? { columns: [], filters: {}, sorts: null, limit: PAGE_SIZE };
       const own = defaultColumns(schemas.peek(main) ?? []);
@@ -99,7 +100,8 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
       dispatch({ type: 'setMarts', selection: now.selection, grids: { [main]: next } });
       columnStore.save(main, next.columns);
       for (const martId of martIds) {
-        const fields = ownNamesIn(g.columns, sourcesNow, martId);
+        // Only what the removed paths showed: the same mart may stay joined at another path.
+        const fields = ownNamesIn(g.columns, sourcesNow.filter((s) => options.removePaths!.includes(s.aliasPath)), martId);
         if (fields.length > 0) columnStore.saveLastShown(martId, fields);
       }
       await rendered();

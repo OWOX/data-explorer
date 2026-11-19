@@ -1,13 +1,12 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect } from 'react';
 import { vi } from 'vitest';
 import type { Mart, Model } from '../../model/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
-import { AppServices, StoreProvider, useStore, type State } from '../../state/store';
+import { AppServices, StoreProvider, useServices, useStore, type State } from '../../state/store';
 import { TooltipProvider } from '../Tooltip';
-import { waitFor } from '@testing-library/react';
 import { MartCard, martElementId } from './cards';
 import { useCardClick } from './useCardClick';
 
@@ -45,26 +44,60 @@ test('a card with a path has a per-path element id and data-path', () => {
   expect(martElementId('m1', 'a.b')).toBe('dm-m1@a.b');
 });
 
-const mk = (id: string) => [id, { id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null }] as const;
-const model = { marts: new Map(['orders', 'customers'].map(mk)), sources: [], edges: [], contexts: [], storages: [], failedStorages: [] } as unknown as Model;
+test('the remove button works from the keyboard and does not select the card', async () => {
+  const p = props({ onRemove: vi.fn() });
+  renderCard(p);
+  screen.getByRole('button', { name: 'Remove Orders from the report' }).focus();
+  await userEvent.keyboard('{Enter}');
+  expect(p.onRemove).toHaveBeenCalledTimes(1);
+  expect(p.onSelect).not.toHaveBeenCalled();
+});
 
-test('useCardClick with removePaths drops the path fields in one setMarts and remembers them', async () => {
+const mk = (id: string) => [id, { id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null }] as const;
+const model = { marts: new Map(['orders', 'customers', 'stores', 'countries'].map(mk)), sources: [], edges: [], contexts: [], storages: [], failedStorages: [] } as unknown as Model;
+
+test('useCardClick with removePaths is one Undo step, and remembers only the removed path\'s fields', async () => {
   let click!: ReturnType<typeof useCardClick>;
   let state!: State;
+  let dispatch!: ReturnType<typeof useStore>[1];
+  let columnStore!: ReturnType<typeof useServices>['columnStore'];
   const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
   function Probe() {
-    const [s, dispatch] = useStore();
+    const [s, d] = useStore();
     state = s;
+    dispatch = d;
+    columnStore = useServices().columnStore;
     click = useCardClick(model);
-    useEffect(() => { dispatch({ type: 'init', focusId: 'orders' }); }, [dispatch]);
+    useEffect(() => { d({ type: 'init', focusId: 'orders' }); }, [d]);
     return null;
   }
   render(<AppServices ctx={ctx}><StoreProvider><Probe /></StoreProvider></AppServices>);
   await waitFor(() => expect(state.selection.martId).toBe('orders'));
   await click('customers');
   await waitFor(() => expect(state.grids.orders?.columns.some((c) => c.startsWith('customers__'))).toBe(true));
-  await click('customers', { removePaths: ['customers'] });
-  await waitFor(() => expect(state.grids.orders!.columns.some((c) => c.startsWith('customers__'))).toBe(false));
-  expect(state.grids.orders!.columns.length).toBeGreaterThan(0);
+  // Countries sits at two paths; the grid shows name under one and name and code under the other.
+  const wide = [...state.grids.orders!.columns, 'customers__countries__name', 'stores__countries__name', 'stores__countries__code'];
+  dispatch({ type: 'editGrid', martId: 'orders', grid: { ...state.grids.orders!, columns: wide } });
+  await waitFor(() => expect(state.grids.orders!.columns).toEqual(wide));
+  await click('countries', { removePaths: ['customers.countries'] });
+  await waitFor(() => expect(state.grids.orders!.columns).not.toContain('customers__countries__name'));
+  expect(state.grids.orders!.columns).toContain('stores__countries__code');
   expect(state.selection.martId).toBe('orders');
+  expect(columnStore.lastShown('countries')).toEqual(['name']);
+  dispatch({ type: 'undo' });
+  await waitFor(() => expect(state.grids.orders!.columns).toEqual(wide));
+});
+
+test('removePaths with no main mart does nothing', async () => {
+  let click!: ReturnType<typeof useCardClick>;
+  let state!: State;
+  function Probe() {
+    const [s] = useStore();
+    state = s;
+    click = useCardClick(model);
+    return null;
+  }
+  render(<AppServices ctx={createMockCtx(demoFixtures(), { latencyMs: 0 })}><StoreProvider><Probe /></StoreProvider></AppServices>);
+  await click('customers', { removePaths: ['customers'] });
+  expect(state.selection.martId).toBeNull();
 });

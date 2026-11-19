@@ -135,9 +135,15 @@ export function withoutMart(grid: GridState, sources: JoinedSource[], martId: st
   };
 }
 
-/** The grid with every field of these exact alias paths taken out: columns, filters, sorts, aggregations, buckets. A grid left with no column gets `own`. */
+/** The grid with every field of these exact alias paths taken out (the same grid when none is in use): columns, filters, sorts, aggregations, buckets. A grid left with no column gets `own`. */
 export function withoutPaths(grid: GridState, sources: JoinedSource[], paths: string[], own: string[]): GridState {
   const gone = new Set(sources.filter((s) => paths.includes(s.aliasPath)).flatMap((s) => s.fields.map((f) => f.name)));
+  const touched = grid.columns.some((c) => gone.has(c))
+    || Object.keys(grid.filters).some((k) => gone.has(k))
+    || (grid.sorts ?? []).some((k) => gone.has(k.field))
+    || (grid.aggregations ?? []).some((a) => gone.has(a.column))
+    || (grid.dateTrunc ?? []).some((d) => gone.has(d.column));
+  if (!touched) return grid;
   let columns = grid.columns.filter((c) => !gone.has(c));
   if (columns.length === 0) columns = own;
   const kept = grid.sorts && sortsOnColumns(grid.sorts, columns);

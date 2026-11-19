@@ -399,6 +399,9 @@ describe('withoutPaths', () => {
   test('a grid left with no column gets the own ones', () => {
     expect(withoutPaths(g([jc('a.c')]), ps, ['a.c'], ['id', 'status']).columns).toEqual(['id', 'status']);
   });
+  test('a path with no field in use returns the same grid', () => {
+    expect(withoutPaths(two, ps, ['zzz'], ['id'])).toBe(two);
+  });
   test('a path that holds none of the columns changes nothing', () => {
     expect(withoutPaths(two, ps, ['b'], ['id']).columns).toEqual(two.columns);
   });
