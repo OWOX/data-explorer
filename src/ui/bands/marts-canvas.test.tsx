@@ -8,6 +8,7 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
 import { TooltipProvider } from '../Tooltip';
+import { martElementId } from './cards';
 import { MartsCanvas } from './MartsCanvas';
 
 function setup() {
@@ -20,7 +21,7 @@ const headers = () => within(data()).getAllByRole('columnheader').filter((h) => 
 const groupTitles = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!);
 const ready = async () => { await waitFor(() => expect(headers()).toHaveLength(5)); await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true)); };
 const gridCard = (title: string) => within(marts()).getByText(title).closest('article')!;
-const el = (id: string) => marts().querySelector<HTMLElement>(`article#dm-${id}`);
+const el = (id: string, path?: string) => [...marts().querySelectorAll<HTMLElement>('article')].find((a) => a.id === martElementId(id, path) && !a.hasAttribute('data-ghost')) ?? null;
 const ghosts = () => [...marts().querySelectorAll<HTMLElement>('article[data-ghost]')].map((a) => a.id);
 const toCanvas = async () => {
   const group = within(marts()).getByRole('radiogroup', { name: 'Show data marts as' });
@@ -34,11 +35,11 @@ test('canvas shows the main mart and its joined marts as a tree', async () => {
   fireEvent.click(gridCard('Customers'));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
   await toCanvas();
-  await waitFor(() => expect(el('customers')).not.toBeNull());
+  await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
   expect(el('orders')).not.toBeNull();
   expect(el('products')).toBeNull();
-  const left = (id: string) => parseFloat(el(id)!.parentElement!.style.left);
-  expect(left('customers')).toBeGreaterThan(left('orders'));
+  const left = (id: string, path?: string) => parseFloat(el(id, path)!.parentElement!.style.left);
+  expect(left('customers', 'customers')).toBeGreaterThan(left('orders'));
   expect(marts().querySelector('[data-ghost]')).toBeNull();
 });
 
@@ -50,8 +51,8 @@ test('hovering a card shows its ghosts; clicking a ghost adds that mart through 
   await userEvent.hover(el('orders')!);
   await waitFor(() => expect(ghosts()).toEqual(expect.arrayContaining(['dm-customers', 'dm-products', 'dm-stores'])));
   await userEvent.click(marts().querySelector<HTMLElement>('article#dm-customers[data-ghost]')!);
-  await waitFor(() => expect(el('customers')).not.toHaveAttribute('data-ghost'));
-  expect(el('customers')).not.toBeNull();
+  await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+  expect(el('customers', 'customers')).not.toBeNull();
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
   expect(headers().length).toBeGreaterThan(5);
 });
@@ -100,13 +101,13 @@ test('with joined sources not loaded, the canvas shows the main card alone', asy
 });
 
 const pointer = (clientX: number, clientY: number, buttons = 1) => ({ clientX, clientY, button: 0, buttons, pointerId: 1 });
-const centre = (id: string) => {
-  const w = el(id)!.parentElement!;
+const centre = (id: string, path?: string) => {
+  const w = el(id, path)!.parentElement!;
   return { x: parseFloat(w.style.left) + 112, y: parseFloat(w.style.top) + 56 };
 };
-const tips = () => [...marts().querySelectorAll<SVGPathElement>('#tree-wires path[data-tip]')].map((p) => p.dataset.tip);
+const tips = () => [...marts().querySelectorAll<SVGPathElement>('#tree-wires path[data-tip]:not(.ghost)')].map((p) => p.dataset.tip);
 const treeEl = () => marts().querySelector<HTMLElement>('.dm-tree')!;
-const wrapper = (id: string) => el(id)!.parentElement!;
+const wrapper = (id: string, path?: string) => el(id, path)!.parentElement!;
 const joinCountriesUnderCustomers = async () => {
   setup();
   await ready();
@@ -119,7 +120,7 @@ const joinCountriesUnderCustomers = async () => {
   await userEvent.hover(el('orders')!);
   await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article#dm-stores[data-ghost]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores']));
-  await userEvent.hover(el('customers')!);
+  await userEvent.hover(el('customers', 'customers')!);
   await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article#dm-countries[data-ghost]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores', 'Countries']));
 };
@@ -127,18 +128,18 @@ const joinCountriesUnderCustomers = async () => {
 test('dragging countries from customers onto stores moves its columns to the stores path', async () => {
   await joinCountriesUnderCustomers();
   await waitFor(() => expect(tips()).toContain('Customers → Countries'));
-  const stores = () => centre('stores');
-  const c = () => centre('countries');
-  const storesClass = el('stores')!.className;
-  fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
+  const stores = () => centre('stores', 'stores');
+  const c = () => centre('countries', 'customers.countries');
+  const storesClass = el('stores', 'stores')!.className;
+  fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
   fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
   fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
   await waitFor(() => expect(wrapper('orders')).toHaveClass('dm-dimmed'));
-  expect(wrapper('stores')).not.toHaveClass('dm-dimmed');
-  expect(wrapper('customers')).not.toHaveClass('dm-dimmed');
+  expect(wrapper('stores', 'stores')).not.toHaveClass('dm-dimmed');
+  expect(wrapper('customers', 'customers')).not.toHaveClass('dm-dimmed');
   expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(1);
-  expect(el('stores')!.className).toBe(storesClass);
-  fireEvent.pointerUp(el('stores')!, pointer(stores().x, stores().y, 0));
+  expect(el('stores', 'stores')!.className).toBe(storesClass);
+  fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
   await waitFor(() => expect(tips()).toContain('Stores → Countries'));
   expect(tips()).not.toContain('Customers → Countries');
   expect(marts().querySelector('svg#drag-line path')).toBeNull();
@@ -149,8 +150,8 @@ test('dragging countries from customers onto stores moves its columns to the sto
 test('Escape or a release away from any target changes nothing, and the next click still works', async () => {
   await joinCountriesUnderCustomers();
   const before = headers();
-  const c = () => centre('countries');
-  fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
+  const c = () => centre('countries', 'customers.countries');
+  fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
   fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
   await waitFor(() => expect(marts().querySelector('svg#drag-line path')).not.toBeNull());
   fireEvent.keyDown(document, { key: 'Escape' });
@@ -159,7 +160,7 @@ test('Escape or a release away from any target changes nothing, and the next cli
   fireEvent.click(el('orders')!);
   expect(ghosts()).toEqual([]);
   expect(headers()).toEqual(before);
-  fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
+  fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
   fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
   fireEvent.pointerUp(document.body, pointer(5, 5, 0));
   await new Promise((r) => setTimeout(r, 20));
@@ -173,13 +174,13 @@ test('releasing near the current parent changes nothing and leaves the wires alo
   const before = headers();
   await waitFor(() => expect(tips()).toContain('Customers → Countries'));
   const tipsBefore = tips();
-  const c = () => centre('countries');
-  const cu = () => centre('customers');
-  fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
+  const c = () => centre('countries', 'customers.countries');
+  const cu = () => centre('customers', 'customers');
+  fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
   fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
   fireEvent.pointerMove(treeEl(), pointer(cu().x, cu().y));
   await waitFor(() => expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(1));
-  fireEvent.pointerUp(el('customers')!, pointer(cu().x, cu().y, 0));
+  fireEvent.pointerUp(el('customers', 'customers')!, pointer(cu().x, cu().y, 0));
   await new Promise((r) => setTimeout(r, 50));
   expect(headers()).toEqual(before);
   expect(tips()).toEqual(tipsBefore);
@@ -214,26 +215,26 @@ test('scrolling the tree box re-lays out the page wires; scrolling elsewhere in 
 
 test('a pin on a card whose path moved away does not hold the ghosts back', async () => {
   await joinCountriesUnderCustomers();
-  await userEvent.click(el('countries')!);
-  const stores = () => centre('stores');
-  const c = () => centre('countries');
-  fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
+  await userEvent.click(el('countries', 'customers.countries')!);
+  const stores = () => centre('stores', 'stores');
+  const c = () => centre('countries', 'customers.countries');
+  fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
   fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
   fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
-  fireEvent.pointerUp(el('stores')!, pointer(stores().x, stores().y, 0));
+  fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
   await waitFor(() => expect(tips()).toContain('Stores → Countries'));
-  await userEvent.unhover(el('countries')!);
+  await userEvent.unhover(el('countries', 'stores.countries')!);
   await userEvent.hover(el('orders')!);
   await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
 });
 
 test('the line and the release both count the whole scroll box, and neither counts what is outside it', async () => {
   await joinCountriesUnderCustomers();
-  const stores = () => centre('stores');
-  const c = () => centre('countries');
+  const stores = () => centre('stores', 'stores');
+  const c = () => centre('countries', 'customers.countries');
   const box = within(marts()).getByTestId('marts-canvas');
   const line = () => marts().querySelector('svg#drag-line path');
-  fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
+  fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
   fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
   fireEvent.pointerMove(box, pointer(stores().x, stores().y));
   await waitFor(() => expect(line()).not.toBeNull());
@@ -255,6 +256,40 @@ test('adding a mart with Enter on a ghost moves focus to its new card', async ()
   const ghost = await waitFor(() => { const g = marts().querySelector<HTMLElement>('article#dm-customers[data-ghost]'); expect(g).not.toBeNull(); return g!; });
   ghost.focus();
   await userEvent.keyboard('{Enter}');
-  await waitFor(() => expect(el('customers')).not.toHaveAttribute('data-ghost'));
-  await waitFor(() => expect(document.activeElement).toBe(el('customers')));
+  await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(el('customers', 'customers')));
+});
+
+const countriesUnderBoth = async () => {
+  await joinCountriesUnderCustomers();
+  const stores = () => centre('stores', 'stores');
+  const c = () => centre('countries', 'customers.countries');
+  fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
+  fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
+  await waitFor(() => expect(el('countries', 'stores.countries')).not.toBeNull());
+  expect(el('countries', 'customers.countries')).toBeNull();
+  await userEvent.hover(el('customers', 'customers')!);
+  await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article#dm-countries[data-ghost]'); expect(g).not.toBeNull(); return g!; }));
+  await waitFor(() => expect(el('countries', 'customers.countries')).not.toBeNull());
+};
+
+test('a mart already under another parent is still offered as a ghost, and adding it gives two cards', async () => {
+  await countriesUnderBoth();
+  expect(marts().querySelectorAll('article[data-mart-id="countries"]:not([data-ghost])')).toHaveLength(2);
+  expect(el('countries', 'stores.countries')).not.toBeNull();
+});
+
+test('x on a joined card removes its path and the subtree, the same mart elsewhere stays, Undo restores both', async () => {
+  await countriesUnderBoth();
+  expect(el('orders')!.querySelector('.dm-card-remove')).toBeNull();
+  await userEvent.click(within(el('stores', 'stores')!).getByRole('button', { name: /remove stores/i }));
+  await waitFor(() => expect(el('stores', 'stores')).toBeNull());
+  expect(el('countries', 'stores.countries')).toBeNull();
+  expect(el('countries', 'customers.countries')).not.toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: /undo/i }));
+  await waitFor(() => expect(el('stores', 'stores')).not.toBeNull());
+  expect(el('countries', 'stores.countries')).not.toBeNull();
+  expect(el('countries', 'customers.countries')).not.toBeNull();
 });

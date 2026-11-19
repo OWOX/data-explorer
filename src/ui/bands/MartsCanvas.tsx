@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JoinedSource } from '../../api/blendable';
 import type { DqSummary, Model } from '../../model/types';
-import { buildJoinTree, ghostSources } from '../../state/join-tree';
+import { buildJoinTree, ghostSources, subtreePaths } from '../../state/join-tree';
 import { closestTarget, dropTargets } from './canvas-drag';
 import { CARD_H, CARD_W, layoutTree } from './canvas-layout';
 import { MartCard, martElementId, type CountState } from './cards';
@@ -35,8 +35,8 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   const treeRef = useRef<HTMLDivElement>(null);
   const tree = useMemo(() => buildJoinTree(mainId ?? '', columns, sources ?? []), [mainId, columns, sources]);
   const [over, setOver] = useState<Over>(NONE);
-  // The mart whose new card takes focus once it renders: a ghost chosen with Enter vanishes under the keyboard.
-  const [focusMart, setFocusMart] = useState<string | null>(null);
+  // The card (mart and alias path) that takes focus once it renders: a ghost chosen with Enter vanishes under the keyboard.
+  const [focusCard, setFocusCard] = useState<{ martId: string; path: string } | null>(null);
   const [pinned, setPinned] = useState<string | null>(null);
   const drag = useCanvasDrag(
     treeRef,
@@ -63,12 +63,12 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   }, []);
 
   useEffect(() => {
-    if (focusMart === null) return;
-    const card = treeRef.current?.querySelector<HTMLElement>(`article[id="${martElementId(focusMart)}"]:not([data-ghost])`);
+    if (focusCard === null) return;
+    const card = treeRef.current?.querySelector<HTMLElement>(`#${CSS.escape(martElementId(focusCard.martId, focusCard.path))}:not([data-ghost])`);
     if (!card) return;
     card.focus();
-    setFocusMart(null);
-  }, [focusMart, tree]);
+    setFocusCard(null);
+  }, [focusCard, tree]);
 
   // A click anywhere in the scroll box that is not on a card is a click on the empty canvas.
   useEffect(() => {
@@ -100,10 +100,10 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     for (const node of tree.nodes.values()) {
       if (node.parent === null) continue;
       const parent = tree.nodes.get(node.parent)!;
-      out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId), to: martElementId(node.martId), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}` });
+      out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}` });
     }
     const from = ghostOf !== null ? tree.nodes.get(ghostOf) : undefined;
-    if (from) for (const g of ghosts) out.push({ id: `ghost:${g.aliasPath}`, from: martElementId(from.martId), to: martElementId(g.martId), kind: 'relationship', title: `${title(from.martId)} → ${title(g.martId)}`, dashed: true });
+    if (from) for (const g of ghosts) out.push({ id: `ghost:${g.aliasPath}`, from: martElementId(from.martId, from.path), to: martElementId(g.martId), kind: 'relationship', title: `${title(from.martId)} → ${title(g.martId)}`, dashed: true });
     return out;
     // `key` stands for tree, ghostOf and ghosts: the memo must not rebuild on every hover.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,6 +145,8 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               freshness={mart.dataLastUpdatedAt}
               selected={node.path === ''}
               joined={node.path !== ''}
+              path={node.path}
+              onRemove={node.path === '' ? undefined : () => { void click(node.martId, { removePaths: subtreePaths(tree, node.path) }); }}
               lit={false}
               onSelect={() => setPinned(node.path)}
               onOpenApp={() => onOpenApp(mart.id)}
@@ -172,7 +174,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               selected={false}
               joined={false}
               lit={false}
-              onSelect={() => { setPinned(null); click(g.martId, { addAt: g.aliasPath }).then(() => setFocusMart(g.martId), () => undefined); }}
+              onSelect={() => { setPinned(null); click(g.martId, { addAt: g.aliasPath }).then(() => setFocusCard({ martId: g.martId, path: g.aliasPath }), () => undefined); }}
               onOpenApp={() => onOpenApp(mart.id)}
               onRetryCount={() => undefined}
               onNeedCount={() => undefined}
