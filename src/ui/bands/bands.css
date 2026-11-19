@@ -654,5 +654,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-tree-node.dm-dimmed { opacity: 0.15; filter: grayscale(1); transition: opacity 120ms; }
 /* The tree's lines are always drawn: the layout is the report, not a crowd to thin out. */
 #tree-wires path { opacity: 1; }
+#tree-wires .relationship { stroke-dasharray: none; }
+#tree-wires .relationship.ghost { stroke-dasharray: 5 4; }
 #drag-line { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 2; }
 #drag-line path { fill: none; stroke: var(--muted-foreground); stroke-width: 1.5; stroke-dasharray: 6 4; }

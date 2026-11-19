@@ -48,6 +48,15 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
+  // A click anywhere in the scroll box that is not on a card is a click on the empty canvas.
+  useEffect(() => {
+    const box = treeRef.current?.parentElement;
+    if (!box) return;
+    const onClick = (e: MouseEvent) => { if (!(e.target as Element).closest('[data-tree-path], [data-ghost-path]')) setPinned(null); };
+    box.addEventListener('click', onClick);
+    return () => box.removeEventListener('click', onClick);
+  }, [mainId]);
+
   const ghostOf = pinned ?? shownFor;
   const ghosts = useMemo(
     () => (ghostOf !== null && sources ? ghostSources(tree, sources, ghostOf).filter((s) => model.marts.get(s.martId)?.accessible) : []),
@@ -65,7 +74,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
       out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId), to: martElementId(node.martId), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}` });
     }
     const from = ghostOf !== null ? tree.nodes.get(ghostOf) : undefined;
-    if (from) for (const g of ghosts) out.push({ id: `ghost:${g.aliasPath}`, from: martElementId(from.martId), to: martElementId(g.martId), kind: 'relationship', title: `${title(from.martId)} → ${title(g.martId)}` });
+    if (from) for (const g of ghosts) out.push({ id: `ghost:${g.aliasPath}`, from: martElementId(from.martId), to: martElementId(g.martId), kind: 'relationship', title: `${title(from.martId)} → ${title(g.martId)}`, dashed: true });
     return out;
     // `key` stands for tree, ghostOf and ghosts: the memo must not rebuild on every hover.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -82,7 +91,6 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
       style={{ width: layout.width, height: layout.height }}
       onPointerOver={(e) => setOver((cur) => { const next = overOf(e.target); return next.path === cur.path && next.ghost === cur.ghost ? cur : next; })}
       onPointerLeave={() => setOver(NONE)}
-      onClick={(e) => { if (e.target === e.currentTarget) setPinned(null); }}
     >
       {[...tree.nodes.values()].flatMap((node) => {
         const mart = model.marts.get(node.martId);

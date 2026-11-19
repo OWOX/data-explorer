@@ -31,6 +31,8 @@ export type Wire = {
   kind: 'source' | 'relationship';
   /** Said in the tooltip: lines pass under cards, so they have to say what they are. */
   title: string;
+  /** A ghost line: drawn dashed where the layer draws its lines solid. */
+  dashed?: boolean;
 };
 
 /** `also` are the selected joined marts: the line of each to the pinned card is raised like the pinned card's own. */
@@ -142,7 +144,7 @@ function ensureLayer(canvas: HTMLElement, layerId: string) {
   svg.id = layerId;
   svg.setAttribute('aria-hidden', 'true');
   svg.innerHTML =
-    '<defs><marker id="arrowhead" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0.5 L7 4 L0 7.5 z" fill="context-stroke"/></marker></defs>';
+    `<defs><marker id="arrowhead-${layerId}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0.5 L7 4 L0 7.5 z" fill="context-stroke"/></marker></defs>`;
   canvas.prepend(svg);
   return { svg, made: true };
 }
@@ -177,8 +179,8 @@ export function useWires(
 
     const paths = (drawn.current = wires.map((wire) => {
       const path = document.createElementNS(NS, 'path');
-      path.setAttribute('class', wire.kind);
-      path.setAttribute('marker-end', 'url(#arrowhead)');
+      path.setAttribute('class', wire.dashed ? `${wire.kind} ghost` : wire.kind);
+      path.setAttribute('marker-end', `url(#arrowhead-${layerId})`);
       path.dataset.from = wire.from;
       path.dataset.to = wire.to;
       // Read by the canvas, which says it in the shared bubble: a native <title> would be a second tooltip style.
@@ -251,12 +253,15 @@ export function useWires(
     };
     canvas.addEventListener('animationend', settle);
     canvas.addEventListener('animationcancel', settle);
+    // A scrollable box inside the canvas moves its cards without resizing anything.
+    canvas.addEventListener('scroll', settle, true);
 
     return () => {
       observer.disconnect();
       cancelAnimationFrame(queued);
       canvas.removeEventListener('animationend', settle);
       canvas.removeEventListener('animationcancel', settle);
+      canvas.removeEventListener('scroll', settle, true);
       for (const path of paths) path.remove();
       if (made) svg.remove();
     };

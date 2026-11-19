@@ -67,7 +67,21 @@ test('clicking a card pins its ghosts; Escape lets them go', async () => {
   await userEvent.unhover(el('orders')!);
   await new Promise((r) => setTimeout(r, 600));
   expect(ghosts().length).toBeGreaterThan(0);
+  expect(groupTitles()).toEqual(['Orders']);
+  expect(el('orders')).toHaveAttribute('aria-pressed', 'true');
   await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(ghosts()).toEqual([]));
+});
+
+test('clicking the empty canvas lets the pinned ghosts go', async () => {
+  setup();
+  await ready();
+  await toCanvas();
+  await waitFor(() => expect(el('orders')).not.toBeNull());
+  await userEvent.click(el('orders')!);
+  await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
+  await userEvent.unhover(el('orders')!);
+  await userEvent.click(within(marts()).getByTestId('marts-canvas'));
   await waitFor(() => expect(ghosts()).toEqual([]));
 });
 
