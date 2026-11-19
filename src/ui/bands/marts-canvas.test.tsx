@@ -154,7 +154,7 @@ test('Escape or a release away from any target changes nothing, and the next cli
   fireEvent.keyDown(document, { key: 'Escape' });
   await waitFor(() => expect(marts().querySelector('svg#drag-line path')).toBeNull());
   fireEvent.pointerUp(window, pointer(c().x + 40, c().y, 0));
-  fireEvent.click(el('countries')!);
+  fireEvent.click(el('orders')!);
   expect(ghosts()).toEqual([]);
   expect(headers()).toEqual(before);
   fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
