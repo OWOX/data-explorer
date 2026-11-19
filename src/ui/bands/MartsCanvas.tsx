@@ -2,8 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JoinedSource } from '../../api/blendable';
 import type { DqSummary, Model } from '../../model/types';
-import { buildJoinTree, ghostSources, rejoinTargets } from '../../state/join-tree';
-import { closestTarget } from './canvas-drag';
+import { buildJoinTree, ghostSources } from '../../state/join-tree';
+import { closestTarget, dropTargets } from './canvas-drag';
 import { CARD_H, CARD_W, layoutTree } from './canvas-layout';
 import { MartCard, martElementId, type CountState } from './cards';
 import { useCanvasDrag } from './useCanvasDrag';
@@ -40,9 +40,9 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     treeRef,
     (p) => p !== '',
     (path, x, y) => {
-      const pick = closestTarget(rejoinTargets(tree, sources ?? [], path), layout.placed, x, y);
+      const pick = closestTarget(dropTargets(tree, sources ?? [], path), layout.placed, x, y);
       const node = tree.nodes.get(path);
-      if (pick && node) void click(node.martId, { moves: pick.moves });
+      if (pick && node && pick.moves.size > 0) void click(node.martId, { moves: pick.moves });
     },
     mainId,
   );
@@ -77,7 +77,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   );
   const layout = useMemo(() => layoutTree(tree, ghostOf !== null && ghosts.length ? { path: ghostOf, ids: ghosts.map((g) => g.aliasPath) } : undefined), [tree, ghostOf, ghosts]);
 
-  const targets = useMemo(() => (drag ? rejoinTargets(tree, sources ?? [], drag.path) : []), [drag?.path, tree, sources]); // eslint-disable-line react-hooks/exhaustive-deps
+  const targets = useMemo(() => (drag ? dropTargets(tree, sources ?? [], drag.path) : []), [drag?.path, tree, sources]); // eslint-disable-line react-hooks/exhaustive-deps
   const valid = new Set(targets.map((t) => t.target));
   const pick = drag ? closestTarget(targets, layout.placed, drag.x, drag.y) : null;
   const key = [...tree.nodes.keys(), '|', ghostOf ?? '', ...ghosts.map((g) => g.aliasPath)].join('>');

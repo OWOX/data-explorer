@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest';
 import { CARD_H, CARD_W } from './canvas-layout';
-import { closestTarget } from './canvas-drag';
+import { buildJoinTree } from '../../state/join-tree';
+import type { JoinedSource } from '../../api/blendable';
+import { closestTarget, dropTargets } from './canvas-drag';
 
 const t = (target: string) => ({ target, moves: new Map([['a.c', `${target}.c`]]) });
 const placed = [{ path: 'a', x: 0, y: 0 }, { path: 'b', x: 0, y: 300 }, { path: '', x: -400, y: 150 }];
@@ -16,4 +18,13 @@ test('no targets, no pick', () => {
 
 test('a target with no placed card is ignored', () => {
   expect(closestTarget([t('zzz')], placed, 0, 0)).toBeNull();
+});
+
+test('dropTargets adds the current parent once, with no moves; the main mart has no parent entry', () => {
+  const src = (aliasPath: string, martId: string, depth: number, field: string) => ({ aliasPath, martId, depth, label: martId, uniqueCount: true, fields: [{ name: field }] }) as unknown as JoinedSource;
+  const sources = [src('c', 'customers', 1, 'c__x'), src('c.k', 'countries', 2, 'c__k__y')];
+  const tree = buildJoinTree('orders', ['c__x', 'c__k__y'], sources);
+  const own = dropTargets(tree, sources, 'c.k').filter((t) => t.target === 'c');
+  expect(own).toHaveLength(1);
+  expect(dropTargets(tree, sources, '').some((t) => t.target === null)).toBe(false);
 });

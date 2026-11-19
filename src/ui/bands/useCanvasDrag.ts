@@ -44,6 +44,8 @@ export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (pat
       press = { path, x: e.clientX, y: e.clientY };
     };
     const move = (e: PointerEvent) => {
+      // A move with no button down means the release was lost: forget a pending swallow.
+      if (!(e.buttons & 1)) cancelled = false;
       if (!press) return;
       // The release happened out of our sight: let go of the drag.
       if (!(e.buttons & 1)) { end(); return; }
@@ -71,6 +73,7 @@ export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (pat
     window.addEventListener('pointercancel', cancel);
     document.addEventListener('keydown', key);
     return () => {
+      setDrag(null);
       el.removeEventListener('pointerdown', down);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);

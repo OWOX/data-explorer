@@ -133,7 +133,7 @@ test('dragging countries from customers onto stores moves its columns to the sto
   fireEvent.pointerMove(window, pointer(stores().x, stores().y));
   await waitFor(() => expect(wrapper('orders')).toHaveClass('dm-dimmed'));
   expect(wrapper('stores')).not.toHaveClass('dm-dimmed');
-  expect(wrapper('customers')).toHaveClass('dm-dimmed');
+  expect(wrapper('customers')).not.toHaveClass('dm-dimmed');
   expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(1);
   expect(el('stores')!.className).toBe(storesClass);
   fireEvent.pointerUp(el('stores')!, pointer(stores().x, stores().y, 0));
@@ -154,6 +154,8 @@ test('Escape or a release away from any target changes nothing, and the next cli
   fireEvent.keyDown(document, { key: 'Escape' });
   await waitFor(() => expect(marts().querySelector('svg#drag-line path')).toBeNull());
   fireEvent.pointerUp(window, pointer(c().x + 40, c().y, 0));
+  fireEvent.click(el('countries')!);
+  expect(ghosts()).toEqual([]);
   expect(headers()).toEqual(before);
   fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
   fireEvent.pointerMove(window, pointer(c().x + 40, c().y));
@@ -162,4 +164,21 @@ test('Escape or a release away from any target changes nothing, and the next cli
   expect(headers()).toEqual(before);
   await userEvent.click(el('orders')!);
   await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
+});
+
+test('releasing near the current parent changes nothing and leaves the wires alone', async () => {
+  await joinCountriesUnderCustomers();
+  const before = headers();
+  await waitFor(() => expect(tips()).toContain('Customers → Countries'));
+  const tipsBefore = tips();
+  const c = () => centre('countries');
+  const cu = () => centre('customers');
+  fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
+  fireEvent.pointerMove(window, pointer(c().x + 40, c().y));
+  fireEvent.pointerMove(window, pointer(cu().x, cu().y));
+  await waitFor(() => expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(1));
+  fireEvent.pointerUp(el('customers')!, pointer(cu().x, cu().y, 0));
+  await new Promise((r) => setTimeout(r, 50));
+  expect(headers()).toEqual(before);
+  expect(tips()).toEqual(tipsBefore);
 });
