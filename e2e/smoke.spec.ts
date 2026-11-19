@@ -72,6 +72,17 @@ test('a source click narrows the marts; clicking it again returns', async ({ pag
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
 });
 
+test('three Fibery connectors are one source card; selecting it shows all their marts', async ({ page }) => {
+  await ordersGrid(page);
+  await unfoldSources(page);
+  const fibery = band(page, 'sources').locator('article', { hasText: 'Fibery' });
+  await expect(fibery).toHaveCount(1);
+  await expect(fibery).toContainText('3 data marts');
+  await fibery.click();
+  for (const title of ['Fibery Tasks', 'Fibery Projects', 'Fibery People']) await expect(band(page, 'marts').getByText(title, { exact: true })).toBeVisible();
+  await expect(band(page, 'marts').getByText('Orders', { exact: true })).toHaveCount(0);
+});
+
 const heading = (page: Page) => band(page, 'data').locator('thead tr[data-group-row] th[data-group]');
 const search = async (page: Page, q: string) => {
   const header = page.locator('header.dm-page-header');

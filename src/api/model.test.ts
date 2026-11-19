@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { describe, vi } from 'vitest';
 import { loadModel } from './model';
 import { stubCtx } from './test-ctx';
 
@@ -138,4 +138,78 @@ test('loadModel reports each step it finishes, the total growing by two per stor
   expect(last).toEqual({ done: 8, total: 8 }); // storages, marts, contexts, connectors, then a canvas read and an edge read per storage
   expect(seen.every((p, i) => i === 0 || p.done === seen[i - 1]!.done + 1)).toBe(true);
   expect(seen.every((p) => p.done <= p.total)).toBe(true);
+});
+
+describe('custom connectors', () => {
+  const entry = (id: string, name: string | null) => ({ id, title: id, description: null, contexts: [], availableForReporting: true, definitionType: name ? 'CONNECTOR' : 'SQL', connectorSourceName: name });
+  const canvas = (ids: string[]) => ({ items: ids.map((id) => ({ id, title: id, description: null, fieldCount: 1, status: 'PUBLISHED' })), total: ids.length, nextOffset: null });
+  const run = (names: [string, string | null][], handlers: { bundled?: () => unknown; summaries?: (q?: Record<string, string>) => unknown }) => {
+    const summaries = vi.fn(async (q?: Record<string, string>) => handlers.summaries!(q));
+    const ctx = stubCtx({
+      storages: { list: async () => [{ id: 's1', title: 'BQ', type: 'X' }] },
+      dataMarts: { list: async () => names.map(([id, n]) => entry(id, n)), traverseData: vi.fn() },
+      getJson: async (path: string, query?: Record<string, string>) => {
+        if (path === '/api/connectors') return handlers.bundled ? handlers.bundled() : [{ name: 'Shopify', title: 'Shopify' }];
+        if (path === '/api/connectors/custom/summaries') return summaries(query);
+        if (path === '/api/contexts') return [];
+        return canvas(names.map(([id]) => id));
+      },
+    });
+    return { ctx, summaries };
+  };
+  const rows = [
+    { id: '1', name: 'FiberyTasks', title: 'Fibery Tasks', logo: null, hosts: ['owox.fibery.io'] },
+    { id: '2', name: 'FiberyPeople', title: 'Fibery People', logo: 'data:image/png;base64,QQ', hosts: ['owox.fibery.io'] },
+  ];
+
+  test('custom connectors of one service become one source, and every mart keeps the shared key', async () => {
+    const { ctx, summaries } = run([['a', 'FiberyTasks'], ['b', 'fiberypeople'], ['c', 'Shopify'], ['d', null]], { summaries: () => rows });
+    const model = await loadModel(ctx);
+    expect(summaries).toHaveBeenCalledWith({ names: 'FiberyTasks,fiberypeople' });
+    expect(model.marts.get('a')!.sourceKey).toBe('service:fibery.io');
+    expect(model.marts.get('b')!.sourceKey).toBe('service:fibery.io');
+    expect(model.sources).toEqual([
+      { key: 'service:fibery.io', name: 'Fibery', logo: 'data:image/png;base64,QQ', martIds: ['a', 'b'] },
+      { key: 'Shopify', name: 'Shopify', logo: null, martIds: ['c'] },
+    ]);
+  });
+
+  test('no summaries request when every name is bundled', async () => {
+    const { ctx, summaries } = run([['a', 'Shopify']], { summaries: () => rows });
+    await loadModel(ctx);
+    expect(summaries).not.toHaveBeenCalled();
+  });
+
+  test('a refused bundled list makes no summaries request and keeps raw keys', async () => {
+    const { ctx, summaries } = run([['a', 'FiberyTasks']], { bundled: () => { throw new Error('no'); }, summaries: () => rows });
+    expect((await loadModel(ctx)).sources).toEqual([{ key: 'FiberyTasks', name: 'FiberyTasks', logo: null, martIds: ['a'] }]);
+    expect(summaries).not.toHaveBeenCalled();
+  });
+
+  test('a refused summaries call costs only the custom detail', async () => {
+    const { ctx } = run([['a', 'FiberyTasks'], ['b', 'Shopify']], { summaries: () => { throw new Error('403'); } });
+    const model = await loadModel(ctx);
+    expect(model.sources.map((s) => s.key).sort()).toEqual(['FiberyTasks', 'Shopify']);
+  });
+
+  test('malformed summary rows are skipped', async () => {
+    const { ctx } = run([['a', 'FiberyTasks']], { summaries: () => [null, 7, { id: 1 }, rows[0]] });
+    expect((await loadModel(ctx)).sources[0]).toMatchObject({ key: 'service:fibery.io', name: 'Fibery Tasks' });
+  });
+
+  test('bundled entries without a string name are dropped, not fatal', async () => {
+    const { ctx } = run([['a', 'Shopify']], { bundled: () => [null, { title: 'x' }, { name: 'Shopify', title: 'Shopify' }], summaries: () => rows });
+    expect((await loadModel(ctx)).sources).toEqual([{ key: 'Shopify', name: 'Shopify', logo: null, martIds: ['a'] }]);
+  });
+
+  test('a non-array bundled list makes no summaries request', async () => {
+    const { ctx, summaries } = run([['a', 'FiberyTasks']], { bundled: () => ({ oops: 1 }), summaries: () => rows });
+    expect((await loadModel(ctx)).sources[0]!.key).toBe('FiberyTasks');
+    expect(summaries).not.toHaveBeenCalled();
+  });
+
+  test('a non-array summaries response leaves raw keys', async () => {
+    const { ctx } = run([['a', 'FiberyTasks']], { summaries: () => ({ oops: 1 }) });
+    expect((await loadModel(ctx)).sources[0]!.key).toBe('FiberyTasks');
+  });
 });

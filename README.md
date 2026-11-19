@@ -18,6 +18,8 @@ A question about one order, one customer or one campaign ends in a row. The fiel
 
 📋 **Rows without SQL.** The Data band shows the rows. Pick columns, filter each by its type (dates from presets such as Last 30 days or This month), and click titles to sort by several columns. Until you sort, the newest rows come first. Dates and times show in your locale and time zone.
 
+🔌 **One card per service.** On the Data Sources band a card stands for a service, not one custom connector: connectors whose API hosts share a registered domain (three Fibery connectors on `owox.fibery.io`, say) fold into one card named after what their titles share, or after the domain. Selecting it shows the data marts of all of them. Only an inline `data:image` logo is shown. If OWOX refuses the custom connector read, each custom connector keeps its own card, as before. Source cards link nowhere, so the single-connector builder link is not offered.
+
 🧩 **Fields from joined data marts.** Select a joined data mart in the Data Marts band and its fields join the grid under their own tab, such as `Customers · city`; the Fields icon on that tab lists its fields. It filters, sorts and exports like any other column, and OWOX reads it in the same query. A data mart reachable by several paths joins through the data mart in use that is closest to the main one. A field of a one-to-many join arrives as one cell with its values separated by commas.
 
 ➕ **Several data marts, one main.** Click a card of a data mart the selected one joins to and its first text field and its first metric (neither an ID) become columns; the grid then gets a tab for each data mart ("Orders", "Customers") and the card looks like the selected one (the same solid border and fill; the grid's first tab names the main data mart). Click it again and its columns, filters and sorts go; click it once more and it comes back with the fields you last chose. Click the selected data mart and the next joined one takes its place. A data mart the main one cannot join shows dimmed wherever a search, a context badge or a data source lists it, and a click on it explains instead of switching. To make another data mart the main one, drag its card onto the main card, or use its Make main data mart button. Its own columns come first, and the old main stays as a joined mart when the new one can join it. Undo and Redo cover all of it. Each data mart's columns sit together under a group header with its icon and title, and a small x on a group removes that data mart.
@@ -32,7 +34,7 @@ A question about one order, one customer or one campaign ends in a row. The fiel
 
 ## What it costs
 
-Every grid, record and record count is a `traverseData` query in your warehouse, and the warehouse bills it. A card asks for its count only when it scrolls into view, and counts are cached per member. Folded bands run no queries. Each chart is a `traverseData` query, run only while Charts is shown and the band is open, and cached for the session.
+Every grid, record and record count is a `traverseData` query in your warehouse, and the warehouse bills it. A card asks for its count only when it scrolls into view, and counts are cached per member. Folded bands run no queries. Opening the plugin also reads the connector lists (`GET /api/connectors`, and `GET /api/connectors/custom/summaries` for custom connectors your data marts use), which run nothing in your warehouse. Each chart is a `traverseData` query, run only while Charts is shown and the band is open, and cached for the session.
 
 ## What it writes
 

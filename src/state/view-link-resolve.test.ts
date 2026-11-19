@@ -217,3 +217,35 @@ describe('resolveView when no found mart is available', () => {
     expect(skipped.found).toBe(false);
   });
 });
+
+it('a link naming a custom connector by its own name lands on the grouped source that holds it', async () => {
+  const model = {
+    marts: new Map([['m1', { id: 'm1', title: 'm1', description: null, icon: null, storageId: 's1', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: 'service:fibery.io', connectorName: 'FiberyTasks' } as Mart]]),
+    sources: [{ key: 'service:fibery.io', name: 'Fibery', logo: null, martIds: ['m1'] }], contexts: [], storages: [{ id: 's1', title: 's1', type: 'X' }], edges: [], failedStorages: [],
+  } as Model;
+  const { apply, skipped } = await resolveView(view({ sourceKey: 'fiberytasks', martId: null, record: null, grid: null }), model, async () => null);
+  expect(apply.selection.sourceKey).toBe('service:fibery.io');
+  expect(skipped.source).toBe(false);
+});
+
+describe('legacy connector-name source keys', () => {
+  const m = (id: string, patch: Partial<Mart>) => mart(id, { sourceKey: null, ...patch });
+  const modelOf = (marts: Mart[], sources: Model['sources']): Model => ({ ...model, marts: new Map(marts.map((x) => [x.id, x])), sources });
+  const link = (key: string) => resolveView(view({ sourceKey: key, martId: null, record: null, grid: null }), modelOf(
+    [m('a', { sourceKey: 'Shopify', connectorName: 'Shopify' }), m('b', { sourceKey: 'service:x.io', connectorName: 'shopify' }), m('c', { sourceKey: 'service:y.io', connectorName: 'Gone', accessible: false })],
+    [{ key: 'Shopify', name: 'Shopify', logo: null, martIds: ['a'] }, { key: 'service:x.io', name: 'X', logo: null, martIds: ['b'] }, { key: 'service:y.io', name: 'Y', logo: null, martIds: ['c'] }],
+  ), read);
+  it('leaves an exact bundled key alone', async () => { expect((await link('Shopify')).apply.selection.sourceKey).toBe('Shopify'); });
+  it('does not follow the connector name of an inaccessible mart', async () => {
+    const r = await link('Gone');
+    expect(r.apply.selection.sourceKey).toBeNull();
+    expect(r.skipped.source).toBe(true);
+  });
+  it('picks the exact spelling when two connectors differ only by case', async () => {
+    const r = await resolveView(view({ sourceKey: 'shopify', martId: null, record: null, grid: null }), modelOf(
+      [m('a', { sourceKey: 'Shopify', connectorName: 'Shopify' }), m('b', { sourceKey: 'service:x.io', connectorName: 'shopify' })],
+      [{ key: 'Shopify', name: 'Shopify', logo: null, martIds: ['a'] }, { key: 'service:x.io', name: 'X', logo: null, martIds: ['b'] }],
+    ), read);
+    expect(r.apply.selection.sourceKey).toBe('service:x.io');
+  });
+});

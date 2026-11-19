@@ -48,6 +48,8 @@ export type DataMartListItemDto = {
   connectorSourceName?: string | null;
 };
 export type ConnectorDto = { name: string; title?: string | null; logo?: unknown };
+/** One custom connector from `/api/connectors/custom/summaries`: its API hosts say which service it is a connector of. */
+export type ConnectorSummaryDto = { id: string; name: string; title: string; logo: string | null; hosts: string[] };
 export type ModelCanvasNodeDto = {
   id: string;
   title: string;

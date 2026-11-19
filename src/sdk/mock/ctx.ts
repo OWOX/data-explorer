@@ -229,6 +229,10 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         if (one) return report(decodeURIComponent(one[1]!)) as T;
         if (path === '/api/contexts') return f.contexts as T;
         if (path === '/api/connectors') return f.connectors as T;
+        if (path === '/api/connectors/custom/summaries') {
+          const wanted = new Set((query?.names ?? '').split(',').filter(Boolean).map((n) => n.toLowerCase()));
+          return f.customConnectors.filter((c) => wanted.has(c.name.toLowerCase())) as T;
+        }
         if (path === '/api/model-canvas/data-marts') {
           const items = f.marts.filter((m) => m.storageId === query?.storageId).map((m) => ({
             id: m.id, title: m.title, description: m.description, icon: m.icon, fieldCount: m.fields.length, status: 'PUBLISHED',
