@@ -476,7 +476,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const fieldsOf = (id: string) => (id === martId ? native : sources.filter((x) => x.martId === id).flatMap((x) => x.fields));
   const hasFilters = Object.keys(filters).length > 0;
   const hasSorts = own !== null;
+  const [menuRequest, setMenuRequest] = useState<{ key: string; seq: number } | null>(null);
   const menuEnv: ColumnMenuEnv = {
+    menuRequest,
     sorts: shownSorts, setSort, filters,
     setFilter: (name, f) => { const unapplied = f ? unappliedFilter(f, schema.find((x) => x.name === name)) : null; if (unapplied) setNote({ text: unapplied }); markEdit(); setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; }); setLimit(PAGE_SIZE); },
     isAggregated: (column) => aggNow.aggregations.some((r) => r.column === column) || aggNow.dateTrunc.some((r) => r.column === column),
@@ -640,7 +642,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
           <thead ref={head} className="dm-head sticky top-0 z-10">
             <tr aria-hidden data-chrome>
               <th data-chrome rowSpan={3} className="dm-chrome dm-corner" />
-              {outputs.map((o, i) => <th key={o.key} data-chrome data-selected={colMark(i)} onClick={charts ? undefined : (e) => pickHeader('col', i, e.shiftKey)} className="dm-chrome dm-letter">{columnLetter(i)}</th>)}
+              {outputs.map((o, i) => <th key={o.key} data-chrome data-selected={colMark(i)} onContextMenu={(e) => { e.preventDefault(); const lead = outputs.find((x) => x.column === o.column) ?? o; setMenuRequest((r) => ({ key: lead.key, seq: (r?.seq ?? 0) + 1 })); }} onClick={charts ? undefined : (e) => pickHeader('col', i, e.shiftKey)} className="dm-chrome dm-letter">{columnLetter(i)}</th>)}
               <th data-chrome className="dm-chrome dm-letter w-full" />
             </tr>
             <tr data-group-row>
