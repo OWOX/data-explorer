@@ -230,7 +230,10 @@ export function useWires(
 
     // A card growing back out of a point (.dm-entering, .dm-turning) is transformed, which
     // getBoundingClientRect reports and ResizeObserver never does: one pass after the last
-    // animation ends, folded into a frame so many endings cost one.
+    // animation ends, folded into a frame so many endings cost one. A cut-short one counts too:
+    // transitions.ts takes the class off on a timer as long as the turn itself, so the turn is
+    // often cancelled and only animationcancel fires. Without it a line kept the turn's first-frame
+    // box, where perspective lifts the card's top edge, and stopped short of the card.
     let queued = 0;
     const settle = () => {
       queued ||= requestAnimationFrame(() => {
@@ -239,11 +242,13 @@ export function useWires(
       });
     };
     canvas.addEventListener('animationend', settle);
+    canvas.addEventListener('animationcancel', settle);
 
     return () => {
       observer.disconnect();
       cancelAnimationFrame(queued);
       canvas.removeEventListener('animationend', settle);
+      canvas.removeEventListener('animationcancel', settle);
       for (const path of paths) path.remove();
       if (made) svg.remove();
     };
