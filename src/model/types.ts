@@ -29,7 +29,7 @@ export interface Mart {
   accessible: boolean;
   /** The key of the source card the mart feeds: a bundled connector's name, or `service:<domain>` for a custom one. Null when the mart is not a CONNECTOR mart. */
   sourceKey: string | null;
-  /** The mart's own connector name, when the source key stands for a service rather than that name. */
+  /** The mart's own connector name, set for every connector mart (the source key may stand for a service instead). */
   connectorName?: string;
 }
 

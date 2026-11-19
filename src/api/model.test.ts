@@ -196,4 +196,20 @@ describe('custom connectors', () => {
     const { ctx } = run([['a', 'FiberyTasks']], { summaries: () => [null, 7, { id: 1 }, rows[0]] });
     expect((await loadModel(ctx)).sources[0]).toMatchObject({ key: 'service:fibery.io', name: 'Fibery Tasks' });
   });
+
+  test('bundled entries without a string name are dropped, not fatal', async () => {
+    const { ctx } = run([['a', 'Shopify']], { bundled: () => [null, { title: 'x' }, { name: 'Shopify', title: 'Shopify' }], summaries: () => rows });
+    expect((await loadModel(ctx)).sources).toEqual([{ key: 'Shopify', name: 'Shopify', logo: null, martIds: ['a'] }]);
+  });
+
+  test('a non-array bundled list makes no summaries request', async () => {
+    const { ctx, summaries } = run([['a', 'FiberyTasks']], { bundled: () => ({ oops: 1 }), summaries: () => rows });
+    expect((await loadModel(ctx)).sources[0]!.key).toBe('FiberyTasks');
+    expect(summaries).not.toHaveBeenCalled();
+  });
+
+  test('a non-array summaries response leaves raw keys', async () => {
+    const { ctx } = run([['a', 'FiberyTasks']], { summaries: () => ({ oops: 1 }) });
+    expect((await loadModel(ctx)).sources[0]!.key).toBe('FiberyTasks');
+  });
 });

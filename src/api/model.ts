@@ -28,7 +28,8 @@ async function readConnectors(ctx: Ctx, listed: Promise<{ definitionType?: strin
     const read = await ctx.owox.getJson<ConnectorDto[]>('/api/connectors');
     // isArray guards a malformed connectors response.
     if (!Array.isArray(read)) return { bundled: [], custom: [] };
-    bundled = read;
+    // A null or nameless entry would crash the lookups below.
+    bundled = read.filter((c): c is ConnectorDto => typeof c?.name === 'string');
   } catch {
     // Without the bundled list a bundled name cannot be told from a custom one, so none is asked.
     return { bundled: [], custom: [] };

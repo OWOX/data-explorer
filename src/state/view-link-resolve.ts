@@ -65,7 +65,10 @@ export async function resolveView(
   // A link made before custom connectors were grouped by service names the connector itself: follow it to the card that now holds it.
   if (sourceKey && !model.sources.some((s) => s.key === sourceKey)) {
     const old = sourceKey.toLowerCase();
-    for (const m of model.marts.values()) if (m.accessible && m.connectorName?.toLowerCase() === old) { sourceKey = m.sourceKey; break; }
+    const live = [...model.marts.values()].filter((m) => m.accessible && m.connectorName);
+    // The exact spelling first, so `Shopify` and `shopify` as two connectors each find their own card.
+    const found = live.find((m) => m.connectorName === sourceKey) ?? live.find((m) => m.connectorName!.toLowerCase() === old);
+    if (found) sourceKey = found.sourceKey;
   }
   if (sourceKey && (!model.sources.some((s) => s.key === sourceKey) || (martId && mart!.sourceKey !== sourceKey))) {
     skipped.source = true;
