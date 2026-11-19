@@ -34,3 +34,30 @@ test('ghosts take the next column after their parent, stacked from the parent ro
   expect(r.width).toBe(3 * CARD_W + 2 * COL_GAP);
   expect(r.height).toBe(2 * CARD_H + ROW_GAP);
 });
+
+test('ghosts of a parent with children go below its real children', () => {
+  const r = layoutTree(tree([['', null, ['a', 'b']], ['a', '', []], ['b', '', []]]), { path: '', ids: ['g1'] });
+  expect(r.ghosts).toEqual([{ id: 'g1', x: CARD_W + COL_GAP, y: 2 * (CARD_H + ROW_GAP) }]);
+  expect(r.height).toBe(3 * CARD_H + 2 * ROW_GAP);
+});
+
+test('ghosts of a leaf go below a cousin in the same column', () => {
+  const r = layoutTree(tree([['', null, ['a', 'b']], ['a', '', []], ['b', '', ['b.x', 'b.y']], ['b.x', 'b', []], ['b.y', 'b', []]]), { path: 'a', ids: ['g'] });
+  expect(r.ghosts).toEqual([{ id: 'g', x: 2 * (CARD_W + COL_GAP), y: 3 * (CARD_H + ROW_GAP) }]);
+  expect(r.ghosts[0]!.y).toBeGreaterThan(at(r, 'b.y').y);
+});
+
+test('a parent whose first child is itself a parent is centred on fractional rows', () => {
+  const r = layoutTree(tree([['', null, ['a', 'b']], ['a', '', ['a.x', 'a.y']], ['a.x', 'a', []], ['a.y', 'a', []], ['b', '', []]]));
+  expect(at(r, 'a').y).toBe(0.5 * (CARD_H + ROW_GAP));
+  expect(at(r, 'b').y).toBe(2 * (CARD_H + ROW_GAP));
+  expect(at(r, '').y).toBe(1.25 * (CARD_H + ROW_GAP));
+});
+
+test('an unknown extra path or empty ids adds no ghosts', () => {
+  const t = tree([['', null, ['a']], ['a', '', []]]);
+  expect(layoutTree(t, { path: 'nope', ids: ['g'] }).ghosts).toEqual([]);
+  const r = layoutTree(t, { path: 'a', ids: [] });
+  expect(r.ghosts).toEqual([]);
+  expect(r.width).toBe(2 * CARD_W + COL_GAP);
+});
