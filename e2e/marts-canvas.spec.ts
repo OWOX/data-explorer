@@ -18,6 +18,7 @@ test('canvas: add marts through ghosts, move countries from customers to stores,
   await expect(marts.locator('article[data-ghost]#dm-countries')).toBeVisible();
   await marts.locator('article[data-ghost]#dm-countries').click();
   await expect(page.locator('#tree-wires path[data-from="dm-customers"][data-to="dm-countries"]')).toHaveCount(1);
+  await expect(page.locator('#band-data').getByText('Countries', { exact: true })).toHaveCount(1);
 
   // Drag countries onto stores: a dashed line shows while dragging.
   const from = await marts.locator('article#dm-countries').boundingBox();
@@ -27,7 +28,10 @@ test('canvas: add marts through ghosts, move countries from customers to stores,
   await page.mouse.move(from!.x + from!.width / 2 + 10, from!.y + from!.height / 2 + 10, { steps: 4 });
   await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 6 });
   await expect(marts.locator('svg#drag-line path')).toHaveCount(1);
-  await page.screenshot({ path: 'tmp/marts-canvas-drag.png' });
+  const wrap = (id: string) => marts.locator(`.dm-tree-node:has(article#dm-${id})`);
+  await expect(wrap('orders')).toHaveClass(/dm-dimmed/);
+  await expect(marts.locator('.dm-tree-node.dm-dimmed:has(article#dm-orders)')).toHaveCount(1);
+  await expect(wrap('customers')).not.toHaveClass(/dm-dimmed/);
   await page.mouse.up();
   await expect(marts.locator('svg#drag-line')).toHaveCount(0);
 
