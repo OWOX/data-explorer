@@ -54,11 +54,30 @@ test('a nested path joins from its parent table, ancestors first, with every key
   expect(r).toEqual({ sql: 'SELECT\n  t2.`name` AS `customers__region__name`\nFROM [Orders](dm:orders) AS t0\nLEFT JOIN [Customers](dm:customers) AS t1 ON t0.`customer_id` = t1.`id`\nLEFT JOIN [Region](dm:region) AS t2 ON t1.`region_id` = t2.`id` AND t1.`country` = t2.`country`' });
 });
 
-test('an absent original name is derived from the blended name', () => {
+test('a joined field without an original name is a reason', () => {
   const noOrig = f('customers__city', 'STRING', j('customers', 'customers'));
-  expect(buildMartSql(base({ schema: [f('id'), noOrig], visible: ['customers__city'], sources: [customers([noOrig])] }))).toMatchObject({ sql: expect.stringContaining('t1.`city` AS') });
-  const bad = f('weird', 'STRING', j('customers', 'customers'));
-  expect(buildMartSql(base({ schema: [f('id'), bad], visible: ['weird'], sources: [customers([bad])] }))).toHaveProperty('reason');
+  expect(buildMartSql(base({ schema: [f('id'), noOrig], visible: ['customers__city'], sources: [customers([noOrig])] }))).toHaveProperty('reason');
+});
+
+test('a calculated field, shown or filtered, is a reason', () => {
+  const calc = { ...f('margin', 'INTEGER'), alias: 'Margin', isCalculated: true };
+  const reason = { reason: 'Calculated field "Margin" can\'t be used in a data mart. Hide it or remove its filter.' };
+  expect(buildMartSql(base({ schema: [f('id'), calc], visible: ['id', 'margin'] }))).toEqual(reason);
+  expect(buildMartSql(base({ schema: [f('id'), calc], visible: ['id'], filters: [{ field: 'margin', op: 'gt', value: 1 }] }))).toEqual(reason);
+  expect(buildMartSql(base({ schema: [f('id'), calc], visible: ['id'], filters: [{ field: 'margin', op: 'gt', value: '' }] }))).toHaveProperty('sql');
+});
+
+test('an edge found by id is used only in the right direction', () => {
+  const wrong: Edge = { id: 'e1', source: 'other', target: 'customers', joins: [{ sourceField: 'x', targetField: 'y' }] };
+  const r = buildMartSql(base({ visible: ['customers__city'], edges: [wrong, { ...edges[0]!, id: 'e7' }] }));
+  expect(r).toMatchObject({ sql: expect.stringContaining('ON t0.`customer_id` = t1.`id`') });
+  expect(buildMartSql(base({ visible: ['customers__city'], edges: [wrong] }))).toHaveProperty('reason');
+});
+
+test('a mart id that is not plain is a reason, and a newline in a title becomes a space', () => {
+  expect(buildMartSql(base({ main: { id: 'a)b', title: 'Orders' } }))).toHaveProperty('reason');
+  expect(buildMartSql(base({ visible: ['customers__city'], sources: [customers([city], { martId: 'x y' })] }))).toHaveProperty('reason');
+  expect(buildMartSql(base({ main: { id: 'orders', title: 'A\nB\r\nC' } }))).toMatchObject({ sql: expect.stringContaining('FROM [A B C](dm:orders)') });
 });
 
 test('without a relationship id, the single source-target edge is used; two matches are a reason', () => {

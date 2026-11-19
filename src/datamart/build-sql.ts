@@ -23,15 +23,13 @@ export type MartSqlInput = {
 };
 
 /** A reference to a data mart where a table name goes; brackets in the title would end the label early. */
-const martRef = (id: string, title: string) => `[${title.replace(/\[/g, '(').replace(/\]/g, ')')}](dm:${id})`;
+const martRef = (id: string, title: string) => `[${title.replace(/\[/g, '(').replace(/\]/g, ')').replace(/[\r\n]+/g, ' ')}](dm:${id})`;
 
-/** The column of a joined field in its own mart: `originalName`, else the blended name without its path prefix. */
-function originalNameOf(f: Field): string | undefined {
-  const j = f.joined!;
-  if (j.originalName) return j.originalName;
-  const prefix = `${j.aliasPath.replace(/\./g, '_')}__`;
-  return f.name.startsWith(prefix) && f.name.length > prefix.length ? f.name.slice(prefix.length) : undefined;
-}
+/** A mart id is safe inside a reference only when it is plain. */
+const safeId = (id: string) => /^[A-Za-z0-9_-]+$/.test(id);
+
+/** The column of a joined field in its own mart, when the schema says. */
+const originalNameOf = (f: Field): string | undefined => f.joined?.originalName || undefined;
 
 /** The data mart's SQL for the grid: the shown columns of the main and joined marts, left joined, with the complete filters. */
 export function buildMartSql(input: MartSqlInput): { sql: string } | { reason: string } {
@@ -39,6 +37,10 @@ export function buildMartSql(input: MartSqlInput): { sql: string } | { reason: s
   const byName = new Map(schema.map((f) => [f.name, f]));
   const shown = visible.map((n) => byName.get(n)).filter((f): f is Field => !!f);
   if (shown.length === 0) return { reason: 'Show at least one column' };
+
+  const calculated = shown.find((x) => x.isCalculated) ?? filters.map((flt) => byName.get(flt.field)).find((x) => x?.isCalculated && filters.some((flt) => flt.field === x.name && isComplete(flt, x)));
+  if (calculated) return { reason: `Calculated field "${calculated.alias || calculated.name}" can't be used in a data mart. Hide it or remove its filter.` };
+  if (!safeId(main.id)) return { reason: 'The data mart id is not valid' };
 
   const active = filters.flatMap((flt) => {
     const field = byName.get(flt.field);
@@ -68,7 +70,8 @@ export function buildMartSql(input: MartSqlInput): { sql: string } | { reason: s
     const parent = parentPath(path);
     const parentMartId = parent ? sourceOf(parent)?.martId : main.id;
     if (!parentMartId) return unresolved;
-    let edge = source.relationshipId ? edges.find((e) => e.id === source.relationshipId) : undefined;
+    if (!safeId(source.martId)) return unresolved;
+    let edge = source.relationshipId ? edges.find((e) => e.id === source.relationshipId && e.source === parentMartId && e.target === source.martId) : undefined;
     if (!edge) {
       const candidates = edges.filter((e) => e.source === parentMartId && e.target === source.martId);
       if (candidates.length !== 1) return unresolved;
