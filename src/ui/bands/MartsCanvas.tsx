@@ -35,6 +35,8 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   const treeRef = useRef<HTMLDivElement>(null);
   const tree = useMemo(() => buildJoinTree(mainId ?? '', columns, sources ?? []), [mainId, columns, sources]);
   const [over, setOver] = useState<Over>(NONE);
+  // The mart whose new card takes focus once it renders: a ghost chosen with Enter vanishes under the keyboard.
+  const [focusMart, setFocusMart] = useState<string | null>(null);
   const [pinned, setPinned] = useState<string | null>(null);
   const drag = useCanvasDrag(
     treeRef,
@@ -59,6 +61,14 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
+
+  useEffect(() => {
+    if (focusMart === null) return;
+    const card = treeRef.current?.querySelector<HTMLElement>(`article[id="${martElementId(focusMart)}"]:not([data-ghost])`);
+    if (!card) return;
+    card.focus();
+    setFocusMart(null);
+  }, [focusMart, tree]);
 
   // A click anywhere in the scroll box that is not on a card is a click on the empty canvas.
   useEffect(() => {
@@ -162,7 +172,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               selected={false}
               joined={false}
               lit={false}
-              onSelect={() => { setPinned(null); void click(g.martId, { addAt: g.aliasPath }); }}
+              onSelect={() => { setPinned(null); click(g.martId, { addAt: g.aliasPath }).then(() => setFocusMart(g.martId), () => undefined); }}
               onOpenApp={() => onOpenApp(mart.id)}
               onRetryCount={() => undefined}
               onNeedCount={() => undefined}

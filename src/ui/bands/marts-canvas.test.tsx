@@ -245,3 +245,16 @@ test('the line and the release both count the whole scroll box, and neither coun
   await waitFor(() => expect(tips()).toContain('Stores → Countries'));
   expect(line()).toBeNull();
 });
+
+test('adding a mart with Enter on a ghost moves focus to its new card', async () => {
+  setup();
+  await ready();
+  await toCanvas();
+  await waitFor(() => expect(el('orders')).not.toBeNull());
+  await userEvent.hover(el('orders')!);
+  const ghost = await waitFor(() => { const g = marts().querySelector<HTMLElement>('article#dm-customers[data-ghost]'); expect(g).not.toBeNull(); return g!; });
+  ghost.focus();
+  await userEvent.keyboard('{Enter}');
+  await waitFor(() => expect(el('customers')).not.toHaveAttribute('data-ghost'));
+  await waitFor(() => expect(document.activeElement).toBe(el('customers')));
+});
