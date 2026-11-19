@@ -135,6 +135,7 @@ export function MartCard({
   transition,
   unjoinable = false,
   mainTitle,
+  joinTitle,
   ghost = false,
   dropTarget = false,
   dropHot = false,
@@ -165,6 +166,8 @@ export function MartCard({
   unjoinable?: boolean;
   /** The title of the main mart, named in the unjoinable hint. */
   mainTitle?: string;
+  /** The card that cannot be joined by this one, when it is not the main mart (the focused card in Grid). Defaults to the main mart. */
+  joinTitle?: string;
   /** The card is a hover ghost: a neighbour of the hovered card that is not in the band, drawn dashed while that card is hovered. It asks for no count and cannot be dragged. */
   ghost?: boolean;
   /** A drag is under way and this card accepts a drop. */
@@ -257,7 +260,7 @@ export function MartCard({
       </div>
       {/* The live region stays mounted so a screen reader announces the hint when it appears. */}
       <span aria-live="polite" className="dm-card-live">
-        {hint && unjoinable && mainTitle && <span role="status" className="dm-card-hint">{ghost ? `Can't join ${mainTitle}. Use Make main data mart to make it the main data mart.` : `Can't join ${mainTitle}. Drag it onto ${mainTitle} to make it the main data mart.`}</span>}
+        {hint && unjoinable && mainTitle && <span role="status" className="dm-card-hint">{ghost ? `Can't join ${joinTitle ?? mainTitle}. Use Make main data mart to make it the main data mart.` : `Can't join ${joinTitle ?? mainTitle}. Drag it onto ${mainTitle} to make it the main data mart.`}</span>}
       </span>
     </article>
   );

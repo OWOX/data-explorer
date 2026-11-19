@@ -128,3 +128,12 @@ test('the × takes a joined card and the paths under it out in one step', async 
   await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
   expect(el('countries', 'customers.countries')).not.toBeNull();
 });
+
+test('with a card focused, the hint on a dimmed card names the focused card but the drag goes to the main card', async () => {
+  setup();
+  await joinCustomersAndStores();
+  fireEvent.click(el('stores', 'stores')!);
+  await waitFor(() => expect(el('products')).toHaveClass('dm-unjoinable'));
+  fireEvent.click(el('products')!);
+  expect(await within(el('products')!).findByRole('status')).toHaveTextContent("Can't join Stores. Drag it onto Orders to make it the main data mart.");
+});

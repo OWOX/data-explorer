@@ -333,7 +333,8 @@ export function CardBands({
                   lit={lit.has(el)}
                   aside={aside.has(el)}
                   unjoinable={focus !== null ? !at : unjoinableFor(id)}
-                  mainTitle={model.marts.get((focus !== null ? canvasTree?.nodes.get(focus)?.martId : undefined) ?? mainId ?? '')?.title}
+                  mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
+                  joinTitle={focus !== null ? model.marts.get(canvasTree?.nodes.get(focus)?.martId ?? '')?.title : undefined}
                   onMakeMain={mainId && mart.accessible ? () => void click(id, { mode: 'makeMain' }) : undefined}
                   onSelect={() => void (at ? click(id, { addAt: at.aliasPath }) : click(id))}
                   onOpenApp={() => onOpenApp(id)}
