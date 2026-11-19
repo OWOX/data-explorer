@@ -1450,7 +1450,7 @@ describe('Create Data Mart', () => {
     expect(within(dlg).getByText(/references Orders and the joined data mart the grid uses/)).toBeInTheDocument();
     const sql = within(dlg).getByLabelText('SQL') as HTMLTextAreaElement;
     expect(sql.value).toContain('FROM [Orders](dm:orders)');
-    expect(sql.value).toContain('LEFT JOIN customers ON');
+    expect(sql.value).toContain('LEFT JOIN customers_dm ON');
     expect(sql.readOnly).toBe(true);
   });
 
@@ -1470,18 +1470,18 @@ describe('Create Data Mart', () => {
     const t = mart({ sorts: [{ field: 'id', direction: 'desc' }] });
     const dlg = await openDialog();
     await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Include sorting' }));
-    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).toContain('ORDER BY base.`id` DESC');
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).toContain('ORDER BY base_dm.`id` DESC');
     await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
     await screen.findByRole('link', { name: /Open/ });
     const def = Object.entries(t.bodies).find(([k]) => k.includes('/definition'))?.[1] as { definition: { sqlQuery: string } } | undefined;
-    expect(def?.definition.sqlQuery).toContain('ORDER BY base.`id` DESC');
+    expect(def?.definition.sqlQuery).toContain('ORDER BY base_dm.`id` DESC');
   });
 
   test('an implicit grid sort is not an own sort: the box stays disabled and no ORDER BY goes out', async () => {
     mart({ sorts: [{ field: 'id', direction: 'desc' }], ownSorts: [] });
     const dlg = await openDialog();
     expect(within(dlg).getByRole('checkbox', { name: /Include sorting/ })).toBeDisabled();
-    expect(within(dlg).getByText('The grid has no sorting')).toBeInTheDocument();
+    expect(within(dlg).getByText("You haven't set a sort")).toBeInTheDocument();
     expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).not.toContain('ORDER BY');
   });
 
@@ -1489,7 +1489,7 @@ describe('Create Data Mart', () => {
     mart();
     const dlg = await openDialog();
     expect(within(dlg).getByRole('checkbox', { name: /Include sorting/ })).toBeDisabled();
-    expect(within(dlg).getByText('The grid has no sorting')).toBeInTheDocument();
+    expect(within(dlg).getByText("You haven't set a sort")).toBeInTheDocument();
   });
 
   test('a sort the SQL cannot carry disables the box with its reason', async () => {

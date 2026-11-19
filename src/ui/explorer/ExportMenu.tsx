@@ -118,7 +118,7 @@ export function ExportMenu(p: Props) {
     const input = { dialect: d.dialect, main: { id: p.martId, title: p.martTitle }, schema: p.schema, visible: p.visible, filters: p.filters, sources: p.sources, edges: p.edges ?? [], titles: p.titles ?? new Map() };
     const plain = buildMartSql(input);
     if ('reason' in plain) return plain;
-    return { sql: plain.sql, sorted: p.ownSorts?.length ? buildMartSql({ ...input, sorts: p.ownSorts }) : { reason: 'The grid has no sorting' } };
+    return { sql: plain.sql, sorted: p.ownSorts?.length ? buildMartSql({ ...input, sorts: p.ownSorts }) : { reason: "You haven't set a sort" } };
   }, [p.storage, p.sources, p.joinsFailed, p.edges, p.titles, p.martId, p.martTitle, p.schema, p.visible, p.filters, p.ownSorts]);
   const [martDialog, setMartDialog] = useState<{ sql: string; sorted: { sql: string } | { reason: string }; grouped: boolean; storage: { id: string; type: string; title?: string }; seq: number } | null>(null);
   const seq = useRef(0);

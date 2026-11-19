@@ -65,8 +65,8 @@ export function buildMartSql(input: MartSqlInput): { sql: string } | { reason: s
   for (const { field } of active) if (field.joined) need(field.joined.aliasPath);
   for (const { field } of sorted) if (field.joined) need(field.joined.aliasPath);
 
-  // CTE names: base for main; a path with `.` as `__`; a clash gets _2, _3; an unusable name falls back to jN.
-  const cte = new Map<string, string>([['', 'base']]);
+  // CTE names end in _dm so no reserved word can clash: base_dm for main; a path with `.` as `__`; a clash gets _2, _3 before the suffix; an unusable name falls back to jN.
+  const cte = new Map<string, string>([['', 'base_dm']]);
   const taken = new Set(['base']);
   order.forEach((path, i) => {
     const plain = path.replace(/\./g, '__');
@@ -74,7 +74,7 @@ export function buildMartSql(input: MartSqlInput): { sql: string } | { reason: s
     let name = root;
     for (let n = 2; taken.has(name); n++) name = `${root}_${n}`;
     taken.add(name);
-    cte.set(path, name);
+    cte.set(path, `${name}_dm`);
   });
 
   // The complete filters of each mart, as predicates on its own bare columns.
@@ -128,7 +128,7 @@ export function buildMartSql(input: MartSqlInput): { sql: string } | { reason: s
 
   const select: string[] = [];
   for (const f of shown) {
-    if (!f.joined) { select.push(columnRef(d, 'base', f.name)); continue; }
+    if (!f.joined) { select.push(columnRef(d, 'base_dm', f.name)); continue; }
     const col = originalNameOf(f);
     if (!col) return { reason: `The column "${f.name}" could not be resolved` };
     select.push(`${columnRef(d, cte.get(f.joined.aliasPath)!, col)} AS ${quoteIdent(d, f.name)}`);
@@ -141,9 +141,9 @@ export function buildMartSql(input: MartSqlInput): { sql: string } | { reason: s
       const name = originalNameOf(field);
       if (!name) return { reason: `The sort on "${field.name}" could not be resolved` };
       col = columnRef(d, cte.get(field.joined.aliasPath)!, name);
-    } else col = columnRef(d, 'base', field.name);
+    } else col = columnRef(d, 'base_dm', field.name);
     ordering.push(`${col} ${s.direction === 'desc' ? 'DESC' : 'ASC'}`);
   }
 
-  return { sql: [`WITH\n${ctes.join(',\n')}`, `SELECT\n${select.map((x) => `  ${x}`).join(',\n')}`, 'FROM base', ...joins, ...(ordering.length ? [`ORDER BY ${ordering.join(', ')}`] : [])].join('\n') };
+  return { sql: [`WITH\n${ctes.join(',\n')}`, `SELECT\n${select.map((x) => `  ${x}`).join(',\n')}`, 'FROM base_dm', ...joins, ...(ordering.length ? [`ORDER BY ${ordering.join(', ')}`] : [])].join('\n') };
 }
