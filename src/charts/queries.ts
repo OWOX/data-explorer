@@ -1,6 +1,5 @@
 // Backend queries behind every number the charts show: the plugin never sums, counts or buckets data itself.
-import { aggregatedKey, canZone, isTimeZone, type DateBucket } from '../model/aggregation';
-import { normalizeType } from '../model/field-category';
+import { aggregatedKey, isTimeZone, zonesBuckets, type DateBucket } from '../model/aggregation';
 import type { Field } from '../model/types';
 import type { TraverseFilter, TraverseOptions } from '../sdk/types';
 import type { ChartMart, Metric } from './fields';
@@ -24,10 +23,8 @@ const aggs = (metrics: Metric[]) => metrics.map((m) => ({ column: m.field.name, 
 
 /** The IANA zone a date column's buckets are cut in (the browser's), or undefined when they are not zoned. Shared by the series queries and the click filters. */
 export function bucketZone(date: Field, zone: string = Intl.DateTimeFormat().resolvedOptions().timeZone): string | undefined {
-  // DATETIME has a time of day but no instant: the backend buckets a zoned one by its raw calendar day, so a zone would only shift the click filter.
-  return canZone(date) && normalizeType(date.type) !== 'DATETIME' && isTimeZone(zone) ? zone : undefined;
+  return zonesBuckets(date) && isTimeZone(zone) ? zone : undefined;
 }
-// The grid's canZone narrowed by bucketZone: DATETIME buckets by its raw calendar day here.
 function truncRule(date: Field, unit: DateBucket) {
   const zone = bucketZone(date);
   return { column: date.name, unit, ...(zone ? { timeZone: zone } : {}) };

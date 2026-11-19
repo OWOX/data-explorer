@@ -95,8 +95,25 @@ A `⋮` button (lucide `EllipsisVertical`) at the top right of each panel opens 
 2. Time series: Date field (only with more than one), Bucket (Auto, Day, Week, Month, Quarter, Year), Metric (only
    with more than one), Stack by ("No stacking", then each dimension). Left of the ⋮, the orientation switch: two icon
    buttons (`ChartColumn` vertical, `ChartBar` horizontal), `aria-pressed`.
-3. Pie: Metric (every Unique Records, then the summable metrics), Dimension.
+3. Pie: Metric (see 4; metrics only when summable, always summed), Dimension.
 4. The Metric menus offer the measures list (see Fields), in group order: each mart's Unique Records, then its metrics.
+
+## Click to filter
+
+A click on a chart mark adds grid filters through the same path as a filter edit, so it is one Undo step.
+
+1. Pie slice: the dimension's filter, `eq` for text, `is_true` / `is_false` for a boolean. "Other" is not clickable.
+2. Bar: the date column `between` the bucket's first and last moment; on a stacked bar the clicked segment's value is
+   added (not for "Other"). The keyboard reaches each bucket (Enter / Space: the bucket filter only).
+3. Bucket bounds: a zoned bucket (an instant type: TIMESTAMP and its zone variants) sends UTC instants from the bucket's
+   local midnight to one second before the next, DST-aware, and its filter text ends "(UTC)". DATE and DATETIME are not
+   zoned (the backend buckets DATETIME by its raw calendar day), so they send calendar days.
+4. A bucket of blank dates is not clickable; a filter that would not be complete is dropped with the "not applied" note.
+5. The pie hides its share when the measure's mart is not the dimension's: one row may sit in several slices.
+
+## Column letters
+
+Right-clicking a column letter (A, B, C) opens that column's menu, the one its menu icon opens, in Table and Charts.
 
 ## Saved settings
 
@@ -105,7 +122,8 @@ A `⋮` button (lucide `EllipsisVertical`) at the top right of each panel opens 
 ```ts
 type ChartSettings = {
   scorecards?: { hidden?: string[]; sparklines?: boolean };       // hidden: card ids (field name, or 'records:<martId>')
-  timeSeries?: { date?: string; bucket?: DateBucket | 'AUTO'; metric?: string;   // metric: field name, 'records' (main mart), or 'records:<martId>' stack?: string | null; orientation?: 'vertical' | 'horizontal' };
+  timeSeries?: { date?: string; bucket?: DateBucket | 'AUTO'; metric?: string; stack?: string | null; orientation?: 'vertical' | 'horizontal' };
+  // timeSeries.metric: a field name, 'records' (main mart) or 'records:<martId>'
   pie?: { metric?: string; dimension?: string };                   // metric: as timeSeries.metric
 };
 ```

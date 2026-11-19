@@ -70,7 +70,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
   });
   const panelProps = { martId, cf, r, filter, version, idle, hasFilters, formatOf, ready: !!settings, onFilter };
   const items: MenuItem[] = [
-    ...cf.marts.flatMap((m, i) => cardsOf(m).map((c): MenuItem => ({ kind: 'check', label: i === 0 ? c.label : `${groups[i]!.title} · ${c.label}`, checked: !r.hidden.has(c.id), onToggle: () => toggleCard(c.id) }))),
+    ...cf.marts.flatMap((m, i) => cardsOf(m).map((c): MenuItem => ({ kind: 'check', label: i === 0 ? c.label : `${m.title} · ${c.label}`, checked: !r.hidden.has(c.id), onToggle: () => toggleCard(c.id) }))),
     { kind: 'check', label: 'Sparklines', checked: r.sparklines, onToggle: () => patch((sc) => ({ ...sc, sparklines: !(sc.sparklines ?? true) })) },
   ];
 

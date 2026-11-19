@@ -39,7 +39,8 @@ export function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, for
     { kind: 'radio', label: 'Dimension', value: dim!.name, options: cf.dimensions.map((d) => ({ value: d.name, label: columnTitle(d) })), onPick: (v) => onChange({ dimension: v }) },
   ];
   // A records measure of another mart than the dimension's counts each mart's rows per slice: the slices overlap, so a share of their sum would mislead.
-  const showShare = !(measure!.kind === 'records' && measure!.martId !== (dim!.joined?.martId ?? martId));
+  // A measure of another mart than the dimension's can repeat one row in several slices (a one-to-many join), so the parts are not shares of a whole.
+  const showShare = (measure!.kind === 'records' ? measure!.martId : measure!.metric.martId) === (dim!.joined?.martId ?? martId);
   const title = `${measureLabel(cf, measure!)} by ${fieldLabel(dim!)}`;
   return (
     <ChartPanel title={title} loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})}

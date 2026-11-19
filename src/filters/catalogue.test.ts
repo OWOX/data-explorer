@@ -104,4 +104,7 @@ test('describeFilter labels a zoned chart range on a TIMESTAMP as UTC, and only 
   expect(describeFilter(f('DATETIME', 'date'), { op: 'between', value })).not.toMatch(/UTC/);
   expect(describeFilter(f('TIMESTAMP', 'date'), { op: 'between', value: { from: '2024-01-15', to: '2024-01-16' } })).not.toMatch(/UTC/);
   expect(describeFilter(f('DATE', 'date'), { op: 'between', value })).not.toMatch(/UTC/);
+  // Every instant type the charts zone gets the label, not only BigQuery's TIMESTAMP.
+  expect(describeFilter(f('TIMESTAMPTZ', 'date'), { op: 'between', value })).toMatch(/ \(UTC\)$/);
+  expect(describeFilter(f('TIMESTAMP_LTZ', 'date'), { op: 'between', value })).toMatch(/ \(UTC\)$/);
 });

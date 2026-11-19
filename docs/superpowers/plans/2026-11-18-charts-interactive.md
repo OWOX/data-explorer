@@ -1,6 +1,6 @@
 # Charts: every mart's measures, fixed scorecards, letter menu, click-to-filter
 
-Date: 2026-11-18. Branch `feat/charts-interactive`.
+Date: 2026-11-18. Shipped in PR #42. Where the code moved past this plan (zoned bucket bounds, DATETIME), the charts spec's "Click to filter" is current.
 
 Ground rules (all tasks): every number on screen comes from a `traverseData` query (`readRows`); the plugin never sums,
 counts or buckets values itself. Tests: `npx vitest run <files>` (vitest already caps workers at 4; never raise it).
