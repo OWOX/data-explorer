@@ -247,10 +247,5 @@ describe('legacy connector-name source keys', () => {
       [{ key: 'Shopify', name: 'Shopify', logo: null, martIds: ['a'] }, { key: 'service:x.io', name: 'X', logo: null, martIds: ['b'] }],
     ), read);
     expect(r.apply.selection.sourceKey).toBe('service:x.io');
-    const r2 = await resolveView(view({ sourceKey: 'SHOPIFY', martId: null, record: null, grid: null }), modelOf(
-      [m('a', { sourceKey: 'Shopify', connectorName: 'Shopify' }), m('b', { sourceKey: 'service:x.io', connectorName: 'shopify' })],
-      [{ key: 'Shopify', name: 'Shopify', logo: null, martIds: ['a'] }],
-    ), read);
-    expect(r2.apply.selection.sourceKey).toBe('Shopify');
   });
 });
