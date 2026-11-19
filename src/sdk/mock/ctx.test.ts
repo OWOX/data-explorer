@@ -6,7 +6,7 @@ import type { BlendableSchemaDto } from '../types';
 
 test('mock ctx serves a model loadModel understands', async () => {
   const model = await loadModel(createMockCtx(demoFixtures()));
-  expect(model.marts.size).toBe(16);
+  expect(model.marts.size).toBe(20);
   expect(model.marts.get('secret_ledger')!.accessible).toBe(false);
   expect(model.edges.filter((e) => e.target === 'orders')).toHaveLength(4);
   expect(model.contexts.map((c) => c.id)).toEqual(['c-sales', 'c-catalog', 'c-marketing']);
@@ -150,4 +150,12 @@ test('uniqueCount names a joined source by its alias path', async () => {
   expect(customers).toBeLessThanOrEqual(450);
   const nested = await readRows(createMockCtx(demoFixtures()), 'orders', { column: ['status'], uniqueCount: ['customers.countries'] });
   expect(nested[0]).toHaveProperty('customers_countries__unique_count');
+});
+
+test('mock ctx serves custom connector summaries for the names asked, ignoring case', async () => {
+  const ctx = createMockCtx(demoFixtures());
+  const rows = await ctx.owox.getJson<{ name: string }[]>('/api/connectors/custom/summaries', { names: 'fiberytasks,BrexExpenses,Shopify' });
+  expect(rows.map((r) => r.name).sort()).toEqual(['BrexExpenses', 'FiberyTasks']);
+  const model = await loadModel(ctx);
+  expect(model.sources.find((s) => s.key === 'service:fibery.io')).toMatchObject({ name: 'Fibery', martIds: expect.arrayContaining(['fibery_tasks', 'fibery_projects', 'fibery_people']) });
 });

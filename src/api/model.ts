@@ -1,6 +1,6 @@
-import type { Ctx, ConnectorDto, ContextDto, ModelCanvasPageDto } from '../sdk/types';
+import type { Ctx, ConnectorDto, ConnectorSummaryDto, ContextDto, ModelCanvasPageDto } from '../sdk/types';
 import type { Edge, Mart, Model } from '../model/types';
-import { groupSources } from '../model/sources';
+import { cleanSummary, groupSources, sourceKeyFor } from '../model/sources';
 import { runPool } from './pool';
 
 const STORAGE_CONCURRENCY = 6;
@@ -18,6 +18,34 @@ async function canvasNodes(ctx: Ctx, storageId: string) {
   return items;
 }
 
+/**
+ * The bundled connectors, then the custom ones the marts use that the bundled list lacks.
+ * Both are decoration: a refused read costs the titles and logos, never the page.
+ */
+async function readConnectors(ctx: Ctx, listed: Promise<{ definitionType?: string | null; connectorSourceName?: string | null }[]>): Promise<{ bundled: ConnectorDto[]; custom: ConnectorSummaryDto[] }> {
+  let bundled: ConnectorDto[];
+  try {
+    const read = await ctx.owox.getJson<ConnectorDto[]>('/api/connectors');
+    // isArray guards a malformed connectors response.
+    if (!Array.isArray(read)) return { bundled: [], custom: [] };
+    bundled = read;
+  } catch {
+    // Without the bundled list a bundled name cannot be told from a custom one, so none is asked.
+    return { bundled: [], custom: [] };
+  }
+  try {
+    const have = new Set(bundled.map((c) => c.name));
+    const names = [...new Set((await listed).filter((m) => m.definitionType === 'CONNECTOR').map((m) => m.connectorSourceName))]
+      .filter((n): n is string => !!n && !have.has(n));
+    if (names.length === 0) return { bundled, custom: [] };
+    const rows = await ctx.owox.getJson<unknown>('/api/connectors/custom/summaries', { names: names.join(',') });
+    return { bundled, custom: Array.isArray(rows) ? rows.flatMap(cleanSummary) : [] };
+  } catch {
+    // Its own fallback: a missing or refused endpoint costs the custom detail, not the bundled list.
+    return { bundled, custom: [] };
+  }
+}
+
 export type LoadProgress = { done: number; total: number };
 
 /** The reads before the storages are known: the storages, the marts, the contexts and the connectors. */
@@ -28,12 +56,13 @@ export async function loadModel(ctx: Ctx, onProgress?: (p: LoadProgress) => void
   let done = 0;
   let total = FIRST_STEPS;
   const step = <T,>(value: T): T => { done += 1; onProgress?.({ done, total }); return value; };
-  const [storages, list, contexts, connectors] = await Promise.all([
+  const listP = ctx.owox.dataMarts.list();
+  const [storages, list, contexts, { bundled, custom }] = await Promise.all([
     ctx.owox.storages.list().then((s) => { total += s.length * 2; return step(s); }),
-    ctx.owox.dataMarts.list().then(step),
+    listP.then(step),
     ctx.owox.getJson<ContextDto[]>('/api/contexts').then(step),
     // Connector titles and logos are decoration: a failure falls back to the raw keys.
-    ctx.owox.getJson<ConnectorDto[]>('/api/connectors').catch((): ConnectorDto[] => []).then(step),
+    readConnectors(ctx, listP).then(step),
   ]);
   const listed = new Map(list.map((m) => [m.id, m]));
   const marts = new Map<string, Mart>();
@@ -42,6 +71,7 @@ export async function loadModel(ctx: Ctx, onProgress?: (p: LoadProgress) => void
     const [nodes, edges] = await Promise.all([canvasNodes(ctx, s.id).then(step, (e) => { step(null); throw e; }), ctx.owox.models.getEdges(s.id).then(step, (e) => { step(null); throw e; })]);
     for (const n of nodes) {
       const item = listed.get(n.id);
+      const connectorName = item?.definitionType === 'CONNECTOR' ? item.connectorSourceName || undefined : undefined;
       marts.set(n.id, {
         id: n.id,
         title: n.title,
@@ -52,7 +82,8 @@ export async function loadModel(ctx: Ctx, onProgress?: (p: LoadProgress) => void
         dataLastUpdatedAt: n.dataLastUpdated?.dataLastUpdatedAt ?? null,
         // availableForReporting is the mart's sharing flag, not the member's permission, so it is not checked.
         accessible: item !== undefined && n.status === 'PUBLISHED',
-        sourceKey: item?.definitionType === 'CONNECTOR' ? item.connectorSourceName ?? null : null,
+        sourceKey: connectorName ? sourceKeyFor(connectorName, bundled, custom) : null,
+        ...(connectorName ? { connectorName } : {}),
       });
     }
     return edges;
@@ -75,7 +106,6 @@ export async function loadModel(ctx: Ctx, onProgress?: (p: LoadProgress) => void
       joins: e.joinConditions.map((j) => ({ sourceField: j.sourceFieldName, targetField: j.targetFieldName })),
     }));
 
-  // isArray guards a malformed connectors response.
-  const sources = groupSources(marts.values(), Array.isArray(connectors) ? connectors : []);
+  const sources = groupSources(marts.values(), bundled, custom);
   return { marts, sources, edges, contexts: contexts.map((c) => ({ id: c.id, name: c.name, icon: c.icon ?? null })), storages: storages.map((s) => ({ id: s.id, title: s.title, type: s.type })), failedStorages };
 }

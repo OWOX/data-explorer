@@ -217,3 +217,13 @@ describe('resolveView when no found mart is available', () => {
     expect(skipped.found).toBe(false);
   });
 });
+
+it('a link naming a custom connector by its own name lands on the grouped source that holds it', async () => {
+  const model = {
+    marts: new Map([['m1', { id: 'm1', title: 'm1', description: null, icon: null, storageId: 's1', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: 'service:fibery.io', connectorName: 'FiberyTasks' } as Mart]]),
+    sources: [{ key: 'service:fibery.io', name: 'Fibery', logo: null, martIds: ['m1'] }], contexts: [], storages: [{ id: 's1', title: 's1', type: 'X' }], edges: [], failedStorages: [],
+  } as Model;
+  const { apply, skipped } = await resolveView(view({ sourceKey: 'fiberytasks', martId: null, record: null, grid: null }), model, async () => null);
+  expect(apply.selection.sourceKey).toBe('service:fibery.io');
+  expect(skipped.source).toBe(false);
+});

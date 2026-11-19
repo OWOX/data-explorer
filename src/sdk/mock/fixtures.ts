@@ -1,4 +1,4 @@
-import type { ConnectorDto, ContextDto, DestinationDto, DqSummaryDto, EdgeDto, Row, SchemaFieldDto, StorageDto } from '../types';
+import type { ConnectorDto, ConnectorSummaryDto, ContextDto, DestinationDto, DqSummaryDto, EdgeDto, Row, SchemaFieldDto, StorageDto } from '../types';
 
 export type MockMart = {
   id: string;
@@ -22,6 +22,8 @@ export type Fixtures = {
   marts: MockMart[];
   edges: EdgeDto[];
   connectors: ConnectorDto[];
+  /** Custom connectors, which `/api/connectors` does not list. */
+  customConnectors: ConnectorSummaryDto[];
   destinations: DestinationDto[];
 };
 
@@ -192,6 +194,30 @@ const specs: Spec[] = [
     }),
   },
   {
+    id: 'fibery_tasks', connectorSourceName: 'FiberyTasks', count: 20,
+    description: 'Tasks from the Fibery workspace.',
+    fields: [pk(), f('name', 'STRING')],
+    row: (i) => ({ id: i, name: `Task ${i}` }),
+  },
+  {
+    id: 'fibery_projects', connectorSourceName: 'FiberyProjects', count: 20,
+    description: 'Projects from the Fibery workspace.',
+    fields: [pk(), f('name', 'STRING')],
+    row: (i) => ({ id: i, name: `Project ${i}` }),
+  },
+  {
+    id: 'fibery_people', connectorSourceName: 'FiberyPeople', count: 20,
+    description: 'People from the Fibery workspace.',
+    fields: [pk(), f('name', 'STRING')],
+    row: (i) => ({ id: i, name: `Person ${i}` }),
+  },
+  {
+    id: 'brex_expenses', connectorSourceName: 'BrexExpenses', count: 20,
+    description: 'Card expenses from Brex.',
+    fields: [pk(), f('name', 'STRING')],
+    row: (i) => ({ id: i, name: `Expense ${i}` }),
+  },
+  {
     id: 'secret_ledger', accessible: false, count: 30,
     description: 'Restricted ledger.',
     fields: [pk(), f('name', 'STRING'), f('note', 'STRING')],
@@ -241,6 +267,15 @@ const connectors: ConnectorDto[] = [
   { name: 'FacebookAds', title: 'Facebook Ads' },
 ];
 
+// A one-pixel PNG: the one logo a custom connector in the mock carries.
+const FIBERY_LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const customConnectors: ConnectorSummaryDto[] = [
+  { id: 'cc-fibery-tasks', name: 'FiberyTasks', title: 'Fibery Tasks', logo: null, hosts: ['owox.fibery.io'] },
+  { id: 'cc-fibery-projects', name: 'FiberyProjects', title: 'Fibery Projects', logo: FIBERY_LOGO, hosts: ['owox.fibery.io', 'oauth.fibery.io'] },
+  { id: 'cc-fibery-people', name: 'FiberyPeople', title: 'Fibery People', logo: null, hosts: ['owox.fibery.io'] },
+  { id: 'cc-brex', name: 'BrexExpenses', title: 'Brex Expenses', logo: 'https://example.com/brex.png', hosts: ['platform.brexapis.com'] },
+];
+
 const dqOf: Record<string, DqSummaryDto> = {
   orders: { state: 'PASSED' },
   customers: { state: 'ISSUES', warningFindings: 2 },
@@ -281,5 +316,5 @@ export function demoFixtures(opts: { sheets?: 0 | 1 | 2 } = {}): Fixtures {
       dq: dqOf[s.id] ?? { state: 'NEVER_RUN' },
     };
   });
-  return { storages: [{ id: 's1', title: 'Demo Warehouse', type: 'GOOGLE_BIGQUERY' }, { id: 's2', title: 'Sales Lake', type: 'AWS_ATHENA' }], contexts, marts, edges, connectors, destinations: [...DESTINATIONS.slice(0, sheets), DESTINATIONS[2]!] };
+  return { storages: [{ id: 's1', title: 'Demo Warehouse', type: 'GOOGLE_BIGQUERY' }, { id: 's2', title: 'Sales Lake', type: 'AWS_ATHENA' }], contexts, marts, edges, connectors, customConnectors, destinations: [...DESTINATIONS.slice(0, sheets), DESTINATIONS[2]!] };
 }

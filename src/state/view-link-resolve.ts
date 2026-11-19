@@ -62,6 +62,11 @@ export async function resolveView(
   if (view.martId && !martId) skipped.mart = true;
 
   let sourceKey = view.sourceKey;
+  // A link made before custom connectors were grouped by service names the connector itself: follow it to the card that now holds it.
+  if (sourceKey && !model.sources.some((s) => s.key === sourceKey)) {
+    const old = sourceKey.toLowerCase();
+    for (const m of model.marts.values()) if (m.accessible && m.connectorName?.toLowerCase() === old) { sourceKey = m.sourceKey; break; }
+  }
   if (sourceKey && (!model.sources.some((s) => s.key === sourceKey) || (martId && mart!.sourceKey !== sourceKey))) {
     skipped.source = true;
     sourceKey = null;
