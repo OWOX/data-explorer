@@ -7,8 +7,8 @@ import { buildMartSql, type MartSqlInput } from './build-sql';
 const f = (name: string, type = 'STRING', joined?: Field['joined']): Field => ({ name, alias: null, type, category: type === 'INTEGER' ? 'number' : 'string', description: null, isPrimaryKey: false, ...(joined ? { joined } : {}) });
 const j = (aliasPath: string, martId: string, originalName?: string): Field['joined'] => ({ martId, label: aliasPath, aliasPath, ...(originalName ? { originalName } : {}) });
 
-const customers = (fields: Field[], extra: Partial<JoinedSource> = {}): JoinedSource => ({ aliasPath: 'customers', martId: 'customers', label: 'Customers', depth: 1, fields, uniqueCount: true, relationshipId: 'e1', ...extra });
-const region: JoinedSource = { aliasPath: 'customers.region', martId: 'region', label: 'Region', depth: 2, fields: [], uniqueCount: false, relationshipId: 'e2' };
+const customers = (fields: Field[], extra: Partial<JoinedSource> = {}): JoinedSource => ({ aliasPath: 'customers', martId: 'customers', label: 'Customers', depth: 1, fields, uniqueCount: true, relationshipId: 'e1', mainGrainMultiplication: 'none', ...extra });
+const region: JoinedSource = { aliasPath: 'customers.region', martId: 'region', label: 'Region', depth: 2, fields: [], uniqueCount: false, relationshipId: 'e2', mainGrainMultiplication: 'none' };
 const edges: Edge[] = [
   { id: 'e1', source: 'orders', target: 'customers', joins: [{ sourceField: 'customer_id', targetField: 'id' }] },
   { id: 'e2', source: 'customers', target: 'region', joins: [{ sourceField: 'region_id', targetField: 'id' }, { sourceField: 'country', targetField: 'country' }] },
@@ -47,7 +47,7 @@ test('a nested original name is read as a path on BigQuery and one identifier el
 test('two joined columns sharing an original name are aliased apart', () => {
   const cName = f('customers__name', 'STRING', j('customers', 'customers', 'name'));
   const pName = f('products__name', 'STRING', j('products', 'products', 'name'));
-  const products: JoinedSource = { aliasPath: 'products', martId: 'products', label: 'Products', depth: 1, fields: [pName], uniqueCount: true, relationshipId: 'e3' };
+  const products: JoinedSource = { aliasPath: 'products', martId: 'products', label: 'Products', depth: 1, fields: [pName], uniqueCount: true, relationshipId: 'e3', mainGrainMultiplication: 'none' };
   const r = buildMartSql(base({ schema: [f('id'), cName, pName], visible: ['customers__name', 'products__name'], sources: [customers([cName]), products], edges: [...edges, { id: 'e3', source: 'orders', target: 'products', joins: [{ sourceField: 'product_id', targetField: 'id' }] }] }));
   expect(r).toMatchObject({ sql: expect.stringContaining('customers_dm.`name` AS `customers__name`,\n  products_dm.`name` AS `products__name`') });
 });
@@ -236,5 +236,29 @@ describe('CTE layout', () => {
   });
   test('a sort on a joined mart orders by its CTE column', () => {
     expect(run({ visible: ['id', 'customers__city'], sorts: [{ field: 'customers__city', direction: 'asc' }] })).toMatch(/\nORDER BY customers_dm\.`city` ASC$/);
+  });
+});
+
+describe('a joined mart with several rows per main row', () => {
+  const run = (mult: JoinedSource['mainGrainMultiplication'] | undefined, filters: MartSqlInput['filters'], visible = ['id']) => {
+    const source = customers([city]);
+    if (mult) source.mainGrainMultiplication = mult; else delete source.mainGrainMultiplication;
+    return buildMartSql(base({ visible, filters, sources: [source] }));
+  };
+  const flt: MartSqlInput['filters'] = [{ field: 'customers__city', op: 'eq', value: 'Paris' }];
+  const reason = (r: ReturnType<typeof buildMartSql>) => ('reason' in r ? r.reason : null);
+  test('refuses a filter on its field, naming both marts', () => {
+    const msg = 'Filtering by "customers__city" can\'t be saved: Customers has several rows per Orders row, and the grid filters their combined value.';
+    expect(reason(run('multiplies', flt))).toBe(msg);
+    expect(reason(run('unknown', flt))).toBe(msg);
+    expect(reason(run(undefined, flt))).toBe(msg);
+  });
+  test('allows the filter when the join keeps the grain', () => {
+    expect(run('none', flt)).toMatchObject({ repeats: false, sql: expect.stringContaining("WHERE customers_dm.`city` = 'Paris'") });
+  });
+  test('allows a shown column and reports that rows can repeat', () => {
+    expect(run('multiplies', [], ['id', 'customers__city'])).toMatchObject({ repeats: true });
+    expect(run('none', [], ['id', 'customers__city'])).toMatchObject({ repeats: false });
+    expect(run('multiplies', [])).toMatchObject({ repeats: false });
   });
 });

@@ -139,3 +139,11 @@ test('a read that was in flight when the mart was invalidated is not remembered'
   await loader.get('m');
   expect(getJson).toHaveBeenCalledTimes(2);
 });
+
+test('joinedSources carries the main grain multiplication of a source, and omits it when absent', () => {
+  const field = (a: string) => ({ name: `${a}__x`, aliasPath: a, sourceDataMartId: a, originalFieldName: 'x', type: 'STRING' });
+  const src = (a: string, m?: 'none' | 'multiplies' | 'unknown') => ({ aliasPath: a, title: a, depth: 1, dataMartId: a, isIncluded: true, isAccessibleForReporting: true, ...(m ? { mainGrainMultiplication: m } : {}) });
+  const sources = joinedSources({ availableSources: [src('a', 'multiplies'), src('b', 'none'), src('c')], blendedFields: [field('a'), field('b'), field('c')] });
+  expect(sources.map((x) => x.mainGrainMultiplication)).toEqual(['multiplies', 'none', undefined]);
+  expect('mainGrainMultiplication' in sources[2]!).toBe(false);
+});

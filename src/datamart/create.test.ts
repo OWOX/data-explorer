@@ -103,7 +103,7 @@ describe('createDataMart', () => {
   it('times out while the status stays PROCESSING', async () => {
     const { ctx } = setup({ statuses: ['PROCESSING'] });
     await expect(createDataMart(ctx, req, undefined, opts)).rejects.toMatchObject({
-      stage: 'schema', martId: 'm1', message: 'OWOX is still reading the columns. Open the data mart to publish it.',
+      stage: 'schema', martId: 'm1', message: 'OWOX is still reading the columns. Open the data mart to publish it, or delete the draft.',
     });
   });
 

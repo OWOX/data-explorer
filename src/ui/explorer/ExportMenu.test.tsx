@@ -1357,7 +1357,7 @@ describe('Copy SQL', () => {
 describe('Create Data Mart', () => {
   const CITY = { name: 'customers__city', alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: 'customers', label: 'Customers', aliasPath: 'customers', originalName: 'city' } };
   const SCHEMA = [{ name: 'id', alias: null, type: 'INTEGER', category: 'number', description: null, isPrimaryKey: false }, CITY] as Schema;
-  const SOURCES = [{ aliasPath: 'customers', martId: 'customers', label: 'Customers', depth: 1, fields: [CITY], uniqueCount: true, relationshipId: 'e1' }] as unknown as JoinedSource[];
+  const SOURCES = [{ aliasPath: 'customers', martId: 'customers', label: 'Customers', depth: 1, fields: [CITY], uniqueCount: true, relationshipId: 'e1', mainGrainMultiplication: 'none' }] as unknown as JoinedSource[];
   const EDGES = [{ id: 'e1', source: 'orders', target: 'customers', joins: [{ sourceField: 'customer_id', targetField: 'id' }] }] as Edge[];
   const TITLES = new Map([['orders', 'Orders'], ['customers', 'Customers']]);
 
@@ -1592,6 +1592,16 @@ describe('Create Data Mart', () => {
     mart();
     const dlg = await openDialog();
     expect(within(dlg).getByText(/references Orders and the joined data mart the grid uses/)).toBeInTheDocument();
+  });
+
+  test('the dialog notes repeated rows only when a joined mart multiplies the grain', async () => {
+    mart();
+    expect(within(await openDialog()).queryByText(/rows can repeat/)).toBeNull();
+  });
+
+  test('the dialog notes repeated rows for a multiplying join', async () => {
+    mart({ sources: SOURCES.map((s) => ({ ...s, mainGrainMultiplication: 'multiplies' as const })) });
+    expect(within(await openDialog()).getByText(/several rows per row here, so rows can repeat/)).toBeInTheDocument();
   });
 
   test('an unavailable storage has its own reason once the model is loaded', async () => {

@@ -35,7 +35,7 @@ const safeId = (id: string) => /^[A-Za-z0-9_-]+$/.test(id);
 const originalNameOf = (f: Field): string | undefined => f.joined?.originalName || undefined;
 
 /** The data mart's SQL for the grid: one CTE per mart in use (with its own complete filters), then the shown columns joined from the CTEs. */
-export function buildMartSql(input: MartSqlInput): { sql: string; /** How many distinct joined data marts the SQL reads. */ joined: number } | { reason: string } {
+export function buildMartSql(input: MartSqlInput): { sql: string; /** How many distinct joined data marts the SQL reads. */ joined: number; /** A joined mart in use has several rows per main row (or the backend didn't say), so main rows can repeat. */ repeats: boolean } | { reason: string } {
   const { dialect: d, main, schema, visible, filters, sources, edges, titles } = input;
   const sorts = input.sorts ?? [];
   const byName = new Map(schema.map((f) => [f.name, f]));
@@ -87,6 +87,9 @@ export function buildMartSql(input: MartSqlInput): { sql: string; /** How many d
       if (field.joined) {
         const name = originalNameOf(field);
         if (!name) return { reason: `The filter on "${field.name}" could not be resolved` };
+        // The grid filters a multiplying join's rolled-up value; the SQL would filter its raw rows.
+        const src = sources.find((s) => s.aliasPath === field.joined!.aliasPath);
+        if (src?.mainGrainMultiplication !== 'none') return { reason: `Filtering by "${field.alias || field.name}" can't be saved: ${src?.label ?? field.joined.label} has several rows per ${main.title} row, and the grid filters their combined value.` };
         // A pre-join aggregated field has no raw per-row meaning to filter on.
         if (field.joined.sourceType && field.joined.sourceType !== field.type) return { reason: `Filter on "${field.alias || field.name}" can't be saved: the joined data mart aggregates this field` };
         outerWhere.push(renderFilter(d, columnRef(d, cte.get(field.joined.aliasPath)!, name), field, flt));
@@ -148,5 +151,5 @@ export function buildMartSql(input: MartSqlInput): { sql: string; /** How many d
   }
 
   const sql = [...(derived ? [] : [`WITH\n${ctes.join(',\n')}`]), `SELECT\n${select.map((x) => `  ${x}`).join(',\n')}`, `FROM ${from}`, ...joins, ...(outerWhere.length ? [`WHERE ${outerWhere.join(' AND ')}`] : []), ...(ordering.length ? [`ORDER BY ${ordering.join(', ')}`] : [])].join('\n');
-  return { sql, joined: martIds.size };
+  return { sql, joined: martIds.size, repeats: order.some((path) => sourceOf(path)?.mainGrainMultiplication !== 'none') };
 }

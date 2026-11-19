@@ -110,7 +110,7 @@ export function ExportMenu(p: Props) {
     : sqlHave && 'reason' in sqlHave.result && sqlHave.opening === opening ? sqlHave.result.reason
     : 'Reading the SQL from OWOX…';
   // Create Data Mart: why it is off, else the SQL it would save, plain and with the grid's sorting (built from the props as they are now).
-  const martSql = useMemo((): { reason: string } | { sql: string; joined: number; sorted: { sql: string; joined: number } | { reason: string } } => {
+  const martSql = useMemo((): { reason: string } | { sql: string; joined: number; repeats: boolean; sorted: { sql: string; joined: number } | { reason: string } } => {
     if (!p.storage) return { reason: p.storageUnavailable ? "The data mart's storage isn't available to you" : "The data mart's storage isn't loaded" };
     if (!p.sources) return { reason: p.joinsFailed ? "The data mart's joins couldn't be read" : "Loading the data mart's joins…" };
     const d = dialectFor(p.storage.type);
@@ -118,9 +118,9 @@ export function ExportMenu(p: Props) {
     const input = { dialect: d.dialect, main: { id: p.martId, title: p.martTitle }, schema: p.schema, visible: p.visible, filters: p.filters, sources: p.sources, edges: p.edges ?? [], titles: p.titles ?? new Map() };
     const plain = buildMartSql(input);
     if ('reason' in plain) return plain;
-    return { sql: plain.sql, joined: plain.joined, sorted: p.ownSorts?.length ? buildMartSql({ ...input, sorts: p.ownSorts }) : { reason: "You haven't set a sort" } };
+    return { sql: plain.sql, joined: plain.joined, repeats: plain.repeats, sorted: p.ownSorts?.length ? buildMartSql({ ...input, sorts: p.ownSorts }) : { reason: "You haven't set a sort" } };
   }, [p.storage, p.storageUnavailable, p.sources, p.joinsFailed, p.edges, p.titles, p.martId, p.martTitle, p.schema, p.visible, p.filters, p.ownSorts]);
-  const [martDialog, setMartDialog] = useState<{ sql: string; joined: number; sorted: { sql: string; joined: number } | { reason: string }; grouped: boolean; storage: { id: string; type: string; title?: string }; seq: number } | null>(null);
+  const [martDialog, setMartDialog] = useState<{ sql: string; joined: number; repeats: boolean; sorted: { sql: string; joined: number } | { reason: string }; grouped: boolean; storage: { id: string; type: string; title?: string }; seq: number } | null>(null);
   const seq = useRef(0);
   // Bumped when the mart changes or the menu goes away: an export finishing later is no longer in front of the member.
   const gen = useRef(0);
@@ -360,7 +360,7 @@ export function ExportMenu(p: Props) {
                   </span>
                 </Tooltip>
               ) : (
-                <button type="button" role="menuitem" data-lvl="1" data-action="create-mart" className="dm-export-item" onClick={() => { closeMenu(); setMartDialog({ sql: martSql.sql, joined: martSql.joined, sorted: martSql.sorted, grouped: isGrouped(p.aggregation), storage: p.storage!, seq: ++seq.current }); }}>
+                <button type="button" role="menuitem" data-lvl="1" data-action="create-mart" className="dm-export-item" onClick={() => { closeMenu(); setMartDialog({ sql: martSql.sql, joined: martSql.joined, repeats: martSql.repeats, sorted: martSql.sorted, grouped: isGrouped(p.aggregation), storage: p.storage!, seq: ++seq.current }); }}>
                   <DatabaseZap size={16} />
                   <span className="dm-filter-label">Create Data Mart</span>
                 </button>
@@ -371,7 +371,7 @@ export function ExportMenu(p: Props) {
       {promptOpen && copied && <TextDialog name="Prompt" heading={`Prompt for ${copied.assistant}`} note={`Paste it into ${copied.assistant} with the OWOX Data Marts connector turned on. Copying writes nothing to OWOX.`} areaLabel="Prompt text" text={copied.prompt} onClose={() => { setPromptOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {dataOpen && data && <TextDialog name="Copy the data" note="Select the text and copy it, then paste it into a sheet. Copying writes nothing to OWOX." areaLabel="Data text" text={data.tsv} onClose={() => { setDataOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {sqlOpen && sqlCopied && <TextDialog name="SQL" note="Select the SQL and copy it. Copying writes nothing to OWOX." areaLabel="SQL text" text={sqlCopied.sql} onClose={() => { setSqlOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
-      {martDialog && <CreateMartDialog key={martDialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} martTitle={p.martTitle} sql={martDialog.sql} joined={martDialog.joined} sorted={martDialog.sorted} grouped={martDialog.grouped} storage={martDialog.storage} onClose={() => setMartDialog(null)} />}
+      {martDialog && <CreateMartDialog key={martDialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} martTitle={p.martTitle} sql={martDialog.sql} joined={martDialog.joined} repeats={martDialog.repeats} sorted={martDialog.sorted} grouped={martDialog.grouped} storage={martDialog.storage} onClose={() => setMartDialog(null)} />}
       {dialog && <ExportDialog key={dialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} exporter={exporter} martId={p.martId} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
     </>
   );
@@ -706,7 +706,7 @@ const MartLink = ({ url, children, linkRef }: { url: string; children: React.Rea
 };
 
 /** The dialog behind Create Data Mart: names the mart, shows its SQL, runs the create steps, then links to the result. */
-function CreateMartDialog({ martTitle, sql: plainSql, joined: plainJoined, sorted, grouped, storage, onClose, returnFocus }: { martTitle: string; sql: string; /** How many distinct joined data marts it reads. */ joined: number; /** The SQL with the grid's ORDER BY, or why there is none. */ sorted: { sql: string; joined: number } | { reason: string }; grouped: boolean; storage: { id: string; type: string; title?: string }; onClose: () => void; returnFocus: () => void }) {
+function CreateMartDialog({ martTitle, sql: plainSql, joined: plainJoined, repeats, sorted, grouped, storage, onClose, returnFocus }: { martTitle: string; sql: string; /** How many distinct joined data marts it reads. */ joined: number; /** A joined mart has several rows per row of this one, so rows can repeat. */ repeats: boolean; /** The SQL with the grid's ORDER BY, or why there is none. */ sorted: { sql: string; joined: number } | { reason: string }; grouped: boolean; storage: { id: string; type: string; title?: string }; onClose: () => void; returnFocus: () => void }) {
   const { ctx } = useServices();
   const [name, setName] = useState(exportTitle(martTitle));
   const [sorting, setSorting] = useState(false);
@@ -792,7 +792,7 @@ function CreateMartDialog({ martTitle, sql: plainSql, joined: plainJoined, sorte
           </>
         ) : (
           <>
-            <p className="text-xs text-muted-foreground">An SQL data mart in {where} that references {martTitle}{joined > 0 ? ` and ${joined === 1 ? 'the joined data mart' : `the ${joined} joined data marts`} the grid uses` : ''}, with its columns and filters. It is published and available for reporting.{grouped ? ' The grid groups its rows; the data mart keeps them ungrouped.' : ''}</p>
+            <p className="text-xs text-muted-foreground">An SQL data mart in {where} that references {martTitle}{joined > 0 ? ` and ${joined === 1 ? 'the joined data mart' : `the ${joined} joined data marts`} the grid uses` : ''}, with its columns and filters. It is published and available for reporting.{grouped ? ' The grid groups its rows; the data mart keeps them ungrouped.' : ''}{repeats ? ' A joined data mart has several rows per row here, so rows can repeat.' : ''}</p>
             <label className="flex flex-col gap-1">Name
               <input ref={field} value={name} disabled={running || !!failure?.martId} onChange={(e) => setName(e.target.value)} className="h-8 rounded-md border bg-background px-2 disabled:opacity-60" />
             </label>

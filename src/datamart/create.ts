@@ -21,7 +21,7 @@ export class CreateMartError extends Error {
 export type CreateMartRequest = { title: string; storageId: string; sql: string; /** Resume a mart an earlier attempt created: skips 'create'. */ martId?: string; /** Resume from this stage (with martId). */ from?: CreateStage; signal?: AbortSignal };
 
 const ORDER: CreateStage[] = ['create', 'define', 'schema', 'publish', 'share'];
-const SCHEMA_TIMEOUT = 'OWOX is still reading the columns. Open the data mart to publish it.';
+const SCHEMA_TIMEOUT = 'OWOX is still reading the columns. Open the data mart to publish it, or delete the draft.';
 const SCHEMA_UNREADABLE = 'OWOX could not read the columns of this SQL. Open the draft to see why.';
 
 /** The server's message when the error carries one, else the error's own. */

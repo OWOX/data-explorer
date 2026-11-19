@@ -18,6 +18,8 @@ export type JoinedSource = {
   uniqueCount: boolean;
   /** The relationship (edge) that exposes this source, when the backend says. */
   relationshipId?: string;
+  /** Whether this join changes the main grain (the backend's word): 'none', 'multiplies' or 'unknown'; absent when the backend didn't say. */
+  mainGrainMultiplication?: 'none' | 'multiplies' | 'unknown';
 };
 
 export interface BlendableLoader {
@@ -40,7 +42,7 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
   offered.forEach((s) => labelUses.set(nameOf(s), (labelUses.get(nameOf(s)) ?? 0) + 1));
   for (const s of offered) {
     const base = nameOf(s);
-    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, fields: [], uniqueCount: s.uniqueCountAvailability === 'available', ...(s.relationshipId ? { relationshipId: s.relationshipId } : {}) });
+    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, fields: [], uniqueCount: s.uniqueCountAvailability === 'available', ...(s.relationshipId ? { relationshipId: s.relationshipId } : {}), ...(s.mainGrainMultiplication ? { mainGrainMultiplication: s.mainGrainMultiplication } : {}) });
   }
   for (const b of dto.blendedFields ?? []) {
     const source = byPath.get(b.aliasPath);
