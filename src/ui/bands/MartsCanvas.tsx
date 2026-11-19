@@ -2,9 +2,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JoinedSource } from '../../api/blendable';
 import type { DqSummary, Model } from '../../model/types';
-import { buildJoinTree, ghostSources } from '../../state/join-tree';
-import { CARD_W, layoutTree } from './canvas-layout';
+import { buildJoinTree, ghostSources, rejoinTargets } from '../../state/join-tree';
+import { closestTarget } from './canvas-drag';
+import { CARD_H, CARD_W, layoutTree } from './canvas-layout';
 import { MartCard, martElementId, type CountState } from './cards';
+import { useCanvasDrag } from './useCanvasDrag';
 import type { ClickOptions } from './useCardClick';
 import { revisionOf, useWires, type Wire } from './wires';
 
@@ -34,6 +36,16 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   const tree = useMemo(() => buildJoinTree(mainId ?? '', columns, sources ?? []), [mainId, columns, sources]);
   const [over, setOver] = useState<Over>(NONE);
   const [pinned, setPinned] = useState<string | null>(null);
+  const drag = useCanvasDrag(
+    treeRef,
+    (p) => p !== '',
+    (path, x, y) => {
+      const pick = closestTarget(rejoinTargets(tree, sources ?? [], path), layout.placed, x, y);
+      const node = tree.nodes.get(path);
+      if (pick && node) void click(node.martId, { moves: pick.moves });
+    },
+    mainId,
+  );
   // The path whose ghosts show. It follows the hovered card; a hovered ghost keeps it, and leaving waits 400 ms, so the pointer can cross the gap to a ghost.
   const [shownFor, setShownFor] = useState<string | null>(null);
   if (shownFor === null && over.path !== null) setShownFor(over.path);
@@ -57,13 +69,17 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     return () => box.removeEventListener('click', onClick);
   }, [mainId]);
 
-  const ghostOf = pinned ?? shownFor;
+  // While a card is in hand no ghosts show and the hover and pin logic sits still.
+  const ghostOf = drag ? null : pinned ?? shownFor;
   const ghosts = useMemo(
     () => (ghostOf !== null && sources ? ghostSources(tree, sources, ghostOf).filter((s) => model.marts.get(s.martId)?.accessible) : []),
     [ghostOf, sources, tree, model],
   );
   const layout = useMemo(() => layoutTree(tree, ghostOf !== null && ghosts.length ? { path: ghostOf, ids: ghosts.map((g) => g.aliasPath) } : undefined), [tree, ghostOf, ghosts]);
 
+  const targets = useMemo(() => (drag ? rejoinTargets(tree, sources ?? [], drag.path) : []), [drag?.path, tree, sources]); // eslint-disable-line react-hooks/exhaustive-deps
+  const valid = new Set(targets.map((t) => t.target));
+  const pick = drag ? closestTarget(targets, layout.placed, drag.x, drag.y) : null;
   const key = [...tree.nodes.keys(), '|', ghostOf ?? '', ...ghosts.map((g) => g.aliasPath)].join('>');
   const wires = useMemo<Wire[]>(() => {
     const title = (id: string) => model.marts.get(id)?.title ?? id;
@@ -83,6 +99,16 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
 
   if (!mainId) return <p className="dm-muted text-sm">Select a data mart.</p>;
   const contextsOf = (ids: string[]) => model.contexts.filter((c) => ids.includes(c.id));
+  const dragTitle = drag ? model.marts.get(tree.nodes.get(drag.path)?.martId ?? '')?.title : undefined;
+  let line: string | null = null;
+  const to = pick && layout.placed.find((p) => p.path === pick.target);
+  if (drag && to) {
+    const x2 = drag.x < to.x + CARD_W / 2 ? to.x : to.x + CARD_W;
+    const y2 = to.y + CARD_H / 2;
+    const pull = Math.max(40, Math.abs(x2 - drag.x) / 2);
+    const dir = x2 >= drag.x ? 1 : -1;
+    line = `M${drag.x} ${drag.y} C${drag.x + dir * pull} ${drag.y} ${x2 - dir * pull} ${y2} ${x2} ${y2}`;
+  }
   const at = new Map(layout.placed.map((p) => [p.path, p] as const));
   return (
     <div
@@ -97,7 +123,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
         const pos = at.get(node.path);
         if (!mart || !pos) return [];
         return [
-          <div key={node.path} className="dm-tree-node" data-tree-path={node.path} style={{ left: pos.x, top: pos.y, width: CARD_W }}>
+          <div key={node.path} className={`dm-tree-node${drag && node.path !== drag.path && !valid.has(node.path) ? ' dm-dimmed' : ''}`} data-tree-path={node.path} style={{ left: pos.x, top: pos.y, width: CARD_W }}>
             <MartCard
               mart={mart}
               contexts={contextsOf(mart.contextIds)}
@@ -115,6 +141,8 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
           </div>,
         ];
       })}
+      {line && <svg id="drag-line" aria-hidden><path d={line} /></svg>}
+      {drag && dragTitle && <div className="dm-drag-ghost" style={{ left: drag.clientX + 8, top: drag.clientY + 8 }} aria-hidden>{dragTitle}</div>}
       {layout.ghosts.flatMap((spot) => {
         const g = ghosts.find((s) => s.aliasPath === spot.id);
         const mart = g && model.marts.get(g.martId);

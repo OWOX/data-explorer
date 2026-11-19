@@ -97,3 +97,69 @@ test('with joined sources not loaded, the canvas shows the main card alone', asy
   await userEvent.hover(document.querySelector('article')!);
   expect(document.querySelectorAll('article[data-ghost]')).toHaveLength(0);
 });
+
+const pointer = (clientX: number, clientY: number, buttons = 1) => ({ clientX, clientY, button: 0, buttons, pointerId: 1 });
+const centre = (id: string) => {
+  const w = el(id)!.parentElement!;
+  return { x: parseFloat(w.style.left) + 112, y: parseFloat(w.style.top) + 56 };
+};
+const tips = () => [...marts().querySelectorAll<SVGPathElement>('#tree-wires path[data-tip]')].map((p) => p.dataset.tip);
+const wrapper = (id: string) => el(id)!.parentElement!;
+const joinCountriesUnderCustomers = async () => {
+  setup();
+  await ready();
+  await toCanvas();
+  await waitFor(() => expect(el('orders')).not.toBeNull());
+  vi.spyOn(marts().querySelector('.dm-tree')!, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) });
+  await userEvent.hover(el('orders')!);
+  await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article#dm-customers[data-ghost]'); expect(g).not.toBeNull(); return g!; }));
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
+  await userEvent.hover(el('orders')!);
+  await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article#dm-stores[data-ghost]'); expect(g).not.toBeNull(); return g!; }));
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores']));
+  await userEvent.hover(el('customers')!);
+  await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article#dm-countries[data-ghost]'); expect(g).not.toBeNull(); return g!; }));
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores', 'Countries']));
+};
+
+test('dragging countries from customers onto stores moves its columns to the stores path', async () => {
+  await joinCountriesUnderCustomers();
+  await waitFor(() => expect(tips()).toContain('Customers → Countries'));
+  const stores = () => centre('stores');
+  const c = () => centre('countries');
+  const storesClass = el('stores')!.className;
+  fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
+  fireEvent.pointerMove(window, pointer(c().x + 40, c().y));
+  fireEvent.pointerMove(window, pointer(stores().x, stores().y));
+  await waitFor(() => expect(wrapper('orders')).toHaveClass('dm-dimmed'));
+  expect(wrapper('stores')).not.toHaveClass('dm-dimmed');
+  expect(wrapper('customers')).toHaveClass('dm-dimmed');
+  expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(1);
+  expect(el('stores')!.className).toBe(storesClass);
+  fireEvent.pointerUp(el('stores')!, pointer(stores().x, stores().y, 0));
+  await waitFor(() => expect(tips()).toContain('Stores → Countries'));
+  expect(tips()).not.toContain('Customers → Countries');
+  expect(marts().querySelector('svg#drag-line path')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: /undo/i }));
+  await waitFor(() => expect(tips()).toContain('Customers → Countries'));
+});
+
+test('Escape or a release away from any target changes nothing, and the next click still works', async () => {
+  await joinCountriesUnderCustomers();
+  const before = headers();
+  const c = () => centre('countries');
+  fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
+  fireEvent.pointerMove(window, pointer(c().x + 40, c().y));
+  await waitFor(() => expect(marts().querySelector('svg#drag-line path')).not.toBeNull());
+  fireEvent.keyDown(document, { key: 'Escape' });
+  await waitFor(() => expect(marts().querySelector('svg#drag-line path')).toBeNull());
+  fireEvent.pointerUp(window, pointer(c().x + 40, c().y, 0));
+  expect(headers()).toEqual(before);
+  fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
+  fireEvent.pointerMove(window, pointer(c().x + 40, c().y));
+  fireEvent.pointerUp(document.body, pointer(5, 5, 0));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(headers()).toEqual(before);
+  await userEvent.click(el('orders')!);
+  await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
+});
