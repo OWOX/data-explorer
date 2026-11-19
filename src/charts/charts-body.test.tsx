@@ -65,6 +65,13 @@ test('Charts: each data mart has its own cards in its group cell, Unique Records
   await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
 });
 
+test('a card is at most 10rem wide and does not grow to fill its mart’s cell', async () => {
+  await charts();
+  const card = await waitFor(() => { const c = group('orders')!.querySelector('[data-card]'); expect(c).not.toBeNull(); return c!; });
+  expect(card.className).toContain('flex-[0_1_10rem]');
+  expect(card.className).not.toMatch(/\bflex-1\b/);
+});
+
 test('a long number shows short on its card, the exact value in a tooltip and to screen readers; a short one shows in full', async () => {
   await charts();
   const amount = await waitFor(() => { const v = group('orders')!.querySelector<HTMLElement>('[data-card="amount"] [data-card-value]'); expect(v?.dataset.exact).toBeTruthy(); return v!; });
@@ -278,7 +285,7 @@ test('a failed Auto range query shows Retry on the time series, which reads agai
 test('a date and a key with no metric shown still get a Unique Records time series', async () => {
   const t = await charts({ columns: ['id', 'status', 'created_at'], charts: { scorecards: { sparklines: false } } }); // no sparklines: they send the same shape
   await waitFor(() => expect(data().querySelector('svg[aria-label="Unique Records by day"], svg[aria-label^="Unique Records by"]')).not.toBeNull());
-  expect(screen.getByRole('heading', { name: /^Unique Records by / })).toBeInTheDocument();
+  expect(screen.getAllByRole('heading', { name: /^Unique Records by / }).length).toBeGreaterThan(0);
   const q = t.queries.find((o) => o.dateTrunc && o.uniqueCount?.[0] === '');
   expect(q).toMatchObject({ uniqueCount: [''], dateTrunc: [expect.objectContaining({ column: 'created_at' })] });
   expect(q?.aggregation).toBeUndefined();
@@ -295,4 +302,31 @@ test('choosing Unique Records from the Metric menu saves timeSeries.metric recor
   await userEvent.click(opts[0]!);
   await waitFor(() => expect(screen.getByRole('heading', { name: /^Unique Records by / })).toBeInTheDocument());
   expect(t.puts).toHaveBeenCalledWith('orders', { timeSeries: { metric: 'records' } });
+});
+
+test('the Metric menus list every mart’s Unique Records and metrics; a joined mart’s records saves records:<martId>', async () => {
+  const t = await charts();
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  await userEvent.click(panel('Time series'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  const opts = await screen.findAllByRole('menuitemradio');
+  expect(opts.map((o) => o.textContent)).toEqual(['Unique Records', 'Amount · Sum', 'Products · Unique Records', 'price · Sum']);
+  await userEvent.click(opts[2]!);
+  await waitFor(() => expect(screen.getByRole('heading', { name: /^Products · Unique Records by / })).toBeInTheDocument());
+  expect(t.puts).toHaveBeenCalledWith('orders', { timeSeries: { metric: 'records:products' } });
+  const q = t.queries.find((o) => o.dateTrunc && o.uniqueCount?.[0] && o.uniqueCount[0] !== '');
+  expect(q).toMatchObject({ column: ['created_at'] });
+  expect(q?.aggregation).toBeUndefined();
+});
+
+test('a pie of a joined mart’s Unique Records by a dimension asks the backend for that mart’s unique count', async () => {
+  const t = await charts({ charts: { pie: { metric: 'records:products', dimension: 'status' } } });
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Products · Unique Records by status' })).toBeInTheDocument());
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  const q = t.queries.find((o) => o.limit === 8 && o.column?.[0] === 'status' && o.uniqueCount?.[0] !== '' && o.uniqueCount);
+  expect(q).toMatchObject({ column: ['status'], sort: [{ direction: 'desc' }] });
+  expect(q?.aggregation).toBeUndefined();
+  await userEvent.click(panel('Pie'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  expect((await screen.findAllByRole('menuitemradio')).map((o) => o.textContent)).toEqual(['Unique Records', 'Amount · Sum', 'Products · Unique Records', 'price · Sum']);
 });

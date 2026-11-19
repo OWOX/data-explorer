@@ -6,9 +6,8 @@ import type { ChartMart, Metric } from './fields';
 
 export const TOP_N = 8;
 
-/** What a time series or top list counts: a metric, or the main mart's records (its unique count). */
-export type Measure = { kind: 'metric'; metric: Metric } | { kind: 'records'; aliasPath: '' };
-export const RECORDS: Measure = { kind: 'records', aliasPath: '' };
+/** What a time series or top list counts: a metric, or a mart's records (its unique count on the mart's alias path, '' for the main one). */
+export type Measure = { kind: 'metric'; metric: Metric } | { kind: 'records'; aliasPath: string; martId: string };
 
 export const metricKey = (m: Metric): string => aggregatedKey(m.field.name, m.fn);
 /** The row key of a mart's unique count (the backend's contract: each dot of the alias path becomes `_`). */
@@ -93,6 +92,6 @@ export function seriesOtherQuery(date: Field, bucket: DateBucket, measure: Measu
   );
 }
 
-export function pieOtherQuery(metric: Metric, filter: TraverseFilter[], dim: Field, top: string[]): TraverseOptions {
-  return withFilter({ column: [metric.field.name], aggregation: aggs([metric]) }, [...filter, notBlank(dim), { column: dim.name, operator: 'not_in', value: list(top) }]);
+export function pieOtherQuery(measure: Measure, filter: TraverseFilter[], dim: Field, top: string[]): TraverseOptions {
+  return withFilter({ ...(measure.kind === 'metric' ? { column: measureColumns(measure) } : {}), ...measureParts(measure) }, [...filter, notBlank(dim), { column: dim.name, operator: 'not_in', value: list(top) }]);
 }

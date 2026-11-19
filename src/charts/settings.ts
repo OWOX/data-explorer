@@ -1,8 +1,8 @@
 // Member-saved chart choices and how they resolve against the columns shown now.
 import { DATE_BUCKETS, type DateBucket } from '../model/aggregation';
 import type { Field } from '../model/types';
-import { pieMetrics, type ChartFields, type Metric } from './fields';
-import { RECORDS, type Measure } from './queries';
+import { measuresOf, pieMeasures, type ChartFields } from './fields';
+import type { Measure } from './queries';
 
 export type Orientation = 'vertical' | 'horizontal';
 export type ChartSettings = {
@@ -15,16 +15,19 @@ export type ResolvedCharts = {
   sparklines: boolean;
   date: Field | null;
   bucket: DateBucket | 'AUTO';
-  metric: Metric | null;
-  /** What the time series counts: a shown metric, or the main mart's records (saved as `'records'`). */
+  /** What the time series counts: a shown metric, or a mart's records (see `measureId`). */
   measure: Measure | null;
   stack: Field | null;
   orientation: Orientation;
-  pieMetric: Metric | null;
+  /** What the pie counts: a shown metric (summed), or a mart's records. */
+  pieMeasure: Measure | null;
   pieDimension: Field | null;
 };
 
 export const recordsCardId = (martId: string): string => `records:${martId}`;
+
+/** What a measure is saved as: the field name, `'records'` for the main mart's records (as before joined marts counted) and `records:<martId>` for a joined mart's. */
+export const measureId = (m: Measure, mainMartId: string): string => (m.kind === 'metric' ? m.metric.field.name : m.martId === mainMartId ? 'records' : recordsCardId(m.martId));
 
 /**
  * Pure: a saved name that is no longer shown falls back to the default for this view only.
@@ -33,20 +36,18 @@ export const recordsCardId = (martId: string): string => `records:${martId}`;
 export function resolveCharts(s: ChartSettings, cf: ChartFields): ResolvedCharts {
   const ts = s.timeSeries ?? {};
   const bucket = ts.bucket;
-  const hasPk = cf.marts[0]?.hasPk ?? false;
-  const named = cf.metrics.find((m) => m.field.name === ts.metric);
-  const pie = pieMetrics(cf);
-  const metricNamed = (name?: string) => cf.metrics.find((m) => m.field.name === name) ?? cf.metrics[0] ?? null;
+  // The grid's mart is the first group.
+  const main = cf.marts[0]?.martId ?? '';
+  const pick = (list: Measure[], saved?: string): Measure | null => list.find((m) => measureId(m, main) === saved) ?? list.find((m) => m.kind === 'metric') ?? list[0] ?? null;
   return {
     hidden: new Set(s.scorecards?.hidden ?? []),
     sparklines: s.scorecards?.sparklines ?? true,
     date: cf.dates.find((d) => d.name === ts.date) ?? cf.dates[0] ?? null,
     bucket: bucket === 'AUTO' || DATE_BUCKETS.some((b) => b === bucket) ? bucket! : 'AUTO',
-    metric: metricNamed(ts.metric),
-    measure: ts.metric === 'records' && hasPk ? RECORDS : named ? { kind: 'metric', metric: named } : cf.metrics[0] ? { kind: 'metric', metric: cf.metrics[0] } : hasPk ? RECORDS : null,
+    measure: pick(measuresOf(cf), ts.metric),
     stack: cf.dimensions.find((d) => d.name === ts.stack) ?? null,
     orientation: ts.orientation === 'horizontal' ? 'horizontal' : 'vertical',
-    pieMetric: pie.find((m) => m.field.name === s.pie?.metric) ?? pie[0] ?? null,
+    pieMeasure: pick(pieMeasures(cf), s.pie?.metric),
     pieDimension: cf.dimensions.find((d) => d.name === s.pie?.dimension) ?? cf.dimensions[0] ?? null,
   };
 }

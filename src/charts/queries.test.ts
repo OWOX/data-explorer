@@ -9,11 +9,12 @@ const amount: Metric = { field: f('amount', 'number'), fn: 'SUM', martId: 'M' };
 const ltv: Metric = { field: f('c__ltv', 'number', { joined: { martId: 'C', label: 'Customers', aliasPath: 'c.x' } }), fn: 'AVG', martId: 'C' };
 const date = f('date', 'date');
 const amt: Measure = { kind: 'metric', metric: amount };
-const records: Measure = { kind: 'records', aliasPath: '' };
+const records: Measure = { kind: 'records', aliasPath: '', martId: 'M' };
+const custRecords: Measure = { kind: 'records', aliasPath: 'c.x', martId: 'C' };
 const channel = f('channel', 'string');
 const flt = [{ column: 'channel', operator: 'eq' as const, value: 'web' }];
-const main: ChartMart = { martId: 'M', aliasPath: '', hasPk: true, metrics: [amount], dates: [date], dimensions: [channel] };
-const cust: ChartMart = { martId: 'C', aliasPath: 'c.x', hasPk: true, metrics: [ltv], dates: [], dimensions: [] };
+const main: ChartMart = { martId: 'M', aliasPath: '', title: 'Orders', hasPk: true, metrics: [amount], dates: [date], dimensions: [channel] };
+const cust: ChartMart = { martId: 'C', aliasPath: 'c.x', title: 'Customers', hasPk: true, metrics: [ltv], dates: [], dimensions: [] };
 
 describe('queries', () => {
   it('scorecards: all metrics and a unique count per mart with a key', () => {
@@ -61,7 +62,14 @@ describe('queries', () => {
     expect(seriesOtherQuery(date, 'DAY', records, [], channel, ['a'])).toMatchObject({ column: ['date'], uniqueCount: [''] });
   });
   it('pie other: the metric over the values outside the top', () => {
-    expect(pieOtherQuery(amount, [], channel, ['a'])).toEqual({ column: ['amount'], aggregation: [{ column: 'amount', function: 'SUM' }], filter: [{ column: 'channel', operator: 'is_not_blank' }, { column: 'channel', operator: 'not_in', value: ['a'] }] });
+    expect(pieOtherQuery(amt, [], channel, ['a'])).toEqual({ column: ['amount'], aggregation: [{ column: 'amount', function: 'SUM' }], filter: [{ column: 'channel', operator: 'is_not_blank' }, { column: 'channel', operator: 'not_in', value: ['a'] }] });
+  });
+  it('a joined mart’s records: its alias path’s unique count, keyed and sorted by its own key', () => {
+    expect(topValuesQuery(channel, custRecords, [])).toMatchObject({ column: ['channel'], uniqueCount: ['c.x'], sort: [{ column: 'c_x__unique_count', direction: 'desc' }], limit: 8 });
+    expect(seriesQuery(date, 'DAY', custRecords, [])).toMatchObject({ column: ['date'], uniqueCount: ['c.x'] });
+    expect(seriesOtherQuery(date, 'DAY', custRecords, [], channel, ['a'])).toMatchObject({ column: ['date'], uniqueCount: ['c.x'] });
+    const other = pieOtherQuery(custRecords, [], channel, ['a']);
+    expect(other).toEqual({ uniqueCount: ['c.x'], filter: [{ column: 'channel', operator: 'is_not_blank' }, { column: 'channel', operator: 'not_in', value: ['a'] }] });
   });
   it('sparklines: the mart’s metrics and its unique count by bucket', () => {
     expect(sparklineQuery(cust, date, 'DAY', [])).toMatchObject({ column: ['date', 'c__ltv'], uniqueCount: ['c.x'], sort: [{ column: 'date', direction: 'asc' }] });

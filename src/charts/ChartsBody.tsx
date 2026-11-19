@@ -47,7 +47,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
   };
 
   const uniqueCountPaths = new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath));
-  const cf = chartFields(schema, shown, agg, martId, groups.map((g) => g.id), uniqueCountPaths);
+  const cf = chartFields(schema, shown, agg, martId, groups.map((g) => g.id), uniqueCountPaths, Object.fromEntries(groups.map((g) => [g.id, g.title])));
   const r = resolveCharts(settings ?? {}, cf);
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
   const idle = paused || !settings;
@@ -93,7 +93,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
           <div data-chart-panels className="dm-chart-panels sticky" style={{ left: GUTTER_PX, width: Math.max(0, scrollerWidth - GUTTER_PX) }}>
             {r.date && r.measure && <TimeSeriesPanel {...panelProps} bucket={bucket} range={{ error: rangeError, retry: retryRange }}
               onChange={(p) => change((cur) => ({ ...cur, timeSeries: { ...cur.timeSeries, ...p } }))} />}
-            {r.pieMetric && r.pieDimension && <PiePanel {...panelProps} onChange={(p) => change((cur) => ({ ...cur, pie: { ...cur.pie, ...p } }))} />}
+            {r.pieMeasure && r.pieDimension && <PiePanel {...panelProps} onChange={(p) => change((cur) => ({ ...cur, pie: { ...cur.pie, ...p } }))} />}
           </div>
         </td>
       </tr>
