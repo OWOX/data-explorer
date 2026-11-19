@@ -70,7 +70,10 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   }, [mainId]);
 
   // While a card is in hand no ghosts show and the hover and pin logic sits still.
-  const ghostOf = drag ? null : pinned ?? shownFor;
+  // A pin on a path the tree no longer has (a drag moved it, or Undo removed it) is let go.
+  const pin = pinned !== null && tree.nodes.has(pinned) ? pinned : null;
+  if (pinned !== null && pin === null) setPinned(null);
+  const ghostOf = drag ? null : pin ?? shownFor;
   const ghosts = useMemo(
     () => (ghostOf !== null && sources ? ghostSources(tree, sources, ghostOf).filter((s) => model.marts.get(s.martId)?.accessible) : []),
     [ghostOf, sources, tree, model],
@@ -79,7 +82,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
 
   const targets = useMemo(() => (drag ? dropTargets(tree, sources ?? [], drag.path) : []), [drag?.path, tree, sources]); // eslint-disable-line react-hooks/exhaustive-deps
   const valid = new Set(targets.map((t) => t.target));
-  const pick = drag ? closestTarget(targets, layout.placed, drag.x, drag.y) : null;
+  const pick = drag?.inside ? closestTarget(targets, layout.placed, drag.x, drag.y) : null;
   const key = [...tree.nodes.keys(), '|', ghostOf ?? '', ...ghosts.map((g) => g.aliasPath)].join('>');
   const wires = useMemo<Wire[]>(() => {
     const title = (id: string) => model.marts.get(id)?.title ?? id;

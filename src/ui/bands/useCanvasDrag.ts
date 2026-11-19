@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 
-/** The pointer in canvas coordinates (x, y) and in client coordinates (clientX, clientY, for the title chip). */
-export type CanvasDrag = { path: string; x: number; y: number; clientX: number; clientY: number };
+/** The pointer in canvas coordinates (x, y) and in client coordinates (clientX, clientY, for the title chip); `inside` is whether it is over the scroll box, where a release counts. */
+export type CanvasDrag = { path: string; x: number; y: number; clientX: number; clientY: number; inside: boolean };
 
 /** A press becomes a drag once the pointer has moved this far, so a click stays a click. */
 const START_PX = 5;
 
 /**
  * Dragging a joined card on the canvas. A press on a tree card (not the main one, not its buttons, not a ghost) becomes a
- * drag past 5 px; a release over the canvas calls `onDrop` with the pointer in canvas coordinates. A release outside it,
+ * drag past 5 px; a release over the canvas (its scroll box) calls `onDrop` with the pointer in canvas coordinates. A release outside it,
  * Escape or a cancelled pointer end the drag with no change. The click after a drag is swallowed.
  */
 export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (path: string) => boolean, onDrop: (path: string, x: number, y: number) => void, active: unknown = null): CanvasDrag | null {
@@ -32,6 +32,8 @@ export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (pat
       const r = el.getBoundingClientRect();
       return { x: e.clientX - r.left, y: e.clientY - r.top };
     };
+    // The whole scroll box counts as the canvas, so the margin around the tree is not a dead zone.
+    const over = (e: PointerEvent) => e.target instanceof Node && (el.parentElement ?? el).contains(e.target);
     const end = () => { press = null; dragging = false; setDrag(null); };
     const down = (e: PointerEvent) => {
       cancelled = false;
@@ -52,14 +54,14 @@ export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (pat
       if (!dragging && Math.hypot(e.clientX - press.x, e.clientY - press.y) < START_PX) return;
       dragging = true;
       e.preventDefault();
-      setDrag({ path: press.path, ...local(e), clientX: e.clientX, clientY: e.clientY });
+      setDrag({ path: press.path, ...local(e), clientX: e.clientX, clientY: e.clientY, inside: over(e) });
     };
     const up = (e: PointerEvent) => {
       if (cancelled) { cancelled = false; swallowNextClick(); return; }
       if (!press) return;
       const { path } = press;
       const wasDrag = dragging;
-      const inside = e.target instanceof Node && el.contains(e.target);
+      const inside = over(e);
       end();
       if (!wasDrag) return;
       swallowNextClick();

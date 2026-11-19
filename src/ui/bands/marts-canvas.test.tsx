@@ -105,6 +105,7 @@ const centre = (id: string) => {
   return { x: parseFloat(w.style.left) + 112, y: parseFloat(w.style.top) + 56 };
 };
 const tips = () => [...marts().querySelectorAll<SVGPathElement>('#tree-wires path[data-tip]')].map((p) => p.dataset.tip);
+const treeEl = () => marts().querySelector<HTMLElement>('.dm-tree')!;
 const wrapper = (id: string) => el(id)!.parentElement!;
 const joinCountriesUnderCustomers = async () => {
   setup();
@@ -130,8 +131,8 @@ test('dragging countries from customers onto stores moves its columns to the sto
   const c = () => centre('countries');
   const storesClass = el('stores')!.className;
   fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
-  fireEvent.pointerMove(window, pointer(c().x + 40, c().y));
-  fireEvent.pointerMove(window, pointer(stores().x, stores().y));
+  fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
   await waitFor(() => expect(wrapper('orders')).toHaveClass('dm-dimmed'));
   expect(wrapper('stores')).not.toHaveClass('dm-dimmed');
   expect(wrapper('customers')).not.toHaveClass('dm-dimmed');
@@ -150,7 +151,7 @@ test('Escape or a release away from any target changes nothing, and the next cli
   const before = headers();
   const c = () => centre('countries');
   fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
-  fireEvent.pointerMove(window, pointer(c().x + 40, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
   await waitFor(() => expect(marts().querySelector('svg#drag-line path')).not.toBeNull());
   fireEvent.keyDown(document, { key: 'Escape' });
   await waitFor(() => expect(marts().querySelector('svg#drag-line path')).toBeNull());
@@ -159,7 +160,7 @@ test('Escape or a release away from any target changes nothing, and the next cli
   expect(ghosts()).toEqual([]);
   expect(headers()).toEqual(before);
   fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
-  fireEvent.pointerMove(window, pointer(c().x + 40, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
   fireEvent.pointerUp(document.body, pointer(5, 5, 0));
   await new Promise((r) => setTimeout(r, 20));
   expect(headers()).toEqual(before);
@@ -175,8 +176,8 @@ test('releasing near the current parent changes nothing and leaves the wires alo
   const c = () => centre('countries');
   const cu = () => centre('customers');
   fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
-  fireEvent.pointerMove(window, pointer(c().x + 40, c().y));
-  fireEvent.pointerMove(window, pointer(cu().x, cu().y));
+  fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(cu().x, cu().y));
   await waitFor(() => expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(1));
   fireEvent.pointerUp(el('customers')!, pointer(cu().x, cu().y, 0));
   await new Promise((r) => setTimeout(r, 50));
@@ -209,4 +210,38 @@ test('scrolling the tree box re-lays out the page wires; scrolling elsewhere in 
   expect(spy.mock.calls.length).toBe(base);
   fireEvent.scroll(within(marts()).getByTestId('marts-canvas'));
   await waitFor(() => expect(spy.mock.calls.length).toBeGreaterThan(base));
+});
+
+test('a pin on a card whose path moved away does not hold the ghosts back', async () => {
+  await joinCountriesUnderCustomers();
+  await userEvent.click(el('countries')!);
+  const stores = () => centre('stores');
+  const c = () => centre('countries');
+  fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
+  fireEvent.pointerUp(el('stores')!, pointer(stores().x, stores().y, 0));
+  await waitFor(() => expect(tips()).toContain('Stores → Countries'));
+  await userEvent.unhover(el('countries')!);
+  await userEvent.hover(el('orders')!);
+  await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
+});
+
+test('the line and the release both count the whole scroll box, and neither counts what is outside it', async () => {
+  await joinCountriesUnderCustomers();
+  const stores = () => centre('stores');
+  const c = () => centre('countries');
+  const box = within(marts()).getByTestId('marts-canvas');
+  const line = () => marts().querySelector('svg#drag-line path');
+  fireEvent.pointerDown(el('countries')!, pointer(c().x, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
+  fireEvent.pointerMove(box, pointer(stores().x, stores().y));
+  await waitFor(() => expect(line()).not.toBeNull());
+  fireEvent.pointerMove(document.body, pointer(stores().x, stores().y));
+  await waitFor(() => expect(line()).toBeNull());
+  fireEvent.pointerMove(box, pointer(stores().x, stores().y));
+  await waitFor(() => expect(line()).not.toBeNull());
+  fireEvent.pointerUp(box, pointer(stores().x, stores().y, 0));
+  await waitFor(() => expect(tips()).toContain('Stores → Countries'));
+  expect(line()).toBeNull();
 });
