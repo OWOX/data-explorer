@@ -253,15 +253,12 @@ export function useWires(
     };
     canvas.addEventListener('animationend', settle);
     canvas.addEventListener('animationcancel', settle);
-    // A scrollable box inside the canvas moves its cards without resizing anything.
-    canvas.addEventListener('scroll', settle, true);
 
     return () => {
       observer.disconnect();
       cancelAnimationFrame(queued);
       canvas.removeEventListener('animationend', settle);
       canvas.removeEventListener('animationcancel', settle);
-      canvas.removeEventListener('scroll', settle, true);
       for (const path of paths) path.remove();
       if (made) svg.remove();
     };

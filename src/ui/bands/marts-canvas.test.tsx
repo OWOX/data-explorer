@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
+import { createPreferences } from '../../api/preferences';
 import type { Mart, Model } from '../../model/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
@@ -181,4 +182,31 @@ test('releasing near the current parent changes nothing and leaves the wires alo
   await new Promise((r) => setTimeout(r, 50));
   expect(headers()).toEqual(before);
   expect(tips()).toEqual(tipsBefore);
+});
+
+test('a saved Canvas preference is read back on load', async () => {
+  const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  createPreferences(ctx).saveMartsView('canvas');
+  await vi.waitFor(async () => expect(await createPreferences(ctx).loadMartsView()).toBe('canvas'));
+  render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
+  await ready();
+  expect(await within(marts()).findByTestId('marts-canvas')).toBeInTheDocument();
+  const group = within(marts()).getByRole('radiogroup', { name: 'Show data marts as' });
+  expect(within(group).getByRole('radio', { name: 'Canvas' })).toHaveAttribute('aria-checked', 'true');
+});
+
+test('scrolling the tree box re-lays out the page wires; scrolling elsewhere in the canvas does not', async () => {
+  setup();
+  await ready();
+  await toCanvas();
+  await waitFor(() => expect(el('orders')).not.toBeNull());
+  const spy = vi.spyOn(el('orders')!, 'getBoundingClientRect');
+  const frame = () => new Promise((r) => setTimeout(r, 60));
+  await frame();
+  const base = spy.mock.calls.length;
+  fireEvent.scroll(data().querySelector('.dm-band-grid, [data-band] div')!);
+  await frame();
+  expect(spy.mock.calls.length).toBe(base);
+  fireEvent.scroll(within(marts()).getByTestId('marts-canvas'));
+  await waitFor(() => expect(spy.mock.calls.length).toBeGreaterThan(base));
 });
