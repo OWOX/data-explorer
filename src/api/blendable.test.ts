@@ -22,6 +22,11 @@ const dto: BlendableSchemaDto = {
   ],
 };
 
+test('joinedSources keeps the relationship id of a source', () => {
+  const sources = joinedSources({ availableSources: [{ aliasPath: 'a', title: 'A', depth: 1, dataMartId: 'a', isIncluded: true, isAccessibleForReporting: true, relationshipId: 'r1' }], blendedFields: [{ name: 'a__x', aliasPath: 'a', sourceDataMartId: 'a', originalFieldName: 'x', type: 'STRING' }] });
+  expect(sources[0]!.relationshipId).toBe('r1');
+});
+
 test('joinedSources offers included, readable sources only, with no hidden or calculated field, shallow ones first', () => {
   const sources = joinedSources(dto);
   expect(sources.map((s) => s.aliasPath)).toEqual(['customers', 'customers.countries', 'stores.countries']);
