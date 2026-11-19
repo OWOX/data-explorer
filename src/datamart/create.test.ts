@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { stubCtx } from '../api/test-ctx';
 import { martAppUrl } from '../config';
-import { createDataMart, CreateMartError, type CreateStage } from './create';
+import { createDataMart, deleteDraft, CreateMartError, type CreateStage } from './create';
 
 const req = { title: 'T', storageId: 's1', sql: 'SELECT 1' };
 const opts = { pollMs: 1, timeoutMs: 5 };
@@ -125,5 +125,15 @@ describe('createDataMart', () => {
     const p = createDataMart(ctx, { ...req, signal: ac.signal }, undefined, { pollMs: 1, timeoutMs: 60_000 });
     setTimeout(() => ac.abort(), 5);
     await expect(p).rejects.toMatchObject({ stage: 'schema', martId: 'm1' });
+  });
+});
+
+describe('deleteDraft', () => {
+  it('deletes the mart by id and surfaces the server message on failure', async () => {
+    const del = vi.fn(async () => ({}));
+    await deleteDraft(stubCtx({ deleteJson: del }), 'a/b');
+    expect(del).toHaveBeenCalledWith('/api/data-marts/a%2Fb');
+    const bad = vi.fn(async () => { throw Object.assign(new Error('x'), { payload: { message: 'No rights' } }); });
+    await expect(deleteDraft(stubCtx({ deleteJson: bad }), 'm1')).rejects.toThrow('No rights');
   });
 });

@@ -1361,7 +1361,7 @@ describe('Create Data Mart', () => {
   const EDGES = [{ id: 'e1', source: 'orders', target: 'customers', joins: [{ sourceField: 'customer_id', targetField: 'id' }] }] as Edge[];
   const TITLES = new Map([['orders', 'Orders'], ['customers', 'Customers']]);
 
-  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; run?: GridRun; sorts?: SortKey[]; ownSorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; schema?: Schema } = {}) {
+  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; failAt?: string; deleteFails?: boolean; storageUnavailable?: boolean; run?: GridRun; sorts?: SortKey[]; ownSorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; schema?: Schema } = {}) {
     const base = createMockCtx(demoFixtures({ sheets: 1 }), { latencyMs: 0 });
     const calls: string[] = [];
     const bodies: Record<string, unknown> = {};
@@ -1373,8 +1373,10 @@ describe('Create Data Mart', () => {
       owox: {
         ...b,
         postJson: ((p: string, body: unknown) => { calls.push(`POST ${p}`); bodies[`POST ${p}`] = body; return b.postJson(p, body); }) as Ctx['owox']['postJson'],
+        deleteJson: ((p: string) => { calls.push(`DELETE ${p}`); return o.deleteFails ? Promise.reject(Object.assign(new Error('x'), { payload: { message: 'No rights' } })) : b.deleteJson(p); }) as Ctx['owox']['deleteJson'],
         putJson: ((p: string, body: unknown) => {
           calls.push(`PUT ${p}`); bodies[`PUT ${p}`] = body;
+          if (o.failAt && p.endsWith(`/${o.failAt}`)) { o.failAt = undefined; return Promise.reject(Object.assign(new Error('x'), { payload: { message: `${p.split('/').pop()} failed` } })); }
           if (o.publishFails && p.endsWith('/publish')) { o.publishFails = false; return Promise.reject(Object.assign(new Error('x'), { payload: { message: 'Bad SQL' } })); }
           return b.putJson(p, body);
         }) as Ctx['owox']['putJson'],
@@ -1383,7 +1385,7 @@ describe('Create Data Mart', () => {
     };
     const storage = 'storage' in o ? o.storage : { id: 's1', type: 'GOOGLE_BIGQUERY' };
     const sources = 'sources' in o ? o.sources : SOURCES;
-    render(<AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={o.schema ?? SCHEMA} visible={['id', 'customers__city']} filters={[]} sorts={o.sorts ?? []} ownSorts={o.ownSorts ?? o.sorts ?? []} aggregation={o.aggregation} joinsFailed={o.joinsFailed} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>);
+    render(<AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={o.schema ?? SCHEMA} visible={['id', 'customers__city']} filters={[]} sorts={o.sorts ?? []} ownSorts={o.ownSorts ?? o.sorts ?? []} aggregation={o.aggregation} joinsFailed={o.joinsFailed} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} storageUnavailable={o.storageUnavailable} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>);
     return { ctx, calls, bodies, open };
   }
   const item = () => screen.findByRole('menuitem', { name: 'Create Data Mart' });
@@ -1539,6 +1541,66 @@ describe('Create Data Mart', () => {
       'PUT /api/data-marts/mock-mart-1/publish', 'PUT /api/data-marts/mock-mart-1/availability',
     ]);
     expect(t.calls.filter((c) => c === 'POST /api/data-marts')).toHaveLength(1);
+  });
+
+  test('a failure while defining the SQL offers Delete the draft, which deletes it and resets the form', async () => {
+    const t = mart({ failAt: 'definition' });
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('definition failed');
+    expect(screen.getByRole('link', { name: 'Open the draft' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Delete the draft' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    expect(t.calls).toContain('DELETE /api/data-marts/mock-mart-1');
+    expect(within(dlg).getByLabelText('Name')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await screen.findByRole('link', { name: /Open/ });
+    expect(t.calls.filter((c) => c === 'POST /api/data-marts')).toHaveLength(2);
+  });
+
+  test('a failed delete says so and keeps the draft', async () => {
+    mart({ failAt: 'definition', deleteFails: true });
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    await screen.findByRole('alert');
+    await userEvent.click(screen.getByRole('button', { name: 'Delete the draft' }));
+    expect(await screen.findByText('The draft could not be deleted: No rights')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+  });
+
+  test('a publish failure does not offer to delete the draft', async () => {
+    mart({ publishFails: true });
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('button', { name: 'Delete the draft' })).toBeNull();
+  });
+
+  test('a share failure says the data mart is published, not a draft', async () => {
+    const t = mart({ failAt: 'availability' });
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('The data mart is published but not yet available for reporting');
+    expect(alert).not.toHaveTextContent('draft');
+    expect(screen.getByRole('link', { name: 'Open the data mart' })).toHaveAttribute('href', martAppUrl(t.ctx.projectId, 'mock-mart-1'));
+    expect(screen.queryByRole('button', { name: 'Delete the draft' })).toBeNull();
+  });
+
+  test('the dialog names the joined marts from the builder', async () => {
+    mart();
+    const dlg = await openDialog();
+    expect(within(dlg).getByText(/references Orders and the joined data mart the grid uses/)).toBeInTheDocument();
+  });
+
+  test('an unavailable storage has its own reason once the model is loaded', async () => {
+    mart({ storage: undefined, storageUnavailable: true });
+    await userEvent.click(await screen.findByText('Export'));
+    const it = await item();
+    expect(it).toBeDisabled();
+    await userEvent.hover(it.parentElement!);
+    expect(await screen.findAllByText("The data mart's storage isn't available to you")).not.toHaveLength(0);
   });
 
   test('an empty name shows a message and calls nothing', async () => {

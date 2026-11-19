@@ -50,6 +50,11 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** Deletes a data mart (a draft an earlier attempt left). */
+export async function deleteDraft(ctx: Ctx, id: string): Promise<void> {
+  try { await ctx.owox.deleteJson(`/api/data-marts/${encodeURIComponent(id)}`); } catch (e) { throw new Error(messageOf(e), { cause: e }); }
+}
+
 /** Runs the REST steps in order; onStage is called as each starts. Resolves with the new mart's id and its OWOX link. */
 export async function createDataMart(ctx: Ctx, req: CreateMartRequest, onStage?: (s: CreateStage) => void, o: { pollMs?: number; timeoutMs?: number } = {}): Promise<{ id: string; url: string }> {
   const pollMs = o.pollMs ?? 1000;

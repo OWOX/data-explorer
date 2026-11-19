@@ -11,7 +11,7 @@ import type { SortKey } from '../../model/sort';
 import type { Edge, Schema } from '../../model/types';
 import type { JoinedSource } from '../../api/blendable';
 import { buildMartSql } from '../../datamart/build-sql';
-import { createDataMart, CreateMartError, CREATE_STAGE_LABEL, type CreateStage } from '../../datamart/create';
+import { createDataMart, deleteDraft, CreateMartError, CREATE_STAGE_LABEL, type CreateStage } from '../../datamart/create';
 import { dialectFor } from '../../datamart/dialect';
 import type { Row } from '../../sdk/types';
 import { buildTsv, tsvColumns } from '../../export/tsv';
@@ -30,7 +30,7 @@ import { copyText } from './clipboard';
 import type { GridRun } from './useMartRows';
 
 type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; filters: ColumnFilter[]; sorts: SortKey[]; /** Only the sorts the member set; Create Data Mart never adds the grid's implicit order. */ ownSorts?: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun;
-  /** The main mart's storage, for Create Data Mart. */ storage?: { id: string; type: string; title?: string };
+  /** The main mart's storage, for Create Data Mart. */ storage?: { id: string; type: string; title?: string }; /** The model is loaded and the member can't see this mart's storage. */ storageUnavailable?: boolean;
   /** Reading the main mart's joined sources failed. */ joinsFailed?: boolean;
   /** The main mart's joined sources, the model's edges and the mart titles, for the SQL; `sources` is undefined until the joins are read. */ sources?: JoinedSource[]; edges?: Edge[]; titles?: Map<string, string> };
 type Result = { kind: 'ok' | 'timeout' | 'error'; text: string; url?: string };
@@ -110,17 +110,17 @@ export function ExportMenu(p: Props) {
     : sqlHave && 'reason' in sqlHave.result && sqlHave.opening === opening ? sqlHave.result.reason
     : 'Reading the SQL from OWOX…';
   // Create Data Mart: why it is off, else the SQL it would save, plain and with the grid's sorting (built from the props as they are now).
-  const martSql = useMemo((): { reason: string } | { sql: string; sorted: { sql: string } | { reason: string } } => {
-    if (!p.storage) return { reason: "The data mart's storage isn't loaded" };
+  const martSql = useMemo((): { reason: string } | { sql: string; joined: number; sorted: { sql: string; joined: number } | { reason: string } } => {
+    if (!p.storage) return { reason: p.storageUnavailable ? "The data mart's storage isn't available to you" : "The data mart's storage isn't loaded" };
     if (!p.sources) return { reason: p.joinsFailed ? "The data mart's joins couldn't be read" : "Loading the data mart's joins…" };
     const d = dialectFor(p.storage.type);
     if ('reason' in d) return d;
     const input = { dialect: d.dialect, main: { id: p.martId, title: p.martTitle }, schema: p.schema, visible: p.visible, filters: p.filters, sources: p.sources, edges: p.edges ?? [], titles: p.titles ?? new Map() };
     const plain = buildMartSql(input);
     if ('reason' in plain) return plain;
-    return { sql: plain.sql, sorted: p.ownSorts?.length ? buildMartSql({ ...input, sorts: p.ownSorts }) : { reason: "You haven't set a sort" } };
-  }, [p.storage, p.sources, p.joinsFailed, p.edges, p.titles, p.martId, p.martTitle, p.schema, p.visible, p.filters, p.ownSorts]);
-  const [martDialog, setMartDialog] = useState<{ sql: string; sorted: { sql: string } | { reason: string }; grouped: boolean; storage: { id: string; type: string; title?: string }; seq: number } | null>(null);
+    return { sql: plain.sql, joined: plain.joined, sorted: p.ownSorts?.length ? buildMartSql({ ...input, sorts: p.ownSorts }) : { reason: "You haven't set a sort" } };
+  }, [p.storage, p.storageUnavailable, p.sources, p.joinsFailed, p.edges, p.titles, p.martId, p.martTitle, p.schema, p.visible, p.filters, p.ownSorts]);
+  const [martDialog, setMartDialog] = useState<{ sql: string; joined: number; sorted: { sql: string; joined: number } | { reason: string }; grouped: boolean; storage: { id: string; type: string; title?: string }; seq: number } | null>(null);
   const seq = useRef(0);
   // Bumped when the mart changes or the menu goes away: an export finishing later is no longer in front of the member.
   const gen = useRef(0);
@@ -360,7 +360,7 @@ export function ExportMenu(p: Props) {
                   </span>
                 </Tooltip>
               ) : (
-                <button type="button" role="menuitem" data-lvl="1" data-action="create-mart" className="dm-export-item" onClick={() => { closeMenu(); setMartDialog({ sql: martSql.sql, sorted: martSql.sorted, grouped: isGrouped(p.aggregation), storage: p.storage!, seq: ++seq.current }); }}>
+                <button type="button" role="menuitem" data-lvl="1" data-action="create-mart" className="dm-export-item" onClick={() => { closeMenu(); setMartDialog({ sql: martSql.sql, joined: martSql.joined, sorted: martSql.sorted, grouped: isGrouped(p.aggregation), storage: p.storage!, seq: ++seq.current }); }}>
                   <DatabaseZap size={16} />
                   <span className="dm-filter-label">Create Data Mart</span>
                 </button>
@@ -371,7 +371,7 @@ export function ExportMenu(p: Props) {
       {promptOpen && copied && <TextDialog name="Prompt" heading={`Prompt for ${copied.assistant}`} note={`Paste it into ${copied.assistant} with the OWOX Data Marts connector turned on. Copying writes nothing to OWOX.`} areaLabel="Prompt text" text={copied.prompt} onClose={() => { setPromptOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {dataOpen && data && <TextDialog name="Copy the data" note="Select the text and copy it, then paste it into a sheet. Copying writes nothing to OWOX." areaLabel="Data text" text={data.tsv} onClose={() => { setDataOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {sqlOpen && sqlCopied && <TextDialog name="SQL" note="Select the SQL and copy it. Copying writes nothing to OWOX." areaLabel="SQL text" text={sqlCopied.sql} onClose={() => { setSqlOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
-      {martDialog && <CreateMartDialog key={martDialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} martTitle={p.martTitle} sql={martDialog.sql} sorted={martDialog.sorted} grouped={martDialog.grouped} storage={martDialog.storage} onClose={() => setMartDialog(null)} />}
+      {martDialog && <CreateMartDialog key={martDialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} martTitle={p.martTitle} sql={martDialog.sql} joined={martDialog.joined} sorted={martDialog.sorted} grouped={martDialog.grouped} storage={martDialog.storage} onClose={() => setMartDialog(null)} />}
       {dialog && <ExportDialog key={dialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} exporter={exporter} martId={p.martId} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
     </>
   );
@@ -706,7 +706,7 @@ const MartLink = ({ url, children, linkRef }: { url: string; children: React.Rea
 };
 
 /** The dialog behind Create Data Mart: names the mart, shows its SQL, runs the create steps, then links to the result. */
-function CreateMartDialog({ martTitle, sql: plainSql, sorted, grouped, storage, onClose, returnFocus }: { martTitle: string; sql: string; /** The SQL with the grid's ORDER BY, or why there is none. */ sorted: { sql: string } | { reason: string }; grouped: boolean; storage: { id: string; type: string; title?: string }; onClose: () => void; returnFocus: () => void }) {
+function CreateMartDialog({ martTitle, sql: plainSql, joined: plainJoined, sorted, grouped, storage, onClose, returnFocus }: { martTitle: string; sql: string; /** How many distinct joined data marts it reads. */ joined: number; /** The SQL with the grid's ORDER BY, or why there is none. */ sorted: { sql: string; joined: number } | { reason: string }; grouped: boolean; storage: { id: string; type: string; title?: string }; onClose: () => void; returnFocus: () => void }) {
   const { ctx } = useServices();
   const [name, setName] = useState(exportTitle(martTitle));
   const [sorting, setSorting] = useState(false);
@@ -714,14 +714,16 @@ function CreateMartDialog({ martTitle, sql: plainSql, sorted, grouped, storage, 
   const [failure, setFailure] = useState<CreateMartError | { message: string; stage?: undefined; martId?: undefined } | null>(null);
   const [made, setMade] = useState<{ id: string; url: string } | null>(null);
   const [local, setLocal] = useState<string | null>(null);
-  const running = stage !== null;
+  const [notice, setNotice] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const running = stage !== null || deleting;
   const box = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLInputElement>(null);
   const link = useRef<HTMLAnchorElement>(null);
   const live = useRef(true);
   const abort = useRef(new AbortController());
   const sql = sorting && 'sql' in sorted ? sorted.sql : plainSql;
-  const joined = (sql.match(/\nLEFT JOIN /g) ?? []).length;
+  const joined = sorting && 'sql' in sorted ? sorted.joined : plainJoined;
   useEffect(() => { field.current?.focus(); field.current?.select(); }, []);
   useEffect(() => () => { live.current = false; abort.current.abort(); returnFocus(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (made) link.current?.focus(); }, [made]);
@@ -746,6 +748,7 @@ function CreateMartDialog({ martTitle, sql: plainSql, sorted, grouped, storage, 
     const resume = failure?.martId ? { martId: failure.martId, from: failure.stage } : {};
     if (!resume.martId && !name.trim()) return setLocal('Give the data mart a name.');
     setLocal(null);
+    setNotice(null);
     setFailure(null);
     setStage('create');
     try {
@@ -757,8 +760,24 @@ function CreateMartDialog({ martTitle, sql: plainSql, sorted, grouped, storage, 
       if (live.current) setStage(null);
     }
   }
+  // Define or schema failed: the draft can't be published as it is, so the member may delete it and start over.
+  async function discard() {
+    if (running || !failure?.martId) return;
+    setLocal(null);
+    setDeleting(true);
+    try {
+      await deleteDraft(ctx, failure.martId);
+      if (live.current) { setFailure(null); setNotice('The draft was deleted. Edit the name or the options and create again.'); }
+    } catch (e) {
+      if (live.current) setLocal(`The draft could not be deleted: ${messageOf(e)}`);
+    } finally {
+      if (live.current) setDeleting(false);
+    }
+  }
   const error = local ?? failure?.message ?? null;
   const draft = failure?.martId ? martAppUrl(ctx.projectId, failure.martId) : null;
+  const published = failure?.stage === 'share';
+  const deletable = !!failure?.martId && (failure.stage === 'define' || failure.stage === 'schema');
   const where = storage.title ?? storage.type;
 
   return createPortal(
@@ -791,13 +810,17 @@ function CreateMartDialog({ martTitle, sql: plainSql, sorted, grouped, storage, 
             {error && (
               <div role="alert" className="flex flex-col gap-1 text-xs text-destructive">
                 <p>{error}</p>
-                {draft && <p>The data mart was created as a draft: <MartLink url={draft}>Open the draft</MartLink></p>}
+                {draft && (published
+                  ? <p>The data mart is published but not yet available for reporting: <MartLink url={draft}>Open the data mart</MartLink></p>
+                  : <p>The data mart was created as a draft: <MartLink url={draft}>Open the draft</MartLink></p>)}
+                {deletable && <p><button type="button" disabled={running} onClick={() => void discard()} className="underline disabled:opacity-50">Delete the draft</button></p>}
               </div>
             )}
+            {notice && !error && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
             <div className="flex items-center justify-end gap-2">
               <button type="button" disabled={running} onClick={onClose} className="h-8 rounded-md border px-3 hover:bg-accent disabled:opacity-50">Cancel</button>
               <button type="button" onClick={() => void submit()} disabled={running} className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-3 text-primary-foreground disabled:opacity-50">
-                {running ? <><Loader2 className="size-4 animate-spin" />{CREATE_STAGE_LABEL[stage]}</> : failure ? 'Retry' : 'Create'}
+                {running ? <><Loader2 className="size-4 animate-spin" />{stage ? CREATE_STAGE_LABEL[stage] : 'Deleting the draft…'}</> : failure ? 'Retry' : 'Create'}
               </button>
             </div>
           </>

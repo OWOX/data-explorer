@@ -22,10 +22,11 @@ export async function _typeCheck() {
   const _check: Pick<Ctx['owox']['models'], 'getEdges'> = owox.models;
   const _destinations: Ctx['owox']['destinations'] = owox.destinations;
   const _put: Ctx['owox']['putJson'] = owox.putJson.bind(owox);
+  const _delete: Ctx['owox']['deleteJson'] = owox.deleteJson.bind(owox);
   const sdk = await connect();
   const _route: Ctx['route'] = sdk.route;
   const _copy: Ctx['ui']['copyLink'] = sdk.ui.copyLink.bind(sdk.ui);
   const _setRoute: Ctx['ui']['setRoute'] = sdk.ui.setRoute.bind(sdk.ui);
   const _credentials: Ctx['credentials'] = sdk.credentials;
-  return [_check, _destinations, _put, _route, _copy, _setRoute, _credentials] as const;
+  return [_check, _destinations, _put, _delete, _route, _copy, _setRoute, _credentials] as const;
 }

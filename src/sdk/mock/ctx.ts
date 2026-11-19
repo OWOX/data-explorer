@@ -263,6 +263,10 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         Object.assign(cur, body, accessOf(body));
         return cur as T;
       }),
+      deleteJson: <T,>(path: string) => slow(() => {
+        if (/^\/api\/data-marts\/[^/]+$/.test(path)) return {} as T;
+        throw new Error(`Mock: unhandled DELETE ${path}`);
+      }),
       postJson: <T,>(path: string, body: unknown) => slow(() => {
         const doc = /^\/api\/data-destinations\/([^/]+)\/google-sheets\/documents$/.exec(path);
         if (doc) {
