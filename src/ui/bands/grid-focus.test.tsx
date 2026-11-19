@@ -91,9 +91,10 @@ test('a click on a ghost while a card is focused adds it under that path', async
 test('a click on a joinable card that is in the band adds it under the focused path', async () => {
   setup();
   await joinCustomersAndStores();
-  fireEvent.click(el('customers', 'customers')!);
+  fireEvent.click(el('stores', 'stores')!);
   fireEvent.click(await bandCard('Countries'));
-  await waitFor(() => expect(el('countries', 'customers.countries')).not.toBeNull());
+  await waitFor(() => expect(el('countries', 'stores.countries')).not.toBeNull());
+  expect(el('countries', 'customers.countries')).toBeNull();
 });
 
 test('clicking the focused card again, the empty band or Escape clears the focus', async () => {

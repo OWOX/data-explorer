@@ -313,6 +313,7 @@ export function CardBands({
             ];
           };
           return <>
+            {/* Tree order, not column order: a joined card sits after its parent. */}
             {nodes.flatMap(reportCard)}
             {martCards.items.filter((mart) => !reportMarts.has(mart.id)).map((mart) => {
               const id = mart.id;
@@ -332,7 +333,7 @@ export function CardBands({
                   lit={lit.has(el)}
                   aside={aside.has(el)}
                   unjoinable={focus !== null ? !at : unjoinableFor(id)}
-                  mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
+                  mainTitle={model.marts.get((focus !== null ? canvasTree?.nodes.get(focus)?.martId : undefined) ?? mainId ?? '')?.title}
                   onMakeMain={mainId && mart.accessible ? () => void click(id, { mode: 'makeMain' }) : undefined}
                   onSelect={() => void (at ? click(id, { addAt: at.aliasPath }) : click(id))}
                   onOpenApp={() => onOpenApp(id)}
