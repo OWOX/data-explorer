@@ -59,24 +59,10 @@ async function makeMain(title: string) {
   await within(marts()).findByText(title);
   await userEvent.click(within(martCard(title)).getByRole('button', { name: 'Make main data mart' }));
 }
-/** Makes a mart the main one: a mart the main one can join is added to its grid first, so clicking the main card then promotes it. */
+/** Makes a mart the main one with its make-main button: a click on the main card only focuses it. */
 async function goTo(title: string) {
-  const main = headingText()!;
-  if (martCard(title).classList.contains('dm-unjoinable')) {
-    await makeMain(title);
-    await waitFor(() => expect(headingText() === title || headingText()!.startsWith(`${title} + `)).toBe(true));
-    return;
-  }
-  fireEvent.click(martCard(title));
-  // A mart that comes back as main shows the joined marts it was left with.
-  const mainNow = () => headingText() === title || headingText()!.startsWith(`${title} + `);
-  await waitFor(() => expect(mainNow() || headingText() === `${main} + ${title}`).toBe(true));
-  if (!mainNow()) {
-    // A search that does not match the main mart hides its card.
-    if (!within(marts()).queryByText(main)) await clearSearch();
-    fireEvent.click(await within(marts()).findByText(main).then((el) => el.closest('article')!));
-  }
-  await waitFor(() => expect(mainNow()).toBe(true));
+  await makeMain(title);
+  await waitFor(() => expect(headingText() === title || headingText()!.startsWith(`${title} + `)).toBe(true));
 }
 
 async function ordersGrid() {
@@ -335,8 +321,7 @@ describe('the grid', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(within(grid).getAllByRole('row')).toHaveLength(5));
     await goTo('Customers');
-    // Joining it, then promoting it, are two steps.
-    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    // The make-main button is one step.
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await within(data()).findByText('Orders');
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(5));
@@ -634,8 +619,7 @@ describe('search, contexts and refresh', () => {
     await waitFor(() => expect(within(data()).getByText('Orders')).toBeInTheDocument());
     // The replacement left no history entry: Back steps to the earlier Orders selection and then stops.
     const back = screen.getByRole('button', { name: 'Undo' });
-    await userEvent.click(back); // joining Customers, and promoting it, were two steps
-    await userEvent.click(back);
+    await userEvent.click(back); // making Customers main was one step
     expect(within(data()).getByText('Orders')).toBeInTheDocument();
     await waitFor(() => expect(back).toBeDisabled());
   });
@@ -1073,8 +1057,7 @@ describe('column sort', () => {
     await userEvent.click(sortBtn(grid, 'id'));
     await waitFor(() => expect(firstId(grid)).toBe('450'));
     await goTo('Customers');
-    // Joining it, then promoting it, are two steps.
-    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    // The make-main button is one step.
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await within(data()).findByText('Orders');
     await waitFor(() => expect(header(data(), 'id')).toHaveAttribute('aria-sort', 'descending'));
@@ -1641,15 +1624,17 @@ test('with a mart nobody can open as the main one, a click on another card makes
   await waitFor(() => expect(headingText()).toBe('Orders'));
 });
 
-test('a click on an unreadable main card deselects it', async () => {
+test('a click on an unreadable main card focuses it and does not deselect it', async () => {
   const fixtures = demoFixtures();
   fixtures.edges.push({ id: 'e-orders-secret', sourceDataMartId: 'orders', targetDataMartId: 'secret_ledger', joinConditions: [{ sourceFieldName: 'id', targetFieldName: 'id' }] });
   await mountWith((c) => c, fixtures);
   await within(data()).findByRole('table');
   await userEvent.click(screen.getByRole('button', { name: 'Select Secret Ledger (test probe)' }));
   await within(data()).findByText('You do not have access to this data mart');
-  fireEvent.click((await within(marts()).findByText('Secret Ledger')).closest('article')!);
-  await waitFor(() => expect(within(data()).queryByText('You do not have access to this data mart')).toBeNull());
+  const card = (await within(marts()).findByText('Secret Ledger')).closest('article')!;
+  fireEvent.click(card);
+  await waitFor(() => expect(card).toHaveAttribute('data-focused'));
+  expect(within(data()).getByText('You do not have access to this data mart')).toBeInTheDocument();
 });
 
 test('a failed read of the main mart joins leaves the one-hop band with nothing dimmed', async () => {

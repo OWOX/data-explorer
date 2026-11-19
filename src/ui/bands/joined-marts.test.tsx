@@ -37,6 +37,8 @@ const headers = () => within(data()).getAllByRole('columnheader').filter((h) => 
 const groupTitles = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!);
 const ready = async () => { await waitFor(() => expect(headers()).toHaveLength(5)); await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true)); };
 const click = async (name: string) => { await within(marts()).findByText(name); fireEvent.click(card(name)); };
+/** The × on a joined card: the only way a card takes a mart out. */
+const remove = async (name: string) => { await userEvent.click(within(card(name)).getByRole('button', { name: `Remove ${name} from the report` })); };
 const undo = () => userEvent.click(screen.getByRole('button', { name: 'Undo' }));
 
 test('selecting a joinable data mart adds its first text column, titles the grid "Orders + Customers" and the card looks like the main one', async () => {
@@ -52,7 +54,7 @@ test('selecting a joinable data mart adds its first text column, titles the grid
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('selecting it again takes its columns out, and a third time brings back the same fields', async () => {
+test('the × on a joined card takes its columns out, and selecting it again brings back the same fields', async () => {
   const t = setup();
   await ready();
   await click('Customers');
@@ -62,14 +64,14 @@ test('selecting it again takes its columns out, and a third time brings back the
   await userEvent.click(await screen.findByLabelText('email'));
   await waitFor(() => expect(headers()).toHaveLength(7));
   await userEvent.keyboard('{Escape}');
-  await click('Customers');
+  await remove('Customers');
   await waitFor(() => expect(headers()).toHaveLength(5));
   expect(title()).toBe('Orders');
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'false');
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(7));
   expect(within(data()).getAllByRole('button', { name: /^Sort by Customers · / })).toHaveLength(2);
-  await waitFor(() => expect(t.puts.some((p) => JSON.stringify(p.doc).includes('"picks"'))).toBe(true));
+  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["name","email"]'))).toBe(true), { timeout: 3000 });
 });
 
 test('a joined mart\'s filters and sorts leave with it', async () => {
@@ -79,19 +81,19 @@ test('a joined mart\'s filters and sorts leave with it', async () => {
   await waitFor(() => expect(headers()).toHaveLength(6));
   await userEvent.click(within(data()).getByRole('button', { name: /^Sort by Customers · .*, currently not sorted/i }));
   await waitFor(() => expect(within(data()).getByRole('button', { name: /^Sort by Customers · .*ascending/i })).toBeInTheDocument());
-  await click('Customers');
+  await remove('Customers');
   await waitFor(() => expect(headers()).toHaveLength(5));
   expect(within(data()).queryByRole('button', { name: /Customers ·/ })).toBeNull();
 });
 
-test('deselecting the main data mart promotes the next joined one, which brings the others it can join', async () => {
+test('taking the main group out promotes the next joined mart, which brings the others it can join', async () => {
   setup();
   await ready();
   await click('Customers');
   await waitFor(() => expect(title()).toBe('Orders + Customers'));
   await click('Stores');
   await waitFor(() => expect(title()).toBe('Orders + Customers + Stores'));
-  await click('Orders');
+  fireEvent.click(await within(data()).findByRole('button', { name: 'Remove Orders from the grid' }));
   // Customers cannot join Stores (it has only Countries), so only Customers is left.
   await waitFor(() => expect(title()).toBe('Customers'));
   expect(headers().some((h) => /Stores/.test(h))).toBe(false);
@@ -121,17 +123,16 @@ test('with Orders main, the band lists the marts it can join at any depth, and n
   expect(marts().querySelector('article')).toBe(card('Orders'));
 });
 
-test('with no joined mart, deselecting the main one leaves nothing selected', async () => {
+test('a click on the main card does not deselect it, even with nothing joined', async () => {
   setup();
   await ready();
   await userEvent.click(within(data()).getAllByRole('row')[2]!);
   await within(row()).findByRole('heading', { name: /^Orders · / });
   await click('Orders');
-  expect(await within(data()).findByText('Select a data mart.')).toBeInTheDocument();
-  expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
-  expect(within(row()).getByRole('heading').textContent).toBe('Row');
   await new Promise((r) => setTimeout(r, 200));
-  expect(within(data()).getByText('Select a data mart.')).toBeInTheDocument();
+  expect(within(data()).queryByText('Select a data mart.')).toBeNull();
+  expect(card('Orders')).toHaveAttribute('aria-pressed', 'true');
+  expect(within(row()).getByRole('heading', { name: /^Orders · / })).toBeInTheDocument();
 });
 
 test('Undo takes back the join, and Redo applies it again', async () => {
@@ -180,7 +181,7 @@ test('promoting back to Orders leaves it alone: the joined columns it was left w
   await ready();
   await click('Customers');
   await waitFor(() => expect(title()).toBe('Orders + Customers'));
-  await click('Orders');
+  fireEvent.click(await within(data()).findByRole('button', { name: 'Remove Orders from the grid' }));
   await waitFor(() => expect(title()).toBe('Customers'));
   // Customers cannot join Orders, so a click on Orders would do nothing: it is reached through its Data Source, which leaves no main mart to join.
   fireEvent.click(within(document.getElementById('band-sources')!).getByText('Shopify').closest('article')!);
@@ -222,14 +223,14 @@ test('adding a mart reads the rows once, taking it out reads none, and each mart
   await new Promise((r) => setTimeout(r, 200));
   expect(t.rows.slice(before).filter((r) => r.id === 'orders' && r.o.sort)).toHaveLength(1);
   const afterAdd = t.rows.length;
-  await click('Customers');
+  await remove('Customers');
   await waitFor(() => expect(headers()).toHaveLength(5));
   await new Promise((r) => setTimeout(r, 200));
   expect(t.rows).toHaveLength(afterAdd);
   expect(t.reads.filter((p) => p.includes('/orders/'))).toHaveLength(1);
 });
 
-test('what was last chosen for a pair is saved exactly: the fields, in the order shown', async () => {
+test('what a removed mart showed is saved exactly: the fields, in the order shown', async () => {
   const t = setup();
   await ready();
   await click('Customers');
@@ -238,9 +239,9 @@ test('what was last chosen for a pair is saved exactly: the fields, in the order
   await userEvent.click(await screen.findByLabelText('email'));
   await waitFor(() => expect(headers()).toHaveLength(7));
   await userEvent.keyboard('{Escape}');
-  await click('Customers');
+  await remove('Customers');
   await waitFor(() => expect(headers()).toHaveLength(5));
-  await waitFor(() => expect(t.puts.at(-1)?.doc.picks).toEqual({ customers: ['customers__name', 'customers__email'] }), { timeout: 3000 });
+  await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["name","email"]'))).toBe(true), { timeout: 3000 });
 });
 
 const groupRow = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup');
@@ -328,7 +329,7 @@ test('a mart reachable through a joined mart is listed from the start and lights
   await waitFor(() => expect(card('Countries')).toHaveClass('lit'));
   // Sessions hangs off Customers but the main mart cannot join it, so the band does not list it.
   expect(within(marts()).queryByText('Sessions')).toBeNull();
-  await click('Customers');
+  await remove('Customers');
   await waitFor(() => expect(card('Countries')).not.toHaveClass('lit'));
   expect(within(marts()).getByText('Countries')).toBeInTheDocument();
 });
@@ -343,7 +344,7 @@ test('a mart that leaves the grid remembers its own field names in its own grid-
   await waitFor(() => expect(headers()).toHaveLength(7));
   await userEvent.keyboard('{Escape}');
   // Customers leaves the grid
-  await click('Customers');
+  await remove('Customers');
   await waitFor(() => expect(title()).toBe('Orders'));
   await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["name","email"]'))).toBe(true), { timeout: 3000 });
 });

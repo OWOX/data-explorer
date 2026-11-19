@@ -269,6 +269,8 @@ button.dm-mark { cursor: pointer; }
   border-color: var(--tone);
   box-shadow: 0 0 0 1px var(--tone);
 }
+/* The Grid view's focused card, whose joinable marts are shown. */
+.dm-node[data-focused] { outline: 2px solid var(--tone); outline-offset: 2px; }
 /* A data mart the member cannot open: still a card, but plainly not one to expect anything from. */
 .dm-noaccess { opacity: 0.6; filter: grayscale(0.8); }
 /* The row count's retry: a badge that is also a button, without the browser's button chrome. */

@@ -139,6 +139,8 @@ export function MartCard({
   dropTarget = false,
   dropHot = false,
   path,
+  title,
+  focused = false,
   onMakeMain,
   onRemove,
   onSelect,
@@ -173,6 +175,10 @@ export function MartCard({
   onMakeMain?: () => void;
   /** The alias path this card stands for, when the mart is joined at one. */
   path?: string;
+  /** What the card is called when that is not the mart's title: a joined source's label, which carries the alias path when two joins reach the mart. */
+  title?: string;
+  /** The Grid view's focused card: its joinable marts are shown. */
+  focused?: boolean;
   /** Takes this joined mart out of the report; when absent the card has no ×. */
   onRemove?: () => void;
   onSelect: () => void;
@@ -195,6 +201,7 @@ export function MartCard({
     const t = setTimeout(() => setHint(false), 3000);
     return () => clearTimeout(t);
   }, [hint]);
+  const name = title ?? mart.title;
   const choose = unjoinable ? () => setHint(true) : onSelect;
   return (
     <article
@@ -202,6 +209,7 @@ export function MartCard({
       id={martElementId(mart.id, path)}
       data-mart-id={mart.id}
       {...(path ? { 'data-path': path } : {})}
+      {...(focused ? { 'data-focused': '' } : {})}
       data-node
       data-tone={dqCardTone(quality)}
       aria-pressed={selected || joined}
@@ -211,14 +219,14 @@ export function MartCard({
       {...selectable(choose)}
     >
       {onRemove && (
-        <button type="button" aria-label={`Remove ${mart.title} from the report`} className="dm-card-remove" onClick={(e) => { e.stopPropagation(); onRemove(); }}>
+        <button type="button" aria-label={`Remove ${name} from the report`} className="dm-card-remove" onClick={(e) => { e.stopPropagation(); onRemove(); }}>
           <CircleX size={16} />
         </button>
       )}
       <div className="dm-node-head">
         {/* Only an icon someone picked: the default box on every card would say nothing. */}
         <PickedIcon icon={mart.icon} wrap="dm-logo" />
-        <Tooltip content={mart.title}><span className="dm-node-title">{mart.title}</span></Tooltip>
+        <Tooltip content={name}><span className="dm-node-title">{name}</span></Tooltip>
         {onMakeMain && (
           <span className="dm-card-reveal ml-auto"><Tooltip content="Make main data mart">
             <button type="button" aria-label="Make main data mart" className="dm-link" onClick={(e) => { e.stopPropagation(); onMakeMain(); }}>

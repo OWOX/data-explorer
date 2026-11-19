@@ -29,11 +29,11 @@ async function openColumnSub(data: Locator, title: string, row: 'Filter' | 'Aggr
   }).toPass({ timeout: 15_000 });
 }
 
-/** Orders joins Customers, so clicking it adds it to the grid; clicking Orders then promotes Customers to the main mart. */
+/** Adds the mart to the grid with a click, then promotes it with its make-main button (a click on a card never promotes it). */
 async function makeMain(page: Page, title: string) {
   await martCard(page, title).click();
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', title]);
-  await martCard(page, 'Orders').click();
+  await martCard(page, title).getByRole('button', { name: 'Make main data mart' }).click();
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText([title]);
 }
 
@@ -355,7 +355,7 @@ test('Copy to clipboard: the loaded rows are copied as TSV and the status says s
   expect(text.split('\n')[0]).toContain('\t');
 });
 
-test('selecting a joinable mart adds its first text column; deselecting removes it; reselecting restores the same field', async ({ page }) => {
+test('selecting a joinable mart adds its first text column; the × removes it; reselecting restores the same field', async ({ page }) => {
   const data = await ordersGrid(page);
   const title = (t: string) => expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(t.split(' + '));
   await martCard(page, 'Customers').click();
@@ -365,7 +365,7 @@ test('selecting a joinable mart adds its first text column; deselecting removes 
   // choose a second field, take the mart out, bring it back
   await tick(page, 'email', 'Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
-  await martCard(page, 'Customers').click();
+  await martCard(page, 'Customers').getByRole('button', { name: 'Remove Customers from the report' }).click();
   await title('Orders');
   await expect(data.getByRole('columnheader', { name: /Customers ·/ })).toHaveCount(0);
   await martCard(page, 'Customers').click();
@@ -374,11 +374,11 @@ test('selecting a joinable mart adds its first text column; deselecting removes 
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
 });
 
-test('deselecting the main mart promotes the next joined one; make main on a mart the main one cannot join makes it main and keeps the old main joined', async ({ page }) => {
+test('removing the main group promotes the next joined one; make main on a mart the main one cannot join makes it main and keeps the old main joined', async ({ page }) => {
   const data = await ordersGrid(page);
   await martCard(page, 'Customers').click();
   await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', 'Customers']);
-  await martCard(page, 'Orders').click();
+  await data.getByRole('button', { name: 'Remove Orders from the grid' }).click();
   await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Customers']);
   await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
   // Customers cannot join Sessions, but Sessions can join Customers, so Customers stays as a joined mart
