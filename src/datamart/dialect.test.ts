@@ -49,7 +49,7 @@ describe('renderFilter', () => {
   it('escapes a quote in a string literal', () => {
     expect(eqO('athena')).toBe(`t0."city" = 'O''Brien'`);
     expect(eqO('redshift')).toBe(`t0."city" = 'O''Brien'`);
-    expect(eqO('bigquery')).toBe("t0.`city` = 'O''Brien'");
+    expect(eqO('bigquery')).toBe("t0.`city` = 'O\\'Brien'");
     expect(eqO('snowflake')).toBe(`t0."city" = 'O''Brien'`);
     expect(eqO('databricks')).toBe("t0.`city` = 'O''Brien'");
   });
@@ -59,7 +59,13 @@ describe('renderFilter', () => {
     expect(f('snowflake')).toBe("c = 'a\\\\b'");
     expect(f('databricks')).toBe("c = 'a\\\\b'");
     expect(f('athena')).toBe("c = 'a\\b'");
-    expect(f('redshift')).toBe("c = 'a\\b'");
+  });
+  it('BigQuery escapes a backslash, a quote, a newline and a carriage return', () => {
+    expect(renderFilter('bigquery', 'c', text, { field: 'city', op: 'eq', value: "a\\b'c\nd\re" })).toBe("c = 'a\\\\b\\'c\\nd\\re'");
+  });
+  it('Redshift builds a backslash with CHR(92) and still doubles quotes', () => {
+    expect(renderFilter('redshift', 'c', text, { field: 'city', op: 'eq', value: "a\\b'c" })).toBe("c = ('a' || CHR(92) || 'b''c')");
+    expect(renderFilter('redshift', 'c', text, { field: 'city', op: 'eq', value: '\\' })).toBe("c = ('' || CHR(92) || '')");
   });
   it('contains', () => {
     const f = (d: Dialect) => renderFilter(d, 'c', text, { field: 'city', op: 'contains', value: 'ber' });

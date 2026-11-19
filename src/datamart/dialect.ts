@@ -36,14 +36,21 @@ export function columnRef(d: Dialect, tableAlias: string, name: string): string 
 
 type Scalar = string | number;
 
-/** A SQL literal: a number must be finite; a string has `'` doubled, and `\` too where the dialect reads escapes. */
+/** A SQL literal: a number must be finite. Strings are escaped per dialect: BigQuery by backslash sequences, Redshift builds a backslash with CHR(92) so the standard_conforming_strings setting cannot change it, the rest double `'`. */
 function literal(d: Dialect, v: Scalar): string {
   if (typeof v === 'number') {
     if (!Number.isFinite(v)) throw new Error(`Non-finite filter value: ${String(v)}`);
     return String(v);
   }
-  const s = d === 'redshift' || d === 'athena' ? v : v.replace(/\\/g, '\\\\');
-  return `'${s.replace(/'/g, "''")}'`;
+  switch (d) {
+    case 'bigquery': return `'${v.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r')}'`;
+    case 'redshift': {
+      const parts = v.split('\\').map((p) => `'${p.replace(/'/g, "''")}'`);
+      return parts.length === 1 ? parts[0]! : `(${parts.join(' || CHR(92) || ')})`;
+    }
+    case 'athena': return `'${v.replace(/'/g, "''")}'`;
+    default: return `'${v.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
+  }
 }
 
 /** The column types whose compared value is cast to the column's own type, per dialect (as the backend renderers do). */
