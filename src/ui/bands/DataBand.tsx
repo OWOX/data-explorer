@@ -1,5 +1,5 @@
 // The Data band: the selected mart's rows, in the grid the Explorer always had.
-import { Table2, TriangleAlert } from 'lucide-react';
+import { ChartColumn, Table2, TriangleAlert } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import type { Model } from '../../model/types';
 import { useStore, type GridState } from '../../state/store';
@@ -7,10 +7,14 @@ import { groupsLabel, recordsLabel } from '../format';
 import { Tooltip } from '../Tooltip';
 import { MartGrid } from '../explorer/MartGrid';
 import { Band } from './Band';
-import { ViewSwitch } from './ViewSwitch';
+import { ViewSwitch, type SwitchOption } from './ViewSwitch';
 
 /** Shown as the warning's tooltip and at the end of the band's (i). */
 export const NO_KEY_NOTE = 'Preview only: this data mart has no primary key.';
+const DATA_VIEWS: SwitchOption<'table' | 'charts'>[] = [
+  { value: 'table', label: 'Table', icon: Table2 },
+  { value: 'charts', label: 'Charts', icon: ChartColumn },
+];
 const HINT = 'The rows of the selected data mart. Click a row to open it below.';
 const HINT_FULL = 'The rows of the selected data mart. Exit full screen to see an opened row.';
 
@@ -41,7 +45,7 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen }: 
 
   const noKey = !!mart && rows?.id === mart.id && rows.noKey && !!gridMart?.accessible;
   return (
-    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={`${fullScreen?.on ? HINT_FULL : HINT}${noKey ? ` ${NO_KEY_NOTE}` : ''}`} afterHint={<>{noKey && <NoKeyWarning />}{gridMart?.accessible && saved && <ViewSwitch value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} />}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
+    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={`${fullScreen?.on ? HINT_FULL : HINT}${noKey ? ` ${NO_KEY_NOTE}` : ''}`} afterHint={<>{noKey && <NoKeyWarning />}{gridMart?.accessible && saved && <ViewSwitch label="Show data as" options={DATA_VIEWS} value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} />}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (

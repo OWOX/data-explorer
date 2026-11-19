@@ -1,15 +1,16 @@
 // The Sources and Data bands with the lines between their cards, and the hover that lights them.
 // The Data and Row bands arrive as children and sit under the same canvas; they do not re-render on hover.
-import { Box, Plug } from 'lucide-react';
+import { Box, LayoutGrid, Plug, Workflow } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DqSummary, Mart, Model, Source } from '../../model/types';
 import { matchesSearch } from '../../graph/search';
 import { storageOptions } from '../../graph/storages';
 import { neighbours, type VisibleResult } from '../../graph/visible';
 import { useRememberLeaving } from '../../state/leaving';
-import { useStore } from '../../state/store';
+import { useServices, useStore } from '../../state/store';
 import { storageMark } from '../storage-icons';
 import { Band } from './Band';
+import { ViewSwitch, type SwitchOption } from './ViewSwitch';
 import { MultiSelect } from './MultiSelect';
 import { ContextBadges } from './ContextBadges';
 import { useSmartSearchScope } from './SmartSearchScope';
@@ -20,6 +21,12 @@ import { useCardTransitions } from './transitions';
 import { useCardClick } from './useCardClick';
 import { useCardDrag } from './useCardDrag';
 import { litIds, useWires, type Wire } from './wires';
+
+export type MartsView = 'grid' | 'canvas';
+const MARTS_VIEWS: SwitchOption<MartsView>[] = [
+  { value: 'grid', label: 'Grid', icon: LayoutGrid },
+  { value: 'canvas', label: 'Canvas', icon: Workflow },
+];
 
 const martId = (m: Mart) => m.id;
 const sourceKey = (s: Source) => s.key;
@@ -70,6 +77,16 @@ export function CardBands({
   children: ReactNode;
 }) {
   const [{ selection, contextIds, found }, dispatch] = useStore();
+  const { preferences } = useServices();
+  const [view, setView] = useState<MartsView>('grid');
+  // Set by a click, so a slow read of the saved choice never overrides it.
+  const touched = useRef(false);
+  useEffect(() => {
+    let live = true;
+    preferences.loadMartsView().then((v) => { if (live) setView((cur) => (touched.current ? cur : v)); });
+    return () => { live = false; };
+  }, [preferences]);
+  const pickView = (v: MartsView) => { touched.current = true; setView(v); preferences.saveMartsView(v); };
   const smart = useSmartSearchScope();
   const rememberLeaving = useRememberLeaving();
   const canvas = useRef<HTMLDivElement>(null);
@@ -195,7 +212,8 @@ export function CardBands({
           return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => { rememberLeaving(null); dispatch({ type: 'selectSource', key: source.key }); }} />;
         })}
       </Band>
-      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={visible.ids.length} hint="The main data mart first, and every mart it can join; or what the search and the filters match. Drag a card onto the main one to make it main." afterHint={contextBadges} toolbar={storageFilter} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
+      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={visible.ids.length} hint="The main data mart first, and every mart it can join; or what the search and the filters match. Drag a card onto the main one to make it main." afterHint={<>{contextBadges}<ViewSwitch label="Show data marts as" options={MARTS_VIEWS} value={view} onChange={pickView} /></>} toolbar={view === 'grid' ? storageFilter : undefined} grid={view === 'grid'} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
+        {view === 'canvas' ? <div data-testid="marts-canvas" /> : <>
         {(visible.ids.length === 0 || noMatch) && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
         {martCards.items.map((mart) => {
           const id = mart.id;
@@ -254,6 +272,7 @@ export function CardBands({
             />,
           ];
         })}
+        </>}
       </Band>
       <CardClickContext.Provider value={click}>{children}</CardClickContext.Provider>
       {drag && <div className="dm-drag-ghost" style={{ left: drag.x + 8, top: drag.y + 8 }} aria-hidden>{drag.title}</div>}

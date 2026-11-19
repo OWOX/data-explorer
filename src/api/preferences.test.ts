@@ -46,3 +46,17 @@ test('a failed read of the hint says it is not dismissed; a failed write only lo
   await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(2));
   warn.mockRestore();
 });
+
+test('the Data Marts view round-trips through its own document, and an unknown value reads as grid', async () => {
+  const ctx = stubCtx();
+  const p = createPreferences(ctx);
+  expect(await p.loadMartsView()).toBe('grid');
+  p.saveMartsView('canvas');
+  await vi.waitFor(async () => expect(await createPreferences(ctx).loadMartsView()).toBe('canvas'));
+  // A fold write must not wipe it.
+  p.saveFolded({ 'band-data': true });
+  await vi.waitFor(async () => expect(await createPreferences(ctx).loadFolded()).toEqual({ 'band-data': true }));
+  expect(await createPreferences(ctx).loadMartsView()).toBe('canvas');
+  const odd = { ...stubCtx(), collections: () => ({ get: async () => ({ document: { view: 'map' } }), put: async () => {} }) } as unknown as Ctx;
+  expect(await createPreferences(odd).loadMartsView()).toBe('grid');
+});
