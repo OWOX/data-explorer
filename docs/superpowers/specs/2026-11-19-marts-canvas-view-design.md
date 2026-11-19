@@ -116,3 +116,38 @@ The mock fixtures already have a diamond: `orders` joins `customers` and `stores
 1. Zoom, pan and a minimap.
 2. Changing the main mart on the canvas. That stays a drag onto the main card in Grid.
 3. One mart joined twice through two paths.
+
+## Revision 1 (2026-11-19): joins per path, delete with ×, click shows joinable marts
+
+Approved in chat. Where this section and the sections above disagree, this section wins.
+
+### A joined mart is a path
+
+1. A joined mart is identified by its alias path, not its mart id. The same mart can be in the report once per path: Countries through `customers.countries` and through `stores.countries`.
+2. `joinedPaths(columns, sources)` lists the alias paths in use, in the order their first column appears. `joinedMartIds` stays for mart-level questions (can the new main mart join it).
+3. Element ids: `dm-<martId>` for the main card and for cards of marts not in the report; `dm-<martId>@<aliasPath>` for a joined card. Wires and drag code find cards by these ids.
+4. Spec section 2 rule 2 ("placed once, at the shallowest path") is replaced: every in-use path is a node.
+
+### Canvas
+
+1. Hover on a card in the report shows, as dimmed ghost cards, every source one hop under its path whose path is not in use. A mart already in the report through another path is offered again.
+2. A click on a card in the report (main or joined) pins those ghosts, as before. It removes nothing.
+3. Hovering a joined card shows a × in a circle at its top-left corner. A click on it removes that path and every path under it: their columns, filters, sorts, aggregations and buckets. One `setMarts` dispatch, so Undo brings them back. The main card has no ×.
+4. Drag: a target is not valid when the path C would take is already in use.
+
+### Grid
+
+1. One card per joined path. When a mart is in the report more than once, each card's title carries its path, as the Columns picker labels it ("Countries (stores.countries)").
+2. A click on the main card or a joined card removes nothing and does not deselect. It focuses that card: the marts joinable one hop under its path are shown (as ghost cards when not already in the band) and every other card that is not in the report is dimmed. A click on a joinable card while a card is focused adds it under the focused card's path. A click on the empty band, a click on the focused card again, or Escape clears the focus.
+3. With no focus, a click on a joinable card that is not in the report adds it as today.
+4. Hovering a joined card shows the same × as on the canvas, with the same effect.
+5. Wires between report cards run along the paths in use, parent card to child card.
+6. Dragging a joined card onto the main card still makes that mart the main mart. The main mart still changes by that drag or by the crown button.
+
+### Data band
+
+1. Column groups are per path. A group's title is the path's label, so two Countries groups read "Countries (customers.countries)" and "Countries (stores.countries)".
+
+### Section 7 is replaced
+
+A click never removes a mart in either view. The × is the only remove action on a card.
