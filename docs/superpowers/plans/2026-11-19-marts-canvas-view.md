@@ -13,7 +13,7 @@
 ## Global Constraints
 
 1. No new runtime dependency.
-2. Vitest runs with at most 4 threads: `npx vitest run --poolOptions.threads.maxThreads=4 <files>`.
+2. Vitest runs with at most 4 threads: `npx vitest run --maxWorkers=4 <files>`.
 3. Playwright: `npm run e2e -- <spec>` (it already passes `--workers=1 --trace off`).
 4. Every grid change from the canvas is one `setMarts` dispatch, so Undo covers it.
 5. No card changes its border, colour or size during a drag. The dashed line is the only target mark.
@@ -132,7 +132,7 @@ test('the main mart cannot be dragged', () => {
 
 - [ ] **Step 2: Run the tests and see them fail**
 
-Run: `npx vitest run --poolOptions.threads.maxThreads=4 src/state/join-tree.test.ts`
+Run: `npx vitest run --maxWorkers=4 src/state/join-tree.test.ts`
 Expected: FAIL, cannot resolve `./join-tree`.
 
 - [ ] **Step 3: Implement**
@@ -225,7 +225,7 @@ Note: a node placed under the main mart because its parent left (the "deepest in
 
 - [ ] **Step 4: Run the tests and see them pass**
 
-Run: `npx vitest run --poolOptions.threads.maxThreads=4 src/state/join-tree.test.ts`
+Run: `npx vitest run --maxWorkers=4 src/state/join-tree.test.ts`
 Expected: PASS (10 tests).
 
 - [ ] **Step 5: Commit**
@@ -298,7 +298,7 @@ If `AggFn` does not include `'SUM'`, use whatever value `src/model/aggregation.t
 
 - [ ] **Step 2: Run and see them fail**
 
-Run: `npx vitest run --poolOptions.threads.maxThreads=4 src/state/join-plan.test.ts`
+Run: `npx vitest run --maxWorkers=4 src/state/join-plan.test.ts`
 Expected: FAIL, `planAddAt` is not exported.
 
 - [ ] **Step 3: Implement** (append to `src/state/join-plan.ts`)
@@ -352,7 +352,7 @@ Column order is kept as it was: `planRejoin` maps in place and does not call `or
 
 - [ ] **Step 4: Run and see them pass**
 
-Run: `npx vitest run --poolOptions.threads.maxThreads=4 src/state/join-plan.test.ts`
+Run: `npx vitest run --maxWorkers=4 src/state/join-plan.test.ts`
 Expected: PASS, including the existing tests.
 
 - [ ] **Step 5: Commit**
@@ -428,7 +428,7 @@ test('ghosts take the next column after their parent, stacked from the parent ro
 
 - [ ] **Step 2: Run and see them fail**
 
-Run: `npx vitest run --poolOptions.threads.maxThreads=4 src/ui/bands/canvas-layout.test.ts`
+Run: `npx vitest run --maxWorkers=4 src/ui/bands/canvas-layout.test.ts`
 Expected: FAIL, module not found.
 
 - [ ] **Step 3: Implement**
@@ -484,7 +484,7 @@ export function layoutTree(tree: JoinTree, extra?: { path: string; ids: string[]
 
 - [ ] **Step 4: Run and see them pass**
 
-Run: `npx vitest run --poolOptions.threads.maxThreads=4 src/ui/bands/canvas-layout.test.ts`
+Run: `npx vitest run --maxWorkers=4 src/ui/bands/canvas-layout.test.ts`
 Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
@@ -558,7 +558,7 @@ test('the Data Marts band opens in Grid, switches to Canvas, and saves the choic
 
 - [ ] **Step 2: Run and see them fail**
 
-Run: `npx vitest run --poolOptions.threads.maxThreads=4 src/api/preferences.test.ts src/ui/bands/marts-view.test.tsx`
+Run: `npx vitest run --maxWorkers=4 src/api/preferences.test.ts src/ui/bands/marts-view.test.tsx`
 Expected: FAIL, `loadMartsView` is not a function; no radiogroup named "Show data marts as".
 
 - [ ] **Step 3: Implement**
@@ -610,7 +610,7 @@ Add both to the `Preferences` interface with one-line doc comments. Any test stu
 
 - [ ] **Step 4: Run and see them pass**
 
-Run: `npx vitest run --poolOptions.threads.maxThreads=4 src/api/preferences.test.ts src/ui/bands/marts-view.test.tsx src/ui/bands/view-switch.test.tsx src/ui/bands`
+Run: `npx vitest run --maxWorkers=4 src/api/preferences.test.ts src/ui/bands/marts-view.test.tsx src/ui/bands/view-switch.test.tsx src/ui/bands`
 Expected: PASS, and the other band tests still pass.
 
 - [ ] **Step 5: Commit**
@@ -691,7 +691,7 @@ Write each test fully with `screen`, `within`, `userEvent` and `vi.waitFor`, in 
 
 - [ ] **Step 2: Run and see them fail**
 
-Run: `npx vitest run --poolOptions.threads.maxThreads=4 src/ui/bands/marts-canvas.test.tsx`
+Run: `npx vitest run --maxWorkers=4 src/ui/bands/marts-canvas.test.tsx`
 Expected: FAIL, no `article#dm-orders` inside the canvas.
 
 - [ ] **Step 3: Implement**
@@ -752,7 +752,7 @@ if ((options?.addAt || options?.moves) && main) {
 
 - [ ] **Step 4: Run and see them pass**
 
-Run: `npx vitest run --poolOptions.threads.maxThreads=4 src/ui/bands src/state`
+Run: `npx vitest run --maxWorkers=4 src/ui/bands src/state`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -837,7 +837,7 @@ Write both fully with `fireEvent.pointerDown/pointerMove/pointerUp` (`{ clientX,
 
 - [ ] **Step 2: Run and see them fail**
 
-Run: `npx vitest run --poolOptions.threads.maxThreads=4 src/ui/bands/canvas-drag.test.ts src/ui/bands/marts-canvas.test.tsx`
+Run: `npx vitest run --maxWorkers=4 src/ui/bands/canvas-drag.test.ts src/ui/bands/marts-canvas.test.tsx`
 Expected: FAIL, `closestTarget` not found; no `#drag-line`.
 
 - [ ] **Step 3: Implement**
@@ -875,7 +875,7 @@ export function closestTarget(targets: Rejoin[], placed: Placed[], x: number, y:
 
 - [ ] **Step 4: Run and see them pass**
 
-Run: `npx vitest run --poolOptions.threads.maxThreads=4 src/ui/bands src/state`
+Run: `npx vitest run --maxWorkers=4 src/ui/bands src/state`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -962,7 +962,7 @@ The Data Marts band has two views. Grid lists the data marts as cards. Canvas dr
 
 - [ ] **Step 4: Full checks**
 
-Run: `npx vitest run --poolOptions.threads.maxThreads=4 && npm run lint && npx tsc -b`
+Run: `npx vitest run --maxWorkers=4 && npm run lint && npx tsc -b`
 Expected: all pass.
 
 - [ ] **Step 5: Commit**

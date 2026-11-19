@@ -79,7 +79,7 @@ A card T is a valid target for dragged mart C when all of these hold:
 4. The joined sources have the path `T.path + '.' + c`, where `c` is the last segment of a source for C's mart. For the main mart, `T.path + '.'` is empty and the path is a depth-1 source for C.
 5. For every node D under C, the path with C's old path prefix replaced by C's new path is a source for D's mart.
 
-A pure function in `join-tree.ts`, `rejoinTargets(tree, sources, martId)`, returns the valid targets, each with the new alias path for C and for every node under C.
+A pure function in `join-tree.ts`, `rejoinTargets(tree, sources, path)`, returns the valid targets, each with the new alias path for C and for every node under C.
 
 ### What the member sees
 
