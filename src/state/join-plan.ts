@@ -289,3 +289,46 @@ export function planMakeMain(env: PlanEnv, id: string): Plan {
   };
   return { selection: { sourceKey: env.sourceKeyFor(id), martId: id, record: null }, grids: { [id]: next }, saves: [{ martId: id, columns }], remember };
 }
+
+/** The grid with the mart of `aliasPath` added through that exact path. `remembered` are blended names chosen before, `shown` own names it showed when it last left a grid. */
+export function planAddAt(grid: GridState, sources: JoinedSource[], aliasPath: string, own: string[], remembered?: string[], shown: string[] | null = null): GridState {
+  const source = sources.find((s) => s.aliasPath === aliasPath);
+  if (!source) return grid;
+  const names = new Set(source.fields.map((f) => f.name));
+  let picked: string[] = [];
+  if (shown) {
+    const byOwn = new Map(source.fields.map((f) => [ownNameOf(f), f.name] as const));
+    picked = shown.flatMap((n) => (byOwn.has(n) ? [byOwn.get(n)!] : []));
+  }
+  if (!picked.length) picked = (remembered ?? []).filter((n) => names.has(n));
+  if (!picked.length) picked = defaultJoinFields(source).map((f) => f.name);
+  const columns = orderColumns([...grid.columns, ...picked.filter((n) => !grid.columns.includes(n))], sources, own);
+  return { ...grid, columns };
+}
+
+/** The grid with every field of a moved path swapped for the same own field on its new path; a field the new path lacks is dropped. */
+export function planRejoin(grid: GridState, sources: JoinedSource[], moves: Map<string, string>, own: string[]): GridState {
+  if (moves.size === 0) return grid;
+  const byPath = new Map(sources.map((s) => [s.aliasPath, s] as const));
+  const swap = new Map<string, string | null>();
+  for (const [from, to] of moves) {
+    const target = byPath.get(to);
+    const byOwn = new Map((target?.fields ?? []).map((f) => [ownNameOf(f), f.name] as const));
+    for (const f of byPath.get(from)?.fields ?? []) swap.set(f.name, byOwn.get(ownNameOf(f)) ?? null);
+  }
+  const map = (n: string) => (swap.has(n) ? swap.get(n)! : n);
+  let columns = [...new Set(grid.columns.flatMap((c) => { const m = map(c); return m ? [m] : []; }))];
+  if (columns.length === 0) columns = own;
+  const filters = Object.fromEntries(Object.entries(grid.filters).flatMap(([k, f]) => { const m = map(k); return m ? [[m, { ...f, field: m }]] : []; }));
+  const sorts = grid.sorts && grid.sorts.flatMap((s) => { const m = map(s.field); return m ? [{ ...s, field: m }] : []; });
+  const aggregations = grid.aggregations?.flatMap((a) => { const m = map(a.column); return m ? [{ ...a, column: m }] : []; });
+  const dateTrunc = grid.dateTrunc?.flatMap((d) => { const m = map(d.column); return m ? [{ ...d, column: m }] : []; });
+  return {
+    ...grid,
+    columns,
+    filters,
+    sorts: grid.sorts && grid.sorts.length > 0 && sorts!.length === 0 ? null : sorts,
+    aggregations: aggregations?.length ? aggregations : undefined,
+    dateTrunc: dateTrunc?.length ? dateTrunc : undefined,
+  };
+}

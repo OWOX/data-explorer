@@ -1,6 +1,6 @@
 import type { JoinedSource } from '../api/blendable';
 import type { Field } from '../model/types';
-import { defaultJoinFields, fieldsFor, inUsePaths, isIdField, joinedMartIds, planClick, planMakeMain, sourceOfMart, withoutMart, type PlanEnv } from './join-plan';
+import { planAddAt, planRejoin, defaultJoinFields, fieldsFor, inUsePaths, isIdField, joinedMartIds, planClick, planMakeMain, sourceOfMart, withoutMart, type PlanEnv } from './join-plan';
 import type { GridState } from './store';
 
 const f = (name: string, category: Field['category'], martId: string): Field => ({ name, alias: null, type: 'STRING', category, description: null, isPrimaryKey: false, joined: { martId, label: martId, aliasPath: martId, originalName: name.slice(martId.length + 2) } });
@@ -326,4 +326,36 @@ describe('the path a mart joins by', () => {
     expect(columns).toContain('countries__stores__city');
     expect(columns).not.toContain('products__stores__city');
   });
+});
+
+const jf = (path: string, own: string): Field => ({ name: `${path.replaceAll('.', '__')}__${own}`, alias: own, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: path.split('.').at(-1)!, label: path, aliasPath: path, originalName: own } });
+const js = (path: string, owns = ['name', 'n']): JoinedSource => ({ aliasPath: path, martId: path.split('.').at(-1)!, label: path, depth: path.split('.').length, fields: owns.map((o) => jf(path, o)), uniqueCount: true });
+const jc = (path: string, own = 'name') => `${path.replaceAll('.', '__')}__${own}`;
+const rjSources = [js('a'), js('b'), js('a.c', ['name', 'n', 'only_a']), js('b.c')];
+const base: GridState = { columns: ['id', jc('a'), jc('b'), jc('a.c'), jc('a.c', 'n'), jc('a.c', 'only_a')], filters: { [jc('a.c')]: { field: jc('a.c'), op: 'eq', value: 'x' }, [jc('a.c', 'only_a')]: { field: jc('a.c', 'only_a'), op: 'eq', value: 'y' } }, sorts: [{ field: jc('a.c', 'n'), direction: 'desc' }], limit: 100, aggregations: [{ column: jc('a.c', 'n'), function: 'SUM' }] };
+
+test('planAddAt adds the mart through that exact path, with its default fields', () => {
+  const out = planAddAt({ ...base, columns: ['id', jc('b')], filters: {}, sorts: null, aggregations: undefined }, rjSources, 'b.c', ['id']);
+  // Both fields are text, so the default is the first text field alone.
+  expect(out.columns).toContain(jc('b.c'));
+  expect(out.columns).not.toContain(jc('b.c', 'n'));
+  expect(out.columns.filter((c) => c.startsWith('a__c'))).toEqual([]);
+});
+
+test('planAddAt keeps remembered fields offered by the path', () => {
+  const out = planAddAt({ ...base, columns: ['id'], filters: {}, sorts: null, aggregations: undefined }, rjSources, 'b.c', ['id'], [jc('b.c', 'n')]);
+  expect(out.columns).toEqual(['id', jc('b.c', 'n')]);
+});
+
+test('planRejoin swaps columns, filters, sorts and aggregations to the new path and drops what it lacks', () => {
+  const out = planRejoin(base, rjSources, new Map([['a.c', 'b.c']]), ['id']);
+  expect(out.columns).toEqual(['id', jc('a'), jc('b'), jc('b.c'), jc('b.c', 'n')]);
+  expect(Object.keys(out.filters)).toEqual([jc('b.c')]);
+  expect(out.filters[jc('b.c')]).toEqual({ field: jc('b.c'), op: 'eq', value: 'x' });
+  expect(out.sorts).toEqual([{ field: jc('b.c', 'n'), direction: 'desc' }]);
+  expect(out.aggregations).toEqual([{ column: jc('b.c', 'n'), function: 'SUM' }]);
+});
+
+test('planRejoin with no moves returns the grid unchanged', () => {
+  expect(planRejoin(base, rjSources, new Map(), ['id'])).toEqual(base);
 });
