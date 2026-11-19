@@ -27,7 +27,7 @@ export function bucketZone(date: Field, zone: string = Intl.DateTimeFormat().res
   // DATETIME has a time of day but no instant: the backend buckets a zoned one by its raw calendar day, so a zone would only shift the click filter.
   return canZone(date) && normalizeType(date.type) !== 'DATETIME' && isTimeZone(zone) ? zone : undefined;
 }
-// The same zone rule the grid uses: only a type with a time of day can be converted, and only to a valid IANA name.
+// The grid's canZone narrowed by bucketZone: DATETIME buckets by its raw calendar day here.
 function truncRule(date: Field, unit: DateBucket) {
   const zone = bucketZone(date);
   return { column: date.name, unit, ...(zone ? { timeZone: zone } : {}) };

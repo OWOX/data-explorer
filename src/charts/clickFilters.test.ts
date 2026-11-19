@@ -70,3 +70,11 @@ test('bucketFilter: a local midnight inside a DST gap is the first moment of tha
   expect(v('2026-09-05', 'America/Santiago')).toEqual({ from: '2026-09-05 04:00:00', to: '2026-09-06 03:59:59' });
   expect(v('2026-03-08', 'America/Havana')).toEqual({ from: '2026-03-08 05:00:00', to: '2026-03-09 03:59:59' });
 });
+
+test('bucketFilter: a midnight that happens twice starts at the first one', () => {
+  const date = { name: 'c', category: 'date', type: 'TIMESTAMP' } as Field;
+  const v = (start: string) => bucketFilter(date, start, 'DAY', 'Asia/Amman').value;
+  // 2021-10-29 01:00 +03 fell back to 00:00 +02: the day starts at the first 00:00 (21:00Z).
+  expect(v('2021-10-29')).toEqual({ from: '2021-10-28 21:00:00', to: '2021-10-29 21:59:59' });
+  expect(v('2021-10-28')).toEqual({ from: '2021-10-27 21:00:00', to: '2021-10-28 20:59:59' });
+});

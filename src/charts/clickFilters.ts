@@ -36,9 +36,11 @@ function localMidnight(day: string, zone: string): number {
   const guess = Date.UTC(y, m - 1, d);
   const first = guess - zoneOffset(guess, zone);
   const second = guess - zoneOffset(first, zone);
-  // In a DST gap one candidate lands on the previous day; the earliest one that is on the target day is the day's first moment.
+  // The offsets a day either side catch a midnight that a DST change skips or repeats: the earliest candidate on the target day is its first moment.
+  const before = guess - zoneOffset(guess - 86_400_000, zone);
+  const after = guess - zoneOffset(guess + 86_400_000, zone);
   const onDay = (ms: number) => new Date(ms + zoneOffset(ms, zone)).toISOString().slice(0, 10) === day;
-  return [first, second].sort((a, b) => a - b).find(onDay) ?? second;
+  return [first, second, before, after].sort((a, b) => a - b).find(onDay) ?? second;
 }
 
 const stamp = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
