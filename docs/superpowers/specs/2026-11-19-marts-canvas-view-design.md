@@ -1,6 +1,6 @@
 # Canvas view for the Data Marts band
 
-Date: 2026-11-19. Status: approved in chat, waiting for review of this file.
+Date: 2026-11-19. Status: approved.
 
 ## Goal
 
@@ -24,7 +24,7 @@ Answers from the chat:
 
 `ViewSwitch` (`src/ui/bands/ViewSwitch.tsx`) takes its options and its `aria-label` as props. The Data band passes Table and Charts as now. The Data Marts band passes Grid (`LayoutGrid` icon) and Canvas (`Workflow` icon), in the same header slot the Data band uses.
 
-The choice is saved in the `bands` document of the `preferences` collection (`src/api/preferences.ts`) as a new optional field, `martsView: 'grid' | 'canvas'`. A missing or unknown value reads as Grid. The switch is not a selection change, so it adds no Undo step. A failed write is logged and changes nothing on screen, like the fold choices.
+The choice is saved in the `preferences` collection (`src/api/preferences.ts`) as its own document, `marts-view`, holding `{ view: 'grid' | 'canvas' }`. A separate document keeps the fold writes, which replace the whole `bands` document, from wiping it. A missing or unknown value reads as Grid. The switch is not a selection change, so it adds no Undo step. A failed write is logged and changes nothing on screen, like the fold choices.
 
 Search, context badges, storage filters and Data Sources keep working in Grid only. With Canvas on, the band shows the report tree whatever the search says, and the search box stays as it is.
 
@@ -94,9 +94,9 @@ The release moves C and its subtree under the target the dashed line points to. 
 
 ## 7. Clicks on the canvas
 
-1. A click on a joined card removes it and everything under it, as `withoutMart` does for each mart.
-2. A click on the main card does what it does in Grid.
-3. A click on a ghost adds it (section 5).
+1. A click on the main card or a joined card removes nothing. It pins that card's ghosts (section 5), so they stay shown until the member clicks another card, clicks the empty canvas or presses Escape.
+2. A click on a ghost adds it (section 5).
+3. The canvas has no remove action. The member removes a mart in Grid or in the Columns picker.
 
 ## 8. Testing
 
@@ -109,7 +109,7 @@ Vitest, with `--poolOptions.threads.maxThreads=4`.
 
 Playwright, on `/?mock`: switch to Canvas, hover the main card, add a ghost, drag C from A onto B, and check the grid's column headers and Undo.
 
-The mock fixtures (`src/sdk/mock/fixtures.ts`) get a diamond: the main mart joins A and B, both join C, and C joins D through both.
+The mock fixtures already have a diamond: `orders` joins `customers` and `stores`, and both join `countries` (`customers.countries`, `stores.countries`). The subtree rule is covered by unit tests on hand-built sources.
 
 ## Out of scope
 
