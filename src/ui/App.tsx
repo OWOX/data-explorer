@@ -181,6 +181,8 @@ function AppBody() {
           visible={visible}
           storageIds={storageIds}
           joined={joined}
+          joinSources={joinSources}
+          mainColumns={mainColumns ?? []}
           counts={counts}
           dq={dq}
           foldedSources={folded('sources')}

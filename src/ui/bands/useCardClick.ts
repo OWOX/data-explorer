@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { JoinedSource } from '../../api/blendable';
 import type { Picks } from '../../api/grid-columns';
 import { PAGE_SIZE } from '../../config';
-import { joinedMartIds, planClick, planMakeMain } from '../../state/join-plan';
+import { joinedMartIds, planAddAt, planClick, planMakeMain, planRejoin } from '../../state/join-plan';
 import { sourceOfModel, useServices, useStore, type GridState, type State } from '../../state/store';
 import type { Model } from '../../model/types';
 import { defaultColumns } from '../explorer/useMartRows';
@@ -17,6 +17,10 @@ export type ClickOptions = {
   only?: 'deselect';
   /** The mart becomes the main one (a drop on the main card, or its make-main button). */
   mode?: 'makeMain';
+  /** Add the mart through this alias path (a canvas ghost). */
+  addAt?: string;
+  /** Move marts to new alias paths (a canvas drop). */
+  moves?: Map<string, string>;
 };
 
 export function useCardClick(model: Model): (id: string, options?: ClickOptions) => Promise<void> {
@@ -82,6 +86,19 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
     }
     const sourceOf = sourceOfModel(model);
     const fresh = (martId: string) => { const g = now.grids[martId]; return g && g.columns.length > 0 ? g : grids.get(martId); };
+    if ((options?.addAt !== undefined || options?.moves) && main) {
+      const sourcesNow = sources.get(main) ?? [];
+      const g = fresh(main) ?? { columns: [], filters: {}, sorts: null, limit: PAGE_SIZE };
+      const own = defaultColumns(schemas.peek(main) ?? []);
+      const next = options.addAt !== undefined
+        ? planAddAt(g, sourcesNow, options.addAt, own, picks.get(main)?.[sourcesNow.find((s) => s.aliasPath === options.addAt)?.martId ?? ''], columnStore.lastShown(id))
+        : planRejoin(g, sourcesNow, options.moves!, own);
+      if (next === g) { await rendered(); return; }
+      dispatch({ type: 'setMarts', selection: now.selection, grids: { [main]: next } });
+      columnStore.save(main, next.columns);
+      await rendered();
+      return;
+    }
     const plan = (makeMain ? planMakeMain : planClick)({
       selection: now.selection,
       sourceKeyFor: (martId) => (now.selection.sourceKey && sourceOf(martId) === now.selection.sourceKey ? now.selection.sourceKey : null),

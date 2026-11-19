@@ -269,27 +269,27 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 /* --- wires: the lines between cards, ported from Data Flow ------------------------------------- */
 /* Three layers, in this order: band panels, the lines over them, the cards over both. The SVG is
    absolutely positioned and first in the DOM, so without the z-index it paints under the panels. */
-#wires { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+#wires, #tree-wires { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 /* The lines start hidden: a canvas of hundreds of cards is unreadable with every route drawn at
    once. Hovering a card draws its own, clicking keeps them drawn. */
-#wires path {
+#wires path, #tree-wires path {
   fill: none; stroke-linecap: round; stroke-width: 2;
   opacity: 0; transition: opacity 150ms;
   pointer-events: stroke;
 }
 /* Blue crosses a band boundary: a source feeding a mart. Grey stays inside the Data Marts band:
    a join between two marts. */
-#wires .source { stroke: var(--primary); }
-#wires .relationship { stroke: var(--muted-foreground); stroke-dasharray: 5 4; }
-#wires path.lit { opacity: 1; }
+#wires .source, #tree-wires .source { stroke: var(--primary); }
+#wires .relationship, #tree-wires .relationship { stroke: var(--muted-foreground); stroke-dasharray: 5 4; }
+#wires path.lit, #tree-wires path.lit { opacity: 1; }
 /* A second card's lines, while another is chosen: the lines they always were, at half strength.
    Colour says what a line is, so fading says which card asked for it. One class heavier than the
    `.lit` above and later, so it wins the opacity. */
-#wires path.lit.aside { opacity: 0.5; }
+#wires path.lit.aside, #tree-wires path.lit.aside { opacity: 0.5; }
 /* Direction, but only where direction is the whole of what a line says. A relationship is a join
    between two marts, and both ends sit in one band, so one arriving at the card in hand is drawn
    thin against the ones leaving it. A source line crosses bands, which already say which way it goes. */
-#wires path.relationship.inbound { stroke-width: 1; }
+#wires path.relationship.inbound, #tree-wires path.relationship.inbound { stroke-width: 1; }
 /* The card under the pointer takes a 2px border in its own run-health colour — the ring is laid
    outside the 1px it already has, so nothing shifts. A card nothing has run stays grey. */
 .dm-node.lit:hover {
@@ -645,3 +645,14 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-seg button + button { border-left: 1px solid var(--border); }
 .dm-seg button[aria-checked='true'] { background: var(--accent); color: var(--accent-foreground); }
 .dm-seg button:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+
+/* The Data Marts canvas: the report as a tree, cards placed by canvas-layout.ts. */
+.dm-tree-scroll { overflow: auto; padding: 0.25rem; }
+.dm-tree { position: relative; }
+.dm-tree-node { position: absolute; z-index: 2; }
+.dm-tree-node > .dm-node { width: 100%; }
+.dm-tree-node.dm-dimmed { opacity: 0.15; filter: grayscale(1); transition: opacity 120ms; }
+/* The tree's lines are always drawn: the layout is the report, not a crowd to thin out. */
+#tree-wires path { opacity: 1; }
+#drag-line { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 2; }
+#drag-line path { fill: none; stroke: var(--muted-foreground); stroke-width: 1.5; stroke-dasharray: 6 4; }

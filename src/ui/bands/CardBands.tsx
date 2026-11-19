@@ -20,7 +20,10 @@ import { MartCard, SourceCard, martElementId, sourceElementId, type CountState }
 import { useCardTransitions } from './transitions';
 import { useCardClick } from './useCardClick';
 import { useCardDrag } from './useCardDrag';
-import { litIds, useWires, type Wire } from './wires';
+import { litIds, revisionOf, useWires, type Wire } from './wires';
+import { MartsCanvas } from './MartsCanvas';
+import { buildJoinTree } from '../../state/join-tree';
+import type { JoinedSource } from '../../api/blendable';
 
 export type MartsView = 'grid' | 'canvas';
 const MARTS_VIEWS: SwitchOption<MartsView>[] = [
@@ -33,18 +36,13 @@ const sourceKey = (s: Source) => s.key;
 
 const nodeIdOf = (target: EventTarget | null) => (target instanceof Element ? target.closest('[data-node]')?.id ?? null : null);
 
-/** A small stable number for a string: it changes when the set of cards on the page does. */
-const revisionOf = (key: string) => {
-  let h = 0;
-  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
-  return h;
-};
-
 export function CardBands({
   model,
   visible,
   storageIds,
   joined: joinedProp,
+  joinSources,
+  mainColumns,
   counts,
   dq,
   foldedSources,
@@ -63,6 +61,10 @@ export function CardBands({
   storageIds: string[] | null;
   /** The joined data marts selected with the main one, in the order they were added. */
   joined: string[];
+  /** The main mart's joinable sources, or null while they load. */
+  joinSources: JoinedSource[] | null;
+  /** The main grid's columns. */
+  mainColumns: string[];
   counts: Map<string, CountState>;
   dq: Map<string, DqSummary>;
   foldedSources: boolean;
@@ -86,7 +88,7 @@ export function CardBands({
     preferences.loadMartsView().then((v) => { if (live) setView((cur) => (touched.current ? cur : v)); });
     return () => { live = false; };
   }, [preferences]);
-  const pickView = (v: MartsView) => { touched.current = true; setView(v); preferences.saveMartsView(v); };
+  const pickView = (v: MartsView) => { touched.current = true; setHovered(null); setView(v); preferences.saveMartsView(v); };
   const smart = useSmartSearchScope();
   const rememberLeaving = useRememberLeaving();
   const canvas = useRef<HTMLDivElement>(null);
@@ -96,7 +98,7 @@ export function CardBands({
   // waits 400 ms, so the pointer can cross the gap to a ghost.
   const [ghostOf, setGhostOf] = useState<string | null>(null);
   const click = useCardClick(model);
-  const drag = useCardDrag(canvas, selection.martId, (id) => model.marts.get(id)?.title ?? id, (id) => void click(id, { mode: 'makeMain' }), (id) => model.marts.get(id)?.accessible === true);
+  const drag = useCardDrag(canvas, selection.martId, (id) => model.marts.get(id)?.title ?? id, (id) => void click(id, { mode: 'makeMain' }), (id) => view === 'grid' && model.marts.get(id)?.accessible === true);
 
   // Escape lets go of the hovered card; what is selected only changes by clicks and Back.
   useEffect(() => {
@@ -107,16 +109,16 @@ export function CardBands({
 
   const shownIds = useMemo(() => new Set(visible.ids), [visible.ids]);
   const ghostIds = useMemo(() => {
-    if (!ghostOf) return [];
+    if (!ghostOf || view !== 'grid') return [];
     const ticked = (id: string) => storageIds === null || storageIds.includes(model.marts.get(id)?.storageId ?? '');
     return neighbours(ghostOf, model.edges).filter((id) => !shownIds.has(id) && model.marts.get(id)?.accessible && ticked(id));
-  }, [ghostOf, model, shownIds, storageIds]);
+  }, [ghostOf, model, shownIds, storageIds, view]);
   // A mart card's element id is `dm-<id>` (see martElementId).
   const hoveredMart = hovered?.startsWith('dm-') ? hovered.slice(3) : null;
   const overGhost = hoveredMart !== null && ghostIds.includes(hoveredMart);
   const overShown = hoveredMart !== null && shownIds.has(hoveredMart);
   // With no ghosts showing, a hovered card shows its own at once (adjusted while rendering).
-  if (ghostOf === null && overShown) setGhostOf(hoveredMart);
+  if (ghostOf === null && overShown && view === 'grid') setGhostOf(hoveredMart);
   useEffect(() => {
     if (overGhost || (overShown && hoveredMart === ghostOf)) return;
     // Resting on another shown card switches the ghosts after 400 ms, so crossing it on the way to a ghost keeps them; leaving clears them after the same grace.
@@ -137,12 +139,13 @@ export function CardBands({
         out.push({ id: `source:${mart.sourceKey}>${id}`, from: sourceElementId(mart.sourceKey), to: martElementId(id), kind: 'source', title: `${model.sources.find((s) => s.key === mart.sourceKey)?.name ?? mart.sourceKey} → ${mart.title}` });
       }
     }
+    if (view === 'canvas') return out;
     for (const e of model.edges) {
       if (!shown.has(e.source) || !shown.has(e.target)) continue;
       out.push({ id: `edge:${e.id}`, from: martElementId(e.source), to: martElementId(e.target), kind: 'relationship', title: e.joins.map((j) => `${j.sourceField} → ${j.targetField}`).join(', ') });
     }
     return out;
-  }, [idsKey, model]);
+  }, [idsKey, model, view]);
 
   const pinned = useMemo(() => {
     if (selection.martId && idsKey.split('|').includes(selection.martId)) return martElementId(selection.martId);
@@ -189,20 +192,24 @@ export function CardBands({
   // A search nothing answered and no title matches: the selected mart is still shown, so the band is not empty, but it says so.
   const noMatch = smart.applied !== '' && found.length === 0 && ![...model.marts.values()].some((m) => m.accessible && matchesSearch(m, smart.applied));
 
+  // In Canvas the band counts the marts of the report tree.
+  const mainFor = selection.martId;
+  const reportSize = useMemo(() => (mainFor ? buildJoinTree(mainFor, mainColumns, joinSources ?? []).nodes.size : 0), [mainFor, mainColumns, joinSources]);
+
   const unjoinableFor = (id: string) => !!selection.martId && visible.joinable !== null && id !== selection.martId && !joined.includes(id) && !visible.joinable.has(id);
   const contextsOf = (ids: string[]) => model.contexts.filter((c) => ids.includes(c.id));
 
   return (
     <div
       ref={canvas}
-      className={`dm-canvas${pinned || hovered ? ' focused' : ''}`}
-      onPointerOver={(e) => setHovered(nodeIdOf(e.target))}
+      className={`dm-canvas${view === 'grid' && (pinned || hovered) ? ' focused' : ''}`}
+      onPointerOver={(e) => setHovered(view === 'grid' ? nodeIdOf(e.target) : null)}
       onPointerMove={(e) => {
-        const text = e.target instanceof Element ? e.target.closest<SVGPathElement>('#wires path')?.dataset.tip : undefined;
+        const text = e.target instanceof Element ? e.target.closest<SVGPathElement>('#wires path, #tree-wires path')?.dataset.tip : undefined;
         setWireTip(text ? { text, x: e.clientX, y: e.clientY } : (cur) => (cur === null ? cur : null));
       }}
       onPointerLeave={() => { setHovered(null); setWireTip(null); }}
-      onFocus={(e) => setHovered(nodeIdOf(e.target))}
+      onFocus={(e) => setHovered(view === 'grid' ? nodeIdOf(e.target) : null)}
       onBlur={(e) => { if (!canvas.current?.contains(e.relatedTarget as Node | null)) setHovered(null); }}
     >
       <Band id="band-sources" icon={<Plug size={18} />} title="Data Sources" total={model.sources.length} hint="Connectors that feed data marts. Select one to see the marts it feeds." folded={foldedSources} onFold={onFoldSources} loading={loading}>
@@ -212,8 +219,12 @@ export function CardBands({
           return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => { rememberLeaving(null); dispatch({ type: 'selectSource', key: source.key }); }} />;
         })}
       </Band>
-      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={visible.ids.length} hint="The main data mart first, and every mart it can join; or what the search and the filters match. Drag a card onto the main one to make it main." afterHint={<>{contextBadges}<ViewSwitch label="Show data marts as" options={MARTS_VIEWS} value={view} onChange={pickView} /></>} toolbar={view === 'grid' ? storageFilter : undefined} grid={view === 'grid'} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
-        {view === 'canvas' ? <div data-testid="marts-canvas" /> : <>
+      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={view === 'canvas' ? reportSize : visible.ids.length} hint="The main data mart first, and every mart it can join; or what the search and the filters match. Drag a card onto the main one to make it main." afterHint={<>{view === 'grid' && contextBadges}<ViewSwitch label="Show data marts as" options={MARTS_VIEWS} value={view} onChange={pickView} /></>} toolbar={view === 'grid' ? storageFilter : undefined} grid={view === 'grid'} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
+        {view === 'canvas' ? (
+          <div className="dm-tree-scroll" data-testid="marts-canvas">
+            <MartsCanvas model={model} mainId={selection.martId} columns={mainColumns} sources={joinSources} counts={counts} dq={dq} onOpenApp={onOpenApp} onRetryCount={onRetryCount} onRequestCount={onRequestCount} click={click} />
+          </div>
+        ) : <>
         {(visible.ids.length === 0 || noMatch) && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
         {martCards.items.map((mart) => {
           const id = mart.id;

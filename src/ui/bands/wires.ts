@@ -15,6 +15,13 @@ import { useEffect, useRef, type RefObject } from 'react';
 
 const NS = 'http://www.w3.org/2000/svg';
 
+/** A small stable number for a string: it changes when the set of cards on the page does. */
+export const revisionOf = (key: string) => {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+  return h;
+};
+
 export type Wire = {
   id: string;
   /** Element id of the card the line leaves: `src-<key>` or `dm-<martId>`. */
@@ -127,12 +134,12 @@ export function paintPlan(wires: Wire[], { pinned, hovered, also = [] }: Selecti
   return plan;
 }
 
-/** The layer: the page can render its own `#wires`; otherwise one is made, with the arrowhead. */
-function ensureLayer(canvas: HTMLElement) {
-  const existing = canvas.querySelector<SVGSVGElement>('#wires');
+/** The layer: the canvas can render its own; otherwise one is made under `layerId`, with the arrowhead. */
+function ensureLayer(canvas: HTMLElement, layerId: string) {
+  const existing = canvas.querySelector<SVGSVGElement>(`:scope > #${layerId}`);
   if (existing) return { svg: existing, made: false };
   const svg = document.createElementNS(NS, 'svg');
-  svg.id = 'wires';
+  svg.id = layerId;
   svg.setAttribute('aria-hidden', 'true');
   svg.innerHTML =
     '<defs><marker id="arrowhead" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0.5 L7 4 L0 7.5 z" fill="context-stroke"/></marker></defs>';
@@ -150,6 +157,7 @@ export function useWires(
   wires: Wire[],
   selection: Selection,
   revision: number,
+  layerId = 'wires',
 ) {
   /** The drawn lines, kept across a selection change: building belongs to the cards, lighting to the selection. */
   const drawn = useRef<SVGPathElement[]>([]);
@@ -165,7 +173,7 @@ export function useWires(
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const { svg, made } = ensureLayer(canvas);
+    const { svg, made } = ensureLayer(canvas, layerId);
 
     const paths = (drawn.current = wires.map((wire) => {
       const path = document.createElementNS(NS, 'path');
@@ -252,7 +260,7 @@ export function useWires(
       for (const path of paths) path.remove();
       if (made) svg.remove();
     };
-  }, [canvasRef, wires, revision]);
+  }, [canvasRef, wires, revision, layerId]);
 
   /**
    * Lighting, over the lines the effect above drew. `revision` is in the dependencies and read
