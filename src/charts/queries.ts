@@ -1,5 +1,6 @@
 // Backend queries behind every number the charts show: the plugin never sums, counts or buckets data itself.
 import { aggregatedKey, canZone, isTimeZone, type DateBucket } from '../model/aggregation';
+import { normalizeType } from '../model/field-category';
 import type { Field } from '../model/types';
 import type { TraverseFilter, TraverseOptions } from '../sdk/types';
 import type { ChartMart, Metric } from './fields';
@@ -21,11 +22,12 @@ const measureColumns = (m: Measure): string[] => (m.kind === 'metric' ? [m.metri
 const measureParts = (m: Measure): Pick<TraverseOptions, 'aggregation' | 'uniqueCount'> => (m.kind === 'metric' ? { aggregation: aggs([m.metric]) } : { uniqueCount: [m.aliasPath] });
 const aggs = (metrics: Metric[]) => metrics.map((m) => ({ column: m.field.name, function: m.fn }));
 
-// The same zone rule the grid uses: only a type with a time of day can be converted, and only to a valid IANA name.
 /** The IANA zone a date column's buckets are cut in (the browser's), or undefined when they are not zoned. Shared by the series queries and the click filters. */
 export function bucketZone(date: Field, zone: string = Intl.DateTimeFormat().resolvedOptions().timeZone): string | undefined {
-  return canZone(date) && isTimeZone(zone) ? zone : undefined;
+  // DATETIME has a time of day but no instant: the backend buckets a zoned one by its raw calendar day, so a zone would only shift the click filter.
+  return canZone(date) && normalizeType(date.type) !== 'DATETIME' && isTimeZone(zone) ? zone : undefined;
 }
+// The same zone rule the grid uses: only a type with a time of day can be converted, and only to a valid IANA name.
 function truncRule(date: Field, unit: DateBucket) {
   const zone = bucketZone(date);
   return { column: date.name, unit, ...(zone ? { timeZone: zone } : {}) };

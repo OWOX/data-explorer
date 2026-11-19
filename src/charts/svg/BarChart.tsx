@@ -65,8 +65,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
       const at = offset;
       offset += size;
       const round = k === live.length - 1; // only the data end is rounded
-      const pick = onPick && isStacked && !s.other && pickable(p.x) ? () => onPick(p.x, series.indexOf(s)) : undefined;
-      const common = { 'data-series': s.name, fill: s.color, ...(pick ? { onClick: pick } : {}), style: { pointerEvents: 'none' as const, ...(pick ? { cursor: 'pointer' } : {}), ...(round ? { clipPath: `inset(0 round ${vertical ? `${RADIUS}px ${RADIUS}px 0 0` : `0 ${RADIUS}px ${RADIUS}px 0`})` } : {}) } };
+      const common = { 'data-series': s.name, fill: s.color, style: { pointerEvents: 'none' as const, ...(round ? { clipPath: `inset(0 round ${vertical ? `${RADIUS}px ${RADIUS}px 0 0` : `0 ${RADIUS}px ${RADIUS}px 0`})` } : {}) } };
       const rect = vertical
         ? <rect {...common} x={left + i * band + GAP / 2} y={TOP + PLOT_H - at - seg} width={Math.max(1, band - GAP)} height={seg} />
         : <rect {...common} x={left + at} y={TOP + i * ROW_H + GAP / 2} width={seg} height={ROW_H - GAP} />;

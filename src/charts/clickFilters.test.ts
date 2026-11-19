@@ -56,3 +56,17 @@ test('isBucketDate: a blank bucket (the label "null") is not a date', () => {
   expect(isBucketDate('2024-03-01 00:00:00')).toBe(true);
   expect(isBucketDate('null')).toBe(false);
 });
+
+test('bucketZone: DATETIME gets no zone, so query and click filter agree on date-only bounds', () => {
+  const dt = { name: 'a', category: 'date', type: 'DATETIME' } as Field;
+  expect(bucketZone(dt, 'Europe/Kyiv')).toBeUndefined();
+  expect(bucketFilter(dt, '2024-01-15', 'DAY', bucketZone(dt, 'Asia/Tokyo')).value).toEqual({ from: '2024-01-15', to: '2024-01-15' });
+});
+
+test('bucketFilter: a local midnight inside a DST gap is the first moment of that day', () => {
+  const date = { name: 'c', category: 'date', type: 'TIMESTAMP' } as Field;
+  const v = (start: string, z: string) => bucketFilter(date, start, 'DAY', z).value;
+  expect(v('2026-09-06', 'America/Santiago')).toEqual({ from: '2026-09-06 04:00:00', to: '2026-09-07 02:59:59' });
+  expect(v('2026-09-05', 'America/Santiago')).toEqual({ from: '2026-09-05 04:00:00', to: '2026-09-06 03:59:59' });
+  expect(v('2026-03-08', 'America/Havana')).toEqual({ from: '2026-03-08 05:00:00', to: '2026-03-09 03:59:59' });
+});

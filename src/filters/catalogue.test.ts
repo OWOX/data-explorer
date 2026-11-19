@@ -1,4 +1,4 @@
-import { operatorsFor } from './catalogue';
+import { describeFilter, operatorsFor } from './catalogue';
 import type { Field } from '../model/types';
 
 const f = (type: string, category: Field['category']): Field => ({ name: 'x', alias: null, type, category, description: null, isPrimaryKey: false });
@@ -96,4 +96,12 @@ describe('date presets', () => {
     expect(isPreset({ kind: 'last_n_days', n: 8 }, DATE_PRESETS[2]!.rule)).toBe(false);
     expect(isPreset('2026-01-01', DATE_PRESETS[0]!.rule)).toBe(false);
   });
+});
+
+test('describeFilter labels a zoned chart range on a TIMESTAMP as UTC, and only that', () => {
+  const value = { from: '2024-01-15 05:00:00', to: '2024-01-16 04:59:59' };
+  expect(describeFilter(f('TIMESTAMP', 'date'), { op: 'between', value })).toMatch(/ \(UTC\)$/);
+  expect(describeFilter(f('DATETIME', 'date'), { op: 'between', value })).not.toMatch(/UTC/);
+  expect(describeFilter(f('TIMESTAMP', 'date'), { op: 'between', value: { from: '2024-01-15', to: '2024-01-16' } })).not.toMatch(/UTC/);
+  expect(describeFilter(f('DATE', 'date'), { op: 'between', value })).not.toMatch(/UTC/);
 });

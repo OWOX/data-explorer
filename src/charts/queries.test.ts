@@ -79,5 +79,6 @@ describe('queries', () => {
     const ts = f('at', 'date', { type: 'TIMESTAMP' });
     expect(seriesQuery(ts, 'DAY', amt, []).dateTrunc?.[0]).toHaveProperty('timeZone');
     expect(seriesQuery(date, 'DAY', amt, []).dateTrunc?.[0]).not.toHaveProperty('timeZone');
+    expect(seriesQuery(f('at', 'date', { type: 'DATETIME' }), 'DAY', amt, []).dateTrunc?.[0]).not.toHaveProperty('timeZone');
   });
 });
