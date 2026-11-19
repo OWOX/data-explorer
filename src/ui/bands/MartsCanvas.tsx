@@ -38,11 +38,13 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   // The card (mart and alias path) that takes focus once it renders: a ghost chosen with Enter vanishes under the keyboard.
   const [focusCard, setFocusCard] = useState<{ martId: string; path: string } | null>(null);
   const [pinned, setPinned] = useState<string | null>(null);
+  // The drop handler runs after render, so it reads the latest layout through a ref (the layout is built further down).
+  const placedRef = useRef<ReturnType<typeof layoutTree>['placed']>([]);
   const drag = useCanvasDrag(
     treeRef,
     (p) => p !== '',
     (path, x, y) => {
-      const pick = closestTarget(dropTargets(tree, sources ?? [], path), layout.placed, x, y);
+      const pick = closestTarget(dropTargets(tree, sources ?? [], path), placedRef.current, x, y);
       const node = tree.nodes.get(path);
       if (pick && node && pick.moves.size > 0) void click(node.martId, { moves: pick.moves });
     },
@@ -89,6 +91,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     [ghostOf, sources, tree, model],
   );
   const layout = useMemo(() => layoutTree(tree, ghostOf !== null && ghosts.length ? { path: ghostOf, ids: ghosts.map((g) => g.aliasPath) } : undefined), [tree, ghostOf, ghosts]);
+  useEffect(() => { placedRef.current = layout.placed; }, [layout]);
 
   const targets = useMemo(() => (drag ? dropTargets(tree, sources ?? [], drag.path) : []), [drag?.path, tree, sources]); // eslint-disable-line react-hooks/exhaustive-deps
   const valid = new Set(targets.map((t) => t.target));

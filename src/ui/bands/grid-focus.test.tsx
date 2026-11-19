@@ -123,7 +123,7 @@ test('the × takes a joined card and the paths under it out in one step', async 
   await waitFor(() => expect(el('customers', 'customers')).toBeNull());
   expect(el('countries', 'customers.countries')).toBeNull();
   expect(el('countries', 'stores.countries')).not.toBeNull();
-  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Stores', 'Countries']));
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Stores', 'Countries (stores.countries)']));
   await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
   await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
   expect(el('countries', 'customers.countries')).not.toBeNull();

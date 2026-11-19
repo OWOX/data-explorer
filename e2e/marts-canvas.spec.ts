@@ -18,7 +18,7 @@ test('canvas: add marts through ghosts, move countries from customers to stores,
   await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toBeVisible();
   await marts.locator('article[data-ghost][data-mart-id="countries"]').click();
   await expect(page.locator('#tree-wires path[data-from="dm-customers@customers"][data-to="dm-countries@customers.countries"]')).toHaveCount(1);
-  await expect(page.locator('#band-data').getByText('Countries', { exact: true })).toHaveCount(1);
+  await expect(page.locator('#band-data th[data-group="countries"]')).toHaveCount(1);
 
   // Drag countries onto stores: a dashed line shows while dragging.
   const from = await marts.locator('[id="dm-countries@customers.countries"]').boundingBox();
@@ -40,4 +40,36 @@ test('canvas: add marts through ghosts, move countries from customers to stores,
 
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(page.locator('#tree-wires path[data-from="dm-customers@customers"][data-to="dm-countries@customers.countries"]')).toHaveCount(1);
+});
+
+test('canvas: Countries under both Customers and Stores, × removes a subtree, Undo restores it', async ({ page }) => {
+  await page.goto('/?mock');
+  const marts = page.locator('#band-marts');
+  const data = page.locator('#band-data');
+  await marts.getByRole('radio', { name: 'Canvas' }).click();
+  await marts.locator('article#dm-orders').hover();
+  await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
+  await marts.locator('article#dm-orders').hover();
+  await marts.locator('article[data-ghost][data-mart-id="stores"]').click();
+  for (const parent of ['customers', 'stores']) {
+    await marts.locator(`[id="dm-${parent}@${parent}"]`).hover();
+    await marts.locator('article[data-ghost][data-mart-id="countries"]').click();
+    await expect(marts.locator(`[id="dm-countries@${parent}.countries"]`)).toBeVisible();
+  }
+  await expect(marts.locator('article[data-mart-id="countries"]:not([data-ghost])')).toHaveCount(2);
+  await expect(data.locator('th[data-group="countries"]')).toHaveCount(2);
+
+  await page.mouse.move(0, 0);
+  await marts.locator('[id="dm-stores@stores"]').getByRole('button', { name: 'Remove Stores from the report' }).click();
+  await expect(marts.locator('[id="dm-stores@stores"]')).toHaveCount(0);
+  await expect(marts.locator('[id="dm-countries@stores.countries"]')).toHaveCount(0);
+  await expect(marts.locator('[id="dm-countries@customers.countries"]')).toBeVisible();
+  await expect(data.locator('th[data-group="countries"]')).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(marts.locator('[id="dm-stores@stores"]')).toBeVisible();
+  await expect(marts.locator('[id="dm-countries@stores.countries"]')).toBeVisible();
+  await expect(data.locator('th[data-group="countries"]')).toHaveCount(2);
+  await page.mouse.move(0, 0);
+  await page.screenshot({ path: 'tmp/canvas-countries-two-paths.png', clip: await marts.boundingBox() ?? undefined });
 });

@@ -446,13 +446,15 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const cardClick = useContext(CardClickContext);
   // One cell per data mart over its columns, main first; only when a joined mart is on screen.
   const groups = useMemo(() => {
-    const out: { id: string; title: string; icon: string | null | undefined; span: number; main: boolean }[] = [];
+    // A group is a mart at one alias path ('' for the main mart), so a mart joined under two parents is two groups.
+    const out: { id: string; path: string; title: string; icon: string | null | undefined; span: number; main: boolean }[] = [];
     for (const o of outputs) {
       const f = byName.get(o.column)!;
       const id = f.joined?.martId ?? martId;
+      const path = f.joined?.aliasPath ?? '';
       const last = out[out.length - 1];
-      if (last && last.id === id) last.span += 1;
-      else out.push({ id, title: model.marts.get(id)?.title ?? f.joined?.label ?? id, icon: model.marts.get(id)?.icon, span: 1, main: id === martId });
+      if (last && last.path === path) last.span += 1;
+      else out.push({ id, path, title: (f.joined ? f.joined.label : model.marts.get(id)?.title) ?? id, icon: model.marts.get(id)?.icon, span: 1, main: !f.joined });
     }
     return out;
   }, [outputs, byName, model, martId]);
@@ -461,7 +463,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const head = useRef<HTMLTableSectionElement>(null);
   const remove = (id: string, index: number) => {
     // Focus lands on the neighbouring tab's remove button (else its Columns button) once the tab is gone.
-    const next = groups[index + 1]?.id ?? groups[index - 1]?.id;
+    const next = (groups[index + 1] ?? groups[index - 1])?.path;
     // Taking the main tab away promotes the next one and the grid remounts (DataBand keys it by mart): the new grid focuses its Columns button.
     const promoted = id === martId && groups[1] ? groups[1].id : null;
     askFocusFor(promoted);
@@ -471,14 +473,14 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       // Nothing remounted (the click did nothing): the request must not wait for a later mount.
       if (promoted) setTimeout(() => dropFocusFor(promoted), 1000);
       setTimeout(() => {
-        const th = next ? head.current?.querySelector(`th[data-group="${CSS.escape(next)}"]`) : null;
+        const th = next !== undefined ? head.current?.querySelector(`th[data-group-path="${CSS.escape(next)}"]`) : null;
         (th?.querySelector<HTMLElement>('button[data-remove]:not(:disabled)') ?? th?.querySelector<HTMLElement>('button'))?.focus();
       }, 0);
     });
   };
   useEffect(() => {
     if (!isFocusAskedFor(martId)) return;
-    const button = head.current?.querySelector<HTMLElement>(`th[data-group="${CSS.escape(martId)}"] button`);
+    const button = head.current?.querySelector<HTMLElement>(`th[data-group-path=""] button`);
     if (button && takeFocusFor(martId)) button.focus();
   }, [groups, martId]);
   const several = groups.length > 1;
@@ -666,7 +668,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
             </tr>
             <tr data-group-row>
                 {groups.map((g, i) => (
-                  <th key={g.id} data-group={g.id} colSpan={g.span} scope="colgroup" onClick={(e) => {
+                  <th key={g.path} data-group={g.id} data-group-path={g.path} colSpan={g.span} scope="colgroup" onClick={(e) => {
                     // Only the title itself: the Fields and Remove buttons, and clicks inside the Fields popover (portalled, but bubbling through React), keep the selection.
                     const t = e.target as HTMLElement;
                     if (!e.currentTarget.contains(t) || t.closest('button')) return;
