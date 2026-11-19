@@ -1,4 +1,6 @@
+import { describe, expect, test } from 'vitest';
 import type { JoinedSource } from '../api/blendable';
+import { categorizeFieldType } from '../model/field-category';
 import type { Edge, Field } from '../model/types';
 import { buildMartSql, type MartSqlInput } from './build-sql';
 
@@ -88,8 +90,52 @@ test('without a relationship id, the single source-target edge is used; two matc
   expect(buildMartSql(base({ visible: ['customers__city'], sources: [customers([city], { relationshipId: 'gone' })], edges: [] }))).toEqual({ reason: 'The join to "Customers" could not be resolved' });
 });
 
-test('a bracket in a title becomes a parenthesis in the label', () => {
-  expect(buildMartSql(base({ main: { id: 'orders', title: 'Orders [raw]' } }))).toMatchObject({ sql: expect.stringContaining('FROM [Orders (raw)](dm:orders) AS t0') });
+test('a title is escaped as the backend reads it: backslash, brackets, line breaks', () => {
+  expect(buildMartSql(base({ main: { id: 'orders', title: 'Orders [raw]' } }))).toMatchObject({ sql: expect.stringContaining('FROM [Orders \\[raw\\]](dm:orders) AS t0') });
+  expect(buildMartSql(base({ main: { id: 'orders', title: 'C:\\' } }))).toMatchObject({ sql: expect.stringContaining('FROM [C:\\\\](dm:orders) AS t0') });
+});
+
+test('a nested join key is read as a path on BigQuery', () => {
+  const nestedEdges: Edge[] = [{ id: 'e1', source: 'orders', target: 'customers', joins: [{ sourceField: 'geo.country', targetField: 'meta.country' }] }];
+  expect(buildMartSql(base({ visible: ['customers__city'], edges: nestedEdges }))).toMatchObject({ sql: expect.stringContaining('ON t0.`geo`.`country` = t1.`meta`.`country`') });
+});
+
+describe('sorting', () => {
+  const sortBase = (over: Partial<MartSqlInput> = {}) => base({ schema: [f('id', 'INTEGER'), f('status'), city], ...over });
+  test('no ORDER BY without sorts', () => {
+    expect(buildMartSql(sortBase({ sorts: [] }))).not.toMatchObject({ sql: expect.stringContaining('ORDER BY') });
+    expect(buildMartSql(sortBase())).not.toMatchObject({ sql: expect.stringContaining('ORDER BY') });
+  });
+  test('a main sort ends the SQL', () => {
+    expect(buildMartSql(sortBase({ sorts: [{ field: 'id', direction: 'asc' }] }))).toEqual({ sql: 'SELECT\n  t0.`id`\nFROM [Orders](dm:orders) AS t0\nORDER BY t0.`id` ASC' });
+  });
+  test('desc, several keys in order, and after WHERE', () => {
+    const r = buildMartSql(sortBase({ filters: [{ field: 'status', op: 'eq', value: 'x' }], sorts: [{ field: 'status', direction: 'desc' }, { field: 'id', direction: 'asc' }] }));
+    expect(r).toMatchObject({ sql: expect.stringMatching(/WHERE t0\.`status` = 'x'\nORDER BY t0\.`status` DESC, t0\.`id` ASC$/) });
+  });
+  test('a joined sort uses its table and brings the join in', () => {
+    const r = buildMartSql(sortBase({ sorts: [{ field: 'customers__city', direction: 'desc' }] }));
+    expect(r).toEqual({ sql: 'SELECT\n  t0.`id`\nFROM [Orders](dm:orders) AS t0\nLEFT JOIN [Customers](dm:customers) AS t1 ON t0.`customer_id` = t1.`id`\nORDER BY t1.`city` DESC' });
+  });
+  test('a sort on an unknown field is skipped; on a calculated field it is a reason', () => {
+    expect(buildMartSql(sortBase({ sorts: [{ field: 'nope', direction: 'asc' }] }))).toEqual({ sql: 'SELECT\n  t0.`id`\nFROM [Orders](dm:orders) AS t0' });
+    const calc = { ...f('margin', 'INTEGER'), alias: 'Margin', isCalculated: true };
+    expect(buildMartSql(sortBase({ schema: [f('id'), calc], sorts: [{ field: 'margin', direction: 'asc' }] }))).toEqual({ reason: 'Calculated field "Margin" can\'t be used in a data mart. Hide it or remove its filter.' });
+  });
+});
+
+describe('a joined filter on a pre-join aggregated field', () => {
+  const agg = (sourceType: string, type: string): Field => ({ ...f('customers__spend', type, { ...j('customers', 'customers', 'spend')!, sourceType }), category: categorizeFieldType(type) });
+  const run = (field: Field, flt: MartSqlInput['filters'][number]) => buildMartSql(base({ schema: [f('id'), field], visible: ['id'], filters: [flt], sources: [customers([field])] }));
+  test('renders against the raw column type', () => {
+    expect(run(agg('STRING', 'INTEGER'), { field: 'customers__spend', op: 'eq', value: '5' })).toMatchObject({ sql: expect.stringContaining("WHERE t1.`spend` = '5'") });
+  });
+  test('an operator the raw type lacks is a reason', () => {
+    expect(run(agg('STRING', 'INTEGER'), { field: 'customers__spend', op: 'gt', value: 5 })).toEqual({ reason: 'Filter on "customers__spend" can\'t be saved: the joined data mart aggregates this field' });
+  });
+  test('an equal source type changes nothing', () => {
+    expect(run(agg('INTEGER', 'INTEGER'), { field: 'customers__spend', op: 'gt', value: 5 })).toMatchObject({ sql: expect.stringContaining('WHERE t1.`spend` > 5') });
+  });
 });
 
 test('nothing shown is a reason, and an unknown shown column is skipped', () => {

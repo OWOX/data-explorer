@@ -187,12 +187,15 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
   const [sources, setSources] = useState<JoinedSource[]>(initialSources ?? []);
+  // Reading the joined marts failed (cleared when a read starts or succeeds).
+  const [joinsFailed, setJoinsFailed] = useState(false);
   // Refresh raises the tick: the joined marts are read again (the loader's entry was dropped), even when the grid opened with them.
   const [refreshTick, setRefreshTick] = useState(0);
   useEffect(() => {
     if (initialSources && refreshTick === 0) return;
     let live = true;
-    blendable.get(martId).then((s) => { if (live) setSources(s); }, () => undefined);
+    setJoinsFailed(false);
+    blendable.get(martId).then((s) => { if (live) setSources(s); }, () => { if (live) setJoinsFailed(true); });
     return () => { live = false; };
   }, [blendable, martId, initialSources, refreshTick]);
   const schema = useMemo(() => withJoined(native, sources), [native, sources]);
@@ -645,7 +648,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts} onClick={() => { markEdit(); setFilters({}); setParked({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => { onRefresh(); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
-        {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} sorts={gridSorts} rows={rows} hasMore={hasMore} loading={loading} run={run} storage={martStorage} sources={joinsRead ? sources : undefined} edges={model.edges} titles={martTitles} />}
+        {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} sorts={gridSorts} rows={rows} hasMore={hasMore} loading={loading} run={run} storage={martStorage} joinsFailed={joinsFailed && !joinsRead} sources={joinsRead ? sources : undefined} edges={model.edges} titles={martTitles} />}
       </BandTools>
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
       <div ref={scroller} tabIndex={0} onKeyDown={charts ? undefined : onGridKey} onCopy={charts ? undefined : onCopy} className={`dm-grid-root min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>

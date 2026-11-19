@@ -10,6 +10,8 @@ import type { Ctx } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
 import { TooltipProvider } from '../Tooltip';
+import type { Aggregation } from '../../model/aggregation';
+import type { SortKey } from '../../model/sort';
 import type { Edge, Schema } from '../../model/types';
 import type { Row } from '../../sdk/types';
 import { ExportMenu } from './ExportMenu';
@@ -1359,7 +1361,7 @@ describe('Create Data Mart', () => {
   const EDGES = [{ id: 'e1', source: 'orders', target: 'customers', joins: [{ sourceField: 'customer_id', targetField: 'id' }] }] as Edge[];
   const TITLES = new Map([['orders', 'Orders'], ['customers', 'Customers']]);
 
-  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; run?: GridRun } = {}) {
+  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; run?: GridRun; sorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; schema?: Schema } = {}) {
     const base = createMockCtx(demoFixtures({ sheets: 1 }), { latencyMs: 0 });
     const calls: string[] = [];
     const bodies: Record<string, unknown> = {};
@@ -1372,7 +1374,7 @@ describe('Create Data Mart', () => {
         ...b,
         postJson: ((p: string, body: unknown) => { calls.push(`POST ${p}`); bodies[`POST ${p}`] = body; return b.postJson(p, body); }) as Ctx['owox']['postJson'],
         putJson: ((p: string, body: unknown) => {
-          calls.push(`PUT ${p}`);
+          calls.push(`PUT ${p}`); bodies[`PUT ${p}`] = body;
           if (o.publishFails && p.endsWith('/publish')) { o.publishFails = false; return Promise.reject(Object.assign(new Error('x'), { payload: { message: 'Bad SQL' } })); }
           return b.putJson(p, body);
         }) as Ctx['owox']['putJson'],
@@ -1381,7 +1383,7 @@ describe('Create Data Mart', () => {
     };
     const storage = 'storage' in o ? o.storage : { id: 's1', type: 'GOOGLE_BIGQUERY' };
     const sources = 'sources' in o ? o.sources : SOURCES;
-    render(<AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={SCHEMA} visible={['id', 'customers__city']} filters={[]} sorts={[]} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>);
+    render(<AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={o.schema ?? SCHEMA} visible={['id', 'customers__city']} filters={[]} sorts={o.sorts ?? []} aggregation={o.aggregation} joinsFailed={o.joinsFailed} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>);
     return { ctx, calls, bodies, open };
   }
   const item = () => screen.findByRole('menuitem', { name: 'Create Data Mart' });
@@ -1412,6 +1414,24 @@ describe('Create Data Mart', () => {
     expect(await screen.findAllByText("References between data marts aren't available for Legacy Google BigQuery storages")).not.toHaveLength(0);
   });
 
+  test('without storage the reason is its own', async () => {
+    mart({ storage: undefined });
+    await userEvent.click(await screen.findByText('Export'));
+    const it = await item();
+    expect(it).toBeDisabled();
+    await userEvent.hover(it.parentElement!);
+    expect(await screen.findAllByText("The data mart's storage isn't loaded")).not.toHaveLength(0);
+  });
+
+  test('joins that failed to read say so', async () => {
+    mart({ sources: undefined, joinsFailed: true });
+    await userEvent.click(await screen.findByText('Export'));
+    const it = await item();
+    expect(it).toBeDisabled();
+    await userEvent.hover(it.parentElement!);
+    expect(await screen.findAllByText("The data mart's joins couldn't be read")).not.toHaveLength(0);
+  });
+
   test('without sources yet it is disabled while the joins load', async () => {
     mart({ sources: undefined });
     await userEvent.click(await screen.findByText('Export'));
@@ -1427,11 +1447,61 @@ describe('Create Data Mart', () => {
     const name = within(dlg).getByLabelText('Name') as HTMLInputElement;
     expect(name.value).toBe(exportTitle('Orders'));
     expect(name).toHaveFocus();
-    expect(within(dlg).getByText(/references Orders and the 1 joined data marts/)).toBeInTheDocument();
+    expect(within(dlg).getByText(/references Orders and the joined data mart the grid uses/)).toBeInTheDocument();
     const sql = within(dlg).getByLabelText('SQL') as HTMLTextAreaElement;
     expect(sql.value).toContain('FROM [Orders](dm:orders) AS t0');
     expect(sql.value).toContain('LEFT JOIN [Customers](dm:customers)');
     expect(sql.readOnly).toBe(true);
+  });
+
+  test('the sorting box is off by default and the SQL has no ORDER BY', async () => {
+    const t = mart({ sorts: [{ field: 'id', direction: 'desc' }] });
+    const dlg = await openDialog();
+    const box = within(dlg).getByRole('checkbox', { name: 'Include sorting' });
+    expect(box).not.toBeChecked();
+    expect(box).toBeEnabled();
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).not.toContain('ORDER BY');
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    await screen.findByRole('link', { name: /Open/ });
+    expect(JSON.stringify(t.bodies)).not.toContain('ORDER BY');
+  });
+
+  test('checking it puts ORDER BY in the preview and in the created SQL', async () => {
+    const t = mart({ sorts: [{ field: 'id', direction: 'desc' }] });
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Include sorting' }));
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).toContain('ORDER BY t0.`id` DESC');
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    await screen.findByRole('link', { name: /Open/ });
+    const def = Object.entries(t.bodies).find(([k]) => k.includes('/definition'))?.[1] as { definition: { sqlQuery: string } } | undefined;
+    expect(def?.definition.sqlQuery).toContain('ORDER BY t0.`id` DESC');
+  });
+
+  test('with no sorting the box is disabled with a hint', async () => {
+    mart();
+    const dlg = await openDialog();
+    expect(within(dlg).getByRole('checkbox', { name: /Include sorting/ })).toBeDisabled();
+    expect(within(dlg).getByText('The grid has no sorting')).toBeInTheDocument();
+  });
+
+  test('a sort the SQL cannot carry disables the box with its reason', async () => {
+    const calc = { name: 'margin', alias: 'Margin', type: 'INTEGER', category: 'number', description: null, isPrimaryKey: false, isCalculated: true };
+    mart({ schema: [...SCHEMA, calc] as Schema, sorts: [{ field: 'margin', direction: 'asc' }] });
+    const dlg = await openDialog();
+    expect(within(dlg).getByRole('checkbox', { name: /Include sorting/ })).toBeDisabled();
+    expect(within(dlg).getByText(/Calculated field "Margin" can't be used in a data mart/)).toBeInTheDocument();
+  });
+
+  test('a grouped grid adds the note about ungrouped rows', async () => {
+    mart({ aggregation: { aggregations: [{ column: 'id', function: 'SUM' }], dateTrunc: [] } });
+    const dlg = await openDialog();
+    expect(within(dlg).getByText(/The grid groups its rows; the data mart keeps them ungrouped\./)).toBeInTheDocument();
+  });
+
+  test('an ungrouped grid has no such note', async () => {
+    mart();
+    const dlg = await openDialog();
+    expect(within(dlg).queryByText(/keeps them ungrouped/)).toBeNull();
   });
 
   test('Create runs the calls and links to the new mart', async () => {
