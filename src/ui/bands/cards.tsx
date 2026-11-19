@@ -1,5 +1,5 @@
 // The cards themselves, ported from Data Flow: a source card and a data mart card.
-import { Crown, ExternalLink, History, LoaderCircle, Plug } from 'lucide-react';
+import { CircleX, Crown, ExternalLink, History, LoaderCircle, Plug } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Context, DqSummary, Mart, Source } from '../../model/types';
 import { COUNT_CONCURRENCY } from '../../config';
@@ -12,7 +12,8 @@ import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
 
 /** The element id Task 3's lines look cards up by: Data Flow's `src-` prefix and key sanitising. */
 export const sourceElementId = (key: string) => `src-${key.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
-export const martElementId = (id: string) => `dm-${id}`;
+/** A joined mart is a card per alias path, so the path is part of its id; the main mart and the band cards have none. */
+export const martElementId = (martId: string, path?: string) => (path ? `dm-${martId}@${path}` : `dm-${martId}`);
 
 export type CountState =
   | { state: 'idle' }
@@ -137,7 +138,9 @@ export function MartCard({
   ghost = false,
   dropTarget = false,
   dropHot = false,
+  path,
   onMakeMain,
+  onRemove,
   onSelect,
   onOpenApp,
   onRetryCount,
@@ -168,6 +171,10 @@ export function MartCard({
   dropHot?: boolean;
   /** Makes this mart the main one; when absent the card has no make-main button. */
   onMakeMain?: () => void;
+  /** The alias path this card stands for, when the mart is joined at one. */
+  path?: string;
+  /** Takes this joined mart out of the report; when absent the card has no ×. */
+  onRemove?: () => void;
   onSelect: () => void;
   onOpenApp: () => void;
   onRetryCount: () => void;
@@ -192,8 +199,9 @@ export function MartCard({
   return (
     <article
       ref={el}
-      id={martElementId(mart.id)}
+      id={martElementId(mart.id, path)}
       data-mart-id={mart.id}
+      {...(path ? { 'data-path': path } : {})}
       data-node
       data-tone={dqCardTone(quality)}
       aria-pressed={selected || joined}
@@ -202,6 +210,11 @@ export function MartCard({
       {...(ghost ? { 'data-ghost': '' } : {})}
       {...selectable(choose)}
     >
+      {onRemove && (
+        <button type="button" aria-label={`Remove ${mart.title} from the report`} className="dm-card-remove" onClick={(e) => { e.stopPropagation(); onRemove(); }}>
+          <CircleX size={16} />
+        </button>
+      )}
       <div className="dm-node-head">
         {/* Only an icon someone picked: the default box on every card would say nothing. */}
         <PickedIcon icon={mart.icon} wrap="dm-logo" />

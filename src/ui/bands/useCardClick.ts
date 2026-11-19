@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { JoinedSource } from '../../api/blendable';
 import type { Picks } from '../../api/grid-columns';
 import { PAGE_SIZE } from '../../config';
-import { joinedMartIds, planAddAt, planClick, planMakeMain, planRejoin } from '../../state/join-plan';
+import { joinedMartIds, ownNamesIn, planAddAt, planClick, planMakeMain, planRejoin, withoutPaths } from '../../state/join-plan';
 import { sourceOfModel, useServices, useStore, type GridState, type State } from '../../state/store';
 import type { Model } from '../../model/types';
 import { defaultColumns } from '../explorer/useMartRows';
@@ -21,6 +21,8 @@ export type ClickOptions = {
   addAt?: string;
   /** Move marts to new alias paths (a canvas drop). */
   moves?: Map<string, string>;
+  /** Take the marts joined at these alias paths out of the main mart's grid (a canvas card's ×). */
+  removePaths?: string[];
 };
 
 export function useCardClick(model: Model): (id: string, options?: ClickOptions) => Promise<void> {
@@ -86,6 +88,23 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
     }
     const sourceOf = sourceOfModel(model);
     const fresh = (martId: string) => { const g = now.grids[martId]; return g && g.columns.length > 0 ? g : grids.get(martId); };
+    if (options?.removePaths && main) {
+      const sourcesNow = sources.get(main) ?? [];
+      const g = fresh(main) ?? { columns: [], filters: {}, sorts: null, limit: PAGE_SIZE };
+      const own = defaultColumns(schemas.peek(main) ?? []);
+      const next = withoutPaths(g, sourcesNow, options.removePaths, own);
+      if (next === g) { await rendered(); return; }
+      // Each removed mart is remembered with the own fields it showed, as a click that takes one out does.
+      const martIds = new Set(sourcesNow.filter((s) => options.removePaths!.includes(s.aliasPath)).map((s) => s.martId));
+      dispatch({ type: 'setMarts', selection: now.selection, grids: { [main]: next } });
+      columnStore.save(main, next.columns);
+      for (const martId of martIds) {
+        const fields = ownNamesIn(g.columns, sourcesNow, martId);
+        if (fields.length > 0) columnStore.saveLastShown(martId, fields);
+      }
+      await rendered();
+      return;
+    }
     if ((options?.addAt !== undefined || options?.moves) && main) {
       const sourcesNow = sources.get(main) ?? [];
       const g = fresh(main) ?? { columns: [], filters: {}, sorts: null, limit: PAGE_SIZE };

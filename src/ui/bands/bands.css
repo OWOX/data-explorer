@@ -206,6 +206,16 @@
 .dm-node:hover .dm-card-reveal, .dm-node:focus-visible .dm-card-reveal, .dm-node:has(:focus-visible) .dm-card-reveal,
 .dm-card-reveal:has([data-state='delayed-open'], [data-state='instant-open']) { opacity: 1; }
 @media (hover: none) and (pointer: coarse) { .dm-card-reveal { opacity: 1; } }
+/* The × that takes a joined mart out sits on the card's top-left corner and shows like the other card controls. */
+.dm-card-remove {
+  position: absolute; top: -0.5rem; left: -0.5rem; z-index: 3;
+  display: inline-flex; padding: 0; border: 0; border-radius: 999px;
+  background: var(--card); color: var(--muted-foreground); cursor: pointer;
+  opacity: 0; transition: opacity 120ms;
+}
+.dm-card-remove:hover { color: var(--foreground); }
+.dm-node:hover .dm-card-remove, .dm-node:focus-visible .dm-card-remove, .dm-node:has(:focus-visible) .dm-card-remove, .dm-card-remove:focus-visible { opacity: 1; }
+@media (hover: none) and (pointer: coarse) { .dm-card-remove { opacity: 1; } }
 .dm-link { display: inline-flex; color: var(--muted-foreground); }
 .dm-link:hover { color: var(--foreground); }
 
