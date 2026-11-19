@@ -555,6 +555,8 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-export-item:hover { background: var(--muted); }
 .dm-export-item svg { color: var(--muted-foreground); flex-shrink: 0; }
 .dm-export-menu { min-width: 14rem; }
+/* .dm-menu-sep draws with --menu-line, which only the column menu (.dm-menu) defines. */
+.dm-export-menu .dm-menu-sep { margin: 4px 0; border-top-color: var(--border); }
 .dm-export-ai-row { display: flex; align-items: center; border-radius: 0.375rem; }
 .dm-export-ai-row:hover { background: var(--muted); }
 .dm-export-ai-row > .dm-export-item { flex: 1; min-width: 0; }

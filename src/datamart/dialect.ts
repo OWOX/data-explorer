@@ -1,0 +1,224 @@
+import type { ColumnFilter } from '../filters/build';
+import { toTraverseFilter } from '../filters/build';
+import type { Field } from '../model/types';
+import type { RelativeDatePreset } from '../sdk/types';
+
+export type Dialect = 'bigquery' | 'athena' | 'snowflake' | 'redshift' | 'databricks';
+
+const DIALECT_BY_STORAGE: Record<string, Dialect> = {
+  GOOGLE_BIGQUERY: 'bigquery',
+  AWS_ATHENA: 'athena',
+  SNOWFLAKE: 'snowflake',
+  AWS_REDSHIFT: 'redshift',
+  DATABRICKS: 'databricks',
+};
+
+/** The dialect of a storage type, or why a data mart there cannot reference others. */
+export function dialectFor(storageType: string): { dialect: Dialect } | { reason: string } {
+  if (storageType === 'LEGACY_GOOGLE_BIGQUERY') return { reason: "References between data marts aren't available for Legacy Google BigQuery storages" };
+  const dialect = DIALECT_BY_STORAGE[storageType];
+  return dialect ? { dialect } : { reason: 'Not available for this storage type' };
+}
+
+const quoteChar = (d: Dialect) => (d === 'bigquery' || d === 'databricks' ? '`' : '"');
+
+/** One identifier, quoted for the dialect (`a.b` stays one identifier). */
+export function quoteIdent(d: Dialect, name: string): string {
+  const q = quoteChar(d);
+  return `${q}${name.split(q).join(q + q)}${q}`;
+}
+
+/** A nested path `address.city` as the dialect reads it from table alias `t` (empty for a bare reference): BigQuery `t.address.city` with each part quoted, the others one quoted identifier. */
+export function columnRef(d: Dialect, tableAlias: string, name: string): string {
+  const path = d === 'bigquery' ? name.split('.').map((p) => quoteIdent(d, p)).join('.') : quoteIdent(d, name);
+  return tableAlias ? `${tableAlias}.${path}` : path;
+}
+
+type Scalar = string | number;
+
+/** A SQL literal: a number must be finite. Strings are escaped per dialect: BigQuery by backslash sequences, Redshift builds a backslash with CHR(92) so the standard_conforming_strings setting cannot change it, the rest double `'`. */
+function literal(d: Dialect, v: Scalar): string {
+  if (typeof v === 'number') {
+    if (!Number.isFinite(v)) throw new Error(`Non-finite filter value: ${String(v)}`);
+    return String(v);
+  }
+  switch (d) {
+    case 'bigquery': return `'${v.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r')}'`;
+    case 'redshift': {
+      const parts = v.split('\\').map((p) => `'${p.replace(/'/g, "''")}'`);
+      return parts.length === 1 ? parts[0]! : `(${parts.join(' || CHR(92) || ')})`;
+    }
+    case 'athena': return `'${v.replace(/'/g, "''")}'`;
+    default: return `'${v.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
+  }
+}
+
+/** The column types whose compared value is cast to the column's own type, per dialect (as the backend renderers do). */
+const CAST_TYPES: Record<Dialect, ReadonlySet<string>> = {
+  bigquery: new Set(['DATE', 'DATETIME', 'TIME', 'TIMESTAMP']),
+  athena: new Set(['DATE', 'TIME', 'TIMESTAMP', 'TIME WITH TIME ZONE', 'TIMESTAMP WITH TIME ZONE']),
+  snowflake: new Set(['DATE', 'TIME', 'TIMESTAMP']),
+  redshift: new Set(),
+  databricks: new Set(['DATE', 'TIMESTAMP', 'TIMESTAMP_NTZ']),
+};
+
+/** BigQuery columns with a time part: relative dates compare their DATE part. */
+const BQ_SUBDAY = new Set(['DATETIME', 'TIMESTAMP', 'TIMESTAMP WITH TIME ZONE']);
+
+/** A string column is blank when NULL, empty or whitespace only; the trim form differs per dialect. */
+const trimmed = (d: Dialect, col: string): string => {
+  switch (d) {
+    case 'snowflake': return `TRIM(${col}, ' \\t\\n\\r')`;
+    case 'redshift': return `BTRIM(${col}, ' ' || CHR(9) || CHR(10) || CHR(13))`;
+    case 'databricks': return `TRIM(BOTH ' \\t\\n\\r' FROM ${col})`;
+    default: return `TRIM(${col})`;
+  }
+};
+
+/** `n` goes into the SQL as is, so it must be a whole number. */
+function wholeN(n: number): number {
+  if (!Number.isInteger(n) || n < 0) throw new Error(`Invalid relative_date n: ${String(n)}`);
+  return n;
+}
+
+/** A relative date preset as a range on `col`, with the current-date arithmetic of the dialect. */
+function relative(d: Dialect, col: string, p: RelativeDatePreset, type: string): string {
+  const n = 'n' in p ? wholeN(p.n) : 0;
+  switch (d) {
+    case 'bigquery': {
+      const c = BQ_SUBDAY.has(type) ? `DATE(${col})` : col;
+      const today = 'CURRENT_DATE()';
+      const trunc = (unit: string, base = today) => `DATE_TRUNC(${base}, ${unit})`;
+      switch (p.kind) {
+        case 'today': return `${c} = ${today}`;
+        case 'yesterday': return `${c} = DATE_SUB(${today}, INTERVAL 1 DAY)`;
+        case 'last_n_days': return `${c} >= DATE_SUB(${today}, INTERVAL ${n} DAY) AND ${c} <= ${today}`;
+        case 'last_n_months': return `${c} >= DATE_SUB(${today}, INTERVAL ${n} MONTH) AND ${c} <= ${today}`;
+        case 'this_week': return `${c} >= ${trunc('ISOWEEK')} AND ${c} < DATE_ADD(${trunc('ISOWEEK')}, INTERVAL 7 DAY)`;
+        case 'last_week': return `${c} >= DATE_SUB(${trunc('ISOWEEK')}, INTERVAL 7 DAY) AND ${c} < ${trunc('ISOWEEK')}`;
+        case 'this_month': return `${c} >= ${trunc('MONTH')} AND ${c} < DATE_ADD(${trunc('MONTH')}, INTERVAL 1 MONTH)`;
+        case 'last_month': return `${c} >= ${trunc('MONTH', `DATE_SUB(${today}, INTERVAL 1 MONTH)`)} AND ${c} < ${trunc('MONTH')}`;
+        case 'this_quarter': return `${c} >= ${trunc('QUARTER')} AND ${c} < DATE_ADD(${trunc('QUARTER')}, INTERVAL 3 MONTH)`;
+        case 'last_quarter': return `${c} >= DATE_SUB(${trunc('QUARTER')}, INTERVAL 3 MONTH) AND ${c} < ${trunc('QUARTER')}`;
+        case 'this_year': return `${c} >= ${trunc('YEAR')} AND ${c} < DATE_ADD(${trunc('YEAR')}, INTERVAL 1 YEAR)`;
+      }
+      break;
+    }
+    case 'athena': {
+      const today = 'current_date';
+      const tr = (unit: string, base = today) => `date_trunc('${unit}', ${base})`;
+      const add = (unit: string, k: number, base: string) => `date_add('${unit}', ${k}, ${base})`;
+      switch (p.kind) {
+        case 'today': return `${col} >= ${today} AND ${col} < ${add('day', 1, today)}`;
+        case 'yesterday': return `${col} >= ${add('day', -1, today)} AND ${col} < ${today}`;
+        case 'last_n_days': return `${col} >= ${add('day', -n, today)} AND ${col} < ${add('day', 1, today)}`;
+        case 'last_n_months': return `${col} >= ${add('month', -n, today)} AND ${col} < ${add('day', 1, today)}`;
+        case 'this_week': return `${col} >= ${tr('week')} AND ${col} < ${add('week', 1, tr('week'))}`;
+        case 'last_week': return `${col} >= ${add('week', -1, tr('week'))} AND ${col} < ${tr('week')}`;
+        case 'this_month': return `${col} >= ${tr('month')} AND ${col} < ${add('month', 1, tr('month'))}`;
+        case 'last_month': return `${col} >= ${tr('month', add('month', -1, today))} AND ${col} < ${tr('month')}`;
+        case 'this_quarter': return `${col} >= ${tr('quarter')} AND ${col} < ${add('month', 3, tr('quarter'))}`;
+        case 'last_quarter': return `${col} >= ${add('month', -3, tr('quarter'))} AND ${col} < ${tr('quarter')}`;
+        case 'this_year': return `${col} >= ${tr('year')} AND ${col} < ${add('year', 1, tr('year'))}`;
+      }
+      break;
+    }
+    case 'snowflake':
+    case 'redshift': {
+      const today = 'CURRENT_DATE';
+      const tr = (unit: string, base = today) => `DATE_TRUNC('${unit}', ${base})`;
+      const add = (unit: string, k: number | string, base: string) => `DATEADD(${unit}, ${k}, ${base})`;
+      const sf = d === 'snowflake';
+      const wk = sf ? `DAYOFWEEKISO(${today})` : '';
+      switch (p.kind) {
+        case 'today': return `${col} >= ${today} AND ${col} < ${add('day', 1, today)}`;
+        case 'yesterday': return `${col} >= ${add('day', -1, today)} AND ${col} < ${today}`;
+        case 'last_n_days': return `${col} >= ${add('day', -n, today)} AND ${col} < ${add('day', 1, today)}`;
+        case 'last_n_months': return `${col} >= ${add('month', -n, today)} AND ${col} < ${add('day', 1, today)}`;
+        case 'this_week': return sf
+          ? `${col} >= ${add('day', `1 - ${wk}`, today)} AND ${col} < ${add('day', `8 - ${wk}`, today)}`
+          : `${col} >= ${tr('week')} AND ${col} < ${add('day', 7, tr('week'))}`;
+        case 'last_week': return sf
+          ? `${col} >= ${add('day', `-6 - ${wk}`, today)} AND ${col} < ${add('day', `1 - ${wk}`, today)}`
+          : `${col} >= ${add('day', -7, tr('week'))} AND ${col} < ${tr('week')}`;
+        case 'this_month': return `${col} >= ${tr('month')} AND ${col} < ${add('month', 1, tr('month'))}`;
+        case 'last_month': return `${col} >= ${tr('month', add('month', -1, today))} AND ${col} < ${tr('month')}`;
+        case 'this_quarter': return `${col} >= ${tr('quarter')} AND ${col} < ${add('month', 3, tr('quarter'))}`;
+        case 'last_quarter': return `${col} >= ${add('month', -3, tr('quarter'))} AND ${col} < ${tr('quarter')}`;
+        case 'this_year': return `${col} >= ${tr('year')} AND ${col} < ${add('year', 1, tr('year'))}`;
+      }
+      break;
+    }
+    case 'databricks': {
+      const today = 'CURRENT_DATE';
+      const tr = (unit: string) => `trunc(${today}, '${unit}')`;
+      const days = (k: number, base = today) => `date_add(${base}, ${k})`;
+      const months = (k: number, base: string) => `add_months(${base}, ${k})`;
+      switch (p.kind) {
+        case 'today': return `${col} >= ${today} AND ${col} < ${days(1)}`;
+        case 'yesterday': return `${col} >= ${days(-1)} AND ${col} < ${today}`;
+        case 'last_n_days': return `${col} >= ${days(-n)} AND ${col} < ${days(1)}`;
+        case 'last_n_months': return `${col} >= ${months(-n, today)} AND ${col} < ${days(1)}`;
+        case 'this_week': return `${col} >= ${tr('WEEK')} AND ${col} < ${days(7, tr('WEEK'))}`;
+        case 'last_week': return `${col} >= ${days(-7, tr('WEEK'))} AND ${col} < ${tr('WEEK')}`;
+        case 'this_month': return `${col} >= ${tr('MONTH')} AND ${col} < ${months(1, tr('MONTH'))}`;
+        case 'last_month': return `${col} >= ${months(-1, tr('MONTH'))} AND ${col} < ${tr('MONTH')}`;
+        case 'this_quarter': return `${col} >= ${tr('QUARTER')} AND ${col} < ${months(3, tr('QUARTER'))}`;
+        case 'last_quarter': return `${col} >= ${months(-3, tr('QUARTER'))} AND ${col} < ${tr('QUARTER')}`;
+        case 'this_year': return `${col} >= ${tr('YEAR')} AND ${col} < ${months(12, tr('YEAR'))}`;
+      }
+      break;
+    }
+  }
+  throw new Error(`Unknown relative_date kind: ${(p as { kind: string }).kind}`);
+}
+
+/** One complete filter as a SQL predicate on `col` (already a column reference). */
+export function renderFilter(d: Dialect, col: string, field: Field, f: ColumnFilter): string {
+  const t = toTraverseFilter(f, field);
+  const type = field.type.trim().toUpperCase();
+  const cast = CAST_TYPES[d].has(type);
+  /** A compared value, cast to the column type on date and time columns. */
+  const lit = (v: Scalar) => (cast ? `CAST(${literal(d, v)} AS ${type})` : literal(d, v));
+  /** A pattern or substring: always text. */
+  const text = (v: Scalar) => literal(d, String(v));
+  switch (t.operator) {
+    case 'eq': return `${col} = ${lit(t.value)}`;
+    case 'neq': return `(${col} IS NULL OR ${col} <> ${lit(t.value)})`;
+    case 'gt': return `${col} > ${lit(t.value)}`;
+    case 'lt': return `${col} < ${lit(t.value)}`;
+    case 'gte': return `${col} >= ${lit(t.value)}`;
+    case 'lte': return `${col} <= ${lit(t.value)}`;
+    case 'contains': {
+      const v = text(t.value);
+      return { bigquery: `STRPOS(${col}, ${v}) > 0`, athena: `strpos(${col}, ${v}) > 0`, snowflake: `CONTAINS(${col}, ${v})`, redshift: `STRPOS(${col}, ${v}) > 0`, databricks: `contains(${col}, ${v})` }[d];
+    }
+    case 'not_contains': {
+      const v = text(t.value);
+      return { bigquery: `(${col} IS NULL OR STRPOS(${col}, ${v}) = 0)`, athena: `(${col} IS NULL OR strpos(${col}, ${v}) = 0)`, snowflake: `(${col} IS NULL OR NOT CONTAINS(${col}, ${v}))`, redshift: `(${col} IS NULL OR STRPOS(${col}, ${v}) = 0)`, databricks: `(${col} IS NULL OR NOT contains(${col}, ${v}))` }[d];
+    }
+    case 'starts_with': {
+      const v = text(t.value);
+      return { bigquery: `STARTS_WITH(${col}, ${v})`, athena: `strpos(${col}, ${v}) = 1`, snowflake: `STARTSWITH(${col}, ${v})`, redshift: `STRPOS(${col}, ${v}) = 1`, databricks: `startswith(${col}, ${v})` }[d];
+    }
+    case 'ends_with': {
+      const v = text(t.value);
+      return { bigquery: `ENDS_WITH(${col}, ${v})`, athena: `substr(${col}, -length(${v})) = ${v}`, snowflake: `ENDSWITH(${col}, ${v})`, redshift: `RIGHT(${col}, LEN(${v})) = ${v}`, databricks: `endswith(${col}, ${v})` }[d];
+    }
+    case 'is_blank':
+    case 'is_not_blank': {
+      const blank = t.operator === 'is_blank';
+      if (field.category !== 'string') return `${col} IS ${blank ? '' : 'NOT '}NULL`;
+      return blank ? `(${col} IS NULL OR ${trimmed(d, col)} = '')` : `(${col} IS NOT NULL AND ${trimmed(d, col)} <> '')`;
+    }
+    case 'is_true': return `${col} = TRUE`;
+    case 'is_false': return `${col} = FALSE`;
+    case 'between': return `${col} BETWEEN ${lit(t.value.from)} AND ${lit(t.value.to)}`;
+    case 'in':
+    case 'not_in': {
+      const list = (t.value as Scalar[]).map(lit).join(', ');
+      return t.operator === 'in' ? `${col} IN (${list})` : `(${col} IS NULL OR ${col} NOT IN (${list}))`;
+    }
+    case 'relative_date': return relative(d, col, t.value, type);
+  }
+}

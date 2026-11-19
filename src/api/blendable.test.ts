@@ -22,6 +22,11 @@ const dto: BlendableSchemaDto = {
   ],
 };
 
+test('joinedSources keeps the relationship id of a source', () => {
+  const sources = joinedSources({ availableSources: [{ aliasPath: 'a', title: 'A', depth: 1, dataMartId: 'a', isIncluded: true, isAccessibleForReporting: true, relationshipId: 'r1' }], blendedFields: [{ name: 'a__x', aliasPath: 'a', sourceDataMartId: 'a', originalFieldName: 'x', type: 'STRING' }] });
+  expect(sources[0]!.relationshipId).toBe('r1');
+});
+
 test('joinedSources offers included, readable sources only, with no hidden or calculated field, shallow ones first', () => {
   const sources = joinedSources(dto);
   expect(sources.map((s) => s.aliasPath)).toEqual(['customers', 'customers.countries', 'stores.countries']);
@@ -48,6 +53,15 @@ test('a joined field whose source type is an array only offers the blank filters
     ],
   });
   expect(s!.fields.map((f) => f.category)).toEqual(['other', 'string']);
+});
+
+test('a joined field keeps its raw source type next to its effective type', () => {
+  const [s] = joinedSources({
+    availableSources: [{ aliasPath: 'a', title: 'A', depth: 1, dataMartId: 'a', isIncluded: true, isAccessibleForReporting: true }],
+    blendedFields: [{ name: 'a__n', aliasPath: 'a', sourceDataMartId: 'a', originalFieldName: 'n', type: 'INTEGER', sourceFieldType: 'STRING' }],
+  });
+  expect(s!.fields[0]!.joined).toMatchObject({ sourceType: 'STRING' });
+  expect(s!.fields[0]!.type).toBe('INTEGER');
 });
 
 test('a source with no field left to offer is left out', () => {
@@ -124,4 +138,12 @@ test('a read that was in flight when the mart was invalidated is not remembered'
   expect(loader.peek('m')).toBeUndefined();
   await loader.get('m');
   expect(getJson).toHaveBeenCalledTimes(2);
+});
+
+test('joinedSources carries the main grain multiplication of a source, and omits it when absent', () => {
+  const field = (a: string) => ({ name: `${a}__x`, aliasPath: a, sourceDataMartId: a, originalFieldName: 'x', type: 'STRING' });
+  const src = (a: string, m?: 'none' | 'multiplies' | 'unknown') => ({ aliasPath: a, title: a, depth: 1, dataMartId: a, isIncluded: true, isAccessibleForReporting: true, ...(m ? { mainGrainMultiplication: m } : {}) });
+  const sources = joinedSources({ availableSources: [src('a', 'multiplies'), src('b', 'none'), src('c')], blendedFields: [field('a'), field('b'), field('c')] });
+  expect(sources.map((x) => x.mainGrainMultiplication)).toEqual(['multiplies', 'none', undefined]);
+  expect('mainGrainMultiplication' in sources[2]!).toBe(false);
 });

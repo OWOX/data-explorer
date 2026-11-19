@@ -1,14 +1,18 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
-import { POLL_INTERVAL_MS, POLL_TIMEOUT_MS, type StoredReport } from '../../api/exports';
+import type { JoinedSource } from '../../api/blendable';
+import { exportTitle, POLL_INTERVAL_MS, POLL_TIMEOUT_MS, type StoredReport } from '../../api/exports';
+import { martAppUrl } from '../../config';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { Ctx } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
 import { TooltipProvider } from '../Tooltip';
-import type { Schema } from '../../model/types';
+import type { Aggregation } from '../../model/aggregation';
+import type { SortKey } from '../../model/sort';
+import type { Edge, Schema } from '../../model/types';
 import type { Row } from '../../sdk/types';
 import { ExportMenu } from './ExportMenu';
 import type { GridRun } from './useMartRows';
@@ -55,13 +59,13 @@ const exportNew = async () => {
 const rowsLoaded = () => waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
 const REPORT: StoredReport = { reportId: 'mock-report-1' };
 
-test('with no Google Sheets destination Export is still a menu: the assistants, one separator, then the copy items', async () => {
+test('with no Google Sheets destination Export is still a menu: the assistants, a separator, the copy items, a separator, then Create Data Mart', async () => {
   const t = setup(0);
   t.view();
   await rowsLoaded();
   await userEvent.click(await within(data()).findByText('Export'));
-  expect(within(data()).getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link')).map((r) => r.textContent)).toEqual(['Claude', 'ChatGPT', 'Copy to clipboard', 'Copy SQL']);
-  expect(within(data()).getAllByRole('separator')).toHaveLength(1);
+  expect(within(data()).getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link')).map((r) => r.textContent)).toEqual(['Claude', 'ChatGPT', 'Copy to clipboard', 'Copy SQL', 'Create Data Mart']);
+  expect(within(data()).getAllByRole('separator')).toHaveLength(2);
   // no "AI" sub-header
   expect(within(data()).queryByText('AI')).toBeNull();
   expect(within(data()).getByRole('menuitem', { name: 'Claude' }).closest('.dm-export-ai')).not.toBeNull();
@@ -100,19 +104,19 @@ test('the Export button carries the archive-restore icon, and the Google Sheets 
 });
 
 describe('the menu', () => {
-  test('order: Claude, ChatGPT, a separator, one row per destination, a separator, Copy to clipboard, Copy SQL; no chevron, no flyout', async () => {
+  test('order: Claude, ChatGPT, a separator, one row per destination, a separator, Copy to clipboard, Copy SQL, a separator, Create Data Mart; no chevron, no flyout', async () => {
     const t = setup(2);
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     const rows = (await within(data()).findAllByRole('menuitem')).filter((r) => !r.hasAttribute('data-link'));
-    expect(rows.map((r) => r.textContent)).toEqual(['Claude', 'ChatGPT', 'Team Sheets', 'Finance Sheets', 'Copy to clipboard', 'Copy SQL']);
+    expect(rows.map((r) => r.textContent)).toEqual(['Claude', 'ChatGPT', 'Team Sheets', 'Finance Sheets', 'Copy to clipboard', 'Copy SQL', 'Create Data Mart']);
     for (const r of rows.slice(2, 4)) { expect(r.querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull(); expect(r.querySelectorAll('svg')).toHaveLength(1); expect(r).not.toHaveAttribute('aria-haspopup'); }
     expect(within(data()).queryByText('Google Sheets')).toBeNull();
     expect(within(data()).queryByText(/Looker/)).toBeNull();
     // The separators sit between the groups.
     const menu = within(data()).getByRole('menu');
-    expect([...menu.children].map((c) => c.getAttribute('role') === 'separator' ? '-' : c.getAttribute('aria-label'))).toEqual(['Assistants', '-', 'Destinations', '-', 'Copy']);
+    expect([...menu.children].map((c) => c.getAttribute('role') === 'separator' ? '-' : c.getAttribute('aria-label'))).toEqual(['Assistants', '-', 'Destinations', '-', 'Copy', '-', 'Data mart']);
     // Hovering a destination opens nothing.
     await userEvent.hover(rows[2]!);
     expect(within(data()).queryByRole('menu', { name: 'Team Sheets' })).toBeNull();
@@ -866,7 +870,7 @@ describe('the AI group', () => {
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     const items = (await within(data()).findAllByRole('menuitem')).filter((r) => !r.hasAttribute('data-link'));
-    expect(items.map((i) => i.textContent)).toEqual(['Claude', 'ChatGPT', 'Team Sheets', 'Copy to clipboard', 'Copy SQL']);
+    expect(items.map((i) => i.textContent)).toEqual(['Claude', 'ChatGPT', 'Team Sheets', 'Copy to clipboard', 'Copy SQL', 'Create Data Mart']);
     expect(items[0]!.querySelector('svg path[fill="#D97757"]')).not.toBeNull();
     expect(items[1]!.querySelector('svg')).not.toBeNull();
   });
@@ -1039,7 +1043,7 @@ describe('Copy to clipboard', () => {
     const item = await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' });
     expect(item.querySelector('svg.lucide-copy')).not.toBeNull();
     const all = within(data()).getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link'));
-    expect(all.slice(-2).map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Copy SQL']);
+    expect(all.slice(-3).map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Copy SQL', 'Create Data Mart']);
     expect(item.closest('[role="group"]')!.previousElementSibling).toHaveAttribute('role', 'separator');
   });
 
@@ -1110,15 +1114,18 @@ describe('Copy to clipboard', () => {
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
     const item = await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' });
-    // Copy SQL is the last stop once OWOX has the grid's SQL; ArrowUp from the first row wraps to it.
+    // Create Data Mart is the last stop once the grid's joins are read; ArrowUp from the first row wraps to it.
     await waitFor(() => expect(within(data()).getByRole('menuitem', { name: 'Copy SQL' })).toBeEnabled());
+    await waitFor(() => expect(within(data()).getByRole('menuitem', { name: 'Create Data Mart' })).toBeEnabled());
     item.focus();
     await userEvent.keyboard('{ArrowDown}');
     expect(within(data()).getByRole('menuitem', { name: 'Copy SQL' })).toHaveFocus();
     await userEvent.keyboard('{ArrowDown}');
+    expect(within(data()).getByRole('menuitem', { name: 'Create Data Mart' })).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}');
     expect(within(data()).getByRole('menuitem', { name: 'Claude' })).toHaveFocus();
     await userEvent.keyboard('{ArrowUp}');
-    expect(within(data()).getByRole('menuitem', { name: 'Copy SQL' })).toHaveFocus();
+    expect(within(data()).getByRole('menuitem', { name: 'Create Data Mart' })).toHaveFocus();
   });
 
   describe('the toast timer never closes a dialog', () => {
@@ -1182,8 +1189,8 @@ describe('Copy SQL', () => {
     lone(undefined);
     await userEvent.click(await screen.findByText('Export'));
     const items = screen.getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link'));
-    expect(items.at(-1)).toHaveTextContent('Copy SQL');
-    expect(items.at(-2)).toHaveTextContent('Copy to clipboard');
+    expect(items.at(-2)).toHaveTextContent('Copy SQL');
+    expect(items.at(-3)).toHaveTextContent('Copy to clipboard');
   });
 
   test.each([
@@ -1344,5 +1351,286 @@ describe('Copy SQL', () => {
     (await screen.findByRole('menuitem', { name: 'Claude' })).focus();
     await userEvent.keyboard('{ArrowUp}');
     expect(screen.getByRole('menuitem', { name: 'Copy to clipboard' })).toHaveFocus();
+  });
+});
+
+describe('Create Data Mart', () => {
+  const CITY = { name: 'customers__city', alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: 'customers', label: 'Customers', aliasPath: 'customers', originalName: 'city' } };
+  const SCHEMA = [{ name: 'id', alias: null, type: 'INTEGER', category: 'number', description: null, isPrimaryKey: false }, CITY] as Schema;
+  const SOURCES = [{ aliasPath: 'customers', martId: 'customers', label: 'Customers', depth: 1, fields: [CITY], uniqueCount: true, relationshipId: 'e1', mainGrainMultiplication: 'none' }] as unknown as JoinedSource[];
+  const EDGES = [{ id: 'e1', source: 'orders', target: 'customers', joins: [{ sourceField: 'customer_id', targetField: 'id' }] }] as Edge[];
+  const TITLES = new Map([['orders', 'Orders'], ['customers', 'Customers']]);
+
+  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; failAt?: string; deleteFails?: boolean; storageUnavailable?: boolean; run?: GridRun; sorts?: SortKey[]; ownSorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; schema?: Schema } = {}) {
+    const base = createMockCtx(demoFixtures({ sheets: 1 }), { latencyMs: 0 });
+    const calls: string[] = [];
+    const bodies: Record<string, unknown> = {};
+    const open = vi.fn(async () => {});
+    const b = base.owox;
+    const ctx: Ctx = {
+      ...base,
+      ui: { openExternal: open },
+      owox: {
+        ...b,
+        postJson: ((p: string, body: unknown) => { calls.push(`POST ${p}`); bodies[`POST ${p}`] = body; return b.postJson(p, body); }) as Ctx['owox']['postJson'],
+        deleteJson: ((p: string) => { calls.push(`DELETE ${p}`); return o.deleteFails ? Promise.reject(Object.assign(new Error('x'), { payload: { message: 'No rights' } })) : b.deleteJson(p); }) as Ctx['owox']['deleteJson'],
+        putJson: ((p: string, body: unknown) => {
+          calls.push(`PUT ${p}`); bodies[`PUT ${p}`] = body;
+          if (o.failAt && p.endsWith(`/${o.failAt}`)) { o.failAt = undefined; return Promise.reject(Object.assign(new Error('x'), { payload: { message: `${p.split('/').pop()} failed` } })); }
+          if (o.publishFails && p.endsWith('/publish')) { o.publishFails = false; return Promise.reject(Object.assign(new Error('x'), { payload: { message: 'Bad SQL' } })); }
+          return b.putJson(p, body);
+        }) as Ctx['owox']['putJson'],
+        getJson: ((p: string, q?: Record<string, string>) => { calls.push(`GET ${p}`); return p.includes('/runs/') ? Promise.resolve({ additionalParams: { httpData: { executionSqlQuery: 'SELECT 1' } } }) : b.getJson(p, q); }) as Ctx['owox']['getJson'],
+      },
+    };
+    const storage = 'storage' in o ? o.storage : { id: 's1', type: 'GOOGLE_BIGQUERY' };
+    const sources = 'sources' in o ? o.sources : SOURCES;
+    render(<AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={o.schema ?? SCHEMA} visible={['id', 'customers__city']} filters={[]} sorts={o.sorts ?? []} ownSorts={o.ownSorts ?? o.sorts ?? []} aggregation={o.aggregation} joinsFailed={o.joinsFailed} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} storageUnavailable={o.storageUnavailable} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>);
+    return { ctx, calls, bodies, open };
+  }
+  const item = () => screen.findByRole('menuitem', { name: 'Create Data Mart' });
+  const openDialog = async () => {
+    await userEvent.click(await screen.findByText('Export'));
+    await userEvent.click(await item());
+    return screen.findByRole('dialog', { name: 'Create Data Mart' });
+  };
+  const owoxCalls = (calls: string[]) => calls.filter((c) => c.includes('/api/data-marts') && !c.includes('destinations'));
+
+  test('the menu has three separators and the new item comes last', async () => {
+    mart();
+    await userEvent.click(await screen.findByText('Export'));
+    const menu = (await item()).closest('[role="menu"]')!;
+    expect(menu.querySelectorAll('[role="separator"]')).toHaveLength(3);
+    const items = within(menu as HTMLElement).getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link'));
+    expect(items.at(-1)).toHaveTextContent('Create Data Mart');
+    expect(items.at(-1)).toHaveAttribute('data-action', 'create-mart');
+    expect(items.at(-1)!.closest('[role="group"]')).toHaveAttribute('aria-label', 'Data mart');
+  });
+
+  test('legacy BigQuery disables it with the reason', async () => {
+    mart({ storage: { id: 's1', type: 'LEGACY_GOOGLE_BIGQUERY' } });
+    await userEvent.click(await screen.findByText('Export'));
+    const it = await item();
+    expect(it).toBeDisabled();
+    await userEvent.hover(it.parentElement!);
+    expect(await screen.findAllByText("References between data marts aren't available for Legacy Google BigQuery storages")).not.toHaveLength(0);
+  });
+
+  test('without storage the reason is its own', async () => {
+    mart({ storage: undefined });
+    await userEvent.click(await screen.findByText('Export'));
+    const it = await item();
+    expect(it).toBeDisabled();
+    await userEvent.hover(it.parentElement!);
+    expect(await screen.findAllByText("The data mart's storage isn't loaded")).not.toHaveLength(0);
+  });
+
+  test('joins that failed to read say so', async () => {
+    mart({ sources: undefined, joinsFailed: true });
+    await userEvent.click(await screen.findByText('Export'));
+    const it = await item();
+    expect(it).toBeDisabled();
+    await userEvent.hover(it.parentElement!);
+    expect(await screen.findAllByText("The data mart's joins couldn't be read")).not.toHaveLength(0);
+  });
+
+  test('without sources yet it is disabled while the joins load', async () => {
+    mart({ sources: undefined });
+    await userEvent.click(await screen.findByText('Export'));
+    const it = await item();
+    expect(it).toBeDisabled();
+    await userEvent.hover(it.parentElement!);
+    expect(await screen.findAllByText("Loading the data mart's joins…")).not.toHaveLength(0);
+  });
+
+  test('the dialog opens with the default name and the SQL', async () => {
+    mart();
+    const dlg = await openDialog();
+    const name = within(dlg).getByLabelText('Name') as HTMLInputElement;
+    expect(name.value).toBe(exportTitle('Orders'));
+    expect(name).toHaveFocus();
+    expect(within(dlg).getByText(/references Orders and the joined data mart the grid uses/)).toBeInTheDocument();
+    const sql = within(dlg).getByLabelText('SQL') as HTMLTextAreaElement;
+    expect(sql.value).toContain('FROM [Orders](dm:orders)');
+    expect(sql.value).toContain('LEFT JOIN customers_dm ON');
+    expect(sql.readOnly).toBe(true);
+  });
+
+  test('the sorting box is off by default and the SQL has no ORDER BY', async () => {
+    const t = mart({ sorts: [{ field: 'id', direction: 'desc' }] });
+    const dlg = await openDialog();
+    const box = within(dlg).getByRole('checkbox', { name: 'Include sorting' });
+    expect(box).not.toBeChecked();
+    expect(box).toBeEnabled();
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).not.toContain('ORDER BY');
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    await screen.findByRole('link', { name: /Open/ });
+    expect(JSON.stringify(t.bodies)).not.toContain('ORDER BY');
+  });
+
+  test('checking it puts ORDER BY in the preview and in the created SQL', async () => {
+    const t = mart({ sorts: [{ field: 'id', direction: 'desc' }] });
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Include sorting' }));
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).toContain('ORDER BY base_dm.`id` DESC');
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    await screen.findByRole('link', { name: /Open/ });
+    const def = Object.entries(t.bodies).find(([k]) => k.includes('/definition'))?.[1] as { definition: { sqlQuery: string } } | undefined;
+    expect(def?.definition.sqlQuery).toContain('ORDER BY base_dm.`id` DESC');
+  });
+
+  test('an implicit grid sort is not an own sort: the box stays disabled and no ORDER BY goes out', async () => {
+    mart({ sorts: [{ field: 'id', direction: 'desc' }], ownSorts: [] });
+    const dlg = await openDialog();
+    expect(within(dlg).getByRole('checkbox', { name: /Include sorting/ })).toBeDisabled();
+    expect(within(dlg).getByText("You haven't set a sort")).toBeInTheDocument();
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).not.toContain('ORDER BY');
+  });
+
+  test('with no sorting the box is disabled with a hint', async () => {
+    mart();
+    const dlg = await openDialog();
+    expect(within(dlg).getByRole('checkbox', { name: /Include sorting/ })).toBeDisabled();
+    expect(within(dlg).getByText("You haven't set a sort")).toBeInTheDocument();
+  });
+
+  test('a sort the SQL cannot carry disables the box with its reason', async () => {
+    const calc = { name: 'margin', alias: 'Margin', type: 'INTEGER', category: 'number', description: null, isPrimaryKey: false, isCalculated: true };
+    mart({ schema: [...SCHEMA, calc] as Schema, sorts: [{ field: 'margin', direction: 'asc' }] });
+    const dlg = await openDialog();
+    expect(within(dlg).getByRole('checkbox', { name: /Include sorting/ })).toBeDisabled();
+    expect(within(dlg).getByText(/Calculated field "Margin" can't be used in a data mart/)).toBeInTheDocument();
+  });
+
+  test('a grouped grid adds the note about ungrouped rows', async () => {
+    mart({ aggregation: { aggregations: [{ column: 'id', function: 'SUM' }], dateTrunc: [] } });
+    const dlg = await openDialog();
+    expect(within(dlg).getByText(/The grid groups its rows; the data mart keeps them ungrouped\./)).toBeInTheDocument();
+  });
+
+  test('an ungrouped grid has no such note', async () => {
+    mart();
+    const dlg = await openDialog();
+    expect(within(dlg).queryByText(/keeps them ungrouped/)).toBeNull();
+  });
+
+  test('Create runs the calls and links to the new mart', async () => {
+    const t = mart();
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    const link = await screen.findByRole('link', { name: /Open/ });
+    expect(t.bodies['POST /api/data-marts']).toEqual({ title: exportTitle('Orders'), storageId: 's1' });
+    expect(link).toHaveAttribute('href', martAppUrl(t.ctx.projectId, 'mock-mart-1'));
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveFocus();
+    await userEvent.click(link);
+    expect(t.open).toHaveBeenCalledWith(martAppUrl(t.ctx.projectId, 'mock-mart-1'));
+  });
+
+  test('a publish failure shows the draft, and Retry resumes without creating a second mart', async () => {
+    const t = mart({ publishFails: true });
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Bad SQL');
+    expect(screen.getByRole('link', { name: 'Open the draft' })).toHaveAttribute('href', martAppUrl(t.ctx.projectId, 'mock-mart-1'));
+    const before = t.calls.length;
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByRole('link', { name: /Open/ });
+    expect(t.calls.slice(before).filter((c) => c.includes('/api/data-marts'))).toEqual([
+      'PUT /api/data-marts/mock-mart-1/publish', 'PUT /api/data-marts/mock-mart-1/availability',
+    ]);
+    expect(t.calls.filter((c) => c === 'POST /api/data-marts')).toHaveLength(1);
+  });
+
+  test('a failure while defining the SQL offers Delete the draft, which deletes it and resets the form', async () => {
+    const t = mart({ failAt: 'definition' });
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('definition failed');
+    expect(screen.getByRole('link', { name: 'Open the draft' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Delete the draft' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    expect(t.calls).toContain('DELETE /api/data-marts/mock-mart-1');
+    expect(within(dlg).getByLabelText('Name')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await screen.findByRole('link', { name: /Open/ });
+    expect(t.calls.filter((c) => c === 'POST /api/data-marts')).toHaveLength(2);
+  });
+
+  test('a failed delete says so and keeps the draft', async () => {
+    mart({ failAt: 'definition', deleteFails: true });
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    await screen.findByRole('alert');
+    await userEvent.click(screen.getByRole('button', { name: 'Delete the draft' }));
+    expect(await screen.findByText('The draft could not be deleted: No rights')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+  });
+
+  test('a publish failure does not offer to delete the draft', async () => {
+    mart({ publishFails: true });
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('button', { name: 'Delete the draft' })).toBeNull();
+  });
+
+  test('a share failure says the data mart is published, not a draft', async () => {
+    const t = mart({ failAt: 'availability' });
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('The data mart is published but not yet available for reporting');
+    expect(alert).not.toHaveTextContent('draft');
+    expect(screen.getByRole('link', { name: 'Open the data mart' })).toHaveAttribute('href', martAppUrl(t.ctx.projectId, 'mock-mart-1'));
+    expect(screen.queryByRole('button', { name: 'Delete the draft' })).toBeNull();
+  });
+
+  test('the dialog names the joined marts from the builder', async () => {
+    mart();
+    const dlg = await openDialog();
+    expect(within(dlg).getByText(/references Orders and the joined data mart the grid uses/)).toBeInTheDocument();
+  });
+
+  test('the dialog notes repeated rows only when a joined mart multiplies the grain', async () => {
+    mart();
+    expect(within(await openDialog()).queryByText(/rows can repeat/)).toBeNull();
+  });
+
+  test('the dialog notes repeated rows for a multiplying join', async () => {
+    mart({ sources: SOURCES.map((s) => ({ ...s, mainGrainMultiplication: 'multiplies' as const })) });
+    expect(within(await openDialog()).getByText(/several rows per row here, so rows can repeat/)).toBeInTheDocument();
+  });
+
+  test('an unavailable storage has its own reason once the model is loaded', async () => {
+    mart({ storage: undefined, storageUnavailable: true });
+    await userEvent.click(await screen.findByText('Export'));
+    const it = await item();
+    expect(it).toBeDisabled();
+    await userEvent.hover(it.parentElement!);
+    expect(await screen.findAllByText("The data mart's storage isn't available to you")).not.toHaveLength(0);
+  });
+
+  test('an empty name shows a message and calls nothing', async () => {
+    const t = mart();
+    const dlg = await openDialog();
+    await userEvent.clear(within(dlg).getByLabelText('Name'));
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    expect(await screen.findByText('Give the data mart a name.')).toBeInTheDocument();
+    expect(owoxCalls(t.calls)).toEqual([]);
+  });
+
+  test('ArrowDown from Copy SQL reaches Create Data Mart, and ArrowRight on it does nothing', async () => {
+    mart({ run: { state: 'done', runId: 'r1' } });
+    await userEvent.click(await screen.findByText('Export'));
+    const create = await item();
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Copy SQL' })).toBeEnabled());
+    screen.getByRole('menuitem', { name: 'Copy SQL' }).focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(create).toHaveFocus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(create).toHaveFocus();
   });
 });

@@ -168,5 +168,6 @@ export interface Ctx {
     getJson<T>(path: string, query?: Record<string, string>): Promise<T>;
     postJson<T>(path: string, body: unknown): Promise<T>;
     putJson<T>(path: string, body: unknown): Promise<T>;
+    deleteJson<T>(path: string): Promise<T>;
   };
 }

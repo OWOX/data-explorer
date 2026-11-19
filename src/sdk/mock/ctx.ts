@@ -21,6 +21,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
   const reports = new Map<string, MockReport>();
   let sheetSerial = 0;
   let reportSerial = 0;
+  let martSerial = 0;
   const runs = new Map<string, string>();
   let runSeq = 0;
   const mockSql = (id: string, o: TraverseOptions) =>
@@ -217,6 +218,8 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
       getJson: <T,>(path: string, query?: Record<string, string>) => slow(() => {
         if (path === '/api/search') return mockSearch(f, query) as T;
         if (path === '/api/data-destinations') return f.destinations as T;
+        if (/^\/api\/data-marts\/[^/]+\/schema-actualize-triggers\/[^/]+\/status$/.test(path)) return { status: 'SUCCESS' } as T;
+        if (/^\/api\/data-marts\/[^/]+\/schema-actualize-triggers\/[^/]+$/.test(path)) return { success: true } as T;
         const run = /^\/api\/data-marts\/([^/]+)\/runs\/([^/]+)$/.exec(path);
         if (run) {
           const sql = runs.get(decodeURIComponent(run[2]!));
@@ -251,6 +254,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         throw new Error(`Mock: unhandled GET ${path}`);
       }),
       putJson: <T,>(path: string, body: unknown) => slow(() => {
+        if (/^\/api\/data-marts\/[^/]+\/(definition|publish|availability)$/.test(path)) return {} as T;
         const m = /^\/api\/reports\/([^/]+)$/.exec(path);
         if (!m) throw new Error(`Mock: unhandled PUT ${path}`);
         const cur = report(decodeURIComponent(m[1]!));
@@ -258,6 +262,10 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         rejectHidden(cur.dataMartId, [...(b.columnConfig ?? []), ...(b.filterConfig ?? []).map((x) => x.column), ...(b.sortConfig ?? []).map((x) => x.column)]);
         Object.assign(cur, body, accessOf(body));
         return cur as T;
+      }),
+      deleteJson: <T,>(path: string) => slow(() => {
+        if (/^\/api\/data-marts\/[^/]+$/.test(path)) return {} as T;
+        throw new Error(`Mock: unhandled DELETE ${path}`);
       }),
       postJson: <T,>(path: string, body: unknown) => slow(() => {
         const doc = /^\/api\/data-destinations\/([^/]+)\/google-sheets\/documents$/.exec(path);
@@ -283,6 +291,8 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
           }
           return undefined as T;
         }
+        if (path === '/api/data-marts') { martSerial += 1; return { id: `mock-mart-${martSerial}`, title: (body as { title: string }).title } as T; }
+        if (/^\/api\/data-marts\/[^/]+\/schema-actualize-triggers$/.test(path)) return { triggerId: 'mock-trigger' } as T;
         if (path !== '/api/data-marts/data-quality/summaries') throw new Error(`Mock: unhandled POST ${path}`);
         const ids = (body as { dataMartIds: string[] }).dataMartIds;
         return { items: ids.flatMap((id) => { const dq = byId.get(id)?.dq; return dq ? [{ dataMartId: id, summary: dq }] : []; }) } as T;
