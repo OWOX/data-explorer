@@ -6,7 +6,7 @@ import { createDataMart, CreateMartError, type CreateStage } from './create';
 const req = { title: 'T', storageId: 's1', sql: 'SELECT 1' };
 const opts = { pollMs: 1, timeoutMs: 5 };
 
-function setup(o: { statuses?: string[]; result?: unknown; publishFails?: boolean } = {}) {
+function setup(o: { statuses?: string[]; result?: unknown; publishFails?: boolean | Error; resultThrows?: Error } = {}) {
   const calls: string[] = [];
   const bodies: Record<string, unknown> = {};
   const statuses = [...(o.statuses ?? ['READY', 'PROCESSING', 'SUCCESS'])];
@@ -17,12 +17,14 @@ function setup(o: { statuses?: string[]; result?: unknown; publishFails?: boolea
     }),
     putJson: vi.fn(async (path: string, body?: unknown) => {
       calls.push(`PUT ${path}`); bodies[`PUT ${path}`] = body;
+      if (o.publishFails instanceof Error && path.endsWith('/publish')) throw o.publishFails;
       if (o.publishFails && path.endsWith('/publish')) throw Object.assign(new Error('x'), { payload: { message: 'Bad SQL' } });
       return {};
     }),
     getJson: vi.fn(async (path: string) => {
       calls.push(`GET ${path}`);
       if (path.endsWith('/status')) return { status: statuses.length > 1 ? statuses.shift() : statuses[0] };
+      if (o.resultThrows) throw o.resultThrows;
       return o.result ?? { success: true };
     }),
   });
@@ -56,9 +58,45 @@ describe('createDataMart', () => {
     expect(e).toMatchObject({ stage: 'schema', martId: 'm1', message: 'Syntax error at 3:1' });
   });
 
-  it('fails a terminal non-success status', async () => {
-    const { ctx } = setup({ statuses: ['ERROR'] });
-    await expect(createDataMart(ctx, req, undefined, opts)).rejects.toMatchObject({ stage: 'schema', martId: 'm1' });
+  it('on status ERROR reads the trigger and surfaces its reason', async () => {
+    const { ctx, calls } = setup({ statuses: ['ERROR'], result: { success: false, error: 'Unrecognized name: foo' } });
+    await expect(createDataMart(ctx, req, undefined, opts)).rejects.toMatchObject({ stage: 'schema', martId: 'm1', message: 'Unrecognized name: foo' });
+    expect(calls.at(-1)).toBe('GET /api/data-marts/m1/schema-actualize-triggers/t1');
+  });
+
+  it('on status ERROR with a failing trigger read, uses the thrown message', async () => {
+    const { ctx } = setup({ statuses: ['ERROR'], resultThrows: Object.assign(new Error('Request failed with 500'), { payload: { message: 'Table not found' } }) });
+    await expect(createDataMart(ctx, req, undefined, opts)).rejects.toMatchObject({ stage: 'schema', message: 'Table not found' });
+  });
+
+  it('on status ERROR with no usable reason, points to the draft', async () => {
+    const generic = 'OWOX could not read the columns of this SQL. Open the draft to see why.';
+    for (const o of [{ result: { success: false } }, { result: { success: false, error: '' } }, { resultThrows: new Error('Request failed with status code 500') }]) {
+      const { ctx } = setup({ statuses: ['ERROR'], ...o });
+      await expect(createDataMart(ctx, req, undefined, opts)).rejects.toMatchObject({ stage: 'schema', martId: 'm1', message: generic });
+    }
+  });
+
+  it('fails any other terminal non-success status', async () => {
+    const { ctx } = setup({ statuses: ['CANCELLED'] });
+    await expect(createDataMart(ctx, req, undefined, opts)).rejects.toMatchObject({ stage: 'schema', martId: 'm1', message: 'Reading the columns ended with status CANCELLED.' });
+  });
+
+  it('resumes from schema with a fresh trigger', async () => {
+    const { ctx, calls } = setup();
+    await createDataMart(ctx, { ...req, martId: 'm1', from: 'schema' }, undefined, opts);
+    expect(calls[0]).toBe('POST /api/data-marts/m1/schema-actualize-triggers');
+    expect(calls).not.toContain('POST /api/data-marts');
+    expect(calls.at(-2)).toBe('PUT /api/data-marts/m1/publish');
+  });
+
+  it('treats an already-published mart as published and shares it', async () => {
+    for (const err of [Object.assign(new Error('x'), { payload: { code: 'DATA_MART_ALREADY_PUBLISHED', message: 'nope' } }), Object.assign(new Error('x'), { payload: { message: 'Data Mart is already published' } })]) {
+      const { ctx, calls } = setup({ publishFails: err });
+      const r = await createDataMart(ctx, { ...req, martId: 'm1', from: 'publish' }, undefined, opts);
+      expect(r.id).toBe('m1');
+      expect(calls.at(-1)).toBe('PUT /api/data-marts/m1/availability');
+    }
   });
 
   it('times out while the status stays PROCESSING', async () => {

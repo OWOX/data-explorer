@@ -55,6 +55,15 @@ test('a joined field whose source type is an array only offers the blank filters
   expect(s!.fields.map((f) => f.category)).toEqual(['other', 'string']);
 });
 
+test('a joined field keeps its raw source type next to its effective type', () => {
+  const [s] = joinedSources({
+    availableSources: [{ aliasPath: 'a', title: 'A', depth: 1, dataMartId: 'a', isIncluded: true, isAccessibleForReporting: true }],
+    blendedFields: [{ name: 'a__n', aliasPath: 'a', sourceDataMartId: 'a', originalFieldName: 'n', type: 'INTEGER', sourceFieldType: 'STRING' }],
+  });
+  expect(s!.fields[0]!.joined).toMatchObject({ sourceType: 'STRING' });
+  expect(s!.fields[0]!.type).toBe('INTEGER');
+});
+
 test('a source with no field left to offer is left out', () => {
   expect(joinedSources({ availableSources: dto.availableSources!.slice(1, 2), blendedFields: [dto.blendedFields![1]!] })).toEqual([]);
 });

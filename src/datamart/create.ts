@@ -22,12 +22,23 @@ export type CreateMartRequest = { title: string; storageId: string; sql: string;
 
 const ORDER: CreateStage[] = ['create', 'define', 'schema', 'publish', 'share'];
 const SCHEMA_TIMEOUT = 'OWOX is still reading the columns. Open the data mart to publish it.';
+const SCHEMA_UNREADABLE = 'OWOX could not read the columns of this SQL. Open the draft to see why.';
 
 /** The server's message when the error carries one, else the error's own. */
 function messageOf(e: unknown): string {
   const x = e as { payload?: { message?: unknown }; message?: unknown } | null;
   const m = x?.payload?.message ?? x?.message;
   return typeof m === 'string' && m ? m : Array.isArray(m) ? m.join(', ') : String(e);
+}
+
+/** A reason worth showing: not empty and not a bare transport failure. */
+const usable = (m: unknown): m is string => typeof m === 'string' && !!m.trim() && !/^Request failed with/i.test(m.trim());
+
+/** Whether publish failed only because the mart is already published (an earlier attempt got that far). */
+function alreadyPublished(e: unknown): boolean {
+  const x = e as { payload?: { code?: unknown; body?: { code?: unknown } }; code?: unknown } | null;
+  const code = x?.payload?.code ?? x?.payload?.body?.code ?? x?.code;
+  return code === 'DATA_MART_ALREADY_PUBLISHED' || /already published/i.test(messageOf(e));
 }
 
 /** Resolves after `ms`, or early (rejecting) when the signal aborts. */
@@ -68,6 +79,12 @@ export async function createDataMart(ctx: Ctx, req: CreateMartRequest, onStage?:
       for (;;) {
         const { status } = await owox.getJson<{ status: string }>(`${trigger}/status`);
         if (status === 'SUCCESS') break;
+        if (status === 'ERROR') {
+          // The backend records why on the trigger itself.
+          let reason: string | undefined;
+          try { const r = await owox.getJson<{ success?: boolean; error?: string }>(trigger); if (usable(r?.error)) reason = r.error; } catch (e) { const m = messageOf(e); if (usable(m)) reason = m; }
+          throw new CreateMartError(reason ?? SCHEMA_UNREADABLE, 'schema', id);
+        }
         if (!['IDLE', 'READY', 'PROCESSING'].includes(status)) throw new CreateMartError(`Reading the columns ended with status ${status}.`, 'schema', id);
         if (Date.now() >= deadline) throw new CreateMartError(SCHEMA_TIMEOUT, 'schema', id);
         await wait(pollMs, req.signal);
@@ -76,7 +93,7 @@ export async function createDataMart(ctx: Ctx, req: CreateMartRequest, onStage?:
       if (!r.success) throw new CreateMartError(r.error || 'OWOX could not read the columns.', 'schema', id);
     });
   }
-  if (start <= 3) await step('publish', () => owox.putJson(`${base}/publish`, {}));
+  if (start <= 3) await step('publish', () => owox.putJson(`${base}/publish`, {}).catch((e) => { if (!alreadyPublished(e)) throw e; }));
   await step('share', () => owox.putJson(`${base}/availability`, { availableForReporting: true, availableForMaintenance: false }));
   return { id: id!, url: martAppUrl(ctx.projectId, id!) };
 }

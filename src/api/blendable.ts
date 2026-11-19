@@ -54,7 +54,7 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
       description: b.description?.trim() ? b.description : null,
       isPrimaryKey: false,
       ...(Array.isArray(b.postJoinAggregations) ? { postJoinAggregations: knownFunctions(b.postJoinAggregations) } : {}),
-      joined: { martId: source.martId, label: source.label, aliasPath: source.aliasPath, originalName: b.originalFieldName },
+      joined: { martId: source.martId, label: source.label, aliasPath: source.aliasPath, originalName: b.originalFieldName, ...(b.sourceFieldType ? { sourceType: b.sourceFieldType } : {}) },
     });
   }
   return [...byPath.values()].filter((s) => s.fields.length > 0).sort((a, b) => a.depth - b.depth || a.label.localeCompare(b.label) || a.aliasPath.localeCompare(b.aliasPath));
