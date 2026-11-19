@@ -69,3 +69,18 @@ test('the main mart cannot be dragged', () => {
   const t = buildJoinTree('main', ['id', col('a')], sources);
   expect(rejoinTargets(t, sources, '')).toEqual([]);
 });
+
+test('rejoin: a stale tree parent is never a target', () => {
+  const s4 = [...sources, src('d')].sort((p, q) => p.depth - q.depth);
+  const t = buildJoinTree('main', ['id', col('a.c.d')], s4);
+  expect(t.nodes.get('a.c.d')).toMatchObject({ parent: '' });
+  expect(rejoinTargets(t, s4, 'a.c.d').map((x) => x.target)).toEqual([]);
+});
+
+test('rejoin: a target with two relations to the mart takes the one the subtree can follow', () => {
+  const s5 = [...sources, src('b.c2', 'c'), src('b.c2.d', 'd')].sort((p, q) => p.depth - q.depth);
+  const t = buildJoinTree('main', ['id', col('a'), col('b'), col('a.c'), col('a.c.d')], s5);
+  const r = rejoinTargets(t, s5, 'a.c');
+  expect(r.map((x) => x.target)).toEqual(['b']);
+  expect([...r[0]!.moves]).toEqual([['a.c', 'b.c2'], ['a.c.d', 'b.c2.d']]);
+});
