@@ -16,7 +16,7 @@ export type MartSqlInput = {
   /** Shown columns, in grid order. */
   visible: string[];
   filters: ColumnFilter[];
-  /** The grid's sort order; when non-empty the SQL ends with an ORDER BY. */
+  /** The member's own sort order; when non-empty the SQL ends with an ORDER BY. */
   sorts?: SortKey[];
   /** The main mart's joined sources (`BlendableLoader.get(mainId)`). */
   sources: JoinedSource[];
@@ -35,7 +35,7 @@ const safeId = (id: string) => /^[A-Za-z0-9_-]+$/.test(id);
 /** The column of a joined field in its own mart, when the schema says. */
 const originalNameOf = (f: Field): string | undefined => f.joined?.originalName || undefined;
 
-/** The data mart's SQL for the grid: the shown columns of the main and joined marts, left joined, with the complete filters. */
+/** The data mart's SQL for the grid: one CTE per mart in use (with its own complete filters), then the shown columns joined from the CTEs. */
 export function buildMartSql(input: MartSqlInput): { sql: string } | { reason: string } {
   const { dialect: d, main, schema, visible, filters, sources, edges, titles } = input;
   const sorts = input.sorts ?? [];
@@ -53,21 +53,57 @@ export function buildMartSql(input: MartSqlInput): { sql: string } | { reason: s
     return field && isComplete(flt, field) ? [{ flt, field }] : [];
   });
 
-  // Table aliases: t0 is main; paths follow in order of first use, each after its ancestors.
-  const alias = new Map<string, string>([['', 't0']]);
+  // Paths in use, in order of first use, each after its ancestors.
   const order: string[] = [];
   const need = (path: string) => {
-    if (alias.has(path)) return;
+    if (order.includes(path)) return;
     const parent = parentPath(path);
     if (parent) need(parent);
-    alias.set(path, `t${alias.size}`);
     order.push(path);
   };
   for (const f of shown) if (f.joined) need(f.joined.aliasPath);
   for (const { field } of active) if (field.joined) need(field.joined.aliasPath);
   for (const { field } of sorted) if (field.joined) need(field.joined.aliasPath);
 
+  // CTE names: base for main; a path with `.` as `__`; a clash gets _2, _3; an unusable name falls back to jN.
+  const cte = new Map<string, string>([['', 'base']]);
+  const taken = new Set(['base']);
+  order.forEach((path, i) => {
+    const plain = path.replace(/\./g, '__');
+    const root = /^[a-z_][a-z0-9_]*$/.test(plain) ? plain : `j${i + 1}`;
+    let name = root;
+    for (let n = 2; taken.has(name); n++) name = `${root}_${n}`;
+    taken.add(name);
+    cte.set(path, name);
+  });
+
+  // The complete filters of each mart, as predicates on its own bare columns.
+  const where = new Map<string, string[]>();
+  for (const { flt, field } of active) {
+    let col: string;
+    let typed = field;
+    if (field.joined) {
+      const name = originalNameOf(field);
+      if (!name) return { reason: `The filter on "${field.name}" could not be resolved` };
+      col = columnRef(d, '', name);
+      // The mart reads the raw column, so the filter takes its source type, not the type after a pre-join aggregation.
+      const raw = field.joined.sourceType;
+      if (raw && raw !== field.type) {
+        typed = { ...field, type: raw, category: categorizeFieldType(raw) };
+        if (!isComplete(flt, typed)) return { reason: `Filter on "${field.alias || field.name}" can't be saved: the joined data mart aggregates this field` };
+      }
+    } else col = columnRef(d, '', field.name);
+    const path = field.joined?.aliasPath ?? '';
+    try { where.set(path, [...(where.get(path) ?? []), renderFilter(d, col, typed, flt)]); } catch (e) { return { reason: e instanceof Error ? e.message : String(e) }; }
+  }
+
   const sourceOf = (path: string) => sources.find((s) => s.aliasPath === path);
+  const ctes: string[] = [];
+  const cteOf = (path: string, ref: string) => {
+    const w = where.get(path);
+    return `  ${cte.get(path)} AS (\n    SELECT *\n    FROM ${ref}${w?.length ? `\n    WHERE ${w.join(' AND ')}` : ''}\n  )`;
+  };
+  ctes.push(cteOf('', martRef(main.id, main.title)));
   const joins: string[] = [];
   for (const path of order) {
     const source = sourceOf(path);
@@ -85,34 +121,17 @@ export function buildMartSql(input: MartSqlInput): { sql: string } | { reason: s
       edge = candidates[0]!;
     }
     if (edge.joins.length === 0) return unresolved;
-    const on = edge.joins.map((j) => `${columnRef(d, alias.get(parent)!, j.sourceField)} = ${columnRef(d, alias.get(path)!, j.targetField)}`).join(' AND ');
-    joins.push(`LEFT JOIN ${martRef(source.martId, titles.get(source.martId) ?? source.label)} AS ${alias.get(path)} ON ${on}`);
+    const on = edge.joins.map((j) => `${columnRef(d, cte.get(parent)!, j.sourceField)} = ${columnRef(d, cte.get(path)!, j.targetField)}`).join(' AND ');
+    ctes.push(cteOf(path, martRef(source.martId, titles.get(source.martId) ?? source.label)));
+    joins.push(`${where.get(path)?.length ? 'INNER' : 'LEFT'} JOIN ${cte.get(path)} ON ${on}`);
   }
 
   const select: string[] = [];
   for (const f of shown) {
-    if (!f.joined) { select.push(columnRef(d, 't0', f.name)); continue; }
+    if (!f.joined) { select.push(columnRef(d, 'base', f.name)); continue; }
     const col = originalNameOf(f);
     if (!col) return { reason: `The column "${f.name}" could not be resolved` };
-    select.push(`${columnRef(d, alias.get(f.joined.aliasPath)!, col)} AS ${quoteIdent(d, f.name)}`);
-  }
-
-  const where: string[] = [];
-  for (const { flt, field } of active) {
-    let col: string;
-    let typed = field;
-    if (field.joined) {
-      const name = originalNameOf(field);
-      if (!name) return { reason: `The filter on "${field.name}" could not be resolved` };
-      col = columnRef(d, alias.get(field.joined.aliasPath)!, name);
-      // The mart reads the raw column, so the filter takes its source type, not the type after a pre-join aggregation.
-      const raw = field.joined.sourceType;
-      if (raw && raw !== field.type) {
-        typed = { ...field, type: raw, category: categorizeFieldType(raw) };
-        if (!isComplete(flt, typed)) return { reason: `Filter on "${field.alias || field.name}" can't be saved: the joined data mart aggregates this field` };
-      }
-    } else col = columnRef(d, 't0', field.name);
-    try { where.push(renderFilter(d, col, typed, flt)); } catch (e) { return { reason: e instanceof Error ? e.message : String(e) }; }
+    select.push(`${columnRef(d, cte.get(f.joined.aliasPath)!, col)} AS ${quoteIdent(d, f.name)}`);
   }
 
   const ordering: string[] = [];
@@ -121,10 +140,10 @@ export function buildMartSql(input: MartSqlInput): { sql: string } | { reason: s
     if (field.joined) {
       const name = originalNameOf(field);
       if (!name) return { reason: `The sort on "${field.name}" could not be resolved` };
-      col = columnRef(d, alias.get(field.joined.aliasPath)!, name);
-    } else col = columnRef(d, 't0', field.name);
+      col = columnRef(d, cte.get(field.joined.aliasPath)!, name);
+    } else col = columnRef(d, 'base', field.name);
     ordering.push(`${col} ${s.direction === 'desc' ? 'DESC' : 'ASC'}`);
   }
 
-  return { sql: [`SELECT\n${select.map((x) => `  ${x}`).join(',\n')}`, `FROM ${martRef(main.id, main.title)} AS t0`, ...joins, ...(where.length ? [`WHERE ${where.join(' AND ')}`] : []), ...(ordering.length ? [`ORDER BY ${ordering.join(', ')}`] : [])].join('\n') };
+  return { sql: [`WITH\n${ctes.join(',\n')}`, `SELECT\n${select.map((x) => `  ${x}`).join(',\n')}`, 'FROM base', ...joins, ...(ordering.length ? [`ORDER BY ${ordering.join(', ')}`] : [])].join('\n') };
 }

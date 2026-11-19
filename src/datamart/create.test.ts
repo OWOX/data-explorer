@@ -71,7 +71,8 @@ describe('createDataMart', () => {
 
   it('on status ERROR with no usable reason, points to the draft', async () => {
     const generic = 'OWOX could not read the columns of this SQL. Open the draft to see why.';
-    for (const o of [{ result: { success: false } }, { result: { success: false, error: '' } }, { resultThrows: new Error('Request failed with status code 500') }]) {
+    const nest = Object.assign(new Error('Bad Request Exception'), { payload: { code: 'HTTP_ERROR', status: 400, message: 'Bad Request Exception', apiCode: 'SOME_CODE' } });
+    for (const o of [{ result: { success: false } }, { result: { success: false, error: '' } }, { result: { success: false, error: 'Bad Request Exception' } }, { resultThrows: new Error('Request failed with status code 500') }, { resultThrows: nest }]) {
       const { ctx } = setup({ statuses: ['ERROR'], ...o });
       await expect(createDataMart(ctx, req, undefined, opts)).rejects.toMatchObject({ stage: 'schema', martId: 'm1', message: generic });
     }
@@ -91,7 +92,7 @@ describe('createDataMart', () => {
   });
 
   it('treats an already-published mart as published and shares it', async () => {
-    for (const err of [Object.assign(new Error('x'), { payload: { code: 'DATA_MART_ALREADY_PUBLISHED', message: 'nope' } }), Object.assign(new Error('x'), { payload: { message: 'Data Mart is already published' } })]) {
+    for (const err of [Object.assign(new Error('x'), { payload: { code: 'HTTP_ERROR', status: 400, message: 'Bad Request Exception', apiCode: 'DATA_MART_ALREADY_PUBLISHED' } }), Object.assign(new Error('x'), { payload: { message: 'Data Mart is already published' } })]) {
       const { ctx, calls } = setup({ publishFails: err });
       const r = await createDataMart(ctx, { ...req, martId: 'm1', from: 'publish' }, undefined, opts);
       expect(r.id).toBe('m1');

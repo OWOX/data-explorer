@@ -1361,7 +1361,7 @@ describe('Create Data Mart', () => {
   const EDGES = [{ id: 'e1', source: 'orders', target: 'customers', joins: [{ sourceField: 'customer_id', targetField: 'id' }] }] as Edge[];
   const TITLES = new Map([['orders', 'Orders'], ['customers', 'Customers']]);
 
-  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; run?: GridRun; sorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; schema?: Schema } = {}) {
+  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; run?: GridRun; sorts?: SortKey[]; ownSorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; schema?: Schema } = {}) {
     const base = createMockCtx(demoFixtures({ sheets: 1 }), { latencyMs: 0 });
     const calls: string[] = [];
     const bodies: Record<string, unknown> = {};
@@ -1383,7 +1383,7 @@ describe('Create Data Mart', () => {
     };
     const storage = 'storage' in o ? o.storage : { id: 's1', type: 'GOOGLE_BIGQUERY' };
     const sources = 'sources' in o ? o.sources : SOURCES;
-    render(<AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={o.schema ?? SCHEMA} visible={['id', 'customers__city']} filters={[]} sorts={o.sorts ?? []} aggregation={o.aggregation} joinsFailed={o.joinsFailed} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>);
+    render(<AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={o.schema ?? SCHEMA} visible={['id', 'customers__city']} filters={[]} sorts={o.sorts ?? []} ownSorts={o.ownSorts ?? o.sorts ?? []} aggregation={o.aggregation} joinsFailed={o.joinsFailed} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>);
     return { ctx, calls, bodies, open };
   }
   const item = () => screen.findByRole('menuitem', { name: 'Create Data Mart' });
@@ -1449,8 +1449,8 @@ describe('Create Data Mart', () => {
     expect(name).toHaveFocus();
     expect(within(dlg).getByText(/references Orders and the joined data mart the grid uses/)).toBeInTheDocument();
     const sql = within(dlg).getByLabelText('SQL') as HTMLTextAreaElement;
-    expect(sql.value).toContain('FROM [Orders](dm:orders) AS t0');
-    expect(sql.value).toContain('LEFT JOIN [Customers](dm:customers)');
+    expect(sql.value).toContain('FROM [Orders](dm:orders)');
+    expect(sql.value).toContain('LEFT JOIN customers ON');
     expect(sql.readOnly).toBe(true);
   });
 
@@ -1470,11 +1470,19 @@ describe('Create Data Mart', () => {
     const t = mart({ sorts: [{ field: 'id', direction: 'desc' }] });
     const dlg = await openDialog();
     await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Include sorting' }));
-    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).toContain('ORDER BY t0.`id` DESC');
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).toContain('ORDER BY base.`id` DESC');
     await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
     await screen.findByRole('link', { name: /Open/ });
     const def = Object.entries(t.bodies).find(([k]) => k.includes('/definition'))?.[1] as { definition: { sqlQuery: string } } | undefined;
-    expect(def?.definition.sqlQuery).toContain('ORDER BY t0.`id` DESC');
+    expect(def?.definition.sqlQuery).toContain('ORDER BY base.`id` DESC');
+  });
+
+  test('an implicit grid sort is not an own sort: the box stays disabled and no ORDER BY goes out', async () => {
+    mart({ sorts: [{ field: 'id', direction: 'desc' }], ownSorts: [] });
+    const dlg = await openDialog();
+    expect(within(dlg).getByRole('checkbox', { name: /Include sorting/ })).toBeDisabled();
+    expect(within(dlg).getByText('The grid has no sorting')).toBeInTheDocument();
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).not.toContain('ORDER BY');
   });
 
   test('with no sorting the box is disabled with a hint', async () => {

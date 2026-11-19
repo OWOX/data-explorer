@@ -28,10 +28,10 @@ export function quoteIdent(d: Dialect, name: string): string {
   return `${q}${name.split(q).join(q + q)}${q}`;
 }
 
-/** A nested path `address.city` as the dialect reads it from table alias `t`: BigQuery `t.address.city` with each part quoted, the others one quoted identifier. */
+/** A nested path `address.city` as the dialect reads it from table alias `t` (empty for a bare reference): BigQuery `t.address.city` with each part quoted, the others one quoted identifier. */
 export function columnRef(d: Dialect, tableAlias: string, name: string): string {
   const path = d === 'bigquery' ? name.split('.').map((p) => quoteIdent(d, p)).join('.') : quoteIdent(d, name);
-  return `${tableAlias}.${path}`;
+  return tableAlias ? `${tableAlias}.${path}` : path;
 }
 
 type Scalar = string | number;

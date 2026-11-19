@@ -31,14 +31,13 @@ function messageOf(e: unknown): string {
   return typeof m === 'string' && m ? m : Array.isArray(m) ? m.join(', ') : String(e);
 }
 
-/** A reason worth showing: not empty and not a bare transport failure. */
-const usable = (m: unknown): m is string => typeof m === 'string' && !!m.trim() && !/^Request failed with/i.test(m.trim());
+/** A reason worth showing: not empty, not a bare transport failure, not Nest's generic "Bad Request Exception". */
+const usable = (m: unknown): m is string => typeof m === 'string' && !!m.trim() && !/^Request failed with/i.test(m.trim()) && !/^[A-Z][A-Za-z ]* Exception$/.test(m.trim());
 
 /** Whether publish failed only because the mart is already published (an earlier attempt got that far). */
 function alreadyPublished(e: unknown): boolean {
-  const x = e as { payload?: { code?: unknown; body?: { code?: unknown } }; code?: unknown } | null;
-  const code = x?.payload?.code ?? x?.payload?.body?.code ?? x?.code;
-  return code === 'DATA_MART_ALREADY_PUBLISHED' || /already published/i.test(messageOf(e));
+  const x = e as { payload?: { apiCode?: unknown } } | null;
+  return x?.payload?.apiCode === 'DATA_MART_ALREADY_PUBLISHED' || /already published/i.test(messageOf(e));
 }
 
 /** Resolves after `ms`, or early (rejecting) when the signal aborts. */

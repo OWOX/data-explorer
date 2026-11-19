@@ -20,20 +20,20 @@ const base = (over: Partial<MartSqlInput> = {}): MartSqlInput => ({
 });
 
 test('a main-only grid reads the main mart', () => {
-  expect(buildMartSql(base())).toEqual({ sql: 'SELECT\n  t0.`id`\nFROM [Orders](dm:orders) AS t0' });
+  expect(buildMartSql(base())).toEqual({ sql: 'WITH\n  base AS (\n    SELECT *\n    FROM [Orders](dm:orders)\n  )\nSELECT\n  base.`id`\nFROM base' });
 });
 
-test('a joined column joins its mart, and a filter goes to WHERE', () => {
+test('a joined column joins its mart, and its filter sits in its CTE with an INNER JOIN', () => {
   expect(buildMartSql(base({ visible: ['id', 'customers__city'], filters: [{ field: 'customers__city', op: 'eq', value: 'Paris' }] }))).toEqual({
-    sql: "SELECT\n  t0.`id`,\n  t1.`city` AS `customers__city`\nFROM [Orders](dm:orders) AS t0\nLEFT JOIN [Customers](dm:customers) AS t1 ON t0.`customer_id` = t1.`id`\nWHERE t1.`city` = 'Paris'",
+    sql: "WITH\n  base AS (\n    SELECT *\n    FROM [Orders](dm:orders)\n  ),\n  customers AS (\n    SELECT *\n    FROM [Customers](dm:customers)\n    WHERE `city` = 'Paris'\n  )\nSELECT\n  base.`id`,\n  customers.`city` AS `customers__city`\nFROM base\nINNER JOIN customers ON base.`customer_id` = customers.`id`",
   });
 });
 
 test('a nested original name is read as a path on BigQuery and one identifier elsewhere, aliased by the blended name', () => {
   const nested = f('customers__address__city', 'STRING', j('customers', 'customers', 'address.city'));
   const input = base({ schema: [f('id'), nested], visible: ['customers__address__city'], sources: [customers([nested])] });
-  expect(buildMartSql(input)).toMatchObject({ sql: expect.stringContaining('t1.`address`.`city` AS `customers__address__city`') });
-  expect(buildMartSql({ ...input, dialect: 'snowflake' })).toMatchObject({ sql: expect.stringContaining('t1."address.city" AS "customers__address__city"') });
+  expect(buildMartSql(input)).toMatchObject({ sql: expect.stringContaining('customers.`address`.`city` AS `customers__address__city`') });
+  expect(buildMartSql({ ...input, dialect: 'snowflake' })).toMatchObject({ sql: expect.stringContaining('customers."address.city" AS "customers__address__city"') });
 });
 
 test('two joined columns sharing an original name are aliased apart', () => {
@@ -41,19 +41,19 @@ test('two joined columns sharing an original name are aliased apart', () => {
   const pName = f('products__name', 'STRING', j('products', 'products', 'name'));
   const products: JoinedSource = { aliasPath: 'products', martId: 'products', label: 'Products', depth: 1, fields: [pName], uniqueCount: true, relationshipId: 'e3' };
   const r = buildMartSql(base({ schema: [f('id'), cName, pName], visible: ['customers__name', 'products__name'], sources: [customers([cName]), products], edges: [...edges, { id: 'e3', source: 'orders', target: 'products', joins: [{ sourceField: 'product_id', targetField: 'id' }] }] }));
-  expect(r).toMatchObject({ sql: expect.stringContaining('t1.`name` AS `customers__name`,\n  t2.`name` AS `products__name`') });
+  expect(r).toMatchObject({ sql: expect.stringContaining('customers.`name` AS `customers__name`,\n  products.`name` AS `products__name`') });
 });
 
 test('a filter on a joined column that is not shown still joins and applies; an incomplete filter is skipped', () => {
   const r = buildMartSql(base({ filters: [{ field: 'customers__city', op: 'eq', value: 'Paris' }, { field: 'status', op: 'eq', value: '' }] }));
-  expect(r).toEqual({ sql: "SELECT\n  t0.`id`\nFROM [Orders](dm:orders) AS t0\nLEFT JOIN [Customers](dm:customers) AS t1 ON t0.`customer_id` = t1.`id`\nWHERE t1.`city` = 'Paris'" });
-  expect(buildMartSql(base({ filters: [{ field: 'customers__city', op: 'eq', value: '' }] }))).toEqual({ sql: 'SELECT\n  t0.`id`\nFROM [Orders](dm:orders) AS t0' });
+  expect(r).toEqual({ sql: "WITH\n  base AS (\n    SELECT *\n    FROM [Orders](dm:orders)\n  ),\n  customers AS (\n    SELECT *\n    FROM [Customers](dm:customers)\n    WHERE `city` = 'Paris'\n  )\nSELECT\n  base.`id`\nFROM base\nINNER JOIN customers ON base.`customer_id` = customers.`id`" });
+  expect(buildMartSql(base({ filters: [{ field: 'customers__city', op: 'eq', value: '' }] }))).toEqual({ sql: 'WITH\n  base AS (\n    SELECT *\n    FROM [Orders](dm:orders)\n  )\nSELECT\n  base.`id`\nFROM base' });
 });
 
 test('a nested path joins from its parent table, ancestors first, with every key pair', () => {
   const rName = f('customers__region__name', 'STRING', j('customers.region', 'region', 'name'));
   const r = buildMartSql(base({ schema: [f('id'), rName], visible: ['customers__region__name'], sources: [customers([]), { ...region, fields: [rName] }], titles: new Map([['customers', 'Customers'], ['region', 'Region']]) }));
-  expect(r).toEqual({ sql: 'SELECT\n  t2.`name` AS `customers__region__name`\nFROM [Orders](dm:orders) AS t0\nLEFT JOIN [Customers](dm:customers) AS t1 ON t0.`customer_id` = t1.`id`\nLEFT JOIN [Region](dm:region) AS t2 ON t1.`region_id` = t2.`id` AND t1.`country` = t2.`country`' });
+  expect(r).toEqual({ sql: 'WITH\n  base AS (\n    SELECT *\n    FROM [Orders](dm:orders)\n  ),\n  customers AS (\n    SELECT *\n    FROM [Customers](dm:customers)\n  ),\n  customers__region AS (\n    SELECT *\n    FROM [Region](dm:region)\n  )\nSELECT\n  customers__region.`name` AS `customers__region__name`\nFROM base\nLEFT JOIN customers ON base.`customer_id` = customers.`id`\nLEFT JOIN customers__region ON customers.`region_id` = customers__region.`id` AND customers.`country` = customers__region.`country`' });
 });
 
 test('a joined field without an original name is a reason', () => {
@@ -72,7 +72,7 @@ test('a calculated field, shown or filtered, is a reason', () => {
 test('an edge found by id is used only in the right direction', () => {
   const wrong: Edge = { id: 'e1', source: 'other', target: 'customers', joins: [{ sourceField: 'x', targetField: 'y' }] };
   const r = buildMartSql(base({ visible: ['customers__city'], edges: [wrong, { ...edges[0]!, id: 'e7' }] }));
-  expect(r).toMatchObject({ sql: expect.stringContaining('ON t0.`customer_id` = t1.`id`') });
+  expect(r).toMatchObject({ sql: expect.stringContaining('ON base.`customer_id` = customers.`id`') });
   expect(buildMartSql(base({ visible: ['customers__city'], edges: [wrong] }))).toHaveProperty('reason');
 });
 
@@ -84,20 +84,20 @@ test('a mart id that is not plain is a reason, and a newline in a title becomes 
 
 test('without a relationship id, the single source-target edge is used; two matches are a reason', () => {
   const sources = [customers([city], { relationshipId: undefined })];
-  expect(buildMartSql(base({ visible: ['customers__city'], sources }))).toMatchObject({ sql: expect.stringContaining('ON t0.`customer_id` = t1.`id`') });
+  expect(buildMartSql(base({ visible: ['customers__city'], sources }))).toMatchObject({ sql: expect.stringContaining('ON base.`customer_id` = customers.`id`') });
   const dup: Edge = { id: 'e9', source: 'orders', target: 'customers', joins: [{ sourceField: 'x', targetField: 'y' }] };
   expect(buildMartSql(base({ visible: ['customers__city'], sources, edges: [...edges, dup] }))).toEqual({ reason: 'The join to "Customers" could not be resolved' });
   expect(buildMartSql(base({ visible: ['customers__city'], sources: [customers([city], { relationshipId: 'gone' })], edges: [] }))).toEqual({ reason: 'The join to "Customers" could not be resolved' });
 });
 
 test('a title is escaped as the backend reads it: backslash, brackets, line breaks', () => {
-  expect(buildMartSql(base({ main: { id: 'orders', title: 'Orders [raw]' } }))).toMatchObject({ sql: expect.stringContaining('FROM [Orders \\[raw\\]](dm:orders) AS t0') });
-  expect(buildMartSql(base({ main: { id: 'orders', title: 'C:\\' } }))).toMatchObject({ sql: expect.stringContaining('FROM [C:\\\\](dm:orders) AS t0') });
+  expect(buildMartSql(base({ main: { id: 'orders', title: 'Orders [raw]' } }))).toMatchObject({ sql: expect.stringContaining('FROM [Orders \\[raw\\]](dm:orders)\n') });
+  expect(buildMartSql(base({ main: { id: 'orders', title: 'C:\\' } }))).toMatchObject({ sql: expect.stringContaining('FROM [C:\\\\](dm:orders)\n') });
 });
 
 test('a nested join key is read as a path on BigQuery', () => {
   const nestedEdges: Edge[] = [{ id: 'e1', source: 'orders', target: 'customers', joins: [{ sourceField: 'geo.country', targetField: 'meta.country' }] }];
-  expect(buildMartSql(base({ visible: ['customers__city'], edges: nestedEdges }))).toMatchObject({ sql: expect.stringContaining('ON t0.`geo`.`country` = t1.`meta`.`country`') });
+  expect(buildMartSql(base({ visible: ['customers__city'], edges: nestedEdges }))).toMatchObject({ sql: expect.stringContaining('ON base.`geo`.`country` = customers.`meta`.`country`') });
 });
 
 describe('sorting', () => {
@@ -107,18 +107,18 @@ describe('sorting', () => {
     expect(buildMartSql(sortBase())).not.toMatchObject({ sql: expect.stringContaining('ORDER BY') });
   });
   test('a main sort ends the SQL', () => {
-    expect(buildMartSql(sortBase({ sorts: [{ field: 'id', direction: 'asc' }] }))).toEqual({ sql: 'SELECT\n  t0.`id`\nFROM [Orders](dm:orders) AS t0\nORDER BY t0.`id` ASC' });
+    expect(buildMartSql(sortBase({ sorts: [{ field: 'id', direction: 'asc' }] }))).toEqual({ sql: 'WITH\n  base AS (\n    SELECT *\n    FROM [Orders](dm:orders)\n  )\nSELECT\n  base.`id`\nFROM base\nORDER BY base.`id` ASC' });
   });
   test('desc, several keys in order, and after WHERE', () => {
     const r = buildMartSql(sortBase({ filters: [{ field: 'status', op: 'eq', value: 'x' }], sorts: [{ field: 'status', direction: 'desc' }, { field: 'id', direction: 'asc' }] }));
-    expect(r).toMatchObject({ sql: expect.stringMatching(/WHERE t0\.`status` = 'x'\nORDER BY t0\.`status` DESC, t0\.`id` ASC$/) });
+    expect(r).toMatchObject({ sql: expect.stringMatching(/WHERE `status` = 'x'\n {2}\)[\s\S]*FROM base\nORDER BY base\.`status` DESC, base\.`id` ASC$/) });
   });
   test('a joined sort uses its table and brings the join in', () => {
     const r = buildMartSql(sortBase({ sorts: [{ field: 'customers__city', direction: 'desc' }] }));
-    expect(r).toEqual({ sql: 'SELECT\n  t0.`id`\nFROM [Orders](dm:orders) AS t0\nLEFT JOIN [Customers](dm:customers) AS t1 ON t0.`customer_id` = t1.`id`\nORDER BY t1.`city` DESC' });
+    expect(r).toEqual({ sql: 'WITH\n  base AS (\n    SELECT *\n    FROM [Orders](dm:orders)\n  ),\n  customers AS (\n    SELECT *\n    FROM [Customers](dm:customers)\n  )\nSELECT\n  base.`id`\nFROM base\nLEFT JOIN customers ON base.`customer_id` = customers.`id`\nORDER BY customers.`city` DESC' });
   });
   test('a sort on an unknown field is skipped; on a calculated field it is a reason', () => {
-    expect(buildMartSql(sortBase({ sorts: [{ field: 'nope', direction: 'asc' }] }))).toEqual({ sql: 'SELECT\n  t0.`id`\nFROM [Orders](dm:orders) AS t0' });
+    expect(buildMartSql(sortBase({ sorts: [{ field: 'nope', direction: 'asc' }] }))).toEqual({ sql: 'WITH\n  base AS (\n    SELECT *\n    FROM [Orders](dm:orders)\n  )\nSELECT\n  base.`id`\nFROM base' });
     const calc = { ...f('margin', 'INTEGER'), alias: 'Margin', isCalculated: true };
     expect(buildMartSql(sortBase({ schema: [f('id'), calc], sorts: [{ field: 'margin', direction: 'asc' }] }))).toEqual({ reason: 'Calculated field "Margin" can\'t be used in a data mart. Hide it or remove its filter.' });
   });
@@ -128,22 +128,67 @@ describe('a joined filter on a pre-join aggregated field', () => {
   const agg = (sourceType: string, type: string): Field => ({ ...f('customers__spend', type, { ...j('customers', 'customers', 'spend')!, sourceType }), category: categorizeFieldType(type) });
   const run = (field: Field, flt: MartSqlInput['filters'][number]) => buildMartSql(base({ schema: [f('id'), field], visible: ['id'], filters: [flt], sources: [customers([field])] }));
   test('renders against the raw column type', () => {
-    expect(run(agg('STRING', 'INTEGER'), { field: 'customers__spend', op: 'eq', value: '5' })).toMatchObject({ sql: expect.stringContaining("WHERE t1.`spend` = '5'") });
+    expect(run(agg('STRING', 'INTEGER'), { field: 'customers__spend', op: 'eq', value: '5' })).toMatchObject({ sql: expect.stringContaining("WHERE `spend` = '5'") });
   });
   test('an operator the raw type lacks is a reason', () => {
     expect(run(agg('STRING', 'INTEGER'), { field: 'customers__spend', op: 'gt', value: 5 })).toEqual({ reason: 'Filter on "customers__spend" can\'t be saved: the joined data mart aggregates this field' });
   });
   test('an equal source type changes nothing', () => {
-    expect(run(agg('INTEGER', 'INTEGER'), { field: 'customers__spend', op: 'gt', value: 5 })).toMatchObject({ sql: expect.stringContaining('WHERE t1.`spend` > 5') });
+    expect(run(agg('INTEGER', 'INTEGER'), { field: 'customers__spend', op: 'gt', value: 5 })).toMatchObject({ sql: expect.stringContaining('WHERE `spend` > 5') });
   });
 });
 
 test('nothing shown is a reason, and an unknown shown column is skipped', () => {
   expect(buildMartSql(base({ visible: [] }))).toEqual({ reason: 'Show at least one column' });
   expect(buildMartSql(base({ visible: ['nope'] }))).toEqual({ reason: 'Show at least one column' });
-  expect(buildMartSql(base({ visible: ['nope', 'id'] }))).toEqual({ sql: 'SELECT\n  t0.`id`\nFROM [Orders](dm:orders) AS t0' });
+  expect(buildMartSql(base({ visible: ['nope', 'id'] }))).toEqual({ sql: 'WITH\n  base AS (\n    SELECT *\n    FROM [Orders](dm:orders)\n  )\nSELECT\n  base.`id`\nFROM base' });
 });
 
 test('a non-finite number filter is incomplete, so it is skipped rather than thrown', () => {
-  expect(buildMartSql(base({ schema: [f('qty', 'INTEGER')], visible: ['qty'], filters: [{ field: 'qty', op: 'gt', value: Infinity }] }))).toEqual({ sql: 'SELECT\n  t0.`qty`\nFROM [Orders](dm:orders) AS t0' });
+  expect(buildMartSql(base({ schema: [f('qty', 'INTEGER')], visible: ['qty'], filters: [{ field: 'qty', op: 'gt', value: Infinity }] }))).toEqual({ sql: 'WITH\n  base AS (\n    SELECT *\n    FROM [Orders](dm:orders)\n  )\nSELECT\n  base.`qty`\nFROM base' });
+});
+
+describe('CTE layout', () => {
+  const run = (over: Partial<MartSqlInput>) => { const r = buildMartSql(base(over)); return 'sql' in r ? r.sql : r.reason; };
+  test('a main filter sits in the base CTE and the join stays LEFT', () => {
+    const sql = run({ visible: ['id', 'customers__city'], filters: [{ field: 'status', op: 'eq', value: 'paid' }] });
+    expect(sql).toContain("  base AS (\n    SELECT *\n    FROM [Orders](dm:orders)\n    WHERE `status` = 'paid'\n  )");
+    expect(sql).toContain('LEFT JOIN customers ON');
+    expect(sql).not.toContain('INNER JOIN');
+  });
+  test('several filters of one mart are joined by AND', () => {
+    const sql = run({ filters: [{ field: 'status', op: 'eq', value: 'a' }, { field: 'id', op: 'gt', value: 1 }] });
+    expect(sql).toContain("WHERE `status` = 'a' AND `id` > 1");
+  });
+  test('a filter-only joined mart joins INNER and adds no column', () => {
+    const sql = run({ filters: [{ field: 'customers__city', op: 'eq', value: 'Paris' }] });
+    expect(sql).toContain('INNER JOIN customers ON base.`customer_id` = customers.`id`');
+    expect(sql).toContain('SELECT\n  base.`id`\nFROM base');
+  });
+  test('nested: only the child filtered gives a LEFT parent and an INNER child', () => {
+    const rName = f('customers__region__name', 'STRING', j('customers.region', 'region', 'name'));
+    const sql = run({ schema: [f('id'), rName], visible: ['id'], filters: [{ field: 'customers__region__name', op: 'eq', value: 'EU' }], sources: [customers([]), { ...region, fields: [rName] }], titles: new Map([['customers', 'Customers'], ['region', 'Region']]) });
+    expect(sql).toContain('LEFT JOIN customers ON');
+    expect(sql).toContain('INNER JOIN customers__region ON customers.`region_id` = customers__region.`id`');
+    expect(sql).toContain("  customers__region AS (\n    SELECT *\n    FROM [Region](dm:region)\n    WHERE `name` = 'EU'\n  )");
+  });
+  test('a nested filter column is a path on BigQuery', () => {
+    const nested = f('customers__address__city', 'STRING', j('customers', 'customers', 'address.city'));
+    const input = { schema: [f('id'), nested], visible: ['id'], filters: [{ field: 'customers__address__city', op: 'eq' as const, value: 'x' }], sources: [customers([nested])] };
+    expect(run(input)).toContain("WHERE `address`.`city` = 'x'");
+    expect(run({ ...input, dialect: 'snowflake' })).toContain('WHERE "address.city" = \'x\'');
+  });
+  test('a CTE name equal to base or another CTE gets a numeric suffix, and an unusable one falls back to jN', () => {
+    const baseF = f('base__x', 'STRING', j('base', 'customers', 'x'));
+    const sql = run({ schema: [f('id'), baseF], visible: ['id', 'base__x'], sources: [customers([baseF], { aliasPath: 'base' })] });
+    expect(sql).toContain('  base_2 AS (');
+    expect(sql).toContain('LEFT JOIN base_2 ON');
+    const odd = f('weird', 'STRING', j('Cust-1', 'customers', 'x'));
+    const sql2 = run({ schema: [f('id'), odd], visible: ['id', 'weird'], sources: [customers([odd], { aliasPath: 'Cust-1' })] });
+    expect(sql2).toContain('  j1 AS (');
+    expect(sql2).toContain('j1.`x` AS `weird`');
+  });
+  test('a sort on a joined mart orders by its CTE column', () => {
+    expect(run({ sorts: [{ field: 'customers__city', direction: 'asc' }] })).toMatch(/\nORDER BY customers\.`city` ASC$/);
+  });
 });
