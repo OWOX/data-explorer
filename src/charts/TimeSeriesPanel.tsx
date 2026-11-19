@@ -1,16 +1,18 @@
 import { ChartBar, ChartColumn } from 'lucide-react';
+import type { ColumnFilter } from '../filters/build';
 import { AUTO, formatValue, keepsUnit, type Format } from '../format/formats';
 import { BUCKET_LABELS, DATE_BUCKETS, formatBucket, outputType, type DateBucket } from '../model/aggregation';
 import { columnTitle, fieldLabel } from '../model/fieldLabel';
 import type { Row, TraverseFilter } from '../sdk/types';
 import { formatNumber } from '../ui/format';
+import { bucketFilter, dimensionFilter, isBucketDate } from './clickFilters';
 import { compactValue } from './compact';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { ChartPanel } from './ChartPanel';
-import type { ChartFields } from './fields';
-import { measureKey, seriesOtherQuery, seriesQuery, TOP_N, topValuesQuery } from './queries';
-import { metricLabel, metricText, numberOf, type Formatter } from './Scorecards';
-import type { ChartSettings, ResolvedCharts } from './settings';
+import { measuresOf, type ChartFields } from './fields';
+import { bucketZone, measureKey, seriesOtherQuery, seriesQuery, TOP_N, topValuesQuery } from './queries';
+import { measureLabel, measureOptions, metricText, numberOf, type Formatter } from './Scorecards';
+import { measureId, type ChartSettings, type ResolvedCharts } from './settings';
 import { BarChart, type Series } from './svg/BarChart';
 import { useChartQuery } from './useChartQuery';
 
@@ -25,9 +27,9 @@ export const tickText = (n: number, type: string, format: Format): string => com
  * The metric over time, one bar per bucket, stacked by a dimension's top values plus "Other" when chosen. Each value on
  * screen is a returned row's value; the pivot below only places returned numbers under their bucket.
  */
-export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, bucket, range, ready, onChange }: {
+export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, bucket, range, ready, onChange, onFilter }: {
   martId: string; cf: ChartFields; r: ResolvedCharts; filter: TraverseFilter[]; version: number; idle: boolean; hasFilters: boolean; formatOf: Formatter;
-  bucket: DateBucket | null; range: { error: unknown; retry: () => void }; ready: boolean; onChange: (patch: Patch) => void;
+  bucket: DateBucket | null; range: { error: unknown; retry: () => void }; ready: boolean; onChange: (patch: Patch) => void; onFilter: (add: ColumnFilter[]) => void;
 }) {
   const { date, measure, stack } = r;
   const live = !idle && !!date && !!measure && !!bucket;
@@ -41,7 +43,7 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
 
   // Other only when the not_in query returned a value: an all-null row would be an empty series with a legend entry.
   const hasOther = needOther && !!other.rows?.some((x) => x[measureKey(measure!)] != null);
-  const label = measure!.kind === 'metric' ? metricLabel(measure!.metric) : 'Unique Records';
+  const label = measureLabel(cf, measure!);
   const failed = [{ error: range.error, retry: range.retry }, top, series, other].find((q) => q.error);
   const emptyNow = stack ? top.rows?.length === 0 : series.rows?.length === 0;
   const loading = !emptyNow && (!bucket || !series.rows || (needOther && !other.rows));
@@ -59,7 +61,7 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
     const xs = [...new Set(all.map((x) => String(x[date!.name])))].sort();
     if (!stack) return [pivot(label, seriesColor(0), series.rows ?? [], xs)];
     const rowsOf = (n: string) => (series.rows ?? []).filter((x) => String(x[stack.name]) === n);
-    return [...names!.map((n, i) => pivot(n, seriesColor(i), rowsOf(n), xs)), ...(hasOther ? [pivot('Other', OTHER_COLOR, other.rows ?? [], xs)] : [])];
+    return [...names!.map((n, i) => pivot(n, seriesColor(i), rowsOf(n), xs)), ...(hasOther ? [{ ...pivot('Other', OTHER_COLOR, other.rows ?? [], xs), other: true }] : [])];
   };
 
   // The axis follows the measure as its values do: a metric's output type and format, Records an integer count.
@@ -67,12 +69,12 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
     ? (() => { const f = measure!.metric.field; const t = outputType(f, measure!.metric.fn); return [t, keepsUnit(measure!.metric.fn) ? formatOf(f.name, t) : AUTO] as [string, Format]; })()
     : ['INTEGER', AUTO];
   const id = (f: { name: string }) => f.name;
-  // Records first (the main mart's key), then the shown metrics.
-  const measures = [...(cf.marts[0]?.hasPk ? [{ value: 'records', label: 'Unique Records' }] : []), ...cf.metrics.map((m) => ({ value: id(m.field), label: metricLabel(m) }))];
+  // Each mart's records, then its metrics, in group order.
+  const measures = measureOptions(cf, measuresOf(cf));
   const items: MenuItem[] = [
     ...(cf.dates.length > 1 ? [{ kind: 'radio', label: 'Date field', value: date ? id(date) : '', options: cf.dates.map((d) => ({ value: id(d), label: columnTitle(d) })), onPick: (v: string) => onChange({ date: v }) } as MenuItem] : []),
     { kind: 'radio', label: 'Bucket', value: r.bucket, options: [{ value: 'AUTO', label: 'Auto' }, ...DATE_BUCKETS.map((b) => ({ value: b, label: BUCKET_LABELS[b] }))], onPick: (v) => onChange({ bucket: v as Patch['bucket'] }) },
-    ...(measures.length > 1 ? [{ kind: 'radio', label: 'Metric', value: measure!.kind === 'records' ? 'records' : id(measure!.metric.field), options: measures, onPick: (v: string) => onChange({ metric: v }) } as MenuItem] : []),
+    ...(measures.length > 1 ? [{ kind: 'radio', label: 'Metric', value: measureId(measure!, cf.marts[0]?.martId ?? ''), options: measures, onPick: (v: string) => onChange({ metric: v }) } as MenuItem] : []),
     { kind: 'radio', label: 'Stack by', value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }, ...cf.dimensions.map((d) => ({ value: id(d), label: columnTitle(d) }))], onPick: (v) => onChange({ stack: v === '' ? null : v }) },
   ];
   const orient = (o: 'vertical' | 'horizontal', label: string, Icon: typeof ChartColumn) => (
@@ -88,7 +90,12 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
       empty={emptyNow ? (hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.') : null}
       note={stack ? `Rows with a blank ${fieldLabel(stack)} are not shown.` : undefined}
       actions={ready && <>{orient('vertical', 'Vertical bars', ChartColumn)}{orient('horizontal', 'Horizontal bars', ChartBar)}<ChartMenu name="Time series" items={items} /></>}>
-      {series.rows && <BarChart series={chart()} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} />}
+      {series.rows && (() => {
+        const shown = chart();
+        // The bucket's date range, plus (stacked) the segment's value of the stack dimension.
+        const pick = (x: string, i?: number) => onFilter([bucketFilter(date!, x, bucket!, bucketZone(date!)), ...(stack && i !== undefined && !shown[i]!.other ? [dimensionFilter(stack, shown[i]!.name)] : [])]);
+        return <BarChart series={shown} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={bucket ? pick : undefined} canPick={isBucketDate} stacked={!!stack} />;
+      })()}
     </ChartPanel>
   );
 }

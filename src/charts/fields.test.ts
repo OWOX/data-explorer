@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chartFields, pickBucket } from './fields';
+import { chartFields, measuresOf, pickBucket, pieMeasures } from './fields';
 import type { Field } from '../model/types';
 import { NO_AGGREGATION } from '../model/aggregation';
 
@@ -43,6 +43,22 @@ describe('chartFields', () => {
     const s = [...schema, f('c__ltv', 'number', { joined: { martId: 'C', label: 'Customers', aliasPath: 'c' } })];
     expect(chartFields(s, ['c__ltv'], NO_AGGREGATION, 'M', ['M', 'C'], new Set(['c'])).marts.find((m) => m.martId === 'C')!.hasPk).toBe(true);
     expect(chartFields(s, ['c__ltv'], NO_AGGREGATION, 'M', ['M', 'C']).marts.find((m) => m.martId === 'C')!.hasPk).toBe(false);
+  });
+});
+
+describe('measures', () => {
+  const cf = chartFields(schema, ['id', 'date', 'amount', 'c__city', 'c__ltv'], NO_AGGREGATION, 'M', ['M', 'C'], new Set(['c']), { M: 'Orders', C: 'Customers' });
+  it('lists, per mart in group order, its Unique Records (when keyed) then its metrics', () => {
+    expect(measuresOf(cf).map((m) => (m.kind === 'records' ? ['records', m.martId, m.aliasPath] : ['metric', m.metric.field.name]))).toEqual([['records', 'M', ''], ['metric', 'amount'], ['records', 'C', 'c'], ['metric', 'c__ltv']]);
+    expect(cf.marts.map((m) => m.title)).toEqual(['Orders', 'Customers']);
+  });
+  it('leaves out the records of a mart with no key', () => {
+    const noKey = chartFields(schema, ['amount', 'c__ltv'], NO_AGGREGATION, 'M', ['M', 'C']);
+    expect(measuresOf(noKey).filter((m) => m.kind === 'records').map((m) => m.martId)).toEqual(['M']);
+  });
+  it('the pie keeps every records and only summable metrics, summed', () => {
+    const avg = chartFields(schema, ['amount', 'c__ltv'], { aggregations: [{ column: 'amount', function: 'AVG' }], dateTrunc: [] }, 'M', ['M', 'C'], new Set(['c']));
+    expect(pieMeasures(avg).map((m) => (m.kind === 'records' ? `records:${m.martId}` : `${m.metric.field.name}:${m.metric.fn}`))).toEqual(['records:M', 'amount:SUM', 'records:C', 'c__ltv:SUM']);
   });
 });
 

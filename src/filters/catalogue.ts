@@ -1,5 +1,6 @@
 import type { Field } from '../model/types';
 import { isDayType } from '../model/field-category';
+import { zonesBuckets } from '../model/aggregation';
 import type { RelativeDatePreset } from '../sdk/types';
 
 export type OpId = 'contains' | 'not_contains' | 'eq' | 'neq' | 'starts_with' | 'ends_with' | 'gt' | 'gte' | 'lt' | 'lte' | 'between' | 'on' | 'before' | 'after' | 'relative' | 'is_true' | 'is_false' | 'is_blank' | 'is_not_blank';
@@ -141,12 +142,15 @@ export const RELATIVE_MAX_N = 3650;
 /** A date-category field that carries a time of day (DATETIME, TIMESTAMP and their time-zone variants). */
 export const isDateTimeField = (field: Field) => field.category === 'date' && !isDayType(field.type);
 
+/** A bound with a time part, as a zoned chart click sends it. */
+const ZONED_BOUND = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
 /** What an applied filter says, for the tooltip on the header's filter mark: "Last 30 days", "equals Berlin", "between 1 and 5". */
 export function describeFilter(field: Field, filter: { op: OpId; value?: unknown }): string {
   if (filter.op === 'relative') return filter.value && typeof filter.value === 'object' && 'kind' in filter.value ? presetName(filter.value as RelativeDatePreset) : 'relative';
   const label = operatorsFor(field).find((o) => o.id === filter.op)?.label ?? filter.op;
   const v = filter.value;
   if (v === undefined || v === null || v === '') return label;
-  if (typeof v === 'object' && 'from' in v) { const r = v as { from: unknown; to: unknown }; return `${label} ${String(r.from)} and ${String(r.to)}`; }
+  if (typeof v === 'object' && 'from' in v) { const r = v as { from: unknown; to: unknown }; const text = `${label} ${String(r.from)} and ${String(r.to)}`; return zonesBuckets(field) && [r.from, r.to].every((x) => typeof x === 'string' && ZONED_BOUND.test(x)) ? `${text} (UTC)` : text; }
   return `${label} ${String(v)}`;
 }

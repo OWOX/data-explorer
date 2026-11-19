@@ -35,6 +35,11 @@ query; the plugin does no arithmetic on values.
 2. **Dimension:** a shown field with category `string` or `boolean`, not a primary key.
 3. **Date field:** a shown field that `canBucket`.
 4. Each field belongs to a data mart: the main one, or the joined one in `field.joined.martId`.
+5. **Measure:** what a time series or pie counts: a metric, or a mart's **Unique Records** (every chart mart with a
+   primary key, main or joined; a joined mart has one when the backend allows a unique count on its alias path). The
+   list is per mart in group order: its Unique Records, then its metrics. Any mart's measure pairs with any mart's
+   date or dimension. A joined mart's label is "<group title> · Unique Records". The pie offers every Unique Records
+   and the summable metrics (always summed).
 
 ## Layout in Charts mode
 
@@ -43,8 +48,9 @@ query; the plugin does no arithmetic on values.
    the header and the charts scroll together horizontally.
 2. The table body is replaced by, top to bottom:
    1. **Scorecard strip.** One cell per data mart group, exactly under that group's header span (it is a `<td colSpan>`
-      in the same table). Inside, the cards flex-wrap, so a narrow span stacks them on several lines. Card min width
-      9rem.
+      in the same table). Inside, the cards flex-wrap, so a narrow span stacks them on several lines. A card is at most
+      10rem wide (`flex: 0 1 10rem`, `min-width: 0`): it does not stretch to fill the cell, but may shrink in a narrow
+      one.
       1. First card: **Records**, the unique count, when the data mart has a primary key.
       2. Then one card per metric of that data mart: the field label and function label ("Amount · Sum"), the value
          formatted with the column's format.
@@ -65,11 +71,11 @@ or limit except as listed. Query builders are pure functions in `src/charts/quer
 | 1 | Scorecards | `column`: all metrics, `aggregation`: their functions, `uniqueCount`: `''` when the main mart has a PK, plus the alias path of each shown joined mart with a PK → one row. Without metrics: `uniqueCount` only. |
 | 2 | Auto bucket | `column: [date]`, `aggregation: [MIN, MAX]` on the date field → one row. The bucket is the smallest of DAY, WEEK, MONTH, QUARTER, YEAR that gives ≤ 60 buckets over that span (`pickBucket(min, max)`; dates parsed only to count buckets, no value is shown from it). |
 | 3 | Sparklines | per data mart with a date field: `column: [date, ...mart metrics]`, `dateTrunc`, `aggregation`, `uniqueCount` for that mart when it has a PK, `sort` date asc. |
-| 4a | Stack top values | `column: [dim, metric]`, `aggregation`, `sort` metric desc, `limit: 8`. |
-| 4b | Time series | `column: [date, (dim), metric]`, `dateTrunc`, `aggregation`, plus filter `dim in top8` when stacked, `sort` date asc. |
+| 4a | Stack top values | `column: [dim, metric]`, `aggregation`, `sort` metric desc, `limit: 8`. For a Unique Records measure: `column: [dim]`, `uniqueCount: [aliasPath]`, `sort` its key desc. |
+| 4b | Time series | `column: [date, (dim), metric]` (a Unique Records measure: no metric column, `uniqueCount: [aliasPath]` of its mart), `dateTrunc`, `aggregation`, plus filter `dim in top8` when stacked, `sort` date asc. |
 | 4c | Time series Other | stacked only and when 4a returned 8: `column: [date, metric]`, filter `dim not_in top8`. |
 | 5a | Pie slices | same as 4a with the pie's dimension and metric. |
-| 5b | Pie Other | when 5a returned 8: `column: [metric]`, aggregation, filter `dim not_in top8` → one row. |
+| 5b | Pie Other | when 5a returned 8: `column: [metric]`, aggregation (or `uniqueCount: [aliasPath]` for Unique Records), filter `dim not_in top8` → one row. |
 
 1. Output keys: a function output is `aggregatedKey(column, fn)`; the main unique count is `Unique Count`; a joined
    one is `<alias path with dots as _>__unique_count`.
@@ -89,7 +95,25 @@ A `⋮` button (lucide `EllipsisVertical`) at the top right of each panel opens 
 2. Time series: Date field (only with more than one), Bucket (Auto, Day, Week, Month, Quarter, Year), Metric (only
    with more than one), Stack by ("No stacking", then each dimension). Left of the ⋮, the orientation switch: two icon
    buttons (`ChartColumn` vertical, `ChartBar` horizontal), `aria-pressed`.
-3. Pie: Metric, Dimension.
+3. Pie: Metric (see 4; metrics only when summable, always summed), Dimension.
+4. The Metric menus offer the measures list (see Fields), in group order: each mart's Unique Records, then its metrics.
+
+## Click to filter
+
+A click on a chart mark adds grid filters through the same path as a filter edit, so it is one Undo step.
+
+1. Pie slice: the dimension's filter, `eq` for text, `is_true` / `is_false` for a boolean. "Other" is not clickable.
+2. Bar: the date column `between` the bucket's first and last moment; on a stacked bar the clicked segment's value is
+   added (not for "Other"). The keyboard reaches each bucket (Enter / Space: the bucket filter only).
+3. Bucket bounds: a zoned bucket (an instant type: TIMESTAMP and its zone variants) sends UTC instants from the bucket's
+   local midnight to one second before the next, DST-aware, and its filter text ends "(UTC)". DATE and DATETIME are not
+   zoned (the backend buckets DATETIME by its raw calendar day), so they send calendar days.
+4. A bucket of blank dates is not clickable; a filter that would not be complete is dropped with the "not applied" note.
+5. The pie hides its share when the measure's mart is not the dimension's: one row may sit in several slices.
+
+## Column letters
+
+Right-clicking a column letter (A, B, C) opens that column's menu, the one its menu icon opens, in Table and Charts.
 
 ## Saved settings
 
@@ -99,13 +123,14 @@ A `⋮` button (lucide `EllipsisVertical`) at the top right of each panel opens 
 type ChartSettings = {
   scorecards?: { hidden?: string[]; sparklines?: boolean };       // hidden: card ids (field name, or 'records:<martId>')
   timeSeries?: { date?: string; bucket?: DateBucket | 'AUTO'; metric?: string; stack?: string | null; orientation?: 'vertical' | 'horizontal' };
-  pie?: { metric?: string; dimension?: string };
+  // timeSeries.metric: a field name, 'records' (main mart) or 'records:<martId>'
+  pie?: { metric?: string; dimension?: string };                   // metric: as timeSeries.metric
 };
 ```
 
 1. Read once when Charts first opens for a mart; written on every change (one put, failures logged).
 2. `resolveCharts(settings, fields)` turns saved choices into the ones in effect: a choice naming a field that is not
-   shown falls back to the default (first date, first metric, first dimension, `stack` none, bucket AUTO, vertical,
+   shown (or a `records:<martId>` of a mart without a key) falls back to the default (first date, first metric, first dimension, `stack` none, bucket AUTO, vertical,
    sparklines on). The saved document is not rewritten by a fallback.
 
 ## Drawing

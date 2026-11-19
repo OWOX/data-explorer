@@ -40,6 +40,8 @@ export type ColumnMenuEnv = {
   typeOf: (field: Field, output: Output) => string;
   /** False in Charts mode: no sort row and no sort mark. Absent means true. */
   sortable?: boolean;
+  /** A request to open one output's root menu from outside its header (a right-click on its column letter). A new `seq` is a new request. */
+  menuRequest?: { key: string; seq: number } | null;
 };
 
 const NOOP = () => undefined;
@@ -212,6 +214,16 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
   const canSort = output.sortable && env.sortable !== false;
   const active = !!filter || aggregated || (canSort && !!direction) || formatOn;
   const close = useCallback((refocus = true) => { setMenu(null); if (refocus) icon.current?.focus(); }, []);
+  // A request names an output by key: that header opens its root menu at its icon, every other one closes its own. A request already
+  // standing when the header mounts is not new.
+  const request = env.menuRequest;
+  const seen = useRef(request?.seq ?? 0);
+  useEffect(() => {
+    if (!request || request.seq === seen.current) return;
+    seen.current = request.seq;
+    const anchor = icon.current;
+    setMenu(request.key === output.key && anchor ? { anchor, sub: null } : null);
+  }, [request, output.key]);
   const toggle = (anchor: HTMLElement, sub: SubKey | null) => setMenu((cur) => (cur && cur.sub === sub ? null : { anchor, sub }));
   useEffect(() => {
     if (!menu) return;

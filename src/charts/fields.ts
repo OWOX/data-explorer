@@ -2,14 +2,25 @@
 import { AGGREGATE_FUNCTIONS, allowedFunctions, canBucket, type AggFn, type Aggregation, type DateBucket } from '../model/aggregation';
 import type { Field } from '../model/types';
 import { isIdField } from '../state/join-plan';
+import type { Measure } from './queries';
 
 export type Metric = { field: Field; fn: AggFn; martId: string };
-export type ChartMart = { martId: string; aliasPath: string; hasPk: boolean; metrics: Metric[]; dates: Field[]; dimensions: Field[] };
+export type ChartMart = { martId: string; aliasPath: string; title: string; hasPk: boolean; metrics: Metric[]; dates: Field[]; dimensions: Field[] };
 export type ChartFields = { marts: ChartMart[]; metrics: Metric[]; dimensions: Field[]; dates: Field[] };
 export const MAX_BUCKETS = 60;
 
-/** A pie shows parts of a whole: only metrics the warehouse may sum, and always summed, whatever function the grid shows. */
-export const pieMetrics = (cf: ChartFields): Metric[] => cf.metrics.filter((m) => allowedFunctions(m.field).includes('SUM')).map((m) => (m.fn === 'SUM' ? m : { ...m, fn: 'SUM' }));
+/** Everything a chart can count, per chart mart in group order: its Unique Records when it has a key, then its metrics. Any mart's measure pairs with any mart's date or dimension. */
+export const measuresOf = (cf: ChartFields): Measure[] => cf.marts.flatMap((m): Measure[] => [
+  ...(m.hasPk ? [{ kind: 'records', aliasPath: m.aliasPath, martId: m.martId } as const] : []),
+  ...m.metrics.map((metric): Measure => ({ kind: 'metric', metric })),
+]);
+
+/** A pie shows parts of a whole: only metrics the warehouse may sum, and always summed, whatever function the grid shows; every Unique Records counts too. */
+export const pieMeasures = (cf: ChartFields): Measure[] => measuresOf(cf).flatMap((x): Measure[] => {
+  if (x.kind === 'records') return [x];
+  if (!allowedFunctions(x.metric.field).includes('SUM')) return [];
+  return [x.metric.fn === 'SUM' ? x : { kind: 'metric', metric: { ...x.metric, fn: 'SUM' } }];
+});
 
 const martOf = (f: Field, main: string) => f.joined?.martId ?? main;
 
@@ -23,7 +34,7 @@ function metricFn(f: Field, agg: Aggregation): AggFn | null {
 }
 
 /** `shown` is the grid's shown column names (their order does not matter: the charts follow the schema's, so a column move changes nothing); `schema` the blended schema; `mainMartId` the grid's mart. */
-export function chartFields(schema: Field[], shown: string[], agg: Aggregation, mainMartId: string, groupOrder: string[], uniqueCountPaths?: ReadonlySet<string>): ChartFields {
+export function chartFields(schema: Field[], shown: string[], agg: Aggregation, mainMartId: string, groupOrder: string[], uniqueCountPaths?: ReadonlySet<string>, titles: Readonly<Record<string, string>> = {}): ChartFields {
   const by = new Map(schema.map((f) => [f.name, f]));
   const on = new Set(shown);
   const fields = [...by.values()].filter((f) => on.has(f.name));
@@ -40,6 +51,7 @@ export function chartFields(schema: Field[], shown: string[], agg: Aggregation, 
     return {
       martId,
       aliasPath,
+      title: titles[martId] ?? '',
       hasPk,
       metrics,
       dates: own.filter((f) => canBucket(f)),

@@ -42,6 +42,8 @@
 .dm-chart-text { fill: var(--muted-foreground); font-size: 11px; }
 .dm-spark-line { fill: none; stroke: var(--dm-series-1); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .dm-pie-slice { stroke: var(--card); stroke-width: 2; }
+.dm-pie-slice:focus-visible { outline: none; stroke: var(--foreground); stroke-width: 3; }
+.dm-bar-chart rect:focus-visible { outline: none; stroke: var(--foreground); stroke-width: 3; }
 .dm-bar-chart rect:hover, .dm-pie-slice:hover { opacity: 0.85; }
 
 .dm-chart-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; list-style: none; padding: 0; margin: 0.5rem 0 0; font-size: 0.75rem; color: var(--foreground); }

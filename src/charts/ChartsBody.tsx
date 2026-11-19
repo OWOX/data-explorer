@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ColumnFilter } from '../filters/build';
 import type { JoinedSource } from '../api/blendable';
 import type { Aggregation } from '../model/aggregation';
 import type { Format } from '../format/formats';
@@ -24,9 +25,11 @@ const GUTTER_PX = 46;
  * The panels sit side by side while each still gets 30rem, and stack when the band is narrower.
  * Settings load once per mart; a fallback `resolveCharts` picks is never written back, only the member's own changes are.
  */
-export function ChartsBody({ martId, schema, shown, agg, filter, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth }: {
+export function ChartsBody({ martId, schema, shown, agg, filter, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter }: {
   martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; groups: { id: string; span: number; title: string }[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
   formatOf: (column: string, type: string) => Format; scrollerWidth: number;
+  /** Applies the clicked mark's filters to the grid, as a filter edit (one Undo step). */
+  onFilter: (add: ColumnFilter[]) => void;
 }) {
   const { chartSettings } = useServices();
   const [settings, setSettings] = useState<ChartSettings | null>(null);
@@ -47,7 +50,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
   };
 
   const uniqueCountPaths = new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath));
-  const cf = chartFields(schema, shown, agg, martId, groups.map((g) => g.id), uniqueCountPaths);
+  const cf = chartFields(schema, shown, agg, martId, groups.map((g) => g.id), uniqueCountPaths, Object.fromEntries(groups.map((g) => [g.id, g.title])));
   const r = resolveCharts(settings ?? {}, cf);
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
   const idle = paused || !settings;
@@ -65,9 +68,9 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
     if (!hidden.delete(id)) hidden.add(id);
     return { ...sc, hidden: [...hidden] };
   });
-  const panelProps = { martId, cf, r, filter, version, idle, hasFilters, formatOf, ready: !!settings };
+  const panelProps = { martId, cf, r, filter, version, idle, hasFilters, formatOf, ready: !!settings, onFilter };
   const items: MenuItem[] = [
-    ...cf.marts.flatMap((m, i) => cardsOf(m).map((c): MenuItem => ({ kind: 'check', label: i === 0 ? c.label : `${groups[i]!.title} · ${c.label}`, checked: !r.hidden.has(c.id), onToggle: () => toggleCard(c.id) }))),
+    ...cf.marts.flatMap((m, i) => cardsOf(m).map((c): MenuItem => ({ kind: 'check', label: i === 0 ? c.label : `${m.title} · ${c.label}`, checked: !r.hidden.has(c.id), onToggle: () => toggleCard(c.id) }))),
     { kind: 'check', label: 'Sparklines', checked: r.sparklines, onToggle: () => patch((sc) => ({ ...sc, sparklines: !(sc.sparklines ?? true) })) },
   ];
 
@@ -93,7 +96,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
           <div data-chart-panels className="dm-chart-panels sticky" style={{ left: GUTTER_PX, width: Math.max(0, scrollerWidth - GUTTER_PX) }}>
             {r.date && r.measure && <TimeSeriesPanel {...panelProps} bucket={bucket} range={{ error: rangeError, retry: retryRange }}
               onChange={(p) => change((cur) => ({ ...cur, timeSeries: { ...cur.timeSeries, ...p } }))} />}
-            {r.pieMetric && r.pieDimension && <PiePanel {...panelProps} onChange={(p) => change((cur) => ({ ...cur, pie: { ...cur.pie, ...p } }))} />}
+            {r.pieMeasure && r.pieDimension && <PiePanel {...panelProps} onChange={(p) => change((cur) => ({ ...cur, pie: { ...cur.pie, ...p } }))} />}
           </div>
         </td>
       </tr>

@@ -5,7 +5,7 @@ import { GRID_COLUMNS_COLLECTION } from '../api/grid-columns';
 import { CHARTS_COLLECTION } from '../api/chart-settings';
 import { createMockCtx } from '../sdk/mock/ctx';
 import { demoFixtures } from '../sdk/mock/fixtures';
-import type { Ctx, TraverseOptions } from '../sdk/types';
+import type { Ctx, Row, TraverseOptions } from '../sdk/types';
 import { AppServices, StoreProvider } from '../state/store';
 import { App } from '../ui/App';
 import { openColumnMenu, openSubmenu } from '../ui/explorer/menu-test-utils';
@@ -14,7 +14,7 @@ import type { ChartSettings } from './settings';
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
 const COLUMNS = ['id', 'status', 'amount', 'created_at', 'products__price'];
 
-function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean } = {}) {
+function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row } = {}) {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
@@ -22,7 +22,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
   const gridPuts = vi.fn();
   const ctx: Ctx = {
     ...base,
-    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); return id === 'orders' && opts.fail?.(o) ? Promise.reject(new Error('range failed')) : real(id, o); } } },
+    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('range failed')); const tr = real(id, o); const map = opts.mapRow; return map ? tr.then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map(map); } })) : tr; } } },
     collections: <T,>(name: string) => {
       const c = base.collections<T>(name);
       if (name === GRID_COLUMNS_COLLECTION) return { get: (id: string) => c.get(id), put: (id: string, d: T) => { gridPuts(id, d); return c.put(id, d); } };
@@ -63,6 +63,13 @@ test('Charts: each data mart has its own cards in its group cell, Unique Records
   await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Unique Records', 'Amount · Sum']));
   expect(cardNames(group('products'))).toEqual(['Unique Records', 'price · Sum']);
   await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
+});
+
+test('a card is at most 10rem wide and does not grow to fill its mart’s cell', async () => {
+  await charts();
+  const card = await waitFor(() => { const c = group('orders')!.querySelector('[data-card]'); expect(c).not.toBeNull(); return c!; });
+  expect(card.className).toContain('flex-[0_1_10rem]');
+  expect(card.className).not.toMatch(/\bflex-1\b/);
 });
 
 test('a long number shows short on its card, the exact value in a tooltip and to screen readers; a short one shows in full', async () => {
@@ -278,7 +285,7 @@ test('a failed Auto range query shows Retry on the time series, which reads agai
 test('a date and a key with no metric shown still get a Unique Records time series', async () => {
   const t = await charts({ columns: ['id', 'status', 'created_at'], charts: { scorecards: { sparklines: false } } }); // no sparklines: they send the same shape
   await waitFor(() => expect(data().querySelector('svg[aria-label="Unique Records by day"], svg[aria-label^="Unique Records by"]')).not.toBeNull());
-  expect(screen.getByRole('heading', { name: /^Unique Records by / })).toBeInTheDocument();
+  expect(screen.getAllByRole('heading', { name: /^Unique Records by / }).length).toBeGreaterThan(0);
   const q = t.queries.find((o) => o.dateTrunc && o.uniqueCount?.[0] === '');
   expect(q).toMatchObject({ uniqueCount: [''], dateTrunc: [expect.objectContaining({ column: 'created_at' })] });
   expect(q?.aggregation).toBeUndefined();
@@ -295,4 +302,101 @@ test('choosing Unique Records from the Metric menu saves timeSeries.metric recor
   await userEvent.click(opts[0]!);
   await waitFor(() => expect(screen.getByRole('heading', { name: /^Unique Records by / })).toBeInTheDocument());
   expect(t.puts).toHaveBeenCalledWith('orders', { timeSeries: { metric: 'records' } });
+});
+
+test('the Metric menus list every mart’s Unique Records and metrics; a joined mart’s records saves records:<martId>', async () => {
+  const t = await charts();
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  await userEvent.click(panel('Time series'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  const opts = await screen.findAllByRole('menuitemradio');
+  expect(opts.map((o) => o.textContent)).toEqual(['Unique Records', 'Amount · Sum', 'Products · Unique Records', 'price · Sum']);
+  await userEvent.click(opts[2]!);
+  await waitFor(() => expect(screen.getByRole('heading', { name: /^Products · Unique Records by / })).toBeInTheDocument());
+  expect(t.puts).toHaveBeenCalledWith('orders', { timeSeries: { metric: 'records:products' } });
+  const q = t.queries.find((o) => o.dateTrunc && o.uniqueCount?.[0] && o.uniqueCount[0] !== '');
+  expect(q).toMatchObject({ column: ['created_at'] });
+  expect(q?.aggregation).toBeUndefined();
+});
+
+test('a pie of a joined mart’s Unique Records by a dimension asks the backend for that mart’s unique count', async () => {
+  const t = await charts({ charts: { pie: { metric: 'records:products', dimension: 'status' } } });
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Products · Unique Records by status' })).toBeInTheDocument());
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  const q = t.queries.find((o) => o.limit === 8 && o.column?.[0] === 'status' && o.uniqueCount?.[0] !== '' && o.uniqueCount);
+  expect(q).toMatchObject({ column: ['status'], sort: [{ direction: 'desc' }] });
+  expect(q?.aggregation).toBeUndefined();
+  await userEvent.click(panel('Pie'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  expect((await screen.findAllByRole('menuitemradio')).map((o) => o.textContent)).toEqual(['Unique Records', 'Amount · Sum', 'Products · Unique Records', 'price · Sum']);
+});
+
+const statusFilter = () => within(data()).queryByRole('button', { name: /^Filter status/i });
+const lastQuery = (t: { queries: TraverseOptions[] }) => t.queries[t.queries.length - 1]!;
+
+test('clicking a pie slice filters the grid to it; Undo removes the filter and Redo puts it back', async () => {
+  const t = await charts();
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  const slice = data().querySelector<SVGElement>('[data-slice]')!;
+  const value = slice.getAttribute('data-slice')!;
+  expect(statusFilter()).toBeNull();
+  await userEvent.click(slice);
+  await waitFor(() => expect(statusFilter()).not.toBeNull());
+  await waitFor(() => expect(t.queries.some((o) => o.filter?.some((f) => f.column === 'status' && f.operator === 'eq' && f.value === value))).toBe(true));
+  await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(statusFilter()).toBeNull());
+  await userEvent.click(screen.getByRole('button', { name: 'Redo' }));
+  await waitFor(() => expect(statusFilter()).not.toBeNull());
+});
+
+test('a pie slice is keyboard reachable and "Other" is not clickable', async () => {
+  await charts({ columns: withDims });
+  await userEvent.click(panel('Pie'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Products · Name' }));
+  await waitFor(() => expect(data().querySelector('[data-slice="Other"]')).not.toBeNull());
+  expect(data().querySelector('[data-slice="Other"]')!.hasAttribute('tabindex')).toBe(false);
+  expect(data().querySelector('[data-slice]:not([data-slice="Other"])')!.getAttribute('aria-label')).toMatch(/^Filter to /);
+});
+
+test('clicking a bar bucket filters the date column to a between over that bucket', async () => {
+  const t = await charts({ charts: { timeSeries: { bucket: 'MONTH' } } });
+  await waitFor(() => expect(data().querySelector('[data-bucket]')).not.toBeNull());
+  const band = data().querySelector<SVGElement>('[data-bucket]')!;
+  const start = band.getAttribute('data-bucket')!.slice(0, 10);
+  await userEvent.click(band);
+  await waitFor(() => expect(within(data()).queryByRole('button', { name: /^Filter created/i })).not.toBeNull());
+  await waitFor(() => {
+    const f = lastQuery(t).filter?.find((x) => x.column === 'created_at');
+    expect(f?.operator).toBe('between');
+    expect(((f as { value: { from: string } }).value).from.startsWith(start)).toBe(true);
+  });
+});
+
+let blanks = 0;
+test('a pie slice whose value is blank is not turned into a filter: no filter, no Undo step, a note says so', async () => {
+  await charts({ charts: { pie: { metric: 'records', dimension: 'status' } }, mapRow: (r) => ('status' in r ? { ...r, status: ' '.repeat(++blanks) } : r) });
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  const undoWas = (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement).disabled;
+  await userEvent.click(data().querySelector('[data-slice]')!);
+  expect(await screen.findByText(/filter on .*not applied/i)).toBeInTheDocument();
+  expect(statusFilter()).toBeNull();
+  expect((screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement).disabled).toBe(undoWas);
+});
+
+test('the pie tooltip shows each share, except for another mart’s Unique Records whose slices overlap', async () => {
+  const own = await charts({ charts: { pie: { metric: 'records', dimension: 'status' } } });
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  fireEvent.focus(data().querySelector('[data-slice]')!);
+  expect((await screen.findAllByText(/\(\d+%\)/)).length).toBeGreaterThan(0);
+  expect(own.queries.length).toBeGreaterThan(0);
+});
+
+test('a pie of another mart’s Unique Records hides the share in the tooltip', async () => {
+  await charts({ charts: { pie: { metric: 'records:products', dimension: 'status' } } });
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  const slice = data().querySelector('[data-slice]')!;
+  fireEvent.focus(slice);
+  expect((await screen.findAllByText(new RegExp(`^${slice.getAttribute('data-slice')}: `))).length).toBeGreaterThan(0);
+  expect(screen.queryByText(/\(\d+%\)/)).toBeNull();
 });

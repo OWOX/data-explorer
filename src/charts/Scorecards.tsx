@@ -9,8 +9,8 @@ import { Skeleton } from '../ui/Skeleton';
 import { Tooltip } from '../ui/Tooltip';
 import { compactValue } from './compact';
 import type { ChartFields, ChartMart, Metric } from './fields';
-import { metricKey, scorecardsQuery, sparklineQuery, uniqueKey } from './queries';
-import { recordsCardId, type ResolvedCharts } from './settings';
+import { metricKey, scorecardsQuery, sparklineQuery, uniqueKey, type Measure } from './queries';
+import { measureId, recordsCardId, type ResolvedCharts } from './settings';
 import { Sparkline, type Point } from './svg/Sparkline';
 import { useChartQuery, type ChartResult } from './useChartQuery';
 
@@ -18,6 +18,15 @@ export type Card = { id: string; label: string; key: string; field?: Field; fn?:
 
 /** How a metric is named wherever it shows: on its card, in a chart title and in a menu. */
 export const metricLabel = (m: Metric): string => `${fieldLabel(m.field)} · ${AGG_LABELS[m.fn]}`;
+
+/** A measure's name in a menu and a chart title: the main mart's records are plain, a joined mart's say whose they are. */
+export function measureLabel(cf: ChartFields, m: Measure): string {
+  if (m.kind === 'metric') return metricLabel(m.metric);
+  return m.martId === cf.marts[0]?.martId ? 'Unique Records' : `${cf.marts.find((x) => x.martId === m.martId)?.title ?? ''} · Unique Records`;
+}
+
+/** The radio options of a "Metric" menu: each measure under the id it is saved as. */
+export const measureOptions = (cf: ChartFields, list: Measure[]) => list.map((m) => ({ value: measureId(m, cf.marts[0]?.martId ?? ''), label: measureLabel(cf, m) }));
 
 /** A mart's cards: its record count (when it has a primary key), then one per metric. */
 export function cardsOf(mart: ChartMart): Card[] {
@@ -98,10 +107,10 @@ export function MartCards({ martId, mart, main, r, scores, bucket, filter, versi
     valueText: textOf(c, s, formatOf),
   }));
   return (
-    // Cards ask for 9rem (basis) but may shrink; only the label truncates, so the value's own width is the floor and a number is never cut.
+    // A card is at most 10rem (basis, no growth) and may shrink in a narrow group; only the label truncates, so a number is never cut.
     <div className="flex min-w-0 flex-1 flex-wrap gap-2">
       {cards.map((c) => (
-        <div key={c.id} data-card={c.id} className="dm-scorecard min-w-0 flex-1 basis-36 overflow-hidden px-3 py-2">
+        <div key={c.id} data-card={c.id} className="dm-scorecard min-w-0 flex-[0_1_10rem] overflow-hidden px-3 py-2">
           <div className="dm-muted truncate text-xs" title={c.label}>{c.label}</div>
           {row ? <CardValue card={c} row={row} formatOf={formatOf} /> : <Skeleton rows={1} />}
           {spark.rows && spark.rows.length > 0 && <Sparkline points={points(c)} ariaLabel={`${c.label} trend`} />}

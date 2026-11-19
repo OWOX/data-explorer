@@ -476,7 +476,16 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const fieldsOf = (id: string) => (id === martId ? native : sources.filter((x) => x.martId === id).flatMap((x) => x.fields));
   const hasFilters = Object.keys(filters).length > 0;
   const hasSorts = own !== null;
+  /** A click on a chart mark: the same step as a filter edit (so Undo covers it), one filter per column. */
+  const applyChartFilters = (add: ColumnFilter[]) => {
+    // A filter the column cannot take as it stands (a blank value) is left out, with the same note a filter edit gives.
+    const usable = add.filter((f) => { const field = schema.find((x) => x.name === f.field); const unapplied = unappliedFilter(f, field); if (unapplied) setNote({ text: unapplied }); return !!field && !unapplied; });
+    if (!usable.length) return;
+    markEdit(); setFilters((cur) => ({ ...cur, ...Object.fromEntries(usable.map((f) => [f.field, f])) })); setLimit(PAGE_SIZE);
+  };
+  const [menuRequest, setMenuRequest] = useState<{ key: string; seq: number } | null>(null);
   const menuEnv: ColumnMenuEnv = {
+    menuRequest,
     sorts: shownSorts, setSort, filters,
     setFilter: (name, f) => { const unapplied = f ? unappliedFilter(f, schema.find((x) => x.name === name)) : null; if (unapplied) setNote({ text: unapplied }); markEdit(); setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; }); setLimit(PAGE_SIZE); },
     isAggregated: (column) => aggNow.aggregations.some((r) => r.column === column) || aggNow.dateTrunc.some((r) => r.column === column),
@@ -640,7 +649,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
           <thead ref={head} className="dm-head sticky top-0 z-10">
             <tr aria-hidden data-chrome>
               <th data-chrome rowSpan={3} className="dm-chrome dm-corner" />
-              {outputs.map((o, i) => <th key={o.key} data-chrome data-selected={colMark(i)} onClick={charts ? undefined : (e) => pickHeader('col', i, e.shiftKey)} className="dm-chrome dm-letter">{columnLetter(i)}</th>)}
+              {outputs.map((o, i) => <th key={o.key} data-chrome data-selected={colMark(i)} onContextMenu={(e) => { e.preventDefault(); const lead = outputs.find((x) => x.column === o.column) ?? o; setMenuRequest((r) => ({ key: lead.key, seq: (r?.seq ?? 0) + 1 })); }} onClick={charts ? undefined : (e) => pickHeader('col', i, e.shiftKey)} className="dm-chrome dm-letter">{columnLetter(i)}</th>)}
               <th data-chrome className="dm-chrome dm-letter w-full" />
             </tr>
             <tr data-group-row>
@@ -675,7 +684,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
             ))}
           </thead>
           {/* ChartsBody renders its own <tbody>: nesting one in another makes the parser pull the headers out of the table. */}
-          {charts && !blocked ? <ChartsBody martId={martId} schema={schema} shown={shown} agg={aggNow} filter={traverseFilters} groups={groups} version={version} paused={paused} hasFilters={hasFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} />
+          {charts && !blocked ? <ChartsBody martId={martId} schema={schema} shown={shown} agg={aggNow} filter={traverseFilters} groups={groups} version={version} paused={paused} hasFilters={hasFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
           : <tbody>
             {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`}</td></tr>
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} /></td></tr>
