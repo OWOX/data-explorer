@@ -1,8 +1,11 @@
+import type { KeyboardEvent, MouseEvent } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
 import { useWidth } from '../useWidth';
 import type { Point } from './Sparkline';
 
-export type Series = { name: string; color: string; points: Point[] };
+export type Series = { name: string; color: string; points: Point[]; /** The catch-all series: not a value of the stack dimension, so it cannot be filtered to. */ other?: boolean };
+
+const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 
 const PLOT_H = 240;
 const ROW_H = 20;
@@ -13,7 +16,9 @@ const AXIS_H = 24;
 const CHAR_W = 6;
 
 /** Stacked bars. Sizes are ratios of the largest stacked total, for drawing only; every shown value is the caller's text. */
-export function BarChart({ series, orientation, ariaLabel, formatTick }: { series: Series[]; orientation: 'vertical' | 'horizontal'; ariaLabel: string; formatTick: (n: number) => string }) {
+export function BarChart({ series, orientation, ariaLabel, formatTick, onPick }: { series: Series[]; orientation: 'vertical' | 'horizontal'; ariaLabel: string; formatTick: (n: number) => string;
+  /** A click on a bucket (and, when stacked, on one of its segments: `seriesIndex`). */
+  onPick?: (x: string, seriesIndex?: number) => void }) {
   const { ref, width } = useWidth<HTMLDivElement>();
   const xs = series[0]?.points ?? [];
   const totals = xs.map((_, i) => series.reduce((sum, s) => sum + Math.max(0, s.points[i]?.y ?? 0), 0));
@@ -29,9 +34,24 @@ export function BarChart({ series, orientation, ariaLabel, formatTick }: { serie
   const labelStep = vertical ? Math.max(1, Math.ceil((Math.max(...xs.map((p) => p.label.length), 0) * CHAR_W + 8) / band)) : 1;
   const scale = (n: number) => (max > 0 ? n / max : 0) * (vertical ? PLOT_H : plotW);
 
+  const stacked = series.length > 1;
+  const liveAt = (i: number) => series.filter((s) => s.points[i]?.y != null && s.points[i].y! > 0);
+  /** The series whose segment is under the pointer in bucket `i`, found from where the click landed along the stack. */
+  const segmentAt = (i: number, e: MouseEvent<SVGRectElement>): number | undefined => {
+    const box = e.currentTarget.ownerSVGElement?.getBoundingClientRect();
+    if (!stacked || !box || box.width === 0 || box.height === 0) return undefined;
+    const pos = vertical ? TOP + PLOT_H - (e.clientY - box.top) * (height / box.height) : (e.clientX - box.left) * (width / box.width) - left;
+    let end = 0;
+    for (const s of liveAt(i)) {
+      end += scale(s.points[i]!.y!);
+      if (pos <= end) return series.indexOf(s);
+    }
+    return undefined;
+  };
+
   const marks = xs.flatMap((_, i) => {
     let offset = 0;
-    const live = series.filter((s) => s.points[i]?.y != null && s.points[i].y! > 0);
+    const live = liveAt(i);
     return live.map((s, k) => {
       const p = s.points[i]!;
       const size = scale(p.y!);
@@ -39,7 +59,8 @@ export function BarChart({ series, orientation, ariaLabel, formatTick }: { serie
       const at = offset;
       offset += size;
       const round = k === live.length - 1; // only the data end is rounded
-      const common = { 'data-series': s.name, fill: s.color, style: { pointerEvents: 'none' as const, ...(round ? { clipPath: `inset(0 round ${vertical ? `${RADIUS}px ${RADIUS}px 0 0` : `0 ${RADIUS}px ${RADIUS}px 0`})` } : {}) } };
+      const pick = onPick && stacked && !s.other ? () => onPick(p.x, series.indexOf(s)) : undefined;
+      const common = { 'data-series': s.name, fill: s.color, ...(pick ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${p.label}, ${s.name}`, onClick: pick, onKeyDown: press(pick) } : {}), style: { pointerEvents: 'none' as const, ...(pick ? { cursor: 'pointer' } : {}), ...(round ? { clipPath: `inset(0 round ${vertical ? `${RADIUS}px ${RADIUS}px 0 0` : `0 ${RADIUS}px ${RADIUS}px 0`})` } : {}) } };
       const rect = vertical
         ? <rect {...common} x={left + i * band + GAP / 2} y={TOP + PLOT_H - at - seg} width={Math.max(1, band - GAP)} height={seg} />
         : <rect {...common} x={left + at} y={TOP + i * ROW_H + GAP / 2} width={seg} height={ROW_H - GAP} />;
@@ -48,7 +69,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick }: { serie
   });
 
   // One hover band per bucket, the full column (or row): a hairline segment would be unhittable. It sits behind the
-  // segments, which ignore the pointer. The share is a drawing ratio of the bucket's positive stack; the texts are as returned.
+  // segments, which ignore the pointer, so a click on it picks the segment from where it landed. The share is a drawing ratio of the bucket's positive stack; the texts are as returned.
   const bands = xs.map((p, i) => {
     const rows = series.filter((s) => s.points[i]?.y != null);
     const sum = totals[i] ?? 0;
@@ -58,7 +79,8 @@ export function BarChart({ series, orientation, ariaLabel, formatTick }: { serie
       ))]} />
     );
     const geom = vertical ? { x: left + i * band, y: TOP, width: band, height: PLOT_H } : { x: left, y: TOP + i * ROW_H, width: plotW, height: ROW_H };
-    return <Tooltip key={p.x} content={content}><rect data-bucket={p.x} fill="transparent" {...geom} /></Tooltip>;
+    const pick = onPick ? { role: 'button', tabIndex: stacked ? -1 : 0, 'aria-label': `Filter to ${p.label}`, style: { cursor: 'pointer' }, onKeyDown: press(() => onPick(p.x)) } : {};
+    return <Tooltip key={p.x} content={content}><rect data-bucket={p.x} fill="transparent" {...geom} {...pick} onClick={onPick ? (e) => { const k = segmentAt(i, e); if (k !== undefined && series[k]!.other) onPick(p.x); else onPick(p.x, k); } : undefined} /></Tooltip>;
   });
 
   return (

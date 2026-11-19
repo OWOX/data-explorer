@@ -1,13 +1,14 @@
+import type { KeyboardEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
 
-export type Slice = { name: string; value: number; valueText: string; color: string };
+export type Slice = { name: string; value: number; valueText: string; color: string; /** The catch-all slice: not a value of the dimension, so it cannot be filtered to. */ other?: boolean };
 
 const SIZE = 180;
 const R = SIZE / 2 - 2;
 const C = SIZE / 2;
 
 /** Slice angles are ratios of the slices' sum, for drawing only; the shown text is each slice's `valueText`. */
-export function PieChart({ slices, ariaLabel }: { slices: Slice[]; ariaLabel: string }) {
+export function PieChart({ slices, ariaLabel, onPick }: { slices: Slice[]; ariaLabel: string; onPick?: (name: string) => void }) {
   const drawn = slices.filter((s) => s.value > 0);
   const total = drawn.reduce((sum, s) => sum + s.value, 0);
   // Each slice starts where the previous one ended.
@@ -15,7 +16,8 @@ export function PieChart({ slices, ariaLabel }: { slices: Slice[]; ariaLabel: st
   const marks = drawn.map((s, i) => {
     const share = `${Math.round((s.value / total) * 100)}%`;
     const content = `${s.name}: ${s.valueText} (${share})`;
-    const common = { 'data-slice': s.name, fill: s.color, className: 'dm-pie-slice' };
+    const pick = onPick && !s.other ? () => onPick(s.name) : undefined;
+    const common = { 'data-slice': s.name, fill: s.color, className: 'dm-pie-slice', ...(pick ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${s.name}`, style: { cursor: 'pointer' }, onClick: pick, onKeyDown: (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } } } : {}) };
     if (drawn.length === 1) return <Tooltip key={s.name} content={content}><circle {...common} cx={C} cy={C} r={R} /></Tooltip>;
     const start = starts[i]!;
     const end = start + (s.value / total) * 2 * Math.PI;

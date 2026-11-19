@@ -330,3 +330,45 @@ test('a pie of a joined mart’s Unique Records by a dimension asks the backend 
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
   expect((await screen.findAllByRole('menuitemradio')).map((o) => o.textContent)).toEqual(['Unique Records', 'Amount · Sum', 'Products · Unique Records', 'price · Sum']);
 });
+
+const statusFilter = () => within(data()).queryByRole('button', { name: /^Filter status/i });
+const lastQuery = (t: { queries: TraverseOptions[] }) => t.queries[t.queries.length - 1]!;
+
+test('clicking a pie slice filters the grid to it; Undo removes the filter and Redo puts it back', async () => {
+  const t = await charts();
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  const slice = data().querySelector<SVGElement>('[data-slice]')!;
+  const value = slice.getAttribute('data-slice')!;
+  expect(statusFilter()).toBeNull();
+  await userEvent.click(slice);
+  await waitFor(() => expect(statusFilter()).not.toBeNull());
+  await waitFor(() => expect(t.queries.some((o) => o.filter?.some((f) => f.column === 'status' && f.operator === 'eq' && f.value === value))).toBe(true));
+  await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(statusFilter()).toBeNull());
+  await userEvent.click(screen.getByRole('button', { name: 'Redo' }));
+  await waitFor(() => expect(statusFilter()).not.toBeNull());
+});
+
+test('a pie slice is keyboard reachable and "Other" is not clickable', async () => {
+  await charts({ columns: withDims });
+  await userEvent.click(panel('Pie'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Products · Name' }));
+  await waitFor(() => expect(data().querySelector('[data-slice="Other"]')).not.toBeNull());
+  expect(data().querySelector('[data-slice="Other"]')!.hasAttribute('tabindex')).toBe(false);
+  expect(data().querySelector('[data-slice]:not([data-slice="Other"])')!.getAttribute('aria-label')).toMatch(/^Filter to /);
+});
+
+test('clicking a bar bucket filters the date column to a between over that bucket', async () => {
+  const t = await charts({ charts: { timeSeries: { bucket: 'MONTH' } } });
+  await waitFor(() => expect(data().querySelector('[data-bucket]')).not.toBeNull());
+  const band = data().querySelector<SVGElement>('[data-bucket]')!;
+  const start = band.getAttribute('data-bucket')!.slice(0, 10);
+  await userEvent.click(band);
+  await waitFor(() => expect(within(data()).queryByRole('button', { name: /^Filter created/i })).not.toBeNull());
+  await waitFor(() => {
+    const f = lastQuery(t).filter?.find((x) => x.column === 'created_at');
+    expect(f?.operator).toBe('between');
+    expect(((f as { value: { from: string } }).value).from.startsWith(start)).toBe(true);
+  });
+});
