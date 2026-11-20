@@ -145,7 +145,7 @@ export interface Exporter {
   stored(martId: string): Promise<StoredReport[]>;
   /** The remembered reports when the document is already known (no wait), else undefined. */
   storedNow(martId: string): StoredReport[] | undefined;
-  /** Starts the live reads of a mart's remembered reports, all in parallel. Once per mart per session: later calls do nothing until `invalidate()` or an export to the mart finishes. */
+  /** Starts the live reads of a mart's remembered reports, all in parallel. Once per mart per session: later calls do nothing until `invalidate()`, a failed export, or an export whose cache never started reloads everything. */
   load(martId: string): void;
   /** The session cache for a mart: empty before `load`; reports OWOX no longer has (404) are removed here and from the stored document. The same array is returned until something changes. */
   entries(martId: string): ReportEntry[];
@@ -354,9 +354,10 @@ export function createExporter(ctx: Ctx): Exporter {
       flight.promise = execute({ ...a, onStage }).then(
         (result) => {
           settle();
-          // Only this report changed, and `touch` already updated the others' `usedAt`: read just this one.
+          // Only this report changed, and `touch` already updated the others' `usedAt`: read just this one. A new report
+          // was already read by `touch` when the cache had started, so only an update needs the re-read.
           const cache = caches.get(a.martId);
-          if (cache?.started) void read(a.martId, cache, result.report.reportId);
+          if (cache?.started) { if (a.source.kind === 'update') void read(a.martId, cache, result.report.reportId); }
           else { caches.delete(a.martId); load(a.martId); }
           emit(a.martId);
           return result;
@@ -379,14 +380,21 @@ export function createExporter(ctx: Ctx): Exporter {
 
   async function execute({ martId, destination, title, source, payload, onStage, signal }: Parameters<Exporter['run']>[0]): Promise<RunResult> {
       let report: ExportedReport;
-      // The report as the backend returned it when this export made it; `undefined` for an update, whose report is read before the run.
-      let createdDto: ReportDto | undefined;
+      // The report as the backend returned it: when this export made it, or, for an update, when it was read just before the PUT.
+      let knownDto: ReportDto | undefined;
       if (source.kind === 'update') {
         onStage?.('report');
         const r = source.report;
         try {
+          // The cached title and sheet can be stale (an edit in OWOX, a re-pointed sheet), and PUT replaces them: read the report first.
+          const d = await ctx.owox.getJson<ReportDto>(`/api/reports/${encodeURIComponent(r.reportId)}`);
+          knownDto = d;
+          const cfg = d.destinationConfig;
+          const target = { spreadsheetId: cfg?.spreadsheetId, sheetId: cfg?.sheetId };
           await ctx.owox.putJson(`/api/reports/${encodeURIComponent(r.reportId)}`, {
-            title: r.title, dataDestinationId: r.destinationId, destinationConfig: destinationConfig(r),
+            title: typeof d.title === 'string' && d.title ? d.title : r.title,
+            dataDestinationId: d.dataDestinationAccess?.id || r.destinationId,
+            destinationConfig: destinationConfig(isSheetTarget(target) ? target : r),
             // PUT replaces the report: what an earlier edit in OWOX left behind must not change the sheet, so these reset
             // unless the payload carries them (a grouped grid's aggregation and date rules).
             limitConfig: null, aggregationConfig: null, dateTruncConfig: null, uniqueCountConfig: null,
@@ -416,7 +424,7 @@ export function createExporter(ctx: Ctx): Exporter {
         onStage?.('report');
         try {
           const created = await ctx.owox.postJson<ReportDto>('/api/reports', { title, dataMartId: martId, dataDestinationId: destination.id, destinationConfig: destinationConfig(target), ...payload });
-          createdDto = created;
+          knownDto = created;
           report = { reportId: created.id, destinationId: destination.id, spreadsheetId: target.spreadsheetId, sheetId: target.sheetId, title, usedAt: new Date().toISOString() };
         } catch (e) {
           const err = new ExportError('report', errorMessage(e), codeOf(e), target);
@@ -429,8 +437,8 @@ export function createExporter(ctx: Ctx): Exporter {
       }
       onStage?.('run');
       try {
-        // A report made a moment ago carries its run status and time already; an update reads them.
-        const pre = createdDto ?? await ctx.owox.getJson<ReportDto>(`/api/reports/${encodeURIComponent(report.reportId)}`);
+        // A report made a moment ago, or an update's report read before its PUT, carries its run status and time already.
+        const pre = knownDto ?? await ctx.owox.getJson<ReportDto>(`/api/reports/${encodeURIComponent(report.reportId)}`);
         // The backend skips a run request while one is running, so the new settings would never run.
         if (pre.lastRunStatus === 'RUNNING') return { report, outcome: { state: 'busy' } };
         const before = pre.lastRunAt ?? null;
