@@ -1358,7 +1358,7 @@ describe('Create Data Mart', () => {
   const TITLES = new Map([['orders', 'Orders'], ['customers', 'Customers']]);
   const CUSTOMERS = [{ id: 'customers', title: 'Customers' }];
 
-  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; run?: GridRun; sorts?: SortKey[]; ownSorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; schema?: Schema; failAt?: string; deleteFails?: boolean; storageUnavailable?: boolean; visible?: string[]; joinedMarts?: { id: string; title: string }[]; filters?: ColumnFilter[] } = {}) {
+  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; run?: GridRun; sorts?: SortKey[]; ownSorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; schema?: Schema; failAt?: string; deleteFails?: boolean; visible?: string[]; joinedMarts?: { id: string; title: string }[]; filters?: ColumnFilter[] } = {}) {
     const base = createMockCtx(demoFixtures({ sheets: 1 }), { latencyMs: 0 });
     const calls: string[] = [];
     const bodies: Record<string, unknown> = {};
@@ -1382,7 +1382,7 @@ describe('Create Data Mart', () => {
     };
     const storage = 'storage' in o ? o.storage : { id: 's1', type: 'GOOGLE_BIGQUERY' };
     const sources = 'sources' in o ? o.sources : SOURCES;
-    const ui = (marts: { id: string; title: string }[]) => <AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={o.schema ?? SCHEMA} visible={o.visible ?? ['id', 'customers__city']} filters={o.filters ?? []} sorts={o.sorts ?? []} ownSorts={o.ownSorts ?? o.sorts ?? []} aggregation={o.aggregation} joinsFailed={o.joinsFailed} joinedMarts={marts} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} storageUnavailable={o.storageUnavailable} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>;
+    const ui = (marts: { id: string; title: string }[]) => <AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={o.schema ?? SCHEMA} visible={o.visible ?? ['id', 'customers__city']} filters={o.filters ?? []} sorts={o.sorts ?? []} ownSorts={o.ownSorts ?? o.sorts ?? []} aggregation={o.aggregation} joinsFailed={o.joinsFailed} joinedMarts={marts} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>;
     const r = render(ui(o.joinedMarts ?? CUSTOMERS));
     return { ctx, calls, bodies, open, setJoinedMarts: (m: { id: string; title: string }[]) => r.rerender(ui(m)) };
   }
@@ -1420,7 +1420,7 @@ describe('Create Data Mart', () => {
     const it = await item();
     expect(it).toBeDisabled();
     await userEvent.hover(it.parentElement!);
-    expect(await screen.findAllByText("The data mart's storage isn't loaded")).not.toHaveLength(0);
+    expect(await screen.findAllByText("The data mart's storage isn't available to you")).not.toHaveLength(0);
   });
 
   test('joins that failed to read say so', async () => {
@@ -1717,15 +1717,6 @@ describe('Create Data Mart', () => {
     expect(alert).not.toHaveTextContent('draft');
     expect(screen.getByRole('link', { name: 'Open the data mart' })).toHaveAttribute('href', martAppUrl(t.ctx.projectId, 'mock-mart-1'));
     expect(screen.queryByRole('button', { name: 'Delete the draft' })).toBeNull();
-  });
-
-  test('an unavailable storage has its own reason once the model is loaded', async () => {
-    mart({ storage: undefined, storageUnavailable: true });
-    await userEvent.click(await screen.findByText('Export'));
-    const it = await item();
-    expect(it).toBeDisabled();
-    await userEvent.hover(it.parentElement!);
-    expect(await screen.findAllByText("The data mart's storage isn't available to you")).not.toHaveLength(0);
   });
 
   test('Tab and Shift+Tab never leave the dialog, however many times they are pressed', async () => {
