@@ -3,8 +3,6 @@ import { formatNumber, formatTemporal, formatValue, isNumericType } from '../for
 import { formatValue as formatAs, type Format } from '../../format/formats';
 import { Tooltip, OverflowTip } from '../Tooltip';
 
-export { formatValue };
-
 /**
  * One clipped line of a field's value, exactly as stored (never a looked-up title, never a link).
  * `type` is the field's warehouse type: DATE, DATETIME and TIMESTAMP values show in the viewer's own

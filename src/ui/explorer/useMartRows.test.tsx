@@ -4,7 +4,8 @@ import { vi } from 'vitest';
 import { stubCtx, traversalOf } from '../../api/test-ctx';
 import type { TraverseOptions } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
-import { buildRowQuery, defaultColumns, useMartRows } from './useMartRows';
+import { buildRowQuery, useMartRows } from './useMartRows';
+import { defaultColumns } from '../../model/columns';
 import type { Schema } from '../../model/types';
 
 const f = (name: string, isPrimaryKey = false, type = 'STRING'): Schema[number] => ({ name, alias: null, type, category: type === 'STRING' ? 'string' : 'number', description: null, isPrimaryKey });

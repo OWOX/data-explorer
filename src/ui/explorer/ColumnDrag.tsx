@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
+import { useLatest } from '../useLatest';
 
 /**
  * What the overlays draw. The layer is the part of the scroller's content that is on screen right of the row-number gutter (so nothing
  * paints over the gutter, and it scrolls with the grid); the other numbers are relative to the layer's left edge.
  */
-export type ColumnDragView = {
+type ColumnDragView = {
   layer: { left: number; top: number; width: number; height: number };
   /** Where the column stands: stays shaded. */
   shade: { left: number; width: number };
@@ -43,8 +44,7 @@ export function ColumnDragLayer(props: Options) {
  */
 function useColumnDrag({ scroller, head, groupOf, onMove }: Options): ColumnDragView | null {
   const [view, setView] = useState<ColumnDragView | null>(null);
-  const latest = useRef({ groupOf, onMove });
-  useEffect(() => { latest.current = { groupOf, onMove }; });
+  const latest = useLatest({ groupOf, onMove });
   useEffect(() => {
     const thead = head.current;
     const box = scroller.current;
@@ -203,7 +203,7 @@ function useColumnDrag({ scroller, head, groupOf, onMove }: Options): ColumnDrag
     };
     thead.addEventListener('pointerdown', down);
     return () => { thead.removeEventListener('pointerdown', down); stop(); disarm(); };
-  }, [scroller, head]);
+  }, [scroller, head, latest]);
   return view;
 }
 

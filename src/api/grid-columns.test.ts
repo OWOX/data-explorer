@@ -90,7 +90,7 @@ test('picks are read with the doc, merged by a later save, and written back with
   const store = createColumnStore(ctxWith({ get, put }));
   expect(await store.loadPicks('m')).toEqual({ customers: ['customers__city'], stores: ['stores__city'] });
   store.save('m', ['a', 'customers__email'], { customers: ['customers__email'] });
-  expect(store.picks('m')).toEqual({ customers: ['customers__email'], stores: ['stores__city'] });
+  expect(await store.loadPicks('m')).toEqual({ customers: ['customers__email'], stores: ['stores__city'] });
   await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
   expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'customers__email'], at: expect.any(String), picks: { customers: ['customers__email'], stores: ['stores__city'] } });
 });

@@ -1,5 +1,5 @@
 import type { ColumnFilter } from '../filters/build';
-import { formatNumber } from '../ui/format';
+import { emptyText } from '../ui/format';
 import { columnTitle, fieldLabel } from '../model/fieldLabel';
 import type { TraverseFilter } from '../sdk/types';
 import { ChartMenu, type MenuItem } from './ChartMenu';
@@ -8,7 +8,7 @@ import { dimensionFilter } from './clickFilters';
 import { pieMeasures, type ChartFields } from './fields';
 import type { Field } from '../model/types';
 import { measureKey, pieOtherQuery, TOP_N, topValuesQuery, type Measure } from './queries';
-import { measureLabel, measureOptions, metricText, numberOf, type Formatter } from './Scorecards';
+import { measureLabel, measureOptions, measureText, numberOf, type Formatter } from './Scorecards';
 import { measureId, type ChartSettings, type ResolvedCharts } from './settings';
 import { PieChart, type Slice } from './svg/PieChart';
 import { OTHER_COLOR, seriesColor } from './TimeSeriesPanel';
@@ -33,7 +33,7 @@ export function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, for
   const loading = !emptyNow && (!top.rows || (needOther && !other.rows));
 
   const key = measureKey(measure!);
-  const slice = (name: string, v: unknown, color: string): Slice => ({ name, value: numberOf(v) ?? 0, valueText: measure!.kind === 'metric' ? metricText(measure!.metric.field, measure!.metric.fn, v, formatOf) : formatNumber(v) ?? String(v ?? ''), color });
+  const slice = (name: string, v: unknown, color: string): Slice => ({ name, value: numberOf(v) ?? 0, valueText: measureText(measure!, v, formatOf), color });
   const slices = (): Slice[] => [
     ...top.rows!.map((row, i) => slice(names![i]!, row[key], seriesColor(i))),
     ...(needOther && other.rows?.[0] && other.rows[0][key] != null ? [{ ...slice('Other', other.rows[0][key], OTHER_COLOR), other: true }] : []),
@@ -48,7 +48,7 @@ export function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, for
   const title = `${measureLabel(cf, measure!)} by ${fieldLabel(dim!)}`;
   return (
     <ChartPanel title={title} loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})}
-      empty={emptyNow ? (hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.') : null}
+      empty={emptyNow ? emptyText(hasFilters) : null}
       note={`Rows with a blank ${fieldLabel(dim!)} are not shown.`}
       actions={ready && <ChartMenu name="Pie" items={items} />}>
       {top.rows && <PieChart slices={slices()} ariaLabel={title} onPick={(name) => onFilter([dimensionFilter(dim!, name)])} showShare={showShare} />}

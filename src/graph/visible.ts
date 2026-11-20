@@ -16,16 +16,32 @@ function rank(marts: Map<string, Mart>, inbound: Map<string, number>, selectedId
 }
 
 export function pickFocus(ids: Iterable<string>, marts: Map<string, Mart>, inbound: Map<string, number>): string | null {
-  return [...ids].sort(rank(marts, inbound, null))[0] ?? null;
+  const before = rank(marts, inbound, null);
+  let best: string | null = null;
+  for (const id of ids) if (best === null || before(id, best) < 0) best = id;
+  return best;
+}
+
+const adjacency = new WeakMap<Edge[], Map<string, string[]>>();
+/** Each mart's neighbours over the edges, in edge order and without itself; built once per edges array. */
+export function adjacencyOf(edges: Edge[]): Map<string, string[]> {
+  let map = adjacency.get(edges);
+  if (!map) {
+    const sets = new Map<string, Set<string>>();
+    const add = (from: string, to: string) => { const set = sets.get(from); if (set) set.add(to); else sets.set(from, new Set([to])); };
+    for (const e of edges) {
+      if (e.source === e.target) continue;
+      add(e.source, e.target);
+      add(e.target, e.source);
+    }
+    map = new Map([...sets].map(([id, set]) => [id, [...set]]));
+    adjacency.set(edges, map);
+  }
+  return map;
 }
 
 export function neighbours(id: string, edges: Edge[]): string[] {
-  const out = new Set<string>();
-  for (const e of edges) {
-    if (e.source === id && e.target !== id) out.add(e.target);
-    if (e.target === id && e.source !== id) out.add(e.source);
-  }
-  return [...out];
+  return adjacencyOf(edges).get(id) ?? [];
 }
 
 export type VisibleInput = {

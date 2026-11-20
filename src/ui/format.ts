@@ -1,4 +1,4 @@
-import { categorizeFieldType, normalizeType } from '../model/field-category';
+import { categorizeFieldType, isDayType, normalizeType } from '../model/field-category';
 export function compactNumber(n: number): string {
   const abs = Math.abs(n);
   const fmt = (v: number, s: string) => `${Number(v.toFixed(1)).toString()}${s}`;
@@ -19,6 +19,9 @@ export function relativeTime(iso: string, now = new Date()): string {
   return 'just now';
 }
 
+/** The line a grid or chart shows when a read came back empty. */
+export const emptyText = (hasFilters: boolean): string => (hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.');
+
 /** A whole number grouped by the reader's own locale. */
 export const num = (n: number): string => n.toLocaleString();
 
@@ -31,10 +34,8 @@ export const recordsLabel = (amount: string): string => `${amount} ${amount === 
 /** "3 groups", "1 group": the badge text of a grouped grid, whose rows are groups. */
 export const groupsLabel = (amount: string): string => `${amount} ${amount === '1' ? 'group' : 'groups'}`;
 
-const DATE_ONLY = new Set(['DATE']);
 // Wall-clock types carry no zone, so there is nothing to convert from.
 const WALL_CLOCK = new Set(['DATETIME', 'TIMESTAMP_NTZ', 'TIMESTAMP WITHOUT TIME ZONE']);
-const MOMENT = new Set(['TIMESTAMP', 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMP WITH LOCAL TIME ZONE', 'TIMESTAMPTZ', 'TIMESTAMP_LTZ', 'TIMESTAMP_TZ', ...WALL_CLOCK]);
 
 let cached: { day: Intl.DateTimeFormat; moment: Intl.DateTimeFormat; time: Intl.DateTimeFormat } | undefined;
 /** The viewer's locale and time zone, built once. The tests change the zone and reset it. */
@@ -69,14 +70,14 @@ export function formatTemporal(value: unknown, type: string, style: 'auto' | 'da
   if (typeof value !== 'string') return null;
   const text = value.trim();
   const t = normalizeType(type);
-  if (DATE_ONLY.has(t)) {
+  if (isDayType(type)) {
     const m = /^(\d{4})-(\d{2})-(\d{2})(?![\d])/.exec(text);
     if (!m) return null;
     if (!realDay(m[1]!, m[2]!, m[3]!)) return null;
     const day = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
     return Number.isNaN(day.getTime()) ? null : formats().day.format(day);
   }
-  if (!MOMENT.has(t)) return null;
+  if (categorizeFieldType(type) !== 'date') return null;
   const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)\s*(.*)$/.exec(text);
   if (!m) return null;
   if (!realDay(...(m[1]!.split('-') as [string, string, string])) || !realTime(m[2]!)) return null;

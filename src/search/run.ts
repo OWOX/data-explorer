@@ -2,7 +2,7 @@ import type { SchemaLoader } from '../api/schemas';
 import type { Model, Schema } from '../model/types';
 import type { Ctx } from '../sdk/types';
 import type { GridState } from '../state/store';
-import { defaultColumns } from '../ui/explorer/useMartRows';
+import { defaultColumns } from '../model/columns';
 import { AiUnavailable, createAiRun, pickModels } from './ai';
 import { MAX_FOUND, type SearchHits } from './endpoint';
 import { discoveryQuestion, fieldsQuestion, filtersQuestion } from './prompts';
@@ -58,8 +58,8 @@ export async function buildAdhocView(deps: { ctx: Ctx; model: Model; schemas: Pi
   const { ctx, model, schemas, signal } = deps;
   const ai = pickModels(ctx);
   if (!ai) return { grid: null, ai: 'none' };
-  let fields: AiFields | null = null;
-  let filters: AiFilters | null = null;
+  let fields: AiFields | null;
+  let filters: AiFilters | null;
   let schema: Schema | undefined;
   try {
     const mart = model.marts.get(martId);

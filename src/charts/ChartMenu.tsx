@@ -1,6 +1,6 @@
 import { EllipsisVertical } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { HOVER_MS, HoverIntent, Panel, Row } from '../ui/explorer/MenuParts';
+import { Panel, Row, useSubmenu } from '../ui/explorer/MenuParts';
 
 /** A tick row (stays open: several can be changed in a row) or a row opening a submenu of radio choices (closes on a choice). */
 export type MenuItem =
@@ -10,13 +10,11 @@ export type MenuItem =
 /** The ⋮ button of a chart and its menu, built from the same panel and rows as the column menu. */
 export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const [sub, setSub] = useState<{ at: number; row: HTMLElement; seq: number } | null>(null);
+  const { sub, open, hoverRow, hoverOther, leaveRow, closeSub, dismiss } = useSubmenu<number>();
   const [placed, setPlaced] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const holder = useRef<HTMLSpanElement>(null);
-  const [intent] = useState(() => new HoverIntent());
-  useEffect(() => () => intent.clear(), [intent]);
-  const close = useCallback((refocus = true) => { intent.clear(); setAnchor(null); setSub(null); setPlaced(false); if (refocus) button.current?.focus(); }, [intent]);
+  const close = useCallback((refocus = true) => { dismiss(); setAnchor(null); setPlaced(false); if (refocus) button.current?.focus(); }, [dismiss]);
   useEffect(() => {
     if (!anchor) return;
     // A press outside the menu closes it, as the column menu does.
@@ -32,10 +30,7 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
     window.addEventListener('scroll', away, true);
     return () => { document.removeEventListener('pointerdown', down, true); window.removeEventListener('scroll', away, true); };
   }, [anchor, close]);
-  const open = (at: number, row: HTMLElement, focus: boolean) => { intent.clear(); setSub((cur) => ({ at, row, seq: focus ? (cur?.at === at ? cur.seq : 0) + 1 : cur?.at === at ? cur.seq : 0 })); };
-  const closeSub = () => { const row = sub?.row; setSub(null); row?.focus(); };
-  const later = (apply: () => void) => intent.after(HOVER_MS, apply);
-  const picked = sub ? items[sub.at] : undefined;
+  const picked = sub ? items[sub.key] : undefined;
   return (
     <span ref={holder} className="inline-flex">
       <button ref={button} type="button" aria-label={`${name} options`} aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => (anchor ? close(false) : setAnchor(e.currentTarget))}
@@ -45,10 +40,10 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
       {anchor && (
         <Panel anchor={anchor} mode="below" role="menu" label={`${name} menu`} onEscape={() => (sub ? closeSub() : close())} onTab={() => close()} onPlaced={() => setPlaced(true)} focusSeq={1} className="dm-menu-root">
           {items.map((it, i) => it.kind === 'check' ? (
-            <Row key={i} check checkbox checked={it.checked} label={it.label} onActivate={it.onToggle} onHover={() => { if (sub) later(() => setSub(null)); }} onLeaveRow={() => intent.clear()} />
+            <Row key={i} check checkbox checked={it.checked} label={it.label} onActivate={it.onToggle} onHover={hoverOther} onLeaveRow={leaveRow} />
           ) : (
-            <Row key={i} sub expanded={sub?.at === i} label={it.label} onActivate={(r) => open(i, r, true)} onOpen={(r) => open(i, r, true)}
-              onHover={(r) => { if (sub?.at === i) intent.clear(); else if (!sub) open(i, r, false); else later(() => open(i, r, false)); }} onLeaveRow={() => intent.clear()} />
+            <Row key={i} sub expanded={sub?.key === i} label={it.label} onActivate={(r) => open(i, r, true)} onOpen={(r) => open(i, r, true)}
+              onHover={(r) => hoverRow(i, r)} onLeaveRow={leaveRow} />
           ))}
         </Panel>
       )}

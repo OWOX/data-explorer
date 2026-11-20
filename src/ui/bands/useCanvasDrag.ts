@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
+import { useLatest } from '../useLatest';
 
 /** The pointer in canvas coordinates (x, y) and in client coordinates (clientX, clientY, for the title chip); `inside` is whether it is over the scroll box, where a release counts. */
-export type CanvasDrag = { path: string; x: number; y: number; clientX: number; clientY: number; inside: boolean };
+type CanvasDrag = { path: string; x: number; y: number; clientX: number; clientY: number; inside: boolean };
 
 /** A press becomes a drag once the pointer has moved this far, so a click stays a click. */
 const START_PX = 5;
@@ -13,8 +14,7 @@ const START_PX = 5;
  */
 export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (path: string) => boolean, onDrop: (path: string, x: number, y: number) => void, active: unknown = null): CanvasDrag | null {
   const [drag, setDrag] = useState<CanvasDrag | null>(null);
-  const latest = useRef({ canDrag, onDrop });
-  useEffect(() => { latest.current = { canDrag, onDrop }; });
+  const latest = useLatest({ canDrag, onDrop });
   useEffect(() => {
     const el = root.current;
     if (!el) return;
@@ -83,6 +83,6 @@ export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (pat
       document.removeEventListener('keydown', key);
     };
     // `active` re-attaches the listeners when the root element appears later.
-  }, [root, active]);
+  }, [root, active, latest]);
   return drag;
 }

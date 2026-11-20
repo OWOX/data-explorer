@@ -1,5 +1,8 @@
 /**
  * Captures the real OWOX dialect builders' SQL for the engine parity tests (src/datamart/engine-parity.test.ts).
+ * The cases live in src/datamart/__golden__/cases.ts, shared with that test; `engineCase` below derives the engine's shape.
+ * It needs `esbuild` to be resolvable (today it comes from the engine checkout's node_modules through NODE_PATH).
+ * ENGINE_DIR overrides the engine's src/data-marts folder when the checkout is not a sibling.
  * Writes src/datamart/__golden__/engine-sql.json. Re-run it whenever the engine's blending code changes.
  *
  * It needs a sibling checkout of the OWOX engine at ../owox-data-marts (read only; nothing is written there).
@@ -14,8 +17,10 @@
 import 'reflect-metadata';
 import { writeFileSync } from 'fs';
 import { join, resolve } from 'path';
+import type { ColumnFilter } from '../src/filters/build';
+import type { PCase } from '../src/datamart/__golden__/cases';
 
-const ENGINE = resolve(__dirname, '../../owox-data-marts/apps/backend/src/data-marts');
+const ENGINE = process.env.ENGINE_DIR ?? resolve(__dirname, '../../owox-data-marts/apps/backend/src/data-marts');
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
 const engine = (path: string): Record<string, any> => require(join(ENGINE, path));
 const { makeChain, makeRelationship, createBuildContext } = engine('data-storage-types/interfaces/__fixtures__/blended-query-builder-fixtures');
@@ -43,10 +48,25 @@ type Field = { name: string; alias: string; fn: string; rawType: string; hidden?
 type Mart = { alias: string; parent: string; table: string; joins: Join[]; fields: Field[]; path?: string };
 
 const MAIN = '[Orders](dm:ord1)';
-const eq = (column: string, value: unknown) => ({ column, operator: 'eq', value });
+
+/**
+ * The plugin's own modules are ESM, and ts-node loads this file as CJS, so it cannot `require` them. Whichever esbuild Node resolves (today the engine checkout's) bundles the
+ * shared cases module (and the filter builder) into one CommonJS blob, which is evaluated here: the cases are read, not copied.
+ */
+function plugin(): { cases: PCase[]; edges: { id: string; joins: { sourceField: string; targetField: string }[] }[]; schemaOf: (c: PCase) => { name: string; type: string }[]; toTraverseFilters: (schema: unknown, filters: ColumnFilter[], slices: ColumnFilter[], aggregations: unknown[]) => unknown[] } {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { buildSync } = require('esbuild') as typeof import('esbuild');
+  const entry = `export { cases, edges, schemaOf } from './src/datamart/__golden__/cases'; export { toTraverseFilters } from './src/filters/build';`;
+  const out = buildSync({ stdin: { contents: entry, resolveDir: resolve(__dirname, '..'), loader: 'ts' }, bundle: true, format: 'cjs', platform: 'node', write: false });
+  const mod = { exports: {} as never };
+  new Function('module', 'exports', 'require', out.outputFiles[0]!.text)(mod, mod.exports, require);
+  return mod.exports;
+}
+const { cases: planCases, edges, schemaOf, toTraverseFilters } = plugin();
 
 type Agg = { column: string; function: string };
 type Trunc = { column: string; unit: string; timeZone?: string };
+/** A case in the engine's shape, derived from the plugin's case by `engineCase`. */
 type Case = {
   id: string; marts: Mart[]; columns: string[]; types: Record<string, string>; filters: unknown[];
   sort?: { column: string; direction: 'asc' | 'desc' }[]; agg?: Agg[]; trunc?: Trunc[];
@@ -54,127 +74,28 @@ type Case = {
   flat?: boolean;
 };
 
-const cus = (fields: Field[]): Mart => ({ alias: 'customers', parent: 'main', table: '[Customers](dm:cus1)', joins: [{ sourceFieldName: 'customer_id', targetFieldName: 'id' }], fields });
-const itm = (fields: Field[]): Mart => ({ alias: 'order_items', parent: 'main', table: '[Order Items](dm:itm1)', joins: [{ sourceFieldName: 'id', targetFieldName: 'order_id' }], fields });
-const reg = (fields: Field[]): Mart => ({ alias: 'region', parent: 'customers', path: 'customers.region', table: '[Region](dm:reg1)', joins: [{ sourceFieldName: 'region_id', targetFieldName: 'id' }, { sourceFieldName: 'country', targetFieldName: 'country' }], fields });
-const city: Field = { name: 'city', alias: 'customers__city', fn: 'STRING_AGG', rawType: 'STRING' };
-const sku: Field = { name: 'sku', alias: 'order_items__sku', fn: 'STRING_AGG', rawType: 'STRING' };
-const qty: Field = { name: 'quantity', alias: 'order_items__quantity', fn: 'SUM', rawType: 'INTEGER' };
-const rname: Field = { name: 'name', alias: 'customers_region__name', fn: 'STRING_AGG', rawType: 'STRING' };
-const MAIN_TYPES = { id: 'INTEGER', status: 'STRING', amount: 'INTEGER', created_at: 'TIMESTAMP' };
-
-const cases: Case[] = [
-  { id: 'G1', marts: [], columns: ['id'], types: { id: 'INTEGER', status: 'STRING' }, filters: [eq('status', 'paid')], sort: [{ column: 'id', direction: 'asc' }] },
-  {
-    id: 'G2', marts: [cus([city]), itm([sku])], columns: ['id', 'status', 'customers__city', 'order_items__sku'],
-    types: { id: 'INTEGER', status: 'STRING', customers__city: 'STRING', order_items__sku: 'STRING' },
-    filters: [eq('customers__city', 'Paris'), { column: 'order_items__sku', operator: 'is_blank' }, { column: 'customers__city', operator: 'neq', value: 'Rome' }, { column: 'customers__city', operator: 'not_contains', value: 'ar' }],
-  },
-  { id: 'G3', marts: [cus([city]), reg([rname])], columns: ['customers__city', 'customers_region__name'], types: { customers__city: 'STRING', customers_region__name: 'STRING' }, filters: [eq('customers_region__name', 'EU')] },
-  {
-    id: 'G4', marts: [cus([
-      { name: 'n', alias: 'customers__n', fn: 'COUNT', rawType: 'STRING' },
-      { name: 'cd', alias: 'customers__cd', fn: 'COUNT_DISTINCT', rawType: 'STRING' },
-      { name: 'av', alias: 'customers__av', fn: 'AVG', rawType: 'INTEGER' },
-      { name: 'as_', alias: 'customers__as', fn: 'ANY_VALUE', rawType: 'STRING' },
-      { name: 'ab', alias: 'customers__ab', fn: 'ANY_VALUE', rawType: 'BOOLEAN' },
-      { name: 'signup', alias: 'customers__signup', fn: 'MAX', rawType: 'DATE' },
-    ])],
-    columns: ['id', 'customers__n', 'customers__cd', 'customers__av', 'customers__as', 'customers__ab', 'customers__signup'],
-    types: { id: 'INTEGER', customers__n: 'INTEGER', customers__cd: 'INTEGER', customers__av: 'FLOAT', customers__as: 'STRING', customers__ab: 'BOOLEAN', customers__signup: 'DATE' },
-    filters: [{ column: 'customers__signup', operator: 'between', value: { from: '2026-01-01', to: '2026-01-31' } }, { column: 'customers__signup', operator: 'relative_date', value: { kind: 'last_n_days', n: 7 } }, { column: 'customers__n', operator: 'gt', value: 3 }],
-  },
-  { id: 'G5', marts: [cus([city]), itm([sku])], columns: ['id'], types: { id: 'INTEGER', customers__city: 'STRING', order_items__sku: 'STRING' }, filters: [eq('customers__city', 'Paris')], sort: [{ column: 'order_items__sku', direction: 'desc' }] },
-  {
-    id: 'G6', marts: [
-      { alias: 'a', parent: 'main', table: '[A](dm:a1)', joins: [{ sourceFieldName: 'k', targetFieldName: 'k' }], fields: [] },
-      { alias: 'b', parent: 'a', path: 'a.b', table: '[B](dm:b1)', joins: [{ sourceFieldName: 'k', targetFieldName: 'k' }], fields: [] },
-      { alias: 'c', parent: 'a_b', path: 'a.b.c', table: '[C](dm:c1)', joins: [{ sourceFieldName: 'k', targetFieldName: 'k' }], fields: [{ name: 'n', alias: 'a_b_c__n', fn: 'COUNT', rawType: 'INTEGER' }, { name: 'flag', alias: 'a_b_c__flag', fn: 'ANY_VALUE', rawType: 'BOOLEAN' }] },
-    ],
-    columns: ['a_b_c__n', 'a_b_c__flag'], types: { a_b_c__n: 'INTEGER', a_b_c__flag: 'BOOLEAN' }, filters: [{ column: 'a_b_c__n', operator: 'gt', value: 1 }],
-  },
-  {
-    // Spec 8.6: a bucket in a zone, a main SUM, a joined COUNT_DISTINCT and a joined SUM, one joined key and a filter on it.
-    id: 'G7', marts: [cus([city]), itm([sku, qty])],
-    columns: ['status', 'amount', 'created_at', 'customers__city', 'order_items__sku', 'order_items__quantity'],
-    types: { ...MAIN_TYPES, customers__city: 'STRING', order_items__sku: 'STRING', order_items__quantity: 'INTEGER' },
-    filters: [eq('customers__city', 'Paris')],
-    agg: [{ column: 'amount', function: 'SUM' }, { column: 'order_items__sku', function: 'COUNT_DISTINCT' }, { column: 'order_items__quantity', function: 'SUM' }],
-    trunc: [{ column: 'created_at', unit: 'MONTH', timeZone: 'Europe/Berlin' }],
-  },
-  {
-    // Main-only grouping with every function, through the blended builder with no chains.
-    id: 'G8', marts: [], columns: ['status', 'amount', 'name'],
-    types: { status: 'STRING', amount: 'INTEGER', name: 'STRING' }, filters: [],
-    agg: ['SUM', 'AVG', 'MIN', 'MAX', 'ANY_VALUE', 'P25', 'P50', 'P75', 'P95'].map((fn) => ({ column: 'amount', function: fn }))
-      .concat(['COUNT', 'COUNT_DISTINCT', 'STRING_AGG', 'MIN'].map((fn) => ({ column: 'name', function: fn }))),
-    sort: [{ column: 'status', direction: 'asc' }, { column: 'amount', direction: 'desc' }],
-  },
-  {
-    // Buckets: TIMESTAMP and DATETIME with a zone, DATE, TIMESTAMP without a zone, and a joined DATE.
-    id: 'G9', marts: [cus([{ name: 'signup', alias: 'customers__signup', fn: 'MAX', rawType: 'DATE' }])],
-    columns: ['ts_a', 'dt_b', 'd_c', 'ts_d', 'customers__signup', 'amount'],
-    types: { ts_a: 'TIMESTAMP', dt_b: 'DATETIME', d_c: 'DATE', ts_d: 'TIMESTAMP', customers__signup: 'DATE', amount: 'INTEGER' }, filters: [],
-    agg: [{ column: 'amount', function: 'SUM' }],
-    trunc: [
-      { column: 'ts_a', unit: 'MONTH', timeZone: 'Europe/Berlin' }, { column: 'dt_b', unit: 'DAY', timeZone: 'America/New_York' },
-      { column: 'd_c', unit: 'WEEK' }, { column: 'ts_d', unit: 'YEAR' }, { column: 'customers__signup', unit: 'QUARTER' },
-    ],
-  },
-  {
-    // Depth 2 COUNT_DISTINCT and SUM, a depth-1 COUNT and ANY_VALUE in the outer query, value sleeves with STRING_AGG, P50 and AVG on one column, a float key.
-    id: 'G10', marts: [
-      cus([city, { name: 'n', alias: 'customers__n', fn: 'COUNT', rawType: 'STRING' }, { name: 'tag', alias: 'customers__tag', fn: 'STRING_AGG', rawType: 'STRING' }]),
-      reg([{ name: 'code', alias: 'customers_region__code', fn: 'COUNT_DISTINCT', rawType: 'STRING' }, { name: 'pop', alias: 'customers_region__pop', fn: 'SUM', rawType: 'INTEGER' }]),
-      itm([qty]),
-    ],
-    columns: ['status', 'score', 'customers__city', 'customers__n', 'customers__tag', 'customers_region__code', 'customers_region__pop', 'order_items__quantity'],
-    types: { status: 'STRING', score: 'FLOAT', customers__city: 'STRING', customers__n: 'INTEGER', customers__tag: 'STRING', customers_region__code: 'INTEGER', customers_region__pop: 'INTEGER', order_items__quantity: 'INTEGER' },
-    filters: [eq('customers_region__pop', 5)],
-    agg: [
-      { column: 'customers__n', function: 'COUNT' }, { column: 'customers__tag', function: 'STRING_AGG' }, { column: 'customers__tag', function: 'ANY_VALUE' },
-      { column: 'customers_region__code', function: 'COUNT_DISTINCT' }, { column: 'customers_region__pop', function: 'SUM' },
-      { column: 'order_items__quantity', function: 'P50' }, { column: 'order_items__quantity', function: 'AVG' },
-    ],
-    sort: [{ column: 'status', direction: 'asc' }, { column: 'customers_region__pop', direction: 'desc' }],
-  },
-  {
-    // No group keys: every sleeve is attached with a CROSS JOIN.
-    id: 'G11', marts: [itm([sku, qty])], columns: ['amount', 'order_items__sku', 'order_items__quantity'],
-    types: { amount: 'INTEGER', order_items__sku: 'STRING', order_items__quantity: 'INTEGER' }, filters: [],
-    agg: [{ column: 'amount', function: 'SUM' }, { column: 'order_items__sku', function: 'COUNT_DISTINCT' }, { column: 'order_items__quantity', function: 'MAX' }],
-  },
-  {
-    // A slice on a depth-1 mart, with a plain filter beside it.
-    id: 'S1', marts: [cus([city, { name: 'n', alias: 'customers__n', fn: 'COUNT', rawType: 'STRING' }])], columns: ['id', 'customers__city', 'customers__n'],
-    types: { id: 'INTEGER', customers__city: 'STRING', customers__n: 'INTEGER' },
-    filters: [{ column: 'customers__city', operator: 'eq', value: 'Paris', placement: 'pre-join' }, { column: 'customers__n', operator: 'gt', value: 1 }],
-  },
-  {
-    // A slice on a depth-2 mart, and one on a depth-1 mart that a sleeve reads, in a grouped grid.
-    id: 'S2', marts: [cus([city]), reg([rname, { name: 'code', alias: 'customers_region__code', fn: 'COUNT_DISTINCT', rawType: 'STRING' }])],
-    columns: ['status', 'customers__city', 'customers_region__name', 'customers_region__code'],
-    types: { status: 'STRING', customers__city: 'STRING', customers_region__name: 'STRING', customers_region__code: 'INTEGER' },
-    filters: [{ column: 'customers_region__name', operator: 'eq', value: 'EU', placement: 'pre-join' }, { column: 'customers__city', operator: 'neq', value: 'Rome', placement: 'pre-join' }],
-    agg: [{ column: 'customers_region__code', function: 'COUNT_DISTINCT' }],
-  },
-  {
-    // A HAVING filter on a main metric and one on a joined COUNT, which the outer query aggregates itself.
-    id: 'H1', marts: [cus([{ name: 'n', alias: 'customers__n', fn: 'COUNT', rawType: 'STRING' }])], columns: ['status', 'amount', 'customers__n'],
-    types: { status: 'STRING', amount: 'INTEGER', customers__n: 'INTEGER' },
-    filters: [{ column: 'amount', operator: 'gt', value: 100, function: 'SUM' }, { column: 'customers__n', operator: 'lte', value: 5, function: 'COUNT' }],
-    agg: [{ column: 'amount', function: 'SUM' }, { column: 'customers__n', function: 'COUNT' }],
-  },
-  // Main-only grids reach the engine through the flat composer, not buildBlendedQuery (stream-http-data.service.ts:509-514).
-  { id: 'M1', flat: true, marts: [], columns: ['id', 'status'], types: { id: 'INTEGER', status: 'STRING', amount: 'INTEGER' }, filters: [eq('status', 'paid'), { column: 'status', operator: 'is_blank' }], sort: [{ column: 'id', direction: 'desc' }] },
-  {
-    id: 'M2', flat: true, marts: [], columns: ['status', 'amount', 'created_at', 'name'],
-    types: { status: 'STRING', amount: 'INTEGER', created_at: 'TIMESTAMP', name: 'STRING' }, filters: [eq('status', 'paid')],
-    agg: [{ column: 'amount', function: 'SUM' }, { column: 'amount', function: 'P50' }, { column: 'name', function: 'COUNT_DISTINCT' }, { column: 'name', function: 'STRING_AGG' }],
-    trunc: [{ column: 'created_at', unit: 'MONTH', timeZone: 'Europe/Berlin' }],
-    sort: [{ column: 'amount', direction: 'desc' }],
-  },
-];
+/** The one mapper from the plugin's case (src/datamart/__golden__/cases.ts, which the parity test also reads) to what the engine's builders take. */
+function engineCase(c: PCase): Case {
+  const schema = schemaOf(c);
+  const marts = c.marts.map((m): Mart => {
+    const parts = m.path.split('.');
+    const edge = edges.find((e) => e.id === m.edgeId)!;
+    return {
+      alias: parts[parts.length - 1]!, parent: parts.length > 1 ? parts.slice(0, -1).join('_') : 'main', ...(parts.length > 1 ? { path: m.path } : {}),
+      table: `[${m.label}](dm:${m.martId})`, joins: edge.joins.map((j) => ({ sourceFieldName: j.sourceField, targetFieldName: j.targetField })),
+      fields: m.fields.map((x) => ({ name: x.name, alias: x.alias, fn: x.fn, rawType: x.raw })),
+    };
+  });
+  return {
+    id: c.id, marts, columns: c.visible, types: Object.fromEntries(schema.map((x) => [x.name, x.type])),
+    filters: toTraverseFilters(schema, c.filters, c.slices ?? [], c.aggregation?.aggregations ?? []),
+    ...(c.sorts ? { sort: c.sorts.map((x) => ({ column: x.field, direction: x.direction })) } : {}),
+    ...(c.aggregation?.aggregations.length ? { agg: c.aggregation.aggregations.map((x) => ({ column: x.column, function: x.function })) } : {}),
+    ...(c.aggregation?.dateTrunc.length ? { trunc: c.aggregation.dateTrunc } : {}),
+    ...(c.flat ? { flat: true } : {}),
+  };
+}
+const cases: Case[] = planCases.map(engineCase);
 
 const blended = {
   bigquery: () => new BigQueryBlendedQueryBuilder(new BigQueryClauseRenderer()),

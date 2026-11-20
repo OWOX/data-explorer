@@ -1,6 +1,6 @@
 import type { ColumnFilter } from '../filters/build';
 import type { Field } from '../model/types';
-import { buildAiPrompt, describeFilter, describeHaving } from './ai-prompt';
+import { buildAiPrompt, filterSentence, describeHaving } from './ai-prompt';
 
 const f = (name: string, category: Field['category'], type = 'STRING'): Field => ({ name, alias: null, type, category, description: null, isPrimaryKey: false });
 const schema: Field[] = [f('id', 'string'), f('created_at', 'date', 'TIMESTAMP'), f('status', 'string'), f('amount', 'number', 'NUMERIC'), f('paid', 'boolean', 'BOOLEAN'), f('customers__city', 'string')];
@@ -17,7 +17,7 @@ test.each<[ColumnFilter, string]>([
   [{ field: 'status', op: 'is_blank' }, '"status" is blank'],
   [{ field: 'paid', op: 'is_true' }, '"paid" is true'],
 ])('a filter reads as plain words: %j', (filter, words) => {
-  expect(describeFilter(filter)).toBe(words);
+  expect(filterSentence(filter)).toBe(words);
 });
 
 test('the prompt names the project, the mart, the shown columns in grid order, the filters and the sorts', () => {

@@ -1,6 +1,6 @@
 // src/state/join-tree.ts
 // The report as a tree: the main mart at alias path '', each joined mart at the alias path its columns use.
-import type { JoinedSource } from '../api/blendable';
+import { sourceOfField, type JoinedSource } from '../api/blendable';
 import { parentPath } from './join-plan';
 
 export type TreeNode = { path: string; martId: string; parent: string | null; children: string[] };
@@ -8,8 +8,7 @@ export type JoinTree = { nodes: Map<string, TreeNode> };
 
 /** The tree a grid shows. Every path in use is a node, even when another path of the same mart is in use; a path hangs from its deepest in-use ancestor. */
 export function buildJoinTree(mainId: string, columns: string[], sources: JoinedSource[]): JoinTree {
-  const pathOf = new Map<string, JoinedSource>();
-  for (const s of sources) for (const f of s.fields) if (!pathOf.has(f.name)) pathOf.set(f.name, s);
+  const pathOf = sourceOfField(sources);
   // In-use paths in the order their first column appears.
   const used: JoinedSource[] = [];
   for (const c of columns) {

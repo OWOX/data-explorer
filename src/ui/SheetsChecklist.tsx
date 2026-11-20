@@ -1,5 +1,6 @@
 import { Check, Search } from 'lucide-react';
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { rovingTarget } from './roving';
 
 export type ChecklistItem = {
   value: string;
@@ -60,7 +61,7 @@ export function SheetsChecklist({ items, selected, onChange, label }: {
   const rows = () => Array.from(list.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? []);
   const move = (to: number) => {
     if (to < 0) search.current?.focus();
-    else rows()[Math.min(to, rows().length - 1)]?.focus();
+    else rows()[to]?.focus();
   };
   const onRowKey = (e: KeyboardEvent<HTMLElement>, item: ChecklistItem, at: number) => {
     if (e.key === 'Enter' && e.shiftKey && item.only) { e.preventDefault(); item.only(); return; }
@@ -70,10 +71,8 @@ export function SheetsChecklist({ items, selected, onChange, label }: {
       search.current?.focus();
       return;
     }
-    if (e.key === 'ArrowDown') { e.preventDefault(); move(at + 1); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); move(at - 1); }
-    else if (e.key === 'Home') { e.preventDefault(); move(0); }
-    else if (e.key === 'End') { e.preventDefault(); move(rows().length - 1); }
+    const to = rovingTarget(e.key, at, rows().length, { wrap: false });
+    if (to !== null) { e.preventDefault(); move(to); }
     else if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(item); }
   };
 

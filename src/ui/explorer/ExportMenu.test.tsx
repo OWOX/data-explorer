@@ -1358,7 +1358,7 @@ describe('Create Data Mart', () => {
   const TITLES = new Map([['orders', 'Orders'], ['customers', 'Customers']]);
   const CUSTOMERS = [{ id: 'customers', title: 'Customers' }];
 
-  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; run?: GridRun; sorts?: SortKey[]; ownSorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; schema?: Schema; failAt?: string; deleteFails?: boolean; storageUnavailable?: boolean; visible?: string[]; joinedMarts?: { id: string; title: string }[]; filters?: ColumnFilter[] } = {}) {
+  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; run?: GridRun; sorts?: SortKey[]; ownSorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; gate?: Promise<void>; schema?: Schema; failAt?: string; deleteFails?: boolean; visible?: string[]; joinedMarts?: { id: string; title: string }[]; filters?: ColumnFilter[] } = {}) {
     const base = createMockCtx(demoFixtures({ sheets: 1 }), { latencyMs: 0 });
     const calls: string[] = [];
     const bodies: Record<string, unknown> = {};
@@ -1369,7 +1369,7 @@ describe('Create Data Mart', () => {
       ui: { openExternal: open },
       owox: {
         ...b,
-        postJson: ((p: string, body: unknown) => { calls.push(`POST ${p}`); bodies[`POST ${p}`] = body; return b.postJson(p, body); }) as Ctx['owox']['postJson'],
+        postJson: (async (p: string, body: unknown) => { calls.push(`POST ${p}`); bodies[`POST ${p}`] = body; if (o.gate && p === '/api/data-marts') await o.gate; return b.postJson(p, body); }) as Ctx['owox']['postJson'],
         deleteJson: ((p: string) => { calls.push(`DELETE ${p}`); return o.deleteFails ? Promise.reject(Object.assign(new Error('x'), { payload: { message: 'No rights' } })) : b.deleteJson(p); }) as Ctx['owox']['deleteJson'],
         putJson: ((p: string, body: unknown) => {
           calls.push(`PUT ${p}`); bodies[`PUT ${p}`] = body;
@@ -1382,7 +1382,7 @@ describe('Create Data Mart', () => {
     };
     const storage = 'storage' in o ? o.storage : { id: 's1', type: 'GOOGLE_BIGQUERY' };
     const sources = 'sources' in o ? o.sources : SOURCES;
-    const ui = (marts: { id: string; title: string }[]) => <AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={o.schema ?? SCHEMA} visible={o.visible ?? ['id', 'customers__city']} filters={o.filters ?? []} sorts={o.sorts ?? []} ownSorts={o.ownSorts ?? o.sorts ?? []} aggregation={o.aggregation} joinsFailed={o.joinsFailed} joinedMarts={marts} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} storageUnavailable={o.storageUnavailable} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>;
+    const ui = (marts: { id: string; title: string }[]) => <AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={o.schema ?? SCHEMA} visible={o.visible ?? ['id', 'customers__city']} filters={o.filters ?? []} sorts={o.sorts ?? []} ownSorts={o.ownSorts ?? o.sorts ?? []} aggregation={o.aggregation} joinsFailed={o.joinsFailed} joinedMarts={marts} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>;
     const r = render(ui(o.joinedMarts ?? CUSTOMERS));
     return { ctx, calls, bodies, open, setJoinedMarts: (m: { id: string; title: string }[]) => r.rerender(ui(m)) };
   }
@@ -1420,7 +1420,7 @@ describe('Create Data Mart', () => {
     const it = await item();
     expect(it).toBeDisabled();
     await userEvent.hover(it.parentElement!);
-    expect(await screen.findAllByText("The data mart's storage isn't loaded")).not.toHaveLength(0);
+    expect(await screen.findAllByText("The data mart's storage isn't available to you")).not.toHaveLength(0);
   });
 
   test('joins that failed to read say so', async () => {
@@ -1658,6 +1658,22 @@ describe('Create Data Mart', () => {
     expect(t.open).toHaveBeenCalledWith(martAppUrl(t.ctx.projectId, 'mock-mart-1'));
   });
 
+  test('Escape and a backdrop click do nothing while Create runs; after it, Escape closes the dialog and focus returns to Export', async () => {
+    let release: () => void = () => {};
+    mart({ gate: new Promise<void>((r) => { release = r; }) });
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(within(dlg).getByLabelText('Name')).toBeDisabled());
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(dlg.parentElement!);
+    expect(screen.getByRole('dialog', { name: 'Create Data Mart' })).toBeInTheDocument();
+    release();
+    await screen.findByRole('link', { name: /Open/ });
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Create Data Mart' })).toBeNull());
+    expect(document.querySelector('details.dm-export summary')).toHaveFocus();
+  });
+
   test('a publish failure shows the draft, and Retry resumes without creating a second mart', async () => {
     const t = mart({ publishFails: true });
     const dlg = await openDialog();
@@ -1719,13 +1735,12 @@ describe('Create Data Mart', () => {
     expect(screen.queryByRole('button', { name: 'Delete the draft' })).toBeNull();
   });
 
-  test('an unavailable storage has its own reason once the model is loaded', async () => {
-    mart({ storage: undefined, storageUnavailable: true });
-    await userEvent.click(await screen.findByText('Export'));
-    const it = await item();
-    expect(it).toBeDisabled();
-    await userEvent.hover(it.parentElement!);
-    expect(await screen.findAllByText("The data mart's storage isn't available to you")).not.toHaveLength(0);
+  test('Tab and Shift+Tab never leave the dialog, however many times they are pressed', async () => {
+    mart();
+    const dlg = await openDialog();
+    await waitFor(() => expect(within(dlg).getByLabelText('Name')).toHaveFocus());
+    for (let i = 0; i < 12; i++) { await userEvent.tab(); expect(dlg.contains(document.activeElement)).toBe(true); }
+    for (let i = 0; i < 12; i++) { await userEvent.tab({ shift: true }); expect(dlg.contains(document.activeElement)).toBe(true); }
   });
 
   test('an empty name shows a message and calls nothing', async () => {
@@ -1747,5 +1762,31 @@ describe('Create Data Mart', () => {
     expect(create).toHaveFocus();
     await userEvent.keyboard('{ArrowRight}');
     expect(create).toHaveFocus();
+  });
+});
+
+describe('Tab is trapped in every dialog', () => {
+  const setClipboard = (writeText: unknown) => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: writeText ? { writeText } : undefined });
+  const cycle = async (dialog: HTMLElement) => {
+    for (let i = 0; i < 12; i++) { await userEvent.tab(); expect(dialog.contains(document.activeElement)).toBe(true); }
+    for (let i = 0; i < 12; i++) { await userEvent.tab({ shift: true }); expect(dialog.contains(document.activeElement)).toBe(true); }
+  };
+
+  test('the export dialog', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await cycle(await openDialog());
+  });
+
+  test('the text dialog', async () => {
+    setClipboard(vi.fn().mockResolvedValue(undefined));
+    const t = setup(0);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Show prompt' }));
+    await cycle(await screen.findByRole('dialog', { name: 'Prompt' }));
   });
 });

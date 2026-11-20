@@ -14,7 +14,7 @@ afterEach(cleanup);
 
 const mart: Mart = { id: 'm1', title: 'Orders', description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null };
 const props = (over: Partial<React.ComponentProps<typeof MartCard>> = {}) => ({
-  mart, contexts: [], count: { state: 'ok', value: 1 } as const, quality: undefined, freshness: null, selected: false, lit: false,
+  mart, contexts: [], count: { state: 'ok', value: 1 } as const, quality: undefined, selected: false, lit: false,
   onSelect: vi.fn(), onOpenApp: vi.fn(), onRetryCount: vi.fn(), onNeedCount: vi.fn(), ...over,
 });
 const renderCard = (p: ReturnType<typeof props>) => render(<TooltipProvider><MartCard {...p} /></TooltipProvider>);

@@ -13,14 +13,22 @@ const DATE = new Set([
 const TIME = new Set(['TIME', 'TIME WITH TIME ZONE', 'TIME WITHOUT TIME ZONE', 'TIMETZ']);
 const BOOL = new Set(['BOOLEAN', 'BOOL']);
 
+// A grid asks for the same few type names for every cell, so each spelling is normalised once.
+const normalized = new Map<string, string>();
+
 /** A warehouse type in one spelling: trimmed, upper case, single spaces, with any parameter list, wherever it sits in the name, such as (10,2) or (3) in timestamp(3) with time zone, removed. */
 export function normalizeType(type: string): string {
-  return type
-    .trim()
-    .toUpperCase()
-    .replace(/\s*\([^()]*\)/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  let t = normalized.get(type);
+  if (t === undefined) {
+    t = type
+      .trim()
+      .toUpperCase()
+      .replace(/\s*\([^()]*\)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    normalized.set(type, t);
+  }
+  return t;
 }
 
 /** Whether the type is a calendar day without a time of day (DATE), as opposed to a moment. */

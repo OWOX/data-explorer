@@ -1,27 +1,27 @@
 import { useCallback, useEffect, useState } from 'react';
 import { readRows } from '../api/rows';
+import { perCtx } from '../sdk/per-ctx';
 import type { Ctx, Row, TraverseOptions } from '../sdk/types';
 import { useServices } from '../state/store';
 
 export type ChartResult = { rows: Row[] | null; error: unknown; loading: boolean; retry: () => void };
 
+/** How many resolved reads a ctx keeps: about ten views of the charts. The least recently used is dropped first. */
+export const CHART_CACHE_LIMIT = 64;
 // Resolved rows only, per ctx: a failed or aborted read is never stored, so retry always reads again.
-const caches = new WeakMap<Ctx, Map<string, Row[]>>();
-const cacheOf = (ctx: Ctx) => {
-  let c = caches.get(ctx);
-  if (!c) caches.set(ctx, (c = new Map()));
-  return c;
-};
+const cacheOf = perCtx(() => new Map<string, Row[]>());
+
+function remember(ctx: Ctx, key: string, rows: Row[]) {
+  const cache = cacheOf(ctx);
+  cache.set(key, rows);
+  // A Map keeps insertion order and a hit re-inserts its key, so the first key is the least recently used.
+  if (cache.size > CHART_CACHE_LIMIT) cache.delete(cache.keys().next().value!);
+}
 
 // A read under way, shared by every hook that asks for the same key while it runs: each traverseData call is billed, so
 // a pie and a stack asking for the same thing at once must cost one read. Dropped when it settles or its last reader leaves.
 type Flight = { promise: Promise<Row[]>; readers: number; controller: AbortController };
-const flights = new WeakMap<Ctx, Map<string, Flight>>();
-const flightsOf = (ctx: Ctx) => {
-  let f = flights.get(ctx);
-  if (!f) flights.set(ctx, (f = new Map()));
-  return f;
-};
+const flightsOf = perCtx(() => new Map<string, Flight>());
 
 // Key-sorted, so two builders that set the same options in another property order share one read. Arrays keep their order.
 const stable = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([p], [q]) => (p < q ? -1 : p > q ? 1 : 0))) : x));
@@ -35,8 +35,16 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
 
   useEffect(() => {
     if (!options || !key) return;
-    const cached = cacheOf(ctx).get(key);
-    if (cached) return; // the render below reads it straight from the cache
+    const cache = cacheOf(ctx);
+    const cached = cache.get(key);
+    if (cached) {
+      // Keep the rows in state too, so a later eviction cannot strand this reader; re-insert the key so it counts as recently used.
+      cache.delete(key);
+      cache.set(key, cached);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a hit has no promise to answer through
+      setState({ key, rows: cached, error: null });
+      return;
+    }
     const inflight = flightsOf(ctx);
     let flight = inflight.get(key);
     if (!flight) {
@@ -44,7 +52,7 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
       const promise = readRows(ctx, martId, options, { signal: controller.signal });
       const made: Flight = (flight = { promise, readers: 0, controller });
       promise.then(
-        (rows) => { if (inflight.get(key) === made) inflight.delete(key); if (!controller.signal.aborted) cacheOf(ctx).set(key, rows); },
+        (rows) => { if (inflight.get(key) === made) inflight.delete(key); if (!controller.signal.aborted) remember(ctx, key, rows); },
         () => { if (inflight.get(key) === made) inflight.delete(key); },
       );
       inflight.set(key, made);

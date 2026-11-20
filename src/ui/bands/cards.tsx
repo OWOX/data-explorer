@@ -9,6 +9,7 @@ import { Hint, TipLines, Tooltip } from '../Tooltip';
 import { whenInView } from './inview';
 import type { CardTransition } from './transitions';
 import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
+import { useLatest } from '../useLatest';
 
 /** The element id Task 3's lines look cards up by: Data Flow's `src-` prefix and key sanitising. */
 export const sourceElementId = (key: string) => `src-${key.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
@@ -122,12 +123,17 @@ function CountBadge({ count, countable, onRetry }: { count: CountState; countabl
   return <Tooltip content={recordsLabel(num(count.value))}><span className="dm-badge">{recordsLabel(compactNumber(count.value))}</span></Tooltip>;
 }
 
+/** The contexts of a mart, in the project's order. */
+export const contextsOf = (all: Context[], ids: string[]) => all.filter((c) => ids.includes(c.id));
+
+const IDLE_COUNT: CountState = { state: 'idle' };
+const NOOP = () => undefined;
+
 export function MartCard({
   mart,
   contexts,
-  count,
+  count = IDLE_COUNT,
   quality,
-  freshness,
   selected,
   joined = false,
   lit,
@@ -152,10 +158,9 @@ export function MartCard({
 }: {
   mart: Mart;
   contexts: Context[];
-  count: CountState;
+  /** The row count's state; a ghost asks for no count, so it may leave this out. Defaults to idle. */
+  count?: CountState;
   quality: DqSummary | undefined;
-  /** When the data was last updated (ISO), or null when unknown. */
-  freshness: string | null;
   selected: boolean;
   /** A joined data mart of the selected one: its fields are columns of the main grid. */
   joined?: boolean;
@@ -189,18 +194,18 @@ export function MartCard({
   onRemove?: () => void;
   onSelect: () => void;
   onOpenApp: () => void;
-  onRetryCount: () => void;
-  /** Called once the card is on screen: only then is its row count requested. */
-  onNeedCount: () => void;
+  /** Not needed on a ghost, which shows no count. */
+  onRetryCount?: () => void;
+  /** Called once the card is on screen: only then is its row count requested. Not needed on a ghost. */
+  onNeedCount?: () => void;
 }) {
   const el = useRef<HTMLElement>(null);
   usePinWhenLeaving(el, transition);
-  const need = useRef(onNeedCount);
-  useEffect(() => { need.current = onNeedCount; });
+  const need = useLatest(onNeedCount);
   useEffect(() => {
     if (!mart.accessible || ghost || !el.current) return;
-    return whenInView(el.current, () => need.current());
-  }, [mart.accessible, ghost]);
+    return whenInView(el.current, () => need.current?.());
+  }, [mart.accessible, ghost, need]);
   const [hint, setHint] = useState(false);
   useEffect(() => {
     if (!hint) return;
@@ -253,12 +258,12 @@ export function MartCard({
         {mart.description && <span className="dm-card-reveal"><Hint text={mart.description} label="Description" /></span>}
       </div>
       <div className="dm-badges dm-badges-row">
-        {mart.accessible ? <CountBadge count={count} countable={!ghost} onRetry={onRetryCount} /> : <span className="dm-badge">No access</span>}
+        {mart.accessible ? <CountBadge count={count} countable={!ghost} onRetry={onRetryCount ?? NOOP} /> : <span className="dm-badge">No access</span>}
       </div>
       <div className="dm-node-foot">
         <QualityMark summary={quality} />
         {/* Nothing when the update time is unknown: an unknown freshness is not worth an icon. */}
-        {freshness && <Mark tone="idle" lines={[`Data updated ${relativeTime(freshness)}`]}><History size={14} /></Mark>}
+        {mart.dataLastUpdatedAt && <Mark tone="idle" lines={[`Data updated ${relativeTime(mart.dataLastUpdatedAt)}`]}><History size={14} /></Mark>}
         <Contexts contexts={contexts} />
       </div>
       {/* The live region stays mounted so a screen reader announces the hint when it appears. */}
@@ -283,6 +288,8 @@ function Contexts({ contexts }: { contexts: Context[] }) {
   const named = useRef<HTMLSpanElement>(null);
   const [bare, setBare] = useState(false);
   const shown = contexts.length > 0;
+  // The callers build a new array on each render, so the effect follows what the contexts say, not the array.
+  const content = contexts.map((c) => `${c.id}\u0000${c.name}\u0000${c.icon ?? ''}`).join('\u0001');
   useLayoutEffect(() => {
     const el = row.current;
     const copy = named.current;
@@ -292,7 +299,7 @@ function Contexts({ contexts }: { contexts: Context[] }) {
     const watch = new ResizeObserver(judge);
     watch.observe(el);
     return () => watch.disconnect();
-  }, [shown, contexts]);
+  }, [shown, content]);
   if (!shown) return null;
   const chip = (context: Context, tip = true): ReactNode => {
     const badge = (

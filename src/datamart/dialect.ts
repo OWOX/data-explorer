@@ -1,9 +1,9 @@
 import type { ColumnFilter } from '../filters/build';
 import { toTraverseFilter } from '../filters/build';
 import type { AggFn, DateBucket } from '../model/aggregation';
-import { DATE_BUCKETS, isTimeZone } from '../model/aggregation';
+import { isDateBucket, isTimeZone } from '../model/aggregation';
 import type { Field } from '../model/types';
-import type { RelativeDatePreset, TraverseFilter } from '../sdk/types';
+import type { RelativeDatePreset } from '../sdk/types';
 
 export type Dialect = 'bigquery' | 'athena' | 'snowflake' | 'redshift' | 'databricks';
 
@@ -100,7 +100,7 @@ export const nullSafeOn = (pairs: { left: string; right: string; nanSafe: boolea
 
 /** `x` cut to the start of its calendar bucket, in `timeZone` when given. Throws on a unit or zone the backend would refuse. */
 export function dateTrunc(d: Dialect, x: string, unit: DateBucket, timeZone: string | undefined, type: string): string {
-  if (!(DATE_BUCKETS as readonly string[]).includes(unit)) throw new Error(`Unknown date bucket: ${String(unit)}`);
+  if (!isDateBucket(unit)) throw new Error(`Unknown date bucket: ${String(unit)}`);
   if (timeZone !== undefined && !isTimeZone(timeZone)) throw new Error(`Invalid time zone: ${timeZone}`);
   const t = type.trim().toUpperCase();
   const lower = unit.toLowerCase();
@@ -256,10 +256,9 @@ function relative(d: Dialect, col: string, p: RelativeDatePreset, type: string):
 }
 
 /** One complete filter as a SQL predicate on `col` (already a column reference). */
-export const renderFilter = (d: Dialect, col: string, field: Field, f: ColumnFilter): string => renderTraverse(d, col, field, toTraverseFilter(f, field));
-
-/** A traverse filter as a SQL predicate on `col`; the list operators are kept for the day the grid offers them. */
-export function renderTraverse(d: Dialect, col: string, field: Field, t: TraverseFilter): string {
+export function renderFilter(d: Dialect, col: string, field: Field, f: ColumnFilter): string {
+  // The grid offers no list operator, so `toTraverseFilter` never returns `in` or `not_in`.
+  const t = toTraverseFilter(f, field);
   const type = field.type.trim().toUpperCase();
   const cast = CAST_TYPES[d].has(type);
   /** A compared value, cast to the column type on date and time columns. */
@@ -298,11 +297,7 @@ export function renderTraverse(d: Dialect, col: string, field: Field, t: Travers
     case 'is_true': return `${col} = TRUE`;
     case 'is_false': return `${col} = FALSE`;
     case 'between': return `${col} BETWEEN ${lit(t.value.from)} AND ${lit(t.value.to)}`;
-    case 'in':
-    case 'not_in': {
-      const list = (t.value as Scalar[]).map(lit).join(', ');
-      return t.operator === 'in' ? `${col} IN (${list})` : `(${col} IS NULL OR ${col} NOT IN (${list}))`;
-    }
     case 'relative_date': return relative(d, col, t.value, type);
+    default: throw new Error(`Unsupported filter operator: ${t.operator}`);
   }
 }

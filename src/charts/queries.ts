@@ -7,7 +7,7 @@ import type { ChartMart, Metric } from './fields';
 export const TOP_N = 8;
 
 /** What a time series or top list counts: a metric, or a mart's records (its unique count on the mart's alias path, '' for the main one). */
-export type Measure = { kind: 'metric'; metric: Metric } | { kind: 'records'; aliasPath: string; martId: string; recordsId: string };
+export type Measure = { kind: 'metric'; metric: Metric } | { kind: 'records'; aliasPath: string; recordsId: string };
 
 export const metricKey = (m: Metric): string => aggregatedKey(m.field.name, m.fn);
 /** The row key of a mart's unique count (the backend's contract: each dot of the alias path becomes `_`). */
@@ -32,8 +32,12 @@ const measureColumns = (m: Measure): string[] => (m.kind === 'metric' ? [m.metri
 const measureParts = (m: Measure): Pick<TraverseOptions, 'aggregation' | 'uniqueCount'> => (m.kind === 'metric' ? { aggregation: aggs([m.metric]) } : { uniqueCount: [m.aliasPath] });
 const aggs = (metrics: Metric[]) => metrics.map((m) => ({ column: m.field.name, function: m.fn }));
 
+// The browser's zone, read once: resolving it builds an Intl formatter, and every query builder asks on every render.
+let browserZoneName: string | undefined;
+const browserZone = (): string => (browserZoneName ??= Intl.DateTimeFormat().resolvedOptions().timeZone);
+
 /** The IANA zone a date column's buckets are cut in (the browser's), or undefined when they are not zoned. Shared by the series queries and the click filters. */
-export function bucketZone(date: Field, zone: string = Intl.DateTimeFormat().resolvedOptions().timeZone): string | undefined {
+export function bucketZone(date: Field, zone: string = browserZone()): string | undefined {
   return zonesBuckets(date) && isTimeZone(zone) ? zone : undefined;
 }
 function truncRule(date: Field, unit: DateBucket) {
@@ -78,6 +82,8 @@ export function sparklineQuery(mart: ChartMart, date: Field, bucket: DateBucket,
 const notBlank = (dim: Field): TraverseFilter => ({ column: dim.name, operator: 'is_not_blank' });
 // A boolean dimension's values arrive as booleans; the filter takes strings.
 const list = (top: string[]): string[] => top.map(String);
+/** The rows outside a top list: a real value that is none of the top ones. */
+const outside = (dim: Field, top: string[]): TraverseFilter[] => [notBlank(dim), { column: dim.name, operator: 'not_in', value: list(top) }];
 
 export function topValuesQuery(dim: Field, measure: Measure, filter: TraverseFilter[]): TraverseOptions {
   const o: TraverseOptions = {
@@ -99,14 +105,10 @@ export function seriesQuery(date: Field, bucket: DateBucket, measure: Measure, f
   return withFilter(o, stack ? [...filter, notBlank(stack.dim), { column: stack.dim.name, operator: 'in', value: list(stack.top) }] : filter);
 }
 
-export function seriesOtherQuery(date: Field, bucket: DateBucket, measure: Measure, filter: TraverseFilter[], dim: Field, top: string[]): TraverseOptions {
-  return withFilter(
-    { column: [date.name, ...measureColumns(measure)], ...measureParts(measure), dateTrunc: [truncRule(date, bucket)], sort: [{ column: date.name, direction: 'asc' }] },
-    [...filter, notBlank(dim), { column: dim.name, operator: 'not_in', value: list(top) }],
-  );
-}
+export const seriesOtherQuery = (date: Field, bucket: DateBucket, measure: Measure, filter: TraverseFilter[], dim: Field, top: string[]): TraverseOptions =>
+  seriesQuery(date, bucket, measure, [...filter, ...outside(dim, top)]);
 
 export function pieOtherQuery(measure: Measure, filter: TraverseFilter[], dim: Field, top: string[], counter?: Field | null): TraverseOptions {
   const o: TraverseOptions = { ...(measure.kind === 'metric' ? { column: measureColumns(measure) } : {}), ...measureParts(measure) };
-  return withFilter(withCounter(o, filter, counter), [...filter, notBlank(dim), { column: dim.name, operator: 'not_in', value: list(top) }]);
+  return withFilter(withCounter(o, filter, counter), [...filter, ...outside(dim, top)]);
 }

@@ -33,7 +33,6 @@ function martProps(over: Partial<React.ComponentProps<typeof MartCard>> = {}) {
     contexts: [],
     count: { state: 'ok', value: 12400 } as const,
     quality: { state: 'PASSED' },
-    freshness: mart.dataLastUpdatedAt,
     selected: false,
     lit: false,
     onSelect: vi.fn(),

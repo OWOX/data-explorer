@@ -332,3 +332,16 @@ test('the Fields cards follow a Refresh: a joined mart whose field is gone is no
   await refresh();
   await waitFor(() => expect(customers()).toHaveAttribute('aria-pressed', 'false'));
 });
+
+test('a Refresh that takes a joined field away pauses its slice, says so, and applies it again when the field is back', async () => {
+  const slice = { field: 'customers__email', op: 'contains' as const, value: 'a' };
+  const { state, queries } = await renderNarrowing({ grid: { columns: ['id', 'status', 'customers__email'], filters: {}, slices: { customers__email: slice }, sorts: null, limit: 50 } });
+  await waitFor(() => expect(queries.at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a', placement: 'pre-join' }]));
+  state.gone = true;
+  await refresh();
+  expect(await within(toast()).findByText(/slice on Customers · email is paused/)).toBeInTheDocument();
+  await waitFor(() => expect(queries.at(-1)?.filter ?? []).toEqual([]));
+  state.gone = false;
+  await refresh();
+  await waitFor(() => expect(queries.at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a', placement: 'pre-join' }]));
+});

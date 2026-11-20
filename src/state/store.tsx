@@ -54,7 +54,7 @@ export type Action =
   | { type: 'init'; focusId: string }
   | { type: 'selectSource'; key: string | null }
   | { type: 'selectMart'; id: string; sourceOf: SourceOf }
-  | { type: 'openRecord'; martId: string; pk: Record<string, unknown>; sourceOf?: SourceOf }
+  | { type: 'openRecord'; martId: string; pk: Record<string, unknown>; sourceOf: SourceOf }
   | { type: 'follow'; target: ClickTarget; sourceOf: SourceOf }
   | { type: 'undo'; known?: (selection: Selection) => boolean }
   | { type: 'redo'; known?: (selection: Selection) => boolean }
@@ -83,15 +83,27 @@ const emptySelection: Selection = { sourceKey: null, martId: null, record: null 
 export const initialState: State = { selection: emptySelection, history: [], future: [], search: '', found: [], contextIds: [], storageIds: null, grids: {}, modelVersion: 0 };
 
 /** The source stays selected only when it feeds the mart being selected. */
-const sourceFor = (current: Selection, martId: string, sourceOf?: SourceOf): string | null => {
-  if (!current.sourceKey) return null;
-  if (sourceOf) return sourceOf(martId) === current.sourceKey ? current.sourceKey : null;
-  return martId === current.martId ? current.sourceKey : null;
-};
+const sourceFor = (current: Selection, martId: string, sourceOf: SourceOf): string | null =>
+  (current.sourceKey && sourceOf(martId) === current.sourceKey ? current.sourceKey : null);
+
+/** Undo takes from `history` and fills `future`; redo is the same with the two swapped. Entries naming a mart or source a refresh removed are skipped. */
+function step(state: State, from: 'history' | 'future', known: ((s: Selection) => boolean) | undefined): State {
+  const to = from === 'history' ? 'future' : 'history';
+  const stack = [...state[from]];
+  while (stack.length) {
+    const { grids: put, ...entry } = stack.pop()!;
+    if (!known || known(entry)) {
+      const now = put ? valuesOf(state.grids, Object.keys(put)) : undefined;
+      const current = state.selection;
+      return { ...state, selection: entry, grids: put ? applyGrids(state.grids, put) : state.grids, [from]: stack, [to]: [...state[to], now ? { ...current, grids: now } : current].slice(-HISTORY_LIMIT) };
+    }
+  }
+  return stack.length === state[from].length ? state : { ...state, [from]: stack };
+}
 
 /** Every change to the selection goes through here: it is what Back steps over. */
 function move(state: State, next: Selection): State {
-  if (JSON.stringify(next) === JSON.stringify(state.selection)) return state;
+  if (deepEqual(next, state.selection)) return state;
   return { ...state, selection: next, history: [...state.history, state.selection].slice(-HISTORY_LIMIT), future: [] };
 }
 
@@ -125,29 +137,8 @@ export function reducer(state: State, a: Action): State {
       const filters = Object.fromEntries(target.filters.map((f) => [f.field, f]));
       return { ...next, grids: { ...next.grids, [target.martId]: { columns: saved?.columns ?? [], filters, sorts: saved?.sorts ?? null, limit: PAGE_SIZE, ...(saved?.aggregations ? { aggregations: saved.aggregations } : {}), ...(saved?.dateTrunc ? { dateTrunc: saved.dateTrunc } : {}) } } };
     }
-    case 'undo': {
-      // Entries naming a mart or source a refresh removed are skipped.
-      const history = [...state.history];
-      while (history.length) {
-        const { grids: put, ...previous } = history.pop()!;
-        if (!a.known || a.known(previous)) {
-          const now = put ? valuesOf(state.grids, Object.keys(put)) : undefined;
-          return { ...state, selection: previous, grids: put ? applyGrids(state.grids, put) : state.grids, history, future: [...state.future, now ? { ...cur, grids: now } : cur].slice(-HISTORY_LIMIT) };
-        }
-      }
-      return history.length === state.history.length ? state : { ...state, history };
-    }
-    case 'redo': {
-      const future = [...state.future];
-      while (future.length) {
-        const { grids: put, ...next } = future.pop()!;
-        if (!a.known || a.known(next)) {
-          const was = put ? valuesOf(state.grids, Object.keys(put)) : undefined;
-          return { ...state, selection: next, grids: put ? applyGrids(state.grids, put) : state.grids, future, history: [...state.history, was ? { ...cur, grids: was } : cur].slice(-HISTORY_LIMIT) };
-        }
-      }
-      return future.length === state.future.length ? state : { ...state, future };
-    }
+    case 'undo': return step(state, 'history', a.known);
+    case 'redo': return step(state, 'future', a.known);
     case 'replace': return { ...state, selection: a.selection };
     // Searching narrows the Data Marts band; what is selected stays selected.
     case 'search': return { ...state, search: a.q, found: [] };
@@ -159,7 +150,7 @@ export function reducer(state: State, a: Action): State {
     case 'setStorages': return { ...state, storageIds: a.ids };
     case 'setMarts': {
       const before = valuesOf(state.grids, Object.keys(a.grids));
-      if (!a.always && JSON.stringify(a.selection) === JSON.stringify(cur) && JSON.stringify(before) === JSON.stringify(a.grids)) return state;
+      if (!a.always && deepEqual(a.selection, cur) && deepEqual(before, a.grids)) return state;
       return { ...state, selection: a.selection, grids: { ...state.grids, ...a.grids }, history: [...state.history, { ...cur, grids: before }].slice(-HISTORY_LIMIT), future: [] };
     }
     case 'fillGrid': {

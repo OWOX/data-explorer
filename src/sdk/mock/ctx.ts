@@ -1,21 +1,20 @@
 import type { AvailableSourceDto, BlendableSchemaDto, BlendedFieldDto, Ctx, EdgeDto, Row, TraverseOptions } from '../types';
 import { aggregatedKey, allowedFunctions, knownFunctions } from '../../model/aggregation';
 import { categorizeFieldType } from '../../model/field-category';
-import { aggregateRows, distinctKeys, type UniqueSource } from './aggregate';
+import { aggregateRows, distinctKeys, sortRows, type UniqueSource } from './aggregate';
 import { matchesFilter } from './evaluate';
 import { createFakeAi } from './ai';
 import { demoFixtures, demoReports, type Fixtures, type MockReportFixture } from './fixtures';
 import { mockSearch } from './search';
+import { sleep } from '../../api/sleep';
 
 declare global { interface Window { __copiedLink?: string; __routeSet?: string } }
-
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: number; runMs?: number; /** false: no AI credential, as in a project that has not configured one. */ ai?: boolean } = {}): Ctx {
   const latency = opts.latencyMs ?? 0;
   const byId = new Map(f.marts.map((m) => [m.id, m]));
   const docs = new Map<string, unknown>();
-  const slow = async <T,>(v: () => T): Promise<T> => { if (latency) await wait(latency); return v(); };
+  const slow = async <T,>(v: () => T): Promise<T> => { if (latency) await sleep(latency); return v(); };
 
   type MockReport = Record<string, unknown> & { id: string; dataMartId: string; lastRunAt: string | null; lastRunStatus: string | null; lastRunError: string | null };
   const reports = new Map<string, MockReport>(demoReports(f).map((r) => [r.id, r]));
@@ -75,8 +74,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         aggregateFunction: defaultJoinFunction(x.type),
       }));
     });
-    const hiddenFieldNames = hops.flatMap((h) => byId.get(h.martId)!.fields.filter((x) => x.isHiddenForReporting).map((x) => blendedName(h.aliasPath, x.name)));
-    return { blendedFields, availableSources, hiddenFieldNames };
+    return { blendedFields, availableSources };
   }
 
   // One row of a joined mart per value of the join key, built once per link.
@@ -102,18 +100,35 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
   }
   /** Like the backend: a field hidden for reporting is not a column a query or a report may name. */
   const badRequest = (message: string) => Object.assign(new Error(message), { payload: { code: 'HTTP_ERROR', status: 400 } });
+  const hiddenSets = new Map<string, Set<string>>();
+  function hiddenOf(martId: string): Set<string> {
+    let hidden = hiddenSets.get(martId);
+    if (!hidden) {
+      hidden = new Set();
+      byId.get(martId)?.fields.filter((x) => x.isHiddenForReporting).forEach((x) => hidden!.add(x.name));
+      for (const h of joinTree(martId)) byId.get(h.martId)!.fields.filter((x) => x.isHiddenForReporting).forEach((x) => hidden!.add(blendedName(h.aliasPath, x.name)));
+      hiddenSets.set(martId, hidden);
+    }
+    return hidden;
+  }
   function rejectHidden(martId: string, names: string[]) {
-    const hidden = new Set<string>();
-    byId.get(martId)?.fields.filter((x) => x.isHiddenForReporting).forEach((x) => hidden.add(x.name));
-    for (const h of joinTree(martId)) byId.get(h.martId)!.fields.filter((x) => x.isHiddenForReporting).forEach((x) => hidden.add(blendedName(h.aliasPath, x.name)));
+    const hidden = hiddenOf(martId);
     const bad = names.find((n) => hidden.has(n));
     if (bad) throw badRequest(`Unknown column: ${bad}`);
   }
+  const blendedIndexes = new Map<string, Map<string, { hop: Hop; field: string }>>();
   const blendedIndex = (martId: string) => {
-    const index = new Map<string, { hop: Hop; field: string }>();
-    for (const h of joinTree(martId)) for (const x of byId.get(h.martId)!.fields) index.set(blendedName(h.aliasPath, x.name), { hop: h, field: x.name });
+    let index = blendedIndexes.get(martId);
+    if (!index) {
+      index = new Map();
+      for (const h of joinTree(martId)) for (const x of byId.get(h.martId)!.fields) index.set(blendedName(h.aliasPath, x.name), { hop: h, field: x.name });
+      blendedIndexes.set(martId, index);
+    }
     return index;
   };
+  /** Every column a request names: its columns, then the columns of its filters and sorts. */
+  const named = (b: { column?: string[]; columnConfig?: string[]; filter?: { column: string }[]; filterConfig?: { column: string }[] | null; sort?: { column: string }[]; sortConfig?: { column: string }[] | null }) =>
+    [...(b.column ?? b.columnConfig ?? []), ...(b.filter ?? b.filterConfig ?? []).map((x) => x.column), ...(b.sort ?? b.sortConfig ?? []).map((x) => x.column)];
 
   /** The backend's default join-level roll-up: SUM for numbers, MAX for dates and times, else STRING_AGG. */
   const defaultJoinFunction = (type: string): string => { const c = categorizeFieldType(type); return c === 'number' ? 'SUM' : c === 'date' || c === 'time' ? 'MAX' : 'STRING_AGG'; };
@@ -137,7 +152,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     if (!m) throw new Error(`Data Mart ${id} not found`);
     if (!m.accessible) throw new Error('You do not have access to this Data Mart');
     // Columns, filters and sorts may name fields of joined marts: those are read off the joined row and added to each row.
-    rejectHidden(id, [...(o.column ?? []), ...(o.filter ?? []).map((x) => x.column), ...(o.sort ?? []).map((x) => x.column)]);
+    rejectHidden(id, named(o));
     const index = blendedIndex(id);
     // Like the backend: a slice (pre-join rule) must name a joined field and takes no function; a HAVING rule must match an aggregation.
     const slices = (o.filter ?? []).filter((x) => x.placement === 'pre-join');
@@ -155,7 +170,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
       if (!hop) throw badRequest(`Unknown source: ${path}`);
       return { key: `${path.replaceAll('.', '_')}__unique_count`, pk: byId.get(hop.martId)!.fields.filter((x) => x.isPrimaryKey).map((x) => blendedName(path, x.name)) };
     });
-    const wanted = [...new Set([...(o.column ?? []), ...(o.filter ?? []).map((x) => x.column), ...(o.sort ?? []).map((x) => x.column), ...uniq.flatMap((u) => u.pk)].filter((n) => index.has(n)))];
+    const wanted = [...new Set([...named(o), ...uniq.flatMap((u) => u.pk)].filter((n) => index.has(n)))];
     const underPath = (path: string, of: string) => path === of || path.startsWith(`${of}.`);
     const source = wanted.length ? m.rows.map((r) => {
       const row: Row = { ...r, ...Object.fromEntries(wanted.map((n) => [n, blendedValue(r, index.get(n)!.hop, index.get(n)!.field)])) };
@@ -175,17 +190,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
       if (having.length) grouped = grouped.filter((g) => having.every((h) => matchesFilter(g, { ...h, column: aggregatedKey(h.column, h.function!), function: undefined, placement: undefined })));
       return o.limit !== undefined ? grouped.slice(0, o.limit) : grouped;
     }
-    const keys = o.sort ?? [];
-    if (keys.length) {
-      rows = [...rows].sort((x, y) => {
-        for (const s of keys) {
-          const a = x[s.column], b = y[s.column];
-          const d = typeof a === 'number' && typeof b === 'number' ? a - b : String(a ?? '').localeCompare(String(b ?? ''), undefined, { numeric: true });
-          if (d !== 0) return s.direction === 'asc' ? d : -d;
-        }
-        return 0;
-      });
-    }
+    rows = sortRows(rows, o.sort ?? [], (s) => s.column);
     if (o.limit !== undefined) rows = rows.slice(0, o.limit);
     if (o.column) {
       const cols = o.column;
@@ -231,7 +236,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
           runs.set(runId, mockSql(id, o));
           return {
             runId,
-            async *rowChunks() { for (let i = 0; i < rows.length; i += 100) { if (latency) await wait(latency / 4); yield rows.slice(i, i + 100); } },
+            async *rowChunks() { for (let i = 0; i < rows.length; i += 100) { if (latency) await sleep(latency / 4); yield rows.slice(i, i + 100); } },
             cancel: async () => {},
           };
         },
@@ -240,7 +245,6 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
       getJson: <T,>(path: string, query?: Record<string, string>) => slow(() => {
         // Reports created through the mock POST carry no `dataMart`, so the mock search skips them.
         if (path === '/api/search') return mockSearch(f, query, [...reports.values()].filter((r): r is MockReportFixture => typeof r.title === 'string' && 'dataMart' in r)) as T;
-        if (path === '/api/data-destinations') return f.destinations as T;
         if (/^\/api\/data-marts\/[^/]+\/schema-actualize-triggers\/[^/]+\/status$/.test(path)) return { status: 'SUCCESS' } as T;
         if (/^\/api\/data-marts\/[^/]+\/schema-actualize-triggers\/[^/]+$/.test(path)) return { success: true } as T;
         const run = /^\/api\/data-marts\/([^/]+)\/runs\/([^/]+)$/.exec(path);
@@ -249,8 +253,6 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
           if (sql === undefined) throw notFound('Run');
           return { id: decodeURIComponent(run[2]!), additionalParams: { httpData: { executionSqlQuery: sql } } } as T;
         }
-        const byMart = /^\/api\/reports\/data-mart\/([^/]+)$/.exec(path);
-        if (byMart) return [...reports.values()].filter((r) => r.dataMartId === decodeURIComponent(byMart[1]!)) as T;
         const one = /^\/api\/reports\/([^/]+)$/.exec(path);
         if (one) return report(decodeURIComponent(one[1]!)) as T;
         if (path === '/api/contexts') return f.contexts as T;
@@ -282,7 +284,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         if (!m) throw new Error(`Mock: unhandled PUT ${path}`);
         const cur = report(decodeURIComponent(m[1]!));
         const b = body as { columnConfig?: string[]; filterConfig?: { column: string }[] | null; sortConfig?: { column: string }[] | null };
-        rejectHidden(cur.dataMartId, [...(b.columnConfig ?? []), ...(b.filterConfig ?? []).map((x) => x.column), ...(b.sortConfig ?? []).map((x) => x.column)]);
+        rejectHidden(cur.dataMartId, named(b));
         Object.assign(cur, body, accessOf(body));
         return cur as T;
       }),
@@ -299,7 +301,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         }
         if (path === '/api/reports') {
           const b = body as { dataMartId: string; columnConfig?: string[]; filterConfig?: { column: string }[] | null; sortConfig?: { column: string }[] | null };
-          rejectHidden(b.dataMartId, [...(b.columnConfig ?? []), ...(b.filterConfig ?? []).map((x) => x.column), ...(b.sortConfig ?? []).map((x) => x.column)]);
+          rejectHidden(b.dataMartId, named(b));
           reportSerial += 1;
           const r: MockReport = { ...(body as object), ...accessOf(body), id: `mock-report-${reportSerial}`, dataMartId: (body as { dataMartId: string }).dataMartId, lastRunAt: null, lastRunStatus: null, lastRunError: null };
           reports.set(r.id, r);

@@ -347,7 +347,7 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-grid { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 20px; letter-spacing: 0; color: var(--grid-text); }
 /* The grid's card has square corners at every corner, like a sheet. */
 .dm-bigcard:has(.dm-grid-root) { border-radius: 0; }
-.dm-grid-root { outline: none; position: relative; }
+.dm-grid-root { outline: none; position: relative; /* The sticky row-number column covers the left edge. */ scroll-padding-left: 46px; }
 .dm-grid-root:focus-visible:not(:has([data-selected])) { outline: 2px solid var(--sheet-select); outline-offset: -2px; }
 /* A column's header actions are 20% smaller than the 14px they were. */
 .dm-icon { width: 11.2px; height: 11.2px; }

@@ -1,18 +1,19 @@
 // The mock's traverseData grouping: aggregation and dateTrunc over rows, as the API names the outputs.
-import { aggregatedKey, type AggFn } from '../../model/aggregation';
+import { aggregatedKey, type AggFn, type AggregationRule, type DateTruncRule } from '../../model/aggregation';
+import { ymd } from '../../model/day';
 import type { Row } from '../types';
 
-type Rule = { column: string; function: AggFn };
-type Trunc = { column: string; unit: 'DAY' | 'WEEK' | 'MONTH' | 'QUARTER' | 'YEAR'; timeZone?: string };
+type Rule = AggregationRule;
+type Trunc = DateTruncRule;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
 /** The first day of the bucket a date or timestamp falls in, as `YYYY-MM-DD` (the mock does not convert time zones). */
 export function truncDate(value: unknown, unit: Trunc['unit']): string | null {
   if (value === null || value === undefined || value === '') return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
-  if (!m) return null;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const parts = ymd(value);
+  if (!parts) return null;
+  const [y, mo, d] = parts;
   if (unit === 'DAY') return `${y}-${pad(mo)}-${pad(d)}`;
   if (unit === 'MONTH') return `${y}-${pad(mo)}-01`;
   if (unit === 'QUARTER') return `${y}-${pad(Math.floor((mo - 1) / 3) * 3 + 1)}-01`;
@@ -25,6 +26,19 @@ export function truncDate(value: unknown, unit: Trunc['unit']): string | null {
 }
 
 const cmp = (a: unknown, b: unknown) => (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true }));
+
+/** The rows in the order of the sort keys (a stable sort; an empty list keeps the order), each key read from the column `keyOf` names. */
+export function sortRows<S extends { direction: 'asc' | 'desc' }>(rows: Row[], sort: S[], keyOf: (s: S) => string): Row[] {
+  if (!sort.length) return rows;
+  return [...rows].sort((x, y) => {
+    for (const s of sort) {
+      const k = keyOf(s);
+      const d = cmp(x[k] ?? '', y[k] ?? '');
+      if (d !== 0) return s.direction === 'asc' ? d : -d;
+    }
+    return 0;
+  });
+}
 
 function percentile(sorted: unknown[], p: number): unknown {
   if (!sorted.length) return null;
@@ -77,20 +91,10 @@ export function aggregateRows(rows: Row[], columns: string[], aggregation: Rule[
     const g = groups.get(id);
     if (g) g.push(r); else groups.set(id, [r]);
   }
-  let out: Row[] = [...groups.values()].map((members) => Object.fromEntries([...columns.flatMap((c) => {
+  const out: Row[] = [...groups.values()].map((members) => Object.fromEntries([...columns.flatMap((c) => {
     const fns = fnsOf(c);
     return fns.length ? fns.map((fn) => [aggregatedKey(c, fn), aggregate(fn, members.map((r) => r[c]))] as const) : [[c, keyValue(members[0]!, c)] as const];
   }), ...uniq.map((u) => [u.key, distinctKeys(members, u.pk)] as const)]));
   const sortKey = (column: string) => (fnsOf(column).length ? aggregatedKey(column, fnsOf(column)[0]!) : column);
-  if (sort.length) {
-    out = [...out].sort((x, y) => {
-      for (const s of sort) {
-        const k = sortKey(s.column);
-        const d = cmp(x[k] ?? '', y[k] ?? '');
-        if (d !== 0) return s.direction === 'asc' ? d : -d;
-      }
-      return 0;
-    });
-  }
-  return out;
+  return sortRows(out, sort, (s) => sortKey(s.column));
 }

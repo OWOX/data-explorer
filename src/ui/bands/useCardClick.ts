@@ -5,7 +5,7 @@ import { PAGE_SIZE } from '../../config';
 import { joinedMartIds, ownNamesIn, planAddAt, planClick, planMakeMain, planRejoin, withoutPaths } from '../../state/join-plan';
 import { sourceOfModel, useServices, useStore, type GridState, type State } from '../../state/store';
 import type { Model } from '../../model/types';
-import { defaultColumns } from '../explorer/useMartRows';
+import { defaultColumns } from '../../model/columns';
 
 /**
  * What a click on a data mart card does: add it to the main mart's grid, take it out, promote it, or make it the main mart.

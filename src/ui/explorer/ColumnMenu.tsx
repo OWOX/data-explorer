@@ -12,10 +12,9 @@ import { AggregationEditor } from './AggregationEditor';
 import { Tooltip } from '../Tooltip';
 import { FilterEditor } from './FilterEditor';
 import { FilterLinesIcon } from './FilterLinesIcon';
-import { HOVER_MS, HoverIntent, Panel, Row } from './MenuParts';
-export { HOVER_MS };
+import { Panel, Row, panelBeingEdited, useSubmenu } from './MenuParts';
 
-export type SubKey = 'filter' | 'slice' | 'aggregate' | 'format' | 'sort';
+type SubKey = 'filter' | 'slice' | 'aggregate' | 'format' | 'sort';
 
 /** Everything a column's menu reads and changes. The grid provides it through context so a header cell is never rebuilt (and its open menu never lost) when a setting changes. */
 export type ColumnMenuEnv = {
@@ -54,11 +53,11 @@ export const ColumnMenuEnvContext = createContext<ColumnMenuEnv>({
   changeAgg: NOOP, formatOf: () => ({ kind: 'auto' }), memberFormat: () => undefined, setFormat: NOOP, canHide: () => true, hide: NOOP, canMove: () => false, move: NOOP, typeOf: (f) => f.type,
 });
 
-export const FORMAT_LABELS: Record<Format['kind'], string> = { auto: 'Automatic', plain: 'Plain number', percent: 'Percent', money: 'Money', date: 'Date', datetime: 'Date time', time: 'Time' };
-export const CURRENCIES = ['USD', 'EUR', 'GBP', 'UAH'];
+const FORMAT_LABELS: Record<Format['kind'], string> = { auto: 'Automatic', plain: 'Plain number', percent: 'Percent', money: 'Money', date: 'Date', datetime: 'Date time', time: 'Time' };
+const CURRENCIES = ['USD', 'EUR', 'GBP', 'UAH'];
 
 /** The currencies the Money submenu lists: the four fixed ones, then the current one (an AI pick or an old choice) when it is another. */
-export const currenciesFor = (current: Format): string[] => (current.kind === 'money' && !CURRENCIES.includes(current.currency) ? [...CURRENCIES, current.currency] : CURRENCIES);
+const currenciesFor = (current: Format): string[] => (current.kind === 'money' && !CURRENCIES.includes(current.currency) ? [...CURRENCIES, current.currency] : CURRENCIES);
 
 /** The function's label in lower case, as the HAVING note and the Funnel tooltip name it: "sum". */
 const fnName = (f: AggFn) => AGG_LABELS[f].toLowerCase();
@@ -74,9 +73,19 @@ function formatActive(env: ColumnMenuEnv, field: Field, output: Output, type: st
   return keepsUnit(output.fn) && formatsFor(type).length > 0 && !!own && own.kind !== 'auto' && env.formatOf(field.name, type).kind !== 'auto';
 }
 
+/** A form submenu: a dialog panel beside its row, with a scrolling body. */
+function EditorPanel({ row, seq, label, onEscape, children }: { row: HTMLElement; seq: number; label: string; onEscape: () => void; children: ReactNode }) {
+  return (
+    <Panel anchor={row} mode="beside" role="dialog" label={label} onEscape={onEscape} focusSeq={seq} className="dm-menu-editor">
+      <div data-popover-body="" className="min-h-0 overflow-y-auto p-3">{children}</div>
+    </Panel>
+  );
+}
+
 const Divider = () => <div role="separator" className="dm-menu-sep" />;
 
-type Sub = { key: SubKey; row: HTMLElement; seq: number };
+/** The panels whose fields count as an edit in progress. */
+const EDITING = '[data-column-menu][role="dialog"], [data-column-menu][data-form]';
 
 function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; output: Output; anchor: HTMLElement; initial: SubKey | null; onClose: (refocus?: boolean) => void }) {
   const env = useContext(ColumnMenuEnvContext);
@@ -84,7 +93,6 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
   const type = env.typeOf(field, output);
   const aggregable = allowedFunctions(field).length > 0 || canBucket(field);
   const formats = keepsUnit(output.fn) ? formatsFor(type) : [];
-  const [sub, setSub] = useState<Sub | null>(null);
   const [money, setMoney] = useState<{ row: HTMLElement; seq: number } | null>(null);
   const [placed, setPlaced] = useState(false);
   const having = env.filters[field.name]?.fn;
@@ -97,23 +105,14 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
     const row = initial ? rows.current.get(initial) : undefined;
     if (initial && row) setSub({ key: initial, row, seq: 1 });
   };
-  const open = (key: SubKey, row: HTMLElement, focus: boolean) => { intent.clear(); setMoney(null); setSub((cur) => ({ key, row, seq: focus ? (cur?.key === key ? cur.seq : 0) + 1 : cur?.key === key ? cur.seq : 0 })); };
-  // Hover intent: a submenu is replaced only after the pointer has rested on another row for HOVER_MS, and never while the open one
-  // holds a focused field or an edit. A click or a key switches at once.
-  const [intent] = useState(() => new HoverIntent());
-  useEffect(() => () => intent.clear(), [intent]);
+  // Hover intent never replaces a submenu that holds a focused field or an edit.
+  const { sub, setSub, open, hoverRow, hoverOther, leaveRow, closeSub } = useSubmenu<SubKey>({ isEditing: () => panelBeingEdited(EDITING), onReset: () => setMoney(null) });
   // A click inside a dialog panel (Custom range, On, an operator) is an edit as well, but a click on a row is a choice, not an edit, so hover intent leaves the form alone.
   useEffect(() => {
     const mark = (e: MouseEvent) => { const t = e.target as Element | null; if (t?.closest('.dm-menu-row')) return; t?.closest<HTMLElement>('[data-column-menu][role="dialog"], [data-column-menu][data-form]')?.setAttribute('data-edited', ''); };
     document.addEventListener('click', mark, true);
     return () => document.removeEventListener('click', mark, true);
   }, []);
-  const editing = () => [...document.querySelectorAll<HTMLElement>('[data-column-menu][role="dialog"], [data-column-menu][data-form]')].some((p) => 'edited' in p.dataset || (p.contains(document.activeElement) && !!document.activeElement?.matches('input, select, textarea')));
-  const later = (apply: () => void) => intent.after(HOVER_MS, () => { if (!editing()) apply(); });
-  const hoverRow = (k: SubKey, row: HTMLElement) => { if (sub?.key === k) intent.clear(); else if (!sub) open(k, row, false); else later(() => open(k, row, false)); };
-  const hoverOther = () => { if (sub) later(() => { setSub(null); setMoney(null); }); };
-  const leaveRow = () => intent.clear();
-  const closeSub = () => { const row = sub?.row; setSub(null); setMoney(null); row?.focus(); };
   const current = env.formatOf(field.name, type);
   // After Hide column the column is gone: focus goes to the next column's menu icon, or the previous one when it was the last.
   const hide = () => {
@@ -125,16 +124,14 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
     const target = (icons[at + 1] ?? icons[at - 1])?.dataset.field;
     env.hide(field.name);
     onClose(false);
-    window.clearTimeout(focusTimer);
-    if (target && head) focusTimer = window.setTimeout(() => { if (head.isConnected) [...head.querySelectorAll<HTMLElement>('[data-menu-icon]')].find((i) => i.dataset.field === target)?.focus(); }, 0);
+    if (target && head) focusIconOf(head, target);
   };
   // After Move left / right the headers are rebuilt: focus goes to the moved column's menu icon.
   const moveBy = (d: -1 | 1) => {
     const head = anchor.closest('thead');
     env.move(field.name, d);
     onClose(false);
-    window.clearTimeout(focusTimer);
-    if (head) focusTimer = window.setTimeout(() => { if (head.isConnected) [...head.querySelectorAll<HTMLElement>('[data-menu-icon]')].find((i) => i.dataset.field === field.name)?.focus(); }, 0);
+    if (head) focusIconOf(head, field.name);
   };
   const choose = (f: Format) => { env.setFormat(field.name, f); onClose(); };
   const dir = env.sorts.find((s) => s.field === field.name)?.direction ?? null;
@@ -158,31 +155,25 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
         <Row label="Hide column" icon={<EyeOff />} disabled={!env.canHide(field.name)} onActivate={hide} onHover={hoverOther} onLeaveRow={leaveRow} />
       </Panel>
       {placed && sub?.key === 'filter' && (
-        <Panel anchor={sub.row} mode="beside" role="dialog" label={`Filter of ${title}`} onEscape={closeSub} focusSeq={sub.seq} className="dm-menu-editor">
-          <div data-popover-body="" className="min-h-0 overflow-y-auto p-3">
-            <FilterEditor key={JSON.stringify(env.filters[field.name])} field={having ? havingField(field, having) : field} value={env.filters[field.name]}
-              onApply={(f) => { env.setFilter(field.name, having ? { ...f, fn: having } : f); onClose(); }} onClear={() => { env.setFilter(field.name, undefined); onClose(); }} />
-            {having ? <p className="mt-2 text-xs text-muted-foreground">Filters the {fnName(having)} after grouping</p>
-              : env.isAggregated(field.name) && <p className="mt-2 text-xs text-muted-foreground">Filters rows before they are aggregated</p>}
-          </div>
-        </Panel>
+        <EditorPanel row={sub.row} seq={sub.seq} label={`Filter of ${title}`} onEscape={closeSub}>
+          <FilterEditor key={JSON.stringify(env.filters[field.name])} field={having ? havingField(field, having) : field} value={env.filters[field.name]}
+            onApply={(f) => { env.setFilter(field.name, having ? { ...f, fn: having } : f); onClose(); }} onClear={() => { env.setFilter(field.name, undefined); onClose(); }} />
+          {having ? <p className="mt-2 text-xs text-muted-foreground">Filters the {fnName(having)} after grouping</p>
+            : env.isAggregated(field.name) && <p className="mt-2 text-xs text-muted-foreground">Filters rows before they are aggregated</p>}
+        </EditorPanel>
       )}
       {placed && sub?.key === 'slice' && field.joined && (
-        <Panel anchor={sub.row} mode="beside" role="dialog" label={`Slice of ${title}`} onEscape={closeSub} focusSeq={sub.seq} className="dm-menu-editor">
-          <div data-popover-body="" className="min-h-0 overflow-y-auto p-3">
-            <p className="mb-2 text-xs text-muted-foreground">Slices filter the joined data mart before it is joined, reducing the rows pulled in.</p>
-            <FilterEditor key={JSON.stringify(env.slices[field.name])} field={sliceField(field)} value={env.slices[field.name]}
-              onApply={(f) => { env.setSlice(field.name, f); onClose(); }} onClear={() => { env.setSlice(field.name, undefined); onClose(); }} />
-          </div>
-        </Panel>
+        <EditorPanel row={sub.row} seq={sub.seq} label={`Slice of ${title}`} onEscape={closeSub}>
+          <p className="mb-2 text-xs text-muted-foreground">Slices filter the joined data mart before it is joined, reducing the rows pulled in.</p>
+          <FilterEditor key={JSON.stringify(env.slices[field.name])} field={sliceField(field)} value={env.slices[field.name]}
+            onApply={(f) => { env.setSlice(field.name, f); onClose(); }} onClear={() => { env.setSlice(field.name, undefined); onClose(); }} />
+        </EditorPanel>
       )}
       {placed && sub?.key === 'aggregate' && (
-        <Panel anchor={sub.row} mode="beside" role="dialog" label={`Aggregation of ${title}`} onEscape={closeSub} focusSeq={sub.seq} className="dm-menu-editor">
-          <div data-popover-body="" className="min-h-0 overflow-y-auto p-3">
-            <AggregationEditor key={JSON.stringify(env.draftOf(field.name))} field={field} value={env.draftOf(field.name)} blocker={env.blockerFor(field.name)}
-              onApply={(d) => { env.changeAgg(field.name, d); onClose(); }} onCancel={closeSub} />
-          </div>
-        </Panel>
+        <EditorPanel row={sub.row} seq={sub.seq} label={`Aggregation of ${title}`} onEscape={closeSub}>
+          <AggregationEditor key={JSON.stringify(env.draftOf(field.name))} field={field} value={env.draftOf(field.name)} blocker={env.blockerFor(field.name)}
+            onApply={(d) => { env.changeAgg(field.name, d); onClose(); }} onCancel={closeSub} />
+        </EditorPanel>
       )}
       {placed && sub?.key === 'sort' && (
         <Panel anchor={sub.row} mode="beside" role="menu" label={`Sort ${title}`} onEscape={closeSub} onLeave={closeSub} onTab={() => onClose()} focusSeq={sub.seq}>
@@ -214,6 +205,12 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
 /** What a column's header shows at its right end: an icon for each active filter, aggregation and sort, then the green menu icon. Each opens the column menu. */
 /** The pending focus after Hide column. The menu that set it is gone by then, so it lives here; a new hide or an unmounted header cancels it. */
 let focusTimer: number | undefined;
+
+/** Focuses the menu icon of the column with this field name once the headers have been rebuilt, dropping any earlier pending focus. */
+function focusIconOf(head: Element, fieldName: string) {
+  window.clearTimeout(focusTimer);
+  focusTimer = window.setTimeout(() => { if (head.isConnected) [...head.querySelectorAll<HTMLElement>('[data-menu-icon]')].find((i) => i.dataset.field === fieldName)?.focus(); }, 0);
+}
 
 /** The menu icon is revealed by its header's hover or focus; a column with something active keeps it on. */
 export function menuIconClass(active: boolean): string {
@@ -265,34 +262,23 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
     return () => { document.removeEventListener('pointerdown', down, true); window.removeEventListener('scroll', away, true); };
   }, [menu]);
   const Arrow = direction === 'desc' ? ArrowDown : ArrowUp;
+  // The indicators shown beside the menu icon, in this order; each opens the menu at its own submenu.
+  const marks: { sub: SubKey; on: boolean; tip?: string; label: string; icon: ReactNode; badge?: ReactNode }[] = [
+    { sub: 'filter', on: !!filter, tip: filter && `Filter: ${describeColumnFilter(field, filter)}`, label: `Filter ${title}`, icon: <Funnel className="dm-icon" /> },
+    { sub: 'slice', on: !!slice && !!field.joined, tip: slice && `Slice: ${describeFilter(sliceField(field), slice)}`, label: `Slice ${title}`, icon: <Layers className="dm-icon" /> },
+    { sub: 'aggregate', on: aggregated, tip: `Aggregation: ${draft.bucket ? `by ${BUCKET_LABELS[draft.bucket].toLowerCase()}` : draft.functions.map((f) => AGG_LABELS[f]).join(', ')}`, label: `Aggregate ${title}`, icon: <Sigma className="dm-icon" /> },
+    { sub: 'sort', on: canSort && !!direction, label: `Sorted ${direction === 'asc' ? 'A to Z' : 'Z to A'}: ${title}`, icon: <Arrow className="dm-icon" />, badge: env.sorts.length > 1 ? <span className="text-[9px] leading-none tabular-nums">{at + 1}</span> : undefined },
+  ];
   return (
     <span ref={controls} className="dm-hdr-controls">
-      {filter && (
-        <Tooltip content={`Filter: ${describeColumnFilter(field, filter)}`}>
-          <button type="button" aria-label={`Filter ${title}`} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, 'filter')}>
-            <Funnel className="dm-icon" />
+      {marks.filter((m) => m.on).map((m) => {
+        const button = (
+          <button key={m.sub} type="button" {...(m.sub === 'sort' ? { 'data-sort-mark': '' } : {})} aria-label={m.label} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, m.sub)}>
+            {m.icon}{m.badge}
           </button>
-        </Tooltip>
-      )}
-      {slice && field.joined && (
-        <Tooltip content={`Slice: ${describeFilter(sliceField(field), slice)}`}>
-          <button type="button" aria-label={`Slice ${title}`} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, 'slice')}>
-            <Layers className="dm-icon" />
-          </button>
-        </Tooltip>
-      )}
-      {aggregated && (
-        <Tooltip content={`Aggregation: ${draft.bucket ? `by ${BUCKET_LABELS[draft.bucket].toLowerCase()}` : draft.functions.map((f) => AGG_LABELS[f]).join(', ')}`}>
-          <button type="button" aria-label={`Aggregate ${title}`} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, 'aggregate')}>
-            <Sigma className="dm-icon" />
-          </button>
-        </Tooltip>
-      )}
-      {canSort && direction && (
-        <button type="button" data-sort-mark aria-label={`Sorted ${direction === 'asc' ? 'A to Z' : 'Z to A'}: ${title}`} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, 'sort')}>
-          <Arrow className="dm-icon" />{env.sorts.length > 1 && <span className="text-[9px] leading-none tabular-nums">{at + 1}</span>}
-        </button>
-      )}
+        );
+        return m.tip ? <Tooltip key={m.sub} content={m.tip}>{button}</Tooltip> : button;
+      })}
       <button ref={icon} type="button" aria-label={`Column menu ${title}`} aria-haspopup="menu" aria-expanded={!!menu} data-menu-icon data-field={field.name}
         className={menuIconClass(active)} onClick={(e) => toggle(e.currentTarget, null)}>
         <FilterLinesIcon className="dm-icon" />

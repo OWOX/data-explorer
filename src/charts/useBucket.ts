@@ -1,16 +1,16 @@
 import { allowedFunctions, type DateBucket } from '../model/aggregation';
 import type { Field } from '../model/types';
 import type { TraverseFilter } from '../sdk/types';
+import { bucketEnd } from './clickFilters';
+import { addDays } from '../model/day';
 import { pickBucket } from './fields';
 import { monthsQuery, rangeKeys, rangeQuery } from './queries';
 import { useChartQuery } from './useChartQuery';
 
 /** The first day of the month after a month's start (from its YYYY-MM prefix): the last month spans to there, so month starts do not understate the span. Only used to pick a bucket. */
 function monthEnd(v: unknown): unknown {
-  const m = /^(\d{4})-(\d{2})/.exec(String(v));
-  if (!m) return v;
-  const y = Number(m[1]) + (m[2] === '12' ? 1 : 0);
-  return `${String(y).padStart(4, '0')}-${String(m[2] === '12' ? 1 : Number(m[2]) + 1).padStart(2, '0')}-01`;
+  const m = /^(\d{4}-\d{2})/.exec(String(v));
+  return m ? addDays(bucketEnd(`${m[1]}-01`, 'MONTH'), 1) : v;
 }
 
 /**
@@ -22,9 +22,7 @@ export function useBucket(martId: string, date: Field | null, chosen: DateBucket
   // A date whose governance forbids MIN or MAX cannot be ranged (OWOX refuses the query): its distinct months give the range instead.
   const rangeable = !!date && ['MIN', 'MAX'].every((fn) => allowedFunctions(date).includes(fn as 'MIN' | 'MAX'));
   const auto = chosen === 'AUTO' && !!date && !paused;
-  const range = useChartQuery(martId, auto && rangeable ? rangeQuery(date!, filter) : null, version);
-  const months = useChartQuery(martId, auto && !rangeable ? monthsQuery(date!, filter) : null, version);
-  const read = rangeable ? range : months;
+  const read = useChartQuery(martId, auto ? (rangeable ? rangeQuery : monthsQuery)(date!, filter) : null, version);
   let bucket: DateBucket | null = null;
   if (chosen !== 'AUTO') bucket = chosen;
   else if (date && read.rows) {

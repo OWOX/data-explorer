@@ -1,14 +1,20 @@
-import { useMemo } from 'react';
+import { useState } from 'react';
 import type { Edge } from '../model/types';
-import { incomingLinks } from './relationships';
+import { incomingLinks, type IncomingLink } from './relationships';
+
+const sameJoins = (a: Edge['joins'], b: Edge['joins']) => a.length === b.length && a.every((j, i) => j.sourceField === b[i]!.sourceField && j.targetField === b[i]!.targetField);
+const sameEdges = (a: Edge[], b: Edge[]) => a.length === b.length && a.every((e, i) => e.id === b[i]!.id && e.source === b[i]!.source && sameJoins(e.joins, b[i]!.joins));
 
 /**
- * The links that point at one mart, memoised on what they say rather than on the `model.edges` array.
+ * The links that point at one mart, kept while what they say is unchanged rather than while the `model.edges` array is.
  * A model reload builds a new model with identical edges; keying on identity would re-read every
  * open record for nothing.
  */
-export function useIncomingLinks(martId: string, edges: Edge[]) {
-  const key = JSON.stringify(edges.filter((e) => e.target === martId).map((e) => [e.id, e.source, e.joins.map((j) => [j.sourceField, j.targetField])]));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(() => incomingLinks(martId, edges), [martId, key]);
+export function useIncomingLinks(martId: string, edges: Edge[]): IncomingLink[] {
+  const pointing = edges.filter((e) => e.target === martId);
+  const [kept, setKept] = useState(() => ({ martId, pointing, links: incomingLinks(martId, edges) }));
+  if (kept.martId === martId && sameEdges(kept.pointing, pointing)) return kept.links;
+  const next = { martId, pointing, links: incomingLinks(martId, edges) };
+  setKept(next);
+  return next.links;
 }

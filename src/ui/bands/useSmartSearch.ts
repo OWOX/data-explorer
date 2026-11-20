@@ -7,10 +7,11 @@ import { MIN_QUERY, queryProblem, searchEndpoint, type SearchHits } from '../../
 import { reportSkippedMessage, reportToGrid, type ReportDto } from '../../search/report-load';
 import { buildAdhocView, findAdhocMart } from '../../search/run';
 import { sourceOfModel, useServices, useStore, type GridState } from '../../state/store';
-import { defaultColumns } from '../explorer/useMartRows';
+import { defaultColumns } from '../../model/columns';
+import { useLatest } from '../useLatest';
 
 /** How long typing must pause before the search runs. */
-export const SEARCH_DEBOUNCE_MS = 300;
+const SEARCH_DEBOUNCE_MS = 300;
 const MAX_CONTEXTS = 3;
 const SHORT_REASON = 'Type at least 2 characters';
 const NO_MART_REASON = 'No data mart found';
@@ -52,8 +53,7 @@ export function useSmartSearch(model: Model) {
   // Hidden until the stored choice has been read, so a member who dismissed it never sees it flash.
   const [hintDismissed, setHintDismissed] = useState(true);
   const aiConfigured = useMemo(() => pickModels(ctx) !== null, [ctx]);
-  const latest = useRef({ selection: state.selection, model });
-  useEffect(() => { latest.current = { selection: state.selection, model }; });
+  const latest = useLatest({ selection: state.selection, model });
   const entry = useRef<Entry | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const picking = useRef<{ ctl: AbortController; query: string; kind: 'adhoc' | 'other' } | null>(null);
@@ -99,7 +99,7 @@ export function useSmartSearch(model: Model) {
     const next: Entry = { query, ctl, done };
     entry.current = next;
     return next;
-  }, [ctx, aiConfigured, aiTimeoutMs]);
+  }, [ctx, aiConfigured, aiTimeoutMs, latest]);
 
   const trimmed = draft.trim();
   const rows = useMemo<Row[]>(() => {

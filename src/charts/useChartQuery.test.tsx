@@ -4,7 +4,7 @@ import { vi } from 'vitest';
 import { stubCtx, traversalOf } from '../api/test-ctx';
 import type { Row, TraverseOptions, Traversal } from '../sdk/types';
 import { AppServices, StoreProvider } from '../state/store';
-import { useChartQuery } from './useChartQuery';
+import { CHART_CACHE_LIMIT, useChartQuery } from './useChartQuery';
 
 const opts = (limit = 10): TraverseOptions => ({ column: ['a'], limit });
 
@@ -112,4 +112,41 @@ test('a rejection with no reason still ends loading with an error', async () => 
   const { result } = renderHook(() => useChartQuery('m', opts(), 0), { wrapper: setup(traverseData) });
   await waitFor(() => expect(result.current.loading).toBe(false));
   expect((result.current.error as Error).message).toBe('Query failed');
+});
+
+test('the row cache keeps at most CHART_CACHE_LIMIT reads and drops the oldest', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ a: 1 }]));
+  const wrapper = setup(traverseData);
+  const { rerender, result } = renderHook(({ l }) => useChartQuery('m', opts(l), 0), { wrapper, initialProps: { l: 1 } });
+  for (let l = 1; l <= CHART_CACHE_LIMIT + 1; l++) {
+    rerender({ l });
+    await waitFor(() => expect(result.current.rows).not.toBeNull());
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(l));
+  }
+  // The newest view is still cached; the oldest was evicted and reads again.
+  traverseData.mockClear();
+  rerender({ l: CHART_CACHE_LIMIT + 1 });
+  await act(async () => { await Promise.resolve(); });
+  expect(traverseData).not.toHaveBeenCalled();
+  rerender({ l: 1 });
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
+});
+
+test('a reader served from the cache keeps its rows after the cache evicts its key', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ a: 1 }]));
+  const wrapper = setup(traverseData);
+  const first = renderHook(() => useChartQuery('m', opts(1), 0), { wrapper });
+  await waitFor(() => expect(first.result.current.rows).not.toBeNull());
+  // A second reader of the same key is served from the cache.
+  const reader = renderHook(() => useChartQuery('m', opts(1), 0), { wrapper });
+  await waitFor(() => expect(reader.result.current.rows).toEqual([{ a: 1 }]));
+  const other = renderHook(({ l }) => useChartQuery('m', opts(l), 0), { wrapper, initialProps: { l: 2 } });
+  for (let l = 2; l <= CHART_CACHE_LIMIT + 2; l++) {
+    other.rerender({ l });
+    await waitFor(() => expect(other.result.current.rows).not.toBeNull());
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(l));
+  }
+  reader.rerender();
+  expect(reader.result.current.rows).toEqual([{ a: 1 }]);
+  expect(reader.result.current.loading).toBe(false);
 });

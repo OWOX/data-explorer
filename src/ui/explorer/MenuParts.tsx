@@ -1,20 +1,68 @@
 import { Check, ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useLatest } from '../useLatest';
+import { rovingTarget } from '../roving';
 import { placeBeside, placeBelow, type Place } from './menuPlacement';
 
 /** How long the pointer rests on another row before its submenu replaces the open one. */
 export const HOVER_MS = 120;
 /** One pending hover switch: a new one replaces the last, and `clear` drops it. */
-export class HoverIntent {
+class HoverIntent {
   private timer: ReturnType<typeof setTimeout> | undefined;
   after(ms: number, fn: () => void) { this.clear(); this.timer = setTimeout(fn, ms); }
   clear() { clearTimeout(this.timer); this.timer = undefined; }
 }
 
+/** Whether a field in one of the panels matching `selector` has been edited or holds focus: hover intent then leaves it open. */
+export const panelBeingEdited = (selector: string) => [...document.querySelectorAll<HTMLElement>(selector)].some((p) => 'edited' in p.dataset || (p.contains(document.activeElement) && !!document.activeElement?.matches('input, select, textarea')));
+
+type SubOpen<K> = { key: K; row: HTMLElement; seq: number };
+
+/**
+ * The open submenu of a menu and the hover intent that switches it. A submenu is replaced only after the pointer has rested on
+ * another row for HOVER_MS, and never while `isEditing` says a field in the open one is being edited. A click or a key switches at once.
+ * `onReset` runs whenever the open submenu is replaced or closed, so a menu can drop state that hangs off it. With `holdClosed`, a
+ * submenu closed by the keyboard stays closed until the pointer has left its row.
+ */
+export function useSubmenu<K extends string | number>({ isEditing = () => false, onReset, holdClosed = false }: { isEditing?: () => boolean; onReset?: () => void; holdClosed?: boolean } = {}) {
+  const [sub, setSub] = useState<SubOpen<K> | null>(null);
+  const [intent] = useState(() => new HoverIntent());
+  useEffect(() => () => intent.clear(), [intent]);
+  const closedRow = useRef<HTMLElement | null>(null);
+  // The callbacks that must keep one identity read the latest sub and reset through refs.
+  const subRef = useLatest(sub);
+  const onResetRef = useLatest(onReset);
+  const open = (key: K, row: HTMLElement, focus: boolean) => {
+    intent.clear();
+    closedRow.current = null;
+    onReset?.();
+    setSub((cur) => ({ key, row, seq: focus ? (cur?.key === key ? cur.seq : 0) + 1 : cur?.key === key ? cur.seq : 0 }));
+  };
+  const later = (apply: () => void) => intent.after(HOVER_MS, () => { if (!isEditing()) apply(); });
+  const hoverRow = (key: K, row: HTMLElement) => {
+    if (holdClosed && closedRow.current === row) return;
+    if (sub?.key === key) intent.clear();
+    else if (!sub) open(key, row, false);
+    else later(() => open(key, row, false));
+  };
+  const hoverOther = () => { if (sub) later(() => { onReset?.(); setSub(null); }); };
+  const leaveRow = () => { intent.clear(); closedRow.current = null; };
+  const closeSub = useCallback(() => {
+    const row = subRef.current?.row;
+    if (holdClosed) closedRow.current = row ?? null;
+    onResetRef.current?.();
+    setSub(null);
+    row?.focus();
+  }, [holdClosed, subRef, onResetRef]);
+  /** Drops the open submenu and any pending hover without moving focus. */
+  const dismiss = useCallback(() => { intent.clear(); closedRow.current = null; setSub(null); }, [intent]);
+  return { sub, setSub, open, hoverRow, hoverOther, leaveRow, closeSub, dismiss };
+}
+
 const viewport = () => ({ width: window.innerWidth, height: window.innerHeight });
 const boxOf = (el: HTMLElement) => el.getBoundingClientRect();
-export const ITEM = '[role="menuitem"], [role="menuitemradio"]';
+const ITEM = '[role="menuitem"], [role="menuitemradio"]';
 
 /**
  * One floating panel of the menu, drawn in a portal on the body and kept inside the viewport (flipped left or up when it has no room).
@@ -64,11 +112,8 @@ export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onP
     if (!item || !list || (role === 'menu' ? list !== e.currentTarget : !e.currentTarget.contains(list))) return;
     const items = [...list.querySelectorAll<HTMLElement>(ITEM)].filter((n) => n.closest('[role="menu"]') === list && !(n as HTMLButtonElement).disabled);
     const at = items.indexOf(item);
-    const go = (to: number) => { e.preventDefault(); e.stopPropagation(); items[(to + items.length) % items.length]?.focus(); };
-    if (e.key === 'ArrowDown') go(at + 1);
-    else if (e.key === 'ArrowUp') go(at - 1);
-    else if (e.key === 'Home') go(0);
-    else if (e.key === 'End') go(items.length - 1);
+    const to = rovingTarget(e.key, at, items.length);
+    if (to !== null) { e.preventDefault(); e.stopPropagation(); items[to]?.focus(); }
     else if (e.key === 'ArrowLeft' && onLeave && role === 'menu') { e.preventDefault(); e.stopPropagation(); onLeave(); }
   };
   return createPortal(

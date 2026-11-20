@@ -17,37 +17,41 @@ export type AppliedView = {
 
 export type Skipped = { mart: boolean; source: boolean; columns: number; filters: number; sorts: number; aggregations: number; contexts: number; storages: number; /** The link names marts a search found and none of them is available. */ found: boolean };
 
+/** What pruning a grid to a schema left out, counted. */
+export type Dropped = Pick<Skipped, 'columns' | 'filters' | 'sorts' | 'aggregations'>;
+
 const clampLimit = (n: number) => Math.min(PAGE_SIZE * 10, Math.max(PAGE_SIZE, Math.round(n / PAGE_SIZE) * PAGE_SIZE));
 
 /** Prunes the grid to the fields on offer; with no column left it opens with its defaults. */
-export function pruneGrid(grid: GridState, schema: Schema, skipped: Skipped): GridState | null {
+export function pruneGrid(grid: GridState, schema: Schema): { grid: GridState | null; dropped: Dropped } {
+  const dropped: Dropped = { columns: 0, filters: 0, sorts: 0, aggregations: 0 };
   const offered = new Set(schema.map((f) => f.name));
   const columns = grid.columns.filter((c) => offered.has(c));
-  skipped.columns += grid.columns.length - columns.length;
+  dropped.columns += grid.columns.length - columns.length;
   const filters: Record<string, ColumnFilter> = {};
   for (const [k, f] of Object.entries(grid.filters)) {
-    if (offered.has(f.field)) filters[k] = f; else skipped.filters++;
+    if (offered.has(f.field)) filters[k] = f; else dropped.filters++;
   }
   // A slice needs a joined field on offer; one on a main-mart field (the backend refuses it) is skipped too. Slices are counted with the filters.
   const slices: Record<string, ColumnFilter> = {};
   for (const [k, f] of Object.entries(grid.slices ?? {})) {
-    if (schema.some((x) => x.name === f.field && x.joined)) slices[k] = f; else skipped.filters++;
+    if (schema.some((x) => x.name === f.field && x.joined)) slices[k] = f; else dropped.filters++;
   }
   let sorts = grid.sorts;
   if (sorts) {
     const kept = sorts.filter((s) => offered.has(s.field));
-    skipped.sorts += sorts.length - kept.length;
+    dropped.sorts += sorts.length - kept.length;
     // An empty list means the member chose no sort, so a list emptied by pruning goes back to the default order.
     sorts = kept.length || !sorts.length ? kept : null;
   }
   // Rules on a column that is gone are left out; every column dropped means no grid (filters and sorts were still counted above).
   // Then what the backend would refuse: a function the field does not allow, a calculated field, a bucket on a column that cannot take one.
   const agg = sanitizeAggregation(keepVisible({ aggregations: grid.aggregations ?? [], dateTrunc: grid.dateTrunc ?? [] }, columns), schema);
-  skipped.aggregations += (grid.aggregations?.length ?? 0) + (grid.dateTrunc?.length ?? 0) - agg.aggregations.length - agg.dateTrunc.length;
-  if (!columns.length) return null;
+  dropped.aggregations += (grid.aggregations?.length ?? 0) + (grid.dateTrunc?.length ?? 0) - agg.aggregations.length - agg.dateTrunc.length;
+  if (!columns.length) return { grid: null, dropped };
   // A HAVING filter whose aggregation did not survive is left out and counted with the filters.
   const havingKept = dropOrphanHaving(filters, agg.aggregations);
-  skipped.filters += Object.keys(filters).length - Object.keys(havingKept).length;
+  dropped.filters += Object.keys(filters).length - Object.keys(havingKept).length;
   const out: GridState = { ...grid, columns, filters: havingKept, sorts };
   delete out.slices;
   if (Object.keys(slices).length) out.slices = slices;
@@ -55,7 +59,7 @@ export function pruneGrid(grid: GridState, schema: Schema, skipped: Skipped): Gr
   delete out.dateTrunc;
   if (agg.aggregations.length) out.aggregations = agg.aggregations;
   if (agg.dateTrunc.length) out.dateTrunc = agg.dateTrunc;
-  return out;
+  return { grid: out, dropped };
 }
 
 /** Checks a decoded view against what this member can see. Never throws; what can't be shown is counted in `skipped`. */
@@ -102,7 +106,14 @@ export async function resolveView(
   if (martId && view.grid) {
     const g = { ...view.grid, limit: clampLimit(view.grid.limit) };
     const schema = await readGrid(martId).catch(() => null);
-    grid = schema ? pruneGrid(g, schema, skipped) : g;
+    if (schema) {
+      const pruned = pruneGrid(g, schema);
+      grid = pruned.grid;
+      skipped.columns += pruned.dropped.columns;
+      skipped.filters += pruned.dropped.filters;
+      skipped.sorts += pruned.dropped.sorts;
+      skipped.aggregations += pruned.dropped.aggregations;
+    } else grid = g;
   }
 
   // A link that names found marts shows `search` only as the box's text: with none of them available to this member it would
@@ -114,7 +125,7 @@ export async function resolveView(
   return { apply: { selection, grid, search: lostFound ? '' : view.search, found, contextIds, storageIds, folded: view.folded }, skipped };
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** The one-line notice for a skipped view, or null when nothing was. */
 export function skippedMessage(s: Skipped): string | null {

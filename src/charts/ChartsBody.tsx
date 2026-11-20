@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ColumnFilter } from '../filters/build';
 import type { JoinedSource } from '../api/blendable';
 import type { Aggregation } from '../model/aggregation';
@@ -52,9 +52,9 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     chartSettings.save(martId, next);
   };
 
-  const uniqueCountPaths = new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath));
-  const cf = chartFields(schema, shown, agg, martId, groups.map((g) => g.path), uniqueCountPaths, Object.fromEntries(groups.map((g) => [g.path, g.title])));
-  const r = resolveCharts(settings ?? {}, cf);
+  // A resize re-renders this body on every step: the fields and the resolved choices only change with their inputs, so a resize rebuilds neither.
+  const cf = useMemo(() => chartFields(schema, shown, agg, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), Object.fromEntries(groups.map((g) => [g.path, g.title]))), [schema, shown, agg, martId, groups, sources]);
+  const r = useMemo(() => resolveCharts(settings ?? {}, cf), [settings, cf]);
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
   const idle = paused || !settings || !!gate;
   const { bucket, error: rangeError, retry: retryRange } = useBucket(martId, r.date, r.bucket, filter, version, idle);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { Schema } from '../model/types';
+import { perCtx } from '../sdk/per-ctx';
 import type { Ctx } from '../sdk/types';
 import { useServices } from '../state/store';
 import { pickFormats } from './ai-pick';
@@ -113,10 +114,9 @@ function createEntry(ctx: Ctx, martId: string) {
 }
 type Entry = ReturnType<typeof createEntry>;
 
-const entries = new WeakMap<Ctx, Map<string, Entry>>();
+const entriesOf = perCtx(() => new Map<string, Entry>());
 function entryFor(ctx: Ctx, martId: string): Entry {
-  let byMart = entries.get(ctx);
-  if (!byMart) entries.set(ctx, (byMart = new Map()));
+  const byMart = entriesOf(ctx);
   let e = byMart.get(martId);
   if (!e) byMart.set(martId, (e = createEntry(ctx, martId)));
   return e;

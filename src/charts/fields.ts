@@ -4,16 +4,16 @@ import type { Field } from '../model/types';
 import { isIdField } from '../state/join-plan';
 import type { Measure } from './queries';
 
-export type Metric = { field: Field; fn: AggFn; martId: string };
+export type Metric = { field: Field; fn: AggFn };
 /** `recordsId` is what the mart's Unique Records is saved and keyed as (see `chartFields`). */
-export type ChartMart = { martId: string; aliasPath: string; recordsId: string; title: string; hasPk: boolean; metrics: Metric[]; dates: Field[]; dimensions: Field[] };
+export type ChartMart = { aliasPath: string; recordsId: string; title: string; hasPk: boolean; metrics: Metric[]; dates: Field[]; dimensions: Field[] };
 /** `counter` is a main-mart field the warehouse may COUNT: a query with a slice and no column of its own reads it, so the slice has an explicit column list without a new group key. Null when the mart has none. */
-export type ChartFields = { marts: ChartMart[]; metrics: Metric[]; dimensions: Field[]; dates: Field[]; counter?: Field | null };
+export type ChartFields = { marts: ChartMart[]; dimensions: Field[]; dates: Field[]; counter?: Field | null };
 export const MAX_BUCKETS = 60;
 
 /** Everything a chart can count, per chart mart in group order: its Unique Records when it has a key, then its metrics. Any mart's measure pairs with any mart's date or dimension. */
 export const measuresOf = (cf: ChartFields): Measure[] => cf.marts.flatMap((m): Measure[] => [
-  ...(m.hasPk ? [{ kind: 'records', aliasPath: m.aliasPath, martId: m.martId, recordsId: m.recordsId } as const] : []),
+  ...(m.hasPk ? [{ kind: 'records', aliasPath: m.aliasPath, recordsId: m.recordsId } as const] : []),
   ...m.metrics.map((metric): Measure => ({ kind: 'metric', metric })),
 ]);
 
@@ -53,10 +53,9 @@ export function chartFields(schema: Field[], shown: string[], agg: Aggregation, 
     const metrics = own.flatMap((f): Metric[] => {
       if (f.category !== 'number' || isIdField(f) || f.isCalculated) return [];
       const fn = metricFn(f, agg);
-      return fn ? [{ field: f, fn, martId }] : [];
+      return fn ? [{ field: f, fn }] : [];
     });
     return {
-      martId,
       aliasPath,
       recordsId,
       title: titles[aliasPath] ?? '',
@@ -67,7 +66,7 @@ export function chartFields(schema: Field[], shown: string[], agg: Aggregation, 
     };
   });
   const counter = schema.find((f) => !f.joined && allowedFunctions(f).includes('COUNT')) ?? null;
-  return { marts, metrics: marts.flatMap((m) => m.metrics), dimensions: marts.flatMap((m) => m.dimensions), dates: marts.flatMap((m) => m.dates), counter };
+  return { marts, dimensions: marts.flatMap((m) => m.dimensions), dates: marts.flatMap((m) => m.dates), counter };
 }
 
 const DAY_MS = 86_400_000;

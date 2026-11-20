@@ -31,7 +31,7 @@ export function cleanText(v: unknown, max = MAX_TEXT): string {
 }
 
 /** One filter as a plain sentence; the field and every value are quoted data: "created_at" is in the last 30 days. */
-export function describeFilter(f: ColumnFilter): string {
+export function filterSentence(f: ColumnFilter): string {
   const field = quoted(f.field);
   if (f.op === 'between') {
     const r = (f.value ?? {}) as { from?: unknown; to?: unknown };
@@ -68,7 +68,7 @@ const bare = (name: string) => (/^[A-Za-z_][\w.]*$/.test(name) ? name : quoted(n
 export function describeHaving(f: ColumnFilter): string {
   const target = `${f.fn}(${bare(f.field)})`;
   const symbol = SYMBOLS[f.op];
-  if (!symbol) return describeFilter({ ...f, field: target }).replace(quoted(target), target);
+  if (!symbol) return filterSentence({ ...f, field: target }).replace(quoted(target), target);
   const v = typeof f.value === 'string' && f.value.trim() !== '' && Number.isFinite(Number(f.value)) ? Number(f.value) : f.value;
   return `${target} ${symbol} ${quoted(v)}`;
 }
@@ -101,8 +101,8 @@ export function buildAiPrompt(p: AiPromptInput): string {
     `Query the data mart ${quoted(p.martTitle)} (id ${quoted(p.martId)}).`,
     `Fields: ${fields.map(quoted).join(', ')}.`,
     ...aggregationLines(fields, p.aggregation),
-    p.filters.length ? `Filters:\n${p.filters.map((f) => `- ${f.fn ? describeHaving(f) : describeFilter(f)}`).join('\n')}` : 'Filters: none',
-    ...(p.slices?.length ? [`Slices (before the join):\n${p.slices.map((f) => `- ${describeFilter(f)}`).join('\n')}`] : []),
+    p.filters.length ? `Filters:\n${p.filters.map((f) => `- ${f.fn ? describeHaving(f) : filterSentence(f)}`).join('\n')}` : 'Filters: none',
+    ...(p.slices?.length ? [`Slices (before the join):\n${p.slices.map((f) => `- ${filterSentence(f)}`).join('\n')}`] : []),
     `Sort: ${sorts.length ? sorts.join(', then ') : 'none'}.`,
     'Show the result as a table, and say if rows were truncated.',
   ].join('\n');

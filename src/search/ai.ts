@@ -1,4 +1,5 @@
 import type { AiModel, Ctx } from '../sdk/types';
+import { errorMessage } from '../model/guards';
 
 /** One search run waits this long for the models, all its questions together; past it the run goes on as if no AI were configured. */
 export const AI_TIMEOUT_MS = 30_000;
@@ -76,7 +77,7 @@ export function createAiRun(models: Models, signal: AbortSignal, totalMs = AI_TI
       if (json === undefined) throw new AiUnavailable('no JSON in the answer');
       return json as Record<string, unknown>;
     } catch (e) {
-      throw e instanceof AiUnavailable ? e : new AiUnavailable(e instanceof Error ? e.message : String(e));
+      throw e instanceof AiUnavailable ? e : new AiUnavailable(errorMessage(e));
     } finally {
       clearTimeout(timer);
       signal.removeEventListener('abort', stop);
@@ -86,15 +87,14 @@ export function createAiRun(models: Models, signal: AbortSignal, totalMs = AI_TI
   return {
     /** The model's JSON answer; AiUnavailable for anything else. A `reasoning` model that fails (not cancelled) is retried once on `fast` in what is left of the budget. */
     async ask(role: Role, system: string, user: string): Promise<Record<string, unknown>> {
-      const order = role === 'discover' ? [models.fast ?? models.reasoning] : [models.reasoning ?? models.fast];
-      const first = order[0];
+      const first = role === 'discover' ? models.fast ?? models.reasoning : models.reasoning ?? models.fast;
       if (!first) throw new AiUnavailable('no model');
-      const own = Math.min(deadline - Date.now(), totalMs * SHARE[role]);
+      const budget = () => Math.min(deadline - Date.now(), totalMs * SHARE[role]);
       try {
-        return await call(first, system, user, own, first === models.reasoning ? undefined : 0);
+        return await call(first, system, user, budget(), first === models.reasoning ? undefined : 0);
       } catch (e) {
         if (signal.aborted || first !== models.reasoning || !models.fast || models.fast === first) throw e;
-        return call(models.fast, system, user, Math.min(deadline - Date.now(), totalMs * SHARE[role]), 0);
+        return call(models.fast, system, user, budget(), 0);
       }
     },
   };

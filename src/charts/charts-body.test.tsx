@@ -400,3 +400,35 @@ test('a pie of another mart’s Unique Records hides the share in the tooltip', 
   expect((await screen.findAllByText(new RegExp(`^${slice.getAttribute('data-slice')}: `))).length).toBeGreaterThan(0);
   expect(screen.queryByText(/\(\d+%\)/)).toBeNull();
 });
+
+test('an unstacked time series rides on the sparklines read: one billed read where there were two', async () => {
+  const t = await charts();
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  await waitFor(() => expect(data().querySelectorAll('svg[aria-label*="trend"]').length).toBeGreaterThan(0));
+  const byDate = (t.queries.slice(t.tableQueries())).filter((q) => q.dateTrunc?.length && q.column?.[0] === 'created_at');
+  // The sparkline read carries every metric and the unique count; no read of its own asks for the amount alone.
+  expect(byDate).toHaveLength(1);
+  expect(byDate[0]!.column).toEqual(['created_at', 'amount']);
+  expect(byDate[0]!.uniqueCount).toEqual(['']);
+});
+
+test('a stacked time series still reads its own series', async () => {
+  const t = await charts({ charts: { timeSeries: { stack: 'status' } } });
+  await waitFor(() => expect(series().size).toBeGreaterThan(1));
+  const own = t.queries.slice(t.tableQueries()).filter((q) => q.dateTrunc?.length && q.column?.includes('status'));
+  expect(own.length).toBeGreaterThan(0);
+  expect(own.every((q) => !q.uniqueCount)).toBe(true);
+});
+
+test('when the shared sparkline read fails, the bar chart draws from its own read, issued only after the failure', async () => {
+  let refused = 0;
+  const t = await charts({ fail: (o) => { const shared = !!o.dateTrunc?.length && !!o.uniqueCount && o.column?.[0] === 'created_at'; if (shared) refused += 1; return shared; } });
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  const after = t.queries.slice(t.tableQueries());
+  const sharedAt = after.findIndex((q) => q.dateTrunc?.length && q.uniqueCount);
+  const ownAt = after.findIndex((q) => q.dateTrunc?.length && !q.uniqueCount && q.column?.[0] === 'created_at');
+  expect(refused).toBeGreaterThan(0);
+  expect(sharedAt).toBeGreaterThanOrEqual(0);
+  expect(ownAt).toBeGreaterThan(sharedAt);
+  expect(after.filter((q) => q.dateTrunc?.length && !q.uniqueCount && q.column?.[0] === 'created_at')).toHaveLength(1);
+});

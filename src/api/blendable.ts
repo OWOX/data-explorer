@@ -20,6 +20,18 @@ export type JoinedSource = {
   relationshipId?: string;
 };
 
+const owners = new WeakMap<JoinedSource[], Map<string, JoinedSource>>();
+/** The source a field name belongs to (the first, when two sources carry the same name), built once per sources array. */
+export function sourceOfField(sources: JoinedSource[]): Map<string, JoinedSource> {
+  let map = owners.get(sources);
+  if (!map) {
+    map = new Map();
+    for (const s of sources) for (const f of s.fields) if (!map.has(f.name)) map.set(f.name, s);
+    owners.set(sources, map);
+  }
+  return map;
+}
+
 export interface BlendableLoader {
   /** The joined sources of a mart; read once per mart (a failure is not remembered, so the next ask reads again). */
   get(martId: string): Promise<JoinedSource[]>;
@@ -79,7 +91,7 @@ export function createBlendableLoader(ctx: Ctx): BlendableLoader {
     peek: (martId) => done.get(martId),
     invalidate(martId) { done.delete(martId); inflight.delete(martId); listeners.forEach((l) => l()); },
     subscribe(fn) { listeners.add(fn); return () => { listeners.delete(fn); }; },
-    clear() { done.clear(); },
+    clear() { done.clear(); inflight.clear(); },
   };
 }
 

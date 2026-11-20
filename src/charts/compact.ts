@@ -1,6 +1,7 @@
 // Scorecard numbers in short form (1.6M, $117K): the exact value stays one hover away.
 import { formatsFor, type Format } from '../format/formats';
 import { categorizeFieldType } from '../model/field-category';
+import { toNumber } from '../model/number';
 
 // en-US like the full number text (formatNumber writes 1,234.5 in every locale), so short and exact agree on separators.
 // Money stays in the viewer's locale, as its full text does.
@@ -14,12 +15,6 @@ function moneyCompact(currency: string): Intl.NumberFormat | null {
   }
   return money.get(currency)!;
 }
-
-const toNumber = (v: unknown): number | null => {
-  if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-};
 
 /**
  * The short form of a number of at least 10,000 in an automatic, plain or money format; null when the full text is short

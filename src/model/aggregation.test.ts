@@ -1,4 +1,5 @@
-import { isTimeZone, sanitizeAggregation, ungroupableColumn, aggregatedKey, allowedFunctions, applyDraft, canBucket, canZone, describeColumn, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, type Aggregation } from './aggregation';
+import { vi } from 'vitest';
+import { isTimeZone, sanitizeAggregation, ungroupableColumn, aggregatedKey, allowedFunctions, applyDraft, canBucket, canZone, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, type Aggregation } from './aggregation';
 import type { Field } from './types';
 
 const f = (category: Field['category'], extra: Partial<Field> = {}): Field => ({ name: 'x', alias: null, type: category === 'date' ? 'TIMESTAMP' : 'STRING', category, description: null, isPrimaryKey: false, ...extra });
@@ -74,13 +75,6 @@ test('every function is its own output column; only the first function of a colu
   expect(outputsOf(['a', 'b'], NO_AGGREGATION).map((o) => o.key)).toEqual(['a', 'b']);
 });
 
-test('the AI-prompt wording: functions in words, a bucket with its zone', () => {
-  const a: Aggregation = { aggregations: [{ column: 'amount', function: 'SUM' }, { column: 'amount', function: 'AVG' }], dateTrunc: [{ column: 'created', unit: 'MONTH', timeZone: 'UTC' }] };
-  expect(describeColumn('amount', a)).toBe('sum, average');
-  expect(describeColumn('created', a)).toBe('by month (UTC)');
-  expect(describeColumn('status', a)).toBeNull();
-});
-
 test('a bucket start is shown by its bucket', () => {
   expect(formatBucket('2026-11-01', 'MONTH')).toBe('Nov 2026');
   expect(formatBucket('2026-10-01T00:00:00.000Z', 'QUARTER')).toBe('Q4 2026');
@@ -120,4 +114,20 @@ test('ungroupableColumn finds a shown array or calculated column with no rule, o
 test('the backend IANA pattern and length cap', () => {
   for (const z of ['UTC', 'America/New_York', 'Etc/GMT+5', 'America/Argentina/Buenos_Aires']) expect(isTimeZone(z)).toBe(true);
   for (const z of ['', '1UTC', 'UTC/', "UTC'; DROP", 'a b', '/UTC', 'A'.repeat(65), 'Europe//Kyiv', 7]) expect(isTimeZone(z)).toBe(false);
+});
+
+test('formatBucket builds one date formatter per locale', async () => {
+  vi.resetModules();
+  const fresh = await import('./aggregation');
+  const spy = vi.spyOn(Intl, 'DateTimeFormat');
+  try {
+    fresh.formatBucket('2026-11-02', 'DAY', 'fr-FR');
+    fresh.formatBucket('2026-11-09', 'WEEK', 'fr-FR');
+    fresh.formatBucket('2026-11-16', 'DAY', 'fr-FR');
+    expect(spy.mock.calls.length).toBe(1);
+    fresh.formatBucket('2026-11-16', 'DAY', 'de-DE');
+    expect(spy.mock.calls.length).toBe(2);
+  } finally {
+    spy.mockRestore();
+  }
 });

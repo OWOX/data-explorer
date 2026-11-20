@@ -442,6 +442,122 @@ describe('exporter', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  test('an export reads only its own report again, not every remembered one', async () => {
+    vi.useFakeTimers();
+    try {
+      const remembered = { reportId: 'a', destinationId: 'd1', spreadsheetId: 's-a', sheetId: 1, title: 'T-a' };
+      const { ctx, calls } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }, { reportId: 'b' }, { reportId: 'c' }]);
+      (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+        calls.push(`GET ${path}`);
+        const ran = (ctx.owox.postJson as ReturnType<typeof vi.fn>).mock.calls.some((c) => String(c[0]).endsWith('/run'));
+        return { ...live(path.split('/').pop()!), lastRunAt: ran ? '2026-02-01T00:00:00.000Z' : '2026-01-01T00:00:00.000Z', lastRunStatus: 'SUCCESS' };
+      });
+      const ex = createExporter(ctx);
+      ex.load('orders');
+      await vi.advanceTimersByTimeAsync(0);
+      const gets = (id: string) => calls.filter((c) => c === `GET /api/reports/${id}`).length;
+      expect([gets('a'), gets('b'), gets('c')]).toEqual([1, 1, 1]);
+      const p = ex.run({ martId: 'orders', destination: dest, title: 'T-a', source: { kind: 'update', report: remembered }, payload });
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+      await p;
+      await vi.advanceTimersByTimeAsync(0);
+      expect([gets('b'), gets('c')]).toEqual([1, 1]);
+      // The update's own report: the pre-run read, one poll, and one read after the run.
+      expect(gets('a')).toBe(4);
+      expect(ex.entries('orders').map((e) => e.state)).toEqual(['ready', 'ready', 'ready']);
+    } finally { vi.useRealTimers(); }
+  });
+
+  test('an update PUTs the title and sheet OWOX has now, not the cached ones', async () => {
+    vi.useFakeTimers();
+    try {
+      const remembered = { reportId: 'a', destinationId: 'd1', spreadsheetId: 's-a', sheetId: 1, title: 'Old' };
+      const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }]);
+      (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+        const ran = (ctx.owox.postJson as ReturnType<typeof vi.fn>).mock.calls.some((c) => String(c[0]).endsWith('/run'));
+        return { ...live(path.split('/').pop()!, { title: 'Renamed in OWOX', dataDestinationAccess: { id: 'd2' }, destinationConfig: { spreadsheetId: 'moved', sheetId: 9 } }), lastRunAt: ran ? '2026-02-01T00:00:00.000Z' : '2026-01-01T00:00:00.000Z', lastRunStatus: 'SUCCESS' };
+      });
+      const p = createExporter(ctx).run({ martId: 'orders', destination: dest, title: 'Old', source: { kind: 'update', report: remembered }, payload });
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+      const { report } = await p;
+      expect(report).toMatchObject({ title: 'Renamed in OWOX', destinationId: 'd2', spreadsheetId: 'moved', sheetId: 9 });
+      expect(ctx.owox.putJson).toHaveBeenCalledWith('/api/reports/a', expect.objectContaining({ title: 'Renamed in OWOX', dataDestinationId: 'd2', destinationConfig: { type: 'google-sheets-config', spreadsheetId: 'moved', sheetId: 9 } }));
+    } finally { vi.useRealTimers(); }
+  });
+
+  test('a new report is read once after its export when the cache has started: touch already read it', async () => {
+    vi.useFakeTimers();
+    try {
+      const { ctx, calls } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }]);
+      (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+        calls.push(`GET ${path}`);
+        const ran = (ctx.owox.postJson as ReturnType<typeof vi.fn>).mock.calls.some((c) => String(c[0]).endsWith('/run'));
+        return { ...live(path.split('/').pop()!), lastRunAt: ran ? '2026-02-01T00:00:00.000Z' : '2026-01-01T00:00:00.000Z', lastRunStatus: 'SUCCESS' };
+      });
+      const ex = createExporter(ctx);
+      ex.load('orders');
+      await vi.advanceTimersByTimeAsync(0);
+      const p = ex.run({ martId: 'orders', destination: dest, title: 'T', source: { kind: 'new' }, payload });
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+      await p;
+      await vi.advanceTimersByTimeAsync(0);
+      // The read `touch` started, and one poll; no third read after the run.
+      expect(calls.filter((c) => c === 'GET /api/reports/r1')).toHaveLength(2);
+      expect(calls.filter((c) => c === 'GET /api/reports/a')).toHaveLength(1);
+      expect(ex.entries('orders').map((e) => e.state)).toEqual(['ready', 'ready']);
+    } finally { vi.useRealTimers(); }
+  });
+
+  test('a rejected run reads every remembered report again', async () => {
+    const remembered = { reportId: 'a', destinationId: 'd1', spreadsheetId: 's-a', sheetId: 1, title: 'T-a' };
+    const { ctx, calls } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }, { reportId: 'b' }]);
+    (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => { calls.push(`GET ${path}`); return live(path.split('/').pop()!); });
+    const ex = createExporter(ctx);
+    ex.load('orders');
+    await allReady(ex);
+    const gets = (id: string) => calls.filter((c) => c === `GET /api/reports/${id}`).length;
+    expect(gets('b')).toBe(1);
+    (ctx.owox.putJson as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('boom'));
+    await ex.run({ martId: 'orders', destination: dest, title: 'T-a', source: { kind: 'update', report: remembered }, payload }).catch(() => undefined);
+    await vi.waitFor(() => expect(gets('b')).toBe(2));
+    await allReady(ex);
+    expect(ex.entries('orders').map((e) => e.reportId)).toEqual(['a', 'b']);
+  });
+
+  test('an export whose cache never started reads every remembered report', async () => {
+    vi.useFakeTimers();
+    try {
+      const remembered = { reportId: 'a', destinationId: 'd1', spreadsheetId: 's-a', sheetId: 1, title: 'T-a' };
+      const { ctx, calls } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }, { reportId: 'b' }]);
+      (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+        calls.push(`GET ${path}`);
+        const ran = (ctx.owox.postJson as ReturnType<typeof vi.fn>).mock.calls.some((c) => String(c[0]).endsWith('/run'));
+        return { ...live(path.split('/').pop()!), lastRunAt: ran ? '2026-02-01T00:00:00.000Z' : '2026-01-01T00:00:00.000Z', lastRunStatus: 'SUCCESS' };
+      });
+      const ex = createExporter(ctx);
+      // No `load` before the run: the menu was never opened.
+      const p = ex.run({ martId: 'orders', destination: dest, title: 'T-a', source: { kind: 'update', report: remembered }, payload });
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+      await p;
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls.filter((c) => c === 'GET /api/reports/b')).toHaveLength(1);
+      expect(ex.entries('orders').map((e) => [e.reportId, e.state])).toEqual([['a', 'ready'], ['b', 'ready']]);
+    } finally { vi.useRealTimers(); }
+  });
+
+  test('a new report is not read before its run: the create response already has its run status', async () => {
+    vi.useFakeTimers();
+    try {
+      const { ctx, calls } = exportCtx({ status: 'SUCCESS' }, 1);
+      const ex = createExporter(ctx);
+      const p = ex.run({ martId: 'orders', destination: dest, title: 'T', source: { kind: 'new' }, payload });
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+      await p;
+      const afterCreate = calls.slice(calls.indexOf('POST /api/reports') + 1);
+      expect(afterCreate[0]).toBe('POST /api/reports/r1/run');
+    } finally { vi.useRealTimers(); }
+  });
+
   test('a read that returns after invalidate() is ignored', async () => {
     const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }]);
     let release: (v: unknown) => void = () => {};

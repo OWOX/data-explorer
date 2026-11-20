@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
 import { martElementId } from './cards';
+import { useLatest } from '../useLatest';
 
-export type CardDrag = { id: string; title: string; x: number; y: number; overMain: boolean };
+type CardDrag = { id: string; title: string; x: number; y: number; overMain: boolean };
 
 /** A press becomes a drag once the pointer has moved this far, so a click stays a click. */
 const START_PX = 5;
@@ -13,8 +14,7 @@ const START_PX = 5;
  */
 export function useCardDrag(canvas: RefObject<HTMLElement | null>, mainId: string | null, titleOf: (id: string) => string, onDrop: (id: string) => void, canDrag: (id: string) => boolean): CardDrag | null {
   const [drag, setDrag] = useState<CardDrag | null>(null);
-  const latest = useRef({ mainId, titleOf, onDrop, canDrag });
-  useEffect(() => { latest.current = { mainId, titleOf, onDrop, canDrag }; });
+  const latest = useLatest({ mainId, titleOf, onDrop, canDrag });
   useEffect(() => {
     const root = canvas.current;
     if (!root) return;
@@ -76,6 +76,6 @@ export function useCardDrag(canvas: RefObject<HTMLElement | null>, mainId: strin
       window.removeEventListener('pointercancel', cancel);
       document.removeEventListener('keydown', key);
     };
-  }, [canvas]);
+  }, [canvas, latest]);
   return drag;
 }

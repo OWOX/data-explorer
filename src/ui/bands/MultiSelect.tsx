@@ -4,7 +4,7 @@ import { num } from '../format';
 import type { Mark } from '../storage-icons';
 import { SheetsChecklist, type ChecklistItem } from '../SheetsChecklist';
 
-export type MultiOption = { value: string; label: string; count?: number; icon?: Mark };
+type MultiOption = { value: string; label: string; count?: number; icon?: Mark };
 
 /**
  * A Sheets-style checklist menu on a native `<details>`: no library, and `name` makes the browser close the other

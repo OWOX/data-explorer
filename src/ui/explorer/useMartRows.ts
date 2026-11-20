@@ -7,10 +7,6 @@ import type { Schema } from '../../model/types';
 import type { Row, TraverseOptions } from '../../sdk/types';
 import { useServices } from '../../state/store';
 
-export function defaultColumns(schema: Schema): string[] {
-  return schema.filter((f) => !f.isCalculated).slice(0, 5).map((f) => f.name);
-}
-
 /**
  * Grouped (a function or a bucket on a visible column): exactly the visible columns, in schema order (a column move must not change the query), each function its own output;
  * every column without a rule is a group key. Primary keys are not added and no key tie-breaker sorts are, since a key would split the groups.

@@ -24,49 +24,38 @@ export interface Preferences {
 }
 
 export function createPreferences(ctx: Ctx): Preferences {
-  const col = ctx.collections<BandsDoc>(PREFERENCES_COLLECTION);
+  // One document in the preferences collection: a read that never throws and a write that is logged when it fails.
+  const doc = <T,>(id: string, what: string) => {
+    const col = ctx.collections<T>(PREFERENCES_COLLECTION);
+    return {
+      async read(): Promise<T | undefined> {
+        try {
+          return (await col.get(id))?.document;
+        } catch (e) {
+          console.warn(`Reading the ${what} failed`, e);
+          return undefined;
+        }
+      },
+      write(d: T) {
+        Promise.resolve()
+          .then(() => col.put(id, d))
+          .catch((e) => console.warn(`Saving the ${what} failed`, e));
+      },
+    };
+  };
+  const bands = doc<BandsDoc>(DOC_ID, 'band preferences');
+  const search = doc<SearchDoc>(SEARCH_DOC_ID, 'search preferences');
+  const view = doc<ViewDoc>(VIEW_DOC_ID, 'Data Marts view');
   return {
     async loadFolded() {
-      try {
-        const folded = (await col.get(DOC_ID))?.document?.folded;
-        if (!folded || typeof folded !== 'object') return {};
-        return Object.fromEntries(Object.entries(folded).filter(([, v]) => typeof v === 'boolean'));
-      } catch (e) {
-        console.warn('Reading the band preferences failed', e);
-        return {};
-      }
+      const folded = (await bands.read())?.folded;
+      if (!folded || typeof folded !== 'object') return {};
+      return Object.fromEntries(Object.entries(folded).filter(([, v]) => typeof v === 'boolean'));
     },
-    saveFolded(folded) {
-      Promise.resolve()
-        .then(() => col.put(DOC_ID, { folded }))
-        .catch((e) => console.warn('Saving the band preferences failed', e));
-    },
-    async loadAiHintDismissed() {
-      try {
-        return (await ctx.collections<SearchDoc>(PREFERENCES_COLLECTION).get(SEARCH_DOC_ID))?.document?.aiHintDismissed === true;
-      } catch (e) {
-        console.warn('Reading the search preferences failed', e);
-        return false;
-      }
-    },
-    dismissAiHint() {
-      Promise.resolve()
-        .then(() => ctx.collections<SearchDoc>(PREFERENCES_COLLECTION).put(SEARCH_DOC_ID, { aiHintDismissed: true }))
-        .catch((e) => console.warn('Saving the search preferences failed', e));
-    },
-    async loadMartsView() {
-      try {
-        const v = (await ctx.collections<ViewDoc>(PREFERENCES_COLLECTION).get(VIEW_DOC_ID))?.document?.view;
-        return v === 'canvas' ? 'canvas' : 'grid';
-      } catch (e) {
-        console.warn('Reading the Data Marts view failed', e);
-        return 'grid';
-      }
-    },
-    saveMartsView(view) {
-      Promise.resolve()
-        .then(() => ctx.collections<ViewDoc>(PREFERENCES_COLLECTION).put(VIEW_DOC_ID, { view }))
-        .catch((e) => console.warn('Saving the Data Marts view failed', e));
-    },
+    saveFolded: (folded) => bands.write({ folded }),
+    loadAiHintDismissed: async () => (await search.read())?.aiHintDismissed === true,
+    dismissAiHint: () => search.write({ aiHintDismissed: true }),
+    loadMartsView: async () => ((await view.read())?.view === 'canvas' ? 'canvas' : 'grid'),
+    saveMartsView: (v) => view.write({ view: v }),
   };
 }
