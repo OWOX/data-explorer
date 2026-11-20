@@ -479,7 +479,8 @@ describe('exporter', () => {
       });
       const p = createExporter(ctx).run({ martId: 'orders', destination: dest, title: 'Old', source: { kind: 'update', report: remembered }, payload });
       await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
-      await p;
+      const { report } = await p;
+      expect(report).toMatchObject({ title: 'Renamed in OWOX', destinationId: 'd2', spreadsheetId: 'moved', sheetId: 9 });
       expect(ctx.owox.putJson).toHaveBeenCalledWith('/api/reports/a', expect.objectContaining({ title: 'Renamed in OWOX', dataDestinationId: 'd2', destinationConfig: { type: 'google-sheets-config', spreadsheetId: 'moved', sheetId: 9 } }));
     } finally { vi.useRealTimers(); }
   });

@@ -385,16 +385,20 @@ export function createExporter(ctx: Ctx): Exporter {
       if (source.kind === 'update') {
         onStage?.('report');
         const r = source.report;
+        // What the PUT sends, which is also what the result reports (its link must open the sheet the data went to).
+        let sent: typeof r;
         try {
           // The cached title and sheet can be stale (an edit in OWOX, a re-pointed sheet), and PUT replaces them: read the report first.
           const d = await ctx.owox.getJson<ReportDto>(`/api/reports/${encodeURIComponent(r.reportId)}`);
           knownDto = d;
           const cfg = d.destinationConfig;
           const target = { spreadsheetId: cfg?.spreadsheetId, sheetId: cfg?.sheetId };
+          const to = isSheetTarget(target) ? target : r;
+          sent = { ...r, title: typeof d.title === 'string' && d.title ? d.title : r.title, destinationId: d.dataDestinationAccess?.id || r.destinationId, spreadsheetId: to.spreadsheetId, sheetId: to.sheetId };
           await ctx.owox.putJson(`/api/reports/${encodeURIComponent(r.reportId)}`, {
-            title: typeof d.title === 'string' && d.title ? d.title : r.title,
-            dataDestinationId: d.dataDestinationAccess?.id || r.destinationId,
-            destinationConfig: destinationConfig(isSheetTarget(target) ? target : r),
+            title: sent.title,
+            dataDestinationId: sent.destinationId,
+            destinationConfig: destinationConfig(sent),
             // PUT replaces the report: what an earlier edit in OWOX left behind must not change the sheet, so these reset
             // unless the payload carries them (a grouped grid's aggregation and date rules).
             limitConfig: null, aggregationConfig: null, dateTruncConfig: null, uniqueCountConfig: null,
@@ -406,7 +410,7 @@ export function createExporter(ctx: Ctx): Exporter {
         }
         const usedAt = new Date().toISOString();
         await touch(martId, r.reportId, usedAt);
-        report = { ...r, usedAt };
+        report = { ...sent, usedAt };
       } else {
         let target: SheetTarget;
         if (source.kind === 'existing') {
