@@ -215,6 +215,16 @@ describe('MartCard', () => {
       expect(screen.getByLabelText('Open in OWOX')).toBeInTheDocument();
       act(() => { vi.advanceTimersByTime(200); });
       await waitFor(() => expect(screen.queryByLabelText('Open in OWOX')).toBeNull());
+      // Coming back to the title within the delay keeps it open.
+      await user.hover(title);
+      await screen.findByLabelText('Open in OWOX');
+      fireEvent.pointerLeave(title);
+      fireEvent.pointerMove(document.body, { clientX: 900, clientY: 900 });
+      act(() => { vi.advanceTimersByTime(400); });
+      fireEvent.pointerEnter(title);
+      fireEvent.pointerMove(title, { clientX: 5, clientY: 5 });
+      act(() => { vi.advanceTimersByTime(600); });
+      expect(screen.getByLabelText('Open in OWOX')).toBeInTheDocument();
       // Moving onto the bubble before the delay ends keeps it open.
       await user.hover(title);
       const link = await screen.findByLabelText('Open in OWOX');

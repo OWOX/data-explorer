@@ -252,10 +252,12 @@ export function MartCard({
             </button>
           </Tooltip></span>
         )}
-        {/* The link lives in the title bubble, which a keyboard cannot reach: this twin is hidden until the card has keyboard focus. */}
-        <button type="button" aria-label={`Open ${name} in OWOX`} className={`dm-link dm-link-kbd${onMakeMain ? '' : ' ml-auto'}`} onClick={(e) => { e.stopPropagation(); onOpenApp(); }}>
-          <ExternalLink size={14} />
-        </button>
+        {/* The link lives in the title bubble, which a keyboard or a touch screen cannot open. This twin sits in a fixed 14px slot, transparent until it has keyboard focus (always shown under hover: none), so the head row never shifts. */}
+        <span className={`dm-card-open${onMakeMain ? '' : ' ml-auto'}`}>
+          <button type="button" aria-label={`Open ${name} in OWOX`} className="dm-link dm-link-kbd" onClick={(e) => { e.stopPropagation(); onOpenApp(); }}>
+            <ExternalLink size={14} />
+          </button>
+        </span>
         {mart.description && <span className="dm-card-reveal"><Hint text={mart.description} label="Description" /></span>}
       </div>
       <div className="dm-badges dm-badges-row">

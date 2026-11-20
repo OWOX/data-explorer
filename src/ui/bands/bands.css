@@ -219,8 +219,11 @@
 .dm-title-tip { pointer-events: auto; display: flex; align-items: flex-start; gap: 0.5rem; }
 .dm-title-tip-action { display: inline-flex; margin-left: auto; }
 .dm-title-tip-action .dm-link { color: inherit; }
-/* The keyboard twin of the link in the title bubble: out of sight until the card or the button has keyboard focus. */
-.dm-link-kbd:not(:focus-visible) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* The open button beside the title: a 14px slot holding a button that is transparent and ignores the pointer until it has keyboard focus, and is always shown on touch screens. */
+.dm-card-open { position: relative; display: inline-flex; flex: none; width: 14px; height: 14px; }
+.dm-link-kbd { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+.dm-link-kbd:focus-visible { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .dm-link-kbd { opacity: 1; pointer-events: auto; } }
 .dm-link { display: inline-flex; color: var(--muted-foreground); }
 .dm-link:hover { color: var(--foreground); }
 
