@@ -9,9 +9,9 @@ import { useServices } from '../../../state/store';
 
 export type Result = { kind: 'ok' | 'timeout' | 'error'; text: string; url?: string };
 /** The destination dialog that is open, the message of a failed attempt it shows, and a key that is new for each opening. */
-export type ExportDialogState = { destination: DestinationDto; error?: string; seq: number };
+type ExportDialogState = { destination: DestinationDto; error?: string; seq: number };
 
-export const STAGE_LABEL: Record<Stage, string> = { sheet: 'Creating the spreadsheet…', report: 'Saving the report…', run: 'Running the report…' };
+const STAGE_LABEL: Record<Stage, string> = { sheet: 'Creating the spreadsheet…', report: 'Saving the report…', run: 'Running the report…' };
 const MAYBE_CREATED = 'The report may have been created; check OWOX before trying again.';
 export const UNRECOGNISED = 'This report targets an unrecognised spreadsheet.';
 

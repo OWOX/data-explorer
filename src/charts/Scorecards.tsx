@@ -31,8 +31,8 @@ export const measureOptions = (cf: ChartFields, list: Measure[]) => list.map((m)
 /** A mart's cards: its record count (when it has a primary key), then one per metric. */
 export function cardsOf(mart: ChartMart): Card[] {
   return [
-    ...(mart.hasPk ? [{ id: mart.recordsId, label: 'Unique Records', key: uniqueKey(mart.aliasPath), measure: { kind: 'records', aliasPath: mart.aliasPath, recordsId: mart.recordsId } as Measure }] : []),
-    ...mart.metrics.map((m) => ({ id: m.field.name, label: metricLabel(m), key: metricKey(m), measure: { kind: 'metric', metric: m } as Measure })),
+    ...(mart.hasPk ? [{ id: mart.recordsId, label: 'Unique Records', key: uniqueKey(mart.aliasPath), measure: { kind: 'records', aliasPath: mart.aliasPath, recordsId: mart.recordsId } satisfies Measure }] : []),
+    ...mart.metrics.map((m) => ({ id: m.field.name, label: metricLabel(m), key: metricKey(m), measure: { kind: 'metric', metric: m } satisfies Measure })),
   ];
 }
 
@@ -108,7 +108,7 @@ export function metricFormat(field: Field, fn: AggFn, formatOf: Formatter): [typ
 }
 
 /** A records count as text: grouped digits, or the value as it came. */
-export const recordsText = (v: unknown): string => formatNumber(v) ?? String(v ?? '');
+const recordsText = (v: unknown): string => formatNumber(v) ?? String(v ?? '');
 
 /** A measure's value as text, whichever kind it is. */
 export const measureText = (m: Measure, v: unknown, formatOf: Formatter): string => (m.kind === 'metric' ? metricText(m.metric.field, m.metric.fn, v, formatOf) : recordsText(v));
