@@ -741,3 +741,81 @@ GROUP BY base_owox."status", DATE_TRUNC('MONTH', CONVERT_TIMEZONE('Europe/Berlin
     });
   });
 });
+
+describe('slices', () => {
+  const cityPara = { field: 'customers__city', op: 'eq' as const, value: 'Paris' };
+  const nameSlice = { field: 'customers__region__name', op: 'eq' as const, value: 'EU' };
+
+  test('a slice filters the path\'s raw rows inside its dedup CTE and never the outer WHERE', () => {
+    const sql = run({ visible: ['id', 'customers__city'], slices: [cityPara] });
+    expect(sql).toContain('FROM [Customers](dm:cus1) AS t\n    WHERE t.city = \'Paris\'\n    GROUP BY t.id');
+    expect(sql).not.toMatch(/\nWHERE /);
+    expect(sql).toContain('FROM base_owox\nLEFT JOIN customers_owox ON');
+  });
+
+  test('a slice uses the raw type, not the rolled-up one', () => {
+    const n = f('customers__n', 'INTEGER', j('customers', 'cus1', 'n', 'COUNT', 'STRING'));
+    const sql = run({ schema: [f('id', 'INTEGER'), n], visible: ['id', 'customers__n'], sources: [customers([n])], slices: [{ field: 'customers__n', op: 'contains', value: 'a' }] });
+    expect(sql).toContain('STRPOS(t.n, \'a\') > 0');
+  });
+
+  test('a slice on a depth-2 path sits in that path\'s CTE, and the parent stays unfiltered', () => {
+    const sql = run({ visible: ['id', 'customers__region__name'], slices: [nameSlice] });
+    expect(sql).toMatch(/customers__region_owox AS \([\s\S]*FROM \[Region\]\(dm:reg1\) AS t\n {4}WHERE t\.name = 'EU'\n {4}GROUP BY/);
+    expect(sql).not.toMatch(/customers_owox AS \([^)]*WHERE/);
+  });
+
+  test('a slice on a parent filters the rows its child joins to', () => {
+    const sql = run({ visible: ['id', 'customers__region__name'], slices: [cityPara] });
+    expect(sql).toMatch(/customers_owox AS \([\s\S]*FROM \[Customers\]\(dm:cus1\) AS t\n {4}LEFT JOIN customers__region_owox ON[^\n]*\n {4}WHERE t\.city = 'Paris'\n {4}GROUP BY/);
+  });
+
+  test('a sleeve reads a sliced path through a filtered derived table, a LEFT JOIN that keeps the rows', () => {
+    const code = f('customers__region__code', 'INTEGER', j('customers.region', 'reg1', 'code', 'COUNT_DISTINCT', 'STRING'));
+    const sql = run({
+      schema: [f('id', 'INTEGER'), f('status'), city, regionName, code], visible: ['status', 'customers__city', 'customers__region__code'],
+      sources: [customers([city]), region([code])], slices: [cityPara, nameSlice],
+      aggregation: { aggregations: [{ column: 'customers__region__code', function: 'COUNT_DISTINCT' }], dateTrunc: [] },
+    });
+    expect(sql).toContain("LEFT JOIN (SELECT * FROM [Customers](dm:cus1) AS t WHERE t.city = 'Paris') AS customers_raw_owox ON base_owox.customer_id = customers_raw_owox.id");
+    expect(sql).toContain("LEFT JOIN (SELECT * FROM [Region](dm:reg1) AS t WHERE t.name = 'EU') AS customers__region_raw_owox ON");
+    expect(sql).not.toMatch(/\nWHERE /);
+  });
+
+  test('a slice on a main field, on an unread path or an incomplete one adds nothing', () => {
+    const plain = run({ visible: ['id', 'customers__city'] });
+    expect(run({ visible: ['id', 'customers__city'], slices: [{ field: 'status', op: 'eq', value: 'x' }, nameSlice, { field: 'customers__city', op: 'eq' }] })).toBe(plain);
+  });
+});
+
+describe('HAVING filters', () => {
+  const agg = (...rules: { column: string; function: 'SUM' | 'COUNT' | 'MAX' | 'COUNT_DISTINCT' }[]) => ({ aggregations: rules, dateTrunc: [] });
+  const amount = f('amount', 'INTEGER');
+
+  test('a main metric gets HAVING on the SELECT\'s own aggregate expression, none in the WHERE', () => {
+    const sql = run({ schema: [f('status'), amount], visible: ['status', 'amount'], aggregation: agg({ column: 'amount', function: 'SUM' }), filters: [{ field: 'amount', op: 'gt', value: 100, fn: 'SUM' }] });
+    expect(sql).toContain('  SUM(base_owox.amount) AS amount__sum');
+    expect(sql).toContain('GROUP BY base_owox.status\nHAVING SUM(base_owox.amount) > 100');
+    expect(sql).not.toMatch(/\nWHERE /);
+  });
+
+  test('a joined metric the outer query aggregates is a HAVING on that aggregate', () => {
+    const n = f('customers__n', 'INTEGER', j('customers', 'cus1', 'n', 'COUNT', 'STRING'));
+    const sql = run({ schema: [f('status'), n], visible: ['status', 'customers__n'], sources: [customers([n])], aggregation: agg({ column: 'customers__n', function: 'COUNT' }), filters: [{ field: 'customers__n', op: 'lte', value: 5, fn: 'COUNT' }] });
+    expect(sql).toContain('HAVING COUNT(customers_owox.customers__n) <= 5');
+  });
+
+  test('a metric a sleeve computes is filtered after grouping, on the value the SELECT shows', () => {
+    const q = f('order_items__q', 'INTEGER', j('order_items', 'itm1', 'q', 'SUM', 'INTEGER'));
+    const sql = run({ schema: [f('status'), q], visible: ['status', 'order_items__q'], sources: [items([q])], aggregation: agg({ column: 'order_items__q', function: 'MAX' }), filters: [{ field: 'order_items__q', op: 'gt', value: 3, fn: 'MAX' }] });
+    expect(sql).toMatch(/ANY_VALUE\((\w+)\.order_items__q__max\) AS order_items__q__max/);
+    expect(sql).toMatch(/\nHAVING ANY_VALUE\(\w+\.order_items__q__max\) > 3$/);
+    expect(sql).not.toMatch(/\nWHERE /);
+  });
+
+  test('a HAVING filter on a function the grid does not aggregate, or on an ungrouped grid, is dropped', () => {
+    const grouped = run({ schema: [f('status'), amount], visible: ['status', 'amount'], aggregation: agg({ column: 'amount', function: 'SUM' }), filters: [{ field: 'amount', op: 'gt', value: 1, fn: 'MAX' }] });
+    expect(grouped).not.toContain('HAVING');
+    expect(run({ schema: [f('status'), amount], visible: ['status', 'amount'], filters: [{ field: 'amount', op: 'gt', value: 1, fn: 'SUM' }] })).not.toMatch(/HAVING|WHERE/);
+  });
+});

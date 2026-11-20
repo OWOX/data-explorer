@@ -144,6 +144,27 @@ const cases: Case[] = [
     types: { amount: 'INTEGER', order_items__sku: 'STRING', order_items__quantity: 'INTEGER' }, filters: [],
     agg: [{ column: 'amount', function: 'SUM' }, { column: 'order_items__sku', function: 'COUNT_DISTINCT' }, { column: 'order_items__quantity', function: 'MAX' }],
   },
+  {
+    // A slice on a depth-1 mart, with a plain filter beside it.
+    id: 'S1', marts: [cus([city, { name: 'n', alias: 'customers__n', fn: 'COUNT', rawType: 'STRING' }])], columns: ['id', 'customers__city', 'customers__n'],
+    types: { id: 'INTEGER', customers__city: 'STRING', customers__n: 'INTEGER' },
+    filters: [{ column: 'customers__city', operator: 'eq', value: 'Paris', placement: 'pre-join' }, { column: 'customers__n', operator: 'gt', value: 1 }],
+  },
+  {
+    // A slice on a depth-2 mart, and one on a depth-1 mart that a sleeve reads, in a grouped grid.
+    id: 'S2', marts: [cus([city]), reg([rname, { name: 'code', alias: 'customers_region__code', fn: 'COUNT_DISTINCT', rawType: 'STRING' }])],
+    columns: ['status', 'customers__city', 'customers_region__name', 'customers_region__code'],
+    types: { status: 'STRING', customers__city: 'STRING', customers_region__name: 'STRING', customers_region__code: 'INTEGER' },
+    filters: [{ column: 'customers_region__name', operator: 'eq', value: 'EU', placement: 'pre-join' }, { column: 'customers__city', operator: 'neq', value: 'Rome', placement: 'pre-join' }],
+    agg: [{ column: 'customers_region__code', function: 'COUNT_DISTINCT' }],
+  },
+  {
+    // A HAVING filter on a main metric and one on a joined COUNT, which the outer query aggregates itself.
+    id: 'H1', marts: [cus([{ name: 'n', alias: 'customers__n', fn: 'COUNT', rawType: 'STRING' }])], columns: ['status', 'amount', 'customers__n'],
+    types: { status: 'STRING', amount: 'INTEGER', customers__n: 'INTEGER' },
+    filters: [{ column: 'amount', operator: 'gt', value: 100, function: 'SUM' }, { column: 'customers__n', operator: 'lte', value: 5, function: 'COUNT' }],
+    agg: [{ column: 'amount', function: 'SUM' }, { column: 'customers__n', function: 'COUNT' }],
+  },
   // Main-only grids reach the engine through the flat composer, not buildBlendedQuery (stream-http-data.service.ts:509-514).
   { id: 'M1', flat: true, marts: [], columns: ['id', 'status'], types: { id: 'INTEGER', status: 'STRING', amount: 'INTEGER' }, filters: [eq('status', 'paid'), { column: 'status', operator: 'is_blank' }], sort: [{ column: 'id', direction: 'desc' }] },
   {

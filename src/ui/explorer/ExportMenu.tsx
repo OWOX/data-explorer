@@ -117,7 +117,7 @@ export function ExportMenu(p: Props) {
     if (!p.sources) return { reason: p.joinsFailed ? "The data mart's joins couldn't be read" : "Loading the data mart's joins…" };
     const d = dialectFor(p.storage.type);
     if ('reason' in d) return d;
-    const base = { dialect: d.dialect, main: { id: p.martId, title: p.martTitle }, schema: p.schema, visible: p.visible, filters: p.filters.filter((f) => !f.fn), sources: p.sources, edges: p.edges ?? [], titles: p.titles ?? new Map() };
+    const base = { dialect: d.dialect, main: { id: p.martId, title: p.martTitle }, schema: p.schema, visible: p.visible, filters: p.filters, ...(p.slices ? { slices: p.slices } : {}), sources: p.sources, edges: p.edges ?? [], titles: p.titles ?? new Map() };
     const kept = p.aggregation && keepVisible(p.aggregation, p.visible);
     const grouped = isGrouped(kept);
     const own = p.ownSorts ?? [];
@@ -133,7 +133,7 @@ export function ExportMenu(p: Props) {
     const off = variant(false);
     if ('reason' in off.plain) return off.plain;
     return { variants: { off, on: grouped ? variant(true) : off }, grouped };
-  }, [p.storage, p.storageUnavailable, p.sources, p.joinsFailed, p.edges, p.titles, p.martId, p.martTitle, p.schema, p.visible, p.aggregation, p.filters, p.ownSorts]);
+  }, [p.storage, p.storageUnavailable, p.sources, p.joinsFailed, p.edges, p.titles, p.martId, p.martTitle, p.schema, p.visible, p.aggregation, p.filters, p.slices, p.ownSorts]);
   const [martDialog, setMartDialog] = useState<{ variants: MartVariants; grouped: boolean; joinedMarts: { id: string; title: string }[]; storage: { id: string; type: string; title?: string }; seq: number } | null>(null);
   const seq = useRef(0);
   // Bumped when the mart changes or the menu goes away: an export finishing later is no longer in front of the member.
