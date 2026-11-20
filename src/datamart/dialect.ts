@@ -1,7 +1,9 @@
 import type { ColumnFilter } from '../filters/build';
 import { toTraverseFilter } from '../filters/build';
+import type { AggFn, DateBucket } from '../model/aggregation';
+import { DATE_BUCKETS, isTimeZone } from '../model/aggregation';
 import type { Field } from '../model/types';
-import type { RelativeDatePreset } from '../sdk/types';
+import type { RelativeDatePreset, TraverseFilter } from '../sdk/types';
 
 export type Dialect = 'bigquery' | 'athena' | 'snowflake' | 'redshift' | 'databricks';
 
@@ -20,18 +22,98 @@ export function dialectFor(storageType: string): { dialect: Dialect } | { reason
   return dialect ? { dialect } : { reason: 'Not available for this storage type' };
 }
 
-const quoteChar = (d: Dialect) => (d === 'bigquery' || d === 'databricks' ? '`' : '"');
-
-/** One identifier, quoted for the dialect (`a.b` stays one identifier). */
-export function quoteIdent(d: Dialect, name: string): string {
-  const q = quoteChar(d);
+/** One identifier as the engine spells it: bare when simple, except on Snowflake, which is always quoted. */
+export function ident(d: Dialect, name: string): string {
+  if (d !== 'snowflake' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return name;
+  const q = d === 'bigquery' || d === 'databricks' ? '`' : '"';
   return `${q}${name.split(q).join(q + q)}${q}`;
 }
 
-/** A nested path `address.city` as the dialect reads it from table alias `t` (empty for a bare reference): BigQuery `t.address.city` with each part quoted, the others one quoted identifier. */
-export function columnRef(d: Dialect, tableAlias: string, name: string): string {
-  const path = d === 'bigquery' ? name.split('.').map((p) => quoteIdent(d, p)).join('.') : quoteIdent(d, name);
-  return tableAlias ? `${tableAlias}.${path}` : path;
+/** A field reference: each dotted segment its own identifier (the engine's quoteFieldRef). */
+export const fieldRef = (d: Dialect, name: string): string => name.split('.').map((s) => ident(d, s)).join('.');
+
+/** The engine's field-type categories, case-sensitive, used where the engine decides by type. */
+const E_STRING = new Set(['STRING', 'VARCHAR', 'CHAR', 'TEXT', 'BPCHAR']);
+const E_NUMBER = new Set(['INTEGER', 'INT', 'BIGINT', 'SMALLINT', 'TINYINT', 'FLOAT', 'REAL', 'DOUBLE', 'DOUBLE PRECISION', 'NUMERIC', 'BIGNUMERIC', 'DECIMAL']);
+const E_DATE = new Set(['DATE', 'DATETIME', 'TIMESTAMP', 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMPTZ', 'TIMESTAMP_NTZ']);
+const E_TIME = new Set(['TIME', 'TIME WITH TIME ZONE', 'TIMETZ']);
+const isEngineString = (type: string) => E_STRING.has(type.trim().toUpperCase());
+const isOrderable = (type: string) => E_NUMBER.has(type) || E_STRING.has(type) || E_DATE.has(type) || E_TIME.has(type);
+
+export type JoinFn = 'STRING_AGG' | 'MAX' | 'MIN' | 'SUM' | 'AVG' | 'COUNT' | 'COUNT_DISTINCT' | 'ANY_VALUE';
+const JOIN_FNS: readonly string[] = ['STRING_AGG', 'MAX', 'MIN', 'SUM', 'AVG', 'COUNT', 'COUNT_DISTINCT', 'ANY_VALUE'];
+export const isJoinFn = (s: unknown): s is JoinFn => typeof s === 'string' && JOIN_FNS.includes(s);
+
+/** The roll-up of a field's own rows: ANY_VALUE becomes MAX on an orderable raw type (re-aggregation.ts:55-61). */
+export const leafFn = (fn: JoinFn, rawType: string): JoinFn => (fn === 'ANY_VALUE' && isOrderable(rawType) ? 'MAX' : fn);
+
+/** The roll-up of a child's value in its parent (re-aggregation.ts:17-39). */
+export const passFn = (fn: JoinFn): JoinFn => (fn === 'COUNT' || fn === 'COUNT_DISTINCT' ? 'SUM' : fn === 'ANY_VALUE' ? 'MAX' : fn);
+
+/** `ANY_VALUE(x)`; Athena spells it `arbitrary`. */
+export const anyValue = (d: Dialect, x: string): string => (d === 'athena' ? `arbitrary(${x})` : `ANY_VALUE(${x})`);
+
+const PERCENTILE: Partial<Record<AggFn, { q: string; k: number }>> = { P25: { q: '0.25', k: 25 }, P50: { q: '0.5', k: 50 }, P75: { q: '0.75', k: 75 }, P95: { q: '0.95', k: 95 } };
+
+/** A report-level aggregate over `x`, as the engine's renderAggregateExpression spells it (STRING_AGG here has no ORDER BY). */
+export function reportAggregate(d: Dialect, fn: AggFn, x: string): string {
+  const pct = PERCENTILE[fn];
+  if (pct) {
+    if (d === 'bigquery') return `APPROX_QUANTILES(${x}, 100)[OFFSET(${pct.k})]`;
+    if (d === 'athena') return `APPROX_PERCENTILE(CAST(${x} AS DOUBLE), ${pct.q})`;
+    return `PERCENTILE_CONT(${pct.q}) WITHIN GROUP (ORDER BY ${x})`;
+  }
+  switch (fn) {
+    case 'COUNT_DISTINCT': return `COUNT(DISTINCT ${x})`;
+    case 'ANY_VALUE': return anyValue(d, x);
+    case 'STRING_AGG': return {
+      bigquery: `STRING_AGG(CAST(${x} AS STRING), ', ')`,
+      athena: `array_join(array_agg(CAST(${x} AS VARCHAR)), ', ')`,
+      snowflake: `LISTAGG(CAST(${x} AS VARCHAR), ', ')`,
+      redshift: `LISTAGG(CAST(${x} AS VARCHAR), ', ')`,
+      databricks: `array_join(collect_list(CAST(${x} AS STRING)), ', ')`,
+    }[d];
+    default: return `${fn}(${x})`;
+  }
+}
+
+/** One aggregate over `x`, spelled as the engine's buildAggregation and buildStringAgg do (STRING_AGG is the ordered form). */
+export function aggregate(d: Dialect, fn: AggFn, x: string): string {
+  switch (fn) {
+    case 'STRING_AGG': return {
+      bigquery: `STRING_AGG(CAST(${x} AS STRING), ', ' ORDER BY CAST(${x} AS STRING))`,
+      athena: `ARRAY_JOIN(ARRAY_AGG(CAST(${x} AS VARCHAR) ORDER BY CAST(${x} AS VARCHAR)), ', ')`,
+      snowflake: `LISTAGG(CAST(${x} AS VARCHAR), ', ') WITHIN GROUP (ORDER BY ${x})`,
+      redshift: `LISTAGG(CAST(${x} AS VARCHAR), ', ') WITHIN GROUP (ORDER BY ${x})`,
+      databricks: `CONCAT_WS(', ', SORT_ARRAY(COLLECT_LIST(CAST(${x} AS STRING))))`,
+    }[d];
+    default: return reportAggregate(d, fn, x);
+  }
+}
+
+/** Whether a type is floating point, where NaN breaks an equality join (the engine's isFloatingPointType). */
+export const isFloat = (type: string): boolean => ['FLOAT', 'FLOAT64', 'REAL', 'DOUBLE', 'DOUBLE PRECISION'].includes(type.trim().toUpperCase());
+
+/** A join condition that matches NULL to NULL (and NaN to NaN where asked), as the engine's renderNullSafeJoinOn does. */
+export const nullSafeOn = (pairs: { left: string; right: string; nanSafe: boolean }[]): string =>
+  pairs.map(({ left: l, right: r, nanSafe }) => `((${l}) = (${r}) OR ((${l}) IS NULL AND (${r}) IS NULL)${nanSafe ? ` OR ((${l}) != (${l}) AND (${r}) != (${r}))` : ''})`).join(' AND ');
+
+/** `x` cut to the start of its calendar bucket, in `timeZone` when given. Throws on a unit or zone the backend would refuse. */
+export function dateTrunc(d: Dialect, x: string, unit: DateBucket, timeZone: string | undefined, type: string): string {
+  if (!(DATE_BUCKETS as readonly string[]).includes(unit)) throw new Error(`Unknown date bucket: ${String(unit)}`);
+  if (timeZone !== undefined && !isTimeZone(timeZone)) throw new Error(`Invalid time zone: ${timeZone}`);
+  const t = type.trim().toUpperCase();
+  const lower = unit.toLowerCase();
+  switch (d) {
+    case 'bigquery':
+      if (t === 'DATE') return `DATE_TRUNC(${x}, ${unit})`;
+      if (timeZone !== undefined && t === 'DATETIME') return `DATE_TRUNC(DATE(TIMESTAMP(${x}, '${timeZone}'), '${timeZone}'), ${unit})`;
+      return `DATE_TRUNC(${timeZone !== undefined ? `DATE(${x}, '${timeZone}')` : `DATE(${x})`}, ${unit})`;
+    case 'athena': return timeZone !== undefined ? `date_trunc('${lower}', (${x}) AT TIME ZONE '${timeZone}')` : `date_trunc('${lower}', ${x})`;
+    case 'snowflake': return timeZone !== undefined ? `DATE_TRUNC('${unit}', CONVERT_TIMEZONE('${timeZone}', ${x}))` : `DATE_TRUNC('${unit}', ${x})`;
+    case 'redshift': return timeZone !== undefined ? `DATE_TRUNC('${lower}', CONVERT_TIMEZONE('${timeZone}', ${x}))` : `DATE_TRUNC('${lower}', ${x})`;
+    case 'databricks': return timeZone !== undefined ? `DATE_TRUNC('${unit}', FROM_UTC_TIMESTAMP(${x}, '${timeZone}'))` : `DATE_TRUNC('${unit}', ${x})`;
+  }
 }
 
 type Scalar = string | number;
@@ -174,8 +256,10 @@ function relative(d: Dialect, col: string, p: RelativeDatePreset, type: string):
 }
 
 /** One complete filter as a SQL predicate on `col` (already a column reference). */
-export function renderFilter(d: Dialect, col: string, field: Field, f: ColumnFilter): string {
-  const t = toTraverseFilter(f, field);
+export const renderFilter = (d: Dialect, col: string, field: Field, f: ColumnFilter): string => renderTraverse(d, col, field, toTraverseFilter(f, field));
+
+/** A traverse filter as a SQL predicate on `col`; the list operators are kept for the day the grid offers them. */
+export function renderTraverse(d: Dialect, col: string, field: Field, t: TraverseFilter): string {
   const type = field.type.trim().toUpperCase();
   const cast = CAST_TYPES[d].has(type);
   /** A compared value, cast to the column type on date and time columns. */
@@ -208,7 +292,7 @@ export function renderFilter(d: Dialect, col: string, field: Field, f: ColumnFil
     case 'is_blank':
     case 'is_not_blank': {
       const blank = t.operator === 'is_blank';
-      if (field.category !== 'string') return `${col} IS ${blank ? '' : 'NOT '}NULL`;
+      if (!isEngineString(field.type)) return `${col} IS ${blank ? '' : 'NOT '}NULL`;
       return blank ? `(${col} IS NULL OR ${trimmed(d, col)} = '')` : `(${col} IS NOT NULL AND ${trimmed(d, col)} <> '')`;
     }
     case 'is_true': return `${col} = TRUE`;

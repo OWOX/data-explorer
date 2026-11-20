@@ -62,7 +62,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     const hops = joinTree(martId);
     const availableSources: AvailableSourceDto[] = hops.map((h) => {
       const t = byId.get(h.martId)!;
-      return { aliasPath: h.aliasPath, title: t.title, defaultAlias: t.title, depth: h.depth, dataMartId: t.id, relationshipId: h.edges.at(-1)!.id, isIncluded: true, isAccessibleForReporting: t.accessible, uniqueCountAvailability: t.fields.some((x) => x.isPrimaryKey) ? 'available' : 'no-primary-key', mainGrainMultiplication: 'none' };
+      return { aliasPath: h.aliasPath, title: t.title, defaultAlias: t.title, depth: h.depth, dataMartId: t.id, relationshipId: h.edges.at(-1)!.id, isIncluded: true, isAccessibleForReporting: t.accessible, uniqueCountAvailability: t.fields.some((x) => x.isPrimaryKey) ? 'available' : 'no-primary-key' };
     });
     const blendedFields: BlendedFieldDto[] = hops.flatMap((h) => {
       const t = byId.get(h.martId)!;
@@ -72,6 +72,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         // The backend always sends the post-join list: join-level config clamped to the effective type (here, the type's defaults).
         // The joined mart's own per-field list does not govern a blended column.
         postJoinAggregations: governedByType(x.type),
+        aggregateFunction: defaultJoinFunction(x.type),
       }));
     });
     const hiddenFieldNames = hops.flatMap((h) => byId.get(h.martId)!.fields.filter((x) => x.isHiddenForReporting).map((x) => blendedName(h.aliasPath, x.name)));
@@ -114,6 +115,8 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     return index;
   };
 
+  /** The backend's default join-level roll-up: SUM for numbers, MAX for dates and times, else STRING_AGG. */
+  const defaultJoinFunction = (type: string): string => { const c = categorizeFieldType(type); return c === 'number' ? 'SUM' : c === 'date' || c === 'time' ? 'MAX' : 'STRING_AGG'; };
   /** What the backend allows on a blended column: the effective type's defaults (the mock has no join-level overrides). */
   const governedByType = (type: string): string[] => allowedFunctions({ category: categorizeFieldType(type) });
   /** What the backend allows on a field of the mart itself: its own list, else the type's defaults. */

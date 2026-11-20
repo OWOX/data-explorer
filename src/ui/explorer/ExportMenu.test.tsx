@@ -719,24 +719,19 @@ test('a failure after the report exists closes the dialog and reports in a toast
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
 });
 
-const martCard = (title: string) => within(document.getElementById('band-marts')!).getByText(title).closest('article')!;
 const headingText = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!).join(' + ');
-/** A mart the main one can join is added to its grid first, so clicking the main card then promotes it; one it cannot join is reached through the search. */
+/** A card in the band is made main with its button (a click on a card only joins it or focuses it); one it cannot reach is reached through the search. */
 const toMart = async (title: string) => {
-  const main = headingText()!;
-  const card = within(document.getElementById('band-marts')!).queryByText(title)?.closest('article');
+  // A leaving card and a hover ghost can carry the same title: the card is the one that is neither.
+  const card = [...document.querySelectorAll<HTMLElement>('#band-marts article:not([data-ghost]):not([data-leaving])')].find((a) => a.querySelector('.dm-node-title')?.textContent === title);
   if (!card || card.classList.contains('dm-unjoinable')) {
     if (!screen.queryByRole('textbox', { name: 'Search data marts' })) await userEvent.click(screen.getByRole('button', { name: 'Search data marts' }));
     await userEvent.type(screen.getByRole('textbox', { name: 'Search data marts' }), `${title}{Enter}`);
     await waitFor(() => expect(headingText() === title || headingText()!.startsWith(`${title} + `)).toBe(true));
     return;
   }
-  fireEvent.click(martCard(title));
-  // A mart that comes back as main shows the joined marts it was left with.
-  const mainNow = () => headingText() === title || headingText()!.startsWith(`${title} + `);
-  await waitFor(() => expect(mainNow() || headingText() === `${main} + ${title}`).toBe(true));
-  if (!mainNow()) fireEvent.click(martCard(main));
-  await waitFor(() => expect(mainNow()).toBe(true));
+  await userEvent.click(within(card).getByRole('button', { name: 'Make main data mart' }));
+  await waitFor(() => expect(headingText() === title || headingText()!.startsWith(`${title} + `)).toBe(true));
 };
 
 test('leaving the mart and coming back keeps the export busy: no second export, and the outcome opens the sheet', async () => {
@@ -1355,13 +1350,14 @@ describe('Copy SQL', () => {
 });
 
 describe('Create Data Mart', () => {
-  const CITY = { name: 'customers__city', alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: 'customers', label: 'Customers', aliasPath: 'customers', originalName: 'city' } };
+  const CITY = { name: 'customers__city', alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: 'customers', label: 'Customers', aliasPath: 'customers', originalName: 'city', aggregateFunction: 'STRING_AGG' } };
   const SCHEMA = [{ name: 'id', alias: null, type: 'INTEGER', category: 'number', description: null, isPrimaryKey: false }, CITY] as Schema;
-  const SOURCES = [{ aliasPath: 'customers', martId: 'customers', label: 'Customers', depth: 1, fields: [CITY], uniqueCount: true, relationshipId: 'e1', mainGrainMultiplication: 'none' }] as unknown as JoinedSource[];
+  const SOURCES = [{ aliasPath: 'customers', martId: 'customers', label: 'Customers', depth: 1, fields: [CITY], uniqueCount: true, relationshipId: 'e1' }] as unknown as JoinedSource[];
   const EDGES = [{ id: 'e1', source: 'orders', target: 'customers', joins: [{ sourceField: 'customer_id', targetField: 'id' }] }] as Edge[];
   const TITLES = new Map([['orders', 'Orders'], ['customers', 'Customers']]);
+  const CUSTOMERS = [{ id: 'customers', title: 'Customers' }];
 
-  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; failAt?: string; deleteFails?: boolean; storageUnavailable?: boolean; run?: GridRun; sorts?: SortKey[]; ownSorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; schema?: Schema } = {}) {
+  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; run?: GridRun; sorts?: SortKey[]; ownSorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; schema?: Schema; failAt?: string; deleteFails?: boolean; storageUnavailable?: boolean; visible?: string[]; joinedMarts?: { id: string; title: string }[] } = {}) {
     const base = createMockCtx(demoFixtures({ sheets: 1 }), { latencyMs: 0 });
     const calls: string[] = [];
     const bodies: Record<string, unknown> = {};
@@ -1385,8 +1381,9 @@ describe('Create Data Mart', () => {
     };
     const storage = 'storage' in o ? o.storage : { id: 's1', type: 'GOOGLE_BIGQUERY' };
     const sources = 'sources' in o ? o.sources : SOURCES;
-    render(<AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={o.schema ?? SCHEMA} visible={['id', 'customers__city']} filters={[]} sorts={o.sorts ?? []} ownSorts={o.ownSorts ?? o.sorts ?? []} aggregation={o.aggregation} joinsFailed={o.joinsFailed} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} storageUnavailable={o.storageUnavailable} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>);
-    return { ctx, calls, bodies, open };
+    const ui = (marts: { id: string; title: string }[]) => <AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={o.schema ?? SCHEMA} visible={o.visible ?? ['id', 'customers__city']} filters={[]} sorts={o.sorts ?? []} ownSorts={o.ownSorts ?? o.sorts ?? []} aggregation={o.aggregation} joinsFailed={o.joinsFailed} joinedMarts={marts} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} storageUnavailable={o.storageUnavailable} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>;
+    const r = render(ui(o.joinedMarts ?? CUSTOMERS));
+    return { ctx, calls, bodies, open, setJoinedMarts: (m: { id: string; title: string }[]) => r.rerender(ui(m)) };
   }
   const item = () => screen.findByRole('menuitem', { name: 'Create Data Mart' });
   const openDialog = async () => {
@@ -1452,8 +1449,37 @@ describe('Create Data Mart', () => {
     expect(within(dlg).getByText(/references Orders and the joined data mart the grid uses/)).toBeInTheDocument();
     const sql = within(dlg).getByLabelText('SQL') as HTMLTextAreaElement;
     expect(sql.value).toContain('FROM [Orders](dm:orders)');
-    expect(sql.value).toContain('LEFT JOIN customers_dm ON');
+    expect(sql.value).toContain('LEFT JOIN customers_owox ON');
     expect(sql.readOnly).toBe(true);
+  });
+
+  describe('the note counts the selected joined marts', () => {
+    const note = (dlg: HTMLElement) => dlg.querySelector('p.text-xs')!.textContent ?? '';
+    test('a grouped grid with one joined mart and two functions on its fields says "the joined data mart"', async () => {
+      mart({ aggregation: { aggregations: [{ column: 'customers__city', function: 'COUNT_DISTINCT' }, { column: 'customers__city', function: 'MIN' }], dateTrunc: [] } });
+      const dlg = await openDialog();
+      await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Include grouping' }));
+      const sql = (within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value;
+      expect(sql.match(/\nLEFT JOIN /g)!.length).toBeGreaterThan(1);
+      expect(note(dlg)).toContain('references Orders and the joined data mart the grid uses');
+      expect(note(dlg)).not.toMatch(/\d joined/);
+    });
+    test('the list is fixed when the dialog opens', async () => {
+      const t = mart();
+      const dlg = await openDialog();
+      t.setJoinedMarts([{ id: 'customers', title: 'Customers' }, { id: 'regions', title: 'Regions' }]);
+      expect(note(dlg)).toContain('references Orders and the joined data mart the grid uses');
+    });
+    test('two selected joined marts say "the 2 joined data marts"', async () => {
+      mart({ joinedMarts: [{ id: 'customers', title: 'Customers' }, { id: 'regions', title: 'Regions' }] });
+      expect(note(await openDialog())).toContain('references Orders and the 2 joined data marts the grid uses');
+    });
+    test('no joined marts drops the phrase', async () => {
+      mart({ joinedMarts: [] });
+      const t = note(await openDialog());
+      expect(t).toContain('references Orders, with its columns');
+      expect(t).not.toContain('joined');
+    });
   });
 
   test('the sorting box is off by default and the SQL has no ORDER BY', async () => {
@@ -1462,21 +1488,21 @@ describe('Create Data Mart', () => {
     const box = within(dlg).getByRole('checkbox', { name: 'Include sorting' });
     expect(box).not.toBeChecked();
     expect(box).toBeEnabled();
-    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).not.toContain('ORDER BY');
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).not.toMatch(/\nORDER BY/);
     await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
     await screen.findByRole('link', { name: /Open/ });
-    expect(JSON.stringify(t.bodies)).not.toContain('ORDER BY');
+    expect(JSON.stringify(t.bodies)).not.toContain('\\nORDER BY');
   });
 
   test('checking it puts ORDER BY in the preview and in the created SQL', async () => {
     const t = mart({ sorts: [{ field: 'id', direction: 'desc' }] });
     const dlg = await openDialog();
     await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Include sorting' }));
-    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).toContain('ORDER BY base_dm.`id` DESC');
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).toContain('ORDER BY base_owox.id DESC');
     await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
     await screen.findByRole('link', { name: /Open/ });
     const def = Object.entries(t.bodies).find(([k]) => k.includes('/definition'))?.[1] as { definition: { sqlQuery: string } } | undefined;
-    expect(def?.definition.sqlQuery).toContain('ORDER BY base_dm.`id` DESC');
+    expect(def?.definition.sqlQuery).toContain('ORDER BY base_owox.id DESC');
   });
 
   test('an implicit grid sort is not an own sort: the box stays disabled and no ORDER BY goes out', async () => {
@@ -1484,7 +1510,7 @@ describe('Create Data Mart', () => {
     const dlg = await openDialog();
     expect(within(dlg).getByRole('checkbox', { name: /Include sorting/ })).toBeDisabled();
     expect(within(dlg).getByText("You haven't set a sort")).toBeInTheDocument();
-    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).not.toContain('ORDER BY');
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).not.toMatch(/\nORDER BY/);
   });
 
   test('with no sorting the box is disabled with a hint', async () => {
@@ -1502,16 +1528,103 @@ describe('Create Data Mart', () => {
     expect(within(dlg).getByText(/Calculated field "Margin" can't be used in a data mart/)).toBeInTheDocument();
   });
 
-  test('a grouped grid adds the note about ungrouped rows', async () => {
-    mart({ aggregation: { aggregations: [{ column: 'id', function: 'SUM' }], dateTrunc: [] } });
+  test('grouping is unchecked by default and the created SQL has no outer GROUP BY', async () => {
+    const t = mart({ aggregation: { aggregations: [{ column: 'id', function: 'SUM' }], dateTrunc: [] } });
     const dlg = await openDialog();
-    expect(within(dlg).getByText(/The grid groups its rows; the data mart keeps them ungrouped\./)).toBeInTheDocument();
+    const box = within(dlg).getByRole('checkbox', { name: 'Include grouping' });
+    expect(box).not.toBeChecked();
+    expect(box).toBeEnabled();
+    const sql = (within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value;
+    expect(sql).not.toMatch(/\nGROUP BY/);
+    expect(sql).toContain('base_owox.id');
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    await screen.findByRole('link', { name: /Open/ });
+    const def = Object.entries(t.bodies).find(([k]) => k.includes('/definition'))?.[1] as { definition: { sqlQuery: string } } | undefined;
+    expect(def?.definition.sqlQuery).not.toMatch(/\nGROUP BY/);
   });
 
-  test('an ungrouped grid has no such note', async () => {
+  test('checking grouping previews and creates the grouped SQL', async () => {
+    const t = mart({ aggregation: { aggregations: [{ column: 'id', function: 'SUM' }], dateTrunc: [] } });
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Include grouping' }));
+    const sql = (within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value;
+    expect(sql).toContain('SUM(base_owox.id) AS id__sum');
+    expect(sql).toContain('GROUP BY customers_owox.customers__city');
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    await screen.findByRole('link', { name: /Open/ });
+    const def = Object.entries(t.bodies).find(([k]) => k.includes('/definition'))?.[1] as { definition: { sqlQuery: string } } | undefined;
+    expect(def?.definition.sqlQuery).toContain('GROUP BY customers_owox.customers__city');
+  });
+
+  test('the grouping box is disabled with a hint on an ungrouped grid', async () => {
     mart();
     const dlg = await openDialog();
-    expect(within(dlg).queryByText(/keeps them ungrouped/)).toBeNull();
+    expect(within(dlg).getByRole('checkbox', { name: /Include grouping/ })).toBeDisabled();
+    expect(within(dlg).getByText("The grid isn't grouped")).toBeInTheDocument();
+    expect(within(dlg).queryByText(/The grid groups its rows/)).toBeNull();
+  });
+
+  test('a grouped-only reason disables the grouping box and leaves the item enabled', async () => {
+    mart({ aggregation: { aggregations: [{ column: 'customers__city', function: 'COUNT' }, { column: 'customers__city', function: 'COUNT_DISTINCT' }], dateTrunc: [] } });
+    const dlg = await openDialog();
+    expect(within(dlg).getByRole('checkbox', { name: /Include grouping/ })).toBeDisabled();
+    expect(within(dlg).getByText(/Count and Count Unique together on "customers__city"/)).toBeInTheDocument();
+  });
+
+  test('the ungrouped note shows while grouping is unchecked and goes when it is checked', async () => {
+    mart({ aggregation: { aggregations: [{ column: 'id', function: 'SUM' }], dateTrunc: [] } });
+    const dlg = await openDialog();
+    expect(within(dlg).getByText('The grid groups its rows; the data mart keeps them ungrouped, so the tool that reads it can group them.')).toBeInTheDocument();
+    await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Include grouping' }));
+    expect(within(dlg).queryByText(/The grid groups its rows/)).toBeNull();
+  });
+
+  test('a sort on an aggregated column is left out of the ungrouped variant', async () => {
+    mart({ aggregation: { aggregations: [{ column: 'id', function: 'SUM' }], dateTrunc: [] }, ownSorts: [{ field: 'id', direction: 'desc' }] });
+    const dlg = await openDialog();
+    expect(within(dlg).getByRole('checkbox', { name: /Include sorting/ })).toBeDisabled();
+    expect(within(dlg).getByText('Your sorts are on grouped columns')).toBeInTheDocument();
+    await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Include grouping' }));
+    expect(within(dlg).getByRole('checkbox', { name: /Include sorting/ })).toBeEnabled();
+  });
+
+  const CREATED = { name: 'created_at', alias: null, type: 'DATE', category: 'date', description: null, isPrimaryKey: false };
+  const SALES = { name: 'amount', alias: null, type: 'INTEGER', category: 'number', description: null, isPrimaryKey: false };
+
+  test('with grouping off a sort on a date-bucketed column is kept as the raw column', async () => {
+    mart({ schema: [...SCHEMA, CREATED, SALES] as Schema, visible: ['created_at', 'amount'], aggregation: { aggregations: [{ column: 'amount', function: 'SUM' }], dateTrunc: [{ column: 'created_at', unit: 'MONTH' }] }, ownSorts: [{ field: 'created_at', direction: 'desc' }] });
+    const dlg = await openDialog();
+    const box = within(dlg).getByRole('checkbox', { name: 'Include sorting' });
+    expect(box).toBeEnabled();
+    await userEvent.click(box);
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).toContain('ORDER BY base_owox.created_at DESC');
+  });
+
+  test('with grouping off only the sorts on aggregated columns are dropped', async () => {
+    mart({ schema: [...SCHEMA, CREATED, SALES] as Schema, visible: ['created_at', 'amount'], aggregation: { aggregations: [{ column: 'amount', function: 'SUM' }], dateTrunc: [] }, ownSorts: [{ field: 'amount', direction: 'asc' }, { field: 'created_at', direction: 'desc' }] });
+    const dlg = await openDialog();
+    const box = within(dlg).getByRole('checkbox', { name: 'Include sorting' });
+    expect(box).toBeEnabled();
+    await userEvent.click(box);
+    const sql = (within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value;
+    expect(sql).toContain('ORDER BY base_owox.created_at DESC');
+    expect(sql).not.toContain('base_owox.amount ASC');
+  });
+
+  test('a sorting box that gets disabled is unchecked and stays so when it is enabled again', async () => {
+    mart({ aggregation: { aggregations: [{ column: 'id', function: 'SUM' }], dateTrunc: [] }, ownSorts: [{ field: 'id', direction: 'desc' }] });
+    const dlg = await openDialog();
+    const grouping = within(dlg).getByRole('checkbox', { name: 'Include grouping' });
+    await userEvent.click(grouping);
+    const sorting = within(dlg).getByRole('checkbox', { name: /Include sorting/ });
+    await userEvent.click(sorting);
+    expect(sorting).toBeChecked();
+    await userEvent.click(grouping);
+    expect(sorting).toBeDisabled();
+    await userEvent.click(grouping);
+    expect(sorting).toBeEnabled();
+    expect(sorting).not.toBeChecked();
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).not.toMatch(/\nORDER BY/);
   });
 
   test('Create runs the calls and links to the new mart', async () => {
@@ -1586,22 +1699,6 @@ describe('Create Data Mart', () => {
     expect(alert).not.toHaveTextContent('draft');
     expect(screen.getByRole('link', { name: 'Open the data mart' })).toHaveAttribute('href', martAppUrl(t.ctx.projectId, 'mock-mart-1'));
     expect(screen.queryByRole('button', { name: 'Delete the draft' })).toBeNull();
-  });
-
-  test('the dialog names the joined marts from the builder', async () => {
-    mart();
-    const dlg = await openDialog();
-    expect(within(dlg).getByText(/references Orders and the joined data mart the grid uses/)).toBeInTheDocument();
-  });
-
-  test('the dialog notes repeated rows only when a joined mart multiplies the grain', async () => {
-    mart();
-    expect(within(await openDialog()).queryByText(/rows can repeat/)).toBeNull();
-  });
-
-  test('the dialog notes repeated rows for a multiplying join', async () => {
-    mart({ sources: SOURCES.map((s) => ({ ...s, mainGrainMultiplication: 'multiplies' as const })) });
-    expect(within(await openDialog()).getByText(/several rows per row here, so rows can repeat/)).toBeInTheDocument();
   });
 
   test('an unavailable storage has its own reason once the model is loaded', async () => {

@@ -65,7 +65,7 @@ test('blendable-schema lists the marts an order joins to, with their fields as b
   const dto = await createMockCtx(demoFixtures()).owox.getJson<BlendableSchemaDto>('/api/data-marts/orders/blendable-schema');
   const sources = dto.availableSources!;
   expect(sources.filter((s) => s.depth === 1).map((s) => s.aliasPath).sort()).toEqual(['customers', 'products', 'stores']);
-  expect(sources.every((s) => s.isIncluded && s.isAccessibleForReporting && s.mainGrainMultiplication === 'none')).toBe(true);
+  expect(sources.every((s) => s.isIncluded && s.isAccessibleForReporting)).toBe(true);
   // Countries is reached twice, through customers and through stores: two sources, told apart by their alias path.
   expect(sources.filter((s) => s.dataMartId === 'countries').map((s) => s.aliasPath).sort()).toEqual(['customers.countries', 'stores.countries']);
   const names = dto.blendedFields!.map((b) => b.name);
