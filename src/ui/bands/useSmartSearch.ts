@@ -6,7 +6,7 @@ import { pickModels } from '../../search/ai';
 import { MIN_QUERY, queryProblem, searchEndpoint, type SearchHits } from '../../search/endpoint';
 import { reportSkippedMessage, reportToGrid, type ReportDto } from '../../search/report-load';
 import { buildAdhocView, findAdhocMart } from '../../search/run';
-import { deepEqual, sourceOfModel, useServices, useStore, type GridState } from '../../state/store';
+import { sourceOfModel, useServices, useStore, type GridState } from '../../state/store';
 import { defaultColumns } from '../explorer/useMartRows';
 
 /** How long typing must pause before the search runs. */
@@ -52,8 +52,8 @@ export function useSmartSearch(model: Model) {
   // Hidden until the stored choice has been read, so a member who dismissed it never sees it flash.
   const [hintDismissed, setHintDismissed] = useState(true);
   const aiConfigured = useMemo(() => pickModels(ctx) !== null, [ctx]);
-  const latest = useRef({ selection: state.selection, grids: state.grids, history: state.history, model });
-  useEffect(() => { latest.current = { selection: state.selection, grids: state.grids, history: state.history, model }; });
+  const latest = useRef({ selection: state.selection, model });
+  useEffect(() => { latest.current = { selection: state.selection, model }; });
   const entry = useRef<Entry | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const picking = useRef<{ ctl: AbortController; query: string; kind: 'adhoc' | 'other' } | null>(null);
@@ -89,7 +89,6 @@ export function useSmartSearch(model: Model) {
         if (!aiConfigured) return { hits, martId: fallback };
         const adhoc = await findAdhocMart(deps, query, hits);
         if (ctl.signal.aborted) return null;
-        setHighlighted(null);
         setFound((f) => (f && f.query === query ? { ...f, martId: adhoc.martId, pending: false } : f));
         return { hits, martId: adhoc.martId };
       } finally {
@@ -182,23 +181,15 @@ export function useSmartSearch(model: Model) {
       const first: GridState = { columns: defaultColumns(native), filters: {}, sorts: null, limit: PAGE_SIZE };
       dispatch({ type: 'smartFound', query, ids: idsWith(hits, martId) });
       const selection = { sourceKey: keepSource(martId), martId, record: null };
-      // A mart that is already open in its default view makes the setMarts below a no-op with no history entry. Then the AI's
-      // grid is the step Undo has to take back, so it goes in as an edit.
-      // Mirrors the reducer's setMarts rule (store.tsx): it adds no history entry when the selection and the grid are both unchanged.
-      const noHistoryStep = JSON.stringify(selection) === JSON.stringify(latest.current.selection)
-        && JSON.stringify({ [martId]: latest.current.grids[martId] ?? null }) === JSON.stringify({ [martId]: first });
-      dispatch({ type: 'setMarts', selection, grids: { [martId]: first } });
+      // Always a history entry, so one Undo takes back the pick and the AI's grid together, even when the mart was already open.
+      dispatch({ type: 'setMarts', selection, grids: { [martId]: first }, always: true });
       if (!aiConfigured) return;
       setBuilding(true);
       const view = await buildAdhocView({ ctx, model: latest.current.model, schemas, signal: ctl.signal, timeoutMs: aiTimeoutMs }, query, martId);
       if (ctl.signal.aborted) return;
-      if (view.grid) {
-        // A member who edited the grid, or moved elsewhere, meanwhile keeps what they did.
-        const { grids, selection } = latest.current;
-        // No history entry since the pick means setMarts changed nothing, so the AI grid is the step Undo takes back.
-        const unchanged = noHistoryStep;
-        if (deepEqual(grids[martId] ?? null, first) && selection.martId === martId) dispatch({ type: unchanged ? 'editGrid' : 'saveGrid', martId, grid: view.grid });
-      } else if (view.ai === 'unavailable') setNotice("AI couldn't set up the view. Showing the default view.");
+      // The reducer drops the fill when the member edited the grid or moved to another mart meanwhile.
+      if (view.grid) dispatch({ type: 'fillGrid', martId, expect: first, grid: view.grid });
+      else if (view.ai === 'unavailable') setNotice("AI couldn't set up the view. Showing the default view.");
     } finally { finishPick(ctl); }
   };
 

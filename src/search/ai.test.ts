@@ -88,6 +88,19 @@ describe('createAiRun', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  test('the retry on fast gets its own share of the budget, not the whole rest', async () => {
+    vi.useFakeTimers();
+    try {
+      const reasoning: AiModel = { doGenerate: async () => { throw new Error('down'); } };
+      const fast: AiModel = { doGenerate: () => new Promise(() => {}) };
+      const answer = createAiRun({ fast, reasoning }, live(), 1000).ask('fields', 's', 'u');
+      const settled = answer.then(() => 'ok', (e: unknown) => e);
+      // reasoning fails at once, so nearly the whole 1000 ms is left; the retry is still capped at the 500 ms share
+      await vi.advanceTimersByTimeAsync(500);
+      expect(await settled).toBeInstanceOf(AiUnavailable);
+    } finally { vi.useRealTimers(); }
+  });
+
   test('temperature goes to the fast model only', async () => {
     const fast = textModel('{}');
     const reasoning = textModel('{}');

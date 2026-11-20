@@ -11,9 +11,10 @@ const name = f('name', 'STRING', 'string');
 const amount = f('amount', 'NUMERIC', 'number');
 const day = f('day', 'DATE', 'date');
 const stamp = f('stamp', 'TIMESTAMP', 'date');
+const clock = f('clock', 'TIME', 'time');
 const paid = f('paid', 'BOOLEAN', 'boolean');
 const country = f('customers__country_code', 'STRING', 'string', { joined: { martId: 'customers', label: 'Customers', aliasPath: 'customers' } });
-const schema: Schema = [name, amount, day, stamp, paid, country];
+const schema: Schema = [name, amount, day, stamp, clock, paid, country];
 
 const none: ReportSkipped = { columns: 0, filters: 0, sorts: 0, aggregations: 0, slices: 0, having: 0, uniqueCount: false };
 const grid = (columns: string[], filters: ColumnFilter[], extra: Partial<GridState> = {}): GridState => ({ columns, filters: Object.fromEntries(filters.map((x) => [x.field, x])), sorts: null, limit: PAGE_SIZE, ...extra });
@@ -42,6 +43,13 @@ describe('round trip with buildReportPayload', () => {
     expect(roundTrip(between)).toEqual(between);
     const rel = grid(['stamp'], [{ field: 'stamp', op: 'relative', value: { kind: 'last_n_days', n: 7 } }]);
     expect(roundTrip(rel)).toEqual(rel);
+  });
+
+  test('a TIME field keeps before and after', () => {
+    const g = grid(['clock'], [{ field: 'clock', op: 'before', value: '10:00:00' }]);
+    expect(roundTrip(g)).toEqual(g);
+    const a = grid(['clock'], [{ field: 'clock', op: 'after', value: '10:00:00' }]);
+    expect(roundTrip(a)).toEqual(a);
   });
 
   test('a grouped grid with an aggregation and a month bucket', () => {
@@ -105,6 +113,22 @@ describe('reportToGrid', () => {
     expect(run([])).toBe(false);
     expect(run(false)).toBe(false);
     expect(run(null)).toBe(false);
+  });
+
+  test('an invalid bucket time zone is dropped and the rule kept', () => {
+    const r = reportToGrid(rep({ columnConfig: ['stamp', 'amount'], dateTruncConfig: [{ column: 'stamp', unit: 'MONTH', timeZone: 'not a zone!' }] }), schema, schema);
+    expect(r.grid?.dateTrunc).toEqual([{ column: 'stamp', unit: 'MONTH' }]);
+  });
+
+  test('a relative preset is rebuilt from its kind and n only', () => {
+    const r = reportToGrid(rep({ filterConfig: [{ column: 'stamp', operator: 'relative_date', value: { kind: 'last_n_days', n: 7, extra: 'x' } }] }), schema, schema);
+    expect(r.grid?.filters.stamp?.value).toEqual({ kind: 'last_n_days', n: 7 });
+  });
+
+  test('a repeated sort on one field keeps the first', () => {
+    const r = reportToGrid(rep({ sortConfig: [{ column: 'amount', direction: 'desc' }, { column: 'amount', direction: 'asc' }] }), schema, schema);
+    expect(r.grid?.sorts).toEqual([{ field: 'amount', direction: 'desc' }]);
+    expect(r.skipped.sorts).toBe(1);
   });
 
   test('a second filter on a column is skipped', () => {

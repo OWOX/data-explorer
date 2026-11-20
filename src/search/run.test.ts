@@ -71,6 +71,25 @@ describe('findAdhocMart', () => {
     expect(t.doGenerate).not.toHaveBeenCalled();
   });
 
+  test('a newer query aborts an older call 1: it returns the fallback without using its model answer', async () => {
+    let release: (() => void) | undefined;
+    const t = setup({ answers: () => ({ ids: ['products'] }) });
+    const inner = t.ctx.credentials!.ai!.fast!.doGenerate;
+    t.ctx.credentials!.ai!.fast!.doGenerate = (o) => new Promise((resolve, reject) => {
+      o.abortSignal?.addEventListener('abort', () => reject(new Error('aborted')));
+      release = () => void inner(o).then(resolve, reject);
+    });
+    const first = new AbortController();
+    const older = findAdhocMart({ ...t.deps, signal: first.signal }, 'old', hits(['orders']));
+    const newer = new AbortController();
+    const newest = findAdhocMart({ ...t.deps, signal: newer.signal }, 'new', hits(['customers']));
+    await vi.waitFor(() => expect(release).toBeDefined());
+    first.abort();
+    expect(await older).toEqual({ martId: 'orders', ai: 'unavailable' });
+    release!();
+    expect(await newest).toEqual({ martId: 'products', ai: 'used' });
+  });
+
   test('a model that never answers is unavailable after the timeout', async () => {
     const t = setup({});
     t.ctx.credentials!.ai!.fast!.doGenerate = () => new Promise(() => {});

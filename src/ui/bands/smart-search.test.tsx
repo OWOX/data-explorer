@@ -449,6 +449,40 @@ describe('the dropdown', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
   });
 
+  test('the AI grid lands with an instant answer on a mart that is already open, and one Undo returns to before the pick', async () => {
+    const ai = spyAi();
+    setup({ wrap: ai.withAi }).view();
+    await ready();
+    const u = user();
+    await typeIn(u, 'paid orders last month');
+    await waitFor(() => expect(rowsText().at(-1)).toMatch(/Orders/));
+    await u.keyboard('{Enter}');
+    await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('dm-ctl-on'));
+    await undo();
+    await waitFor(() => expect(within(data()).queryByLabelText('Filter status')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+  });
+
+  test('a highlighted report row stays highlighted when call 1 lands, and Enter picks the report, not the ad-hoc run', async () => {
+    let release: (() => void) | undefined;
+    const ai = spyAi((task) => (task === 'discover' ? new Promise<void>((r) => { release = r; }) : Promise.resolve()));
+    setup({ wrap: ai.withAi }).view();
+    await ready();
+    const u = user();
+    const box = await typeIn(u, 'paid orders');
+    await waitFor(() => expect(release).toBeDefined());
+    await waitFor(() => expect(rowsText()[0]).toMatch(/Paid orders by month/));
+    await u.keyboard('{ArrowDown}');
+    expect(options()[0]).toHaveAttribute('aria-selected', 'true');
+    release!();
+    await waitFor(() => expect(options().at(-1)).not.toHaveTextContent(/pending|Looking/i));
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(box).toHaveAttribute('aria-activedescendant', options()[0]!.id);
+    await u.keyboard('{Enter}');
+    await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('dm-ctl-on'));
+    expect(ai.tasks).not.toContain('fields');
+  });
+
   test('a grid edit made before the AI answers keeps the edit', async () => {
     let answer: (() => void) | undefined;
     const ai = spyAi((task) => (task === 'fields' ? new Promise<void>((r) => { answer = r; }) : Promise.resolve()));
@@ -612,7 +646,7 @@ describe('the dropdown', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
   });
 
-  test('Escape twice while call 1 is pending does not drop a picked ad-hoc run', async () => {
+  test('Escape after Enter while call 1 is pending does not drop a picked ad-hoc run', async () => {
     let release: (() => void) | undefined;
     const ai = spyAi((task) => (task === 'discover' ? new Promise<void>((r) => { release = r; }) : Promise.resolve()));
     setup({ wrap: ai.withAi }).view();
@@ -626,7 +660,7 @@ describe('the dropdown', () => {
     await waitFor(() => expect(headings()).toBe('Customers'));
   });
 
-  test('a new answer clears the highlight of a stale row, and a stale row is picked with its own query', async () => {
+  test('a new answer clears the highlight of a stale row', async () => {
     let release: (() => void) | undefined;
     const t = setup({ ai: false, wrap: (c) => ({ ...c, owox: { ...c.owox, getJson: ((path: string, q?: Record<string, string>) => {
       if (path === '/api/search' && q?.q === 'orderss') return new Promise((res) => { release = () => res(c.owox.getJson(path, q)); });

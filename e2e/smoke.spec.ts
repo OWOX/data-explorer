@@ -122,7 +122,7 @@ test('search dropdown: reports first, then marts, then the ad-hoc row', async ({
   await expect(box).toHaveAttribute('aria-expanded', 'true');
 });
 
-test('picking a report from the dropdown opens its mart with the report\'s filter and sort', async ({ page }) => {
+test('picking a report from the dropdown opens its mart with the report\'s filter', async ({ page }) => {
   await ordersGrid(page);
   await search(page, 'who are our buyers');
   await expect(heading(page)).toHaveText(['Customers']);

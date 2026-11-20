@@ -94,7 +94,7 @@ export function createAiRun(models: Models, signal: AbortSignal, totalMs = AI_TI
         return await call(first, system, user, own, first === models.reasoning ? undefined : 0);
       } catch (e) {
         if (signal.aborted || first !== models.reasoning || !models.fast || models.fast === first) throw e;
-        return call(models.fast, system, user, deadline - Date.now(), 0);
+        return call(models.fast, system, user, Math.min(deadline - Date.now(), totalMs * SHARE[role]), 0);
       }
     },
   };

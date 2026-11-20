@@ -1,7 +1,7 @@
 import { PAGE_SIZE } from '../config';
 import { isComplete, type ColumnFilter, type FilterValue } from '../filters/build';
 import { isDateTimeField, operatorsFor, RELATIVE_PRESETS, type OpId } from '../filters/catalogue';
-import { AGGREGATE_FUNCTIONS, DATE_BUCKETS, type AggFn, type AggregationRule, type DateBucket, type DateTruncRule } from '../model/aggregation';
+import { AGGREGATE_FUNCTIONS, DATE_BUCKETS, isTimeZone, type AggFn, type AggregationRule, type DateBucket, type DateTruncRule } from '../model/aggregation';
 import { isDayType } from '../model/field-category';
 import type { SortKey } from '../model/sort';
 import type { Field, Schema } from '../model/types';
@@ -31,8 +31,8 @@ const DATETIME_END = /^(\d{4}-\d{2}-\d{2}) 23:59:59$/;
 
 function opFor(operator: string, field: Field): OpId {
   if (operator === 'relative_date') return 'relative';
-  if (field.category === 'date') {
-    if (operator === 'eq' && isDayType(field.type)) return 'on';
+  if (field.category === 'date' || field.category === 'time') {
+    if (operator === 'eq' && field.category === 'date' && isDayType(field.type)) return 'on';
     if (operator === 'lt') return 'before';
     if (operator === 'gt') return 'after';
   }
@@ -62,7 +62,7 @@ function valueFor(kind: string, value: unknown, field: Field): { ok: true; value
     }
     case 'relative': {
       if (!isObject(value) || typeof value.kind !== 'string' || !RELATIVE_PRESETS.some((p) => p.kind === value.kind)) return { ok: false };
-      return { ok: true, value: value as RelativeDatePreset };
+      return { ok: true, value: { kind: value.kind, ...(typeof value.n === 'number' ? { n: value.n } : {}) } as RelativeDatePreset };
     }
     default: return { ok: false };
   }
@@ -114,14 +114,18 @@ export function reportToGrid(report: ReportDto, schema: Schema, nativeSchema: Sc
     if (isObject(rule) && rule.function) { skipped.having++; continue; }
     const field = isObject(rule) && typeof rule.column === 'string' ? byName.get(rule.column) : undefined;
     const filter = field ? fromTraverseFilter(rule, field) : null;
-    if (!filter || filters[filter.field]) { skipped.filters++; continue; }
+    if (!filter || Object.hasOwn(filters, filter.field)) { skipped.filters++; continue; }
     filters[filter.field] = filter;
   }
 
   const sorts: SortKey[] = [];
+  const sorted = new Set<string>();
   for (const s of asArray(report.sortConfig)) {
-    if (isObject(s) && typeof s.column === 'string' && (s.direction === 'asc' || s.direction === 'desc')) sorts.push({ field: s.column, direction: s.direction });
-    else skipped.sorts++;
+    if (isObject(s) && typeof s.column === 'string' && (s.direction === 'asc' || s.direction === 'desc')) {
+      if (sorted.has(s.column)) { skipped.sorts++; continue; }
+      sorted.add(s.column);
+      sorts.push({ field: s.column, direction: s.direction });
+    } else skipped.sorts++;
   }
 
   const aggregations: AggregationRule[] = [];
@@ -132,7 +136,7 @@ export function reportToGrid(report: ReportDto, schema: Schema, nativeSchema: Sc
   const dateTrunc: DateTruncRule[] = [];
   for (const d of asArray(report.dateTruncConfig)) {
     if (isObject(d) && typeof d.column === 'string' && (DATE_BUCKETS as readonly string[]).includes(d.unit as string)) {
-      dateTrunc.push({ column: d.column, unit: d.unit as DateBucket, ...(typeof d.timeZone === 'string' ? { timeZone: d.timeZone } : {}) });
+      dateTrunc.push({ column: d.column, unit: d.unit as DateBucket, ...(isTimeZone(d.timeZone) ? { timeZone: d.timeZone } : {}) });
     } else skipped.aggregations++;
   }
 

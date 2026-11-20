@@ -67,7 +67,9 @@ export type Action =
   /** Narrow the Data Marts band to these storages (null: all). Not a selection change, so no history entry. */
   | { type: 'setStorages'; ids: string[] | null }
   /** The main data mart, the joined ones (their columns in the main grid) and the grids they leave behind change in one step Undo covers. */
-  | { type: 'setMarts'; selection: Selection; grids: Record<string, GridState> }
+  | { type: 'setMarts'; selection: Selection; grids: Record<string, GridState>; always?: true }
+  /** Stores a grid with no history entry, but only while the mart is still the main one and its grid is still `expect`. A late answer never overwrites what the member did meanwhile. */
+  | { type: 'fillGrid'; martId: string; expect: GridState; grid: GridState }
   | { type: 'saveGrid'; martId: string; grid: GridState }
   /** The member changed the grid (a filter, a sort, an aggregation, a column shown or hidden, Reset): stored like `saveGrid`, and one step Undo covers. */
   | { type: 'editGrid'; martId: string; grid: GridState }
@@ -157,8 +159,12 @@ export function reducer(state: State, a: Action): State {
     case 'setStorages': return { ...state, storageIds: a.ids };
     case 'setMarts': {
       const before = valuesOf(state.grids, Object.keys(a.grids));
-      if (JSON.stringify(a.selection) === JSON.stringify(cur) && JSON.stringify(before) === JSON.stringify(a.grids)) return state;
+      if (!a.always && JSON.stringify(a.selection) === JSON.stringify(cur) && JSON.stringify(before) === JSON.stringify(a.grids)) return state;
       return { ...state, selection: a.selection, grids: { ...state.grids, ...a.grids }, history: [...state.history, { ...cur, grids: before }].slice(-HISTORY_LIMIT), future: [] };
+    }
+    case 'fillGrid': {
+      if (cur.martId !== a.martId || !deepEqual(state.grids[a.martId] ?? null, a.expect)) return state;
+      return { ...state, grids: { ...state.grids, [a.martId]: a.grid } };
     }
     case 'editGrid': {
       const before = state.grids[a.martId] ?? null;
