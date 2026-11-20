@@ -6,7 +6,12 @@ import type { Field } from '../model/types';
 import { AppServices, StoreProvider } from '../state/store';
 import { ChartsBody } from './ChartsBody';
 import * as fields from './fields';
+import * as settings from './settings';
 
+vi.mock('./settings', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./settings')>();
+  return { ...real, resolveCharts: vi.fn(real.resolveCharts) };
+});
 vi.mock('./fields', async (importOriginal) => {
   const real = await importOriginal<typeof import('./fields')>();
   return { ...real, chartFields: vi.fn(real.chartFields) };
@@ -14,7 +19,7 @@ vi.mock('./fields', async (importOriginal) => {
 
 const f = (name: string, category: Field['category']): Field => ({ name, alias: null, type: category === 'number' ? 'FLOAT' : 'STRING', category, description: null, isPrimaryKey: false });
 
-test('a resize (only scrollerWidth changes) does not rebuild the chart fields', () => {
+test('a resize (only scrollerWidth changes) rebuilds neither the chart fields nor the resolved choices', () => {
   const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const props = {
     martId: 'orders', schema: [f('amount', 'number')], shown: ['amount'], agg: { aggregations: [], dateTrunc: [] }, filter: [], groups: [{ id: 'orders', path: '', span: 1, title: 'Orders' }],
@@ -25,7 +30,11 @@ test('a resize (only scrollerWidth changes) does not rebuild the chart fields', 
   const spy = vi.mocked(fields.chartFields);
   const after = spy.mock.calls.length;
   expect(after).toBe(1);
+  const resolve = vi.mocked(settings.resolveCharts);
+  const resolved = resolve.mock.calls.length;
+  expect(resolved).toBeGreaterThanOrEqual(1);
   rerender(ui(600));
   rerender(ui(700));
   expect(spy.mock.calls.length).toBe(after);
+  expect(resolve.mock.calls.length).toBe(resolved);
 });

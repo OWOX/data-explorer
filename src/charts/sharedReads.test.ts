@@ -60,12 +60,25 @@ describe('the shared read returns the numbers the separate reads returned', () =
       });
     }
   }
-  it('also with a pre-join slice', async () => {
-    const slice = [{ column: 'products__price', operator: 'gt' as const, value: 10, placement: 'pre-join' as const }];
-    const separate = await read(seriesQuery(date, 'MONTH', metric, slice));
-    const shared = await read(sharedSeriesQuery(cf, rs, metric, 'MONTH', slice)!);
-    expect(sharedSeriesQuery(cf, rs, metric, 'MONTH', slice)).toEqual(sparklineQuery(main, date, 'MONTH', slice));
-    expect(shared.map((x) => [x.created_at, x[measureKey(metric)]])).toEqual(separate.map((x) => [x.created_at, x[measureKey(metric)]]));
+  it('also with a pre-join slice, on a joined owner (order_items reading the orders mart)', async () => {
+    const oDate = f('orders__created_at', 'date', { joined: { martId: 'orders', label: 'Orders', aliasPath: 'orders' } });
+    const oAmount: Metric = { field: f('orders__amount', 'number', { joined: { martId: 'orders', label: 'Orders', aliasPath: 'orders' } }), fn: 'SUM' };
+    const owner: ChartMart = { aliasPath: 'orders', recordsId: 'records:orders', title: 'Orders', hasPk: true, metrics: [oAmount], dates: [oDate], dimensions: [] };
+    const items: ChartMart = { aliasPath: '', recordsId: 'records:order_items', title: 'Order Items', hasPk: true, metrics: [], dates: [], dimensions: [] };
+    const jcf: ChartFields = { marts: [items, owner], dimensions: [], dates: [oDate], counter: null };
+    const jr = resolved({ date: oDate });
+    const m: Measure = { kind: 'metric', metric: oAmount };
+    const readItems = (o: TraverseOptions) => readRows(ctx, 'order_items', o);
+    const amounts = (await readRows(ctx, 'orders', { column: ['amount'], limit: 450 })).map((x) => Number(x.amount)).sort((x, y) => x - y);
+    const slice = [{ column: 'orders__amount', operator: 'gt' as const, value: amounts[Math.floor(amounts.length / 2)]!, placement: 'pre-join' as const }];
+    const shared = sharedSeriesQuery(jcf, jr, m, 'YEAR', slice);
+    expect(shared).toEqual(sparklineQuery(owner, oDate, 'YEAR', slice));
+    const key = measureKey(m);
+    const project = (rows: Awaited<ReturnType<typeof readItems>>) => rows.map((x) => [x.orders__created_at, x[key]]);
+    const separate = project(await readItems(seriesQuery(oDate, 'YEAR', m, slice)));
+    expect(project(await readItems(shared!))).toEqual(separate);
+    // The control: the slice really changes the numbers.
+    expect(project(await readItems(seriesQuery(oDate, 'YEAR', m, [])))).not.toEqual(separate);
   });
   it('also with a filter', async () => {
     const filter = [{ column: 'status', operator: 'eq' as const, value: 'paid' }];
