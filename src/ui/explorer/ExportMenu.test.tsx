@@ -1728,6 +1728,14 @@ describe('Create Data Mart', () => {
     expect(await screen.findAllByText("The data mart's storage isn't available to you")).not.toHaveLength(0);
   });
 
+  test('Tab and Shift+Tab never leave the dialog, however many times they are pressed', async () => {
+    mart();
+    const dlg = await openDialog();
+    await waitFor(() => expect(within(dlg).getByLabelText('Name')).toHaveFocus());
+    for (let i = 0; i < 12; i++) { await userEvent.tab(); expect(dlg.contains(document.activeElement)).toBe(true); }
+    for (let i = 0; i < 12; i++) { await userEvent.tab({ shift: true }); expect(dlg.contains(document.activeElement)).toBe(true); }
+  });
+
   test('an empty name shows a message and calls nothing', async () => {
     const t = mart();
     const dlg = await openDialog();
@@ -1747,5 +1755,31 @@ describe('Create Data Mart', () => {
     expect(create).toHaveFocus();
     await userEvent.keyboard('{ArrowRight}');
     expect(create).toHaveFocus();
+  });
+});
+
+describe('Tab is trapped in every dialog', () => {
+  const setClipboard = (writeText: unknown) => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: writeText ? { writeText } : undefined });
+  const cycle = async (dialog: HTMLElement) => {
+    for (let i = 0; i < 12; i++) { await userEvent.tab(); expect(dialog.contains(document.activeElement)).toBe(true); }
+    for (let i = 0; i < 12; i++) { await userEvent.tab({ shift: true }); expect(dialog.contains(document.activeElement)).toBe(true); }
+  };
+
+  test('the export dialog', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await cycle(await openDialog());
+  });
+
+  test('the text dialog', async () => {
+    setClipboard(vi.fn().mockResolvedValue(undefined));
+    const t = setup(0);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Show prompt' }));
+    await cycle(await screen.findByRole('dialog', { name: 'Prompt' }));
   });
 });
