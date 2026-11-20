@@ -76,7 +76,7 @@ function formatActive(env: ColumnMenuEnv, field: Field, output: Output, type: st
 /** A form submenu: a dialog panel beside its row, with a scrolling body. */
 function EditorPanel({ row, seq, label, onEscape, children }: { row: HTMLElement; seq: number; label: string; onEscape: () => void; children: ReactNode }) {
   return (
-    <Panel anchor={row} mode="beside" role="dialog" label={label} onEscape={onEscape} focusSeq={seq} className="dm-menu-editor">
+    <Panel anchor={row} mode="beside" role="dialog" label={label} onEscape={onEscape} focusSeq={seq} className="dm-menu-sub dm-menu-editor">
       <div data-popover-body="" className="min-h-0 overflow-y-auto p-3">{children}</div>
     </Panel>
   );
@@ -164,9 +164,9 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
       )}
       {placed && sub?.key === 'slice' && field.joined && (
         <EditorPanel row={sub.row} seq={sub.seq} label={`Slice of ${title}`} onEscape={closeSub}>
-          <p className="mb-2 text-xs text-muted-foreground">Slices filter the joined data mart before it is joined, reducing the rows pulled in.</p>
           <FilterEditor key={JSON.stringify(env.slices[field.name])} field={sliceField(field)} value={env.slices[field.name]}
             onApply={(f) => { env.setSlice(field.name, f); onClose(); }} onClear={() => { env.setSlice(field.name, undefined); onClose(); }} />
+          <p className="mt-2 text-xs text-muted-foreground">Slices filter the joined data mart before it is joined, reducing the rows pulled in.</p>
         </EditorPanel>
       )}
       {placed && sub?.key === 'aggregate' && (
@@ -176,14 +176,14 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
         </EditorPanel>
       )}
       {placed && sub?.key === 'sort' && (
-        <Panel anchor={sub.row} mode="beside" role="menu" label={`Sort ${title}`} onEscape={closeSub} onLeave={closeSub} onTab={() => onClose()} focusSeq={sub.seq}>
+        <Panel anchor={sub.row} mode="beside" role="menu" label={`Sort ${title}`} onEscape={closeSub} onLeave={closeSub} onTab={() => onClose()} focusSeq={sub.seq} className="dm-menu-sub">
           <Row check checked={dir === 'asc'} label="Sort A → Z" onActivate={() => { env.setSort(field.name, 'asc'); onClose(); }} />
           <Row check checked={dir === 'desc'} label="Sort Z → A" onActivate={() => { env.setSort(field.name, 'desc'); onClose(); }} />
           <Row slot label="Remove sort" disabled={!dir} onActivate={() => { env.setSort(field.name, null); onClose(); }} />
         </Panel>
       )}
       {placed && sub?.key === 'format' && (
-        <Panel anchor={sub.row} mode="beside" role="menu" label={`Format ${title}`} onEscape={closeSub} onLeave={closeSub} onTab={() => onClose()} focusSeq={sub.seq}>
+        <Panel anchor={sub.row} mode="beside" role="menu" label={`Format ${title}`} onEscape={closeSub} onLeave={closeSub} onTab={() => onClose()} focusSeq={sub.seq} className="dm-menu-sub">
           {formats.map((kind) => kind === 'money' ? (
             <Row key={kind} check checked={current.kind === 'money'} sub expanded={!!money} label={FORMAT_LABELS.money}
               onActivate={(r) => setMoney({ row: r, seq: 1 })} onOpen={(r) => setMoney({ row: r, seq: 1 })} onHover={(r) => setMoney((c) => c ?? { row: r, seq: 0 })} />

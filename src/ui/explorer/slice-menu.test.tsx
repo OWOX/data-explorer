@@ -136,3 +136,19 @@ test('a COUNT HAVING filter on a STRING column takes a number', async () => {
   const dialog = await screen.findByRole('dialog', { name: /^Filter of status/i });
   expect(within(dialog).getByLabelText('Value')).toHaveAttribute('type', 'number');
 });
+
+test('the note of a second-level panel comes after its Cancel / Apply row', async () => {
+  setup(plain);
+  await waitFor(() => expect(headers()).toHaveLength(3));
+  const after = (note: Element, buttons: Element) => !!(buttons.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING);
+  await openSubmenu(within(data()), 'Customers · city', 'Slice');
+  const slice = await screen.findByRole('dialog', { name: 'Slice of Customers · city' });
+  expect(slice.className).toContain('dm-menu-sub');
+  expect(after(within(slice).getByText(/^Slices filter the joined data mart/), within(slice).getByRole('button', { name: 'Apply' }))).toBe(true);
+  await userEvent.keyboard('{Escape}{Escape}');
+  await waitFor(() => expect(document.querySelector('[data-column-menu]')).toBeNull());
+  await openSubmenu(within(data()), 'Customers · city', 'Aggregate');
+  const agg = await screen.findByRole('dialog', { name: 'Aggregation of Customers · city' });
+  expect(agg.className).toContain('dm-menu-sub');
+  expect(after(within(agg).getByText(/^Filters still apply to the rows/), within(agg).getByRole('button', { name: 'Apply' }))).toBe(true);
+});
