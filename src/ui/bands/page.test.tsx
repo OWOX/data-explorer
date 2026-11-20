@@ -110,8 +110,8 @@ describe('the first load', () => {
     for (const name of ['Data Sources', 'Data Marts', 'Data', 'Row']) expect(await screen.findByRole('heading', { name })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Data Explorer' })).toBeInTheDocument();
     expect(document.querySelector('[aria-label="Loading"]')).toBeNull(); // no skeleton rows
-    // Data Sources starts folded, so three bars: the bodies are not there
-    await waitFor(() => expect(bars()).toHaveLength(3));
+    // a bar in every band, the folded Data Sources too: the page keeps its height while it reads
+    await waitFor(() => expect(bars()).toHaveLength(4));
     // every read but the edges has finished: the bar is part way
     await waitFor(() => { const v = Number(bars()[0]!.getAttribute('aria-valuenow')); expect(v).toBeGreaterThan(0); expect(v).toBeLessThan(100); });
     expect(document.querySelector('.dm-loadbar-done')).toBeNull();
