@@ -108,9 +108,10 @@ export function Band({
           )}
         </div>
       </header>
-      <div className={`dm-band-reveal${folded ? '' : ' open'}${settled ? ' settled' : ''}`}>
+      {/* While the page reads, every band shows its bar, folded or not, so the page keeps one height; a folded band shuts once the read is done. */}
+      <div className={`dm-band-reveal${folded && loading === null ? '' : ' open'}${settled ? ' settled' : ''}`}>
         <div className="dm-band-reveal-in">
-          {loading !== null && !folded ? <LoadBar fraction={loading} /> : null}
+          {loading !== null ? <LoadBar fraction={loading} /> : null}
           {/* Folded content stays mounted, only hidden: unfolding must not remount the grid and ask for its rows again. */}
           {loading !== null ? null : grid ? <div className="dm-band-grid dm-band-body" hidden={hidden}>{children}</div> : <BandToolsSlot.Provider value={slot}><div className="dm-bigcard dm-band-body" hidden={hidden}>{children}</div></BandToolsSlot.Provider>}
         </div>
