@@ -71,7 +71,6 @@ test('blendable-schema lists the marts an order joins to, with their fields as b
   const names = dto.blendedFields!.map((b) => b.name);
   expect(names).toEqual(expect.arrayContaining(['customers__email', 'products__sku', 'stores__city', 'customers__countries__name']));
   expect(names).not.toContain('customers__internal_flag'); // hidden for reporting
-  expect(dto.hiddenFieldNames).toContain('customers__internal_flag');
   expect(dto.blendedFields!.find((b) => b.name === 'products__title')).toMatchObject({ alias: 'Name', aliasPath: 'products', sourceDataMartId: 'products', originalFieldName: 'title' });
   await expect(createMockCtx(demoFixtures()).owox.getJson('/api/data-marts/nope/blendable-schema')).rejects.toThrow();
 });
@@ -209,4 +208,20 @@ describe('slices and HAVING in traverseData', () => {
     expect(kept.length).toBeGreaterThan(0);
     expect(kept.length).toBeLessThan(all.length);
   });
+});
+
+test('the hidden-field set and the blended index are built once per mart, not on every query', async () => {
+  const f = demoFixtures();
+  const customers = f.marts.find((m) => m.id === 'customers')!;
+  let reads = 0;
+  const fields = customers.fields;
+  Object.defineProperty(customers, 'fields', { get: () => { reads++; return fields; } });
+  const ctx = createMockCtx(f);
+  const ask = () => readRows(ctx, 'orders', { column: ['id', 'customers__email'], limit: 5 });
+  await ask();
+  const afterFirst = reads;
+  expect(afterFirst).toBeGreaterThan(0);
+  await ask();
+  await ask();
+  expect(reads).toBe(afterFirst);
 });

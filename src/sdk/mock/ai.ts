@@ -1,6 +1,6 @@
 // A deterministic stand-in for the logical `ai` credential: no network, no randomness. It reads the one JSON document the plugin
 // sends as the user message and answers from keywords, so the mock page and the e2e tests behave the same every time.
-import type { AiCredential, AiModel } from '../types';
+import type { AiCredential, AiModel, RelativeDatePreset } from '../types';
 
 type Doc = Record<string, unknown> & { task?: string; query?: string };
 type MockField = { name: string; category: string; type: string; filterOperators: string[]; aggregations: string[] };
@@ -13,7 +13,7 @@ const SYNONYMS: Record<string, string[]> = {
   ad_spend: ['advertising', 'ads', 'ad', 'spending'],
 };
 
-const PRESETS: [RegExp, unknown][] = [
+const PRESETS: [RegExp, RelativeDatePreset][] = [
   [/\byesterday\b/, { kind: 'yesterday' }],
   [/\btoday\b/, { kind: 'today' }],
   [/\blast month\b/, { kind: 'last_month' }],
@@ -36,19 +36,18 @@ function discover(doc: Doc): unknown {
 
 const SORT_WORDS = /\b(biggest|largest|highest|top|newest|latest|recent|oldest)\b/;
 
-/** The filters this question asks for, by keyword: a date window, a status, nothing else. */
-function asksForFilter(q: string, fields: MockField[]): boolean {
-  const date = fields.find((f) => f.category === 'date');
-  const hasPreset = !!date && (PRESETS.some(([re]) => re.test(q)) || /\blast (\d{1,4}) days\b/.test(q));
-  return hasPreset || (STATUS_WORDS.some((w) => new RegExp(`\\b${w}\\b`).test(q)) && fields.some((f) => f.name === 'status'));
-}
+/** The amount a "biggest" question sorts by: a field named amount, else the first number that is not an ID. */
+const amountField = (fields: MockField[]) => fields.find((f) => f.name === 'amount') ?? fields.find((f) => f.category === 'number' && !f.name.endsWith('id'));
+
+/** Whether the question asks for filters: the answer of `filtersAnswer` has any. */
+const asksForFilter = (doc: Doc): boolean => (filtersAnswer(doc) as { filters: unknown[] }).filters.length > 0;
 
 function fieldsAnswer(doc: Doc): unknown {
   const q = String(doc.query ?? '').toLowerCase();
   const fields = (doc.fields as MockField[]) ?? [];
-  if (!SORT_WORDS.test(q) && !asksForFilter(q, fields)) return { columns: [], aggregations: [], dateTrunc: [] };
+  if (!SORT_WORDS.test(q) && !asksForFilter(doc)) return { columns: [], aggregations: [], dateTrunc: [] };
   const columns = fields.filter((f) => !/^(.*_id)$/.test(f.name)).slice(0, 5).map((f) => f.name);
-  const amount = fields.find((f) => f.name === 'amount') ?? fields.find((f) => f.category === 'number' && !f.name.endsWith('id'));
+  const amount = amountField(fields);
   if (/\b(biggest|largest|highest|top)\b/.test(q) && amount && !columns.includes(amount.name)) columns.push(amount.name);
   return { columns, aggregations: [], dateTrunc: [] };
 }
@@ -68,7 +67,7 @@ function filtersAnswer(doc: Doc): unknown {
   }
   const status = STATUS_WORDS.find((w) => new RegExp(`\\b${w}\\b`).test(q));
   if (status && fields.some((f) => f.name === 'status')) filters.push({ field: 'status', op: 'eq', value: status });
-  const amount = fields.find((f) => f.name === 'amount') ?? fields.find((f) => f.category === 'number' && !f.name.endsWith('id'));
+  const amount = amountField(fields);
   if (/\b(biggest|largest|highest|top)\b/.test(q) && amount) sorts.push({ field: amount.name, direction: 'desc' });
   else if (/\b(newest|latest|recent)\b/.test(q) && date) sorts.push({ field: date.name, direction: 'desc' });
   else if (/\boldest\b/.test(q) && date) sorts.push({ field: date.name, direction: 'asc' });

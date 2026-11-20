@@ -114,6 +114,12 @@ describe('view link codec', () => {
     const gridWith = (fl: unknown[]) => ({ c: ['id'], fl, s: null, l: 100 });
     const decodeOk = async (o: unknown) => (await decodeViewLink(await route(o))) as DecodedView;
 
+    it('drops a filter whose operator is not one the grid knows', async () => {
+      const d = await decodeOk(valid({ g: gridWith([['id', 'matches_regex', 'a'], ['id', 'eq', 1]]) }));
+      expect(Object.values(d.grid!.filters).map((f) => f.op)).toEqual(['eq']);
+      expect(d.dropped).toBe(1);
+    });
+
     it('drops a relative filter with no value', async () => {
       const d = await decodeOk(valid({ g: gridWith([['id', 'relative']]) }));
       expect(d.grid!.filters).toEqual({});

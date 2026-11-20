@@ -86,15 +86,14 @@ export function createAiRun(models: Models, signal: AbortSignal, totalMs = AI_TI
   return {
     /** The model's JSON answer; AiUnavailable for anything else. A `reasoning` model that fails (not cancelled) is retried once on `fast` in what is left of the budget. */
     async ask(role: Role, system: string, user: string): Promise<Record<string, unknown>> {
-      const order = role === 'discover' ? [models.fast ?? models.reasoning] : [models.reasoning ?? models.fast];
-      const first = order[0];
+      const first = role === 'discover' ? models.fast ?? models.reasoning : models.reasoning ?? models.fast;
       if (!first) throw new AiUnavailable('no model');
-      const own = Math.min(deadline - Date.now(), totalMs * SHARE[role]);
+      const budget = () => Math.min(deadline - Date.now(), totalMs * SHARE[role]);
       try {
-        return await call(first, system, user, own, first === models.reasoning ? undefined : 0);
+        return await call(first, system, user, budget(), first === models.reasoning ? undefined : 0);
       } catch (e) {
         if (signal.aborted || first !== models.reasoning || !models.fast || models.fast === first) throw e;
-        return call(models.fast, system, user, Math.min(deadline - Date.now(), totalMs * SHARE[role]), 0);
+        return call(models.fast, system, user, budget(), 0);
       }
     },
   };

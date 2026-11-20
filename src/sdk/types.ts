@@ -119,7 +119,7 @@ export type AvailableSourceDto = {
   /** Whether a uniqueCount on this alias path works: 'available', else why not ('no-primary-key', 'disconnected-primary-key', ...). */
   uniqueCountAvailability?: string;
 };
-export type BlendableSchemaDto = { blendedFields?: BlendedFieldDto[]; availableSources?: AvailableSourceDto[]; hiddenFieldNames?: string[] };
+export type BlendableSchemaDto = { blendedFields?: BlendedFieldDto[]; availableSources?: AvailableSourceDto[] };
 export type DqSummaryDto = {
   state: string;
   totalChecks?: number;

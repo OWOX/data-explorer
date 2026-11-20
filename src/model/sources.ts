@@ -1,4 +1,5 @@
 import type { ConnectorDto, ConnectorSummaryDto } from '../sdk/types';
+import { strings } from './guards';
 import type { Mart, Source } from './types';
 
 // Same rule as OWOX's raw-base64-icon: a remote URL in an <img> would beacon every viewer to the connector author's host.
@@ -61,7 +62,7 @@ export function cleanSummary(row: unknown): ConnectorSummaryDto[] {
     name: r.name,
     title: typeof r.title === 'string' && r.title ? r.title : r.name,
     logo: typeof r.logo === 'string' ? r.logo : null,
-    hosts: Array.isArray(r.hosts) ? r.hosts.filter((h): h is string => typeof h === 'string') : [],
+    hosts: strings(r.hosts),
   }];
 }
 

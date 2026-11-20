@@ -103,7 +103,7 @@ function step(state: State, from: 'history' | 'future', known: ((s: Selection) =
 
 /** Every change to the selection goes through here: it is what Back steps over. */
 function move(state: State, next: Selection): State {
-  if (JSON.stringify(next) === JSON.stringify(state.selection)) return state;
+  if (deepEqual(next, state.selection)) return state;
   return { ...state, selection: next, history: [...state.history, state.selection].slice(-HISTORY_LIMIT), future: [] };
 }
 
@@ -150,7 +150,7 @@ export function reducer(state: State, a: Action): State {
     case 'setStorages': return { ...state, storageIds: a.ids };
     case 'setMarts': {
       const before = valuesOf(state.grids, Object.keys(a.grids));
-      if (!a.always && JSON.stringify(a.selection) === JSON.stringify(cur) && JSON.stringify(before) === JSON.stringify(a.grids)) return state;
+      if (!a.always && deepEqual(a.selection, cur) && deepEqual(before, a.grids)) return state;
       return { ...state, selection: a.selection, grids: { ...state.grids, ...a.grids }, history: [...state.history, { ...cur, grids: before }].slice(-HISTORY_LIMIT), future: [] };
     }
     case 'fillGrid': {

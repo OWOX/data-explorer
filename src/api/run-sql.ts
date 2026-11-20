@@ -1,11 +1,11 @@
 import type { Ctx } from '../sdk/types';
 import { isNotFound } from './exports';
+import { sleep } from './sleep';
 
 /** The SQL a grid query ran, or why it is not available. */
 export type RunSql = { sql: string } | { reason: string };
 type RunDto = { additionalParams?: { httpData?: { executionSqlQuery?: unknown } } | null } | null;
 
-const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * The compiled SQL of a grid query, from its run. OWOX saves the run when the query ends, so a 404 is asked again,
@@ -20,7 +20,7 @@ export async function readRunSql(ctx: Ctx, martId: string, runId: string, o: { r
       const sql = run?.additionalParams?.httpData?.executionSqlQuery;
       return typeof sql === 'string' && sql.trim() ? { sql } : { reason: 'OWOX did not record the SQL of this query' };
     } catch (e) {
-      if (isNotFound(e) && attempt < retries) { await pause(waitMs); continue; }
+      if (isNotFound(e) && attempt < retries) { await sleep(waitMs); continue; }
       return { reason: 'The SQL could not be read from OWOX' };
     }
   }

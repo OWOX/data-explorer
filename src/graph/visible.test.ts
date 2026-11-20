@@ -1,6 +1,6 @@
 import type { Edge, Mart, Model, Source } from '../model/types';
 import type { Selection } from '../state/store';
-import { computeVisible, inboundCounts, neighbours, pickFocus, type VisibleInput } from './visible';
+import { adjacencyOf, computeVisible, inboundCounts, neighbours, pickFocus, type VisibleInput } from './visible';
 
 const e = (source: string, target: string): Edge => ({ id: `${source}-${target}`, source, target, joins: [] });
 const mart = (id: string, extra: Partial<Mart> = {}): Mart => ({ id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null, ...extra });
@@ -289,4 +289,13 @@ describe('joinable', () => {
     const r = runWith(m, sel({ martId: 'a' }), { joinable: ['b'], storageIds: ['s'] });
     expect(r.ids).toEqual(['b']);
   });
+});
+
+test('the neighbours of every mart are built once per edges array', () => {
+  const edges = [e('a', 'b'), e('c', 'a'), e('a', 'a')];
+  const first = adjacencyOf(edges);
+  expect(adjacencyOf(edges)).toBe(first);
+  expect(neighbours('a', edges)).toEqual(['b', 'c']);
+  expect(neighbours('z', edges)).toEqual([]);
+  expect(adjacencyOf([...edges])).not.toBe(first);
 });

@@ -2,6 +2,7 @@ import { PAGE_SIZE } from '../config';
 import type { ColumnFilter, FilterValue } from '../filters/build';
 import { isComplete } from '../filters/build';
 import { operatorsFor, RELATIVE_MAX_N, RELATIVE_PRESETS, type OpDef } from '../filters/catalogue';
+import { isRecord, own } from '../model/guards';
 import { isAggFn, isDateBucket, type AggregationRule, type DateTruncRule } from '../model/aggregation';
 import type { SortKey } from '../model/sort';
 import type { Schema } from '../model/types';
@@ -15,8 +16,6 @@ const MAX_SORTS = 5;
 const MAX_RULES = 20;
 const MAX_TEXT = 500;
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-const own = (o: Record<string, unknown>, k: string): unknown => (Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined);
 const list = (v: unknown, max: number): unknown[] => (Array.isArray(v) ? v.slice(0, max) : []);
 
 const numeric = (v: unknown): number | undefined => {

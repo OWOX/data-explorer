@@ -1,5 +1,7 @@
+import { MAX_FOUND } from '../config';
 import type { ColumnFilter, FilterValue } from '../filters/build';
-import type { OpId } from '../filters/catalogue';
+import { isOpId } from '../filters/catalogue';
+import { isRecord } from '../model/guards';
 import { isAggFn, isDateBucket, isTimeZone, type AggFn, type AggregationRule, type DateBucket, type DateTruncRule } from '../model/aggregation';
 import type { GridState } from './store';
 import type { SortKey } from '../model/sort';
@@ -45,8 +47,6 @@ type ViewLinkV1 = {
 
 /** At most this many aggregation rules and this many date buckets are read from a link; the rest count as dropped. */
 export const MAX_AGG_RULES = 64;
-/** At most this many found marts are carried by a link. */
-export const MAX_FOUND_IDS = 5;
 
 const ROUTE_PATH = '/v';
 const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
@@ -112,7 +112,7 @@ export async function encodeViewLink(view: Omit<DecodedView, 'dropped' | 'droppe
     m: view.martId,
     r: view.record,
     q: view.search,
-    ...(view.found?.length ? { fd: view.found.slice(0, MAX_FOUND_IDS) } : {}),
+    ...(view.found?.length ? { fd: view.found.slice(0, MAX_FOUND) } : {}),
     ctx: view.contextIds,
     st: view.storageIds,
     f: view.folded,
@@ -131,11 +131,10 @@ export async function encodeViewLink(view: Omit<DecodedView, 'dropped' | 'droppe
   return `${ROUTE_PATH}?s=${toBase64Url(packed)}`;
 }
 
-const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isStringList = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string');
 
 const isScalar = (v: unknown): v is string | number | boolean => typeof v === 'string' || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v));
-const isPlain = (v: unknown): v is Record<string, unknown> => isObject(v) && Object.getPrototypeOf(v) === Object.prototype;
+const isPlain = (v: unknown): v is Record<string, unknown> => isRecord(v) && Object.getPrototypeOf(v) === Object.prototype;
 /** A filter value the grid can render and query: a scalar, or a flat object of strings and numbers (ranges, relative presets). */
 const isFilterValue = (v: unknown): boolean =>
   v === undefined || isScalar(v) || (isPlain(v) && Object.entries(v).every(([k, x]) => !(k in Object.prototype) && (typeof x === 'string' || (typeof x === 'number' && Number.isFinite(x)))));
@@ -162,14 +161,14 @@ export async function decodeViewLink(route: string | undefined): Promise<Decoded
 
 /** Checks the top-level types, then drops malformed entries one by one. Throws on a bad top level. */
 function shape(raw: unknown): DecodedView {
-  if (!isObject(raw) || raw.v !== 1) throw new Error('bad version');
+  if (!isRecord(raw) || raw.v !== 1) throw new Error('bad version');
   const { P, src, m, r, q, ctx, st, f, g, fd } = raw;
   if (!isStringList(P)) throw new Error('bad P');
   if (!(src === null || typeof src === 'string') || !(m === null || typeof m === 'string')) throw new Error('bad ids');
-  if (!(r === null || isObject(r)) || typeof q !== 'string') throw new Error('bad record or search');
+  if (!(r === null || isRecord(r)) || typeof q !== 'string') throw new Error('bad record or search');
   if (!Array.isArray(ctx) || !(st === null || Array.isArray(st))) throw new Error('bad lists');
-  if (!isObject(f) || (['sources', 'marts', 'data', 'row'] as const).some((k) => typeof f[k] !== 'boolean')) throw new Error('bad folds');
-  if (!(g === null || isObject(g))) throw new Error('bad grid');
+  if (!isRecord(f) || (['sources', 'marts', 'data', 'row'] as const).some((k) => typeof f[k] !== 'boolean')) throw new Error('bad folds');
+  if (!(g === null || isRecord(g))) throw new Error('bad grid');
 
   let dropped = 0;
   let droppedAggregations = 0;
@@ -197,8 +196,9 @@ function shape(raw: unknown): DecodedView {
       for (const e of list) {
         const arity = Array.isArray(e) ? e.length : 0;
         const field = arity >= 2 && arity <= (withFn ? 4 : 3) ? name((e as unknown[])[0]) : null;
-        if (field === null || typeof (e as unknown[])[1] !== 'string' || UNSAFE_KEYS.has(field)) { dropped++; continue; }
-        const entry: ColumnFilter = { field, op: (e as unknown[])[1] as OpId };
+        const op = (e as unknown[])[1];
+        if (field === null || !isOpId(op) || UNSAFE_KEYS.has(field)) { dropped++; continue; }
+        const entry: ColumnFilter = { field, op };
         const value = (e as unknown[])[2] as FilterValue | null | undefined;
         const fn = (e as unknown[])[3];
         // A relative filter needs a preset object; any other value must be safe to render and query. A function must be a known one.
@@ -249,7 +249,7 @@ function shape(raw: unknown): DecodedView {
     grid = { columns, filters: Object.fromEntries(filterEntries), ...(sliceEntries.length ? { slices: Object.fromEntries(sliceEntries) } : {}), sorts, limit: g.l, ...(aggregations.length ? { aggregations } : {}), ...(dateTrunc.length ? { dateTrunc } : {}), ...(g.vw === 1 ? { view: 'charts' as const } : {}) };
   }
 
-  const found = Array.isArray(fd) ? [...new Set(fd.filter((x): x is string => typeof x === 'string'))].slice(0, MAX_FOUND_IDS) : [];
+  const found = Array.isArray(fd) ? [...new Set(fd.filter((x): x is string => typeof x === 'string'))].slice(0, MAX_FOUND) : [];
   return {
     sourceKey: src,
     martId: m,

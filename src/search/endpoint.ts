@@ -1,3 +1,4 @@
+import { MAX_FOUND } from '../config';
 import type { Model } from '../model/types';
 import type { Ctx } from '../sdk/types';
 
@@ -5,7 +6,7 @@ import type { Ctx } from '../sdk/types';
 export const MIN_QUERY = 2;
 export const MAX_QUERY = 256;
 /** Marts, and reports, a search shows, each. */
-export const MAX_FOUND = 5;
+export { MAX_FOUND };
 /** Asked of the engine: more than are shown, since ids the model does not hold (or the member cannot open) are dropped after, and two kinds share the limit. */
 const REQUEST_LIMIT = 20;
 

@@ -1,3 +1,4 @@
+import { isRecord, strings } from '../model/guards';
 import { isAggFn, isDateBucket, isTimeZone, NO_AGGREGATION, type Aggregation } from '../model/aggregation';
 import type { Ctx } from '../sdk/types';
 
@@ -29,7 +30,7 @@ export interface ColumnStore {
 }
 
 const validAggregation = (doc: { aggregations?: unknown; dateTrunc?: unknown } | undefined): Aggregation => {
-  const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null && typeof (x as { column?: unknown }).column === 'string') : []);
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => isRecord(x) && typeof x.column === 'string') : []);
   const aggregations = list(doc?.aggregations).flatMap((r) => (isAggFn(r.function) ? [{ column: r.column as string, function: r.function }] : []));
   // A bucket needs a known unit and, when it has a time zone, one the backend accepts; a column takes functions or a bucket, never both.
   const dateTrunc = list(doc?.dateTrunc).flatMap((r) => (isDateBucket(r.unit) && (r.timeZone === undefined || isTimeZone(r.timeZone)) && !aggregations.some((a) => a.column === r.column) ? [{ column: r.column as string, unit: r.unit, ...(r.timeZone !== undefined ? { timeZone: r.timeZone as string } : {}) }] : []));
@@ -37,8 +38,8 @@ const validAggregation = (doc: { aggregations?: unknown; dateTrunc?: unknown } |
 };
 
 const validPicks = (raw: unknown): Picks => {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
-  return Object.fromEntries(Object.entries(raw).flatMap(([k, v]) => (Array.isArray(v) ? [[k, v.filter((x): x is string => typeof x === 'string')]] : [])));
+  if (!isRecord(raw)) return {};
+  return Object.fromEntries(Object.entries(raw).flatMap(([k, v]) => (Array.isArray(v) ? [[k, strings(v)]] : [])));
 };
 
 export function createColumnStore(ctx: Ctx): ColumnStore {

@@ -2,6 +2,7 @@ import type { Aggregation, AggregationRule, DateTruncRule } from '../model/aggre
 import { toTraverseFilters, type ColumnFilter } from '../filters/build';
 import type { SortKey } from '../model/sort';
 import type { Schema } from '../model/types';
+import { sleep } from './sleep';
 import type { Ctx, DestinationDto, ReportDto, TraverseFilter } from '../sdk/types';
 
 export const EXPORTS_COLLECTION = 'exports';
@@ -165,11 +166,6 @@ export interface Exporter {
   /** The spreadsheet a failed report step left for this mart: a retry to the same destination reuses it (another destination's account may not reach it). Cleared when a report is made or another target is used. */
   made(martId: string, destinationId: string): SheetTarget | undefined;
 }
-
-const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve) => {
-  const t = setTimeout(resolve, ms);
-  signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
-});
 
 export function createExporter(ctx: Ctx): Exporter {
   const col = ctx.collections<ExportsDoc>(EXPORTS_COLLECTION);

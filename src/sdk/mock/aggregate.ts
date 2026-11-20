@@ -26,6 +26,19 @@ export function truncDate(value: unknown, unit: Trunc['unit']): string | null {
 
 const cmp = (a: unknown, b: unknown) => (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true }));
 
+/** The rows in the order of the sort keys (a stable sort; an empty list keeps the order), each key read from the column `keyOf` names. */
+export function sortRows<S extends { direction: 'asc' | 'desc' }>(rows: Row[], sort: S[], keyOf: (s: S) => string): Row[] {
+  if (!sort.length) return rows;
+  return [...rows].sort((x, y) => {
+    for (const s of sort) {
+      const k = keyOf(s);
+      const d = cmp(x[k] ?? '', y[k] ?? '');
+      if (d !== 0) return s.direction === 'asc' ? d : -d;
+    }
+    return 0;
+  });
+}
+
 function percentile(sorted: unknown[], p: number): unknown {
   if (!sorted.length) return null;
   // Linear interpolation between the closest ranks, like the warehouses' continuous percentile.
@@ -77,20 +90,10 @@ export function aggregateRows(rows: Row[], columns: string[], aggregation: Rule[
     const g = groups.get(id);
     if (g) g.push(r); else groups.set(id, [r]);
   }
-  let out: Row[] = [...groups.values()].map((members) => Object.fromEntries([...columns.flatMap((c) => {
+  const out: Row[] = [...groups.values()].map((members) => Object.fromEntries([...columns.flatMap((c) => {
     const fns = fnsOf(c);
     return fns.length ? fns.map((fn) => [aggregatedKey(c, fn), aggregate(fn, members.map((r) => r[c]))] as const) : [[c, keyValue(members[0]!, c)] as const];
   }), ...uniq.map((u) => [u.key, distinctKeys(members, u.pk)] as const)]));
   const sortKey = (column: string) => (fnsOf(column).length ? aggregatedKey(column, fnsOf(column)[0]!) : column);
-  if (sort.length) {
-    out = [...out].sort((x, y) => {
-      for (const s of sort) {
-        const k = sortKey(s.column);
-        const d = cmp(x[k] ?? '', y[k] ?? '');
-        if (d !== 0) return s.direction === 'asc' ? d : -d;
-      }
-      return 0;
-    });
-  }
-  return out;
+  return sortRows(out, sort, (s) => sortKey(s.column));
 }

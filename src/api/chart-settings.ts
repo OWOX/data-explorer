@@ -1,3 +1,4 @@
+import { isRecord } from '../model/guards';
 import { isDateBucket } from '../model/aggregation';
 import type { ChartSettings } from '../charts/settings';
 import type { Ctx } from '../sdk/types';
@@ -11,7 +12,7 @@ export interface ChartSettingsStore {
   save(martId: string, s: ChartSettings): void;
 }
 
-const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+const obj = (v: unknown): Record<string, unknown> | null => (isRecord(v) ? v : null);
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
 
 // Drops what a stale or hand-edited doc could break the charts with: unknown keys and wrong types.

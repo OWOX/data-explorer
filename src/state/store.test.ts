@@ -383,3 +383,11 @@ describe('fillGrid: a late answer fills the grid only while nothing moved', () =
     expect(st.grids.a).toEqual(grid(['id']));
   });
 });
+
+test('a selection with its keys in another order is the same selection: no history step', () => {
+  const start = s({ selection: { sourceKey: 'Shopify', martId: 'a', record: null } });
+  const st = reducer(start, { type: 'replace', selection: { record: null, martId: 'a', sourceKey: 'Shopify' } });
+  expect(reducer(st, { type: 'selectMart', id: 'a', sourceOf })).toBe(st);
+  const reordered = { martId: 'a', record: null, sourceKey: 'Shopify' };
+  expect(reducer(start, { type: 'setMarts', selection: reordered, grids: {} })).toBe(start);
+});

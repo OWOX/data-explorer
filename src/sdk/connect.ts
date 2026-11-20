@@ -16,17 +16,6 @@ export async function bootContext(): Promise<Ctx | 'outside-host'> {
   }
 }
 
-// type check only: fails to compile if the SDK context stops satisfying Ctx's models shape
-export async function _typeCheck() {
-  const owox = (await connect()).owox;
-  const _check: Pick<Ctx['owox']['models'], 'getEdges'> = owox.models;
-  const _destinations: Ctx['owox']['destinations'] = owox.destinations;
-  const _put: Ctx['owox']['putJson'] = owox.putJson.bind(owox);
-  const _delete: Ctx['owox']['deleteJson'] = owox.deleteJson.bind(owox);
-  const sdk = await connect();
-  const _route: Ctx['route'] = sdk.route;
-  const _copy: Ctx['ui']['copyLink'] = sdk.ui.copyLink.bind(sdk.ui);
-  const _setRoute: Ctx['ui']['setRoute'] = sdk.ui.setRoute.bind(sdk.ui);
-  const _credentials: Ctx['credentials'] = sdk.credentials;
-  return [_check, _destinations, _put, _delete, _route, _copy, _setRoute, _credentials] as const;
-}
+// Compile-time check only, never called: fails to compile if the SDK context stops satisfying the members of Ctx the plugin uses.
+type Sdk = Awaited<ReturnType<typeof connect>>;
+export const _sdkFitsCtx = (s: Sdk): Pick<Ctx, 'route' | 'credentials'> & { ui: Pick<Ctx['ui'], 'copyLink' | 'setRoute'>; owox: Pick<Ctx['owox'], 'models' | 'destinations' | 'putJson' | 'deleteJson'> } => s;
