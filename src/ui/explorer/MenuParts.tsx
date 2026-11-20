@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { placeBeside, placeBelow, type Place } from './menuPlacement';
 
 /** How long the pointer rests on another row before its submenu replaces the open one. */
-export const HOVER_MS = 300;
+export const HOVER_MS = 120;
 /** One pending hover switch: a new one replaces the last, and `clear` drops it. */
 export class HoverIntent {
   private timer: ReturnType<typeof setTimeout> | undefined;
