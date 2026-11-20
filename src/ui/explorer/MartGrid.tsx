@@ -192,6 +192,9 @@ const sameGrid = (a: GridState, b: GridState) => stable(a) === stable(b);
 /** The rules on fields the schema offers (or, with `offered` false, the parked ones on fields it does not). */
 const pickOffered = (rules: Record<string, ColumnFilter>, schema: Schema, offered = true) => Object.fromEntries(Object.entries(rules).filter(([k]) => schema.some((f) => f.name === k) === offered));
 
+/** The map with one entry set, or taken out when the value is undefined. */
+const withEntry = (m: Record<string, ColumnFilter>, key: string, value: ColumnFilter | undefined) => { const n = { ...m }; if (value) n[key] = value; else delete n[key]; return n; };
+
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
 function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, initialAgg, onChange, onRows, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
@@ -273,6 +276,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const [editSeq, setEditSeq] = useState(0);
   const seenSeq = useRef(0);
   const markEdit = useCallback(() => setEditSeq((n) => n + 1), []);
+  // A change to what the grid shows: one Undo step, and the rows start again from the first page.
+  const edit = useCallback((change: () => void) => { markEdit(); change(); setLimit(PAGE_SIZE); }, [markEdit]);
   // A model reload re-reads what is shown too: its counter joins the grid's own, and each only ever goes up.
   const version = ownVersion + modelVersion;
   // Re-seed the filters when a followed link asks for new ones on this same mart (adjust state during render).
@@ -287,6 +292,12 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     }
   }
 
+  // The grid as the store keeps it: the parked rules are in it, and the empty lists are left out.
+  const current = useMemo<GridState>(() => ({
+    columns: visible, filters: allFilters, ...(Object.keys(allSlices).length ? { slices: allSlices } : {}), sorts: own, limit,
+    ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}), ...(view ? { view } : {}),
+  }), [visible, allFilters, allSlices, own, limit, agg, view]);
+
   // The page changes this grid too (a card click adds or takes out a joined mart's columns, Undo puts them back): what the store
   // holds is adopted when it is not what the grid already shows. The grid's own changes reach the store through the effect below.
   const [seenSaved, setSeenSaved] = useState(seed.saved);
@@ -298,7 +309,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   if (seed.saved !== seenSaved) {
     setSeenSaved(seed.saved);
     const saved = seed.saved;
-    if (saved && saved.columns.length > 0 && !sameGrid(saved, { columns: visible, filters: allFilters, ...(Object.keys(allSlices).length ? { slices: allSlices } : {}), sorts: own, limit, aggregations: agg.aggregations, dateTrunc: agg.dateTrunc, ...(view ? { view } : {}) })) {
+    if (saved && saved.columns.length > 0 && !sameGrid(saved, current)) {
       setView(saved.view);
       setVisible(saved.columns);
       setAgg(aggOf(saved));
@@ -315,7 +326,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
 
   useEffect(() => { if (adoptedAgg) columnStore.saveAggregation(martId, adoptedAgg); }, [adoptedAgg, columnStore, martId]);
 
-  useEffect(() => { const edit = editSeq !== seenSeq.current; seenSeq.current = editSeq; onChange({ columns: visible, filters: allFilters, ...(Object.keys(allSlices).length ? { slices: allSlices } : {}), sorts: own, limit, ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}), ...(view ? { view } : {}) }, edit); }, [visible, allFilters, allSlices, own, limit, agg, view, editSeq]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const edit = editSeq !== seenSeq.current; seenSeq.current = editSeq; onChange(current, edit); }, [current, editSeq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every data mart's columns sit together: the main mart's own, then each joined mart's in the order it was added.
   const shown = useMemo(() => orderColumns(visible, sources, defaultColumns(native)), [visible, sources, native]);
@@ -392,15 +403,13 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // From the fields on screen, not the whole schema: a joined mart arriving later must not rebuild the headers (it would close an open popover).
   const shownByName = useMemo(() => new Map(onScreen.map((f) => [f.name, f])), [onScreen]);
   const outputByKey = useMemo(() => new Map(outputs.map((o) => [o.key, o])), [outputs]);
-  const changeAgg = useCallback((column: string, draft: AggregationDraft) => {
-    const next = applyDraft(column, draft, agg);
-    markEdit();
+  // A HAVING filter on a function that was just taken off goes in the same step, and the new rules are remembered.
+  const applyAgg = useCallback((next: Aggregation) => {
     setAgg(next);
-    // A HAVING filter on a function that was just taken off goes in the same step.
     setAllFilters((cur) => dropOrphanHaving(cur, next.aggregations));
     columnStore.saveAggregation(martId, next);
-    setLimit(PAGE_SIZE);
-  }, [agg, columnStore, martId, markEdit]);
+  }, [columnStore, martId]);
+  const changeAgg = useCallback((column: string, draft: AggregationDraft) => edit(() => applyAgg(applyDraft(column, draft, agg))), [agg, applyAgg, edit]);
   // Shown columns that cannot take part in a grouped query: another column's Apply would group the rows and strand them.
   const blockers = useMemo(() => onScreen.filter((f) => f.category === 'other').map((f) => ({ name: f.name, title: columnTitle(f) })), [onScreen]);
   const columns = useMemo<GridColumn[]>(() => outputs.map((o) => {
@@ -431,19 +440,15 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
 
   // While the member has no sort of their own, a click replaces the default with that column ascending (the
   // default's own column included), so a default never rides along as a second sort; after that the normal cycle.
-  const toggleSort = useCallback((field: string) => { markEdit(); setOwn((cur) => (cur === null ? [{ field, direction: 'asc' }] : cycleSort(cur, field))); setLimit(PAGE_SIZE); }, [markEdit]);
+  const toggleSort = useCallback((field: string) => edit(() => setOwn((cur) => (cur === null ? [{ field, direction: 'asc' }] : cycleSort(cur, field)))), [edit]);
   // The menu's sort choices. With no sort of the member's own, a choice replaces the default (as a title click does); after that it sets the
   // column's direction where it stands in the order of precedence, or adds it last, which is what the title's first click does. Removing
   // drops the column, and removing the default's own column leaves the member's own empty list (no sort at all).
-  const setSort = useCallback((field: string, direction: SortDirection | null) => {
-    markEdit();
-    setOwn((cur) => {
-      if (direction === null) return cur === null ? [] : cur.filter((s) => s.field !== field);
-      if (cur === null) return [{ field, direction }];
-      return cur.some((s) => s.field === field) ? cur.map((s) => (s.field === field ? { field, direction } : s)) : [...cur, { field, direction }];
-    });
-    setLimit(PAGE_SIZE);
-  }, [markEdit]);
+  const setSort = useCallback((field: string, direction: SortDirection | null) => edit(() => setOwn((cur) => {
+    if (direction === null) return cur === null ? [] : cur.filter((s) => s.field !== field);
+    if (cur === null) return [{ field, direction }];
+    return cur.some((s) => s.field === field) ? cur.map((s) => (s.field === field ? { field, direction } : s)) : [...cur, { field, direction }];
+  })), [edit]);
   // The implicit first-key sort is sent and exported but not shown: no arrow, no aria-sort, so the first click is not a no-op.
   const shownSorts = useMemo(() => (grouped ? (own ?? []) : gridSorts), [grouped, own, gridSorts]);
   const env = useMemo(() => ({ sorts: shownSorts, toggleSort, sortable: !charts }), [shownSorts, toggleSort, charts]);
@@ -453,12 +458,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     markEdit();
     setVisible(cols);
     const nextAgg = keepVisible(agg, cols);
-    if (nextAgg !== agg) {
-      setAgg(nextAgg);
-      // A HAVING filter on a hidden column's function goes with it, in the same step.
-      setAllFilters((cur) => dropOrphanHaving(cur, nextAgg.aggregations));
-      columnStore.saveAggregation(martId, nextAgg);
-    }
+    // A HAVING filter on a hidden column's function goes with it, in the same step.
+    if (nextAgg !== agg) applyAgg(nextAgg);
     setOwn((cur) => { const kept = cur && sortsOnColumns(cur, cols); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
     // A joined mart whose last field was unticked is remembered as empty: it comes back with its first text field.
     const left = joinedMartIds(visible, sources).filter((m) => !joinedMartIds(cols, sources).includes(m));
@@ -538,7 +539,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     // A filter the column cannot take as it stands (a blank value) is left out, with the same note a filter edit gives.
     const usable = add.filter((f) => { const field = schema.find((x) => x.name === f.field); const unapplied = unappliedFilter(f, field); if (unapplied) setNote({ text: unapplied }); return !!field && !unapplied; });
     if (!usable.length) return;
-    markEdit(); setAllFilters((cur) => ({ ...cur, ...Object.fromEntries(usable.map((f) => [f.field, f])) })); setLimit(PAGE_SIZE);
+    edit(() => setAllFilters((cur) => ({ ...cur, ...Object.fromEntries(usable.map((f) => [f.field, f])) })));
   };
   /** One slice per joined field; an unusable one (a blank value, a field that is not joined) is left out with the same note a filter edit gives. */
   const setSlice = (name: string, f: ColumnFilter | undefined) => {
@@ -547,15 +548,13 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     if (f && !field?.joined) return;
     const unapplied = f && field ? unappliedFilter(f, sliceField(field)) : null;
     if (unapplied) setNote({ text: unapplied });
-    markEdit();
-    setAllSlices((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; });
-    setLimit(PAGE_SIZE);
+    edit(() => setAllSlices((cur) => withEntry(cur, name, f)));
   };
   const [menuRequest, setMenuRequest] = useState<{ key: string; seq: number } | null>(null);
   const menuEnv: ColumnMenuEnv = {
     menuRequest,
     sorts: shownSorts, setSort, filters, slices, setSlice,
-    setFilter: (name, f) => { const unapplied = f ? unappliedFilter(f, schema.find((x) => x.name === name)) : null; if (unapplied) setNote({ text: unapplied }); markEdit(); setAllFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; }); setLimit(PAGE_SIZE); },
+    setFilter: (name, f) => { const unapplied = f ? unappliedFilter(f, schema.find((x) => x.name === name)) : null; if (unapplied) setNote({ text: unapplied }); edit(() => setAllFilters((cur) => withEntry(cur, name, f))); },
     isAggregated: (column) => aggNow.aggregations.some((r) => r.column === column) || aggNow.dateTrunc.some((r) => r.column === column),
     draftOf: (column) => draftOf(column, aggNow),
     blockerFor: (name) => blockers.find((b) => b.name !== name)?.title,
@@ -703,7 +702,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     <div ref={frame} className={`dm-grid-frame flex max-h-[32rem] min-h-0 flex-col${charts ? ' dm-grid-frame-charts' : ''}`} style={charts && tableHeight.current ? { height: tableHeight.current } : undefined}>
       <Toast onDismiss={() => setNote(null)} stamp={note} returnTo={() => scroller.current}>{note?.text}</Toast>
       <BandTools slot={slot}>
-        <button type="button" disabled={!hasFilters && !hasSorts && !hasSlices} onClick={() => { markEdit(); setAllFilters({}); setAllSlices({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
+        <button type="button" disabled={!hasFilters && !hasSorts && !hasSlices} onClick={() => edit(() => { setAllFilters({}); setAllSlices({}); setOwn(null); })} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => { onRefresh(); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} slices={Object.values(slices)} sorts={gridSorts} ownSorts={own ?? NO_SORTS} rows={rows} hasMore={hasMore} loading={loading} run={run} storage={martStorage} storageUnavailable={!martStorage} joinsFailed={joinsFailed && !joinsRead} sources={joinsRead ? sources : undefined} edges={model.edges} titles={martTitles} joinedMarts={joinedMarts} />}
       </BandTools>
