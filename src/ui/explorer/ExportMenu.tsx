@@ -1,6 +1,5 @@
 import { AlertTriangle, ArchiveRestore, Check, ChevronDown, Code, Copy, DatabaseZap, ExternalLink, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { createPortal } from 'react-dom';
 import {
   buildReportPayload, exportTitle, ExportError, isGone, isPublishedSheetUrl, parseSheetUrl, reportMayExist, REPORT_GONE, sheetUrl,
   type Exporter, type ExportSource, type Flight, type ReportEntry, type Stage, type StoredReport,
@@ -25,7 +24,7 @@ import { ChatGptIcon } from '../chatgpt-icon';
 import { ClaudeIcon } from '../claude-icon';
 import { GoogleSheetsIcon } from '../google-sheets-icon';
 import { Toast } from '../Toast';
-import { ActionForm } from '../ActionForm';
+import { Modal } from '../Modal';
 import { Tooltip } from '../Tooltip';
 import { copyText } from './clipboard';
 import type { GridRun } from './useMartRows';
@@ -382,9 +381,9 @@ export function ExportMenu(p: Props) {
             </div>
           </div>
         </details>
-      {promptOpen && copied && <TextDialog name="Prompt" heading={`Prompt for ${copied.assistant}`} note={`Paste it into ${copied.assistant} with the OWOX Data Marts connector turned on. Copying writes nothing to OWOX.`} areaLabel="Prompt text" text={copied.prompt} onClose={() => { setPromptOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
-      {dataOpen && data && <TextDialog name="Copy the data" note="Select the text and copy it, then paste it into a sheet. Copying writes nothing to OWOX." areaLabel="Data text" text={data.tsv} onClose={() => { setDataOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
-      {sqlOpen && sqlCopied && <TextDialog name="SQL" note="Select the SQL and copy it. Copying writes nothing to OWOX." areaLabel="SQL text" text={sqlCopied.sql} onClose={() => { setSqlOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
+      {promptOpen && copied && <TextDialog name="Prompt" heading={`Prompt for ${copied.assistant}`} note={`Paste it into ${copied.assistant} with the OWOX Data Marts connector turned on. Copying writes nothing to OWOX.`} areaLabel="Prompt text" text={copied.prompt} onClose={() => setPromptOpen(false)} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} />}
+      {dataOpen && data && <TextDialog name="Copy the data" note="Select the text and copy it, then paste it into a sheet. Copying writes nothing to OWOX." areaLabel="Data text" text={data.tsv} onClose={() => setDataOpen(false)} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} />}
+      {sqlOpen && sqlCopied && <TextDialog name="SQL" note="Select the SQL and copy it. Copying writes nothing to OWOX." areaLabel="SQL text" text={sqlCopied.sql} onClose={() => setSqlOpen(false)} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} />}
       {martDialog && <CreateMartDialog key={martDialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} martTitle={p.martTitle} variants={martDialog.variants} grouped={martDialog.grouped} having={martDialog.having} joinedMarts={martDialog.joinedMarts} storage={martDialog.storage} onClose={() => setMartDialog(null)} />}
       {dialog && <ExportDialog key={dialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} exporter={exporter} martId={p.martId} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
     </>
@@ -443,27 +442,12 @@ function CopiedNoteText({ copied }: { copied: Copied }) {
   );
 }
 
-function TextDialog({ name, heading = name, note, areaLabel, text, onClose }: { name: string; heading?: string; note: string; areaLabel: string; text: string; onClose: () => void }) {
+function TextDialog({ name, heading = name, note, areaLabel, text, onClose, returnFocus }: { name: string; heading?: string; note: string; areaLabel: string; text: string; onClose: () => void; returnFocus: () => void }) {
   const [again, setAgain] = useState<'idle' | 'copied' | 'failed'>('idle');
   const area = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', esc);
-    return () => document.removeEventListener('keydown', esc);
-  }, [onClose]);
   useEffect(() => { area.current?.focus(); }, []);
-  // Tab cycles textarea, Close, Copy and back: focus never leaves the dialog behind the backdrop.
-  const trap = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Tab') return;
-    const items = [...e.currentTarget.querySelectorAll<HTMLElement>('textarea, button')];
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    const next = e.shiftKey ? (at <= 0 ? items.length - 1 : at - 1) : (at < 0 || at === items.length - 1 ? 0 : at + 1);
-    e.preventDefault();
-    items[next]?.focus();
-  };
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={name} onKeyDown={trap} onClick={(e) => e.stopPropagation()} className="flex w-[34rem] max-w-[92vw] flex-col gap-3 rounded-lg border bg-background p-4 text-sm shadow-lg">
+  return (
+    <Modal label={name} onClose={onClose} width="w-[34rem]" returnFocus={returnFocus}>
         <h2 className="text-base font-semibold">{heading}</h2>
         <p className="text-xs text-muted-foreground">{note}</p>
         <textarea ref={area} readOnly aria-label={areaLabel} rows={13} value={text} onFocus={(e) => e.currentTarget.select()} className="dm-input w-full resize-none rounded-md border bg-background p-2 font-mono text-xs" />
@@ -474,9 +458,7 @@ function TextDialog({ name, heading = name, note, areaLabel, text, onClose }: { 
             {again === 'copied' ? <><Check className="size-4" />Copied</> : 'Copy'}
           </button>
         </div>
-      </div>
-    </div>,
-    document.body,
+    </Modal>
   );
 }
 
@@ -550,52 +532,9 @@ function ExportDialog({ exporter, martId, destination, title, initialError, busy
   const [local, setError] = useState<string | null>(null);
   const error = local ?? initialError ?? null;
   const { entries, stored, pending } = useMartReports(exporter, martId);
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
-    document.addEventListener('keydown', esc);
-    return () => document.removeEventListener('keydown', esc);
-  }, [onCancel]);
-  // The checked radio takes focus when the dialog opens; focus goes back to the Export button however it closes.
+  // The checked radio takes focus when the dialog opens.
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    box.current?.querySelector<HTMLElement>('input[type="radio"]:checked')?.focus();
-    return returnFocus;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  // Tab cycles inside the dialog: focus never leaves it behind the backdrop.
-  const tabStops = (root: HTMLElement) => {
-    // As the browser tabs: one stop per radio group (its checked radio, else its first enabled one).
-    const seen = new Set<string>();
-    return [...root.querySelectorAll<HTMLElement>('input, button, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')].filter((el) => {
-      if ((el as HTMLInputElement).disabled) return false;
-      const r = el as HTMLInputElement;
-      if (r.type !== 'radio' || !r.name) return true;
-      if (seen.has(r.name)) return false;
-      const group = [...root.querySelectorAll<HTMLInputElement>('input[type="radio"]')].filter((x) => x.name === r.name && !x.disabled);
-      if (group.some((x) => x.checked) ? !r.checked : group[0] !== r) return false;
-      seen.add(r.name);
-      return true;
-    });
-  };
-  const trap = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Tab') return;
-    const items = tabStops(e.currentTarget);
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    const next = e.shiftKey ? (at <= 0 ? items.length - 1 : at - 1) : (at < 0 || at === items.length - 1 ? 0 : at + 1);
-    e.preventDefault();
-    items[next]?.focus();
-  };
-  // Focus that fell out of the dialog (onto the page body, for instance when the focused radio was disabled) is pulled back on the next Tab.
-  useEffect(() => {
-    const back = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab' || !box.current || box.current.contains(document.activeElement)) return;
-      e.preventDefault();
-      const stops = tabStops(box.current);
-      (e.shiftKey ? stops[stops.length - 1] : stops[0])?.focus();
-    };
-    document.addEventListener('keydown', back);
-    return () => document.removeEventListener('keydown', back);
-  }, []);
+  useEffect(() => { box.current?.querySelector<HTMLElement>('input[type="radio"]:checked')?.focus(); }, []);
 
   const loadingCount = entries.filter((e) => e.state === 'loading').length;
   const loading = pending || loadingCount > 0;
@@ -684,9 +623,8 @@ function ExportDialog({ exporter, martId, destination, title, initialError, busy
     ),
   };
 
-  return createPortal(
-    <div ref={box} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel} onKeyDown={trap}>
-      <ActionForm role="dialog" aria-modal="true" aria-label={`Export to ${destination.title}`} onAction={submit} onClick={(e) => e.stopPropagation()} className="flex w-[28rem] max-w-[92vw] flex-col gap-3 rounded-lg border bg-background p-4 text-sm shadow-lg">
+  return (
+    <Modal label={`Export to ${destination.title}`} onClose={onCancel} width="w-[28rem]" returnFocus={returnFocus} onAction={submit} dialogRef={box}>
         <h2 className="text-base font-semibold">Export to {destination.title}</h2>
         {option !== 3 && (
           <label className="flex flex-col gap-1">Report title
@@ -707,9 +645,7 @@ function ExportDialog({ exporter, martId, destination, title, initialError, busy
           <button type="button" onClick={onCancel} className="h-8 rounded-md border px-3 hover:bg-accent">Cancel</button>
           <button type="button" onClick={submit} disabled={busy} className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-3 text-primary-foreground disabled:opacity-50">{busy && <Loader2 className="size-4 animate-spin" />}Export</button>
         </div>
-      </ActionForm>
-    </div>,
-    document.body,
+    </Modal>
   );
 }
 
@@ -736,7 +672,6 @@ function CreateMartDialog({ martTitle, variants, grouped, having, joinedMarts, s
   const [notice, setNotice] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const running = stage !== null || deleting;
-  const box = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLInputElement>(null);
   const link = useRef<HTMLAnchorElement>(null);
   const live = useRef(true);
@@ -748,22 +683,8 @@ function CreateMartDialog({ martTitle, variants, grouped, having, joinedMarts, s
   const sql = sortOn ? sorted.sql : 'sql' in plain ? plain.sql : '';
   const joined = joinedMarts.length;
   useEffect(() => { field.current?.focus(); field.current?.select(); }, []);
-  useEffect(() => () => { live.current = false; abort.current.abort(); returnFocus(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { live.current = false; abort.current.abort(); }, []);
   useEffect(() => { if (made) link.current?.focus(); }, [made]);
-  // Escape closes the dialog unless a run is in flight.
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !running) onClose(); };
-    document.addEventListener('keydown', esc);
-    return () => document.removeEventListener('keydown', esc);
-  }, [onClose, running]);
-  const trap = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Tab') return;
-    const items = [...e.currentTarget.querySelectorAll<HTMLElement>('input, button, textarea, summary, a[href]')].filter((el) => !(el as HTMLInputElement).disabled && el.offsetParent !== null || el.tagName === 'SUMMARY');
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    const next = e.shiftKey ? (at <= 0 ? items.length - 1 : at - 1) : (at < 0 || at === items.length - 1 ? 0 : at + 1);
-    e.preventDefault();
-    items[next]?.focus();
-  };
 
   async function submit() {
     if (running) return;
@@ -803,9 +724,9 @@ function CreateMartDialog({ martTitle, variants, grouped, having, joinedMarts, s
   const deletable = !!failure?.martId && (failure.stage === 'define' || failure.stage === 'schema');
   const where = storage.title ?? storage.type;
 
-  return createPortal(
-    <div ref={box} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { if (!running) onClose(); }} onKeyDown={trap}>
-      <ActionForm role="dialog" aria-modal="true" aria-label="Create Data Mart" onAction={() => void submit()} onClick={(e) => e.stopPropagation()} className="flex w-[34rem] max-w-[92vw] flex-col gap-3 rounded-lg border bg-background p-4 text-sm shadow-lg">
+  // Escape and the backdrop close the dialog unless a run is in flight.
+  return (
+    <Modal label="Create Data Mart" onClose={onClose} canClose={!running} width="w-[34rem]" returnFocus={returnFocus} onAction={() => void submit()}>
         <h2 className="text-base font-semibold">Create Data Mart</h2>
         {made ? (
           <>
@@ -857,8 +778,6 @@ function CreateMartDialog({ martTitle, variants, grouped, having, joinedMarts, s
             </div>
           </>
         )}
-      </ActionForm>
-    </div>,
-    document.body,
+    </Modal>
   );
 }
