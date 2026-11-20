@@ -26,7 +26,7 @@ const GUTTER_PX = 46;
  * Settings load once per mart; a fallback `resolveCharts` picks is never written back, only the member's own changes are.
  */
 export function ChartsBody({ martId, schema, shown, agg, filter, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter }: {
-  martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; groups: { id: string; span: number; title: string }[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
+  martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; groups: { id: string; path: string; span: number; title: string }[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
   formatOf: (column: string, type: string) => Format; scrollerWidth: number;
   /** Applies the clicked mark's filters to the grid, as a filter edit (one Undo step). */
   onFilter: (add: ColumnFilter[]) => void;
@@ -50,7 +50,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
   };
 
   const uniqueCountPaths = new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath));
-  const cf = chartFields(schema, shown, agg, martId, groups.map((g) => g.id), uniqueCountPaths, Object.fromEntries(groups.map((g) => [g.id, g.title])));
+  const cf = chartFields(schema, shown, agg, martId, groups.map((g) => g.path), uniqueCountPaths, Object.fromEntries(groups.map((g) => [g.path, g.title])));
   const r = resolveCharts(settings ?? {}, cf);
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
   const idle = paused || !settings;
@@ -79,10 +79,10 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
       <tr data-chart-strip>
         <Gutter />
         {groups.map((g, i) => (
-          <td key={g.id} colSpan={g.span} data-chart-group={g.id}>
+          <td key={g.path} colSpan={g.span} data-chart-group={g.id} data-chart-path={g.path}>
             <div className="flex items-start gap-1">
-              <MartCards martId={martId} mart={cf.marts[i]!} main={g.id === martId} r={r} scores={scores} bucket={bucket} filter={filter} version={version} paused={idle} hasFilters={hasFilters} formatOf={formatOf} />
-              {g.id === martId && settings && <ChartMenu name="Scorecards" items={items} />}
+              <MartCards martId={martId} mart={cf.marts[i]!} main={g.path === ''} r={r} scores={scores} bucket={bucket} filter={filter} version={version} paused={idle} hasFilters={hasFilters} formatOf={formatOf} />
+              {g.path === '' && settings && <ChartMenu name="Scorecards" items={items} />}
             </div>
           </td>
         ))}
