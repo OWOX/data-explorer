@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aggregate, anyValue, dateTrunc, dialectFor, fieldRef, ident, isFloat, isJoinFn, leafFn, nullSafeOn, passFn, renderFilter, renderTraverse, reportAggregate, type Dialect, type JoinFn } from './dialect';
+import { aggregate, anyValue, dateTrunc, dialectFor, fieldRef, ident, isFloat, isJoinFn, leafFn, nullSafeOn, passFn, renderFilter, reportAggregate, type Dialect, type JoinFn } from './dialect';
 import type { Field } from '../model/types';
 
 const field = (over: Partial<Field>): Field => ({ name: 'x', alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, ...over });
@@ -172,17 +172,6 @@ describe('renderFilter', () => {
   });
   it('rejects a non-finite number', () => {
     expect(() => renderFilter('athena', 'c', num, { field: 'qty', op: 'eq', value: 'abc' })).toThrow('Non-finite');
-  });
-});
-
-describe('renderTraverse list operators', () => {
-  it('in lists the values, cast on date columns', () => {
-    for (const d of DIALECTS) expect(renderTraverse(d, 'c', text, { column: 'city', operator: 'in', value: ['a', "b'c"] })).toBe(`c IN ('a', ${d === 'bigquery' ? "'b\\'c'" : "'b''c'"})`);
-    expect(renderTraverse('bigquery', 'c', stamp, { column: 'at', operator: 'in', value: ['2026-01-01 00:00:00'] })).toBe("c IN (CAST('2026-01-01 00:00:00' AS TIMESTAMP))");
-  });
-  it('not_in keeps the rows with no match, so a NULL passes', () => {
-    for (const d of DIALECTS) expect(renderTraverse(d, 'c', num, { column: 'qty', operator: 'not_in', value: [1, 2] })).toBe('(c IS NULL OR c NOT IN (1, 2))');
-    expect(renderTraverse('athena', 'c', text, { column: 'city', operator: 'not_in', value: ['a'] })).toBe("(c IS NULL OR c NOT IN ('a'))");
   });
 });
 

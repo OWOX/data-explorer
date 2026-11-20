@@ -1,17 +1,17 @@
 import { ChartBar, ChartColumn } from 'lucide-react';
 import type { ColumnFilter } from '../filters/build';
-import { AUTO, formatValue, keepsUnit, type Format } from '../format/formats';
-import { BUCKET_LABELS, DATE_BUCKETS, formatBucket, outputType, type DateBucket } from '../model/aggregation';
+import { formatValue, type Format } from '../format/formats';
+import { BUCKET_LABELS, DATE_BUCKETS, formatBucket, type DateBucket } from '../model/aggregation';
 import { columnTitle, fieldLabel } from '../model/fieldLabel';
 import type { Row, TraverseFilter } from '../sdk/types';
-import { formatNumber } from '../ui/format';
+import { emptyText } from '../ui/format';
 import { bucketFilter, dimensionFilter, isBucketDate } from './clickFilters';
 import { compactValue } from './compact';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { ChartPanel } from './ChartPanel';
 import { measuresOf, type ChartFields } from './fields';
 import { bucketZone, measureKey, seriesOtherQuery, seriesQuery, TOP_N, topValuesQuery } from './queries';
-import { measureLabel, measureOptions, metricText, numberOf, type Formatter } from './Scorecards';
+import { measureLabel, measureFormat, measureOptions, measureText, numberOf, type Formatter } from './Scorecards';
 import { measureId, type ChartSettings, type ResolvedCharts } from './settings';
 import { BarChart, type Series } from './svg/BarChart';
 import { useChartQuery } from './useChartQuery';
@@ -50,7 +50,7 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
 
   const chart = (): Series[] => {
     const key = measureKey(measure!);
-    const cell = (row: Row | undefined) => ({ y: row ? numberOf(row[key]) : null, valueText: row ? (measure!.kind === 'metric' ? metricText(measure!.metric.field, measure!.metric.fn, row[key], formatOf) : formatNumber(row[key]) ?? String(row[key] ?? '')) : '' });
+    const cell = (row: Row | undefined) => ({ y: row ? numberOf(row[key]) : null, valueText: row ? measureText(measure!, row[key], formatOf) : '' });
     const byDate = (rows: Row[]) => new Map(rows.map((x) => [String(x[date!.name]), x]));
     const pivot = (name: string, color: string, rows: Row[], xs: string[]): Series => {
       const at = byDate(rows);
@@ -65,9 +65,7 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
   };
 
   // The axis follows the measure as its values do: a metric's output type and format, Records an integer count.
-  const [tickType, tickFormat]: [string, Format] = measure!.kind === 'metric'
-    ? (() => { const f = measure!.metric.field; const t = outputType(f, measure!.metric.fn); return [t, keepsUnit(measure!.metric.fn) ? formatOf(f.name, t) : AUTO] as [string, Format]; })()
-    : ['INTEGER', AUTO];
+  const [tickType, tickFormat] = measureFormat(measure!, formatOf);
   const id = (f: { name: string }) => f.name;
   // Each mart's records, then its metrics, in group order.
   const measures = measureOptions(cf, measuresOf(cf));
@@ -87,7 +85,7 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
   const full = stack ? `${title} · by ${fieldLabel(stack)}` : title;
   return (
     <ChartPanel title={bucket ? full : `${label} by date`} loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})}
-      empty={emptyNow ? (hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.') : null}
+      empty={emptyNow ? emptyText(hasFilters) : null}
       note={stack ? `Rows with a blank ${fieldLabel(stack)} are not shown.` : undefined}
       actions={ready && <>{orient('vertical', 'Vertical bars', ChartColumn)}{orient('horizontal', 'Horizontal bars', ChartBar)}<ChartMenu name="Time series" items={items} /></>}>
       {series.rows && (() => {

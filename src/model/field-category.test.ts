@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { categorizeFieldType, isDayType, normalizeType } from './field-category';
 
 test.each([
@@ -27,4 +28,17 @@ test('normalizeType and isDayType ignore case, spacing and parameters', () => {
   expect(isDayType('date')).toBe(true);
   expect(isDayType('DATE ')).toBe(true);
   expect(isDayType('TIMESTAMP_LTZ')).toBe(false);
+});
+
+test('normalizeType does its work once per spelling', () => {
+  const upper = vi.spyOn(String.prototype, 'toUpperCase');
+  try {
+    expect(normalizeType(' memo_probe (10) ')).toBe('MEMO_PROBE');
+    const first = upper.mock.calls.length;
+    expect(first).toBeGreaterThan(0);
+    expect(normalizeType(' memo_probe (10) ')).toBe('MEMO_PROBE');
+    expect(upper.mock.calls.length).toBe(first);
+  } finally {
+    upper.mockRestore();
+  }
 });

@@ -4,6 +4,7 @@ import type { SortKey } from '../model/sort';
 import type { Schema } from '../model/types';
 import { sleep } from './sleep';
 import type { Ctx, DestinationDto, ReportDto, TraverseFilter } from '../sdk/types';
+import { errorMessage } from '../model/guards';
 
 export const EXPORTS_COLLECTION = 'exports';
 export const MAX_EXPORT_SORTS = 10;
@@ -113,7 +114,6 @@ const codeOf = (e: unknown) => {
 };
 /** The answer to a report POST was lost or came from a gateway: the report may exist, so the step must not be retried. */
 export const reportMayExist = (e: unknown) => e instanceof ExportError && e.stage === 'report' && ['TIMEOUT', 'NETWORK_ERROR', 'HTTP_502', 'HTTP_504'].includes(e.code ?? '');
-const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /** The SDK transport puts the HTTP status on `payload`; a plain `status` is kept as a fallback. */
 export const isNotFound = (e: unknown) => { const x = e as { payload?: { status?: number }; status?: number } | null; return (x?.payload?.status ?? x?.status) === 404; };
 
@@ -394,7 +394,7 @@ export function createExporter(ctx: Ctx): Exporter {
           });
         } catch (e) {
           if (isNotFound(e)) { await forget(martId, r.reportId); throw new ExportError('report', REPORT_GONE, undefined, undefined, true); }
-          throw new ExportError('report', messageOf(e));
+          throw new ExportError('report', errorMessage(e));
         }
         const usedAt = new Date().toISOString();
         await touch(martId, r.reportId, usedAt);
@@ -411,7 +411,7 @@ export function createExporter(ctx: Ctx): Exporter {
             const d = await ctx.owox.postJson<DocumentDto>(`/api/data-destinations/${encodeURIComponent(destination.id)}/google-sheets/documents`, { title });
             if (!isSheetTarget(d)) throw new Error('OWOX returned an unrecognised spreadsheet');
             target = { spreadsheetId: d.spreadsheetId, sheetId: d.sheetId };
-          } catch (e) { throw new ExportError('sheet', messageOf(e)); }
+          } catch (e) { throw new ExportError('sheet', errorMessage(e)); }
         }
         onStage?.('report');
         try {
@@ -419,7 +419,7 @@ export function createExporter(ctx: Ctx): Exporter {
           createdDto = created;
           report = { reportId: created.id, destinationId: destination.id, spreadsheetId: target.spreadsheetId, sheetId: target.sheetId, title, usedAt: new Date().toISOString() };
         } catch (e) {
-          const err = new ExportError('report', messageOf(e), codeOf(e), target);
+          const err = new ExportError('report', errorMessage(e), codeOf(e), target);
           if (reportMayExist(err)) leftBehind.delete(martId); else leftBehind.set(martId, { target, destinationId: destination.id });
           throw err;
         }
@@ -436,6 +436,6 @@ export function createExporter(ctx: Ctx): Exporter {
         const before = pre.lastRunAt ?? null;
         await ctx.owox.postJson(`/api/reports/${encodeURIComponent(report.reportId)}/run`, {});
         return { report, outcome: await poll(report.reportId, before, signal) };
-      } catch (e) { throw new ExportError('run', messageOf(e)); }
+      } catch (e) { throw new ExportError('run', errorMessage(e)); }
   }
 }

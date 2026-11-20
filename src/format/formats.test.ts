@@ -86,3 +86,10 @@ test('keepsUnit: counts and combined text lose the column format, the rest keep 
   for (const fn of [undefined, 'SUM', 'MIN', 'MAX', 'AVG', 'P25', 'P50', 'P75', 'P95']) expect(keepsUnit(fn)).toBe(true);
   for (const fn of ['COUNT', 'COUNT_DISTINCT', 'STRING_AGG']) expect(keepsUnit(fn)).toBe(false);
 });
+
+test('formatsFor hands out one shared list per category', () => {
+  expect(formatsFor('INT64')).toBe(formatsFor('NUMERIC'));
+  expect(formatsFor('TIMESTAMP')).toBe(formatsFor('DATETIME'));
+  expect(formatsFor('DATE')).toBe(formatsFor('date'));
+  expect(formatsFor('STRING')).toBe(formatsFor('BOOL'));
+});

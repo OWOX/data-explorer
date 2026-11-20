@@ -29,6 +29,7 @@ import { ActionForm } from '../ActionForm';
 import { Tooltip } from '../Tooltip';
 import { copyText } from './clipboard';
 import type { GridRun } from './useMartRows';
+import { errorMessage } from '../../model/guards';
 
 type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; filters: ColumnFilter[]; /** Pre-join filters on joined fields. */ slices?: ColumnFilter[]; sorts: SortKey[]; /** Only the sorts the member set; Create Data Mart never adds the grid's implicit order. */ ownSorts?: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun;
   /** The main mart's storage, for Create Data Mart. */ storage?: { id: string; type: string; title?: string }; /** The model is loaded and the member can't see this mart's storage. */ storageUnavailable?: boolean;
@@ -56,7 +57,6 @@ const UNRECOGNISED = 'This report targets an unrecognised spreadsheet.';
 /** A report used within this long counts as recently used. */
 export const RECENT_MS = 60 * 24 * 60 * 60 * 1000;
 const isRecent = (usedAt: string | undefined, now = Date.now()) => { const t = usedAt ? Date.parse(usedAt) : NaN; return Number.isFinite(t) && t <= now && now - t <= RECENT_MS; };
-const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** "Export" in the Data band header: a menu of Claude and ChatGPT (each copies a prompt), then the Google Sheets destinations, then "Copy to clipboard" and "Copy SQL" (the SQL the grid ran), and last "Create Data Mart", which saves the grid as a published SQL data mart. */
 export function ExportMenu(p: Props) {
@@ -199,7 +199,7 @@ export function ExportMenu(p: Props) {
       unsubscribe();
       if (!here()) return;
       exporter.acknowledge(martId);
-      const text = messageOf(e);
+      const text = errorMessage(e);
       const { destination, fromDialog } = o;
       if (isGone(e)) {
         // The exporter already dropped the report from its list; the dialog, if open, stays for another choice.
@@ -778,7 +778,7 @@ function CreateMartDialog({ martTitle, variants, grouped, having, joinedMarts, s
       const r = await createDataMart(ctx, { title: name.trim(), storageId: storage.id, sql, signal: abort.current.signal, ...resume }, (s) => { if (live.current) setStage(s); });
       if (live.current) setMade(r);
     } catch (e) {
-      if (live.current) setFailure(e instanceof CreateMartError ? e : { message: messageOf(e) });
+      if (live.current) setFailure(e instanceof CreateMartError ? e : { message: errorMessage(e) });
     } finally {
       if (live.current) setStage(null);
     }
@@ -792,7 +792,7 @@ function CreateMartDialog({ martTitle, variants, grouped, having, joinedMarts, s
       await deleteDraft(ctx, failure.martId);
       if (live.current) { setFailure(null); setNotice('The draft was deleted. Edit the name or the options and create again.'); }
     } catch (e) {
-      if (live.current) setLocal(`The draft could not be deleted: ${messageOf(e)}`);
+      if (live.current) setLocal(`The draft could not be deleted: ${errorMessage(e)}`);
     } finally {
       if (live.current) setDeleting(false);
     }

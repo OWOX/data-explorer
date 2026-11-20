@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { monthsQuery, pieOtherQuery, rangeKeys, rangeQuery, scorecardsQuery, seriesOtherQuery, seriesQuery, sparklineQuery, topValuesQuery, uniqueKey, metricKey } from './queries';
 import type { ChartMart, Metric } from './fields';
 import type { Measure } from './queries';
@@ -6,16 +6,16 @@ import type { Field } from '../model/types';
 import type { TraverseFilter } from '../sdk/types';
 
 const f = (name: string, category: Field['category'], extra: Partial<Field> = {}): Field => ({ name, alias: null, type: category === 'number' ? 'FLOAT' : category === 'date' ? 'DATE' : 'STRING', category, description: null, isPrimaryKey: false, ...extra });
-const amount: Metric = { field: f('amount', 'number'), fn: 'SUM', martId: 'M' };
-const ltv: Metric = { field: f('c__ltv', 'number', { joined: { martId: 'C', label: 'Customers', aliasPath: 'c.x' } }), fn: 'AVG', martId: 'C' };
+const amount: Metric = { field: f('amount', 'number'), fn: 'SUM' };
+const ltv: Metric = { field: f('c__ltv', 'number', { joined: { martId: 'C', label: 'Customers', aliasPath: 'c.x' } }), fn: 'AVG' };
 const date = f('date', 'date');
 const amt: Measure = { kind: 'metric', metric: amount };
-const records: Measure = { kind: 'records', aliasPath: '', martId: 'M', recordsId: 'records:M' };
-const custRecords: Measure = { kind: 'records', aliasPath: 'c.x', martId: 'C', recordsId: 'records:C' };
+const records: Measure = { kind: 'records', aliasPath: '', recordsId: 'records:M' };
+const custRecords: Measure = { kind: 'records', aliasPath: 'c.x', recordsId: 'records:C' };
 const channel = f('channel', 'string');
 const flt = [{ column: 'channel', operator: 'eq' as const, value: 'web' }];
-const main: ChartMart = { martId: 'M', aliasPath: '', recordsId: 'records:M', title: 'Orders', hasPk: true, metrics: [amount], dates: [date], dimensions: [channel] };
-const cust: ChartMart = { martId: 'C', aliasPath: 'c.x', recordsId: 'records:C', title: 'Customers', hasPk: true, metrics: [ltv], dates: [], dimensions: [] };
+const main: ChartMart = { aliasPath: '', recordsId: 'records:M', title: 'Orders', hasPk: true, metrics: [amount], dates: [date], dimensions: [channel] };
+const cust: ChartMart = { aliasPath: 'c.x', recordsId: 'records:C', title: 'Customers', hasPk: true, metrics: [ltv], dates: [], dimensions: [] };
 
 describe('queries', () => {
   it('scorecards: all metrics and a unique count per mart with a key', () => {
@@ -115,5 +115,24 @@ describe('slices and HAVING filters in chart queries', () => {
     expect(other.column).toEqual(['id']);
     expect(other.aggregation).toEqual([{ column: 'id', function: 'COUNT' }]);
     expect(other.uniqueCount).toEqual(['c.x']);
+  });
+});
+
+describe('bucketZone', () => {
+  it('reads the browser zone once, however many queries are built', async () => {
+    vi.resetModules();
+    const { bucketZone } = await import('./queries');
+    const spy = vi.spyOn(Intl, 'DateTimeFormat');
+    try {
+      const ts = { name: 'ts', alias: null, type: 'TIMESTAMP', category: 'date', description: null, isPrimaryKey: false } as Field;
+      bucketZone(ts);
+      const built = spy.mock.calls.length;
+      expect(built).toBe(1);
+      bucketZone(ts);
+      bucketZone(ts);
+      expect(spy.mock.calls.length).toBe(built);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

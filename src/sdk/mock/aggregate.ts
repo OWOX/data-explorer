@@ -1,5 +1,6 @@
 // The mock's traverseData grouping: aggregation and dateTrunc over rows, as the API names the outputs.
 import { aggregatedKey, type AggFn, type AggregationRule, type DateTruncRule } from '../../model/aggregation';
+import { ymd } from '../../model/day';
 import type { Row } from '../types';
 
 type Rule = AggregationRule;
@@ -10,9 +11,9 @@ const pad = (n: number) => String(n).padStart(2, '0');
 /** The first day of the bucket a date or timestamp falls in, as `YYYY-MM-DD` (the mock does not convert time zones). */
 export function truncDate(value: unknown, unit: Trunc['unit']): string | null {
   if (value === null || value === undefined || value === '') return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
-  if (!m) return null;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const parts = ymd(value);
+  if (!parts) return null;
+  const [y, mo, d] = parts;
   if (unit === 'DAY') return `${y}-${pad(mo)}-${pad(d)}`;
   if (unit === 'MONTH') return `${y}-${pad(mo)}-01`;
   if (unit === 'QUARTER') return `${y}-${pad(Math.floor((mo - 1) / 3) * 3 + 1)}-01`;

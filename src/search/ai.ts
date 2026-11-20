@@ -1,4 +1,5 @@
 import type { AiModel, Ctx } from '../sdk/types';
+import { errorMessage } from '../model/guards';
 
 /** One search run waits this long for the models, all its questions together; past it the run goes on as if no AI were configured. */
 export const AI_TIMEOUT_MS = 30_000;
@@ -76,7 +77,7 @@ export function createAiRun(models: Models, signal: AbortSignal, totalMs = AI_TI
       if (json === undefined) throw new AiUnavailable('no JSON in the answer');
       return json as Record<string, unknown>;
     } catch (e) {
-      throw e instanceof AiUnavailable ? e : new AiUnavailable(e instanceof Error ? e.message : String(e));
+      throw e instanceof AiUnavailable ? e : new AiUnavailable(errorMessage(e));
     } finally {
       clearTimeout(timer);
       signal.removeEventListener('abort', stop);

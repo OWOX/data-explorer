@@ -4,7 +4,7 @@ import { fieldLabel } from '../model/fieldLabel';
 import type { Field } from '../model/types';
 import type { Row, TraverseFilter } from '../sdk/types';
 import { ErrorBox } from '../ui/ErrorBox';
-import { formatNumber } from '../ui/format';
+import { emptyText, formatNumber } from '../ui/format';
 import { Skeleton } from '../ui/Skeleton';
 import { Tooltip } from '../ui/Tooltip';
 import { compactValue } from './compact';
@@ -46,7 +46,7 @@ export type Formatter = (column: string, type: string) => Format;
 function textOf(card: Card, row: Row | undefined, formatOf: Formatter): string {
   if (!row) return '';
   const v = row[card.key];
-  if (!card.field) return formatNumber(v) ?? (v === null || v === undefined ? '' : String(v));
+  if (!card.field) return recordsText(v);
   return metricText(card.field, card.fn!, v, formatOf);
 }
 
@@ -54,8 +54,7 @@ function textOf(card: Card, row: Row | undefined, formatOf: Formatter): string {
 function shortOf(card: Card, row: Row, formatOf: Formatter): string | null {
   const v = row[card.key];
   if (!card.field) return compactValue(v, 'INTEGER', AUTO);
-  const type = outputType(card.field, card.fn!);
-  return compactValue(v, type, keepsUnit(card.fn!) ? formatOf(card.field.name, type) : AUTO);
+  return compactValue(v, ...metricFormat(card.field, card.fn!, formatOf));
 }
 
 /** The value on a card: short when it can be, with the exact text in a tooltip and for screen readers. */
@@ -77,11 +76,26 @@ function CardValue({ card, row, formatOf }: { card: Card; row: Row; formatOf: Fo
 
 /** A metric's value as the grid shows it: the output type's format, with the column's own unit only where the function keeps it. */
 export function metricText(field: Field, fn: AggFn, v: unknown, formatOf: Formatter): string {
-  const type = outputType(field, fn);
+  const [type, format] = metricFormat(field, fn, formatOf);
   // A float sum carries binary noise (116739.09999999996); 15 significant digits is float64's own precision (from 1e15 a float has real digits beyond that, so it is left). Strings are exact.
   const shown = typeof v === 'number' && Number.isFinite(v) && !Number.isInteger(v) && Math.abs(v) < 1e15 ? Number(v.toPrecision(15)) : v;
-  return formatValue(shown, type, keepsUnit(fn) ? formatOf(field.name, type) : AUTO);
+  return formatValue(shown, type, format);
 }
+
+/** The output type of a metric and the format that keeps its unit: the column's own only where the function keeps it. */
+export function metricFormat(field: Field, fn: AggFn, formatOf: Formatter): [type: string, format: Format] {
+  const type = outputType(field, fn);
+  return [type, keepsUnit(fn) ? formatOf(field.name, type) : AUTO];
+}
+
+/** A records count as text: grouped digits, or the value as it came. */
+export const recordsText = (v: unknown): string => formatNumber(v) ?? String(v ?? '');
+
+/** A measure's value as text, whichever kind it is. */
+export const measureText = (m: Measure, v: unknown, formatOf: Formatter): string => (m.kind === 'metric' ? metricText(m.metric.field, m.metric.fn, v, formatOf) : recordsText(v));
+
+/** A measure's type and format, for an axis or a short value: Records are an integer count. */
+export const measureFormat = (m: Measure, formatOf: Formatter): [type: string, format: Format] => (m.kind === 'metric' ? metricFormat(m.metric.field, m.metric.fn, formatOf) : ['INTEGER', AUTO]);
 
 export const numberOf = (v: unknown): number | null => {
   if (v === null || v === undefined || v === '') return null;
@@ -98,7 +112,7 @@ export function MartCards({ martId, mart, main, r, scores, bucket, filter, versi
   const date = r.date && mart.dates.includes(r.date) ? r.date : mart.dates[0] ?? null;
   const spark = useChartQuery(martId, r.sparklines && cards.length > 0 && date && bucket && !paused ? sparklineQuery(mart, date, bucket, filter) : null, version);
   if (scores.error) return main ? <ErrorBox error={scores.error} onRetry={scores.retry} /> : null;
-  if (scores.rows && scores.rows.length === 0) return main ? <p className="dm-muted text-sm">{hasFilters ? 'No rows match the filters.' : 'This data mart has no rows.'}</p> : null;
+  if (scores.rows && scores.rows.length === 0) return main ? <p className="dm-muted text-sm">{emptyText(hasFilters)}</p> : null;
   const row = scores.rows?.[0];
   const points = (c: Card): Point[] => (spark.rows ?? []).map((s) => ({
     x: String(s[date!.name]),

@@ -6,6 +6,7 @@ import { havingField, sliceField } from '../filters/slice';
 import type { Aggregation } from '../model/aggregation';
 import { AGG_TOKENS, isGrouped, keepVisible } from '../model/aggregation';
 import type { AggFn } from '../model/aggregation';
+import { errorMessage } from '../model/guards';
 import type { SortKey } from '../model/sort';
 import type { Edge, Field, Schema } from '../model/types';
 import { parentPath } from '../state/join-plan';
@@ -47,6 +48,13 @@ const safeId = (id: string) => /^[A-Za-z0-9_-]+$/.test(id);
 /** The first segment of an alias path: the depth-1 join it hangs under. */
 const rootOf = (path: string) => path.split('.')[0]!;
 
+/** A name that needs no quoting as a CTE or alias. */
+const plainName = (s: string) => /^[a-z_][a-z0-9_]*$/.test(s);
+/** Each item on its own line, indented, joined by commas. */
+const lines = (items: string[], indent: number) => items.map((x) => ' '.repeat(indent) + x).join(',\n');
+/** The join condition between two aliases along an edge: the source fields on the left, the target fields on the right. */
+const on = (d: Dialect, left: string, right: string, edge: Edge) => edge.joins.map((j) => `${left}.${fieldRef(d, j.sourceField)} = ${right}.${fieldRef(d, j.targetField)}`).join(' AND ');
+
 type Reason = { reason: string };
 type PathPlan = { source: JoinedSource; edge: Edge };
 
@@ -79,6 +87,14 @@ type Plan = {
    * A slice is never part of the outer WHERE: that would drop main rows, where a slice only empties the joined columns.
    */
   slicesOf: Map<string, string[]>;
+  /** The grid's aggregation reduced to the shown columns; undefined when the grid does not group. */
+  agg?: Aggregation;
+  /** The schema's fields by name. */
+  byName: Map<string, Field>;
+  /** The schema's shown fields, in schema order (the order GROUP BY keys follow). */
+  cols: Field[];
+  /** The distinct functions of each aggregated shown column, in rule order. */
+  fns: Map<string, AggFn[]>;
   /** The HAVING filters of a grouped grid: a complete filter with `fn`, typed by the aggregate's result. */
   having: { flt: ColumnFilter; field: Field; fn: AggFn }[];
 };
@@ -92,7 +108,8 @@ function prepare(input: MartSqlInput): Plan | Reason {
 
   // A grouped grid only sorts what it shows.
   const shownNames = new Set(visible);
-  const grouped = isGrouped(input.aggregation && keepVisible(input.aggregation, visible));
+  const kept = input.aggregation && keepVisible(input.aggregation, visible);
+  const grouped = isGrouped(kept);
   const sorted = (input.sorts ?? []).flatMap((s) => { const field = byName.get(s.field); return field && (!grouped || shownNames.has(s.field)) ? [{ s, field }] : []; });
   const active = filters.flatMap((flt) => {
     const field = byName.get(flt.field);
@@ -129,7 +146,7 @@ function prepare(input: MartSqlInput): Plan | Reason {
   };
   order.forEach((path, i) => {
     const plain = path.replace(/\./g, '__');
-    cte.set(path, alloc(/^[a-z_][a-z0-9_]*$/.test(plain) ? plain : `j${i + 1}`));
+    cte.set(path, alloc(plainName(plain) ? plain : `j${i + 1}`));
   });
 
   // The join of each path: its source, and the edge from its parent's mart.
@@ -177,7 +194,7 @@ function prepare(input: MartSqlInput): Plan | Reason {
   // Every path's slices are rendered once, here, so a filter the dialect cannot render is a reason before any SQL is built.
   const slicesOf = new Map<string, string[]>();
   for (const x of slices) {
-    try { slicesOf.set(x.path, [...(slicesOf.get(x.path) ?? []), renderFilter(d, `t.${fieldRef(d, x.original)}`, x.field, x.flt)]); } catch (e) { return { reason: e instanceof Error ? e.message : String(e) }; }
+    try { slicesOf.set(x.path, [...(slicesOf.get(x.path) ?? []), renderFilter(d, `t.${fieldRef(d, x.original)}`, x.field, x.flt)]); } catch (e) { return { reason: errorMessage(e) }; }
   }
 
   const ref = (f: Field) => (f.joined ? `${cte.get(rootOf(f.joined.aliasPath))}.${ident(d, f.name)}` : `base_owox.${fieldRef(d, f.name)}`);
@@ -205,50 +222,64 @@ function prepare(input: MartSqlInput): Plan | Reason {
         items.push(`${aggregate(d, c.fn, `${childCte}.${ident(d, c.name)}`)} AS ${ident(d, c.name)}`);
         carried.push({ name: c.name, fn: passFn(c.fn) });
       }
-      joins.push(`    LEFT JOIN ${childCte} ON ${plans.get(child)!.edge.joins.map((j) => `t.${fieldRef(d, j.sourceField)} = ${childCte}.${fieldRef(d, j.targetField)}`).join(' AND ')}`);
+      joins.push(`    LEFT JOIN ${childCte} ON ${on(d, 't', childCte, plans.get(child)!.edge)}`);
     }
     // The slice filters P's raw rows here, before they roll up, so a failing row never reaches P's columns or its children's.
     const sliced = slicesOf.get(path) ?? [];
-    sql.push(`  ${cte.get(path)} AS (\n    SELECT\n${items.map((x) => `      ${x}`).join(',\n')}\n    FROM ${mart(path)} AS t${joins.length ? `\n${joins.join('\n')}` : ''}${sliced.length ? `\n    WHERE ${sliced.join('\n      AND ')}` : ''}\n    GROUP BY ${keys.join(', ')}\n  )`);
+    sql.push(`  ${cte.get(path)} AS (\n    SELECT\n${lines(items, 6)}\n    FROM ${mart(path)} AS t${joins.length ? `\n${joins.join('\n')}` : ''}${sliced.length ? `\n    WHERE ${sliced.join('\n      AND ')}` : ''}\n    GROUP BY ${keys.join(', ')}\n  )`);
     return { sql, carried };
   };
   const roots = order.filter((p) => !parentPath(p));
   for (const root of roots) ctes.push(...dedup(root).sql);
 
-  const joins = roots.map((root) => `LEFT JOIN ${cte.get(root)} ON ${plans.get(root)!.edge.joins.map((j) => `base_owox.${fieldRef(d, j.sourceField)} = ${cte.get(root)}.${fieldRef(d, j.targetField)}`).join(' AND ')}`);
+  const joins = roots.map((root) => `LEFT JOIN ${cte.get(root)} ON ${on(d, 'base_owox', cte.get(root)!, plans.get(root)!.edge)}`);
 
   const where: string[] = [];
   for (const { flt, field } of active) {
-    try { where.push(renderFilter(d, ref(field), field, flt)); } catch (e) { return { reason: e instanceof Error ? e.message : String(e) }; }
+    try { where.push(renderFilter(d, ref(field), field, flt)); } catch (e) { return { reason: errorMessage(e) }; }
   }
   const edgeOf = new Map([...plans].map(([path, pl]) => [path, pl.edge]));
-  return { d, shown, sorted, active, order, cte, edgeOf, grouped, mart, alloc, ctes, ref, joins, where, slicesOf, having };
+  // Only the rules on shown columns count, and a column's functions are listed once each.
+  const agg = grouped ? kept : undefined;
+  const cols = schema.filter((f) => shownNames.has(f.name));
+  const fns = new Map<string, AggFn[]>();
+  for (const r of agg?.aggregations ?? []) {
+    if (!shownNames.has(r.column) || !byName.has(r.column)) continue;
+    const list = fns.get(r.column) ?? [];
+    if (!list.includes(r.function)) list.push(r.function);
+    fns.set(r.column, list);
+  }
+  return { d, agg, byName, cols, fns, shown, sorted, active, order, cte, edgeOf, grouped, mart, alloc, ctes, ref, joins, where, slicesOf, having };
+}
+
+/** The outer query both shapes share: WITH, SELECT, FROM base_owox, the joins, WHERE, then the grouped parts when there are any. */
+function outer(p: Plan, q: { ctes: string[]; items: string[]; joins: string[]; groupBy?: string; having?: string[]; ordering: string[] }): string {
+  return [
+    `WITH\n${q.ctes.join(',\n')}`,
+    `SELECT\n${lines(q.items, 2)}`,
+    'FROM base_owox',
+    ...q.joins,
+    ...(p.where.length ? [`WHERE ${p.where.join('\n  AND ')}`] : []),
+    ...(q.groupBy ? [`GROUP BY ${q.groupBy}`] : []),
+    ...(q.having?.length ? [`HAVING ${q.having.join('\n  AND ')}`] : []),
+    ...(q.ordering.length ? [`ORDER BY ${q.ordering.join(', ')}`] : []),
+  ].join('\n');
 }
 
 /** The ungrouped data mart: the shown fields, one row per main row. */
 function assembleFlat(p: Plan): string {
   const ordering = p.sorted.map(({ s, field }) => `${p.ref(field)} ${s.direction === 'desc' ? 'DESC' : 'ASC'}`);
-  return [
-    `WITH\n${p.ctes.join(',\n')}`,
-    `SELECT\n${p.shown.map((f) => `  ${p.ref(f)}`).join(',\n')}`,
-    'FROM base_owox',
-    ...p.joins,
-    ...(p.where.length ? [`WHERE ${p.where.join('\n  AND ')}`] : []),
-    ...(ordering.length ? [`ORDER BY ${ordering.join(', ')}`] : []),
-  ].join('\n');
+  return outer(p, { ctes: p.ctes, items: p.shown.map((f) => p.ref(f)), joins: p.joins, ordering });
 }
 
 /** The functions a joined field's roll-up is re-aggregated by in a value sleeve (the engine's `value` shape). */
 const VALUE_FNS: readonly AggFn[] = ['SUM', 'AVG', 'MIN', 'MAX', 'STRING_AGG', 'P25', 'P50', 'P75', 'P95'];
 
 /** The grouped data mart: keys and metrics as the grid's aggregation asks, with a sleeve CTE for each joined metric the engine computes apart. */
-function assembleGrouped(p: Plan, input: MartSqlInput, agg: Aggregation): string | Reason {
-  const { d } = p;
-  const visible = new Set(input.visible);
-  const byName = new Map(input.schema.map((f) => [f.name, f]));
-  const cols = input.schema.filter((f) => visible.has(f.name));
-  const rules = agg.aggregations.filter((r) => visible.has(r.column) && byName.has(r.column));
-  const fnsOf = (f: Field): AggFn[] => [...new Set(rules.filter((r) => r.column === f.name).map((r) => r.function))];
+function assembleGrouped(p: Plan, agg: Aggregation): string | Reason {
+  const { d, byName, cols } = p;
+  const rules = agg.aggregations.filter((r) => p.fns.has(r.column));
+  const fnsOf = (f: Field): AggFn[] => p.fns.get(f.name) ?? [];
   const label = (f: Field) => f.alias || f.name;
 
   for (const f of cols) {
@@ -278,14 +309,13 @@ function assembleGrouped(p: Plan, input: MartSqlInput, agg: Aggregation): string
       const b = bucketOf(k);
       keyExprs.set(k.name, b ? dateTrunc(d, p.ref(k), b.unit, b.timeZone, k.type) : p.ref(k));
     }
-  } catch (e) { return { reason: e instanceof Error ? e.message : String(e) }; }
+  } catch (e) { return { reason: errorMessage(e) }; }
   const keyExpr = (k: Field) => keyExprs.get(k.name)!;
   const dimAlias = (i: number) => ident(d, `_owox_dim_${i}`);
   const dimItems = keys.map((k, i) => `${keyExpr(k)} AS ${dimAlias(i)}`);
 
   const pathBase = (path: string) => p.cte.get(path)!.slice(0, -CTE_SUFFIX.length);
-  const safe = (base: string, fallback: string) => (/^[a-z_][a-z0-9_]*$/.test(base) ? base : fallback);
-  const on = (left: string, right: string, edge: Edge) => edge.joins.map((j) => `${left}.${fieldRef(d, j.sourceField)} = ${right}.${fieldRef(d, j.targetField)}`).join(' AND ');
+  const safe = (base: string, fallback: string) => (plainName(base) ? base : fallback);
   const raws = new Map<string, string>();
   const rawOf = (path: string) => { if (!raws.has(path)) raws.set(path, p.alloc(`${pathBase(path)}_raw`)); return raws.get(path)!; };
   const parentRef = (path: string) => { const parent = parentPath(path); return parent ? rawOf(parent) : 'base_owox'; };
@@ -296,8 +326,8 @@ function assembleGrouped(p: Plan, input: MartSqlInput, agg: Aggregation): string
    * The same predicates filter the path's dedup CTE, so every read of the path agrees.
    */
   const rawMart = (path: string) => { const sliced = p.slicesOf.get(path) ?? []; return sliced.length ? `(SELECT * FROM ${p.mart(path)} AS t WHERE ${sliced.join(' AND ')})` : p.mart(path); };
-  const rawJoin = (path: string) => `LEFT JOIN ${rawMart(path)} AS ${rawOf(path)} ON ${on(parentRef(path), rawOf(path), p.edgeOf.get(path)!)}`;
-  const dedupJoin = (path: string) => `LEFT JOIN ${p.cte.get(path)} ON ${on(parentRef(path), p.cte.get(path)!, p.edgeOf.get(path)!)}`;
+  const rawJoin = (path: string) => `LEFT JOIN ${rawMart(path)} AS ${rawOf(path)} ON ${on(d, parentRef(path), rawOf(path), p.edgeOf.get(path)!)}`;
+  const dedupJoin = (path: string) => `LEFT JOIN ${p.cte.get(path)} ON ${on(d, parentRef(path), p.cte.get(path)!, p.edgeOf.get(path)!)}`;
   // The depth-1 dedup CTEs a key or a filter reads: a sleeve joins them so its WHERE and grain match the outer query.
   const roots = new Set([...keys, ...p.active.map((x) => x.field)].filter((f) => f.joined).map((f) => rootOf(f.joined!.aliasPath)));
   const wherePart = (indent: number) => (p.where.length ? `\n${' '.repeat(indent)}WHERE ${p.where.join(`\n${' '.repeat(indent + 2)}AND `)}` : '');
@@ -329,7 +359,7 @@ function assembleGrouped(p: Plan, input: MartSqlInput, agg: Aggregation): string
     const name = cdName.get(owner)!;
     const items = [...dimItems, ...ms.map((m) => `${reportAggregate(d, 'COUNT_DISTINCT', `${rawOf(owner)}.${fieldRef(d, m.joined!.originalName!)}`)} AS ${ident(d, outName(m, 'COUNT_DISTINCT'))}`)];
     const joins = [...chain(owner).map(rawJoin), ...p.order.filter((q) => roots.has(q)).map(dedupJoin)];
-    sleeves.push({ name, sql: `  ${name} AS (\n    SELECT\n${items.map((x) => `      ${x}`).join(',\n')}\n    FROM base_owox\n${joins.map((x) => `    ${x}`).join('\n')}${wherePart(4)}${groupBy}\n  )` });
+    sleeves.push({ name, sql: `  ${name} AS (\n    SELECT\n${lines(items, 6)}\n    FROM base_owox\n${joins.map((x) => `    ${x}`).join('\n')}${wherePart(4)}${groupBy}\n  )` });
   }
   for (const [column, { f, fns }] of valueByColumn) {
     const name = valueName.get(column)!;
@@ -340,8 +370,8 @@ function assembleGrouped(p: Plan, input: MartSqlInput, agg: Aggregation): string
       const inner = [...dimItems, ...oid, `${ownerCte}.${ident(d, f.name)} AS ${ident(d, '_val')}`];
       const joins = [...chain(parentPath(owner) ?? '').map(rawJoin), ...p.order.filter((q) => q === owner || roots.has(q)).map(dedupJoin)];
       const dimCols = keys.map((_, i) => dimAlias(i));
-      const outer = [...dimCols, ...fns.map((fn) => `${aggregate(d, fn, ident(d, '_val'))} AS ${ident(d, outName(f, fn))}`)];
-    sleeves.push({ name, sql: `  ${name} AS (\n    SELECT\n${outer.map((x) => `      ${x}`).join(',\n')}\n    FROM (\n      SELECT DISTINCT\n${inner.map((x) => `        ${x}`).join(',\n')}\n      FROM base_owox\n${joins.map((x) => `      ${x}`).join('\n')}${wherePart(6)}\n    ) _dedup${dimCols.length ? `\n    GROUP BY ${dimCols.join(', ')}` : ''}\n  )` });
+      const outerItems = [...dimCols, ...fns.map((fn) => `${aggregate(d, fn, ident(d, '_val'))} AS ${ident(d, outName(f, fn))}`)];
+    sleeves.push({ name, sql: `  ${name} AS (\n    SELECT\n${lines(outerItems, 6)}\n    FROM (\n      SELECT DISTINCT\n${lines(inner, 8)}\n      FROM base_owox\n${joins.map((x) => `      ${x}`).join('\n')}${wherePart(6)}\n    ) _dedup${dimCols.length ? `\n    GROUP BY ${dimCols.join(', ')}` : ''}\n  )` });
   }
 
   // The exact aggregate expression the SELECT uses for (column, fn). A HAVING filter reuses it. It stays valid when the aggregate comes from a sleeve: the sleeve holds one row per group, so the outer query's ANY_VALUE over it is the scalar the SELECT shows, and the HAVING compares that same value after grouping. The outer WHERE would be wrong here, as it would compare before grouping and, with no group keys, turn an empty result into a row of NULLs.
@@ -354,7 +384,7 @@ function assembleGrouped(p: Plan, input: MartSqlInput, agg: Aggregation): string
   const havingRules: string[] = [];
   try {
     for (const { flt, field, fn } of p.having) if (rules.some((r) => r.column === field.name && r.function === fn)) havingRules.push(renderFilter(d, aggExpr(field, fn), havingField(field, fn), flt));
-  } catch (e) { return { reason: e instanceof Error ? e.message : String(e) }; }
+  } catch (e) { return { reason: errorMessage(e) }; }
 
   const items: string[] = [];
   for (const f of p.shown) {
@@ -371,17 +401,14 @@ function assembleGrouped(p: Plan, input: MartSqlInput, agg: Aggregation): string
     const fn = fnsOf(field)[0];
     return [`${ident(d, outName(field, fn))} ${s.direction === 'desc' ? 'DESC' : 'ASC'}`];
   });
-  return [
-    `WITH\n${[...p.ctes, ...sleeves.map((x) => x.sql)].join(',\n')}`,
-    `SELECT\n${items.map((x) => `  ${x}`).join(',\n')}`,
-    'FROM base_owox',
-    ...p.joins,
-    ...sleeveJoins,
-    ...(p.where.length ? [`WHERE ${p.where.join('\n  AND ')}`] : []),
-    ...(keys.length ? [`GROUP BY ${keys.map(keyExpr).join(', ')}`] : []),
-    ...(havingRules.length ? [`HAVING ${havingRules.join('\n  AND ')}`] : []),
-    ...(ordering.length ? [`ORDER BY ${ordering.join(', ')}`] : []),
-  ].join('\n');
+  return outer(p, {
+    ctes: [...p.ctes, ...sleeves.map((x) => x.sql)],
+    items,
+    joins: [...p.joins, ...sleeveJoins],
+    groupBy: keys.length ? keys.map(keyExpr).join(', ') : undefined,
+    having: havingRules,
+    ordering,
+  });
 }
 
 /** The data mart's SQL for the grid: one deduplicated CTE per joined mart in use, LEFT JOINed to the main mart, with the grid's filters in the outer WHERE; a grouped grid adds its GROUP BY and a sleeve per joined metric the engine computes apart. */
@@ -389,6 +416,6 @@ export function buildMartSql(input: MartSqlInput): { sql: string } | { reason: s
   const plan = prepare(input);
   if ('reason' in plan) return plan;
   if (!plan.grouped) return { sql: assembleFlat(plan) };
-  const sql = assembleGrouped(plan, input, keepVisible(input.aggregation!, input.visible));
+  const sql = assembleGrouped(plan, plan.agg!);
   return typeof sql === 'string' ? { sql } : sql;
 }

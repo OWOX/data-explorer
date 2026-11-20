@@ -1,4 +1,5 @@
 import { categorizeFieldType, isDayType } from '../model/field-category';
+import { toNumber } from '../model/number';
 import { displayText, formatTemporal } from '../ui/format';
 
 export type Format =
@@ -14,12 +15,18 @@ export const AUTO: Format = { kind: 'auto' };
 const KINDS = ['auto', 'plain', 'percent', 'money', 'date', 'datetime', 'time'] as const;
 const CURRENCY = /^[A-Z]{3}$/;
 
+// Shared, so a cell render allocates nothing. Callers read them and never change them.
+const NUMBER_KINDS: readonly Format['kind'][] = ['auto', 'plain', 'percent', 'money'];
+const DAY_KINDS: readonly Format['kind'][] = ['auto', 'date'];
+const MOMENT_KINDS: readonly Format['kind'][] = ['auto', 'date', 'datetime', 'time'];
+const NO_KINDS: readonly Format['kind'][] = [];
+
 /** The format kinds a warehouse type offers; empty when it offers none (text, boolean, time of day, anything else). */
-export function formatsFor(type: string): Format['kind'][] {
+export function formatsFor(type: string): readonly Format['kind'][] {
   const category = categorizeFieldType(type);
-  if (category === 'number') return ['auto', 'plain', 'percent', 'money'];
-  if (category === 'date') return isDayType(type) ? ['auto', 'date'] : ['auto', 'date', 'datetime', 'time'];
-  return [];
+  if (category === 'number') return NUMBER_KINDS;
+  if (category === 'date') return isDayType(type) ? DAY_KINDS : MOMENT_KINDS;
+  return NO_KINDS;
 }
 
 /** Whether an aggregated output still has the column's unit: a count or a combined text does not, so it gets no column format. */
@@ -53,12 +60,6 @@ function moneyFormat(currency: string): Intl.NumberFormat | null {
   return currencies.get(currency)!;
 }
 let percent: Intl.NumberFormat | undefined;
-
-/** A finite number from a number or a numeric string; null for anything else. */
-function toNumber(v: unknown): number | null {
-  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
-  return Number.isFinite(n) ? n : null;
-}
 
 /**
  * The text a cell shows for a value in a chosen format. `auto`, a format the type does not offer, and a value the

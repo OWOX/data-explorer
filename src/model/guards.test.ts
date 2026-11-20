@@ -17,3 +17,10 @@ test('own reads own properties only', () => {
   expect(own({ a: 1 }, 'a')).toBe(1);
   expect(own({}, 'constructor')).toBeUndefined();
 });
+
+test('errorMessage reads an Error message and stringifies anything else', async () => {
+  const { errorMessage } = await import('./guards');
+  expect(errorMessage(new Error('boom'))).toBe('boom');
+  expect(errorMessage('plain')).toBe('plain');
+  expect(errorMessage(42)).toBe('42');
+});

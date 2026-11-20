@@ -3,7 +3,7 @@ import { toTraverseFilter } from '../filters/build';
 import type { AggFn, DateBucket } from '../model/aggregation';
 import { isDateBucket, isTimeZone } from '../model/aggregation';
 import type { Field } from '../model/types';
-import type { RelativeDatePreset, TraverseFilter } from '../sdk/types';
+import type { RelativeDatePreset, TraverseFilterRule } from '../sdk/types';
 
 export type Dialect = 'bigquery' | 'athena' | 'snowflake' | 'redshift' | 'databricks';
 
@@ -256,10 +256,9 @@ function relative(d: Dialect, col: string, p: RelativeDatePreset, type: string):
 }
 
 /** One complete filter as a SQL predicate on `col` (already a column reference). */
-export const renderFilter = (d: Dialect, col: string, field: Field, f: ColumnFilter): string => renderTraverse(d, col, field, toTraverseFilter(f, field));
-
-/** A traverse filter as a SQL predicate on `col`; the list operators are kept for the day the grid offers them. */
-export function renderTraverse(d: Dialect, col: string, field: Field, t: TraverseFilter): string {
+export function renderFilter(d: Dialect, col: string, field: Field, f: ColumnFilter): string {
+  // The grid offers no list operator, so `toTraverseFilter` never returns `in` or `not_in`.
+  const t = toTraverseFilter(f, field) as Exclude<TraverseFilterRule, { operator: 'in' | 'not_in' }>;
   const type = field.type.trim().toUpperCase();
   const cast = CAST_TYPES[d].has(type);
   /** A compared value, cast to the column type on date and time columns. */
@@ -298,11 +297,6 @@ export function renderTraverse(d: Dialect, col: string, field: Field, t: Travers
     case 'is_true': return `${col} = TRUE`;
     case 'is_false': return `${col} = FALSE`;
     case 'between': return `${col} BETWEEN ${lit(t.value.from)} AND ${lit(t.value.to)}`;
-    case 'in':
-    case 'not_in': {
-      const list = (t.value as Scalar[]).map(lit).join(', ');
-      return t.operator === 'in' ? `${col} IN (${list})` : `(${col} IS NULL OR ${col} NOT IN (${list}))`;
-    }
     case 'relative_date': return relative(d, col, t.value, type);
   }
 }

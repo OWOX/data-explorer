@@ -6,3 +6,6 @@ export const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x
 
 /** The value of an own property, or undefined: an inherited one (`constructor`, `__proto__`) is never read. */
 export const own = (o: Record<string, unknown>, k: string): unknown => (Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined);
+
+/** The text of a thrown value: an Error's message, or the value as a string. */
+export const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));

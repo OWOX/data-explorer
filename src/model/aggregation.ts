@@ -1,6 +1,7 @@
 // Column aggregation in the Data grid: a port of the OWOX web app's report column picker (aggregation governance,
 // applyAggregationDraft, aggregation labels) and of the traverseData row keys (`"<column> | <TOKEN>"`).
 import type { Field, FieldCategory } from './types';
+import { ymd } from './day';
 import { isDayType, normalizeType } from './field-category';
 
 export const AGGREGATE_FUNCTIONS = ['SUM', 'AVG', 'MIN', 'MAX', 'COUNT', 'COUNT_DISTINCT', 'STRING_AGG', 'ANY_VALUE', 'P25', 'P50', 'P75', 'P95'] as const;
@@ -147,19 +148,27 @@ export function outputsOf(columns: string[], a: Aggregation): Output[] {
 }
 
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const DATE_PART = /^(\d{4})-(\d{2})-(\d{2})/;
+
+// One formatter per locale: building an Intl.DateTimeFormat for every bucket label is the slow part of a chart render.
+const dayFormats = new Map<string, Intl.DateTimeFormat>();
+const dayFormat = (locale?: string): Intl.DateTimeFormat => {
+  const key = locale ?? '';
+  let f = dayFormats.get(key);
+  if (!f) dayFormats.set(key, (f = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' })));
+  return f;
+};
 
 /** A bucket start as the grid shows it: Month "Nov 2026", Quarter "Q4 2026", Year "2026", Week and Day the calendar day. Unreadable values show as stored. */
 export function formatBucket(value: unknown, unit: DateBucket, locale?: string): string | null {
   if (value === null || value === undefined || value === '') return null;
-  const m = DATE_PART.exec(String(value));
-  if (!m) return String(value);
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const parts = ymd(value);
+  if (!parts) return String(value);
+  const [y, mo, d] = parts;
   if (unit === 'YEAR') return String(y);
   if (unit === 'QUARTER') return `Q${Math.floor((mo - 1) / 3) + 1} ${y}`;
   if (unit === 'MONTH') return `${SHORT_MONTHS[mo - 1]} ${y}`;
   // DAY and WEEK: the calendar day, no time-zone shift.
-  return new Date(Date.UTC(y, mo - 1, d)).toLocaleDateString(locale, { dateStyle: 'medium', timeZone: 'UTC' });
+  return dayFormat(locale).format(Date.UTC(y, mo - 1, d));
 }
 
 /** The names the backend sent that this build knows, in the canonical order. */

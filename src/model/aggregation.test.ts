@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { isTimeZone, sanitizeAggregation, ungroupableColumn, aggregatedKey, allowedFunctions, applyDraft, canBucket, canZone, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, type Aggregation } from './aggregation';
 import type { Field } from './types';
 
@@ -113,4 +114,18 @@ test('ungroupableColumn finds a shown array or calculated column with no rule, o
 test('the backend IANA pattern and length cap', () => {
   for (const z of ['UTC', 'America/New_York', 'Etc/GMT+5', 'America/Argentina/Buenos_Aires']) expect(isTimeZone(z)).toBe(true);
   for (const z of ['', '1UTC', 'UTC/', "UTC'; DROP", 'a b', '/UTC', 'A'.repeat(65), 'Europe//Kyiv', 7]) expect(isTimeZone(z)).toBe(false);
+});
+
+test('formatBucket builds one date formatter per locale', () => {
+  const spy = vi.spyOn(Intl, 'DateTimeFormat');
+  try {
+    formatBucket('2026-11-02', 'DAY', 'fr-FR');
+    const built = spy.mock.calls.length;
+    expect(built).toBeLessThanOrEqual(1);
+    formatBucket('2026-11-09', 'WEEK', 'fr-FR');
+    formatBucket('2026-11-16', 'DAY', 'fr-FR');
+    expect(spy.mock.calls.length).toBe(built);
+  } finally {
+    spy.mockRestore();
+  }
 });
