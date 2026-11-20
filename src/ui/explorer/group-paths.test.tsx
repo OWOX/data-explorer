@@ -61,3 +61,11 @@ test('ticking a field on one Countries group keeps two Countries groups, with th
   const cols = probe.state.grids.orders!.columns;
   expect(cols.indexOf('customers__countries__code')).toBe(cols.indexOf('customers__countries__name') + 1);
 });
+
+test('a group header lists the description hint before the Fields button, then the remove cross', async () => {
+  await setup(['customers__name']);
+  const head = data().querySelector<HTMLElement>('th[data-group-path=""]')!;
+  const hint = within(head).getByRole('note', { name: 'About Orders' });
+  const fields = within(head).getByRole('button', { name: 'Fields of Orders' });
+  expect(hint.compareDocumentPosition(fields) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});

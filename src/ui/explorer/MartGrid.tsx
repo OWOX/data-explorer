@@ -27,7 +27,7 @@ import { ErrorBox, errorMessage } from '../ErrorBox';
 import { Toast } from '../Toast';
 import { removedAggregation, unappliedFilter } from './unapplied';
 import { Skeleton } from '../Skeleton';
-import { OverflowTip, Tooltip } from '../Tooltip';
+import { Hint, OverflowTip, Tooltip } from '../Tooltip';
 import { BandTools, BandToolsSlot } from '../bands/BandTools';
 import { CardClickContext } from '../bands/CardClick';
 import { useLatest } from '../useLatest';
@@ -516,7 +516,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const groups = useMemo(() => {
     // A group is a mart at one alias path ('' for the main mart), so a mart joined under two parents is two groups.
     const inUse = joinedPaths(shown, sources);
-    const out: { id: string; path: string; title: string; icon: string | null | undefined; span: number; main: boolean }[] = [];
+    const out: { id: string; path: string; title: string; icon: string | null | undefined; description: string | null | undefined; span: number; main: boolean }[] = [];
     for (const o of outputs) {
       const f = byName.get(o.column)!;
       const id = f.joined?.martId ?? martId;
@@ -524,7 +524,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       const source = f.joined ? sources.find((x) => x.aliasPath === path) : undefined;
       const last = out[out.length - 1];
       if (last && last.path === path) last.span += 1;
-      else out.push({ id, path, title: (f.joined ? (source ? pathTitle(source, inUse, sources) : f.joined.label) : model.marts.get(id)?.title) ?? id, icon: model.marts.get(id)?.icon, span: 1, main: !f.joined });
+      else out.push({ id, path, title: (f.joined ? (source ? pathTitle(source, inUse, sources) : f.joined.label) : model.marts.get(id)?.title) ?? id, icon: model.marts.get(id)?.icon, description: model.marts.get(id)?.description, span: 1, main: !f.joined });
     }
     return out;
   }, [outputs, byName, model, martId, shown, sources]);
@@ -794,6 +794,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
                     <div className="flex min-w-0 items-center gap-1">
                       <span className="inline-flex shrink-0 text-muted-foreground"><PickedIcon icon={g.icon} fallback={Box} size={14} /></span>
                       <span className="truncate">{g.title}</span>
+                      {g.description?.trim() && <Hint text={g.description} label={`About ${g.title}`} />}
                       <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} />
                       {(several || !g.main) && (
                         <Tooltip content={`Remove ${g.title} from the grid`}>

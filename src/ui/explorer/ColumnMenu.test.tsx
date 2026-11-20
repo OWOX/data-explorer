@@ -32,6 +32,32 @@ async function showAmount() {
   await waitFor(() => expect(headers().some((h) => h.startsWith('Amount'))).toBe(true));
 }
 
+describe('sort mark and notes', () => {
+  test('the sort mark steps the sort in place and never opens the menu', async () => {
+    setup();
+    await ready();
+    await openSubmenu(within(data()), 'status', 'Sort');
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Sort A → Z' }));
+    await userEvent.click(await within(data()).findByLabelText('Sorted A to Z: status'));
+    expect(open()).toHaveLength(0);
+    expect(await within(data()).findByLabelText('Sorted Z to A: status')).toBeInTheDocument();
+    expect(within(data()).getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'descending');
+    await userEvent.click(within(data()).getByLabelText('Sorted Z to A: status'));
+    await waitFor(() => expect(within(data()).queryByLabelText(/^Sorted /)).toBeNull());
+    expect(open()).toHaveLength(0);
+    expect(within(data()).getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'none');
+  });
+
+  test('the Filter panel carries the OWOX note in its footer', async () => {
+    setup();
+    await ready();
+    await openSubmenu(within(data()), 'status', 'Filter');
+    const dialog = await screen.findByRole('dialog', { name: 'Filter of status' });
+    const note = within(dialog).getByText('Filters narrow the final result, applied to the SELECT after all JOINs. Use slices to narrow a joined data mart BEFORE it is JOINed in.');
+    expect(note.closest('.dm-menu-foot')).not.toBeNull();
+  });
+});
+
 describe('placement', () => {
   const view = { width: 1000, height: 700 };
   const size = { width: 220, height: 200 };
