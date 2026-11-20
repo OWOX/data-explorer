@@ -189,6 +189,9 @@ const byField = (m: Record<string, ColumnFilter> | undefined) => Object.entries(
 const stable = (g: GridState) => JSON.stringify([g.columns, byField(g.filters), byField(g.slices), g.sorts, g.limit, g.aggregations ?? [], g.dateTrunc ?? [], g.view ?? 'table']);
 const sameGrid = (a: GridState, b: GridState) => stable(a) === stable(b);
 
+/** The rules on fields the schema offers (or, with `offered` false, the parked ones on fields it does not). */
+const pickOffered = (rules: Record<string, ColumnFilter>, schema: Schema, offered = true) => Object.fromEntries(Object.entries(rules).filter(([k]) => schema.some((f) => f.name === k) === offered));
+
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
 function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, initialAgg, onChange, onRows, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
@@ -223,41 +226,31 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const [selected, setSelected] = useState<GridSelection | null>(null);
   // The functions and date buckets on columns: any of them groups the rows.
   const [agg, setAgg] = useState<Aggregation>(initialAgg);
-  // A filter on a field this visit does not offer (a joined field whose marts could not be read, or one a Refresh took away) is not applied,
-  // and not dropped from the kept copy either: it is parked, and written back with the live ones. When the offered fields change,
-  // parked filters on fields now offered are applied after all, and filters on fields no longer offered are parked.
+  // Every rule the member has, applied or not. A filter on a field this visit does not offer (a joined field whose marts could not be read, or one a Refresh
+  // took away) is parked: it stays here and is written back with the live ones, but `filters` below leaves it out. When the offered fields change,
+  // parked filters on fields now offered are applied after all, and filters on fields no longer offered are parked. Slices (the pre-join rules on joined fields) work the same way.
   const offeredNow = (name: string) => schema.some((f) => f.name === name);
-  const [parked, setParked] = useState<Record<string, ColumnFilter>>(() => Object.fromEntries(Object.entries(seed.saved?.filters ?? {}).filter(([k]) => !offeredNow(k))));
-  const [filters, setFilters] = useState<Record<string, ColumnFilter>>(() => Object.fromEntries(Object.entries(seed.saved?.filters ?? {}).filter(([k]) => offeredNow(k))));
-  // Slices (the pre-join rules on joined fields) are kept and parked the same way as filters.
-  const [parkedSlices, setParkedSlices] = useState<Record<string, ColumnFilter>>(() => Object.fromEntries(Object.entries(seed.saved?.slices ?? {}).filter(([k]) => !offeredNow(k))));
-  const [slices, setSlices] = useState<Record<string, ColumnFilter>>(() => Object.fromEntries(Object.entries(seed.saved?.slices ?? {}).filter(([k]) => offeredNow(k))));
+  const [allFilters, setAllFilters] = useState<Record<string, ColumnFilter>>(() => seed.saved?.filters ?? {});
+  const [allSlices, setAllSlices] = useState<Record<string, ColumnFilter>>(() => seed.saved?.slices ?? {});
+  const filters = useMemo(() => pickOffered(allFilters, schema), [allFilters, schema]);
+  const slices = useMemo(() => pickOffered(allSlices, schema), [allSlices, schema]);
   const offeredKey = schema.map((f) => f.name).join('\u0000');
   const [seenOffered, setSeenOffered] = useState({ key: offeredKey, schema });
   // What this render has to tell the member (said once, in the toast below).
   const said: string[] = [];
   if (seenOffered.key !== offeredKey) {
     setSeenOffered({ key: offeredKey, schema });
-    const back = Object.entries(parked).filter(([k]) => offeredNow(k));
-    const gone = Object.entries(filters).filter(([k]) => !offeredNow(k));
-    const backSlices = Object.entries(parkedSlices).filter(([k]) => offeredNow(k));
-    const goneSlices = Object.entries(slices).filter(([k]) => !offeredNow(k));
-    if (backSlices.length || goneSlices.length) {
-      setSlices((cur) => Object.fromEntries([...Object.entries(cur).filter(([k]) => offeredNow(k)), ...backSlices]));
-      setParkedSlices(Object.fromEntries([...Object.entries(parkedSlices).filter(([k]) => !offeredNow(k)), ...goneSlices]));
-    }
-    if (back.length || gone.length) {
-      setFilters((cur) => Object.fromEntries([...Object.entries(cur).filter(([k]) => offeredNow(k)), ...back]));
-      setParked(Object.fromEntries([...Object.entries(parked).filter(([k]) => !offeredNow(k)), ...gone]));
-    }
-    if (goneSlices.length) {
-      const titles = goneSlices.map(([k]) => { const was = seenOffered.schema.find((f) => f.name === k); return was ? columnTitle(was) : k; });
-      said.push(`The ${titles.length > 1 ? 'slices' : 'slice'} on ${titles.join(', ')} ${titles.length > 1 ? 'are' : 'is'} paused: ${titles.length > 1 ? 'those fields are' : 'that field is'} no longer offered.`);
-    }
-    if (gone.length) {
-      const titles = gone.map(([k]) => { const was = seenOffered.schema.find((f) => f.name === k); return was ? columnTitle(was) : k; });
-      said.push(`The ${titles.length > 1 ? 'filters' : 'filter'} on ${titles.join(', ')} ${titles.length > 1 ? 'are' : 'is'} paused: ${titles.length > 1 ? 'those fields are' : 'that field is'} no longer offered.`);
-    }
+    // The rules that were applied under the old field list and are parked under the new one.
+    const goneFrom = (rules: Record<string, ColumnFilter>) => Object.keys(rules).filter((k) => seenOffered.schema.some((f) => f.name === k) && !offeredNow(k));
+    const pausedNote = (noun: string, names: string[]) => {
+      const titles = names.map((k) => { const was = seenOffered.schema.find((f) => f.name === k); return was ? columnTitle(was) : k; });
+      const many = titles.length > 1;
+      return `The ${many ? `${noun}s` : noun} on ${titles.join(', ')} ${many ? 'are' : 'is'} paused: ${many ? 'those fields are' : 'that field is'} no longer offered.`;
+    };
+    const goneSlices = goneFrom(allSlices);
+    const gone = goneFrom(allFilters);
+    if (goneSlices.length) said.push(pausedNote('slice', goneSlices));
+    if (gone.length) said.push(pausedNote('filter', gone));
   }
   // What the member applied that the request leaves out, said once in a toast: an incomplete filter, a function the field no longer allows, a failed Refresh.
   const [note, setNote] = useState<{ text: string } | null>(null);
@@ -287,11 +280,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   if (seededFrom !== seed.filters) {
     setSeededFrom(seed.filters);
     if (seed.filters) {
-      setFilters(toFilterMap(seed.filters));
-      setParked({});
+      setAllFilters(toFilterMap(seed.filters));
       // A followed link replaces the member's rules with its own filters: the slices of the old view do not carry over.
-      setSlices({});
-      setParkedSlices({});
+      setAllSlices({});
       setLimit(PAGE_SIZE);
     }
   }
@@ -307,16 +298,14 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   if (seed.saved !== seenSaved) {
     setSeenSaved(seed.saved);
     const saved = seed.saved;
-    if (saved && saved.columns.length > 0 && !sameGrid(saved, { columns: visible, filters: { ...parked, ...filters }, ...(Object.keys({ ...parkedSlices, ...slices }).length ? { slices: { ...parkedSlices, ...slices } } : {}), sorts: own, limit, aggregations: agg.aggregations, dateTrunc: agg.dateTrunc, ...(view ? { view } : {}) })) {
+    if (saved && saved.columns.length > 0 && !sameGrid(saved, { columns: visible, filters: allFilters, ...(Object.keys(allSlices).length ? { slices: allSlices } : {}), sorts: own, limit, aggregations: agg.aggregations, dateTrunc: agg.dateTrunc, ...(view ? { view } : {}) })) {
       setView(saved.view);
       setVisible(saved.columns);
       setAgg(aggOf(saved));
       if (!sameList(saved.columns, visible)) { setAdopted([...saved.columns]); setSelected(null); }
       else if (JSON.stringify(aggOf(saved)) !== JSON.stringify(agg)) setAdoptedAgg({ ...aggOf(saved) });
-      setFilters(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => offeredNow(k))));
-      setParked(Object.fromEntries(Object.entries(saved.filters).filter(([k]) => !offeredNow(k))));
-      setSlices(Object.fromEntries(Object.entries(saved.slices ?? {}).filter(([k]) => offeredNow(k))));
-      setParkedSlices(Object.fromEntries(Object.entries(saved.slices ?? {}).filter(([k]) => !offeredNow(k))));
+      setAllFilters(saved.filters);
+      setAllSlices(saved.slices ?? {});
       setOwn(saved.sorts);
       setLimit(saved.limit);
     }
@@ -326,7 +315,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
 
   useEffect(() => { if (adoptedAgg) columnStore.saveAggregation(martId, adoptedAgg); }, [adoptedAgg, columnStore, martId]);
 
-  useEffect(() => { const edit = editSeq !== seenSeq.current; seenSeq.current = editSeq; onChange({ columns: visible, filters: { ...parked, ...filters }, ...(Object.keys({ ...parkedSlices, ...slices }).length ? { slices: { ...parkedSlices, ...slices } } : {}), sorts: own, limit, ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}), ...(view ? { view } : {}) }, edit); }, [visible, filters, parked, slices, parkedSlices, own, limit, agg, view, editSeq]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const edit = editSeq !== seenSeq.current; seenSeq.current = editSeq; onChange({ columns: visible, filters: allFilters, ...(Object.keys(allSlices).length ? { slices: allSlices } : {}), sorts: own, limit, ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}), ...(view ? { view } : {}) }, edit); }, [visible, allFilters, allSlices, own, limit, agg, view, editSeq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every data mart's columns sit together: the main mart's own, then each joined mart's in the order it was added.
   const shown = useMemo(() => orderColumns(visible, sources, defaultColumns(native)), [visible, sources, native]);
@@ -344,10 +333,16 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     if (removed) {
       said.push(removed.text);
       // A HAVING filter on a function that was just removed goes with it, in the same render as the toast.
-      setFilters((cur) => dropOrphanHaving(cur, aggNow.aggregations));
       // A parked filter belongs to a field this visit does not offer, so aggNow never holds its rule: it is checked against the raw rules, minus the ones just removed.
       const dropped = keptAgg.aggregations.filter((r) => !aggNow.aggregations.includes(r));
-      setParked((cur) => dropOrphanHaving(cur, agg.aggregations.filter((r) => !dropped.includes(r))));
+      const parkedRules = agg.aggregations.filter((r) => !dropped.includes(r));
+      setAllFilters((cur) => {
+        const applied = pickOffered(cur, schema);
+        const parked = pickOffered(cur, schema, false);
+        const kept = dropOrphanHaving(applied, aggNow.aggregations);
+        const keptParked = dropOrphanHaving(parked, parkedRules);
+        return kept === applied && keptParked === parked ? cur : { ...keptParked, ...kept };
+      });
     }
   }
   if (said.length) setNote({ text: said.join(' ') });
@@ -402,8 +397,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     markEdit();
     setAgg(next);
     // A HAVING filter on a function that was just taken off goes in the same step.
-    setFilters((cur) => dropOrphanHaving(cur, next.aggregations));
-    setParked((cur) => dropOrphanHaving(cur, next.aggregations));
+    setAllFilters((cur) => dropOrphanHaving(cur, next.aggregations));
     columnStore.saveAggregation(martId, next);
     setLimit(PAGE_SIZE);
   }, [agg, columnStore, martId, markEdit]);
@@ -462,8 +456,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     if (nextAgg !== agg) {
       setAgg(nextAgg);
       // A HAVING filter on a hidden column's function goes with it, in the same step.
-      setFilters((cur) => dropOrphanHaving(cur, nextAgg.aggregations));
-      setParked((cur) => dropOrphanHaving(cur, nextAgg.aggregations));
+      setAllFilters((cur) => dropOrphanHaving(cur, nextAgg.aggregations));
       columnStore.saveAggregation(martId, nextAgg);
     }
     setOwn((cur) => { const kept = cur && sortsOnColumns(cur, cols); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
@@ -539,13 +532,13 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // Charts ignore HAVING filters, so one alone does not make their "No rows match the filters." true.
   const hasChartFilters = Object.values(filters).some((f) => !f.fn);
   const hasSorts = own !== null;
-  const hasSlices = Object.keys(slices).length > 0 || Object.keys(parkedSlices).length > 0;
+  const hasSlices = Object.keys(allSlices).length > 0;
   /** A click on a chart mark: the same step as a filter edit (so Undo covers it), one filter per column. */
   const applyChartFilters = (add: ColumnFilter[]) => {
     // A filter the column cannot take as it stands (a blank value) is left out, with the same note a filter edit gives.
     const usable = add.filter((f) => { const field = schema.find((x) => x.name === f.field); const unapplied = unappliedFilter(f, field); if (unapplied) setNote({ text: unapplied }); return !!field && !unapplied; });
     if (!usable.length) return;
-    markEdit(); setFilters((cur) => ({ ...cur, ...Object.fromEntries(usable.map((f) => [f.field, f])) })); setLimit(PAGE_SIZE);
+    markEdit(); setAllFilters((cur) => ({ ...cur, ...Object.fromEntries(usable.map((f) => [f.field, f])) })); setLimit(PAGE_SIZE);
   };
   /** One slice per joined field; an unusable one (a blank value, a field that is not joined) is left out with the same note a filter edit gives. */
   const setSlice = (name: string, f: ColumnFilter | undefined) => {
@@ -555,14 +548,14 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     const unapplied = f && field ? unappliedFilter(f, sliceField(field)) : null;
     if (unapplied) setNote({ text: unapplied });
     markEdit();
-    setSlices((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; });
+    setAllSlices((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; });
     setLimit(PAGE_SIZE);
   };
   const [menuRequest, setMenuRequest] = useState<{ key: string; seq: number } | null>(null);
   const menuEnv: ColumnMenuEnv = {
     menuRequest,
     sorts: shownSorts, setSort, filters, slices, setSlice,
-    setFilter: (name, f) => { const unapplied = f ? unappliedFilter(f, schema.find((x) => x.name === name)) : null; if (unapplied) setNote({ text: unapplied }); markEdit(); setFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; }); setLimit(PAGE_SIZE); },
+    setFilter: (name, f) => { const unapplied = f ? unappliedFilter(f, schema.find((x) => x.name === name)) : null; if (unapplied) setNote({ text: unapplied }); markEdit(); setAllFilters((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; }); setLimit(PAGE_SIZE); },
     isAggregated: (column) => aggNow.aggregations.some((r) => r.column === column) || aggNow.dateTrunc.some((r) => r.column === column),
     draftOf: (column) => draftOf(column, aggNow),
     blockerFor: (name) => blockers.find((b) => b.name !== name)?.title,
@@ -710,7 +703,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     <div ref={frame} className={`dm-grid-frame flex max-h-[32rem] min-h-0 flex-col${charts ? ' dm-grid-frame-charts' : ''}`} style={charts && tableHeight.current ? { height: tableHeight.current } : undefined}>
       <Toast onDismiss={() => setNote(null)} stamp={note} returnTo={() => scroller.current}>{note?.text}</Toast>
       <BandTools slot={slot}>
-        <button type="button" disabled={!hasFilters && !hasSorts && !hasSlices} onClick={() => { markEdit(); setFilters({}); setParked({}); setSlices({}); setParkedSlices({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
+        <button type="button" disabled={!hasFilters && !hasSorts && !hasSlices} onClick={() => { markEdit(); setAllFilters({}); setAllSlices({}); setOwn(null); setLimit(PAGE_SIZE); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => { onRefresh(); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} slices={Object.values(slices)} sorts={gridSorts} ownSorts={own ?? NO_SORTS} rows={rows} hasMore={hasMore} loading={loading} run={run} storage={martStorage} storageUnavailable={!martStorage} joinsFailed={joinsFailed && !joinsRead} sources={joinsRead ? sources : undefined} edges={model.edges} titles={martTitles} joinedMarts={joinedMarts} />}
       </BandTools>
