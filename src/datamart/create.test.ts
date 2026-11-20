@@ -85,7 +85,7 @@ describe('createDataMart', () => {
 
   it('resumes from schema with a fresh trigger', async () => {
     const { ctx, calls } = setup();
-    await createDataMart(ctx, { ...req, martId: 'm1', from: 'schema' }, undefined, opts);
+    await createDataMart(ctx, { ...req, martId: 'm1', from: 'schema' }, undefined, { pollMs: 1, timeoutMs: 1000 });
     expect(calls[0]).toBe('POST /api/data-marts/m1/schema-actualize-triggers');
     expect(calls).not.toContain('POST /api/data-marts');
     expect(calls.at(-2)).toBe('PUT /api/data-marts/m1/publish');
