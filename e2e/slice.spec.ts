@@ -1,0 +1,45 @@
+import { expect, test, type Locator, type Page } from '@playwright/test';
+
+// A slice on a joined column, driven with the real mouse like a member.
+test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
+const data = (page: Page) => page.locator('#band-data');
+
+async function centre(loc: Locator) { const b = (await loc.boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }
+async function click(page: Page, loc: Locator) { const p = await centre(loc); await page.mouse.move(p.x, p.y, { steps: 8 }); await page.mouse.down(); await page.mouse.up(); }
+async function addCustomers(page: Page) {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
+  await expect(data(page).getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
+}
+async function openSub(page: Page, column: string, row: 'Filter' | 'Slice' | 'Aggregate') {
+  const icon = data(page).getByLabel(`Column menu ${column}`, { exact: true });
+  await icon.scrollIntoViewIfNeeded();
+  await icon.locator('xpath=ancestor::th').hover();
+  await click(page, icon);
+  await click(page, page.getByRole('menuitem', { name: row, exact: true }));
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+test('a slice empties the joined columns it does not match, keeps every row, and Undo removes it', async ({ page }) => {
+  await addCustomers(page);
+  const email = data(page).getByRole('cell', { name: /^[A-Z][a-z]+ [A-Z][a-z]+$/ });
+  await expect(email.first()).toBeVisible();
+  const dialog = await openSub(page, 'Customers · name', 'Slice');
+  await expect(dialog.getByText('Slices filter the joined data mart before it is joined, reducing the rows pulled in.')).toBeVisible();
+  await dialog.getByLabel('Operator').selectOption('contains');
+  await dialog.getByLabel('Value').fill('zzzz-none');
+  await click(page, dialog.getByRole('button', { name: 'Apply' }));
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const layers = data(page).getByRole('button', { name: /^Slice Customers · name/ });
+  await expect(layers).toBeVisible();
+  expect(await layers.locator('svg.lucide-layers').count()).toBe(1);
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await expect(data(page).getByRole('cell', { name: 'paid', exact: true }).first()).toBeVisible();
+  await expect(email).toHaveCount(0);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(data(page).getByRole('button', { name: /^Slice Customers · name/ })).toHaveCount(0);
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await expect(email.first()).toBeVisible();
+});
