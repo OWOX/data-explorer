@@ -539,15 +539,22 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     askFocusFor(promoted);
     setRemoving(true);
     (g.main ? cardClick(g.id, { only: 'deselect' }) : cardClick(g.id, { removePaths: joinedPaths(shown, sources).filter(gone) })).catch(() => undefined).finally(() => {
+      // The focus waits for the render that re-enables the buttons: a timer could fire before it and find the target's remove button still disabled.
+      focusAfterRemove.current = next ?? null;
       setRemoving(false);
       // Nothing remounted (the click did nothing): the request must not wait for a later mount.
       if (promoted) setTimeout(() => dropFocusFor(promoted), 1000);
-      setTimeout(() => {
-        const th = next !== undefined ? head.current?.querySelector(`th[data-group-path="${CSS.escape(next)}"]`) : null;
-        (th?.querySelector<HTMLElement>('button[data-remove]:not(:disabled)') ?? th?.querySelector<HTMLElement>('button'))?.focus();
-      }, 0);
     });
   };
+  /** The path of the tab that takes focus once a removal has been applied; null when there is none. */
+  const focusAfterRemove = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const path = focusAfterRemove.current;
+    if (removing || path === undefined) return;
+    focusAfterRemove.current = undefined;
+    const th = path === null ? null : head.current?.querySelector(`th[data-group-path="${CSS.escape(path)}"]`);
+    (th?.querySelector<HTMLElement>('button[data-remove]:not(:disabled)') ?? th?.querySelector<HTMLElement>('button'))?.focus();
+  }, [removing]);
   useEffect(() => {
     if (!isFocusAskedFor(martId)) return;
     const button = head.current?.querySelector<HTMLElement>(`th[data-group-path=""] button`);
