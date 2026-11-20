@@ -818,4 +818,27 @@ describe('HAVING filters', () => {
     expect(grouped).not.toContain('HAVING');
     expect(run({ schema: [f('status'), amount], visible: ['status', 'amount'], filters: [{ field: 'amount', op: 'gt', value: 1, fn: 'SUM' }] })).not.toMatch(/HAVING|WHERE/);
   });
+
+  test('a sleeve COUNT_DISTINCT is filtered on its COALESCE(ANY_VALUE(...), 0) form, as the SELECT shows it', () => {
+    const sku2 = f('order_items__sku', 'STRING', j('order_items', 'itm1', 'sku', 'COUNT_DISTINCT', 'STRING'));
+    const sql = run({ schema: [f('status'), sku2], visible: ['status', 'order_items__sku'], sources: [items([sku2])], aggregation: agg({ column: 'order_items__sku', function: 'COUNT_DISTINCT' }), filters: [{ field: 'order_items__sku', op: 'gt', value: 2, fn: 'COUNT_DISTINCT' }] });
+    expect(sql).toMatch(/\nHAVING COALESCE\(ANY_VALUE\(\w+\.order_items__sku__countunique\), 0\) > 2$/);
+    expect(sql).not.toMatch(/\nWHERE /);
+  });
+
+  test('on Athena a sleeve HAVING spells ANY_VALUE as arbitrary', () => {
+    const q = f('order_items__q', 'INTEGER', j('order_items', 'itm1', 'q', 'SUM', 'INTEGER'));
+    const sql = run({ dialect: 'athena', schema: [f('status'), q], visible: ['status', 'order_items__q'], sources: [items([q])], aggregation: agg({ column: 'order_items__q', function: 'MAX' }), filters: [{ field: 'order_items__q', op: 'gt', value: 3, fn: 'MAX' }] });
+    expect(sql).toMatch(/\nHAVING arbitrary\(\w+\.order_items__q__max\) > 3$/);
+  });
+
+  test('a grid with no group keys has a HAVING and no GROUP BY, so an empty result stays empty', () => {
+    const q = f('order_items__q', 'INTEGER', j('order_items', 'itm1', 'q', 'SUM', 'INTEGER'));
+    const sql = run({ schema: [f('status'), q], visible: ['order_items__q'], sources: [items([q])], aggregation: agg({ column: 'order_items__q', function: 'MAX' }), filters: [{ field: 'order_items__q', op: 'gt', value: 3, fn: 'MAX' }] });
+    expect(sql).toContain('CROSS JOIN');
+    expect(sql).not.toContain('GROUP BY base_owox');
+    expect(sql).toMatch(/\nHAVING ANY_VALUE\(\w+\.order_items__q__max\) > 3$/);
+    expect(sql).not.toMatch(/\nWHERE /);
+  });
+
 });

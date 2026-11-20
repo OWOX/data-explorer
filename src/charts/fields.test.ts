@@ -11,6 +11,21 @@ const schema = [
   f('calc', 'number', { isCalculated: true }),
 ];
 
+describe('the counter of chartFields', () => {
+  const pick = (fields: Field[]) => chartFields(fields, [], NO_AGGREGATION, 'M', [''])?.counter?.name ?? null;
+  it('skips joined fields, calculated fields, category other and fields whose governance allows no COUNT', () => {
+    const fields = [
+      f('c__city', 'string', { joined: { martId: 'C', label: 'Customers', aliasPath: 'c' } }),
+      f('calc', 'string', { isCalculated: true }),
+      f('tags', 'other'),
+      f('no_count', 'string', { allowedAggregations: ['MAX'] }),
+      f('status', 'string'),
+    ];
+    expect(pick(fields)).toBe('status');
+    expect(pick(fields.slice(0, 4))).toBeNull();
+  });
+});
+
 describe('chartFields', () => {
   it('classifies shown fields per mart, in group order', () => {
     const r = chartFields(schema, ['id', 'date', 'amount', 'channel', 'c__city', 'c__ltv', 'calc'], NO_AGGREGATION, 'M', ['', 'c']);

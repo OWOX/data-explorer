@@ -1,11 +1,11 @@
-import { StrictMode } from 'react';
+import { StrictMode, useEffect } from 'react';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GRID_COLUMNS_COLLECTION } from '../../api/grid-columns';
 import type { BlendableSchemaDto, TraverseOptions } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
-import { AppServices, StoreProvider, useStore } from '../../state/store';
+import { AppServices, StoreProvider, useStore, type GridState } from '../../state/store';
 import { App } from '../App';
 import { openSubmenu } from './menu-test-utils';
 
@@ -218,23 +218,25 @@ test('a joined filter adopted from the store before the joined marts load is app
 });
 
 // The blendable schema the backend serves changes between reads: Join Settings narrowed the list for customers__email.
-async function renderNarrowing() {
+async function renderNarrowing(opts: { grid?: GridState; hidden?: string[] } = {}) {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const realGet = base.owox.getJson.bind(base.owox);
   // `gone`: the joined field is no longer served; `failSchema`: the main mart's schema read fails.
-  const state = { reads: 0, schemaReads: 0, gone: false, failSchema: false, post: ['COUNT', 'COUNT_DISTINCT', 'STRING_AGG'] };
+  const state = { reads: 0, schemaReads: 0, gone: false, hidden: opts.hidden ?? [], failSchema: false, post: ['COUNT', 'COUNT_DISTINCT', 'STRING_AGG'] };
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const ctx = { ...base, owox: { ...base.owox, getJson: (async (path: string, q?: Record<string, string>) => {
     if (path === '/api/data-marts/orders') { state.schemaReads += 1; if (state.failSchema) throw new Error('schema is down'); }
     const dto = await realGet<BlendableSchemaDto>(path, q);
-    if (path.endsWith('/blendable-schema')) { state.reads += 1; dto.blendedFields = dto.blendedFields?.filter((f) => !(state.gone && f.name === 'customers__email')).map((f) => (f.name === 'customers__email' ? { ...f, postJoinAggregations: state.post } : f)); }
+    if (path.endsWith('/blendable-schema')) { state.reads += 1; dto.blendedFields = dto.blendedFields?.filter((f) => !(state.gone && f.name === 'customers__email') && !state.hidden.includes(f.name)).map((f) => (f.name === 'customers__email' ? { ...f, postJoinAggregations: state.post } : f)); }
     return dto;
   }) as typeof base.owox.getJson, dataMarts: { ...base.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { queries.push(o); return real(id, o); } } } };
   await base.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: ['id', 'status', 'customers__email'], at: 'then' });
-  render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
-  await waitFor(() => expect(headers()).toHaveLength(3));
-  return { state, queries };
+  const saved: { current: ReturnType<typeof useStore>[0] | null } = { current: null };
+  const Seed = () => { const [st, dispatch] = useStore(); saved.current = st; useEffect(() => { if (opts.grid) dispatch({ type: 'saveGrid', martId: 'orders', grid: opts.grid }); }, [dispatch]); return null; };
+  render(<AppServices ctx={ctx}><StoreProvider><Seed /><App /></StoreProvider></AppServices>);
+  await waitFor(() => expect(headers().length).toBeGreaterThanOrEqual(3));
+  return { state, queries, saved };
 }
 
 test('Refresh reads the joined marts again, so a Join Settings change is picked up', async () => {
@@ -265,6 +267,33 @@ test('a Refresh that narrows the functions a field allows removes the applied ru
   await refresh();
   await waitFor(() => expect(queries.at(-1)?.aggregation).toEqual([{ column: 'customers__email', function: 'COUNT_DISTINCT' }]));
   expect(await within(toast()).findByText(/Combined is no longer allowed on Customers · email; it was removed\./)).toBeInTheDocument();
+});
+
+const emailAgg = [{ column: 'customers__email', function: 'COUNT_DISTINCT' as const }, { column: 'customers__email', function: 'STRING_AGG' as const }];
+
+test('a Refresh that narrows the functions drops the HAVING filter of the removed function from the filters', async () => {
+  const { state, queries } = await renderNarrowing({ grid: {
+    columns: ['id', 'status', 'customers__email'], filters: { customers__email: { field: 'customers__email', op: 'contains', value: 'a', fn: 'STRING_AGG' } }, aggregations: emailAgg, sorts: null, limit: 50,
+  } });
+  await waitFor(() => expect(queries.at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a', function: 'STRING_AGG' }]));
+  state.post = ['COUNT', 'COUNT_DISTINCT'];
+  await refresh();
+  await waitFor(() => expect(queries.at(-1)?.aggregation).toEqual([{ column: 'customers__email', function: 'COUNT_DISTINCT' }]));
+  await waitFor(() => expect(queries.at(-1)?.filter ?? []).toEqual([]));
+});
+
+test('a parked HAVING filter on an unrelated field survives a Refresh that narrows another field\'s functions', async () => {
+  const { state, queries, saved } = await renderNarrowing({ hidden: ['customers__city'], grid: {
+    columns: ['id', 'status', 'customers__email', 'customers__city'], filters: { customers__city: { field: 'customers__city', op: 'gt', value: 1, fn: 'COUNT' } },
+    aggregations: [...emailAgg, { column: 'customers__city', function: 'COUNT' }], sorts: null, limit: 50,
+  } });
+  await waitFor(() => expect(queries.at(-1)?.aggregation).toEqual(emailAgg));
+  state.post = ['COUNT', 'COUNT_DISTINCT'];
+  await refresh();
+  expect(await within(toast()).findByText(/Combined is no longer allowed on Customers · email/)).toBeInTheDocument();
+  await waitFor(() => expect(queries.at(-1)?.aggregation).toEqual([{ column: 'customers__email', function: 'COUNT_DISTINCT' }]));
+  // The parked filter is still written back with the saved grid.
+  expect(saved.current!.grids.orders!.filters.customers__city).toEqual({ field: 'customers__city', op: 'gt', value: 1, fn: 'COUNT' });
 });
 
 test('a Refresh that takes a joined field away parks its filter, says so, and applies it again when the field is back', async () => {

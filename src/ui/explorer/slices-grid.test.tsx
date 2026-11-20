@@ -10,7 +10,7 @@ import { openColumnMenu } from './menu-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
 
-function setup(grid: GridState, opts: { blendFails?: boolean } = {}) {
+function setup(grid: GridState, opts: { blendFails?: boolean; empty?: boolean } = {}) {
   let failing = !!opts.blendFails;
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
@@ -20,7 +20,7 @@ function setup(grid: GridState, opts: { blendFails?: boolean } = {}) {
     ...base,
     owox: {
       ...base.owox,
-      dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); return real(id, o); } },
+      dataMarts: { ...base.owox.dataMarts, traverseData: async (id, o) => { if (id === 'orders') queries.push(o); const t = await real(id, o); return opts.empty ? { ...t, rowChunks: async function* () {} } : t; } },
       getJson: (<T,>(path: string, query?: Record<string, string>) => (path.endsWith('/blendable-schema') && failing ? Promise.reject(new Error('blendable boom')) : realGet<T>(path, query))) as Mock['owox']['getJson'],
     },
   };
@@ -115,4 +115,15 @@ test('no note under the charts without a HAVING filter', async () => {
   setup({ columns: ['id', 'status', 'amount'], filters: {}, sorts: null, limit: 200, view: 'charts' });
   await waitFor(() => expect(data().querySelector('[data-chart-strip]')).not.toBeNull());
   expect(within(data()).queryByText('Charts ignore filters on aggregates.')).toBeNull();
+});
+
+test('the charts of an empty mart with only a HAVING filter say the mart has no rows, not that the filters match none', async () => {
+  setup({ ...having, view: 'charts' }, { empty: true });
+  expect((await screen.findAllByText('This data mart has no rows.', {}, { timeout: 3000 })).length).toBeGreaterThan(0);
+  expect(within(data()).queryByText('No rows match the filters.')).toBeNull();
+});
+
+test('the charts of an empty mart with a plain filter say no rows match the filters', async () => {
+  setup({ columns: ['id', 'status', 'amount'], filters: { status: { field: 'status', op: 'eq', value: 'zzz' } }, sorts: null, limit: 200, view: 'charts' }, { empty: true });
+  expect((await screen.findAllByText('No rows match the filters.', {}, { timeout: 3000 })).length).toBeGreaterThan(0);
 });

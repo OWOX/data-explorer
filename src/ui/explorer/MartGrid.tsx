@@ -341,7 +341,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
       said.push(removed.text);
       // A HAVING filter on a function that was just removed goes with it, in the same render as the toast.
       setFilters((cur) => dropOrphanHaving(cur, aggNow.aggregations));
-      setParked((cur) => dropOrphanHaving(cur, aggNow.aggregations));
+      // A parked filter belongs to a field this visit does not offer, so aggNow never holds its rule: it is checked against the raw rules, minus the ones just removed.
+      const dropped = keptAgg.aggregations.filter((r) => !aggNow.aggregations.includes(r));
+      setParked((cur) => dropOrphanHaving(cur, agg.aggregations.filter((r) => !dropped.includes(r))));
     }
   }
   if (said.length) setNote({ text: said.join(' ') });
@@ -530,6 +532,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const ownOn = shown.filter((n) => ownNames.has(n)).length;
   const fieldsOf = (g: { main: boolean; path: string }) => (g.main ? native : sources.filter((x) => x.aliasPath === g.path).flatMap((x) => x.fields));
   const hasFilters = Object.keys(filters).length > 0;
+  // Charts ignore HAVING filters, so one alone does not make their "No rows match the filters." true.
+  const hasChartFilters = Object.values(filters).some((f) => !f.fn);
   const hasSorts = own !== null;
   const hasSlices = Object.keys(slices).length > 0 || Object.keys(parkedSlices).length > 0;
   /** A click on a chart mark: the same step as a filter edit (so Undo covers it), one filter per column. */
@@ -753,7 +757,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
             ))}
           </thead>
           {/* ChartsBody renders its own <tbody>: nesting one in another makes the parser pull the headers out of the table. */}
-          {charts && !blocked ? <ChartsBody martId={martId} schema={schema} shown={shown} agg={aggNow} filter={traverseFilters} havingNote={hasHaving} groups={groups} version={version} paused={paused} hasFilters={hasFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
+          {charts && !blocked ? <ChartsBody martId={martId} schema={schema} shown={shown} agg={aggNow} filter={traverseFilters} havingNote={hasHaving} groups={groups} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
           : <tbody>
             {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`}</td></tr>
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} /></td></tr>

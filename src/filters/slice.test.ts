@@ -14,3 +14,9 @@ test('havingField is numeric for counts, sums, averages and percentiles only', (
   expect(havingField(base, 'P95').category).toBe('number');
   expect(havingField(base, 'MAX')).toBe(base);
 });
+
+test('havingField is a string for STRING_AGG, whatever the column type', () => {
+  const date: Field = { ...base, name: 'created_at', type: 'DATE', category: 'date', joined: undefined };
+  expect(havingField(date, 'STRING_AGG')).toMatchObject({ type: 'STRING', category: 'string' });
+  expect(havingField(date, 'MAX')).toBe(date);
+});

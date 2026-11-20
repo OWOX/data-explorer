@@ -159,6 +159,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     const underPath = (path: string, of: string) => path === of || path.startsWith(`${of}.`);
     const source = wanted.length ? m.rows.map((r) => {
       const row: Row = { ...r, ...Object.fromEntries(wanted.map((n) => [n, blendedValue(r, index.get(n)!.hop, index.get(n)!.field)])) };
+      // The mock evaluates a slice on the joined value, which equals the raw value for its many-to-one joins.
       // A slice acts as a LEFT JOIN: where the joined values fail it, the row stays and the alias path and its descendants are empty.
       const failed = slices.filter((sl) => !matchesFilter({ [sl.column]: row[sl.column] }, { ...sl, placement: undefined })).map((sl) => index.get(sl.column)!.hop.aliasPath);
       if (failed.length) for (const n of wanted) if (failed.some((p) => underPath(index.get(n)!.hop.aliasPath, p))) row[n] = null;

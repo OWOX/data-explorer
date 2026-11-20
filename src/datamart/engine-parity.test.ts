@@ -164,11 +164,14 @@ const relabel = (l: string) => l.replace(/([`"])([^`"|]+) \| ([A-Z0-9]+)\1/g, (_
 /** The `[Title](dm:id)` a line reads from. */
 const martRefOf = (l: string) => /\[[^\]]*\]\(dm:\w+\)/.exec(l)?.[0];
 
+/** The paths a case slices: a field named `<path with underscores>__<name>` belongs to that path. */
+const slicedPaths = (c: PCase): Set<string> => new Set(c.marts.map((m) => m.path).filter((p) => (c.slices ?? []).some((x) => x.field.startsWith(`${p.replaceAll('.', '_')}__`))));
+
 /**
  * The shape both engines must agree on: per joined path its roll-ups, key, joins and source, every sleeve CTE line by line, then the outer query
  * with names abstracted. `quotes` keeps identifier quotes, so Snowflake's always-quote rule is compared too.
  */
-function canon(sql: string, paths: string[], n: Names, quotes: boolean) {
+function canon(sql: string, paths: string[], n: Names, quotes: boolean, sliced: ReadonlySet<string> = new Set()) {
   const lines = sql.split('\n').map((l) => relabel(l.trim())).map((l) => (quotes ? l : l.replace(/["`]/g, ''))).filter((l) => l && !l.startsWith('--'));
   const blocks: Block[] = [];
   let i = lines[0] === 'WITH' ? 1 : 0;
@@ -219,7 +222,8 @@ function canon(sql: string, paths: string[], n: Names, quotes: boolean) {
     expect(dedup[0]).toBe('SELECT');
     expect(from).toBeGreaterThan(1);
     expect(dedup.slice(from + 1).every((l) => /^(LEFT JOIN|WHERE|AND|GROUP BY) /.test(l))).toBe(true);
-    expect(joinedBody.slice(1).filter((l) => /^(HAVING|ORDER BY|LIMIT)\b/.test(l))).toEqual([]);
+    // A `_joined` body has no WHERE of its own either, unless a slice on this path puts its predicates there.
+    expect(joinedBody.slice(1).filter((l) => (sliced.has(p) ? /^(HAVING|ORDER BY|LIMIT)\b/ : /^(WHERE|HAVING|ORDER BY|LIMIT)\b/).test(l))).toEqual([]);
     // The engine filters the raw CTE, the data mart its dedup CTE: the same predicates on the same mart rows.
     const slice = sliceText(bodies.get(n.raw(p)) ?? dedup);
     const items = dedup.slice(1, from).map((l) => unq(l.replace(/,$/, ''))).sort();
@@ -298,8 +302,8 @@ describe('the plugin SQL matches the engine SQL', () => {
           expect(flatMartRef(ours, false)).toBe(flatMartRef(theirs, true));
           return;
         }
-        const a = canon(ours, paths, pluginNames, false);
-        const b = canon(theirs, paths, engineNames, false);
+        const a = canon(ours, paths, pluginNames, false, slicedPaths(c));
+        const b = canon(theirs, paths, engineNames, false, slicedPaths(c));
         // The outer SELECT lists the same columns; a grouped query may order them differently (the engine puts sleeve pulls last).
         const grouped = !!c.aggregation;
         expect({ ...a, items: grouped ? a.itemSet : a.items }).toEqual({ ...b, items: grouped ? b.itemSet : b.items });
@@ -312,8 +316,8 @@ describe('the plugin SQL matches the engine SQL', () => {
       const paths = c.marts.map((m) => m.path);
       const theirs = engine.find((x) => x.case === c.id && x.dialect === 'snowflake')!.sql;
       const grouped = !!c.aggregation;
-      const a = canon(pluginSql(c, 'snowflake'), paths, pluginNames, true);
-      const b = canon(theirs, paths, engineNames, true);
+      const a = canon(pluginSql(c, 'snowflake'), paths, pluginNames, true, slicedPaths(c));
+      const b = canon(theirs, paths, engineNames, true, slicedPaths(c));
       expect({ ...a, items: grouped ? a.itemSet : a.items }).toEqual({ ...b, items: grouped ? b.itemSet : b.items });
     });
   }

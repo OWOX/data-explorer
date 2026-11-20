@@ -195,15 +195,18 @@ describe('slices and HAVING in traverseData', () => {
   test('a slice on a main field, or with a function, is a 400', async () => {
     const ctx = createMockCtx(demoFixtures());
     await expect(readRows(ctx, 'orders', { column: ['id'], filter: [{ column: 'status', operator: 'eq', value: 'paid', placement: 'pre-join' }] })).rejects.toMatchObject({ payload: { status: 400 } });
-    await expect(readRows(ctx, 'orders', { column: ['id'], filter: [{ ...slice, function: 'SUM' }] })).rejects.toMatchObject({ payload: { status: 400 } });
+    await expect(readRows(ctx, 'orders', { column: ['id'], filter: [{ ...slice, function: 'SUM' } as never] })).rejects.toMatchObject({ payload: { status: 400 } });
   });
   test('HAVING filters the grouped rows on the aggregate column', async () => {
     const ctx = createMockCtx(demoFixtures());
     const q = { column: ['status', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' as const }], limit: 100 };
     const all = await readRows(ctx, 'orders', q);
-    const cut = Number(all[0]!['amount | SUM']);
+    // A middle value as the cut, so some groups are kept and some are dropped.
+    const sums = all.map((r) => Number(r['amount | SUM'])).sort((a, b) => a - b);
+    const cut = sums[Math.floor(sums.length / 2)]!;
     const kept = await readRows(ctx, 'orders', { ...q, filter: [{ column: 'amount', operator: 'gt', value: cut, function: 'SUM' }] });
     expect(kept.length).toBe(all.filter((r) => Number(r['amount | SUM']) > cut).length);
+    expect(kept.length).toBeGreaterThan(0);
     expect(kept.length).toBeLessThan(all.length);
   });
 });

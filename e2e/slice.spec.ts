@@ -22,10 +22,10 @@ async function openSub(page: Page, column: string, row: 'Filter' | 'Slice' | 'Ag
   return dialog;
 }
 
-test('a slice empties the joined columns it does not match, keeps every row, and Undo removes it', async ({ page }) => {
+test('a slice that matches no customer empties the joined columns, keeps every row, and Undo removes it', async ({ page }) => {
   await addCustomers(page);
-  const email = data(page).getByRole('cell', { name: /^[A-Z][a-z]+ [A-Z][a-z]+$/ });
-  await expect(email.first()).toBeVisible();
+  const names = data(page).getByRole('cell', { name: /^[A-Z][a-z]+ [A-Z][a-z]+$/ });
+  await expect(names.first()).toBeVisible();
   const dialog = await openSub(page, 'Customers · name', 'Slice');
   await expect(dialog.getByText('Slices filter the joined data mart before it is joined, reducing the rows pulled in.')).toBeVisible();
   await dialog.getByLabel('Operator').selectOption('contains');
@@ -37,9 +37,27 @@ test('a slice empties the joined columns it does not match, keeps every row, and
   expect(await layers.locator('svg.lucide-layers').count()).toBe(1);
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await expect(data(page).getByRole('cell', { name: 'paid', exact: true }).first()).toBeVisible();
-  await expect(email).toHaveCount(0);
+  await expect(names).toHaveCount(0);
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(data(page).getByRole('button', { name: /^Slice Customers · name/ })).toHaveCount(0);
   await expect(data(page).getByRole('row')).toHaveCount(202);
-  await expect(email.first()).toBeVisible();
+  await expect(names.first()).toBeVisible();
+});
+
+test('a slice that matches some customers keeps their names, empties the rest, and keeps every row', async ({ page }) => {
+  await addCustomers(page);
+  const names = data(page).getByRole('cell', { name: /^[A-Z][a-z]+ [A-Z][a-z]+$/ });
+  await expect(names.first()).toBeVisible();
+  const before = await names.count();
+  const dialog = await openSub(page, 'Customers · name', 'Slice');
+  await dialog.getByLabel('Operator').selectOption('starts_with');
+  await dialog.getByLabel('Value').fill('S');
+  await click(page, dialog.getByRole('button', { name: 'Apply' }));
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(data(page).getByRole('button', { name: /^Slice Customers · name/ })).toBeVisible();
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await expect.poll(async () => names.count()).toBeLessThan(before);
+  const after = await names.allTextContents();
+  expect(after.length).toBeGreaterThan(0);
+  for (const text of after) expect(text.startsWith('S')).toBe(true);
 });

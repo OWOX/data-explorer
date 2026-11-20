@@ -1,5 +1,5 @@
 import type { Field, Schema } from '../model/types';
-import type { RelativeDatePreset, TraverseFilter } from '../sdk/types';
+import type { RelativeDatePreset, TraverseFilter, TraverseFilterRule } from '../sdk/types';
 import type { AggFn, AggregationRule } from '../model/aggregation';
 import { havingField, sliceField } from './slice';
 import { isDateTimeField, operatorsFor, RELATIVE_MAX_N, RELATIVE_PRESETS, type OpId } from './catalogue';
@@ -51,7 +51,7 @@ const withSeconds = (v: string) => {
 /** A date-only bound on a timestamp widens to the start or the end of that day, so "to" is inclusive. */
 const bound = (v: string, end: boolean) => (DATE_ONLY.test(v) ? `${v} ${end ? '23:59:59' : '00:00:00'}` : withSeconds(v));
 
-export function toTraverseFilter(f: ColumnFilter, field: Field): TraverseFilter {
+export function toTraverseFilter(f: ColumnFilter, field: Field): TraverseFilterRule {
   const column = field.name;
   const isNum = field.category === 'number';
   const stamped = isDateTimeField(field) || field.category === 'time';
@@ -72,7 +72,7 @@ export function toTraverseFilter(f: ColumnFilter, field: Field): TraverseFilter 
         : { column, operator: 'between', value: { from: String(r.from), to: String(r.to) } };
     }
     default:
-      return { column, operator: f.op, value: scalar(f.value) } as TraverseFilter;
+      return { column, operator: f.op, value: scalar(f.value) } as TraverseFilterRule;
   }
 }
 

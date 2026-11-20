@@ -60,8 +60,8 @@ export const CURRENCIES = ['USD', 'EUR', 'GBP', 'UAH'];
 /** The currencies the Money submenu lists: the four fixed ones, then the current one (an AI pick or an old choice) when it is another. */
 export const currenciesFor = (current: Format): string[] => (current.kind === 'money' && !CURRENCIES.includes(current.currency) ? [...CURRENCIES, current.currency] : CURRENCIES);
 
-/** The function's label in capitals, as the HAVING note and the Funnel tooltip name it: "SUM". */
-const fnName = (f: AggFn) => AGG_LABELS[f].toUpperCase();
+/** The function's label in lower case, as the HAVING note and the Funnel tooltip name it: "sum". */
+const fnName = (f: AggFn) => AGG_LABELS[f].toLowerCase();
 /** What a filter says in a tooltip: a HAVING filter names its function and reads against the aggregate's type. */
 function describeColumnFilter(field: Field, f: ColumnFilter): string {
   return f.fn ? `${fnName(f.fn)} ${describeFilter(havingField(field, f.fn), f)}` : describeFilter(field, f);
@@ -236,7 +236,7 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
   // Active means the member set something: an AI project pick does not light the icon.
   const formatOn = formatActive(env, field, output, type);
   const canSort = output.sortable && env.sortable !== false;
-  const active = !!filter || !!slice || aggregated || (canSort && !!direction) || formatOn;
+  const active = !!filter || (!!slice && !!field.joined) || aggregated || (canSort && !!direction) || formatOn;
   const close = useCallback((refocus = true) => { setMenu(null); if (refocus) icon.current?.focus(); }, []);
   // A request names an output by key: that header opens its root menu at its icon, every other one closes its own. A request already
   // standing when the header mounts is not new.

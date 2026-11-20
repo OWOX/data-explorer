@@ -75,10 +75,10 @@ type Plan = {
   /** The outer WHERE predicates, in grid order. */
   where: string[];
   /**
-   * The slice predicates on the raw rows of a joined path, rendered on the raw column of `alias`. Empty when the path has no slice.
+   * The slice predicates on the raw rows of each joined path, rendered on the raw column of the alias `t`. A path with no slice has no entry.
    * A slice is never part of the outer WHERE: that would drop main rows, where a slice only empties the joined columns.
    */
-  slicesOf: (path: string, alias: string) => string[];
+  slicesOf: Map<string, string[]>;
   /** The HAVING filters of a grouped grid: a complete filter with `fn`, typed by the aggregate's result. */
   having: { flt: ColumnFilter; field: Field; fn: AggFn }[];
 };
@@ -174,10 +174,11 @@ function prepare(input: MartSqlInput): Plan | Reason {
     const jf = field?.joined;
     return field && jf?.originalName && order.includes(jf.aliasPath) && isComplete(flt, sliceField(field)) ? [{ flt, field: sliceField(field), path: jf.aliasPath, original: jf.originalName }] : [];
   });
-  let sliceError: string | undefined;
-  const slicesOf = (path: string, alias: string): string[] => slices.filter((x) => x.path === path).flatMap((x) => {
-    try { return [renderFilter(d, `${alias}.${fieldRef(d, x.original)}`, x.field, x.flt)]; } catch (e) { sliceError ??= e instanceof Error ? e.message : String(e); return []; }
-  });
+  // Every path's slices are rendered once, here, so a filter the dialect cannot render is a reason before any SQL is built.
+  const slicesOf = new Map<string, string[]>();
+  for (const x of slices) {
+    try { slicesOf.set(x.path, [...(slicesOf.get(x.path) ?? []), renderFilter(d, `t.${fieldRef(d, x.original)}`, x.field, x.flt)]); } catch (e) { return { reason: e instanceof Error ? e.message : String(e) }; }
+  }
 
   const ref = (f: Field) => (f.joined ? `${cte.get(rootOf(f.joined.aliasPath))}.${ident(d, f.name)}` : `base_owox.${fieldRef(d, f.name)}`);
 
@@ -207,7 +208,7 @@ function prepare(input: MartSqlInput): Plan | Reason {
       joins.push(`    LEFT JOIN ${childCte} ON ${plans.get(child)!.edge.joins.map((j) => `t.${fieldRef(d, j.sourceField)} = ${childCte}.${fieldRef(d, j.targetField)}`).join(' AND ')}`);
     }
     // The slice filters P's raw rows here, before they roll up, so a failing row never reaches P's columns or its children's.
-    const sliced = slicesOf(path, 't');
+    const sliced = slicesOf.get(path) ?? [];
     sql.push(`  ${cte.get(path)} AS (\n    SELECT\n${items.map((x) => `      ${x}`).join(',\n')}\n    FROM ${mart(path)} AS t${joins.length ? `\n${joins.join('\n')}` : ''}${sliced.length ? `\n    WHERE ${sliced.join('\n      AND ')}` : ''}\n    GROUP BY ${keys.join(', ')}\n  )`);
     return { sql, carried };
   };
@@ -221,7 +222,6 @@ function prepare(input: MartSqlInput): Plan | Reason {
     try { where.push(renderFilter(d, ref(field), field, flt)); } catch (e) { return { reason: e instanceof Error ? e.message : String(e) }; }
   }
   const edgeOf = new Map([...plans].map(([path, pl]) => [path, pl.edge]));
-  if (sliceError) return { reason: sliceError };
   return { d, shown, sorted, active, order, cte, edgeOf, grouped, mart, alloc, ctes, ref, joins, where, slicesOf, having };
 }
 
@@ -295,7 +295,7 @@ function assembleGrouped(p: Plan, input: MartSqlInput, agg: Aggregation): string
    * A raw join of a path with slices reads a filtered derived table, so it stays a LEFT JOIN: where a slice fails, the path's columns and its descendants' are empty and the row stays.
    * The same predicates filter the path's dedup CTE, so every read of the path agrees.
    */
-  const rawMart = (path: string) => { const sliced = p.slicesOf(path, 't'); return sliced.length ? `(SELECT * FROM ${p.mart(path)} AS t WHERE ${sliced.join(' AND ')})` : p.mart(path); };
+  const rawMart = (path: string) => { const sliced = p.slicesOf.get(path) ?? []; return sliced.length ? `(SELECT * FROM ${p.mart(path)} AS t WHERE ${sliced.join(' AND ')})` : p.mart(path); };
   const rawJoin = (path: string) => `LEFT JOIN ${rawMart(path)} AS ${rawOf(path)} ON ${on(parentRef(path), rawOf(path), p.edgeOf.get(path)!)}`;
   const dedupJoin = (path: string) => `LEFT JOIN ${p.cte.get(path)} ON ${on(parentRef(path), p.cte.get(path)!, p.edgeOf.get(path)!)}`;
   // The depth-1 dedup CTEs a key or a filter reads: a sleeve joins them so its WHERE and grain match the outer query.

@@ -14,7 +14,8 @@ const stamp = f('stamp', 'TIMESTAMP', 'date');
 const clock = f('clock', 'TIME', 'time');
 const paid = f('paid', 'BOOLEAN', 'boolean');
 const country = f('customers__country_code', 'STRING', 'string', { joined: { martId: 'customers', label: 'Customers', aliasPath: 'customers' } });
-const schema: Schema = [name, amount, day, stamp, clock, paid, country];
+const joinedDay = f('allowed_day', 'DATE', 'date', { allowedAggregations: ['STRING_AGG'] });
+const schema: Schema = [name, amount, day, stamp, clock, paid, country, joinedDay];
 
 const none: ReportSkipped = { columns: 0, filters: 0, sorts: 0, aggregations: 0, slices: 0, having: 0, uniqueCount: false };
 const grid = (columns: string[], filters: ColumnFilter[], extra: Partial<GridState> = {}): GridState => ({ columns, filters: Object.fromEntries(filters.map((x) => [x.field, x])), sorts: null, limit: PAGE_SIZE, ...extra });
@@ -131,6 +132,11 @@ describe('reportToGrid', () => {
       aggregations: [{ column: 'amount', function: 'SUM' }],
       slices: { customers__country_code: { field: 'customers__country_code', op: 'eq', value: 'UA' } },
     });
+    expect(roundTrip(g)).toEqual(g);
+  });
+
+  test('a STRING_AGG HAVING filter on a date column round-trips with a string operator', () => {
+    const g = grid(['name', 'allowed_day'], [{ field: 'allowed_day', op: 'contains', value: '2026-01', fn: 'STRING_AGG' }], { aggregations: [{ column: 'allowed_day', function: 'STRING_AGG' }] });
     expect(roundTrip(g)).toEqual(g);
   });
 
