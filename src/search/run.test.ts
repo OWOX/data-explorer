@@ -115,11 +115,10 @@ describe('buildAdhocView', () => {
     expect(tasks(t)).toEqual(['fields']);
   });
 
-  test('a failing filters call keeps the columns, marked unavailable', async () => {
+  test('a failing filters call is unavailable with no grid, like a failing fields call', async () => {
     const t = setup({ answers: (task) => (task === 'fields' ? { columns: ['status'] } : new Error('quota')) });
     const out = await buildAdhocView(t.deps, 'q', 'orders');
-    expect(out.ai).toBe('unavailable');
-    expect(out.grid?.columns).toEqual(['status']);
+    expect(out).toEqual({ grid: null, ai: 'unavailable' });
   });
 
   test('an empty schema gives no grid and no call; a schema that cannot be read leaves the mart as it is', async () => {

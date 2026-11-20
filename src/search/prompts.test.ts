@@ -38,6 +38,13 @@ describe('the discovery question', () => {
 });
 
 describe('the discovery question with search hits', () => {
+  test('a hit title is quoted data too', () => {
+    const q = discoveryQuestion('q', [mart('a', 'A')], [{ id: EVIL, title: EVIL }]);
+    expect(JSON.parse(q.user).searchHits).toHaveLength(1);
+    expect(unsafe(q.user)).toBe(false);
+    expect(q.system).not.toContain('delete_everything');
+  });
+
   test('hints travel in the user JSON and the system text prefers them; without hints there is no key', () => {
     const marts = [mart('a', 'A'), mart('b', 'B')];
     const hinted = discoveryQuestion('q', marts, [{ id: 'b', title: 'B' }]);

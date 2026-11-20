@@ -1,5 +1,5 @@
 import type { SchemaLoader } from '../api/schemas';
-import type { Model } from '../model/types';
+import type { Model, Schema } from '../model/types';
 import type { Ctx } from '../sdk/types';
 import type { GridState } from '../state/store';
 import { defaultColumns } from '../ui/explorer/useMartRows';
@@ -52,7 +52,7 @@ export async function findAdhocMart(deps: { ctx: Ctx; model: Model; signal: Abor
 
 /**
  * The ad-hoc view of one mart, built after the member picked the ad-hoc row: one question for the columns, then one for the filters
- * and sorts, which gets the columns the first chose. When only the second fails, the columns still apply.
+ * and sorts, which gets the columns the first chose. If either fails the mart stays in its default view.
  */
 export async function buildAdhocView(deps: { ctx: Ctx; model: Model; schemas: Pick<SchemaLoader, 'get'>; signal: AbortSignal; timeoutMs?: number }, query: string, martId: string): Promise<AdhocView> {
   const { ctx, model, schemas, signal } = deps;
@@ -60,7 +60,7 @@ export async function buildAdhocView(deps: { ctx: Ctx; model: Model; schemas: Pi
   if (!ai) return { grid: null, ai: 'none' };
   let fields: AiFields | null = null;
   let filters: AiFilters | null = null;
-  let schema;
+  let schema: Schema | undefined;
   try {
     const mart = model.marts.get(martId);
     schema = await schemas.get(martId);
@@ -69,18 +69,13 @@ export async function buildAdhocView(deps: { ctx: Ctx; model: Model; schemas: Pi
     const f = fieldsQuestion(query, mart, schema);
     fields = parseAiFields(await run.ask('fields', f.system, f.user), schema);
     const shown = fields?.columns.length ? fields.columns : defaultColumns(schema);
-    try {
-      const q = filtersQuestion(query, mart, schema, shown);
-      filters = parseAiFilters(await run.ask('filters', q.system, q.user), schema, shown);
-    } catch (e) {
-      if (!(e instanceof AiUnavailable) || !fields) throw e;
-      return { grid: mergeAiView(schema, fields, null), ai: 'unavailable' };
-    }
+    const q = filtersQuestion(query, mart, schema, shown);
+    filters = parseAiFilters(await run.ask('filters', q.system, q.user), schema, shown);
   } catch (e) {
     // A model that cannot help is not an error for the member; a schema that cannot be read leaves the mart as it is.
     if (e instanceof AiUnavailable) return { grid: null, ai: 'unavailable' };
     console.warn('Setting up the view failed', e);
     return { grid: null, ai: 'used' };
   }
-  return { grid: mergeAiView(schema, fields, filters), ai: 'used' };
+  return { grid: schema ? mergeAiView(schema, fields, filters) : null, ai: 'used' };
 }

@@ -123,6 +123,8 @@ test('the mock AI answers deterministically from the question document; ai: fals
   expect(ai.reasoning).toBeDefined();
   const ask = async (doc: object) => JSON.parse((await ai.doGenerate({ prompt: [{ role: 'user', content: [{ type: 'text', text: JSON.stringify(doc) }] }] })).content[0]!.text!);
   expect(await ask({ task: 'discover', query: 'who are our buyers', dataMarts: [{ id: 'orders' }, { id: 'customers' }] })).toEqual({ ids: ['customers'] });
+  expect(await ask({ task: 'discover', query: 'zzz', searchHits: [{ id: 'stores' }], dataMarts: [{ id: 'orders' }, { id: 'stores' }, { id: 'customers' }] })).toEqual({ ids: ['stores'] });
+  expect(await ask({ task: 'discover', query: 'who are our buyers', searchHits: [{ id: 'stores' }], dataMarts: [{ id: 'stores' }, { id: 'customers' }] })).toEqual({ ids: ['stores', 'customers'] });
   const fields = [{ name: 'id', category: 'number' }, { name: 'status', category: 'string' }, { name: 'amount', category: 'number' }, { name: 'created_at', category: 'date' }];
   expect(await ask({ task: 'fields', query: 'biggest orders', fields })).toMatchObject({ columns: ['id', 'status', 'amount', 'created_at'] });
   expect(await ask({ task: 'filters', query: 'paid orders last month', fields })).toMatchObject({
