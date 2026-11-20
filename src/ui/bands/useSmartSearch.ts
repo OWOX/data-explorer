@@ -84,10 +84,12 @@ export function useSmartSearch(model: Model) {
         const hits = await searchEndpoint(ctx, query, deps.model, ctl.signal);
         if (ctl.signal.aborted) return null;
         const fallback = hits.marts[0] ?? hits.reports[0]?.martId ?? null;
+        setHighlighted(null);
         setFound({ query, hits, martId: aiConfigured ? null : fallback, pending: aiConfigured });
         if (!aiConfigured) return { hits, martId: fallback };
         const adhoc = await findAdhocMart(deps, query, hits);
         if (ctl.signal.aborted) return null;
+        setHighlighted(null);
         setFound((f) => (f && f.query === query ? { ...f, martId: adhoc.martId, pending: false } : f));
         return { hits, martId: adhoc.martId };
       } finally {
@@ -182,7 +184,9 @@ export function useSmartSearch(model: Model) {
       const selection = { sourceKey: keepSource(martId), martId, record: null };
       // A mart that is already open in its default view makes the setMarts below a no-op with no history entry. Then the AI's
       // grid is the step Undo has to take back, so it goes in as an edit.
-      const lastBefore = latest.current.history.at(-1);
+      // Mirrors the reducer's setMarts rule (store.tsx): it adds no history entry when the selection and the grid are both unchanged.
+      const noHistoryStep = JSON.stringify(selection) === JSON.stringify(latest.current.selection)
+        && JSON.stringify({ [martId]: latest.current.grids[martId] ?? null }) === JSON.stringify({ [martId]: first });
       dispatch({ type: 'setMarts', selection, grids: { [martId]: first } });
       if (!aiConfigured) return;
       setBuilding(true);
@@ -192,7 +196,7 @@ export function useSmartSearch(model: Model) {
         // A member who edited the grid, or moved elsewhere, meanwhile keeps what they did.
         const { grids, selection } = latest.current;
         // No history entry since the pick means setMarts changed nothing, so the AI grid is the step Undo takes back.
-        const unchanged = latest.current.history.at(-1) === lastBefore;
+        const unchanged = noHistoryStep;
         if (deepEqual(grids[martId] ?? null, first) && selection.martId === martId) dispatch({ type: unchanged ? 'editGrid' : 'saveGrid', martId, grid: view.grid });
       } else if (view.ai === 'unavailable') setNotice("AI couldn't set up the view. Showing the default view.");
     } finally { finishPick(ctl); }
@@ -204,9 +208,11 @@ export function useSmartSearch(model: Model) {
     const query = draftRef.current.trim();
     if (queryProblem(query)) return;
     // A row came from the list on screen, which may be the previous query's; the ad-hoc run fetches its own.
+    // The query those results belong to, which is the one smartFound should carry for a row picked from them.
     const current = found ? found.hits : NO_HITS;
-    if (row?.kind === 'report') { void pickReport(row, query, current); return; }
-    if (row?.kind === 'mart') { pickMart(row.martId, query, current); return; }
+    const rowQuery = found?.query ?? query;
+    if (row?.kind === 'report') { void pickReport(row, rowQuery, current); return; }
+    if (row?.kind === 'mart') { pickMart(row.martId, rowQuery, current); return; }
     if (row?.disabled && row.kind === 'adhoc' && !row.pending) { stopPick(); dispatch({ type: 'search', q: query }); return; }
     if (query.length < MIN_QUERY) { stopPick(); dispatch({ type: 'search', q: query }); return; }
     // The ad-hoc row: wait for the search for this query, which may still be running.
@@ -253,7 +259,12 @@ export function useSmartSearch(model: Model) {
     setDraft: typed,
     problem: queryProblem(draft),
     openBox: () => { setDraft(applied); draftRef.current = applied; setOpen(true); },
-    closeBox: () => { stopTimer(); stopSearch(); setDraft(applied); draftRef.current = applied; setOpen(false); setListShown(false); setHighlighted(null); },
+    closeBox: () => {
+      stopTimer();
+      // An ad-hoc pick may still be waiting on this search: closing the box must not drop it.
+      if (!(picking.current?.kind === 'adhoc' && picking.current.query === entry.current?.query)) stopSearch();
+      setDraft(applied); draftRef.current = applied; setOpen(false); setListShown(false); setHighlighted(null);
+    },
     submit: () => pick(),
     clear,
     rows, highlighted, setHighlighted, move, pick,

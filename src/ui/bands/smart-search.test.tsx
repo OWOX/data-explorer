@@ -611,4 +611,38 @@ describe('the dropdown', () => {
     await waitFor(() => expect(within(data()).queryByLabelText('Filter status')).toBeNull());
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
   });
+
+  test('Escape twice while call 1 is pending does not drop a picked ad-hoc run', async () => {
+    let release: (() => void) | undefined;
+    const ai = spyAi((task) => (task === 'discover' ? new Promise<void>((r) => { release = r; }) : Promise.resolve()));
+    setup({ wrap: ai.withAi }).view();
+    await ready();
+    const u = user();
+    await typeIn(u, 'who are our buyers');
+    await waitFor(() => expect(release).toBeDefined());
+    await u.keyboard('{Enter}');
+    await u.keyboard('{Escape}');
+    release!();
+    await waitFor(() => expect(headings()).toBe('Customers'));
+  });
+
+  test('a new answer clears the highlight of a stale row, and a stale row is picked with its own query', async () => {
+    let release: (() => void) | undefined;
+    const t = setup({ ai: false, wrap: (c) => ({ ...c, owox: { ...c.owox, getJson: ((path: string, q?: Record<string, string>) => {
+      if (path === '/api/search' && q?.q === 'orderss') return new Promise((res) => { release = () => res(c.owox.getJson(path, q)); });
+      return c.owox.getJson(path, q);
+    }) as Ctx['owox']['getJson'] } }) });
+    t.view();
+    await ready();
+    const u = user();
+    const box = await typeIn(u, 'orders');
+    await waitFor(() => expect(options().length).toBeGreaterThan(3));
+    await u.type(box, 's');
+    await settle();
+    await waitFor(() => expect(release).toBeDefined());
+    await u.keyboard('{ArrowDown}');
+    expect(box).toHaveAttribute('aria-activedescendant');
+    release!();
+    await waitFor(() => expect(box).not.toHaveAttribute('aria-activedescendant'));
+  });
 });
