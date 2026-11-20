@@ -38,7 +38,7 @@ export function cardsOf(mart: ChartMart): Card[] {
 
 /** One query for every value card of every data mart. Nothing runs while paused. */
 export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean): ChartResult {
-  return useChartQuery(martId, paused ? null : scorecardsQuery(cf.marts, filter), version);
+  return useChartQuery(martId, paused ? null : scorecardsQuery(cf.marts, filter, cf.counter), version);
 }
 
 export type Formatter = (column: string, type: string) => Format;

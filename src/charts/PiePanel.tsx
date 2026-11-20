@@ -27,7 +27,7 @@ export function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, for
   const top = useChartQuery(martId, !idle ? topValuesQuery(dim!, measure!, filter) : null, version);
   const names = top.rows?.map((row) => String(row[dim!.name]));
   const needOther = names?.length === TOP_N;
-  const other = useChartQuery(martId, !idle && needOther ? pieOtherQuery(measure!, filter, dim!, names!) : null, version);
+  const other = useChartQuery(martId, !idle && needOther ? pieOtherQuery(measure!, filter, dim!, names!, cf.counter) : null, version);
   const failed = [top, other].find((q) => q.error);
   const emptyNow = top.rows?.length === 0;
   const loading = !emptyNow && (!top.rows || (needOther && !other.rows));

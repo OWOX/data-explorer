@@ -249,3 +249,30 @@ describe('legacy connector-name source keys', () => {
     expect(r.apply.selection.sourceKey).toBe('service:x.io');
   });
 });
+
+describe('resolveView with slices and HAVING filters', () => {
+  const joined = { ...field('customers__name'), joined: { martId: 'c', label: 'Customers', aliasPath: 'customers', originalName: 'name' } } as Schema[number];
+  const readJoined = async () => [...schema.filter((x) => x.name !== 'customer__name'), joined];
+  const grid = (patch: Partial<NonNullable<DecodedView['grid']>>): DecodedView => view({ grid: { columns: ['id', 'total'], filters: {}, sorts: null, limit: 400, ...patch } });
+
+  it('keeps a slice on a joined field, skips one on a main-mart field or one that is not offered', async () => {
+    const slices = { customers__name: { field: 'customers__name', op: 'eq' as const, value: 'a' }, id: { field: 'id', op: 'eq' as const, value: 1 }, gone: { field: 'gone', op: 'eq' as const, value: 1 } };
+    const { apply, skipped } = await resolveView(grid({ slices }), model, readJoined);
+    expect(apply.grid!.slices).toEqual({ customers__name: slices.customers__name });
+    expect(skipped.filters).toBe(2);
+  });
+
+  it('a grid with no kept slice has no slices key', async () => {
+    const { apply } = await resolveView(grid({ slices: { id: { field: 'id', op: 'eq', value: 1 } } }), model, readJoined);
+    expect('slices' in apply.grid!).toBe(false);
+  });
+
+  it('a HAVING filter keeps its place only with its aggregation', async () => {
+    const having = { field: 'total', op: 'gt' as const, value: 5, fn: 'SUM' as const };
+    const kept = await resolveView(grid({ filters: { total: having }, aggregations: [{ column: 'total', function: 'SUM' }] }), model, readJoined);
+    expect(kept.apply.grid!.filters).toEqual({ total: having });
+    const lost = await resolveView(grid({ filters: { total: having } }), model, readJoined);
+    expect(lost.apply.grid!.filters).toEqual({});
+    expect(lost.skipped.filters).toBe(1);
+  });
+});

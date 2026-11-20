@@ -15,7 +15,7 @@ const DIALECTS: Dialect[] = ['bigquery', 'athena', 'snowflake', 'redshift', 'dat
 
 type PField = { name: string; alias: string; fn: string; raw: string; type?: string };
 type PMart = { path: string; martId: string; label: string; edgeId: string; fields: PField[] };
-type PCase = { id: string; marts: PMart[]; visible: string[]; filters: ColumnFilter[]; sorts?: SortKey[]; main: Field[]; aggregation?: Aggregation; /** Captured through the flat composer: a main-only grid. */ flat?: boolean };
+type PCase = { id: string; marts: PMart[]; visible: string[]; filters: ColumnFilter[]; /** Pre-join slices; the engine takes them as filters with `placement: 'pre-join'`. */ slices?: ColumnFilter[]; sorts?: SortKey[]; main: Field[]; aggregation?: Aggregation; /** Captured through the flat composer: a main-only grid. */ flat?: boolean };
 
 const f = (name: string, type: string, joined?: Field['joined']): Field => ({ name, alias: null, type, category: categorizeFieldType(type), description: null, isPrimaryKey: false, ...(joined ? { joined } : {}) });
 const MAIN = [f('id', 'INTEGER'), f('status', 'STRING'), f('customer_id', 'INTEGER')];
@@ -120,6 +120,18 @@ const cases: PCase[] = [
     id: 'G11', marts: [itm([sku, qty])], main: mains('amount'), visible: ['amount', 'order_items__sku', 'order_items__quantity'], filters: [],
     aggregation: { aggregations: [{ column: 'amount', function: 'SUM' }, { column: 'order_items__sku', function: 'COUNT_DISTINCT' }, { column: 'order_items__quantity', function: 'MAX' }], dateTrunc: [] },
   },
+  { id: 'S1', marts: [cus([city, { name: 'n', alias: 'customers__n', fn: 'COUNT', raw: 'STRING', type: 'INTEGER' }])], main: MAIN, visible: ['id', 'customers__city', 'customers__n'], filters: [{ field: 'customers__n', op: 'gt', value: 1 }], slices: [{ field: 'customers__city', op: 'eq', value: 'Paris' }] },
+  {
+    id: 'S2', marts: [cus([city]), reg([rname, { name: 'code', alias: 'customers_region__code', fn: 'COUNT_DISTINCT', raw: 'STRING', type: 'INTEGER' }])], main: mains('status'),
+    visible: ['status', 'customers__city', 'customers_region__name', 'customers_region__code'], filters: [],
+    slices: [{ field: 'customers_region__name', op: 'eq', value: 'EU' }, { field: 'customers__city', op: 'neq', value: 'Rome' }],
+    aggregation: { aggregations: [{ column: 'customers_region__code', function: 'COUNT_DISTINCT' }], dateTrunc: [] },
+  },
+  {
+    id: 'H1', marts: [cus([{ name: 'n', alias: 'customers__n', fn: 'COUNT', raw: 'STRING', type: 'INTEGER' }])], main: mains('status', 'amount'), visible: ['status', 'amount', 'customers__n'],
+    filters: [{ field: 'amount', op: 'gt', value: 100, fn: 'SUM' }, { field: 'customers__n', op: 'lte', value: 5, fn: 'COUNT' }],
+    aggregation: { aggregations: [{ column: 'amount', function: 'SUM' }, { column: 'customers__n', function: 'COUNT' }], dateTrunc: [] },
+  },
   { id: 'M1', flat: true, marts: [], main: mains('id', 'status'), visible: ['id', 'status'], filters: [{ field: 'status', op: 'eq', value: 'paid' }, { field: 'status', op: 'is_blank' }], sorts: [{ field: 'id', direction: 'desc' }] },
   {
     id: 'M2', flat: true, marts: [], main: mains('status', 'amount', 'created_at', 'name'), visible: ['status', 'amount', 'created_at', 'name'], filters: [{ field: 'status', op: 'eq', value: 'paid' }],
@@ -134,7 +146,7 @@ const cases: PCase[] = [
 const pluginSql = (c: PCase, dialect: Dialect): string => {
   const joinedFields = c.marts.flatMap((m) => m.fields.map((x) => f(x.alias, x.type ?? x.raw, { martId: m.martId, label: m.label, aliasPath: m.path, originalName: x.name, aggregateFunction: x.fn, sourceType: x.raw })));
   const sources: JoinedSource[] = c.marts.map((m) => ({ aliasPath: m.path, martId: m.martId, label: m.label, depth: m.path.split('.').length, fields: joinedFields.filter((x) => x.joined!.aliasPath === m.path), uniqueCount: false, relationshipId: m.edgeId }));
-  const r = buildMartSql({ dialect, main: { id: 'ord1', title: 'Orders' }, schema: [...c.main, ...joinedFields], visible: c.visible, filters: c.filters, ...(c.sorts ? { sorts: c.sorts } : {}), ...(c.aggregation ? { aggregation: c.aggregation } : {}), sources, edges, titles: new Map(c.marts.map((m) => [m.martId, m.label])).set('ord1', 'Orders') });
+  const r = buildMartSql({ dialect, main: { id: 'ord1', title: 'Orders' }, schema: [...c.main, ...joinedFields], visible: c.visible, filters: c.filters, ...(c.slices ? { slices: c.slices } : {}), ...(c.sorts ? { sorts: c.sorts } : {}), ...(c.aggregation ? { aggregation: c.aggregation } : {}), sources, edges, titles: new Map(c.marts.map((m) => [m.martId, m.label])).set('ord1', 'Orders') });
   if ('reason' in r) throw new Error(r.reason);
   return r.sql;
 };
@@ -152,11 +164,14 @@ const relabel = (l: string) => l.replace(/([`"])([^`"|]+) \| ([A-Z0-9]+)\1/g, (_
 /** The `[Title](dm:id)` a line reads from. */
 const martRefOf = (l: string) => /\[[^\]]*\]\(dm:\w+\)/.exec(l)?.[0];
 
+/** The paths a case slices: a field named `<path with underscores>__<name>` belongs to that path. */
+const slicedPaths = (c: PCase): Set<string> => new Set(c.marts.map((m) => m.path).filter((p) => (c.slices ?? []).some((x) => x.field.startsWith(`${p.replaceAll('.', '_')}__`))));
+
 /**
  * The shape both engines must agree on: per joined path its roll-ups, key, joins and source, every sleeve CTE line by line, then the outer query
  * with names abstracted. `quotes` keeps identifier quotes, so Snowflake's always-quote rule is compared too.
  */
-function canon(sql: string, paths: string[], n: Names, quotes: boolean) {
+function canon(sql: string, paths: string[], n: Names, quotes: boolean, sliced: ReadonlySet<string> = new Set()) {
   const lines = sql.split('\n').map((l) => relabel(l.trim())).map((l) => (quotes ? l : l.replace(/["`]/g, ''))).filter((l) => l && !l.startsWith('--'));
   const blocks: Block[] = [];
   let i = lines[0] === 'WITH' ? 1 : 0;
@@ -184,24 +199,39 @@ function canon(sql: string, paths: string[], n: Names, quotes: boolean) {
     return out.replace(new RegExp(`${q}_dedup${q}`, 'g'), '_dedup');
   };
   // A raw mart join: the engine joins the `_raw` CTE and names its source in that CTE; the data mart joins the mart itself.
-  const rawRef = new Map(paths.map((p) => [`R(${p})`, martRefOf((bodies.get(n.raw(p)) ?? []).find((l) => l.startsWith('FROM ')) ?? '')]));
-  const joinLine = (l: string) => abstract(l).replace(/^LEFT JOIN (\[[^\]]*\]\(dm:\w+\)) AS (R\([^)]*\))/, 'LEFT JOIN $2=$1').replace(/^LEFT JOIN (R\([^)]*\))(?= ON| *$)/, (_m, r: string) => (rawRef.get(r) ? `LEFT JOIN ${r}=${rawRef.get(r)}` : _m)).replace(/\s+/g, ' ').trim();
+  const unqAll = (s: string) => s.replace(/(?:\b[A-Za-z_]\w*|"[^"]+")\./g, '').replace(/\s+/g, ' ').trim();
+  /** The slice predicates a raw body filters its mart by, as one text. */
+  const sliceText = (body: string[]) => {
+    const at = body.findIndex((l) => l.startsWith('WHERE '));
+    return at < 0 ? '' : unqAll(body.slice(at).filter((l) => /^(WHERE|AND) /.test(l)).map((l) => l.replace(/^(WHERE|AND) /, '')).join(' AND '));
+  };
+  const rawRef = new Map(paths.map((p) => {
+    const body = bodies.get(n.raw(p)) ?? [];
+    const ref = martRefOf(body.find((l) => l.startsWith('FROM ')) ?? '');
+    return [`R(${p})`, ref && sliceText(body) ? `${ref} WHERE ${sliceText(body)}` : ref];
+  }));
+  // The data mart's sliced raw join is a filtered derived table; the engine's is its filtered raw CTE.
+  const derived = (l: string) => l.replace(/^LEFT JOIN \(SELECT \* FROM (\[[^\]]*\]\(dm:\w+\)) AS t WHERE (.*)\) AS (R\([^)]*\))/, (_m, ref: string, pred: string, r: string) => `LEFT JOIN ${r}=${ref} WHERE ${unqAll(pred)}`);
+  const joinLine = (l: string) => derived(abstract(l)).replace(/^LEFT JOIN (\[[^\]]*\]\(dm:\w+\)) AS (R\([^)]*\))/, 'LEFT JOIN $2=$1').replace(/^LEFT JOIN (R\([^)]*\))(?= ON| *$)/, (_m, r: string) => (rawRef.get(r) ? `LEFT JOIN ${r}=${rawRef.get(r)}` : _m)).replace(/\s+/g, ' ').trim();
 
   const perPath = paths.map((p) => {
     const dedup = bodies.get(n.cte(p))!;
     const joinedBody = bodies.get(`${n.cte(p)}_joined`) ?? dedup;
     const from = dedup.findIndex((l) => l.startsWith('FROM '));
-    // A dedup CTE is only SELECT, its items, FROM, LEFT JOINs and GROUP BY: a WHERE or any other clause would be a filter inside a joined mart.
+    // A dedup CTE is only SELECT, its items, FROM, LEFT JOINs, a WHERE that holds the path's slices, and GROUP BY.
     expect(dedup[0]).toBe('SELECT');
     expect(from).toBeGreaterThan(1);
-    expect(dedup.slice(from + 1).every((l) => l.startsWith('LEFT JOIN ') || l.startsWith('GROUP BY '))).toBe(true);
-    expect(joinedBody.slice(1).filter((l) => /^(WHERE|HAVING|ORDER BY|LIMIT)\b/.test(l))).toEqual([]);
+    expect(dedup.slice(from + 1).every((l) => /^(LEFT JOIN|WHERE|AND|GROUP BY) /.test(l))).toBe(true);
+    // A `_joined` body has no WHERE of its own either, unless a slice on this path puts its predicates there.
+    expect(joinedBody.slice(1).filter((l) => (sliced.has(p) ? /^(HAVING|ORDER BY|LIMIT)\b/ : /^(WHERE|HAVING|ORDER BY|LIMIT)\b/).test(l))).toEqual([]);
+    // The engine filters the raw CTE, the data mart its dedup CTE: the same predicates on the same mart rows.
+    const slice = sliceText(bodies.get(n.raw(p)) ?? dedup);
     const items = dedup.slice(1, from).map((l) => unq(l.replace(/,$/, ''))).sort();
     const groupBy = dedup.filter((l) => l.startsWith('GROUP BY ')).map(unq);
     const joins = joinedBody.filter((l) => l.startsWith('LEFT JOIN ')).map((l) => abstract(unq(l)));
     // The engine reads the mart in `_raw`, the data mart in the dedup CTE.
     const source = martRefOf((bodies.get(n.raw(p)) ?? dedup).find((l) => l.startsWith('FROM '))!);
-    return { path: p, items, groupBy, joins, source };
+    return { path: p, items, groupBy, joins, source, slice };
   });
 
   // Sections of the outer query, found by the line each starts with.
@@ -210,7 +240,8 @@ function canon(sql: string, paths: string[], n: Names, quotes: boolean) {
   const whereAt = outer.findIndex((l) => l.startsWith('WHERE '));
   const groupAt = outer.findIndex((l) => l.startsWith('GROUP BY'));
   const orderAt = outer.findIndex((l) => l.startsWith('ORDER BY'));
-  const end = (at: number) => [whereAt, groupAt, orderAt].filter((x) => x > at).sort((a, b) => a - b)[0] ?? outer.length;
+  const havingAt = outer.findIndex((l) => l.startsWith('HAVING '));
+  const end = (at: number) => [whereAt, groupAt, havingAt, orderAt].filter((x) => x > at).sort((a, b) => a - b)[0] ?? outer.length;
   const clean = (s: string) => abstract(s).replace(/\s+/g, ' ').trim();
   const items = outer.slice(sel + 1, fromAt).map((l) => clean(l.replace(/,$/, '')));
   const joins = outer.slice(fromAt + 1, whereAt >= 0 ? whereAt : end(fromAt));
@@ -221,7 +252,7 @@ function canon(sql: string, paths: string[], n: Names, quotes: boolean) {
     main: martRefOf(((mainBody ?? outer.slice(fromAt, fromAt + 1)).find((l) => l.startsWith('FROM ')) ?? outer[fromAt])!),
     perPath,
     sleeves: sleeves.map((b) => ({ token: sleeveToken.get(b.name)!, body: b.body.map(joinLine) })).sort((a, b) => a.token.localeCompare(b.token)),
-    items, joins: joins.map(joinLine), where, groupBy: text(groupAt, 'GROUP BY'), orderBy: text(orderAt, 'ORDER BY'),
+    items, joins: joins.map(joinLine), where, groupBy: text(groupAt, 'GROUP BY'), having: text(havingAt, 'HAVING'), orderBy: text(orderAt, 'ORDER BY'),
     // The columns are the same set, in the grid's order or the engine's.
     itemSet: [...items].sort(),
   };
@@ -271,8 +302,8 @@ describe('the plugin SQL matches the engine SQL', () => {
           expect(flatMartRef(ours, false)).toBe(flatMartRef(theirs, true));
           return;
         }
-        const a = canon(ours, paths, pluginNames, false);
-        const b = canon(theirs, paths, engineNames, false);
+        const a = canon(ours, paths, pluginNames, false, slicedPaths(c));
+        const b = canon(theirs, paths, engineNames, false, slicedPaths(c));
         // The outer SELECT lists the same columns; a grouped query may order them differently (the engine puts sleeve pulls last).
         const grouped = !!c.aggregation;
         expect({ ...a, items: grouped ? a.itemSet : a.items }).toEqual({ ...b, items: grouped ? b.itemSet : b.items });
@@ -285,8 +316,8 @@ describe('the plugin SQL matches the engine SQL', () => {
       const paths = c.marts.map((m) => m.path);
       const theirs = engine.find((x) => x.case === c.id && x.dialect === 'snowflake')!.sql;
       const grouped = !!c.aggregation;
-      const a = canon(pluginSql(c, 'snowflake'), paths, pluginNames, true);
-      const b = canon(theirs, paths, engineNames, true);
+      const a = canon(pluginSql(c, 'snowflake'), paths, pluginNames, true, slicedPaths(c));
+      const b = canon(theirs, paths, engineNames, true, slicedPaths(c));
       expect({ ...a, items: grouped ? a.itemSet : a.items }).toEqual({ ...b, items: grouped ? b.itemSet : b.items });
     });
   }

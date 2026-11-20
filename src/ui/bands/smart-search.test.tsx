@@ -559,7 +559,7 @@ describe('the dropdown', () => {
     await typeIn(u, 'extras');
     await waitFor(() => expect(rowsText().some((r) => r.startsWith('Orders with extras'))).toBe(true));
     await u.click(options().find((o) => o.textContent!.startsWith('Orders with extras'))!);
-    expect(await screen.findByRole('status', { name: 'Search notice' })).toHaveTextContent("Some parts of this report aren't shown: 1 slice, 1 HAVING filter, unique count.");
+    expect(await screen.findByRole('status', { name: 'Search notice' })).toHaveTextContent("Some parts of this report aren't shown: unique count.");
     // a new search clears it
     await u.type(screen.getByRole('combobox'), 'x');
     expect(screen.queryByRole('status', { name: 'Search notice' })).toBeNull();

@@ -15,22 +15,23 @@ export function defaultColumns(schema: Schema): string[] {
  * Grouped (a function or a bucket on a visible column): exactly the visible columns, in schema order (a column move must not change the query), each function its own output;
  * every column without a rule is a group key. Primary keys are not added and no key tie-breaker sorts are, since a key would split the groups.
  */
-function buildGroupedQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, sorts: SortKey[], agg: Aggregation): TraverseOptions {
+function buildGroupedQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, sorts: SortKey[], agg: Aggregation, slices: ColumnFilter[]): TraverseOptions {
   const shown = new Set(visible);
   const column = schema.map((f) => f.name).filter((n) => shown.has(n));
-  const filter = toTraverseFilters(schema, filters);
   const aggregations = agg.aggregations.filter((r) => column.includes(r.column));
+  // A HAVING filter is sent only with its aggregation, which the converter checks against the rules this query carries.
+  const filter = toTraverseFilters(schema, filters, slices, aggregations);
   const dateTrunc = agg.dateTrunc.filter((r) => column.includes(r.column));
   const sort = sorts.filter((s) => column.includes(s.field)).map((s) => ({ column: s.field, direction: s.direction }));
   return { column, ...(filter.length ? { filter } : {}), ...(aggregations.length ? { aggregation: aggregations } : {}), ...(dateTrunc.length ? { dateTrunc } : {}), ...(sort.length ? { sort } : {}), limit: limit + 1 };
 }
 
-export function buildRowQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, sorts: SortKey[] = [], agg?: Aggregation): TraverseOptions {
-  if (isGrouped(agg)) return buildGroupedQuery(schema, visible, filters, limit, sorts, agg!);
+export function buildRowQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, sorts: SortKey[] = [], agg?: Aggregation, slices: ColumnFilter[] = []): TraverseOptions {
+  if (isGrouped(agg)) return buildGroupedQuery(schema, visible, filters, limit, sorts, agg!, slices);
   const need = new Set(visible);
   schema.filter((f) => f.isPrimaryKey).forEach((f) => need.add(f.name));
   const column = schema.map((f) => f.name).filter((n) => need.has(n));
-  const filter = toTraverseFilters(schema, filters);
+  const filter = toTraverseFilters(schema, filters, slices);
   // The reader's sorts come first; the primary keys follow (unless already sorted) so "Load more" pages stay deterministic.
   const sort = [
     ...sorts.map((s) => ({ column: s.field, direction: s.direction })),

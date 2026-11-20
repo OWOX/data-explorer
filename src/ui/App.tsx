@@ -110,9 +110,10 @@ function AppBody() {
   const { sources: joinSources, failed: joinsFailed } = useJoinSources(model && mainId && model.marts.get(mainId)?.accessible ? mainId : null);
   const mainColumns = mainId ? state.grids[mainId]?.columns : undefined;
   const joined = useMemo(() => (joinSources && mainColumns ? joinedMartIds(mainColumns, joinSources) : []), [joinSources, mainColumns]);
-  // Marts whose fields carry a filter (applied or parked) are shown too, whether or not a column of theirs is on the grid.
+  // Marts whose fields carry a filter or a slice (applied or parked) are shown too, whether or not a column of theirs is on the grid.
   const mainFilters = mainId ? state.grids[mainId]?.filters : undefined;
-  const filtered = useMemo(() => (joinSources && mainFilters ? joinedMartIds(Object.keys(mainFilters), joinSources) : []), [joinSources, mainFilters]);
+  const mainSlices = mainId ? state.grids[mainId]?.slices : undefined;
+  const filtered = useMemo(() => (joinSources && mainFilters ? joinedMartIds([...Object.keys(mainFilters), ...Object.keys(mainSlices ?? {})], joinSources) : []), [joinSources, mainFilters, mainSlices]);
   // A failed read is not "joins nothing": with no answer the band keeps its one-hop fallback and dims nothing.
   const joinable = useMemo(() => (joinSources && !joinsFailed ? [...new Set(joinSources.map((s) => s.martId))] : null), [joinSources, joinsFailed]);
   const visible = useMemo(

@@ -40,7 +40,7 @@ type ViewLinkV1 = {
   ctx: string[];
   st: string[] | null;
   f: Folded;
-  g: null | { c: Col[]; fl: [Col, string, unknown?][]; s: [Col, 1 | -1][] | null; l: number; /** Aggregations: [column, function]. */ ag?: [Col, AggFn][]; /** Date buckets: [column, unit, time zone?]. */ dt?: [Col, DateBucket, string?][]; /** Charts view; absent is the table. */ vw?: 1 };
+  g: null | { c: Col[]; fl: [Col, string, unknown?, AggFn?][]; /** Slices, the same tuple as a filter's but without the function slot. */ sl?: [Col, string, unknown?][]; s: [Col, 1 | -1][] | null; l: number; /** Aggregations: [column, function]. */ ag?: [Col, AggFn][]; /** Date buckets: [column, unit, time zone?]. */ dt?: [Col, DateBucket, string?][]; /** Charts view; absent is the table. */ vw?: 1 };
 };
 
 /** At most this many aggregation rules and this many date buckets are read from a link; the rest count as dropped. */
@@ -118,7 +118,8 @@ export async function encodeViewLink(view: Omit<DecodedView, 'dropped' | 'droppe
     f: view.folded,
     g: g && {
       c: g.columns.map(col),
-      fl: Object.entries(g.filters).map(([field, f]) => (f.value === undefined ? [col(field), f.op] : [col(field), f.op, f.value])),
+      fl: Object.entries(g.filters).map(([field, f]): [Col, string, unknown?, AggFn?] => (f.fn ? [col(field), f.op, f.value ?? null, f.fn] : f.value === undefined ? [col(field), f.op] : [col(field), f.op, f.value])),
+      ...(g.slices && Object.keys(g.slices).length ? { sl: Object.entries(g.slices).map(([field, f]): [Col, string, unknown?] => (f.value === undefined ? [col(field), f.op] : [col(field), f.op, f.value])) } : {}),
       s: g.sorts && g.sorts.map((x) => [col(x.field), x.direction === 'asc' ? 1 : -1]),
       l: g.limit,
       ...(g.aggregations?.length ? { ag: g.aggregations.map((r): [Col, AggFn] => [col(r.column), r.function]) } : {}),
@@ -190,18 +191,29 @@ function shape(raw: unknown): DecodedView {
     const columns: string[] = [];
     for (const c of g.c) { const n = name(c); if (n === null) dropped++; else columns.push(n); }
     // Built as entries: a decoded key like __proto__ must never reach an object's prototype.
-    const filterEntries: [string, ColumnFilter][] = [];
-    for (const e of g.fl) {
-      const field = Array.isArray(e) && (e.length === 2 || e.length === 3) ? name(e[0]) : null;
-      if (field === null || typeof (e as unknown[])[1] !== 'string' || UNSAFE_KEYS.has(field)) { dropped++; continue; }
-      const entry: ColumnFilter = { field, op: (e as unknown[])[1] as OpId };
-      const value = (e as unknown[])[2] as FilterValue | null | undefined;
-      // A relative filter needs a preset object; any other value must be safe to render and query.
-      const ok = isFilterValue(value ?? undefined) && (entry.op !== 'relative' || (isPlain(value) && typeof (value as { kind?: unknown }).kind === 'string'));
-      if (!ok) { dropped++; continue; }
-      if (value !== undefined && value !== null) entry.value = value;
-      filterEntries.push([field, entry]);
-    }
+    // A filter is [column, op, value?, fn?]; a slice is the same without the function. A null value is a blank one (only a function in the fourth slot follows it).
+    const decodeRules = (list: unknown[], withFn: boolean): [string, ColumnFilter][] => {
+      const out: [string, ColumnFilter][] = [];
+      for (const e of list) {
+        const arity = Array.isArray(e) ? e.length : 0;
+        const field = arity >= 2 && arity <= (withFn ? 4 : 3) ? name((e as unknown[])[0]) : null;
+        if (field === null || typeof (e as unknown[])[1] !== 'string' || UNSAFE_KEYS.has(field)) { dropped++; continue; }
+        const entry: ColumnFilter = { field, op: (e as unknown[])[1] as OpId };
+        const value = (e as unknown[])[2] as FilterValue | null | undefined;
+        const fn = (e as unknown[])[3];
+        // A relative filter needs a preset object; any other value must be safe to render and query. A function must be a known one.
+        const ok = isFilterValue(value ?? undefined) && (entry.op !== 'relative' || (isPlain(value) && typeof (value as { kind?: unknown }).kind === 'string'))
+          && (fn === undefined || (AGGREGATE_FUNCTIONS as readonly unknown[]).includes(fn));
+        if (!ok) { dropped++; continue; }
+        if (value !== undefined && value !== null) entry.value = value;
+        if (fn !== undefined) entry.fn = fn as AggFn;
+        out.push([field, entry]);
+      }
+      return out;
+    };
+    if (g.sl !== undefined && !Array.isArray(g.sl)) throw new Error('bad slices');
+    const filterEntries = decodeRules(g.fl, true);
+    const sliceEntries = decodeRules((g.sl as unknown[] | undefined) ?? [], false);
     let sorts: SortKey[] | null = null;
     if (g.s) {
       sorts = [];
@@ -234,7 +246,7 @@ function shape(raw: unknown): DecodedView {
     }
     // Only 1 means charts; any other value is left out and counted, so a newer link still opens as the table.
     if (g.vw !== undefined && g.vw !== 1) dropped++;
-    grid = { columns, filters: Object.fromEntries(filterEntries), sorts, limit: g.l, ...(aggregations.length ? { aggregations } : {}), ...(dateTrunc.length ? { dateTrunc } : {}), ...(g.vw === 1 ? { view: 'charts' as const } : {}) };
+    grid = { columns, filters: Object.fromEntries(filterEntries), ...(sliceEntries.length ? { slices: Object.fromEntries(sliceEntries) } : {}), sorts, limit: g.l, ...(aggregations.length ? { aggregations } : {}), ...(dateTrunc.length ? { dateTrunc } : {}), ...(g.vw === 1 ? { view: 'charts' as const } : {}) };
   }
 
   const found = Array.isArray(fd) ? [...new Set(fd.filter((x): x is string => typeof x === 'string'))].slice(0, MAX_FOUND_IDS) : [];

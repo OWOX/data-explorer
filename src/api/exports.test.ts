@@ -622,3 +622,26 @@ test('a grouped grid exports its rules: aggregationConfig, dateTruncConfig, and 
   expect('aggregationConfig' in plain).toBe(false);
   expect('dateTruncConfig' in plain).toBe(false);
 });
+
+describe('buildReportPayload with slices and HAVING', () => {
+  const joinedSchema: Schema = [...schema, f('customers__country_code', 'STRING', 'string', { joined: { martId: 'customers', label: 'Customers', aliasPath: 'customers', originalName: 'country_code', sourceType: 'STRING' } })];
+  test('a slice goes out pre-join after the filters, and a HAVING filter goes out with its aggregation', () => {
+    const filters: ColumnFilter[] = [{ field: 'status', op: 'eq', value: 'paid' }, { field: 'amount', op: 'gt', value: '100', fn: 'SUM' }];
+    const slices: ColumnFilter[] = [{ field: 'customers__country_code', op: 'eq', value: 'PL' }];
+    const { payload } = buildReportPayload(joinedSchema, ['status', 'amount', 'customers__country_code'], filters, [], { aggregations: [{ column: 'amount', function: 'SUM' }], dateTrunc: [] }, slices);
+    expect(payload.filterConfig).toEqual([
+      { column: 'status', operator: 'eq', value: 'paid' },
+      { column: 'amount', operator: 'gt', value: 100, function: 'SUM' },
+      { column: 'customers__country_code', operator: 'eq', value: 'PL', placement: 'pre-join' },
+    ]);
+  });
+  test('a HAVING filter without its aggregation among the exported columns is left out', () => {
+    const { payload } = buildReportPayload(joinedSchema, ['status'], [{ field: 'amount', op: 'gt', value: '100', fn: 'SUM' }], [], { aggregations: [{ column: 'amount', function: 'SUM' }], dateTrunc: [] });
+    expect(payload.filterConfig).toBeNull();
+  });
+  test('the filter cap counts filters and slices together', () => {
+    const many: ColumnFilter[] = Array.from({ length: 50 }, () => ({ field: 'status', op: 'is_blank' as const }));
+    const { notes } = buildReportPayload(joinedSchema, ['status'], many, [], undefined, [{ field: 'customers__country_code', op: 'eq', value: 'PL' }]);
+    expect(notes.length).toBe(1);
+  });
+});

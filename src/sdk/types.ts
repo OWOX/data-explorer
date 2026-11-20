@@ -1,6 +1,8 @@
 // Narrow view of @owox/plugin-sdk's PluginContext. The real context satisfies it structurally.
 // Traverse types are copied from @owox/api-client (tmp/ref/packages_api-client_src_data-marts.ts).
 
+import type { AggFn } from '../model/aggregation';
+
 export type RelativeDatePreset =
   | { kind: 'today' } | { kind: 'yesterday' }
   | { kind: 'this_week' } | { kind: 'last_week' }
@@ -9,7 +11,10 @@ export type RelativeDatePreset =
   | { kind: 'this_year' }
   | { kind: 'last_n_days'; n: number } | { kind: 'last_n_months'; n: number };
 
-export type TraverseFilter =
+/** A filter rule of traverseData. A `pre-join` rule narrows a joined mart before the join (a slice); a rule with `function` filters that aggregate after grouping (HAVING). */
+export type TraverseFilter = TraverseFilterRule & ({ placement: 'pre-join'; function?: never } | { placement?: 'post-join'; function?: AggFn });
+
+export type TraverseFilterRule =
   | { column: string; operator: 'eq' | 'neq' | 'contains' | 'not_contains' | 'starts_with' | 'ends_with' | 'gt' | 'lt' | 'gte' | 'lte'; value: string | number }
   | { column: string; operator: 'is_blank' | 'is_not_blank' | 'is_true' | 'is_false' }
   | { column: string; operator: 'in' | 'not_in'; value: string[] | number[] }

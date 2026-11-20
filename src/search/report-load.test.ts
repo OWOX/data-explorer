@@ -14,12 +14,13 @@ const stamp = f('stamp', 'TIMESTAMP', 'date');
 const clock = f('clock', 'TIME', 'time');
 const paid = f('paid', 'BOOLEAN', 'boolean');
 const country = f('customers__country_code', 'STRING', 'string', { joined: { martId: 'customers', label: 'Customers', aliasPath: 'customers' } });
-const schema: Schema = [name, amount, day, stamp, clock, paid, country];
+const joinedDay = f('allowed_day', 'DATE', 'date', { allowedAggregations: ['STRING_AGG'] });
+const schema: Schema = [name, amount, day, stamp, clock, paid, country, joinedDay];
 
 const none: ReportSkipped = { columns: 0, filters: 0, sorts: 0, aggregations: 0, slices: 0, having: 0, uniqueCount: false };
 const grid = (columns: string[], filters: ColumnFilter[], extra: Partial<GridState> = {}): GridState => ({ columns, filters: Object.fromEntries(filters.map((x) => [x.field, x])), sorts: null, limit: PAGE_SIZE, ...extra });
 const roundTrip = (g: GridState) => {
-  const { payload } = buildReportPayload(schema, g.columns, Object.values(g.filters), g.sorts ?? [], { aggregations: g.aggregations ?? [], dateTrunc: g.dateTrunc ?? [] });
+  const { payload } = buildReportPayload(schema, g.columns, Object.values(g.filters), g.sorts ?? [], { aggregations: g.aggregations ?? [], dateTrunc: g.dateTrunc ?? [] }, Object.values(g.slices ?? {}));
   return reportToGrid({ id: 'r', ...payload }, schema, schema).grid;
 };
 
@@ -76,11 +77,6 @@ describe('fromTraverseFilter', () => {
     expect(fromTraverseFilter('x', name)).toBeNull();
   });
 
-  test('slices and HAVING rules are not read here', () => {
-    expect(fromTraverseFilter({ column: 'name', operator: 'contains', value: 'a', placement: 'pre-join' }, name)).toBeNull();
-    expect(fromTraverseFilter({ column: 'amount', operator: 'gt', value: 1, function: 'SUM' }, amount)).toBeNull();
-  });
-
   test('maps eq, lt, gt and relative_date on date fields', () => {
     expect(fromTraverseFilter({ column: 'day', operator: 'eq', value: '2026-01-02' }, day)).toEqual({ field: 'day', op: 'on', value: '2026-01-02' });
     expect(fromTraverseFilter({ column: 'stamp', operator: 'gt', value: '2026-01-02 10:00:00' }, stamp)).toEqual({ field: 'stamp', op: 'after', value: '2026-01-02 10:00:00' });
@@ -97,14 +93,51 @@ describe('fromTraverseFilter', () => {
 describe('reportToGrid', () => {
   const rep = (extra: object) => ({ id: 'r', columnConfig: ['name', 'amount'], ...extra });
 
-  test('counts slices, HAVING rules and unique count', () => {
-    const r = reportToGrid(rep({ filterConfig: [
-      { column: 'customers__country_code', operator: 'eq', value: 'UA', placement: 'pre-join' },
-      { column: 'amount', operator: 'gt', value: 5, function: 'SUM' },
-      { column: 'name', operator: 'contains', value: 'a' },
-    ], uniqueCountConfig: [''] }), schema, schema);
-    expect(r.skipped).toEqual({ ...none, slices: 1, having: 1, uniqueCount: true });
-    expect(r.grid?.filters).toEqual({ name: { field: 'name', op: 'contains', value: 'a' } });
+  test('a slice on a joined field and a HAVING rule with its aggregation load', () => {
+    const r = reportToGrid(rep({
+      columnConfig: ['name', 'amount', 'customers__country_code'],
+      filterConfig: [
+        { column: 'customers__country_code', operator: 'eq', value: 'UA', placement: 'pre-join' },
+        { column: 'amount', operator: 'gt', value: 5, function: 'SUM' },
+        { column: 'name', operator: 'contains', value: 'a' },
+      ],
+      aggregationConfig: [{ column: 'amount', function: 'SUM' }],
+      uniqueCountConfig: [''],
+    }), schema, schema);
+    expect(r.skipped).toEqual({ ...none, uniqueCount: true });
+    expect(r.grid?.filters).toEqual({ name: { field: 'name', op: 'contains', value: 'a' }, amount: { field: 'amount', op: 'gt', value: 5, fn: 'SUM' } });
+    expect(r.grid?.slices).toEqual({ customers__country_code: { field: 'customers__country_code', op: 'eq', value: 'UA' } });
+  });
+
+  test('a slice on a main field is skipped and counted', () => {
+    const r = reportToGrid(rep({ filterConfig: [{ column: 'name', operator: 'eq', value: 'a', placement: 'pre-join' }] }), schema, schema);
+    expect(r.skipped).toEqual({ ...none, slices: 1 });
+    expect(r.grid?.slices).toBeUndefined();
+  });
+
+  test('a HAVING rule without a matching aggregation or with an unknown function is skipped and counted', () => {
+    const r = reportToGrid(rep({
+      filterConfig: [
+        { column: 'amount', operator: 'gt', value: 5, function: 'SUM' },
+        { column: 'amount', operator: 'gt', value: 5, function: 'NOPE' },
+      ],
+      aggregationConfig: [{ column: 'amount', function: 'AVG' }],
+    }), schema, schema);
+    expect(r.skipped).toEqual({ ...none, having: 2 });
+    expect(r.grid?.filters).toEqual({});
+  });
+
+  test('slices and HAVING filters survive a round trip with buildReportPayload', () => {
+    const g = grid(['name', 'amount', 'customers__country_code'], [{ field: 'amount', op: 'gt', value: 5, fn: 'SUM' }], {
+      aggregations: [{ column: 'amount', function: 'SUM' }],
+      slices: { customers__country_code: { field: 'customers__country_code', op: 'eq', value: 'UA' } },
+    });
+    expect(roundTrip(g)).toEqual(g);
+  });
+
+  test('a STRING_AGG HAVING filter on a date column round-trips with a string operator', () => {
+    const g = grid(['name', 'allowed_day'], [{ field: 'allowed_day', op: 'contains', value: '2026-01', fn: 'STRING_AGG' }], { aggregations: [{ column: 'allowed_day', function: 'STRING_AGG' }] });
+    expect(roundTrip(g)).toEqual(g);
   });
 
   test('unique count flags', () => {

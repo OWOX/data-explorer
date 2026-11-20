@@ -7,7 +7,8 @@ import type { Measure } from './queries';
 export type Metric = { field: Field; fn: AggFn; martId: string };
 /** `recordsId` is what the mart's Unique Records is saved and keyed as (see `chartFields`). */
 export type ChartMart = { martId: string; aliasPath: string; recordsId: string; title: string; hasPk: boolean; metrics: Metric[]; dates: Field[]; dimensions: Field[] };
-export type ChartFields = { marts: ChartMart[]; metrics: Metric[]; dimensions: Field[]; dates: Field[] };
+/** `counter` is a main-mart field the warehouse may COUNT: a query with a slice and no column of its own reads it, so the slice has an explicit column list without a new group key. Null when the mart has none. */
+export type ChartFields = { marts: ChartMart[]; metrics: Metric[]; dimensions: Field[]; dates: Field[]; counter?: Field | null };
 export const MAX_BUCKETS = 60;
 
 /** Everything a chart can count, per chart mart in group order: its Unique Records when it has a key, then its metrics. Any mart's measure pairs with any mart's date or dimension. */
@@ -65,7 +66,8 @@ export function chartFields(schema: Field[], shown: string[], agg: Aggregation, 
       dimensions: own.filter((f) => (f.category === 'string' || f.category === 'boolean') && !isIdField(f)),
     };
   });
-  return { marts, metrics: marts.flatMap((m) => m.metrics), dimensions: marts.flatMap((m) => m.dimensions), dates: marts.flatMap((m) => m.dates) };
+  const counter = schema.find((f) => !f.joined && allowedFunctions(f).includes('COUNT')) ?? null;
+  return { marts, metrics: marts.flatMap((m) => m.metrics), dimensions: marts.flatMap((m) => m.dimensions), dates: marts.flatMap((m) => m.dates), counter };
 }
 
 const DAY_MS = 86_400_000;

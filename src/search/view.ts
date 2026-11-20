@@ -140,6 +140,7 @@ export function mergeAiView(schema: Schema, fields: AiFields | null, filters: Ai
   const dateTrunc = fields?.dateTrunc ?? [];
   const chosen = fields?.columns ?? [];
   if (!chosen.length && !Object.keys(filterMap).length && !sorts.length && !aggregations.length && !dateTrunc.length) return null;
+  // The AI view never sets slices: the grid state keeps `slices` absent.
   const grid: GridState = {
     columns: chosen.length ? chosen : defaultColumns(schema),
     filters: filterMap,

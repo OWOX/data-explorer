@@ -10,6 +10,7 @@ import type { Ctx } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
 import { TooltipProvider } from '../Tooltip';
+import type { ColumnFilter } from '../../filters/build';
 import type { Aggregation } from '../../model/aggregation';
 import type { SortKey } from '../../model/sort';
 import type { Edge, Schema } from '../../model/types';
@@ -1357,7 +1358,7 @@ describe('Create Data Mart', () => {
   const TITLES = new Map([['orders', 'Orders'], ['customers', 'Customers']]);
   const CUSTOMERS = [{ id: 'customers', title: 'Customers' }];
 
-  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; run?: GridRun; sorts?: SortKey[]; ownSorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; schema?: Schema; failAt?: string; deleteFails?: boolean; storageUnavailable?: boolean; visible?: string[]; joinedMarts?: { id: string; title: string }[] } = {}) {
+  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; run?: GridRun; sorts?: SortKey[]; ownSorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; schema?: Schema; failAt?: string; deleteFails?: boolean; storageUnavailable?: boolean; visible?: string[]; joinedMarts?: { id: string; title: string }[]; filters?: ColumnFilter[] } = {}) {
     const base = createMockCtx(demoFixtures({ sheets: 1 }), { latencyMs: 0 });
     const calls: string[] = [];
     const bodies: Record<string, unknown> = {};
@@ -1381,7 +1382,7 @@ describe('Create Data Mart', () => {
     };
     const storage = 'storage' in o ? o.storage : { id: 's1', type: 'GOOGLE_BIGQUERY' };
     const sources = 'sources' in o ? o.sources : SOURCES;
-    const ui = (marts: { id: string; title: string }[]) => <AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={o.schema ?? SCHEMA} visible={o.visible ?? ['id', 'customers__city']} filters={[]} sorts={o.sorts ?? []} ownSorts={o.ownSorts ?? o.sorts ?? []} aggregation={o.aggregation} joinsFailed={o.joinsFailed} joinedMarts={marts} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} storageUnavailable={o.storageUnavailable} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>;
+    const ui = (marts: { id: string; title: string }[]) => <AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={o.schema ?? SCHEMA} visible={o.visible ?? ['id', 'customers__city']} filters={o.filters ?? []} sorts={o.sorts ?? []} ownSorts={o.ownSorts ?? o.sorts ?? []} aggregation={o.aggregation} joinsFailed={o.joinsFailed} joinedMarts={marts} rows={[{ id: 1, customers__city: 'x' }]} hasMore={false} storage={storage} storageUnavailable={o.storageUnavailable} sources={sources} edges={EDGES} titles={TITLES} run={o.run} /></StoreProvider></TooltipProvider></AppServices>;
     const r = render(ui(o.joinedMarts ?? CUSTOMERS));
     return { ctx, calls, bodies, open, setJoinedMarts: (m: { id: string; title: string }[]) => r.rerender(ui(m)) };
   }
@@ -1577,6 +1578,23 @@ describe('Create Data Mart', () => {
     expect(within(dlg).getByText('The grid groups its rows; the data mart keeps them ungrouped, so the tool that reads it can group them.')).toBeInTheDocument();
     await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Include grouping' }));
     expect(within(dlg).queryByText(/The grid groups its rows/)).toBeNull();
+  });
+
+  test('the ungrouped variant says that filters on aggregates are left out, and only when there are some', async () => {
+    const having: ColumnFilter = { field: 'id', op: 'gt', value: 5, fn: 'SUM' };
+    mart({ aggregation: { aggregations: [{ column: 'id', function: 'SUM' }], dateTrunc: [] }, filters: [having] });
+    const dlg = await openDialog();
+    expect(within(dlg).getByText('Filters on aggregates are left out when the data mart is not grouped.')).toBeInTheDocument();
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).not.toContain('HAVING');
+    await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Include grouping' }));
+    expect(within(dlg).queryByText(/Filters on aggregates are left out/)).toBeNull();
+    expect((within(dlg).getByLabelText('SQL') as HTMLTextAreaElement).value).toContain('HAVING SUM(base_owox.id) > 5');
+  });
+
+  test('no note about filters on aggregates without one', async () => {
+    mart({ aggregation: { aggregations: [{ column: 'id', function: 'SUM' }], dateTrunc: [] } });
+    const dlg = await openDialog();
+    expect(within(dlg).queryByText(/Filters on aggregates are left out/)).toBeNull();
   });
 
   test('a sort on an aggregated column is left out of the ungrouped variant', async () => {

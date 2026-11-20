@@ -9,8 +9,8 @@ export async function openColumnMenu(scope: Scope, title: string): Promise<HTMLE
   return screen.findByRole('menu', { name: `Menu of ${title}` });
 }
 
-/** Opens a column's menu and clicks one of its first-level rows (Filter, Aggregate, Format, Sort). */
-export async function openSubmenu(scope: Scope, title: string, row: 'Filter' | 'Aggregate' | 'Format' | 'Sort'): Promise<void> {
+/** Opens a column's menu and clicks one of its first-level rows (Filter, Slice, Aggregate, Format, Sort). */
+export async function openSubmenu(scope: Scope, title: string, row: 'Filter' | 'Slice' | 'Aggregate' | 'Format' | 'Sort'): Promise<void> {
   const menu = await openColumnMenu(scope, title);
   await userEvent.click(within(menu).getByRole('menuitem', { name: row }));
 }

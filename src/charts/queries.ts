@@ -15,7 +15,18 @@ export const uniqueKey = (aliasPath: string): string => (aliasPath === '' ? 'Uni
 export const measureKey = (m: Measure): string => (m.kind === 'metric' ? metricKey(m.metric) : uniqueKey(m.aliasPath));
 export const rangeKeys = (date: Field): { min: string; max: string } => ({ min: aggregatedKey(date.name, 'MIN'), max: aggregatedKey(date.name, 'MAX') });
 
-const withFilter = (o: TraverseOptions, filter: TraverseFilter[]): TraverseOptions => (filter.length ? { ...o, filter } : o);
+/** The grid's rules that this query can carry. Charts show the data before HAVING, so no HAVING rule goes out. A slice needs an explicit column list, which `withCounter` gives a query that has none. */
+const fit = (o: TraverseOptions, filter: TraverseFilter[]): TraverseFilter[] => filter.filter((f) => {
+  if (f.function) return false;
+  if (f.placement === 'pre-join') return !!o.column?.length;
+  return true;
+});
+/** A query with a slice and no column (a records count) reads one COUNT of `counter`: an aggregated column does not group the rows, and nobody reads its value. Without a counter the slice is left out. */
+const withCounter = (o: TraverseOptions, filter: TraverseFilter[], counter?: Field | null): TraverseOptions =>
+  !o.column?.length && counter && filter.some((f) => f.placement === 'pre-join')
+    ? { ...o, column: [counter.name], aggregation: [...(o.aggregation ?? []), { column: counter.name, function: 'COUNT' }] }
+    : o;
+const withFilter = (o: TraverseOptions, filter: TraverseFilter[]): TraverseOptions => { const kept = fit(o, filter); return kept.length ? { ...o, filter: kept } : o; };
 // A metric reads its column with an aggregation; records read the unique count and name no column.
 const measureColumns = (m: Measure): string[] => (m.kind === 'metric' ? [m.metric.field.name] : []);
 const measureParts = (m: Measure): Pick<TraverseOptions, 'aggregation' | 'uniqueCount'> => (m.kind === 'metric' ? { aggregation: aggs([m.metric]) } : { uniqueCount: [m.aliasPath] });
@@ -31,7 +42,7 @@ function truncRule(date: Field, unit: DateBucket) {
 }
 
 /** `null` when there is nothing to count. */
-export function scorecardsQuery(marts: ChartMart[], filter: TraverseFilter[]): TraverseOptions | null {
+export function scorecardsQuery(marts: ChartMart[], filter: TraverseFilter[], counter?: Field | null): TraverseOptions | null {
   const metrics = marts.flatMap((m) => m.metrics);
   const uniqueCount = marts.filter((m) => m.hasPk).map((m) => m.aliasPath);
   if (!metrics.length && !uniqueCount.length) return null;
@@ -39,7 +50,7 @@ export function scorecardsQuery(marts: ChartMart[], filter: TraverseFilter[]): T
     ...(metrics.length ? { column: metrics.map((m) => m.field.name), aggregation: aggs(metrics) } : {}),
     ...(uniqueCount.length ? { uniqueCount } : {}),
   };
-  return withFilter(o, filter);
+  return withFilter(withCounter(o, filter, counter), filter);
 }
 
 export function rangeQuery(date: Field, filter: TraverseFilter[]): TraverseOptions {
@@ -69,13 +80,13 @@ const notBlank = (dim: Field): TraverseFilter => ({ column: dim.name, operator: 
 const list = (top: string[]): string[] => top.map(String);
 
 export function topValuesQuery(dim: Field, measure: Measure, filter: TraverseFilter[]): TraverseOptions {
-  return {
+  const o: TraverseOptions = {
     column: [dim.name, ...measureColumns(measure)],
     ...measureParts(measure),
-    filter: [...filter, notBlank(dim)],
     sort: [{ column: measure.kind === 'metric' ? measure.metric.field.name : measureKey(measure), direction: 'desc' }],
     limit: TOP_N,
   };
+  return { ...o, filter: [...fit(o, filter), notBlank(dim)] };
 }
 
 export function seriesQuery(date: Field, bucket: DateBucket, measure: Measure, filter: TraverseFilter[], stack?: { dim: Field; top: string[] }): TraverseOptions {
@@ -95,6 +106,7 @@ export function seriesOtherQuery(date: Field, bucket: DateBucket, measure: Measu
   );
 }
 
-export function pieOtherQuery(measure: Measure, filter: TraverseFilter[], dim: Field, top: string[]): TraverseOptions {
-  return withFilter({ ...(measure.kind === 'metric' ? { column: measureColumns(measure) } : {}), ...measureParts(measure) }, [...filter, notBlank(dim), { column: dim.name, operator: 'not_in', value: list(top) }]);
+export function pieOtherQuery(measure: Measure, filter: TraverseFilter[], dim: Field, top: string[], counter?: Field | null): TraverseOptions {
+  const o: TraverseOptions = { ...(measure.kind === 'metric' ? { column: measureColumns(measure) } : {}), ...measureParts(measure) };
+  return withFilter(withCounter(o, filter, counter), [...filter, notBlank(dim), { column: dim.name, operator: 'not_in', value: list(top) }]);
 }

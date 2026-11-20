@@ -115,6 +115,13 @@ describe('planMakeMain', () => {
     expect(plan.remember).toEqual([]);
   });
 
+  test('the new main keeps a slice on a field it still joins, shown or not, and drops one it does not', () => {
+    const slices = { stores__city: { field: 'stores__city', op: 'eq' as const, value: 'Rome' }, gone__x: { field: 'gone__x', op: 'eq' as const, value: 1 } };
+    const plan = planMakeMain(envM({ orders: g(['id', 'status']), customers: g(['id', 'city'], { slices }) }, 'orders'), 'customers');
+    expect(plan.grids.customers!.columns).not.toContain('stores__city');
+    expect(plan.grids.customers!.slices).toEqual({ stores__city: slices.stores__city });
+  });
+
   test('an old main that showed no own columns and cannot be reached does not wipe its remembered fields', () => {
     const plan = planMakeMain(envM({ orders: g(['customers__city']), products2: g(['id']) }, 'orders'), 'products2');
     expect(plan.remember.some((r) => r.martId === 'orders')).toBe(false);
@@ -404,5 +411,33 @@ describe('withoutPaths', () => {
   });
   test('a path that holds none of the columns changes nothing', () => {
     expect(withoutPaths(two, ps, ['b'], ['id']).columns).toEqual(two.columns);
+  });
+});
+
+describe('slices in join-plan', () => {
+  const slice = (field: string) => ({ field, op: 'eq' as const, value: 'PL' });
+  const grid = g(['id', 'customers__city', 'products__sku'], { slices: { customers__city: slice('customers__city'), products__sku: slice('products__sku') } });
+
+  test('taking a mart out drops its slices and keeps the others', () => {
+    const { grid: out } = withoutMart(grid, ordersSources, 'customers', ['id']);
+    expect(out.slices).toEqual({ products__sku: slice('products__sku') });
+    expect(withoutMart(g(['id', 'customers__city'], { slices: { customers__city: slice('customers__city') } }), ordersSources, 'customers', ['id']).grid.slices).toBeUndefined();
+  });
+
+  test('taking paths out drops their slices even when no column was shown', () => {
+    const only = g(['id'], { slices: { customers__city: slice('customers__city') } });
+    expect(withoutPaths(only, ordersSources, ['customers'], ['id']).slices).toBeUndefined();
+    expect(withoutPaths(grid, ordersSources, ['products'], ['id']).slices).toEqual({ customers__city: slice('customers__city') });
+  });
+
+  test('taking a mart out drops a HAVING filter whose aggregation went with it', () => {
+    const having = { field: 'customers__id', op: 'gt' as const, value: 3, fn: 'SUM' as const };
+    const withHaving = g(['id', 'customers__id'], { filters: { customers__id: having, id: { field: 'id', op: 'gt', value: 1 } }, aggregations: [{ column: 'customers__id', function: 'SUM' }] });
+    expect(Object.keys(withoutMart(withHaving, ordersSources, 'customers', ['id']).grid.filters)).toEqual(['id']);
+  });
+
+  test('a rejoined path renames the field of its slice', () => {
+    const moved = planRejoin(g(['id', 'customers__city'], { slices: { customers__city: slice('customers__city') } }), [...ordersSources, src('a.customers', 'customers', [{ ...f('customers__city', 'string', 'customers'), name: 'a__customers__city', joined: { martId: 'customers', label: 'customers', aliasPath: 'a.customers', originalName: 'city' } }], 2)], new Map([['customers', 'a.customers']]), ['id']);
+    expect(moved.slices).toEqual({ a__customers__city: { field: 'a__customers__city', op: 'eq', value: 'PL' } });
   });
 });

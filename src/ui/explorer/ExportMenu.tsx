@@ -30,7 +30,7 @@ import { Tooltip } from '../Tooltip';
 import { copyText } from './clipboard';
 import type { GridRun } from './useMartRows';
 
-type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; filters: ColumnFilter[]; sorts: SortKey[]; /** Only the sorts the member set; Create Data Mart never adds the grid's implicit order. */ ownSorts?: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun;
+type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; filters: ColumnFilter[]; /** Pre-join filters on joined fields. */ slices?: ColumnFilter[]; sorts: SortKey[]; /** Only the sorts the member set; Create Data Mart never adds the grid's implicit order. */ ownSorts?: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun;
   /** The main mart's storage, for Create Data Mart. */ storage?: { id: string; type: string; title?: string }; /** The model is loaded and the member can't see this mart's storage. */ storageUnavailable?: boolean;
   /** Reading the main mart's joined sources failed. */ joinsFailed?: boolean;
   /** The joined data marts the grid selects, as the Data Marts band shows them. */ joinedMarts?: { id: string; title: string }[];
@@ -117,7 +117,7 @@ export function ExportMenu(p: Props) {
     if (!p.sources) return { reason: p.joinsFailed ? "The data mart's joins couldn't be read" : "Loading the data mart's joins…" };
     const d = dialectFor(p.storage.type);
     if ('reason' in d) return d;
-    const base = { dialect: d.dialect, main: { id: p.martId, title: p.martTitle }, schema: p.schema, visible: p.visible, filters: p.filters, sources: p.sources, edges: p.edges ?? [], titles: p.titles ?? new Map() };
+    const base = { dialect: d.dialect, main: { id: p.martId, title: p.martTitle }, schema: p.schema, visible: p.visible, filters: p.filters, ...(p.slices ? { slices: p.slices } : {}), sources: p.sources, edges: p.edges ?? [], titles: p.titles ?? new Map() };
     const kept = p.aggregation && keepVisible(p.aggregation, p.visible);
     const grouped = isGrouped(kept);
     const own = p.ownSorts ?? [];
@@ -133,8 +133,8 @@ export function ExportMenu(p: Props) {
     const off = variant(false);
     if ('reason' in off.plain) return off.plain;
     return { variants: { off, on: grouped ? variant(true) : off }, grouped };
-  }, [p.storage, p.storageUnavailable, p.sources, p.joinsFailed, p.edges, p.titles, p.martId, p.martTitle, p.schema, p.visible, p.aggregation, p.filters, p.ownSorts]);
-  const [martDialog, setMartDialog] = useState<{ variants: MartVariants; grouped: boolean; joinedMarts: { id: string; title: string }[]; storage: { id: string; type: string; title?: string }; seq: number } | null>(null);
+  }, [p.storage, p.storageUnavailable, p.sources, p.joinsFailed, p.edges, p.titles, p.martId, p.martTitle, p.schema, p.visible, p.aggregation, p.filters, p.slices, p.ownSorts]);
+  const [martDialog, setMartDialog] = useState<{ variants: MartVariants; grouped: boolean; having: boolean; joinedMarts: { id: string; title: string }[]; storage: { id: string; type: string; title?: string }; seq: number } | null>(null);
   const seq = useRef(0);
   // Bumped when the mart changes or the menu goes away: an export finishing later is no longer in front of the member.
   const gen = useRef(0);
@@ -227,7 +227,7 @@ export function ExportMenu(p: Props) {
     // A spreadsheet an earlier attempt made and left unused is reused, also after the menu was remounted.
     const left = exporter.made(p.martId, destination.id);
     const source: ExportSource = wanted.kind === 'new' && left ? { kind: 'existing', target: left } : wanted;
-    const { payload, notes } = buildReportPayload(p.schema, p.visible, p.filters, p.sorts, p.aggregation);
+    const { payload, notes } = buildReportPayload(p.schema, p.visible, p.filters, p.sorts, p.aggregation, p.slices);
     setResult(null);
     setCopied(null);
     setData(null);
@@ -240,7 +240,7 @@ export function ExportMenu(p: Props) {
 
   async function copyPrompt(assistant: Assistant) {
     closeMenu();
-    const prompt = buildAiPrompt({ projectId: ctx.projectId, martId: p.martId, martTitle: p.martTitle, schema: p.schema, visible: p.visible, aggregation: p.aggregation, filters: p.filters, sorts: p.sorts });
+    const prompt = buildAiPrompt({ projectId: ctx.projectId, martId: p.martId, martTitle: p.martTitle, schema: p.schema, visible: p.visible, aggregation: p.aggregation, filters: p.filters, slices: p.slices, sorts: p.sorts });
     const home = gen.current;
     const ok = await copyText(prompt);
     if (gen.current !== home) return;
@@ -374,7 +374,7 @@ export function ExportMenu(p: Props) {
                   </span>
                 </Tooltip>
               ) : (
-                <button type="button" role="menuitem" data-lvl="1" data-action="create-mart" className="dm-export-item" onClick={() => { closeMenu(); setMartDialog({ variants: martSql.variants, grouped: martSql.grouped, joinedMarts: p.joinedMarts ?? [], storage: p.storage!, seq: ++seq.current }); }}>
+                <button type="button" role="menuitem" data-lvl="1" data-action="create-mart" className="dm-export-item" onClick={() => { closeMenu(); setMartDialog({ variants: martSql.variants, grouped: martSql.grouped, having: p.filters.some((f) => !!f.fn), joinedMarts: p.joinedMarts ?? [], storage: p.storage!, seq: ++seq.current }); }}>
                   <DatabaseZap size={16} />
                   <span className="dm-filter-label">Create Data Mart</span>
                 </button>
@@ -385,7 +385,7 @@ export function ExportMenu(p: Props) {
       {promptOpen && copied && <TextDialog name="Prompt" heading={`Prompt for ${copied.assistant}`} note={`Paste it into ${copied.assistant} with the OWOX Data Marts connector turned on. Copying writes nothing to OWOX.`} areaLabel="Prompt text" text={copied.prompt} onClose={() => { setPromptOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {dataOpen && data && <TextDialog name="Copy the data" note="Select the text and copy it, then paste it into a sheet. Copying writes nothing to OWOX." areaLabel="Data text" text={data.tsv} onClose={() => { setDataOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {sqlOpen && sqlCopied && <TextDialog name="SQL" note="Select the SQL and copy it. Copying writes nothing to OWOX." areaLabel="SQL text" text={sqlCopied.sql} onClose={() => { setSqlOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
-      {martDialog && <CreateMartDialog key={martDialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} martTitle={p.martTitle} variants={martDialog.variants} grouped={martDialog.grouped} joinedMarts={martDialog.joinedMarts} storage={martDialog.storage} onClose={() => setMartDialog(null)} />}
+      {martDialog && <CreateMartDialog key={martDialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} martTitle={p.martTitle} variants={martDialog.variants} grouped={martDialog.grouped} having={martDialog.having} joinedMarts={martDialog.joinedMarts} storage={martDialog.storage} onClose={() => setMartDialog(null)} />}
       {dialog && <ExportDialog key={dialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} exporter={exporter} martId={p.martId} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
     </>
   );
@@ -724,7 +724,7 @@ type MartVariant = { plain: { sql: string } | { reason: string }; sorted: { sql:
 type MartVariants = { off: MartVariant; on: MartVariant };
 
 /** The dialog behind Create Data Mart: names the mart, shows its SQL, runs the create steps, then links to the result. */
-function CreateMartDialog({ martTitle, variants, grouped, joinedMarts, storage, onClose, returnFocus }: { martTitle: string; variants: MartVariants; /** The grid groups its rows. */ grouped: boolean; /** The joined data marts selected when the dialog opened. */ joinedMarts: { id: string; title: string }[]; storage: { id: string; type: string; title?: string }; onClose: () => void; returnFocus: () => void }) {
+function CreateMartDialog({ martTitle, variants, grouped, having, joinedMarts, storage, onClose, returnFocus }: { martTitle: string; variants: MartVariants; /** The grid groups its rows. */ grouped: boolean; /** The grid has filters on aggregates, which only a grouped data mart can keep. */ having: boolean; /** The joined data marts selected when the dialog opened. */ joinedMarts: { id: string; title: string }[]; storage: { id: string; type: string; title?: string }; onClose: () => void; returnFocus: () => void }) {
   const { ctx } = useServices();
   const [name, setName] = useState(exportTitle(martTitle));
   const [grouping, setGrouping] = useState(false);
@@ -820,6 +820,7 @@ function CreateMartDialog({ martTitle, variants, grouped, joinedMarts, storage, 
               <input ref={field} value={name} disabled={running || !!failure?.martId} onChange={(e) => setName(e.target.value)} className="h-8 rounded-md border bg-background px-2 disabled:opacity-60" />
             </label>
             {grouped && !groupOn && <p className="text-xs text-muted-foreground">The grid groups its rows; the data mart keeps them ungrouped, so the tool that reads it can group them.</p>}
+            {grouped && !groupOn && having && <p className="text-xs text-muted-foreground">Filters on aggregates are left out when the data mart is not grouped.</p>}
             <label className="flex flex-col gap-0.5">
               <span className="inline-flex items-center gap-2">
                 <input type="checkbox" checked={groupOn} disabled={running || !!failure?.martId || !!groupOff} onChange={(e) => { setGrouping(e.target.checked); if ('reason' in (e.target.checked ? variants.on : variants.off).sorted) setSorting(false); }} />

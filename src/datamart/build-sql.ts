@@ -2,6 +2,7 @@ import type { JoinedSource } from '../api/blendable';
 import { isArrayType } from '../api/blendable';
 import type { ColumnFilter } from '../filters/build';
 import { isComplete } from '../filters/build';
+import { havingField, sliceField } from '../filters/slice';
 import type { Aggregation } from '../model/aggregation';
 import { AGG_TOKENS, isGrouped, keepVisible } from '../model/aggregation';
 import type { AggFn } from '../model/aggregation';
@@ -18,7 +19,10 @@ export type MartSqlInput = {
   schema: Schema;
   /** Shown columns, in grid order. */
   visible: string[];
+  /** The grid's filters: a filter with `fn` is a HAVING filter on that aggregate. */
   filters: ColumnFilter[];
+  /** Each slice filters a joined mart's raw rows before its join. */
+  slices?: ColumnFilter[];
   /** The member's own sort order; when non-empty the SQL ends with an ORDER BY. */
   sorts?: SortKey[];
   /** The grid's functions and date buckets; when it groups, the data mart groups the same way. */
@@ -70,6 +74,13 @@ type Plan = {
   joins: string[];
   /** The outer WHERE predicates, in grid order. */
   where: string[];
+  /**
+   * The slice predicates on the raw rows of each joined path, rendered on the raw column of the alias `t`. A path with no slice has no entry.
+   * A slice is never part of the outer WHERE: that would drop main rows, where a slice only empties the joined columns.
+   */
+  slicesOf: Map<string, string[]>;
+  /** The HAVING filters of a grouped grid: a complete filter with `fn`, typed by the aggregate's result. */
+  having: { flt: ColumnFilter; field: Field; fn: AggFn }[];
 };
 
 /** Resolves every input the SQL needs, or says why the grid can't be saved. */
@@ -85,7 +96,12 @@ function prepare(input: MartSqlInput): Plan | Reason {
   const sorted = (input.sorts ?? []).flatMap((s) => { const field = byName.get(s.field); return field && (!grouped || shownNames.has(s.field)) ? [{ s, field }] : []; });
   const active = filters.flatMap((flt) => {
     const field = byName.get(flt.field);
-    return field && isComplete(flt, field) ? [{ flt, field }] : [];
+    return !flt.fn && field && isComplete(flt, field) ? [{ flt, field }] : [];
+  });
+  // A HAVING filter belongs to the grouped query, so an ungrouped grid has none.
+  const having = !grouped ? [] : filters.flatMap((flt) => {
+    const field = byName.get(flt.field);
+    return flt.fn && field && isComplete(flt, havingField(field, flt.fn)) ? [{ flt, field, fn: flt.fn }] : [];
   });
   const calculated = shown.find((x) => x.isCalculated) ?? sorted.find((x) => x.field.isCalculated)?.field ?? active.find((x) => x.field.isCalculated)?.field;
   if (calculated) return { reason: `Calculated field "${calculated.alias || calculated.name}" can't be used in a data mart. Hide it or remove its filter.` };
@@ -152,6 +168,18 @@ function prepare(input: MartSqlInput): Plan | Reason {
     own.set(jf.aliasPath, list);
   }
 
+  // Slices apply to the paths in use; a slice on a main field or on a path nothing reads has nothing to filter.
+  const slices = (input.slices ?? []).flatMap((flt) => {
+    const field = byName.get(flt.field);
+    const jf = field?.joined;
+    return field && jf?.originalName && order.includes(jf.aliasPath) && isComplete(flt, sliceField(field)) ? [{ flt, field: sliceField(field), path: jf.aliasPath, original: jf.originalName }] : [];
+  });
+  // Every path's slices are rendered once, here, so a filter the dialect cannot render is a reason before any SQL is built.
+  const slicesOf = new Map<string, string[]>();
+  for (const x of slices) {
+    try { slicesOf.set(x.path, [...(slicesOf.get(x.path) ?? []), renderFilter(d, `t.${fieldRef(d, x.original)}`, x.field, x.flt)]); } catch (e) { return { reason: e instanceof Error ? e.message : String(e) }; }
+  }
+
   const ref = (f: Field) => (f.joined ? `${cte.get(rootOf(f.joined.aliasPath))}.${ident(d, f.name)}` : `base_owox.${fieldRef(d, f.name)}`);
 
   const mart = (path: string) => { const { source } = plans.get(path)!; return martRef(source.martId, titles.get(source.martId) ?? source.label); };
@@ -179,7 +207,9 @@ function prepare(input: MartSqlInput): Plan | Reason {
       }
       joins.push(`    LEFT JOIN ${childCte} ON ${plans.get(child)!.edge.joins.map((j) => `t.${fieldRef(d, j.sourceField)} = ${childCte}.${fieldRef(d, j.targetField)}`).join(' AND ')}`);
     }
-    sql.push(`  ${cte.get(path)} AS (\n    SELECT\n${items.map((x) => `      ${x}`).join(',\n')}\n    FROM ${mart(path)} AS t${joins.length ? `\n${joins.join('\n')}` : ''}\n    GROUP BY ${keys.join(', ')}\n  )`);
+    // The slice filters P's raw rows here, before they roll up, so a failing row never reaches P's columns or its children's.
+    const sliced = slicesOf.get(path) ?? [];
+    sql.push(`  ${cte.get(path)} AS (\n    SELECT\n${items.map((x) => `      ${x}`).join(',\n')}\n    FROM ${mart(path)} AS t${joins.length ? `\n${joins.join('\n')}` : ''}${sliced.length ? `\n    WHERE ${sliced.join('\n      AND ')}` : ''}\n    GROUP BY ${keys.join(', ')}\n  )`);
     return { sql, carried };
   };
   const roots = order.filter((p) => !parentPath(p));
@@ -192,7 +222,7 @@ function prepare(input: MartSqlInput): Plan | Reason {
     try { where.push(renderFilter(d, ref(field), field, flt)); } catch (e) { return { reason: e instanceof Error ? e.message : String(e) }; }
   }
   const edgeOf = new Map([...plans].map(([path, pl]) => [path, pl.edge]));
-  return { d, shown, sorted, active, order, cte, edgeOf, grouped, mart, alloc, ctes, ref, joins, where };
+  return { d, shown, sorted, active, order, cte, edgeOf, grouped, mart, alloc, ctes, ref, joins, where, slicesOf, having };
 }
 
 /** The ungrouped data mart: the shown fields, one row per main row. */
@@ -261,7 +291,12 @@ function assembleGrouped(p: Plan, input: MartSqlInput, agg: Aggregation): string
   const parentRef = (path: string) => { const parent = parentPath(path); return parent ? rawOf(parent) : 'base_owox'; };
   /** The paths from the depth-1 join down to `path`, ancestors first. */
   const chain = (path: string): string[] => (path ? [...chain(parentPath(path) ?? ''), path] : []);
-  const rawJoin = (path: string) => `LEFT JOIN ${p.mart(path)} AS ${rawOf(path)} ON ${on(parentRef(path), rawOf(path), p.edgeOf.get(path)!)}`;
+  /**
+   * A raw join of a path with slices reads a filtered derived table, so it stays a LEFT JOIN: where a slice fails, the path's columns and its descendants' are empty and the row stays.
+   * The same predicates filter the path's dedup CTE, so every read of the path agrees.
+   */
+  const rawMart = (path: string) => { const sliced = p.slicesOf.get(path) ?? []; return sliced.length ? `(SELECT * FROM ${p.mart(path)} AS t WHERE ${sliced.join(' AND ')})` : p.mart(path); };
+  const rawJoin = (path: string) => `LEFT JOIN ${rawMart(path)} AS ${rawOf(path)} ON ${on(parentRef(path), rawOf(path), p.edgeOf.get(path)!)}`;
   const dedupJoin = (path: string) => `LEFT JOIN ${p.cte.get(path)} ON ${on(parentRef(path), p.cte.get(path)!, p.edgeOf.get(path)!)}`;
   // The depth-1 dedup CTEs a key or a filter reads: a sleeve joins them so its WHERE and grain match the outer query.
   const roots = new Set([...keys, ...p.active.map((x) => x.field)].filter((f) => f.joined).map((f) => rootOf(f.joined!.aliasPath)));
@@ -309,15 +344,24 @@ function assembleGrouped(p: Plan, input: MartSqlInput, agg: Aggregation): string
     sleeves.push({ name, sql: `  ${name} AS (\n    SELECT\n${outer.map((x) => `      ${x}`).join(',\n')}\n    FROM (\n      SELECT DISTINCT\n${inner.map((x) => `        ${x}`).join(',\n')}\n      FROM base_owox\n${joins.map((x) => `      ${x}`).join('\n')}${wherePart(6)}\n    ) _dedup${dimCols.length ? `\n    GROUP BY ${dimCols.join(', ')}` : ''}\n  )` });
   }
 
+  // The exact aggregate expression the SELECT uses for (column, fn). A HAVING filter reuses it. It stays valid when the aggregate comes from a sleeve: the sleeve holds one row per group, so the outer query's ANY_VALUE over it is the scalar the SELECT shows, and the HAVING compares that same value after grouping. The outer WHERE would be wrong here, as it would compare before grouping and, with no group keys, turn an empty result into a row of NULLs.
+  const aggExpr = (f: Field, fn: AggFn): string => {
+    const out = ident(d, outName(f, fn));
+    if (f.joined && fn === 'COUNT_DISTINCT') return `COALESCE(${anyValue(d, `${cdName.get(f.joined.aliasPath)}.${out}`)}, 0)`;
+    if (f.joined && VALUE_FNS.includes(fn)) return anyValue(d, `${valueName.get(f.name)}.${out}`);
+    return reportAggregate(d, fn, p.ref(f));
+  };
+  const havingRules: string[] = [];
+  try {
+    for (const { flt, field, fn } of p.having) if (rules.some((r) => r.column === field.name && r.function === fn)) havingRules.push(renderFilter(d, aggExpr(field, fn), havingField(field, fn), flt));
+  } catch (e) { return { reason: e instanceof Error ? e.message : String(e) }; }
+
   const items: string[] = [];
   for (const f of p.shown) {
     const fns = fnsOf(f);
     if (fns.length === 0) { items.push(`${keyExpr(f)} AS ${ident(d, outName(f))}`); continue; }
     for (const fn of fns) {
-      const out = ident(d, outName(f, fn));
-      if (f.joined && fn === 'COUNT_DISTINCT') items.push(`COALESCE(${anyValue(d, `${cdName.get(f.joined.aliasPath)}.${out}`)}, 0) AS ${out}`);
-      else if (f.joined && VALUE_FNS.includes(fn)) items.push(`${anyValue(d, `${valueName.get(f.name)}.${out}`)} AS ${out}`);
-      else items.push(`${reportAggregate(d, fn, p.ref(f))} AS ${out}`);
+      items.push(`${aggExpr(f, fn)} AS ${ident(d, outName(f, fn))}`);
     }
   }
   const sleeveJoins = sleeves.map(({ name }) => (keys.length
@@ -335,6 +379,7 @@ function assembleGrouped(p: Plan, input: MartSqlInput, agg: Aggregation): string
     ...sleeveJoins,
     ...(p.where.length ? [`WHERE ${p.where.join('\n  AND ')}`] : []),
     ...(keys.length ? [`GROUP BY ${keys.map(keyExpr).join(', ')}`] : []),
+    ...(havingRules.length ? [`HAVING ${havingRules.join('\n  AND ')}`] : []),
     ...(ordering.length ? [`ORDER BY ${ordering.join(', ')}`] : []),
   ].join('\n');
 }

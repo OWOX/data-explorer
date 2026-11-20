@@ -60,6 +60,19 @@ function aggregationLines(fields: string[], agg: Aggregation | undefined): strin
   return lines.length ? [`Aggregations (group by every other field):\n${lines.join('\n')}`] : [];
 }
 
+const SYMBOLS: Record<string, string> = { gt: '>', gte: '>=', lt: '<', lte: '<=', eq: '=', neq: '!=' };
+/** A plain identifier is shown as it is; any other name is quoted, so it cannot read as an instruction. */
+const bare = (name: string) => (/^[A-Za-z_][\w.]*$/.test(name) ? name : quoted(name));
+
+/** A HAVING filter as the extension writes it, with a quoted value unless it is a number: SUM(net_revenue) > 100. */
+export function describeHaving(f: ColumnFilter): string {
+  const target = `${f.fn}(${bare(f.field)})`;
+  const symbol = SYMBOLS[f.op];
+  if (!symbol) return describeFilter({ ...f, field: target }).replace(quoted(target), target);
+  const v = typeof f.value === 'string' && f.value.trim() !== '' && Number.isFinite(Number(f.value)) ? Number(f.value) : f.value;
+  return `${target} ${symbol} ${quoted(v)}`;
+}
+
 export type AiPromptInput = {
   projectId: string;
   /** The project's name when it is known; the id stands in otherwise. */
@@ -71,6 +84,8 @@ export type AiPromptInput = {
   /** Functions and date buckets on the columns; the other columns are group keys. */
   aggregation?: Aggregation;
   filters: ColumnFilter[];
+  /** Pre-join filters on joined fields. */
+  slices?: ColumnFilter[];
   sorts: SortKey[];
 };
 
@@ -86,7 +101,8 @@ export function buildAiPrompt(p: AiPromptInput): string {
     `Query the data mart ${quoted(p.martTitle)} (id ${quoted(p.martId)}).`,
     `Fields: ${fields.map(quoted).join(', ')}.`,
     ...aggregationLines(fields, p.aggregation),
-    p.filters.length ? `Filters:\n${p.filters.map((f) => `- ${describeFilter(f)}`).join('\n')}` : 'Filters: none',
+    p.filters.length ? `Filters:\n${p.filters.map((f) => `- ${f.fn ? describeHaving(f) : describeFilter(f)}`).join('\n')}` : 'Filters: none',
+    ...(p.slices?.length ? [`Slices (before the join):\n${p.slices.map((f) => `- ${describeFilter(f)}`).join('\n')}`] : []),
     `Sort: ${sorts.length ? sorts.join(', then ') : 'none'}.`,
     'Show the result as a table, and say if rows were truncated.',
   ].join('\n');

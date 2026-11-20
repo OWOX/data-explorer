@@ -1,4 +1,4 @@
-import { isComplete, toTraverseFilter } from './build';
+import { dropOrphanHaving, isComplete, toTraverseFilter, toTraverseFilters, type ColumnFilter } from './build';
 import type { Field } from '../model/types';
 
 const num: Field = { name: 'amount', alias: null, type: 'NUMERIC', category: 'number', description: null, isPrimaryKey: false };
@@ -66,4 +66,49 @@ test('relative N is capped at 3650', () => {
 test('a full timestamp from a row (fraction or zone) is not rewritten', () => {
   expect(toTraverseFilter({ field: 'created_at', op: 'between', value: { from: '2026-11-01T10:00:00.123Z', to: '2026-11-01T10:00:00.123Z' } }, ts))
     .toEqual({ column: 'created_at', operator: 'between', value: { from: '2026-11-01T10:00:00.123Z', to: '2026-11-01T10:00:00.123Z' } });
+});
+
+describe('slices and HAVING in toTraverseFilters', () => {
+  const main: Field = { ...num, name: 'status', type: 'STRING', category: 'string' };
+  const joinedCountry: Field = { ...num, name: 'customers__country_code', type: 'STRING', category: 'string', joined: { martId: 'customers', label: 'Customers', aliasPath: 'customers' } };
+  const revenue: Field = { ...num, name: 'net_revenue', type: 'STRING', category: 'string' };
+  const schema = [main, joinedCountry, revenue, num];
+
+  test('emits the filters, then the slices with placement pre-join', () => {
+    const out = toTraverseFilters(schema, [{ field: 'status', op: 'eq', value: 'paid' }], [{ field: 'customers__country_code', op: 'eq', value: 'PL' }]);
+    expect(out).toEqual([
+      { column: 'status', operator: 'eq', value: 'paid' },
+      { column: 'customers__country_code', operator: 'eq', value: 'PL', placement: 'pre-join' },
+    ]);
+  });
+  test('drops a slice on a main field and an incomplete slice', () => {
+    expect(toTraverseFilters(schema, [], [{ field: 'status', op: 'eq', value: 'paid' }])).toEqual([]);
+    expect(toTraverseFilters(schema, [], [{ field: 'customers__country_code', op: 'eq', value: '' }])).toEqual([]);
+  });
+  test('emits HAVING with function only when the aggregations have the pair', () => {
+    const f = [{ field: 'amount', op: 'gt', value: '100', fn: 'SUM' }] as const;
+    expect(toTraverseFilters(schema, [...f], [], [{ column: 'amount', function: 'SUM' }])).toEqual([{ column: 'amount', operator: 'gt', value: 100, function: 'SUM' }]);
+    expect(toTraverseFilters(schema, [...f], [], [{ column: 'amount', function: 'AVG' }])).toEqual([]);
+    expect(toTraverseFilters(schema, [...f])).toEqual([]);
+  });
+  test('a HAVING value on a SUM over a STRING column is numeric', () => {
+    const out = toTraverseFilters(schema, [{ field: 'net_revenue', op: 'gt', value: '100', fn: 'SUM' }], [], [{ column: 'net_revenue', function: 'SUM' }]);
+    expect(out).toEqual([{ column: 'net_revenue', operator: 'gt', value: 100, function: 'SUM' }]);
+  });
+  test('the two-argument call shape still works', () => {
+    expect(toTraverseFilters(schema, [{ field: 'status', op: 'is_blank' }])).toEqual([{ column: 'status', operator: 'is_blank' }]);
+  });
+});
+
+describe('dropOrphanHaving', () => {
+  const having: ColumnFilter = { field: 'net_revenue', op: 'gt', value: 100, fn: 'SUM' };
+  const plain: ColumnFilter = { field: 'status', op: 'eq', value: 'paid' };
+  test('drops a HAVING filter whose (column, function) aggregation is gone, and nothing else', () => {
+    expect(dropOrphanHaving({ net_revenue: having, status: plain }, [])).toEqual({ status: plain });
+    expect(dropOrphanHaving({ net_revenue: having, status: plain }, [{ column: 'net_revenue', function: 'AVG' }])).toEqual({ status: plain });
+  });
+  test('keeps a HAVING filter whose aggregation is still there, as the same map', () => {
+    const m = { net_revenue: having, status: plain };
+    expect(dropOrphanHaving(m, [{ column: 'net_revenue', function: 'SUM' }])).toBe(m);
+  });
 });
