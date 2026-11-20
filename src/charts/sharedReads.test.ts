@@ -35,6 +35,12 @@ describe('sharedSeriesQuery', () => {
     expect(sharedSeriesQuery(cf, rs, ghost, 'MONTH', [])).toBeNull();
     expect(sharedSeriesQuery({ ...cf, marts: [{ ...main, hasPk: false }] }, rs, records, 'MONTH', [])).toBeNull();
   });
+  it('is null for a joined mart measure while that mart has no date of the series', () => {
+    const joined: ChartMart = { aliasPath: 'products', recordsId: 'records:products', title: 'Products', hasPk: true, metrics: [{ field: f('products__price', 'number', { joined: { martId: 'products', label: 'Products', aliasPath: 'products' } }), fn: 'SUM' }], dates: [], dimensions: [] };
+    const both: ChartFields = { ...cf, marts: [main, joined] };
+    expect(sharedSeriesQuery(both, rs, { kind: 'metric', metric: joined.metrics[0]! }, 'MONTH', [])).toBeNull();
+    expect(sharedSeriesQuery(both, rs, { kind: 'records', aliasPath: 'products', recordsId: joined.recordsId }, 'MONTH', [])).toBeNull();
+  });
   it('asks exactly what the cards ask', () => {
     expect(sparkQueryOf(main, rs, 'MONTH', [])).toEqual(sparklineQuery(main, date, 'MONTH', []));
   });
@@ -54,6 +60,13 @@ describe('the shared read returns the numbers the separate reads returned', () =
       });
     }
   }
+  it('also with a pre-join slice', async () => {
+    const slice = [{ column: 'products__price', operator: 'gt' as const, value: 10, placement: 'pre-join' as const }];
+    const separate = await read(seriesQuery(date, 'MONTH', metric, slice));
+    const shared = await read(sharedSeriesQuery(cf, rs, metric, 'MONTH', slice)!);
+    expect(sharedSeriesQuery(cf, rs, metric, 'MONTH', slice)).toEqual(sparklineQuery(main, date, 'MONTH', slice));
+    expect(shared.map((x) => [x.created_at, x[measureKey(metric)]])).toEqual(separate.map((x) => [x.created_at, x[measureKey(metric)]]));
+  });
   it('also with a filter', async () => {
     const filter = [{ column: 'status', operator: 'eq' as const, value: 'paid' }];
     const separate = await read(seriesQuery(date, 'MONTH', metric, filter));

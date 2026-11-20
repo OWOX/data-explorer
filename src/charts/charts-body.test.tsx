@@ -417,4 +417,18 @@ test('a stacked time series still reads its own series', async () => {
   await waitFor(() => expect(series().size).toBeGreaterThan(1));
   const own = t.queries.slice(t.tableQueries()).filter((q) => q.dateTrunc?.length && q.column?.includes('status'));
   expect(own.length).toBeGreaterThan(0);
+  expect(own.every((q) => !q.uniqueCount)).toBe(true);
+});
+
+test('when the shared sparkline read fails, the bar chart draws from its own read, issued only after the failure', async () => {
+  let refused = 0;
+  const t = await charts({ fail: (o) => { const shared = !!o.dateTrunc?.length && !!o.uniqueCount && o.column?.[0] === 'created_at'; if (shared) refused += 1; return shared; } });
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  const after = t.queries.slice(t.tableQueries());
+  const sharedAt = after.findIndex((q) => q.dateTrunc?.length && q.uniqueCount);
+  const ownAt = after.findIndex((q) => q.dateTrunc?.length && !q.uniqueCount && q.column?.[0] === 'created_at');
+  expect(refused).toBeGreaterThan(0);
+  expect(sharedAt).toBeGreaterThanOrEqual(0);
+  expect(ownAt).toBeGreaterThan(sharedAt);
+  expect(after.filter((q) => q.dateTrunc?.length && !q.uniqueCount && q.column?.[0] === 'created_at')).toHaveLength(1);
 });

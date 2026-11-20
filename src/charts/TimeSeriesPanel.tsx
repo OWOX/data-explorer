@@ -37,9 +37,12 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
   const top = useChartQuery(martId, !idle && date && measure && stack ? topValuesQuery(stack, measure, filter) : null, version);
   const names = top.rows?.map((row) => String(row[stack!.name]));
   // Without a stack the series query needs nothing else; with one it waits for the top values.
-  // Unstacked, the series asks for the sparklines' read when it can (same key, one billed read for both).
-  const shared = live && !stack ? sharedSeriesQuery(cf, r, measure!, bucket, filter) : null;
-  const series = useChartQuery(martId, live && (!stack || (names && names.length > 0)) ? shared ?? seriesQuery(date!, bucket!, measure!, filter, stack ? { dim: stack, top: names! } : undefined) : null, version);
+  // Unstacked, the series asks for the sparklines' read when it can (same key, one billed read for both). If that read fails, the series reads for itself, so the chart is never worse off than with its own read.
+  const sharedOptions = live && !stack ? sharedSeriesQuery(cf, r, measure!, bucket, filter) : null;
+  const shared = useChartQuery(martId, sharedOptions, version);
+  const viaShared = !!sharedOptions && !shared.error;
+  const own = useChartQuery(martId, live && !viaShared && (!stack || (names && names.length > 0)) ? seriesQuery(date!, bucket!, measure!, filter, stack ? { dim: stack, top: names! } : undefined) : null, version);
+  const series = viaShared ? shared : own;
   const needOther = !!stack && names?.length === TOP_N;
   const other = useChartQuery(martId, live && needOther ? seriesOtherQuery(date!, bucket!, measure!, filter, stack!, names!) : null, version);
 

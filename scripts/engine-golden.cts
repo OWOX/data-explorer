@@ -1,6 +1,7 @@
 /**
  * Captures the real OWOX dialect builders' SQL for the engine parity tests (src/datamart/engine-parity.test.ts).
  * The cases live in src/datamart/__golden__/cases.ts, shared with that test; `engineCase` below derives the engine's shape.
+ * It needs `esbuild` to be resolvable (today it comes from the engine checkout's node_modules through NODE_PATH).
  * ENGINE_DIR overrides the engine's src/data-marts folder when the checkout is not a sibling.
  * Writes src/datamart/__golden__/engine-sql.json. Re-run it whenever the engine's blending code changes.
  *
@@ -49,7 +50,7 @@ type Mart = { alias: string; parent: string; table: string; joins: Join[]; field
 const MAIN = '[Orders](dm:ord1)';
 
 /**
- * The plugin's own modules are ESM, and ts-node loads this file as CJS, so it cannot `require` them. The engine checkout's esbuild (on NODE_PATH) bundles the
+ * The plugin's own modules are ESM, and ts-node loads this file as CJS, so it cannot `require` them. Whichever esbuild Node resolves (today the engine checkout's) bundles the
  * shared cases module (and the filter builder) into one CommonJS blob, which is evaluated here: the cases are read, not copied.
  */
 function plugin(): { cases: PCase[]; edges: { id: string; joins: { sourceField: string; targetField: string }[] }[]; schemaOf: (c: PCase) => { name: string; type: string }[]; toTraverseFilters: (schema: unknown, filters: ColumnFilter[], slices: ColumnFilter[], aggregations: unknown[]) => unknown[] } {
