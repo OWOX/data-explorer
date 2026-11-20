@@ -6,10 +6,9 @@ import { isGrouped, type Aggregation } from '../../model/aggregation';
 import type { Schema } from '../../model/types';
 import type { Row, TraverseOptions } from '../../sdk/types';
 import { useServices } from '../../state/store';
+import { defaultColumns } from '../../model/columns';
 
-export function defaultColumns(schema: Schema): string[] {
-  return schema.filter((f) => !f.isCalculated).slice(0, 5).map((f) => f.name);
-}
+export { defaultColumns };
 
 /**
  * Grouped (a function or a bucket on a visible column): exactly the visible columns, in schema order (a column move must not change the query), each function its own output;

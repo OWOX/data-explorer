@@ -1,4 +1,4 @@
-import type { JoinedSource } from '../api/blendable';
+import { sourceOfField, type JoinedSource } from '../api/blendable';
 
 /**
  * The columns of a grid with every data mart's together: the main mart's own columns first (in their order), then each joined
@@ -6,12 +6,11 @@ import type { JoinedSource } from '../api/blendable';
  * `fallbackOwn` (the main mart's default columns) leads a list that has joined columns and none of the main mart's own.
  */
 export function orderColumns(columns: string[], sources: JoinedSource[], fallbackOwn: string[] = []): string[] {
-  const owner = new Map<string, string>();
-  for (const s of sources) for (const f of s.fields) if (!owner.has(f.name)) owner.set(f.name, s.aliasPath);
+  const owner = sourceOfField(sources);
   const own: string[] = [];
   const groups = new Map<string, string[]>();
   for (const c of columns) {
-    const id = owner.get(c);
+    const id = owner.get(c)?.aliasPath;
     if (id === undefined) own.push(c);
     else if (groups.has(id)) groups.get(id)!.push(c);
     else groups.set(id, [c]);
@@ -22,9 +21,8 @@ export function orderColumns(columns: string[], sources: JoinedSource[], fallbac
 
 /** The group a column belongs to: its alias path, or '' for the main mart's own columns (so a mart joined under two parents is two groups). */
 export function groupMap(sources: JoinedSource[]): (name: string) => string {
-  const owner = new Map<string, string>();
-  for (const s of sources) for (const f of s.fields) if (!owner.has(f.name)) owner.set(f.name, s.aliasPath);
-  return (name) => owner.get(name) ?? '';
+  const owner = sourceOfField(sources);
+  return (name) => owner.get(name)?.aliasPath ?? '';
 }
 
 /**

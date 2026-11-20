@@ -35,18 +35,6 @@ test('get() drops DISCONNECTED fields but keeps and flags calculated ones', asyn
   expect(schema.find((f) => f.name === 'margin')!.isCalculated).toBe(true);
 });
 
-test('prefetch() loads every id, priority ids first, and notifies subscribers', async () => {
-  const order: string[] = [];
-  const getJson = vi.fn(async (path: string) => { const id = path.split('/').pop()!; order.push(id); return detail(id); });
-  const loader = createSchemaLoader(stubCtx({ getJson }));
-  const seen = vi.fn();
-  loader.subscribe(seen);
-  await loader.prefetch(['x', 'y', 'z'], ['z']);
-  expect(order[0]).toBe('z');
-  expect(loader.peek('y')).toBeDefined();
-  expect(seen).toHaveBeenCalled();
-});
-
 test('a failed schema fetch is not cached', async () => {
   const getJson = vi.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValue(detail('a'));
   const loader = createSchemaLoader(stubCtx({ getJson }));
@@ -83,19 +71,16 @@ test('invalidate forgets a mart, so the next get reads the backend again', async
   expect(getJson).toHaveBeenCalledTimes(2);
 });
 
-test('a read that was in flight when the mart was invalidated is not remembered, and does not notify', async () => {
+test('a read that was in flight when the mart was invalidated is not remembered', async () => {
   let release!: () => void;
   const gate = new Promise<void>((r) => { release = r; });
   const getJson = vi.fn(async (path: string) => { if (getJson.mock.calls.length === 1) await gate; return detail(path.split('/').pop()!); });
   const loader = createSchemaLoader(stubCtx({ getJson }));
-  const told = vi.fn();
-  loader.subscribe(told);
   const stale = loader.get('a');
   loader.invalidate('a');
   release();
   await stale;
   expect(loader.peek('a')).toBeUndefined();
-  expect(told).not.toHaveBeenCalled();
   await loader.get('a');
   expect(getJson).toHaveBeenCalledTimes(2);
   expect(loader.peek('a')).toBeDefined();

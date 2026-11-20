@@ -1,6 +1,6 @@
 import type { ColumnFilter, FilterValue } from '../filters/build';
 import type { OpId } from '../filters/catalogue';
-import { AGGREGATE_FUNCTIONS, DATE_BUCKETS, isTimeZone, type AggFn, type AggregationRule, type DateBucket, type DateTruncRule } from '../model/aggregation';
+import { isAggFn, isDateBucket, isTimeZone, type AggFn, type AggregationRule, type DateBucket, type DateTruncRule } from '../model/aggregation';
 import type { GridState } from './store';
 import type { SortKey } from '../model/sort';
 
@@ -203,7 +203,7 @@ function shape(raw: unknown): DecodedView {
         const fn = (e as unknown[])[3];
         // A relative filter needs a preset object; any other value must be safe to render and query. A function must be a known one.
         const ok = isFilterValue(value ?? undefined) && (entry.op !== 'relative' || (isPlain(value) && typeof (value as { kind?: unknown }).kind === 'string'))
-          && (fn === undefined || (AGGREGATE_FUNCTIONS as readonly unknown[]).includes(fn));
+          && (fn === undefined || isAggFn(fn));
         if (!ok) { dropped++; continue; }
         if (value !== undefined && value !== null) entry.value = value;
         if (fn !== undefined) entry.fn = fn as AggFn;
@@ -229,14 +229,14 @@ function shape(raw: unknown): DecodedView {
     if (g.ag !== undefined && !Array.isArray(g.ag)) throw new Error('bad aggregations');
     if (g.dt !== undefined && !Array.isArray(g.dt)) throw new Error('bad buckets');
     for (const [i, e] of ((g.ag as unknown[] | undefined) ?? []).entries()) {
-      const column = Array.isArray(e) && e.length === 2 && (AGGREGATE_FUNCTIONS as readonly unknown[]).includes(e[1]) ? name(e[0]) : null;
+      const column = Array.isArray(e) && e.length === 2 && isAggFn(e[1]) ? name(e[0]) : null;
       if (column === null || UNSAFE_KEYS.has(column) || i >= MAX_AGG_RULES || seen.has(`${column}\0${(e as unknown[])[1]}`)) { droppedAggregations++; continue; }
       seen.add(`${column}\0${(e as unknown[])[1]}`);
       aggregations.push({ column, function: (e as unknown[])[1] as AggFn });
     }
     const bucketed = new Set<string>();
     for (const [i, e] of ((g.dt as unknown[] | undefined) ?? []).entries()) {
-      const ok = Array.isArray(e) && (e.length === 2 || e.length === 3) && (DATE_BUCKETS as readonly unknown[]).includes(e[1]) && (e[2] === undefined || isTimeZone(e[2]));
+      const ok = Array.isArray(e) && (e.length === 2 || e.length === 3) && isDateBucket(e[1]) && (e[2] === undefined || isTimeZone(e[2]));
       const column = ok ? name((e as unknown[])[0]) : null;
       // One bucket per column, and a date takes functions or a bucket, never both.
       if (column === null || UNSAFE_KEYS.has(column) || i >= MAX_AGG_RULES || bucketed.has(column) || aggregations.some((r) => r.column === column)) { droppedAggregations++; continue; }

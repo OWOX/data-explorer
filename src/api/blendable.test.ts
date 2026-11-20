@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { createBlendableLoader, joinedSources } from './blendable';
+import { createBlendableLoader, joinedSources, sourceOfField } from './blendable';
 import { stubCtx } from './test-ctx';
 import type { BlendableSchemaDto } from '../sdk/types';
 
@@ -167,4 +167,17 @@ test('a read in flight before clear() is not served after it', async () => {
   resolvers[1]!({ availableSources: [], blendedFields: [] });
   expect(await after).toEqual([]);
   expect(loader.peek('m')).toEqual([]);
+});
+
+test('sourceOfField maps each field name to its first source and builds the map once per sources array', () => {
+  const field = (name: string) => ({ name, alias: null, type: 'STRING', category: 'string' as const, description: null, isPrimaryKey: false });
+  const a = { aliasPath: 'a', martId: 'ma', label: 'A', depth: 1, fields: [field('x'), field('y')], uniqueCount: false };
+  const b = { aliasPath: 'b', martId: 'mb', label: 'B', depth: 1, fields: [field('x'), field('z')], uniqueCount: false };
+  const sources = [a, b];
+  const map = sourceOfField(sources);
+  expect(map.get('x')).toBe(a);
+  expect(map.get('z')).toBe(b);
+  expect(map.get('nope')).toBeUndefined();
+  expect(sourceOfField(sources)).toBe(map);
+  expect(sourceOfField([a, b])).not.toBe(map);
 });

@@ -1,7 +1,7 @@
 import type { ColumnFilter } from '../filters/build';
 import { toTraverseFilter } from '../filters/build';
 import type { AggFn, DateBucket } from '../model/aggregation';
-import { DATE_BUCKETS, isTimeZone } from '../model/aggregation';
+import { isDateBucket, isTimeZone } from '../model/aggregation';
 import type { Field } from '../model/types';
 import type { RelativeDatePreset, TraverseFilter } from '../sdk/types';
 
@@ -100,7 +100,7 @@ export const nullSafeOn = (pairs: { left: string; right: string; nanSafe: boolea
 
 /** `x` cut to the start of its calendar bucket, in `timeZone` when given. Throws on a unit or zone the backend would refuse. */
 export function dateTrunc(d: Dialect, x: string, unit: DateBucket, timeZone: string | undefined, type: string): string {
-  if (!(DATE_BUCKETS as readonly string[]).includes(unit)) throw new Error(`Unknown date bucket: ${String(unit)}`);
+  if (!isDateBucket(unit)) throw new Error(`Unknown date bucket: ${String(unit)}`);
   if (timeZone !== undefined && !isTimeZone(timeZone)) throw new Error(`Invalid time zone: ${timeZone}`);
   const t = type.trim().toUpperCase();
   const lower = unit.toLowerCase();

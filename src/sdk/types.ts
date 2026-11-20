@@ -1,7 +1,7 @@
 // Narrow view of @owox/plugin-sdk's PluginContext. The real context satisfies it structurally.
 // Traverse types are copied from @owox/api-client (tmp/ref/packages_api-client_src_data-marts.ts).
 
-import type { AggFn } from '../model/aggregation';
+import type { AggFn, AggregationRule, DateTruncRule } from '../model/aggregation';
 
 export type RelativeDatePreset =
   | { kind: 'today' } | { kind: 'yesterday' }
@@ -27,8 +27,8 @@ export type TraverseOptions = {
   filter?: TraverseFilter[];
   sort?: { column: string; direction: 'asc' | 'desc' }[];
   /** Group the rows: a column with a function becomes `"<column> | <TOKEN>"`, every other listed column is a group key. Needs `column`. */
-  aggregation?: { column: string; function: 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'COUNT' | 'COUNT_DISTINCT' | 'STRING_AGG' | 'ANY_VALUE' | 'P25' | 'P50' | 'P75' | 'P95' }[];
-  dateTrunc?: { column: string; unit: 'DAY' | 'WEEK' | 'MONTH' | 'QUARTER' | 'YEAR'; timeZone?: string }[];
+  aggregation?: AggregationRule[];
+  dateTrunc?: DateTruncRule[];
   uniqueCount?: string[];
   limit?: number;
 };
@@ -129,6 +129,22 @@ export type DqSummaryDto = {
   errorFindings?: number;
   highestSeverity?: 'notice' | 'warning' | 'error' | null;
   lastRunAt?: string | null;
+};
+/** A report as `GET /api/reports/:id` and the create call return it: the parts the explorer reads, each optional but the id. */
+export type ReportDto = {
+  id: string; title?: string;
+  dataMart?: { id?: string };
+  columnConfig?: string[] | null;
+  filterConfig?: unknown[] | null;
+  sortConfig?: { column: string; direction: 'asc' | 'desc' }[] | null;
+  aggregationConfig?: { column: string; function: string }[] | null;
+  dateTruncConfig?: { column: string; unit: string; timeZone?: string }[] | null;
+  uniqueCountConfig?: boolean | string[] | null;
+  dataDestinationAccess?: { id?: string };
+  destinationConfig?: { spreadsheetId?: unknown; sheetId?: unknown };
+  lastRunAt?: string | null;
+  lastRunStatus?: string | null;
+  lastRunError?: string | null;
 };
 export type DqSummariesResponseDto = { items: { dataMartId: string; summary: DqSummaryDto }[] };
 

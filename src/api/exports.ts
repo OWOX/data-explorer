@@ -2,7 +2,7 @@ import type { Aggregation, AggregationRule, DateTruncRule } from '../model/aggre
 import { toTraverseFilters, type ColumnFilter } from '../filters/build';
 import type { SortKey } from '../model/sort';
 import type { Schema } from '../model/types';
-import type { Ctx, DestinationDto, TraverseFilter } from '../sdk/types';
+import type { Ctx, DestinationDto, ReportDto, TraverseFilter } from '../sdk/types';
 
 export const EXPORTS_COLLECTION = 'exports';
 export const MAX_EXPORT_SORTS = 10;
@@ -91,8 +91,6 @@ export const sheetUrl = (t: { spreadsheetId: string; sheetId: number }): string 
 
 export const isSheetsDestination = (d: DestinationDto) => d.type === 'GOOGLE_SHEETS' && d.availableForUse !== false;
 
-type LiveReportDto = { title?: string; dataDestinationAccess?: { id?: string }; destinationConfig?: { spreadsheetId?: unknown; sheetId?: unknown } };
-type ReportDto = { id: string; lastRunAt?: string | null; lastRunStatus?: string | null; lastRunError?: string | null };
 type DocumentDto = { spreadsheetId: string; sheetId: number };
 
 export type Stage = 'sheet' | 'report' | 'run';
@@ -258,7 +256,7 @@ export function createExporter(ctx: Ctx): Exporter {
   async function read(martId: string, cache: MartCache, reportId: string) {
     patch(martId, cache, reportId, (e) => ({ reportId: e.reportId, usedAt: e.usedAt, state: 'loading' }));
     try {
-      const d = await ctx.owox.getJson<LiveReportDto>(`/api/reports/${encodeURIComponent(reportId)}`);
+      const d = await ctx.owox.getJson<ReportDto>(`/api/reports/${encodeURIComponent(reportId)}`);
       const cfg = d.destinationConfig;
       const target = { spreadsheetId: cfg?.spreadsheetId, sheetId: cfg?.sheetId };
       patch(martId, cache, reportId, (e) => ({

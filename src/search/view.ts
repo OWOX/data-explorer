@@ -2,12 +2,12 @@ import { PAGE_SIZE } from '../config';
 import type { ColumnFilter, FilterValue } from '../filters/build';
 import { isComplete } from '../filters/build';
 import { operatorsFor, RELATIVE_MAX_N, RELATIVE_PRESETS, type OpDef } from '../filters/catalogue';
-import { AGGREGATE_FUNCTIONS, DATE_BUCKETS, type AggFn, type AggregationRule, type DateBucket, type DateTruncRule } from '../model/aggregation';
+import { isAggFn, isDateBucket, type AggregationRule, type DateTruncRule } from '../model/aggregation';
 import type { SortKey } from '../model/sort';
 import type { Schema } from '../model/types';
 import type { GridState } from '../state/store';
-import { pruneGrid, type Skipped } from '../state/view-link-resolve';
-import { defaultColumns } from '../ui/explorer/useMartRows';
+import { pruneGrid } from '../state/view-link-resolve';
+import { defaultColumns } from '../model/columns';
 
 const MAX_COLUMNS = 50;
 const MAX_FILTERS = 20;
@@ -81,16 +81,16 @@ export function parseAiFields(raw: unknown, schema: Schema): AiFields | null {
     if (!isRecord(item)) continue;
     const column = own(item, 'column');
     const fn = own(item, 'function');
-    if (!known(column) || !(AGGREGATE_FUNCTIONS as readonly unknown[]).includes(fn) || aggregations.some((r) => r.column === column && r.function === fn)) continue;
-    aggregations.push({ column, function: fn as AggFn });
+    if (!known(column) || !isAggFn(fn) || aggregations.some((r) => r.column === column && r.function === fn)) continue;
+    aggregations.push({ column, function: fn });
   }
   const dateTrunc: DateTruncRule[] = [];
   for (const item of list(raw.dateTrunc, MAX_RULES)) {
     if (!isRecord(item)) continue;
     const column = own(item, 'column');
     const unit = own(item, 'unit');
-    if (!known(column) || !(DATE_BUCKETS as readonly unknown[]).includes(unit) || dateTrunc.some((r) => r.column === column)) continue;
-    dateTrunc.push({ column, unit: unit as DateBucket });
+    if (!known(column) || !isDateBucket(unit) || dateTrunc.some((r) => r.column === column)) continue;
+    dateTrunc.push({ column, unit });
   }
   return columns.length || aggregations.length || dateTrunc.length ? { columns, aggregations, dateTrunc } : null;
 }
@@ -149,6 +149,5 @@ export function mergeAiView(schema: Schema, fields: AiFields | null, filters: Ai
     ...(aggregations.length ? { aggregations } : {}),
     ...(dateTrunc.length ? { dateTrunc } : {}),
   };
-  const skipped: Skipped = { mart: false, source: false, columns: 0, filters: 0, sorts: 0, aggregations: 0, contexts: 0, storages: 0, found: false };
-  return pruneGrid(grid, schema, skipped);
+  return pruneGrid(grid, schema).grid;
 }

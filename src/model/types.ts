@@ -1,3 +1,5 @@
+import type { DqSummaryDto, StorageDto } from '../sdk/types';
+
 export type FieldCategory = 'string' | 'number' | 'date' | 'time' | 'boolean' | 'other';
 
 export interface Field {
@@ -44,19 +46,10 @@ export interface Model {
   edges: Edge[];
   contexts: Context[];
   /** Every storage the project lists, whether or not it loaded. */
-  storages: { id: string; title: string; type: string }[];
+  storages: StorageDto[];
   failedStorages: { id: string; title: string; message: string }[];
 }
 
-export interface DqSummary {
-  state: string;
-  totalChecks?: number;
-  notApplicableChecks?: number;
-  noticeFindings?: number;
-  warningFindings?: number;
-  errorFindings?: number;
-  highestSeverity?: 'notice' | 'warning' | 'error' | null;
-  lastRunAt?: string | null;
-}
+export type DqSummary = DqSummaryDto;
 
 export type Schema = Field[]; // reporting-visible fields only (hidden ones are dropped), in schema order

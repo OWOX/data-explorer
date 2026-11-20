@@ -2,27 +2,16 @@ import { PAGE_SIZE } from '../config';
 import { havingField, sliceField } from '../filters/slice';
 import { isComplete, type ColumnFilter, type FilterValue } from '../filters/build';
 import { isDateTimeField, operatorsFor, RELATIVE_PRESETS, type OpId } from '../filters/catalogue';
-import { AGGREGATE_FUNCTIONS, DATE_BUCKETS, isTimeZone, type AggFn, type AggregationRule, type DateBucket, type DateTruncRule } from '../model/aggregation';
+import { isAggFn, isDateBucket, isTimeZone, type AggregationRule, type DateTruncRule } from '../model/aggregation';
 import { isDayType } from '../model/field-category';
 import type { SortKey } from '../model/sort';
 import type { Field, Schema } from '../model/types';
-import type { RelativeDatePreset } from '../sdk/types';
+import type { RelativeDatePreset, ReportDto } from '../sdk/types';
 import type { GridState } from '../state/store';
-import { pruneGrid, type Skipped } from '../state/view-link-resolve';
-import { defaultColumns } from '../ui/explorer/useMartRows';
+import { plural, pruneGrid } from '../state/view-link-resolve';
+import { defaultColumns } from '../model/columns';
 
-/** The part of `GET /api/reports/:id` the explorer reads. */
-export type ReportDto = {
-  id: string; title?: string;
-  dataMart?: { id?: string };
-  columnConfig?: string[] | null;
-  filterConfig?: unknown[] | null;
-  sortConfig?: { column: string; direction: 'asc' | 'desc' }[] | null;
-  aggregationConfig?: { column: string; function: string }[] | null;
-  dateTruncConfig?: { column: string; unit: string; timeZone?: string }[] | null;
-  uniqueCountConfig?: boolean | string[] | null;
-};
-
+export type { ReportDto };
 export type ReportSkipped = { columns: number; filters: number; sorts: number; aggregations: number; slices: number; having: number; uniqueCount: boolean };
 
 const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
@@ -84,8 +73,6 @@ export function fromTraverseFilter(rule: unknown, field: Field): ColumnFilter | 
   return isComplete(filter, field) ? filter : null;
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 /** The notice for what a report carries that the explorer cannot show, or null when nothing was left out. */
 export function reportSkippedMessage(s: ReportSkipped): string | null {
   const parts = [
@@ -117,10 +104,9 @@ export function reportToGrid(report: ReportDto, schema: Schema, nativeSchema: Sc
   for (const rule of asArray(report.filterConfig)) {
     const field = isObject(rule) && typeof rule.column === 'string' ? byName.get(rule.column) : undefined;
     if (isObject(rule) && rule.function) {
-      const fn = rule.function as AggFn;
-      const known = typeof rule.function === 'string' && (AGGREGATE_FUNCTIONS as readonly string[]).includes(rule.function);
-      const filter = field && known && aggFns.has(`${field.name}\u0000${fn}`) && rule.placement !== 'pre-join' ? fromTraverseFilter(rule, havingField(field, fn)) : null;
-      if (!filter || Object.hasOwn(filters, filter.field)) { skipped.having++; continue; }
+      const fn = isAggFn(rule.function) ? rule.function : null;
+      const filter = field && fn && aggFns.has(`${field.name}\u0000${fn}`) && rule.placement !== 'pre-join' ? fromTraverseFilter(rule, havingField(field, fn)) : null;
+      if (!fn || !filter || Object.hasOwn(filters, filter.field)) { skipped.having++; continue; }
       filters[filter.field] = { ...filter, fn };
       continue;
     }
@@ -147,13 +133,13 @@ export function reportToGrid(report: ReportDto, schema: Schema, nativeSchema: Sc
 
   const aggregations: AggregationRule[] = [];
   for (const a of asArray(report.aggregationConfig)) {
-    if (isObject(a) && typeof a.column === 'string' && (AGGREGATE_FUNCTIONS as readonly string[]).includes(a.function as string)) aggregations.push({ column: a.column, function: a.function as AggFn });
+    if (isObject(a) && typeof a.column === 'string' && isAggFn(a.function)) aggregations.push({ column: a.column, function: a.function });
     else skipped.aggregations++;
   }
   const dateTrunc: DateTruncRule[] = [];
   for (const d of asArray(report.dateTruncConfig)) {
-    if (isObject(d) && typeof d.column === 'string' && (DATE_BUCKETS as readonly string[]).includes(d.unit as string)) {
-      dateTrunc.push({ column: d.column, unit: d.unit as DateBucket, ...(isTimeZone(d.timeZone) ? { timeZone: d.timeZone } : {}) });
+    if (isObject(d) && typeof d.column === 'string' && isDateBucket(d.unit)) {
+      dateTrunc.push({ column: d.column, unit: d.unit, ...(isTimeZone(d.timeZone) ? { timeZone: d.timeZone } : {}) });
     } else skipped.aggregations++;
   }
 
@@ -168,11 +154,10 @@ export function reportToGrid(report: ReportDto, schema: Schema, nativeSchema: Sc
     ...(dateTrunc.length ? { dateTrunc } : {}),
   };
 
-  const pruned: Skipped = { mart: false, source: false, columns: 0, filters: 0, sorts: 0, aggregations: 0, contexts: 0, storages: 0, found: false };
-  const grid = pruneGrid(built, schema, pruned);
-  skipped.columns += pruned.columns;
-  skipped.filters += pruned.filters;
-  skipped.sorts += pruned.sorts;
-  skipped.aggregations += pruned.aggregations;
+  const { grid, dropped } = pruneGrid(built, schema);
+  skipped.columns += dropped.columns;
+  skipped.filters += dropped.filters;
+  skipped.sorts += dropped.sorts;
+  skipped.aggregations += dropped.aggregations;
   return { grid, skipped };
 }

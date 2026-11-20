@@ -1,9 +1,9 @@
 // The mock's traverseData grouping: aggregation and dateTrunc over rows, as the API names the outputs.
-import { aggregatedKey, type AggFn } from '../../model/aggregation';
+import { aggregatedKey, type AggFn, type AggregationRule, type DateTruncRule } from '../../model/aggregation';
 import type { Row } from '../types';
 
-type Rule = { column: string; function: AggFn };
-type Trunc = { column: string; unit: 'DAY' | 'WEEK' | 'MONTH' | 'QUARTER' | 'YEAR'; timeZone?: string };
+type Rule = AggregationRule;
+type Trunc = DateTruncRule;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 

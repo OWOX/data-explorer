@@ -2,7 +2,7 @@ import type { SchemaLoader } from '../api/schemas';
 import type { Model, Schema } from '../model/types';
 import type { Ctx } from '../sdk/types';
 import type { GridState } from '../state/store';
-import { defaultColumns } from '../ui/explorer/useMartRows';
+import { defaultColumns } from '../model/columns';
 import { AiUnavailable, createAiRun, pickModels } from './ai';
 import { MAX_FOUND, type SearchHits } from './endpoint';
 import { discoveryQuestion, fieldsQuestion, filtersQuestion } from './prompts';

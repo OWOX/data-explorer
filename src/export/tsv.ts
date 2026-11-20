@@ -1,4 +1,4 @@
-import { AGG_LABELS, formatBucket, outputsOf, type Aggregation, type AggFn, type DateBucket } from '../model/aggregation';
+import { AGG_LABELS, formatBucket, outputsOf, outputType, type Aggregation, type DateBucket } from '../model/aggregation';
 import { columnTitle } from '../model/fieldLabel';
 import type { Field } from '../model/types';
 import type { Row } from '../sdk/types';
@@ -27,11 +27,9 @@ export function tsvColumns(fields: Field[], agg?: Aggregation): TsvColumn[] {
   const byName = new Map(fields.map((f) => [f.name, f]));
   return outputsOf(fields.map((f) => f.name), agg ?? { aggregations: [], dateTrunc: [] }).map((o) => {
     const f = byName.get(o.column)!;
-    return { key: o.key, title: o.fn ? `${columnTitle(f)} · ${AGG_LABELS[o.fn]}` : columnTitle(f), type: typeOf(f.type, o.fn), ...(o.bucket ? { bucket: o.bucket } : {}) };
+    return { key: o.key, title: o.fn ? `${columnTitle(f)} · ${AGG_LABELS[o.fn]}` : columnTitle(f), type: outputType(f, o.fn), ...(o.bucket ? { bucket: o.bucket } : {}) };
   });
 }
-
-const typeOf = (type: string, fn: AggFn | undefined) => (fn === 'COUNT' || fn === 'COUNT_DISTINCT' ? 'INTEGER' : fn === 'STRING_AGG' ? 'STRING' : fn === 'AVG' || fn === 'P25' || fn === 'P50' || fn === 'P75' || fn === 'P95' ? 'FLOAT' : type);
 
 /** The grid as tab-separated values with a header row of the column titles; lines end with `\n`. A grouped grid is copied as shown. */
 export function buildTsv(columns: TsvColumn[], rows: Row[]): string {

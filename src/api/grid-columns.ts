@@ -1,4 +1,4 @@
-import { AGGREGATE_FUNCTIONS, DATE_BUCKETS, isTimeZone, NO_AGGREGATION, type Aggregation } from '../model/aggregation';
+import { isAggFn, isDateBucket, isTimeZone, NO_AGGREGATION, type Aggregation } from '../model/aggregation';
 import type { Ctx } from '../sdk/types';
 
 export const GRID_COLUMNS_COLLECTION = 'grid-columns';
@@ -12,8 +12,6 @@ export interface ColumnStore {
   load(martId: string): Promise<string[] | null>;
   /** The joined fields last chosen per joined data mart for this main data mart (read once; empty when none or the read failed). */
   loadPicks(martId: string): Promise<Picks>;
-  /** What `loadPicks` read, with this session's changes; empty until it has been read. */
-  picks(martId: string): Picks;
   /** The mart's OWN field names as they were shown when it last left the grid (as main or as a joined mart); null when none was remembered or it is not read yet. */
   lastShown(martId: string): string[] | null;
   /** Reads what `lastShown` serves (once per mart; a failure reads as none). */
@@ -32,9 +30,9 @@ export interface ColumnStore {
 
 const validAggregation = (doc: { aggregations?: unknown; dateTrunc?: unknown } | undefined): Aggregation => {
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null && typeof (x as { column?: unknown }).column === 'string') : []);
-  const aggregations = list(doc?.aggregations).flatMap((r) => ((AGGREGATE_FUNCTIONS as readonly unknown[]).includes(r.function) ? [{ column: r.column as string, function: r.function as never }] : []));
+  const aggregations = list(doc?.aggregations).flatMap((r) => (isAggFn(r.function) ? [{ column: r.column as string, function: r.function }] : []));
   // A bucket needs a known unit and, when it has a time zone, one the backend accepts; a column takes functions or a bucket, never both.
-  const dateTrunc = list(doc?.dateTrunc).flatMap((r) => ((DATE_BUCKETS as readonly unknown[]).includes(r.unit) && (r.timeZone === undefined || isTimeZone(r.timeZone)) && !aggregations.some((a) => a.column === r.column) ? [{ column: r.column as string, unit: r.unit as never, ...(r.timeZone !== undefined ? { timeZone: r.timeZone as string } : {}) }] : []));
+  const dateTrunc = list(doc?.dateTrunc).flatMap((r) => (isDateBucket(r.unit) && (r.timeZone === undefined || isTimeZone(r.timeZone)) && !aggregations.some((a) => a.column === r.column) ? [{ column: r.column as string, unit: r.unit, ...(r.timeZone !== undefined ? { timeZone: r.timeZone as string } : {}) }] : []));
   return aggregations.length || dateTrunc.length ? { aggregations, dateTrunc } : NO_AGGREGATION;
 };
 
@@ -95,7 +93,6 @@ export function createColumnStore(ctx: Ctx): ColumnStore {
       if (!picked.has(martId)) await load(martId);
       return picksOf(martId);
     },
-    picks: picksOf,
     aggregation: (martId) => aggBy.get(martId) ?? NO_AGGREGATION,
     async loadAggregation(martId) {
       if (!aggBy.has(martId)) await load(martId);

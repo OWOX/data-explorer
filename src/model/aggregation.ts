@@ -7,6 +7,8 @@ export const AGGREGATE_FUNCTIONS = ['SUM', 'AVG', 'MIN', 'MAX', 'COUNT', 'COUNT_
 export type AggFn = (typeof AGGREGATE_FUNCTIONS)[number];
 export const DATE_BUCKETS = ['DAY', 'WEEK', 'MONTH', 'QUARTER', 'YEAR'] as const;
 export type DateBucket = (typeof DATE_BUCKETS)[number];
+export const isAggFn = (v: unknown): v is AggFn => (AGGREGATE_FUNCTIONS as readonly unknown[]).includes(v);
+export const isDateBucket = (v: unknown): v is DateBucket => (DATE_BUCKETS as readonly unknown[]).includes(v);
 
 export type AggregationRule = { column: string; function: AggFn };
 export type DateTruncRule = { column: string; unit: DateBucket; timeZone?: string };
@@ -142,14 +144,6 @@ export function outputsOf(columns: string[], a: Aggregation): Output[] {
     const bucket = a.dateTrunc.find((r) => r.column === column)?.unit;
     return [{ key: column, column, ...(bucket ? { bucket } : {}), sortable: true }];
   });
-}
-
-/** What to tell the member's own words: "Sum, Average" for a column's functions, "by month" for its bucket. */
-export function describeColumn(column: string, a: Aggregation): string | null {
-  const fns = a.aggregations.filter((r) => r.column === column).map((r) => AGG_LABELS[r.function].toLowerCase());
-  if (fns.length) return fns.join(', ');
-  const t = a.dateTrunc.find((r) => r.column === column);
-  return t ? `by ${BUCKET_LABELS[t.unit].toLowerCase()}${t.timeZone ? ` (${t.timeZone})` : ''}` : null;
 }
 
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

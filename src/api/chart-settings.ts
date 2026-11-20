@@ -1,4 +1,4 @@
-import { DATE_BUCKETS } from '../model/aggregation';
+import { isDateBucket } from '../model/aggregation';
 import type { ChartSettings } from '../charts/settings';
 import type { Ctx } from '../sdk/types';
 
@@ -29,7 +29,7 @@ function clean(doc: unknown): ChartSettings {
   if (ts) {
     out.timeSeries = {};
     if (str(ts.date) !== undefined) out.timeSeries.date = ts.date as string;
-    if (ts.bucket === 'AUTO' || DATE_BUCKETS.some((b) => b === ts.bucket)) out.timeSeries.bucket = ts.bucket as 'AUTO';
+    if (ts.bucket === 'AUTO' || isDateBucket(ts.bucket)) out.timeSeries.bucket = ts.bucket as 'AUTO';
     if (str(ts.metric) !== undefined) out.timeSeries.metric = ts.metric as string;
     if (ts.stack === null || str(ts.stack) !== undefined) out.timeSeries.stack = ts.stack as string | null;
     if (ts.orientation === 'vertical' || ts.orientation === 'horizontal') out.timeSeries.orientation = ts.orientation;

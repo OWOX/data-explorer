@@ -47,10 +47,10 @@ test('selecting what is already selected changes nothing and adds no history', (
 test('openRecord sets the mart and the record, keeping the grid filters of the same mart', () => {
   const filters = [{ field: 'id', op: 'eq' as const, value: 1 }];
   const start = s({ selection: sel({ martId: 'a', filters }) });
-  const st = reducer(start, { type: 'openRecord', martId: 'a', pk: { id: 7 } });
+  const st = reducer(start, { type: 'openRecord', martId: 'a', pk: { id: 7 }, sourceOf });
   expect(st.selection).toEqual(sel({ martId: 'a', filters, record: { martId: 'a', pk: { id: 7 } } }));
   expect(st.history).toEqual([start.selection]);
-  const other = reducer(start, { type: 'openRecord', martId: 'c', pk: { id: 7 } });
+  const other = reducer(start, { type: 'openRecord', martId: 'c', pk: { id: 7 }, sourceOf });
   expect(other.selection).toEqual(sel({ martId: 'c', record: { martId: 'c', pk: { id: 7 } } }));
 });
 
@@ -72,7 +72,7 @@ test('follow a filtered mart selects it with the filters and clears the record',
 test('undo restores the previous selection, in order, and does nothing with no history', () => {
   let st = reducer(s(), { type: 'init', focusId: 'a' });
   st = reducer(st, { type: 'selectMart', id: 'b', sourceOf });
-  st = reducer(st, { type: 'openRecord', martId: 'b', pk: { id: 1 } });
+  st = reducer(st, { type: 'openRecord', martId: 'b', pk: { id: 1 }, sourceOf });
   st = reducer(st, { type: 'selectMart', id: 'c', sourceOf });
   st = reducer(st, { type: 'undo' });
   expect(st.selection).toEqual(sel({ martId: 'b', record: { martId: 'b', pk: { id: 1 } } }));

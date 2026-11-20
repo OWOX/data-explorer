@@ -1,5 +1,5 @@
 // Member-saved chart choices and how they resolve against the columns shown now.
-import { DATE_BUCKETS, type DateBucket } from '../model/aggregation';
+import { isDateBucket, type DateBucket } from '../model/aggregation';
 import type { Field } from '../model/types';
 import { measuresOf, pieMeasures, type ChartFields } from './fields';
 import type { Measure } from './queries';
@@ -39,7 +39,7 @@ export function resolveCharts(s: ChartSettings, cf: ChartFields): ResolvedCharts
     hidden: new Set(s.scorecards?.hidden ?? []),
     sparklines: s.scorecards?.sparklines ?? true,
     date: cf.dates.find((d) => d.name === ts.date) ?? cf.dates[0] ?? null,
-    bucket: bucket === 'AUTO' || DATE_BUCKETS.some((b) => b === bucket) ? bucket! : 'AUTO',
+    bucket: bucket === 'AUTO' || isDateBucket(bucket) ? bucket! : 'AUTO',
     measure: pick(measuresOf(cf), ts.metric),
     stack: cf.dimensions.find((d) => d.name === ts.stack) ?? null,
     orientation: ts.orientation === 'horizontal' ? 'horizontal' : 'vertical',

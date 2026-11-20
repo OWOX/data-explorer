@@ -1,6 +1,6 @@
 // What a click on a data mart card does to the selection: the main mart, the joined marts and the main's grid.
 // The joined marts are not stored anywhere: a mart is selected-joined exactly when one of its joined fields is a column of the main grid.
-import type { JoinedSource } from '../api/blendable';
+import { sourceOfField, type JoinedSource } from '../api/blendable';
 import type { Picks } from '../api/grid-columns';
 import { sortsOnColumns } from '../model/sort';
 import { keepVisible } from '../model/aggregation';
@@ -11,11 +11,10 @@ import type { GridState, Selection } from './store';
 
 /** The joined data marts a grid shows columns of, in the order they first appear (the order they were added). */
 export function joinedMartIds(columns: string[], sources: JoinedSource[]): string[] {
-  const owner = new Map<string, string>();
-  for (const s of sources) for (const f of s.fields) if (!owner.has(f.name)) owner.set(f.name, s.martId);
+  const owner = sourceOfField(sources);
   const out: string[] = [];
   for (const c of columns) {
-    const id = owner.get(c);
+    const id = owner.get(c)?.martId;
     if (id && !out.includes(id)) out.push(id);
   }
   return out;
@@ -23,11 +22,10 @@ export function joinedMartIds(columns: string[], sources: JoinedSource[]): strin
 
 /** The alias paths a grid's columns use, in the order their first column appears. */
 export function joinedPaths(columns: string[], sources: JoinedSource[]): string[] {
-  const pathOf = new Map<string, string>();
-  for (const s of sources) for (const f of s.fields) if (!pathOf.has(f.name)) pathOf.set(f.name, s.aliasPath);
+  const pathOf = sourceOfField(sources);
   const out: string[] = [];
   for (const c of columns) {
-    const p = pathOf.get(c);
+    const p = pathOf.get(c)?.aliasPath;
     if (p !== undefined && !out.includes(p)) out.push(p);
   }
   return out;
@@ -56,9 +54,8 @@ export const parentPath = (aliasPath: string): string => {
 
 /** The alias paths a grid uses: '' for the main mart, and the path of each joined field among the columns. */
 export function inUsePaths(columns: string[], sources: JoinedSource[]): Set<string> {
-  const pathOf = new Map<string, string>();
-  for (const s of sources) for (const f of s.fields) if (!pathOf.has(f.name)) pathOf.set(f.name, s.aliasPath);
-  return new Set(['', ...columns.flatMap((c) => (pathOf.has(c) ? [pathOf.get(c)!] : []))]);
+  const pathOf = sourceOfField(sources);
+  return new Set(['', ...columns.flatMap((c) => pathOf.get(c)?.aliasPath ?? [])]);
 }
 
 /**
