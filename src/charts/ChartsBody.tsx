@@ -61,15 +61,15 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   const scores = useScorecards(martId, cf, filter, version, idle);
   const columns = groups.reduce((n, g) => n + g.span, 0);
 
+  if (cf.marts.every((m) => m.metrics.length === 0 && !m.hasPk)) {
+    return <tbody><tr><Gutter /><td colSpan={columns + 1} data-chart-empty className="text-sm text-muted-foreground">Show a number column to chart it.</td></tr></tbody>;
+  }
   if (gate) {
     return (
       <tbody><tr><Gutter /><td colSpan={columns + 1} data-chart-empty className="text-sm text-muted-foreground">
         {gate.kind === 'loading' ? <Skeleton rows={2} /> : gate.kind === 'error' ? <ErrorBox error={gate.error} onRetry={gate.retry} /> : 'No rows match the filters.'}
       </td></tr></tbody>
     );
-  }
-  if (cf.marts.every((m) => m.metrics.length === 0 && !m.hasPk)) {
-    return <tbody><tr><Gutter /><td colSpan={columns + 1} data-chart-empty className="text-sm text-muted-foreground">Show a number column to chart it.</td></tr></tbody>;
   }
 
   const patch = (edit: (cur: NonNullable<ChartSettings['scorecards']>) => NonNullable<ChartSettings['scorecards']>) => change((cur) => ({ ...cur, scorecards: edit(cur.scorecards ?? {}) }));

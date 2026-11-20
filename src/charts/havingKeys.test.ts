@@ -5,7 +5,7 @@ import type { Field, Schema } from '../model/types';
 import { IN_LIST_MAX, keysOutcome, keysPlan } from './havingKeys';
 
 const f = (name: string, category: Field['category'], type = 'STRING'): Field => ({ name, type, category, isPrimaryKey: false } as unknown as Field);
-const schema: Schema = [f('status', 'string'), f('country', 'string'), f('day', 'date'), f('flag', 'boolean'), f('revenue', 'number', 'NUMERIC')];
+const schema: Schema = [f('id', 'number', 'INT64'), f('at', 'date', 'TIMESTAMP'), f('clock', 'time', 'TIME'), f('status', 'string'), f('country', 'string'), f('day', 'date'), f('flag', 'boolean'), f('revenue', 'number', 'NUMERIC')];
 const sum: Aggregation = { aggregations: [{ column: 'revenue', function: 'SUM' }], dateTrunc: [] };
 const having: Record<string, ColumnFilter> = { revenue: { field: 'revenue', op: 'gt', value: 100, fn: 'SUM' } };
 const plain = (names: string[], agg: Aggregation = sum, filters = having) => keysPlan(schema, names, agg, Object.values(filters), []);
@@ -25,6 +25,11 @@ describe('keysPlan', () => {
   it('falls back for a bucketed date key', () => {
     expect(plain(['day', 'revenue'], { ...sum, dateTrunc: [{ column: 'day', unit: 'MONTH' }] })).toEqual({ kind: 'fallback' });
   });
+  it('falls back for datetime, timestamp and time keys, but keeps a plain date', () => {
+    expect(plain(['at', 'revenue'])).toEqual({ kind: 'fallback' });
+    expect(plain(['clock', 'revenue'])).toEqual({ kind: 'fallback' });
+    expect(plain(['day', 'revenue'])).toMatchObject({ kind: 'read', key: 'day' });
+  });
   it('falls back for a boolean key', () => expect(plain(['flag', 'revenue'])).toEqual({ kind: 'fallback' }));
   it('with no group key reads only the HAVING column', () => {
     const p = plain(['revenue']);
@@ -37,6 +42,18 @@ describe('keysOutcome', () => {
   it('one key builds an in rule of the passing keys', () => {
     expect(keysOutcome('status', rows('paid', 'new'))).toEqual({ kind: 'rule', rule: { column: 'status', operator: 'in', value: ['paid', 'new'] } });
     expect(keysOutcome('status', rows(1, 2))).toEqual({ kind: 'rule', rule: { column: 'status', operator: 'in', value: [1, 2] } });
+  });
+  it('number keys that arrive as strings become numbers', () => {
+    const num = { category: 'number' as const };
+    expect(keysOutcome('status', rows('1', '2.50', '-3'), num)).toEqual({ kind: 'rule', rule: { column: 'status', operator: 'in', value: [1, 2.5, -3] } });
+    expect(keysOutcome('status', rows(4, '5.0'), num)).toEqual({ kind: 'rule', rule: { column: 'status', operator: 'in', value: [4, 5] } });
+  });
+  it('number keys a double cannot hold, or that are not numbers, fall back', () => {
+    const num = { category: 'number' as const };
+    expect(keysOutcome('status', rows('9007199254740993'), num)).toEqual({ kind: 'fallback' });
+    expect(keysOutcome('status', rows('1.00000000000000000001'), num)).toEqual({ kind: 'fallback' });
+    expect(keysOutcome('status', rows('abc'), num)).toEqual({ kind: 'fallback' });
+    expect(keysOutcome('status', rows(1, null), num)).toEqual({ kind: 'fallback' });
   });
   it('zero passing groups is empty, with or without a key', () => {
     expect(keysOutcome('status', [])).toEqual({ kind: 'empty' });

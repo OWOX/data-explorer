@@ -10,6 +10,7 @@ import { isNumericType } from '../format';
 import { withJoined, type JoinedSource } from '../../api/blendable';
 import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
 import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
+import { chartFields } from '../../charts/fields';
 import { keysPlan, useHavingKeys } from '../../charts/havingKeys';
 import { dropOrphanHaving, toTraverseFilters, type ColumnFilter } from '../../filters/build';
 import { sliceField } from '../../filters/slice';
@@ -614,7 +615,10 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const traverseFilters = useMemo(() => toTraverseFilters(schema, Object.values(filters).filter((f) => !f.fn), Object.values(slices)), [schema, filters, slices]);
   // A HAVING filter keeps whole groups, so the charts get the passing group keys as an `in` rule instead of the filter itself.
   const keysRead = useMemo(() => keysPlan(schema, shown, aggNow, Object.values(filters), Object.values(slices)), [schema, shown, aggNow, filters, slices]);
-  const having = useHavingKeys(martId, keysRead, version, !charts || paused);
+  const keyField = useMemo(() => (keysRead.kind === 'read' && keysRead.key ? schema.find((f) => f.name === keysRead.key) : undefined), [keysRead, schema]);
+  // Nothing is read when the charts are not shown, a folded band, a blocked grid, or no number column to chart (ChartsBody shows its hint then).
+  const chartable = useMemo(() => !chartFields(schema, shown, aggNow, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), {}).marts.every((m) => m.metrics.length === 0 && !m.hasPk), [schema, shown, aggNow, martId, groups, sources]);
+  const having = useHavingKeys(martId, keysRead, keyField, version, !charts || paused || !!blocked || !chartable);
   const chartFilter = useMemo(() => (having.rule ? [...traverseFilters, having.rule] : traverseFilters), [traverseFilters, having.rule]);
   // A HAVING filter alone counts when the charts follow it, so their "No rows match the filters." is true.
   const hasChartFilters = Object.values(filters).some((f) => !f.fn) || !!having.rule || having.gate?.kind === 'empty';
