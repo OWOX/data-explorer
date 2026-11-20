@@ -6,7 +6,7 @@ import { buildJoinTree, ghostSources, subtreePaths } from '../../state/join-tree
 import { pathTitle } from '../../state/join-plan';
 import { closestTarget, dropTargets } from './canvas-drag';
 import { CARD_H, CARD_W, layoutTree } from './canvas-layout';
-import { MartCard, martElementId, type CountState } from './cards';
+import { MartCard, contextsOf, martElementId, type CountState } from './cards';
 import { useCanvasDrag } from './useCanvasDrag';
 import type { ClickOptions } from './useCardClick';
 import { revisionOf, useWires, type Wire } from './wires';
@@ -120,7 +120,6 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     const source = sources?.find((x) => x.aliasPath === path);
     return path === '' || !source ? undefined : pathTitle(source, [...tree.nodes.keys()], sources ?? []);
   };
-  const contextsOf = (ids: string[]) => model.contexts.filter((c) => ids.includes(c.id));
   const dragTitle = drag ? model.marts.get(tree.nodes.get(drag.path)?.martId ?? '')?.title : undefined;
   let line: string | null = null;
   const to = pick && layout.placed.find((p) => p.path === pick.target);
@@ -148,10 +147,9 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
           <div key={node.path} className={`dm-tree-node${drag && node.path !== drag.path && !valid.has(node.path) ? ' dm-dimmed' : ''}`} data-tree-path={node.path} style={{ left: pos.x, top: pos.y, width: CARD_W }}>
             <MartCard
               mart={mart}
-              contexts={contextsOf(mart.contextIds)}
+              contexts={contextsOf(model.contexts, mart.contextIds)}
               count={counts.get(mart.id) ?? { state: 'idle' }}
               quality={dq.get(mart.id)}
-              freshness={mart.dataLastUpdatedAt}
               selected={node.path === ''}
               joined={node.path !== ''}
               path={node.path}
@@ -182,17 +180,13 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               ghost
               path={g.aliasPath}
               title={pathTitle(g, [...tree.nodes.keys()], sources ?? [])}
-              contexts={contextsOf(mart.contextIds)}
-              count={{ state: 'idle' }}
+              contexts={contextsOf(model.contexts, mart.contextIds)}
               quality={dq.get(mart.id)}
-              freshness={mart.dataLastUpdatedAt}
               selected={false}
               joined={false}
               lit={false}
               onSelect={() => { setPinned(null); click(g.martId, { addAt: g.aliasPath }).then(() => setFocusCard({ martId: g.martId, path: g.aliasPath }), () => undefined); }}
               onOpenApp={() => onOpenApp(mart.id)}
-              onRetryCount={() => undefined}
-              onNeedCount={() => undefined}
             />
           </div>,
         ];

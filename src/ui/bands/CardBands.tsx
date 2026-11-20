@@ -1,7 +1,7 @@
 // The Sources and Data bands with the lines between their cards, and the hover that lights them.
 // The Data and Row bands arrive as children and sit under the same canvas; they do not re-render on hover.
 import { Box, LayoutGrid, Plug, Workflow } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { DqSummary, Mart, Model, Source } from '../../model/types';
 import { matchesSearch } from '../../graph/search';
 import { storageOptions } from '../../graph/storages';
@@ -16,7 +16,7 @@ import { ContextBadges } from './ContextBadges';
 import { useSmartSearchScope } from './SmartSearchScope';
 import { PointerTip } from '../Tooltip';
 import { CardClickContext } from './CardClick';
-import { MartCard, SourceCard, martElementId, sourceElementId, type CountState } from './cards';
+import { MartCard, SourceCard, contextsOf, martElementId, sourceElementId, type CountState } from './cards';
 import { useCardTransitions } from './transitions';
 import { useCardClick } from './useCardClick';
 import { useCardDrag } from './useCardDrag';
@@ -27,7 +27,7 @@ import { pathTitle } from '../../state/join-plan';
 import { useGridFocus } from './useGridFocus';
 import type { JoinedSource } from '../../api/blendable';
 
-export type MartsView = 'grid' | 'canvas';
+type MartsView = 'grid' | 'canvas';
 const MARTS_VIEWS: SwitchOption<MartsView>[] = [
   { value: 'grid', label: 'Grid', icon: LayoutGrid },
   { value: 'canvas', label: 'Canvas', icon: Workflow },
@@ -36,7 +36,31 @@ const MARTS_VIEWS: SwitchOption<MartsView>[] = [
 const martId = (m: Mart) => m.id;
 const sourceKey = (s: Source) => s.key;
 
+/** Whether the mart sits in a storage the band is narrowed to. */
+const storageTicked = (model: Model, storageIds: string[] | null, id: string) => storageIds === null || storageIds.includes(model.marts.get(id)?.storageId ?? '');
+
 const nodeIdOf = (target: EventTarget | null) => (target instanceof Element ? target.closest('[data-node]')?.id ?? null : null);
+
+/**
+ * The tip that follows the pointer over a line. It listens on the canvas itself and keeps its own state, so a pointer move
+ * re-renders this layer and not every card in the bands.
+ */
+export function WireTipLayer({ canvas }: { canvas: RefObject<HTMLElement | null> }) {
+  const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
+  useEffect(() => {
+    const root = canvas.current;
+    if (!root) return;
+    const move = (e: PointerEvent) => {
+      const text = e.target instanceof Element ? e.target.closest<SVGPathElement>('#wires path, #tree-wires path')?.dataset.tip : undefined;
+      setTip(text ? { text, x: e.clientX, y: e.clientY } : (cur) => (cur === null ? cur : null));
+    };
+    const leave = () => setTip(null);
+    root.addEventListener('pointermove', move);
+    root.addEventListener('pointerleave', leave);
+    return () => { root.removeEventListener('pointermove', move); root.removeEventListener('pointerleave', leave); };
+  }, [canvas]);
+  return tip && <PointerTip text={tip.text} x={tip.x} y={tip.y} />;
+}
 
 export function CardBands({
   model,
@@ -95,7 +119,6 @@ export function CardBands({
   const rememberLeaving = useRememberLeaving();
   const canvas = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<string | null>(null);
-  const [wireTip, setWireTip] = useState<{ text: string; x: number; y: number } | null>(null);
   // The mart whose hidden neighbours show as ghosts. It follows the hovered card; a ghost being hovered keeps it, and leaving
   // waits 400 ms, so the pointer can cross the gap to a ghost.
   const [ghostOf, setGhostOf] = useState<string | null>(null);
@@ -140,7 +163,7 @@ export function CardBands({
   const shownIds = useMemo(() => new Set(visible.ids), [visible.ids]);
   const ghostIds = useMemo(() => {
     if (!ghostOf || view !== 'grid' || focus !== null) return [];
-    const ticked = (id: string) => storageIds === null || storageIds.includes(model.marts.get(id)?.storageId ?? '');
+    const ticked = (id: string) => storageTicked(model, storageIds, id);
     return neighbours(ghostOf, model.edges).filter((id) => !shownIds.has(id) && model.marts.get(id)?.accessible && ticked(id));
   }, [ghostOf, model, shownIds, storageIds, view, focus]);
   // A mart card's element id is `dm-<id>`, or `dm-<id>@<alias path>` for a joined card (see martElementId).
@@ -166,7 +189,7 @@ export function CardBands({
   const reportMarts = useMemo(() => new Set(canvasTree ? [...canvasTree.nodes.values()].map((n) => n.martId) : []), [canvasTree]);
   const focusSources = useMemo(() => {
     if (focus === null || !canvasTree || !joinSources) return [];
-    const ticked = (id: string) => storageIds === null || storageIds.includes(model.marts.get(id)?.storageId ?? '');
+    const ticked = (id: string) => storageTicked(model, storageIds, id);
     return ghostSources(canvasTree, joinSources, focus).filter((s) => model.marts.get(s.martId)?.accessible && ticked(s.martId));
   }, [focus, canvasTree, joinSources, model, storageIds]);
   const inBand = (id: string) => shownIds.has(id) && !reportMarts.has(id);
@@ -268,7 +291,6 @@ export function CardBands({
   const reportSize = canvasTree ? canvasTree.nodes.size : 0;
 
   const unjoinableFor = (id: string) => !!selection.martId && visible.joinable !== null && id !== selection.martId && !joined.includes(id) && !visible.joinable.has(id);
-  const contextsOf = (ids: string[]) => model.contexts.filter((c) => ids.includes(c.id));
 
   return (
     <div
@@ -276,11 +298,7 @@ export function CardBands({
       className={`dm-canvas${view === 'grid' && (pinned || hovered) ? ' focused' : ''}`}
       onClick={(e) => { if (focus !== null && e.target instanceof Element && e.target.closest('#band-marts .dm-band-body') && !e.target.closest('article, button, a')) clearFocus(); }}
       onPointerOver={(e) => setHovered(view === 'grid' ? nodeIdOf(e.target) : null)}
-      onPointerMove={(e) => {
-        const text = e.target instanceof Element ? e.target.closest<SVGPathElement>('#wires path, #tree-wires path')?.dataset.tip : undefined;
-        setWireTip(text ? { text, x: e.clientX, y: e.clientY } : (cur) => (cur === null ? cur : null));
-      }}
-      onPointerLeave={() => { setHovered(null); setWireTip(null); }}
+      onPointerLeave={() => setHovered(null)}
       onFocus={(e) => setHovered(view === 'grid' ? nodeIdOf(e.target) : null)}
       onBlur={(e) => { if (!canvas.current?.contains(e.relatedTarget as Node | null)) setHovered(null); }}
     >
@@ -318,10 +336,9 @@ export function CardBands({
                 key={isMain ? id : `${id}@${path}`}
                 mart={mart}
                 transition={martCards.transitionOf(mart)}
-                contexts={contextsOf(mart.contextIds)}
+                contexts={contextsOf(model.contexts, mart.contextIds)}
                 count={counts.get(id) ?? { state: 'idle' }}
                 quality={dq.get(id)}
-                freshness={mart.dataLastUpdatedAt}
                 selected={isMain}
                 joined={!isMain}
                 path={path || undefined}
@@ -356,11 +373,10 @@ export function CardBands({
                   key={id}
                   mart={mart}
                   transition={martCards.transitionOf(mart)}
-                  contexts={contextsOf(mart.contextIds)}
+                  contexts={contextsOf(model.contexts, mart.contextIds)}
                   count={counts.get(id) ?? { state: 'idle' }}
                   quality={dq.get(id)}
-                  freshness={mart.dataLastUpdatedAt}
-                  selected={false}
+                    selected={false}
                   joined={false}
                   lit={lit.has(el)}
                   aside={aside.has(el)}
@@ -386,17 +402,13 @@ export function CardBands({
                   ghost
                   path={s.aliasPath}
                   title={pathTitle(s, [...(canvasTree?.nodes.keys() ?? [])], joinSources ?? [])}
-                  contexts={contextsOf(mart.contextIds)}
-                  count={{ state: 'idle' }}
+                  contexts={contextsOf(model.contexts, mart.contextIds)}
                   quality={dq.get(mart.id)}
-                  freshness={mart.dataLastUpdatedAt}
-                  selected={false}
+                    selected={false}
                   joined={false}
                   lit={false}
                   onSelect={() => addFromBand(mart.id, { addAt: s.aliasPath })}
                   onOpenApp={() => onOpenApp(mart.id)}
-                  onRetryCount={() => undefined}
-                  onNeedCount={() => undefined}
                 />,
               ];
             })}
@@ -412,10 +424,8 @@ export function CardBands({
               key={`ghost-${id}`}
               mart={mart}
               ghost
-              contexts={contextsOf(mart.contextIds)}
-              count={{ state: 'idle' }}
+              contexts={contextsOf(model.contexts, mart.contextIds)}
               quality={dq.get(id)}
-              freshness={mart.dataLastUpdatedAt}
               selected={false}
               joined={false}
               lit={lit.has(el)}
@@ -425,8 +435,6 @@ export function CardBands({
               onMakeMain={mainId && id !== mainId ? () => void click(id, { mode: 'makeMain' }) : undefined}
               onSelect={() => void click(id)}
               onOpenApp={() => onOpenApp(id)}
-              onRetryCount={() => undefined}
-              onNeedCount={() => undefined}
             />,
           ];
         })}
@@ -434,7 +442,7 @@ export function CardBands({
       </Band>
       <CardClickContext.Provider value={click}>{children}</CardClickContext.Provider>
       {drag && <div className="dm-drag-ghost" style={{ left: drag.x + 8, top: drag.y + 8 }} aria-hidden>{drag.title}</div>}
-      {wireTip && <PointerTip text={wireTip.text} x={wireTip.x} y={wireTip.y} />}
+      <WireTipLayer canvas={canvas} />
     </div>
   );
 }

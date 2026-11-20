@@ -10,7 +10,7 @@ import { Band } from './Band';
 import { ViewSwitch, type SwitchOption } from './ViewSwitch';
 
 /** Shown as the warning's tooltip and at the end of the band's (i). */
-export const NO_KEY_NOTE = 'Preview only: this data mart has no primary key.';
+const NO_KEY_NOTE = 'Preview only: this data mart has no primary key.';
 const DATA_VIEWS: SwitchOption<'table' | 'charts'>[] = [
   { value: 'table', label: 'Table', icon: Table2 },
   { value: 'charts', label: 'Charts', icon: ChartColumn },

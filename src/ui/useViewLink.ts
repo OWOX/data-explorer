@@ -70,7 +70,7 @@ export function useViewLink(model: Model | null, currentFolds: DecodedView['fold
     })();
   }, [model, decoded, schemas, blendable, dispatch, forget]);
 
-  const copy = useCallback(async () => {
+  const copy = async () => {
     const { selection, grids } = state;
     try {
       const path = await encodeViewLink({
@@ -90,7 +90,7 @@ export function useViewLink(model: Model | null, currentFolds: DecodedView['fold
     } catch {
       setNotice(COPY_FAILED);
     }
-  }, [state, currentFolds, ctx]);
+  };
 
   return { pending: decoded !== 'none', folded, notice, dismiss: () => setNotice(null), copy };
 }

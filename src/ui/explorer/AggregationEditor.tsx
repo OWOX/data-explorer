@@ -6,7 +6,7 @@ import { Select } from '../Select';
 import { SheetsChecklist } from '../SheetsChecklist';
 
 /** A small curated list, as the OWOX report picker offers; the value is checked again by the backend. */
-export const TIME_ZONES = ['UTC', 'America/New_York', 'America/Los_Angeles', 'America/Sao_Paulo', 'Europe/London', 'Europe/Kyiv', 'Europe/Berlin', 'Asia/Jerusalem', 'Asia/Kolkata', 'Asia/Tokyo', 'Australia/Sydney'];
+const TIME_ZONES = ['UTC', 'America/New_York', 'America/Los_Angeles', 'America/Sao_Paulo', 'Europe/London', 'Europe/Kyiv', 'Europe/Berlin', 'Asia/Jerusalem', 'Asia/Kolkata', 'Asia/Tokyo', 'Australia/Sydney'];
 
 /**
  * What one column is aggregated by, ported from the OWOX report picker: any of the functions the field allows (each its own

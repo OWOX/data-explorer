@@ -24,7 +24,7 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
 }
 
 /** True when the element's content is wider than the element: its text ends in an ellipsis. */
-export const isTruncated = (el: Element | null | undefined): boolean => !!el && el.scrollWidth > el.clientWidth;
+const isTruncated = (el: Element | null | undefined): boolean => !!el && el.scrollWidth > el.clientWidth;
 
 /**
  * The shared bubble for clipped text: it opens only when the trigger (or `measure`'s element inside it) is truncated,

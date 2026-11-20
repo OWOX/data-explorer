@@ -4,7 +4,8 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
-import { HOVER_MS, menuIconClass } from './ColumnMenu';
+import { menuIconClass } from './ColumnMenu';
+import { HOVER_MS } from './MenuParts';
 import { openColumnMenu, openSubmenu } from './menu-test-utils';
 import { placeBeside, placeBelow } from './menuPlacement';
 

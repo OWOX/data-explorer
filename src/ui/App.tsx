@@ -49,7 +49,7 @@ function AppBody() {
       if (!live) return;
       saved.current = stored;
       const known = Object.fromEntries((Object.keys(DEFAULT_FOLDED) as Fold[]).flatMap((b) => (typeof stored[bandId(b)] === 'boolean' ? [[b, stored[bandId(b)]!]] : [])));
-      setFolds((own) => ({ ...known, ...own }));
+      setFolds(known);
       if (Object.keys(clicked.current).length > 0) write(clicked.current);
       clicked.current = {};
       setPrefsReady(true);
@@ -99,7 +99,6 @@ function AppBody() {
   const loading = opened ? null : Math.max(raw, peak);
   const toggle = (band: Fold) => {
     const now = !folded(band);
-    setFolds((f) => ({ ...f, [band]: now }));
     setTouched((t) => ({ ...t, [band]: now }));
     if (prefsReady) write({ [band]: now });
     else clicked.current = { ...clicked.current, [band]: now };

@@ -7,12 +7,12 @@ import { useStore } from '../../state/store';
 import { Tooltip } from '../Tooltip';
 
 /** Mac keyboards show the shortcuts with the command and shift glyphs; everywhere else they are spelled out. */
-export const isMac = () => {
+const isMac = () => {
   const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
   return /mac|iphone|ipad/i.test(nav.userAgentData?.platform || navigator.platform || '');
 };
-export const undoTip = (mac: boolean) => (mac ? 'Undo (⌘Z)' : 'Undo (Ctrl+Z)');
-export const redoTip = (mac: boolean) => (mac ? 'Redo (⇧⌘Z)' : 'Redo (Ctrl+Shift+Z)');
+const undoTip = (mac: boolean) => (mac ? 'Undo (⌘Z)' : 'Undo (Ctrl+Z)');
+const redoTip = (mac: boolean) => (mac ? 'Redo (⇧⌘Z)' : 'Redo (Ctrl+Shift+Z)');
 
 /** A column menu, an editor, the Fields picker or any other popover: while one is open the grid behind it must not change under its draft. */
 const OPEN_POPOVER = '[data-column-menu], [role="dialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]';

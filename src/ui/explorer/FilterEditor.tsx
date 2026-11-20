@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { DATE_PRESETS, RELATIVE_MAX_N, RELATIVE_PRESETS, RELATIVE_UNITS, fromRule, isDateTimeField, isPreset, operatorsFor, toRule, type OpId, type RelativeUnit } from '../../filters/catalogue';
 import { isComplete, type ColumnFilter, type FilterValue } from '../../filters/build';
 import { columnTitle } from '../../model/fieldLabel';
@@ -7,7 +7,7 @@ import { isDayType } from '../../model/field-category';
 import type { RelativeDatePreset } from '../../sdk/types';
 import { ActionForm } from '../ActionForm';
 import { Select } from '../Select';
-import { HOVER_MS, HoverIntent, Panel, Row } from './MenuParts';
+import { Panel, Row, panelBeingEdited, useSubmenu } from './MenuParts';
 
 const input = 'dm-input h-8 w-full rounded-md border bg-background px-2 text-sm';
 
@@ -23,7 +23,6 @@ const LAST_LABELS = ['Last 7 days', 'Last 14 days', 'Last 30 days', 'Last 90 day
 const THIS_LABELS = ['This week', 'This month', 'This quarter', 'This year'];
 const GROUPS = { last: { title: 'Last…', labels: LAST_LABELS }, this: { title: 'This…', labels: THIS_LABELS } } as const;
 type Group = keyof typeof GROUPS;
-type Fly = { key: Group; row: HTMLElement; seq: number };
 const inGroup = (rule: RelativeDatePreset | undefined, key: Group) => !!rule && (key === 'last' ? rule.kind === 'last_week' || rule.kind === 'last_month' || rule.kind === 'last_quarter' || rule.kind === 'last_n_days' || rule.kind === 'last_n_months' : rule.kind.startsWith('this_'));
 const dash = <div role="separator" className="dm-menu-sep" />;
 
@@ -34,14 +33,10 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
   const custom = current && !DATE_PRESETS.some((p) => isPreset(current, p.rule)) ? fromRule(current) : undefined;
   const [n, setN] = useState<number>(custom?.n ?? 7);
   const [unit, setUnit] = useState<RelativeUnit>(custom?.unit ?? 'days');
-  const [fly, setFly] = useState<Fly | null>(null);
-  // Hover intent as in the column menu: a flyout is replaced only once the pointer has rested on another row, and never while a field in it is being edited.
-  const [intent] = useState(() => new HoverIntent());
-  useEffect(() => () => intent.clear(), [intent]);
-  // A flyout closed by the keyboard leaves the pointer resting on its row (on a narrow screen, where it covered the row, the browser then reports a hover): that row stays closed until the pointer leaves it.
-  const closedRow = useRef<HTMLElement | null>(null);
+  // Hover intent as in the column menu. A flyout closed by the keyboard leaves the pointer resting on its row (on a narrow screen, where it covered the row, the browser then reports a hover): that row stays closed until the pointer leaves it.
+  const { sub: fly, open, hoverRow: hoverGroup, hoverOther, leaveRow: leave, closeSub: closeFly, dismiss } = useSubmenu<Group>({ isEditing: () => panelBeingEdited('[data-column-menu][data-form]'), holdClosed: true });
   // A form replaces the list and its row, so the flyout anchored to that row and any pending hover go with it.
-  const goForm = (op: OpId | null) => { intent.clear(); closedRow.current = null; setFly(null); setForm(op); };
+  const goForm = (op: OpId | null) => { dismiss(); setForm(op); };
   if (form) {
     return (
       <div className="flex flex-col gap-2">
@@ -54,12 +49,6 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
   const rule = toRule(n, unit);
   const nOk = Number.isInteger(n) && n > 0 && rule.n <= RELATIVE_MAX_N;
   const isDay = isDayType(field.type);
-  const editing = () => [...document.querySelectorAll<HTMLElement>('[data-column-menu][data-form]')].some((p) => 'edited' in p.dataset || (p.contains(document.activeElement) && !!document.activeElement?.matches('input, select, textarea')));
-  const open = (key: Group, row: HTMLElement, focus: boolean) => { intent.clear(); closedRow.current = null; setFly((cur) => ({ key, row, seq: focus ? (cur?.key === key ? cur.seq : 0) + 1 : cur?.key === key ? cur.seq : 0 })); };
-  const hoverGroup = (key: Group, row: HTMLElement) => { if (closedRow.current === row) return; if (fly?.key === key) intent.clear(); else if (!fly) open(key, row, false); else intent.after(HOVER_MS, () => { if (!editing()) open(key, row, false); }); };
-  const hoverOther = () => { if (fly) intent.after(HOVER_MS, () => { if (!editing()) setFly(null); }); };
-  const closeFly = () => { const row = fly?.row; closedRow.current = row ?? null; setFly(null); row?.focus(); };
-  const leave = () => { intent.clear(); closedRow.current = null; };
   const plain = { tabbable: true, onHover: hoverOther, onLeaveRow: leave } as const;
   // Rows in the flyout itself must not close it when the pointer rests on them.
   const preset = (label: string, inFly = false) => {
