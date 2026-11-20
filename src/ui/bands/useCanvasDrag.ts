@@ -1,5 +1,6 @@
 import { useEffect, useState, type RefObject } from 'react';
 import { useLatest } from '../useLatest';
+import { scrollBoxOf } from './canvas-zoom';
 
 /** The pointer in canvas coordinates (x, y) and in client coordinates (clientX, clientY, for the title chip); `inside` is whether it is over the scroll box, where a release counts. */
 type CanvasDrag = { path: string; x: number; y: number; clientX: number; clientY: number; inside: boolean };
@@ -12,9 +13,9 @@ const START_PX = 5;
  * drag past 5 px; a release over the canvas (its scroll box) calls `onDrop` with the pointer in canvas coordinates. A release outside it,
  * Escape or a cancelled pointer end the drag with no change. The click after a drag is swallowed.
  */
-export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (path: string) => boolean, onDrop: (path: string, x: number, y: number) => void, active: unknown = null): CanvasDrag | null {
+export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (path: string) => boolean, onDrop: (path: string, x: number, y: number) => void, active: unknown = null, scale = 1): CanvasDrag | null {
   const [drag, setDrag] = useState<CanvasDrag | null>(null);
-  const latest = useLatest({ canDrag, onDrop });
+  const latest = useLatest({ canDrag, onDrop, scale });
   useEffect(() => {
     const el = root.current;
     if (!el) return;
@@ -28,12 +29,14 @@ export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (pat
       setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
     };
     // The tree sits inside the scroll box, so its own rectangle already carries the scroll offset.
+    // The tree is drawn scaled, so the client offset is divided by the scale to get layout pixels.
     const local = (e: PointerEvent) => {
       const r = el.getBoundingClientRect();
-      return { x: e.clientX - r.left, y: e.clientY - r.top };
+      const k = latest.current.scale;
+      return { x: (e.clientX - r.left) / k, y: (e.clientY - r.top) / k };
     };
     // The whole scroll box counts as the canvas, so the margin around the tree is not a dead zone.
-    const over = (e: PointerEvent) => e.target instanceof Node && (el.parentElement ?? el).contains(e.target);
+    const over = (e: PointerEvent) => e.target instanceof Node && scrollBoxOf(el).contains(e.target);
     const end = () => { press = null; dragging = false; setDrag(null); };
     const down = (e: PointerEvent) => {
       cancelled = false;

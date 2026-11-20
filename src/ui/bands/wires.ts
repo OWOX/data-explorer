@@ -162,6 +162,8 @@ export function useWires(
   selection: Selection,
   revision: number,
   layerId = 'wires',
+  /** The canvas is drawn with a CSS scale: measured client boxes are divided by it to get the canvas's own pixels. */
+  scale = 1,
 ) {
   /** The drawn lines, kept across a selection change: building belongs to the cards, lighting to the selection. */
   const drawn = useRef<SVGPathElement[]>([]);
@@ -204,12 +206,12 @@ export function useWires(
           if (!el || !canvas.contains(el) || el.closest('[hidden]')) continue;
           const r = el.getBoundingClientRect();
           boxes.set(id, {
-            left: r.left - origin.left,
-            right: r.right - origin.left,
-            top: r.top - origin.top,
-            bottom: r.bottom - origin.top,
-            width: r.width,
-            height: r.height,
+            left: (r.left - origin.left) / scale,
+            right: (r.right - origin.left) / scale,
+            top: (r.top - origin.top) / scale,
+            bottom: (r.bottom - origin.top) / scale,
+            width: r.width / scale,
+            height: r.height / scale,
           });
         }
       }
@@ -264,7 +266,7 @@ export function useWires(
       for (const path of paths) path.remove();
       if (made) svg.remove();
     };
-  }, [canvasRef, wires, revision, layerId]);
+  }, [canvasRef, wires, revision, layerId, scale]);
 
   /**
    * Lighting, over the lines the effect above drew. `revision` is in the dependencies and read

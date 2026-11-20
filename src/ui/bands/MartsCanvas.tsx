@@ -1,12 +1,15 @@
 // The Data Marts graph: the report as a tree of cards, with ghosts for what can still join under the hovered or pinned card, and a chain of ghosts from a hovered ghost.
+import { flushSync } from 'react-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JoinedSource } from '../../api/blendable';
 import type { DqSummary, Model } from '../../model/types';
 import { buildJoinTree, ghostLevels, subtreePaths } from '../../state/join-tree';
 import { pathTitle } from '../../state/join-plan';
 import { closestTarget, dropTargets } from './canvas-drag';
+import { scrollBoxOf, zoomedScale } from './canvas-zoom';
 import { CARD_H, CARD_W, layoutTree } from './canvas-layout';
 import { MartCard, contextsOf, martElementId, type CountState } from './cards';
+import { useLatest } from '../useLatest';
 import { useCanvasDrag } from './useCanvasDrag';
 import { overOf, useGhostChain } from './useGhostChain';
 import type { ClickOptions } from './useCardClick';
@@ -25,6 +28,9 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   click: (id: string, options?: ClickOptions) => Promise<void>;
 }) {
   const treeRef = useRef<HTMLDivElement>(null);
+  // Zoom lives in memory only. The layout stays in unscaled pixels; the tree is drawn with a CSS scale.
+  const [scale, setScale] = useState(1);
+  const scaleRef = useLatest(scale);
   const tree = useMemo(() => buildJoinTree(mainId ?? '', columns, sources ?? []), [mainId, columns, sources]);
   // The card (mart and alias path) that takes focus once it renders: a ghost chosen with Enter vanishes under the keyboard.
   const [focusCard, setFocusCard] = useState<{ martId: string; path: string } | null>(null);
@@ -43,6 +49,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
       if (pick && node && pick.moves.size > 0) void click(node.martId, { moves: pick.moves });
     },
     mainId,
+    scale,
   );
   // The hover side: the card whose ghosts show and the chain of ghosts from it. 
   const hover = useGhostChain(pinned);
@@ -61,9 +68,35 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     setFocusCard(null);
   }, [focusCard, tree]);
 
+  // Ctrl or Cmd with the wheel, and a touchpad pinch (sent as a wheel event with ctrlKey), zoom around the pointer.
+  // The listener is not passive so the browser does not zoom the page.
+  useEffect(() => {
+    const tree = treeRef.current;
+    if (!tree) return;
+    const box = scrollBoxOf(tree);
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const from = scaleRef.current;
+      const to = zoomedScale(from, e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY);
+      if (to === from) return;
+      const r = tree.getBoundingClientRect();
+      const lx = (e.clientX - r.left) / from;
+      const ly = (e.clientY - r.top) / from;
+      scaleRef.current = to;
+      flushSync(() => setScale(to));
+      // Keep the layout point that was under the pointer under it.
+      const n = tree.getBoundingClientRect();
+      box.scrollLeft += n.left - (e.clientX - lx * to);
+      box.scrollTop += n.top - (e.clientY - ly * to);
+    };
+    box.addEventListener('wheel', onWheel, { passive: false });
+    return () => box.removeEventListener('wheel', onWheel);
+  }, [mainId]);
+
   // A click anywhere in the scroll box that is not on a card is a click on the empty canvas.
   useEffect(() => {
-    const box = treeRef.current?.parentElement;
+    const box = treeRef.current ? scrollBoxOf(treeRef.current) : null;
     if (!box) return;
     const onClick = (e: MouseEvent) => { if (!(e.target as Element).closest('[data-tree-path], [data-ghost-path]')) setPinned(null); };
     box.addEventListener('click', onClick);
@@ -105,7 +138,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     // `key` stands for tree and the ghost levels: the memo must not rebuild on every hover.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, model]);
-  useWires(treeRef, wires, { pinned: null, hovered: null }, revisionOf(key), 'tree-wires');
+  useWires(treeRef, wires, { pinned: null, hovered: null }, revisionOf(key), 'tree-wires', scale);
 
   if (!mainId) return <p className="dm-muted text-sm">Select a data mart.</p>;
   // A card carries its path in its title only when the report reaches that mart through more than one path.
@@ -125,10 +158,11 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   }
   const at = new Map(layout.placed.map((p) => [p.path, p] as const));
   return (
+    <div className="dm-tree-sizer" style={{ width: layout.width * scale, height: layout.height * scale }}>
     <div
       ref={treeRef}
       className="dm-tree"
-      style={{ width: layout.width, height: layout.height }}
+      style={{ width: layout.width, height: layout.height, transform: scale === 1 ? undefined : `scale(${scale})` }}
       onPointerOver={(e) => hover.onOver(overOf(e.target))}
       onPointerLeave={hover.onLeave}
       onFocus={(e) => { const over = overOf(e.target); if (over.ghost !== null) hover.onOver(over); }}
@@ -165,7 +199,6 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
         ];
       })}
       {line && <svg id="drag-line" aria-hidden><path d={line} /></svg>}
-      {drag && dragTitle && <div className="dm-drag-ghost" style={{ left: drag.clientX + 8, top: drag.clientY + 8 }} aria-hidden>{dragTitle}</div>}
       {layout.ghosts.flatMap((spot) => {
         const g = ghosts.find((s) => s.aliasPath === spot.id);
         const mart = g && model.marts.get(g.martId);
@@ -188,6 +221,9 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
           </div>,
         ];
       })}
+    </div>
+    {/* Outside the scaled tree: a fixed box inside a transformed one is placed and scaled by it. */}
+    {drag && dragTitle && <div className="dm-drag-ghost" style={{ left: drag.clientX + 8, top: drag.clientY + 8 }} aria-hidden>{dragTitle}</div>}
     </div>
   );
 }

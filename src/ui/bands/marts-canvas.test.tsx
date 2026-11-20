@@ -451,3 +451,46 @@ test('a pin does not come back when the main mart goes away and returns', async 
   await new Promise((r) => setTimeout(r, 500));
   expect(document.querySelectorAll('article[data-ghost]')).toHaveLength(0);
 });
+
+const zoomBox = () => within(marts()).getByTestId('marts-canvas');
+const treeScale = () => { const m = /scale\(([\d.]+)\)/.exec(treeEl().style.transform); return m ? parseFloat(m[1]!) : 1; };
+
+test('ctrl+wheel and cmd+wheel zoom the graph within 0.5 to 2; a plain wheel does not', async () => {
+  setup();
+  await ready();
+  await toCanvas();
+  await waitFor(() => expect(el('orders')).not.toBeNull());
+  expect(treeScale()).toBe(1);
+  expect(fireEvent.wheel(zoomBox(), { deltaY: -50 })).toBe(true);
+  expect(treeScale()).toBe(1);
+  // preventDefault is called on a zoom wheel event, so fireEvent reports it as cancelled.
+  expect(fireEvent.wheel(zoomBox(), { deltaY: -50, ctrlKey: true })).toBe(false);
+  expect(treeScale()).toBeGreaterThan(1);
+  const sizer = treeEl().parentElement!;
+  expect(parseFloat(sizer.style.width)).toBeCloseTo(parseFloat(treeEl().style.width) * treeScale(), 0);
+  for (let i = 0; i < 40; i++) fireEvent.wheel(zoomBox(), { deltaY: -100, metaKey: true });
+  expect(treeScale()).toBe(2);
+  for (let i = 0; i < 80; i++) fireEvent.wheel(zoomBox(), { deltaY: 100, ctrlKey: true });
+  expect(treeScale()).toBe(0.5);
+});
+
+test('at another scale the drag line and the drop pick use layout pixels', async () => {
+  await joinCountriesUnderCustomers();
+  fireEvent.wheel(zoomBox(), { deltaY: 100, ctrlKey: true });
+  const k = treeScale();
+  expect(k).toBeLessThan(1);
+  // The tree's box is mocked at the origin, so a client point is the layout point times the scale.
+  const stores = () => { const c = centre('stores', 'stores'); return { x: c.x * k, y: c.y * k }; };
+  const c = () => { const p = centre('countries', 'customers.countries'); return { x: p.x * k, y: p.y * k }; };
+  fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
+  // The line ends on the stores card's edge in layout pixels, whatever the scale.
+  await waitFor(() => expect(marts().querySelector('svg#drag-line path')).not.toBeNull());
+  const d = marts().querySelector('svg#drag-line path')!.getAttribute('d')!;
+  const start = d.match(/^M([\d.]+) ([\d.]+)/)!;
+  expect(parseFloat(start[1]!)).toBeCloseTo(centre('stores', 'stores').x, 0);
+  expect(parseFloat(start[2]!)).toBeCloseTo(centre('stores', 'stores').y, 0);
+  fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
+  await waitFor(() => expect(tips()).toContain('Stores → Countries'));
+});

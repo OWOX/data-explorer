@@ -672,7 +672,9 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 /* The Data Marts canvas: the report as a tree, cards placed by canvas-layout.ts. */
 /* The same inset as the band's own content (.dm-band-reveal-in: 1rem), on every side. */
 .dm-tree-scroll { overflow: auto; padding: 1rem; }
-.dm-tree { position: relative; }
+.dm-tree { position: relative; transform-origin: 0 0; }
+/* Sized to the scaled tree, so the scroll box scrolls what is drawn. */
+.dm-tree-sizer { position: relative; }
 .dm-tree-node { position: absolute; z-index: 2; }
 .dm-tree-node > .dm-node { width: 100%; }
 .dm-tree-node.dm-dimmed { opacity: 0.15; filter: grayscale(1); transition: opacity 120ms; }
