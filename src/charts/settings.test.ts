@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { measureId, recordsCardId, resolveCharts } from './settings';
+import { measureId, resolveCharts } from './settings';
 import type { ChartFields, ChartMart, Metric } from './fields';
 import type { Measure } from './queries';
 import type { Field } from '../model/types';
 
 const f = (name: string, category: Field['category']): Field => ({ name, alias: null, type: 'X', category, description: null, isPrimaryKey: false });
-const mart = (martId: string, extra: Partial<ChartMart> = {}): ChartMart => ({ martId, aliasPath: martId === 'M' ? '' : 'c', title: martId === 'M' ? 'Orders' : 'Customers', hasPk: false, metrics: [], dates: [], dimensions: [], ...extra });
+const mart = (martId: string, extra: Partial<ChartMart> = {}): ChartMart => ({ martId, aliasPath: martId === 'M' ? '' : 'c', recordsId: `records:${martId}`, title: martId === 'M' ? 'Orders' : 'Customers', hasPk: false, metrics: [], dates: [], dimensions: [], ...extra });
 const cf: ChartFields = {
   marts: [mart('M', { metrics: [{ field: f('amount', 'number'), fn: 'SUM', martId: 'M' }, { field: f('qty', 'number'), fn: 'SUM', martId: 'M' }] })],
   metrics: [{ field: f('amount', 'number'), fn: 'SUM', martId: 'M' }, { field: f('qty', 'number'), fn: 'SUM', martId: 'M' }],
@@ -79,10 +79,10 @@ describe('measure', () => {
   });
   it('resolves records:<martId> to that joined mart, and the same for the pie', () => {
     const r = resolveCharts({ timeSeries: { metric: 'records:C' }, pie: { metric: 'records:C' } }, pk);
-    expect(r.measure).toEqual({ kind: 'records', aliasPath: 'c', martId: 'C' });
-    expect(r.pieMeasure).toEqual({ kind: 'records', aliasPath: 'c', martId: 'C' });
-    expect(measureId(r.measure!, 'M')).toBe('records:C');
-    expect(measureId(resolveCharts({ timeSeries: { metric: 'records' } }, pk).measure!, 'M')).toBe('records');
+    expect(r.measure).toEqual({ kind: 'records', aliasPath: 'c', martId: 'C', recordsId: 'records:C' });
+    expect(r.pieMeasure).toEqual({ kind: 'records', aliasPath: 'c', martId: 'C', recordsId: 'records:C' });
+    expect(measureId(r.measure!)).toBe('records:C');
+    expect(measureId(resolveCharts({ timeSeries: { metric: 'records' } }, pk).measure!)).toBe('records');
   });
   it('a joined metric pairs with the main mart: saved by field name', () => {
     expect(name(resolveCharts({ timeSeries: { metric: 'c__ltv' } }, pk).measure)).toBe('c__ltv');
@@ -98,5 +98,3 @@ describe('measure', () => {
     expect(resolveCharts({}, { marts: [], metrics: [], dimensions: [], dates: [] }).measure).toBeNull();
   });
 });
-
-it('recordsCardId', () => expect(recordsCardId('M')).toBe('records:M'));

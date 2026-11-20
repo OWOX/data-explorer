@@ -7,7 +7,7 @@ import type { ChartMart, Metric } from './fields';
 export const TOP_N = 8;
 
 /** What a time series or top list counts: a metric, or a mart's records (its unique count on the mart's alias path, '' for the main one). */
-export type Measure = { kind: 'metric'; metric: Metric } | { kind: 'records'; aliasPath: string; martId: string };
+export type Measure = { kind: 'metric'; metric: Metric } | { kind: 'records'; aliasPath: string; martId: string; recordsId: string };
 
 export const metricKey = (m: Metric): string => aggregatedKey(m.field.name, m.fn);
 /** The row key of a mart's unique count (the backend's contract: each dot of the alias path becomes `_`). */

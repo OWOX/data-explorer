@@ -6,7 +6,8 @@ import { ChartMenu, type MenuItem } from './ChartMenu';
 import { ChartPanel } from './ChartPanel';
 import { dimensionFilter } from './clickFilters';
 import { pieMeasures, type ChartFields } from './fields';
-import { measureKey, pieOtherQuery, TOP_N, topValuesQuery } from './queries';
+import type { Field } from '../model/types';
+import { measureKey, pieOtherQuery, TOP_N, topValuesQuery, type Measure } from './queries';
 import { measureLabel, measureOptions, metricText, numberOf, type Formatter } from './Scorecards';
 import { measureId, type ChartSettings, type ResolvedCharts } from './settings';
 import { PieChart, type Slice } from './svg/PieChart';
@@ -14,6 +15,9 @@ import { OTHER_COLOR, seriesColor } from './TimeSeriesPanel';
 import { useChartQuery } from './useChartQuery';
 
 type Patch = NonNullable<ChartSettings['pie']>;
+
+/** Parts are shares of a whole only when the measure and the dimension are of the same mart at the same path (compared by path: a mart joined twice, or to itself, is more than one cell). */
+export const sharesWhole = (measure: Measure, dim: Field): boolean => (measure.kind === 'records' ? measure.aliasPath : measure.metric.field.joined?.aliasPath ?? '') === (dim.joined?.aliasPath ?? '');
 
 /** The measure's top values of a dimension as slices, with "Other" (a `not_in` query) when the top list was full. */
 export function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, ready, onChange, onFilter }: {
@@ -35,12 +39,12 @@ export function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, for
     ...(needOther && other.rows?.[0] && other.rows[0][key] != null ? [{ ...slice('Other', other.rows[0][key], OTHER_COLOR), other: true }] : []),
   ];
   const items: MenuItem[] = [
-    { kind: 'radio', label: 'Metric', value: measureId(measure!, cf.marts[0]?.martId ?? ''), options: measureOptions(cf, pieMeasures(cf)), onPick: (v) => onChange({ metric: v }) },
+    { kind: 'radio', label: 'Metric', value: measureId(measure!), options: measureOptions(cf, pieMeasures(cf)), onPick: (v) => onChange({ metric: v }) },
     { kind: 'radio', label: 'Dimension', value: dim!.name, options: cf.dimensions.map((d) => ({ value: d.name, label: columnTitle(d) })), onPick: (v) => onChange({ dimension: v }) },
   ];
   // A records measure of another mart than the dimension's counts each mart's rows per slice: the slices overlap, so a share of their sum would mislead.
   // A measure of another mart than the dimension's can repeat one row in several slices (a one-to-many join), so the parts are not shares of a whole.
-  const showShare = (measure!.kind === 'records' ? measure!.martId : measure!.metric.martId) === (dim!.joined?.martId ?? martId);
+  const showShare = sharesWhole(measure!, dim!);
   const title = `${measureLabel(cf, measure!)} by ${fieldLabel(dim!)}`;
   return (
     <ChartPanel title={title} loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})}

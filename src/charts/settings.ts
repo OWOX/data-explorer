@@ -24,10 +24,8 @@ export type ResolvedCharts = {
   pieDimension: Field | null;
 };
 
-export const recordsCardId = (martId: string): string => `records:${martId}`;
-
-/** What a measure is saved as: the field name, `'records'` for the main mart's records (as before joined marts counted) and `records:<martId>` for a joined mart's. */
-export const measureId = (m: Measure, mainMartId: string): string => (m.kind === 'metric' ? m.metric.field.name : m.martId === mainMartId ? 'records' : recordsCardId(m.martId));
+/** What a measure is saved as: the field name, `'records'` for the main mart's records (as before joined marts counted) and `records:<martId>` for a joined mart's (`records:<martId>@<aliasPath>` for a later copy of it). */
+export const measureId = (m: Measure): string => (m.kind === 'metric' ? m.metric.field.name : m.aliasPath === '' ? 'records' : m.recordsId);
 
 /**
  * Pure: a saved name that is no longer shown falls back to the default for this view only.
@@ -36,9 +34,7 @@ export const measureId = (m: Measure, mainMartId: string): string => (m.kind ===
 export function resolveCharts(s: ChartSettings, cf: ChartFields): ResolvedCharts {
   const ts = s.timeSeries ?? {};
   const bucket = ts.bucket;
-  // The grid's mart is the first group.
-  const main = cf.marts[0]?.martId ?? '';
-  const pick = (list: Measure[], saved?: string): Measure | null => list.find((m) => measureId(m, main) === saved) ?? list.find((m) => m.kind === 'metric') ?? list[0] ?? null;
+  const pick = (list: Measure[], saved?: string): Measure | null => list.find((m) => measureId(m) === saved) ?? list.find((m) => m.kind === 'metric') ?? list[0] ?? null;
   return {
     hidden: new Set(s.scorecards?.hidden ?? []),
     sparklines: s.scorecards?.sparklines ?? true,

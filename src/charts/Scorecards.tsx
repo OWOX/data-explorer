@@ -10,7 +10,7 @@ import { Tooltip } from '../ui/Tooltip';
 import { compactValue } from './compact';
 import type { ChartFields, ChartMart, Metric } from './fields';
 import { metricKey, scorecardsQuery, sparklineQuery, uniqueKey, type Measure } from './queries';
-import { measureId, recordsCardId, type ResolvedCharts } from './settings';
+import { measureId, type ResolvedCharts } from './settings';
 import { Sparkline, type Point } from './svg/Sparkline';
 import { useChartQuery, type ChartResult } from './useChartQuery';
 
@@ -22,16 +22,16 @@ export const metricLabel = (m: Metric): string => `${fieldLabel(m.field)} · ${A
 /** A measure's name in a menu and a chart title: the main mart's records are plain, a joined mart's say whose they are. */
 export function measureLabel(cf: ChartFields, m: Measure): string {
   if (m.kind === 'metric') return metricLabel(m.metric);
-  return m.martId === cf.marts[0]?.martId ? 'Unique Records' : `${cf.marts.find((x) => x.martId === m.martId)?.title ?? ''} · Unique Records`;
+  return m.aliasPath === '' ? 'Unique Records' : `${cf.marts.find((x) => x.aliasPath === m.aliasPath)?.title ?? ''} · Unique Records`;
 }
 
 /** The radio options of a "Metric" menu: each measure under the id it is saved as. */
-export const measureOptions = (cf: ChartFields, list: Measure[]) => list.map((m) => ({ value: measureId(m, cf.marts[0]?.martId ?? ''), label: measureLabel(cf, m) }));
+export const measureOptions = (cf: ChartFields, list: Measure[]) => list.map((m) => ({ value: measureId(m), label: measureLabel(cf, m) }));
 
 /** A mart's cards: its record count (when it has a primary key), then one per metric. */
 export function cardsOf(mart: ChartMart): Card[] {
   return [
-    ...(mart.hasPk ? [{ id: recordsCardId(mart.martId), label: 'Unique Records', key: uniqueKey(mart.aliasPath) }] : []),
+    ...(mart.hasPk ? [{ id: mart.recordsId, label: 'Unique Records', key: uniqueKey(mart.aliasPath) }] : []),
     ...mart.metrics.map((m) => ({ id: m.field.name, label: metricLabel(m), key: metricKey(m), field: m.field, fn: m.fn })),
   ];
 }

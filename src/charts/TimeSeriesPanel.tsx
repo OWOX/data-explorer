@@ -74,7 +74,7 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
   const items: MenuItem[] = [
     ...(cf.dates.length > 1 ? [{ kind: 'radio', label: 'Date field', value: date ? id(date) : '', options: cf.dates.map((d) => ({ value: id(d), label: columnTitle(d) })), onPick: (v: string) => onChange({ date: v }) } as MenuItem] : []),
     { kind: 'radio', label: 'Bucket', value: r.bucket, options: [{ value: 'AUTO', label: 'Auto' }, ...DATE_BUCKETS.map((b) => ({ value: b, label: BUCKET_LABELS[b] }))], onPick: (v) => onChange({ bucket: v as Patch['bucket'] }) },
-    ...(measures.length > 1 ? [{ kind: 'radio', label: 'Metric', value: measureId(measure!, cf.marts[0]?.martId ?? ''), options: measures, onPick: (v: string) => onChange({ metric: v }) } as MenuItem] : []),
+    ...(measures.length > 1 ? [{ kind: 'radio', label: 'Metric', value: measureId(measure!), options: measures, onPick: (v: string) => onChange({ metric: v }) } as MenuItem] : []),
     { kind: 'radio', label: 'Stack by', value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }, ...cf.dimensions.map((d) => ({ value: id(d), label: columnTitle(d) }))], onPick: (v) => onChange({ stack: v === '' ? null : v }) },
   ];
   const orient = (o: 'vertical' | 'horizontal', label: string, Icon: typeof ChartColumn) => (

@@ -5,13 +5,14 @@ import { isIdField } from '../state/join-plan';
 import type { Measure } from './queries';
 
 export type Metric = { field: Field; fn: AggFn; martId: string };
-export type ChartMart = { martId: string; aliasPath: string; title: string; hasPk: boolean; metrics: Metric[]; dates: Field[]; dimensions: Field[] };
+/** `recordsId` is what the mart's Unique Records is saved and keyed as (see `chartFields`). */
+export type ChartMart = { martId: string; aliasPath: string; recordsId: string; title: string; hasPk: boolean; metrics: Metric[]; dates: Field[]; dimensions: Field[] };
 export type ChartFields = { marts: ChartMart[]; metrics: Metric[]; dimensions: Field[]; dates: Field[] };
 export const MAX_BUCKETS = 60;
 
 /** Everything a chart can count, per chart mart in group order: its Unique Records when it has a key, then its metrics. Any mart's measure pairs with any mart's date or dimension. */
 export const measuresOf = (cf: ChartFields): Measure[] => cf.marts.flatMap((m): Measure[] => [
-  ...(m.hasPk ? [{ kind: 'records', aliasPath: m.aliasPath, martId: m.martId } as const] : []),
+  ...(m.hasPk ? [{ kind: 'records', aliasPath: m.aliasPath, martId: m.martId, recordsId: m.recordsId } as const] : []),
   ...m.metrics.map((metric): Measure => ({ kind: 'metric', metric })),
 ]);
 
@@ -39,9 +40,13 @@ export function chartFields(schema: Field[], shown: string[], agg: Aggregation, 
   const on = new Set(shown);
   const fields = [...by.values()].filter((f) => on.has(f.name));
   // A group is a mart at one alias path ('' for the main mart), so a mart joined twice is two groups with their own fields.
+  // The main mart's id is taken, so a self-join is told apart from it; a joined mart's first path keeps the plain id that is saved today.
+  const taken = new Set([mainMartId]);
   const marts = groupPaths.map((aliasPath): ChartMart => {
     const own = fields.filter((f) => pathOf(f) === aliasPath);
     const martId = aliasPath === '' ? mainMartId : (schema.find((f) => pathOf(f) === aliasPath)?.joined?.martId ?? '');
+    const recordsId = aliasPath === '' ? `records:${mainMartId}` : taken.has(martId) ? `records:${martId}@${aliasPath}` : `records:${martId}`;
+    taken.add(martId);
     // Blended fields carry no key flag: a joined mart has a key when the backend says a unique count works on its alias path.
     const hasPk = aliasPath === '' ? schema.some((f) => f.isPrimaryKey && !f.joined) : !!uniqueCountPaths?.has(aliasPath);
     const metrics = own.flatMap((f): Metric[] => {
@@ -52,6 +57,7 @@ export function chartFields(schema: Field[], shown: string[], agg: Aggregation, 
     return {
       martId,
       aliasPath,
+      recordsId,
       title: titles[aliasPath] ?? '',
       hasPk,
       metrics,
