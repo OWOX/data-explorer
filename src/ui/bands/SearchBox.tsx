@@ -16,6 +16,25 @@ export function SearchBox({ smart, label }: { smart: SmartSearch; label: string 
   const listId = useId();
   const { open, applied, busy, draft, listOpen, rows, highlighted } = smart;
   useEffect(() => { if (open) input.current?.focus(); }, [open]);
+  const { closeList } = smart;
+  useEffect(() => {
+    if (!listOpen) return;
+    // While the dropdown shows, Escape closes it wherever the focus is. The capture phase and stopPropagation keep the input's own
+    // handler and the page's other Escape handlers (the full-screen exit) from also acting on the same press, so the next Escape is the box's.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault(); e.stopPropagation();
+      closeList();
+    };
+    // A press outside the search closes only the dropdown, so the typed query stays. A press inside it (a result row too) is left alone.
+    const onDown = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest('.dm-search-open')) return;
+      closeList();
+    };
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('pointerdown', onDown, true);
+    return () => { document.removeEventListener('keydown', onKey, true); document.removeEventListener('pointerdown', onDown, true); };
+  }, [listOpen, closeList]);
 
   if (!open && !applied) {
     return (

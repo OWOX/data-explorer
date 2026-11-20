@@ -606,6 +606,39 @@ describe('the dropdown', () => {
     expect(screen.queryByRole('combobox')).toBeNull();
   });
 
+  test('Escape with the focus outside the input closes the list', async () => {
+    setup({ ai: false }).view();
+    await ready();
+    const u = user();
+    await typeIn(u, 'orders');
+    await waitFor(() => expect(options().length).toBeGreaterThan(1));
+    (document.activeElement as HTMLElement).blur();
+    await u.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox', { name: 'Search results' })).toBeNull();
+    expect(screen.getByRole('combobox')).toHaveValue('orders');
+  });
+
+  test('a press outside the search closes the list and keeps the draft', async () => {
+    setup({ ai: false }).view();
+    await ready();
+    const u = user();
+    await typeIn(u, 'orders');
+    await waitFor(() => expect(options().length).toBeGreaterThan(1));
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('listbox', { name: 'Search results' })).toBeNull();
+    expect(screen.getByRole('combobox')).toHaveValue('orders');
+  });
+
+  test('a press on a result row still picks it', async () => {
+    setup({ ai: false }).view();
+    await ready();
+    const u = user();
+    await typeIn(u, 'extras');
+    await waitFor(() => expect(rowsText().some((r) => r.startsWith('Orders with extras'))).toBe(true));
+    await u.click(options().find((o) => o.textContent!.startsWith('Orders with extras'))!);
+    expect(await screen.findByRole('status', { name: 'Search notice' })).toBeInTheDocument();
+  });
+
   test('after a mart pick, Enter still builds the ad-hoc view for the same query', async () => {
     const ai = spyAi();
     setup({ wrap: ai.withAi }).view();
