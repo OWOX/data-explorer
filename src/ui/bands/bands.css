@@ -223,7 +223,7 @@
 .dm-card-open { position: relative; display: inline-flex; flex: none; width: 14px; height: 14px; }
 .dm-link-kbd { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
 .dm-link-kbd:focus-visible { opacity: 1; pointer-events: auto; }
-@media (hover: none) { .dm-link-kbd { opacity: 1; pointer-events: auto; } }
+@media (hover: none) and (pointer: coarse) { .dm-link-kbd { opacity: 1; pointer-events: auto; } }
 .dm-link { display: inline-flex; color: var(--muted-foreground); }
 .dm-link:hover { color: var(--foreground); }
 

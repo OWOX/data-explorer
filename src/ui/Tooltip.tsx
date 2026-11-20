@@ -40,7 +40,7 @@ export function TitleTip({ title, action, children }: { title: string; action: R
   return (
     <T.Root open={open} disableHoverableContent={false} onOpenChange={(next) => { if (next) { cancel(); setOpen(true); } else closeLater(); }}>
       {/* Radix reports an open change only when the value changes, so a return to the title while the bubble is still open must cancel the pending close here. */}
-      <T.Trigger asChild onPointerEnter={cancel} onPointerMove={cancel}>{children}</T.Trigger>
+      <T.Trigger asChild onPointerEnter={cancel}>{children}</T.Trigger>
       <T.Portal>
         <T.Content
           side="top" sideOffset={6} collisionPadding={8} className="dm-hint-body dm-title-tip"

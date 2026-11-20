@@ -200,6 +200,24 @@ describe('MartCard', () => {
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
+  test('a click on the title closes the bubble after 500 ms even when the pointer moves over the title meanwhile', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const { container } = renderMart();
+      const title = container.querySelector<HTMLElement>('.dm-node-title')!;
+      await user.hover(title);
+      await screen.findByLabelText('Open in OWOX');
+      fireEvent.pointerDown(title);
+      fireEvent.click(title);
+      fireEvent.pointerMove(title, { clientX: 5, clientY: 5 });
+      act(() => { vi.advanceTimersByTime(200); });
+      fireEvent.pointerMove(title, { clientX: 6, clientY: 6 });
+      act(() => { vi.advanceTimersByTime(400); });
+      await waitFor(() => expect(screen.queryByLabelText('Open in OWOX')).toBeNull());
+    } finally { vi.useRealTimers(); }
+  });
+
   test('the title bubble stays 500 ms after the pointer leaves the title, and while the pointer is on it', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
