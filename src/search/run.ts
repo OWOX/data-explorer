@@ -58,8 +58,8 @@ export async function buildAdhocView(deps: { ctx: Ctx; model: Model; schemas: Pi
   const { ctx, model, schemas, signal } = deps;
   const ai = pickModels(ctx);
   if (!ai) return { grid: null, ai: 'none' };
-  let fields: AiFields | null = null;
-  let filters: AiFilters | null = null;
+  let fields: AiFields | null;
+  let filters: AiFilters | null;
   let schema: Schema | undefined;
   try {
     const mart = model.marts.get(martId);

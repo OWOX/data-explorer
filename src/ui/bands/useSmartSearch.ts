@@ -7,7 +7,7 @@ import { MIN_QUERY, queryProblem, searchEndpoint, type SearchHits } from '../../
 import { reportSkippedMessage, reportToGrid, type ReportDto } from '../../search/report-load';
 import { buildAdhocView, findAdhocMart } from '../../search/run';
 import { sourceOfModel, useServices, useStore, type GridState } from '../../state/store';
-import { defaultColumns } from '../explorer/useMartRows';
+import { defaultColumns } from '../../model/columns';
 
 /** How long typing must pause before the search runs. */
 export const SEARCH_DEBOUNCE_MS = 300;

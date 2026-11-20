@@ -35,7 +35,8 @@ import { ColumnDragLayer } from './ColumnDrag';
 import { ColumnControls, ColumnMenuEnvContext, type ColumnMenuEnv } from './ColumnMenu';
 import { ColumnPicker } from './ColumnPicker';
 import { ExportMenu } from './ExportMenu';
-import { buildRowQuery, defaultColumns, useMartRows } from './useMartRows';
+import { defaultColumns } from '../../model/columns';
+import { buildRowQuery, useMartRows } from './useMartRows';
 
 /** A stable empty sort list, so a memo on it does not rerun each render. */
 const NO_SORTS: SortKey[] = [];

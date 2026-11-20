@@ -3,7 +3,7 @@ import type { ColumnFilter } from '../filters/build';
 import type { Field, Schema } from '../model/types';
 import type { GridState } from '../state/store';
 import { PAGE_SIZE } from '../config';
-import { defaultColumns } from '../ui/explorer/useMartRows';
+import { defaultColumns } from '../model/columns';
 import { fromTraverseFilter, reportSkippedMessage, reportToGrid, type ReportSkipped } from './report-load';
 
 const f = (name: string, type: string, category: Field['category'], extra: Partial<Field> = {}): Field => ({ name, alias: null, type, category, description: null, isPrimaryKey: false, ...extra });
