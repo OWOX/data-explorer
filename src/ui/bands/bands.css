@@ -184,15 +184,15 @@
 .dm-node:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); }
 .dm-node.dm-unjoinable { opacity: 0.45; }
 .dm-node.dm-unjoinable:hover, .dm-node.dm-unjoinable:focus-visible { opacity: 0.7; }
-.dm-node.dm-ghost { border-style: dashed; opacity: 0.5; transition: none; }
+.dm-node.dm-ghost { border-width: 1px; border-style: dashed; opacity: 0.5; transition: none; }
 .dm-node.dm-ghost:hover, .dm-node.dm-ghost:focus-visible { opacity: 0.85; }
 .dm-node.dm-drop-target { outline: 2px dashed var(--primary); outline-offset: 2px; }
 .dm-node.dm-drop-hot { outline-style: solid; }
 .dm-drag-ghost { position: fixed; z-index: 60; pointer-events: none; padding: 6px 10px; border-radius: 8px; font-size: 13px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 4px 12px rgb(0 0 0 / 0.18); }
 .dm-canvas [data-mart-id] { user-select: none; }
 .dm-card-hint { position: absolute; left: 8px; right: 8px; bottom: calc(100% + 4px); z-index: 5; padding: 6px 8px; border-radius: 6px; font-size: 12px; background: var(--popover); color: var(--popover-foreground); box-shadow: 0 2px 8px rgb(0 0 0 / 0.15); }
-/* The card under the pointer takes a 2px border in its own run-health colour — the ring is laid
-   outside the 1px it already has, so nothing shifts. A card nothing has run stays grey. */
+/* The card under the pointer takes its own run-health colour on its one 1px border and a light tint of it.
+   A card nothing has run stays grey. */
 .dm-node-head { display: flex; align-items: center; gap: 0.5rem; min-height: 1.5rem; }
 .dm-node-title { flex: 1; min-width: 0; font-size: 0.875rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dm-logo {
@@ -203,6 +203,7 @@
 }
 /* The open-in-OWOX link and the (i) of a data mart card show while the card is hovered or holds focus, or while their tooltip is
    open. Opacity, not display, so the keyboard still reaches them. */
+.dm-node-actions { display: inline-flex; align-items: center; gap: 0.5rem; margin-left: auto; flex: none; }
 .dm-card-reveal { display: inline-flex; opacity: 0; transition: opacity 120ms; }
 .dm-node:hover .dm-card-reveal, .dm-node:focus-visible .dm-card-reveal, .dm-node:has(:focus-visible) .dm-card-reveal,
 .dm-card-reveal:has([data-state='delayed-open'], [data-state='instant-open']) { opacity: 1; }
@@ -217,14 +218,6 @@
 .dm-card-remove:hover { color: var(--foreground); }
 .dm-node:hover .dm-card-remove, .dm-node:focus-visible .dm-card-remove, .dm-node:has(:focus-visible) .dm-card-remove, .dm-card-remove:focus-visible { opacity: 1; }
 @media (hover: none) and (pointer: coarse) { .dm-card-remove { opacity: 1; } }
-.dm-title-tip { pointer-events: auto; display: flex; align-items: flex-start; gap: 0.5rem; }
-.dm-title-tip-action { display: inline-flex; margin-left: auto; }
-.dm-title-tip-action .dm-link { color: inherit; }
-/* The open button beside the title: a 14px slot holding a button that is transparent and ignores the pointer until it has keyboard focus, and is always shown on touch screens. */
-.dm-card-open { position: relative; display: inline-flex; flex: none; width: 14px; height: 14px; }
-.dm-link-kbd { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
-.dm-link-kbd:focus-visible { opacity: 1; pointer-events: auto; }
-@media (hover: none) and (pointer: coarse) { .dm-link-kbd { opacity: 1; pointer-events: auto; } }
 .dm-link { display: inline-flex; color: var(--muted-foreground); }
 .dm-link:hover { color: var(--foreground); }
 
@@ -276,10 +269,10 @@ button.dm-mark { cursor: pointer; }
 .dm-node[aria-pressed='true'],
 .dm-node[aria-pressed='true']:hover {
   border-color: var(--tone);
-  box-shadow: 0 0 0 1px var(--tone);
+  background: color-mix(in oklab, var(--tone) 10%, var(--card));
 }
-/* The Grid view's focused card, whose joinable marts are shown. */
-.dm-node[data-focused] { outline: 2px solid var(--tone); outline-offset: 2px; }
+/* The Grid view's focused card, whose joinable marts are shown: the same border, a stronger tint. */
+.dm-node[data-focused], .dm-node[data-focused]:hover { background: color-mix(in oklab, var(--tone) 20%, var(--card)); }
 /* A data mart the member cannot open: still a card, but plainly not one to expect anything from. */
 .dm-noaccess { opacity: 0.6; filter: grayscale(0.8); }
 /* The row count's retry: a badge that is also a button, without the browser's button chrome. */
@@ -311,18 +304,18 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
    between two marts, and both ends sit in one band, so one arriving at the card in hand is drawn
    thin against the ones leaving it. A source line crosses bands, which already say which way it goes. */
 #wires path.relationship.inbound, #tree-wires path.relationship.inbound { stroke-width: 1; }
-/* The card under the pointer takes a 2px border in its own run-health colour — the ring is laid
-   outside the 1px it already has, so nothing shifts. A card nothing has run stays grey. */
+/* The card under the pointer takes its own run-health colour on its one 1px border and a light tint of it.
+   A card nothing has run stays grey. */
 .dm-node.lit:hover {
   border-color: var(--tone);
-  box-shadow: 0 0 0 1px var(--tone);
+  background: color-mix(in oklab, var(--tone) 10%, var(--card));
 }
 /* The card under the pointer while a different one is chosen: its own colour, at half strength.
    Written with `.lit` and `:hover` so it outranks the ring rule above rather than racing it, and
    `--tone` is used here rather than redefined — a variable cannot be set from itself. */
 .dm-node.lit.aside:hover {
   border-color: color-mix(in oklab, var(--tone) 50%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--tone) 50%, transparent);
+  background: color-mix(in oklab, var(--tone) 5%, var(--card));
 }
 /* Status glyph tones. The fade belongs to the glyph, not the element: the mark wraps its own hint
    bubble, and an ancestor's opacity is a ceiling its children cannot rise above. */
