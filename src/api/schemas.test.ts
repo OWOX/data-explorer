@@ -100,3 +100,19 @@ test('a read that was in flight when the mart was invalidated is not remembered,
   expect(getJson).toHaveBeenCalledTimes(2);
   expect(loader.peek('a')).toBeDefined();
 });
+
+test('a read in flight before clear() is not served after it', async () => {
+  const resolvers: Array<(v: unknown) => void> = [];
+  const getJson = vi.fn(() => new Promise((res) => { resolvers.push(res); }));
+  const loader = createSchemaLoader(stubCtx({ getJson }));
+  const before = loader.get('a');
+  loader.clear();
+  const after = loader.get('a');
+  expect(getJson).toHaveBeenCalledTimes(2);
+  resolvers[0]!({ id: 'a', schema: { fields: [{ name: 'old', type: 'STRING' }] } });
+  await before;
+  expect(loader.peek('a')).toBeUndefined();
+  resolvers[1]!({ id: 'a', schema: { fields: [{ name: 'new', type: 'STRING' }] } });
+  expect((await after).map((f) => f.name)).toEqual(['new']);
+  expect(loader.peek('a')!.map((f) => f.name)).toEqual(['new']);
+});

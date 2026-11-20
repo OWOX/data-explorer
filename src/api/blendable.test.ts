@@ -152,3 +152,19 @@ test('a joined field keeps the join-level aggregateFunction, and has none when t
   expect(s!.fields.map((x) => x.joined!.aggregateFunction)).toEqual(['SUM', undefined, undefined]);
   expect('aggregateFunction' in s!.fields[2]!.joined!).toBe(false);
 });
+
+test('a read in flight before clear() is not served after it', async () => {
+  const resolvers: Array<(v: unknown) => void> = [];
+  const getJson = vi.fn(() => new Promise((res) => { resolvers.push(res); }));
+  const loader = createBlendableLoader(stubCtx({ getJson }));
+  const before = loader.get('m');
+  loader.clear();
+  const after = loader.get('m');
+  expect(getJson).toHaveBeenCalledTimes(2);
+  resolvers[0]!(dto);
+  await before;
+  expect(loader.peek('m')).toBeUndefined();
+  resolvers[1]!({ availableSources: [], blendedFields: [] });
+  expect(await after).toEqual([]);
+  expect(loader.peek('m')).toEqual([]);
+});

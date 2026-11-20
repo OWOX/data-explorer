@@ -79,7 +79,7 @@ export function createBlendableLoader(ctx: Ctx): BlendableLoader {
     peek: (martId) => done.get(martId),
     invalidate(martId) { done.delete(martId); inflight.delete(martId); listeners.forEach((l) => l()); },
     subscribe(fn) { listeners.add(fn); return () => { listeners.delete(fn); }; },
-    clear() { done.clear(); },
+    clear() { done.clear(); inflight.clear(); },
   };
 }
 

@@ -61,6 +61,6 @@ export function createSchemaLoader(ctx: Ctx): SchemaLoader {
     },
     subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     invalidate(id) { done.delete(id); inflight.delete(id); },
-    clear() { done.clear(); },
+    clear() { done.clear(); inflight.clear(); },
   };
 }
