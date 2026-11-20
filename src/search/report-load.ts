@@ -1,4 +1,5 @@
 import { PAGE_SIZE } from '../config';
+import { havingField, sliceField } from '../filters/slice';
 import { isComplete, type ColumnFilter, type FilterValue } from '../filters/build';
 import { isDateTimeField, operatorsFor, RELATIVE_PRESETS, type OpId } from '../filters/catalogue';
 import { AGGREGATE_FUNCTIONS, DATE_BUCKETS, isTimeZone, type AggFn, type AggregationRule, type DateBucket, type DateTruncRule } from '../model/aggregation';
@@ -70,11 +71,10 @@ function valueFor(kind: string, value: unknown, field: Field): { ok: true; value
 
 /**
  * The inverse of `toTraverseFilter`: a report rule as a grid filter, or null when the explorer has no equivalent.
- * Slices (`placement: 'pre-join'`) and HAVING rules (`function`) are the caller's to count and are null here.
+ * The caller picks the field to read the rule against: `sliceField` for a slice, `havingField` for a HAVING rule.
  */
 export function fromTraverseFilter(rule: unknown, field: Field): ColumnFilter | null {
   if (!isObject(rule) || typeof rule.column !== 'string' || typeof rule.operator !== 'string') return null;
-  if (rule.placement === 'pre-join' || rule.function) return null;
   const op = opFor(rule.operator, field);
   const def = operatorsFor(field).find((o) => o.id === op);
   if (!def) return null;
@@ -108,11 +108,28 @@ export function reportToGrid(report: ReportDto, schema: Schema, nativeSchema: Sc
   const unique = report.uniqueCountConfig;
   skipped.uniqueCount = unique === true || (Array.isArray(unique) && unique.length > 0);
 
+  // HAVING rules are read only against an aggregation the report carries, so those are collected first.
+  const aggFns = new Set<string>();
+  for (const a of asArray(report.aggregationConfig)) if (isObject(a) && typeof a.column === 'string' && typeof a.function === 'string') aggFns.add(`${a.column}\u0000${a.function}`);
+
   const filters: Record<string, ColumnFilter> = {};
+  const slices: Record<string, ColumnFilter> = {};
   for (const rule of asArray(report.filterConfig)) {
-    if (isObject(rule) && rule.placement === 'pre-join') { skipped.slices++; continue; }
-    if (isObject(rule) && rule.function) { skipped.having++; continue; }
     const field = isObject(rule) && typeof rule.column === 'string' ? byName.get(rule.column) : undefined;
+    if (isObject(rule) && rule.function) {
+      const fn = rule.function as AggFn;
+      const known = typeof rule.function === 'string' && (AGGREGATE_FUNCTIONS as readonly string[]).includes(rule.function);
+      const filter = field && known && aggFns.has(`${field.name}\u0000${fn}`) && rule.placement !== 'pre-join' ? fromTraverseFilter(rule, havingField(field, fn)) : null;
+      if (!filter || Object.hasOwn(filters, filter.field)) { skipped.having++; continue; }
+      filters[filter.field] = { ...filter, fn };
+      continue;
+    }
+    if (isObject(rule) && rule.placement === 'pre-join') {
+      const filter = field?.joined ? fromTraverseFilter(rule, sliceField(field)) : null;
+      if (!filter || Object.hasOwn(slices, filter.field)) { skipped.slices++; continue; }
+      slices[filter.field] = filter;
+      continue;
+    }
     const filter = field ? fromTraverseFilter(rule, field) : null;
     if (!filter || Object.hasOwn(filters, filter.field)) { skipped.filters++; continue; }
     filters[filter.field] = filter;
@@ -144,6 +161,7 @@ export function reportToGrid(report: ReportDto, schema: Schema, nativeSchema: Sc
   const built: GridState = {
     columns: columns.length ? columns : defaultColumns(nativeSchema),
     filters,
+    ...(Object.keys(slices).length ? { slices } : {}),
     sorts: sorts.length ? sorts : null,
     limit: PAGE_SIZE,
     ...(aggregations.length ? { aggregations } : {}),
