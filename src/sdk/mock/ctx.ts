@@ -1,5 +1,5 @@
 import type { AvailableSourceDto, BlendableSchemaDto, BlendedFieldDto, Ctx, EdgeDto, Row, TraverseOptions } from '../types';
-import { allowedFunctions, knownFunctions } from '../../model/aggregation';
+import { aggregatedKey, allowedFunctions, knownFunctions } from '../../model/aggregation';
 import { categorizeFieldType } from '../../model/field-category';
 import { aggregateRows, distinctKeys, type UniqueSource } from './aggregate';
 import { matchesFilter } from './evaluate';
@@ -139,6 +139,15 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     // Columns, filters and sorts may name fields of joined marts: those are read off the joined row and added to each row.
     rejectHidden(id, [...(o.column ?? []), ...(o.filter ?? []).map((x) => x.column), ...(o.sort ?? []).map((x) => x.column)]);
     const index = blendedIndex(id);
+    // Like the backend: a slice (pre-join rule) must name a joined field and takes no function; a HAVING rule must match an aggregation.
+    const slices = (o.filter ?? []).filter((x) => x.placement === 'pre-join');
+    const having = (o.filter ?? []).filter((x) => x.placement !== 'pre-join' && x.function);
+    const plain = (o.filter ?? []).filter((x) => x.placement !== 'pre-join' && !x.function);
+    for (const sl of slices) {
+      if (sl.function) throw badRequest(`A pre-join filter cannot have a function: ${sl.column}`);
+      if (!index.has(sl.column)) throw badRequest(`A pre-join filter must name a field of a joined data mart: ${sl.column}`);
+    }
+    for (const h of having) if (!(o.aggregation ?? []).some((a) => a.column === h.column && a.function === h.function)) throw badRequest(`No aggregation matches the filter on ${h.function}(${h.column})`);
     // A unique count per source: the main mart (`''`) by its primary key, a joined one by its alias path, its key read off the joined row.
     const uniq: UniqueSource[] = (o.uniqueCount ?? []).map((path) => {
       if (!path) return { key: 'Unique Count', pk: m.fields.filter((x) => x.isPrimaryKey).map((x) => x.name) };
@@ -147,13 +156,22 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
       return { key: `${path.replaceAll('.', '_')}__unique_count`, pk: byId.get(hop.martId)!.fields.filter((x) => x.isPrimaryKey).map((x) => blendedName(path, x.name)) };
     });
     const wanted = [...new Set([...(o.column ?? []), ...(o.filter ?? []).map((x) => x.column), ...(o.sort ?? []).map((x) => x.column), ...uniq.flatMap((u) => u.pk)].filter((n) => index.has(n)))];
-    const source = wanted.length ? m.rows.map((r) => ({ ...r, ...Object.fromEntries(wanted.map((n) => [n, blendedValue(r, index.get(n)!.hop, index.get(n)!.field)])) })) : m.rows;
-    let rows = source.filter((r) => (o.filter ?? []).every((flt) => matchesFilter(r, flt)));
+    const underPath = (path: string, of: string) => path === of || path.startsWith(`${of}.`);
+    const source = wanted.length ? m.rows.map((r) => {
+      const row: Row = { ...r, ...Object.fromEntries(wanted.map((n) => [n, blendedValue(r, index.get(n)!.hop, index.get(n)!.field)])) };
+      // A slice acts as a LEFT JOIN: where the joined values fail it, the row stays and the alias path and its descendants are empty.
+      const failed = slices.filter((sl) => !matchesFilter({ [sl.column]: row[sl.column] }, { ...sl, placement: undefined })).map((sl) => index.get(sl.column)!.hop.aliasPath);
+      if (failed.length) for (const n of wanted) if (failed.some((p) => underPath(index.get(n)!.hop.aliasPath, p))) row[n] = null;
+      return row;
+    }) : m.rows;
+    let rows = source.filter((r) => plain.every((flt) => matchesFilter(r, flt)));
     if (uniq.length && !o.column?.length) return [Object.fromEntries(uniq.map((u) => [u.key, distinctKeys(rows, u.pk)]))];
     if (uniq.length || o.aggregation?.length || o.dateTrunc?.length) {
       if (!o.column?.length) throw badRequest('Aggregation requires an explicit column list');
       rejectUngoverned(id, o.aggregation ?? []);
-      const grouped = aggregateRows(rows, o.column, o.aggregation ?? [], o.dateTrunc ?? [], o.sort ?? [], uniq);
+      let grouped = aggregateRows(rows, o.column, o.aggregation ?? [], o.dateTrunc ?? [], o.sort ?? [], uniq);
+      // HAVING compares the grouped row's aggregate output column.
+      if (having.length) grouped = grouped.filter((g) => having.every((h) => matchesFilter(g, { ...h, column: aggregatedKey(h.column, h.function!), function: undefined, placement: undefined })));
       return o.limit !== undefined ? grouped.slice(0, o.limit) : grouped;
     }
     const keys = o.sort ?? [];

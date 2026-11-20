@@ -1,9 +1,12 @@
 import type { Field, Schema } from '../model/types';
 import type { RelativeDatePreset, TraverseFilter } from '../sdk/types';
+import type { AggFn, AggregationRule } from '../model/aggregation';
+import { havingField, sliceField } from './slice';
 import { isDateTimeField, operatorsFor, RELATIVE_MAX_N, RELATIVE_PRESETS, type OpId } from './catalogue';
 
 export type FilterValue = string | number | { from: string | number; to: string | number } | RelativeDatePreset | undefined;
-export type ColumnFilter = { field: string; op: OpId; value?: FilterValue };
+/** A column filter. With `fn` it is a HAVING filter on the aggregate of that column; slices never carry `fn`. */
+export type ColumnFilter = { field: string; op: OpId; value?: FilterValue; fn?: AggFn };
 
 const filled = (v: unknown) => v !== undefined && v !== null && String(v).trim() !== '';
 const numeric = (v: unknown) => filled(v) && Number.isFinite(Number(v));
@@ -73,10 +76,25 @@ export function toTraverseFilter(f: ColumnFilter, field: Field): TraverseFilter 
   }
 }
 
-/** The complete filters as traverseData filters. The grid's rows query and an export report share this. */
-export function toTraverseFilters(schema: Schema, filters: ColumnFilter[]): TraverseFilter[] {
-  return filters.flatMap((flt) => {
+/**
+ * The complete filters as traverseData filters, then the complete slices (pre-join rules). The grid's rows query and an export report share this.
+ * A slice on a field that is not joined is dropped. A filter with `fn` is a HAVING filter, kept only when `aggregations` has its (column, fn).
+ */
+export function toTraverseFilters(schema: Schema, filters: ColumnFilter[], slices: ColumnFilter[] = [], aggregations: AggregationRule[] = []): TraverseFilter[] {
+  const out: TraverseFilter[] = [];
+  for (const flt of filters) {
     const field = schema.find((x) => x.name === flt.field);
-    return field && isComplete(flt, field) ? [toTraverseFilter(flt, field)] : [];
-  });
+    if (!field) continue;
+    if (flt.fn) {
+      const having = havingField(field, flt.fn);
+      if (aggregations.some((a) => a.column === flt.field && a.function === flt.fn) && isComplete(flt, having)) out.push({ ...toTraverseFilter(flt, having), function: flt.fn });
+    } else if (isComplete(flt, field)) out.push(toTraverseFilter(flt, field));
+  }
+  for (const sl of slices) {
+    const field = schema.find((x) => x.name === sl.field);
+    if (!field?.joined) continue;
+    const raw = sliceField(field);
+    if (isComplete(sl, raw)) out.push({ ...toTraverseFilter(sl, raw), placement: 'pre-join' });
+  }
+  return out;
 }

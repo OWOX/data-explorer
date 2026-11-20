@@ -175,3 +175,35 @@ test('the mock serves three seeded reports and returns them from /api/search onl
   const paid = await ctx.owox.getJson<{ filterConfig: unknown; sortConfig: unknown; aggregationConfig: unknown; dateTruncConfig: unknown }>('/api/reports/mock-report-orders-paid');
   for (const c of [paid.filterConfig, paid.sortConfig, paid.aggregationConfig, paid.dateTruncConfig]) expect(Array.isArray(c)).toBe(true);
 });
+
+describe('slices and HAVING in traverseData', () => {
+  const slice = { column: 'customers__country_code', operator: 'eq', value: 'PL', placement: 'pre-join' } as const;
+  test('a slice empties the alias path on failing rows and keeps the row count', async () => {
+    const ctx = createMockCtx(demoFixtures());
+    const column = ['id', 'customers__country_code', 'customers__countries__name'];
+    const all = await readRows(ctx, 'orders', { column, limit: 450 });
+    const sliced = await readRows(ctx, 'orders', { column, filter: [slice], limit: 450 });
+    expect(sliced).toHaveLength(all.length);
+    expect(all.some((r) => r.customers__country_code !== 'PL' && r.customers__country_code !== null)).toBe(true);
+    for (const r of sliced) {
+      if (r.customers__country_code !== null) expect(r.customers__country_code).toBe('PL');
+      else expect(r.customers__countries__name).toBeNull();
+    }
+    expect(sliced.some((r) => r.customers__country_code === 'PL')).toBe(true);
+    expect(sliced.some((r) => r.customers__country_code === null)).toBe(true);
+  });
+  test('a slice on a main field, or with a function, is a 400', async () => {
+    const ctx = createMockCtx(demoFixtures());
+    await expect(readRows(ctx, 'orders', { column: ['id'], filter: [{ column: 'status', operator: 'eq', value: 'paid', placement: 'pre-join' }] })).rejects.toMatchObject({ payload: { status: 400 } });
+    await expect(readRows(ctx, 'orders', { column: ['id'], filter: [{ ...slice, function: 'SUM' }] })).rejects.toMatchObject({ payload: { status: 400 } });
+  });
+  test('HAVING filters the grouped rows on the aggregate column', async () => {
+    const ctx = createMockCtx(demoFixtures());
+    const q = { column: ['status', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' as const }], limit: 100 };
+    const all = await readRows(ctx, 'orders', q);
+    const cut = Number(all[0]!['amount | SUM']);
+    const kept = await readRows(ctx, 'orders', { ...q, filter: [{ column: 'amount', operator: 'gt', value: cut, function: 'SUM' }] });
+    expect(kept.length).toBe(all.filter((r) => Number(r['amount | SUM']) > cut).length);
+    expect(kept.length).toBeLessThan(all.length);
+  });
+});
