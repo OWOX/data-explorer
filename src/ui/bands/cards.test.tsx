@@ -193,6 +193,14 @@ describe('MartCard', () => {
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
+  test('a click in the title bubble outside the link does not select the card', async () => {
+    const { props } = renderMart();
+    await userEvent.hover(screen.getByText('Orders'));
+    await screen.findByLabelText('Open in OWOX');
+    await userEvent.click(document.querySelector<HTMLElement>('.dm-title-tip-text')!);
+    expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
   test('the keyboard twin of the link opens the app', async () => {
     const { props } = renderMart();
     await userEvent.click(screen.getByLabelText('Open Orders in OWOX'));

@@ -50,7 +50,7 @@ export function useGhostChain(pinned: string | null) {
     }
     setMuted(null);
     setShown((cur) => {
-      const chain = chainAfterHover(cur.anchor ?? pin.current, cur.chain, over.ghost!);
+      const chain = chainAfterHover(pin.current ?? cur.anchor, cur.chain, over.ghost!);
       return chain === cur.chain ? cur : { anchor: cur.anchor, chain };
     });
   }, []);

@@ -163,9 +163,10 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
       ref={treeRef}
       className="dm-tree"
       style={{ width: layout.width, height: layout.height, transform: scale === 1 ? undefined : `scale(${scale})` }}
-      onPointerOver={(e) => hover.onOver(overOf(e.target))}
+      // A portaled title bubble bubbles its events here through React; it is not under the tree in the DOM, so it is not the pointer leaving the cards.
+      onPointerOver={(e) => { if (e.currentTarget.contains(e.target as Node)) hover.onOver(overOf(e.target)); }}
       onPointerLeave={hover.onLeave}
-      onFocus={(e) => { const over = overOf(e.target); if (over.ghost !== null) hover.onOver(over); }}
+      onFocus={(e) => { if (!e.currentTarget.contains(e.target as Node)) return; const over = overOf(e.target); if (over.ghost !== null) hover.onOver(over); }}
     >
       {[...tree.nodes.values()].flatMap((node) => {
         const mart = model.marts.get(node.martId);

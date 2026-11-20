@@ -297,9 +297,10 @@ export function CardBands({
       ref={canvas}
       className={`dm-canvas${view === 'grid' && (pinned || hovered) ? ' focused' : ''}`}
       onClick={(e) => { if (focus !== null && e.target instanceof Element && e.target.closest('#band-marts .dm-band-body') && !e.target.closest('article, button, a')) clearFocus(); }}
-      onPointerOver={(e) => setHovered(view === 'grid' ? nodeIdOf(e.target) : null)}
+      // A portaled title bubble bubbles its events through React; it is not in the canvas in the DOM, so it changes no hover.
+      onPointerOver={(e) => { if (e.currentTarget.contains(e.target as Node)) setHovered(view === 'grid' ? nodeIdOf(e.target) : null); }}
       onPointerLeave={() => setHovered(null)}
-      onFocus={(e) => setHovered(view === 'grid' ? nodeIdOf(e.target) : null)}
+      onFocus={(e) => { if (e.currentTarget.contains(e.target as Node)) setHovered(view === 'grid' ? nodeIdOf(e.target) : null); }}
       onBlur={(e) => { if (!canvas.current?.contains(e.relatedTarget as Node | null)) setHovered(null); }}
     >
       <Band id="band-sources" icon={<Plug size={18} />} title="Data Sources" total={model.sources.length} hint="Connectors that feed data marts. Select one to see the marts it feeds." folded={foldedSources} onFold={onFoldSources} loading={loading}>

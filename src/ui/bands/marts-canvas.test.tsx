@@ -57,6 +57,22 @@ test('hovering a card shows its ghosts; clicking a ghost adds that mart through 
   expect(headers().length).toBeGreaterThan(5);
 });
 
+test('a ghost keeps its place while the pointer is in its title bubble', async () => {
+  setup();
+  await ready();
+  await toCanvas();
+  await waitFor(() => expect(el('orders')).not.toBeNull());
+  await userEvent.hover(el('orders')!);
+  const ghost = await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="customers"]'); expect(g).not.toBeNull(); return g!; });
+  await userEvent.hover(ghost.querySelector<HTMLElement>('.dm-node-title')!);
+  const bubble = await waitFor(() => { const b = document.querySelector<HTMLElement>('.dm-title-tip'); expect(b).not.toBeNull(); return b!; });
+  expect(marts().contains(bubble)).toBe(false);
+  fireEvent.pointerOver(bubble.querySelector('.dm-title-tip-text')!);
+  await new Promise((r) => setTimeout(r, 600));
+  expect(ghosts()).toContain('dm-customers@customers');
+  expect(document.querySelector('.dm-title-tip')).not.toBeNull();
+});
+
 test('clicking a card pins its ghosts; Escape lets them go', async () => {
   setup();
   await ready();

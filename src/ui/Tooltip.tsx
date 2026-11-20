@@ -45,6 +45,8 @@ export function TitleTip({ title, action, children }: { title: string; action: R
         <T.Content
           side="top" sideOffset={6} collisionPadding={8} className="dm-hint-body dm-title-tip"
           onPointerEnter={cancel} onPointerLeave={closeLater}
+          // The bubble is in a portal, but React still bubbles its events to the card, where a click would select it.
+          onClick={(e) => e.stopPropagation()}
           onEscapeKeyDown={() => { cancel(); setOpen(false); }}
         >
           <span className="dm-title-tip-text">{title}</span>
