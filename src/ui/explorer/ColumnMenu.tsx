@@ -155,16 +155,16 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
       {placed && sub?.key === 'filter' && (
         <EditorPanel row={sub.row} seq={sub.seq} label={`Filter of ${title}`} onEscape={closeSub}>
           <FilterEditor key={JSON.stringify(env.filters[field.name])} field={having ? havingField(field, having) : field} value={env.filters[field.name]}
-            onApply={(f) => { env.setFilter(field.name, having ? { ...f, fn: having } : f); onClose(); }} onClear={() => { env.setFilter(field.name, undefined); onClose(); }} />
-          {having ? <p className="mt-2 text-xs text-muted-foreground">Filters the {fnName(having)} after grouping</p>
-            : env.isAggregated(field.name) && <p className="mt-2 text-xs text-muted-foreground">Filters rows before they are aggregated</p>}
+            onApply={(f) => { env.setFilter(field.name, having ? { ...f, fn: having } : f); onClose(); }} onClear={() => { env.setFilter(field.name, undefined); onClose(); }}
+            note={having ? <p className="mt-2 text-xs text-muted-foreground">Filters the {fnName(having)} after grouping</p>
+              : env.isAggregated(field.name) ? <p className="mt-2 text-xs text-muted-foreground">Filters rows before they are aggregated</p> : undefined} />
         </EditorPanel>
       )}
       {placed && sub?.key === 'slice' && field.joined && (
         <EditorPanel row={sub.row} seq={sub.seq} label={`Slice of ${title}`} onEscape={closeSub}>
           <FilterEditor key={JSON.stringify(env.slices[field.name])} field={sliceField(field)} value={env.slices[field.name]}
-            onApply={(f) => { env.setSlice(field.name, f); onClose(); }} onClear={() => { env.setSlice(field.name, undefined); onClose(); }} />
-          <p className="mt-2 text-xs text-muted-foreground">Slices filter the joined data mart before it is joined, reducing the rows pulled in.</p>
+            onApply={(f) => { env.setSlice(field.name, f); onClose(); }} onClear={() => { env.setSlice(field.name, undefined); onClose(); }}
+            note={<p className="mt-2 max-w-[18rem] text-xs text-muted-foreground">Slices filter the joined data mart before it is joined, reducing the rows pulled in.</p>} />
         </EditorPanel>
       )}
       {placed && sub?.key === 'aggregate' && (
