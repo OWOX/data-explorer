@@ -1,9 +1,10 @@
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, EyeOff, Funnel, Hash, Sigma } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, EyeOff, Funnel, Hash, Layers, Sigma } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { formatsFor, keepsUnit, type Format } from '../../format/formats';
 import { describeFilter } from '../../filters/catalogue';
+import { havingField, sliceField } from '../../filters/slice';
 import type { ColumnFilter } from '../../filters/build';
-import { BUCKET_LABELS, AGG_LABELS, allowedFunctions, canBucket, type AggregationDraft, type Output } from '../../model/aggregation';
+import { BUCKET_LABELS, AGG_LABELS, allowedFunctions, canBucket, type AggFn, type AggregationDraft, type Output } from '../../model/aggregation';
 import { columnTitle } from '../../model/fieldLabel';
 import type { SortDirection, SortKey } from '../../model/sort';
 import type { Field } from '../../model/types';
@@ -14,7 +15,7 @@ import { FilterLinesIcon } from './FilterLinesIcon';
 import { HOVER_MS, HoverIntent, Panel, Row } from './MenuParts';
 export { HOVER_MS };
 
-export type SubKey = 'filter' | 'aggregate' | 'format' | 'sort';
+export type SubKey = 'filter' | 'slice' | 'aggregate' | 'format' | 'sort';
 
 /** Everything a column's menu reads and changes. The grid provides it through context so a header cell is never rebuilt (and its open menu never lost) when a setting changes. */
 export type ColumnMenuEnv = {
@@ -59,6 +60,13 @@ export const CURRENCIES = ['USD', 'EUR', 'GBP', 'UAH'];
 /** The currencies the Money submenu lists: the four fixed ones, then the current one (an AI pick or an old choice) when it is another. */
 export const currenciesFor = (current: Format): string[] => (current.kind === 'money' && !CURRENCIES.includes(current.currency) ? [...CURRENCIES, current.currency] : CURRENCIES);
 
+/** The function's label in capitals, as the HAVING note and the Funnel tooltip name it: "SUM". */
+const fnName = (f: AggFn) => AGG_LABELS[f].toUpperCase();
+/** What a filter says in a tooltip: a HAVING filter names its function and reads against the aggregate's type. */
+function describeColumnFilter(field: Field, f: ColumnFilter): string {
+  return f.fn ? `${fnName(f.fn)} ${describeFilter(havingField(field, f.fn), f)}` : describeFilter(field, f);
+}
+
 const aggOn = (d: AggregationDraft) => d.functions.length > 0 || d.bucket !== null;
 /** The member set a format of their own on a column that has formats. An AI project pick does not count. */
 function formatActive(env: ColumnMenuEnv, field: Field, output: Output, type: string): boolean {
@@ -79,6 +87,7 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
   const [sub, setSub] = useState<Sub | null>(null);
   const [money, setMoney] = useState<{ row: HTMLElement; seq: number } | null>(null);
   const [placed, setPlaced] = useState(false);
+  const having = env.filters[field.name]?.fn;
   const rootSeq = initial ? 0 : 1;
   const rows = useRef(new Map<string, HTMLElement>());
   const ref = (k: string) => (el: HTMLElement | null) => { if (el) rows.current.set(k, el); else rows.current.delete(k); };
@@ -130,8 +139,8 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
   const choose = (f: Format) => { env.setFormat(field.name, f); onClose(); };
   const dir = env.sorts.find((s) => s.field === field.name)?.direction ?? null;
   const canSort = output.sortable && env.sortable !== false;
-  const on: Record<SubKey, boolean> = { filter: !!env.filters[field.name], aggregate: aggOn(env.draftOf(field.name)), format: formatActive(env, field, output, type), sort: canSort && !!dir };
-  const glyph: Record<SubKey, ReactNode> = { filter: <Funnel />, aggregate: <Sigma />, format: <Hash />, sort: <ArrowUpDown /> };
+  const on: Record<SubKey, boolean> = { filter: !!env.filters[field.name], slice: !!env.slices[field.name], aggregate: aggOn(env.draftOf(field.name)), format: formatActive(env, field, output, type), sort: canSort && !!dir };
+  const glyph: Record<SubKey, ReactNode> = { filter: <Funnel />, slice: <Layers />, aggregate: <Sigma />, format: <Hash />, sort: <ArrowUpDown /> };
   const rowFor = (k: SubKey, label: string, haspopup: 'menu' | 'dialog') => (
     <Row key={k} label={label} icon={glyph[k]} active={on[k]} sub haspopup={haspopup} expanded={sub?.key === k} rowRef={ref(k)} onActivate={(r) => open(k, r, true)} onOpen={(r) => open(k, r, true)} onHover={(r) => hoverRow(k, r)} onLeaveRow={leaveRow} />
   );
@@ -139,6 +148,7 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
     <>
       <Panel anchor={anchor} mode="below" role="menu" label={`Menu of ${title}`} onEscape={() => (sub ? closeSub() : onClose())} onTab={() => onClose()} onPlaced={placeDone} focusSeq={rootSeq} className="dm-menu-root">
         {rowFor('filter', 'Filter', 'dialog')}
+        {field.joined && rowFor('slice', 'Slice', 'dialog')}
         {aggregable && rowFor('aggregate', 'Aggregate', 'dialog')}
         {formats.length > 0 && rowFor('format', 'Format', 'menu')}
         {canSort && rowFor('sort', 'Sort', 'menu')}
@@ -150,9 +160,19 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
       {placed && sub?.key === 'filter' && (
         <Panel anchor={sub.row} mode="beside" role="dialog" label={`Filter of ${title}`} onEscape={closeSub} focusSeq={sub.seq} className="dm-menu-editor">
           <div data-popover-body="" className="min-h-0 overflow-y-auto p-3">
-            <FilterEditor key={JSON.stringify(env.filters[field.name])} field={field} value={env.filters[field.name]}
-              onApply={(f) => { env.setFilter(field.name, f); onClose(); }} onClear={() => { env.setFilter(field.name, undefined); onClose(); }} />
-            {env.isAggregated(field.name) && <p className="mt-2 text-xs text-muted-foreground">Filters rows before they are aggregated</p>}
+            <FilterEditor key={JSON.stringify(env.filters[field.name])} field={having ? havingField(field, having) : field} value={env.filters[field.name]}
+              onApply={(f) => { env.setFilter(field.name, having ? { ...f, fn: having } : f); onClose(); }} onClear={() => { env.setFilter(field.name, undefined); onClose(); }} />
+            {having ? <p className="mt-2 text-xs text-muted-foreground">Filters the {fnName(having)} after grouping</p>
+              : env.isAggregated(field.name) && <p className="mt-2 text-xs text-muted-foreground">Filters rows before they are aggregated</p>}
+          </div>
+        </Panel>
+      )}
+      {placed && sub?.key === 'slice' && field.joined && (
+        <Panel anchor={sub.row} mode="beside" role="dialog" label={`Slice of ${title}`} onEscape={closeSub} focusSeq={sub.seq} className="dm-menu-editor">
+          <div data-popover-body="" className="min-h-0 overflow-y-auto p-3">
+            <p className="mb-2 text-xs text-muted-foreground">Slices filter the joined data mart before it is joined, reducing the rows pulled in.</p>
+            <FilterEditor key={JSON.stringify(env.slices[field.name])} field={sliceField(field)} value={env.slices[field.name]}
+              onApply={(f) => { env.setSlice(field.name, f); onClose(); }} onClear={() => { env.setSlice(field.name, undefined); onClose(); }} />
           </div>
         </Panel>
       )}
@@ -207,6 +227,7 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
   const controls = useRef<HTMLSpanElement>(null);
   const title = columnTitle(field);
   const filter = env.filters[field.name];
+  const slice = env.slices[field.name];
   const draft = env.draftOf(field.name);
   const aggregated = aggOn(draft);
   const at = env.sorts.findIndex((s) => s.field === field.name);
@@ -215,7 +236,7 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
   // Active means the member set something: an AI project pick does not light the icon.
   const formatOn = formatActive(env, field, output, type);
   const canSort = output.sortable && env.sortable !== false;
-  const active = !!filter || aggregated || (canSort && !!direction) || formatOn;
+  const active = !!filter || !!slice || aggregated || (canSort && !!direction) || formatOn;
   const close = useCallback((refocus = true) => { setMenu(null); if (refocus) icon.current?.focus(); }, []);
   // A request names an output by key: that header opens its root menu at its icon, every other one closes its own. A request already
   // standing when the header mounts is not new.
@@ -247,9 +268,16 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
   return (
     <span ref={controls} className="dm-hdr-controls">
       {filter && (
-        <Tooltip content={`Filter: ${describeFilter(field, filter)}`}>
+        <Tooltip content={`Filter: ${describeColumnFilter(field, filter)}`}>
           <button type="button" aria-label={`Filter ${title}`} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, 'filter')}>
             <Funnel className="dm-icon" />
+          </button>
+        </Tooltip>
+      )}
+      {slice && field.joined && (
+        <Tooltip content={`Slice: ${describeFilter(sliceField(field), slice)}`}>
+          <button type="button" aria-label={`Slice ${title}`} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, 'slice')}>
+            <Layers className="dm-icon" />
           </button>
         </Tooltip>
       )}
