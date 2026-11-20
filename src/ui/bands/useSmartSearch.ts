@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Model } from '../../model/types';
 import { pickModels } from '../../search/ai';
-import { MIN_QUERY, queryProblem } from '../../search/endpoint';
-import { smartSearch } from '../../search/run';
+import { MIN_QUERY, queryProblem, searchEndpoint } from '../../search/endpoint';
+import { buildAdhocView, findAdhocMart } from '../../search/run';
 import { sourceOfModel, useServices, useStore } from '../../state/store';
 
 /**
@@ -54,9 +54,15 @@ export function useSmartSearch(model: Model) {
     ctx.signal.addEventListener('abort', onHostAbort, { once: true });
     setBusy(true);
     try {
-      const out = await smartSearch({ ctx, model: latest.current.model, schemas, signal: ctl.signal, timeoutMs: aiTimeoutMs }, query);
+      const deps = { ctx, model: latest.current.model, schemas, signal: ctl.signal, timeoutMs: aiTimeoutMs };
+      const hits = await searchEndpoint(ctx, query, deps.model, ctl.signal);
+      const adhoc = await findAdhocMart(deps, query, hits);
       if (ctl.signal.aborted) return;
-      const best = out.ids[0];
+      // Without a model only the search's own marts count, as before.
+      const best = adhoc.ai === 'none' ? hits.marts[0] : adhoc.martId ?? undefined;
+      const ids = hits.marts.length ? hits.marts : best ? [best] : [];
+      const out = { ids, grid: best ? (await buildAdhocView(deps, query, best)).grid : null };
+      if (ctl.signal.aborted) return;
       if (!best) {
         // Nothing matched: the plain title match is all that is left.
         dispatch({ type: 'search', q: query });

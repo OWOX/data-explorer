@@ -62,41 +62,19 @@ function valueFor(def: OpDef, raw: unknown): { ok: boolean; value?: FilterValue 
   }
 }
 
+export type AiFields = { columns: string[]; aggregations: AggregationRule[]; dateTrunc: DateTruncRule[] };
+export type AiFilters = { filters: Record<string, ColumnFilter>; sorts: SortKey[] };
+
 /**
- * Turns what the model answered into a grid for the mart, or null when there is nothing to apply. Never throws and trusts nothing:
- * every name must be in the schema, every operator one the field's filter offers, every value of the shape that operator takes.
- * The result then goes through the same pruning a view link gets, so a function a field does not allow is dropped there.
+ * Turns the model's columns, aggregations and date buckets into rules, or null when there is nothing to apply. Never throws and
+ * trusts nothing: every name must be in the schema, every function one the aggregation catalogue knows.
  */
-export function parseAiView(raw: unknown, schema: Schema): GridState | null {
+export function parseAiFields(raw: unknown, schema: Schema): AiFields | null {
   if (!isRecord(raw)) return null;
   const byName = new Map(schema.map((f) => [f.name, f]));
   const known = (v: unknown): v is string => typeof v === 'string' && byName.has(v);
 
   const columns = [...new Set(list(raw.columns, MAX_COLUMNS * 4).filter(known))].slice(0, MAX_COLUMNS);
-
-  const filters: Record<string, ColumnFilter> = {};
-  for (const item of list(raw.filters, MAX_FILTERS)) {
-    if (!isRecord(item)) continue;
-    const field = own(item, 'field');
-    if (!known(field) || own(filters, field)) continue;
-    const def = operatorsFor(byName.get(field)!).find((o) => o.id === own(item, 'op'));
-    if (!def) continue;
-    const v = valueFor(def, own(item, 'value'));
-    if (!v.ok) continue;
-    const filter: ColumnFilter = v.value === undefined ? { field, op: def.id } : { field, op: def.id, value: v.value };
-    if (isComplete(filter, byName.get(field)!)) filters[field] = filter;
-  }
-
-  const shown = columns.length ? columns : defaultColumns(schema);
-  const sorts: SortKey[] = [];
-  for (const item of list(raw.sorts, MAX_SORTS * 2)) {
-    if (!isRecord(item)) continue;
-    const field = own(item, 'field');
-    const direction = own(item, 'direction');
-    if (!known(field) || !shown.includes(field) || (direction !== 'asc' && direction !== 'desc') || sorts.some((s) => s.field === field)) continue;
-    sorts.push({ field, direction });
-    if (sorts.length === MAX_SORTS) break;
-  }
 
   const aggregations: AggregationRule[] = [];
   for (const item of list(raw.aggregations, MAX_RULES)) {
@@ -114,10 +92,62 @@ export function parseAiView(raw: unknown, schema: Schema): GridState | null {
     if (!known(column) || !(DATE_BUCKETS as readonly unknown[]).includes(unit) || dateTrunc.some((r) => r.column === column)) continue;
     dateTrunc.push({ column, unit: unit as DateBucket });
   }
+  return columns.length || aggregations.length || dateTrunc.length ? { columns, aggregations, dateTrunc } : null;
+}
 
-  if (!columns.length && !Object.keys(filters).length && !sorts.length && !aggregations.length && !dateTrunc.length) return null;
+/**
+ * Turns the model's filters and sorts into rules. Every field must be in the schema, every operator one the field's filter offers,
+ * every value of the shape that operator takes. Sorts may name only the shown columns, which are the default columns when none were chosen.
+ */
+export function parseAiFilters(raw: unknown, schema: Schema, columns: string[]): AiFilters {
+  const out: AiFilters = { filters: {}, sorts: [] };
+  if (!isRecord(raw)) return out;
+  const byName = new Map(schema.map((f) => [f.name, f]));
+  const known = (v: unknown): v is string => typeof v === 'string' && byName.has(v);
 
-  const grid: GridState = { columns: shown, filters, sorts: sorts.length ? sorts : null, limit: PAGE_SIZE, ...(aggregations.length ? { aggregations } : {}), ...(dateTrunc.length ? { dateTrunc } : {}) };
+  for (const item of list(raw.filters, MAX_FILTERS)) {
+    if (!isRecord(item)) continue;
+    const field = own(item, 'field');
+    if (!known(field) || own(out.filters, field)) continue;
+    const def = operatorsFor(byName.get(field)!).find((o) => o.id === own(item, 'op'));
+    if (!def) continue;
+    const v = valueFor(def, own(item, 'value'));
+    if (!v.ok) continue;
+    const filter: ColumnFilter = v.value === undefined ? { field, op: def.id } : { field, op: def.id, value: v.value };
+    if (isComplete(filter, byName.get(field)!)) out.filters[field] = filter;
+  }
+
+  const shown = columns.length ? columns : defaultColumns(schema);
+  for (const item of list(raw.sorts, MAX_SORTS * 2)) {
+    if (!isRecord(item)) continue;
+    const field = own(item, 'field');
+    const direction = own(item, 'direction');
+    if (!known(field) || !shown.includes(field) || (direction !== 'asc' && direction !== 'desc') || out.sorts.some((s) => s.field === field)) continue;
+    out.sorts.push({ field, direction });
+    if (out.sorts.length === MAX_SORTS) break;
+  }
+  return out;
+}
+
+/**
+ * Puts the two answers into one grid, through the same pruning a view link gets, so a function a field does not allow is dropped there.
+ * Null when neither answer has anything to apply. Without chosen columns the grid shows the default ones.
+ */
+export function mergeAiView(schema: Schema, fields: AiFields | null, filters: AiFilters | null): GridState | null {
+  const filterMap = filters?.filters ?? {};
+  const sorts = filters?.sorts ?? [];
+  const aggregations = fields?.aggregations ?? [];
+  const dateTrunc = fields?.dateTrunc ?? [];
+  const chosen = fields?.columns ?? [];
+  if (!chosen.length && !Object.keys(filterMap).length && !sorts.length && !aggregations.length && !dateTrunc.length) return null;
+  const grid: GridState = {
+    columns: chosen.length ? chosen : defaultColumns(schema),
+    filters: filterMap,
+    sorts: sorts.length ? sorts : null,
+    limit: PAGE_SIZE,
+    ...(aggregations.length ? { aggregations } : {}),
+    ...(dateTrunc.length ? { dateTrunc } : {}),
+  };
   const skipped: Skipped = { mart: false, source: false, columns: 0, filters: 0, sorts: 0, aggregations: 0, contexts: 0, storages: 0, found: false };
   return pruneGrid(grid, schema, skipped);
 }

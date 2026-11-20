@@ -62,7 +62,7 @@ export async function pickFormats(ctx: Ctx, store: FormatStore, martId: string, 
       ...(f.joined ? { dataMart: f.joined.label } : {}),
       kinds: formatsFor(f.type),
     }));
-    const answer = await createAiRun(models, signal).ask('view', SYSTEM, JSON.stringify({ dataMart: martTitle, columns }));
+    const answer = await createAiRun(models, signal).ask('filters', SYSTEM, JSON.stringify({ dataMart: martTitle, columns }));
     // A pick that arrived while the model was thinking wins over its answer.
     const fresh = (await store.load(martId)).project;
     const picks: FormatDoc = {};

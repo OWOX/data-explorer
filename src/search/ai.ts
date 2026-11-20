@@ -36,10 +36,13 @@ export function extractJson(text: string): unknown {
   return undefined;
 }
 
-/** Which model a question prefers: picking marts is easy (fast), setting up a view is the one that benefits from reasoning. */
-export type Role = 'discover' | 'view';
-/** The share of the run's budget one question may take, so a slow first question leaves the second a chance. */
-const SHARE: Record<Role, number> = { discover: 0.4, view: 0.7 };
+/** Which model a question prefers: picking a mart is easy (fast), choosing fields and filters benefits from reasoning. */
+export type Role = 'discover' | 'fields' | 'filters';
+/**
+ * The share of the run's budget one question may take, so a slow question leaves the next one a chance. Discover is the only call
+ * in its run. Fields and filters share a run, so fields keeps half and filters gets what is left.
+ */
+const SHARE: Record<Role, number> = { discover: 0.9, fields: 0.5, filters: 0.9 };
 
 /** The questions one search run puts to the models. They share one budget; the run's signal cancels the call in flight. */
 export function createAiRun(models: Models, signal: AbortSignal, totalMs = AI_TIMEOUT_MS) {
