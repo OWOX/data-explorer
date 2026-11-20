@@ -370,6 +370,12 @@ describe('fillGrid: a late answer fills the grid only while nothing moved', () =
     expect(reducer(from, { type: 'fillGrid', martId: 'a', expect: grid(['id']), grid: grid(['id', 'x']) })).toBe(from);
   });
 
+  test('it is a no-op after an Undo of the pick that started the wait', () => {
+    const picked = reducer(start(), { type: 'setMarts', selection: sel({ martId: 'a' }), grids: { a: grid(['id']) }, always: true });
+    const undone = reducer(picked, { type: 'undo' });
+    expect(reducer(undone, { type: 'fillGrid', martId: 'a', expect: grid(['id']), grid: grid(['id', 'x']) })).toBe(undone);
+  });
+
   test('setMarts with always pushes history even when nothing changed', () => {
     const from = start();
     const st = reducer(from, { type: 'setMarts', selection: sel({ martId: 'a' }), grids: { a: grid(['id']) }, always: true });

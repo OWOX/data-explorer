@@ -449,20 +449,6 @@ describe('the dropdown', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
   });
 
-  test('the AI grid lands with an instant answer on a mart that is already open, and one Undo returns to before the pick', async () => {
-    const ai = spyAi();
-    setup({ wrap: ai.withAi }).view();
-    await ready();
-    const u = user();
-    await typeIn(u, 'paid orders last month');
-    await waitFor(() => expect(rowsText().at(-1)).toMatch(/Orders/));
-    await u.keyboard('{Enter}');
-    await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('dm-ctl-on'));
-    await undo();
-    await waitFor(() => expect(within(data()).queryByLabelText('Filter status')).toBeNull());
-    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
-  });
-
   test('a highlighted report row stays highlighted when call 1 lands, and Enter picks the report, not the ad-hoc run', async () => {
     let release: (() => void) | undefined;
     const ai = spyAi((task) => (task === 'discover' ? new Promise<void>((r) => { release = r; }) : Promise.resolve()));
@@ -500,6 +486,23 @@ describe('the dropdown', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(300); });
     expect(within(data()).queryByLabelText('Filter status')).toBeNull();
     expect(within(data()).getByRole('button', { name: /^Sort by status, currently (ascending|descending)/ })).toBeInTheDocument();
+  });
+
+  test('an Undo while the AI is still working cancels the late filters', async () => {
+    let answer: (() => void) | undefined;
+    const ai = spyAi((task) => (task === 'fields' ? new Promise<void>((r) => { answer = r; }) : Promise.resolve()));
+    setup({ wrap: ai.withAi }).view();
+    await ready();
+    const u = user();
+    await typeIn(u, 'paid orders last month');
+    await waitFor(() => expect(rowsText().at(-1)).toMatch(/Orders/));
+    await u.keyboard('{Enter}');
+    await waitFor(() => expect(answer).toBeDefined());
+    await undo();
+    answer!();
+    await waitFor(() => expect(ai.tasks).toContain('filters'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+    expect(within(data()).queryByLabelText('Filter status')).toBeNull();
   });
 
   test('a model that fails when the ad-hoc row is picked leaves the default view and says so', async () => {

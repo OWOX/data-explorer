@@ -163,6 +163,8 @@ export function reducer(state: State, a: Action): State {
       return { ...state, selection: a.selection, grids: { ...state.grids, ...a.grids }, history: [...state.history, { ...cur, grids: before }].slice(-HISTORY_LIMIT), future: [] };
     }
     case 'fillGrid': {
+      // Only an Undo leaves future entries (every later step clears them), so a non-empty future means the pick was undone while the AI worked.
+      if (state.future.length > 0) return state;
       if (cur.martId !== a.martId || !deepEqual(state.grids[a.martId] ?? null, a.expect)) return state;
       return { ...state, grids: { ...state.grids, [a.martId]: a.grid } };
     }
