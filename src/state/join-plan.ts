@@ -4,6 +4,7 @@ import type { JoinedSource } from '../api/blendable';
 import type { Picks } from '../api/grid-columns';
 import { sortsOnColumns } from '../model/sort';
 import { keepVisible } from '../model/aggregation';
+import { dropOrphanHaving } from '../filters/build';
 import { orderColumns } from './column-order';
 import type { Field } from '../model/types';
 import type { GridState, Selection } from './store';
@@ -125,6 +126,12 @@ export function fieldsFor(sources: JoinedSource[], martId: string, remembered: s
   return source ? defaultJoinFields(source).map((f) => f.name) : [];
 }
 
+/** The slices without the ones on the dropped fields; `undefined` when none is left, so the grid state carries no empty map. */
+const keepSlices = (slices: GridState['slices'], keep: (field: string) => boolean): GridState['slices'] => {
+  const kept = Object.fromEntries(Object.entries(slices ?? {}).filter(([k]) => keep(k)));
+  return Object.keys(kept).length ? kept : undefined;
+};
+
 /** The grid with everything of one joined mart taken out: its columns, its filters and its sorts. `removed` is the field list to remember. */
 export function withoutMart(grid: GridState, sources: JoinedSource[], martId: string, own: string[]): { grid: GridState; removed: string[] } {
   const names = namesOf(sources, martId);
@@ -141,7 +148,8 @@ export function withoutMart(grid: GridState, sources: JoinedSource[], martId: st
       columns,
       aggregations: agg.aggregations.length ? agg.aggregations : undefined,
       dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined,
-      filters: Object.fromEntries(Object.entries(grid.filters).filter(([k]) => !names.has(k))),
+      filters: dropOrphanHaving(Object.fromEntries(Object.entries(grid.filters).filter(([k]) => !names.has(k))), agg.aggregations),
+      slices: keepSlices(grid.slices, (k) => !names.has(k)),
       sorts: grid.sorts && grid.sorts.length > 0 && kept!.length === 0 ? null : kept,
     },
   };
@@ -152,6 +160,7 @@ export function withoutPaths(grid: GridState, sources: JoinedSource[], paths: st
   const gone = new Set(sources.filter((s) => paths.includes(s.aliasPath)).flatMap((s) => s.fields.map((f) => f.name)));
   const touched = grid.columns.some((c) => gone.has(c))
     || Object.keys(grid.filters).some((k) => gone.has(k))
+    || Object.keys(grid.slices ?? {}).some((k) => gone.has(k))
     || (grid.sorts ?? []).some((k) => gone.has(k.field))
     || (grid.aggregations ?? []).some((a) => gone.has(a.column))
     || (grid.dateTrunc ?? []).some((d) => gone.has(d.column));
@@ -165,7 +174,8 @@ export function withoutPaths(grid: GridState, sources: JoinedSource[], paths: st
     columns,
     aggregations: agg.aggregations.length ? agg.aggregations : undefined,
     dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined,
-    filters: Object.fromEntries(Object.entries(grid.filters).filter(([k]) => !gone.has(k))),
+    filters: dropOrphanHaving(Object.fromEntries(Object.entries(grid.filters).filter(([k]) => !gone.has(k))), agg.aggregations),
+    slices: keepSlices(grid.slices, (k) => !gone.has(k)),
     sorts: grid.sorts && grid.sorts.length > 0 && kept!.length === 0 ? null : kept,
   };
 }
@@ -323,13 +333,14 @@ export function planMakeMain(env: PlanEnv, id: string): Plan {
     else remember.push({ martId: r, fields: shown });
   }
   columns = orderColumns(columns, nextSources, env.ownColumns(id));
-  const filters = Object.fromEntries(Object.entries(nextGrid.filters).filter(([k]) => columns.includes(k)));
   const kept = nextGrid.sorts && sortsOnColumns(nextGrid.sorts, columns);
   const agg = keepVisible({ aggregations: nextGrid.aggregations ?? [], dateTrunc: nextGrid.dateTrunc ?? [] }, columns);
+  const filters = dropOrphanHaving(Object.fromEntries(Object.entries(nextGrid.filters).filter(([k]) => columns.includes(k))), agg.aggregations);
   const next: GridState = {
     ...nextGrid,
     columns,
     filters,
+    slices: keepSlices(nextGrid.slices, (k) => columns.includes(k)),
     sorts: nextGrid.sorts && nextGrid.sorts.length > 0 && kept!.length === 0 ? null : kept,
     aggregations: agg.aggregations.length ? agg.aggregations : undefined,
     dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined,
@@ -367,6 +378,7 @@ export function planRejoin(grid: GridState, sources: JoinedSource[], moves: Map<
   let columns = [...new Set(grid.columns.flatMap((c) => { const m = map(c); return m ? [m] : []; }))];
   if (columns.length === 0) columns = own;
   const filters = Object.fromEntries(Object.entries(grid.filters).flatMap(([k, f]) => { const m = map(k); return m ? [[m, { ...f, field: m }]] : []; }));
+  const slices = Object.fromEntries(Object.entries(grid.slices ?? {}).flatMap(([k, f]) => { const m = map(k); return m ? [[m, { ...f, field: m }]] : []; }));
   const sorts = grid.sorts && grid.sorts.flatMap((s) => { const m = map(s.field); return m ? [{ ...s, field: m }] : []; });
   const aggregations = grid.aggregations?.flatMap((a) => { const m = map(a.column); return m ? [{ ...a, column: m }] : []; });
   const dateTrunc = grid.dateTrunc?.flatMap((d) => { const m = map(d.column); return m ? [{ ...d, column: m }] : []; });
@@ -374,6 +386,7 @@ export function planRejoin(grid: GridState, sources: JoinedSource[], moves: Map<
     ...grid,
     columns,
     filters,
+    slices: Object.keys(slices).length ? slices : undefined,
     sorts: grid.sorts && grid.sorts.length > 0 && sorts!.length === 0 ? null : sorts,
     aggregations: aggregations?.length ? aggregations : undefined,
     dateTrunc: dateTrunc?.length ? dateTrunc : undefined,

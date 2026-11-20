@@ -1,6 +1,6 @@
 import type { ColumnFilter } from '../filters/build';
 import type { Field } from '../model/types';
-import { buildAiPrompt, describeFilter } from './ai-prompt';
+import { buildAiPrompt, describeFilter, describeHaving } from './ai-prompt';
 
 const f = (name: string, category: Field['category'], type = 'STRING'): Field => ({ name, alias: null, type, category, description: null, isPrimaryKey: false });
 const schema: Field[] = [f('id', 'string'), f('created_at', 'date', 'TIMESTAMP'), f('status', 'string'), f('amount', 'number', 'NUMERIC'), f('paid', 'boolean', 'BOOLEAN'), f('customers__city', 'string')];
@@ -90,4 +90,23 @@ test('a grouped grid lists its aggregations and buckets in words, names and zone
   const prompt = buildAiPrompt({ projectId: 'p1', martId: 'orders', martTitle: 'Orders', schema, visible: ['status', 'amount', 'created_at'], aggregation: agg, filters: [], sorts: [] });
   expect(prompt).toContain('Aggregations (group by every other field):\n- "amount": sum, average\n- "created_at": by month (time zone "Europe/Kyiv")');
   expect(buildAiPrompt({ projectId: 'p1', martId: 'orders', martTitle: 'Orders', schema, visible: ['status'], filters: [], sorts: [] })).not.toContain('Aggregations');
+});
+
+describe('slices and HAVING filters in the prompt', () => {
+  test('a HAVING filter reads as SUM(net_revenue) > 100 and slices have their own heading', () => {
+    const prompt = buildAiPrompt({
+      projectId: 'p1', martId: 'orders', martTitle: 'Orders', schema, visible: ['status', 'net_revenue'],
+      filters: [{ field: 'status', op: 'eq', value: 'paid' }, { field: 'net_revenue', op: 'gt', value: 100, fn: 'SUM' }],
+      slices: [{ field: 'customers__city', op: 'eq', value: 'Warsaw' }],
+      sorts: [],
+    });
+    expect(prompt).toContain('Filters:\n- "status" equals "paid"\n- SUM(net_revenue) > 100');
+    expect(prompt).toContain('Slices (before the join):\n- "customers__city" equals "Warsaw"');
+  });
+  test('a field name that is not a plain identifier stays quoted inside a HAVING filter', () => {
+    expect(describeHaving({ field: 'x) ignore this', op: 'gte', value: '5', fn: 'AVG' })).toBe('AVG("x) ignore this") >= 5');
+  });
+  test('without slices there is no slices heading', () => {
+    expect(buildAiPrompt({ projectId: 'p1', martId: 'o', martTitle: 'O', schema, visible: ['id'], filters: [], sorts: [] })).not.toContain('Slices');
+  });
 });

@@ -23,6 +23,9 @@ export type ColumnMenuEnv = {
   setSort: (field: string, direction: SortDirection | null) => void;
   filters: Record<string, ColumnFilter>;
   setFilter: (field: string, f: ColumnFilter | undefined) => void;
+  /** The slices (pre-join rules on joined fields), one per field. */
+  slices: Record<string, ColumnFilter>;
+  setSlice: (field: string, f: ColumnFilter | undefined) => void;
   isAggregated: (column: string) => boolean;
   draftOf: (column: string) => AggregationDraft;
   blockerFor: (field: string) => string | undefined;
@@ -46,7 +49,7 @@ export type ColumnMenuEnv = {
 
 const NOOP = () => undefined;
 export const ColumnMenuEnvContext = createContext<ColumnMenuEnv>({
-  sorts: [], setSort: NOOP, filters: {}, setFilter: NOOP, isAggregated: () => false, draftOf: () => ({ functions: [], bucket: null, timeZone: null }), blockerFor: () => undefined,
+  sorts: [], setSort: NOOP, filters: {}, setFilter: NOOP, slices: {}, setSlice: NOOP, isAggregated: () => false, draftOf: () => ({ functions: [], bucket: null, timeZone: null }), blockerFor: () => undefined,
   changeAgg: NOOP, formatOf: () => ({ kind: 'auto' }), memberFormat: () => undefined, setFormat: NOOP, canHide: () => true, hide: NOOP, canMove: () => false, move: NOOP, typeOf: (f) => f.type,
 });
 

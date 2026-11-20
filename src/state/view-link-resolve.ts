@@ -1,5 +1,5 @@
 import { PAGE_SIZE } from '../config';
-import type { ColumnFilter } from '../filters/build';
+import { dropOrphanHaving, type ColumnFilter } from '../filters/build';
 import { keepVisible, sanitizeAggregation } from '../model/aggregation';
 import type { Model, Schema } from '../model/types';
 import type { GridState, Selection } from './store';
@@ -28,6 +28,11 @@ export function pruneGrid(grid: GridState, schema: Schema, skipped: Skipped): Gr
   for (const [k, f] of Object.entries(grid.filters)) {
     if (offered.has(f.field)) filters[k] = f; else skipped.filters++;
   }
+  // A slice needs a joined field on offer; one on a main-mart field (the backend refuses it) is skipped too. Slices are counted with the filters.
+  const slices: Record<string, ColumnFilter> = {};
+  for (const [k, f] of Object.entries(grid.slices ?? {})) {
+    if (schema.some((x) => x.name === f.field && x.joined)) slices[k] = f; else skipped.filters++;
+  }
   let sorts = grid.sorts;
   if (sorts) {
     const kept = sorts.filter((s) => offered.has(s.field));
@@ -40,7 +45,12 @@ export function pruneGrid(grid: GridState, schema: Schema, skipped: Skipped): Gr
   const agg = sanitizeAggregation(keepVisible({ aggregations: grid.aggregations ?? [], dateTrunc: grid.dateTrunc ?? [] }, columns), schema);
   skipped.aggregations += (grid.aggregations?.length ?? 0) + (grid.dateTrunc?.length ?? 0) - agg.aggregations.length - agg.dateTrunc.length;
   if (!columns.length) return null;
-  const out: GridState = { ...grid, columns, filters, sorts };
+  // A HAVING filter whose aggregation did not survive is left out and counted with the filters.
+  const havingKept = dropOrphanHaving(filters, agg.aggregations);
+  skipped.filters += Object.keys(filters).length - Object.keys(havingKept).length;
+  const out: GridState = { ...grid, columns, filters: havingKept, sorts };
+  delete out.slices;
+  if (Object.keys(slices).length) out.slices = slices;
   delete out.aggregations;
   delete out.dateTrunc;
   if (agg.aggregations.length) out.aggregations = agg.aggregations;

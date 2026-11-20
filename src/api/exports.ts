@@ -34,15 +34,15 @@ export type ReportPayload = {
 
 export type PayloadResult = { payload: ReportPayload; notes: string[] };
 
-/** The report that reproduces what the grid shows: shown columns, complete filters, the reader's own sorts. */
-export function buildReportPayload(schema: Schema, visible: string[], filters: ColumnFilter[], sorts: SortKey[], agg?: Aggregation): PayloadResult {
+/** The report that reproduces what the grid shows: shown columns, complete filters (HAVING ones with their aggregation) and slices, the reader's own sorts. */
+export function buildReportPayload(schema: Schema, visible: string[], filters: ColumnFilter[], sorts: SortKey[], agg?: Aggregation, slices: ColumnFilter[] = []): PayloadResult {
   const notes: string[] = [];
   const known = new Set(schema.map((f) => f.name));
   // In the grid's order (the main mart's columns, then each joined mart's), keeping the names the schema has.
   const columnConfig = visible.filter((n) => known.has(n));
   const aggregations = (agg?.aggregations ?? []).filter((r) => columnConfig.includes(r.column));
   const dateTrunc = (agg?.dateTrunc ?? []).filter((r) => columnConfig.includes(r.column));
-  let filter = toTraverseFilters(schema, filters);
+  let filter = toTraverseFilters(schema, filters, slices, aggregations);
   if (filter.length > MAX_EXPORT_FILTERS) { notes.push(`Only the first ${MAX_EXPORT_FILTERS} filters were exported.`); filter = filter.slice(0, MAX_EXPORT_FILTERS); }
   let sort = sorts.map((s) => ({ column: s.field, direction: s.direction }));
   if (sort.length > MAX_EXPORT_SORTS) { notes.push(`Only the first ${MAX_EXPORT_SORTS} sorts were exported.`); sort = sort.slice(0, MAX_EXPORT_SORTS); }

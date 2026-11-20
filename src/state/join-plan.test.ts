@@ -406,3 +406,31 @@ describe('withoutPaths', () => {
     expect(withoutPaths(two, ps, ['b'], ['id']).columns).toEqual(two.columns);
   });
 });
+
+describe('slices in join-plan', () => {
+  const slice = (field: string) => ({ field, op: 'eq' as const, value: 'PL' });
+  const grid = g(['id', 'customers__city', 'products__sku'], { slices: { customers__city: slice('customers__city'), products__sku: slice('products__sku') } });
+
+  test('taking a mart out drops its slices and keeps the others', () => {
+    const { grid: out } = withoutMart(grid, ordersSources, 'customers', ['id']);
+    expect(out.slices).toEqual({ products__sku: slice('products__sku') });
+    expect(withoutMart(g(['id', 'customers__city'], { slices: { customers__city: slice('customers__city') } }), ordersSources, 'customers', ['id']).grid.slices).toBeUndefined();
+  });
+
+  test('taking paths out drops their slices even when no column was shown', () => {
+    const only = g(['id'], { slices: { customers__city: slice('customers__city') } });
+    expect(withoutPaths(only, ordersSources, ['customers'], ['id']).slices).toBeUndefined();
+    expect(withoutPaths(grid, ordersSources, ['products'], ['id']).slices).toEqual({ customers__city: slice('customers__city') });
+  });
+
+  test('taking a mart out drops a HAVING filter whose aggregation went with it', () => {
+    const having = { field: 'customers__id', op: 'gt' as const, value: 3, fn: 'SUM' as const };
+    const withHaving = g(['id', 'customers__id'], { filters: { customers__id: having, id: { field: 'id', op: 'gt', value: 1 } }, aggregations: [{ column: 'customers__id', function: 'SUM' }] });
+    expect(Object.keys(withoutMart(withHaving, ordersSources, 'customers', ['id']).grid.filters)).toEqual(['id']);
+  });
+
+  test('a rejoined path renames the field of its slice', () => {
+    const moved = planRejoin(g(['id', 'customers__city'], { slices: { customers__city: slice('customers__city') } }), [...ordersSources, src('a.customers', 'customers', [{ ...f('customers__city', 'string', 'customers'), name: 'a__customers__city', joined: { martId: 'customers', label: 'customers', aliasPath: 'a.customers', originalName: 'city' } }], 2)], new Map([['customers', 'a.customers']]), ['id']);
+    expect(moved.slices).toEqual({ a__customers__city: { field: 'a__customers__city', op: 'eq', value: 'PL' } });
+  });
+});

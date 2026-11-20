@@ -1,4 +1,4 @@
-import { isComplete, toTraverseFilter, toTraverseFilters } from './build';
+import { dropOrphanHaving, isComplete, toTraverseFilter, toTraverseFilters, type ColumnFilter } from './build';
 import type { Field } from '../model/types';
 
 const num: Field = { name: 'amount', alias: null, type: 'NUMERIC', category: 'number', description: null, isPrimaryKey: false };
@@ -97,5 +97,18 @@ describe('slices and HAVING in toTraverseFilters', () => {
   });
   test('the two-argument call shape still works', () => {
     expect(toTraverseFilters(schema, [{ field: 'status', op: 'is_blank' }])).toEqual([{ column: 'status', operator: 'is_blank' }]);
+  });
+});
+
+describe('dropOrphanHaving', () => {
+  const having: ColumnFilter = { field: 'net_revenue', op: 'gt', value: 100, fn: 'SUM' };
+  const plain: ColumnFilter = { field: 'status', op: 'eq', value: 'paid' };
+  test('drops a HAVING filter whose (column, function) aggregation is gone, and nothing else', () => {
+    expect(dropOrphanHaving({ net_revenue: having, status: plain }, [])).toEqual({ status: plain });
+    expect(dropOrphanHaving({ net_revenue: having, status: plain }, [{ column: 'net_revenue', function: 'AVG' }])).toEqual({ status: plain });
+  });
+  test('keeps a HAVING filter whose aggregation is still there, as the same map', () => {
+    const m = { net_revenue: having, status: plain };
+    expect(dropOrphanHaving(m, [{ column: 'net_revenue', function: 'SUM' }])).toBe(m);
   });
 });

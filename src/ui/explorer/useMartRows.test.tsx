@@ -173,3 +173,26 @@ test('a paused grid (Charts) reports its unread query as paused, not running, an
   await new Promise((r) => setTimeout(r, 0));
   expect(traverseData).not.toHaveBeenCalled();
 });
+
+describe('slices and HAVING filters in the rows query', () => {
+  const joinedField = (name: string, type = 'STRING'): Schema[number] => ({ ...f(name, false, type), joined: { martId: 'customers', label: 'Customers', aliasPath: 'customers', originalName: name.slice(11), sourceType: type } });
+  const s: Schema = [f('id', true, 'INT64'), f('amount', false, 'NUMERIC'), joinedField('customers__country_code')];
+  const slice = { field: 'customers__country_code', op: 'eq' as const, value: 'PL' };
+
+  test('a plain query sends its slices after its filters, with the explicit column list', () => {
+    const q = buildRowQuery(s, ['id', 'customers__country_code'], [{ field: 'id', op: 'gt', value: 5 }], 200, [], undefined, [slice]);
+    expect(q.column).toEqual(['id', 'customers__country_code']);
+    expect(q.filter).toEqual([{ column: 'id', operator: 'gt', value: 5 }, { column: 'customers__country_code', operator: 'eq', value: 'PL', placement: 'pre-join' }]);
+  });
+
+  test('a grouped query sends a HAVING filter with its aggregation, and a slice', () => {
+    const having = { field: 'amount', op: 'gt' as const, value: 100, fn: 'SUM' as const };
+    const q = buildRowQuery(s, ['customers__country_code', 'amount'], [having], 200, [], { aggregations: [{ column: 'amount', function: 'SUM' }], dateTrunc: [] }, [slice]);
+    expect(q.aggregation).toEqual([{ column: 'amount', function: 'SUM' }]);
+    expect(q.filter).toEqual([{ column: 'amount', operator: 'gt', value: 100, function: 'SUM' }, { column: 'customers__country_code', operator: 'eq', value: 'PL', placement: 'pre-join' }]);
+  });
+
+  test('a HAVING filter of a plain (ungrouped) query is not sent', () => {
+    expect(buildRowQuery(s, ['id', 'amount'], [{ field: 'amount', op: 'gt', value: 100, fn: 'SUM' }], 200).filter).toBeUndefined();
+  });
+});

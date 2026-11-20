@@ -98,3 +98,10 @@ export function toTraverseFilters(schema: Schema, filters: ColumnFilter[], slice
   }
   return out;
 }
+
+/** The filters without the HAVING ones whose `(column, fn)` aggregation is gone, as the extension's `withoutHavingFiltersOrphanedBy` does. The same map when none is orphaned. */
+export function dropOrphanHaving(filters: Record<string, ColumnFilter>, aggregations: AggregationRule[]): Record<string, ColumnFilter> {
+  const orphan = (f: ColumnFilter) => !!f.fn && !aggregations.some((a) => a.column === f.field && a.function === f.fn);
+  if (!Object.values(filters).some(orphan)) return filters;
+  return Object.fromEntries(Object.entries(filters).filter(([, f]) => !orphan(f)));
+}

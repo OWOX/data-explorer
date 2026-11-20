@@ -252,3 +252,39 @@ describe('view mode in a link', () => {
     expect((await decode(g())).dropped).toBe(0);
   });
 });
+
+describe('view link slices and HAVING filters', () => {
+  const g = (over: Record<string, unknown> = {}) => ({ c: ['id'], fl: [], s: null, l: 100, ...over });
+  const decode = async (gridPart: unknown) => (await decodeViewLink(await route(valid({ g: gridPart })))) as DecodedView;
+  const withRules = {
+    ...base,
+    grid: {
+      ...base.grid!,
+      filters: { ...base.grid!.filters, orders__total: { field: 'orders__total', op: 'gt' as const, value: 100, fn: 'SUM' as const }, id: { field: 'id', op: 'is_blank' as const, fn: 'COUNT' as const } },
+      slices: { orders__customers__name: { field: 'orders__customers__name', op: 'contains' as const, value: 'ann' }, orders__total: { field: 'orders__total', op: 'is_blank' as const } },
+    },
+  };
+  it('round trips slices and the function of a HAVING filter, with or without a value', async () => {
+    const d = (await decodeViewLink(await encodeViewLink(withRules))) as DecodedView;
+    expect(d).toEqual({ ...withRules, dropped: 0, droppedAggregations: 0 });
+  });
+  it('a grid with no slices has no slices key', async () => {
+    const d = (await decodeViewLink(await encodeViewLink(base))) as DecodedView;
+    expect('slices' in d.grid!).toBe(false);
+  });
+  it('an old link (filters with two or three slots, no sl) decodes unchanged', async () => {
+    const d = await decode(g({ fl: [['a', 'gt', 5], ['b', 'is_blank']] }));
+    expect(d.grid!.filters).toEqual({ a: { field: 'a', op: 'gt', value: 5 }, b: { field: 'b', op: 'is_blank' } });
+    expect('slices' in d.grid!).toBe(false);
+    expect(d.dropped).toBe(0);
+  });
+  it('an unknown function in the fourth slot drops the filter; a slice takes no function slot', async () => {
+    const d = await decode(g({ fl: [['a', 'gt', 5, 'NOPE'], ['b', 'gt', 5, 'SUM']], sl: [['c', 'eq', 'x', 'SUM'], ['d', 'eq', 'x']] }));
+    expect(Object.keys(d.grid!.filters)).toEqual(['b']);
+    expect(Object.keys(d.grid!.slices!)).toEqual(['d']);
+    expect(d.dropped).toBe(2);
+  });
+  it('a malformed sl is refused', async () => {
+    expect(await decodeViewLink(await route(valid({ g: g({ sl: 'x' }) })))).toBe('unreadable');
+  });
+});

@@ -3,6 +3,7 @@ import { monthsQuery, pieOtherQuery, rangeKeys, rangeQuery, scorecardsQuery, ser
 import type { ChartMart, Metric } from './fields';
 import type { Measure } from './queries';
 import type { Field } from '../model/types';
+import type { TraverseFilter } from '../sdk/types';
 
 const f = (name: string, category: Field['category'], extra: Partial<Field> = {}): Field => ({ name, alias: null, type: category === 'number' ? 'FLOAT' : category === 'date' ? 'DATE' : 'STRING', category, description: null, isPrimaryKey: false, ...extra });
 const amount: Metric = { field: f('amount', 'number'), fn: 'SUM', martId: 'M' };
@@ -80,5 +81,23 @@ describe('queries', () => {
     expect(seriesQuery(ts, 'DAY', amt, []).dateTrunc?.[0]).toHaveProperty('timeZone');
     expect(seriesQuery(date, 'DAY', amt, []).dateTrunc?.[0]).not.toHaveProperty('timeZone');
     expect(seriesQuery(f('at', 'date', { type: 'DATETIME' }), 'DAY', amt, []).dateTrunc?.[0]).not.toHaveProperty('timeZone');
+  });
+});
+
+describe('slices and HAVING filters in chart queries', () => {
+  const slice: TraverseFilter = { column: 'c__ltv', operator: 'gt', value: 1, placement: 'pre-join' };
+  const having: TraverseFilter = { column: 'amount', operator: 'gt', value: 100, function: 'SUM' };
+  it('a HAVING filter goes only to a query that aggregates the same (column, function)', () => {
+    expect(scorecardsQuery([main], [having])?.filter).toEqual([having]);
+    expect(scorecardsQuery([{ ...main, metrics: [ltv] }], [having])?.filter).toBeUndefined();
+    expect(rangeQuery(date, [having]).filter).toBeUndefined();
+    expect(topValuesQuery(channel, amt, [having]).filter).toEqual([having, { column: 'channel', operator: 'is_not_blank' }]);
+    expect(topValuesQuery(channel, records, [having]).filter).toEqual([{ column: 'channel', operator: 'is_not_blank' }]);
+  });
+  it('a slice goes to a query that names its columns, and is left out of one that names none', () => {
+    expect(rangeQuery(date, [slice]).filter).toEqual([slice]);
+    expect(sparklineQuery(main, date, 'MONTH', [slice])?.filter).toEqual([slice]);
+    expect(scorecardsQuery([{ ...main, metrics: [] }], [slice])).toEqual({ uniqueCount: [''] });
+    expect(pieOtherQuery(records, [slice], channel, ['a']).filter).toEqual([{ column: 'channel', operator: 'is_not_blank' }, { column: 'channel', operator: 'not_in', value: ['a'] }]);
   });
 });
