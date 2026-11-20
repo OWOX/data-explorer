@@ -10,6 +10,8 @@ import { isNumericType } from '../format';
 import { withJoined, type JoinedSource } from '../../api/blendable';
 import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
 import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
+import { chartFields } from '../../charts/fields';
+import { keysPlan, useHavingKeys } from '../../charts/havingKeys';
 import { dropOrphanHaving, toTraverseFilters, type ColumnFilter } from '../../filters/build';
 import { sliceField } from '../../filters/slice';
 import { ChartsBody } from '../../charts/ChartsBody';
@@ -532,8 +534,6 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const ownOn = shown.filter((n) => ownNames.has(n)).length;
   const fieldsOf = (g: { main: boolean; path: string }) => (g.main ? native : sources.filter((x) => x.aliasPath === g.path).flatMap((x) => x.fields));
   const hasFilters = Object.keys(filters).length > 0;
-  // Charts ignore HAVING filters, so one alone does not make their "No rows match the filters." true.
-  const hasChartFilters = Object.values(filters).some((f) => !f.fn);
   const hasSorts = own !== null;
   const hasSlices = Object.keys(slices).length > 0 || Object.keys(parkedSlices).length > 0;
   /** A click on a chart mark: the same step as a filter edit (so Undo covers it), one filter per column. */
@@ -613,8 +613,15 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const { ref: scroller, width: scrollerWidth } = useWidth<HTMLDivElement>(charts);
   const owner = useMemo(() => groupMap(sources), [sources]);
   const traverseFilters = useMemo(() => toTraverseFilters(schema, Object.values(filters).filter((f) => !f.fn), Object.values(slices)), [schema, filters, slices]);
-  // Charts show the data before HAVING: a filter on an aggregate would act at each chart's own grain, so none goes to them.
-  const hasHaving = Object.values(filters).some((f) => f.fn);
+  // A HAVING filter keeps whole groups, so the charts get the passing group keys as an `in` rule instead of the filter itself.
+  const keysRead = useMemo(() => keysPlan(schema, shown, aggNow, Object.values(filters), Object.values(slices)), [schema, shown, aggNow, filters, slices]);
+  const keyField = useMemo(() => (keysRead.kind === 'read' && keysRead.key ? schema.find((f) => f.name === keysRead.key) : undefined), [keysRead, schema]);
+  // Nothing is read when the charts are not shown, a folded band, a blocked grid, or no number column to chart (ChartsBody shows its hint then).
+  const chartable = useMemo(() => !chartFields(schema, shown, aggNow, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), {}).marts.every((m) => m.metrics.length === 0 && !m.hasPk), [schema, shown, aggNow, martId, groups, sources]);
+  const having = useHavingKeys(martId, keysRead, keyField, version, !charts || paused || !!blocked || !chartable);
+  const chartFilter = useMemo(() => (having.rule ? [...traverseFilters, having.rule] : traverseFilters), [traverseFilters, having.rule]);
+  // A HAVING filter alone counts when the charts follow it, so their "No rows match the filters." is true.
+  const hasChartFilters = Object.values(filters).some((f) => !f.fn) || !!having.rule || having.gate?.kind === 'empty';
   // A click selects the cell; a shift-click stretches a block from the active cell (the one a click or a header selected) to this one,
   // and does not open another record.
   // Drag-select: a press on a cell starts a block, moving over other cells stretches it, a release anywhere ends it.
@@ -757,7 +764,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
             ))}
           </thead>
           {/* ChartsBody renders its own <tbody>: nesting one in another makes the parser pull the headers out of the table. */}
-          {charts && !blocked ? <ChartsBody martId={martId} schema={schema} shown={shown} agg={aggNow} filter={traverseFilters} havingNote={hasHaving} groups={groups} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
+          {charts && !blocked ? <ChartsBody martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
           : <tbody>
             {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`}</td></tr>
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} /></td></tr>
