@@ -1,17 +1,12 @@
 import type { LucideIcon } from 'lucide-react';
 import { AlertTriangle, ArchiveRestore, Check, ChevronDown, Code, Copy, DatabaseZap, ExternalLink, Loader2 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import {
-  buildReportPayload, exportTitle, ExportError, isGone, isPublishedSheetUrl, parseSheetUrl, reportMayExist, REPORT_GONE, sheetUrl,
-  type Exporter, type ExportSource, type Flight, type ReportEntry, type Stage, type StoredReport,
-} from '../../api/exports';
-import { martAppUrl } from '../../config';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { buildReportPayload, exportTitle, sheetUrl, type ExportSource } from '../../api/exports';
 import type { ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
 import type { Edge, Schema } from '../../model/types';
 import type { JoinedSource } from '../../api/blendable';
 import { buildMartSql } from '../../datamart/build-sql';
-import { createDataMart, deleteDraft, CreateMartError, CREATE_STAGE_LABEL, type CreateStage } from '../../datamart/create';
 import { dialectFor } from '../../datamart/dialect';
 import type { Row } from '../../sdk/types';
 import { buildTsv, tsvColumns } from '../../export/tsv';
@@ -25,20 +20,20 @@ import { ChatGptIcon } from '../chatgpt-icon';
 import { ClaudeIcon } from '../claude-icon';
 import { GoogleSheetsIcon } from '../google-sheets-icon';
 import { Toast } from '../Toast';
-import { Modal } from '../Modal';
 import { rovingTarget } from '../roving';
 import { Tooltip } from '../Tooltip';
+import { CreateMartDialog, type MartVariant, type MartVariants } from './export/CreateMartDialog';
+import { ExportDialog } from './export/ExportDialog';
+import { TextDialog } from './export/TextDialog';
+import { UNRECOGNISED, useExportFlight, type Result } from './export/useExportFlight';
 import { copyText } from './clipboard';
 import type { GridRun } from './useMartRows';
-import { errorMessage } from '../../model/guards';
 
 type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; filters: ColumnFilter[]; /** Pre-join filters on joined fields. */ slices?: ColumnFilter[]; sorts: SortKey[]; /** Only the sorts the member set; Create Data Mart never adds the grid's implicit order. */ ownSorts?: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun;
   /** The main mart's storage, for Create Data Mart. */ storage?: { id: string; type: string; title?: string };
   /** Reading the main mart's joined sources failed. */ joinsFailed?: boolean;
   /** The joined data marts the grid selects, as the Data Marts band shows them. */ joinedMarts?: { id: string; title: string }[];
   /** The main mart's joined sources, the model's edges and the mart titles, for the SQL; `sources` is undefined until the joins are read. */ sources?: JoinedSource[]; edges?: Edge[]; titles?: Map<string, string> };
-type Result = { kind: 'ok' | 'timeout' | 'error'; text: string; url?: string };
-
 type Assistant = 'Claude' | 'ChatGPT';
 /** Where each assistant lists the OWOX app (the links owox.com uses). */
 const PROVIDER_LISTING: Record<Assistant, string> = {
@@ -54,21 +49,12 @@ type Copy = {
   dialog: { name: string; heading?: string; note: string; areaLabel: string };
 };
 
-const STAGE_LABEL: Record<Stage, string> = { sheet: 'Creating the spreadsheet…', report: 'Saving the report…', run: 'Running the report…' };
-const MAYBE_CREATED = 'The report may have been created; check OWOX before trying again.';
-const UNRECOGNISED = 'This report targets an unrecognised spreadsheet.';
-/** A report used within this long counts as recently used. */
-const RECENT_MS = 60 * 24 * 60 * 60 * 1000;
-const isRecent = (usedAt: string | undefined, now = Date.now()) => { const t = usedAt ? Date.parse(usedAt) : NaN; return Number.isFinite(t) && t <= now && now - t <= RECENT_MS; };
-
 /** "Export" in the Data band header: a menu of Claude and ChatGPT (each copies a prompt), then the Google Sheets destinations, then "Copy to clipboard" and "Copy SQL" (the SQL the grid ran), and last "Create Data Mart", which saves the grid as a published SQL data mart. */
 export function ExportMenu(p: Props) {
   const { ctx, exporter } = useServices();
   const [{ modelVersion }] = useStore();
   const [destinations, setDestinations] = useState<DestinationDto[]>([]);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [result, setResult] = useState<Result | null>(null);
-  const [dialog, setDialog] = useState<{ destination: DestinationDto; error?: string; seq: number } | null>(null);
+  const { busy, result, setResult, dialog, setDialog, follow, generation, nextSeq } = useExportFlight(p.martId);
   // The three copy items are one thing at a time: the last copy, and whether its dialog is open.
   const [copy, setCopy] = useState<Copy | null>(null);
   const [copyOpen, setCopyOpen] = useState(false);
@@ -135,10 +121,6 @@ export function ExportMenu(p: Props) {
     return { variants: { off, on: grouped ? variant(true) : off }, grouped };
   }, [p.storage, p.sources, p.joinsFailed, p.edges, p.titles, p.martId, p.martTitle, p.schema, p.visible, p.aggregation, p.filters, p.slices, p.ownSorts]);
   const [martDialog, setMartDialog] = useState<{ variants: MartVariants; grouped: boolean; having: boolean; joinedMarts: { id: string; title: string }[]; storage: { id: string; type: string; title?: string }; seq: number } | null>(null);
-  const seq = useRef(0);
-  // Bumped when the mart changes or the menu goes away: an export finishing later is no longer in front of the member.
-  const gen = useRef(0);
-  useEffect(() => { gen.current += 1; return () => { gen.current += 1; }; }, [p.martId]);
   const menu = useRef<HTMLDetailsElement>(null);
 
   // Listed once per session; a model reload (Retry on a failed storage) lists them again.
@@ -161,67 +143,8 @@ export function ExportMenu(p: Props) {
     return () => { document.removeEventListener('pointerdown', outside, true); window.removeEventListener('blur', away); };
   }, []);
 
-  // An export this mart already has under way (it outlives the menu): pick it up, with the outcome of one that finished while away.
-  useEffect(() => {
-    const flight = exporter.inFlight(p.martId);
-    if (flight) follow(flight, { openWhenDone: !flight.settled });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exporter, p.martId]);
-
   const closeMenu = () => { if (menu.current) menu.current.open = false; };
   const focusSummary = () => menu.current?.querySelector<HTMLElement>('summary')?.focus();
-
-  /** Shows the outcome of an export, whoever started it. Only a menu still on the mart acts on it; the sheet is opened only when the member was there to see it finish. */
-  function follow(flight: Flight, o: { fromDialog?: boolean; destination?: DestinationDto; openWhenDone: boolean }) {
-    const home = gen.current;
-    const here = () => gen.current === home;
-    const { notes, sourceKind } = flight;
-    const martId = p.martId;
-    setBusy(STAGE_LABEL[flight.stage]);
-    const unsubscribe = flight.subscribe((s) => { if (here()) setBusy(STAGE_LABEL[s]); });
-    flight.promise.then(async ({ report, outcome }) => {
-      unsubscribe();
-      if (!here()) return;
-      exporter.acknowledge(martId);
-      const url = sheetUrl(report) ?? undefined;
-      const note = notes.length ? ` ${notes.join(' ')}` : '';
-      setDialog(null);
-      if (outcome.state === 'success') {
-        setResult({ kind: 'ok', text: url ? `Exported to "${report.title}".${note}` : `Exported to "${report.title}", but ${UNRECOGNISED.toLowerCase()}${note}`, url });
-        if (url && o.openWhenDone && here()) await ctx.ui.openExternal(url).catch(() => undefined);
-      } else if (outcome.state === 'busy') {
-        setResult({ kind: 'error', text: sourceKind === 'update' ? 'This report is already running. The new settings were saved but not run; try again when it finishes.' : 'This report is already running; try again when it finishes.', url });
-      } else if (outcome.state === 'failed') {
-        setResult({ kind: 'error', text: `The run failed: ${outcome.error}${note}`, url });
-      } else {
-        setResult({ kind: 'timeout', text: `Still running.${note}`, url });
-      }
-    }, async (e) => {
-      unsubscribe();
-      if (!here()) return;
-      exporter.acknowledge(martId);
-      const text = errorMessage(e);
-      const { destination, fromDialog } = o;
-      if (isGone(e)) {
-        // The exporter already dropped the report from its list; the dialog, if open, stays for another choice.
-        setResult({ kind: 'error', text: REPORT_GONE });
-      } else if (destination && e instanceof ExportError && e.stage === 'sheet') {
-        // The spreadsheet could not be made: offer the pasted-URL way instead.
-        setDialog((cur) => ({ destination, error: `Could not create a spreadsheet: ${text}`, seq: cur?.seq ?? ++seq.current }));
-      } else if (destination && fromDialog && e instanceof ExportError && e.stage === 'report' && !reportMayExist(e)) {
-        // The spreadsheet stays: a retry reuses it instead of leaving an orphan behind.
-        setDialog((cur) => ({ destination, error: text, seq: cur?.seq ?? ++seq.current }));
-      } else if (reportMayExist(e)) {
-        // The request may have reached OWOX: a retry could make a second report.
-        setDialog(null);
-        setResult({ kind: 'error', text: MAYBE_CREATED });
-      } else {
-        // Past this point the report exists (and may be running): a retry from the dialog would make a second one.
-        setDialog(null);
-        setResult({ kind: 'error', text: e instanceof ExportError && e.stage === 'run' ? `The run could not be followed: ${text}` : text });
-      }
-    }).finally(() => { if (here()) setBusy(null); });
-  }
 
   function start(destination: DestinationDto, wanted: ExportSource, title: string, fromDialog = false) {
     if (exporter.inFlight(p.martId)) return;
@@ -240,9 +163,9 @@ export function ExportMenu(p: Props) {
   /** Copies `text` and shows the outcome; neither way of copying may work (the sandbox may block both), and then the text is shown to be copied by hand. */
   async function copyOut(text: string, ok: (copied: boolean) => Omit<Copy, 'text' | 'ok'>) {
     closeMenu();
-    const home = gen.current;
+    const home = generation();
     const copied = await copyText(text);
-    if (gen.current !== home) return;
+    if (generation() !== home) return;
     setResult(null);
     setCopy({ text, ok: copied, ...ok(copied) });
     setCopyOpen(!copied);
@@ -323,7 +246,7 @@ export function ExportMenu(p: Props) {
               <>
                 <div role="group" aria-label="Destinations" className="dm-export-dest">
                   {destinations.map((d) => (
-                    <button key={d.id} type="button" role="menuitem" data-lvl="1" data-dest={d.id} className="dm-export-item" onClick={() => { closeMenu(); setDialog({ destination: d, seq: ++seq.current }); }}>
+                    <button key={d.id} type="button" role="menuitem" data-lvl="1" data-dest={d.id} className="dm-export-item" onClick={() => { closeMenu(); setDialog({ destination: d, seq: nextSeq() }); }}>
                       <GoogleSheetsIcon size={16} />
                       <span className="dm-filter-label">{d.title}</span>
                     </button>
@@ -340,7 +263,7 @@ export function ExportMenu(p: Props) {
             <div role="group" aria-label="Data mart" className="dm-export-mart">
               <ExportItem
                 action="create-mart" icon={DatabaseZap} label="Create Data Mart" off={'reason' in martSql ? martSql.reason : null}
-                onClick={() => { if (!('reason' in martSql)) { closeMenu(); setMartDialog({ variants: martSql.variants, grouped: martSql.grouped, having: p.filters.some((f) => !!f.fn), joinedMarts: p.joinedMarts ?? [], storage: p.storage!, seq: ++seq.current }); } }}
+                onClick={() => { if (!('reason' in martSql)) { closeMenu(); setMartDialog({ variants: martSql.variants, grouped: martSql.grouped, having: p.filters.some((f) => !!f.fn), joinedMarts: p.joinedMarts ?? [], storage: p.storage!, seq: nextSeq() }); } }}
               />
             </div>
           </div>
@@ -421,26 +344,6 @@ function CopiedText({ copy }: { copy: Copy }) {
   );
 }
 
-function TextDialog({ name, heading = name, note, areaLabel, text, onClose, returnFocus }: { name: string; heading?: string; note: string; areaLabel: string; text: string; onClose: () => void; returnFocus: () => void }) {
-  const [again, setAgain] = useState<'idle' | 'copied' | 'failed'>('idle');
-  const area = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => { area.current?.focus(); }, []);
-  return (
-    <Modal label={name} onClose={onClose} width="w-[34rem]" returnFocus={returnFocus}>
-        <h2 className="text-base font-semibold">{heading}</h2>
-        <p className="text-xs text-muted-foreground">{note}</p>
-        <textarea ref={area} readOnly aria-label={areaLabel} rows={13} value={text} onFocus={(e) => e.currentTarget.select()} className="dm-input w-full resize-none rounded-md border bg-background p-2 font-mono text-xs" />
-        <div className="flex items-center justify-end gap-2">
-          {again === 'failed' && <span role="alert" className="mr-auto text-xs text-destructive">Could not copy. Select the text and copy it by hand.</span>}
-          <button type="button" onClick={onClose} className="h-8 rounded-md border px-3 hover:bg-accent">Close</button>
-          <button type="button" onClick={async () => { const ok = await copyText(text); setAgain(ok ? 'copied' : 'failed'); if (!ok) { area.current?.focus(); area.current?.select(); } }} className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-3 text-primary-foreground">
-            {again === 'copied' ? <><Check className="size-4" />Copied</> : 'Copy'}
-          </button>
-        </div>
-    </Modal>
-  );
-}
-
 /** The outcome of a Google Sheets export, as the toast's text. */
 function ExportResultText({ result }: { result: Result }) {
   const Icon = result.kind === 'ok' ? Check : AlertTriangle;
@@ -454,288 +357,4 @@ function ExportResultText({ result }: { result: Result }) {
 function ExportResultLink({ result }: { result: Result }) {
   if (!result.url) return null;
   return <a href={result.url} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-0.5 underline">{result.kind === 'timeout' ? 'Still running — open the sheet' : 'Open the sheet'}<ExternalLink className="size-3" /></a>;
-}
-
-/** What the dialog knows of this mart's reports, filling in as the live reads return. */
-function useMartReports(exporter: Exporter, martId: string) {
-  const subscribe = useCallback((cb: () => void) => exporter.subscribe(martId, cb), [exporter, martId]);
-  const entries = useSyncExternalStore(subscribe, () => exporter.entries(martId));
-  // The remembered ids and usedAt are known without OWOX; read again whenever the entries change so a dropped report leaves them too.
-  const [stored, setStored] = useState<StoredReport[] | null>(() => exporter.storedNow(martId) ?? null);
-  useEffect(() => {
-    let live = true;
-    void exporter.stored(martId).then((l) => { if (live) setStored(l); });
-    return () => { live = false; };
-  }, [exporter, martId, entries]);
-  // A remembered report with no entry means the reads were dropped (a model reload) or never started: start them. Idempotent while a cache exists.
-  const missing = stored !== null && stored.some((r) => !entries.some((e) => e.reportId === r.reportId));
-  useEffect(() => { if (missing) exporter.load(martId); }, [missing, exporter, martId, entries]);
-  return { entries, stored, pending: stored === null || missing };
-}
-
-/** Most recent first, never-used last; ties keep their order. */
-const byUsedAt = (a: { usedAt?: string }, b: { usedAt?: string }) => (b.usedAt ? Date.parse(b.usedAt) : -Infinity) - (a.usedAt ? Date.parse(a.usedAt) : -Infinity);
-
-type Option = 1 | 2 | 3;
-
-function ExportDialog({ exporter, martId, destination, title, initialError, busy, onCancel, onExport, returnFocus }: {
-  returnFocus: () => void; exporter: Exporter; martId: string; destination: DestinationDto; title: string; initialError?: string; busy: boolean; onCancel: () => void; onExport: (title: string, source: ExportSource) => void;
-}) {
-  const [name, setName] = useState(title);
-  const [url, setUrl] = useState('');
-  // What the member chose in the dialog; null until they click a radio or a report, so the dialog may still move option 3 around.
-  // `first` keeps the order the member saw when they chose, so the options do not move under them.
-  const [picked, setPicked] = useState<{ option: Option; reportId?: string; first: boolean } | null>(null);
-  // A message from a failed attempt comes down from the parent; a form mistake is the dialog's own.
-  const [local, setError] = useState<string | null>(null);
-  const error = local ?? initialError ?? null;
-  const { entries, stored, pending } = useMartReports(exporter, martId);
-  // The checked radio takes focus when the dialog opens.
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => { box.current?.querySelector<HTMLElement>('input[type="radio"]:checked')?.focus(); }, []);
-
-  const loadingCount = entries.filter((e) => e.state === 'loading').length;
-  const loading = pending || loadingCount > 0;
-  // Reports that are here, or whose read failed (their destination is unknown); each in most-recent order.
-  const listed: ReportEntry[] = entries.filter((e) => e.state === 'failed' || (e.state === 'ready' && e.report!.destinationId === destination.id)).sort(byUsedAt);
-  const readable = (e: ReportEntry) => e.state === 'ready' && sheetUrl(e.report!) !== null;
-  const recentHere = listed.find((e) => readable(e) && isRecent(e.usedAt));
-  // Until its live read has finished (a failed read counts as finished), a recently used report anywhere in the mart may be in this destination.
-  const recentUnknown = (stored ?? []).some((r) => isRecent(r.usedAt) && !entries.some((e) => e.reportId === r.reportId && e.state !== 'loading'));
-  const leading = !!recentHere || recentUnknown;
-  const option: Option = picked?.option ?? (leading ? 3 : 1);
-  const chosenId = picked?.reportId ?? recentHere?.reportId;
-  const chosen = option === 3 ? listed.find((e) => e.reportId === chosenId && readable(e)) : undefined;
-  const noReports = !loading && listed.length === 0;
-  // An untouched dialog whose option 3 moves back takes the focus with it, so it is not left on a radio that is gone or on the page body.
-  const wasLeading = useRef(leading);
-  useEffect(() => {
-    if (wasLeading.current && !leading && !picked) {
-      const at = document.activeElement;
-      if (!at || at === document.body || box.current?.contains(at)) box.current?.querySelector<HTMLElement>('input[name="dm-export-target"]:checked')?.focus();
-    }
-    wasLeading.current = leading;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leading]);
-  const order: Option[] = (picked ? picked.first : leading) ? [3, 1, 2] : [1, 2, 3];
-
-  /** Exporting fixes the member's choice and the order, so the list changing during the run does not move the dialog. */
-  function go(title: string, source: ExportSource) {
-    setPicked((cur) => cur ?? { option, reportId: chosenId, first: leading });
-    onExport(title, source);
-  }
-  function submit() {
-    if (busy) return;
-    if (option === 3) {
-      if (!chosen?.report) return setError('Pick a report to update.');
-      setError(null);
-      return go(chosen.report.title, { kind: 'update', report: chosen.report });
-    }
-    if (!name.trim()) return setError('Give the report a title.');
-    if (option === 1) { setError(null); return go(name.trim(), { kind: 'new' }); }
-    if (isPublishedSheetUrl(url)) return setError('That is a published-to-web link. Open the spreadsheet itself and paste its address bar link.');
-    const target = parseSheetUrl(url);
-    if (!target) return setError('Paste the link of a Google spreadsheet (docs.google.com/spreadsheets/d/…).');
-    setError(null);
-    go(name.trim(), { kind: 'existing', target });
-  }
-
-  const radio = (n: Option, label: string, disabled = false) => (
-    <label key={n} className={`flex items-center gap-2 ${disabled ? 'opacity-60' : ''}`}>
-      <input type="radio" name="dm-export-target" checked={option === n} disabled={disabled} onChange={() => setPicked((cur) => ({ option: n, reportId: cur?.reportId, first: cur?.first ?? leading }))} />{label}
-    </label>
-  );
-  const details: Record<Option, React.ReactNode> = {
-    1: null,
-    2: option === 2 && (
-      <div className="ml-6 flex flex-col gap-1">
-        <label className="flex flex-col gap-1">Spreadsheet link
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://docs.google.com/spreadsheets/d/…/edit#gid=0" className="h-8 rounded-md border bg-background px-2" />
-        </label>
-        <span className="text-xs text-muted-foreground">Share it with the destination’s account as Editor. Without a #gid the first tab is used.</span>
-      </div>
-    ),
-    3: option === 3 && (
-      <div className="ml-6 flex flex-col gap-1" role="radiogroup" aria-label="Report to update">
-        {listed.map((e) => e.state === 'failed' ? (
-          <div key={e.reportId} className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>Couldn’t load</span>
-            <button type="button" onClick={() => exporter.retry(martId, e.reportId)} className="rounded border px-2 py-0.5 hover:bg-accent">Retry</button>
-          </div>
-        ) : (
-          <label key={e.reportId} className={`flex items-center gap-2 ${readable(e) ? '' : 'opacity-60'}`}>
-            <input type="radio" name="dm-export-report" checked={chosen?.reportId === e.reportId} disabled={!readable(e)} onChange={() => setPicked((cur) => ({ option: 3, reportId: e.reportId, first: cur?.first ?? leading }))} />
-            <span className="min-w-0 flex-1 truncate">{e.report!.title}</span>
-            {!readable(e) && <span className="text-xs text-muted-foreground">Unrecognised spreadsheet</span>}
-            {e.reportId === recentHere?.reportId && <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">Recently used</span>}
-          </label>
-        ))}
-        {loading && (
-          <div role="status" className="flex flex-col gap-1.5" aria-label="Loading reports">
-            <span className="text-xs text-muted-foreground">Loading reports…</span>
-            {Array.from({ length: Math.max(1, loadingCount) }, (_, i) => <div key={i} data-skeleton className="h-4 w-full animate-pulse rounded bg-muted" />)}
-          </div>
-        )}
-        {noReports && <span className="text-xs text-muted-foreground">No reports of this data mart in this destination yet.</span>}
-      </div>
-    ),
-  };
-
-  return (
-    <Modal label={`Export to ${destination.title}`} onClose={onCancel} width="w-[28rem]" returnFocus={returnFocus} onAction={submit} dialogRef={box}>
-        <h2 className="text-base font-semibold">Export to {destination.title}</h2>
-        {option !== 3 && (
-          <label className="flex flex-col gap-1">Report title
-            <input value={name} onChange={(e) => setName(e.target.value)} className="h-8 rounded-md border bg-background px-2" />
-          </label>
-        )}
-        <fieldset className="flex flex-col gap-1">
-          <legend className="mb-1">Export into</legend>
-          {order.map((n) => (
-            <div key={n} className="flex flex-col gap-1">
-              {radio(n, n === 1 ? 'New spreadsheet' : n === 2 ? 'Existing spreadsheet' : 'Update existing report', n === 3 && noReports)}
-              {details[n]}
-            </div>
-          ))}
-        </fieldset>
-        {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onCancel} className="h-8 rounded-md border px-3 hover:bg-accent">Cancel</button>
-          <button type="button" onClick={submit} disabled={busy} className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-3 text-primary-foreground disabled:opacity-50">{busy && <Loader2 className="size-4 animate-spin" />}Export</button>
-        </div>
-    </Modal>
-  );
-}
-
-/** The link to a data mart in OWOX: it opens through the host, since the plugin runs in a frame. */
-const MartLink = ({ url, children, linkRef }: { url: string; children: React.ReactNode; linkRef?: React.Ref<HTMLAnchorElement> }) => {
-  const { ctx } = useServices();
-  return <a ref={linkRef} href={url} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.preventDefault(); void ctx.ui.openExternal(url).catch(() => undefined); }} className="underline">{children}</a>;
-};
-
-/** The SQL of one grouping choice: plain, and with the grid's ORDER BY; each may be a reason instead. */
-type MartVariant = { plain: { sql: string } | { reason: string }; sorted: { sql: string } | { reason: string } };
-type MartVariants = { off: MartVariant; on: MartVariant };
-
-/** The dialog behind Create Data Mart: names the mart, shows its SQL, runs the create steps, then links to the result. */
-function CreateMartDialog({ martTitle, variants, grouped, having, joinedMarts, storage, onClose, returnFocus }: { martTitle: string; variants: MartVariants; /** The grid groups its rows. */ grouped: boolean; /** The grid has filters on aggregates, which only a grouped data mart can keep. */ having: boolean; /** The joined data marts selected when the dialog opened. */ joinedMarts: { id: string; title: string }[]; storage: { id: string; type: string; title?: string }; onClose: () => void; returnFocus: () => void }) {
-  const { ctx } = useServices();
-  const [name, setName] = useState(exportTitle(martTitle));
-  const [grouping, setGrouping] = useState(false);
-  const [sorting, setSorting] = useState(false);
-  const [stage, setStage] = useState<CreateStage | null>(null);
-  const [failure, setFailure] = useState<CreateMartError | { message: string; stage?: undefined; martId?: undefined } | null>(null);
-  const [made, setMade] = useState<{ id: string; url: string } | null>(null);
-  const [local, setLocal] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const running = stage !== null || deleting;
-  const field = useRef<HTMLInputElement>(null);
-  const link = useRef<HTMLAnchorElement>(null);
-  const live = useRef(true);
-  const abort = useRef(new AbortController());
-  const groupOff = !grouped ? "The grid isn't grouped" : 'reason' in variants.on.plain ? variants.on.plain.reason : null;
-  const groupOn = grouping && !groupOff;
-  const { plain, sorted } = groupOn ? variants.on : variants.off;
-  const sortOn = sorting && 'sql' in sorted;
-  const sql = sortOn ? sorted.sql : 'sql' in plain ? plain.sql : '';
-  const joined = joinedMarts.length;
-  useEffect(() => { field.current?.focus(); field.current?.select(); }, []);
-  useEffect(() => () => { live.current = false; abort.current.abort(); }, []);
-  useEffect(() => { if (made) link.current?.focus(); }, [made]);
-
-  async function submit() {
-    if (running) return;
-    // A draft that already exists is resumed from the step that failed; without one the run starts over.
-    const resume = failure?.martId ? { martId: failure.martId, from: failure.stage } : {};
-    if (!resume.martId && !name.trim()) return setLocal('Give the data mart a name.');
-    setLocal(null);
-    setNotice(null);
-    setFailure(null);
-    setStage('create');
-    try {
-      const r = await createDataMart(ctx, { title: name.trim(), storageId: storage.id, sql, signal: abort.current.signal, ...resume }, (s) => { if (live.current) setStage(s); });
-      if (live.current) setMade(r);
-    } catch (e) {
-      if (live.current) setFailure(e instanceof CreateMartError ? e : { message: errorMessage(e) });
-    } finally {
-      if (live.current) setStage(null);
-    }
-  }
-  // Define or schema failed: the draft can't be published as it is, so the member may delete it and start over.
-  async function discard() {
-    if (running || !failure?.martId) return;
-    setLocal(null);
-    setDeleting(true);
-    try {
-      await deleteDraft(ctx, failure.martId);
-      if (live.current) { setFailure(null); setNotice('The draft was deleted. Edit the name or the options and create again.'); }
-    } catch (e) {
-      if (live.current) setLocal(`The draft could not be deleted: ${errorMessage(e)}`);
-    } finally {
-      if (live.current) setDeleting(false);
-    }
-  }
-  const error = local ?? failure?.message ?? null;
-  const draft = failure?.martId ? martAppUrl(ctx.projectId, failure.martId) : null;
-  const published = failure?.stage === 'share';
-  const deletable = !!failure?.martId && (failure.stage === 'define' || failure.stage === 'schema');
-  const where = storage.title ?? storage.type;
-
-  // Escape and the backdrop close the dialog unless a run is in flight.
-  return (
-    <Modal label="Create Data Mart" onClose={onClose} canClose={!running} width="w-[34rem]" returnFocus={returnFocus} onAction={() => void submit()}>
-        <h2 className="text-base font-semibold">Create Data Mart</h2>
-        {made ? (
-          <>
-            <p>Created {name.trim() || made.id}.</p>
-            <p><MartLink url={made.url} linkRef={link}>Open {name.trim() || made.id}</MartLink></p>
-            <div className="flex justify-end"><button type="button" onClick={onClose} className="h-8 rounded-md border px-3 hover:bg-accent">Close</button></div>
-          </>
-        ) : (
-          <>
-            <p className="text-xs text-muted-foreground">An SQL data mart in {where} that references {martTitle}{joined > 0 ? ` and ${joined === 1 ? 'the joined data mart' : `the ${joined} joined data marts`} the grid uses` : ''}, with its columns and filters. It is published and available for reporting.</p>
-            <label className="flex flex-col gap-1">Name
-              <input ref={field} value={name} disabled={running || !!failure?.martId} onChange={(e) => setName(e.target.value)} className="h-8 rounded-md border bg-background px-2 disabled:opacity-60" />
-            </label>
-            {grouped && !groupOn && <p className="text-xs text-muted-foreground">The grid groups its rows; the data mart keeps them ungrouped, so the tool that reads it can group them.</p>}
-            {grouped && !groupOn && having && <p className="text-xs text-muted-foreground">Filters on aggregates are left out when the data mart is not grouped.</p>}
-            <label className="flex flex-col gap-0.5">
-              <span className="inline-flex items-center gap-2">
-                <input type="checkbox" checked={groupOn} disabled={running || !!failure?.martId || !!groupOff} onChange={(e) => { setGrouping(e.target.checked); if ('reason' in (e.target.checked ? variants.on : variants.off).sorted) setSorting(false); }} />
-                Include grouping
-              </span>
-              {groupOff && <span className="pl-6 text-xs text-muted-foreground">{groupOff}</span>}
-            </label>
-            <label className="flex flex-col gap-0.5">
-              <span className="inline-flex items-center gap-2">
-                <input type="checkbox" checked={sortOn} disabled={running || !!failure?.martId || 'reason' in sorted} onChange={(e) => setSorting(e.target.checked)} />
-                Include sorting
-              </span>
-              {'reason' in sorted && <span className="pl-6 text-xs text-muted-foreground">{sorted.reason}</span>}
-            </label>
-            <details>
-              <summary className="cursor-pointer text-xs text-muted-foreground">SQL</summary>
-              <textarea readOnly aria-label="SQL" rows={10} value={sql} className="dm-input mt-1 w-full resize-none rounded-md border bg-background p-2 font-mono text-xs" />
-            </details>
-            {error && (
-              <div role="alert" className="flex flex-col gap-1 text-xs text-destructive">
-                <p>{error}</p>
-                {draft && (published
-                  ? <p>The data mart is published but not yet available for reporting: <MartLink url={draft}>Open the data mart</MartLink></p>
-                  : <p>The data mart was created as a draft: <MartLink url={draft}>Open the draft</MartLink></p>)}
-                {deletable && <p><button type="button" disabled={running} onClick={() => void discard()} className="underline disabled:opacity-50">Delete the draft</button></p>}
-              </div>
-            )}
-            {notice && !error && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
-            <div className="flex items-center justify-end gap-2">
-              <button type="button" disabled={running} onClick={onClose} className="h-8 rounded-md border px-3 hover:bg-accent disabled:opacity-50">Cancel</button>
-              <button type="button" onClick={() => void submit()} disabled={running} className="inline-flex h-8 items-center gap-1 rounded-md bg-primary px-3 text-primary-foreground disabled:opacity-50">
-                {running ? <><Loader2 className="size-4 animate-spin" />{stage ? CREATE_STAGE_LABEL[stage] : 'Deleting the draft…'}</> : failure ? 'Retry' : 'Create'}
-              </button>
-            </div>
-          </>
-        )}
-    </Modal>
-  );
 }
