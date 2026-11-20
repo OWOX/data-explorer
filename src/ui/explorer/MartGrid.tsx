@@ -269,7 +269,6 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   useEffect(() => {
     if (initialSources && refreshTick === 0) return;
     let live = true;
-    setJoinsFailed(false);
     blendable.get(martId).then((s) => { if (live) setSources(s); }, () => { if (live) setJoinsFailed(true); });
     return () => { live = false; };
   }, [blendable, martId, initialSources, refreshTick]);
@@ -334,7 +333,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const seenSeq = useRef(0);
   const markEdit = useCallback(() => setEditSeq((n) => n + 1), []);
   // A change to what the grid shows: one Undo step, and the rows start again from the first page.
-  const edit = useCallback((change: () => void) => { markEdit(); change(); setLimit(PAGE_SIZE); }, [markEdit]);
+  const edit = useCallback((change: () => void) => { markEdit(); change(); setLimit(PAGE_SIZE); }, [markEdit, setLimit]);
   // A model reload re-reads what is shown too: its counter joins the grid's own, and each only ever goes up.
   const version = ownVersion + modelVersion;
   // Re-seed the filters when a followed link asks for new ones on this same mart (adjust state during render).
@@ -470,7 +469,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
 
   // While the member has no sort of their own, a click replaces the default with that column ascending (the
   // default's own column included), so a default never rides along as a second sort; after that the normal cycle.
-  const toggleSort = useCallback((field: string) => edit(() => setOwn((cur) => (cur === null ? [{ field, direction: 'asc' }] : cycleSort(cur, field)))), [edit]);
+  const toggleSort = useCallback((field: string) => edit(() => setOwn((cur) => (cur === null ? [{ field, direction: 'asc' }] : cycleSort(cur, field)))), [edit, setOwn]);
   // The menu's sort choices. With no sort of the member's own, a choice replaces the default (as a title click does); after that it sets the
   // column's direction where it stands in the order of precedence, or adds it last, which is what the title's first click does. Removing
   // drops the column, and removing the default's own column leaves the member's own empty list (no sort at all).
@@ -478,7 +477,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     if (direction === null) return cur === null ? [] : cur.filter((s) => s.field !== field);
     if (cur === null) return [{ field, direction }];
     return cur.some((s) => s.field === field) ? cur.map((s) => (s.field === field ? { field, direction } : s)) : [...cur, { field, direction }];
-  })), [edit]);
+  })), [edit, setOwn]);
   // The implicit first-key sort is sent and exported but not shown: no arrow, no aria-sort, so the first click is not a no-op.
   const shownSorts = useMemo(() => (grouped ? (own ?? []) : gridSorts), [grouped, own, gridSorts]);
   const env = useMemo(() => ({ sorts: shownSorts, toggleSort, sortable: !charts }), [shownSorts, toggleSort, charts]);
@@ -496,7 +495,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     columnStore.save(martId, cols, left.length ? Object.fromEntries(left.map((m) => [m, [] as string[]])) : undefined);
     // A joined mart that has just left remembers what it was showing, as its own field names.
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
-  }, [sources, native, markEdit, agg, applyAgg, visible, columnStore, martId]);
+  }, [sources, native, markEdit, agg, applyAgg, visible, columnStore, martId, setVisible, setOwn]);
   // A moved column keeps its sorts, filters and functions: only the order changes, and it is one Undo step. The cell selection is dropped (its columns moved).
   const reorder = useCallback((cols: string[]) => {
     if (cols === shown) return;
@@ -579,12 +578,12 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     const unapplied = f && field ? unappliedFilter(f, sliceField(field)) : null;
     if (unapplied) setNote({ text: unapplied });
     edit(() => setAllSlices((cur) => withEntry(cur, name, f)));
-  }, [schema, edit]);
+  }, [schema, edit, setNote]);
   const setFilter = useCallback((name: string, f: ColumnFilter | undefined) => {
     const unapplied = f ? unappliedFilter(f, schema.find((x) => x.name === name)) : null;
     if (unapplied) setNote({ text: unapplied });
     edit(() => setAllFilters((cur) => withEntry(cur, name, f)));
-  }, [schema, edit]);
+  }, [schema, edit, setNote]);
   const [menuRequest, setMenuRequest] = useState<{ key: string; seq: number } | null>(null);
   const menuEnv = useMemo<ColumnMenuEnv>(() => ({
     menuRequest,
@@ -693,8 +692,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     const cell = box?.querySelector<HTMLElement>('td[data-selected], td[data-moving]');
     if (!box || !cell) return;
     // The sticky header and number column cover the box's edges: the cell is kept clear of them.
+    // The header's height is only known after layout, so it is written to the element here (a ref's style, not state).
+    // eslint-disable-next-line react-hooks/immutability
     box.style.scrollPaddingTop = `${head.current?.offsetHeight ?? 0}px`;
-    box.style.scrollPaddingLeft = '46px';
     cell.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }, [scroller, cellSel?.row, cellSel?.col, cellSel?.to?.row, cellSel?.to?.col]);
   // Ctrl/Cmd+C: the selection goes to the clipboard as tab-separated text, as it is displayed. The copy event needs no clipboard permission,
@@ -753,11 +753,13 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   return (
     <GridEnv.Provider value={env}>
     <ColumnMenuEnvContext.Provider value={menuEnv}>
+    {/* The table's last measured height is a ref on purpose: a re-render on every resize would reach an open column menu and drop its Apply. */}
+    {/* eslint-disable-next-line react-hooks/refs */}
     <div ref={frame} className={`dm-grid-frame flex max-h-[32rem] min-h-0 flex-col${charts ? ' dm-grid-frame-charts' : ''}`} style={charts && tableHeight.current ? { height: tableHeight.current } : undefined}>
       <Toast onDismiss={() => setNote(null)} stamp={note} returnTo={() => scroller.current}>{note?.text}</Toast>
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts && !hasSlices} onClick={() => edit(() => { setAllFilters({}); setAllSlices({}); setOwn(null); })} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
-        <button type="button" onClick={() => { onRefresh(); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
+        <button type="button" onClick={() => { onRefresh(); setJoinsFailed(false); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} slices={Object.values(slices)} sorts={gridSorts} ownSorts={own ?? NO_SORTS} rows={rows} hasMore={hasMore} loading={loading} run={run} storage={martStorage} storageUnavailable={!martStorage} joinsFailed={joinsFailed && !joinsRead} sources={joinsRead ? sources : undefined} edges={model.edges} titles={martTitles} joinedMarts={joinedMarts} />}
       </BandTools>
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}

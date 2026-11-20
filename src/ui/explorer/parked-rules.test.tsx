@@ -100,3 +100,32 @@ test('a parked filter is applied once its field is offered, with no note about i
   await waitFor(() => expect(t.queries.some((q) => q.filter?.length === 3)).toBe(true));
   expect(screen.queryByText(/is paused/)).toBeNull();
 });
+
+test('Redo of an edit made while rules are parked keeps them', async () => {
+  const t = setup(mixed, { blendFails: true });
+  await waitFor(() => expect(headers()).toEqual(['id', 'status']));
+  await waitFor(() => expect(t.queries.length).toBeGreaterThan(0));
+  const menu = await openColumnMenu(within(data()), 'status');
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
+  await waitFor(() => expect(t.saved().columns).toEqual(['id']));
+  await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(t.saved().columns).toEqual(['id', 'status']));
+  await userEvent.click(screen.getByRole('button', { name: 'Redo' }));
+  await waitFor(() => expect(t.saved().columns).toEqual(['id']));
+  expect(t.saved().filters).toEqual({ status: appliedFilter, customers__city: parkedFilter });
+  expect(t.saved().slices).toEqual({ customers__country_code: slice });
+});
+
+test('a view link that seeds the grid keeps the parked rules it names and sends only the offered ones', async () => {
+  const t = setup(mixed, { blendFails: true });
+  await waitFor(() => expect(headers()).toEqual(['id', 'status']));
+  await waitFor(() => expect(t.queries.length).toBeGreaterThan(0));
+  const other = { field: 'status', op: 'eq' as const, value: 'refunded' };
+  const parkedOther = { field: 'customers__city', op: 'contains' as const, value: 'z' };
+  act(() => {
+    t.live.dispatch!({ type: 'applyView', selection: { sourceKey: null, martId: 'orders', record: null }, search: '', contextIds: [], storageIds: null, grid: { columns: ['id', 'status', 'customers__city'], filters: { status: other, customers__city: parkedOther }, sorts: null, limit: 200 } });
+  });
+  await waitFor(() => expect(t.queries.at(-1)!.filter).toEqual([{ column: 'status', operator: 'eq', value: 'refunded' }]));
+  expect(t.saved().filters).toEqual({ status: other, customers__city: parkedOther });
+  expect(t.saved().slices).toBeUndefined();
+});
