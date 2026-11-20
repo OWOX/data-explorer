@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JoinedSource } from '../../api/blendable';
 import type { DqSummary, Model } from '../../model/types';
 import { buildJoinTree, ghostSources, subtreePaths } from '../../state/join-tree';
+import { pathTitle } from '../../state/join-plan';
 import { closestTarget, dropTargets } from './canvas-drag';
 import { CARD_H, CARD_W, layoutTree } from './canvas-layout';
 import { MartCard, martElementId, type CountState } from './cards';
@@ -114,6 +115,11 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   useWires(treeRef, wires, { pinned: null, hovered: null }, revisionOf(key), 'tree-wires');
 
   if (!mainId) return <p className="dm-muted text-sm">Select a data mart.</p>;
+  // A card carries its path in its title only when the report reaches that mart through more than one path.
+  const titleOf = (path: string) => {
+    const source = sources?.find((x) => x.aliasPath === path);
+    return path === '' || !source ? undefined : pathTitle(source, [...tree.nodes.keys()], sources ?? []);
+  };
   const contextsOf = (ids: string[]) => model.contexts.filter((c) => ids.includes(c.id));
   const dragTitle = drag ? model.marts.get(tree.nodes.get(drag.path)?.martId ?? '')?.title : undefined;
   let line: string | null = null;
@@ -149,6 +155,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               selected={node.path === ''}
               joined={node.path !== ''}
               path={node.path}
+              title={titleOf(node.path)}
               onRemove={node.path === '' ? undefined : () => {
                 const parent = tree.nodes.get(node.parent!)!;
                 void click(node.martId, { removePaths: subtreePaths(tree, node.path) }).then(() => setFocusCard({ martId: parent.martId, path: parent.path }), () => undefined);
@@ -174,6 +181,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               mart={mart}
               ghost
               path={g.aliasPath}
+              title={pathTitle(g, [...tree.nodes.keys()], sources ?? [])}
               contexts={contextsOf(mart.contextIds)}
               count={{ state: 'idle' }}
               quality={dq.get(mart.id)}
