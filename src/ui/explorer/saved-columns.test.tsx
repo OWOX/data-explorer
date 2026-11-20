@@ -113,7 +113,7 @@ test('this session\'s columns win over the saved ones', async () => {
   const load = vi.spyOn(t.services.current!.columnStore, 'load');
   // The main mart cannot join Order Items, so a click on its card does nothing; the search selects it as the main one.
   await userEvent.click(screen.getByRole('button', { name: 'Search data marts' }));
-  await userEvent.type(screen.getByRole('textbox', { name: 'Search data marts' }), 'Order Items{Enter}');
+  await userEvent.type(screen.getByRole('combobox', { name: 'Search data marts' }), 'Order Items{Enter}');
   await within(document.getElementById('band-data')!).findByText('Order Items');
   await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
   await within(document.getElementById('band-data')!).findByText('Orders');

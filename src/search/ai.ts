@@ -36,10 +36,14 @@ export function extractJson(text: string): unknown {
   return undefined;
 }
 
-/** Which model a question prefers: picking marts is easy (fast), setting up a view is the one that benefits from reasoning. */
-export type Role = 'discover' | 'view';
-/** The share of the run's budget one question may take, so a slow first question leaves the second a chance. */
-const SHARE: Record<Role, number> = { discover: 0.4, view: 0.7 };
+/** Which model a question prefers: picking a mart is easy (fast), choosing fields and filters benefits from reasoning. */
+export type Role = 'discover' | 'fields' | 'filters' | 'formats';
+/**
+ * The share of the run's budget one question may take, so a slow question leaves the next one a chance. Discover is the only call
+ * in its run. Fields and filters share a run, so fields keeps half and filters gets what is left. Formats is the number-format
+ * picker's single call.
+ */
+const SHARE: Record<Role, number> = { discover: 0.9, fields: 0.5, filters: 0.9, formats: 0.7 };
 
 /** The questions one search run puts to the models. They share one budget; the run's signal cancels the call in flight. */
 export function createAiRun(models: Models, signal: AbortSignal, totalMs = AI_TIMEOUT_MS) {
@@ -90,7 +94,7 @@ export function createAiRun(models: Models, signal: AbortSignal, totalMs = AI_TI
         return await call(first, system, user, own, first === models.reasoning ? undefined : 0);
       } catch (e) {
         if (signal.aborted || first !== models.reasoning || !models.fast || models.fast === first) throw e;
-        return call(models.fast, system, user, deadline - Date.now(), 0);
+        return call(models.fast, system, user, Math.min(deadline - Date.now(), totalMs * SHARE[role]), 0);
       }
     },
   };

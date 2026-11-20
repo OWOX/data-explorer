@@ -123,11 +123,14 @@ test('the mock AI answers deterministically from the question document; ai: fals
   expect(ai.reasoning).toBeDefined();
   const ask = async (doc: object) => JSON.parse((await ai.doGenerate({ prompt: [{ role: 'user', content: [{ type: 'text', text: JSON.stringify(doc) }] }] })).content[0]!.text!);
   expect(await ask({ task: 'discover', query: 'who are our buyers', dataMarts: [{ id: 'orders' }, { id: 'customers' }] })).toEqual({ ids: ['customers'] });
+  expect(await ask({ task: 'discover', query: 'zzz', searchHits: [{ id: 'stores' }], dataMarts: [{ id: 'orders' }, { id: 'stores' }, { id: 'customers' }] })).toEqual({ ids: ['stores'] });
+  expect(await ask({ task: 'discover', query: 'who are our buyers', searchHits: [{ id: 'stores' }], dataMarts: [{ id: 'stores' }, { id: 'customers' }] })).toEqual({ ids: ['stores', 'customers'] });
   const fields = [{ name: 'id', category: 'number' }, { name: 'status', category: 'string' }, { name: 'amount', category: 'number' }, { name: 'created_at', category: 'date' }];
-  expect(await ask({ task: 'view', query: 'paid orders last month', fields })).toMatchObject({
+  expect(await ask({ task: 'fields', query: 'biggest orders', fields })).toMatchObject({ columns: ['id', 'status', 'amount', 'created_at'] });
+  expect(await ask({ task: 'filters', query: 'paid orders last month', fields })).toMatchObject({
     filters: [{ field: 'created_at', op: 'relative', value: { kind: 'last_month' } }, { field: 'status', op: 'eq', value: 'paid' }],
   });
-  expect(await ask({ task: 'view', query: 'biggest orders', fields })).toMatchObject({ sorts: [{ field: 'amount', direction: 'desc' }] });
+  expect(await ask({ task: 'filters', query: 'biggest orders', fields })).toMatchObject({ sorts: [{ field: 'amount', direction: 'desc' }] });
   expect(createMockCtx(demoFixtures(), { ai: false }).credentials?.ai).toBeUndefined();
 });
 
@@ -158,4 +161,17 @@ test('mock ctx serves custom connector summaries for the names asked, ignoring c
   expect(rows.map((r) => r.name).sort()).toEqual(['BrexExpenses', 'FiberyTasks']);
   const model = await loadModel(ctx);
   expect(model.sources.find((s) => s.key === 'service:fibery.io')).toMatchObject({ name: 'Fibery', martIds: expect.arrayContaining(['fibery_tasks', 'fibery_projects', 'fibery_people']) });
+});
+
+test('the mock serves three seeded reports and returns them from /api/search only when REPORT is asked for', async () => {
+  const ctx = createMockCtx(demoFixtures());
+  const hits = await ctx.owox.getJson<{ entityType: string; entityId: string; report?: { dataMart: { id: string } } }[]>('/api/search', { q: 'paid orders', entityTypes: 'DATA_MART,REPORT' });
+  expect(hits.find((h) => h.entityId === 'mock-report-orders-paid')).toMatchObject({ entityType: 'REPORT', report: { dataMart: { id: 'orders' } } });
+  expect(hits.some((h) => h.entityType === 'DATA_MART')).toBe(true);
+  const martsOnly = await ctx.owox.getJson<{ entityType: string }[]>('/api/search', { q: 'paid orders', entityTypes: 'DATA_MART' });
+  expect(martsOnly.every((h) => h.entityType === 'DATA_MART')).toBe(true);
+  const report = await ctx.owox.getJson<{ title: string; dataMart: { id: string } }>('/api/reports/mock-report-campaigns');
+  expect(report).toMatchObject({ title: 'Campaign spend', dataMart: { id: 'campaigns' } });
+  const paid = await ctx.owox.getJson<{ filterConfig: unknown; sortConfig: unknown; aggregationConfig: unknown; dateTruncConfig: unknown }>('/api/reports/mock-report-orders-paid');
+  for (const c of [paid.filterConfig, paid.sortConfig, paid.aggregationConfig, paid.dateTruncConfig]) expect(Array.isArray(c)).toBe(true);
 });

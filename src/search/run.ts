@@ -1,63 +1,81 @@
 import type { SchemaLoader } from '../api/schemas';
-import type { Model } from '../model/types';
+import type { Model, Schema } from '../model/types';
 import type { Ctx } from '../sdk/types';
 import type { GridState } from '../state/store';
+import { defaultColumns } from '../ui/explorer/useMartRows';
 import { AiUnavailable, createAiRun, pickModels } from './ai';
-import { MAX_FOUND, searchEndpoint } from './endpoint';
-import { discoveryQuestion, viewQuestion } from './prompts';
-import { parseAiView } from './view';
+import { MAX_FOUND, type SearchHits } from './endpoint';
+import { discoveryQuestion, fieldsQuestion, filtersQuestion } from './prompts';
+import { mergeAiView, parseAiFields, parseAiFilters, type AiFields, type AiFilters } from './view';
 
-export type SearchOutcome = {
-  /** The data marts found, best first; empty when nothing matched. */
-  ids: string[];
-  /** The best mart's view, when the model made one. */
-  grid: GridState | null;
-  /** none: no AI model is configured. used: the model was there (whether or not it helped). unavailable: it timed out or failed on this run. */
-  ai: 'none' | 'used' | 'unavailable';
-};
+/** none: no AI model is configured. used: the model was there (whether or not it helped). unavailable: it timed out or failed on this run. */
+export type AiState = 'none' | 'used' | 'unavailable';
 
-export type SearchDeps = { ctx: Ctx; model: Model; schemas: Pick<SchemaLoader, 'get'>; signal: AbortSignal; timeoutMs?: number };
+export type AdhocMart = { martId: string | null; ai: AiState };
+export type AdhocView = { grid: GridState | null; ai: AiState };
 
-/** The ids a model named, kept when they are accessible marts of the model, in its order, without repeats, at most five. */
-function validIds(answer: Record<string, unknown>, model: Model): string[] {
+/** The first accessible mart of the model that the answer names; null when it names none. */
+function firstValidId(answer: Record<string, unknown>, model: Model): string | null {
   const raw = Array.isArray(answer.ids) ? answer.ids : [];
-  const out: string[] = [];
-  for (const id of raw) {
-    if (typeof id === 'string' && model.marts.get(id)?.accessible && !out.includes(id)) out.push(id);
-    if (out.length === MAX_FOUND) break;
-  }
-  return out;
+  for (const id of raw.slice(0, MAX_FOUND)) if (typeof id === 'string' && model.marts.get(id)?.accessible) return id;
+  return null;
+}
+
+/** The marts the search found, then the marts of the reports it found, without repeats, as the model knows them. */
+function hintsFrom(hits: SearchHits, model: Model): { id: string; title: string }[] {
+  const ids = [...new Set([...hits.marts, ...hits.reports.map((r) => r.martId)])];
+  return ids.flatMap((id) => { const m = model.marts.get(id); return m ? [{ id, title: m.title }] : []; });
 }
 
 /**
- * The smart search: OWOX's search engine first; when it finds nothing and a model is configured, the model picks marts from the
- * catalogue; when a model is configured and a mart was found, it sets up that mart's view. Nothing here reads rows (no traverseData),
- * and a model that fails or is too slow only means the run goes on without it.
+ * The mart the ad-hoc row opens. With a model, one question picks it from the catalogue, preferring what the search found; without
+ * one, or when the model fails or names nothing usable, the first search hit is the answer. Nothing here reads rows.
  */
-export async function smartSearch(deps: SearchDeps, query: string): Promise<SearchOutcome> {
+export async function findAdhocMart(deps: { ctx: Ctx; model: Model; signal: AbortSignal; timeoutMs?: number }, query: string, hits: SearchHits): Promise<AdhocMart> {
+  const { ctx, model, signal } = deps;
+  const fallback = hits.marts[0] ?? hits.reports[0]?.martId ?? null;
+  const ai = pickModels(ctx);
+  if (!ai) return { martId: fallback, ai: 'none' };
+  if (signal.aborted) return { martId: fallback, ai: 'unavailable' };
+  try {
+    const hints = hintsFrom(hits, model);
+    const q = discoveryQuestion(query, [...model.marts.values()], hints.length ? hints : undefined);
+    const answer = await createAiRun(ai, signal, deps.timeoutMs).ask('discover', q.system, q.user);
+    return { martId: firstValidId(answer, model) ?? fallback, ai: 'used' };
+  } catch (e) {
+    // A model that cannot help is not an error for the member; the search result stands.
+    if (e instanceof AiUnavailable) return { martId: fallback, ai: 'unavailable' };
+    console.warn('Picking the ad-hoc mart failed', e);
+    return { martId: fallback, ai: 'used' };
+  }
+}
+
+/**
+ * The ad-hoc view of one mart, built after the member picked the ad-hoc row: one question for the columns, then one for the filters
+ * and sorts, which gets the columns the first chose. If either fails the mart stays in its default view.
+ */
+export async function buildAdhocView(deps: { ctx: Ctx; model: Model; schemas: Pick<SchemaLoader, 'get'>; signal: AbortSignal; timeoutMs?: number }, query: string, martId: string): Promise<AdhocView> {
   const { ctx, model, schemas, signal } = deps;
   const ai = pickModels(ctx);
-  let ids = await searchEndpoint(ctx, query, model, signal);
-  if (!ai) return { ids, grid: null, ai: 'none' };
-  const run = createAiRun(ai, signal, deps.timeoutMs);
-  let grid: GridState | null = null;
+  if (!ai) return { grid: null, ai: 'none' };
+  let fields: AiFields | null = null;
+  let filters: AiFilters | null = null;
+  let schema: Schema | undefined;
   try {
-    if (ids.length === 0) {
-      const q = discoveryQuestion(query, [...model.marts.values()]);
-      ids = validIds(await run.ask('discover', q.system, q.user), model);
-    }
-    const best = ids[0] ? model.marts.get(ids[0]) : undefined;
-    if (best) {
-      const schema = await schemas.get(best.id);
-      if (schema.length) {
-        const q = viewQuestion(query, best, schema);
-        grid = parseAiView(await run.ask('view', q.system, q.user), schema);
-      }
-    }
+    const mart = model.marts.get(martId);
+    schema = await schemas.get(martId);
+    if (!mart || !schema.length) return { grid: null, ai: 'used' };
+    const run = createAiRun(ai, signal, deps.timeoutMs);
+    const f = fieldsQuestion(query, mart, schema);
+    fields = parseAiFields(await run.ask('fields', f.system, f.user), schema);
+    const shown = fields?.columns.length ? fields.columns : defaultColumns(schema);
+    const q = filtersQuestion(query, mart, schema, shown);
+    filters = parseAiFilters(await run.ask('filters', q.system, q.user), schema, shown);
   } catch (e) {
     // A model that cannot help is not an error for the member; a schema that cannot be read leaves the mart as it is.
-    if (e instanceof AiUnavailable) return { ids, grid: null, ai: 'unavailable' };
+    if (e instanceof AiUnavailable) return { grid: null, ai: 'unavailable' };
     console.warn('Setting up the view failed', e);
+    return { grid: null, ai: 'used' };
   }
-  return { ids, grid, ai: 'used' };
+  return { grid: schema ? mergeAiView(schema, fields, filters) : null, ai: 'used' };
 }

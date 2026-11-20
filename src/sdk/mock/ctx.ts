@@ -4,7 +4,7 @@ import { categorizeFieldType } from '../../model/field-category';
 import { aggregateRows, distinctKeys, type UniqueSource } from './aggregate';
 import { matchesFilter } from './evaluate';
 import { createFakeAi } from './ai';
-import { demoFixtures, type Fixtures } from './fixtures';
+import { demoFixtures, demoReports, type Fixtures, type MockReportFixture } from './fixtures';
 import { mockSearch } from './search';
 
 declare global { interface Window { __copiedLink?: string; __routeSet?: string } }
@@ -18,7 +18,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
   const slow = async <T,>(v: () => T): Promise<T> => { if (latency) await wait(latency); return v(); };
 
   type MockReport = Record<string, unknown> & { id: string; dataMartId: string; lastRunAt: string | null; lastRunStatus: string | null; lastRunError: string | null };
-  const reports = new Map<string, MockReport>();
+  const reports = new Map<string, MockReport>(demoReports(f).map((r) => [r.id, r]));
   let sheetSerial = 0;
   let reportSerial = 0;
   let martSerial = 0;
@@ -193,7 +193,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         history.replaceState(history.state, '', url);
       },
     },
-    credentials: opts.ai === false ? {} : { ai: createFakeAi() },
+    credentials: opts.ai === false ? {} : { ai: createFakeAi(latency) },
     collections: <T,>(name: string) => ({
       get: async (id: string) => { const k = `${name}/${id}`; return docs.has(k) ? { document: docs.get(k) as T } : null; },
       put: async (id: string, d: T) => { docs.set(`${name}/${id}`, d); return d; },
@@ -219,7 +219,8 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
       },
       destinations: { list: () => slow(() => f.destinations) },
       getJson: <T,>(path: string, query?: Record<string, string>) => slow(() => {
-        if (path === '/api/search') return mockSearch(f, query) as T;
+        // Reports created through the mock POST carry no `dataMart`, so the mock search skips them.
+        if (path === '/api/search') return mockSearch(f, query, [...reports.values()].filter((r): r is MockReportFixture => typeof r.title === 'string' && 'dataMart' in r)) as T;
         if (path === '/api/data-destinations') return f.destinations as T;
         if (/^\/api\/data-marts\/[^/]+\/schema-actualize-triggers\/[^/]+\/status$/.test(path)) return { status: 'SUCCESS' } as T;
         if (/^\/api\/data-marts\/[^/]+\/schema-actualize-triggers\/[^/]+$/.test(path)) return { success: true } as T;

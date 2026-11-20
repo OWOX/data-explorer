@@ -42,27 +42,27 @@ describe('createAiRun', () => {
     expect(call).not.toHaveProperty('maxOutputTokens');
   });
 
-  test('discovery asks the fast model, the view asks the reasoning model; each falls back to the one that exists', async () => {
+  test('discovery asks the fast model, fields asks the reasoning model; each falls back to the one that exists', async () => {
     const fast = textModel('{"m":"fast"}');
     const reasoning = textModel('{"m":"reasoning"}');
     const both = createAiRun({ fast, reasoning }, live());
     expect(await both.ask('discover', 's', 'u')).toEqual({ m: 'fast' });
-    expect(await both.ask('view', 's', 'u')).toEqual({ m: 'reasoning' });
+    expect(await both.ask('fields', 's', 'u')).toEqual({ m: 'reasoning' });
     expect(await createAiRun({ reasoning }, live()).ask('discover', 's', 'u')).toEqual({ m: 'reasoning' });
-    expect(await createAiRun({ fast }, live()).ask('view', 's', 'u')).toEqual({ m: 'fast' });
+    expect(await createAiRun({ fast }, live()).ask('fields', 's', 'u')).toEqual({ m: 'fast' });
   });
 
   test('a reasoning model that fails is retried once on fast; a cancelled run is not', async () => {
     const reasoning: AiModel = { doGenerate: vi.fn(async () => { throw new Error('quota'); }) };
     const fast = textModel('{"m":"fast"}');
-    expect(await createAiRun({ fast, reasoning }, live()).ask('view', 's', 'u')).toEqual({ m: 'fast' });
+    expect(await createAiRun({ fast, reasoning }, live()).ask('fields', 's', 'u')).toEqual({ m: 'fast' });
     expect(reasoning.doGenerate).toHaveBeenCalledTimes(1);
     const junk = textModel('no json');
-    expect(await createAiRun({ fast, reasoning: junk }, live()).ask('view', 's', 'u')).toEqual({ m: 'fast' });
+    expect(await createAiRun({ fast, reasoning: junk }, live()).ask('fields', 's', 'u')).toEqual({ m: 'fast' });
     const parent = new AbortController();
     const slow: AiModel = { doGenerate: () => new Promise(() => {}) };
     const fastSpy = textModel('{}');
-    const pending = createAiRun({ fast: fastSpy, reasoning: slow }, parent.signal).ask('view', 's', 'u');
+    const pending = createAiRun({ fast: fastSpy, reasoning: slow }, parent.signal).ask('fields', 's', 'u');
     parent.abort();
     await expect(pending).rejects.toBeInstanceOf(AiUnavailable);
     expect(fastSpy.doGenerate).not.toHaveBeenCalled();
@@ -80,11 +80,24 @@ describe('createAiRun', () => {
     try {
       const reasoning: AiModel = { doGenerate: () => new Promise(() => {}) };
       const fast = textModel('{"m":"fast"}');
-      const answer = createAiRun({ fast, reasoning }, live(), 1000).ask('view', 's', 'u');
-      // the view's share is 700 ms; the retry runs in the 300 ms left
-      await vi.advanceTimersByTimeAsync(700);
+      const answer = createAiRun({ fast, reasoning }, live(), 1000).ask('fields', 's', 'u');
+      // the fields share is 500 ms; the retry runs in the 500 ms left
+      await vi.advanceTimersByTimeAsync(500);
       expect(await answer).toEqual({ m: 'fast' });
       expect(fast.doGenerate).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
+  });
+
+  test('the retry on fast gets its own share of the budget, not the whole rest', async () => {
+    vi.useFakeTimers();
+    try {
+      const reasoning: AiModel = { doGenerate: async () => { throw new Error('down'); } };
+      const fast: AiModel = { doGenerate: () => new Promise(() => {}) };
+      const answer = createAiRun({ fast, reasoning }, live(), 1000).ask('fields', 's', 'u');
+      const settled = answer.then(() => 'ok', (e: unknown) => e);
+      // reasoning fails at once, so nearly the whole 1000 ms is left; the retry is still capped at the 500 ms share
+      await vi.advanceTimersByTimeAsync(500);
+      expect(await settled).toBeInstanceOf(AiUnavailable);
     } finally { vi.useRealTimers(); }
   });
 
@@ -93,26 +106,26 @@ describe('createAiRun', () => {
     const reasoning = textModel('{}');
     const run = createAiRun({ fast, reasoning }, live());
     await run.ask('discover', 's', 'u');
-    await run.ask('view', 's', 'u');
+    await run.ask('filters', 's', 'u');
     expect(vi.mocked(fast.doGenerate).mock.calls[0]![0].temperature).toBe(0);
     expect(vi.mocked(reasoning.doGenerate).mock.calls[0]![0]).not.toHaveProperty('temperature');
     const failing: AiModel = { doGenerate: async () => { throw new Error('x'); } };
     const retry = textModel('{}');
-    await createAiRun({ fast: retry, reasoning: failing }, live()).ask('view', 's', 'u');
+    await createAiRun({ fast: retry, reasoning: failing }, live()).ask('fields', 's', 'u');
     expect(vi.mocked(retry.doGenerate).mock.calls[0]![0].temperature).toBe(0);
   });
 
   test('the budget is shared by every question of one run', async () => {
     const model: AiModel = { doGenerate: () => new Promise((resolve) => setTimeout(() => resolve({ content: [{ type: 'text', text: '{}' }] }), 30)) };
     const run = createAiRun({ fast: model }, live(), 50);
-    await run.ask('view', 's', 'u');
-    await expect(run.ask('view', 's', 'u')).rejects.toBeInstanceOf(AiUnavailable);
+    await run.ask('filters', 's', 'u');
+    await expect(run.ask('filters', 's', 'u')).rejects.toBeInstanceOf(AiUnavailable);
   });
 
   test('a rejection and an answer with no JSON are AiUnavailable', async () => {
     const boom: AiModel = { doGenerate: async () => { throw new Error('quota'); } };
-    await expect(createAiRun({ fast: boom }, live()).ask('view', 's', 'u')).rejects.toBeInstanceOf(AiUnavailable);
-    await expect(createAiRun({ fast: textModel('sorry, no') }, live()).ask('view', 's', 'u')).rejects.toBeInstanceOf(AiUnavailable);
-    await expect(createAiRun({}, live()).ask('view', 's', 'u')).rejects.toBeInstanceOf(AiUnavailable);
+    await expect(createAiRun({ fast: boom }, live()).ask('fields', 's', 'u')).rejects.toBeInstanceOf(AiUnavailable);
+    await expect(createAiRun({ fast: textModel('sorry, no') }, live()).ask('fields', 's', 'u')).rejects.toBeInstanceOf(AiUnavailable);
+    await expect(createAiRun({}, live()).ask('fields', 's', 'u')).rejects.toBeInstanceOf(AiUnavailable);
   });
 });

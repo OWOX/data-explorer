@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { Model } from '../../model/types';
-import { AiHint, SearchBox } from './SearchBox';
+import { AiHint, SearchBox, SearchNotice } from './SearchBox';
 import { useSmartSearch, type SmartSearch } from './useSmartSearch';
 
 const Ctx = createContext<SmartSearch | null>(null);
@@ -21,8 +21,14 @@ export function HeaderSearch() {
   return <SearchBox smart={useSmartSearchScope()} label="Search data marts" />;
 }
 
-/** The quiet line under the header that suggests plugging AI in. */
+/** The quiet lines under the header: what the last pick left out, and the suggestion to plug AI in. */
 export function HeaderSearchHint() {
   const smart = useSmartSearchScope();
-  return smart.hintVisible ? <div className="w-full"><AiHint onDismiss={smart.dismissHint} /></div> : null;
+  if (!smart.hintVisible && !smart.notice) return null;
+  return (
+    <div className="w-full">
+      {smart.notice && <SearchNotice text={smart.notice} onDismiss={smart.dismissNotice} />}
+      {smart.hintVisible && <AiHint onDismiss={smart.dismissHint} />}
+    </div>
+  );
 }

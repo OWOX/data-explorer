@@ -27,11 +27,11 @@ const reloadModel = () => userEvent.click(screen.getByRole('button', { name: 'Re
 const titleSearchOnly = (ctx: Ctx): Ctx => ({ ...ctx, credentials: {}, owox: { ...ctx.owox, getJson: ((path: string, q?: Record<string, string>) => (path === '/api/search' ? Promise.resolve([]) : ctx.owox.getJson(path, q))) as Ctx['owox']['getJson'] } });
 /** Opens the search, types the query and runs it. */
 async function search(q: string) {
-  if (!screen.queryByRole('textbox', { name: 'Search data marts' })) {
+  if (!screen.queryByRole('combobox', { name: 'Search data marts' })) {
     const chip = screen.queryByRole('button', { name: /^Search data marts: / });
     await userEvent.click(chip ?? screen.getByRole('button', { name: 'Search data marts' }));
   }
-  const box = screen.getByRole('textbox', { name: 'Search data marts' });
+  const box = screen.getByRole('combobox', { name: 'Search data marts' });
   await userEvent.clear(box);
   await userEvent.type(box, `${q}{Enter}`);
 }
@@ -240,7 +240,7 @@ describe('the four bands', () => {
     await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
     await userEvent.click(screen.getByRole('button', { name: 'Search data marts' }));
-    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Search data marts' }), { key: 'z', ctrlKey: true });
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Search data marts' }), { key: 'z', ctrlKey: true });
     await settle();
     expect(within(row()).getByRole('heading', { name: /^Orders · 1$/ })).toBeInTheDocument();
     fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
@@ -266,7 +266,7 @@ describe('the four bands', () => {
     await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
     await userEvent.click(screen.getByRole('button', { name: 'Search data marts' }));
-    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Search data marts' }), { key: 'ArrowLeft', altKey: true });
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Search data marts' }), { key: 'ArrowLeft', altKey: true });
     await settle();
     expect(within(row()).getByRole('heading', { name: /^Orders · 1$/ })).toBeInTheDocument();
     fireEvent.keyDown(document, { key: 'ArrowLeft', altKey: true });

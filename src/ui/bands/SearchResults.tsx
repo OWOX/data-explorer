@@ -1,0 +1,89 @@
+import { Box, FileSpreadsheet, Funnel, Loader2, Sparkles } from 'lucide-react';
+import { Fragment, type ReactNode } from 'react';
+import type { Model } from '../../model/types';
+import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
+import { contextsOf, type Row } from './useSmartSearch';
+
+export const optionId = (listId: string, i: number) => `${listId}-opt-${i}`;
+
+/** "A", "A & B", "A, B & C": the names of a mart's contexts, each with its icon. */
+function Contexts({ martId, model }: { martId: string; model: Model }) {
+  const contexts = contextsOf(model.marts.get(martId), model);
+  if (!contexts.length) return null;
+  return (
+    <>
+      <span className="dm-sr-muted">from</span>
+      {contexts.map((c, i) => (
+        <Fragment key={c.id}>
+          {i > 0 && <span className="dm-sr-muted">{i === contexts.length - 1 ? ' & ' : ', '}</span>}
+          <span className="dm-sr-chip"><PickedIcon icon={c.icon} fallback={DEFAULT_CONTEXT_ICON} size={14} /><span className="dm-sr-name">{c.name}</span></span>
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+function MartName({ martId, model }: { martId: string; model: Model }) {
+  const mart = model.marts.get(martId);
+  return <span className="dm-sr-chip"><PickedIcon icon={mart?.icon} fallback={Box} size={14} /><span className="dm-sr-name">{mart?.title ?? martId}</span></span>;
+}
+
+function RowBody({ row, model }: { row: Row; model: Model }): ReactNode {
+  if (row.kind === 'report') {
+    return (
+      <>
+        <FileSpreadsheet size={14} aria-hidden="true" />
+        <span className="dm-sr-name dm-sr-title">{row.title}</span>
+        <span className="dm-sr-muted">of</span>
+        <MartName martId={row.martId} model={model} />
+        <Contexts martId={row.martId} model={model} />
+      </>
+    );
+  }
+  if (row.kind === 'mart') return <><MartName martId={row.martId} model={model} /><Contexts martId={row.martId} model={model} /></>;
+  return (
+    <>
+      <Sparkles size={14} aria-hidden="true" />
+      {row.reason && !row.martId ? (
+        <span className="dm-sr-muted">{row.reason}</span>
+      ) : (
+        <>
+          <span className="dm-sr-title-fixed">Ad-hoc report for</span>
+          {row.pending || !row.martId
+            ? <Loader2 size={14} className="animate-spin" aria-label="Finding the data mart" />
+            : <><MartName martId={row.martId} model={model} /><Contexts martId={row.martId} model={model} /></>}
+          <span className="dm-sr-muted">with</span>
+          <Funnel size={14} aria-hidden="true" />
+          <span className="dm-sr-muted">filters</span>
+        </>
+      )}
+    </>
+  );
+}
+
+/** The dropdown under the open search box: report rows, data mart rows and the ad-hoc row, as a listbox the input drives. */
+export function SearchResults({ smart, id }: { smart: { rows: Row[]; highlighted: number | null; model: Model; setHighlighted: (i: number | null) => void; pick: (row?: Row) => void }; id: string }) {
+  const { rows, highlighted, model } = smart;
+  return (
+    <ul className="dm-search-results" role="listbox" id={id} aria-label="Search results">
+      {rows.map((row, i) => {
+        const disabled = row.kind === 'adhoc' && row.disabled;
+        return (
+          <li
+            key={row.kind === 'report' ? `r:${row.id}` : row.kind === 'mart' ? `m:${row.martId}` : 'adhoc'}
+            id={optionId(id, i)}
+            role="option"
+            aria-selected={highlighted === i}
+            aria-disabled={disabled || undefined}
+            className={`dm-search-row${highlighted === i ? ' is-active' : ''}${disabled ? ' is-disabled' : ''}`}
+            onMouseEnter={() => { if (!disabled) smart.setHighlighted(i); }}
+            // The mouse down is the pick, and it must not take focus from the input.
+            onMouseDown={(e) => { e.preventDefault(); if (!disabled) smart.pick(row); }}
+          >
+            <RowBody row={row} model={model} />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}

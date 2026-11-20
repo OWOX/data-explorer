@@ -348,3 +348,38 @@ describe('editGrid', () => {
     expect(st.history).toHaveLength(HISTORY_LIMIT);
   });
 });
+
+describe('fillGrid: a late answer fills the grid only while nothing moved', () => {
+  const grid = (columns: string[]) => ({ columns, filters: {}, sorts: null, limit: 200 });
+  const start = () => s({ selection: sel({ martId: 'a' }), grids: { a: grid(['id']) } });
+
+  test('it applies when the mart is still main and the grid is still the expected one, with no history entry', () => {
+    const from = start();
+    const st = reducer(from, { type: 'fillGrid', martId: 'a', expect: grid(['id']), grid: grid(['id', 'x']) });
+    expect(st.grids.a).toEqual(grid(['id', 'x']));
+    expect(st.history).toBe(from.history);
+  });
+
+  test('it is a no-op after the main mart changed', () => {
+    const from = reducer(start(), { type: 'selectMart', id: 'b', sourceOf });
+    expect(reducer(from, { type: 'fillGrid', martId: 'a', expect: grid(['id']), grid: grid(['id', 'x']) })).toBe(from);
+  });
+
+  test('it is a no-op after a grid edit', () => {
+    const from = reducer(start(), { type: 'editGrid', martId: 'a', grid: grid(['id', 'y']) });
+    expect(reducer(from, { type: 'fillGrid', martId: 'a', expect: grid(['id']), grid: grid(['id', 'x']) })).toBe(from);
+  });
+
+  test('it is a no-op after an Undo of the pick that started the wait', () => {
+    const picked = reducer(start(), { type: 'setMarts', selection: sel({ martId: 'a' }), grids: { a: grid(['id']) }, always: true });
+    const undone = reducer(picked, { type: 'undo' });
+    expect(reducer(undone, { type: 'fillGrid', martId: 'a', expect: grid(['id']), grid: grid(['id', 'x']) })).toBe(undone);
+  });
+
+  test('setMarts with always pushes history even when nothing changed', () => {
+    const from = start();
+    const st = reducer(from, { type: 'setMarts', selection: sel({ martId: 'a' }), grids: { a: grid(['id']) }, always: true });
+    expect(st.history).toHaveLength(1);
+    expect(st.grids.a).toEqual(grid(['id']));
+  });
+});
