@@ -534,14 +534,15 @@ describe('search, contexts and refresh', () => {
     expect(within(marts()).getByText('Campaigns').closest('article')!.querySelector('.dm-badge-shrink')).toBeNull();
   });
 
-  test('the toolbar holds Storage (the search is in the page header); the Contexts badges sit in the title row after the hint', async () => {
+  test('the toolbar holds Storage (the search is in the page header); the Grid / Canvas switch and then the Contexts badges sit in the title row after the hint', async () => {
     await ordersGrid();
     const tools = marts().querySelector('.dm-band-tools')!;
     const kinds = [...tools.children].map((c) => (c.matches('button.dm-search-btn') ? 'search' : c.querySelector('summary')?.firstChild?.textContent));
     expect(kinds).toEqual(['Storage']);
     const head = marts().querySelector('.dm-band-titlegroup')!;
     const order = [...head.children].map((c) => c.className.split(' ')[0]);
-    expect(order.indexOf('dm-context-filter')).toBe(order.indexOf('dm-hint') + 1);
+    expect(order.indexOf('dm-context-filter')).toBeGreaterThan(order.indexOf('dm-hint'));
+    expect(head.querySelector('.dm-context-filter')!.previousElementSibling).toBe(within(marts()).getByRole('radiogroup', { name: 'Show data marts as' }));
   });
 
   test('the Contexts badges show each context with its icon; none selected is no filter', async () => {

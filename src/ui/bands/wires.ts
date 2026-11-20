@@ -33,6 +33,8 @@ export type Wire = {
   title: string;
   /** A ghost line: drawn dashed where the layer draws its lines solid. */
   dashed?: boolean;
+  /** Always leave the parent's right edge and enter the child's left edge at mid-height, whatever the boxes' vertical gap. */
+  sideways?: boolean;
 };
 
 /** `also` are the selected joined marts: the line of each to the pinned card is raised like the pinned card's own. */
@@ -45,8 +47,8 @@ type Direction = 'outbound' | 'inbound';
 const LIT_CLASSES = ['lit', 'aside', 'outbound', 'inbound'] as const;
 
 /** Leave each box from the side that faces the other one: down/up across bands, sideways within one. */
-function curve(a: Box, b: Box) {
-  if (b.top - a.bottom > 8 || a.top - b.bottom > 8) {
+function curve(a: Box, b: Box, sideways = false) {
+  if (!sideways && (b.top - a.bottom > 8 || a.top - b.bottom > 8)) {
     const down = b.top > a.bottom;
     const x1 = a.left + a.width / 2;
     const y1 = down ? a.bottom : a.top;
@@ -55,7 +57,7 @@ function curve(a: Box, b: Box) {
     const pull = Math.min(70, Math.abs(y2 - y1) / 2 + 12);
     return `M${x1} ${y1} C${x1} ${down ? y1 + pull : y1 - pull} ${x2} ${down ? y2 - pull : y2 + pull} ${x2} ${y2}`;
   }
-  const right = b.left + b.width / 2 > a.left + a.width / 2;
+  const right = sideways || b.left + b.width / 2 > a.left + a.width / 2;
   const x1 = right ? a.right : a.left;
   const x2 = right ? b.left : b.right;
   const y1 = a.top + a.height / 2;
@@ -88,7 +90,7 @@ export function planLines(wires: Wire[], boxes: ReadonlyMap<string, Box>) {
       d.push(null);
       lead.push(held);
     } else {
-      d.push(curve(a, b));
+      d.push(curve(a, b, wire.sideways));
       lead.push(i);
       carrier.set(key, i);
     }

@@ -3,8 +3,8 @@ import type { JoinTree } from '../../state/join-tree';
 
 export const CARD_W = 224; // 14rem, the grid's minimum card width
 export const CARD_H = 112;
-export const COL_GAP = 96;
-export const ROW_GAP = 16;
+export const COL_GAP = 128;
+export const ROW_GAP = 32;
 export type Placed = { path: string; x: number; y: number };
 
 const colX = (depth: number) => depth * (CARD_W + COL_GAP);

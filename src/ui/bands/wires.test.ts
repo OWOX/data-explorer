@@ -20,6 +20,15 @@ describe('planLines', () => {
     ['dm-2', box(150, 200)],
   ]);
 
+  it('a sideways wire to a child below and to the right leaves the right edge and enters the left edge', () => {
+    const m = new Map([['p', box(0, 0)], ['c', box(300, 200)]]);
+    const { d } = planLines([wire('w', 'p', 'c'), { ...wire('s', 'p', 'c'), sideways: true }], m);
+    expect(d[0]).toMatch(/^M50 40 /);
+    const sideways = planLines([{ ...wire('s', 'p', 'c'), sideways: true }], m).d[0]!;
+    expect(sideways.startsWith('M100 20 ')).toBe(true);
+    expect(sideways.endsWith(' 300 220')).toBe(true);
+  });
+
   it('draws one path per pair of boxes and maps every follower to it', () => {
     const wires = [wire('w1', 'src-a', 'dm-1', 'source'), wire('w2', 'src-a', 'dm-1', 'source'), wire('w3', 'src-a', 'dm-2', 'source')];
     const { d, lead } = planLines(wires, boxes);
