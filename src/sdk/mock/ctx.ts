@@ -219,6 +219,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
       },
       destinations: { list: () => slow(() => f.destinations) },
       getJson: <T,>(path: string, query?: Record<string, string>) => slow(() => {
+        // Reports created through the mock POST carry no `dataMart`, so the mock search skips them.
         if (path === '/api/search') return mockSearch(f, query, [...reports.values()].filter((r): r is MockReportFixture => typeof r.title === 'string' && 'dataMart' in r)) as T;
         if (path === '/api/data-destinations') return f.destinations as T;
         if (/^\/api\/data-marts\/[^/]+\/schema-actualize-triggers\/[^/]+\/status$/.test(path)) return { status: 'SUCCESS' } as T;

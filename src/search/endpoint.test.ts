@@ -52,6 +52,11 @@ describe('searchEndpoint', () => {
     ]);
   });
 
+  test('reports at an equal score keep the order the engine gave', async () => {
+    const { ctx } = ctxReturning([rhit('x', 5), rhit('y', 5), rhit('z', 7)]);
+    expect((await searchEndpoint(ctx, 'ab', model(mart('a')))).reports.map((r) => r.id)).toEqual(['z', 'x', 'y']);
+  });
+
   test('a report needs a string id and a mart; a missing title falls back to the id', async () => {
     const { ctx } = ctxReturning([
       { entityType: 'REPORT', finalScore: 9, report: { dataMart: { id: 'a' } } },

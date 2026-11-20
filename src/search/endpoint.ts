@@ -22,7 +22,7 @@ export type ReportHit = { id: string; title: string; martId: string };
 export type SearchHits = { reports: ReportHit[]; marts: string[] };
 
 const score = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : -Infinity);
-/** The ids of the best entries, best score first; Array.prototype.sort is stable, so equal scores keep the engine's order. */
+/** The best entries, best score first, at most five; Array.prototype.sort is stable, so equal scores keep the engine's order. */
 const top = <T,>(m: Map<string, { score: number; hit: T }>): T[] => [...m.values()].sort((a, b) => b.score - a.score).slice(0, MAX_FOUND).map((e) => e.hit);
 const keepBest = <T,>(m: Map<string, { score: number; hit: T }>, id: string, s: number, hit: T) => {
   if (!m.has(id) || s > m.get(id)!.score) m.set(id, { score: s, hit });

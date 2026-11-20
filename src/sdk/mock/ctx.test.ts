@@ -169,4 +169,6 @@ test('the mock serves three seeded reports and returns them from /api/search onl
   expect(martsOnly.every((h) => h.entityType === 'DATA_MART')).toBe(true);
   const report = await ctx.owox.getJson<{ title: string; dataMart: { id: string } }>('/api/reports/mock-report-campaigns');
   expect(report).toMatchObject({ title: 'Campaign spend', dataMart: { id: 'campaigns' } });
+  const paid = await ctx.owox.getJson<{ filterConfig: unknown; sortConfig: unknown; aggregationConfig: unknown; dateTruncConfig: unknown }>('/api/reports/mock-report-orders-paid');
+  for (const c of [paid.filterConfig, paid.sortConfig, paid.aggregationConfig, paid.dateTruncConfig]) expect(Array.isArray(c)).toBe(true);
 });

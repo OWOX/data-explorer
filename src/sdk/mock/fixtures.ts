@@ -334,15 +334,17 @@ export function demoReports(f: Fixtures): MockReportFixture[] {
     {
       ...base, ...martOf('orders'), id: 'mock-report-orders-paid', title: 'Paid orders by month',
       columnConfig: ['status', 'amount', 'created_at'],
-      filterConfig: { rules: [{ column: 'status', operator: 'eq', value: 'paid' }] },
-      sortConfig: { column: 'created_at', direction: 'desc' },
-      aggregationConfig: { column: 'amount', function: 'SUM' },
-      dateTruncConfig: { column: 'created_at', unit: 'MONTH' },
+      filterConfig: [{ column: 'status', operator: 'eq', value: 'paid' }],
+      sortConfig: [{ column: 'created_at', direction: 'desc' }],
+      aggregationConfig: [{ column: 'amount', function: 'SUM' }],
+      dateTruncConfig: [{ column: 'created_at', unit: 'MONTH' }],
     },
     {
       ...base, ...martOf('orders'), id: 'mock-report-orders-extras', title: 'Orders with extras',
       columnConfig: ['status', 'net_revenue'],
-      filterConfig: { rules: [{ column: 'status', operator: 'eq', value: 'shipped', placement: 'pre-join' }, { column: 'net_revenue', operator: 'gt', value: '100', function: 'SUM' }] },
+      // The pre-join rule is on a field of the joined customers mart, named as the blended schema names it.
+      filterConfig: [{ column: 'customers__country_code', operator: 'eq', value: 'PL', placement: 'pre-join' }, { column: 'net_revenue', operator: 'gt', value: 100, function: 'SUM' }],
+      aggregationConfig: [{ column: 'net_revenue', function: 'SUM' }],
       uniqueCountConfig: [''],
     },
     { ...base, ...martOf('campaigns'), id: 'mock-report-campaigns', title: 'Campaign spend', columnConfig: ['id', 'name'] },
