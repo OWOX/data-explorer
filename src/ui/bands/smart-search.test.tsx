@@ -568,4 +568,47 @@ describe('the dropdown', () => {
     await u.keyboard('{Escape}');
     expect(screen.queryByRole('combobox')).toBeNull();
   });
+
+  test('after a mart pick, Enter still builds the ad-hoc view for the same query', async () => {
+    const ai = spyAi();
+    setup({ wrap: ai.withAi }).view();
+    await ready();
+    const u = user();
+    await typeIn(u, 'customers');
+    await waitFor(() => expect(rowsText().at(-1)).toMatch(/Customers/));
+    await u.click(options().find((o) => o.textContent!.startsWith('Customers'))!);
+    await waitFor(() => expect(headings()).toBe('Customers'));
+    await u.keyboard('{Enter}');
+    await waitFor(() => expect(ai.tasks).toContain('fields'));
+    await waitFor(() => expect(ai.tasks).toContain('filters'));
+  });
+
+  test('the previous rows stay while the next query waits out its pause; only the ad-hoc row is pending', async () => {
+    setup({ ai: false }).view();
+    await ready();
+    const u = user();
+    const box = await typeIn(u, 'orders');
+    await waitFor(() => expect(options().length).toBeGreaterThan(3));
+    const before = options().length;
+    await u.type(box, 'x');
+    expect(options()).toHaveLength(before);
+    expect(options().at(-1)).toHaveAttribute('aria-disabled', 'true');
+    await u.clear(box);
+    await u.type(box, 'o');
+    expect(options()).toHaveLength(1);
+  });
+
+  test('an ad-hoc run on the mart that is already open is one Undo step that restores the default view', async () => {
+    const ai = spyAi();
+    setup({ wrap: ai.withAi }).view();
+    await ready();
+    const u = user();
+    await typeIn(u, 'paid orders last month');
+    await waitFor(() => expect(rowsText().at(-1)).toMatch(/Orders/));
+    await u.keyboard('{Enter}');
+    await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('dm-ctl-on'));
+    await undo();
+    await waitFor(() => expect(within(data()).queryByLabelText('Filter status')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+  });
 });

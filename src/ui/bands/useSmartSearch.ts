@@ -52,11 +52,11 @@ export function useSmartSearch(model: Model) {
   // Hidden until the stored choice has been read, so a member who dismissed it never sees it flash.
   const [hintDismissed, setHintDismissed] = useState(true);
   const aiConfigured = useMemo(() => pickModels(ctx) !== null, [ctx]);
-  const latest = useRef({ selection: state.selection, grids: state.grids, model });
-  useEffect(() => { latest.current = { selection: state.selection, grids: state.grids, model }; });
+  const latest = useRef({ selection: state.selection, grids: state.grids, history: state.history, model });
+  useEffect(() => { latest.current = { selection: state.selection, grids: state.grids, history: state.history, model }; });
   const entry = useRef<Entry | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const picking = useRef<{ ctl: AbortController; query: string } | null>(null);
+  const picking = useRef<{ ctl: AbortController; query: string; kind: 'adhoc' | 'other' } | null>(null);
   const draftRef = useRef('');
 
   useEffect(() => {
@@ -104,12 +104,14 @@ export function useSmartSearch(model: Model) {
   const rows = useMemo<Row[]>(() => {
     if (!trimmed) return [];
     if (trimmed.length < MIN_QUERY) return [{ kind: 'adhoc', martId: null, pending: false, disabled: true, reason: SHORT_REASON }];
-    if (!found || found.query !== trimmed) return [{ kind: 'adhoc', martId: null, pending: true, disabled: true }];
+    // The previous query's reports and marts stay while a new one is in flight; only the ad-hoc row waits.
+    if (!found) return [{ kind: 'adhoc', martId: null, pending: true, disabled: true }];
+    const stale = found.query !== trimmed;
     const out: Row[] = [
       ...found.hits.reports.map((r): Row => ({ kind: 'report', id: r.id, title: r.title, martId: r.martId })),
       ...found.hits.marts.map((martId): Row => ({ kind: 'mart', martId })),
     ];
-    out.push(found.pending
+    out.push(found.pending || stale
       ? { kind: 'adhoc', martId: null, pending: true, disabled: true }
       : found.martId
         ? { kind: 'adhoc', martId: found.martId, pending: false, disabled: false }
@@ -137,10 +139,10 @@ export function useSmartSearch(model: Model) {
     const { selection, model: current } = latest.current;
     return selection.sourceKey && current.marts.get(martId)?.sourceKey === selection.sourceKey ? selection.sourceKey : null;
   };
-  const newPick = (query: string) => {
+  const newPick = (query: string, kind: 'adhoc' | 'other' = 'other') => {
     picking.current?.ctl.abort();
     const ctl = new AbortController();
-    picking.current = { ctl, query };
+    picking.current = { ctl, query, kind };
     setBuilding(false);
     setNotice(null);
     return ctl;
@@ -165,7 +167,8 @@ export function useSmartSearch(model: Model) {
   };
 
   const pickMart = (martId: string, query: string, hits: SearchHits) => {
-    newPick(query);
+    stopPick();
+    setNotice(null);
     dispatch({ type: 'smartFound', query, ids: idsWith(hits, martId) });
     dispatch({ type: 'selectMart', id: martId, sourceOf: sourceOfModel(latest.current.model) });
   };
@@ -179,7 +182,7 @@ export function useSmartSearch(model: Model) {
       const selection = { sourceKey: keepSource(martId), martId, record: null };
       // A mart that is already open in its default view makes the setMarts below a no-op with no history entry. Then the AI's
       // grid is the step Undo has to take back, so it goes in as an edit.
-      const unchanged = deepEqual(latest.current.selection, selection) && deepEqual(latest.current.grids[martId] ?? null, first);
+      const lastBefore = latest.current.history.at(-1);
       dispatch({ type: 'setMarts', selection, grids: { [martId]: first } });
       if (!aiConfigured) return;
       setBuilding(true);
@@ -188,6 +191,8 @@ export function useSmartSearch(model: Model) {
       if (view.grid) {
         // A member who edited the grid, or moved elsewhere, meanwhile keeps what they did.
         const { grids, selection } = latest.current;
+        // No history entry since the pick means setMarts changed nothing, so the AI grid is the step Undo takes back.
+        const unchanged = latest.current.history.at(-1) === lastBefore;
         if (deepEqual(grids[martId] ?? null, first) && selection.martId === martId) dispatch({ type: unchanged ? 'editGrid' : 'saveGrid', martId, grid: view.grid });
       } else if (view.ai === 'unavailable') setNotice("AI couldn't set up the view. Showing the default view.");
     } finally { finishPick(ctl); }
@@ -198,14 +203,15 @@ export function useSmartSearch(model: Model) {
     setHighlighted(null);
     const query = draftRef.current.trim();
     if (queryProblem(query)) return;
-    const current = found && found.query === query ? found.hits : NO_HITS;
+    // A row came from the list on screen, which may be the previous query's; the ad-hoc run fetches its own.
+    const current = found ? found.hits : NO_HITS;
     if (row?.kind === 'report') { void pickReport(row, query, current); return; }
     if (row?.kind === 'mart') { pickMart(row.martId, query, current); return; }
     if (row?.disabled && row.kind === 'adhoc' && !row.pending) { stopPick(); dispatch({ type: 'search', q: query }); return; }
     if (query.length < MIN_QUERY) { stopPick(); dispatch({ type: 'search', q: query }); return; }
     // The ad-hoc row: wait for the search for this query, which may still be running.
-    if (picking.current?.query === query) return;
-    const ctl = newPick(query);
+    if (picking.current?.kind === 'adhoc' && picking.current.query === query) return;
+    const ctl = newPick(query, 'adhoc');
     setBuilding(true);
     void (async () => {
       try {
@@ -219,8 +225,8 @@ export function useSmartSearch(model: Model) {
   };
 
   const listOpen = open && listShown && rows.length > 0;
-  const enabled = rows.flatMap((r, i) => (r.kind === 'adhoc' && r.disabled ? [] : [i]));
-  const move = useCallback((delta: 1 | -1) => {
+  const enabled = useMemo(() => rows.flatMap((r, i) => (r.kind === 'adhoc' && r.disabled ? [] : [i])), [rows]);
+  const move = (delta: 1 | -1) => {
     if (!listOpen) { if (rows.length) setListShown(true); return; }
     if (!enabled.length) return;
     setHighlighted((h) => {
@@ -228,7 +234,7 @@ export function useSmartSearch(model: Model) {
       const next = at === -1 ? (delta === 1 ? 0 : enabled.length - 1) : (at + delta + enabled.length) % enabled.length;
       return enabled[next]!;
     });
-  }, [listOpen, rows.length, enabled.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  };
 
   const clear = () => {
     stopTimer(); stopSearch(); stopPick();
@@ -247,7 +253,7 @@ export function useSmartSearch(model: Model) {
     setDraft: typed,
     problem: queryProblem(draft),
     openBox: () => { setDraft(applied); draftRef.current = applied; setOpen(true); },
-    closeBox: () => { stopTimer(); setDraft(applied); draftRef.current = applied; setOpen(false); setListShown(false); setHighlighted(null); },
+    closeBox: () => { stopTimer(); stopSearch(); setDraft(applied); draftRef.current = applied; setOpen(false); setListShown(false); setHighlighted(null); },
     submit: () => pick(),
     clear,
     rows, highlighted, setHighlighted, move, pick,
