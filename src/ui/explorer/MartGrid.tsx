@@ -1,8 +1,8 @@
-import { columnVisibilityFeature, flexRender, tableFeatures, useTable, type ColumnDef } from '@tanstack/react-table';
+import { columnVisibilityFeature, tableFeatures, useTable, type ColumnDef } from '@tanstack/react-table';
 import { Box, Info, RefreshCw, RotateCcw, X } from 'lucide-react';
 import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pending-focus';
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AUTO, keepsUnit } from '../../format/formats';
+import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { AUTO, keepsUnit, type Format } from '../../format/formats';
 import { useColumnFormats } from '../../format/useColumnFormats';
 import { PAGE_SIZE } from '../../config';
 import { columnLetter } from './columnLetters';
@@ -28,6 +28,7 @@ import { Skeleton } from '../Skeleton';
 import { OverflowTip, Tooltip } from '../Tooltip';
 import { BandTools, BandToolsSlot } from '../bands/BandTools';
 import { CardClickContext } from '../bands/CardClick';
+import { useLatest } from '../useLatest';
 import { PickedIcon } from '../bands/picked';
 import { CellValue } from './CellValue';
 import { blockOf, selectionTsv, type GridSelection } from './copySelection';
@@ -138,12 +139,11 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
   return <Grid {...props} initialColumns={initial.columns} initialSources={initial.sources} initialAgg={initial.agg} />;
 }
 
-// TanStack Table v9: row.getVisibleCells() needs the column visibility feature.
+// TanStack Table v9 builds the header groups and the row model; the headers and cells are drawn by the components above.
 const features = tableFeatures({ columnVisibilityFeature });
 type GridColumn = ColumnDef<typeof features, Row>;
 
-// The sorts reach the header cells through context so they keep their identity when a sort changes:
-// a new header component would remount and close an open filter popover.
+// The sorts reach the header cells through context, so a sort change re-renders the titles without touching their props.
 // `sortable` is off in Charts mode: the titles are plain text there.
 const GridEnv = createContext<{ sorts: SortKey[]; toggleSort: (field: string) => void; sortable: boolean }>({ sorts: [], toggleSort: () => undefined, sortable: true });
 
@@ -184,6 +184,66 @@ function SortTitle({ field, output }: { field: Schema[number]; output: Output })
   return <OverflowTip text={label} extra={field.joined || output.fn ? undefined : fieldTitle(field)} measure={(el) => el.querySelector('.truncate')}>{button}</OverflowTip>;
 }
 
+/** One shown column as the header and the cells read it: resolved once per column, not once per cell. */
+type ColumnView = { output: Output; field: Schema[number]; /** The menu and the info belong to the column: they sit on its first output only. */ lead: boolean; type: string; format: Format; maxWidth: string; numeric: boolean };
+
+/** A column's title, its info button, and its menu. A module-level component, so a header keeps its identity (and an open menu stays open) whatever the grid rebuilds around it. */
+const HeaderCell = memo(function HeaderCell({ field, output, lead }: { field: Schema[number]; output: Output; lead: boolean }) {
+  return (
+    <div className="dm-hdr">
+      <SortTitle field={field} output={output} />
+      {lead && field.description?.trim() && (
+        <Tooltip content={field.description}>
+          <button type="button" aria-label={`About ${columnTitle(field)}`} className="dm-reveal dm-col-info">
+            <Info className="dm-icon" />
+          </button>
+        </Tooltip>
+      )}
+      <span aria-hidden className="dm-hdr-spacer" />
+      {lead && <ColumnControls field={field} output={output} />}
+    </div>
+  );
+});
+
+/** What a data cell shows: a date bucket by its unit, anything else as the field's type and the column's format say. */
+function BodyCell({ row, column }: { row: Row; column: ColumnView }) {
+  const { output } = column;
+  return output.bucket ? <BucketValue value={row[output.key]} unit={output.bucket} /> : <CellValue row={row} field={output.key} type={column.type} format={column.format} />;
+}
+
+/** What a row's selection state is, as one short string, so a row the selection does not change gets the same props and does not render. */
+type RowMarks = { /** The row number's mark. */ head?: string; /** The one selected cell's column. */ cell?: number; /** The block's columns, and whether this row is its top and bottom edge. */ block?: [number, number, boolean, boolean]; /** The block's moving end, its active cell and its fill handle: their columns. */ moving?: number; active?: number; handle?: number };
+
+type RowActs = {
+  startDrag: (row: number, col: number, e: React.MouseEvent) => void;
+  dragOver: (row: number, col: number, e: React.MouseEvent) => void;
+  pickCell: (row: number, col: number, e: React.MouseEvent) => void;
+  pickRow: (row: number, e: React.MouseEvent) => void;
+  open: (row: Row) => void;
+};
+
+/** One data row. Memoised: a selection change re-renders only the rows whose `marks` changed. */
+const GridRow = memo(function GridRow({ row, ri, columns, marks, acts, clickable }: { row: Row; ri: number; columns: ColumnView[]; marks: string; acts: RowActs; clickable: boolean }) {
+  const m: RowMarks = marks ? JSON.parse(marks) : {};
+  return (
+    <tr onClick={clickable ? () => acts.open(row) : undefined} className={clickable ? 'cursor-pointer' : ''}>
+      <th aria-hidden data-chrome data-selected={m.head} onClick={(e) => acts.pickRow(ri, e)} className="dm-chrome">{ri + 1}</th>
+      {columns.map((c, ci) => {
+        const inBlock = !!m.block && ci >= m.block[0] && ci <= m.block[1];
+        const edge = inBlock ? [ci === m.block![0] && 'l', ci === m.block![1] && 'r', m.block![2] && 't', m.block![3] && 'b'].filter(Boolean).join(' ') : undefined;
+        return (
+          <td key={c.output.key} data-selected={m.cell === ci ? '' : undefined} data-moving={m.moving === ci ? '' : undefined} data-range={inBlock ? '' : undefined} data-active={m.active === ci ? '' : undefined} data-handle={m.handle === ci ? '' : undefined} data-edge={edge}
+            onMouseDown={(e) => acts.startDrag(ri, ci, e)} onMouseEnter={(e) => acts.dragOver(ri, ci, e)} onClick={(e) => acts.pickCell(ri, ci, e)}
+            className={`${c.maxWidth} overflow-hidden whitespace-nowrap${c.numeric ? ' text-right' : ''}`}>
+            <BodyCell row={row} column={c} />
+          </td>
+        );
+      })}
+      <td aria-hidden className="p-0" />
+    </tr>
+  );
+});
+
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 const byField = (m: Record<string, ColumnFilter> | undefined) => Object.entries(m ?? {}).sort(([a], [b]) => a.localeCompare(b));
 const stable = (g: GridState) => JSON.stringify([g.columns, byField(g.filters), byField(g.slices), g.sorts, g.limit, g.aggregations ?? [], g.dateTrunc ?? [], g.view ?? 'table']);
@@ -219,9 +279,6 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const martStorage = useMemo(() => { const sid = model.marts.get(martId)?.storageId; return model.storages.find((x) => x.id === sid); }, [model, martId]);
   const martTitles = useMemo(() => new Map([...model.marts].map(([id, m]) => [id, m.title])), [model.marts]);
   const { formatOf, memberFormat, setMember: setFormat } = useColumnFormats(martId, schema, model.marts.get(martId)?.title);
-  // The cells read the latest formats through a ref, so a format change repaints cells without rebuilding the column defs (and remounting the headers).
-  const formatOfRef = useRef(formatOf);
-  formatOfRef.current = formatOf;
   const [{ modelVersion }, dispatch] = useStore();
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
   const [visible, setVisible] = useState(initialColumns);
@@ -363,7 +420,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const firstKey = schema.find((f) => shown.includes(f.name) && !aggNow.aggregations.some((r) => r.column === f.name))?.name;
   const gridSorts = useMemo<SortKey[]>(() => (grouped ? (own?.length ? own : firstKey ? [{ field: firstKey, direction: 'asc' }] : []) : sorts), [grouped, own, sorts, firstKey]);
   const pks = primaryKeys(native);
-  const wanted = shown.flatMap((name) => schema.find((f) => f.name === name) ?? []);
+  const wanted = useMemo(() => shown.flatMap((name) => schema.find((f) => f.name === name) ?? []), [shown, schema]);
   // A shown array, JSON or struct column with no rule would be a GROUP BY key the warehouse or the backend refuses: no grouped query goes out until it is hidden.
   const blocked = ungroupableColumn(wanted, aggNow);
   const query = useMemo(() => buildRowQuery(schema, shown, Object.values(filters), limit, gridSorts, aggNow, Object.values(slices)), [schema, shown, filters, slices, gridSorts, limit, aggNow]);
@@ -390,19 +447,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const { rows: read, loading: reading, error, hasMore, run } = useMartRows(martId, asked, version, charts);
   const rows = blocked || charts ? null : read;
   const loading = reading && !blocked && !charts;
-  // The fields on screen, kept as the same array until one of them changes: a joined mart arriving later (the picker reads it
-  // when it opens) must not rebuild the headers, which would close a filter popover the reader has open.
-  const [kept, setOnScreen] = useState<Schema>([]);
-  const changed = wanted.length !== kept.length || wanted.some((f, i) => f !== kept[i]);
-  if (changed) setOnScreen(wanted);
-  // In the render that sees a change (a Refresh took a field away) the new fields are used at once: the kept list would still name the old ones.
-  const onScreen = changed ? wanted : kept;
   const byName = useMemo(() => new Map(schema.map((f) => [f.name, f])), [schema]);
   // One output per column, or one per function of an aggregated column.
-  const outputs = useMemo(() => outputsOf(onScreen.map((f) => f.name), aggNow), [onScreen, aggNow]);
-  // From the fields on screen, not the whole schema: a joined mart arriving later must not rebuild the headers (it would close an open popover).
-  const shownByName = useMemo(() => new Map(onScreen.map((f) => [f.name, f])), [onScreen]);
-  const outputByKey = useMemo(() => new Map(outputs.map((o) => [o.key, o])), [outputs]);
+  const outputs = useMemo(() => outputsOf(wanted.map((f) => f.name), aggNow), [wanted, aggNow]);
   // A HAVING filter on a function that was just taken off goes in the same step, and the new rules are remembered.
   const applyAgg = useCallback((next: Aggregation) => {
     setAgg(next);
@@ -411,32 +458,15 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   }, [columnStore, martId]);
   const changeAgg = useCallback((column: string, draft: AggregationDraft) => edit(() => applyAgg(applyDraft(column, draft, agg))), [agg, applyAgg, edit]);
   // Shown columns that cannot take part in a grouped query: another column's Apply would group the rows and strand them.
-  const blockers = useMemo(() => onScreen.filter((f) => f.category === 'other').map((f) => ({ name: f.name, title: columnTitle(f) })), [onScreen]);
-  const columns = useMemo<GridColumn[]>(() => outputs.map((o) => {
-    const field = shownByName.get(o.column)!;
-    // The menu and the info belong to the column: they sit on its first output only.
-    const lead = outputs.find((x) => x.column === o.column) === o;
-    return {
-      id: o.key,
-      header: () => (
-        <div className="dm-hdr">
-          <SortTitle field={field} output={o} />
-          {lead && field.description?.trim() && (
-            <Tooltip content={field.description}>
-              <button type="button" aria-label={`About ${columnTitle(field)}`} className="dm-reveal dm-col-info">
-                <Info className="dm-icon" />
-              </button>
-            </Tooltip>
-          )}
-          <span aria-hidden className="dm-hdr-spacer" />
-          {lead && <ColumnControls field={field} output={o} />}
-        </div>
-      ),
-      cell: ({ row }) => (o.bucket
-        ? <BucketValue value={row.original[o.key]} unit={o.bucket} />
-        : <CellValue row={row.original} field={o.key} type={outputType(field, o.fn)} format={keepsUnit(o.fn) ? formatOfRef.current(o.column, outputType(field, o.fn)) : AUTO} />),
-    };
-  }), [outputs, shownByName]);
+  const blockers = useMemo(() => wanted.filter((f) => f.category === 'other').map((f) => ({ name: f.name, title: columnTitle(f) })), [wanted]);
+  // What the header and each cell read of a column, resolved once per column: the type after any function, and the format that type allows.
+  const columnViews = useMemo<ColumnView[]>(() => outputs.map((o) => {
+    const field = byName.get(o.column)!;
+    const type = outputType(field, o.fn);
+    return { output: o, field, lead: outputs.find((x) => x.column === o.column) === o, type, format: keepsUnit(o.fn) ? formatOf(o.column, type) : AUTO, maxWidth: maxWidthOf(field), numeric: !o.bucket && isNumericType(type) };
+  }), [outputs, byName, formatOf]);
+  const columnByKey = useMemo(() => new Map(columnViews.map((c) => [c.output.key, c])), [columnViews]);
+  const columns = useMemo<GridColumn[]>(() => outputs.map((o) => ({ id: o.key })), [outputs]);
 
   // While the member has no sort of their own, a click replaces the default with that column ascending (the
   // default's own column included), so a default never rides along as a second sort; after that the normal cycle.
@@ -453,7 +483,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const shownSorts = useMemo(() => (grouped ? (own ?? []) : gridSorts), [grouped, own, gridSorts]);
   const env = useMemo(() => ({ sorts: shownSorts, toggleSort, sortable: !charts }), [shownSorts, toggleSort, charts]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
-  const changeColumns = (picked: string[]) => {
+  const changeColumns = useCallback((picked: string[]) => {
     const cols = orderColumns(picked, sources, defaultColumns(native));
     markEdit();
     setVisible(cols);
@@ -466,15 +496,15 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     columnStore.save(martId, cols, left.length ? Object.fromEntries(left.map((m) => [m, [] as string[]])) : undefined);
     // A joined mart that has just left remembers what it was showing, as its own field names.
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
-  };
+  }, [sources, native, markEdit, agg, applyAgg, visible, columnStore, martId]);
   // A moved column keeps its sorts, filters and functions: only the order changes, and it is one Undo step. The cell selection is dropped (its columns moved).
-  const reorder = (cols: string[]) => {
+  const reorder = useCallback((cols: string[]) => {
     if (cols === shown) return;
     markEdit();
     setVisible(cols);
     columnStore.save(martId, cols);
     setSelected(null);
-  };
+  }, [shown, markEdit, columnStore, martId]);
   const table = useTable({ features, data: rows ?? [], columns });
   const rowsLabel = rows ? `${rows.length}${hasMore ? '+' : ''}` : null;
   // The Data band's title row shows the no-primary-key warning, so it is told whether this grid is a plain preview.
@@ -542,19 +572,24 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     edit(() => setAllFilters((cur) => ({ ...cur, ...Object.fromEntries(usable.map((f) => [f.field, f])) })));
   };
   /** One slice per joined field; an unusable one (a blank value, a field that is not joined) is left out with the same note a filter edit gives. */
-  const setSlice = (name: string, f: ColumnFilter | undefined) => {
+  const setSlice = useCallback((name: string, f: ColumnFilter | undefined) => {
     const field = schema.find((x) => x.name === name);
     // A slice only makes sense on a joined field (the backend refuses one on the main mart), so nothing else is stored.
     if (f && !field?.joined) return;
     const unapplied = f && field ? unappliedFilter(f, sliceField(field)) : null;
     if (unapplied) setNote({ text: unapplied });
     edit(() => setAllSlices((cur) => withEntry(cur, name, f)));
-  };
+  }, [schema, edit]);
+  const setFilter = useCallback((name: string, f: ColumnFilter | undefined) => {
+    const unapplied = f ? unappliedFilter(f, schema.find((x) => x.name === name)) : null;
+    if (unapplied) setNote({ text: unapplied });
+    edit(() => setAllFilters((cur) => withEntry(cur, name, f)));
+  }, [schema, edit]);
   const [menuRequest, setMenuRequest] = useState<{ key: string; seq: number } | null>(null);
-  const menuEnv: ColumnMenuEnv = {
+  const menuEnv = useMemo<ColumnMenuEnv>(() => ({
     menuRequest,
     sorts: shownSorts, setSort, filters, slices, setSlice,
-    setFilter: (name, f) => { const unapplied = f ? unappliedFilter(f, schema.find((x) => x.name === name)) : null; if (unapplied) setNote({ text: unapplied }); edit(() => setAllFilters((cur) => withEntry(cur, name, f))); },
+    setFilter,
     isAggregated: (column) => aggNow.aggregations.some((r) => r.column === column) || aggNow.dateTrunc.some((r) => r.column === column),
     draftOf: (column) => draftOf(column, aggNow),
     blockerFor: (name) => blockers.find((b) => b.name !== name)?.title,
@@ -567,7 +602,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     move: (name, dir) => reorder(moveColumnBy(shown, name, dir, sources)),
     typeOf: (f, o) => outputType(f, o.fn),
     sortable: !charts,
-  };
+  }), [menuRequest, shownSorts, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, several, ownOn, ownNames, changeColumns, sources, reorder, charts]);
   // The selection, as Google Sheets has it: a cell (a frame and a fill handle), a block of cells (shift-click or Shift+Arrow: `to` is
   // the far end, the cell stays active), or whole columns or rows (a tint and a frame around the block); its column letters and row
   // numbers are lit. `from` is where a shift-click on a header extends from.
@@ -590,13 +625,17 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // row's first column, or the first cell of a shift-selected block) and gets the 2px frame; the fill handle sits at the block's far corner.
   const anchor: Cell | null = sel && sel.kind !== 'cell' ? (sel.kind === 'col' ? { row: 0, col: sel.from } : { row: sel.from, col: 0 }) : block && cellSel ? { row: cellSel.row, col: cellSel.col } : null;
   const corner: Cell | null = block ? { row: block.r1, col: block.c1 } : null;
-  // Numbers sit on the right of their cells, as in Sheets (a bucketed date or a Combined list is not a number).
-  const numericOutput = (key: string) => { const o = outputByKey.get(key); const f = o && byName.get(o.column); return !!o && !!f && !o.bucket && isNumericType(outputType(f, o.fn)); };
-  const inBlock = (ri: number, ci: number) => !!block && ri >= block.r0 && ri <= block.r1 && ci >= block.c0 && ci <= block.c1;
-  // Which sides of a cell lie on the block's outer edge, where the 2px frame is drawn.
-  const edges = (ri: number, ci: number) => {
-    if (!block || !inBlock(ri, ci)) return undefined;
-    return [ci === block.c0 && 'l', ci === block.c1 && 'r', ri === block.r0 && 't', ri === block.r1 && 'b'].filter(Boolean).join(' ');
+  // The selection's state in one row, as a short string: a row the selection does not change gets the same string, so it does not render.
+  const marksOf = (ri: number): string => {
+    const m: RowMarks = {};
+    const head = rowMark(ri);
+    if (head !== undefined) m.head = head;
+    if (cellSel && !block && cellSel.row === ri) m.cell = cellSel.col;
+    if (block && ri >= block.r0 && ri <= block.r1) m.block = [block.c0, block.c1, ri === block.r0, ri === block.r1];
+    if (block && cellSel?.to?.row === ri) m.moving = cellSel.to.col;
+    if (anchor?.row === ri) m.active = anchor.col;
+    if (corner?.row === ri) m.handle = corner.col;
+    return Object.keys(m).length ? JSON.stringify(m) : '';
   };
   const pickHeader = (kind: 'col' | 'row', i: number, extend: boolean) => setSelected((cur) => (extend && cur && cur.kind === kind ? { kind, from: cur.from, to: i } : { kind, from: i, to: i }));
   // Measured for the charts: their panels are as wide as the visible grid, not the (wider) table.
@@ -696,6 +735,21 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     setSelected({ kind: 'cell', ...(at ? move(at) : { row: 0, col: 0 }) });
   };
 
+  const openRow = (row: Row) => {
+    if (dragMoved.current) return;
+    dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, row[k]])) });
+  };
+  // The rows are memoised, so what they call must keep its identity: they reach the latest handlers through this one object.
+  const latest = useLatest({ startDrag, dragOver, pickCell, pickHeader, openRow });
+  const rowActs = useMemo<RowActs>(() => ({
+    startDrag: (r, c, e) => latest.current.startDrag(r, c, e),
+    dragOver: (r, c, e) => latest.current.dragOver(r, c, e),
+    pickCell: (r, c, e) => latest.current.pickCell(r, c, e),
+    pickRow: (r, e) => { latest.current.pickHeader('row', r, e.shiftKey); if (e.shiftKey) e.stopPropagation(); },
+    open: (row) => latest.current.openRow(row),
+  }), [latest]);
+  const clickable = pks.length > 0 && !grouped;
+
   return (
     <GridEnv.Provider value={env}>
     <ColumnMenuEnvContext.Provider value={menuEnv}>
@@ -740,7 +794,10 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               </tr>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                {hg.headers.map((h) => <th key={h.id} data-column={outputByKey.get(h.column.id)!.column} aria-sort={!charts && outputByKey.get(h.column.id)?.sortable ? sortOf(shownSorts, outputByKey.get(h.column.id)!.column) : 'none'} className={`dm-th ${maxWidthOf(byName.get(outputByKey.get(h.column.id)!.column)!)} overflow-hidden text-left font-medium`}>{flexRender(h.column.columnDef.header, h.getContext())}</th>)}
+                {hg.headers.map((h) => {
+                  const c = columnByKey.get(h.column.id)!;
+                  return <th key={h.id} data-column={c.output.column} aria-sort={!charts && c.output.sortable ? sortOf(shownSorts, c.output.column) : 'none'} className={`dm-th ${c.maxWidth} overflow-hidden text-left font-medium`}><HeaderCell field={c.field} output={c.output} lead={c.lead} /></th>;
+                })}
                 {/* Takes the width the columns leave over, so the line under the header runs the whole card. */}
                 <th aria-hidden className="dm-th dm-th-fill w-full p-0" />
               </tr>
@@ -753,15 +810,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} /></td></tr>
               : !rows ? <tr><Gutter /><td colSpan={outputs.length + 1}><Skeleton rows={8} /></td></tr>
               : rows.length === 0 ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground">{emptyText(hasFilters)}</td></tr>
-              : table.getRowModel().rows.map((r, ri) => (
-                <tr key={r.id}
-                  onClick={pks.length && !grouped ? () => { if (dragMoved.current) return; dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }); } : undefined}
-                  className={`${pks.length && !grouped ? 'cursor-pointer' : ''}`}>
-                  <th aria-hidden data-chrome data-selected={rowMark(ri)} onClick={(e) => { pickHeader('row', ri, e.shiftKey); if (e.shiftKey) e.stopPropagation(); }} className="dm-chrome">{ri + 1}</th>
-                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={cellSel && !block && cellSel.row === ri && cellSel.col === ci ? '' : undefined} data-moving={block && cellSel?.to?.row === ri && cellSel.to.col === ci ? '' : undefined} data-range={inBlock(ri, ci) ? '' : undefined} data-active={anchor?.row === ri && anchor.col === ci ? '' : undefined} data-handle={corner?.row === ri && corner.col === ci ? '' : undefined} data-edge={edges(ri, ci)} onMouseDown={(e) => startDrag(ri, ci, e)} onMouseEnter={(e) => dragOver(ri, ci, e)} onClick={(e) => pickCell(ri, ci, e)} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap${numericOutput(c.column.id) ? ' text-right' : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
-                  <td aria-hidden className="p-0" />
-                </tr>
-              ))}
+              : table.getRowModel().rows.map((r, ri) => <GridRow key={r.id} row={r.original} ri={ri} columns={columnViews} marks={marksOf(ri)} acts={rowActs} clickable={clickable} />)}
           </tbody>}
         </table>
         <ColumnDragLayer scroller={scroller} head={head} groupOf={owner} onMove={(name, before) => reorder(moveColumn(shown, name, before, sources))} />
