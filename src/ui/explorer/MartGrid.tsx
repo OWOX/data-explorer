@@ -57,10 +57,13 @@ function useSchema(martId: string, version: number) {
 }
 
 /** `saved` is the grid as the reader left it; `filters` only changes when a followed link asks a mounted grid to re-seed. */
-export type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
+type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
+
+/** What the page hands the grid: the mart, what it opens with, and where its changes go. */
+type GridProps = { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: boolean) => void };
 
 /** The grid for one mart: loads the schema, then reads rows. Key it by mart id. */
-export function MartGrid({ martId, model, seed, onChange, onRows, paused = false }: { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: boolean) => void; /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
+export function MartGrid({ martId, model, seed, onChange, onRows, paused = false }: GridProps & { /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
   const [schemaVersion, setSchemaVersion] = useState(0);
   const { schema, error, failure } = useSchema(martId, schemaVersion);
   const { schemas, blendable } = useServices();
@@ -91,7 +94,7 @@ const aggOf = (g: GridState | undefined): Aggregation => (g && (g.aggregations?.
  * A column saved from a joined mart waits for the joined marts to be read (inside the same 3 s): a read that
  * fails leaves those columns out of this visit without erasing them from what is saved.
  */
-function SeededGrid(props: { martId: string; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null) => void; paused: boolean; onRefresh: () => void; refreshError: unknown }) {
+function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown }) {
   const { martId, schema, seed } = props;
   const { columnStore, blendable } = useServices();
   const [initial, setInitial] = useState<Initial | null>(() => {
@@ -188,7 +191,7 @@ const sameGrid = (a: GridState, b: GridState) => stable(a) === stable(b);
 
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
-function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, initialAgg, onChange, onRows, paused, onRefresh, refreshError }: { paused: boolean; onRefresh: () => void; refreshError: unknown; martId: string; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null; model: Model; schema: Schema; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: boolean) => void }) {
+function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, initialAgg, onChange, onRows, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
   const { columnStore, blendable } = useServices();
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
