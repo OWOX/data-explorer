@@ -11,7 +11,7 @@ import { ChartMenu, type MenuItem } from './ChartMenu';
 import { ChartPanel } from './ChartPanel';
 import { measuresOf, type ChartFields } from './fields';
 import { bucketZone, measureKey, seriesOtherQuery, seriesQuery, TOP_N, topValuesQuery } from './queries';
-import { measureLabel, measureFormat, measureOptions, measureText, numberOf, type Formatter } from './Scorecards';
+import { measureLabel, measureFormat, measureOptions, measureText, numberOf, sharedSeriesQuery, type Formatter } from './Scorecards';
 import { measureId, type ChartSettings, type ResolvedCharts } from './settings';
 import { BarChart, type Series } from './svg/BarChart';
 import { useChartQuery } from './useChartQuery';
@@ -37,7 +37,9 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
   const top = useChartQuery(martId, !idle && date && measure && stack ? topValuesQuery(stack, measure, filter) : null, version);
   const names = top.rows?.map((row) => String(row[stack!.name]));
   // Without a stack the series query needs nothing else; with one it waits for the top values.
-  const series = useChartQuery(martId, live && (!stack || (names && names.length > 0)) ? seriesQuery(date!, bucket!, measure!, filter, stack ? { dim: stack, top: names! } : undefined) : null, version);
+  // Unstacked, the series asks for the sparklines' read when it can (same key, one billed read for both).
+  const shared = live && !stack ? sharedSeriesQuery(cf, r, measure!, bucket, filter) : null;
+  const series = useChartQuery(martId, live && (!stack || (names && names.length > 0)) ? shared ?? seriesQuery(date!, bucket!, measure!, filter, stack ? { dim: stack, top: names! } : undefined) : null, version);
   const needOther = !!stack && names?.length === TOP_N;
   const other = useChartQuery(martId, live && needOther ? seriesOtherQuery(date!, bucket!, measure!, filter, stack!, names!) : null, version);
 

@@ -400,3 +400,21 @@ test('a pie of another mart’s Unique Records hides the share in the tooltip', 
   expect((await screen.findAllByText(new RegExp(`^${slice.getAttribute('data-slice')}: `))).length).toBeGreaterThan(0);
   expect(screen.queryByText(/\(\d+%\)/)).toBeNull();
 });
+
+test('an unstacked time series rides on the sparklines read: one billed read where there were two', async () => {
+  const t = await charts();
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  await waitFor(() => expect(data().querySelectorAll('svg[aria-label*="trend"]').length).toBeGreaterThan(0));
+  const byDate = (t.queries.slice(t.tableQueries())).filter((q) => q.dateTrunc?.length && q.column?.[0] === 'created_at');
+  // The sparkline read carries every metric and the unique count; no read of its own asks for the amount alone.
+  expect(byDate).toHaveLength(1);
+  expect(byDate[0]!.column).toEqual(['created_at', 'amount']);
+  expect(byDate[0]!.uniqueCount).toEqual(['']);
+});
+
+test('a stacked time series still reads its own series', async () => {
+  const t = await charts({ charts: { timeSeries: { stack: 'status' } } });
+  await waitFor(() => expect(series().size).toBeGreaterThan(1));
+  const own = t.queries.slice(t.tableQueries()).filter((q) => q.dateTrunc?.length && q.column?.includes('status'));
+  expect(own.length).toBeGreaterThan(0);
+});

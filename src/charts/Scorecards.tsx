@@ -2,7 +2,7 @@ import { AUTO, formatValue, keepsUnit, type Format } from '../format/formats';
 import { AGG_LABELS, formatBucket, outputType, type AggFn, type DateBucket } from '../model/aggregation';
 import { fieldLabel } from '../model/fieldLabel';
 import type { Field } from '../model/types';
-import type { Row, TraverseFilter } from '../sdk/types';
+import type { Row, TraverseFilter, TraverseOptions } from '../sdk/types';
 import { ErrorBox } from '../ui/ErrorBox';
 import { emptyText, formatNumber } from '../ui/format';
 import { Skeleton } from '../ui/Skeleton';
@@ -34,6 +34,29 @@ export function cardsOf(mart: ChartMart): Card[] {
     ...(mart.hasPk ? [{ id: mart.recordsId, label: 'Unique Records', key: uniqueKey(mart.aliasPath), measure: { kind: 'records', aliasPath: mart.aliasPath, recordsId: mart.recordsId } as Measure }] : []),
     ...mart.metrics.map((m) => ({ id: m.field.name, label: metricLabel(m), key: metricKey(m), measure: { kind: 'metric', metric: m } as Measure })),
   ];
+}
+
+/** The date a mart's sparklines are drawn on: the chart date when the mart has it, else the mart's first date (a joined mart without a date draws no trend). */
+export const sparkDate = (mart: ChartMart, r: ResolvedCharts): Field | null => (r.date && mart.dates.includes(r.date) ? r.date : mart.dates[0] ?? null);
+
+/** The query behind a mart's sparklines, or null when there are none to draw. One place decides, so the cards and the time series ask for the same key. */
+export function sparkQueryOf(mart: ChartMart, r: ResolvedCharts, bucket: DateBucket | null, filter: TraverseFilter[]): TraverseOptions | null {
+  const date = sparkDate(mart, r);
+  const cards = cardsOf(mart).filter((c) => !r.hidden.has(c.id));
+  return r.sparklines && cards.length > 0 && date && bucket ? sparklineQuery(mart, date, bucket, filter) : null;
+}
+
+/**
+ * The query an unstacked time series can ride on: its measure's own mart already reads every metric and its unique count by
+ * the same date bucket for the sparklines, so the series rows are a column subset of those rows and the read is shared.
+ * Null when the sparklines do not draw on the series' date (or are off or hidden), and the series reads for itself.
+ */
+export function sharedSeriesQuery(cf: ChartFields, r: ResolvedCharts, measure: Measure, bucket: DateBucket | null, filter: TraverseFilter[]): TraverseOptions | null {
+  const path = measure.kind === 'records' ? measure.aliasPath : measure.metric.field.joined?.aliasPath ?? '';
+  const owner = cf.marts.find((m) => m.aliasPath === path);
+  if (!owner || !r.date || sparkDate(owner, r) !== r.date) return null;
+  const has = measure.kind === 'records' ? owner.hasPk : owner.metrics.some((m) => metricKey(m) === metricKey(measure.metric));
+  return has ? sparkQueryOf(owner, r, bucket, filter) : null;
 }
 
 /** One query for every value card of every data mart. Nothing runs while paused. */
@@ -105,8 +128,8 @@ export function MartCards({ martId, mart, main, r, scores, bucket, filter, versi
 }) {
   const cards = cardsOf(mart).filter((c) => !r.hidden.has(c.id));
   // The group's own date when it has one, else the chart date's mart's: a joined mart without a date draws no trend.
-  const date = r.date && mart.dates.includes(r.date) ? r.date : mart.dates[0] ?? null;
-  const spark = useChartQuery(martId, r.sparklines && cards.length > 0 && date && bucket && !paused ? sparklineQuery(mart, date, bucket, filter) : null, version);
+  const date = sparkDate(mart, r);
+  const spark = useChartQuery(martId, paused ? null : sparkQueryOf(mart, r, bucket, filter), version);
   if (scores.error) return main ? <ErrorBox error={scores.error} onRetry={scores.retry} /> : null;
   if (scores.rows && scores.rows.length === 0) return main ? <p className="dm-muted text-sm">{emptyText(hasFilters)}</p> : null;
   const row = scores.rows?.[0];
