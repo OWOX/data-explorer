@@ -493,6 +493,13 @@ describe('refit pins: what each call site does to sorts, aggregations, buckets, 
     expect(planClick(none, 'products').grids.products).toEqual({ ...grids.products, columns: ['sku'], sorts: null, aggregations: undefined, dateTrunc: undefined });
   });
 
+  test('becoming main with a last-shown list that drops an aggregated column drops its rule and keeps its HAVING filter as it was', () => {
+    const grids = { products: g(['sku', 'price', 'name'], { aggregations: [{ column: 'price', function: 'SUM' }], filters: { price: having('price') } }) };
+    const e: PlanEnv = { ...env(grids, null), ownNames: () => ['sku', 'price', 'name'], lastShownOf: () => ['sku', 'name'] };
+    const plan = planClick(e, 'products');
+    expect(plan.grids.products).toEqual({ ...grids.products, columns: ['sku', 'name'], sorts: null, aggregations: undefined, dateTrunc: undefined });
+  });
+
   test('becoming main strips the joined marts the stale grid still held', () => {
     const grids = { customers: g(['id', 'countries__name', 'stores__city'], { sorts: [{ field: 'countries__name', direction: 'asc' }], aggregations: [{ column: 'stores__city', function: 'COUNT' }] }) };
     const plan = planClick(env(grids, null), 'customers');

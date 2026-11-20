@@ -1358,7 +1358,7 @@ describe('Create Data Mart', () => {
   const TITLES = new Map([['orders', 'Orders'], ['customers', 'Customers']]);
   const CUSTOMERS = [{ id: 'customers', title: 'Customers' }];
 
-  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; run?: GridRun; sorts?: SortKey[]; ownSorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; schema?: Schema; failAt?: string; deleteFails?: boolean; visible?: string[]; joinedMarts?: { id: string; title: string }[]; filters?: ColumnFilter[] } = {}) {
+  function mart(o: { storage?: { id: string; type: string } | undefined; sources?: JoinedSource[] | undefined; publishFails?: boolean; run?: GridRun; sorts?: SortKey[]; ownSorts?: SortKey[]; aggregation?: Aggregation; joinsFailed?: boolean; gate?: Promise<void>; schema?: Schema; failAt?: string; deleteFails?: boolean; visible?: string[]; joinedMarts?: { id: string; title: string }[]; filters?: ColumnFilter[] } = {}) {
     const base = createMockCtx(demoFixtures({ sheets: 1 }), { latencyMs: 0 });
     const calls: string[] = [];
     const bodies: Record<string, unknown> = {};
@@ -1369,7 +1369,7 @@ describe('Create Data Mart', () => {
       ui: { openExternal: open },
       owox: {
         ...b,
-        postJson: ((p: string, body: unknown) => { calls.push(`POST ${p}`); bodies[`POST ${p}`] = body; return b.postJson(p, body); }) as Ctx['owox']['postJson'],
+        postJson: (async (p: string, body: unknown) => { calls.push(`POST ${p}`); bodies[`POST ${p}`] = body; if (o.gate && p === '/api/data-marts') await o.gate; return b.postJson(p, body); }) as Ctx['owox']['postJson'],
         deleteJson: ((p: string) => { calls.push(`DELETE ${p}`); return o.deleteFails ? Promise.reject(Object.assign(new Error('x'), { payload: { message: 'No rights' } })) : b.deleteJson(p); }) as Ctx['owox']['deleteJson'],
         putJson: ((p: string, body: unknown) => {
           calls.push(`PUT ${p}`); bodies[`PUT ${p}`] = body;
@@ -1656,6 +1656,22 @@ describe('Create Data Mart', () => {
     expect(link).toHaveFocus();
     await userEvent.click(link);
     expect(t.open).toHaveBeenCalledWith(martAppUrl(t.ctx.projectId, 'mock-mart-1'));
+  });
+
+  test('Escape and a backdrop click do nothing while Create runs; after it, Escape closes the dialog and focus returns to Export', async () => {
+    let release: () => void = () => {};
+    mart({ gate: new Promise<void>((r) => { release = r; }) });
+    const dlg = await openDialog();
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(within(dlg).getByLabelText('Name')).toBeDisabled());
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(dlg.parentElement!);
+    expect(screen.getByRole('dialog', { name: 'Create Data Mart' })).toBeInTheDocument();
+    release();
+    await screen.findByRole('link', { name: /Open/ });
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Create Data Mart' })).toBeNull());
+    expect(document.querySelector('details.dm-export summary')).toHaveFocus();
   });
 
   test('a publish failure shows the draft, and Retry resumes without creating a second mart', async () => {
