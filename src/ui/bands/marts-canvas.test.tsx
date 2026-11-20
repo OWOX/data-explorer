@@ -421,3 +421,33 @@ test('parity with the Grid: only the x takes a mart out; clicks, Enter and Space
   await userEvent.click(within(el('countries', 'customers.countries')!).getByRole('button', { name: /remove countries/i }));
   await waitFor(() => expect(el('countries', 'customers.countries')).toBeNull());
 });
+
+test('while a card is pinned, hovering another card keeps the pinned card ghosts, and a ghost of the pin still shows its next level', async () => {
+  await joinCountriesUnderCustomers();
+  await userEvent.click(el('orders')!);
+  await waitFor(() => expect(ghostEl('products', 'products')).not.toBeNull());
+  await userEvent.hover(el('customers', 'customers')!);
+  expect(ghostEl('products', 'products')).not.toBeNull();
+  expect(ghostEl('countries', 'customers.countries')).toBeNull();
+  await userEvent.hover(ghostEl('products', 'products')!);
+  expect(ghostEl('products', 'products')).not.toBeNull();
+});
+
+test('a pin does not come back when the main mart goes away and returns', async () => {
+  const mk = (id: string): Mart => ({ id, title: id.toUpperCase(), description: '', icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
+  const model = { marts: new Map([['a', mk('a')], ['b', mk('b')], ['c', mk('c')]]), sources: [], edges: [], contexts: [], failedStorages: [] } as unknown as Model;
+  const joined = [{ aliasPath: 'b', martId: 'b', label: 'B', depth: 1, fields: [{ name: 'b__x', alias: 'x', type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: 'b', label: 'B', aliasPath: 'b', originalName: 'x' } }], uniqueCount: true }] as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
+  const view = (mainId: string) => (
+    <TooltipProvider>
+      <MartsCanvas model={model} mainId={mainId} columns={['id']} sources={joined} counts={new Map()} dq={new Map()} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
+    </TooltipProvider>
+  );
+  const { rerender } = render(view('a'));
+  await userEvent.click(document.querySelector('article:not([data-ghost])')!);
+  await waitFor(() => expect(document.querySelectorAll('article[data-ghost]')).toHaveLength(1));
+  rerender(view('c'));
+  rerender(view('a'));
+  await userEvent.unhover(document.querySelector('article')!);
+  await new Promise((r) => setTimeout(r, 500));
+  expect(document.querySelectorAll('article[data-ghost]')).toHaveLength(0);
+});

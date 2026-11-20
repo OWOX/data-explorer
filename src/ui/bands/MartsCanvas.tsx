@@ -44,7 +44,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     },
     mainId,
   );
-  // The hover side: the card whose ghosts show and the chain of ghosts from it. A pinned card is the fallback.
+  // The hover side: the card whose ghosts show and the chain of ghosts from it. 
   const hover = useGhostChain(pinned);
   const { clear: clearHover, mute: muteHover } = hover;
   useEffect(() => {
@@ -73,8 +73,10 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   // While a card is in hand no ghosts show and the hover and pin logic sits still.
   // A pin on a path the tree no longer has (a drag moved it, or Undo removed it) is let go.
   const pin = pinned !== null && tree.nodes.has(pinned) ? pinned : null;
-  if (pinned !== null && pin === null) setPinned(null);
-  const anchor = drag ? null : hover.anchor ?? pin;
+  // A pin on a path the tree lost, or one kept for another main mart, is dropped now so it does not come back (main A, B, A).
+  if (pinState !== null && pin === null) setPinState(null);
+  // A pinned card keeps its ghosts while another card is hovered, as in the Grid; hovered ghosts still extend the chain from it.
+  const anchor = drag ? null : pin ?? hover.anchor;
   const { levels } = useMemo(
     () => (sources ? ghostLevels(tree, sources, anchor, hover.chain, (s) => model.marts.get(s.martId)?.accessible === true) : { levels: [], chain: [] }),
     [anchor, hover.chain, sources, tree, model],

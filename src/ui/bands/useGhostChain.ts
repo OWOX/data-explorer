@@ -21,7 +21,7 @@ export function overOf(target: EventTarget | null): Over {
  * The hover side of the canvas ghosts: the tree card the pointer is on (the anchor) and the chain of ghosts from it to the hovered one.
  * A card shows its ghosts at once, also when the pointer comes from another card. Leaving everything waits `GHOST_GRACE_MS` before the ghosts go.
  * `mute` keeps a card's own hover from showing its ghosts until the pointer goes elsewhere (the second click on a pinned card hides them).
- * The ghosts of a pinned card are the fallback, which the caller applies: this hook knows only the hover.
+ * While a card is pinned, hovering another card changes nothing; hovered ghosts extend the chain from the pin.
  */
 export function useGhostChain(pinned: string | null) {
   const [shown, setShown] = useState<Shown>(NOTHING);
@@ -43,6 +43,8 @@ export function useGhostChain(pinned: string | null) {
     cancel();
     if (over.card !== null) {
       setMuted((m) => (m === over.card ? m : null));
+      // A pinned card keeps the ghosts: another card under the pointer shows nothing of its own.
+      if (pin.current !== null) { setShown(NOTHING); return; }
       setShown((cur) => (cur.anchor === over.card && cur.chain.length === 0 ? cur : { anchor: over.card, chain: [] }));
       return;
     }

@@ -79,6 +79,14 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
     if (id !== main && (makeMain || !main)) await load(id);
     // The mart being added or made main brings what it showed when it last left a grid.
     if (id !== main) await columnStore.loadLastShown(id);
+    // A ghost chain adds the marts on the way: read what they showed before the store is read, so nothing awaits between the read and the dispatch.
+    if (main && options?.addAt !== undefined) {
+      const known = sources.get(main) ?? [];
+      for (const path of pathsToAdd(inUsePaths(grids.get(main)?.columns ?? [], known), options.addAt)) {
+        const via = known.find((s) => s.aliasPath === path)?.martId;
+        if (via !== undefined && path !== options.addAt) await columnStore.loadLastShown(via);
+      }
+    }
     const now = latest.current;
     // The member moved on while this was being read.
     if (now.selection.martId !== main) return;
@@ -117,8 +125,8 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
         // The marts on the way (a ghost chain) first, each with what it showed last, then the clicked one.
         for (const path of pathsToAdd(inUsePaths(g.columns, sourcesNow), options.addAt)) {
           const martId = sourcesNow.find((s) => s.aliasPath === path)?.martId;
+          // An ancestor path with no source of its own (the list keeps only paths that have fields) cannot be added; the clicked path still is.
           if (martId === undefined) continue;
-          if (path !== options.addAt) await columnStore.loadLastShown(martId);
           next = planAddAt(next, sourcesNow, path, own, picks.get(main)?.[martId], columnStore.lastShown(martId));
         }
       } else next = planRejoin(g, sourcesNow, options.moves!, own);
