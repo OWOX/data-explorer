@@ -104,10 +104,10 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     for (const node of tree.nodes.values()) {
       if (node.parent === null) continue;
       const parent = tree.nodes.get(node.parent)!;
-      out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}` });
+      out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}`, sideways: true });
     }
     const from = ghostOf !== null ? tree.nodes.get(ghostOf) : undefined;
-    if (from) for (const g of ghosts) out.push({ id: `ghost:${g.aliasPath}`, from: martElementId(from.martId, from.path), to: martElementId(g.martId, g.aliasPath), kind: 'relationship', title: `${title(from.martId)} → ${title(g.martId)}`, dashed: true });
+    if (from) for (const g of ghosts) out.push({ id: `ghost:${g.aliasPath}`, from: martElementId(from.martId, from.path), to: martElementId(g.martId, g.aliasPath), kind: 'relationship', title: `${title(from.martId)} → ${title(g.martId)}`, dashed: true, sideways: true });
     return out;
     // `key` stands for tree, ghostOf and ghosts: the memo must not rebuild on every hover.
     // eslint-disable-next-line react-hooks/exhaustive-deps
