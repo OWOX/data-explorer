@@ -25,8 +25,8 @@ const GUTTER_PX = 46;
  * The panels sit side by side while each still gets 30rem, and stack when the band is narrower.
  * Settings load once per mart; a fallback `resolveCharts` picks is never written back, only the member's own changes are.
  */
-export function ChartsBody({ martId, schema, shown, agg, filter, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter }: {
-  martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; groups: { id: string; path: string; span: number; title: string }[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
+export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter }: {
+  martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; /** The grid has a filter on an aggregate, which the charts do not apply. */ havingNote?: boolean; groups: { id: string; path: string; span: number; title: string }[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
   formatOf: (column: string, type: string) => Format; scrollerWidth: number;
   /** Applies the clicked mark's filters to the grid, as a filter edit (one Undo step). */
   onFilter: (add: ColumnFilter[]) => void;
@@ -98,6 +98,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, groups, version
               onChange={(p) => change((cur) => ({ ...cur, timeSeries: { ...cur.timeSeries, ...p } }))} />}
             {r.pieMeasure && r.pieDimension && <PiePanel {...panelProps} onChange={(p) => change((cur) => ({ ...cur, pie: { ...cur.pie, ...p } }))} />}
           </div>
+          {havingNote && <p data-chart-note className="mt-1 text-xs text-muted-foreground" style={{ position: 'sticky', left: GUTTER_PX }}>Charts ignore filters on aggregates.</p>}
         </td>
       </tr>
     </tbody>

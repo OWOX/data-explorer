@@ -11,6 +11,7 @@ import { openColumnMenu } from './menu-test-utils';
 type Mock = ReturnType<typeof createMockCtx>;
 
 function setup(grid: GridState, opts: { blendFails?: boolean } = {}) {
+  let failing = !!opts.blendFails;
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
@@ -20,7 +21,7 @@ function setup(grid: GridState, opts: { blendFails?: boolean } = {}) {
     owox: {
       ...base.owox,
       dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); return real(id, o); } },
-      getJson: (<T,>(path: string, query?: Record<string, string>) => (opts.blendFails && path.endsWith('/blendable-schema') ? Promise.reject(new Error('blendable boom')) : realGet<T>(path, query))) as Mock['owox']['getJson'],
+      getJson: (<T,>(path: string, query?: Record<string, string>) => (path.endsWith('/blendable-schema') && failing ? Promise.reject(new Error('blendable boom')) : realGet<T>(path, query))) as Mock['owox']['getJson'],
     },
   };
   const state: { current: ReturnType<typeof useStore>[0] | null } = { current: null };
@@ -31,7 +32,7 @@ function setup(grid: GridState, opts: { blendFails?: boolean } = {}) {
     return null;
   }
   render(<AppServices ctx={ctx}><StoreProvider><Probe /><App /></StoreProvider></AppServices>);
-  return { queries, state };
+  return { queries, state, heal: () => { failing = false; } };
 }
 
 const data = () => document.getElementById('band-data')!;
@@ -89,4 +90,29 @@ test('hiding the column drops its HAVING filter in the same step, and Undo bring
   await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['status', 'net_revenue']));
   expect(t.state.current!.grids.orders!.filters.net_revenue?.fn).toBe('SUM');
   expect(t.state.current!.grids.orders!.aggregations).toEqual([{ column: 'net_revenue', function: 'SUM' }]);
+});
+
+test('a parked slice comes back when its field is offered again, and is sent', async () => {
+  const t = setup(sliced, { blendFails: true });
+  await waitFor(() => expect(headers()).toEqual(['id', 'status']));
+  await waitFor(() => expect(t.queries.length).toBeGreaterThan(0));
+  expect(t.queries.every((q) => !q.filter)).toBe(true);
+  t.heal();
+  await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+  await waitFor(() => expect(t.queries.some((q) => q.filter?.some((f) => f.placement === 'pre-join'))).toBe(true));
+  expect(t.state.current!.grids.orders!.slices).toEqual({ customers__country_code: slice });
+});
+
+test('the charts get no HAVING filter and say so', async () => {
+  const t = setup({ ...having, view: 'charts' });
+  await waitFor(() => expect(data().querySelector('[data-chart-strip]')).not.toBeNull(), { timeout: 3000 });
+  expect(await within(data()).findByText('Charts ignore filters on aggregates.')).toBeInTheDocument();
+  await waitFor(() => expect(t.queries.length).toBeGreaterThan(0));
+  expect(t.queries.every((q) => !q.filter?.some((f) => f.function))).toBe(true);
+});
+
+test('no note under the charts without a HAVING filter', async () => {
+  setup({ columns: ['id', 'status', 'amount'], filters: {}, sorts: null, limit: 200, view: 'charts' });
+  await waitFor(() => expect(data().querySelector('[data-chart-strip]')).not.toBeNull());
+  expect(within(data()).queryByText('Charts ignore filters on aggregates.')).toBeNull();
 });

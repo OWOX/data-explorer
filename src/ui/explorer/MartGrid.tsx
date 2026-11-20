@@ -335,7 +335,15 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // A rule that was applied and is dropped now (a Refresh narrowed the functions the field allows) is not silent: the toast says it was removed.
   const removed = removedAggregation(keptAgg, aggNow, schema);
   const [seenRemoved, setSeenRemoved] = useState('');
-  if (seenRemoved !== (removed?.key ?? '')) { setSeenRemoved(removed?.key ?? ''); if (removed) said.push(removed.text); }
+  if (seenRemoved !== (removed?.key ?? '')) {
+    setSeenRemoved(removed?.key ?? '');
+    if (removed) {
+      said.push(removed.text);
+      // A HAVING filter on a function that was just removed goes with it, in the same render as the toast.
+      setFilters((cur) => dropOrphanHaving(cur, aggNow.aggregations));
+      setParked((cur) => dropOrphanHaving(cur, aggNow.aggregations));
+    }
+  }
   if (said.length) setNote({ text: said.join(' ') });
   const grouped = isGrouped(aggNow);
   // Grouped with no sort of the member's own: the first group key ascending, so "Load more" pages never reshuffle.
@@ -534,7 +542,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   /** One slice per joined field; an unusable one (a blank value, a field that is not joined) is left out with the same note a filter edit gives. */
   const setSlice = (name: string, f: ColumnFilter | undefined) => {
     const field = schema.find((x) => x.name === name);
-    const unapplied = f ? (field?.joined ? unappliedFilter(f, sliceField(field)) : `The slice on ${field ? columnTitle(field) : name} needs a joined field; it was not applied.`) : null;
+    // A slice only makes sense on a joined field (the backend refuses one on the main mart), so nothing else is stored.
+    if (f && !field?.joined) return;
+    const unapplied = f && field ? unappliedFilter(f, sliceField(field)) : null;
     if (unapplied) setNote({ text: unapplied });
     markEdit();
     setSlices((cur) => { const n = { ...cur }; if (f) n[name] = f; else delete n[name]; return n; });
@@ -598,7 +608,9 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // Measured for the charts: their panels are as wide as the visible grid, not the (wider) table.
   const { ref: scroller, width: scrollerWidth } = useWidth<HTMLDivElement>(charts);
   const owner = useMemo(() => groupMap(sources), [sources]);
-  const traverseFilters = useMemo(() => toTraverseFilters(schema, Object.values(filters), Object.values(slices), aggNow.aggregations), [schema, filters, slices, aggNow]);
+  const traverseFilters = useMemo(() => toTraverseFilters(schema, Object.values(filters).filter((f) => !f.fn), Object.values(slices)), [schema, filters, slices]);
+  // Charts show the data before HAVING: a filter on an aggregate would act at each chart's own grain, so none goes to them.
+  const hasHaving = Object.values(filters).some((f) => f.fn);
   // A click selects the cell; a shift-click stretches a block from the active cell (the one a click or a header selected) to this one,
   // and does not open another record.
   // Drag-select: a press on a cell starts a block, moving over other cells stretches it, a release anywhere ends it.
@@ -741,7 +753,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
             ))}
           </thead>
           {/* ChartsBody renders its own <tbody>: nesting one in another makes the parser pull the headers out of the table. */}
-          {charts && !blocked ? <ChartsBody martId={martId} schema={schema} shown={shown} agg={aggNow} filter={traverseFilters} groups={groups} version={version} paused={paused} hasFilters={hasFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
+          {charts && !blocked ? <ChartsBody martId={martId} schema={schema} shown={shown} agg={aggNow} filter={traverseFilters} havingNote={hasHaving} groups={groups} version={version} paused={paused} hasFilters={hasFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
           : <tbody>
             {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`}</td></tr>
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} /></td></tr>

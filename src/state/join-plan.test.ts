@@ -115,6 +115,13 @@ describe('planMakeMain', () => {
     expect(plan.remember).toEqual([]);
   });
 
+  test('the new main keeps a slice on a field it still joins, shown or not, and drops one it does not', () => {
+    const slices = { stores__city: { field: 'stores__city', op: 'eq' as const, value: 'Rome' }, gone__x: { field: 'gone__x', op: 'eq' as const, value: 1 } };
+    const plan = planMakeMain(envM({ orders: g(['id', 'status']), customers: g(['id', 'city'], { slices }) }, 'orders'), 'customers');
+    expect(plan.grids.customers!.columns).not.toContain('stores__city');
+    expect(plan.grids.customers!.slices).toEqual({ stores__city: slices.stores__city });
+  });
+
   test('an old main that showed no own columns and cannot be reached does not wipe its remembered fields', () => {
     const plan = planMakeMain(envM({ orders: g(['customers__city']), products2: g(['id']) }, 'orders'), 'products2');
     expect(plan.remember.some((r) => r.martId === 'orders')).toBe(false);

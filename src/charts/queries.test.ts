@@ -87,17 +87,33 @@ describe('queries', () => {
 describe('slices and HAVING filters in chart queries', () => {
   const slice: TraverseFilter = { column: 'c__ltv', operator: 'gt', value: 1, placement: 'pre-join' };
   const having: TraverseFilter = { column: 'amount', operator: 'gt', value: 100, function: 'SUM' };
-  it('a HAVING filter goes only to a query that aggregates the same (column, function)', () => {
-    expect(scorecardsQuery([main], [having])?.filter).toEqual([having]);
-    expect(scorecardsQuery([{ ...main, metrics: [ltv] }], [having])?.filter).toBeUndefined();
+  it('no HAVING filter goes to a chart query, even one that aggregates the same column', () => {
+    expect(scorecardsQuery([main], [having])?.filter).toBeUndefined();
     expect(rangeQuery(date, [having]).filter).toBeUndefined();
-    expect(topValuesQuery(channel, amt, [having]).filter).toEqual([having, { column: 'channel', operator: 'is_not_blank' }]);
-    expect(topValuesQuery(channel, records, [having]).filter).toEqual([{ column: 'channel', operator: 'is_not_blank' }]);
+    expect(topValuesQuery(channel, amt, [having]).filter).toEqual([{ column: 'channel', operator: 'is_not_blank' }]);
+    expect(sparklineQuery(main, date, 'MONTH', [having])?.filter).toBeUndefined();
   });
   it('a slice goes to a query that names its columns, and is left out of one that names none', () => {
     expect(rangeQuery(date, [slice]).filter).toEqual([slice]);
     expect(sparklineQuery(main, date, 'MONTH', [slice])?.filter).toEqual([slice]);
-    expect(scorecardsQuery([{ ...main, metrics: [] }], [slice])).toEqual({ uniqueCount: [''] });
-    expect(pieOtherQuery(records, [slice], channel, ['a']).filter).toEqual([{ column: 'channel', operator: 'is_not_blank' }, { column: 'channel', operator: 'not_in', value: ['a'] }]);
+  });
+  it('a query with a slice and no column of its own reads one COUNT of the counter, so the slice applies and no group key is added', () => {
+    const counter = f('id', 'number');
+    const bare = { uniqueCount: ['c.x'], column: ['id'], aggregation: [{ column: 'id', function: 'COUNT' }], filter: [slice] };
+    expect(scorecardsQuery([{ ...cust, metrics: [] }], [slice], counter)).toEqual(bare);
+    // Without a slice the query stays as it was.
+    expect(scorecardsQuery([{ ...cust, metrics: [] }], [], counter)).toEqual({ uniqueCount: ['c.x'] });
+    // Without a counter the slice is left out.
+    expect(scorecardsQuery([{ ...cust, metrics: [] }], [slice])).toEqual({ uniqueCount: ['c.x'] });
+  });
+  it('pie Other sends the same slice as the top-N query', () => {
+    const counter = f('id', 'number');
+    const top = topValuesQuery(channel, custRecords, [slice]);
+    const other = pieOtherQuery(custRecords, [slice], channel, ['a'], counter);
+    expect(top.filter).toContainEqual(slice);
+    expect(other.filter).toContainEqual(slice);
+    expect(other.column).toEqual(['id']);
+    expect(other.aggregation).toEqual([{ column: 'id', function: 'COUNT' }]);
+    expect(other.uniqueCount).toEqual(['c.x']);
   });
 });

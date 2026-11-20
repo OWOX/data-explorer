@@ -340,7 +340,8 @@ export function planMakeMain(env: PlanEnv, id: string): Plan {
     ...nextGrid,
     columns,
     filters,
-    slices: keepSlices(nextGrid.slices, (k) => columns.includes(k)),
+    // A slice does not need its column on screen: it stays while its field is still a joined field of the new main.
+    slices: keepSlices(nextGrid.slices, (k) => nextSources.some((x) => x.fields.some((fl) => fl.name === k))),
     sorts: nextGrid.sorts && nextGrid.sorts.length > 0 && kept!.length === 0 ? null : kept,
     aggregations: agg.aggregations.length ? agg.aggregations : undefined,
     dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined,
