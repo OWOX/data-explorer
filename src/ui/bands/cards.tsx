@@ -5,7 +5,7 @@ import type { Context, DqSummary, Mart, Source } from '../../model/types';
 import { COUNT_CONCURRENCY } from '../../config';
 import { compactNumber, count as plural, num, recordsLabel, relativeTime } from '../format';
 import { dqCardTone, dqVisual } from '../icons';
-import { Hint, TipLines, Tooltip } from '../Tooltip';
+import { Hint, TipLines, Tooltip, TitleTip } from '../Tooltip';
 import { whenInView } from './inview';
 import type { CardTransition } from './transitions';
 import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
@@ -237,7 +237,14 @@ export function MartCard({
       <div className="dm-node-head">
         {/* Only an icon someone picked: the default box on every card would say nothing. */}
         <PickedIcon icon={mart.icon} wrap="dm-logo" />
-        <Tooltip content={name}><span className="dm-node-title">{name}</span></Tooltip>
+        <TitleTip
+          title={name}
+          action={(
+            <button type="button" aria-label="Open in OWOX" className="dm-link" onClick={(e) => { e.stopPropagation(); onOpenApp(); }}>
+              <ExternalLink size={14} />
+            </button>
+          )}
+        ><span className="dm-node-title">{name}</span></TitleTip>
         {onMakeMain && (
           <span className="dm-card-reveal ml-auto"><Tooltip content="Make main data mart">
             <button type="button" aria-label="Make main data mart" className="dm-link" onClick={(e) => { e.stopPropagation(); onMakeMain(); }}>
@@ -245,16 +252,10 @@ export function MartCard({
             </button>
           </Tooltip></span>
         )}
-        <span className={`dm-card-reveal${onMakeMain ? '' : ' ml-auto'}`}><Tooltip content="Open this data mart">
-          <button
-            type="button"
-            aria-label="Open in OWOX"
-            className="dm-link"
-            onClick={(e) => { e.stopPropagation(); onOpenApp(); }}
-          >
-            <ExternalLink size={14} />
-          </button>
-        </Tooltip></span>
+        {/* The link lives in the title bubble, which a keyboard cannot reach: this twin is hidden until the card has keyboard focus. */}
+        <button type="button" aria-label={`Open ${name} in OWOX`} className={`dm-link dm-link-kbd${onMakeMain ? '' : ' ml-auto'}`} onClick={(e) => { e.stopPropagation(); onOpenApp(); }}>
+          <ExternalLink size={14} />
+        </button>
         {mart.description && <span className="dm-card-reveal"><Hint text={mart.description} label="Description" /></span>}
       </div>
       <div className="dm-badges dm-badges-row">

@@ -216,6 +216,11 @@
 .dm-card-remove:hover { color: var(--foreground); }
 .dm-node:hover .dm-card-remove, .dm-node:focus-visible .dm-card-remove, .dm-node:has(:focus-visible) .dm-card-remove, .dm-card-remove:focus-visible { opacity: 1; }
 @media (hover: none) and (pointer: coarse) { .dm-card-remove { opacity: 1; } }
+.dm-title-tip { pointer-events: auto; display: flex; align-items: flex-start; gap: 0.5rem; }
+.dm-title-tip-action { display: inline-flex; margin-left: auto; }
+.dm-title-tip-action .dm-link { color: inherit; }
+/* The keyboard twin of the link in the title bubble: out of sight until the card or the button has keyboard focus. */
+.dm-link-kbd:not(:focus-visible) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .dm-link { display: inline-flex; color: var(--muted-foreground); }
 .dm-link:hover { color: var(--foreground); }
 

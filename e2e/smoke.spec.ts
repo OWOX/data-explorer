@@ -56,7 +56,8 @@ test('the first load selects Orders: its rows, its joined marts, the sources, ba
   await expect(data.getByText('200+ records')).toBeVisible();
   await expect(band(page, 'row').getByText('Select a row.')).toBeVisible();
   await expect(martCard(page, 'Orders').getByLabel(/^Passed/)).toBeVisible();
-  await expect(martCard(page, 'Orders').getByLabel('Open in OWOX')).toBeVisible();
+  await martCard(page, 'Orders').locator('.dm-node-title').hover();
+  await expect(page.getByLabel('Open in OWOX', { exact: true })).toBeVisible();
   // The count badge lands once the card is on screen.
   await expect(martCard(page, 'Orders').locator('.dm-badge').first()).toHaveText(/\d/);
 });
