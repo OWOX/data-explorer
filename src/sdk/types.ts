@@ -96,6 +96,8 @@ export type BlendedFieldDto = {
   allowedAggregations?: string[];
   /** The functions the join's analyst allows on this field after the join; [] means none. */
   postJoinAggregations?: string[];
+  /** The join-level roll-up OWOX applies to this field before the join (SUM, MAX, STRING_AGG ...). */
+  aggregateFunction?: string;
   aliasPath: string;
   outputPrefix?: string | null;
   transitiveDepth?: number;
@@ -111,7 +113,6 @@ export type AvailableSourceDto = {
   isAccessibleForReporting: boolean;
   /** Whether a uniqueCount on this alias path works: 'available', else why not ('no-primary-key', 'disconnected-primary-key', ...). */
   uniqueCountAvailability?: string;
-  mainGrainMultiplication?: 'none' | 'multiplies' | 'unknown';
 };
 export type BlendableSchemaDto = { blendedFields?: BlendedFieldDto[]; availableSources?: AvailableSourceDto[]; hiddenFieldNames?: string[] };
 export type DqSummaryDto = {

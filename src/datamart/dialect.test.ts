@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { columnRef, dialectFor, quoteIdent, renderFilter, type Dialect } from './dialect';
+import { aggregate, anyValue, dateTrunc, dialectFor, fieldRef, ident, isFloat, isJoinFn, leafFn, nullSafeOn, passFn, renderFilter, renderTraverse, reportAggregate, type Dialect, type JoinFn } from './dialect';
 import type { Field } from '../model/types';
 
 const field = (over: Partial<Field>): Field => ({ name: 'x', alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, ...over });
@@ -9,15 +9,20 @@ const stamp = field({ name: 'at', type: 'TIMESTAMP', category: 'date' });
 const flag = field({ name: 'ok', type: 'BOOLEAN', category: 'boolean' });
 
 const DIALECTS: Dialect[] = ['bigquery', 'athena', 'snowflake', 'redshift', 'databricks'];
-const col = (d: Dialect, name: string) => columnRef(d, 't0', name);
+const col = (d: Dialect, name: string) => `t0.${fieldRef(d, name)}`;
 
-describe('quoteIdent', () => {
-  it('quotes per dialect and doubles an embedded quote', () => {
-    expect(quoteIdent('bigquery', 'city')).toBe('`city`');
-    expect(quoteIdent('databricks', 'ci`ty')).toBe('`ci``ty`');
-    expect(quoteIdent('athena', 'city')).toBe('"city"');
-    expect(quoteIdent('snowflake', 'ci"ty')).toBe('"ci""ty"');
-    expect(quoteIdent('redshift', 'a.b')).toBe('"a.b"');
+describe('ident', () => {
+  it('leaves a simple name bare except on Snowflake, which always quotes', () => {
+    for (const d of ['bigquery', 'athena', 'redshift', 'databricks'] as const) expect(ident(d, 'city_2')).toBe('city_2');
+    expect(ident('snowflake', 'city')).toBe('"city"');
+  });
+  it('quotes any other name per dialect and doubles an embedded quote', () => {
+    expect(ident('bigquery', 'my city')).toBe('`my city`');
+    expect(ident('databricks', 'ci`ty')).toBe('`ci``ty`');
+    expect(ident('athena', 'my city')).toBe('"my city"');
+    expect(ident('redshift', '1st')).toBe('"1st"');
+    expect(ident('snowflake', 'ci"ty')).toBe('"ci""ty"');
+    expect(ident('bigquery', 'a.b')).toBe('`a.b`');
   });
 });
 
@@ -35,23 +40,62 @@ describe('dialectFor', () => {
   });
 });
 
-describe('columnRef', () => {
-  it('splits a nested path on BigQuery only', () => {
-    expect(columnRef('bigquery', 't1', 'address.city')).toBe('t1.`address`.`city`');
-    expect(columnRef('snowflake', 't1', 'address.city')).toBe('t1."address.city"');
-    expect(columnRef('databricks', 't1', 'address.city')).toBe('t1.`address.city`');
-    expect(columnRef('athena', 't1', 'city')).toBe('t1."city"');
+describe('fieldRef', () => {
+  it('splits a dotted name into one identifier per segment', () => {
+    expect(fieldRef('bigquery', 'address.city')).toBe('address.city');
+    expect(fieldRef('snowflake', 'address.city')).toBe('"address"."city"');
+    expect(fieldRef('databricks', 'my a.city')).toBe('`my a`.city');
+    expect(fieldRef('athena', 'city')).toBe('city');
+  });
+});
+
+describe('aggregate', () => {
+  it('spells STRING_AGG per dialect', () => {
+    expect(aggregate('bigquery', 'STRING_AGG', 'x')).toBe("STRING_AGG(CAST(x AS STRING), ', ' ORDER BY CAST(x AS STRING))");
+    expect(aggregate('athena', 'STRING_AGG', 'x')).toBe("ARRAY_JOIN(ARRAY_AGG(CAST(x AS VARCHAR) ORDER BY CAST(x AS VARCHAR)), ', ')");
+    expect(aggregate('snowflake', 'STRING_AGG', 'x')).toBe("LISTAGG(CAST(x AS VARCHAR), ', ') WITHIN GROUP (ORDER BY x)");
+    expect(aggregate('redshift', 'STRING_AGG', 'x')).toBe("LISTAGG(CAST(x AS VARCHAR), ', ') WITHIN GROUP (ORDER BY x)");
+    expect(aggregate('databricks', 'STRING_AGG', 'x')).toBe("CONCAT_WS(', ', SORT_ARRAY(COLLECT_LIST(CAST(x AS STRING))))");
+  });
+  it('spells ANY_VALUE as arbitrary on Athena only', () => {
+    expect(aggregate('athena', 'ANY_VALUE', 'x')).toBe('arbitrary(x)');
+    for (const d of ['bigquery', 'snowflake', 'redshift', 'databricks'] as const) expect(aggregate(d, 'ANY_VALUE', 'x')).toBe('ANY_VALUE(x)');
+  });
+  it('spells the plain functions the same on every dialect', () => {
+    for (const d of DIALECTS) {
+      for (const fn of ['SUM', 'MIN', 'MAX', 'AVG', 'COUNT'] as const) expect(aggregate(d, fn, 'x')).toBe(`${fn}(x)`);
+      expect(aggregate(d, 'COUNT_DISTINCT', 'x')).toBe('COUNT(DISTINCT x)');
+    }
+  });
+});
+
+describe('leafFn and passFn', () => {
+  it('leafFn turns ANY_VALUE into MAX on an orderable raw type only', () => {
+    for (const t of ['STRING', 'INTEGER', 'DATE', 'TIME', 'TIMESTAMP', 'NUMERIC']) expect(leafFn('ANY_VALUE', t)).toBe('MAX');
+    for (const t of ['BOOLEAN', 'JSON', 'string']) expect(leafFn('ANY_VALUE', t)).toBe('ANY_VALUE');
+    expect(leafFn('SUM', 'BOOLEAN')).toBe('SUM');
+  });
+  it('passFn re-aggregates COUNT and COUNT_DISTINCT as SUM, ANY_VALUE as MAX, the rest as themselves', () => {
+    expect(passFn('COUNT')).toBe('SUM');
+    expect(passFn('COUNT_DISTINCT')).toBe('SUM');
+    expect(passFn('ANY_VALUE')).toBe('MAX');
+    for (const fn of ['STRING_AGG', 'MAX', 'MIN', 'SUM', 'AVG'] as JoinFn[]) expect(passFn(fn)).toBe(fn);
+  });
+  it('isJoinFn knows the eight functions', () => {
+    expect(isJoinFn('STRING_AGG')).toBe(true);
+    expect(isJoinFn('MEDIAN')).toBe(false);
+    expect(isJoinFn(undefined)).toBe(false);
   });
 });
 
 describe('renderFilter', () => {
   const eqO = (d: Dialect) => renderFilter(d, col(d, 'city'), text, { field: 'city', op: 'eq', value: "O'Brien" });
   it('escapes a quote in a string literal', () => {
-    expect(eqO('athena')).toBe(`t0."city" = 'O''Brien'`);
-    expect(eqO('redshift')).toBe(`t0."city" = 'O''Brien'`);
-    expect(eqO('bigquery')).toBe("t0.`city` = 'O\\'Brien'");
+    expect(eqO('athena')).toBe("t0.city = 'O''Brien'");
+    expect(eqO('redshift')).toBe("t0.city = 'O''Brien'");
+    expect(eqO('bigquery')).toBe("t0.city = 'O\\'Brien'");
     expect(eqO('snowflake')).toBe(`t0."city" = 'O''Brien'`);
-    expect(eqO('databricks')).toBe("t0.`city` = 'O''Brien'");
+    expect(eqO('databricks')).toBe("t0.city = 'O''Brien'");
   });
   it('doubles a backslash where the dialect reads escapes', () => {
     const f = (d: Dialect) => renderFilter(d, 'c', text, { field: 'city', op: 'eq', value: 'a\\b' });
@@ -100,6 +144,13 @@ describe('renderFilter', () => {
     expect(renderFilter('bigquery', 'c', text, { field: 'city', op: 'is_not_blank' })).toBe("(c IS NOT NULL AND TRIM(c) <> '')");
     for (const d of DIALECTS) expect(renderFilter(d, 'c', num, { field: 'qty', op: 'is_blank' })).toBe('c IS NULL');
   });
+  it('is_blank follows the engine string set, not the plugin category', () => {
+    const citext = field({ name: 'c', type: 'CITEXT', category: 'string' });
+    const varchar = field({ name: 'c', type: 'varchar', category: 'string' });
+    expect(renderFilter('bigquery', 'c', citext, { field: 'c', op: 'is_blank' })).toBe('c IS NULL');
+    expect(renderFilter('bigquery', 'c', citext, { field: 'c', op: 'is_not_blank' })).toBe('c IS NOT NULL');
+    expect(renderFilter('bigquery', 'c', varchar, { field: 'c', op: 'is_blank' })).toBe("(c IS NULL OR TRIM(c) = '')");
+  });
   it('is_true', () => {
     for (const d of DIALECTS) expect(renderFilter(d, 'c', flag, { field: 'ok', op: 'is_true' })).toBe('c = TRUE');
   });
@@ -121,5 +172,89 @@ describe('renderFilter', () => {
   });
   it('rejects a non-finite number', () => {
     expect(() => renderFilter('athena', 'c', num, { field: 'qty', op: 'eq', value: 'abc' })).toThrow('Non-finite');
+  });
+});
+
+describe('renderTraverse list operators', () => {
+  it('in lists the values, cast on date columns', () => {
+    for (const d of DIALECTS) expect(renderTraverse(d, 'c', text, { column: 'city', operator: 'in', value: ['a', "b'c"] })).toBe(`c IN ('a', ${d === 'bigquery' ? "'b\\'c'" : "'b''c'"})`);
+    expect(renderTraverse('bigquery', 'c', stamp, { column: 'at', operator: 'in', value: ['2026-01-01 00:00:00'] })).toBe("c IN (CAST('2026-01-01 00:00:00' AS TIMESTAMP))");
+  });
+  it('not_in keeps the rows with no match, so a NULL passes', () => {
+    for (const d of DIALECTS) expect(renderTraverse(d, 'c', num, { column: 'qty', operator: 'not_in', value: [1, 2] })).toBe('(c IS NULL OR c NOT IN (1, 2))');
+    expect(renderTraverse('athena', 'c', text, { column: 'city', operator: 'not_in', value: ['a'] })).toBe("(c IS NULL OR c NOT IN ('a'))");
+  });
+});
+
+describe('reportAggregate', () => {
+  it('spells the plain functions the same on every dialect', () => {
+    for (const d of DIALECTS) {
+      for (const fn of ['SUM', 'AVG', 'MIN', 'MAX', 'COUNT'] as const) expect(reportAggregate(d, fn, 'x')).toBe(`${fn}(x)`);
+      expect(reportAggregate(d, 'COUNT_DISTINCT', 'x')).toBe('COUNT(DISTINCT x)');
+    }
+  });
+  it('ANY_VALUE is arbitrary on Athena', () => {
+    expect(reportAggregate('athena', 'ANY_VALUE', 'x')).toBe('arbitrary(x)');
+    expect(anyValue('snowflake', 'x')).toBe('ANY_VALUE(x)');
+  });
+  it('STRING_AGG has no ORDER BY', () => {
+    expect(reportAggregate('bigquery', 'STRING_AGG', 'x')).toBe("STRING_AGG(CAST(x AS STRING), ', ')");
+    expect(reportAggregate('athena', 'STRING_AGG', 'x')).toBe("array_join(array_agg(CAST(x AS VARCHAR)), ', ')");
+    expect(reportAggregate('snowflake', 'STRING_AGG', 'x')).toBe("LISTAGG(CAST(x AS VARCHAR), ', ')");
+    expect(reportAggregate('redshift', 'STRING_AGG', 'x')).toBe("LISTAGG(CAST(x AS VARCHAR), ', ')");
+    expect(reportAggregate('databricks', 'STRING_AGG', 'x')).toBe("array_join(collect_list(CAST(x AS STRING)), ', ')");
+  });
+  it('percentiles per dialect', () => {
+    expect(reportAggregate('bigquery', 'P25', 'x')).toBe('APPROX_QUANTILES(x, 100)[OFFSET(25)]');
+    expect(reportAggregate('bigquery', 'P50', 'x')).toBe('APPROX_QUANTILES(x, 100)[OFFSET(50)]');
+    expect(reportAggregate('athena', 'P75', 'x')).toBe('APPROX_PERCENTILE(CAST(x AS DOUBLE), 0.75)');
+    expect(reportAggregate('athena', 'P95', 'x')).toBe('APPROX_PERCENTILE(CAST(x AS DOUBLE), 0.95)');
+    for (const d of ['snowflake', 'redshift', 'databricks'] as const) expect(reportAggregate(d, 'P50', 'x')).toBe('PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY x)');
+  });
+  it('aggregate hands percentiles to it and keeps the ordered STRING_AGG', () => {
+    expect(aggregate('snowflake', 'P95', '_val')).toBe('PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY _val)');
+    expect(aggregate('bigquery', 'STRING_AGG', 'x')).toContain('ORDER BY');
+  });
+});
+
+describe('dateTrunc', () => {
+  const units = ['DAY', 'WEEK', 'MONTH', 'QUARTER', 'YEAR'] as const;
+  it('BigQuery: DATE truncates directly, DATETIME with a zone goes through TIMESTAMP, the rest through DATE', () => {
+    expect(dateTrunc('bigquery', 'x', 'MONTH', undefined, 'DATE')).toBe('DATE_TRUNC(x, MONTH)');
+    expect(dateTrunc('bigquery', 'x', 'MONTH', 'Europe/Berlin', 'DATE')).toBe('DATE_TRUNC(x, MONTH)');
+    expect(dateTrunc('bigquery', 'x', 'DAY', 'America/New_York', 'DATETIME')).toBe("DATE_TRUNC(DATE(TIMESTAMP(x, 'America/New_York'), 'America/New_York'), DAY)");
+    expect(dateTrunc('bigquery', 'x', 'DAY', undefined, 'DATETIME')).toBe('DATE_TRUNC(DATE(x), DAY)');
+    expect(dateTrunc('bigquery', 'x', 'WEEK', 'UTC', 'TIMESTAMP')).toBe("DATE_TRUNC(DATE(x, 'UTC'), WEEK)");
+    expect(dateTrunc('bigquery', 'x', 'YEAR', undefined, ' timestamp ')).toBe('DATE_TRUNC(DATE(x), YEAR)');
+  });
+  it('every unit on every dialect, with and without a zone', () => {
+    for (const u of units) {
+      expect(dateTrunc('athena', 'x', u, 'UTC', 'TIMESTAMP')).toBe(`date_trunc('${u.toLowerCase()}', (x) AT TIME ZONE 'UTC')`);
+      expect(dateTrunc('athena', 'x', u, undefined, 'TIMESTAMP')).toBe(`date_trunc('${u.toLowerCase()}', x)`);
+      expect(dateTrunc('snowflake', 'x', u, 'UTC', 'TIMESTAMP')).toBe(`DATE_TRUNC('${u}', CONVERT_TIMEZONE('UTC', x))`);
+      expect(dateTrunc('snowflake', 'x', u, undefined, 'TIMESTAMP')).toBe(`DATE_TRUNC('${u}', x)`);
+      expect(dateTrunc('redshift', 'x', u, 'UTC', 'TIMESTAMP')).toBe(`DATE_TRUNC('${u.toLowerCase()}', CONVERT_TIMEZONE('UTC', x))`);
+      expect(dateTrunc('redshift', 'x', u, undefined, 'TIMESTAMP')).toBe(`DATE_TRUNC('${u.toLowerCase()}', x)`);
+      expect(dateTrunc('databricks', 'x', u, 'UTC', 'TIMESTAMP')).toBe(`DATE_TRUNC('${u}', FROM_UTC_TIMESTAMP(x, 'UTC'))`);
+      expect(dateTrunc('databricks', 'x', u, undefined, 'TIMESTAMP')).toBe(`DATE_TRUNC('${u}', x)`);
+      expect(dateTrunc('bigquery', 'x', u, undefined, 'TIMESTAMP')).toBe(`DATE_TRUNC(DATE(x), ${u})`);
+    }
+  });
+  it('refuses a unit or a zone the backend would refuse', () => {
+    expect(() => dateTrunc('bigquery', 'x', 'HOUR' as never, undefined, 'DATE')).toThrow('Unknown date bucket');
+    expect(() => dateTrunc('bigquery', 'x', 'DAY', "UTC'); DROP", 'TIMESTAMP')).toThrow('Invalid time zone');
+    expect(() => dateTrunc('snowflake', 'x', 'DAY', '', 'TIMESTAMP')).toThrow('Invalid time zone');
+  });
+});
+
+describe('nullSafeOn and isFloat', () => {
+  it('matches NULL to NULL, and NaN to NaN only where asked', () => {
+    expect(nullSafeOn([{ left: 'a', right: 's.d0', nanSafe: false }])).toBe('((a) = (s.d0) OR ((a) IS NULL AND (s.d0) IS NULL))');
+    expect(nullSafeOn([{ left: 'a', right: 's.d0', nanSafe: true }])).toBe('((a) = (s.d0) OR ((a) IS NULL AND (s.d0) IS NULL) OR ((a) != (a) AND (s.d0) != (s.d0)))');
+    expect(nullSafeOn([{ left: 'a', right: 'r0', nanSafe: false }, { left: 'b', right: 'r1', nanSafe: false }])).toBe('((a) = (r0) OR ((a) IS NULL AND (r0) IS NULL)) AND ((b) = (r1) OR ((b) IS NULL AND (r1) IS NULL))');
+  });
+  it('isFloat knows the floating point types', () => {
+    for (const t of ['FLOAT', 'float64', 'REAL', 'DOUBLE', 'double precision']) expect(isFloat(t)).toBe(true);
+    for (const t of ['INTEGER', 'NUMERIC', 'DECIMAL', 'STRING']) expect(isFloat(t)).toBe(false);
   });
 });

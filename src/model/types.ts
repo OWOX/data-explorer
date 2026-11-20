@@ -13,7 +13,7 @@ export interface Field {
   /** A joined field only: the functions the join's analyst allows after the join (absent: the type's defaults; [] means none). */
   postJoinAggregations?: import('./aggregation').AggFn[];
   /** Set on a field of a joined data mart: `name` is the blended name a query takes, `alias` the field's label. */
-  joined?: { martId: string; /** What the joined mart is called in a column header and in the picker. */ label: string; aliasPath: string; /** The field's name in the joined mart itself (the blended `name` minus the join path). */ originalName?: string; /** The field's type in the joined mart itself; `type` is the type after a pre-join aggregation. */ sourceType?: string };
+  joined?: { martId: string; /** What the joined mart is called in a column header and in the picker. */ label: string; aliasPath: string; /** The field's name in the joined mart itself (the blended `name` minus the join path). */ originalName?: string; /** The field's type in the joined mart itself; `type` is the type after a pre-join aggregation. */ sourceType?: string; /** The join-level roll-up OWOX applies to this field before the join (SUM, MAX, STRING_AGG ...). */ aggregateFunction?: string };
 }
 
 export interface Context { id: string; name: string; icon: string | null }

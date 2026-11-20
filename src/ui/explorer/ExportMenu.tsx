@@ -15,7 +15,8 @@ import { createDataMart, deleteDraft, CreateMartError, CREATE_STAGE_LABEL, type 
 import { dialectFor } from '../../datamart/dialect';
 import type { Row } from '../../sdk/types';
 import { buildTsv, tsvColumns } from '../../export/tsv';
-import { isGrouped, type Aggregation } from '../../model/aggregation';
+import type { Aggregation } from '../../model/aggregation';
+import { isGrouped, keepVisible } from '../../model/aggregation';
 import type { DestinationDto } from '../../sdk/types';
 import { buildAiPrompt } from '../../api/ai-prompt';
 import { readRunSql, type RunSql } from '../../api/run-sql';
@@ -32,6 +33,7 @@ import type { GridRun } from './useMartRows';
 type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; filters: ColumnFilter[]; sorts: SortKey[]; /** Only the sorts the member set; Create Data Mart never adds the grid's implicit order. */ ownSorts?: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun;
   /** The main mart's storage, for Create Data Mart. */ storage?: { id: string; type: string; title?: string }; /** The model is loaded and the member can't see this mart's storage. */ storageUnavailable?: boolean;
   /** Reading the main mart's joined sources failed. */ joinsFailed?: boolean;
+  /** The joined data marts the grid selects, as the Data Marts band shows them. */ joinedMarts?: { id: string; title: string }[];
   /** The main mart's joined sources, the model's edges and the mart titles, for the SQL; `sources` is undefined until the joins are read. */ sources?: JoinedSource[]; edges?: Edge[]; titles?: Map<string, string> };
 type Result = { kind: 'ok' | 'timeout' | 'error'; text: string; url?: string };
 
@@ -109,18 +111,30 @@ export function ExportMenu(p: Props) {
     : !runId ? 'OWOX did not report a run for this query'
     : sqlHave && 'reason' in sqlHave.result && sqlHave.opening === opening ? sqlHave.result.reason
     : 'Reading the SQL from OWOX…';
-  // Create Data Mart: why it is off, else the SQL it would save, plain and with the grid's sorting (built from the props as they are now).
-  const martSql = useMemo((): { reason: string } | { sql: string; joined: number; repeats: boolean; sorted: { sql: string; joined: number } | { reason: string } } => {
+  // Create Data Mart: why it is off, else the SQL of each variant (grouping on or off, sorting on or off), built from the props as they are now.
+  const martSql = useMemo((): { reason: string } | { variants: MartVariants; grouped: boolean } => {
     if (!p.storage) return { reason: p.storageUnavailable ? "The data mart's storage isn't available to you" : "The data mart's storage isn't loaded" };
     if (!p.sources) return { reason: p.joinsFailed ? "The data mart's joins couldn't be read" : "Loading the data mart's joins…" };
     const d = dialectFor(p.storage.type);
     if ('reason' in d) return d;
-    const input = { dialect: d.dialect, main: { id: p.martId, title: p.martTitle }, schema: p.schema, visible: p.visible, filters: p.filters, sources: p.sources, edges: p.edges ?? [], titles: p.titles ?? new Map() };
-    const plain = buildMartSql(input);
-    if ('reason' in plain) return plain;
-    return { sql: plain.sql, joined: plain.joined, repeats: plain.repeats, sorted: p.ownSorts?.length ? buildMartSql({ ...input, sorts: p.ownSorts }) : { reason: "You haven't set a sort" } };
-  }, [p.storage, p.storageUnavailable, p.sources, p.joinsFailed, p.edges, p.titles, p.martId, p.martTitle, p.schema, p.visible, p.filters, p.ownSorts]);
-  const [martDialog, setMartDialog] = useState<{ sql: string; joined: number; repeats: boolean; sorted: { sql: string; joined: number } | { reason: string }; grouped: boolean; storage: { id: string; type: string; title?: string }; seq: number } | null>(null);
+    const base = { dialect: d.dialect, main: { id: p.martId, title: p.martTitle }, schema: p.schema, visible: p.visible, filters: p.filters, sources: p.sources, edges: p.edges ?? [], titles: p.titles ?? new Map() };
+    const kept = p.aggregation && keepVisible(p.aggregation, p.visible);
+    const grouped = isGrouped(kept);
+    const own = p.ownSorts ?? [];
+    const variant = (grouping: boolean): MartVariant => {
+      // A sort on an aggregated output has no meaning on raw rows.
+      const aggregated = new Set(kept?.aggregations.map((r) => r.column));
+      const sorts = grouping ? own : own.filter((s) => !aggregated.has(s.field));
+      const input = { ...base, ...(grouping && p.aggregation ? { aggregation: p.aggregation } : {}) };
+      const plain = buildMartSql(input);
+      if ('reason' in plain) return { plain, sorted: plain };
+      return { plain, sorted: !own.length ? { reason: "You haven't set a sort" } : !sorts.length ? { reason: 'Your sorts are on grouped columns' } : buildMartSql({ ...input, sorts }) };
+    };
+    const off = variant(false);
+    if ('reason' in off.plain) return off.plain;
+    return { variants: { off, on: grouped ? variant(true) : off }, grouped };
+  }, [p.storage, p.storageUnavailable, p.sources, p.joinsFailed, p.edges, p.titles, p.martId, p.martTitle, p.schema, p.visible, p.aggregation, p.filters, p.ownSorts]);
+  const [martDialog, setMartDialog] = useState<{ variants: MartVariants; grouped: boolean; joinedMarts: { id: string; title: string }[]; storage: { id: string; type: string; title?: string }; seq: number } | null>(null);
   const seq = useRef(0);
   // Bumped when the mart changes or the menu goes away: an export finishing later is no longer in front of the member.
   const gen = useRef(0);
@@ -360,7 +374,7 @@ export function ExportMenu(p: Props) {
                   </span>
                 </Tooltip>
               ) : (
-                <button type="button" role="menuitem" data-lvl="1" data-action="create-mart" className="dm-export-item" onClick={() => { closeMenu(); setMartDialog({ sql: martSql.sql, joined: martSql.joined, repeats: martSql.repeats, sorted: martSql.sorted, grouped: isGrouped(p.aggregation), storage: p.storage!, seq: ++seq.current }); }}>
+                <button type="button" role="menuitem" data-lvl="1" data-action="create-mart" className="dm-export-item" onClick={() => { closeMenu(); setMartDialog({ variants: martSql.variants, grouped: martSql.grouped, joinedMarts: p.joinedMarts ?? [], storage: p.storage!, seq: ++seq.current }); }}>
                   <DatabaseZap size={16} />
                   <span className="dm-filter-label">Create Data Mart</span>
                 </button>
@@ -371,7 +385,7 @@ export function ExportMenu(p: Props) {
       {promptOpen && copied && <TextDialog name="Prompt" heading={`Prompt for ${copied.assistant}`} note={`Paste it into ${copied.assistant} with the OWOX Data Marts connector turned on. Copying writes nothing to OWOX.`} areaLabel="Prompt text" text={copied.prompt} onClose={() => { setPromptOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {dataOpen && data && <TextDialog name="Copy the data" note="Select the text and copy it, then paste it into a sheet. Copying writes nothing to OWOX." areaLabel="Data text" text={data.tsv} onClose={() => { setDataOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
       {sqlOpen && sqlCopied && <TextDialog name="SQL" note="Select the SQL and copy it. Copying writes nothing to OWOX." areaLabel="SQL text" text={sqlCopied.sql} onClose={() => { setSqlOpen(false); menu.current?.querySelector<HTMLElement>('summary')?.focus(); }} />}
-      {martDialog && <CreateMartDialog key={martDialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} martTitle={p.martTitle} sql={martDialog.sql} joined={martDialog.joined} repeats={martDialog.repeats} sorted={martDialog.sorted} grouped={martDialog.grouped} storage={martDialog.storage} onClose={() => setMartDialog(null)} />}
+      {martDialog && <CreateMartDialog key={martDialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} martTitle={p.martTitle} variants={martDialog.variants} grouped={martDialog.grouped} joinedMarts={martDialog.joinedMarts} storage={martDialog.storage} onClose={() => setMartDialog(null)} />}
       {dialog && <ExportDialog key={dialog.seq} returnFocus={() => menu.current?.querySelector<HTMLElement>('summary')?.focus()} exporter={exporter} martId={p.martId} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
     </>
   );
@@ -705,10 +719,15 @@ const MartLink = ({ url, children, linkRef }: { url: string; children: React.Rea
   return <a ref={linkRef} href={url} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.preventDefault(); void ctx.ui.openExternal(url).catch(() => undefined); }} className="underline">{children}</a>;
 };
 
+/** The SQL of one grouping choice: plain, and with the grid's ORDER BY; each may be a reason instead. */
+type MartVariant = { plain: { sql: string } | { reason: string }; sorted: { sql: string } | { reason: string } };
+type MartVariants = { off: MartVariant; on: MartVariant };
+
 /** The dialog behind Create Data Mart: names the mart, shows its SQL, runs the create steps, then links to the result. */
-function CreateMartDialog({ martTitle, sql: plainSql, joined: plainJoined, repeats, sorted, grouped, storage, onClose, returnFocus }: { martTitle: string; sql: string; /** How many distinct joined data marts it reads. */ joined: number; /** A joined mart has several rows per row of this one, so rows can repeat. */ repeats: boolean; /** The SQL with the grid's ORDER BY, or why there is none. */ sorted: { sql: string; joined: number } | { reason: string }; grouped: boolean; storage: { id: string; type: string; title?: string }; onClose: () => void; returnFocus: () => void }) {
+function CreateMartDialog({ martTitle, variants, grouped, joinedMarts, storage, onClose, returnFocus }: { martTitle: string; variants: MartVariants; /** The grid groups its rows. */ grouped: boolean; /** The joined data marts selected when the dialog opened. */ joinedMarts: { id: string; title: string }[]; storage: { id: string; type: string; title?: string }; onClose: () => void; returnFocus: () => void }) {
   const { ctx } = useServices();
   const [name, setName] = useState(exportTitle(martTitle));
+  const [grouping, setGrouping] = useState(false);
   const [sorting, setSorting] = useState(false);
   const [stage, setStage] = useState<CreateStage | null>(null);
   const [failure, setFailure] = useState<CreateMartError | { message: string; stage?: undefined; martId?: undefined } | null>(null);
@@ -722,8 +741,12 @@ function CreateMartDialog({ martTitle, sql: plainSql, joined: plainJoined, repea
   const link = useRef<HTMLAnchorElement>(null);
   const live = useRef(true);
   const abort = useRef(new AbortController());
-  const sql = sorting && 'sql' in sorted ? sorted.sql : plainSql;
-  const joined = sorting && 'sql' in sorted ? sorted.joined : plainJoined;
+  const groupOff = !grouped ? "The grid isn't grouped" : 'reason' in variants.on.plain ? variants.on.plain.reason : null;
+  const groupOn = grouping && !groupOff;
+  const { plain, sorted } = groupOn ? variants.on : variants.off;
+  const sortOn = sorting && 'sql' in sorted;
+  const sql = sortOn ? sorted.sql : 'sql' in plain ? plain.sql : '';
+  const joined = joinedMarts.length;
   useEffect(() => { field.current?.focus(); field.current?.select(); }, []);
   useEffect(() => () => { live.current = false; abort.current.abort(); returnFocus(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (made) link.current?.focus(); }, [made]);
@@ -792,13 +815,21 @@ function CreateMartDialog({ martTitle, sql: plainSql, joined: plainJoined, repea
           </>
         ) : (
           <>
-            <p className="text-xs text-muted-foreground">An SQL data mart in {where} that references {martTitle}{joined > 0 ? ` and ${joined === 1 ? 'the joined data mart' : `the ${joined} joined data marts`} the grid uses` : ''}, with its columns and filters. It is published and available for reporting.{grouped ? ' The grid groups its rows; the data mart keeps them ungrouped.' : ''}{repeats ? ' A joined data mart has several rows per row here, so rows can repeat.' : ''}</p>
+            <p className="text-xs text-muted-foreground">An SQL data mart in {where} that references {martTitle}{joined > 0 ? ` and ${joined === 1 ? 'the joined data mart' : `the ${joined} joined data marts`} the grid uses` : ''}, with its columns and filters. It is published and available for reporting.</p>
             <label className="flex flex-col gap-1">Name
               <input ref={field} value={name} disabled={running || !!failure?.martId} onChange={(e) => setName(e.target.value)} className="h-8 rounded-md border bg-background px-2 disabled:opacity-60" />
             </label>
+            {grouped && !groupOn && <p className="text-xs text-muted-foreground">The grid groups its rows; the data mart keeps them ungrouped, so the tool that reads it can group them.</p>}
             <label className="flex flex-col gap-0.5">
               <span className="inline-flex items-center gap-2">
-                <input type="checkbox" checked={sorting} disabled={running || !!failure?.martId || 'reason' in sorted} onChange={(e) => setSorting(e.target.checked)} />
+                <input type="checkbox" checked={groupOn} disabled={running || !!failure?.martId || !!groupOff} onChange={(e) => { setGrouping(e.target.checked); if ('reason' in (e.target.checked ? variants.on : variants.off).sorted) setSorting(false); }} />
+                Include grouping
+              </span>
+              {groupOff && <span className="pl-6 text-xs text-muted-foreground">{groupOff}</span>}
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="inline-flex items-center gap-2">
+                <input type="checkbox" checked={sortOn} disabled={running || !!failure?.martId || 'reason' in sorted} onChange={(e) => setSorting(e.target.checked)} />
                 Include sorting
               </span>
               {'reason' in sorted && <span className="pl-6 text-xs text-muted-foreground">{sorted.reason}</span>}

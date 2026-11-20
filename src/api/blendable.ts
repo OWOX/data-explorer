@@ -4,7 +4,7 @@ import type { Field, Schema } from '../model/types';
 import type { BlendableSchemaDto, Ctx } from '../sdk/types';
 
 /** The backend's `isArrayFieldType`: ARRAY, bare or with a parameter (`ARRAY<STRING>`). */
-const isArrayType = (type: string | undefined) => /^ARRAY(?:\s*[<(]|$)/i.test(type?.trim() ?? '');
+export const isArrayType = (type: string | undefined) => /^ARRAY(?:\s*[<(]|$)/i.test(type?.trim() ?? '');
 
 /** One joined data mart the Columns picker offers, with the fields of it a report can take. */
 export type JoinedSource = {
@@ -18,8 +18,6 @@ export type JoinedSource = {
   uniqueCount: boolean;
   /** The relationship (edge) that exposes this source, when the backend says. */
   relationshipId?: string;
-  /** Whether this join changes the main grain (the backend's word): 'none', 'multiplies' or 'unknown'; absent when the backend didn't say. */
-  mainGrainMultiplication?: 'none' | 'multiplies' | 'unknown';
 };
 
 export interface BlendableLoader {
@@ -42,7 +40,7 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
   offered.forEach((s) => labelUses.set(nameOf(s), (labelUses.get(nameOf(s)) ?? 0) + 1));
   for (const s of offered) {
     const base = nameOf(s);
-    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, fields: [], uniqueCount: s.uniqueCountAvailability === 'available', ...(s.relationshipId ? { relationshipId: s.relationshipId } : {}), ...(s.mainGrainMultiplication ? { mainGrainMultiplication: s.mainGrainMultiplication } : {}) });
+    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, fields: [], uniqueCount: s.uniqueCountAvailability === 'available', ...(s.relationshipId ? { relationshipId: s.relationshipId } : {}) });
   }
   for (const b of dto.blendedFields ?? []) {
     const source = byPath.get(b.aliasPath);
@@ -56,7 +54,7 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
       description: b.description?.trim() ? b.description : null,
       isPrimaryKey: false,
       ...(Array.isArray(b.postJoinAggregations) ? { postJoinAggregations: knownFunctions(b.postJoinAggregations) } : {}),
-      joined: { martId: source.martId, label: source.label, aliasPath: source.aliasPath, originalName: b.originalFieldName, ...(b.sourceFieldType ? { sourceType: b.sourceFieldType } : {}) },
+      joined: { martId: source.martId, label: source.label, aliasPath: source.aliasPath, originalName: b.originalFieldName, ...(b.sourceFieldType ? { sourceType: b.sourceFieldType } : {}), ...(typeof b.aggregateFunction === 'string' && b.aggregateFunction ? { aggregateFunction: b.aggregateFunction } : {}) },
     });
   }
   return [...byPath.values()].filter((s) => s.fields.length > 0).sort((a, b) => a.depth - b.depth || a.label.localeCompare(b.label) || a.aliasPath.localeCompare(b.aliasPath));
