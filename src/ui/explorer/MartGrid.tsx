@@ -15,7 +15,7 @@ import { ChartsBody } from '../../charts/ChartsBody';
 import { useWidth } from '../../charts/useWidth';
 import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKey } from '../../model/sort';
 import { groupMap, moveColumn, moveColumnBy, orderColumns } from '../../state/column-order';
-import { joinedMartIds, ownNamesIn } from '../../state/join-plan';
+import { joinedMartIds, joinedPaths, ownNamesIn, pathTitle } from '../../state/join-plan';
 import type { Model, Schema } from '../../model/types';
 import { primaryKeys } from '../../records/relationships';
 import type { Row } from '../../sdk/types';
@@ -447,28 +447,32 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // One cell per data mart over its columns, main first; only when a joined mart is on screen.
   const groups = useMemo(() => {
     // A group is a mart at one alias path ('' for the main mart), so a mart joined under two parents is two groups.
+    const inUse = joinedPaths(shown, sources);
     const out: { id: string; path: string; title: string; icon: string | null | undefined; span: number; main: boolean }[] = [];
     for (const o of outputs) {
       const f = byName.get(o.column)!;
       const id = f.joined?.martId ?? martId;
       const path = f.joined?.aliasPath ?? '';
+      const source = f.joined ? sources.find((x) => x.aliasPath === path) : undefined;
       const last = out[out.length - 1];
       if (last && last.path === path) last.span += 1;
-      else out.push({ id, path, title: (f.joined ? f.joined.label : model.marts.get(id)?.title) ?? id, icon: model.marts.get(id)?.icon, span: 1, main: !f.joined });
+      else out.push({ id, path, title: (f.joined ? (source ? pathTitle(source, inUse, sources) : f.joined.label) : model.marts.get(id)?.title) ?? id, icon: model.marts.get(id)?.icon, span: 1, main: !f.joined });
     }
     return out;
-  }, [outputs, byName, model, martId]);
+  }, [outputs, byName, model, martId, shown, sources]);
   // A remove button is off while its click is being applied, so a second click cannot put the mart back.
   const [removing, setRemoving] = useState(false);
   const head = useRef<HTMLTableSectionElement>(null);
-  const remove = (id: string, index: number) => {
-    // Focus lands on the neighbouring tab's remove button (else its Columns button) once the tab is gone.
-    const next = (groups[index + 1] ?? groups[index - 1])?.path;
+  const remove = (g: (typeof groups)[number], index: number) => {
+    // A joined group takes its path and every path under it; the main group deselects the main mart.
+    const gone = (path: string) => (g.main ? path === '' : path === g.path || path.startsWith(`${g.path}.`));
+    // Focus lands on the nearest tab that is still there (its remove button, else its Columns button) once the tab is gone.
+    const next = [...groups.slice(index + 1), ...groups.slice(0, index).reverse()].find((x) => !gone(x.path))?.path;
     // Taking the main tab away promotes the next one and the grid remounts (DataBand keys it by mart): the new grid focuses its Columns button.
-    const promoted = id === martId && groups[1] ? groups[1].id : null;
+    const promoted = g.main && groups[1] ? groups[1].id : null;
     askFocusFor(promoted);
     setRemoving(true);
-    cardClick(id, { only: 'deselect' }).catch(() => undefined).finally(() => {
+    (g.main ? cardClick(g.id, { only: 'deselect' }) : cardClick(g.id, { removePaths: joinedPaths(shown, sources).filter(gone) })).catch(() => undefined).finally(() => {
       setRemoving(false);
       // Nothing remounted (the click did nothing): the request must not wait for a later mount.
       if (promoted) setTimeout(() => dropFocusFor(promoted), 1000);
@@ -487,7 +491,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   // The first data mart is the main one: its last own column stays while a joined mart is shown.
   const ownNames = useMemo(() => new Set(native.map((f) => f.name)), [native]);
   const ownOn = shown.filter((n) => ownNames.has(n)).length;
-  const fieldsOf = (id: string) => (id === martId ? native : sources.filter((x) => x.martId === id).flatMap((x) => x.fields));
+  const fieldsOf = (g: { main: boolean; path: string }) => (g.main ? native : sources.filter((x) => x.aliasPath === g.path).flatMap((x) => x.fields));
   const hasFilters = Object.keys(filters).length > 0;
   const hasSorts = own !== null;
   /** A click on a chart mark: the same step as a filter edit (so Undo covers it), one filter per column. */
@@ -677,10 +681,10 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
                     <div className="flex min-w-0 items-center gap-1">
                       <span className="inline-flex shrink-0 text-muted-foreground"><PickedIcon icon={g.icon} fallback={Box} size={14} /></span>
                       <span className="truncate">{g.title}</span>
-                      <ColumnPicker title={g.title} fields={fieldsOf(g.id)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} />
+                      <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} />
                       {(several || !g.main) && (
                         <Tooltip content={`Remove ${g.title} from the grid`}>
-                          <button type="button" aria-label={`Remove ${g.title} from the grid`} data-remove disabled={removing} onClick={() => remove(g.id, i)} className="dm-reveal dm-gx"><X className="size-3.5" aria-hidden /></button>
+                          <button type="button" aria-label={`Remove ${g.title} from the grid`} data-remove disabled={removing} onClick={() => remove(g, i)} className="dm-reveal dm-gx"><X className="size-3.5" aria-hidden /></button>
                         </Tooltip>
                       )}
                     </div>

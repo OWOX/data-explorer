@@ -23,6 +23,7 @@ import { useCardDrag } from './useCardDrag';
 import { litIds, revisionOf, useWires, type Wire } from './wires';
 import { MartsCanvas } from './MartsCanvas';
 import { buildJoinTree, ghostSources, subtreePaths, type TreeNode } from '../../state/join-tree';
+import { pathTitle } from '../../state/join-plan';
 import { useGridFocus } from './useGridFocus';
 import type { JoinedSource } from '../../api/blendable';
 
@@ -134,6 +135,11 @@ export function CardBands({
 
   // What a focused card offers: the sources one hop under its path that are not in use. A mart that is a card of the band outside
   // the report keeps that card (a click on it adds at the source's path); the others show as ghost cards, one per source.
+  // A card is titled with its path only when the report reaches that mart through more than one path.
+  const sourceTitle = (path: string) => {
+    const source = joinSources?.find((x) => x.aliasPath === path);
+    return source ? pathTitle(source, [...(canvasTree?.nodes.keys() ?? [])], joinSources ?? []) : undefined;
+  };
   const reportMarts = useMemo(() => new Set(canvasTree ? [...canvasTree.nodes.values()].map((n) => n.martId) : []), [canvasTree]);
   const focusSources = useMemo(() => {
     if (focus === null || !canvasTree || !joinSources) return [];
@@ -293,7 +299,7 @@ export function CardBands({
                 selected={isMain}
                 joined={!isMain}
                 path={path || undefined}
-                title={isMain ? undefined : joinSources?.find((s) => s.aliasPath === path)?.label}
+                title={isMain ? undefined : sourceTitle(path)}
                 focused={focus === path}
                 lit={lit.has(el)}
                 aside={aside.has(el)}
@@ -352,7 +358,7 @@ export function CardBands({
                   mart={mart}
                   ghost
                   path={s.aliasPath}
-                  title={s.label}
+                  title={pathTitle(s, [...(canvasTree?.nodes.keys() ?? [])], joinSources ?? [])}
                   contexts={contextsOf(mart.contextIds)}
                   count={{ state: 'idle' }}
                   quality={dq.get(mart.id)}

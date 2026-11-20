@@ -279,8 +279,8 @@ test('a column ticked for the main mart after a joined one stays in the main gro
   expect(groupRow().map((h) => h.getAttribute('colspan'))).toEqual(['6', '1']);
 });
 
-test('the x on a joined group does what deselecting its card does, and Undo brings it back', async () => {
-  const t = setup();
+test('the x on a joined group takes its path out, and Undo brings it back', async () => {
+  setup();
   await ready();
   await click('Customers');
   await click('Products');
@@ -291,7 +291,6 @@ test('the x on a joined group does what deselecting its card does, and Undo brin
   await waitFor(() => expect(title()).toBe('Orders + Products'));
   expect(groupTitles()).toEqual(['Orders', 'Products']);
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'false');
-  await waitFor(() => expect(t.puts.some((p) => JSON.stringify(p.doc).includes('"picks"'))).toBe(true));
   await undo();
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Products']));
 });

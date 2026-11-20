@@ -47,6 +47,18 @@ test('a mart joined twice is a card per path, each titled with its path', async 
   expect(cards().filter((a) => a.dataset.martId === 'countries' && !a.hasAttribute('data-ghost'))).toHaveLength(2);
 });
 
+test('a mart joined through one path reads as its title, and a ghost for a second path carries the path', async () => {
+  setup();
+  await joinCustomersAndStores();
+  fireEvent.click(el('customers', 'customers')!);
+  fireEvent.click(await bandCard('Countries'));
+  await waitFor(() => expect(el('countries', 'customers.countries')).not.toBeNull());
+  expect(within(el('countries', 'customers.countries')!).getByText('Countries')).toBeInTheDocument();
+  fireEvent.click(el('stores', 'stores')!);
+  await waitFor(() => expect(ghost('countries', 'stores.countries')).not.toBeNull());
+  expect(within(ghost('countries', 'stores.countries')!).getByText('Countries (stores.countries)')).toBeInTheDocument();
+});
+
 test('a click on a joined card removes nothing and shows what joins under it', async () => {
   setup();
   await joinCustomersAndStores();
@@ -123,7 +135,7 @@ test('the × takes a joined card and the paths under it out in one step', async 
   await waitFor(() => expect(el('customers', 'customers')).toBeNull());
   expect(el('countries', 'customers.countries')).toBeNull();
   expect(el('countries', 'stores.countries')).not.toBeNull();
-  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Stores', 'Countries (stores.countries)']));
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Stores', 'Countries']));
   await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
   await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
   expect(el('countries', 'customers.countries')).not.toBeNull();

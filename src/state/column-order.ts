@@ -2,17 +2,17 @@ import type { JoinedSource } from '../api/blendable';
 
 /**
  * The columns of a grid with every data mart's together: the main mart's own columns first (in their order), then each joined
- * mart's in the order the marts first appear (the order they were added), each group keeping its fields' order.
+ * path's (one group per alias path, so a mart joined under two parents is two groups) in the order the paths first appear (the order they were added), each group keeping its fields' order.
  * `fallbackOwn` (the main mart's default columns) leads a list that has joined columns and none of the main mart's own.
  */
 export function orderColumns(columns: string[], sources: JoinedSource[], fallbackOwn: string[] = []): string[] {
   const owner = new Map<string, string>();
-  for (const s of sources) for (const f of s.fields) if (!owner.has(f.name)) owner.set(f.name, s.martId);
+  for (const s of sources) for (const f of s.fields) if (!owner.has(f.name)) owner.set(f.name, s.aliasPath);
   const own: string[] = [];
   const groups = new Map<string, string[]>();
   for (const c of columns) {
     const id = owner.get(c);
-    if (!id) own.push(c);
+    if (id === undefined) own.push(c);
     else if (groups.has(id)) groups.get(id)!.push(c);
     else groups.set(id, [c]);
   }
@@ -20,10 +20,10 @@ export function orderColumns(columns: string[], sources: JoinedSource[], fallbac
   return [...(own.length === 0 && groups.size > 0 ? fallbackOwn : own), ...[...groups.values()].flat()];
 }
 
-/** The data mart a column belongs to: a joined mart's id, or '' for the main mart's own columns (so a mart joined to itself is its own group). */
+/** The group a column belongs to: its alias path, or '' for the main mart's own columns (so a mart joined under two parents is two groups). */
 export function groupMap(sources: JoinedSource[]): (name: string) => string {
   const owner = new Map<string, string>();
-  for (const s of sources) for (const f of s.fields) if (!owner.has(f.name)) owner.set(f.name, s.martId);
+  for (const s of sources) for (const f of s.fields) if (!owner.has(f.name)) owner.set(f.name, s.aliasPath);
   return (name) => owner.get(name) ?? '';
 }
 

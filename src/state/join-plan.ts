@@ -32,6 +32,18 @@ export function joinedPaths(columns: string[], sources: JoinedSource[]): string[
   return out;
 }
 
+/**
+ * The title of a joined path: the source's label without its path, plus " (<path>)" only when the same mart is reached through more
+ * than one of `paths` (the alias paths in use, or in use plus the one about to be added).
+ */
+export function pathTitle(source: { label: string; aliasPath: string; martId: string }, paths: string[], sources: JoinedSource[]): string {
+  const suffix = ` (${source.aliasPath})`;
+  const base = source.label.endsWith(suffix) ? source.label.slice(0, -suffix.length) : source.label;
+  const reaching = new Set(paths.filter((p) => sources.some((s) => s.aliasPath === p && s.martId === source.martId)));
+  reaching.add(source.aliasPath);
+  return reaching.size > 1 ? `${base}${suffix}` : base;
+}
+
 /** Every blended field name of a joined mart, over all the alias paths that reach it. */
 const namesOf = (sources: JoinedSource[], martId: string) => new Set(sources.filter((s) => s.martId === martId).flatMap((s) => s.fields.map((f) => f.name)));
 

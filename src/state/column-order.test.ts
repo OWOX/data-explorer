@@ -11,8 +11,8 @@ test('the main mart\'s own columns lead, then each joined mart in the order it f
     .toEqual(['id', 'total', 'products__sku', 'products__price', 'customers__city', 'customers__id']);
 });
 
-test('a mart reached by two alias paths is one group', () => {
-  expect(orderColumns(['a__customers__id', 'products__sku', 'customers__id'], sources)).toEqual(['a__customers__id', 'customers__id', 'products__sku']);
+test('a mart reached by two alias paths is one group per path, in the order the paths first appear', () => {
+  expect(orderColumns(['a__customers__id', 'products__sku', 'customers__id', 'a__customers__id2'], [...sources.slice(0, 2), src('a.customers', 'customers', ['a__customers__id', 'a__customers__id2'])])).toEqual(['a__customers__id', 'a__customers__id2', 'products__sku', 'customers__id']);
 });
 
 test('a list that is already grouped, or has no joined column, comes back unchanged', () => {
@@ -83,7 +83,15 @@ describe('moveColumn', () => {
 test('groupMap: a mart joined to itself is its own group, apart from the main mart\'s columns', () => {
   const group = groupMap([src('self', 'orders', ['self__id', 'self__total'])]);
   expect(group('id')).toBe('');
-  expect(group('self__id')).toBe('orders');
+  expect(group('self__id')).toBe('self');
   const list = ['id', 'total', 'self__id', 'self__total'];
   expect(moveColumn(list, 'id', 'self__id', [src('self', 'orders', ['self__id', 'self__total'])])).toBe(list);
+});
+
+test('moves stay inside one path of a mart that sits at two paths', () => {
+  const two = [src('a.customers', 'customers', ['a__id', 'a__city']), src('b.customers', 'customers', ['b__id', 'b__city'])];
+  const list = ['a__id', 'a__city', 'b__id', 'b__city'];
+  expect(moveColumn(list, 'a__id', 'b__id', two)).toBe(list);
+  expect(moveColumn(list, 'a__id', null, two)).toEqual(['a__city', 'a__id', 'b__id', 'b__city']);
+  expect(moveColumnBy(list, 'a__city', 1, two)).toBe(list);
 });

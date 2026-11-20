@@ -71,5 +71,4 @@ test('canvas: Countries under both Customers and Stores, × removes a subtree, U
   await expect(marts.locator('[id="dm-countries@stores.countries"]')).toBeVisible();
   await expect(data.locator('th[data-group="countries"]')).toHaveCount(2);
   await page.mouse.move(0, 0);
-  await page.screenshot({ path: 'tmp/canvas-countries-two-paths.png', clip: await marts.boundingBox() ?? undefined });
 });

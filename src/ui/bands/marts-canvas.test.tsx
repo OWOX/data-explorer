@@ -122,7 +122,7 @@ const joinCountriesUnderCustomers = async () => {
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores']));
   await userEvent.hover(el('customers', 'customers')!);
   await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="countries"]'); expect(g).not.toBeNull(); return g!; }));
-  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores', 'Countries (customers.countries)']));
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores', 'Countries']));
 };
 
 test('dragging countries from customers onto stores moves its columns to the stores path', async () => {
