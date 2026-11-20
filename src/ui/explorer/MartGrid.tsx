@@ -30,7 +30,7 @@ import { BandTools, BandToolsSlot } from '../bands/BandTools';
 import { CardClickContext } from '../bands/CardClick';
 import { PickedIcon } from '../bands/picked';
 import { CellValue } from './CellValue';
-import { selectionTsv, type GridSelection } from './copySelection';
+import { blockOf, selectionTsv, type GridSelection } from './copySelection';
 import { ColumnDragLayer } from './ColumnDrag';
 import { ColumnControls, ColumnMenuEnvContext, type ColumnMenuEnv } from './ColumnMenu';
 import { ColumnPicker } from './ColumnPicker';
@@ -586,31 +586,25 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const sel = !charts && selected && (selected.kind === 'cell' ? inside(selected) && (!selected.to || inside(selected.to)) : selected.kind === 'col' ? Math.max(selected.from, selected.to) < outputs.length && rowCount > 0 : Math.max(selected.from, selected.to) < rowCount) ? selected : null;
   if (charts && selected) setSelected(null);
   const cellSel = sel?.kind === 'cell' ? sel : null;
-  // A block of cells: its rectangle. A single cell has none (it has the plain frame).
-  const rect = cellSel?.to && (cellSel.to.row !== cellSel.row || cellSel.to.col !== cellSel.col)
-    ? { r0: Math.min(cellSel.row, cellSel.to.row), r1: Math.max(cellSel.row, cellSel.to.row), c0: Math.min(cellSel.col, cellSel.to.col), c1: Math.max(cellSel.col, cellSel.to.col) }
-    : null;
-  const span = sel && sel.kind !== 'cell' ? { kind: sel.kind, lo: Math.min(sel.from, sel.to), hi: Math.max(sel.from, sel.to) } : null;
-  const inCols = (i: number) => (rect ? i >= rect.c0 && i <= rect.c1 : cellSel ? cellSel.col === i : span?.kind === 'col' ? i >= span.lo && i <= span.hi : false);
-  const inRows = (i: number) => (rect ? i >= rect.r0 && i <= rect.r1 : cellSel ? cellSel.row === i : span?.kind === 'row' ? i >= span.lo && i <= span.hi : false);
+  // The cells the selection covers, from the same geometry the copy uses. A single cell has no block of its own: it has the plain frame.
+  const covered = sel ? blockOf(sel, rowCount, outputs.length) : null;
+  const block = covered && !(cellSel && covered.r0 === covered.r1 && covered.c0 === covered.c1) ? covered : null;
+  const inCols = (i: number) => !!covered && sel!.kind !== 'row' && i >= covered.c0 && i <= covered.c1;
+  const inRows = (i: number) => !!covered && sel!.kind !== 'col' && i >= covered.r0 && i <= covered.r1;
   // A header is lit light when a cell (or a block crossing it) is selected, and strong when it is itself fully selected.
-  const colMark = (i: number) => (span?.kind === 'col' ? (inCols(i) ? 'full' : undefined) : span?.kind === 'row' ? '' : inCols(i) ? '' : undefined);
-  const rowMark = (i: number) => (span?.kind === 'row' ? (inRows(i) ? 'full' : undefined) : span?.kind === 'col' ? '' : inRows(i) ? '' : undefined);
+  const colMark = (i: number) => (sel?.kind === 'col' ? (inCols(i) ? 'full' : undefined) : sel?.kind === 'row' ? '' : inCols(i) ? '' : undefined);
+  const rowMark = (i: number) => (sel?.kind === 'row' ? (inRows(i) ? 'full' : undefined) : sel?.kind === 'col' ? '' : inRows(i) ? '' : undefined);
   // In a block, as in Sheets: the active cell is where the selection started (the clicked column's first row, the clicked
   // row's first column, or the first cell of a shift-selected block) and gets the 2px frame; the fill handle sits at the block's far corner.
-  const anchor: Cell | null = sel && sel.kind !== 'cell' ? (sel.kind === 'col' ? { row: 0, col: sel.from } : { row: sel.from, col: 0 }) : rect && cellSel ? { row: cellSel.row, col: cellSel.col } : null;
-  const corner: Cell | null = rect ? { row: rect.r1, col: rect.c1 } : span ? (span.kind === 'col' ? { row: rowCount - 1, col: span.hi } : { row: span.hi, col: outputs.length - 1 }) : null;
+  const anchor: Cell | null = sel && sel.kind !== 'cell' ? (sel.kind === 'col' ? { row: 0, col: sel.from } : { row: sel.from, col: 0 }) : block && cellSel ? { row: cellSel.row, col: cellSel.col } : null;
+  const corner: Cell | null = block ? { row: block.r1, col: block.c1 } : null;
   // Numbers sit on the right of their cells, as in Sheets (a bucketed date or a Combined list is not a number).
   const numericOutput = (key: string) => { const o = outputByKey.get(key); const f = o && byName.get(o.column); return !!o && !!f && !o.bucket && isNumericType(outputType(f, o.fn)); };
-  const inBlock = (ri: number, ci: number) => (rect ? ri >= rect.r0 && ri <= rect.r1 && ci >= rect.c0 && ci <= rect.c1 : span?.kind === 'col' ? inCols(ci) : span?.kind === 'row' ? inRows(ri) : false);
+  const inBlock = (ri: number, ci: number) => !!block && ri >= block.r0 && ri <= block.r1 && ci >= block.c0 && ci <= block.c1;
   // Which sides of a cell lie on the block's outer edge, where the 2px frame is drawn.
   const edges = (ri: number, ci: number) => {
-    if (!inBlock(ri, ci)) return undefined;
-    const out: string[] = [];
-    if (rect) { if (ci === rect.c0) out.push('l'); if (ci === rect.c1) out.push('r'); if (ri === rect.r0) out.push('t'); if (ri === rect.r1) out.push('b'); }
-    else if (span?.kind === 'col') { if (ci === span.lo) out.push('l'); if (ci === span.hi) out.push('r'); if (ri === 0) out.push('t'); if (ri === rowCount - 1) out.push('b'); }
-    else if (span) { if (ri === span.lo) out.push('t'); if (ri === span.hi) out.push('b'); if (ci === 0) out.push('l'); if (ci === outputs.length - 1) out.push('r'); }
-    return out.join(' ');
+    if (!block || !inBlock(ri, ci)) return undefined;
+    return [ci === block.c0 && 'l', ci === block.c1 && 'r', ri === block.r0 && 't', ri === block.r1 && 'b'].filter(Boolean).join(' ');
   };
   const pickHeader = (kind: 'col' | 'row', i: number, extend: boolean) => setSelected((cur) => (extend && cur && cur.kind === kind ? { kind, from: cur.from, to: i } : { kind, from: i, to: i }));
   // Measured for the charts: their panels are as wide as the visible grid, not the (wider) table.
@@ -772,7 +766,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
                   onClick={pks.length && !grouped ? () => { if (dragMoved.current) return; dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, r.original[k]])) }); } : undefined}
                   className={`${pks.length && !grouped ? 'cursor-pointer' : ''}`}>
                   <th aria-hidden data-chrome data-selected={rowMark(ri)} onClick={(e) => { pickHeader('row', ri, e.shiftKey); if (e.shiftKey) e.stopPropagation(); }} className="dm-chrome">{ri + 1}</th>
-                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={cellSel && !rect && cellSel.row === ri && cellSel.col === ci ? '' : undefined} data-moving={rect && cellSel?.to?.row === ri && cellSel.to.col === ci ? '' : undefined} data-range={inBlock(ri, ci) ? '' : undefined} data-active={anchor?.row === ri && anchor.col === ci ? '' : undefined} data-handle={corner?.row === ri && corner.col === ci ? '' : undefined} data-edge={edges(ri, ci)} onMouseDown={(e) => startDrag(ri, ci, e)} onMouseEnter={(e) => dragOver(ri, ci, e)} onClick={(e) => pickCell(ri, ci, e)} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap${numericOutput(c.column.id) ? ' text-right' : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
+                  {r.getVisibleCells().map((c, ci) => <td key={c.id} data-selected={cellSel && !block && cellSel.row === ri && cellSel.col === ci ? '' : undefined} data-moving={block && cellSel?.to?.row === ri && cellSel.to.col === ci ? '' : undefined} data-range={inBlock(ri, ci) ? '' : undefined} data-active={anchor?.row === ri && anchor.col === ci ? '' : undefined} data-handle={corner?.row === ri && corner.col === ci ? '' : undefined} data-edge={edges(ri, ci)} onMouseDown={(e) => startDrag(ri, ci, e)} onMouseEnter={(e) => dragOver(ri, ci, e)} onClick={(e) => pickCell(ri, ci, e)} className={`${maxWidthOf(byName.get(outputByKey.get(c.column.id)!.column)!)} overflow-hidden whitespace-nowrap${numericOutput(c.column.id) ? ' text-right' : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>)}
                   <td aria-hidden className="p-0" />
                 </tr>
               ))}
