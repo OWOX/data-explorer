@@ -54,10 +54,12 @@ export function AggregationEditor({ field, value, blocker, onApply, onCancel }: 
       )}
       {allowed.length === 0 && !bucketable && <p className="text-xs text-muted-foreground">No aggregation is allowed for this field.</p>}
       {stranded && <p role="alert" className="text-xs text-destructive">{`"${blocker}" can't be grouped. Hide it to aggregate.`}</p>}
-      <p className="text-xs text-muted-foreground">Filters still apply to the rows before they are aggregated.</p>
-      <div className="dm-menu-actions">
-        <button type="button" onClick={onCancel} className="dm-btn dm-btn-secondary">Cancel</button>
-        <button type="button" onClick={apply} disabled={!canApply} className="dm-btn dm-btn-primary">Apply</button>
+      <div className="dm-menu-foot">
+        <div className="dm-menu-actions">
+          <button type="button" onClick={onCancel} className="dm-btn dm-btn-secondary">Cancel</button>
+          <button type="button" onClick={apply} disabled={!canApply} className="dm-btn dm-btn-primary">Apply</button>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">Filters still apply to the rows before they are aggregated.</p>
       </div>
     </ActionForm>
   );

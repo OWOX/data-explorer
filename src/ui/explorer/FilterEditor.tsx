@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { DATE_PRESETS, RELATIVE_MAX_N, RELATIVE_PRESETS, RELATIVE_UNITS, fromRule, isDateTimeField, isPreset, operatorsFor, toRule, type OpId, type RelativeUnit } from '../../filters/catalogue';
 import { isComplete, type ColumnFilter, type FilterValue } from '../../filters/build';
 import { columnTitle } from '../../model/fieldLabel';
@@ -11,7 +11,9 @@ import { Panel, Row, panelBeingEdited, useSubmenu } from './MenuParts';
 
 const input = 'dm-input h-8 w-full rounded-md border bg-background px-2 text-sm';
 
-type EditorProps = { field: Field; value: ColumnFilter | undefined; onApply: (f: ColumnFilter) => void; onClear: () => void };
+type EditorProps = { field: Field; value: ColumnFilter | undefined; onApply: (f: ColumnFilter) => void; onClear: () => void;
+  /** A note under the Cancel / Apply row, in the sticky footer with it. */
+  note?: ReactNode };
 
 /** Date and timestamp columns open on the presets; the other operators are a step away. Time-of-day columns have no presets. */
 export function FilterEditor(p: EditorProps) {
@@ -26,7 +28,7 @@ type Group = keyof typeof GROUPS;
 const inGroup = (rule: RelativeDatePreset | undefined, key: Group) => !!rule && (key === 'last' ? rule.kind === 'last_week' || rule.kind === 'last_month' || rule.kind === 'last_quarter' || rule.kind === 'last_n_days' || rule.kind === 'last_n_months' : rule.kind.startsWith('this_'));
 const dash = <div role="separator" className="dm-menu-sep" />;
 
-function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
+function DateFilterEditor({ field, value, onApply, onClear, note }: EditorProps) {
   // A filter that is not a preset (a range, a day) reopens on its own form, with a way back to the presets.
   const [form, setForm] = useState<OpId | null>(value && value.op !== 'relative' && value.op !== 'is_blank' && value.op !== 'is_not_blank' ? value.op : null);
   const current = value?.op === 'relative' ? (value.value as RelativeDatePreset) : undefined;
@@ -41,7 +43,7 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
     return (
       <div className="flex flex-col gap-2">
         <button type="button" onClick={() => goForm(null)} className="self-start text-xs text-muted-foreground hover:text-foreground">← Presets</button>
-        <OperatorForm field={field} value={value} onApply={onApply} onClear={onClear} startOp={form} />
+        <OperatorForm field={field} value={value} onApply={onApply} onClear={onClear} note={note} startOp={form} />
       </div>
     );
   }
@@ -74,6 +76,7 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
         <Row key={op} {...plain} check checked={value?.op === op} label={op === 'is_blank' ? 'Is blank' : 'Is not blank'} onActivate={() => onApply({ field: field.name, op })} />
       ))}
       {value && <>{dash}<Row {...plain} slot label="Clear" onActivate={onClear} /></>}
+      {note && <div className="px-4 pb-2 pt-2">{note}</div>}
       {fly && (
         <Panel anchor={fly.row} mode="beside" role="menu" returnTo={fly.row} label={GROUPS[fly.key].title} onEscape={closeFly} onLeave={closeFly} focusSeq={fly.seq} className="dm-menu-editor dm-menu-fly" form={fly.key === 'last'}>
           <div className="dm-menu-list">{GROUPS[fly.key].labels.map((l) => preset(l, true))}</div>
@@ -93,7 +96,7 @@ function DateFilterEditor({ field, value, onApply, onClear }: EditorProps) {
   );
 }
 
-function OperatorForm({ field, value, onApply, onClear, startOp }: EditorProps & { startOp?: OpId }) {
+function OperatorForm({ field, value, onApply, onClear, note, startOp }: EditorProps & { startOp?: OpId }) {
   const ops = operatorsFor(field).filter((o) => field.category !== 'date' || o.id !== 'relative');
   const [op, setOp] = useState<OpId>(startOp ?? (value && ops.some((o) => o.id === value.op) ? value.op : ops[0]!.id));
   const [val, setVal] = useState<FilterValue>(value?.op === op ? value.value : undefined);
@@ -131,9 +134,12 @@ function OperatorForm({ field, value, onApply, onClear, startOp }: EditorProps &
           {'n' in rel && <input aria-label="N" className={`${input} w-20`} type="number" min={1} max={RELATIVE_MAX_N} value={Number.isNaN(rel.n) ? '' : rel.n} onChange={(e) => setVal({ ...rel, n: e.target.valueAsNumber } as RelativeDatePreset)} />}
         </div>
       )}
-      <div className="dm-menu-actions">
-        <button type="button" onClick={onClear} className="dm-btn dm-btn-secondary">Clear</button>
-        <button type="button" onClick={() => { if (isComplete(draft, field)) onApply(draft); }} disabled={!isComplete(draft, field)} className="dm-btn dm-btn-primary">Apply</button>
+      <div className="dm-menu-foot">
+        <div className="dm-menu-actions">
+          <button type="button" onClick={onClear} className="dm-btn dm-btn-secondary">Clear</button>
+          <button type="button" onClick={() => { if (isComplete(draft, field)) onApply(draft); }} disabled={!isComplete(draft, field)} className="dm-btn dm-btn-primary">Apply</button>
+        </div>
+        {note}
       </div>
     </ActionForm>
   );

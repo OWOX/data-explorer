@@ -2,7 +2,7 @@
 import { expect, test } from 'vitest';
 import type { JoinedSource } from '../api/blendable';
 import type { Field } from '../model/types';
-import { buildJoinTree, ghostSources, rejoinTargets, subtreePaths } from './join-tree';
+import { buildJoinTree, chainAfterHover, ghostLevels, ghostSources, pathsToAdd, rejoinTargets, subtreePaths } from './join-tree';
 
 const field = (path: string, own: string): Field => ({ name: `${path.replaceAll('.', '__')}__${own}`, alias: own, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: path.split('.').at(-1)!, label: path, aliasPath: path, originalName: own } });
 const src = (path: string, martId = path.split('.').at(-1)!): JoinedSource => ({ aliasPath: path, martId, label: martId, depth: path.split('.').length, fields: [field(path, 'name'), field(path, 'n')], uniqueCount: true });
@@ -110,4 +110,34 @@ test('rejoin: no target when a rewritten subtree path is already a node outside 
   const s6 = [...sources, src('b.c.d')].sort((p, q) => p.depth - q.depth);
   const t = buildJoinTree('main', ['id', col('a'), col('b'), col('a.c'), col('a.c.d'), col('b.c.d')], s6);
   expect(rejoinTargets(t, s6, 'a.c')).toEqual([]);
+});
+
+test('ghost levels follow the chain: each link adds its own joinable marts, and a link that is not offered ends it', () => {
+  const t = buildJoinTree('main', ['id'], sources);
+  const paths = (chain: string[]) => ghostLevels(t, sources, '', chain).levels.map((l) => [l.from, l.ghosts.map((g) => g.aliasPath)]);
+  expect(paths([])).toEqual([['', ['a', 'b']]]);
+  expect(paths(['a'])).toEqual([['', ['a', 'b']], ['a', ['a.c']]]);
+  expect(paths(['a', 'a.c'])).toEqual([['', ['a', 'b']], ['a', ['a.c']], ['a.c', ['a.c.d']]]);
+  expect(ghostLevels(t, sources, '', ['a', 'b.c']).chain).toEqual(['a']);
+  expect(ghostLevels(t, sources, 'zzz', ['a'])).toEqual({ levels: [], chain: [] });
+  expect(ghostLevels(t, sources, null, [])).toEqual({ levels: [], chain: [] });
+});
+
+test('a link that joined the tree drops out of the chain', () => {
+  const t = buildJoinTree('main', ['id', col('a')], sources);
+  expect(ghostLevels(t, sources, '', ['a']).chain).toEqual([]);
+});
+
+test('hovering a ghost makes it the last link of the chain; going back to an earlier level trims what follows', () => {
+  expect(chainAfterHover('', [], 'a')).toEqual(['a']);
+  expect(chainAfterHover('', ['a'], 'a.c')).toEqual(['a', 'a.c']);
+  expect(chainAfterHover('', ['a', 'a.c'], 'b')).toEqual(['b']);
+  expect(chainAfterHover('', ['a', 'a.c'], 'a.c.d')).toEqual(['a', 'a.c', 'a.c.d']);
+  expect(chainAfterHover('', ['a'], 'zz.q')).toEqual(['a']);
+});
+
+test('pathsToAdd lists the missing ancestors shallowest first, then the path', () => {
+  expect(pathsToAdd(new Set(['']), 'a')).toEqual(['a']);
+  expect(pathsToAdd(new Set(['']), 'a.c.d')).toEqual(['a', 'a.c', 'a.c.d']);
+  expect(pathsToAdd(new Set(['', 'a']), 'a.c.d')).toEqual(['a.c', 'a.c.d']);
 });

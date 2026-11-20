@@ -2,7 +2,7 @@
 // card, line or band can paint over it, and it keeps 8px from the viewport edge.
 import * as T from '@radix-ui/react-tooltip';
 import { CircleHelp, Info } from 'lucide-react';
-import { useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 /** One provider at the app root. */
@@ -17,6 +17,40 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
       <T.Portal>
         <T.Content side="top" sideOffset={6} collisionPadding={8} className="dm-hint-body">
           {content}
+        </T.Content>
+      </T.Portal>
+    </T.Root>
+  );
+}
+
+/** How long a card's title bubble waits after the pointer leaves before it closes. */
+export const TITLE_TIP_CLOSE_DELAY_MS = 500;
+
+/**
+ * The bubble over a data mart card's title: the title, and `action` in its top-right corner. It is hoverable and
+ * closes 500 ms after the pointer leaves the title, unless the pointer reaches the bubble first, so the action
+ * can be clicked. Other tooltips keep the provider's default.
+ */
+export function TitleTip({ title, action, children }: { title: string; action: ReactNode; children: ReactElement }) {
+  const [open, setOpen] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cancel = () => { clearTimeout(timer.current); timer.current = undefined; };
+  const closeLater = () => { cancel(); timer.current = setTimeout(() => setOpen(false), TITLE_TIP_CLOSE_DELAY_MS); };
+  useEffect(() => cancel, []);
+  return (
+    <T.Root open={open} disableHoverableContent={false} onOpenChange={(next) => { if (next) { cancel(); setOpen(true); } else closeLater(); }}>
+      {/* Radix reports an open change only when the value changes, so a return to the title while the bubble is still open must cancel the pending close here. */}
+      <T.Trigger asChild onPointerEnter={cancel}>{children}</T.Trigger>
+      <T.Portal>
+        <T.Content
+          side="top" sideOffset={6} collisionPadding={8} className="dm-hint-body dm-title-tip"
+          onPointerEnter={cancel} onPointerLeave={closeLater}
+          // The bubble is in a portal, but React still bubbles its events to the card, where a click would select it.
+          onClick={(e) => e.stopPropagation()}
+          onEscapeKeyDown={() => { cancel(); setOpen(false); }}
+        >
+          <span className="dm-title-tip-text">{title}</span>
+          <span className="dm-title-tip-action">{action}</span>
         </T.Content>
       </T.Portal>
     </T.Root>

@@ -1,6 +1,6 @@
 // The Sources and Data bands with the lines between their cards, and the hover that lights them.
 // The Data and Row bands arrive as children and sit under the same canvas; they do not re-render on hover.
-import { Box, LayoutGrid, Plug, Workflow } from 'lucide-react';
+import { Box, LayoutGrid, Network, Plug } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { DqSummary, Mart, Model, Source } from '../../model/types';
 import { matchesSearch } from '../../graph/search';
@@ -30,7 +30,7 @@ import type { JoinedSource } from '../../api/blendable';
 type MartsView = 'grid' | 'canvas';
 const MARTS_VIEWS: SwitchOption<MartsView>[] = [
   { value: 'grid', label: 'Grid', icon: LayoutGrid },
-  { value: 'canvas', label: 'Canvas', icon: Workflow },
+  { value: 'canvas', label: 'Graph', icon: Network },
 ];
 
 const martId = (m: Mart) => m.id;
@@ -125,7 +125,7 @@ export function CardBands({
   const click = useCardClick(model);
   const drag = useCardDrag(canvas, selection.martId, (id) => model.marts.get(id)?.title ?? id, (id) => void click(id, { mode: 'makeMain' }), (id) => view === 'grid' && model.marts.get(id)?.accessible === true);
 
-  // The report tree: a joined mart is a node per alias path, in Canvas and in Grid, and a source line reaches each of them.
+  // The report tree: a joined mart is a node per alias path, in Graph and in Grid, and a source line reaches each of them.
   const mainFor = selection.martId;
   const canvasTree = useMemo(() => (mainFor ? buildJoinTree(mainFor, mainColumns, joinSources ?? []) : null), [mainFor, mainColumns, joinSources]);
   const { focus, toggle: toggleFocus, clear: clearFocus } = useGridFocus(mainFor, canvasTree, view === 'grid');
@@ -287,7 +287,7 @@ export function CardBands({
   // A search nothing answered and no title matches: the selected mart is still shown, so the band is not empty, but it says so.
   const noMatch = smart.applied !== '' && found.length === 0 && ![...model.marts.values()].some((m) => m.accessible && matchesSearch(m, smart.applied));
 
-  // In Canvas the band counts the marts of the report tree.
+  // In Graph the band counts the marts of the report tree.
   const reportSize = canvasTree ? canvasTree.nodes.size : 0;
 
   const unjoinableFor = (id: string) => !!selection.martId && visible.joinable !== null && id !== selection.martId && !joined.includes(id) && !visible.joinable.has(id);
@@ -297,16 +297,17 @@ export function CardBands({
       ref={canvas}
       className={`dm-canvas${view === 'grid' && (pinned || hovered) ? ' focused' : ''}`}
       onClick={(e) => { if (focus !== null && e.target instanceof Element && e.target.closest('#band-marts .dm-band-body') && !e.target.closest('article, button, a')) clearFocus(); }}
-      onPointerOver={(e) => setHovered(view === 'grid' ? nodeIdOf(e.target) : null)}
+      // A portaled title bubble bubbles its events through React; it is not in the canvas in the DOM, so it changes no hover.
+      onPointerOver={(e) => { if (e.currentTarget.contains(e.target as Node)) setHovered(view === 'grid' ? nodeIdOf(e.target) : null); }}
       onPointerLeave={() => setHovered(null)}
-      onFocus={(e) => setHovered(view === 'grid' ? nodeIdOf(e.target) : null)}
+      onFocus={(e) => { if (e.currentTarget.contains(e.target as Node)) setHovered(view === 'grid' ? nodeIdOf(e.target) : null); }}
       onBlur={(e) => { if (!canvas.current?.contains(e.relatedTarget as Node | null)) setHovered(null); }}
     >
       <Band id="band-sources" icon={<Plug size={18} />} title="Data Sources" total={model.sources.length} hint="Connectors that feed data marts. Select one to see the marts it feeds." folded={foldedSources} onFold={onFoldSources} loading={loading}>
         {model.sources.length === 0 && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No connector-based data marts.</p>}
         {sourceCards.items.map((source) => {
           const id = sourceElementId(source.key);
-          return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => { rememberLeaving(null); dispatch({ type: 'selectSource', key: source.key }); }} />;
+          return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => { rememberLeaving(null); dispatch({ type: 'selectSource', key: source.key }); if (view === 'canvas') pickView('grid'); }} />;
         })}
       </Band>
       <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={view === 'canvas' ? reportSize : visible.ids.length} hint="The main data mart first, and every mart it can join; or what the search and the filters match. Drag a card onto the main one to make it main." afterHint={<><ViewSwitch label="Show data marts as" options={MARTS_VIEWS} value={view} onChange={pickView} />{view === 'grid' && contextBadges}</>} toolbar={view === 'grid' ? storageFilter : undefined} grid={view === 'grid'} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>

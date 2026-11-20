@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test('canvas: add marts through ghosts, move countries from customers to stores, undo', async ({ page }) => {
   await page.goto('/?mock');
   const marts = page.locator('#band-marts');
-  await marts.getByRole('radio', { name: 'Canvas' }).click();
+  await marts.getByRole('radio', { name: 'Graph' }).click();
   await expect(marts.locator('article#dm-orders')).toBeVisible();
 
   // Add customers and stores through the main card's ghosts, then countries through customers.
@@ -46,7 +46,7 @@ test('canvas: Countries under both Customers and Stores, × removes a subtree, U
   await page.goto('/?mock');
   const marts = page.locator('#band-marts');
   const data = page.locator('#band-data');
-  await marts.getByRole('radio', { name: 'Canvas' }).click();
+  await marts.getByRole('radio', { name: 'Graph' }).click();
   await marts.locator('article#dm-orders').hover();
   await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
   await marts.locator('article#dm-orders').hover();

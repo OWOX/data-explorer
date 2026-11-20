@@ -184,7 +184,8 @@
 .dm-node:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); }
 .dm-node.dm-unjoinable { opacity: 0.45; }
 .dm-node.dm-unjoinable:hover, .dm-node.dm-unjoinable:focus-visible { opacity: 0.7; }
-.dm-node.dm-ghost { border-style: dashed; opacity: 0.6; }
+.dm-node.dm-ghost { border-style: dashed; opacity: 0.5; transition: none; }
+.dm-node.dm-ghost:hover, .dm-node.dm-ghost:focus-visible { opacity: 0.85; }
 .dm-node.dm-drop-target { outline: 2px dashed var(--primary); outline-offset: 2px; }
 .dm-node.dm-drop-hot { outline-style: solid; }
 .dm-drag-ghost { position: fixed; z-index: 60; pointer-events: none; padding: 6px 10px; border-radius: 8px; font-size: 13px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 4px 12px rgb(0 0 0 / 0.18); }
@@ -206,9 +207,9 @@
 .dm-node:hover .dm-card-reveal, .dm-node:focus-visible .dm-card-reveal, .dm-node:has(:focus-visible) .dm-card-reveal,
 .dm-card-reveal:has([data-state='delayed-open'], [data-state='instant-open']) { opacity: 1; }
 @media (hover: none) and (pointer: coarse) { .dm-card-reveal { opacity: 1; } }
-/* The × that takes a joined mart out sits on the card's top-left corner and shows like the other card controls. */
+/* The × that takes a joined mart out sits on the card's top-right corner and shows like the other card controls. */
 .dm-card-remove {
-  position: absolute; top: -0.5rem; left: -0.5rem; z-index: 3;
+  position: absolute; top: -0.5rem; right: -0.5rem; z-index: 3;
   display: inline-flex; padding: 0; border: 0; border-radius: 999px;
   background: var(--card); color: var(--muted-foreground); cursor: pointer;
   opacity: 0; transition: opacity 120ms;
@@ -216,6 +217,14 @@
 .dm-card-remove:hover { color: var(--foreground); }
 .dm-node:hover .dm-card-remove, .dm-node:focus-visible .dm-card-remove, .dm-node:has(:focus-visible) .dm-card-remove, .dm-card-remove:focus-visible { opacity: 1; }
 @media (hover: none) and (pointer: coarse) { .dm-card-remove { opacity: 1; } }
+.dm-title-tip { pointer-events: auto; display: flex; align-items: flex-start; gap: 0.5rem; }
+.dm-title-tip-action { display: inline-flex; margin-left: auto; }
+.dm-title-tip-action .dm-link { color: inherit; }
+/* The open button beside the title: a 14px slot holding a button that is transparent and ignores the pointer until it has keyboard focus, and is always shown on touch screens. */
+.dm-card-open { position: relative; display: inline-flex; flex: none; width: 14px; height: 14px; }
+.dm-link-kbd { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+.dm-link-kbd:focus-visible { opacity: 1; pointer-events: auto; }
+@media (hover: none) and (pointer: coarse) { .dm-link-kbd { opacity: 1; pointer-events: auto; } }
 .dm-link { display: inline-flex; color: var(--muted-foreground); }
 .dm-link:hover { color: var(--foreground); }
 
@@ -437,7 +446,9 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 :root.dark .dm-menu { --menu-bg: #2d2e30; --menu-fg: #e8eaed; --menu-hover: #3c4043; --menu-line: #5f6368; --menu-muted: #9aa0a6; box-shadow: 0 2px 6px rgba(0, 0, 0, .6); }
 .dm-menu-root { min-width: 200px; }
 /* The filter and aggregation forms keep the app's own tokens inside the Sheets-style frame. */
-.dm-menu-editor { width: max-content; min-width: 16rem; max-width: min(28rem, calc(100vw - 16px)); max-height: min(20rem, calc(100vh - 16px)); padding: 0; overflow: hidden; }
+/* Every second-level panel of the column menu has the width the widest editor had: 28rem, so a note wraps at the same place in each. */
+.dm-menu-sub { width: min(28rem, calc(100vw - 16px)); }
+.dm-menu-editor { max-height: min(20rem, calc(100vh - 16px)); padding: 0; overflow: hidden; }
 /* The filter and aggregation editors inside the menu: Google Sheets' dialog look (Google Sans 14px, 36px controls, green primary, outlined secondary). */
 .dm-menu-editor { --btn-line: #dadce0; --btn-off-bg: #f1f3f4; --btn-off-fg: #80868b; font: 400 14px/20px 'Google Sans', Roboto, Arial, sans-serif; background: var(--menu-bg); color: var(--menu-fg); }
 :root.dark .dm-menu-editor { --btn-line: #5f6368; --btn-off-bg: #3c4043; --btn-off-fg: #9aa0a6; }
@@ -469,8 +480,8 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-fly-form .dm-select { flex: 1 1 auto; }
 .dm-menu-fly-form input[type='number'] { width: 4rem; flex: 0 0 auto; }
 .dm-menu-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
-/* In the Aggregate and Filter editors the form scrolls under the action row, which stays on screen with the panel's background. */
-.dm-menu-editor [data-popover-body] .dm-menu-actions { position: sticky; bottom: -16px; z-index: 1; margin: 0 -16px -16px; padding: 8px 16px 16px; background: var(--menu-bg); }
+/* In the Aggregate and Filter editors the form scrolls under the footer (the action row and the note under it), which stays on screen with the panel's background. */
+.dm-menu-editor [data-popover-body] .dm-menu-foot { position: sticky; bottom: -16px; z-index: 1; margin: 0 -16px -16px; padding: 8px 16px 16px; background: var(--menu-bg); }
 .dm-menu-row { display: flex; width: 100%; height: 32px; flex-shrink: 0; align-items: center; gap: 8px; padding: 0 16px; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; white-space: nowrap; }
 .dm-menu-row:hover, .dm-menu-row:focus-visible, .dm-menu-row[aria-expanded='true'] { background: var(--menu-hover); outline: none; }
 .dm-menu-row:disabled { color: var(--menu-muted); opacity: .5; cursor: default; background: transparent; }
@@ -661,7 +672,9 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 /* The Data Marts canvas: the report as a tree, cards placed by canvas-layout.ts. */
 /* The same inset as the band's own content (.dm-band-reveal-in: 1rem), on every side. */
 .dm-tree-scroll { overflow: auto; padding: 1rem; }
-.dm-tree { position: relative; }
+.dm-tree { position: relative; transform-origin: 0 0; }
+/* Sized to the scaled tree, so the scroll box scrolls what is drawn. */
+.dm-tree-sizer { position: relative; }
 .dm-tree-node { position: absolute; z-index: 2; }
 .dm-tree-node > .dm-node { width: 100%; }
 .dm-tree-node.dm-dimmed { opacity: 0.15; filter: grayscale(1); transition: opacity 120ms; }

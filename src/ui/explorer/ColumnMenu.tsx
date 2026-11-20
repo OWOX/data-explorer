@@ -43,8 +43,6 @@ export type ColumnMenuEnv = {
   typeOf: (field: Field, output: Output) => string;
   /** False in Charts mode: no sort row and no sort mark. Absent means true. */
   sortable?: boolean;
-  /** A request to open one output's root menu from outside its header (a right-click on its column letter). A new `seq` is a new request. */
-  menuRequest?: { key: string; seq: number } | null;
 };
 
 const NOOP = () => undefined;
@@ -76,7 +74,7 @@ function formatActive(env: ColumnMenuEnv, field: Field, output: Output, type: st
 /** A form submenu: a dialog panel beside its row, with a scrolling body. */
 function EditorPanel({ row, seq, label, onEscape, children }: { row: HTMLElement; seq: number; label: string; onEscape: () => void; children: ReactNode }) {
   return (
-    <Panel anchor={row} mode="beside" role="dialog" label={label} onEscape={onEscape} focusSeq={seq} className="dm-menu-editor">
+    <Panel anchor={row} mode="beside" role="dialog" label={label} onEscape={onEscape} focusSeq={seq} className="dm-menu-sub dm-menu-editor">
       <div data-popover-body="" className="min-h-0 overflow-y-auto p-3">{children}</div>
     </Panel>
   );
@@ -157,16 +155,16 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
       {placed && sub?.key === 'filter' && (
         <EditorPanel row={sub.row} seq={sub.seq} label={`Filter of ${title}`} onEscape={closeSub}>
           <FilterEditor key={JSON.stringify(env.filters[field.name])} field={having ? havingField(field, having) : field} value={env.filters[field.name]}
-            onApply={(f) => { env.setFilter(field.name, having ? { ...f, fn: having } : f); onClose(); }} onClear={() => { env.setFilter(field.name, undefined); onClose(); }} />
-          {having ? <p className="mt-2 text-xs text-muted-foreground">Filters the {fnName(having)} after grouping</p>
-            : env.isAggregated(field.name) && <p className="mt-2 text-xs text-muted-foreground">Filters rows before they are aggregated</p>}
+            onApply={(f) => { env.setFilter(field.name, having ? { ...f, fn: having } : f); onClose(); }} onClear={() => { env.setFilter(field.name, undefined); onClose(); }}
+            note={having ? <p className="mt-2 text-xs text-muted-foreground">Filters the {fnName(having)} after grouping</p>
+              : env.isAggregated(field.name) ? <p className="mt-2 text-xs text-muted-foreground">Filters rows before they are aggregated</p> : undefined} />
         </EditorPanel>
       )}
       {placed && sub?.key === 'slice' && field.joined && (
         <EditorPanel row={sub.row} seq={sub.seq} label={`Slice of ${title}`} onEscape={closeSub}>
-          <p className="mb-2 text-xs text-muted-foreground">Slices filter the joined data mart before it is joined, reducing the rows pulled in.</p>
           <FilterEditor key={JSON.stringify(env.slices[field.name])} field={sliceField(field)} value={env.slices[field.name]}
-            onApply={(f) => { env.setSlice(field.name, f); onClose(); }} onClear={() => { env.setSlice(field.name, undefined); onClose(); }} />
+            onApply={(f) => { env.setSlice(field.name, f); onClose(); }} onClear={() => { env.setSlice(field.name, undefined); onClose(); }}
+            note={<p className="mt-2 max-w-[18rem] text-xs text-muted-foreground">Slices filter the joined data mart before it is joined, reducing the rows pulled in.</p>} />
         </EditorPanel>
       )}
       {placed && sub?.key === 'aggregate' && (
@@ -176,14 +174,14 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
         </EditorPanel>
       )}
       {placed && sub?.key === 'sort' && (
-        <Panel anchor={sub.row} mode="beside" role="menu" label={`Sort ${title}`} onEscape={closeSub} onLeave={closeSub} onTab={() => onClose()} focusSeq={sub.seq}>
+        <Panel anchor={sub.row} mode="beside" role="menu" label={`Sort ${title}`} onEscape={closeSub} onLeave={closeSub} onTab={() => onClose()} focusSeq={sub.seq} className="dm-menu-sub">
           <Row check checked={dir === 'asc'} label="Sort A → Z" onActivate={() => { env.setSort(field.name, 'asc'); onClose(); }} />
           <Row check checked={dir === 'desc'} label="Sort Z → A" onActivate={() => { env.setSort(field.name, 'desc'); onClose(); }} />
           <Row slot label="Remove sort" disabled={!dir} onActivate={() => { env.setSort(field.name, null); onClose(); }} />
         </Panel>
       )}
       {placed && sub?.key === 'format' && (
-        <Panel anchor={sub.row} mode="beside" role="menu" label={`Format ${title}`} onEscape={closeSub} onLeave={closeSub} onTab={() => onClose()} focusSeq={sub.seq}>
+        <Panel anchor={sub.row} mode="beside" role="menu" label={`Format ${title}`} onEscape={closeSub} onLeave={closeSub} onTab={() => onClose()} focusSeq={sub.seq} className="dm-menu-sub">
           {formats.map((kind) => kind === 'money' ? (
             <Row key={kind} check checked={current.kind === 'money'} sub expanded={!!money} label={FORMAT_LABELS.money}
               onActivate={(r) => setMoney({ row: r, seq: 1 })} onOpen={(r) => setMoney({ row: r, seq: 1 })} onHover={(r) => setMoney((c) => c ?? { row: r, seq: 0 })} />
@@ -235,16 +233,6 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
   const canSort = output.sortable && env.sortable !== false;
   const active = !!filter || (!!slice && !!field.joined) || aggregated || (canSort && !!direction) || formatOn;
   const close = useCallback((refocus = true) => { setMenu(null); if (refocus) icon.current?.focus(); }, []);
-  // A request names an output by key: that header opens its root menu at its icon, every other one closes its own. A request already
-  // standing when the header mounts is not new.
-  const request = env.menuRequest;
-  const seen = useRef(request?.seq ?? 0);
-  useEffect(() => {
-    if (!request || request.seq === seen.current) return;
-    seen.current = request.seq;
-    const anchor = icon.current;
-    setMenu(request.key === output.key && anchor ? { anchor, sub: null } : null);
-  }, [request, output.key]);
   const toggle = (anchor: HTMLElement, sub: SubKey | null) => setMenu((cur) => (cur && cur.sub === sub ? null : { anchor, sub }));
   useEffect(() => {
     if (!menu) return;

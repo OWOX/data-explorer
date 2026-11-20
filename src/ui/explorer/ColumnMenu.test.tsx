@@ -59,6 +59,18 @@ describe('placement', () => {
 });
 
 describe('the column menu', () => {
+  test('a click or right click on the column title does not open the menu; the icon does', async () => {
+    setup();
+    await ready();
+    const title = within(data()).getAllByRole('button', { name: /^Sort by status/ })[0]!;
+    fireEvent.contextMenu(title);
+    fireEvent.contextMenu(title.closest('th')!);
+    await userEvent.click(title);
+    expect(open()).toHaveLength(0);
+    await userEvent.click(await within(data()).findByLabelText('Column menu status'));
+    expect(await screen.findByRole('menu', { name: 'Menu of status' })).toBeTruthy();
+  });
+
   test('opens from the icon with Filter, Aggregate, Format, Sort, Move left, Move right and Hide column in that order; text columns have no Format', async () => {
     setup();
     await ready();
