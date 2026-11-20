@@ -725,8 +725,8 @@ const toMart = async (title: string) => {
   // A leaving card and a hover ghost can carry the same title: the card is the one that is neither.
   const card = [...document.querySelectorAll<HTMLElement>('#band-marts article:not([data-ghost]):not([data-leaving])')].find((a) => a.querySelector('.dm-node-title')?.textContent === title);
   if (!card || card.classList.contains('dm-unjoinable')) {
-    if (!screen.queryByRole('textbox', { name: 'Search data marts' })) await userEvent.click(screen.getByRole('button', { name: 'Search data marts' }));
-    await userEvent.type(screen.getByRole('textbox', { name: 'Search data marts' }), `${title}{Enter}`);
+    if (!screen.queryByRole('combobox', { name: 'Search data marts' })) await userEvent.click(screen.getByRole('button', { name: 'Search data marts' }));
+    await userEvent.type(screen.getByRole('combobox', { name: 'Search data marts' }), `${title}{Enter}`);
     await waitFor(() => expect(headingText() === title || headingText()!.startsWith(`${title} + `)).toBe(true));
     return;
   }

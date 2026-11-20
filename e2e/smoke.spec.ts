@@ -86,7 +86,7 @@ test('three Fibery connectors are one source card; selecting it shows all their 
 const heading = (page: Page) => band(page, 'data').locator('thead tr[data-group-row] th[data-group]');
 const search = async (page: Page, q: string) => {
   const header = page.locator('header.dm-page-header');
-  const box = header.getByRole('textbox', { name: 'Search data marts' });
+  const box = header.getByRole('combobox', { name: 'Search data marts' });
   if (!(await box.isVisible())) await header.getByRole('button', { name: /^Search data marts/ }).click();
   await box.fill(q);
   await box.press('Enter');
@@ -95,13 +95,13 @@ const search = async (page: Page, q: string) => {
 test('search finds the marts through OWOX search and makes the best one the main mart', async ({ page }) => {
   await ordersGrid(page);
   await page.locator('header.dm-page-header').getByRole('button', { name: 'Search data marts' }).click();
-  await expect(page.locator('header.dm-page-header').getByRole('textbox', { name: 'Search data marts' })).toBeFocused();
+  await expect(page.locator('header.dm-page-header').getByRole('combobox', { name: 'Search data marts' })).toBeFocused();
   await search(page, 'campaign');
   await expect(heading(page)).toHaveText(['Campaigns']);
   await expect(band(page, 'marts').getByText('Campaigns', { exact: true })).toBeVisible();
   // The marts that do not match go, and the query stays on screen.
   await expect(band(page, 'marts').getByText('Customers', { exact: true })).toHaveCount(0);
-  await expect(page.locator('header.dm-page-header').getByRole('textbox', { name: 'Search data marts' })).toHaveValue('campaign');
+  await expect(page.locator('header.dm-page-header').getByRole('combobox', { name: 'Search data marts' })).toHaveValue('campaign');
   // Escape closes the box and keeps the result; the x clears it and restores the band.
   await page.keyboard.press('Escape');
   await expect(page.locator('header.dm-page-header').getByRole('button', { name: 'Search data marts: campaign' })).toBeVisible();
@@ -844,7 +844,7 @@ test('the opened search grows leftwards in the header: the title stays, the acti
   await ordersGrid(page);
   const header = page.locator('header.dm-page-header');
   await header.getByRole('button', { name: 'Search data marts' }).click();
-  const box = await header.getByRole('textbox', { name: 'Search data marts' }).boundingBox();
+  const box = await header.getByRole('combobox', { name: 'Search data marts' }).boundingBox();
   const title = await header.getByRole('heading', { name: 'Data Explorer' }).boundingBox();
   const copy = await header.getByRole('button', { name: 'Copy link to this view' }).count();
   expect(title!.x).toBeGreaterThanOrEqual(0);
@@ -868,7 +868,7 @@ test('a no-primary-key mart shows a warning next to the Data (i), not a block ab
   await ordersGrid(page);
   const header = page.locator('header.dm-page-header');
   await header.getByRole('button', { name: 'Search data marts' }).click();
-  await header.getByRole('textbox', { name: 'Search data marts' }).fill('daily');
+  await header.getByRole('combobox', { name: 'Search data marts' }).fill('daily');
   await page.keyboard.press('Enter');
   await expect(band(page, 'data').getByRole('note', { name: /no primary key/ })).toBeVisible();
   await expect(band(page, 'data').getByText('Preview only', { exact: false })).toHaveCount(0);
