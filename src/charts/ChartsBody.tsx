@@ -6,7 +6,10 @@ import type { Format } from '../format/formats';
 import type { Schema } from '../model/types';
 import type { TraverseFilter } from '../sdk/types';
 import { useServices } from '../state/store';
+import { ErrorBox } from '../ui/ErrorBox';
+import { Skeleton } from '../ui/Skeleton';
 import { chartFields } from './fields';
+import type { HavingKeys } from './havingKeys';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { cardsOf, MartCards, useScorecards } from './Scorecards';
 import { resolveCharts, type ChartSettings } from './settings';
@@ -25,8 +28,8 @@ const GUTTER_PX = 46;
  * The panels sit side by side while each still gets 30rem, and stack when the band is narrower.
  * Settings load once per mart; a fallback `resolveCharts` picks is never written back, only the member's own changes are.
  */
-export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter }: {
-  martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; /** The grid has a filter on an aggregate, which the charts do not apply. */ havingNote?: boolean; groups: { id: string; path: string; span: number; title: string }[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
+export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter }: {
+  martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; /** The grid has a filter on an aggregate that the charts cannot follow for this grouping. */ havingNote?: boolean; /** Stands in for the charts while the passing group keys load, fail to load, or are none. */ gate?: HavingKeys['gate']; groups: { id: string; path: string; span: number; title: string }[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
   formatOf: (column: string, type: string) => Format; scrollerWidth: number;
   /** Applies the clicked mark's filters to the grid, as a filter edit (one Undo step). */
   onFilter: (add: ColumnFilter[]) => void;
@@ -53,11 +56,18 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   const cf = chartFields(schema, shown, agg, martId, groups.map((g) => g.path), uniqueCountPaths, Object.fromEntries(groups.map((g) => [g.path, g.title])));
   const r = resolveCharts(settings ?? {}, cf);
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
-  const idle = paused || !settings;
+  const idle = paused || !settings || !!gate;
   const { bucket, error: rangeError, retry: retryRange } = useBucket(martId, r.date, r.bucket, filter, version, idle);
   const scores = useScorecards(martId, cf, filter, version, idle);
   const columns = groups.reduce((n, g) => n + g.span, 0);
 
+  if (gate) {
+    return (
+      <tbody><tr><Gutter /><td colSpan={columns + 1} data-chart-empty className="text-sm text-muted-foreground">
+        {gate.kind === 'loading' ? <Skeleton rows={2} /> : gate.kind === 'error' ? <ErrorBox error={gate.error} onRetry={gate.retry} /> : 'No rows match the filters.'}
+      </td></tr></tbody>
+    );
+  }
   if (cf.marts.every((m) => m.metrics.length === 0 && !m.hasPk)) {
     return <tbody><tr><Gutter /><td colSpan={columns + 1} data-chart-empty className="text-sm text-muted-foreground">Show a number column to chart it.</td></tr></tbody>;
   }
@@ -98,7 +108,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
               onChange={(p) => change((cur) => ({ ...cur, timeSeries: { ...cur.timeSeries, ...p } }))} />}
             {r.pieMeasure && r.pieDimension && <PiePanel {...panelProps} onChange={(p) => change((cur) => ({ ...cur, pie: { ...cur.pie, ...p } }))} />}
           </div>
-          {havingNote && <p data-chart-note className="mt-1 text-xs text-muted-foreground" style={{ position: 'sticky', left: GUTTER_PX }}>Charts ignore filters on aggregates.</p>}
+          {havingNote && <p data-chart-note className="mt-1 text-xs text-muted-foreground" style={{ position: 'sticky', left: GUTTER_PX }}>Charts can't apply filters on aggregates for this grouping.</p>}
         </td>
       </tr>
     </tbody>

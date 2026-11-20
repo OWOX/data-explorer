@@ -39,6 +39,8 @@ const data = () => document.getElementById('band-data')!;
 const headers = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden') && h.getAttribute('scope') !== 'colgroup').map((h) => h.textContent);
 const slice = { field: 'customers__country_code', op: 'eq' as const, value: 'PL' };
 const sliced: GridState = { columns: ['id', 'status', 'customers__city'], filters: {}, slices: { customers__country_code: slice }, sorts: null, limit: 200 };
+// Two group keys: the charts cannot follow its HAVING filter exactly.
+const havingTwoKeys: GridState = { ...({} as GridState), columns: ['id', 'status', 'net_revenue'], filters: { net_revenue: { field: 'net_revenue', op: 'gt', value: 100, fn: 'SUM' } }, aggregations: [{ column: 'net_revenue', function: 'SUM' }], sorts: null, limit: 200 };
 const having: GridState = {
   columns: ['status', 'net_revenue'], filters: { net_revenue: { field: 'net_revenue', op: 'gt', value: 100, fn: 'SUM' } }, aggregations: [{ column: 'net_revenue', function: 'SUM' }], sorts: null, limit: 200,
 };
@@ -103,10 +105,10 @@ test('a parked slice comes back when its field is offered again, and is sent', a
   expect(t.state.current!.grids.orders!.slices).toEqual({ customers__country_code: slice });
 });
 
-test('the charts get no HAVING filter and say so', async () => {
-  const t = setup({ ...having, view: 'charts' });
+test('with two group keys the charts get no HAVING filter and say they cannot apply it', async () => {
+  const t = setup({ ...havingTwoKeys, view: 'charts' });
   await waitFor(() => expect(data().querySelector('[data-chart-strip]')).not.toBeNull(), { timeout: 3000 });
-  expect(await within(data()).findByText('Charts ignore filters on aggregates.')).toBeInTheDocument();
+  expect(await within(data()).findByText("Charts can't apply filters on aggregates for this grouping.")).toBeInTheDocument();
   await waitFor(() => expect(t.queries.length).toBeGreaterThan(0));
   expect(t.queries.every((q) => !q.filter?.some((f) => f.function))).toBe(true);
 });
@@ -114,16 +116,54 @@ test('the charts get no HAVING filter and say so', async () => {
 test('no note under the charts without a HAVING filter', async () => {
   setup({ columns: ['id', 'status', 'amount'], filters: {}, sorts: null, limit: 200, view: 'charts' });
   await waitFor(() => expect(data().querySelector('[data-chart-strip]')).not.toBeNull());
-  expect(within(data()).queryByText('Charts ignore filters on aggregates.')).toBeNull();
+  expect(within(data()).queryByText("Charts can't apply filters on aggregates for this grouping.")).toBeNull();
 });
 
 test('the charts of an empty mart with only a HAVING filter say the mart has no rows, not that the filters match none', async () => {
-  setup({ ...having, view: 'charts' }, { empty: true });
+  setup({ ...havingTwoKeys, view: 'charts' }, { empty: true });
   expect((await screen.findAllByText('This data mart has no rows.', {}, { timeout: 3000 })).length).toBeGreaterThan(0);
   expect(within(data()).queryByText('No rows match the filters.')).toBeNull();
 });
 
 test('the charts of an empty mart with a plain filter say no rows match the filters', async () => {
   setup({ columns: ['id', 'status', 'amount'], filters: { status: { field: 'status', op: 'eq', value: 'zzz' } }, sorts: null, limit: 200, view: 'charts' }, { empty: true });
+  expect((await screen.findAllByText('No rows match the filters.', {}, { timeout: 3000 })).length).toBeGreaterThan(0);
+});
+
+// The expected numbers come from the mock's own rows: a group passes when its SUM is over the cut, and the charts roll up every row of the passing groups.
+async function passing() {
+  const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  const t = await base.owox.dataMarts.traverseData('orders', { column: ['status', 'net_revenue'] });
+  const rows: { status: string; net_revenue: number }[] = [];
+  for await (const chunk of t.rowChunks()) rows.push(...(chunk as typeof rows));
+  const sums = new Map<string, number>();
+  for (const r of rows) sums.set(r.status, (sums.get(r.status) ?? 0) + Number(r.net_revenue));
+  const ordered = [...sums.values()].sort((a, b) => a - b);
+  const cut = (ordered[0]! + ordered[ordered.length - 1]!) / 2;
+  const keys = [...sums].filter(([, v]) => v > cut).map(([k]) => k);
+  return { cut, keys, total: rows.filter((r) => keys.includes(r.status)).reduce((n, r) => n + Number(r.net_revenue), 0), all: rows.reduce((n, r) => n + Number(r.net_revenue), 0) };
+}
+
+test('the charts get the passing group keys as an in rule, and the scorecard totals only those groups', async () => {
+  const exp = await passing();
+  expect(exp.keys.length).toBeGreaterThan(0);
+  expect(exp.total).not.toBeCloseTo(exp.all);
+  const t = setup({ ...having, filters: { net_revenue: { field: 'net_revenue', op: 'gt', value: exp.cut, fn: 'SUM' } }, aggregations: [{ column: 'net_revenue', function: 'SUM' }], view: 'charts' });
+  await waitFor(() => expect(data().querySelector('[data-card="net_revenue"] [data-card-value]')).not.toBeNull(), { timeout: 3000 });
+  const card = () => data().querySelector<HTMLElement>('[data-card="net_revenue"] [data-card-value]')!;
+  const shown = () => Number((card().getAttribute('data-exact') ?? card().textContent ?? '').replace(/[^0-9.-]/g, ''));
+  await waitFor(() => expect(shown()).toBeCloseTo(exp.total, 0));
+  // The queries of this grid's charts: they aggregate net_revenue. (The first render, before the saved grid arrives, reads a bare records count.)
+  const charted = t.queries.filter((q) => q.aggregation?.some((a) => a.column === 'net_revenue') && q.limit !== 501);
+  // The one read that does carry the HAVING rule is the keys read (limit 501); no chart query has it.
+  expect(charted.every((q) => !q.filter?.some((f) => f.function))).toBe(true);
+  expect(t.queries.filter((q) => q.limit === 501)).toHaveLength(1);
+  expect(charted.length).toBeGreaterThan(0);
+  expect(charted.every((q) => q.filter?.some((f) => f.column === 'status' && f.operator === 'in' && JSON.stringify([...(f.value as string[])].sort()) === JSON.stringify([...exp.keys].sort())))).toBe(true);
+  expect(within(data()).queryByText(/Charts can.t apply/)).toBeNull();
+});
+
+test('no group passes the HAVING filter: the charts say no rows match the filters', async () => {
+  setup({ ...having, filters: { net_revenue: { field: 'net_revenue', op: 'gt', value: 1e12, fn: 'SUM' } }, view: 'charts' });
   expect((await screen.findAllByText('No rows match the filters.', {}, { timeout: 3000 })).length).toBeGreaterThan(0);
 });
