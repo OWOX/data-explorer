@@ -92,7 +92,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     };
     box.addEventListener('wheel', onWheel, { passive: false });
     return () => box.removeEventListener('wheel', onWheel);
-  }, [mainId]);
+  }, [mainId, scaleRef]);
 
   // A click anywhere in the scroll box that is not on a card is a click on the empty canvas.
   useEffect(() => {
