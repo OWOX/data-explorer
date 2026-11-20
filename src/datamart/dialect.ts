@@ -3,7 +3,7 @@ import { toTraverseFilter } from '../filters/build';
 import type { AggFn, DateBucket } from '../model/aggregation';
 import { isDateBucket, isTimeZone } from '../model/aggregation';
 import type { Field } from '../model/types';
-import type { RelativeDatePreset, TraverseFilterRule } from '../sdk/types';
+import type { RelativeDatePreset } from '../sdk/types';
 
 export type Dialect = 'bigquery' | 'athena' | 'snowflake' | 'redshift' | 'databricks';
 
@@ -258,7 +258,7 @@ function relative(d: Dialect, col: string, p: RelativeDatePreset, type: string):
 /** One complete filter as a SQL predicate on `col` (already a column reference). */
 export function renderFilter(d: Dialect, col: string, field: Field, f: ColumnFilter): string {
   // The grid offers no list operator, so `toTraverseFilter` never returns `in` or `not_in`.
-  const t = toTraverseFilter(f, field) as Exclude<TraverseFilterRule, { operator: 'in' | 'not_in' }>;
+  const t = toTraverseFilter(f, field);
   const type = field.type.trim().toUpperCase();
   const cast = CAST_TYPES[d].has(type);
   /** A compared value, cast to the column type on date and time columns. */
@@ -298,5 +298,6 @@ export function renderFilter(d: Dialect, col: string, field: Field, f: ColumnFil
     case 'is_false': return `${col} = FALSE`;
     case 'between': return `${col} BETWEEN ${lit(t.value.from)} AND ${lit(t.value.to)}`;
     case 'relative_date': return relative(d, col, t.value, type);
+    default: throw new Error(`Unsupported filter operator: ${t.operator}`);
   }
 }

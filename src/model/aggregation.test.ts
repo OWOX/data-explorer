@@ -116,15 +116,17 @@ test('the backend IANA pattern and length cap', () => {
   for (const z of ['', '1UTC', 'UTC/', "UTC'; DROP", 'a b', '/UTC', 'A'.repeat(65), 'Europe//Kyiv', 7]) expect(isTimeZone(z)).toBe(false);
 });
 
-test('formatBucket builds one date formatter per locale', () => {
+test('formatBucket builds one date formatter per locale', async () => {
+  vi.resetModules();
+  const fresh = await import('./aggregation');
   const spy = vi.spyOn(Intl, 'DateTimeFormat');
   try {
-    formatBucket('2026-11-02', 'DAY', 'fr-FR');
-    const built = spy.mock.calls.length;
-    expect(built).toBeLessThanOrEqual(1);
-    formatBucket('2026-11-09', 'WEEK', 'fr-FR');
-    formatBucket('2026-11-16', 'DAY', 'fr-FR');
-    expect(spy.mock.calls.length).toBe(built);
+    fresh.formatBucket('2026-11-02', 'DAY', 'fr-FR');
+    fresh.formatBucket('2026-11-09', 'WEEK', 'fr-FR');
+    fresh.formatBucket('2026-11-16', 'DAY', 'fr-FR');
+    expect(spy.mock.calls.length).toBe(1);
+    fresh.formatBucket('2026-11-16', 'DAY', 'de-DE');
+    expect(spy.mock.calls.length).toBe(2);
   } finally {
     spy.mockRestore();
   }

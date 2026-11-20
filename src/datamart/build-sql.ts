@@ -276,7 +276,8 @@ function assembleFlat(p: Plan): string {
 const VALUE_FNS: readonly AggFn[] = ['SUM', 'AVG', 'MIN', 'MAX', 'STRING_AGG', 'P25', 'P50', 'P75', 'P95'];
 
 /** The grouped data mart: keys and metrics as the grid's aggregation asks, with a sleeve CTE for each joined metric the engine computes apart. */
-function assembleGrouped(p: Plan, agg: Aggregation): string | Reason {
+function assembleGrouped(p: Plan & { agg: Aggregation }): string | Reason {
+  const { agg } = p;
   const { d, byName, cols } = p;
   const rules = agg.aggregations.filter((r) => p.fns.has(r.column));
   const fnsOf = (f: Field): AggFn[] => p.fns.get(f.name) ?? [];
@@ -415,7 +416,7 @@ function assembleGrouped(p: Plan, agg: Aggregation): string | Reason {
 export function buildMartSql(input: MartSqlInput): { sql: string } | { reason: string } {
   const plan = prepare(input);
   if ('reason' in plan) return plan;
-  if (!plan.grouped) return { sql: assembleFlat(plan) };
-  const sql = assembleGrouped(plan, plan.agg!);
+  if (!plan.agg) return { sql: assembleFlat(plan) };
+  const sql = assembleGrouped({ ...plan, agg: plan.agg });
   return typeof sql === 'string' ? { sql } : sql;
 }

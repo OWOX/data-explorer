@@ -14,7 +14,7 @@ import { measureId, type ResolvedCharts } from './settings';
 import { Sparkline, type Point } from './svg/Sparkline';
 import { useChartQuery, type ChartResult } from './useChartQuery';
 
-export type Card = { id: string; label: string; key: string; field?: Field; fn?: AggFn };
+export type Card = { id: string; label: string; key: string; measure: Measure };
 
 /** How a metric is named wherever it shows: on its card, in a chart title and in a menu. */
 export const metricLabel = (m: Metric): string => `${fieldLabel(m.field)} · ${AGG_LABELS[m.fn]}`;
@@ -31,8 +31,8 @@ export const measureOptions = (cf: ChartFields, list: Measure[]) => list.map((m)
 /** A mart's cards: its record count (when it has a primary key), then one per metric. */
 export function cardsOf(mart: ChartMart): Card[] {
   return [
-    ...(mart.hasPk ? [{ id: mart.recordsId, label: 'Unique Records', key: uniqueKey(mart.aliasPath) }] : []),
-    ...mart.metrics.map((m) => ({ id: m.field.name, label: metricLabel(m), key: metricKey(m), field: m.field, fn: m.fn })),
+    ...(mart.hasPk ? [{ id: mart.recordsId, label: 'Unique Records', key: uniqueKey(mart.aliasPath), measure: { kind: 'records', aliasPath: mart.aliasPath, recordsId: mart.recordsId } as Measure }] : []),
+    ...mart.metrics.map((m) => ({ id: m.field.name, label: metricLabel(m), key: metricKey(m), measure: { kind: 'metric', metric: m } as Measure })),
   ];
 }
 
@@ -45,16 +45,12 @@ export type Formatter = (column: string, type: string) => Format;
 
 function textOf(card: Card, row: Row | undefined, formatOf: Formatter): string {
   if (!row) return '';
-  const v = row[card.key];
-  if (!card.field) return recordsText(v);
-  return metricText(card.field, card.fn!, v, formatOf);
+  return measureText(card.measure, row[card.key], formatOf);
 }
 
 /** The card's short value (1.6M) when the number is long enough to have one, in the unit the full text has. */
 function shortOf(card: Card, row: Row, formatOf: Formatter): string | null {
-  const v = row[card.key];
-  if (!card.field) return compactValue(v, 'INTEGER', AUTO);
-  return compactValue(v, ...metricFormat(card.field, card.fn!, formatOf));
+  return compactValue(row[card.key], ...measureFormat(card.measure, formatOf));
 }
 
 /** The value on a card: short when it can be, with the exact text in a tooltip and for screen readers. */

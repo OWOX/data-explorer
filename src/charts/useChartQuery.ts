@@ -6,20 +6,15 @@ import { useServices } from '../state/store';
 
 export type ChartResult = { rows: Row[] | null; error: unknown; loading: boolean; retry: () => void };
 
-// Resolved rows only, per ctx: a failed or aborted read is never stored, so retry always reads again.
-const caches = new WeakMap<Ctx, Map<string, Row[]>>();
-/** How many resolved reads a ctx keeps: about ten views of the charts. The oldest is dropped first. */
+/** How many resolved reads a ctx keeps: about ten views of the charts. The least recently used is dropped first. */
 export const CHART_CACHE_LIMIT = 64;
-const cacheOf = (ctx: Ctx) => {
-  let c = caches.get(ctx);
-  if (!c) caches.set(ctx, (c = new Map()));
-  return c;
-};
+// Resolved rows only, per ctx: a failed or aborted read is never stored, so retry always reads again.
+const cacheOf = perCtx(() => new Map<string, Row[]>());
 
 function remember(ctx: Ctx, key: string, rows: Row[]) {
   const cache = cacheOf(ctx);
   cache.set(key, rows);
-  // A Map keeps insertion order, so the first key is the oldest.
+  // A Map keeps insertion order and a hit re-inserts its key, so the first key is the least recently used.
   if (cache.size > CHART_CACHE_LIMIT) cache.delete(cache.keys().next().value!);
 }
 
@@ -40,8 +35,16 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
 
   useEffect(() => {
     if (!options || !key) return;
-    const cached = cacheOf(ctx).get(key);
-    if (cached) return; // the render below reads it straight from the cache
+    const cache = cacheOf(ctx);
+    const cached = cache.get(key);
+    if (cached) {
+      // Keep the rows in state too, so a later eviction cannot strand this reader; re-insert the key so it counts as recently used.
+      cache.delete(key);
+      cache.set(key, cached);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a hit has no promise to answer through
+      setState({ key, rows: cached, error: null });
+      return;
+    }
     const inflight = flightsOf(ctx);
     let flight = inflight.get(key);
     if (!flight) {

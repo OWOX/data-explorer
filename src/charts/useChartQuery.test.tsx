@@ -131,3 +131,22 @@ test('the row cache keeps at most CHART_CACHE_LIMIT reads and drops the oldest',
   rerender({ l: 1 });
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
 });
+
+test('a reader served from the cache keeps its rows after the cache evicts its key', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ a: 1 }]));
+  const wrapper = setup(traverseData);
+  const first = renderHook(() => useChartQuery('m', opts(1), 0), { wrapper });
+  await waitFor(() => expect(first.result.current.rows).not.toBeNull());
+  // A second reader of the same key is served from the cache.
+  const reader = renderHook(() => useChartQuery('m', opts(1), 0), { wrapper });
+  await waitFor(() => expect(reader.result.current.rows).toEqual([{ a: 1 }]));
+  const other = renderHook(({ l }) => useChartQuery('m', opts(l), 0), { wrapper, initialProps: { l: 2 } });
+  for (let l = 2; l <= CHART_CACHE_LIMIT + 2; l++) {
+    other.rerender({ l });
+    await waitFor(() => expect(other.result.current.rows).not.toBeNull());
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(l));
+  }
+  reader.rerender();
+  expect(reader.result.current.rows).toEqual([{ a: 1 }]);
+  expect(reader.result.current.loading).toBe(false);
+});
