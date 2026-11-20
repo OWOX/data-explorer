@@ -141,11 +141,57 @@ test('the × takes a joined card and the paths under it out in one step', async 
   expect(el('countries', 'customers.countries')).not.toBeNull();
 });
 
-test('with a card focused, the hint on a dimmed card names the focused card but the drag goes to the main card', async () => {
+test('with a card focused, a dimmed card the main mart can join says to press Escape and click it', async () => {
   setup();
   await joinCustomersAndStores();
   fireEvent.click(el('stores', 'stores')!);
   await waitFor(() => expect(el('products')).toHaveClass('dm-unjoinable'));
   fireEvent.click(el('products')!);
-  expect(await within(el('products')!).findByRole('status')).toHaveTextContent("Can't join Stores. Drag it onto Orders to make it the main data mart.");
+  expect(await within(el('products')!).findByRole('status')).toHaveTextContent("Can't join Stores. Press Escape, then click it to add it to Orders.");
+});
+
+test('Enter on a joinable card adds it and focus lands on its new report card', async () => {
+  setup();
+  await ready();
+  fireEvent.click(el('orders')!);
+  await waitFor(() => expect(el('orders')).toHaveAttribute('data-focused'));
+  const customers = await bandCard('Customers');
+  customers.focus();
+  await userEvent.keyboard('{Enter}');
+  await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(el('customers', 'customers')));
+});
+
+test('Enter on a ghost with a card focused adds it and focus lands on the new report card', async () => {
+  setup();
+  await joinCustomersAndStores();
+  fireEvent.click(el('customers', 'customers')!);
+  fireEvent.click(await bandCard('Countries'));
+  await waitFor(() => expect(el('countries', 'customers.countries')).not.toBeNull());
+  fireEvent.click(el('stores', 'stores')!);
+  await waitFor(() => expect(ghost('countries', 'stores.countries')).not.toBeNull());
+  ghost('countries', 'stores.countries')!.focus();
+  await userEvent.keyboard('{Enter}');
+  await waitFor(() => expect(el('countries', 'stores.countries')).not.toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(el('countries', 'stores.countries')));
+});
+
+test('the tree line from Orders to Customers carries the join fields', async () => {
+  setup();
+  await joinCustomersAndStores();
+  await waitFor(() => expect(document.querySelector('#wires path[data-tip]')).not.toBeNull());
+  const tips = [...document.querySelectorAll<SVGPathElement>('#wires path[data-tip]')].map((p) => p.dataset.tip);
+  expect(tips).toContain('customer_id → id');
+});
+
+test('Charts: a mart joined twice is two cells with their own titles and fields', async () => {
+  setup();
+  await joinCountriesTwice();
+  await userEvent.click(within(data()).getByRole('radio', { name: 'Charts' }));
+  await waitFor(() => expect(data().querySelectorAll('td[data-chart-group="countries"]')).toHaveLength(2));
+  const cell = (path: string) => data().querySelector<HTMLElement>(`td[data-chart-path="${path}"]`)!;
+  expect(cell('customers.countries')).not.toBe(cell('stores.countries'));
+  const names = (path: string) => [...cell(path).querySelectorAll('[data-card]')].map((c) => (c as HTMLElement).dataset.card);
+  expect(names('customers.countries').every((n) => !n?.includes('stores'))).toBe(true);
+  expect(names('stores.countries').every((n) => !n?.includes('customers'))).toBe(true);
 });

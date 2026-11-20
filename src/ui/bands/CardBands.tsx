@@ -106,6 +106,29 @@ export function CardBands({
   const mainFor = selection.martId;
   const canvasTree = useMemo(() => (mainFor ? buildJoinTree(mainFor, mainColumns, joinSources ?? []) : null), [mainFor, mainColumns, joinSources]);
   const { focus, toggle: toggleFocus, clear: clearFocus } = useGridFocus(mainFor, canvasTree, view === 'grid');
+  // A card added from the band moves from the outside list to the report list, so React remounts it and focus would drop to the page:
+  // the new report card takes it once it renders. `path` is null when the click did not say where; the new node of that mart is it then.
+  const [focusAdded, setFocusAdded] = useState<{ martId: string; path: string | null; before: Set<string> } | null>(null);
+  useEffect(() => {
+    if (focusAdded === null || !canvasTree) return;
+    const path = focusAdded.path ?? [...canvasTree.nodes.values()].find((n) => n.martId === focusAdded.martId && !focusAdded.before.has(n.path))?.path;
+    if (path === undefined) return;
+    const card = canvas.current?.querySelector<HTMLElement>(`#${CSS.escape(martElementId(focusAdded.martId, path || undefined))}:not([data-ghost])`);
+    if (!card) return;
+    card.focus();
+    setFocusAdded(null);
+  }, [focusAdded, canvasTree]);
+  const addFromBand = (id: string, options?: { addAt?: string }) => {
+    const before = new Set(canvasTree?.nodes.keys());
+    // Only when focus is on the card being added: a click with the pointer elsewhere moves nothing.
+    const hadFocus = document.activeElement?.closest('article')?.getAttribute('data-mart-id') === id;
+    void click(id, options).then(() => {
+      if (!hadFocus) return;
+      setFocusAdded({ martId: id, path: options?.addAt ?? null, before });
+      // A click that changed nothing must not take focus from whatever the member moves to next.
+      setTimeout(() => setFocusAdded((cur) => (cur?.before === before ? null : cur)), 1000);
+    }, () => undefined);
+  };
 
   // Escape lets go of the hovered card; what is selected only changes by clicks and Back.
   useEffect(() => {
@@ -178,7 +201,10 @@ export function CardBands({
       if (n.parent === null || !shown.has(n.martId)) continue;
       const parent = canvasTree!.nodes.get(n.parent)!;
       if (!shown.has(parent.martId)) continue;
-      out.push({ id: `tree:${n.path}`, from: martElementId(parent.martId, parent.path || undefined), to: martElementId(n.martId, n.path), kind: 'relationship', title: `${model.marts.get(parent.martId)?.title ?? parent.martId} → ${model.marts.get(n.martId)?.title ?? n.martId}` });
+      // The join fields when the source's relationship is known, the two titles otherwise.
+      const edge = model.edges.find((e) => e.id === joinSources?.find((x) => x.aliasPath === n.path)?.relationshipId && e.source === parent.martId && e.target === n.martId);
+      const title = edge && edge.joins.length > 0 ? edge.joins.map((j) => `${j.sourceField} → ${j.targetField}`).join(', ') : `${model.marts.get(parent.martId)?.title ?? parent.martId} → ${model.marts.get(n.martId)?.title ?? n.martId}`;
+      out.push({ id: `tree:${n.path}`, from: martElementId(parent.martId, parent.path || undefined), to: martElementId(n.martId, n.path), kind: 'relationship', title });
     }
     // A report mart's own card: the main one, or the first path it is joined at.
     const cardOf = (id: string) => { const n = nodes.find((x) => x.martId === id); return n ? martElementId(id, n.path || undefined) : martElementId(id); };
@@ -202,7 +228,7 @@ export function CardBands({
   const joined = useMemo(() => (joinedKey ? joinedKey.split('|') : []), [joinedKey]);
   // In Grid a joined card is one per alias path, and each line to the main card is raised with it.
   const joinedEls = useMemo(() => (canvasTree ? [...canvasTree.nodes.values()].filter((n) => n.path !== '').map((n) => martElementId(n.martId, n.path)) : []), [canvasTree]);
-  useWires(canvas, wires, { pinned, hovered, also: view === 'grid' ? joinedEls : joined }, useMemo(() => revisionOf(idsKey + treeKey), [idsKey, treeKey]));
+  useWires(canvas, wires, { pinned, hovered, also: joinedEls }, useMemo(() => revisionOf(idsKey + treeKey), [idsKey, treeKey]));
 
   const { lit, aside } = useMemo(() => {
     // The cards of the selected joined marts light their own neighbours too, so a mart connected only to a joined one is not dimmed.
@@ -341,8 +367,9 @@ export function CardBands({
                   unjoinable={focus !== null ? !at : unjoinableFor(id)}
                   mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
                   joinTitle={focus !== null ? model.marts.get(canvasTree?.nodes.get(focus)?.martId ?? '')?.title : undefined}
+                  addViaEscape={focus !== null && !at && !!mainId && visible.joinable?.has(id) === true}
                   onMakeMain={mainId && mart.accessible ? () => void click(id, { mode: 'makeMain' }) : undefined}
-                  onSelect={() => void (at ? click(id, { addAt: at.aliasPath }) : click(id))}
+                  onSelect={() => (at ? addFromBand(id, { addAt: at.aliasPath }) : addFromBand(id))}
                   onOpenApp={() => onOpenApp(id)}
                   onRetryCount={() => onRetryCount(id)}
                   onNeedCount={() => onRequestCount(id)}
@@ -366,7 +393,7 @@ export function CardBands({
                   selected={false}
                   joined={false}
                   lit={false}
-                  onSelect={() => void click(mart.id, { addAt: s.aliasPath })}
+                  onSelect={() => addFromBand(mart.id, { addAt: s.aliasPath })}
                   onOpenApp={() => onOpenApp(mart.id)}
                   onRetryCount={() => undefined}
                   onNeedCount={() => undefined}
