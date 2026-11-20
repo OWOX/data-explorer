@@ -25,7 +25,7 @@ const el = (id: string, path?: string) => [...marts().querySelectorAll<HTMLEleme
 const ghosts = () => [...marts().querySelectorAll<HTMLElement>('article[data-ghost]')].map((a) => a.id);
 const toCanvas = async () => {
   const group = within(marts()).getByRole('radiogroup', { name: 'Show data marts as' });
-  await userEvent.click(within(group).getByRole('radio', { name: 'Canvas' }));
+  await userEvent.click(within(group).getByRole('radio', { name: 'Graph' }));
 };
 
 test('canvas shows the main mart and its joined marts as a tree', async () => {
@@ -186,7 +186,7 @@ test('releasing near the current parent changes nothing and leaves the wires alo
   expect(tips()).toEqual(tipsBefore);
 });
 
-test('a saved Canvas preference is read back on load', async () => {
+test('a saved Graph preference is read back on load', async () => {
   const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
   createPreferences(ctx).saveMartsView('canvas');
   await vi.waitFor(async () => expect(await createPreferences(ctx).loadMartsView()).toBe('canvas'));
@@ -194,7 +194,7 @@ test('a saved Canvas preference is read back on load', async () => {
   await ready();
   expect(await within(marts()).findByTestId('marts-canvas')).toBeInTheDocument();
   const group = within(marts()).getByRole('radiogroup', { name: 'Show data marts as' });
-  expect(within(group).getByRole('radio', { name: 'Canvas' })).toHaveAttribute('aria-checked', 'true');
+  expect(within(group).getByRole('radio', { name: 'Graph' })).toHaveAttribute('aria-checked', 'true');
 });
 
 test('scrolling the tree box re-lays out the page wires; scrolling elsewhere in the canvas does not', async () => {
@@ -331,4 +331,93 @@ test('two copies of one mart read with their paths, and so do their remove butto
   await toCanvas();
   await waitFor(() => expect(within(el('countries', 'customers.countries')!).getByText('Countries (customers.countries)')).toBeInTheDocument());
   expect(within(el('countries', 'stores.countries')!).getByRole('button', { name: 'Remove Countries (stores.countries) from the report' })).toBeInTheDocument();
+});
+
+const ghostEl = (id: string, path: string) => marts().querySelector<HTMLElement>(`article[data-ghost][id="${martElementId(id, path)}"]`);
+
+test('a second click on the pinned card lets its ghosts go, though the pointer stays on it; leaving and coming back shows them again', async () => {
+  setup();
+  await ready();
+  await toCanvas();
+  await waitFor(() => expect(el('orders')).not.toBeNull());
+  await userEvent.click(el('orders')!);
+  await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
+  await userEvent.click(el('orders')!);
+  await waitFor(() => expect(ghosts()).toEqual([]));
+  await userEvent.unhover(el('orders')!);
+  await userEvent.hover(el('orders')!);
+  await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
+});
+
+test('clicking another card moves the pin', async () => {
+  await joinCountriesUnderCustomers();
+  await userEvent.click(el('orders')!);
+  await waitFor(() => expect(ghostEl('products', 'products')).not.toBeNull());
+  await userEvent.click(el('customers', 'customers')!);
+  await waitFor(() => expect(ghostEl('countries', 'customers.countries')).toBeNull());
+  await userEvent.unhover(el('customers', 'customers')!);
+  await new Promise((r) => setTimeout(r, 500));
+  expect(ghostEl('products', 'products')).toBeNull();
+});
+
+test('hover shows the ghosts at once, also when the pointer moves from one card to another', async () => {
+  await joinCountriesUnderCustomers();
+  await userEvent.unhover(el('countries', 'customers.countries')!);
+  await new Promise((r) => setTimeout(r, 500));
+  await userEvent.hover(el('orders')!);
+  expect(ghostEl('products', 'products')).not.toBeNull();
+  await userEvent.hover(el('stores', 'stores')!);
+  // No wait: the ghosts of the card just left are gone and the new card's are there.
+  expect(ghostEl('products', 'products')).toBeNull();
+});
+
+test('hovering a ghost shows its own joinable marts to its right, wired from it; moving back trims the chain', async () => {
+  setup();
+  await ready();
+  await toCanvas();
+  await waitFor(() => expect(el('orders')).not.toBeNull());
+  await userEvent.hover(el('orders')!);
+  await waitFor(() => expect(ghostEl('customers', 'customers')).not.toBeNull());
+  expect(ghostEl('countries', 'customers.countries')).toBeNull();
+  await userEvent.hover(ghostEl('customers', 'customers')!);
+  await waitFor(() => expect(ghostEl('countries', 'customers.countries')).not.toBeNull());
+  const left = (a: HTMLElement) => parseFloat(a.parentElement!.style.left);
+  expect(left(ghostEl('countries', 'customers.countries')!)).toBeGreaterThan(left(ghostEl('customers', 'customers')!));
+  await waitFor(() => expect(document.querySelector('#tree-wires path.ghost[data-from="dm-customers@customers"][data-to="dm-countries@customers.countries"]')).not.toBeNull());
+  // Back to a sibling ghost: the chain after the first link goes.
+  await userEvent.hover(ghostEl('products', 'products')!);
+  expect(ghostEl('countries', 'customers.countries')).toBeNull();
+  expect(ghostEl('customers', 'customers')).not.toBeNull();
+});
+
+test('clicking a ghost at the end of a chain adds the marts on the way too, so the cards sit where the chain showed them', async () => {
+  setup();
+  await ready();
+  await toCanvas();
+  await waitFor(() => expect(el('orders')).not.toBeNull());
+  await userEvent.hover(el('orders')!);
+  await userEvent.hover(await waitFor(() => { const g = ghostEl('customers', 'customers'); expect(g).not.toBeNull(); return g!; }));
+  await userEvent.hover(await waitFor(() => { const g = ghostEl('countries', 'customers.countries'); expect(g).not.toBeNull(); return g!; }));
+  await userEvent.click(ghostEl('countries', 'customers.countries')!);
+  await waitFor(() => expect(el('countries', 'customers.countries')).not.toBeNull());
+  expect(el('customers', 'customers')).not.toBeNull();
+  expect(groupTitles()).toEqual(['Orders', 'Customers', 'Countries']);
+  await waitFor(() => expect(document.querySelector('#tree-wires path[data-from="dm-customers@customers"][data-to="dm-countries@customers.countries"]')).not.toBeNull());
+});
+
+test('parity with the Grid: only the x takes a mart out; clicks, Enter and Space on a card never do', async () => {
+  await joinCountriesUnderCustomers();
+  const before = headers();
+  for (const card of [el('orders')!, el('customers', 'customers')!, el('countries', 'customers.countries')!]) {
+    await userEvent.click(card);
+    await userEvent.dblClick(card);
+    card.focus();
+    await userEvent.keyboard('{Enter}');
+    await userEvent.keyboard(' ');
+  }
+  await new Promise((r) => setTimeout(r, 100));
+  expect(headers()).toEqual(before);
+  expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores', 'Countries']);
+  await userEvent.click(within(el('countries', 'customers.countries')!).getByRole('button', { name: /remove countries/i }));
+  await waitFor(() => expect(el('countries', 'customers.countries')).toBeNull());
 });

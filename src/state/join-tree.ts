@@ -34,15 +34,60 @@ export function subtreePaths(tree: JoinTree, path: string): string[] {
   return [path, ...node.children.flatMap((c) => subtreePaths(tree, c))];
 }
 
-/** What can join under a path and is not a node yet: one source per alias path. */
-export function ghostSources(tree: JoinTree, sources: JoinedSource[], path: string): JoinedSource[] {
-  if (!tree.nodes.has(path)) return [];
+/** What can join one hop under a path and is not a node yet: one source per alias path. The path itself need not be a node (a ghost's own joinable marts). */
+export function joinableUnder(tree: JoinTree, sources: JoinedSource[], path: string): JoinedSource[] {
   const out: JoinedSource[] = [];
   for (const s of sources) {
     if (parentPath(s.aliasPath) !== path || tree.nodes.has(s.aliasPath) || out.some((o) => o.aliasPath === s.aliasPath)) continue;
     out.push(s);
   }
   return out;
+}
+
+/** What can join under a path of the tree and is not a node yet: one source per alias path. */
+export function ghostSources(tree: JoinTree, sources: JoinedSource[], path: string): JoinedSource[] {
+  return tree.nodes.has(path) ? joinableUnder(tree, sources, path) : [];
+}
+
+/** One column of ghosts: what hangs from `from` (a tree node, or a ghost of the level before). */
+export type GhostLevel = { from: string; fromMartId: string; ghosts: JoinedSource[] };
+
+/**
+ * The columns of ghosts for a hover chain. The first level is what joins under the anchor tree node; each link of the chain is a ghost of the level before it,
+ * and adds a level with its own joinable marts. A link that is not offered any more (it joined the tree, or the anchor changed) ends the chain there.
+ * `keep` hides sources the caller cannot show (an unreadable mart). The chain that remains is returned too.
+ */
+export function ghostLevels(tree: JoinTree, sources: JoinedSource[], anchor: string | null, chain: string[], keep: (s: JoinedSource) => boolean = () => true): { levels: GhostLevel[]; chain: string[] } {
+  const root = anchor === null ? undefined : tree.nodes.get(anchor);
+  if (!root) return { levels: [], chain: [] };
+  const levels: GhostLevel[] = [];
+  const first = ghostSources(tree, sources, root.path).filter(keep);
+  if (first.length) levels.push({ from: root.path, fromMartId: root.martId, ghosts: first });
+  const kept: string[] = [];
+  let offered = first;
+  for (const link of chain) {
+    const hit = offered.find((g) => g.aliasPath === link);
+    if (!hit) break;
+    kept.push(link);
+    offered = joinableUnder(tree, sources, link).filter(keep);
+    if (offered.length) levels.push({ from: link, fromMartId: hit.martId, ghosts: offered });
+  }
+  return { levels, chain: kept };
+}
+
+/** The chain after the pointer reaches `ghost`: the links up to its parent stay, and it becomes the last link. A ghost that hangs from neither the anchor nor a link leaves the chain as it is. */
+export function chainAfterHover(anchor: string | null, chain: string[], ghost: string): string[] {
+  const parent = parentPath(ghost);
+  if (parent === anchor) return [ghost];
+  const at = chain.indexOf(parent);
+  return at < 0 ? chain : [...chain.slice(0, at + 1), ghost];
+}
+
+/** Every alias path to add so `aliasPath` shows up under its own parents: its ancestors (shallowest first) that are not in use yet, then the path itself. */
+export function pathsToAdd(inUse: Set<string>, aliasPath: string): string[] {
+  const missing: string[] = [];
+  for (let p = parentPath(aliasPath); p !== '' && !inUse.has(p); p = parentPath(p)) missing.unshift(p);
+  return [...missing, aliasPath];
 }
 
 export type Rejoin = { target: string; moves: Map<string, string> };

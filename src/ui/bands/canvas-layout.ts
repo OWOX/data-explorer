@@ -10,13 +10,17 @@ export type Placed = { path: string; x: number; y: number };
 const colX = (depth: number) => depth * (CARD_W + COL_GAP);
 const rowY = (row: number) => row * (CARD_H + ROW_GAP);
 
+/** One column of ghosts: `ids` hang from `path`, a tree node or a ghost of the level before. */
+export type GhostColumn = { path: string; ids: string[] };
+
 /**
- * Positions for every node, plus `extra` children per path (the ghosts) in the column after their parent.
- * Real cards never move for ghosts: ghosts start at the parent's row or the first row below the real cards of that column, whichever is lower, and stack downward.
+ * Positions for every node, plus the ghosts: each column of them goes after its parent's column.
+ * Real cards never move for ghosts: ghosts start at the parent's row or the first row below the cards already in that column, whichever is lower, and stack downward.
+ * A column hangs from a ghost of an earlier column when its `path` is one of their ids, so the columns form a chain.
  */
 export function layoutTree(
   tree: JoinTree,
-  extra?: { path: string; ids: string[] },
+  extra?: GhostColumn | GhostColumn[],
 ): { placed: Placed[]; ghosts: { id: string; x: number; y: number }[]; width: number; height: number } {
   const placed: Placed[] = [];
   const slot = new Map<string, { depth: number; row: number }>();
@@ -40,17 +44,20 @@ export function layoutTree(
   placed.reverse(); // the main mart first
   const ghosts: { id: string; x: number; y: number }[] = [];
   let bottom = nextRow;
-  if (extra && extra.ids.length) {
-    const parent = slot.get(extra.path);
-    if (parent) {
-      const depth = parent.depth + 1;
-      let firstFree = 0;
-      for (const s of slot.values()) if (s.depth === depth) firstFree = Math.max(firstFree, s.row + 1);
-      const startRow = Math.max(parent.row, firstFree);
-      extra.ids.forEach((id, i) => ghosts.push({ id, x: colX(depth), y: rowY(startRow + i) }));
-      maxDepth = Math.max(maxDepth, depth);
-      bottom = Math.max(bottom, startRow + extra.ids.length);
-    }
+  for (const column of extra === undefined ? [] : Array.isArray(extra) ? extra : [extra]) {
+    const parent = slot.get(column.path);
+    if (!parent || column.ids.length === 0) continue;
+    const depth = parent.depth + 1;
+    let firstFree = 0;
+    for (const s of slot.values()) if (s.depth === depth) firstFree = Math.max(firstFree, s.row + 1);
+    const startRow = Math.max(parent.row, firstFree);
+    column.ids.forEach((id, i) => {
+      ghosts.push({ id, x: colX(depth), y: rowY(startRow + i) });
+      // A ghost is a parent for the column after it.
+      slot.set(id, { depth, row: startRow + i });
+    });
+    maxDepth = Math.max(maxDepth, depth);
+    bottom = Math.max(bottom, startRow + column.ids.length);
   }
   return { placed, ghosts, width: colX(maxDepth) + CARD_W, height: rowY(Math.max(bottom, 1)) - ROW_GAP };
 }

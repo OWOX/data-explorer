@@ -61,3 +61,9 @@ test('an unknown extra path or empty ids adds no ghosts', () => {
   expect(r.ghosts).toEqual([]);
   expect(r.width).toBe(2 * CARD_W + COL_GAP);
 });
+
+test('a second column of ghosts hangs from a ghost of the first, in the column after it', () => {
+  const r = layoutTree(tree([['', null, ['a']], ['a', '', []]]), [{ path: 'a', ids: ['g1', 'g2'] }, { path: 'g2', ids: ['h1'] }]);
+  expect(r.ghosts.at(-1)).toEqual({ id: 'h1', x: 3 * (CARD_W + COL_GAP), y: CARD_H + ROW_GAP });
+  expect(r.width).toBe(4 * CARD_W + 3 * COL_GAP);
+});

@@ -1,6 +1,6 @@
 // The Sources and Data bands with the lines between their cards, and the hover that lights them.
 // The Data and Row bands arrive as children and sit under the same canvas; they do not re-render on hover.
-import { Box, LayoutGrid, Plug, Workflow } from 'lucide-react';
+import { Box, LayoutGrid, Network, Plug } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { DqSummary, Mart, Model, Source } from '../../model/types';
 import { matchesSearch } from '../../graph/search';
@@ -30,7 +30,7 @@ import type { JoinedSource } from '../../api/blendable';
 type MartsView = 'grid' | 'canvas';
 const MARTS_VIEWS: SwitchOption<MartsView>[] = [
   { value: 'grid', label: 'Grid', icon: LayoutGrid },
-  { value: 'canvas', label: 'Canvas', icon: Workflow },
+  { value: 'canvas', label: 'Graph', icon: Network },
 ];
 
 const martId = (m: Mart) => m.id;
@@ -125,7 +125,7 @@ export function CardBands({
   const click = useCardClick(model);
   const drag = useCardDrag(canvas, selection.martId, (id) => model.marts.get(id)?.title ?? id, (id) => void click(id, { mode: 'makeMain' }), (id) => view === 'grid' && model.marts.get(id)?.accessible === true);
 
-  // The report tree: a joined mart is a node per alias path, in Canvas and in Grid, and a source line reaches each of them.
+  // The report tree: a joined mart is a node per alias path, in Graph and in Grid, and a source line reaches each of them.
   const mainFor = selection.martId;
   const canvasTree = useMemo(() => (mainFor ? buildJoinTree(mainFor, mainColumns, joinSources ?? []) : null), [mainFor, mainColumns, joinSources]);
   const { focus, toggle: toggleFocus, clear: clearFocus } = useGridFocus(mainFor, canvasTree, view === 'grid');
@@ -287,7 +287,7 @@ export function CardBands({
   // A search nothing answered and no title matches: the selected mart is still shown, so the band is not empty, but it says so.
   const noMatch = smart.applied !== '' && found.length === 0 && ![...model.marts.values()].some((m) => m.accessible && matchesSearch(m, smart.applied));
 
-  // In Canvas the band counts the marts of the report tree.
+  // In Graph the band counts the marts of the report tree.
   const reportSize = canvasTree ? canvasTree.nodes.size : 0;
 
   const unjoinableFor = (id: string) => !!selection.martId && visible.joinable !== null && id !== selection.martId && !joined.includes(id) && !visible.joinable.has(id);

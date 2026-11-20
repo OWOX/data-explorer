@@ -534,7 +534,7 @@ describe('search, contexts and refresh', () => {
     expect(within(marts()).getByText('Campaigns').closest('article')!.querySelector('.dm-badge-shrink')).toBeNull();
   });
 
-  test('the toolbar holds Storage (the search is in the page header); the Grid / Canvas switch and then the Contexts badges sit in the title row after the hint', async () => {
+  test('the toolbar holds Storage (the search is in the page header); the Grid / Graph switch and then the Contexts badges sit in the title row after the hint', async () => {
     await ordersGrid();
     const tools = marts().querySelector('.dm-band-tools')!;
     const kinds = [...tools.children].map((c) => (c.matches('button.dm-search-btn') ? 'search' : c.querySelector('summary')?.firstChild?.textContent));
