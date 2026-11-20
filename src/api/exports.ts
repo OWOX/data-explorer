@@ -350,13 +350,26 @@ export function createExporter(ctx: Ctx): Exporter {
         subscribe(cb) { stageListeners.add(cb); return () => stageListeners.delete(cb); },
       };
       const onStage = (s: Stage) => { flight.stage = s; a.onStage?.(s); stageListeners.forEach((l) => l(s)); };
-      flight.promise = execute({ ...a, onStage }).finally(() => {
-        flight.settled = true;
-        // The report may have changed in OWOX (or be gone): read the mart's reports again.
-        caches.delete(a.martId);
-        load(a.martId);
-        emit(a.martId);
-      });
+      const settle = () => { flight.settled = true; };
+      flight.promise = execute({ ...a, onStage }).then(
+        (result) => {
+          settle();
+          // Only this report changed, and `touch` already updated the others' `usedAt`: read just this one.
+          const cache = caches.get(a.martId);
+          if (cache?.started) void read(a.martId, cache, result.report.reportId);
+          else { caches.delete(a.martId); load(a.martId); }
+          emit(a.martId);
+          return result;
+        },
+        (e) => {
+          settle();
+          // The report may be gone (or the failure left it in an unknown state): read the mart's reports again.
+          caches.delete(a.martId);
+          load(a.martId);
+          emit(a.martId);
+          throw e;
+        },
+      );
       // The entry is read, not awaited, by a remounted menu: a rejection nobody follows must not go unhandled.
       flight.promise.catch(() => undefined);
       flights.set(a.martId, flight);
@@ -366,6 +379,8 @@ export function createExporter(ctx: Ctx): Exporter {
 
   async function execute({ martId, destination, title, source, payload, onStage, signal }: Parameters<Exporter['run']>[0]): Promise<RunResult> {
       let report: ExportedReport;
+      // The report as the backend returned it when this export made it; `undefined` for an update, whose report is read before the run.
+      let createdDto: ReportDto | undefined;
       if (source.kind === 'update') {
         onStage?.('report');
         const r = source.report;
@@ -401,6 +416,7 @@ export function createExporter(ctx: Ctx): Exporter {
         onStage?.('report');
         try {
           const created = await ctx.owox.postJson<ReportDto>('/api/reports', { title, dataMartId: martId, dataDestinationId: destination.id, destinationConfig: destinationConfig(target), ...payload });
+          createdDto = created;
           report = { reportId: created.id, destinationId: destination.id, spreadsheetId: target.spreadsheetId, sheetId: target.sheetId, title, usedAt: new Date().toISOString() };
         } catch (e) {
           const err = new ExportError('report', messageOf(e), codeOf(e), target);
@@ -413,7 +429,8 @@ export function createExporter(ctx: Ctx): Exporter {
       }
       onStage?.('run');
       try {
-        const pre = await ctx.owox.getJson<ReportDto>(`/api/reports/${encodeURIComponent(report.reportId)}`);
+        // A report made a moment ago carries its run status and time already; an update reads them.
+        const pre = createdDto ?? await ctx.owox.getJson<ReportDto>(`/api/reports/${encodeURIComponent(report.reportId)}`);
         // The backend skips a run request while one is running, so the new settings would never run.
         if (pre.lastRunStatus === 'RUNNING') return { report, outcome: { state: 'busy' } };
         const before = pre.lastRunAt ?? null;

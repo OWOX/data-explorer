@@ -385,7 +385,7 @@ describe('withoutPaths', () => {
     sorts: [{ field: jc('a.c', 'n'), direction: 'desc' }, { field: jc('b.c', 'n'), direction: 'asc' }],
     limit: 100,
     aggregations: [{ column: jc('a.c', 'n'), function: 'SUM' }, { column: jc('b.c', 'n'), function: 'SUM' }],
-    dateTrunc: [{ column: jc('a.c'), unit: 'month' } as never, { column: jc('b.c'), unit: 'month' } as never],
+    dateTrunc: [{ column: jc('a.c'), unit: 'MONTH' } as never, { column: jc('b.c'), unit: 'MONTH' } as never],
   };
   test('removing a.c keeps the columns, filters, sorts and aggregations of b.c', () => {
     const out = withoutPaths(two, ps, ['a.c'], ['id']);
@@ -393,7 +393,7 @@ describe('withoutPaths', () => {
     expect(Object.keys(out.filters)).toEqual([jc('b.c')]);
     expect(out.sorts).toEqual([{ field: jc('b.c', 'n'), direction: 'asc' }]);
     expect(out.aggregations).toEqual([{ column: jc('b.c', 'n'), function: 'SUM' }]);
-    expect(out.dateTrunc).toEqual([{ column: jc('b.c'), unit: 'month' }]);
+    expect(out.dateTrunc).toEqual([{ column: jc('b.c'), unit: 'MONTH' }]);
   });
   test('removing several paths takes them all, and sorts left empty become null', () => {
     const out = withoutPaths({ ...two, sorts: [{ field: jc('a.c', 'n'), direction: 'desc' }] }, ps, ['a.c', 'b.c'], ['id']);
@@ -439,5 +439,89 @@ describe('slices in join-plan', () => {
   test('a rejoined path renames the field of its slice', () => {
     const moved = planRejoin(g(['id', 'customers__city'], { slices: { customers__city: slice('customers__city') } }), [...ordersSources, src('a.customers', 'customers', [{ ...f('customers__city', 'string', 'customers'), name: 'a__customers__city', joined: { martId: 'customers', label: 'customers', aliasPath: 'a.customers', originalName: 'city' } }], 2)], new Map([['customers', 'a.customers']]), ['id']);
     expect(moved.slices).toEqual({ a__customers__city: { field: 'a__customers__city', op: 'eq', value: 'PL' } });
+  });
+});
+
+describe('refit pins: what each call site does to sorts, aggregations, buckets, filters and slices', () => {
+  const having = (field: string) => ({ field, op: 'gt' as const, value: 3, fn: 'SUM' as const });
+  const slice = (field: string) => ({ field, op: 'eq' as const, value: 'PL' });
+  const rich = g(['id', 'customers__id', 'customers__city', 'products__price'], {
+    sorts: [{ field: 'customers__city', direction: 'asc' }, { field: 'id', direction: 'desc' }],
+    aggregations: [{ column: 'customers__id', function: 'SUM' }, { column: 'products__price', function: 'SUM' }],
+    dateTrunc: [{ column: 'customers__city', unit: 'MONTH' }],
+    filters: { customers__id: having('customers__id'), products__price: having('products__price'), id: { field: 'id', op: 'eq', value: 1 } },
+    slices: { customers__city: slice('customers__city'), products__sku: slice('products__sku') },
+  });
+
+  test('withoutMart keeps the surviving sorts, rules, filters and slices', () => {
+    const { grid, removed } = withoutMart(rich, ordersSources, 'customers', ['id']);
+    expect(removed).toEqual(['customers__id', 'customers__city']);
+    expect(grid).toEqual({
+      ...rich,
+      columns: ['id', 'products__price'],
+      sorts: [{ field: 'id', direction: 'desc' }],
+      aggregations: [{ column: 'products__price', function: 'SUM' }],
+      dateTrunc: undefined,
+      filters: { products__price: having('products__price'), id: { field: 'id', op: 'eq', value: 1 } },
+      slices: { products__sku: slice('products__sku') },
+    });
+  });
+
+  test('withoutMart nulls the sorts when all are lost, and falls back to the own columns', () => {
+    const only = g(['customers__city'], { sorts: [{ field: 'customers__city', direction: 'asc' }], aggregations: [{ column: 'customers__city', function: 'COUNT' }] });
+    const { grid } = withoutMart(only, ordersSources, 'customers', ['id', 'status']);
+    expect(grid).toEqual({ ...only, columns: ['id', 'status'], sorts: null, aggregations: undefined, dateTrunc: undefined, filters: {}, slices: undefined });
+    expect(withoutMart(g(['id', 'customers__city']), ordersSources, 'customers', ['id']).grid.sorts).toBeNull();
+  });
+
+  test('withoutPaths gives the same result as withoutMart for the same names', () => {
+    expect(withoutPaths(rich, ordersSources, ['customers'], ['id'])).toEqual(withoutMart(rich, ordersSources, 'customers', ['id']).grid);
+    const only = g(['customers__city'], { sorts: [{ field: 'customers__city', direction: 'asc' }] });
+    expect(withoutPaths(only, ordersSources, ['customers'], ['id', 'status'])).toEqual({ ...only, columns: ['id', 'status'], sorts: null, aggregations: undefined, dateTrunc: undefined, filters: {}, slices: undefined });
+  });
+
+  test('withoutPaths returns the same grid when no path is in use', () => {
+    expect(withoutPaths(rich, ordersSources, ['stores'], ['id'])).toBe(rich);
+  });
+
+  test('becoming main restores the last shown columns: sorts and rules refit, filters and slices stay as they were', () => {
+    const grids = { products: g(['sku', 'price', 'name'], { sorts: [{ field: 'price', direction: 'asc' }, { field: 'name', direction: 'asc' }], aggregations: [{ column: 'price', function: 'SUM' }, { column: 'name', function: 'COUNT' }], dateTrunc: [{ column: 'name', unit: 'DAY' }], filters: { price: having('price') }, slices: { name: slice('name') } }) };
+    const e: PlanEnv = { ...env(grids, null), ownNames: () => ['sku', 'price', 'name'], lastShownOf: () => ['sku', 'price'] };
+    const plan = planClick(e, 'products');
+    expect(plan.grids.products).toEqual({ ...grids.products, columns: ['sku', 'price'], sorts: [{ field: 'price', direction: 'asc' }], aggregations: [{ column: 'price', function: 'SUM' }], dateTrunc: undefined });
+    const none: PlanEnv = { ...e, lastShownOf: () => ['sku'] };
+    expect(planClick(none, 'products').grids.products).toEqual({ ...grids.products, columns: ['sku'], sorts: null, aggregations: undefined, dateTrunc: undefined });
+  });
+
+  test('becoming main strips the joined marts the stale grid still held', () => {
+    const grids = { customers: g(['id', 'countries__name', 'stores__city'], { sorts: [{ field: 'countries__name', direction: 'asc' }], aggregations: [{ column: 'stores__city', function: 'COUNT' }] }) };
+    const plan = planClick(env(grids, null), 'customers');
+    expect(plan.grids.customers).toEqual({ ...grids.customers, columns: ['id'], sorts: null, aggregations: undefined, dateTrunc: undefined, filters: {}, slices: undefined });
+  });
+
+  test('making a mart main refits its own grid to the new columns, with filters kept by column and slices by joined field', () => {
+    const grids = {
+      orders: g(['id', 'customers__city']),
+      customers: g(['id', 'city'], { sorts: [{ field: 'city', direction: 'asc' }, { field: 'gone', direction: 'asc' }], aggregations: [{ column: 'city', function: 'COUNT' }, { column: 'gone', function: 'SUM' }], dateTrunc: [{ column: 'gone', unit: 'DAY' }], filters: { city: { field: 'city', op: 'eq', value: 'x' }, gone: having('gone') }, slices: { countries__name: slice('countries__name'), other: slice('other') } }),
+    };
+    const e: PlanEnv = { ...env(grids, 'orders'), ownColumns: () => ['id', 'city'] };
+    const next = planMakeMain(e, 'customers').grids.customers!;
+    expect(next.columns).toEqual(['id', 'city']);
+    expect(next).toEqual({
+      ...grids.customers,
+      columns: ['id', 'city'],
+      sorts: [{ field: 'city', direction: 'asc' }],
+      aggregations: [{ column: 'city', function: 'COUNT' }],
+      dateTrunc: undefined,
+      filters: { city: { field: 'city', op: 'eq', value: 'x' } },
+      slices: { countries__name: slice('countries__name') },
+    });
+  });
+
+  test('a rejoin maps sorts, rules and buckets onto the new path, dropping what the path lacks', () => {
+    const target = src('a.customers', 'customers', [{ ...f('customers__city', 'string', 'customers'), name: 'a__customers__city', joined: { martId: 'customers', label: 'customers', aliasPath: 'a.customers', originalName: 'city' } }], 2);
+    const grid = g(['id', 'customers__id', 'customers__city'], { sorts: [{ field: 'customers__city', direction: 'asc' }], aggregations: [{ column: 'customers__id', function: 'SUM' }, { column: 'customers__city', function: 'COUNT' }], dateTrunc: [{ column: 'customers__id', unit: 'DAY' }] });
+    const out = planRejoin(grid, [...ordersSources, target], new Map([['customers', 'a.customers']]), ['id']);
+    expect(out).toEqual({ ...grid, columns: ['id', 'a__customers__city'], sorts: [{ field: 'a__customers__city', direction: 'asc' }], aggregations: [{ column: 'a__customers__city', function: 'COUNT' }], dateTrunc: undefined, filters: {}, slices: undefined });
   });
 });

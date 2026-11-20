@@ -129,6 +129,30 @@ const keepSlices = (slices: GridState['slices'], keep: (field: string) => boolea
   return Object.keys(kept).length ? kept : undefined;
 };
 
+/** The grid's sorts and aggregation rules cut down to `columns`: no sorts left is `null`, an empty rule list is `undefined`. */
+const refitRules = (grid: GridState, columns: string[]) => {
+  const kept = grid.sorts && sortsOnColumns(grid.sorts, columns);
+  const agg = keepVisible({ aggregations: grid.aggregations ?? [], dateTrunc: grid.dateTrunc ?? [] }, columns);
+  return {
+    aggregation: agg,
+    sorts: grid.sorts && grid.sorts.length > 0 && kept!.length === 0 ? null : kept,
+    aggregations: agg.aggregations.length ? agg.aggregations : undefined,
+    dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined,
+  };
+};
+
+/** The grid on new columns, without the filters and slices of the fields `keep` rejects. */
+const refit = (grid: GridState, columns: string[], keep: (field: string) => boolean): GridState => {
+  const { aggregation, ...rules } = refitRules(grid, columns);
+  return {
+    ...grid,
+    columns,
+    ...rules,
+    filters: dropOrphanHaving(Object.fromEntries(Object.entries(grid.filters).filter(([k]) => keep(k))), aggregation.aggregations),
+    slices: keepSlices(grid.slices, keep),
+  };
+};
+
 /** The grid with everything of one joined mart taken out: its columns, its filters and its sorts. `removed` is the field list to remember. */
 export function withoutMart(grid: GridState, sources: JoinedSource[], martId: string, own: string[]): { grid: GridState; removed: string[] } {
   const names = namesOf(sources, martId);
@@ -136,20 +160,7 @@ export function withoutMart(grid: GridState, sources: JoinedSource[], martId: st
   let columns = grid.columns.filter((c) => !names.has(c));
   // A grid always keeps a column: when only the joined mart's were shown, the mart's own defaults come back.
   if (columns.length === 0) columns = own;
-  const kept = grid.sorts && sortsOnColumns(grid.sorts, columns);
-  const agg = keepVisible({ aggregations: grid.aggregations ?? [], dateTrunc: grid.dateTrunc ?? [] }, columns);
-  return {
-    removed,
-    grid: {
-      ...grid,
-      columns,
-      aggregations: agg.aggregations.length ? agg.aggregations : undefined,
-      dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined,
-      filters: dropOrphanHaving(Object.fromEntries(Object.entries(grid.filters).filter(([k]) => !names.has(k))), agg.aggregations),
-      slices: keepSlices(grid.slices, (k) => !names.has(k)),
-      sorts: grid.sorts && grid.sorts.length > 0 && kept!.length === 0 ? null : kept,
-    },
-  };
+  return { removed, grid: refit(grid, columns, (k) => !names.has(k)) };
 }
 
 /** The grid with every field of these exact alias paths taken out (the same grid when none is in use): columns, filters, sorts, aggregations, buckets. A grid left with no column gets `own`. */
@@ -164,17 +175,7 @@ export function withoutPaths(grid: GridState, sources: JoinedSource[], paths: st
   if (!touched) return grid;
   let columns = grid.columns.filter((c) => !gone.has(c));
   if (columns.length === 0) columns = own;
-  const kept = grid.sorts && sortsOnColumns(grid.sorts, columns);
-  const agg = keepVisible({ aggregations: grid.aggregations ?? [], dateTrunc: grid.dateTrunc ?? [] }, columns);
-  return {
-    ...grid,
-    columns,
-    aggregations: agg.aggregations.length ? agg.aggregations : undefined,
-    dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined,
-    filters: dropOrphanHaving(Object.fromEntries(Object.entries(grid.filters).filter(([k]) => !gone.has(k))), agg.aggregations),
-    slices: keepSlices(grid.slices, (k) => !gone.has(k)),
-    sorts: grid.sorts && grid.sorts.length > 0 && kept!.length === 0 ? null : kept,
-  };
+  return refit(grid, columns, (k) => !gone.has(k));
 }
 
 export type Plan = {
@@ -233,9 +234,8 @@ const becomeMain = (env: PlanEnv, id: string, remember: Plan['remember'] = []): 
   const last = (env.lastShownOf ?? noShown)(id)?.filter((n) => offered.has(n)) ?? [];
   const restored = last.length > 0 && !(last.length === grid.columns.length && last.every((c, i) => c === grid.columns[i]));
   if (last.length > 0) {
-    const kept = grid.sorts && sortsOnColumns(grid.sorts, last);
-    const agg = keepVisible({ aggregations: grid.aggregations ?? [], dateTrunc: grid.dateTrunc ?? [] }, last);
-    grid = { ...grid, columns: last, sorts: grid.sorts && grid.sorts.length > 0 && kept!.length === 0 ? null : kept, aggregations: agg.aggregations.length ? agg.aggregations : undefined, dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined };
+    const { sorts, aggregations, dateTrunc } = refitRules(grid, last);
+    grid = { ...grid, columns: last, sorts, aggregations, dateTrunc };
     // Its memory stays: forgetting it here could not be undone.
   }
   if (joined.length === 0 && !restored) return { selection, grids: {}, saves: [], remember };
@@ -330,18 +330,14 @@ export function planMakeMain(env: PlanEnv, id: string): Plan {
     else remember.push({ martId: r, fields: shown });
   }
   columns = orderColumns(columns, nextSources, env.ownColumns(id));
-  const kept = nextGrid.sorts && sortsOnColumns(nextGrid.sorts, columns);
-  const agg = keepVisible({ aggregations: nextGrid.aggregations ?? [], dateTrunc: nextGrid.dateTrunc ?? [] }, columns);
-  const filters = dropOrphanHaving(Object.fromEntries(Object.entries(nextGrid.filters).filter(([k]) => columns.includes(k))), agg.aggregations);
+  const { aggregation, ...rules } = refitRules(nextGrid, columns);
   const next: GridState = {
     ...nextGrid,
     columns,
-    filters,
+    filters: dropOrphanHaving(Object.fromEntries(Object.entries(nextGrid.filters).filter(([k]) => columns.includes(k))), aggregation.aggregations),
     // A slice does not need its column on screen: it stays while its field is still a joined field of the new main.
     slices: keepSlices(nextGrid.slices, (k) => nextSources.some((x) => x.fields.some((fl) => fl.name === k))),
-    sorts: nextGrid.sorts && nextGrid.sorts.length > 0 && kept!.length === 0 ? null : kept,
-    aggregations: agg.aggregations.length ? agg.aggregations : undefined,
-    dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined,
+    ...rules,
   };
   return { selection: { sourceKey: env.sourceKeyFor(id), martId: id, record: null }, grids: { [id]: next }, saves: [{ martId: id, columns }], remember };
 }

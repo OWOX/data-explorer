@@ -442,6 +442,45 @@ describe('exporter', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  test('an export reads only its own report again, not every remembered one', async () => {
+    vi.useFakeTimers();
+    try {
+      const remembered = { reportId: 'a', destinationId: 'd1', spreadsheetId: 's-a', sheetId: 1, title: 'T-a' };
+      const { ctx, calls } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }, { reportId: 'b' }, { reportId: 'c' }]);
+      (ctx.owox.getJson as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+        calls.push(`GET ${path}`);
+        const ran = (ctx.owox.postJson as ReturnType<typeof vi.fn>).mock.calls.some((c) => String(c[0]).endsWith('/run'));
+        return { ...live(path.split('/').pop()!), lastRunAt: ran ? '2026-02-01T00:00:00.000Z' : '2026-01-01T00:00:00.000Z', lastRunStatus: 'SUCCESS' };
+      });
+      const ex = createExporter(ctx);
+      ex.load('orders');
+      await vi.advanceTimersByTimeAsync(0);
+      const gets = (id: string) => calls.filter((c) => c === `GET /api/reports/${id}`).length;
+      expect([gets('a'), gets('b'), gets('c')]).toEqual([1, 1, 1]);
+      const p = ex.run({ martId: 'orders', destination: dest, title: 'T-a', source: { kind: 'update', report: remembered }, payload });
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+      await p;
+      await vi.advanceTimersByTimeAsync(0);
+      expect([gets('b'), gets('c')]).toEqual([1, 1]);
+      // The update's own report: the pre-run read, one poll, and one read after the run.
+      expect(gets('a')).toBe(4);
+      expect(ex.entries('orders').map((e) => e.state)).toEqual(['ready', 'ready', 'ready']);
+    } finally { vi.useRealTimers(); }
+  });
+
+  test('a new report is not read before its run: the create response already has its run status', async () => {
+    vi.useFakeTimers();
+    try {
+      const { ctx, calls } = exportCtx({ status: 'SUCCESS' }, 1);
+      const ex = createExporter(ctx);
+      const p = ex.run({ martId: 'orders', destination: dest, title: 'T', source: { kind: 'new' }, payload });
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+      await p;
+      const afterCreate = calls.slice(calls.indexOf('POST /api/reports') + 1);
+      expect(afterCreate[0]).toBe('POST /api/reports/r1/run');
+    } finally { vi.useRealTimers(); }
+  });
+
   test('a read that returns after invalidate() is ignored', async () => {
     const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'a' }]);
     let release: (v: unknown) => void = () => {};
