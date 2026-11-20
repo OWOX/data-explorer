@@ -318,3 +318,33 @@ export function demoFixtures(opts: { sheets?: 0 | 1 | 2 } = {}): Fixtures {
   });
   return { storages: [{ id: 's1', title: 'Demo Warehouse', type: 'GOOGLE_BIGQUERY' }, { id: 's2', title: 'Sales Lake', type: 'AWS_ATHENA' }], contexts, marts, edges, connectors, customConnectors, destinations: [...DESTINATIONS.slice(0, sheets), DESTINATIONS[2]!] };
 }
+
+/** A saved report as `GET /api/reports/:id` returns it, before the mock adds its run state. */
+export type MockReportFixture = Record<string, unknown> & { id: string; title: string; dataMartId: string; lastRunAt: string | null; lastRunStatus: string | null; lastRunError: string | null; dataMart: { id: string; title: string; contexts: { id: string; name: string; icon: string | null }[] } };
+
+/** Three saved reports over the demo marts: a full one, one with the rarer rule options, and a plain one. */
+export function demoReports(f: Fixtures): MockReportFixture[] {
+  const martOf = (id: string) => {
+    const m = f.marts.find((x) => x.id === id)!;
+    const contexts = m.contexts.map((cid) => { const c = f.contexts.find((x) => x.id === cid)!; return { id: c.id, name: c.name, icon: c.icon ?? null }; });
+    return { dataMartId: id, dataMart: { id, title: m.title, contexts } };
+  };
+  const base = { lastRunAt: null, lastRunStatus: null, lastRunError: null, filterConfig: null, sortConfig: null, aggregationConfig: null, dateTruncConfig: null, uniqueCountConfig: null };
+  return [
+    {
+      ...base, ...martOf('orders'), id: 'mock-report-orders-paid', title: 'Paid orders by month',
+      columnConfig: ['status', 'amount', 'created_at'],
+      filterConfig: { rules: [{ column: 'status', operator: 'eq', value: 'paid' }] },
+      sortConfig: { column: 'created_at', direction: 'desc' },
+      aggregationConfig: { column: 'amount', function: 'SUM' },
+      dateTruncConfig: { column: 'created_at', unit: 'MONTH' },
+    },
+    {
+      ...base, ...martOf('orders'), id: 'mock-report-orders-extras', title: 'Orders with extras',
+      columnConfig: ['status', 'net_revenue'],
+      filterConfig: { rules: [{ column: 'status', operator: 'eq', value: 'shipped', placement: 'pre-join' }, { column: 'net_revenue', operator: 'gt', value: '100', function: 'SUM' }] },
+      uniqueCountConfig: [''],
+    },
+    { ...base, ...martOf('campaigns'), id: 'mock-report-campaigns', title: 'Campaign spend', columnConfig: ['id', 'name'] },
+  ];
+}

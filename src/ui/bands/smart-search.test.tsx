@@ -133,7 +133,7 @@ describe('the pipeline', () => {
     const spy = vi.spyOn(t.ctx.owox, 'getJson');
     await search('orders');
     await waitFor(() => expect(headings()).toBe('Orders'));
-    expect(spy).toHaveBeenCalledWith('/api/search', { q: 'orders', entityTypes: 'DATA_MART', excludeDrafts: 'true', limit: '10' });
+    expect(spy).toHaveBeenCalledWith('/api/search', { q: 'orders', entityTypes: 'DATA_MART,REPORT', excludeDrafts: 'true', limit: '20' });
     // the engine ranks a title hit above a description hit (the mock scores a title word 20, a description word 8); cards that leave are gone once their transition ends
     await waitFor(() => expect(cardTitles()).toHaveLength(5));
     expect(cardTitles()).toEqual(['Orders', 'Order Items', 'Customers', 'Returns', 'Payments']);

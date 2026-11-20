@@ -37,7 +37,7 @@ function validIds(answer: Record<string, unknown>, model: Model): string[] {
 export async function smartSearch(deps: SearchDeps, query: string): Promise<SearchOutcome> {
   const { ctx, model, schemas, signal } = deps;
   const ai = pickModels(ctx);
-  let ids = await searchEndpoint(ctx, query, model, signal);
+  let ids = (await searchEndpoint(ctx, query, model, signal)).marts;
   if (!ai) return { ids, grid: null, ai: 'none' };
   const run = createAiRun(ai, signal, deps.timeoutMs);
   let grid: GridState | null = null;

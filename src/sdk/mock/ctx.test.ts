@@ -159,3 +159,14 @@ test('mock ctx serves custom connector summaries for the names asked, ignoring c
   const model = await loadModel(ctx);
   expect(model.sources.find((s) => s.key === 'service:fibery.io')).toMatchObject({ name: 'Fibery', martIds: expect.arrayContaining(['fibery_tasks', 'fibery_projects', 'fibery_people']) });
 });
+
+test('the mock serves three seeded reports and returns them from /api/search only when REPORT is asked for', async () => {
+  const ctx = createMockCtx(demoFixtures());
+  const hits = await ctx.owox.getJson<{ entityType: string; entityId: string; report?: { dataMart: { id: string } } }[]>('/api/search', { q: 'paid orders', entityTypes: 'DATA_MART,REPORT' });
+  expect(hits.find((h) => h.entityId === 'mock-report-orders-paid')).toMatchObject({ entityType: 'REPORT', report: { dataMart: { id: 'orders' } } });
+  expect(hits.some((h) => h.entityType === 'DATA_MART')).toBe(true);
+  const martsOnly = await ctx.owox.getJson<{ entityType: string }[]>('/api/search', { q: 'paid orders', entityTypes: 'DATA_MART' });
+  expect(martsOnly.every((h) => h.entityType === 'DATA_MART')).toBe(true);
+  const report = await ctx.owox.getJson<{ title: string; dataMart: { id: string } }>('/api/reports/mock-report-campaigns');
+  expect(report).toMatchObject({ title: 'Campaign spend', dataMart: { id: 'campaigns' } });
+});

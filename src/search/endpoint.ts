@@ -4,10 +4,10 @@ import type { Ctx } from '../sdk/types';
 /** The backend (search.config.ts) answers 400 outside 2 to 256 characters of the trimmed query. */
 export const MIN_QUERY = 2;
 export const MAX_QUERY = 256;
-/** Marts a search shows. */
+/** Marts, and reports, a search shows, each. */
 export const MAX_FOUND = 5;
-/** Asked of the engine: more than are shown, since ids the model does not hold (or the member cannot open) are dropped after. */
-const REQUEST_LIMIT = 10;
+/** Asked of the engine: more than are shown, since ids the model does not hold (or the member cannot open) are dropped after, and two kinds share the limit. */
+const REQUEST_LIMIT = 20;
 
 /** Why a query cannot be sent, or null when it can. */
 export function queryProblem(q: string): string | null {
@@ -17,31 +17,48 @@ export function queryProblem(q: string): string | null {
   return null;
 }
 
+/** A saved report the engine found, with the data mart it reads. */
+export type ReportHit = { id: string; title: string; martId: string };
+export type SearchHits = { reports: ReportHit[]; marts: string[] };
+
+const score = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : -Infinity);
+/** The ids of the best entries, best score first; Array.prototype.sort is stable, so equal scores keep the engine's order. */
+const top = <T,>(m: Map<string, { score: number; hit: T }>): T[] => [...m.values()].sort((a, b) => b.score - a.score).slice(0, MAX_FOUND).map((e) => e.hit);
+const keepBest = <T,>(m: Map<string, { score: number; hit: T }>, id: string, s: number, hit: T) => {
+  if (!m.has(id) || s > m.get(id)!.score) m.set(id, { score: s, hit });
+};
+
 /**
- * The data marts OWOX's own search engine ranks for the query (the engine behind the MCP tool get_relevant_data_marts_by_prompt),
- * best first, at most five, only those the member can open in this model. A failure or an odd answer finds nothing.
+ * The data marts and saved reports OWOX's own search engine ranks for the query (the engine behind the MCP tool
+ * get_relevant_data_marts_by_prompt), each best first, at most five of each, only those on a mart the member can open in this model.
+ * A failure or an odd answer finds nothing.
  */
-export async function searchEndpoint(ctx: Ctx, query: string, model: Model, signal?: AbortSignal): Promise<string[]> {
+export async function searchEndpoint(ctx: Ctx, query: string, model: Model, signal?: AbortSignal): Promise<SearchHits> {
+  const none: SearchHits = { reports: [], marts: [] };
   const q = query.trim();
   // A one-character query is a title match only: the backend refuses under its minimum.
-  if (q.length < MIN_QUERY || queryProblem(q)) return [];
+  if (q.length < MIN_QUERY || queryProblem(q)) return none;
   let body: unknown;
   try {
-    body = await ctx.owox.getJson<unknown>('/api/search', { q, entityTypes: 'DATA_MART', excludeDrafts: 'true', limit: String(REQUEST_LIMIT) });
+    body = await ctx.owox.getJson<unknown>('/api/search', { q, entityTypes: 'DATA_MART,REPORT', excludeDrafts: 'true', limit: String(REQUEST_LIMIT) });
   } catch (e) {
     console.warn('The OWOX search failed', e);
-    return [];
+    return none;
   }
-  if (signal?.aborted || !Array.isArray(body)) return [];
-  const best = new Map<string, number>();
+  if (signal?.aborted || !Array.isArray(body)) return none;
+  const marts = new Map<string, { score: number; hit: string }>();
+  const reports = new Map<string, { score: number; hit: ReportHit }>();
   for (const item of body) {
     if (typeof item !== 'object' || item === null) continue;
-    const { entityType, entityId, finalScore } = item as Record<string, unknown>;
-    if (entityType !== undefined && entityType !== 'DATA_MART') continue;
-    if (typeof entityId !== 'string' || !model.marts.get(entityId)?.accessible) continue;
-    const score = typeof finalScore === 'number' && Number.isFinite(finalScore) ? finalScore : -Infinity;
-    if (!best.has(entityId) || score > best.get(entityId)!) best.set(entityId, score);
+    const { entityType, entityId, title, finalScore, report } = item as Record<string, unknown>;
+    if (typeof entityId !== 'string') continue;
+    if (entityType === undefined || entityType === 'DATA_MART') {
+      if (model.marts.get(entityId)?.accessible) keepBest(marts, entityId, score(finalScore), entityId);
+    } else if (entityType === 'REPORT') {
+      const martId = ((report as { dataMart?: { id?: unknown } } | null | undefined)?.dataMart)?.id;
+      if (typeof martId !== 'string' || !model.marts.get(martId)?.accessible) continue;
+      keepBest(reports, entityId, score(finalScore), { id: entityId, title: typeof title === 'string' ? title : entityId, martId });
+    }
   }
-  // Array.prototype.sort is stable: equal scores keep the order the engine gave them.
-  return [...best.entries()].sort((a, b) => b[1] - a[1]).slice(0, MAX_FOUND).map(([id]) => id);
+  return { reports: top(reports), marts: top(marts) };
 }
