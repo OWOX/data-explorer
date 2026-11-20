@@ -1,6 +1,7 @@
 import { Check, ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useLatest } from '../useLatest';
 import { rovingTarget } from '../roving';
 import { placeBeside, placeBelow, type Place } from './menuPlacement';
 
@@ -29,6 +30,9 @@ export function useSubmenu<K extends string | number>({ isEditing = () => false,
   const [intent] = useState(() => new HoverIntent());
   useEffect(() => () => intent.clear(), [intent]);
   const closedRow = useRef<HTMLElement | null>(null);
+  // The callbacks that must keep one identity read the latest sub and reset through refs.
+  const subRef = useLatest(sub);
+  const onResetRef = useLatest(onReset);
   const open = (key: K, row: HTMLElement, focus: boolean) => {
     intent.clear();
     closedRow.current = null;
@@ -44,15 +48,15 @@ export function useSubmenu<K extends string | number>({ isEditing = () => false,
   };
   const hoverOther = () => { if (sub) later(() => { onReset?.(); setSub(null); }); };
   const leaveRow = () => { intent.clear(); closedRow.current = null; };
-  const closeSub = () => {
-    const row = sub?.row;
+  const closeSub = useCallback(() => {
+    const row = subRef.current?.row;
     if (holdClosed) closedRow.current = row ?? null;
-    onReset?.();
+    onResetRef.current?.();
     setSub(null);
     row?.focus();
-  };
+  }, [holdClosed, subRef, onResetRef]);
   /** Drops the open submenu and any pending hover without moving focus. */
-  const dismiss = () => { intent.clear(); closedRow.current = null; setSub(null); };
+  const dismiss = useCallback(() => { intent.clear(); closedRow.current = null; setSub(null); }, [intent]);
   return { sub, setSub, open, hoverRow, hoverOther, leaveRow, closeSub, dismiss };
 }
 

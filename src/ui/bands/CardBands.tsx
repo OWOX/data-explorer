@@ -376,7 +376,7 @@ export function CardBands({
                   contexts={contextsOf(model.contexts, mart.contextIds)}
                   count={counts.get(id) ?? { state: 'idle' }}
                   quality={dq.get(id)}
-                    selected={false}
+                  selected={false}
                   joined={false}
                   lit={lit.has(el)}
                   aside={aside.has(el)}
@@ -404,7 +404,7 @@ export function CardBands({
                   title={pathTitle(s, [...(canvasTree?.nodes.keys() ?? [])], joinSources ?? [])}
                   contexts={contextsOf(model.contexts, mart.contextIds)}
                   quality={dq.get(mart.id)}
-                    selected={false}
+                  selected={false}
                   joined={false}
                   lit={false}
                   onSelect={() => addFromBand(mart.id, { addAt: s.aliasPath })}

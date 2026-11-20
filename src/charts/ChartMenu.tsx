@@ -14,7 +14,7 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
   const [placed, setPlaced] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const holder = useRef<HTMLSpanElement>(null);
-  const close = useCallback((refocus = true) => { dismiss(); setAnchor(null); setPlaced(false); if (refocus) button.current?.focus(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const close = useCallback((refocus = true) => { dismiss(); setAnchor(null); setPlaced(false); if (refocus) button.current?.focus(); }, [dismiss]);
   useEffect(() => {
     if (!anchor) return;
     // A press outside the menu closes it, as the column menu does.
