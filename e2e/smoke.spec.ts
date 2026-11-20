@@ -111,6 +111,32 @@ test('search finds the marts through OWOX search and makes the best one the main
   await expect(heading(page)).toHaveText(['Campaigns']);
 });
 
+test('search dropdown: reports first, then marts, then the ad-hoc row', async ({ page }) => {
+  await ordersGrid(page);
+  await page.locator('header.dm-page-header').getByRole('button', { name: 'Search data marts' }).click();
+  const box = page.locator('header.dm-page-header').getByRole('combobox', { name: 'Search data marts' });
+  await box.fill('paid orders');
+  const options = page.getByRole('listbox').getByRole('option');
+  await expect(options.first()).toContainText('Paid orders by month');
+  await expect(options.last()).toContainText('Ad-hoc report for');
+  await expect(box).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('picking a report from the dropdown opens its mart with the report\'s filter and sort', async ({ page }) => {
+  await ordersGrid(page);
+  await search(page, 'who are our buyers');
+  await expect(heading(page)).toHaveText(['Customers']);
+  const header = page.locator('header.dm-page-header');
+  const box = header.getByRole('combobox', { name: 'Search data marts' });
+  await box.fill('paid orders');
+  await page.getByRole('option').filter({ hasText: 'Paid orders by month' }).first().click();
+  await expect(heading(page)).toHaveText(['Orders']);
+  await expect(band(page, 'data').getByLabel('Filter status')).toHaveClass(/dm-ctl-on/);
+  await expect(band(page, 'data').getByRole('cell', { name: 'new', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+  await expect(box).toHaveValue('paid orders');
+});
+
 test('smart search with AI: finds a mart by meaning, applies the filters it asks for, and Undo takes the whole result back', async ({ page }) => {
   await ordersGrid(page);
   await search(page, 'who are our buyers');
@@ -326,7 +352,7 @@ test('Export: with no Sheets destination the menu is still there, with the AI gr
   await page.goto('/?mock&sheets=0');
   const data = await ordersGrid(page);
   await data.getByText('Export', { exact: true }).click();
-  await expect(data.locator('[role="menuitem"]:not([data-link])')).toHaveText(['Claude', 'ChatGPT', 'Copy to clipboard', 'Copy SQL']);
+  await expect(data.locator('[role="menuitem"]:not([data-link])')).toHaveText(['Claude', 'ChatGPT', 'Copy to clipboard', 'Copy SQL', 'Create Data Mart']);
   await expect(data.getByRole('menuitem', { name: 'Open OWOX in Claude' })).toBeVisible();
 });
 

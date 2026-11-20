@@ -193,7 +193,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         history.replaceState(history.state, '', url);
       },
     },
-    credentials: opts.ai === false ? {} : { ai: createFakeAi() },
+    credentials: opts.ai === false ? {} : { ai: createFakeAi(latency) },
     collections: <T,>(name: string) => ({
       get: async (id: string) => { const k = `${name}/${id}`; return docs.has(k) ? { document: docs.get(k) as T } : null; },
       put: async (id: string, d: T) => { docs.set(`${name}/${id}`, d); return d; },

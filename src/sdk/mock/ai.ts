@@ -76,9 +76,11 @@ function filtersAnswer(doc: Doc): unknown {
 }
 
 /** `fast` and `reasoning` are the same fake model; `ai.fast` is the handle itself, as in the SDK. */
-export function createFakeAi(): AiCredential {
+export function createFakeAi(latencyMs = 0): AiCredential {
   const model: AiModel = {
     async doGenerate(options) {
+      // A real model takes time, which lets the page commit the pick before the answer lands; the mock page sets a latency for that.
+      if (latencyMs) await new Promise((r) => setTimeout(r, latencyMs));
       const user = options.prompt.find((m) => m.role === 'user');
       const text = user && user.role === 'user' ? user.content.map((c) => c.text).join('') : '{}';
       let doc: Doc;
