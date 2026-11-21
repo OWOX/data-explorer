@@ -1,0 +1,34 @@
+// Tells an element how much of the viewport lies below its top edge, as the CSS variable `--dm-fill`,
+// so a band can take "everything left on the screen" without knowing what sits above it.
+import { useEffect } from 'react';
+
+/** The height from the element's top to the bottom of the viewport, less the page's bottom padding. */
+export function fillHeight(el: HTMLElement): number {
+  const top = el.getBoundingClientRect().top;
+  const main = el.closest('main');
+  const pad = main ? parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0;
+  return Math.max(0, Math.round(window.innerHeight - top - pad));
+}
+
+/**
+ * Keeps `--dm-fill` on the element with this id current. The top of the element moves when the bands above
+ * it grow or fold, so those are watched too (through the page container). The element's own height does not
+ * change its top, so setting the variable cannot feed back.
+ */
+export function useFillHeight(id: string) {
+  useEffect(() => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const apply = () => {
+      // In full screen the band is fixed over the page: its top says nothing about the page.
+      if (el.closest('.dm-full')) return;
+      el.style.setProperty('--dm-fill', `${fillHeight(el)}px`);
+    };
+    apply();
+    window.addEventListener('resize', apply);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(apply);
+    const page = el.parentElement;
+    if (observer && page) for (const child of Array.from(page.children)) if (child !== el) observer.observe(child);
+    return () => { window.removeEventListener('resize', apply); observer?.disconnect(); };
+  }, [id]);
+}

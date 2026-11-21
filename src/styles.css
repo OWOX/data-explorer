@@ -112,7 +112,7 @@ body { color: var(--foreground); font-family: var(--font-sans); }
 /* The page shell and its paddings, exactly as Data Flow's. A tooltip anchored on a right-hand card can
    reach past the content edge, and a hidden one is still laid out: `clip` rather than `hidden`, so this
    does not become a scroll container and take vertical scrolling with it. */
-.dm-page { min-height: 100vh; overflow-x: clip; }
+.dm-page { min-height: 100vh; overflow-x: clip; display: flex; flex-direction: column; }
 .dm-page-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 1.5rem 3rem; }
 .dm-page-header-title { margin: 0; font-size: 1.5rem; font-weight: 500; }
 .dm-page-header-lead { display: flex; align-items: center; gap: 0.75rem; }
@@ -126,7 +126,7 @@ body { color: var(--foreground); font-family: var(--font-sans); }
   .dm-page-header-actions > .dm-search-open { flex: 1 1 12rem; }
   .dm-page-header-actions > .dm-search-open input { width: auto; flex: 1 1 0; }
 }
-.dm-page-content { padding: 0 3rem 3rem; }
+.dm-page-content { padding: 0 3rem 3rem; flex: 1 0 auto; display: flex; flex-direction: column; }
 
 @media (max-width: 640px) {
   .dm-page-header { padding: 1rem 1.25rem; }
