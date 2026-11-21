@@ -25,7 +25,7 @@ function HeatmapPanel({ martId, cf, spec, r, filter, version, idle, hasFilters, 
   const blanks = spec.blanks === true;
   // Dimension axes always leave blanks out; only a date column has the choice.
   const dateRules = date ? dateFilter(filter, date, blanks) : filter;
-  const { bucket, error, retry } = useBucket(martId, date, cols.kind === 'date' ? cols.bucket : 'AUTO', filter, version, idle || !date);
+  const { bucket, error, retry } = useBucket(martId, date, cols.kind === 'date' ? cols.bucket : 'AUTO', dateRules, version, idle || !date);
   const yTop = useChartQuery(martId, idle ? null : topValuesQuery(y, measure, dateRules), version);
   const xTop = useChartQuery(martId, !idle && cols.kind === 'dim' ? topValuesQuery(cols.dim, measure, filter) : null, version);
   const yNames = yTop.rows?.map((row) => String(row[y.name]));
