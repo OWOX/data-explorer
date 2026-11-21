@@ -5,7 +5,7 @@ import type { Field } from '../model/types';
 import type { TraverseOptions } from '../sdk/types';
 import type { ChartFields, ChartMart, Metric } from './fields';
 import { measureKey, seriesQuery, sparklineQuery, type Measure } from './queries';
-import { resolveCharts, type ResolvedCharts } from './settings';
+import type { Spark } from './settings';
 import { sharedSeriesQuery, sparkQueryOf } from './Scorecards';
 
 const f = (name: string, category: Field['category'], extra: Partial<Field> = {}): Field => ({ name, alias: null, type: category === 'number' ? 'FLOAT' : category === 'date' ? 'DATE' : 'STRING', category, description: null, isPrimaryKey: false, ...extra });
@@ -16,7 +16,7 @@ const main: ChartMart = { aliasPath: '', recordsId: 'records:orders', title: 'Or
 const cf: ChartFields = { marts: [main], dimensions: [], dates: [date, other], counter: null };
 const metric: Measure = { kind: 'metric', metric: amount };
 const records: Measure = { kind: 'records', aliasPath: '', recordsId: 'records:orders' };
-const resolved = (over: Partial<ResolvedCharts> = {}): ResolvedCharts => ({ ...resolveCharts({}, cf), ...over });
+const resolved = (over: Partial<Spark> = {}): Spark => ({ hidden: new Set(), sparklines: true, date: null, ...over });
 const rs = resolved({ date });
 
 describe('sharedSeriesQuery', () => {

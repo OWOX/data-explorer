@@ -97,13 +97,13 @@ test('PieChart: 3 slices give 3 paths; one slice at 100% is a circle', () => {
 
 test('ChartPanel shows the error and Retry calls onRetry; empty text shows; the note is the (i) by the title', () => {
   const onRetry = vi.fn();
-  const { rerender } = wrap(<ChartPanel title="T" loading={false} error={new Error('nope')} onRetry={onRetry}>x</ChartPanel>);
+  const { rerender } = wrap(<ChartPanel title="T" name="T" items={null} width="20rem" loading={false} error={new Error('nope')} onRetry={onRetry}>x</ChartPanel>);
   expect(screen.getByRole('alert')).toHaveTextContent('nope');
   fireEvent.click(screen.getByText('Retry'));
   expect(onRetry).toHaveBeenCalled();
-  rerender(<TooltipProvider><ChartPanel title="T" loading={false} error={null} onRetry={onRetry} empty="No rows">x</ChartPanel></TooltipProvider>);
+  rerender(<TooltipProvider><ChartPanel title="T" name="T" items={null} width="20rem" loading={false} error={null} onRetry={onRetry} empty="No rows">x</ChartPanel></TooltipProvider>);
   expect(screen.getByText('No rows')).toBeInTheDocument();
-  rerender(<TooltipProvider><ChartPanel title="T" loading={false} error={null} onRetry={onRetry} note="Top 8">kid</ChartPanel></TooltipProvider>);
+  rerender(<TooltipProvider><ChartPanel title="T" name="T" items={null} width="20rem" loading={false} error={null} onRetry={onRetry} note="Top 8">kid</ChartPanel></TooltipProvider>);
   expect(screen.getByText('kid')).toBeInTheDocument();
   expect(screen.queryByText('Top 8')).toBeNull();
   expect(screen.getByRole('note', { name: 'About T' }).closest('.dm-chart-head')).not.toBeNull();

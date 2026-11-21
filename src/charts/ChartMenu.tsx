@@ -3,10 +3,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Panel, Row, useSubmenu } from '../ui/explorer/MenuParts';
 import { useOutsidePress } from '../ui/outsidePress';
 
-/** A tick row (stays open: several can be changed in a row) or a row opening a submenu of radio choices (closes on a choice). */
+/** A tick row (stays open: several can be changed in a row), an action row (closes the menu, then runs) or a row opening a submenu of radio choices (closes on a choice). */
 export type MenuItem =
   | { kind: 'check'; label: string; checked: boolean; onToggle: () => void }
-  | { kind: 'radio'; label: string; value: string; options: { value: string; label: string }[]; onPick: (value: string) => void };
+  | { kind: 'radio'; label: string; value: string; options: { value: string; label: string }[]; onPick: (value: string) => void }
+  | { kind: 'action'; label: string; onPick: () => void };
 
 /** The ⋮ button of a chart and its menu, built from the same panel and rows as the column menu. */
 export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) {
@@ -41,6 +42,8 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
         <Panel anchor={anchor} mode="below" role="menu" label={`${name} menu`} onEscape={() => (sub ? closeSub() : close())} onTab={() => close()} onPlaced={() => setPlaced(true)} focusSeq={1} className="dm-menu-root">
           {items.map((it, i) => it.kind === 'check' ? (
             <Row key={i} check checkbox checked={it.checked} label={it.label} onActivate={it.onToggle} onHover={hoverOther} onLeaveRow={leaveRow} />
+          ) : it.kind === 'action' ? (
+            <Row key={i} label={it.label} onActivate={() => { close(); it.onPick(); }} onHover={hoverOther} onLeaveRow={leaveRow} />
           ) : (
             <Row key={i} sub expanded={sub?.key === i} label={it.label} onActivate={(r) => open(i, r, true)} onOpen={(r) => open(i, r, true)}
               onHover={(r) => hoverRow(i, r)} onLeaveRow={leaveRow} />

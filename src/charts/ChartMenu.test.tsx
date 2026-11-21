@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChartMenu, type MenuItem } from './ChartMenu';
@@ -33,4 +34,13 @@ test('hovering a submenu row opens it only after the pointer has rested, and Esc
   expect(screen.queryByRole('menu', { name: 'Bucket' })).toBeNull();
   expect(root).toBeInTheDocument();
   expect(screen.getByRole('menu', { name: 'Sales menu' })).toBeInTheDocument();
+});
+
+test('an action row closes the menu and runs', async () => {
+  const onPick = vi.fn();
+  render(<ChartMenu name="Sales" items={[{ kind: 'action', label: 'Remove', onPick }]} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
+  expect(onPick).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('menu')).toBeNull();
 });

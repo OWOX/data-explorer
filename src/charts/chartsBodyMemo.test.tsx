@@ -6,12 +6,8 @@ import type { Field } from '../model/types';
 import { AppServices, StoreProvider } from '../state/store';
 import { ChartsBody } from './ChartsBody';
 import * as fields from './fields';
-import * as settings from './settings';
+import { KINDS } from './kinds';
 
-vi.mock('./settings', async (importOriginal) => {
-  const real = await importOriginal<typeof import('./settings')>();
-  return { ...real, resolveCharts: vi.fn(real.resolveCharts) };
-});
 vi.mock('./fields', async (importOriginal) => {
   const real = await importOriginal<typeof import('./fields')>();
   return { ...real, chartFields: vi.fn(real.chartFields) };
@@ -26,11 +22,11 @@ test('a resize (only scrollerWidth changes) rebuilds neither the chart fields no
     version: 0, paused: true, hasFilters: false, sources: [], formatOf: () => ({ kind: 'auto' }) as never, onFilter: () => {},
   };
   const ui = (w: number) => <AppServices ctx={ctx}><StoreProvider><table><ChartsBody {...props} scrollerWidth={w} /></table></StoreProvider></AppServices>;
+  const resolve = vi.spyOn(KINDS.timeSeries!, 'resolve');
   const { rerender } = render(ui(500));
   const spy = vi.mocked(fields.chartFields);
   const after = spy.mock.calls.length;
   expect(after).toBe(1);
-  const resolve = vi.mocked(settings.resolveCharts);
   const resolved = resolve.mock.calls.length;
   expect(resolved).toBeGreaterThanOrEqual(1);
   rerender(ui(600));

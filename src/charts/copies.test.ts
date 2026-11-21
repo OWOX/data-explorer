@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { NO_AGGREGATION } from '../model/aggregation';
 import type { Field } from '../model/types';
 import { chartFields, measuresOf, pieMeasures } from './fields';
-import { sharesWhole } from './PiePanel';
+import { sharesWhole } from './kinds/pie';
 import { cardsOf, measureOptions } from './Scorecards';
-import { measureId, resolveCharts } from './settings';
+import { measureId, pickMeasure, scorecardsOf } from './settings';
 
 const f = (name: string, category: Field['category'], extra: Partial<Field> = {}): Field => ({ name, alias: null, type: category === 'number' ? 'FLOAT' : 'STRING', category, description: null, isPrimaryKey: false, ...extra });
 const at = (martId: string, aliasPath: string, label: string) => ({ joined: { martId, label, aliasPath } });
@@ -30,15 +30,14 @@ describe('a mart joined twice and a self-join', () => {
   });
   it('resolves a saved copy to its own path, on the series and on the pie', () => {
     const cf = build();
-    const r = resolveCharts({ timeSeries: { metric: 'records:C@b' }, pie: { metric: 'records:M@s' } }, cf);
-    expect(r.measure).toMatchObject({ kind: 'records', aliasPath: 'b', recordsId: 'records:C@b' });
-    expect(r.pieMeasure).toMatchObject({ kind: 'records', aliasPath: 's' });
+    expect(pickMeasure(measuresOf(cf), 'records:C@b')).toMatchObject({ kind: 'records', aliasPath: 'b', recordsId: 'records:C@b' });
+    expect(pickMeasure(pieMeasures(cf), 'records:M@s')).toMatchObject({ kind: 'records', aliasPath: 's' });
     expect(pieMeasures(cf).filter((m) => m.kind === 'records').map((m) => measureId(m))).toEqual(['records', 'records:C', 'records:C@b', 'records:M@s']);
   });
   it('keeps a saved records:<martId> on the first path and "records" on main', () => {
     const cf = build();
-    expect(resolveCharts({ timeSeries: { metric: 'records:C' } }, cf).measure).toMatchObject({ kind: 'records', aliasPath: 'a' });
-    expect(resolveCharts({ timeSeries: { metric: 'records' } }, cf).measure).toMatchObject({ kind: 'records', aliasPath: '' });
+    expect(pickMeasure(measuresOf(cf), 'records:C')).toMatchObject({ kind: 'records', aliasPath: 'a' });
+    expect(pickMeasure(measuresOf(cf), 'records')).toMatchObject({ kind: 'records', aliasPath: '' });
   });
   it('has distinct card ids, and hiding one keeps the others', () => {
     const cf = build();
@@ -46,7 +45,7 @@ describe('a mart joined twice and a self-join', () => {
     expect(ids).toEqual(['records:M', 'records:C', 'records:C@b', 'records:M@s']);
     const all = cf.marts.flatMap((m) => cardsOf(m).map((c) => c.id));
     expect(new Set(all).size).toBe(all.length);
-    const r = resolveCharts({ scorecards: { hidden: ['records:C@b'] } }, cf);
+    const r = scorecardsOf({ scorecards: { hidden: ['records:C@b'] } });
     expect(cf.marts.map((m) => cardsOf(m).filter((c) => !r.hidden.has(c.id)).some((c) => c.id.startsWith('records'))))
       .toEqual([true, true, false, true]);
   });

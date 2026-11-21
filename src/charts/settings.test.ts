@@ -1,8 +1,9 @@
 import { describe, expect, it, test } from 'vitest';
-import { chartsOf, DEFAULT_CHARTS, editCharts, isChartKind, measureId, newChartId, patchChart, pickBucketChoice, pickField, pickMeasure, resolveCharts, scorecardsOf, type ChartSettingsV2 } from './settings';
+import { chartsOf, DEFAULT_CHARTS, editCharts, isChartKind, measureId, newChartId, patchChart, pickBucketChoice, pickField, pickMeasure, scorecardsOf, type ChartSettings, type ChartSpec } from './settings';
 import type { ChartFields, ChartMart, Metric } from './fields';
 import type { Measure } from './queries';
 import type { Field } from '../model/types';
+import { KINDS } from './kinds';
 
 const f = (name: string, category: Field['category']): Field => ({ name, alias: null, type: 'X', category, description: null, isPrimaryKey: false });
 const mart = (martId: string, extra: Partial<ChartMart> = {}): ChartMart => ({ aliasPath: martId === 'M' ? '' : 'c', recordsId: `records:${martId}`, title: martId === 'M' ? 'Orders' : 'Customers', hasPk: false, metrics: [], dates: [], dimensions: [], ...extra });
@@ -16,50 +17,53 @@ const name = (m: Measure | null) => (m?.kind === 'metric' ? m.metric.field.name 
 const fn = (m: Measure | null) => (m?.kind === 'metric' ? m.metric.fn : null);
 const withMetrics = (metrics: Metric[]): ChartFields => ({ ...cf, marts: [mart('M', { metrics })] });
 
-describe('resolveCharts', () => {
+// What each default chart draws, resolved through the kind registry.
+const ts = (spec: Partial<ChartSpec>, c: ChartFields) => KINDS.timeSeries!.resolve({ id: 't', kind: 'timeSeries', ...spec }, c);
+const pi = (spec: Partial<ChartSpec>, c: ChartFields) => KINDS.pie!.resolve({ id: 'p', kind: 'pie', ...spec }, c);
+
+describe('resolving the time series and pie kinds', () => {
   it('defaults', () => {
-    const r = resolveCharts({}, cf);
-    expect(r.date?.name).toBe('d1');
+    const r = ts({}, cf)!;
+    expect(r.date.name).toBe('d1');
     expect(r.bucket).toBe('AUTO');
     expect(name(r.measure)).toBe('amount');
     expect(r.stack).toBeNull();
     expect(r.orientation).toBe('vertical');
-    expect(r.sparklines).toBe(true);
-    expect(r.hidden.size).toBe(0);
-    expect(name(r.pieMeasure)).toBe('amount');
-    expect(r.pieDimension?.name).toBe('channel');
+    expect(scorecardsOf({}).sparklines).toBe(true);
+    expect(scorecardsOf({}).hidden.size).toBe(0);
+    expect(name(pi({}, cf)!.measure)).toBe('amount');
+    expect(pi({}, cf)!.dimension.name).toBe('channel');
   });
   it('uses saved names that are shown', () => {
-    const r = resolveCharts({
-      scorecards: { hidden: ['x'], sparklines: false },
-      timeSeries: { date: 'd2', bucket: 'WEEK', metric: 'qty', stack: 'city', orientation: 'horizontal' },
-      pie: { metric: 'qty', dimension: 'city' },
-    }, cf);
-    expect([r.date?.name, r.bucket, name(r.measure), r.stack?.name, r.orientation]).toEqual(['d2', 'WEEK', 'qty', 'city', 'horizontal']);
-    expect([name(r.pieMeasure), r.pieDimension?.name, r.sparklines]).toEqual(['qty', 'city', false]);
-    expect([...r.hidden]).toEqual(['x']);
+    const r = ts({ date: 'd2', bucket: 'WEEK', measure: 'qty', stack: 'city', orientation: 'horizontal' }, cf)!;
+    expect([r.date.name, r.bucket, name(r.measure), r.stack?.name, r.orientation]).toEqual(['d2', 'WEEK', 'qty', 'city', 'horizontal']);
+    const p = pi({ measure: 'qty', dimension: 'city' }, cf)!;
+    expect([name(p.measure), p.dimension.name]).toEqual(['qty', 'city']);
+    const s = scorecardsOf({ scorecards: { hidden: ['x'], sparklines: false } });
+    expect([s.hidden.has('x'), s.sparklines]).toEqual([true, false]);
   });
   it('falls back for names no longer shown', () => {
-    const r = resolveCharts({ timeSeries: { date: 'gone', metric: 'gone', stack: 'gone' }, pie: { metric: 'gone', dimension: 'gone' } }, cf);
-    expect([r.date?.name, name(r.measure), r.stack, name(r.pieMeasure), r.pieDimension?.name]).toEqual(['d1', 'amount', null, 'amount', 'channel']);
+    const r = ts({ date: 'gone', measure: 'gone', stack: 'gone' }, cf)!;
+    const p = pi({ measure: 'gone', dimension: 'gone' }, cf)!;
+    expect([r.date.name, name(r.measure), r.stack, name(p.measure), p.dimension.name]).toEqual(['d1', 'amount', null, 'amount', 'channel']);
   });
   it('rejects an invalid bucket or orientation', () => {
-    const r = resolveCharts({ timeSeries: { bucket: 'HOUR' as never, orientation: 'x' as never } }, cf);
+    const r = ts({ bucket: 'HOUR' as never, orientation: 'x' as never }, cf)!;
     expect([r.bucket, r.orientation]).toEqual(['AUTO', 'vertical']);
   });
   it('the pie takes only metrics that may be summed: a saved one that may not falls back to the first that may', () => {
     const noSum = { ...f('price', 'number'), allowedAggregations: ['MIN', 'MAX'] as const } as unknown as Field;
-    const only = resolveCharts({ pie: { metric: 'price' } }, withMetrics([{ field: noSum, fn: 'MIN' }, ...cf.marts[0]!.metrics]));
-    expect([name(only.pieMeasure), name(only.measure)]).toEqual(['amount', 'price']);
-    expect(resolveCharts({}, withMetrics([{ field: noSum, fn: 'MIN' }])).pieMeasure).toBeNull();
+    const c = withMetrics([{ field: noSum, fn: 'MIN' }, ...cf.marts[0]!.metrics]);
+    expect([name(pi({ measure: 'price' }, c)!.measure), name(ts({}, c)!.measure)]).toEqual(['amount', 'price']);
+    expect(pi({}, withMetrics([{ field: noSum, fn: 'MIN' }]))).toBeNull();
   });
   it('the pie always sums, whatever function the grid shows', () => {
-    const r = resolveCharts({}, withMetrics([{ field: f('amount', 'number'), fn: 'AVG' }]));
-    expect([fn(r.pieMeasure), fn(r.measure)]).toEqual(['SUM', 'AVG']);
+    const c = withMetrics([{ field: f('amount', 'number'), fn: 'AVG' }]);
+    expect([fn(pi({}, c)!.measure), fn(ts({}, c)!.measure)]).toEqual(['SUM', 'AVG']);
   });
   it('is null everywhere with nothing shown', () => {
-    const r = resolveCharts({}, { marts: [], dimensions: [], dates: [] });
-    expect([r.date, r.measure, r.pieMeasure, r.pieDimension]).toEqual([null, null, null, null]);
+    const none = { marts: [], dimensions: [], dates: [] };
+    expect([ts({}, none), pi({}, none)]).toEqual([null, null]);
   });
 });
 
@@ -71,30 +75,29 @@ describe('measure', () => {
   };
   const pk = two(true, true);
   it('is the saved metric, else records when saved and keyed, else the first metric', () => {
-    expect(name(resolveCharts({ timeSeries: { metric: 'qty' } }, pk).measure)).toBe('qty');
-    expect(name(resolveCharts({ timeSeries: { metric: 'records' } }, pk).measure)).toBe('records:M');
-    expect(name(resolveCharts({ timeSeries: { metric: 'records' } }, cf).measure)).toBe('amount');
-    expect(name(resolveCharts({}, pk).measure)).toBe('amount');
+    expect(name(ts({ measure: 'qty' }, pk)!.measure)).toBe('qty');
+    expect(name(ts({ measure: 'records' }, pk)!.measure)).toBe('records:M');
+    expect(name(ts({ measure: 'records' }, cf)!.measure)).toBe('amount');
+    expect(name(ts({}, pk)!.measure)).toBe('amount');
   });
   it('resolves records:<martId> to that joined mart, and the same for the pie', () => {
-    const r = resolveCharts({ timeSeries: { metric: 'records:C' }, pie: { metric: 'records:C' } }, pk);
-    expect(r.measure).toEqual({ kind: 'records', aliasPath: 'c', recordsId: 'records:C' });
-    expect(r.pieMeasure).toEqual({ kind: 'records', aliasPath: 'c', recordsId: 'records:C' });
-    expect(measureId(r.measure!)).toBe('records:C');
-    expect(measureId(resolveCharts({ timeSeries: { metric: 'records' } }, pk).measure!)).toBe('records');
+    expect(ts({ measure: 'records:C' }, pk)!.measure).toEqual({ kind: 'records', aliasPath: 'c', recordsId: 'records:C' });
+    expect(pi({ measure: 'records:C' }, pk)!.measure).toEqual({ kind: 'records', aliasPath: 'c', recordsId: 'records:C' });
+    expect(measureId(ts({ measure: 'records:C' }, pk)!.measure)).toBe('records:C');
+    expect(measureId(ts({ measure: 'records' }, pk)!.measure)).toBe('records');
   });
   it('a joined metric pairs with the main mart: saved by field name', () => {
-    expect(name(resolveCharts({ timeSeries: { metric: 'c__ltv' } }, pk).measure)).toBe('c__ltv');
+    expect(name(ts({ measure: 'c__ltv' }, pk)!.measure)).toBe('c__ltv');
   });
   it('falls back when the saved mart has no key (any more)', () => {
-    const r = resolveCharts({ timeSeries: { metric: 'records:C' }, pie: { metric: 'records:C' } }, two(true, false));
-    expect([name(r.measure), name(r.pieMeasure)]).toEqual(['amount', 'amount']);
+    const c = two(true, false);
+    expect([name(ts({ measure: 'records:C' }, c)!.measure), name(pi({ measure: 'records:C' }, c)!.measure)]).toEqual(['amount', 'amount']);
   });
   it('is records with a key and no metric, null without either', () => {
     const only = { ...cf, marts: [mart('M', { hasPk: true })] };
-    expect(name(resolveCharts({}, only).measure)).toBe('records:M');
-    expect(name(resolveCharts({}, only).pieMeasure)).toBe('records:M');
-    expect(resolveCharts({}, { marts: [], dimensions: [], dates: [] }).measure).toBeNull();
+    expect(name(ts({}, only)!.measure)).toBe('records:M');
+    expect(name(pi({}, only)!.measure)).toBe('records:M');
+    expect(ts({}, { marts: [], dimensions: [], dates: [] })).toBeNull();
   });
 });
 
@@ -109,7 +112,7 @@ describe('saved doc v2', () => {
     expect(s).toEqual({ version: 2, scorecards: { sparklines: false }, charts: [{ id: 'time-series', kind: 'timeSeries' }] });
   });
   test('patchChart changes one chart by id and keeps the rest', () => {
-    const s: ChartSettingsV2 = { version: 2, charts: [{ id: 'a', kind: 'pie' }, { id: 'b', kind: 'line' }] };
+    const s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie' }, { id: 'b', kind: 'line' }] };
     expect(patchChart(s, 'b', { area: true }).charts).toEqual([{ id: 'a', kind: 'pie' }, { id: 'b', kind: 'line', area: true }]);
   });
   test('pickMeasure: the saved id, else the first metric, else the first measure', () => {

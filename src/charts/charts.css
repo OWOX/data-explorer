@@ -25,9 +25,10 @@
 .dm-grid td[data-chart-group] { padding: 0.75rem; vertical-align: top; }
 .dm-grid td[data-chart-panels-cell] { padding: 0; height: auto; }
 .dm-grid td[data-chart-empty] { padding: 1rem; }
-/* Side by side while each panel still gets 30rem, one per row below that. The same 0.75rem inset as the scorecard
-   cells, so the left edges line up; 1.5rem between blocks either way. */
-.dm-chart-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); align-items: start; gap: 1.5rem; padding: 0.75rem 0.75rem 1.5rem; }
+/* Each panel is as wide as its content needs (ChartPanel sets the width); they wrap onto more rows when the band is narrow.
+   The same 0.75rem inset as the scorecard cells, so the left edges line up; 1.5rem between blocks either way. */
+.dm-chart-panels { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1.5rem; padding: 0.75rem 0.75rem 1.5rem; }
+.dm-chart { flex: none; max-width: 100%; }
 /* As a Google Sheets chart or scorecard: a square frame in a mid grey, darker than the grid's own lines. */
 .dm-scorecard { border: 1px solid var(--dm-chart-frame); border-radius: 0; }
 .dm-chart { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; padding: 0.75rem; border: 1px solid var(--dm-chart-frame); border-radius: 0; }
