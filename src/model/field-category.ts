@@ -43,3 +43,7 @@ export function categorizeFieldType(type: string): FieldCategory {
   if (BOOL.has(t)) return 'boolean';
   return 'other';
 }
+
+const INTEGER = new Set(['INTEGER', 'INT', 'INT2', 'INT4', 'INT8', 'INT64', 'BIGINT', 'SMALLINT', 'TINYINT', 'BYTEINT', 'HUGEINT', 'LONG', 'SHORT', 'BYTE', 'SERIAL', 'BIGSERIAL', 'SMALLSERIAL']);
+/** Whether a warehouse type holds whole numbers only. */
+export const isIntegerType = (type: string): boolean => INTEGER.has(normalizeType(type));

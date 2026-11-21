@@ -15,6 +15,9 @@ and the panels take only the width their content needs.
 3. New types are hand-drawn SVG, like the current bar, pie and sparkline. No chart library.
 4. A mart with no saved charts shows the time series and the pie, as today.
 5. AI ranking of chart suggestions is out of scope. "Add chart" offers every type the shown columns can draw.
+6. Charts show the same data as the table. They never drop rows on their own: a blank (null) value is drawn as its own
+   bar, slice or category, placed first. A member who wants it gone filters it out in the column filter. There is no
+   per-chart "hide blanks" option (added and reverted on 2026-11-21).
 
 ## 1. Saved settings
 

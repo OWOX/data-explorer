@@ -1,3 +1,4 @@
+import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { ColumnFilter } from '../../filters/build';
 import type { TraverseFilter } from '../../sdk/types';
@@ -18,6 +19,8 @@ export type ChartKindDef<R> = {
   kind: ChartKind;
   /** Shown in "Add chart" and "Chart type", and as the panel menu's name ("Pie options"). */
   label: string;
+  /** The type's glyph in the Charts list and the type submenus. */
+  icon: LucideIcon;
   /** Whether the shown columns can draw it. */
   eligible(cf: ChartFields): boolean;
   /** A new chart's saved fields; on a type switch, `from` is the chart being switched and its usable fields are kept. */

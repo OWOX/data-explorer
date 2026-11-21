@@ -37,6 +37,8 @@ function clean(doc: unknown): ChartSettings {
     out.scorecards = {};
     if (Array.isArray(sc.hidden)) out.scorecards.hidden = sc.hidden.filter((x): x is string => typeof x === 'string');
     if (typeof sc.sparklines === 'boolean') out.scorecards.sparklines = sc.sparklines;
+    const metrics = obj(sc.metrics);
+    if (metrics) out.scorecards.metrics = Object.fromEntries(Object.entries(metrics).filter((e): e is [string, string] => typeof e[1] === 'string'));
   }
   // Charts are read from a version 2 doc only: a v1 doc's fixed panels are dropped, the defaults stand in.
   if (d.version === 2 && Array.isArray(d.charts)) {

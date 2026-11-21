@@ -42,7 +42,7 @@ type ViewLinkV1 = {
   ctx: string[];
   st: string[] | null;
   f: Folded;
-  g: null | { c: Col[]; fl: [Col, string, unknown?, AggFn?][]; /** Slices, the same tuple as a filter's but without the function slot. */ sl?: [Col, string, unknown?][]; s: [Col, 1 | -1][] | null; l: number; /** Aggregations: [column, function]. */ ag?: [Col, AggFn][]; /** Date buckets: [column, unit, time zone?]. */ dt?: [Col, DateBucket, string?][]; /** Charts view; absent is the table. */ vw?: 1 };
+  g: null | { c: Col[]; fl: unknown[][]; /** Slices, the same tuple as a filter's but without the function slot. */ sl?: unknown[][]; s: [Col, 1 | -1][] | null; l: number; /** Aggregations: [column, function]. */ ag?: [Col, AggFn][]; /** Date buckets: [column, unit, time zone?]. */ dt?: [Col, DateBucket, string?][]; /** Charts view; absent is the table. */ vw?: 1 };
 };
 
 /** At most this many aggregation rules and this many date buckets are read from a link; the rest count as dropped. */
@@ -95,6 +95,16 @@ const splitName = (name: string): [string, string] | null => {
   return i > 0 && i + 2 < name.length ? [name.slice(0, i), name.slice(i + 2)] : null;
 };
 
+/** A rule as its tuple: [column, op, value?, fn?, 1?] for a filter, [column, op, value?, 1?] for a slice; trailing empty slots are left off. */
+function ruleTuple(column: Col, f: ColumnFilter, withFn: boolean): unknown[] {
+  const t: unknown[] = [column, f.op, f.value === undefined ? undefined : f.value];
+  if (withFn) t.push(f.fn);
+  if (f.list) t.push(1);
+  let n = t.length;
+  while (n > 2 && t[n - 1] === undefined) n--;
+  return t.slice(0, n).map((x, i) => (x === undefined && i >= 2 ? null : x));
+}
+
 export async function encodeViewLink(view: Omit<DecodedView, 'dropped' | 'droppedAggregations'>): Promise<string> {
   const P: string[] = [];
   const col = (name: string): Col => {
@@ -118,8 +128,8 @@ export async function encodeViewLink(view: Omit<DecodedView, 'dropped' | 'droppe
     f: view.folded,
     g: g && {
       c: g.columns.map(col),
-      fl: Object.entries(g.filters).map(([field, f]): [Col, string, unknown?, AggFn?] => (f.fn ? [col(field), f.op, f.value ?? null, f.fn] : f.value === undefined ? [col(field), f.op] : [col(field), f.op, f.value])),
-      ...(g.slices && Object.keys(g.slices).length ? { sl: Object.entries(g.slices).map(([field, f]): [Col, string, unknown?] => (f.value === undefined ? [col(field), f.op] : [col(field), f.op, f.value])) } : {}),
+      fl: Object.entries(g.filters).map(([field, f]): unknown[] => ruleTuple(col(field), f, true)),
+      ...(g.slices && Object.keys(g.slices).length ? { sl: Object.entries(g.slices).map(([field, f]): unknown[] => ruleTuple(col(field), f, false)) } : {}),
       s: g.sorts && g.sorts.map((x) => [col(x.field), x.direction === 'asc' ? 1 : -1]),
       l: g.limit,
       ...(g.aggregations?.length ? { ag: g.aggregations.map((r): [Col, AggFn] => [col(r.column), r.function]) } : {}),
@@ -190,24 +200,26 @@ function shape(raw: unknown): DecodedView {
     const columns: string[] = [];
     for (const c of g.c) { const n = name(c); if (n === null) dropped++; else columns.push(n); }
     // Built as entries: a decoded key like __proto__ must never reach an object's prototype.
-    // A filter is [column, op, value?, fn?]; a slice is the same without the function. A null value is a blank one (only a function in the fourth slot follows it).
+    // A filter is [column, op, value?, fn?, 1?]; a slice is [column, op, value?, 1?]. A null value or function is an empty slot before a later one. The trailing 1 marks a list (`a, b` is any of the two).
     const decodeRules = (list: unknown[], withFn: boolean): [string, ColumnFilter][] => {
       const out: [string, ColumnFilter][] = [];
       for (const e of list) {
         const arity = Array.isArray(e) ? e.length : 0;
-        const field = arity >= 2 && arity <= (withFn ? 4 : 3) ? name((e as unknown[])[0]) : null;
+        const field = arity >= 2 && arity <= (withFn ? 5 : 4) ? name((e as unknown[])[0]) : null;
         const op = (e as unknown[])[1];
         if (field === null || !isOpId(op) || UNSAFE_KEYS.has(field)) { dropped++; continue; }
         const entry: ColumnFilter = { field, op };
         const value = (e as unknown[])[2] as FilterValue | null | undefined;
-        const fn = (e as unknown[])[3];
-        const fnOk = fn === undefined || isAggFn(fn);
+        const fn = withFn ? (e as unknown[])[3] : undefined;
+        const listFlag = (e as unknown[])[withFn ? 4 : 3];
+        const fnOk = fn === undefined || fn === null || isAggFn(fn);
         // A relative filter needs a preset object; any other value must be safe to render and query. A function must be a known one.
-        const ok = isFilterValue(value ?? undefined) && (entry.op !== 'relative' || (isPlain(value) && typeof (value as { kind?: unknown }).kind === 'string'))
+        const ok = (listFlag === undefined || listFlag === 1) && isFilterValue(value ?? undefined) && (entry.op !== 'relative' || (isPlain(value) && typeof (value as { kind?: unknown }).kind === 'string'))
           && fnOk;
         if (!ok) { dropped++; continue; }
         if (value !== undefined && value !== null) entry.value = value;
         if (isAggFn(fn)) entry.fn = fn;
+        if (listFlag === 1 && typeof entry.value === 'string' && (entry.op === 'eq' || entry.op === 'neq')) entry.list = true;
         out.push([field, entry]);
       }
       return out;

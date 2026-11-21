@@ -39,7 +39,8 @@ test('BarChart shows the X field name under the bucket labels, and nothing witho
   const title = container.querySelector('.dm-chart-axis-title');
   expect(title).toHaveTextContent('Order date');
   const labelY = Number(container.querySelector('text.dm-chart-text[text-anchor="middle"]')!.getAttribute('y'));
-  expect(Number(title!.getAttribute('y'))).toBeGreaterThan(labelY);
+  // 18px below the labels' baseline was the old gap; 8px more keeps the title off them.
+  expect(Number(title!.getAttribute('y')) - labelY).toBeGreaterThanOrEqual(26);
   rerender(<TooltipProvider><BarChart series={two} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} /></TooltipProvider>);
   expect(container.querySelector('.dm-chart-axis-title')).toBeNull();
 });
@@ -249,4 +250,55 @@ test('SpreadChart anchors its first tick start and its last end', () => {
   const xt = [...container.querySelectorAll('svg g > text')].filter((t) => !t.hasAttribute('dominant-baseline'));
   expect(xt[0]).toHaveAttribute('text-anchor', 'start');
   expect(xt.at(-1)).toHaveAttribute('text-anchor', 'end');
+});
+
+test('BarChart: a count axis shows whole-number ticks only', () => {
+  const counts: Series[] = [{ name: 'n', color: 'red', points: [pt(1, 24), pt(2, 73)] }];
+  const { container } = wrap(<BarChart series={counts} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} integer />);
+  const ticks = [...container.querySelectorAll('.dm-chart-tick text')].map((t) => t.textContent);
+  expect(ticks).toEqual(['0', '20', '40', '60', '80']);
+});
+
+test('the X title keeps 8px more room under the tick labels in the line, scatter and heatmap too', () => {
+  const lines = wrap(<LineChart left={two} area={false} ariaLabel="l" formatLeft={(n) => `${n}`} xTitle="Date" />).container;
+  const tick = (c: HTMLElement) => Number(c.querySelector('text.dm-chart-text[text-anchor="middle"]')!.getAttribute('y'));
+  expect(Number(lines.querySelector('.dm-chart-axis-title')!.getAttribute('y')) - tick(lines)).toBeGreaterThanOrEqual(26);
+  const heat = wrap(<Heatmap xs={[{ key: 'a', label: 'A' }]} ys={[{ key: 'r', label: 'R' }]} cell={() => ({ value: 1, text: '1' })} ariaLabel="h" xTitle="Col" />).container;
+  expect(Number(heat.querySelector('.dm-chart-axis-title')!.getAttribute('y')) - tick(heat)).toBeGreaterThanOrEqual(26);
+});
+
+const yTitles = (c: HTMLElement) => [...c.querySelectorAll('[data-y-title]')].map((t) => ({ text: t.querySelector('title')!.textContent, rotated: t.getAttribute('transform')?.startsWith('rotate(-90') }));
+
+test('every chart with a Y axis draws its title vertically beside the ticks', () => {
+  const bar = wrap(<BarChart series={two} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} xTitle="Date" yTitle="Amount · Sum" />).container;
+  expect(yTitles(bar)).toEqual([{ text: 'Amount · Sum', rotated: true }]);
+  expect(bar.querySelector('.dm-chart-axis-title:not([data-y-title])')).toHaveTextContent('Date');
+  const line = wrap(<LineChart left={two} right={two[1]} area={false} ariaLabel="l" formatLeft={(n) => `${n}`} yTitle="Left" yTitleRight="Right" />).container;
+  expect(yTitles(line).map((t) => t.text)).toEqual(['Left', 'Right']);
+  const heat = wrap(<Heatmap xs={[{ key: 'a', label: 'A' }]} ys={[{ key: 'r', label: 'R' }]} cell={() => ({ value: 1, text: '1' })} ariaLabel="h" yTitle="Rows" />).container;
+  expect(yTitles(heat)).toEqual([{ text: 'Rows', rotated: true }]);
+  const spread = wrap(<SpreadChart rows={[{ key: 'a', label: 'A', p25: 1, p50: 2, p75: 3, min: null, max: null, text: 't' }]} ariaLabel="s" formatTick={(n) => `${n}`} yTitle="Channel" />).container;
+  expect(yTitles(spread)).toEqual([{ text: 'Channel', rotated: true }]);
+  const dots = wrap(<Scatter points={[{ key: 'a', label: 'A', x: 1, y: 2, xText: '1', yText: '2' }]} ariaLabel="sc" xTitle="X" yTitle="Y" formatX={(n) => `${n}`} formatY={(n) => `${n}`} />).container;
+  expect(yTitles(dots)).toEqual([{ text: 'Y', rotated: true }]);
+});
+
+test('a horizontal bar puts the measure under the value ticks and the category beside its labels', () => {
+  const { container } = wrap(<BarChart series={two} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} xTitle="Channel" yTitle="Amount · Sum" />);
+  expect(yTitles(container)).toEqual([{ text: 'Channel', rotated: true }]);
+  expect(container.querySelector('.dm-chart-axis-title:not([data-y-title])')).toHaveTextContent('Amount · Sum');
+});
+
+test('PieChart: the blank slice and a real value named "(blank)" are separate elements (keyed by category, not by name)', () => {
+  const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const slices = [
+    { key: '\u0000blank', name: '(blank)', value: 1, valueText: 't1', color: 'red', blank: true },
+    { key: '(blank)', name: '(blank)', value: 2, valueText: 't2', color: 'blue' },
+    { key: '\u0000other', name: 'Other', value: 3, valueText: 't3', color: 'grey', other: true },
+    { key: 'Other', name: 'Other', value: 4, valueText: 't4', color: 'green' },
+  ];
+  const { container } = wrap(<PieChart slices={slices} ariaLabel="p" />);
+  expect(container.querySelectorAll('path[data-slice]')).toHaveLength(4);
+  expect(err.mock.calls.filter((c) => String(c[0]).includes('same key'))).toHaveLength(0);
+  err.mockRestore();
 });

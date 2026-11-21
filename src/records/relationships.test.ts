@@ -1,4 +1,5 @@
-import { incomingLinks, joinFilters, primaryKeys, recordTabId } from './relationships';
+import { toTraverseFilter } from '../filters/build';
+import { equalsFilter, incomingLinks, joinFilters, primaryKeys, recordTabId } from './relationships';
 import type { Edge, Field } from '../model/types';
 
 const edges: Edge[] = [
@@ -43,4 +44,9 @@ test('joinFilters picks the operator the join field supports', () => {
 test('composite joins filter on every join field', () => {
   const joins = [{ sourceField: 'currency', targetField: 'code' }, { sourceField: 'day', targetField: 'day' }];
   expect(joinFilters(joins, { currency: 'EUR', day: 'x' }, [])).toEqual([{ field: 'code', op: 'eq', value: 'EUR' }, { field: 'day', op: 'eq', value: 'x' }]);
+});
+
+test('a join filter on a value with a comma stays one exact eq', () => {
+  const f = { name: 'city', category: 'string', type: 'STRING' } as Field;
+  expect(toTraverseFilter(equalsFilter(f, 'city', 'Austin, TX'), f)).toEqual({ column: 'city', operator: 'eq', value: 'Austin, TX' });
 });

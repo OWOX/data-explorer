@@ -331,3 +331,34 @@ test('Last [n] [unit]: the Apply button and Enter in the N box apply a valid cou
   expect(within(last).getByRole('button', { name: 'Apply' })).toBeDisabled();
   expect(onApply).toHaveBeenCalledTimes(2);
 });
+
+const text: Field = { ...num, name: 'city', alias: 'City', type: 'STRING', category: 'string' };
+
+test('text equals: a comma in the typed value marks the rule as a list; without one it is a plain value', async () => {
+  const { onApply } = open(text);
+  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'eq');
+  await userEvent.type(screen.getByLabelText('Value'), 'a, b');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'city', op: 'eq', value: 'a, b', list: true });
+});
+
+test('text equals without a comma has no list marker', async () => {
+  const { onApply } = open(text);
+  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'eq');
+  await userEvent.type(screen.getByLabelText('Value'), 'a');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'city', op: 'eq', value: 'a' });
+});
+
+test('a reopened list shows as "a, b"; an unmarked comma value reapplies unmarked', async () => {
+  const first = open(text, { field: 'city', op: 'eq', value: 'a, b', list: true });
+  expect(screen.getByLabelText('Value')).toHaveValue('a, b');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(first.onApply).toHaveBeenCalledWith({ field: 'city', op: 'eq', value: 'a, b', list: true });
+});
+
+test('describeFilter reads a list as any of / none of', () => {
+  expect(describeFilter(text, { op: 'eq', value: 'a, b', list: true })).toBe('is any of a, b');
+  expect(describeFilter(text, { op: 'neq', value: 'a,b', list: true })).toBe('is none of a, b');
+  expect(describeFilter(text, { op: 'eq', value: 'San Francisco, CA' })).toBe('equals San Francisco, CA');
+});

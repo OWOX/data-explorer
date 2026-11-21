@@ -1,16 +1,17 @@
-import { ChartBar, ChartColumn } from 'lucide-react';
+import { ChartColumn } from 'lucide-react';
 import { formatValue, type Format } from '../../format/formats';
 import { BUCKET_LABELS, DATE_BUCKETS, type DateBucket } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
-import { bucketFilter, dimensionFilter, isBucketDate } from '../clickFilters';
+import { BLANK_KEY } from '../blank';
+import { bucketFilter, dimensionFilter } from '../clickFilters';
 import { compactValue } from '../compact';
 import type { MenuItem } from '../ChartMenu';
 import { ChartPanel } from '../ChartPanel';
 import { measuresOf, type ChartFields } from '../fields';
 import { bucketZone, type Measure } from '../queries';
-import { measureFormat, measureLabel, measureOptions } from '../Scorecards';
+import { isIntegerMeasure, measureFormat, measureLabel, measureOptions } from '../Scorecards';
 import { measureId, pickBucketChoice, pickField, pickMeasure, type Orientation } from '../settings';
 import { BarChart } from '../svg/BarChart';
 import { useBucket } from '../useBucket';
@@ -41,27 +42,20 @@ function TimeSeriesPanel({ martId, cf, r, spark, filter, version, idle, hasFilte
   const items: MenuItem[] = [
     ...dateMenu(cf, r, onChange),
     { kind: 'radio', label: 'Stack by', value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }, ...cf.dimensions.map((d) => ({ value: d.name, label: columnTitle(d) }))], onPick: (v) => onChange({ stack: v === '' ? null : v }) },
+    { kind: 'radio', label: 'Orientation', value: r.orientation, options: [{ value: 'vertical', label: 'Vertical' }, { value: 'horizontal', label: 'Horizontal' }], onPick: (v) => onChange({ orientation: v as Orientation }) },
     ...tail,
   ];
-  const orient = (o: Orientation, label: string, Icon: typeof ChartColumn) => (
-    <button key={o} type="button" aria-label={label} aria-pressed={r.orientation === o} onClick={() => onChange({ orientation: o })}
-      className={`inline-flex size-7 items-center justify-center rounded-md hover:bg-accent ${r.orientation === o ? 'bg-accent' : ''}`}>
-      <Icon className="size-4" aria-hidden />
-    </button>
-  );
   const title = `${s.label} by ${BUCKET_LABELS[bucket ?? 'DAY'].toLowerCase()}`;
   const full = stack ? `${title} · by ${fieldLabel(stack)}` : title;
   const buckets = s.series?.[0]?.points.length ?? null;
   return (
     <ChartPanel title={bucket ? full : `${s.label} by date`} name="Time series" items={ready ? items : null}
-      extra={<>{orient('vertical', 'Vertical bars', ChartColumn)}{orient('horizontal', 'Horizontal bars', ChartBar)}</>}
       width={r.orientation === 'horizontal' ? BOX_WIDTH : seriesWidth(buckets)}
-      loading={s.loading} error={s.failed?.error} onRetry={s.failed?.retry ?? (() => {})} empty={s.empty ? emptyText(hasFilters) : null}
-      note={stack ? `Rows with a blank ${fieldLabel(stack)} are not shown.` : undefined}>
+      loading={s.loading} error={s.failed?.error} onRetry={s.failed?.retry ?? (() => {})} empty={s.empty ? emptyText(hasFilters) : null}>
       {s.series && (() => {
         const shown = s.series;
-        const pick = (x: string, i?: number) => onFilter([bucketFilter(date, x, bucket!, bucketZone(date)), ...(stack && i !== undefined && !shown[i]!.other ? [dimensionFilter(stack, shown[i]!.name)] : [])]);
-        return <BarChart series={shown} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={bucket ? pick : undefined} canPick={isBucketDate} stacked={!!stack} xTitle={columnTitle(date)} />;
+        const pick = (x: string, i?: number) => onFilter([bucketFilter(date, x, bucket!, bucketZone(date)), ...(stack && i !== undefined && !shown[i]!.other ? [dimensionFilter(stack, shown[i]!.blank ? BLANK_KEY : shown[i]!.name)] : [])]);
+        return <BarChart series={shown} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={bucket ? pick : undefined} stacked={!!stack} xTitle={columnTitle(date)} yTitle={s.label} integer={isIntegerMeasure(measure)} />;
       })()}
     </ChartPanel>
   );
@@ -70,6 +64,7 @@ function TimeSeriesPanel({ martId, cf, r, spark, filter, version, idle, hasFilte
 export const timeSeries: ChartKindDef<TimeSeriesR> = {
   kind: 'timeSeries',
   label: 'Time series',
+  icon: ChartColumn,
   eligible: (cf) => cf.dates.length > 0 && measuresOf(cf).length > 0,
   create: (_cf, from) => ({ kind: 'timeSeries', ...carry(from, ['measure', 'date', 'bucket', 'stack']) }),
   resolve(spec, cf) {

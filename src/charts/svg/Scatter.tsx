@@ -1,24 +1,31 @@
 import type { KeyboardEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
 import { useWidth } from '../useWidth';
+import { niceTicks } from './ticks';
+import { Y_TITLE_W, YTitle } from './YTitle';
 
 export type Dot = { key: string; label: string; x: number; y: number; xText: string; yText: string };
 const PLOT_H = 220;
 const TOP = 8;
-const AXIS_H = 40;
+const AXIS_H = 48;
 const CHAR_W = 6;
+/** The space between the tick labels and the axis title. */
+const TITLE_GAP = 8;
 const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 
 /** One dot per point; positions are ratios of each axis's range from zero, for drawing only. */
-export function Scatter({ points, ariaLabel, xTitle, yTitle, formatX, formatY, onPick }: {
+export function Scatter({ points, ariaLabel, xTitle, yTitle, formatX, formatY, onPick, integerX = false, integerY = false }: {
   points: Dot[]; ariaLabel: string; xTitle: string; yTitle: string; formatX: (n: number) => string; formatY: (n: number) => string; onPick?: (key: string) => void;
+  /** The axis counts whole things: its steps are whole numbers. */
+  integerX?: boolean; integerY?: boolean;
 }) {
   const { ref, width } = useWidth<HTMLDivElement>();
   const lo = (v: number[]) => Math.min(0, ...v);
   const hi = (v: number[]) => Math.max(0, ...v);
-  const [x0, x1, y0, y1] = [lo(points.map((p) => p.x)), hi(points.map((p) => p.x)), lo(points.map((p) => p.y)), hi(points.map((p) => p.y))];
-  const ticks = [0, 1, 2, 3].map((t) => t / 3);
-  const left = Math.max(32, Math.max(...ticks.map((t) => formatY(y0 + t * (y1 - y0)).length)) * CHAR_W + 12);
+  const tx = niceTicks(hi(points.map((p) => p.x)), { lo: lo(points.map((p) => p.x)), integer: integerX });
+  const ty = niceTicks(hi(points.map((p) => p.y)), { lo: lo(points.map((p) => p.y)), integer: integerY });
+  const [x0, x1, y0, y1] = [tx.ticks[0]!, tx.top, ty.ticks[0]!, ty.top];
+  const left = Math.max(32, Math.max(...ty.ticks.map((t) => formatY(t).length)) * CHAR_W + 12) + Y_TITLE_W;
   const plotW = Math.max(20, width - left - 12);
   const px = (x: number) => left + (x1 > x0 ? (x - x0) / (x1 - x0) : 0.5) * plotW;
   const py = (y: number) => TOP + PLOT_H - (y1 > y0 ? (y - y0) / (y1 - y0) : 0.5) * PLOT_H;
@@ -26,18 +33,15 @@ export function Scatter({ points, ariaLabel, xTitle, yTitle, formatX, formatY, o
   return (
     <div ref={ref} className="dm-scatter">
       <svg role={onPick ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
-        {ticks.map((t, k) => {
-          const yv = y0 + t * (y1 - y0); const xv = x0 + t * (x1 - x0);
-          return (
-            <g key={k}>
-              <line className="dm-chart-grid" x1={left} x2={left + plotW} y1={py(yv)} y2={py(yv)} />
-              <text className="dm-chart-text" x={left - 6} y={py(yv)} textAnchor="end" dominantBaseline="middle">{formatY(yv)}</text>
-              <text className="dm-chart-text" x={px(xv)} y={TOP + PLOT_H + 14} textAnchor={k === 0 ? 'start' : k === ticks.length - 1 ? 'end' : 'middle'}>{formatX(xv)}</text>
-            </g>
-          );
-        })}
-        <text className="dm-chart-axis-title" x={left + plotW / 2} y={TOP + PLOT_H + 32} textAnchor="middle">{xTitle}</text>
-        <text className="dm-chart-axis-title" x={10} y={TOP + PLOT_H / 2} textAnchor="middle" transform={`rotate(-90 10 ${TOP + PLOT_H / 2})`}>{yTitle}</text>
+        {ty.ticks.map((t) => (
+          <g key={`y${t}`}>
+            <line className="dm-chart-grid" x1={left} x2={left + plotW} y1={py(t)} y2={py(t)} />
+            <text className="dm-chart-text" x={left - 6} y={py(t)} textAnchor="end" dominantBaseline="middle">{formatY(t)}</text>
+          </g>
+        ))}
+        {tx.ticks.map((t, k) => <text key={`x${t}`} className="dm-chart-text" x={px(t)} y={TOP + PLOT_H + 14} textAnchor={k === 0 ? 'start' : k === tx.ticks.length - 1 ? 'end' : 'middle'}>{formatX(t)}</text>)}
+        <text className="dm-chart-axis-title" x={left + plotW / 2} y={TOP + PLOT_H + 32 + TITLE_GAP} textAnchor="middle">{xTitle}</text>
+        <YTitle x={8} mid={TOP + PLOT_H / 2} length={PLOT_H} text={yTitle} />
         {points.map((p) => {
           const pick = onPick ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${p.label}`, style: { cursor: 'pointer' }, onClick: () => onPick(p.key), onKeyDown: press(() => onPick(p.key)) } : {};
           return <Tooltip key={p.key} content={`${p.label}: ${xTitle} ${p.xText}, ${yTitle} ${p.yText}`}><circle data-dot={p.key} cx={px(p.x)} cy={py(p.y)} r={4} fill="var(--dm-series-1)" fillOpacity={0.75} {...pick} /></Tooltip>;

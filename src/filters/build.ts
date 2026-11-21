@@ -2,11 +2,15 @@ import type { Field, Schema } from '../model/types';
 import type { RelativeDatePreset, TraverseFilter, TraverseFilterRule } from '../sdk/types';
 import type { AggFn, AggregationRule } from '../model/aggregation';
 import { havingField, sliceField } from './slice';
+import { tokensOf } from './valueSuggest';
 import { isDateTimeField, operatorsFor, RELATIVE_MAX_N, RELATIVE_PRESETS, type OpId } from './catalogue';
 
 export type FilterValue = string | number | { from: string | number; to: string | number } | RelativeDatePreset | undefined;
-/** A column filter. With `fn` it is a HAVING filter on the aggregate of that column; slices never carry `fn`. */
-export type ColumnFilter = { field: string; op: OpId; value?: FilterValue; fn?: AggFn };
+/**
+ * A column filter. With `fn` it is a HAVING filter on the aggregate of that column; slices never carry `fn`.
+ * `list` marks a text eq/neq the user typed or picked as a comma list: `a, b` is any of the two (in / not_in). Without it the value is one exact text, comma or not.
+ */
+export type ColumnFilter = { field: string; op: OpId; value?: FilterValue; fn?: AggFn; list?: true };
 
 const filled = (v: unknown) => v !== undefined && v !== null && String(v).trim() !== '';
 const numeric = (v: unknown) => filled(v) && Number.isFinite(Number(v));
@@ -70,6 +74,12 @@ export function toTraverseFilter(f: ColumnFilter, field: Field): TraverseFilterR
       return isNum
         ? { column, operator: 'between', value: { from: Number(r.from), to: Number(r.to) } }
         : { column, operator: 'between', value: { from: String(r.from), to: String(r.to) } };
+    }
+    case 'eq': case 'neq': {
+      // Only a rule marked as a list (typed in the filter editor) reads `a, b` as any of the two; every other value, comma or not, is exact.
+      const list = f.list && field.category === 'string' && typeof f.value === 'string' ? tokensOf(f.value) : [];
+      if (list.length > 1) return { column, operator: f.op === 'eq' ? 'in' : 'not_in', value: list };
+      return { column, operator: f.op, value: list.length === 1 ? list[0]! : scalar(f.value) } as TraverseFilterRule;
     }
     default:
       return { column, operator: f.op, value: scalar(f.value) } as TraverseFilterRule;

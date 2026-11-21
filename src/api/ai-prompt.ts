@@ -44,6 +44,10 @@ export function filterSentence(f: ColumnFilter): string {
     const name = lowerFirst(presetName(rule));
     return `${field} is in ${name.startsWith('last') ? 'the ' : ''}${name}`;
   }
+  if (f.list && (f.op === 'eq' || f.op === 'neq') && typeof f.value === 'string') {
+    const values = f.value.split(',').map((v) => v.trim()).filter(Boolean).map(quoted).join(', ');
+    return `${field} is ${f.op === 'eq' ? 'any' : 'none'} of ${values}`;
+  }
   const word = WORDS[f.op] ?? f.op;
   return f.value === undefined ? `${field} ${word}` : `${field} ${word} ${quoted(f.value)}`;
 }

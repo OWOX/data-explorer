@@ -1,13 +1,15 @@
+import { ChartLine } from 'lucide-react';
 import { BUCKET_LABELS, type DateBucket } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
 import { ChartPanel } from '../ChartPanel';
-import { bucketFilter, dimensionFilter, isBucketDate } from '../clickFilters';
+import { BLANK_KEY } from '../blank';
+import { bucketFilter, dimensionFilter } from '../clickFilters';
 import { measuresOf } from '../fields';
 import { bucketZone, type Measure } from '../queries';
-import { measureFormat, measureLabel, measureOptions } from '../Scorecards';
+import { isIntegerMeasure, measureFormat, measureLabel, measureOptions } from '../Scorecards';
 import { measureId, pickBucketChoice, pickField, pickMeasure } from '../settings';
 import { LineChart } from '../svg/LineChart';
 import { useBucket } from '../useBucket';
@@ -41,12 +43,11 @@ function LinePanel({ martId, cf, r, spark, filter, version, idle, hasFilters, fo
   const rightSeries = measure2 && two.series?.[0] ? { ...two.series[0], color: seriesColor(1) } : null;
   return (
     <ChartPanel title={bucket ? title : `${one.label} by date`} name="Line" items={ready ? items : null} width={seriesWidth(one.series?.[0]?.points.length ?? null)}
-      loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})} empty={one.empty ? emptyText(hasFilters) : null}
-      note={stack ? `Rows with a blank ${fieldLabel(stack)} are not shown.` : undefined}>
+      loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})} empty={one.empty ? emptyText(hasFilters) : null}>
       {one.series && !loading && (() => {
         const left = one.series;
-        const pick = (x: string, i?: number) => onFilter([bucketFilter(date, x, bucket!, bucketZone(date)), ...(stack && i !== undefined && !left[i]!.other ? [dimensionFilter(stack, left[i]!.name)] : [])]);
-        return <LineChart left={left} right={rightSeries} area={r.area} ariaLabel={title} formatLeft={(n) => tickText(n, lt, lf)} formatRight={(n) => tickText(n, rt, rf)} onPick={bucket ? pick : undefined} canPick={isBucketDate} xTitle={columnTitle(date)} />;
+        const pick = (x: string, i?: number) => onFilter([bucketFilter(date, x, bucket!, bucketZone(date)), ...(stack && i !== undefined && !left[i]!.other ? [dimensionFilter(stack, left[i]!.blank ? BLANK_KEY : left[i]!.name)] : [])]);
+        return <LineChart left={left} right={rightSeries} area={r.area} ariaLabel={title} formatLeft={(n) => tickText(n, lt, lf)} formatRight={(n) => tickText(n, rt, rf)} onPick={bucket ? pick : undefined} xTitle={columnTitle(date)} yTitle={one.label} yTitleRight={measure2 ? two.label : undefined} integerLeft={isIntegerMeasure(measure)} integerRight={!!measure2 && isIntegerMeasure(measure2)} />;
       })()}
     </ChartPanel>
   );
@@ -55,6 +56,7 @@ function LinePanel({ martId, cf, r, spark, filter, version, idle, hasFilters, fo
 export const line: ChartKindDef<LineR> = {
   kind: 'line',
   label: 'Line',
+  icon: ChartLine,
   eligible: (cf) => cf.dates.length > 0 && measuresOf(cf).length > 0,
   create: (_cf, from) => ({ kind: 'line', ...carry(from, ['measure', 'measure2', 'date', 'bucket', 'stack', 'area']) }),
   resolve(spec, cf) {

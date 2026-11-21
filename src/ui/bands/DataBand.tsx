@@ -8,6 +8,7 @@ import { Tooltip } from '../Tooltip';
 import { ChartsMenuSlot } from '../../charts/menuSlot';
 import { MartGrid, type NoKey } from '../explorer/MartGrid';
 import { Band } from './Band';
+import { useFillHeight } from './useFillHeight';
 import { ViewSwitch, type SwitchOption } from './ViewSwitch';
 
 /** Shown as the warning's tooltip and at the end of the band's (i). */
@@ -20,6 +21,7 @@ const HINT = 'The rows of the selected data mart. Click a row to open it below.'
 const HINT_FULL = 'The rows of the selected data mart. Exit full screen to see an opened row.';
 
 export function DataBand({ model, folded, onFold, loading = null, fullScreen }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null; fullScreen?: { on: boolean; onToggle: () => void } }) {
+  useFillHeight('band-data');
   const [{ selection, grids }, dispatch] = useStore();
   const { martId } = selection;
   const mart = martId ? model.marts.get(martId) : undefined;

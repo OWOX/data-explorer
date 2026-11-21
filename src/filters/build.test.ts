@@ -1,3 +1,4 @@
+import { describe } from 'vitest';
 import { dropOrphanHaving, isComplete, toTraverseFilter, toTraverseFilters, type ColumnFilter } from './build';
 import type { Field } from '../model/types';
 
@@ -110,5 +111,17 @@ describe('dropOrphanHaving', () => {
   test('keeps a HAVING filter whose aggregation is still there, as the same map', () => {
     const m = { net_revenue: having, status: plain };
     expect(dropOrphanHaving(m, [{ column: 'net_revenue', function: 'SUM' }])).toBe(m);
+  });
+});
+
+describe('a comma in a text eq/neq', () => {
+  const sf = (list?: true): ColumnFilter => ({ field: 'status', op: 'eq', value: 'San Francisco, CA', ...(list ? { list } : {}) });
+  test('stays one exact value without the list marker (chart click, join, saved rule)', () => {
+    expect(toTraverseFilter(sf(), str)).toEqual({ column: 'status', operator: 'eq', value: 'San Francisco, CA' });
+    expect(toTraverseFilter({ ...sf(), op: 'neq' }, str)).toEqual({ column: 'status', operator: 'neq', value: 'San Francisco, CA' });
+  });
+  test('a marked rule is a list: eq is in, neq is not_in', () => {
+    expect(toTraverseFilter({ field: 'status', op: 'eq', value: 'a, b, ', list: true }, str)).toEqual({ column: 'status', operator: 'in', value: ['a', 'b'] });
+    expect(toTraverseFilter({ field: 'status', op: 'neq', value: 'a, b', list: true }, str)).toEqual({ column: 'status', operator: 'not_in', value: ['a', 'b'] });
   });
 });

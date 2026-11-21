@@ -1,3 +1,4 @@
+import { BLANK_KEY } from './blank';
 import { bucketEnd, bucketFilter, dimensionFilter, isBucketDate } from './clickFilters';
 import { toTraverseFilter, isComplete } from '../filters/build';
 import { bucketZone } from './queries';
@@ -77,4 +78,17 @@ test('bucketFilter: a midnight that happens twice starts at the first one', () =
   // 2021-10-29 01:00 +03 fell back to 00:00 +02: the day starts at the first 00:00 (21:00Z).
   expect(v('2021-10-29')).toEqual({ from: '2021-10-28 21:00:00', to: '2021-10-29 21:59:59' });
   expect(v('2021-10-28')).toEqual({ from: '2021-10-27 21:00:00', to: '2021-10-28 20:59:59' });
+});
+
+test('the blank category filters to blank, for a dimension and for a date bucket', () => {
+  const dim = { name: 'status', category: 'string', type: 'STRING' } as never;
+  const date = { name: 'day', category: 'date', type: 'DATE' } as never;
+  expect(dimensionFilter(dim, BLANK_KEY)).toEqual({ field: 'status', op: 'is_blank' });
+  expect(bucketFilter(date, BLANK_KEY, 'MONTH')).toEqual({ field: 'day', op: 'is_blank' });
+});
+
+test('a chart click on a value with a comma stays one exact eq', () => {
+  const f = dimensionFilter({ name: 'city', category: 'string' } as Field, 'San Francisco, CA');
+  expect(f).toEqual({ field: 'city', op: 'eq', value: 'San Francisco, CA' });
+  expect(toTraverseFilter(f, { name: 'city', category: 'string' } as Field)).toEqual({ column: 'city', operator: 'eq', value: 'San Francisco, CA' });
 });

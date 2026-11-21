@@ -89,6 +89,16 @@ describe('leafFn and passFn', () => {
 });
 
 describe('renderFilter', () => {
+  it('renders a list filter as IN / NOT IN with each dialect\'s escaping', () => {
+    const inF = (d: Dialect) => renderFilter(d, 'c', text, { field: 'city', op: 'eq', value: "a, O'B", list: true });
+    const notIn = (d: Dialect) => renderFilter(d, 'c', text, { field: 'city', op: 'neq', value: 'a, b', list: true });
+    expect(inF('athena')).toBe("c IN ('a', 'O''B')");
+    expect(inF('bigquery')).toBe("c IN ('a', 'O\\'B')");
+    expect(inF('snowflake')).toBe("c IN ('a', 'O''B')");
+    expect(inF('redshift')).toBe("c IN ('a', 'O''B')");
+    expect(inF('databricks')).toBe("c IN ('a', 'O''B')");
+    for (const d of ['athena', 'bigquery', 'snowflake', 'redshift', 'databricks'] as Dialect[]) expect(notIn(d)).toBe("(c IS NULL OR c NOT IN ('a', 'b'))");
+  });
   const eqO = (d: Dialect) => renderFilter(d, col(d, 'city'), text, { field: 'city', op: 'eq', value: "O'Brien" });
   it('escapes a quote in a string literal', () => {
     expect(eqO('athena')).toBe("t0.city = 'O''Brien'");

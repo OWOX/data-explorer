@@ -65,6 +65,21 @@ test('Charts: each data mart has its own cards in its group cell, Unique Records
   await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
 });
 
+test('a card’s menu switches its metric, saves it under the card id, and the sparkline follows; Hide hides it', async () => {
+  const t = await charts();
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Unique Records', 'Amount · Sum']));
+  await userEvent.click(within(group('orders')!).getByRole('button', { name: 'Amount · Sum options' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Unique Records' }));
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Unique Records', 'Unique Records']));
+  expect(group('orders')!.querySelector('[data-card="amount"] svg[aria-label="Unique Records trend"]')).not.toBeNull();
+  expect(t.puts).toHaveBeenLastCalledWith('orders', { version: 2, scorecards: { metrics: { amount: 'records' } }, charts: undefined });
+  await userEvent.click(within(group('orders')!).getAllByRole('button', { name: 'Unique Records options' })[1]!);
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Hide' }));
+  await waitFor(() => expect(group('orders')!.querySelector('[data-card="amount"]')).toBeNull());
+  expect(t.puts).toHaveBeenLastCalledWith('orders', { version: 2, scorecards: { metrics: { amount: 'records' }, hidden: ['amount'] } });
+});
+
 test('a card is at most 10rem wide and does not grow to fill its mart’s cell', async () => {
   await charts();
   const card = await waitFor(() => { const c = group('orders')!.querySelector('[data-card]'); expect(c).not.toBeNull(); return c!; });
@@ -214,13 +229,15 @@ test('time series without a stack is one series', async () => {
   expect(series().size).toBe(1);
 });
 
-test('the Horizontal bars button turns the chart and saves', async () => {
+test('the Orientation menu row turns the chart and saves; the header has no bar buttons', async () => {
   const t = await charts();
   await waitFor(() => expect(data().querySelector('svg[data-orientation=vertical]')).not.toBeNull());
-  expect(screen.getByRole('button', { name: 'Vertical bars' })).toHaveAttribute('aria-pressed', 'true');
-  await userEvent.click(screen.getByRole('button', { name: 'Horizontal bars' }));
+  expect(screen.queryByRole('button', { name: 'Horizontal bars' })).toBeNull();
+  await userEvent.click(panel('Time series'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Orientation' }));
+  expect(await screen.findByRole('menuitemradio', { name: 'Vertical' })).toBeChecked();
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Horizontal' }));
   await waitFor(() => expect(data().querySelector('svg[data-orientation=horizontal]')).not.toBeNull());
-  expect(screen.getByRole('button', { name: 'Horizontal bars' })).toHaveAttribute('aria-pressed', 'true');
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', orientation: 'horizontal' }, { id: 'pie', kind: 'pie' }] });
 });
 
@@ -259,7 +276,9 @@ test('pie menu: a chosen dimension redraws the pie and saves', async () => {
 test('two quick edits both land in the saved doc', async () => {
   const t = await charts({ columns: withDims });
   await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
-  await userEvent.click(screen.getByRole('button', { name: 'Horizontal bars' }));
+  await userEvent.click(panel('Time series'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Orientation' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Horizontal' }));
   await userEvent.click(panel('Pie'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Products · Name' }));
@@ -407,6 +426,26 @@ test('a pie slice whose value is blank is not turned into a filter: no filter, n
   expect(await screen.findByText(/filter on .*not applied/i)).toBeInTheDocument();
   expect(statusFilter()).toBeNull();
   expect((screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement).disabled).toBe(undoWas);
+});
+
+test('a null value is the first slice, read "(blank)", and a click filters the column to blank', async () => {
+  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', measure: 'records', dimension: 'status' }] }, mapRow: (r) => ('status' in r && r.status === 'paid' ? { ...r, status: null } : r) });
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  const first = data().querySelector('[data-slice]')!;
+  expect(first.getAttribute('data-slice')).toBe('(blank)');
+  expect(data().querySelector('[data-slice="null"]')).toBeNull();
+  // The top read keeps null rows: no rule leaves the blank value out.
+  expect(t.queries.some((q) => q.limit === 8 && q.filter?.some((f) => f.operator === 'is_not_blank'))).toBe(false);
+  await userEvent.click(first);
+  await waitFor(() => expect(statusFilter()).not.toBeNull());
+});
+
+test('a null date bucket draws first as "(blank)" and a click filters the date to blank', async () => {
+  await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', bucket: 'MONTH' }] }, mapRow: (r) => ('created_at' in r && String(r.created_at).startsWith('2026-08') ? { ...r, created_at: null } : r) });
+  const blank = await waitFor(() => { const b = data().querySelector('rect[data-bucket]'); expect(b?.getAttribute('aria-label')).toBe('Filter to (blank)'); return b!; });
+  expect(data().querySelector('rect[data-bucket="null"]')).toBeNull();
+  await userEvent.click(blank);
+  await waitFor(() => expect(within(data()).queryByRole('button', { name: /^Filter created_at/i })).not.toBeNull());
 });
 
 test('the pie tooltip shows each share, except for another mart’s Unique Records whose slices overlap', async () => {

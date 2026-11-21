@@ -56,3 +56,10 @@ test('a non-object document or part is dropped', async () => {
   expect(await createChartSettings(ctxWith(async () => ({ document: 'x' }), async () => {})).load('M')).toEqual({});
   expect(await createChartSettings(ctxWith(async () => ({ document: { scorecards: [], pie: 3 } }), async () => {})).load('M')).toEqual({});
 });
+
+test('scorecard metrics keep string values only and are dropped when not an object', async () => {
+  const load = (doc: unknown) => createChartSettings(ctxWith(async () => ({ document: doc }), async () => {})).load('M');
+  expect(await load({ scorecards: { metrics: { amount: 'records', bad: 3, worse: null } } })).toEqual({ scorecards: { metrics: { amount: 'records' } } });
+  expect(await load({ scorecards: { metrics: ['x'] } })).toEqual({ scorecards: {} });
+  expect(await load({ scorecards: { metrics: 'x' } })).toEqual({ scorecards: {} });
+});

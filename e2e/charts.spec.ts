@@ -30,7 +30,9 @@ test('Charts mode shows scorecards, a stacked time series and a pie, and Table b
   await page.getByRole('menuitemradio', { name: 'status' }).click();
   await expect(data(page).locator('.dm-chart-legend').first()).toBeVisible();
 
-  await data(page).getByRole('button', { name: 'Horizontal bars' }).click();
+  await data(page).getByRole('button', { name: 'Time series options' }).click();
+  await page.getByRole('menuitem', { name: 'Orientation' }).click();
+  await page.getByRole('menuitemradio', { name: 'Horizontal' }).click();
   await expect(series).toHaveAttribute('data-orientation', 'horizontal');
   await page.screenshot({ path: 'tmp/charts-e2e-horizontal.png' });
 

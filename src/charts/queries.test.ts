@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { heatmapQuery, SCATTER_LIMIT, scatterQuery, spreadFns, spreadQuery, monthsQuery, pieOtherQuery, rangeKeys, rangeQuery, scorecardsQuery, seriesOtherQuery, seriesQuery, sparklineQuery, topValuesQuery, uniqueKey, metricKey } from './queries';
+import { heatmapQuery, pieBlankQuery, seriesBlankQuery, SCATTER_LIMIT, scatterQuery, spreadFns, spreadQuery, monthsQuery, pieOtherQuery, rangeKeys, rangeQuery, scorecardsQuery, seriesOtherQuery, seriesQuery, sparklineQuery, topValuesQuery, uniqueKey, metricKey } from './queries';
 import type { ChartMart, Metric } from './fields';
 import type { Measure } from './queries';
 import type { Field } from '../model/types';
@@ -38,13 +38,19 @@ describe('queries', () => {
     expect(q.aggregation).toBeUndefined();
     expect('filter' in monthsQuery(date, [])).toBe(false);
   });
-  it('top values: blank excluded, metric desc, 8', () => {
-    expect(topValuesQuery(channel, amt, [])).toEqual({ column: ['channel', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' }], filter: [{ column: 'channel', operator: 'is_not_blank' }], sort: [{ column: 'amount', direction: 'desc' }], limit: 8 });
+  it('top values: no blank rule (null competes), metric desc, 8', () => {
+    expect(topValuesQuery(channel, amt, [])).toEqual({ column: ['channel', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' }], sort: [{ column: 'amount', direction: 'desc' }], limit: 8 });
+  });
+  it('blank reads: the blank value alone, and "Other" never holds blanks', () => {
+    expect(pieBlankQuery(amt, flt, channel)).toMatchObject({ filter: [...flt, { column: 'channel', operator: 'is_blank' }] });
+    expect(seriesBlankQuery(date, 'MONTH', amt, flt, channel).filter).toEqual([...flt, { column: 'channel', operator: 'is_blank' }]);
+    expect(seriesBlankQuery(date, 'MONTH', amt, flt, channel).column).toEqual(['date', 'amount']);
+    expect(pieOtherQuery(amt, [], channel, ['a']).filter).toEqual([{ column: 'channel', operator: 'is_not_blank' }, { column: 'channel', operator: 'not_in', value: ['a'] }]);
   });
   it('series stacked: in top values; other: not_in', () => {
     const s = seriesQuery(date, 'MONTH', amt, flt, { dim: channel, top: ['a', 'b'] });
     expect(s.column).toEqual(['date', 'channel', 'amount']);
-    expect(s.filter).toEqual([...flt, { column: 'channel', operator: 'is_not_blank' }, { column: 'channel', operator: 'in', value: ['a', 'b'] }]);
+    expect(s.filter).toEqual([...flt, { column: 'channel', operator: 'in', value: ['a', 'b'] }]);
     expect(s.sort).toEqual([{ column: 'date', direction: 'asc' }]);
     expect(s.dateTrunc?.[0]).toMatchObject({ column: 'date', unit: 'MONTH' });
     const o = seriesOtherQuery(date, 'MONTH', amt, flt, channel, ['a', 'b']);
@@ -90,7 +96,7 @@ describe('slices and HAVING filters in chart queries', () => {
   it('no HAVING filter goes to a chart query, even one that aggregates the same column', () => {
     expect(scorecardsQuery([main], [having])?.filter).toBeUndefined();
     expect(rangeQuery(date, [having]).filter).toBeUndefined();
-    expect(topValuesQuery(channel, amt, [having]).filter).toEqual([{ column: 'channel', operator: 'is_not_blank' }]);
+    expect(topValuesQuery(channel, amt, [having]).filter).toBeUndefined();
     expect(sparklineQuery(main, date, 'MONTH', [having])?.filter).toBeUndefined();
   });
   it('a slice goes to a query that names its columns, and is left out of one that names none', () => {
@@ -150,7 +156,7 @@ describe('heatmap, scatter and spread queries', () => {
     expect(heatmapQuery({ kind: 'date', date: day, bucket: 'MONTH' }, status, ['a', 'b'], sum, [])).toEqual({
       column: ['day', 'status', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' }],
       dateTrunc: [{ column: 'day', unit: 'MONTH' }], sort: [{ column: 'day', direction: 'asc' }],
-      filter: [{ column: 'status', operator: 'is_not_blank' }, { column: 'status', operator: 'in', value: ['a', 'b'] }],
+      filter: [{ column: 'status', operator: 'in', value: ['a', 'b'] }],
     });
   });
 
@@ -159,9 +165,16 @@ describe('heatmap, scatter and spread queries', () => {
     expect(o.column).toEqual(['channel', 'status']);
     expect(o.uniqueCount).toEqual(['']);
     expect(o.filter).toEqual([
-      { column: 'status', operator: 'is_not_blank' }, { column: 'status', operator: 'in', value: ['a'] },
-      { column: 'channel', operator: 'is_not_blank' }, { column: 'channel', operator: 'in', value: ['x'] },
+      { column: 'status', operator: 'in', value: ['a'] },
+      { column: 'channel', operator: 'in', value: ['x'] },
     ]);
+  });
+
+  it('a null axis list reads the blank value alone, since a list cannot name NULL', () => {
+    expect(heatmapQuery({ kind: 'dim', dim: chan, top: null }, status, null, recs, []).filter).toEqual([
+      { column: 'status', operator: 'is_blank' }, { column: 'channel', operator: 'is_blank' },
+    ]);
+    expect(heatmapQuery({ kind: 'date', date: day, bucket: 'MONTH' }, status, null, sum, []).filter).toEqual([{ column: 'status', operator: 'is_blank' }]);
   });
 
   it('scatter reads two measures per dimension value, the top 200 by X', () => {
@@ -169,7 +182,6 @@ describe('heatmap, scatter and spread queries', () => {
     expect(scatterQuery(status, sum, avg, [])).toEqual({
       column: ['status', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' }, { column: 'amount', function: 'AVG' }],
       sort: [{ column: 'amount', direction: 'desc' }], limit: SCATTER_LIMIT,
-      filter: [{ column: 'status', operator: 'is_not_blank' }],
     });
   });
 
@@ -180,7 +192,7 @@ describe('heatmap, scatter and spread queries', () => {
     expect(spreadFns(fld('n2', 'number', { allowedAggregations: ['P25', 'P50', 'P75'] }))).toEqual(['P50', 'P25', 'P75']);
     expect(spreadQuery(status, governed, [])).toEqual({
       column: ['status', 'net'], aggregation: ['P50', 'P25', 'P75', 'MIN', 'MAX'].map((fn) => ({ column: 'net', function: fn })),
-      sort: [{ column: 'net', direction: 'desc' }], limit: 8, filter: [{ column: 'status', operator: 'is_not_blank' }],
+      sort: [{ column: 'net', direction: 'desc' }], limit: 8,
     });
   });
 });

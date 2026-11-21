@@ -65,8 +65,12 @@ describe('round trip with buildReportPayload', () => {
 });
 
 describe('fromTraverseFilter', () => {
-  test('returns null for in, regex, a type mismatch and a wrong value shape', () => {
-    expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['a'] }, name)).toBeNull();
+  test('in and not_in become a list eq / neq; a value with a comma is unsupported', () => {
+    expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['a', 'b'] }, name)).toEqual({ field: 'name', op: 'eq', value: 'a, b', list: true });
+    expect(fromTraverseFilter({ column: 'name', operator: 'not_in', value: ['a', 'b'] }, name)).toEqual({ field: 'name', op: 'neq', value: 'a, b', list: true });
+    expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['a,b', 'c'] }, name)).toBeNull();
+  });
+  test('returns null for regex, a type mismatch and a wrong value shape', () => {
     expect(fromTraverseFilter({ column: 'name', operator: 'regex', value: 'a' }, name)).toBeNull();
     expect(fromTraverseFilter({ column: 'amount', operator: 'contains', value: 'a' }, amount)).toBeNull();
     expect(fromTraverseFilter({ column: 'amount', operator: 'gt', value: 'many' }, amount)).toBeNull();
@@ -174,7 +178,7 @@ describe('reportToGrid', () => {
   });
 
   test('a filter that cannot be read or sits on a missing field counts', () => {
-    const r = reportToGrid(rep({ filterConfig: [{ column: 'name', operator: 'in', value: ['a'] }, { column: 'gone', operator: 'is_blank' }] }), schema, schema);
+    const r = reportToGrid(rep({ filterConfig: [{ column: 'name', operator: 'regex', value: 'a' }, { column: 'gone', operator: 'is_blank' }] }), schema, schema);
     expect(r.skipped.filters).toBe(2);
   });
 

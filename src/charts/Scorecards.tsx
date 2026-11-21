@@ -1,4 +1,5 @@
 import { AUTO, formatValue, keepsUnit, type Format } from '../format/formats';
+import { isIntegerType } from '../model/field-category';
 import { AGG_LABELS, formatBucket, outputType, type AggFn, type DateBucket } from '../model/aggregation';
 import { fieldLabel } from '../model/fieldLabel';
 import type { Field } from '../model/types';
@@ -7,6 +8,7 @@ import { ErrorBox } from '../ui/ErrorBox';
 import { emptyText, formatNumber } from '../ui/format';
 import { Skeleton } from '../ui/Skeleton';
 import { Tooltip } from '../ui/Tooltip';
+import { ChartMenu, type MenuItem } from './ChartMenu';
 import { compactValue } from './compact';
 import type { ChartFields, ChartMart, Metric } from './fields';
 import { metricKey, scorecardsQuery, sparklineQuery, uniqueKey, type Measure } from './queries';
@@ -28,8 +30,17 @@ export function measureLabel(cf: ChartFields, m: Measure): string {
 /** The radio options of a "Metric" menu: each measure under the id it is saved as. */
 export const measureOptions = (cf: ChartFields, list: Measure[]) => list.map((m) => ({ value: measureId(m), label: measureLabel(cf, m) }));
 
-/** A mart's cards: its record count (when it has a primary key), then one per metric. */
-export function cardsOf(mart: ChartMart): Card[] {
+/** A mart's cards: its record count (when it has a primary key), then one per metric. A card keeps its id (what hides it and what a pick is saved under) and shows the measure `metrics` picked for it, when that is still one of the mart's. */
+export function cardsOf(mart: ChartMart, metrics: Record<string, string> = {}): Card[] {
+  const own = defaultCards(mart);
+  const byMeasure = new Map(own.map((c) => [measureId(c.measure), c]));
+  return own.map((c) => { const pick = byMeasure.get(metrics[c.id] ?? ''); return pick ? { ...pick, id: c.id } : c; });
+}
+
+/** The measures a card of this mart can show: the mart's own, in card order. */
+export const martMeasures = (mart: ChartMart): Measure[] => defaultCards(mart).map((c) => c.measure);
+
+function defaultCards(mart: ChartMart): Card[] {
   return [
     ...(mart.hasPk ? [{ id: mart.recordsId, label: 'Unique Records', key: uniqueKey(mart.aliasPath), measure: { kind: 'records', aliasPath: mart.aliasPath, recordsId: mart.recordsId } satisfies Measure }] : []),
     ...mart.metrics.map((m) => ({ id: m.field.name, label: metricLabel(m), key: metricKey(m), measure: { kind: 'metric', metric: m } satisfies Measure })),
@@ -116,6 +127,12 @@ export const measureText = (m: Measure, v: unknown, formatOf: Formatter): string
 /** A measure's type and format, for an axis or a short value: Records are an integer count. */
 export const measureFormat = (m: Measure, formatOf: Formatter): [type: string, format: Format] => (m.kind === 'metric' ? metricFormat(m.metric.field, m.metric.fn, formatOf) : ['INTEGER', AUTO]);
 
+/** Whether a measure counts whole things (a records count, an integer field's sum or count), so its axis steps are whole numbers. */
+export const isIntegerMeasure = (m: Measure): boolean => m.kind === 'records' || isIntegerType(outputType(m.metric.field, m.metric.fn));
+
+/** The trend's rows that have a date: a blank date has no place on the time axis (the read stays as it is, so the series shares it). */
+export const datedRows = (rows: Row[], dateName: string): Row[] => rows.filter((s) => s[dateName] !== null && s[dateName] !== undefined && s[dateName] !== '');
+
 export const numberOf = (v: unknown): number | null => {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
@@ -123,17 +140,21 @@ export const numberOf = (v: unknown): number | null => {
 };
 
 /** The cards of one data mart, wrapping inside its group's cell. The main mart's cell also shows the strip's error and empty state. */
-export function MartCards({ martId, mart, main, spark, scores, bucket, filter, version, paused, hasFilters, formatOf }: {
+export function MartCards({ martId, mart, main, spark, scores, bucket, filter, version, paused, hasFilters, formatOf, onMetric, onHide }: {
   martId: string; mart: ChartMart; main: boolean; spark: Spark; scores: ChartResult; bucket: DateBucket | null; filter: TraverseFilter[]; version: number; paused: boolean; hasFilters: boolean; formatOf: Formatter;
+  /** A card's ⋮ menu: pick the measure a card shows, and hide it. Without them (the settings are still loading) the cards have no menu. */
+  onMetric?: (cardId: string, measure: string) => void; onHide?: (cardId: string) => void;
 }) {
-  const cards = cardsOf(mart).filter((c) => !spark.hidden.has(c.id));
+  const cards = cardsOf(mart, spark.metrics).filter((c) => !spark.hidden.has(c.id));
+  const choices = measureOptions({ marts: [mart], dimensions: [], dates: [] }, martMeasures(mart));
   // The group's own date when it has one, else the chart date's mart's: a joined mart without a date draws no trend.
   const date = sparkDate(mart, spark);
   const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, bucket, filter), version);
   if (scores.error) return main ? <ErrorBox error={scores.error} onRetry={scores.retry} /> : null;
   if (scores.rows && scores.rows.length === 0) return main ? <p className="dm-muted text-sm">{emptyText(hasFilters)}</p> : null;
   const row = scores.rows?.[0];
-  const points = (c: Card): Point[] => (trend.rows ?? []).map((s) => ({
+  const dated = date ? datedRows(trend.rows ?? [], date.name) : [];
+  const points = (c: Card): Point[] => dated.map((s) => ({
     x: String(s[date!.name]),
     y: numberOf(s[c.key]),
     label: formatBucket(s[date!.name], bucket!) ?? '',
@@ -143,10 +164,18 @@ export function MartCards({ martId, mart, main, spark, scores, bucket, filter, v
     // A card is at most 10rem (basis, no growth) and may shrink in a narrow group; only the label truncates, so a number is never cut.
     <div className="flex min-w-0 flex-1 flex-wrap gap-2">
       {cards.map((c) => (
-        <div key={c.id} data-card={c.id} className="dm-scorecard min-w-0 flex-[0_1_10rem] overflow-hidden px-3 py-2">
-          <div className="dm-muted truncate text-xs" title={c.label}>{c.label}</div>
+        <div key={c.id} data-card={c.id} className="dm-scorecard relative min-w-0 flex-[0_1_10rem] overflow-hidden px-3 py-2">
+          <div className={`dm-muted truncate text-xs ${onHide ? 'pr-6' : ''}`} title={c.label}>{c.label}</div>
+          {onHide && (
+            <div className="absolute right-0.5 top-0.5">
+              <ChartMenu name={c.label} items={[
+                ...(choices.length > 1 ? [{ kind: 'radio', label: 'Metric', value: measureId(c.measure), options: choices, onPick: (v: string) => onMetric?.(c.id, v) } as MenuItem] : []),
+                { kind: 'action', label: 'Hide', onPick: () => onHide(c.id) },
+              ]} />
+            </div>
+          )}
           {row ? <CardValue card={c} row={row} formatOf={formatOf} /> : <Skeleton rows={1} />}
-          {trend.rows && trend.rows.length > 0 && <Sparkline points={points(c)} ariaLabel={`${c.label} trend`} />}
+          {dated.length > 0 && <Sparkline points={points(c)} ariaLabel={`${c.label} trend`} />}
         </div>
       ))}
     </div>
