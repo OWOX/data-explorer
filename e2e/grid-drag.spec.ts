@@ -34,9 +34,9 @@ test('dragging with the real mouse selects the block of cells, not text, and Cmd
 
 test('checklist rows use the column menu font and row height', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
-  await data(page).getByLabel('Column menu id', { exact: true }).scrollIntoViewIfNeeded();
-  await data(page).getByLabel('Column menu id', { exact: true }).locator('xpath=ancestor::th').hover();
-  await data(page).getByLabel('Column menu id', { exact: true }).click();
+  await data(page).getByLabel('Column menu status', { exact: true }).scrollIntoViewIfNeeded();
+  await data(page).getByLabel('Column menu status', { exact: true }).locator('xpath=ancestor::th').hover();
+  await data(page).getByLabel('Column menu status', { exact: true }).click();
   const menuRow = page.getByRole('menuitem').first();
   const m = await menuRow.evaluate((el) => { const c = getComputedStyle(el); return { family: c.fontFamily, size: c.fontSize, height: el.getBoundingClientRect().height }; });
   await page.keyboard.press('Escape');
@@ -173,9 +173,6 @@ test('Escape cancels a drag, and the release over the same header does not sort 
 test('an aggregated column with two functions moves as one block', async ({ page }) => {
   const g = data(page);
   await expect(g.getByRole('row')).toHaveCount(202);
-  await g.getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByRole('dialog').getByLabel('Amount', { exact: true }).click();
-  await page.keyboard.press('Escape');
   const icon = g.getByLabel('Column menu Amount', { exact: true });
   await icon.locator('xpath=ancestor::th').hover();
   await icon.click();
@@ -208,9 +205,9 @@ test('ticking a field in the main picker keeps the dragged order', async ({ page
   const moved = [order[1], order[0], ...order.slice(2)];
   await expect.poll(() => titles(page)).toEqual(moved);
   await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByRole('dialog').getByLabel('Amount', { exact: true }).click();
+  await page.getByRole('dialog').getByLabel('created_at', { exact: true }).click();
   await page.keyboard.press('Escape');
-  await expect.poll(async () => (await titles(page)).filter((c) => c !== 'amount')).toEqual(moved);
+  await expect.poll(async () => (await titles(page)).filter((c) => c !== 'created_at')).toEqual(moved);
 });
 
 test('dragging a column letter moves the column, shows the drop line, and a click on it still selects', async ({ page }) => {

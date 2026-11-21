@@ -59,7 +59,8 @@ test('the time series and the pie sit side by side when the band is wide, and Ch
   await expect(data(page).getByRole('row')).toHaveCount(202);
   const frame = data(page).locator('.dm-grid-frame');
   const tableHeight = (await frame.boundingBox())!.height;
-  for (const name of [/created_at/i, /^Amount$/]) {
+  // Amount is a default column now: only created_at is ticked.
+  for (const name of [/created_at/i]) {
     await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
     await page.getByLabel(name).click();
     await page.keyboard.press('Escape');
