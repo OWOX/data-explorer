@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { AlertTriangle, ArchiveRestore, Check, ChevronDown, Code, Copy, DatabaseZap, ExternalLink, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArchiveRestore, Check, ChevronDown, Box, Code, Copy, ExternalLink, Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { buildReportPayload, exportTitle, sheetUrl, type ExportSource } from '../../api/exports';
 import type { ColumnFilter } from '../../filters/build';
@@ -262,7 +262,7 @@ export function ExportMenu(p: Props) {
             <div role="separator" className="dm-menu-sep" />
             <div role="group" aria-label="Data mart" className="dm-export-mart">
               <ExportItem
-                action="create-mart" icon={DatabaseZap} label="Create Data Mart" off={'reason' in martSql ? martSql.reason : null}
+                action="create-mart" icon={Box} label="Create Data Mart" off={'reason' in martSql ? martSql.reason : null}
                 onClick={() => { if (!('reason' in martSql)) { closeMenu(); setMartDialog({ variants: martSql.variants, grouped: martSql.grouped, having: p.filters.some((f) => !!f.fn), joinedMarts: p.joinedMarts ?? [], storage: p.storage!, seq: nextSeq() }); } }}
               />
             </div>

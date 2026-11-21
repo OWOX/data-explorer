@@ -1790,3 +1790,26 @@ describe('Tab is trapped in every dialog', () => {
     await cycle(await screen.findByRole('dialog', { name: 'Prompt' }));
   });
 });
+
+describe('the menu look', () => {
+  test('Create Data Mart carries the same Box icon as the Data Marts band, not DatabaseZap', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    const item = await within(data()).findByRole('menuitem', { name: 'Create Data Mart' });
+    expect(item.querySelector('svg.lucide-box')).not.toBeNull();
+    expect(item.querySelector('svg.lucide-database-zap')).toBeNull();
+  });
+
+  test('a separator sits between the assistants, the destinations and the other items', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await within(data()).findByText('Export'));
+    const menu = await within(data()).findByRole('menu');
+    const kids = [...menu.children].map((c) => c.getAttribute('role') === 'separator' ? 'sep' : c.getAttribute('aria-label'));
+    expect(kids).toEqual(['Assistants', 'sep', 'Destinations', 'sep', 'Copy', 'sep', 'Data mart']);
+  });
+
+});

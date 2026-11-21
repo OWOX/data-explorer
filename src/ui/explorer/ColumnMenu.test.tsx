@@ -65,8 +65,9 @@ describe('sort mark and notes', () => {
     await ready();
     await openSubmenu(within(data()), 'status', 'Filter');
     const dialog = await screen.findByRole('dialog', { name: 'Filter of status' });
-    const note = within(dialog).getByText('Filters narrow the final result, applied to the SELECT after all JOINs. Use slices to narrow a joined data mart BEFORE it is JOINed in.');
+    const note = within(dialog).getByText((_, el) => el?.tagName === 'P' && el.textContent === 'Filters narrow the final result — applied after all joins.');
     expect(note.closest('.dm-menu-foot')).not.toBeNull();
+    expect(note.querySelector('strong')?.textContent).toBe('after');
   });
 });
 
