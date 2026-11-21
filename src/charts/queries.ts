@@ -178,9 +178,15 @@ export function sankeyFlowQuery(dims: Field[], measure: Measure, filter: Travers
   return withFilter(withCounter(o, filter, counter), filter);
 }
 
-/** The smallest combinations: the flow read sorted the other way, a few rows (a NULL sum may sort first, so one row is not enough). Read only when a metric's flow read is capped, to see whether the left-out flows hold a negative. */
+/**
+ * The smallest combinations: the flow read sorted the other way, a few rows. Read only when a metric's flow read is capped, to see whether the left-out flows hold a negative.
+ * A HAVING `is_not_blank` on the aggregate keeps NULL sums out of the rows, so they cannot fill the few the read returns and hide the smallest real sum.
+ */
 export function sankeyLowQuery(dims: Field[], measure: Measure, filter: TraverseFilter[], counter?: Field | null): TraverseOptions {
-  return { ...sankeyFlowQuery(dims, measure, filter, counter), sort: bySize(measure, 'asc'), limit: SANKEY_LOW_LIMIT };
+  const o = sankeyFlowQuery(dims, measure, filter, counter);
+  const notBlank: TraverseFilter[] = measure.kind === 'metric' ? [{ column: measure.metric.field.name, operator: 'is_not_blank', function: measure.metric.fn }] : [];
+  const filter = [...(o.filter ?? []), ...notBlank];
+  return { ...o, ...(filter.length ? { filter } : {}), sort: bySize(measure, 'asc'), limit: SANKEY_LOW_LIMIT };
 }
 
 /** The measure per value of one Sankey column (blank included), largest first, capped at SANKEY_COLUMN_LIMIT: exact node sizes. */

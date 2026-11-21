@@ -57,7 +57,7 @@ export function foldSankey({ flowRows, lowRows, columnRows, dims, measure }: { f
   const cols = dims.map((d, i) => foldColumn(columnRows[i] ?? [], d, measure));
   const key = measureKey(measure);
   const sums: Map<string, Flow>[] = dims.slice(1).map(() => new Map());
-  // A capped flow read is sorted largest first, so a negative would be among the left-out flows: the few-row ascending read shows it (NULL sums among its rows are skipped).
+  // A capped flow read is sorted largest first, so a negative would be among the left-out flows: the few-row ascending read shows it (it filters out NULL sums with a HAVING, so they do not fill it).
   let negative = cols.some((c) => c.negative) || (lowRows ?? []).some((r) => (numberOf(r[key]) ?? 0) < 0);
   for (const row of flowRows) {
     const v = numberOf(row[key]);

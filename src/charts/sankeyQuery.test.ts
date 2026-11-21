@@ -41,7 +41,9 @@ test('pre-join slices are kept (the reads name columns) and HAVING rules are dro
 test('the low read is the flow read sorted the other way, a few rows', () => {
   expect(sankeyLowQuery([src, dst], sum, base)).toEqual({
     column: ['source', 'status', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' }],
-    sort: [{ column: 'amount', direction: 'asc' }], limit: SANKEY_LOW_LIMIT, filter: base,
+    sort: [{ column: 'amount', direction: 'asc' }], limit: SANKEY_LOW_LIMIT, filter: [...base, { column: 'amount', operator: 'is_not_blank', function: 'SUM' }],
   });
   expect(sankeyLowQuery([src, dst], recs, []).sort).toEqual([{ column: 'Unique Count', direction: 'asc' }]);
+  // A count has no NULL sum: no HAVING.
+  expect(sankeyLowQuery([src, dst], recs, []).filter).toBeUndefined();
 });
