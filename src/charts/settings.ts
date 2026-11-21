@@ -16,6 +16,7 @@ export type ChartSpec = {
   id: string; kind: ChartKind; hidden?: boolean;
   measure?: string; measure2?: string | null; date?: string; bucket?: DateBucket | 'AUTO';
   dimension?: string; dimension2?: string; stack?: string | null; orientation?: Orientation; area?: boolean;
+  /** Keep rows whose x-axis date is blank (off: they are filtered out). */ blanks?: boolean;
 };
 export type ChartSettings = { version?: 2; scorecards?: { hidden?: string[]; sparklines?: boolean }; charts?: ChartSpec[] };
 /** What the scorecards need: hidden cards, the sparklines switch and the date their trends are drawn on. */

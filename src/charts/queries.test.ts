@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { heatmapQuery, SCATTER_LIMIT, scatterQuery, spreadFns, spreadQuery, monthsQuery, pieOtherQuery, rangeKeys, rangeQuery, scorecardsQuery, seriesOtherQuery, seriesQuery, sparklineQuery, topValuesQuery, uniqueKey, metricKey } from './queries';
+import { dateFilter, heatmapQuery, SCATTER_LIMIT, scatterQuery, spreadFns, spreadQuery, monthsQuery, pieOtherQuery, rangeKeys, rangeQuery, scorecardsQuery, seriesOtherQuery, seriesQuery, sparklineQuery, topValuesQuery, uniqueKey, metricKey } from './queries';
 import type { ChartMart, Metric } from './fields';
 import type { Measure } from './queries';
 import type { Field } from '../model/types';
@@ -182,5 +182,24 @@ describe('heatmap, scatter and spread queries', () => {
       column: ['status', 'net'], aggregation: ['P50', 'P25', 'P75', 'MIN', 'MAX'].map((fn) => ({ column: 'net', function: fn })),
       sort: [{ column: 'net', direction: 'desc' }], limit: 8, filter: [{ column: 'status', operator: 'is_not_blank' }],
     });
+  });
+});
+
+describe('blank dates', () => {
+  it('dateFilter adds the date is_not_blank rule unless blanks are kept', () => {
+    expect(dateFilter(flt, date, false)).toEqual([...flt, { column: 'date', operator: 'is_not_blank' }]);
+    expect(dateFilter(flt, date, true)).toBe(flt);
+  });
+  it('the rule survives each series query\'s filter fit, the range and months reads too', () => {
+    const rule = { column: 'date', operator: 'is_not_blank' };
+    const f = dateFilter([], date, false);
+    for (const q of [seriesQuery(date, 'DAY', amt, f), rangeQuery(date, f), monthsQuery(date, f), seriesOtherQuery(date, 'DAY', amt, f, channel, ['a']), heatmapQuery({ kind: 'date', date, bucket: 'DAY' }, channel, ['a'], amt, f)]) {
+      expect(q.filter).toContainEqual(rule);
+    }
+    expect(seriesQuery(date, 'DAY', amt, dateFilter([], date, true)).filter).toBeUndefined();
+  });
+  it('dimension charts always leave a blank dimension out', () => {
+    const rule = { column: 'channel', operator: 'is_not_blank' };
+    for (const q of [topValuesQuery(channel, amt, []), scatterQuery(channel, amt, amt, []), spreadQuery(channel, amount.field, [])]) expect(q.filter).toContainEqual(rule);
   });
 });

@@ -80,6 +80,8 @@ export function sparklineQuery(mart: ChartMart, date: Field, bucket: DateBucket,
 
 // Blank is its own concern: the "Other" bar and the top list both leave it out so every shown value is a real one.
 const notBlank = (dim: Field): TraverseFilter => ({ column: dim.name, operator: 'is_not_blank' });
+/** A date chart's own reads: the grid's rules plus, unless the member ticked Show blanks, the date being not blank. */
+export const dateFilter = (filter: TraverseFilter[], date: Field, blanks: boolean): TraverseFilter[] => (blanks ? filter : [...filter, notBlank(date)]);
 // A boolean dimension's values arrive as booleans; the filter takes strings.
 const list = (top: string[]): string[] => top.map(String);
 /** The rows outside a top list: a real value that is none of the top ones. */

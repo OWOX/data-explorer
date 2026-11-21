@@ -52,6 +52,11 @@ test('a v2 document keeps known chart keys of the right type and drops bad chart
   ] });
 });
 
+test('blanks is kept when it is a boolean and dropped otherwise', async () => {
+  const doc = { version: 2, charts: [{ id: 'a', kind: 'timeSeries', blanks: true }, { id: 'b', kind: 'timeSeries', blanks: 'yes' }] };
+  expect(await createChartSettings(ctxWith(async () => ({ document: doc }), async () => {})).load('M')).toEqual({ version: 2, charts: [{ id: 'a', kind: 'timeSeries', blanks: true }, { id: 'b', kind: 'timeSeries' }] });
+});
+
 test('a non-object document or part is dropped', async () => {
   expect(await createChartSettings(ctxWith(async () => ({ document: 'x' }), async () => {})).load('M')).toEqual({});
   expect(await createChartSettings(ctxWith(async () => ({ document: { scorecards: [], pie: 3 } }), async () => {})).load('M')).toEqual({});
