@@ -28,3 +28,7 @@ test('full screen keeps the band corners of the normal mode', () => {
   expect(full).toContain('position: fixed');
   expect(full).not.toContain('border-radius');
 });
+
+test('the context badges sit at the right end of the card foot', () => {
+  expect(rules(/^\.dm-contexts$/).join(' ')).toContain('justify-content: flex-end');
+});

@@ -245,7 +245,7 @@
   font-size: 0.6875rem; line-height: 1.5;
 }
 
-.dm-contexts { position: relative; display: flex; gap: 0.25rem; flex: 1; min-width: 0; overflow: hidden; }
+.dm-contexts { position: relative; display: flex; justify-content: flex-end; gap: 0.25rem; flex: 1; min-width: 0; overflow: hidden; }
 .dm-contexts .dm-badge { flex-shrink: 0; white-space: nowrap; }
 /* Folded, the row holds one chip that always fits, and its bubble has to get out above the card. */
 .dm-contexts-bare { overflow: visible; }
