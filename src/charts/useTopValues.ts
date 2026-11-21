@@ -39,7 +39,8 @@ export function useTopValues({ martId, cf, dim, measure, filter, version, idle, 
   const key = measureKey(measure);
   const failed = [top, blank, other].find((q) => q.error);
   const empty = top.rows?.length === 0;
-  const loading = !empty && (!top.rows || (full && (!other.rows || (!hasBlank && !blank.rows))));
+  // A full top list may hide a blank category, so the blank read is waited for even without the Other read (a heatmap axis).
+  const loading = !empty && (!top.rows || (topFull && !hasBlank && !blank.rows) || (full && !other.rows));
   if (!top.rows) return { categories: null, names, other: undefined, failed, empty, loading };
   const rows: Row[] = top.rows;
   const blankValue = hasBlank ? rows[keys!.indexOf(BLANK_KEY)]![key] : blank.rows?.[0]?.[key];
