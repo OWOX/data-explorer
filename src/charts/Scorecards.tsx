@@ -9,7 +9,7 @@ import { Skeleton } from '../ui/Skeleton';
 import { Tooltip } from '../ui/Tooltip';
 import { compactValue } from './compact';
 import type { ChartFields, ChartMart, Metric } from './fields';
-import { metricKey, scorecardsQuery, sparklineQuery, uniqueKey, type Measure } from './queries';
+import { dateFilter, metricKey, scorecardsQuery, sparklineQuery, uniqueKey, type Measure } from './queries';
 import { measureId, type Spark } from './settings';
 import { Sparkline, type Point } from './svg/Sparkline';
 import { useChartQuery, type ChartResult } from './useChartQuery';
@@ -43,7 +43,7 @@ export const sparkDate = (mart: ChartMart, spark: Spark): Field | null => (spark
 export function sparkQueryOf(mart: ChartMart, spark: Spark, bucket: DateBucket | null, filter: TraverseFilter[]): TraverseOptions | null {
   const date = sparkDate(mart, spark);
   const cards = cardsOf(mart).filter((c) => !spark.hidden.has(c.id));
-  return spark.sparklines && cards.length > 0 && date && bucket ? sparklineQuery(mart, date, bucket, filter) : null;
+  return spark.sparklines && cards.length > 0 && date && bucket ? sparklineQuery(mart, date, bucket, dateFilter(filter, date, false)) : null;
 }
 
 /**
