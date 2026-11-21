@@ -185,8 +185,8 @@ export function sankeyFlowQuery(dims: Field[], measure: Measure, filter: Travers
 export function sankeyLowQuery(dims: Field[], measure: Measure, filter: TraverseFilter[], counter?: Field | null): TraverseOptions {
   const o = sankeyFlowQuery(dims, measure, filter, counter);
   const notBlank: TraverseFilter[] = measure.kind === 'metric' ? [{ column: measure.metric.field.name, operator: 'is_not_blank', function: measure.metric.fn }] : [];
-  const filter = [...(o.filter ?? []), ...notBlank];
-  return { ...o, ...(filter.length ? { filter } : {}), sort: bySize(measure, 'asc'), limit: SANKEY_LOW_LIMIT };
+  const rules = [...(o.filter ?? []), ...notBlank];
+  return { ...o, ...(rules.length ? { filter: rules } : {}), sort: bySize(measure, 'asc'), limit: SANKEY_LOW_LIMIT };
 }
 
 /** The measure per value of one Sankey column (blank included), largest first, capped at SANKEY_COLUMN_LIMIT: exact node sizes. */
