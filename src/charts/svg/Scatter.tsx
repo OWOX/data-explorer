@@ -6,8 +6,10 @@ import { niceTicks } from './ticks';
 export type Dot = { key: string; label: string; x: number; y: number; xText: string; yText: string };
 const PLOT_H = 220;
 const TOP = 8;
-const AXIS_H = 40;
+const AXIS_H = 48;
 const CHAR_W = 6;
+/** The space between the tick labels and the axis title. */
+const TITLE_GAP = 8;
 const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 
 /** One dot per point; positions are ratios of each axis's range from zero, for drawing only. */
@@ -37,7 +39,7 @@ export function Scatter({ points, ariaLabel, xTitle, yTitle, formatX, formatY, o
           </g>
         ))}
         {tx.ticks.map((t, k) => <text key={`x${t}`} className="dm-chart-text" x={px(t)} y={TOP + PLOT_H + 14} textAnchor={k === 0 ? 'start' : k === tx.ticks.length - 1 ? 'end' : 'middle'}>{formatX(t)}</text>)}
-        <text className="dm-chart-axis-title" x={left + plotW / 2} y={TOP + PLOT_H + 32} textAnchor="middle">{xTitle}</text>
+        <text className="dm-chart-axis-title" x={left + plotW / 2} y={TOP + PLOT_H + 32 + TITLE_GAP} textAnchor="middle">{xTitle}</text>
         <text className="dm-chart-axis-title" x={10} y={TOP + PLOT_H / 2} textAnchor="middle" transform={`rotate(-90 10 ${TOP + PLOT_H / 2})`}>{yTitle}</text>
         {points.map((p) => {
           const pick = onPick ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${p.label}`, style: { cursor: 'pointer' }, onClick: () => onPick(p.key), onKeyDown: press(() => onPick(p.key)) } : {};

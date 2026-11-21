@@ -7,6 +7,8 @@ const ROW_H = 24;
 const TOP = 4;
 const AXIS_H = 24;
 const CHAR_W = 6;
+/** The space between the tick labels and the axis title. */
+const TITLE_GAP = 8;
 const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 
 /** A grid of cells, one colour whose strength is the cell's share of the largest value (drawing only); the text is the caller's. */
@@ -17,7 +19,7 @@ export function Heatmap({ xs, ys, cell, ariaLabel, onPick, canPickX, xTitle, yTi
   const { ref, width } = useWidth<HTMLDivElement>();
   const left = Math.min(160, Math.max(...ys.map((y) => y.label.length), 0) * CHAR_W + 12);
   const colW = (width - left - 4) / Math.max(1, xs.length);
-  const height = TOP + ys.length * ROW_H + AXIS_H + (xTitle ? 18 : 0);
+  const height = TOP + ys.length * ROW_H + AXIS_H + (xTitle ? 18 + TITLE_GAP : 0);
   const max = Math.max(0, ...xs.flatMap((x) => ys.map((y) => cell(x.key, y.key)?.value ?? 0)));
   const labelStep = Math.max(1, Math.ceil((Math.max(...xs.map((x) => x.label.length), 0) * CHAR_W + 8) / colW));
   const pickable = (x: string) => !!onPick && (canPickX?.(x) ?? true);
@@ -26,7 +28,7 @@ export function Heatmap({ xs, ys, cell, ariaLabel, onPick, canPickX, xTitle, yTi
       <svg role={onPick ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
         {ys.map((y, j) => <text key={y.key} className="dm-chart-text" x={left - 6} y={TOP + j * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle">{y.label}</text>)}
         {xs.map((x, i) => (i % labelStep === 0 ? <text key={x.key} className="dm-chart-text" x={left + i * colW + colW / 2} y={TOP + ys.length * ROW_H + 16} textAnchor="middle">{x.label}</text> : null))}
-        {xTitle && <text className="dm-chart-axis-title" x={left + (xs.length * colW) / 2} y={TOP + ys.length * ROW_H + AXIS_H + 10} textAnchor="middle">{xTitle}</text>}
+        {xTitle && <text className="dm-chart-axis-title" x={left + (xs.length * colW) / 2} y={TOP + ys.length * ROW_H + AXIS_H + 10 + TITLE_GAP} textAnchor="middle">{xTitle}</text>}
         {xs.flatMap((x, i) => ys.map((y, j) => {
           const c = cell(x.key, y.key);
           if (!c || c.value === null) return null;

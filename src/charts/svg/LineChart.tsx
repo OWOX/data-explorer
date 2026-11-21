@@ -7,7 +7,9 @@ import { niceTicks } from './ticks';
 const PLOT_H = 240;
 const TOP = 8;
 const AXIS_H = 24;
-const TITLE_H = 18;
+const TITLE_H = 26;
+/** The space between the tick labels and the axis title. */
+const TITLE_GAP = 8;
 const CHAR_W = 6;
 const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 
@@ -69,7 +71,7 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
         ))}
         {right && tr.ticks.map((t) => <text key={t} data-axis="right" className="dm-chart-text" x={leftW + plotW + 6} y={py(t, tr.top)} dominantBaseline="middle">{formatRight(t)}</text>)}
         {xs.map((p, i) => (i % labelStep === 0 ? <text key={p.x} className="dm-chart-text" x={px(i)} y={TOP + PLOT_H + 16} textAnchor="middle">{p.label}</text> : null))}
-        {xTitle && <text className="dm-chart-axis-title" x={leftW + plotW / 2} y={TOP + PLOT_H + AXIS_H + 10} textAnchor="middle">{xTitle}</text>}
+        {xTitle && <text className="dm-chart-axis-title" x={leftW + plotW / 2} y={TOP + PLOT_H + AXIS_H + 10 + TITLE_GAP} textAnchor="middle">{xTitle}</text>}
         {area && all.map(({ s, max }) => <path key={`a-${s.name}`} data-area={s.name} d={areaOf(s, max)} fill={s.color} fillOpacity={0.18} stroke="none" />)}
         {all.map(({ s, max }, k) => <path key={s.name} data-line={s.name} d={pathOf(s, max)} fill="none" stroke={s.color} strokeWidth={2} strokeDasharray={right && k === all.length - 1 ? '5 3' : undefined} strokeLinejoin="round" strokeLinecap="round" />)}
         {xs.map((p, i) => {

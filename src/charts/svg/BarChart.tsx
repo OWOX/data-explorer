@@ -14,7 +14,9 @@ const GAP = 2;
 const RADIUS = 4;
 const TOP = 8;
 const AXIS_H = 24;
-const TITLE_H = 18;
+const TITLE_H = 26;
+/** The space between the tick labels and the axis title. */
+const TITLE_GAP = 8;
 const CHAR_W = 6;
 
 /** Stacked bars. Sizes are ratios of the largest stacked total, for drawing only; every shown value is the caller's text. */
@@ -118,7 +120,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
           // Horizontal: the title sits in the reserved strip under the tick row, centred under the plot.
           const room = Math.max(4, Math.floor(plotW / CHAR_W));
           const text = xTitle.length > room ? `${xTitle.slice(0, room - 1)}…` : xTitle;
-          const y = (vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H) + 10;
+          const y = (vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H) + 10 + TITLE_GAP;
           return <text className="dm-chart-axis-title" x={left + plotW / 2} y={y} textAnchor="middle"><title>{xTitle}</title>{text}</text>;
         })()}
         {bands}

@@ -39,7 +39,8 @@ test('BarChart shows the X field name under the bucket labels, and nothing witho
   const title = container.querySelector('.dm-chart-axis-title');
   expect(title).toHaveTextContent('Order date');
   const labelY = Number(container.querySelector('text.dm-chart-text[text-anchor="middle"]')!.getAttribute('y'));
-  expect(Number(title!.getAttribute('y'))).toBeGreaterThan(labelY);
+  // 18px below the labels' baseline was the old gap; 8px more keeps the title off them.
+  expect(Number(title!.getAttribute('y')) - labelY).toBeGreaterThanOrEqual(26);
   rerender(<TooltipProvider><BarChart series={two} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} /></TooltipProvider>);
   expect(container.querySelector('.dm-chart-axis-title')).toBeNull();
 });
@@ -256,4 +257,12 @@ test('BarChart: a count axis shows whole-number ticks only', () => {
   const { container } = wrap(<BarChart series={counts} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} integer />);
   const ticks = [...container.querySelectorAll('.dm-chart-tick text')].map((t) => t.textContent);
   expect(ticks).toEqual(['0', '20', '40', '60', '80']);
+});
+
+test('the X title keeps 8px more room under the tick labels in the line, scatter and heatmap too', () => {
+  const lines = wrap(<LineChart left={two} area={false} ariaLabel="l" formatLeft={(n) => `${n}`} xTitle="Date" />).container;
+  const tick = (c: HTMLElement) => Number(c.querySelector('text.dm-chart-text[text-anchor="middle"]')!.getAttribute('y'));
+  expect(Number(lines.querySelector('.dm-chart-axis-title')!.getAttribute('y')) - tick(lines)).toBeGreaterThanOrEqual(26);
+  const heat = wrap(<Heatmap xs={[{ key: 'a', label: 'A' }]} ys={[{ key: 'r', label: 'R' }]} cell={() => ({ value: 1, text: '1' })} ariaLabel="h" xTitle="Col" />).container;
+  expect(Number(heat.querySelector('.dm-chart-axis-title')!.getAttribute('y')) - tick(heat)).toBeGreaterThanOrEqual(26);
 });
