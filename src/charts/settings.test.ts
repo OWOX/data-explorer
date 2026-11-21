@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { measureId, resolveCharts } from './settings';
+import { describe, expect, it, test } from 'vitest';
+import { chartsOf, DEFAULT_CHARTS, editCharts, isChartKind, measureId, newChartId, patchChart, pickBucketChoice, pickField, pickMeasure, resolveCharts, scorecardsOf, type ChartSettingsV2 } from './settings';
 import type { ChartFields, ChartMart, Metric } from './fields';
 import type { Measure } from './queries';
 import type { Field } from '../model/types';
@@ -95,5 +95,50 @@ describe('measure', () => {
     expect(name(resolveCharts({}, only).measure)).toBe('records:M');
     expect(name(resolveCharts({}, only).pieMeasure)).toBe('records:M');
     expect(resolveCharts({}, { marts: [], dimensions: [], dates: [] }).measure).toBeNull();
+  });
+});
+
+describe('saved doc v2', () => {
+  test('no charts saved means the default time series and pie; an empty list stays empty', () => {
+    expect(chartsOf({})).toEqual(DEFAULT_CHARTS);
+    expect(DEFAULT_CHARTS.map((c) => c.kind)).toEqual(['timeSeries', 'pie']);
+    expect(chartsOf({ version: 2, charts: [] })).toEqual([]);
+  });
+  test('editCharts applies to the defaults when nothing is saved and always writes version 2', () => {
+    const s = editCharts({ scorecards: { sparklines: false } }, (list) => list.filter((c) => c.kind !== 'pie'));
+    expect(s).toEqual({ version: 2, scorecards: { sparklines: false }, charts: [{ id: 'time-series', kind: 'timeSeries' }] });
+  });
+  test('patchChart changes one chart by id and keeps the rest', () => {
+    const s: ChartSettingsV2 = { version: 2, charts: [{ id: 'a', kind: 'pie' }, { id: 'b', kind: 'line' }] };
+    expect(patchChart(s, 'b', { area: true }).charts).toEqual([{ id: 'a', kind: 'pie' }, { id: 'b', kind: 'line', area: true }]);
+  });
+  test('pickMeasure: the saved id, else the first metric, else the first measure', () => {
+    const rec = { kind: 'records', aliasPath: '', recordsId: 'records:M' } as const;
+    const amt = { kind: 'metric', metric: { field: { name: 'amount' }, fn: 'SUM' } } as never;
+    expect(pickMeasure([rec, amt], 'records')).toBe(rec);
+    expect(pickMeasure([rec, amt], 'gone')).toBe(amt);
+    expect(pickMeasure([rec], undefined)).toBe(rec);
+    expect(pickMeasure([], 'x')).toBeNull();
+  });
+  test('pickField: saved name, else the fallback (first by default, null when given)', () => {
+    const a = { name: 'a' } as never; const b = { name: 'b' } as never;
+    expect(pickField([a, b], 'b')).toBe(b);
+    expect(pickField([a, b], 'gone')).toBe(a);
+    expect(pickField([a, b], 'gone', null)).toBeNull();
+    expect(pickField([], undefined)).toBeNull();
+  });
+  test('pickBucketChoice keeps AUTO and real buckets only', () => {
+    expect(pickBucketChoice('WEEK')).toBe('WEEK');
+    expect(pickBucketChoice('HOUR')).toBe('AUTO');
+    expect(pickBucketChoice(undefined)).toBe('AUTO');
+  });
+  test('scorecardsOf reads hidden and sparklines with their defaults', () => {
+    expect(scorecardsOf({})).toEqual({ hidden: new Set(), sparklines: true });
+    expect(scorecardsOf({ scorecards: { hidden: ['x'], sparklines: false } })).toEqual({ hidden: new Set(['x']), sparklines: false });
+  });
+  test('ids are unique and kinds are checked', () => {
+    expect(newChartId()).not.toBe(newChartId());
+    expect(isChartKind('heatmap')).toBe(true);
+    expect(isChartKind('donut')).toBe(false);
   });
 });
