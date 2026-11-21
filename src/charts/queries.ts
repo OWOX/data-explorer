@@ -156,7 +156,24 @@ export function scatterQuery(dim: Field, x: Measure, y: Measure, filter: Travers
   return withFilter(o, filter);
 }
 
-/** The functions a spread reads: the median first (it sorts the rows), the quartiles, and the whiskers when governance allows them. Empty when a percentile is not allowed. */
+/** One side of a Sankey pair read: the listed real values, the blank value alone, or the real values outside the list ("Other"). */
+export type SankeySide = { kind: 'in'; top: string[] } | { kind: 'blank' } | { kind: 'other'; top: string[] };
+const sideRules = (dim: Field, s: SankeySide): TraverseFilter[] =>
+  s.kind === 'in' ? [{ column: dim.name, operator: 'in', value: list(s.top) }] : s.kind === 'blank' ? [blankRule(dim)] : outside(dim, s.top);
+
+/**
+ * The measure per pair of values of two neighbouring Sankey columns. Only a side that lists values is grouped on; a blank or Other side is one
+ * category, so its rows are summed by the backend and its column is not read (Other would otherwise return every tail value).
+ */
+export function sankeyPairQuery(a: Field, sa: SankeySide, b: Field, sb: SankeySide, measure: Measure, filter: TraverseFilter[], counter?: Field | null): TraverseOptions {
+  const o: TraverseOptions = {
+    column: [...(sa.kind === 'in' ? [a.name] : []), ...(sb.kind === 'in' ? [b.name] : []), ...measureColumns(measure)],
+    ...measureParts(measure),
+  };
+  return withFilter(withCounter(o, filter, counter), [...filter, ...sideRules(a, sa), ...sideRules(b, sb)]);
+}
+
+/** The functions a spread reads:the median first (it sorts the rows), the quartiles, and the whiskers when governance allows them. Empty when a percentile is not allowed. */
 export function spreadFns(field: Field): AggFn[] {
   const allowed = allowedFunctions(field);
   if (!(['P25', 'P50', 'P75'] as const).every((fn) => allowed.includes(fn))) return [];

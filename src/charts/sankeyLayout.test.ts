@@ -1,0 +1,81 @@
+import { BLANK_KEY, OTHER_KEY } from './blank';
+import { layoutSankey, NODE_GAP, type Flow } from './sankeyLayout';
+
+const flows: Flow[][] = [
+  [{ source: 'a', target: 'x', value: 5 }, { source: 'a', target: 'y', value: 3 }, { source: 'b', target: 'y', value: 4 }, { source: BLANK_KEY, target: 'x', value: 2 }, { source: OTHER_KEY, target: 'y', value: 1 }, { source: 'b', target: OTHER_KEY, value: 2 }],
+  [{ source: 'x', target: 'z', value: 10 }, { source: 'y', target: 'z', value: 3 }],
+];
+const lay = layoutSankey({ flows, width: 600, padRight: 100, height: 200 });
+const col = (c: number) => lay.nodes.filter((n) => n.col === c);
+
+test('nodes run blank first, then by size, Other last', () => {
+  expect(col(0).map((n) => n.key)).toEqual([BLANK_KEY, 'a', 'b', OTHER_KEY]);
+  expect(col(1).map((n) => n.key)).toEqual(['x', 'y', OTHER_KEY]);
+  expect(col(2).map((n) => n.key)).toEqual(['z']);
+});
+
+test('a node is as tall as the larger of what flows in and out, on one scale', () => {
+  const x = col(1).find((n) => n.key === 'x')!; // in 7, out 10
+  const y = col(1).find((n) => n.key === 'y')!; // in 8, out 3
+  expect(x.value).toBe(10);
+  expect(y.value).toBe(8);
+  expect(x.h / y.h).toBeCloseTo(10 / 8);
+  const a = col(0).find((n) => n.key === 'a')!;
+  expect(a.h / x.h).toBeCloseTo(8 / 10);
+});
+
+test('nodes of a column do not overlap and keep a gap, inside the height', () => {
+  for (let c = 0; c < 3; c++) {
+    const nodes = col(c);
+    nodes.slice(1).forEach((n, i) => expect(n.y).toBeGreaterThanOrEqual(nodes[i]!.y + nodes[i]!.h + NODE_GAP - 1e-6));
+    const last = nodes.at(-1)!;
+    expect(last.y + last.h).toBeLessThanOrEqual(lay.height + 1e-6);
+  }
+});
+
+test('columns are evenly spaced and the last keeps room for its labels', () => {
+  const xs = [0, 1, 2].map((c) => col(c)[0]!.x);
+  expect(xs[1]! - xs[0]!).toBeCloseTo(xs[2]! - xs[1]!);
+  expect(xs[2]! + 12).toBeLessThanOrEqual(500 + 1e-6);
+});
+
+test('ribbon slots follow the opposite node rank, do not overlap on a node, and fit it', () => {
+  for (const node of lay.nodes) {
+    for (const side of ['out', 'in'] as const) {
+      const links = lay.links.filter((l) => (side === 'out' ? l.pair === node.col && l.source === node.key : l.pair === node.col - 1 && l.target === node.key));
+      const spans = links.map((l) => [side === 'out' ? l.y0 : l.y1, l.w] as const).sort((p, q) => p[0] - q[0]);
+      spans.forEach(([y, w], i) => {
+        expect(y).toBeGreaterThanOrEqual(node.y - 1e-6);
+        expect(y + w).toBeLessThanOrEqual(node.y + node.h + 1e-6);
+        if (i > 0) expect(y).toBeGreaterThanOrEqual(spans[i - 1]![0] + spans[i - 1]![1] - 1e-6);
+      });
+    }
+  }
+  // Leaving node a: its ribbon to x (rank 0) sits above its ribbon to y (rank 1).
+  const toX = lay.links.find((l) => l.source === 'a' && l.target === 'x')!;
+  const toY = lay.links.find((l) => l.source === 'a' && l.target === 'y')!;
+  expect(toX.y0).toBeLessThan(toY.y0);
+  // Entering y: a (rank 1) above b (rank 2) above Other.
+  const intoY = lay.links.filter((l) => l.pair === 0 && l.target === 'y').sort((p, q) => p.y1 - q.y1).map((l) => l.source);
+  expect(intoY).toEqual(['a', 'b', OTHER_KEY]);
+});
+
+test('ribbon width is proportional to value, drawn as a closed filled path', () => {
+  const p = lay.links.find((l) => l.source === 'a' && l.target === 'x')!;
+  const q = lay.links.find((l) => l.source === 'a' && l.target === 'y')!;
+  expect(p.w / q.w).toBeCloseTo(5 / 3);
+  expect(p.path.startsWith('M')).toBe(true);
+  expect(p.path.endsWith('Z')).toBe(true);
+  expect(p.path.match(/C/g)).toHaveLength(2);
+});
+
+test('colour: the first column takes series slots, blank and Other keep their own, later nodes follow their largest inflow', () => {
+  expect(col(0).map((n) => n.tone)).toEqual([{ kind: 'blank' }, { kind: 'series', index: 0 }, { kind: 'series', index: 1 }, { kind: 'other' }]);
+  expect(col(1).find((n) => n.key === 'x')!.tone).toEqual({ kind: 'series', index: 0 });
+  expect(col(1).find((n) => n.key === 'y')!.tone).toEqual({ kind: 'series', index: 1 });
+  expect(lay.links.find((l) => l.source === 'b' && l.target === 'y')!.tone).toEqual({ kind: 'series', index: 1 });
+});
+
+test('empty flows lay out nothing', () => {
+  expect(layoutSankey({ flows: [[]], width: 300 })).toMatchObject({ nodes: [], links: [] });
+});

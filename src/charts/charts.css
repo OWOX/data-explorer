@@ -69,3 +69,6 @@
 .dm-chart-swatch { display: inline-block; vertical-align: middle; width: 10px; height: 10px; border-radius: 2px; flex: none; }
 .dm-pie { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
 .dm-pie .dm-chart-legend { flex-direction: column; margin: 0; }
+
+.dm-sankey-link:focus-visible { outline: none; stroke: var(--foreground); stroke-width: 1.5; }
+.dm-sankey-node:focus-visible { outline: none; stroke: var(--foreground); stroke-width: 2; }
