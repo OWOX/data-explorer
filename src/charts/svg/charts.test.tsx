@@ -39,6 +39,16 @@ test('BarChart shows the X field name under the bucket labels, and nothing witho
   expect(container.querySelector('.dm-chart-axis-title')).toBeNull();
 });
 
+test('BarChart truncates a long X field name and keeps the full name in a title', () => {
+  const long = 'a_very_long_field_name_'.repeat(8);
+  const { container } = wrap(<BarChart series={two} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} xTitle={long} />);
+  const el = container.querySelector('.dm-chart-axis-title')!;
+  const shown = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('');
+  expect(shown).toMatch(/…$/);
+  expect(shown.length).toBeLessThan(long.length);
+  expect(el.querySelector('title')).toHaveTextContent(long);
+});
+
 test('BarChart horizontal: rows are 20px with a 2px gap, no legend for one series', () => {
   const { container } = wrap(<BarChart series={[two[1]!]} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} />);
   expect(container.querySelector('svg')).toHaveAttribute('data-orientation', 'horizontal');

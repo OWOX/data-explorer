@@ -111,9 +111,13 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
             ? <text key={p.x} className="dm-chart-text" x={left + i * band + band / 2} y={TOP + PLOT_H + 16} textAnchor="middle">{p.label}</text>
             : <text key={p.x} className="dm-chart-text" x={left - 6} y={TOP + i * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle">{p.label}</text>
         ) : null))}
-        {xTitle && (vertical
-          ? <text className="dm-chart-axis-title" x={left + plotW / 2} y={TOP + PLOT_H + AXIS_H + 10} textAnchor="middle">{xTitle}</text>
-          : <text className="dm-chart-axis-title" x={left - 6} y={TOP + xs.length * ROW_H + 14} textAnchor="end">{xTitle}</text>)}
+        {xTitle && (() => {
+          // Horizontal: the title sits in the reserved strip under the tick row, centred under the plot.
+          const room = Math.max(4, Math.floor(plotW / CHAR_W));
+          const text = xTitle.length > room ? `${xTitle.slice(0, room - 1)}…` : xTitle;
+          const y = (vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H) + 10;
+          return <text className="dm-chart-axis-title" x={left + plotW / 2} y={y} textAnchor="middle"><title>{xTitle}</title>{text}</text>;
+        })()}
         {bands}
         {marks}
       </svg>
@@ -123,7 +127,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
         </ul>
       )}
       <table className="sr-only">
-        <thead><tr><th>Bucket</th>{series.map((s) => <th key={s.name}>{s.name}</th>)}</tr></thead>
+        <thead><tr><th>{xTitle ?? 'Bucket'}</th>{series.map((s) => <th key={s.name}>{s.name}</th>)}</tr></thead>
         <tbody>{xs.map((p, i) => <tr key={p.x}><th scope="row">{p.label}</th>{series.map((s) => <td key={s.name}>{s.points[i]?.valueText ?? ''}</td>)}</tr>)}</tbody>
       </table>
     </div>
