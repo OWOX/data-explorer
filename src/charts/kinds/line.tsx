@@ -21,7 +21,7 @@ export type LineR = { date: Field; bucket: DateBucket | 'AUTO'; measure: Measure
 function LinePanel({ martId, cf, spec, r, spark, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<LineR>) {
   const { date, measure, measure2, stack } = r;
   const blanks = spec.blanks === true;
-  const { bucket, error, retry } = useBucket(martId, date, r.bucket, dateFilter(filter, date, blanks), version, idle);
+  const { bucket, error, retry } = useBucket(martId, date, r.bucket, filter, version, idle);
   const range = { error, retry };
   const one = useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, blanks, version, idle, formatOf, range });
   // The second measure is its own unstacked series; with none, its hook reads nothing.

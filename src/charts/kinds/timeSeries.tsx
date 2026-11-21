@@ -39,7 +39,7 @@ export function dateMenu(cf: ChartFields, r: { date: Field; bucket: DateBucket |
 function TimeSeriesPanel({ martId, cf, spec, r, spark, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<TimeSeriesR>) {
   const { date, measure, stack } = r;
   const blanks = spec.blanks === true;
-  const { bucket, error, retry } = useBucket(martId, date, r.bucket, dateFilter(filter, date, blanks), version, idle);
+  const { bucket, error, retry } = useBucket(martId, date, r.bucket, filter, version, idle);
   const s = useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, blanks, version, idle, formatOf, range: { error, retry } });
   const [tickType, tickFormat] = measureFormat(measure, formatOf);
   const items: MenuItem[] = [
