@@ -18,5 +18,7 @@ export function useGridFocus(mainId: string | null, tree: JoinTree | null, enabl
   }, []);
   const toggle = useCallback((path: string) => setState((cur) => (cur !== null && cur.path === path && cur.main === mainId ? null : { main: mainId, path })), [mainId]);
   const clear = useCallback(() => setState(null), []);
-  return { focus, toggle, clear };
+  /** Focus a path outright (a card just added), whatever is focused now. */
+  const show = useCallback((path: string) => setState({ main: mainId, path }), [mainId]);
+  return { focus, toggle, clear, show };
 }

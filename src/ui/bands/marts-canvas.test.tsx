@@ -133,12 +133,16 @@ const joinCountriesUnderCustomers = async () => {
   await userEvent.hover(el('orders')!);
   await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="customers"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
+  // The added card is pinned: let the pin go so the next ghost is looked up under the card hovered.
+  await userEvent.keyboard('{Escape}');
   await userEvent.hover(el('orders')!);
   await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="stores"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores']));
+  await userEvent.keyboard('{Escape}');
   await userEvent.hover(el('customers', 'customers')!);
   await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="countries"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores', 'Countries']));
+  await userEvent.keyboard('{Escape}');
 };
 
 test('dragging countries from customers onto stores moves its columns to the stores path', async () => {
@@ -335,6 +339,7 @@ test('two copies of one mart read with their paths, and so do their remove butto
   await within(marts()).findByText('Customers');
   fireEvent.click(gridCard('Customers'));
   await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+  fireEvent.keyDown(document, { key: 'Escape' });
   fireEvent.click(gridCard('Stores'));
   await waitFor(() => expect(el('stores', 'stores')).not.toBeNull());
   fireEvent.click(el('customers', 'customers')!);
@@ -509,4 +514,16 @@ test('at another scale the drag line and the drop pick use layout pixels', async
   expect(parseFloat(start[2]!)).toBeCloseTo(centre('stores', 'stores').y, 0);
   fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
   await waitFor(() => expect(tips()).toContain('Stores → Countries'));
+});
+
+test('a click on a ghost adds it and pins it, its own ghosts show; a second click lets them go', async () => {
+  setup();
+  await ready();
+  await toCanvas();
+  await waitFor(() => expect(el('orders')).not.toBeNull());
+  await userEvent.hover(el('orders')!);
+  await userEvent.click(await waitFor(() => { const g = ghostEl('customers', 'customers'); expect(g).not.toBeNull(); return g!; }));
+  await waitFor(() => expect(ghostEl('countries', 'customers.countries')).not.toBeNull());
+  await userEvent.click(el('customers', 'customers')!);
+  await waitFor(() => expect(ghostEl('countries', 'customers.countries')).toBeNull());
 });

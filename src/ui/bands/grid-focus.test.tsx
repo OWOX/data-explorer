@@ -18,6 +18,8 @@ const ready = async () => { await waitFor(() => expect(headers()).toHaveLength(5
 const cards = () => [...marts().querySelectorAll<HTMLElement>('article')];
 const el = (id: string, path?: string) => cards().find((a) => a.id === martElementId(id, path) && !a.hasAttribute('data-ghost')) ?? null;
 const ghost = (id: string, path?: string) => cards().find((a) => a.id === martElementId(id, path) && a.hasAttribute('data-ghost')) ?? null;
+// A card just added is focused, so the other band cards are dimmed until the focus is let go.
+const letGo = () => fireEvent.keyDown(document, { key: 'Escape' });
 const bandCard = (id: string) => within(marts()).findByText(new RegExp(`^${id}$`)).then((t) => t.closest('article')!);
 
 /** Orders, Customers (customers), Stores (stores). */
@@ -25,8 +27,10 @@ async function joinCustomersAndStores() {
   await ready();
   fireEvent.click(await bandCard('Customers'));
   await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+  letGo();
   fireEvent.click(await bandCard('Stores'));
   await waitFor(() => expect(el('stores', 'stores')).not.toBeNull());
+  letGo();
 }
 async function joinCountriesTwice() {
   await joinCustomersAndStores();
@@ -194,4 +198,31 @@ test('Charts: a mart joined twice is two cells with their own titles and fields'
   const names = (path: string) => [...cell(path).querySelectorAll('[data-card]')].map((c) => (c as HTMLElement).dataset.card);
   expect(names('customers.countries').every((n) => !n?.includes('stores'))).toBe(true);
   expect(names('stores.countries').every((n) => !n?.includes('customers'))).toBe(true);
+});
+
+test('a click on an outside card adds it and focuses it, its joinable marts show; a second click hides them', async () => {
+  setup();
+  await ready();
+  fireEvent.click(await bandCard('Customers'));
+  await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+  await waitFor(() => expect(el('customers', 'customers')).toHaveAttribute('data-focused'));
+  // Countries joins under Customers: it is joinable there, Products is not.
+  expect(el('countries')).not.toHaveClass('dm-unjoinable');
+  expect(el('products')).toHaveClass('dm-unjoinable');
+  fireEvent.click(el('customers', 'customers')!);
+  await waitFor(() => expect(marts().querySelector('[data-focused]')).toBeNull());
+  expect(el('products')).not.toHaveClass('dm-unjoinable');
+});
+
+test('a click on a ghost deep in the focus chain adds it and focuses the new card', async () => {
+  setup();
+  await joinCustomersAndStores();
+  fireEvent.click(el('customers', 'customers')!);
+  fireEvent.click(await bandCard('Countries'));
+  await waitFor(() => expect(el('countries', 'customers.countries')).not.toBeNull());
+  await waitFor(() => expect(el('countries', 'customers.countries')).toHaveAttribute('data-focused'));
+  fireEvent.click(el('stores', 'stores')!);
+  await waitFor(() => expect(ghost('countries', 'stores.countries')).not.toBeNull());
+  fireEvent.click(ghost('countries', 'stores.countries')!);
+  await waitFor(() => expect(el('countries', 'stores.countries')).toHaveAttribute('data-focused'));
 });

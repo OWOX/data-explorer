@@ -38,6 +38,8 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   const [pinState, setPinState] = useState<{ main: string | null; path: string } | null>(null);
   const pinned = pinState !== null && pinState.main === mainId ? pinState.path : null;
   const setPinned = useCallback((path: string | null) => setPinState(path === null ? null : { main: mainId, path }), [mainId]);
+  // The tree and main mart of the latest render: a click that resolves later checks what its step left, not what it was started on.
+  const latest = useLatest({ tree, mainId });
   // The drop handler runs after render, so it reads the latest layout through a ref (the layout is built further down).
   const placedRef = useRef<ReturnType<typeof layoutTree>['placed']>([]);
   const drag = useCanvasDrag(
@@ -216,7 +218,15 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               selected={false}
               joined={false}
               lit={false}
-              onSelect={() => { setPinned(null); clearHover(); click(g.martId, { addAt: g.aliasPath }).then(() => setFocusCard({ martId: g.martId, path: g.aliasPath }), () => undefined); }}
+              onSelect={() => { setPinned(null); clearHover(); 
+                // The added card is pinned, so what joins under it shows at once. A click that added nothing pins nothing.
+                const main = mainId;
+                click(g.martId, { addAt: g.aliasPath }).then(() => {
+                  if (latest.current.mainId !== main || !latest.current.tree.nodes.has(g.aliasPath)) return;
+                  setPinned(g.aliasPath);
+                  setFocusCard({ martId: g.martId, path: g.aliasPath });
+                }, () => undefined);
+              }}
               onOpenApp={() => onOpenApp(mart.id)}
             />
           </div>,

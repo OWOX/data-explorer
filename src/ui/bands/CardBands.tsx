@@ -25,6 +25,7 @@ import { MartsCanvas } from './MartsCanvas';
 import { buildJoinTree, ghostSources, subtreePaths, type TreeNode } from '../../state/join-tree';
 import { pathTitle } from '../../state/join-plan';
 import { useGridFocus } from './useGridFocus';
+import { useLatest } from '../useLatest';
 import type { JoinedSource } from '../../api/blendable';
 
 type MartsView = 'grid' | 'canvas';
@@ -128,7 +129,9 @@ export function CardBands({
   // The report tree: a joined mart is a node per alias path, in Graph and in Grid, and a source line reaches each of them.
   const mainFor = selection.martId;
   const canvasTree = useMemo(() => (mainFor ? buildJoinTree(mainFor, mainColumns, joinSources ?? []) : null), [mainFor, mainColumns, joinSources]);
-  const { focus, toggle: toggleFocus, clear: clearFocus } = useGridFocus(mainFor, canvasTree, view === 'grid');
+  const { focus, toggle: toggleFocus, clear: clearFocus, show: showFocus } = useGridFocus(mainFor, canvasTree, view === 'grid');
+  // The tree and main mart of the latest render: a click that resolves later checks what its step left, not what it was started on.
+  const latestTree = useLatest({ main: mainFor, tree: canvasTree });
   // A card added from the band moves from the outside list to the report list, so React remounts it and focus would drop to the page:
   // the new report card takes it once it renders. `path` is null when the click did not say where; the new node of that mart is it then.
   const [focusAdded, setFocusAdded] = useState<{ martId: string; path: string | null; before: Set<string> } | null>(null);
@@ -145,7 +148,14 @@ export function CardBands({
     const before = new Set(canvasTree?.nodes.keys());
     // Only when focus is on the card being added: a click with the pointer elsewhere moves nothing.
     const hadFocus = document.activeElement?.closest('article')?.getAttribute('data-mart-id') === id;
+    const main = mainFor;
     void click(id, options).then(() => {
+      // The added card is focused, so what joins under it shows at once. A click that added nothing, or made another mart the main one, focuses nothing.
+      const now = latestTree.current;
+      if (now.main === main && now.tree) {
+        const added = options?.addAt ?? [...now.tree.nodes.values()].find((n) => n.martId === id && !before.has(n.path))?.path;
+        if (added !== undefined && !before.has(added) && now.tree.nodes.has(added)) showFocus(added);
+      }
       if (!hadFocus) return;
       setFocusAdded({ martId: id, path: options?.addAt ?? null, before });
       // A click that changed nothing must not take focus from whatever the member moves to next.
@@ -434,7 +444,7 @@ export function CardBands({
               unjoinable={unjoinableFor(id)}
               mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
               onMakeMain={mainId && id !== mainId ? () => void click(id, { mode: 'makeMain' }) : undefined}
-              onSelect={() => void click(id)}
+              onSelect={() => addFromBand(id)}
               onOpenApp={() => onOpenApp(id)}
             />,
           ];

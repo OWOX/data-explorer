@@ -10,10 +10,13 @@ test('canvas: add marts through ghosts, move countries from customers to stores,
   await marts.locator('article#dm-orders').hover();
   await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
   await expect(marts.locator('article[data-ghost][data-mart-id="customers"]')).toHaveCount(0);
+  // The added card is pinned and shows its own ghosts: Escape lets the pin go.
+  await page.keyboard.press('Escape');
   await marts.locator('article#dm-orders').hover();
   await expect(marts.locator('article[data-ghost][data-mart-id="stores"]')).toBeVisible();
   await marts.locator('article[data-ghost][data-mart-id="stores"]').click();
   await expect(marts.locator('article[data-ghost][data-mart-id="stores"]')).toHaveCount(0);
+  await page.keyboard.press('Escape');
   await marts.locator('[id="dm-customers@customers"]').hover();
   await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toBeVisible();
   await marts.locator('article[data-ghost][data-mart-id="countries"]').click();
@@ -49,12 +52,15 @@ test('canvas: Countries under both Customers and Stores, × removes a subtree, U
   await marts.getByRole('radio', { name: 'Graph' }).click();
   await marts.locator('article#dm-orders').hover();
   await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
+  await page.keyboard.press('Escape');
   await marts.locator('article#dm-orders').hover();
   await marts.locator('article[data-ghost][data-mart-id="stores"]').click();
+  await page.keyboard.press('Escape');
   for (const parent of ['customers', 'stores']) {
     await marts.locator(`[id="dm-${parent}@${parent}"]`).hover();
     await marts.locator('article[data-ghost][data-mart-id="countries"]').click();
     await expect(marts.locator(`[id="dm-countries@${parent}.countries"]`)).toBeVisible();
+    await page.keyboard.press('Escape');
   }
   await expect(marts.locator('article[data-mart-id="countries"]:not([data-ghost])')).toHaveCount(2);
   await expect(data.locator('th[data-group="countries"]')).toHaveCount(2);
