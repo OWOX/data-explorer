@@ -511,3 +511,10 @@ test('a ranked bar draws one bar per top value; switching it to pie keeps its me
   await waitFor(() => expect(data().querySelector('section[data-chart-kind="Pie"] [data-slice]')).not.toBeNull());
   expect((t.puts.mock.lastCall![1] as ChartSettings).charts).toEqual([{ id: 'r', kind: 'pie', measure: 'amount', dimension: 'status' }]);
 });
+
+test('a chart menu ends with Chart type, Copy to clipboard and Remove', async () => {
+  await charts();
+  await userEvent.click(screen.getByRole('button', { name: 'Pie options' }));
+  const rows = within(screen.getAllByRole('menu').at(-1)!).getAllByRole('menuitem').map((r) => r.textContent);
+  expect(rows.slice(-3)).toEqual(['Chart type', 'Copy to clipboard', 'Remove']);
+});
