@@ -1,5 +1,6 @@
 import type { Schema } from '../model/types';
 import type { Ctx, TraverseOptions } from '../sdk/types';
+import { hasPrimaryKey } from '../records/relationships';
 import { readRows } from './rows';
 
 export const ROW_COUNTS_COLLECTION = 'row-counts';
@@ -7,7 +8,7 @@ const COUNT_MAX_AGE_MS = 24 * 3600_000;
 type CountDoc = { dataMartId: string; count: number; at: string };
 
 export function countOptions(schema: Schema): { options: TraverseOptions; key: string } | null {
-  if (schema.some((f) => f.isPrimaryKey)) return { options: { uniqueCount: [''] }, key: 'Unique Count' };
+  if (hasPrimaryKey(schema)) return { options: { uniqueCount: [''] }, key: 'Unique Count' };
   // The backend allows COUNT only on string, boolean and other fields (number: SUM/AVG/MIN/MAX, date and time: MIN/MAX).
   const first = schema.find((f) => f.category === 'string' || f.category === 'boolean' || f.category === 'other');
   if (!first) return null;

@@ -38,8 +38,10 @@ async function search(q: string) {
 /** The x on the search: clears the query and restores the band. */
 const clearSearch = () => userEvent.click(screen.getByRole('button', { name: 'Clear search' }));
 
+// The orders grid used to open on its key; the key is no longer a default column, so these tests start from a grid that was saved with it.
+const withKeyShown = (c: Mock): Mock => { void c.collections('grid-columns').put('orders', { columns: ['id', 'customer_id', 'product_id', 'store_id', 'status'], at: new Date().toISOString() }); return c; };
 async function mountWith(wrap: (ctx: Mock) => Ctx = (c) => c, fixtures = demoFixtures()) {
-  const view = render(<AppServices ctx={titleSearchOnly(wrap(createMockCtx(fixtures, { latencyMs: 0 })))}><StoreProvider><App /><ModelReload /><SelectSecretLedger /></StoreProvider></AppServices>);
+  const view = render(<AppServices ctx={titleSearchOnly(wrap(withKeyShown(createMockCtx(fixtures, { latencyMs: 0 }))))}><StoreProvider><App /><ModelReload /><SelectSecretLedger /></StoreProvider></AppServices>);
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
   await waitFor(() => expect(document.querySelector('.dm-loadbar')).toBeNull());
   return view;
@@ -500,6 +502,7 @@ describe('the record', () => {
 });
 
 const NO_PK = 'Preview only: this data mart has no primary key.';
+const HIDDEN_PK = "Preview only: this data mart's primary key is hidden for reporting.";
 
 describe('search, contexts and refresh', () => {
   test('the page header is the title and the actions (the search first) with no Refresh button', async () => {
@@ -1304,7 +1307,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(named).not.toContain('internal_flag');
   });
 
-  test('a mart whose primary key is hidden for reporting is preview only, with no 400', async () => {
+  test('a mart whose primary key is hidden for reporting is preview only (and says so), with no 400, a record count, and no key in the picker', async () => {
     const f = demoFixtures();
     const stores = f.marts.find((m) => m.id === 'stores')!;
     stores.fields = stores.fields.map((x) => (x.name === 'id' ? { ...x, isHiddenForReporting: true } : x));
@@ -1314,13 +1317,17 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     await search('stores');
     await within(marts()).findByText('Stores');
     await goTo('Stores');
-    expect(await within(data()).findByRole('note', { name: NO_PK })).toBeInTheDocument();
+    expect(await within(data()).findByRole('note', { name: HIDDEN_PK })).toBeInTheDocument();
+    expect(within(data()).queryByRole('note', { name: NO_PK })).toBeNull();
     await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
     expect(within(data()).queryByText(/Unknown column/)).toBeNull();
     await userEvent.click(within(data()).getAllByRole('row')[2]!);
     expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
     const named = queries.filter((q) => q.id === 'stores').flatMap((q) => [...(q.o.column ?? []), ...(q.o.sort ?? []).map((s) => s.column)]);
     expect(named).not.toContain('id');
+    // The mart is still counted by its key: Unique Count is sent for it, and no card says it cannot count.
+    expect(queries.some((q) => q.id === 'stores' && (q.o as { uniqueCount?: string[] }).uniqueCount?.[0] === '')).toBe(true);
+    expect(screen.queryByText(/Can't count records/)).toBeNull();
   });
 
   test('Referenced by leaves out a link whose join field is hidden for reporting', async () => {

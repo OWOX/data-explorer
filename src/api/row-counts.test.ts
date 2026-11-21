@@ -16,6 +16,11 @@ test('countOptions uses uniqueCount with a primary key and COUNT otherwise', () 
   expect(countOptions([])).toBeNull();
 });
 
+test('a hidden primary key still counts by Unique Count, which the backend computes from the key as declared', () => {
+  const hidden: Schema = Object.assign([field('status', 'string', 'STRING')], { primaryKey: ['id'] });
+  expect(countOptions(hidden)).toEqual({ options: { uniqueCount: [''] }, key: 'Unique Count' });
+});
+
 test('a mart with only number, date and time fields and no key has no count', async () => {
   const only = [field('day', 'date', 'DATE'), field('amount', 'number'), field('t', 'time')];
   expect(countOptions(only)).toBeNull();

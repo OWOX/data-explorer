@@ -18,10 +18,28 @@ test('get() maps the fields reporting may use (none hidden for reporting), and c
   await loader.get('a');
   expect(getJson).toHaveBeenCalledTimes(1);
   expect(getJson).toHaveBeenCalledWith('/api/data-marts/a');
-  expect(a).toEqual([
+  expect([...a]).toEqual([
     { name: 'id', alias: null, type: 'INT64', category: 'number', description: null, isPrimaryKey: true },
     { name: 'name', alias: 'Name', type: 'STRING', category: 'string', description: 'n', isPrimaryKey: false },
   ]);
+});
+
+test('get() records the declared key, a key hidden for reporting included, while the field stays out of the schema', async () => {
+  const getJson = vi.fn(async () => ({ id: 'a', schema: { fields: [
+    { name: 'id', type: 'INT64', isPrimaryKey: true, isHiddenForReporting: true },
+    { name: 'name', type: 'STRING' },
+  ] } }));
+  const schema = await createSchemaLoader(stubCtx({ getJson })).get('a');
+  expect(schema.map((x) => x.name)).toEqual(['name']);
+  expect(schema.primaryKey).toEqual(['id']);
+});
+
+test('a key with a disconnected component is no key, as the backend counts it', async () => {
+  const getJson = vi.fn(async () => ({ id: 'a', schema: { fields: [
+    { name: 'a', type: 'INT64', isPrimaryKey: true },
+    { name: 'b', type: 'INT64', isPrimaryKey: true, status: 'DISCONNECTED' },
+  ] } }));
+  expect((await createSchemaLoader(stubCtx({ getJson })).get('a')).primaryKey).toEqual([]);
 });
 
 test('get() drops DISCONNECTED fields but keeps and flags calculated ones', async () => {

@@ -1,7 +1,7 @@
 import { knownFunctions } from '../model/aggregation';
 import { categorizeFieldType } from '../model/field-category';
 import type { Schema } from '../model/types';
-import type { Ctx, DataMartDetailDto } from '../sdk/types';
+import type { Ctx, DataMartDetailDto, SchemaFieldDto } from '../sdk/types';
 
 export interface SchemaLoader {
   get(id: string): Promise<Schema>;
@@ -9,6 +9,15 @@ export interface SchemaLoader {
   /** Forget one mart's schema (and a read in flight), so the next ask reads the backend again. */
   invalidate(id: string): void;
   clear(): void;
+}
+
+/**
+ * The key columns as declared, hidden ones included (hidden means off the reporting menu, not absent from the source).
+ * A disconnected key column is gone from the source, and the backend then counts by no key at all, so none is reported.
+ */
+function declaredKey(fields: SchemaFieldDto[]): string[] {
+  const keys = fields.filter((f) => f.isPrimaryKey === true);
+  return keys.some((f) => f.status === 'DISCONNECTED') ? [] : keys.map((f) => f.name);
 }
 
 export function createSchemaLoader(ctx: Ctx): SchemaLoader {
@@ -23,7 +32,8 @@ export function createSchemaLoader(ctx: Ctx): SchemaLoader {
     const p = ctx.owox
       .getJson<DataMartDetailDto>(`/api/data-marts/${encodeURIComponent(id)}`)
       .then((d) => {
-        const schema: Schema = (d.schema?.fields ?? [])
+        const all = d.schema?.fields ?? [];
+        const schema: Schema = all
           // A calculated field has no warehouse column, so its status is not meaningful: keep it.
           // A field hidden for reporting is not offered anywhere: the backend rejects it in a column, filter, sort or report.
           .filter((f) => !f.isHiddenForReporting && (f.calculated !== undefined || f.status !== 'DISCONNECTED'))
@@ -38,6 +48,7 @@ export function createSchemaLoader(ctx: Ctx): SchemaLoader {
             ...(f.calculated !== undefined ? { isCalculated: true } : {}),
             ...(Array.isArray(f.allowedAggregations) ? { allowedAggregations: knownFunctions(f.allowedAggregations) } : {}),
           }));
+        schema.primaryKey = declaredKey(all);
         if (inflight.get(id) === p) done.set(id, schema);
         return schema;
       })

@@ -52,4 +52,9 @@ export interface Model {
 
 export type DqSummary = DqSummaryDto;
 
-export type Schema = Field[]; // reporting-visible fields only (hidden ones are dropped), in schema order
+/**
+ * Reporting-visible fields only (hidden ones are dropped), in schema order.
+ * `primaryKey` is the mart's declared key as the backend knows it, hidden components included: a key hidden for reporting
+ * is not a pickable field, but the mart still has it and Unique Count still counts by it.
+ */
+export type Schema = Field[] & { primaryKey?: readonly string[] };

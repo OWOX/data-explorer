@@ -7,7 +7,10 @@ export async function bootContext(): Promise<Ctx | 'outside-host'> {
     const { demoFixtures } = await import('./mock/fixtures');
     const sheets = new URLSearchParams(location.search).get('sheets');
     // ?ai=0 is a project with no AI configured.
-    return createMockCtx(demoFixtures({ sheets: sheets === '0' || sheets === '1' ? Number(sheets) as 0 | 1 : 2 }), { latencyMs: 250, ai: new URLSearchParams(location.search).get('ai') !== '0' });
+    const ctx = createMockCtx(demoFixtures({ sheets: sheets === '0' || sheets === '1' ? Number(sheets) as 0 | 1 : 2 }), { latencyMs: 250, ai: new URLSearchParams(location.search).get('ai') !== '0' });
+    // ?keyshown opens the orders grid with its key column, as it was before the key left the default columns (the e2e specs about that column use it).
+    if (new URLSearchParams(location.search).has('keyshown')) (await import('./mock/key-shown')).keyShown(ctx);
+    return ctx;
   }
   try {
     return (await connect()) as unknown as Ctx;

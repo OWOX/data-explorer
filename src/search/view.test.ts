@@ -88,8 +88,8 @@ describe('parseAiFields and parseAiFilters', () => {
   });
 
   test('no valid column falls back to the default columns; a sort on a column that is not shown is left out', () => {
-    const grid = view({ columns: ['nope'], filters: [{ field: 'status', op: 'eq', value: 'paid' }], sorts: [{ field: 'tags', direction: 'asc' }] })!;
-    expect(grid.columns).toEqual(['id', 'status', 'amount', 'created_at', 'is_gift']);
+    const grid = view({ columns: ['nope'], filters: [{ field: 'status', op: 'eq', value: 'paid' }], sorts: [{ field: 'id', direction: 'asc' }] })!;
+    expect(grid.columns).toEqual(['status', 'amount', 'created_at', 'is_gift', 'tags']);
     expect(grid.sorts).toBeNull();
   });
 
@@ -131,7 +131,7 @@ describe('mergeAiView', () => {
   test('filters alone use the default columns', () => {
     const filters = { status: { field: 'status', op: 'eq' as const, value: 'paid' } };
     const grid = mergeAiView(schema, null, { filters, sorts: [{ field: 'amount', direction: 'asc' }] })!;
-    expect(grid.columns).toEqual(['id', 'status', 'amount', 'created_at', 'is_gift']);
+    expect(grid.columns).toEqual(['status', 'amount', 'created_at', 'is_gift', 'tags']);
     expect(grid.filters).toEqual(filters);
     expect(grid.sorts).toEqual([{ field: 'amount', direction: 'asc' }]);
   });

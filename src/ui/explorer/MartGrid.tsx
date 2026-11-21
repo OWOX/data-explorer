@@ -20,7 +20,7 @@ import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKe
 import { groupMap, moveColumn, moveColumnBy, orderColumns } from '../../state/column-order';
 import { joinedMartIds, joinedPaths, ownNamesIn, pathTitle } from '../../state/join-plan';
 import type { Model, Schema } from '../../model/types';
-import { primaryKeys } from '../../records/relationships';
+import { hasPrimaryKey, primaryKeys } from '../../records/relationships';
 import type { Row } from '../../sdk/types';
 import { sourceOfModel, useServices, useStore, type GridState } from '../../state/store';
 import { ErrorBox, errorMessage } from '../ErrorBox';
@@ -63,7 +63,9 @@ function useSchema(martId: string, version: number) {
 type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
 
 /** What the page hands the grid: the mart, what it opens with, and where its changes go. */
-type GridProps = { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: boolean) => void };
+/** Why a grid is a preview: the mart has no primary key, or its key is hidden for reporting. */
+export type NoKey = false | 'missing' | 'hidden';
+type GridProps = { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: NoKey) => void };
 
 /** The grid for one mart: loads the schema, then reads rows. Key it by mart id. */
 export function MartGrid({ martId, model, seed, onChange, onRows, paused = false }: GridProps & { /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
@@ -509,7 +511,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const table = useTable({ features, data: rows ?? [], columns });
   const rowsLabel = rows ? `${rows.length}${hasMore ? '+' : ''}` : null;
   // The Data band's title row shows the no-primary-key warning, so it is told whether this grid is a plain preview.
-  const noKey = pks.length === 0 && !grouped;
+  // `hidden`: the mart has a key but it is hidden for reporting, so no row can be opened by it.
+  const noKey: NoKey = grouped || pks.length > 0 ? false : hasPrimaryKey(native) ? 'hidden' : 'missing';
   useEffect(() => { onRows?.(rowsLabel, grouped, noKey); }, [rowsLabel, grouped, noKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const cardClick = useContext(CardClickContext);
   // One cell per data mart over its columns, main first; only when a joined mart is on screen.

@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMockCtx } from '../../sdk/mock/ctx';
+import { keyShown } from '../../sdk/mock/key-shown';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useServices } from '../../state/store';
 import { App } from '../App';
@@ -12,7 +13,7 @@ const headers = () => within(data()).getAllByRole('columnheader').filter((h) => 
 const ready = () => waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
 
 function setup() {
-  const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  const ctx = keyShown(createMockCtx(demoFixtures(), { latencyMs: 0 }));
   const services: { current: ReturnType<typeof useServices> | null } = { current: null };
   const Probe = () => { services.current = useServices(); return null; };
   render(<AppServices ctx={ctx}><Probe /><StoreProvider><App /></StoreProvider></AppServices>);

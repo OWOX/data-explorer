@@ -236,7 +236,7 @@ test('a saved list with joined columns and none of the main mart\'s own gets the
   const t = setup(['customers__email', 'products__sku']);
   await t.seeded;
   t.view();
-  await waitFor(() => expect(headers()).toEqual(['id', 'Customer', 'Product', 'Store', 'status', 'email', 'SKU']));
+  await waitFor(() => expect(headers()).toEqual(['Customer', 'Product', 'Store', 'status', 'Amount', 'email', 'SKU']));
 });
 
 test('Hide column focuses the neighbour by field, even when two columns share a title', async () => {

@@ -3,7 +3,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 const band = (page: Page, id: 'sources' | 'marts' | 'data' | 'row') => page.locator(`#band-${id}`);
 const martCard = (page: Page, title: string) => band(page, 'marts').locator('article', { hasText: title }).first();
 
-test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
+test.beforeEach(async ({ page }) => { await page.goto('/?mock&keyshown'); });
 
 async function ordersGrid(page: Page) {
   const data = band(page, 'data');
