@@ -130,6 +130,9 @@ export const measureFormat = (m: Measure, formatOf: Formatter): [type: string, f
 /** Whether a measure counts whole things (a records count, an integer field's sum or count), so its axis steps are whole numbers. */
 export const isIntegerMeasure = (m: Measure): boolean => m.kind === 'records' || isIntegerType(outputType(m.metric.field, m.metric.fn));
 
+/** The trend's rows that have a date: a blank date has no place on the time axis (the read stays as it is, so the series shares it). */
+export const datedRows = (rows: Row[], dateName: string): Row[] => rows.filter((s) => s[dateName] !== null && s[dateName] !== undefined && s[dateName] !== '');
+
 export const numberOf = (v: unknown): number | null => {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
@@ -150,7 +153,8 @@ export function MartCards({ martId, mart, main, spark, scores, bucket, filter, v
   if (scores.error) return main ? <ErrorBox error={scores.error} onRetry={scores.retry} /> : null;
   if (scores.rows && scores.rows.length === 0) return main ? <p className="dm-muted text-sm">{emptyText(hasFilters)}</p> : null;
   const row = scores.rows?.[0];
-  const points = (c: Card): Point[] => (trend.rows ?? []).map((s) => ({
+  const dated = date ? datedRows(trend.rows ?? [], date.name) : [];
+  const points = (c: Card): Point[] => dated.map((s) => ({
     x: String(s[date!.name]),
     y: numberOf(s[c.key]),
     label: formatBucket(s[date!.name], bucket!) ?? '',
@@ -171,7 +175,7 @@ export function MartCards({ martId, mart, main, spark, scores, bucket, filter, v
             </div>
           )}
           {row ? <CardValue card={c} row={row} formatOf={formatOf} /> : <Skeleton rows={1} />}
-          {trend.rows && trend.rows.length > 0 && <Sparkline points={points(c)} ariaLabel={`${c.label} trend`} />}
+          {dated.length > 0 && <Sparkline points={points(c)} ariaLabel={`${c.label} trend`} />}
         </div>
       ))}
     </div>

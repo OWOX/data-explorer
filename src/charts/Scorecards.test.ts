@@ -1,6 +1,6 @@
 import { AUTO } from '../format/formats';
 import type { Field } from '../model/types';
-import { isIntegerMeasure, metricText } from './Scorecards';
+import { datedRows, isIntegerMeasure, metricText } from './Scorecards';
 
 const amount: Field = { name: 'amount', alias: null, type: 'FLOAT', category: 'number', description: null, isPrimaryKey: false };
 const text = (v: unknown) => metricText(amount, 'SUM', v, () => AUTO);
@@ -29,4 +29,8 @@ test('records and integer fields count whole things; floats and averages do not'
   expect(isIntegerMeasure({ kind: 'metric', metric: { field: int, fn: 'COUNT' } })).toBe(true);
   expect(isIntegerMeasure({ kind: 'metric', metric: { field: int, fn: 'AVG' } })).toBe(false);
   expect(isIntegerMeasure({ kind: 'metric', metric: { field: amount, fn: 'SUM' } })).toBe(false);
+});
+
+test('datedRows drops a blank date from the sparkline points', () => {
+  expect(datedRows([{ d: '2026-01-01', n: 1 }, { d: null, n: 2 }, { n: 3 }, { d: '', n: 4 }, { d: '2026-01-02', n: 5 }], 'd').map((r) => r.n)).toEqual([1, 5]);
 });
