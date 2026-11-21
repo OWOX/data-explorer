@@ -4,6 +4,7 @@ import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
 import { ChartPanel } from '../ChartPanel';
+import { keyOf, labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
 import { measuresOf } from '../fields';
 import { measureKey, SCATTER_LIMIT, scatterQuery, type Measure } from '../queries';
@@ -23,8 +24,8 @@ function ScatterPanel({ martId, cf, r, filter, version, idle, hasFilters, format
   const points: Dot[] = (read.rows ?? []).flatMap((row) => {
     const xv = numberOf(row[xk]); const yv = numberOf(row[yk]);
     if (xv === null || yv === null) return [];
-    const key = String(row[dim.name]);
-    return [{ key, label: key, x: xv, y: yv, xText: measureText(x, row[xk], formatOf), yText: measureText(y, row[yk], formatOf) }];
+    const key = keyOf(row[dim.name]);
+    return [{ key, label: labelOf(key), x: xv, y: yv, xText: measureText(x, row[xk], formatOf), yText: measureText(y, row[yk], formatOf) }];
   });
   const [xt, xf] = measureFormat(x, formatOf);
   const [yt, yf] = measureFormat(y, formatOf);
@@ -40,7 +41,7 @@ function ScatterPanel({ martId, cf, r, filter, version, idle, hasFilters, format
   return (
     <ChartPanel title={title} name="Scatter" items={ready ? items : null} width={BOX_WIDTH}
       loading={!read.rows && !read.error} error={read.error} onRetry={read.retry} empty={read.rows?.length === 0 ? emptyText(hasFilters) : null}
-      note={`Rows with a blank ${fieldLabel(dim)} are not shown.${full ? ` Only the ${SCATTER_LIMIT} values with the largest ${measureLabel(cf, x)} are drawn.` : ''}`}>
+      note={full ? `Only the ${SCATTER_LIMIT} values with the largest ${measureLabel(cf, x)} are drawn.` : undefined}>
       {read.rows && <Scatter points={points} ariaLabel={title} xTitle={measureLabel(cf, x)} yTitle={measureLabel(cf, y)}
         formatX={(n) => tickText(n, xt, xf)} formatY={(n) => tickText(n, yt, yf)} onPick={(k) => onFilter([dimensionFilter(dim, k)])} />}
     </ChartPanel>

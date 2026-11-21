@@ -3,7 +3,7 @@ import { Tooltip, TipLines } from '../../ui/Tooltip';
 import { useWidth } from '../useWidth';
 import type { Point } from './Sparkline';
 
-export type Series = { name: string; color: string; points: Point[]; /** The catch-all series: not a value of the stack dimension, so it cannot be filtered to. */ other?: boolean };
+export type Series = { name: string; color: string; points: Point[]; /** The catch-all series: not a value of the stack dimension, so it cannot be filtered to. */ other?: boolean; /** The blank value of the stack dimension: its filter is "is blank", whatever its name. */ blank?: boolean };
 
 const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 

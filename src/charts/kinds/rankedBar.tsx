@@ -4,13 +4,14 @@ import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
 import { ChartPanel } from '../ChartPanel';
+import { labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
 import { measuresOf } from '../fields';
-import { measureKey, pieOtherQuery, TOP_N, topValuesQuery, type Measure } from '../queries';
+import type { Measure } from '../queries';
 import { measureFormat, measureLabel, measureOptions, measureText, numberOf } from '../Scorecards';
 import { measureId, pickField, pickMeasure } from '../settings';
 import { BarChart, type Series } from '../svg/BarChart';
-import { useChartQuery } from '../useChartQuery';
+import { useTopValues } from '../useTopValues';
 import { seriesColor, tickText } from './timeSeries';
 import { BOX_WIDTH, carry, type ChartKindDef, type PanelProps } from './types';
 
@@ -20,19 +21,11 @@ export const OTHER_X = '\u0000other';
 
 function RankedBarPanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<RankedR>) {
   const { measure, dimension: dim } = r;
-  const top = useChartQuery(martId, idle ? null : topValuesQuery(dim, measure, filter), version);
-  const names = top.rows?.map((row) => String(row[dim.name]));
-  const needOther = names?.length === TOP_N;
-  const other = useChartQuery(martId, !idle && needOther ? pieOtherQuery(measure, filter, dim, names!, cf.counter) : null, version);
-  const failed = [top, other].find((q) => q.error);
-  const empty = top.rows?.length === 0;
-  const loading = !empty && (!top.rows || (needOther && !other.rows));
-  const key = measureKey(measure);
+  const top = useTopValues({ martId, cf, dim, measure, filter, version, idle });
   const point = (x: string, label: string, v: unknown) => ({ x, label, y: numberOf(v), valueText: measureText(measure, v, formatOf) });
-  const otherRow = other.rows?.[0];
   const series = (): Series[] => [{ name: measureLabel(cf, measure), color: seriesColor(0), points: [
-    ...top.rows!.map((row, i) => point(names![i]!, names![i]!, row[key])),
-    ...(needOther && otherRow && otherRow[key] != null ? [point(OTHER_X, 'Other', otherRow[key])] : []),
+    ...top.categories!.map((c) => point(c.key, labelOf(c.key), c.value)),
+    ...(top.other != null ? [point(OTHER_X, 'Other', top.other)] : []),
   ] }];
   const [tickType, tickFormat] = measureFormat(measure, formatOf);
   const items: MenuItem[] = [
@@ -43,9 +36,8 @@ function RankedBarPanel({ martId, cf, r, filter, version, idle, hasFilters, form
   const title = `${measureLabel(cf, measure)} by ${fieldLabel(dim)}`;
   return (
     <ChartPanel title={title} name="Ranked bar" items={ready ? items : null} width={BOX_WIDTH}
-      loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})} empty={empty ? emptyText(hasFilters) : null}
-      note={`Rows with a blank ${fieldLabel(dim)} are not shown.`}>
-      {top.rows && !loading && <BarChart series={series()} orientation="horizontal" ariaLabel={title} stacked={false}
+      loading={top.loading} error={top.failed?.error} onRetry={top.failed?.retry ?? (() => {})} empty={top.empty ? emptyText(hasFilters) : null}>
+      {top.categories && !top.loading && <BarChart series={series()} orientation="horizontal" ariaLabel={title} stacked={false}
         formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={(x) => onFilter([dimensionFilter(dim, x)])} canPick={(x) => x !== OTHER_X} />}
     </ChartPanel>
   );

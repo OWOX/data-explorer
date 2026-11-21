@@ -409,6 +409,26 @@ test('a pie slice whose value is blank is not turned into a filter: no filter, n
   expect((screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement).disabled).toBe(undoWas);
 });
 
+test('a null value is the first slice, read "(blank)", and a click filters the column to blank', async () => {
+  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', measure: 'records', dimension: 'status' }] }, mapRow: (r) => ('status' in r && r.status === 'paid' ? { ...r, status: null } : r) });
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  const first = data().querySelector('[data-slice]')!;
+  expect(first.getAttribute('data-slice')).toBe('(blank)');
+  expect(data().querySelector('[data-slice="null"]')).toBeNull();
+  // The top read keeps null rows: no rule leaves the blank value out.
+  expect(t.queries.some((q) => q.limit === 8 && q.filter?.some((f) => f.operator === 'is_not_blank'))).toBe(false);
+  await userEvent.click(first);
+  await waitFor(() => expect(statusFilter()).not.toBeNull());
+});
+
+test('a null date bucket draws first as "(blank)" and a click filters the date to blank', async () => {
+  await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', bucket: 'MONTH' }] }, mapRow: (r) => ('created_at' in r && String(r.created_at).startsWith('2026-08') ? { ...r, created_at: null } : r) });
+  const blank = await waitFor(() => { const b = data().querySelector('rect[data-bucket]'); expect(b?.getAttribute('aria-label')).toBe('Filter to (blank)'); return b!; });
+  expect(data().querySelector('rect[data-bucket="null"]')).toBeNull();
+  await userEvent.click(blank);
+  await waitFor(() => expect(within(data()).queryByRole('button', { name: /^Filter created_at/i })).not.toBeNull());
+});
+
 test('the pie tooltip shows each share, except for another mart’s Unique Records whose slices overlap', async () => {
   const own = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', measure: 'records', dimension: 'status' }] } });
   await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());

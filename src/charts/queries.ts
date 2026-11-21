@@ -78,12 +78,12 @@ export function sparklineQuery(mart: ChartMart, date: Field, bucket: DateBucket,
   return withFilter(o, filter);
 }
 
-// Blank is its own concern: the "Other" bar and the top list both leave it out so every shown value is a real one.
-const notBlank = (dim: Field): TraverseFilter => ({ column: dim.name, operator: 'is_not_blank' });
+// A top list holds real values only (the blank one is read apart, see `blankRule`), because `in` and `not_in` never match NULL.
 // A boolean dimension's values arrive as booleans; the filter takes strings.
 const list = (top: string[]): string[] => top.map(String);
-/** The rows outside a top list: a real value that is none of the top ones. */
-const outside = (dim: Field, top: string[]): TraverseFilter[] => [notBlank(dim), { column: dim.name, operator: 'not_in', value: list(top) }];
+const blankRule = (dim: Field): TraverseFilter => ({ column: dim.name, operator: 'is_blank' });
+/** The rows outside a top list: a real value that is none of the top ones. Blank rows are the blank category's, never "Other" (NOT IN drops NULL on a real backend, the explicit rule makes any backend agree). */
+const outside = (dim: Field, top: string[]): TraverseFilter[] => [{ column: dim.name, operator: 'is_not_blank' }, { column: dim.name, operator: 'not_in', value: list(top) }];
 
 export function topValuesQuery(dim: Field, measure: Measure, filter: TraverseFilter[]): TraverseOptions {
   const o: TraverseOptions = {
@@ -92,7 +92,7 @@ export function topValuesQuery(dim: Field, measure: Measure, filter: TraverseFil
     sort: [{ column: measure.kind === 'metric' ? measure.metric.field.name : measureKey(measure), direction: 'desc' }],
     limit: TOP_N,
   };
-  return { ...o, filter: [...fit(o, filter), notBlank(dim)] };
+  return withFilter(o, filter);
 }
 
 export function seriesQuery(date: Field, bucket: DateBucket, measure: Measure, filter: TraverseFilter[], stack?: { dim: Field; top: string[] }): TraverseOptions {
@@ -102,8 +102,12 @@ export function seriesQuery(date: Field, bucket: DateBucket, measure: Measure, f
     dateTrunc: [truncRule(date, bucket)],
     sort: [{ column: date.name, direction: 'asc' }],
   };
-  return withFilter(o, stack ? [...filter, notBlank(stack.dim), { column: stack.dim.name, operator: 'in', value: list(stack.top) }] : filter);
+  return withFilter(o, stack ? [...filter, { column: stack.dim.name, operator: 'in', value: list(stack.top) }] : filter);
 }
+
+/** The series of the blank value of a stack dimension: the measure by bucket over the rows where `dim` is blank. */
+export const seriesBlankQuery = (date: Field, bucket: DateBucket, measure: Measure, filter: TraverseFilter[], dim: Field): TraverseOptions =>
+  seriesQuery(date, bucket, measure, [...filter, blankRule(dim)]);
 
 export const seriesOtherQuery = (date: Field, bucket: DateBucket, measure: Measure, filter: TraverseFilter[], dim: Field, top: string[]): TraverseOptions =>
   seriesQuery(date, bucket, measure, [...filter, ...outside(dim, top)]);
@@ -113,18 +117,26 @@ export function pieOtherQuery(measure: Measure, filter: TraverseFilter[], dim: F
   return withFilter(withCounter(o, filter, counter), [...filter, ...outside(dim, top)]);
 }
 
-export const SCATTER_LIMIT = 200;
-export type HeatX = { kind: 'date'; date: Field; bucket: DateBucket } | { kind: 'dim'; dim: Field; top: string[] };
+/** The measure over the rows where `dim` is blank: one row, read apart because a top list cannot name NULL. */
+export function pieBlankQuery(measure: Measure, filter: TraverseFilter[], dim: Field, counter?: Field | null): TraverseOptions {
+  const o: TraverseOptions = { ...(measure.kind === 'metric' ? { column: measureColumns(measure) } : {}), ...measureParts(measure) };
+  return withFilter(withCounter(o, filter, counter), [...filter, blankRule(dim)]);
+}
 
-/** One cell per (x, y): rows kept to the top values of y (and of x when it is a dimension); a date x is bucketed. */
-export function heatmapQuery(x: HeatX, y: Field, yTop: string[], measure: Measure, filter: TraverseFilter[]): TraverseOptions {
+export const SCATTER_LIMIT = 200;
+/** A heatmap axis' values: the listed real ones, or `null` for the blank value alone (a list cannot name NULL). */
+export type HeatX = { kind: 'date'; date: Field; bucket: DateBucket } | { kind: 'dim'; dim: Field; top: string[] | null };
+const axisRule = (dim: Field, top: string[] | null): TraverseFilter => (top === null ? blankRule(dim) : { column: dim.name, operator: 'in', value: list(top) });
+
+/** One cell per (x, y): rows kept to the top values of y (and of x when it is a dimension); a date x is bucketed. A `null` list reads the blank value of that axis alone. */
+export function heatmapQuery(x: HeatX, y: Field, yTop: string[] | null, measure: Measure, filter: TraverseFilter[]): TraverseOptions {
   const xCol = x.kind === 'date' ? x.date.name : x.dim.name;
   const o: TraverseOptions = {
     column: [xCol, y.name, ...measureColumns(measure)],
     ...measureParts(measure),
     ...(x.kind === 'date' ? { dateTrunc: [truncRule(x.date, x.bucket)], sort: [{ column: xCol, direction: 'asc' as const }] } : {}),
   };
-  const axes: TraverseFilter[] = [notBlank(y), { column: y.name, operator: 'in', value: list(yTop) }, ...(x.kind === 'dim' ? [notBlank(x.dim), { column: x.dim.name, operator: 'in', value: list(x.top) } as TraverseFilter] : [])];
+  const axes: TraverseFilter[] = [axisRule(y, yTop), ...(x.kind === 'dim' ? [axisRule(x.dim, x.top)] : [])];
   return { ...o, filter: [...fit(o, filter), ...axes] };
 }
 
@@ -141,7 +153,7 @@ export function scatterQuery(dim: Field, x: Measure, y: Measure, filter: Travers
     sort: [{ column: x.kind === 'metric' ? x.metric.field.name : measureKey(x), direction: 'desc' }],
     limit: SCATTER_LIMIT,
   };
-  return { ...o, filter: [...fit(o, filter), notBlank(dim)] };
+  return withFilter(o, filter);
 }
 
 /** The functions a spread reads: the median first (it sorts the rows), the quartiles, and the whiskers when governance allows them. Empty when a percentile is not allowed. */
@@ -158,5 +170,5 @@ export function spreadQuery(dim: Field, field: Field, filter: TraverseFilter[]):
     sort: [{ column: field.name, direction: 'desc' }],
     limit: TOP_N,
   };
-  return { ...o, filter: [...fit(o, filter), notBlank(dim)] };
+  return withFilter(o, filter);
 }

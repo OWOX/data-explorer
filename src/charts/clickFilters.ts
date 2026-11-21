@@ -2,6 +2,7 @@ import type { ColumnFilter } from '../filters/build';
 import type { DateBucket } from '../model/aggregation';
 import { addDays, ymd } from '../model/day';
 import type { Field } from '../model/types';
+import { BLANK_KEY } from './blank';
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -15,14 +16,15 @@ export function bucketEnd(start: string, bucket: DateBucket): string {
   return iso(new Date(Date.UTC(y, m - 1 + months, d - 1)));
 }
 
-/** The grid filter a click on one value of a dimension applies: `eq` for text, is true / is false for a boolean. */
+/** The grid filter a click on one value of a dimension applies: `eq` for text, is true / is false for a boolean, is blank for the blank category. */
 export function dimensionFilter(dim: Field, value: string): ColumnFilter {
+  if (value === BLANK_KEY) return { field: dim.name, op: 'is_blank' };
   if (dim.category === 'boolean') return { field: dim.name, op: value === 'true' ? 'is_true' : 'is_false' };
   return { field: dim.name, op: 'eq', value };
 }
 
 const BUCKET_LABEL = /^\d{4}-\d{2}-\d{2}/;
-/** Whether a bucket's x is a date label; a blank bucket reads "null" and has no range to filter to. */
+/** Whether a bucket's x is a date label (the blank bucket is not: its filter is "is blank"). */
 export const isBucketDate = (x: string): boolean => BUCKET_LABEL.test(x);
 
 /** `ts` (UTC ms) as the wall clock in `zone`, read back as if it were UTC: the difference to `ts` is the zone's offset then. */
@@ -51,6 +53,7 @@ const stamp = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace('T
  * Zoned (`zone`, the one the series was bucketed in): UTC instants, from the bucket's local midnight to one second before the next one.
  */
 export function bucketFilter(date: Field, start: string, bucket: DateBucket, zone?: string): ColumnFilter {
+  if (start === BLANK_KEY) return { field: date.name, op: 'is_blank' };
   const from = start.slice(0, 10);
   const to = bucketEnd(start, bucket);
   if (!zone) return { field: date.name, op: 'between', value: { from, to } };
