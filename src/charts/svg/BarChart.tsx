@@ -5,7 +5,7 @@ import type { Point } from './Sparkline';
 import { niceTicks } from './ticks';
 import { Y_TITLE_W, YTitle } from './YTitle';
 
-export type Series = { name: string; color: string; points: Point[]; /** The catch-all series: not a value of the stack dimension, so it cannot be filtered to. */ other?: boolean; /** The blank value of the stack dimension: its filter is "is blank", whatever its name. */ blank?: boolean };
+export type Series = { /** The category's key (blank sentinel, a real value, or the Other sentinel), so a real value named "(blank)" or "Other" keeps its own element. */ key?: string; name: string; color: string; points: Point[]; /** The catch-all series: not a value of the stack dimension, so it cannot be filtered to. */ other?: boolean; /** The blank value of the stack dimension: its filter is "is blank", whatever its name. */ blank?: boolean };
 
 const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 
@@ -94,7 +94,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
     const sum = totals[i] ?? 0;
     const content = (
       <TipLines lines={[p.label, ...rows.map((s) => (
-        <span key={s.name}><span className="dm-chart-swatch" style={{ background: s.color }} /> {s.name}: {s.points[i]!.valueText}{sum > 0 && s.points[i]!.y! > 0 ? ` (${Math.round((s.points[i]!.y! / sum) * 100)}%)` : ''}</span>
+        <span key={s.key ?? s.name}><span className="dm-chart-swatch" style={{ background: s.color }} /> {s.name}: {s.points[i]!.valueText}{sum > 0 && s.points[i]!.y! > 0 ? ` (${Math.round((s.points[i]!.y! / sum) * 100)}%)` : ''}</span>
       ))]} />
     );
     const geom = vertical ? { x: left + i * band, y: TOP, width: band, height: PLOT_H } : { x: left, y: TOP + i * ROW_H, width: plotW, height: ROW_H };
@@ -134,12 +134,12 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
       </svg>
       {series.length > 1 && (
         <ul className="dm-chart-legend">
-          {series.map((s) => <li key={s.name}><span className="dm-chart-swatch" style={{ background: s.color }} />{s.name}</li>)}
+          {series.map((s) => <li key={s.key ?? s.name}><span className="dm-chart-swatch" style={{ background: s.color }} />{s.name}</li>)}
         </ul>
       )}
       <table className="sr-only">
-        <thead><tr><th>{xTitle ?? 'Bucket'}</th>{series.map((s) => <th key={s.name}>{s.name}</th>)}</tr></thead>
-        <tbody>{xs.map((p, i) => <tr key={p.x}><th scope="row">{p.label}</th>{series.map((s) => <td key={s.name}>{s.points[i]?.valueText ?? ''}</td>)}</tr>)}</tbody>
+        <thead><tr><th>{xTitle ?? 'Bucket'}</th>{series.map((s) => <th key={s.key ?? s.name}>{s.name}</th>)}</tr></thead>
+        <tbody>{xs.map((p, i) => <tr key={p.x}><th scope="row">{p.label}</th>{series.map((s) => <td key={s.key ?? s.name}>{s.points[i]?.valueText ?? ''}</td>)}</tr>)}</tbody>
       </table>
     </div>
   );

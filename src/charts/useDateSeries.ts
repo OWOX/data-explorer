@@ -2,7 +2,7 @@ import { formatBucket, type DateBucket } from '../model/aggregation';
 import type { Field } from '../model/types';
 import type { Row, TraverseFilter } from '../sdk/types';
 import type { ChartFields } from './fields';
-import { BLANK_COLOR, BLANK_LABEL, blankFirst, isBlankKey, keyOf } from './blank';
+import { BLANK_COLOR, BLANK_KEY, BLANK_LABEL, OTHER_KEY, blankFirst, isBlankKey, keyOf } from './blank';
 import { measureKey, seriesBlankQuery, seriesOtherQuery, seriesQuery, TOP_N, topValuesQuery, type Measure } from './queries';
 import { measureLabel, measureText, numberOf, sharedSeriesQuery, type Formatter } from './Scorecards';
 import type { Spark } from './settings';
@@ -54,9 +54,9 @@ export function useDateSeries({ martId, cf, spark, date, bucket, measure, stack,
   if (!mainDone || loading || empty) return { series: null, failed, empty: !!empty, loading, label, names };
 
   const cell = (row: Row | undefined) => ({ y: row ? numberOf(row[key]) : null, valueText: row ? measureText(measure, row[key], formatOf) : '' });
-  const pivot = (name: string, color: string, rows: Row[], xs: string[]): Series => {
+  const pivot = (name: string, color: string, rows: Row[], xs: string[], key?: string): Series => {
     const at = new Map(rows.map((x) => [keyOf(x[date.name]), x]));
-    return { name, color, points: xs.map((x) => ({ x, label: isBlankKey(x) ? BLANK_LABEL : formatBucket(x, bucket!) ?? x, ...cell(at.get(x)) })) };
+    return { ...(key !== undefined ? { key } : {}), name, color, points: xs.map((x) => ({ x, label: isBlankKey(x) ? BLANK_LABEL : formatBucket(x, bucket!) ?? x, ...cell(at.get(x)) })) };
   };
   const mainRows = series.rows ?? [];
   const all = [...mainRows, ...(blank.rows ?? []), ...(other.rows ?? [])];
@@ -65,9 +65,9 @@ export function useDateSeries({ martId, cf, spark, date, bucket, measure, stack,
   if (!stack) return { series: [pivot(label, seriesColor(0), mainRows, xs)], failed, empty: !!empty, loading, label, names };
   const rowsOf = (n: string) => mainRows.filter((x) => keyOf(x[stack.name]) === n);
   const out = [
-    ...(hasBlank ? [{ ...pivot(BLANK_LABEL, BLANK_COLOR, blank.rows ?? [], xs), blank: true }] : []),
-    ...names!.map((n, i) => pivot(n, seriesColor(i), rowsOf(n), xs)),
-    ...(hasOther ? [{ ...pivot('Other', OTHER_COLOR, other.rows ?? [], xs), other: true }] : []),
+    ...(hasBlank ? [{ ...pivot(BLANK_LABEL, BLANK_COLOR, blank.rows ?? [], xs, BLANK_KEY), blank: true }] : []),
+    ...names!.map((n, i) => pivot(n, seriesColor(i), rowsOf(n), xs, n)),
+    ...(hasOther ? [{ ...pivot('Other', OTHER_COLOR, other.rows ?? [], xs, OTHER_KEY), other: true }] : []),
   ];
   return { series: out, failed, empty: !!empty, loading, label, names };
 }

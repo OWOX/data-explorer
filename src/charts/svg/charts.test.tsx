@@ -288,3 +288,17 @@ test('a horizontal bar puts the measure under the value ticks and the category b
   expect(yTitles(container)).toEqual([{ text: 'Channel', rotated: true }]);
   expect(container.querySelector('.dm-chart-axis-title:not([data-y-title])')).toHaveTextContent('Amount · Sum');
 });
+
+test('PieChart: the blank slice and a real value named "(blank)" are separate elements (keyed by category, not by name)', () => {
+  const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const slices = [
+    { key: '\u0000blank', name: '(blank)', value: 1, valueText: 't1', color: 'red', blank: true },
+    { key: '(blank)', name: '(blank)', value: 2, valueText: 't2', color: 'blue' },
+    { key: '\u0000other', name: 'Other', value: 3, valueText: 't3', color: 'grey', other: true },
+    { key: 'Other', name: 'Other', value: 4, valueText: 't4', color: 'green' },
+  ];
+  const { container } = wrap(<PieChart slices={slices} ariaLabel="p" />);
+  expect(container.querySelectorAll('path[data-slice]')).toHaveLength(4);
+  expect(err.mock.calls.filter((c) => String(c[0]).includes('same key'))).toHaveLength(0);
+  err.mockRestore();
+});

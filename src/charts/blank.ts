@@ -1,6 +1,8 @@
 // A blank (null) value is drawn like any other: its own bar, slice or bucket, placed first.
 /** The key of the blank category in a chart (never a real value: it starts with a NUL). */
 export const BLANK_KEY = '\u0000blank';
+/** The key of the "Other" category (a real value "Other" never collides with it). */
+export const OTHER_KEY = '\u0000other';
 /** What the blank category reads as. */
 export const BLANK_LABEL = '(blank)';
 /** The blank category's colour in a stack or a pie: neutral, so the series colours of real values do not shift. */

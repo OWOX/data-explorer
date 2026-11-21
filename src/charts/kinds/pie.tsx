@@ -2,7 +2,7 @@ import { ChartPie } from 'lucide-react';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
-import { BLANK_COLOR, BLANK_KEY, BLANK_LABEL } from '../blank';
+import { BLANK_COLOR, BLANK_KEY, BLANK_LABEL, OTHER_KEY } from '../blank';
 import { dimensionFilter } from '../clickFilters';
 import type { MenuItem } from '../ChartMenu';
 import { ChartPanel } from '../ChartPanel';
@@ -24,12 +24,12 @@ export const sharesWhole = (measure: Measure, dim: Field): boolean => (measure.k
 function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<PieR>) {
   const { measure, dimension: dim } = r;
   const top = useTopValues({ martId, cf, dim, measure, filter, version, idle });
-  const slice = (name: string, v: unknown, color: string): Slice => ({ name, value: numberOf(v) ?? 0, valueText: measureText(measure, v, formatOf), color });
+  const slice = (key: string, name: string, v: unknown, color: string): Slice => ({ key, name, value: numberOf(v) ?? 0, valueText: measureText(measure, v, formatOf), color });
   const slices = (): Slice[] => {
     let i = 0;
     return [
-      ...top.categories!.map((c) => (c.key === BLANK_KEY ? { ...slice(BLANK_LABEL, c.value, BLANK_COLOR), blank: true } : slice(c.key, c.value, seriesColor(i++)))),
-      ...(top.other != null ? [{ ...slice('Other', top.other, OTHER_COLOR), other: true }] : []),
+      ...top.categories!.map((c) => (c.key === BLANK_KEY ? { ...slice(BLANK_KEY, BLANK_LABEL, c.value, BLANK_COLOR), blank: true } : slice(c.key, c.key, c.value, seriesColor(i++)))),
+      ...(top.other != null ? [{ ...slice(OTHER_KEY, 'Other', top.other, OTHER_COLOR), other: true }] : []),
     ];
   };
   const items: MenuItem[] = [
