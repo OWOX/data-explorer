@@ -1,3 +1,4 @@
+import { ChartBarDecreasing } from 'lucide-react';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
@@ -53,6 +54,7 @@ function RankedBarPanel({ martId, cf, r, filter, version, idle, hasFilters, form
 export const rankedBar: ChartKindDef<RankedR> = {
   kind: 'rankedBar',
   label: 'Ranked bar',
+  icon: ChartBarDecreasing,
   eligible: (cf) => cf.dimensions.length > 0 && measuresOf(cf).length > 0,
   create: (_cf, from) => ({ kind: 'rankedBar', ...carry(from, ['measure', 'dimension']) }),
   resolve(spec, cf) {

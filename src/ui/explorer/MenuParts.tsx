@@ -126,8 +126,8 @@ export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onP
   );
 }
 
-export function Row({ label, icon, active, check, checkbox, slot, checked, sub, expanded, haspopup, disabled, tabbable, onLeaveRow, rowRef, onActivate, onOpen, onHover }: {
-  label: string; /** A first-level glyph in its own slot: outlined, or filled when the member has set this on the column. */ icon?: ReactNode; active?: boolean; check?: boolean; /** A check row that is its own choice, not one of a radio group: announced as a checkbox. */ checkbox?: boolean; /** Keeps the check column's room without being a choice row. */ slot?: boolean; checked?: boolean; sub?: boolean; expanded?: boolean; haspopup?: 'menu' | 'dialog'; disabled?: boolean; /** In the date filter's dialog the rows are reached with Tab; in a menu they are reached with the arrow keys. */ tabbable?: boolean;
+export function Row({ label, icon, glyph, active, check, checkbox, slot, checked, sub, expanded, haspopup, disabled, tabbable, onLeaveRow, rowRef, onActivate, onOpen, onHover }: {
+  label: string; /** A muted glyph between the tick column and the label (a chart's type). */ glyph?: ReactNode; /** A first-level glyph in its own slot: outlined, or filled when the member has set this on the column. */ icon?: ReactNode; active?: boolean; check?: boolean; /** A check row that is its own choice, not one of a radio group: announced as a checkbox. */ checkbox?: boolean; /** Keeps the check column's room without being a choice row. */ slot?: boolean; checked?: boolean; sub?: boolean; expanded?: boolean; haspopup?: 'menu' | 'dialog'; disabled?: boolean; /** In the date filter's dialog the rows are reached with Tab; in a menu they are reached with the arrow keys. */ tabbable?: boolean;
   onLeaveRow?: () => void; rowRef?: (el: HTMLElement | null) => void; onActivate: (row: HTMLElement) => void; onOpen?: (row: HTMLElement) => void; onHover?: (row: HTMLElement) => void;
 }) {
   return (
@@ -139,6 +139,7 @@ export function Row({ label, icon, active, check, checkbox, slot, checked, sub, 
       onKeyDown={(e) => { if (sub && e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); onOpen?.(e.currentTarget); } }}>
       {icon && <span className="dm-menu-icon" data-on={active ? '' : undefined} aria-hidden>{icon}</span>}
       {(check || slot) && <span className="dm-menu-check" aria-hidden>{checked && <Check className="size-4" />}</span>}
+      {glyph && <span className="dm-menu-glyph" aria-hidden>{glyph}</span>}
       <span className="dm-menu-label">{label}</span>
       {sub && <ChevronRight aria-hidden className="dm-menu-arrow size-4" />}
     </button>

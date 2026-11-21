@@ -1,3 +1,4 @@
+import { ChartCandlestick } from 'lucide-react';
 import { aggregatedKey, AGG_LABELS, type AggFn } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
@@ -49,6 +50,7 @@ function SpreadPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
 export const spread: ChartKindDef<SpreadR> = {
   kind: 'spread',
   label: 'Spread',
+  icon: ChartCandlestick,
   eligible: (cf) => cf.dimensions.length > 0 && fieldsOf(cf).length > 0,
   create: (_cf, from) => ({ kind: 'spread', ...carry(from, ['measure', 'dimension']) }),
   resolve(spec, cf) {

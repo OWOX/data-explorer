@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { ChartPie, ChartLine } from 'lucide-react';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { HOVER_MS } from '../ui/explorer/MenuParts';
 
@@ -43,4 +44,23 @@ test('an action row closes the menu and runs', async () => {
   await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
   expect(onPick).toHaveBeenCalledOnce();
   expect(screen.queryByRole('menu')).toBeNull();
+});
+
+test('a row and a submenu option show their icon before the label, hidden from screen readers', async () => {
+  render(<ChartMenu name="Sales" items={[
+    { kind: 'check', label: 'Orders by date', icon: ChartLine, checked: true, onToggle: () => undefined },
+    { kind: 'check', label: 'Sparklines', checked: true, onToggle: () => undefined },
+    { kind: 'radio', label: 'Chart type', value: 'pie', options: [{ value: 'pie', label: 'Pie', icon: ChartPie }, { value: 'x', label: 'Plain' }], onPick: () => undefined },
+  ]} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+  const withIcon = screen.getByRole('menuitemcheckbox', { name: 'Orders by date' });
+  const glyph = withIcon.querySelector('.dm-menu-glyph svg.lucide-chart-line');
+  expect(glyph).toHaveAttribute('aria-hidden', 'true');
+  // After the tick column, before the label.
+  expect(withIcon.querySelector('.dm-menu-check')!.nextElementSibling).toBe(glyph!.parentElement);
+  expect(glyph!.parentElement!.nextElementSibling).toHaveClass('dm-menu-label');
+  expect(screen.getByRole('menuitemcheckbox', { name: 'Sparklines' }).querySelector('.dm-menu-glyph')).toBeNull();
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
+  expect((await screen.findByRole('menuitemradio', { name: 'Pie' })).querySelector('.dm-menu-glyph svg.lucide-chart-pie')).not.toBeNull();
+  expect(screen.getByRole('menuitemradio', { name: 'Plain' }).querySelector('.dm-menu-glyph')).toBeNull();
 });

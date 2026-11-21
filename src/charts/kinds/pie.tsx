@@ -1,3 +1,4 @@
+import { ChartPie } from 'lucide-react';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
@@ -55,6 +56,7 @@ function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, 
 export const pie: ChartKindDef<PieR> = {
   kind: 'pie',
   label: 'Pie',
+  icon: ChartPie,
   eligible: (cf) => cf.dimensions.length > 0 && pieMeasures(cf).length > 0,
   create: (_cf, from) => ({ kind: 'pie', ...carry(from, ['measure', 'dimension']) }),
   resolve(spec, cf) {

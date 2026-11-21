@@ -1,3 +1,4 @@
+import { ChartLine } from 'lucide-react';
 import { BUCKET_LABELS, type DateBucket } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
@@ -6,24 +7,25 @@ import type { MenuItem } from '../ChartMenu';
 import { ChartPanel } from '../ChartPanel';
 import { bucketFilter, dimensionFilter, isBucketDate } from '../clickFilters';
 import { measuresOf } from '../fields';
-import { bucketZone, type Measure } from '../queries';
+import { bucketZone, dateFilter, type Measure } from '../queries';
 import { measureFormat, measureLabel, measureOptions } from '../Scorecards';
 import { measureId, pickBucketChoice, pickField, pickMeasure } from '../settings';
 import { LineChart } from '../svg/LineChart';
 import { useBucket } from '../useBucket';
 import { seriesColor, useDateSeries } from '../useDateSeries';
-import { dateMenu, tickText } from './timeSeries';
+import { blanksItem, dateMenu, tickText } from './timeSeries';
 import { carry, seriesWidth, type ChartKindDef, type PanelProps } from './types';
 
 export type LineR = { date: Field; bucket: DateBucket | 'AUTO'; measure: Measure; measure2: Measure | null; stack: Field | null; area: boolean };
 
-function LinePanel({ martId, cf, r, spark, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<LineR>) {
+function LinePanel({ martId, cf, spec, r, spark, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<LineR>) {
   const { date, measure, measure2, stack } = r;
-  const { bucket, error, retry } = useBucket(martId, date, r.bucket, filter, version, idle);
+  const blanks = spec.blanks === true;
+  const { bucket, error, retry } = useBucket(martId, date, r.bucket, dateFilter(filter, date, blanks), version, idle);
   const range = { error, retry };
-  const one = useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, version, idle, formatOf, range });
+  const one = useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, blanks, version, idle, formatOf, range });
   // The second measure is its own unstacked series; with none, its hook reads nothing.
-  const two = useDateSeries({ martId, cf, spark, date, bucket, measure: measure2 ?? measure, stack: null, filter, version, idle: idle || !measure2, formatOf });
+  const two = useDateSeries({ martId, cf, spark, date, bucket, measure: measure2 ?? measure, stack: null, filter, blanks, version, idle: idle || !measure2, formatOf });
   const failed = one.failed ?? (measure2 ? two.failed : undefined);
   const loading = one.loading || (!!measure2 && two.loading);
   const [lt, lf] = measureFormat(measure, formatOf);
@@ -34,6 +36,7 @@ function LinePanel({ martId, cf, r, spark, filter, version, idle, hasFilters, fo
     { kind: 'radio', label: 'Second measure', value: measure2 ? measureId(measure2) : '', options: [{ value: '', label: 'Off' }, ...others], onPick: (v) => onChange({ measure2: v === '' ? null : v }) },
     ...(measure2 ? [] : [{ kind: 'radio', label: 'Stack by', value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }, ...cf.dimensions.map((d) => ({ value: d.name, label: columnTitle(d) }))], onPick: (v: string) => onChange({ stack: v === '' ? null : v }) } as MenuItem]),
     { kind: 'check', label: 'Area', checked: r.area, onToggle: () => onChange({ area: !r.area }) },
+    blanksItem(blanks, onChange),
     ...tail,
   ];
   const by = BUCKET_LABELS[bucket ?? 'DAY'].toLowerCase();
@@ -55,8 +58,9 @@ function LinePanel({ martId, cf, r, spark, filter, version, idle, hasFilters, fo
 export const line: ChartKindDef<LineR> = {
   kind: 'line',
   label: 'Line',
+  icon: ChartLine,
   eligible: (cf) => cf.dates.length > 0 && measuresOf(cf).length > 0,
-  create: (_cf, from) => ({ kind: 'line', ...carry(from, ['measure', 'measure2', 'date', 'bucket', 'stack', 'area']) }),
+  create: (_cf, from) => ({ kind: 'line', ...carry(from, ['measure', 'measure2', 'date', 'bucket', 'stack', 'area', 'blanks']) }),
   resolve(spec, cf) {
     const date = pickField(cf.dates, spec.date);
     const list = measuresOf(cf);

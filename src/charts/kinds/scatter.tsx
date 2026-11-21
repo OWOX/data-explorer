@@ -1,3 +1,4 @@
+import { ChartScatter } from 'lucide-react';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
@@ -49,6 +50,7 @@ function ScatterPanel({ martId, cf, r, filter, version, idle, hasFilters, format
 export const scatter: ChartKindDef<ScatterR> = {
   kind: 'scatter',
   label: 'Scatter',
+  icon: ChartScatter,
   eligible: (cf) => cf.dimensions.length > 0 && measuresOf(cf).length > 1,
   create: (_cf, from) => ({ kind: 'scatter', ...carry(from, ['measure', 'measure2', 'dimension']) }),
   resolve(spec, cf) {

@@ -483,6 +483,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-icon svg { width: 12px; height: 12px; }
 .dm-menu-icon[data-on] { background: var(--sheet-green); color: var(--sheet-green-fg); }
 .dm-menu-label { flex: 1 1 auto; }
+.dm-menu-glyph { display: inline-flex; flex-shrink: 0; color: var(--menu-muted); }
 .dm-menu-check { display: inline-flex; width: 16px; flex-shrink: 0; justify-content: center; margin-left: -4px; color: var(--sheet-green); }
 .dm-menu-arrow { flex-shrink: 0; margin-right: -6px; color: var(--menu-muted); }
 .dm-menu-sep { height: 0; margin: 8px 0; border-top: 1px solid var(--menu-line); }
