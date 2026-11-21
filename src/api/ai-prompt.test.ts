@@ -10,6 +10,8 @@ test.each<[ColumnFilter, string]>([
   [{ field: 'created_at', op: 'relative', value: { kind: 'today' } }, '"created_at" is today'],
   [{ field: 'created_at', op: 'relative', value: { kind: 'this_month' } }, '"created_at" is in this month'],
   [{ field: 'status', op: 'eq', value: 'paid' }, '"status" equals "paid"'],
+  [{ field: 'status', op: 'eq', value: 'a, b', list: true }, '"status" is any of "a", "b"'],
+  [{ field: 'status', op: 'neq', value: 'a,b', list: true }, '"status" is none of "a", "b"'],
   [{ field: 'status', op: 'contains', value: 'pa' }, '"status" contains "pa"'],
   [{ field: 'amount', op: 'gte', value: '10' }, '"amount" is at least "10"'],
   [{ field: 'amount', op: 'between', value: { from: 1, to: 5 } }, '"amount" is between 1 and 5'],
