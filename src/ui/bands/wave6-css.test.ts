@@ -21,3 +21,8 @@ test('a selected card shows its border instead of the keyboard ring', () => {
   expect(rules(/^\.dm-node:focus-visible$/).join(' ')).toContain('box-shadow');
 });
 
+test('full screen keeps the band corners of the normal mode', () => {
+  const full = rules(/^\.dm-full #band-data$/).join(' ');
+  expect(full).toContain('position: fixed');
+  expect(full).not.toContain('border-radius');
+});
