@@ -10,20 +10,21 @@ import { copyChart } from './copyImage';
 function useMeasuredHeight() {
   const inner = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState<number | null>(null);
-  useEffect(() => {
-    const el = inner.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => setHeight(el.offsetHeight));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
   // The frame clips only while its height moves, so content taller than the shrinking frame does not spill over what is below.
   const [moving, setMoving] = useState(false);
   useEffect(() => {
-    setMoving(true);
-    const t = setTimeout(() => setMoving(false), 250);
-    return () => clearTimeout(t);
-  }, [height]);
+    const el = inner.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const ro = new ResizeObserver(() => {
+      setHeight(el.offsetHeight);
+      setMoving(true);
+      clearTimeout(timer);
+      timer = setTimeout(() => setMoving(false), 250);
+    });
+    ro.observe(el);
+    return () => { ro.disconnect(); clearTimeout(timer); };
+  }, []);
   return { inner, height, moving };
 }
 
