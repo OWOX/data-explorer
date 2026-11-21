@@ -214,13 +214,15 @@ test('time series without a stack is one series', async () => {
   expect(series().size).toBe(1);
 });
 
-test('the Horizontal bars button turns the chart and saves', async () => {
+test('the Orientation menu row turns the chart and saves; the header has no bar buttons', async () => {
   const t = await charts();
   await waitFor(() => expect(data().querySelector('svg[data-orientation=vertical]')).not.toBeNull());
-  expect(screen.getByRole('button', { name: 'Vertical bars' })).toHaveAttribute('aria-pressed', 'true');
-  await userEvent.click(screen.getByRole('button', { name: 'Horizontal bars' }));
+  expect(screen.queryByRole('button', { name: 'Horizontal bars' })).toBeNull();
+  await userEvent.click(panel('Time series'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Orientation' }));
+  expect(await screen.findByRole('menuitemradio', { name: 'Vertical' })).toBeChecked();
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Horizontal' }));
   await waitFor(() => expect(data().querySelector('svg[data-orientation=horizontal]')).not.toBeNull());
-  expect(screen.getByRole('button', { name: 'Horizontal bars' })).toHaveAttribute('aria-pressed', 'true');
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', orientation: 'horizontal' }, { id: 'pie', kind: 'pie' }] });
 });
 
@@ -259,7 +261,9 @@ test('pie menu: a chosen dimension redraws the pie and saves', async () => {
 test('two quick edits both land in the saved doc', async () => {
   const t = await charts({ columns: withDims });
   await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
-  await userEvent.click(screen.getByRole('button', { name: 'Horizontal bars' }));
+  await userEvent.click(panel('Time series'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Orientation' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Horizontal' }));
   await userEvent.click(panel('Pie'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Products · Name' }));

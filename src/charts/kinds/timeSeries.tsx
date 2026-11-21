@@ -1,4 +1,4 @@
-import { ChartBar, ChartColumn } from 'lucide-react';
+import { ChartColumn } from 'lucide-react';
 import { formatValue, type Format } from '../../format/formats';
 import { BUCKET_LABELS, DATE_BUCKETS, type DateBucket } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
@@ -42,20 +42,14 @@ function TimeSeriesPanel({ martId, cf, r, spark, filter, version, idle, hasFilte
   const items: MenuItem[] = [
     ...dateMenu(cf, r, onChange),
     { kind: 'radio', label: 'Stack by', value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }, ...cf.dimensions.map((d) => ({ value: d.name, label: columnTitle(d) }))], onPick: (v) => onChange({ stack: v === '' ? null : v }) },
+    { kind: 'radio', label: 'Orientation', value: r.orientation, options: [{ value: 'vertical', label: 'Vertical' }, { value: 'horizontal', label: 'Horizontal' }], onPick: (v) => onChange({ orientation: v as Orientation }) },
     ...tail,
   ];
-  const orient = (o: Orientation, label: string, Icon: typeof ChartColumn) => (
-    <button key={o} type="button" aria-label={label} aria-pressed={r.orientation === o} onClick={() => onChange({ orientation: o })}
-      className={`inline-flex size-7 items-center justify-center rounded-md hover:bg-accent ${r.orientation === o ? 'bg-accent' : ''}`}>
-      <Icon className="size-4" aria-hidden />
-    </button>
-  );
   const title = `${s.label} by ${BUCKET_LABELS[bucket ?? 'DAY'].toLowerCase()}`;
   const full = stack ? `${title} · by ${fieldLabel(stack)}` : title;
   const buckets = s.series?.[0]?.points.length ?? null;
   return (
     <ChartPanel title={bucket ? full : `${s.label} by date`} name="Time series" items={ready ? items : null}
-      extra={<>{orient('vertical', 'Vertical bars', ChartColumn)}{orient('horizontal', 'Horizontal bars', ChartBar)}</>}
       width={r.orientation === 'horizontal' ? BOX_WIDTH : seriesWidth(buckets)}
       loading={s.loading} error={s.failed?.error} onRetry={s.failed?.retry ?? (() => {})} empty={s.empty ? emptyText(hasFilters) : null}>
       {s.series && (() => {
