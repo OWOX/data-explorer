@@ -29,6 +29,16 @@ test('BarChart: 2 series x 3 x give 5 rects (null y draws none), a legend, and t
   expect(container.querySelector('table')).toHaveTextContent('v4');
 });
 
+test('BarChart shows the X field name under the bucket labels, and nothing without it', () => {
+  const { container, rerender } = wrap(<BarChart series={two} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} xTitle="Order date" />);
+  const title = container.querySelector('.dm-chart-axis-title');
+  expect(title).toHaveTextContent('Order date');
+  const labelY = Number(container.querySelector('text.dm-chart-text[text-anchor="middle"]')!.getAttribute('y'));
+  expect(Number(title!.getAttribute('y'))).toBeGreaterThan(labelY);
+  rerender(<TooltipProvider><BarChart series={two} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} /></TooltipProvider>);
+  expect(container.querySelector('.dm-chart-axis-title')).toBeNull();
+});
+
 test('BarChart horizontal: rows are 20px with a 2px gap, no legend for one series', () => {
   const { container } = wrap(<BarChart series={[two[1]!]} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} />);
   expect(container.querySelector('svg')).toHaveAttribute('data-orientation', 'horizontal');
