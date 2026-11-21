@@ -229,6 +229,36 @@ test('Undo of an edit held during the late read returns to the saved view, not t
   } finally { vi.useRealTimers(); }
 });
 
+test('two held edits, then Undo twice, return to the saved view', async () => {
+  try {
+    const { release, saveView } = await lateSetup(true);
+    await sortAmount();
+    await sortAmount();
+    await vi.advanceTimersByTimeAsync(100);
+    release();
+    await vi.advanceTimersByTimeAsync(200);
+    await waitFor(() => expect(saveView).toHaveBeenCalled());
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 500);
+    const last = saveView.mock.calls.at(-1)![1];
+    expect(Object.keys(last.filters)).toEqual(['status']);
+    expect(last.limit).toBe(400);
+  } finally { vi.useRealTimers(); }
+});
+
+test('Undo of a held edit before the late view arrives does not lose the saved view', async () => {
+  try {
+    const { release, saveView } = await lateSetup(true);
+    await sortAmount();
+    await vi.advanceTimersByTimeAsync(100);
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    release();
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 500);
+    for (const [, v] of saveView.mock.calls) expect(v.filters).toHaveProperty('status');
+  } finally { vi.useRealTimers(); }
+});
+
 test('with the joined marts unknown, the late view keeps its joined filters', async () => {
   try {
     const { release, saveView } = await lateSetup(true, { blendFails: true, gridView: { fl: [['customers__email', 'eq', 'a@b.c', null, 1], ['status', 'eq', 'paid', null, 1]], s: null, l: 400 } });

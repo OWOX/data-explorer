@@ -44,6 +44,8 @@ export type State = {
   /** The storages ticked in the Data Marts filter; null is all of them. */
   storageIds: string[] | null;
   grids: Record<string, GridState>;
+  /** Per mart whose saved view is still being read: how many history entries there were when the grid began holding its saves. Edits from that index on were made on defaults. */
+  holds: Record<string, number>;
   modelVersion: number;
 };
 
@@ -74,6 +76,7 @@ export type Action =
   /** The member changed the grid (a filter, a sort, an aggregation, a column shown or hidden, Reset): stored like `saveGrid`, and one step Undo covers. */
   | { type: 'editGrid'; martId: string; grid: GridState }
   /** The saved view arrived late and replaced parts of the grid: the newest Undo entry's "before" takes them too, so Undo returns to the saved view, not the defaults. */
+  | { type: 'holdGrid'; martId: string }
   | { type: 'rebaseGrid'; martId: string; parts: Partial<GridState> }
   /** A view link opens: everything it carries is set at once. No history entry, so Undo has nothing to undo. */
   | { type: 'applyView'; selection: Selection; grid: GridState | null; search: string; found?: string[]; contextIds: string[]; storageIds: string[] | null }
@@ -82,7 +85,7 @@ export type Action =
 export const HISTORY_LIMIT = 20;
 
 const emptySelection: Selection = { sourceKey: null, martId: null, record: null };
-export const initialState: State = { selection: emptySelection, history: [], future: [], search: '', found: [], contextIds: [], storageIds: null, grids: {}, modelVersion: 0 };
+export const initialState: State = { selection: emptySelection, history: [], future: [], search: '', found: [], contextIds: [], storageIds: null, grids: {}, holds: {}, modelVersion: 0 };
 
 /** The source stays selected only when it feeds the mart being selected. */
 const sourceFor = (current: Selection, martId: string, sourceOf: SourceOf): string | null =>
@@ -166,13 +169,20 @@ export function reducer(state: State, a: Action): State {
       if (deepEqual(before, a.grid)) return state;
       return { ...state, grids: { ...state.grids, [a.martId]: a.grid }, history: [...state.history, { ...cur, grids: { [a.martId]: before } }].slice(-HISTORY_LIMIT), future: [] };
     }
+    case 'holdGrid': return { ...state, holds: { ...state.holds, [a.martId]: state.history.length } };
     case 'rebaseGrid': {
-      const top = state.history[state.history.length - 1];
-      const before = top?.grids?.[a.martId];
-      if (!top || !before) return state;
-      const next: GridState = { ...before, ...a.parts };
-      for (const k of Object.keys(next) as (keyof GridState)[]) if (next[k] === undefined) delete next[k];
-      return { ...state, history: [...state.history.slice(0, -1), { ...top, grids: { ...top.grids, [a.martId]: next } }] };
+      // Every edit made while the saved view was unread was recorded on the defaults, whatever it changed: each one's "before" takes the late view's parts,
+      // so no Undo or Redo returns to defaults that the next save would write over the saved view. An Undo that already popped below the hold leaves nothing there to patch.
+      const from = Math.min(state.holds[a.martId] ?? Math.max(0, state.history.length - 1), state.history.length);
+      const patch = (e: Entry): Entry => {
+        const before = e.grids?.[a.martId];
+        if (!before) return e;
+        const next: GridState = { ...before, ...a.parts };
+        for (const k of Object.keys(next) as (keyof GridState)[]) if (next[k] === undefined) delete next[k];
+        return { ...e, grids: { ...e.grids, [a.martId]: next } };
+      };
+      const { [a.martId]: _gone, ...holds } = state.holds;
+      return { ...state, holds, history: state.history.map((e, i) => (i >= from ? patch(e) : e)), future: state.future.map(patch) };
     }
     case 'saveGrid': return { ...state, grids: { ...state.grids, [a.martId]: a.grid } };
     case 'applyView': return {

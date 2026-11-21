@@ -349,6 +349,49 @@ describe('editGrid', () => {
   });
 });
 
+describe('holdGrid and rebaseGrid: edits made on defaults while the saved view is unread', () => {
+  const grid = (over: Partial<GridState> = {}): GridState => ({ columns: ['a', 'b'], filters: {}, sorts: null, limit: 100, ...over });
+  const start = () => reducer(s({ selection: sel({ martId: 'a' }), grids: { a: grid() } }), { type: 'holdGrid', martId: 'a' });
+  const late = { limit: 400 };
+
+  test('two held edits, then Undo twice, both return to the late view', () => {
+    let st = start();
+    st = reducer(st, { type: 'editGrid', martId: 'a', grid: grid({ sorts: [] }) });
+    st = reducer(st, { type: 'editGrid', martId: 'a', grid: grid({ sorts: [], columns: ['a'] }) });
+    st = reducer(st, { type: 'rebaseGrid', martId: 'a', parts: late });
+    st = reducer(reducer(st, { type: 'undo' }), { type: 'undo' });
+    expect(st.grids.a).toMatchObject({ columns: ['a', 'b'], sorts: null, limit: 400 });
+  });
+
+  test('a held column edit is rebased too', () => {
+    let st = start();
+    st = reducer(st, { type: 'editGrid', martId: 'a', grid: grid({ columns: ['a'] }) });
+    st = reducer(st, { type: 'rebaseGrid', martId: 'a', parts: late });
+    expect(reducer(st, { type: 'undo' }).grids.a).toEqual(grid({ limit: 400 }));
+  });
+
+  test('edits before the hold are left alone', () => {
+    let st = reducer(s({ selection: sel({ martId: 'a' }), grids: { a: grid() } }), { type: 'editGrid', martId: 'a', grid: grid({ columns: ['b'] }) });
+    st = reducer(st, { type: 'holdGrid', martId: 'a' });
+    st = reducer(st, { type: 'editGrid', martId: 'a', grid: grid({ columns: ['a'] }) });
+    st = reducer(st, { type: 'rebaseGrid', martId: 'a', parts: late });
+    expect(st.history[0]!.grids!.a).toEqual(grid());
+    expect(st.history[1]!.grids!.a).toEqual(grid({ columns: ['b'], limit: 400 }));
+  });
+
+  test('an Undo that popped below the hold before the late view arrives patches nothing and does not throw', () => {
+    let st = start();
+    st = reducer(st, { type: 'editGrid', martId: 'a', grid: grid({ sorts: [] }) });
+    st = reducer(st, { type: 'undo' });
+    st = reducer(st, { type: 'rebaseGrid', martId: 'a', parts: late });
+    expect(st.history).toEqual([]);
+    expect(st.holds).toEqual({});
+    // Redo goes back to the edit, taking the late parts.
+    expect(reducer(st, { type: 'redo' }).grids.a).toEqual(grid({ sorts: [] }));
+    expect(st.future[0]!.grids!.a).toMatchObject({ limit: 400 });
+  });
+});
+
 describe('fillGrid: a late answer fills the grid only while nothing moved', () => {
   const grid = (columns: string[]) => ({ columns, filters: {}, sorts: null, limit: 200 });
   const start = () => s({ selection: sel({ martId: 'a' }), grids: { a: grid(['id']) } });
