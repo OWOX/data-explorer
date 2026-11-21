@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { TooltipProvider } from '../../ui/Tooltip';
 import { BLANK_KEY, OTHER_KEY } from '../blank';
-import type { Flow } from '../sankeyLayout';
+import { REST_ORIGIN, type Flow } from '../sankeyLayout';
 import { Sankey } from './Sankey';
 
 const flows: Flow[][] = [
@@ -72,17 +72,50 @@ test('exact column totals size a node beyond its flows', () => {
   expect(label).toBe(true);
 });
 
-test('hovering a node lights its ribbons and dims the rest', async () => {
+test('hovering a node lights its ribbons through the DOM (data-hot, is-on) and leaves them when it ends', async () => {
   const { container } = draw({ onPickNode: () => {} });
+  const svg = container.querySelector('svg')!;
+  expect(svg.hasAttribute('data-hot')).toBe(false);
   await userEvent.hover(container.querySelector('rect[data-node="1|x"]')!);
-  const op = (id: string) => Number(byAttr('data-link', id)!.getAttribute('fill-opacity'));
-  expect(op('0|a|x')).toBeGreaterThan(op(`0|a|${OTHER_KEY}`));
+  expect(svg.hasAttribute('data-hot')).toBe(true);
+  expect(byAttr('data-link', '0|a|x')!.classList.contains('is-on')).toBe(true);
+  expect(byAttr('data-link', `0|a|${OTHER_KEY}`)!.classList.contains('is-on')).toBe(false);
+  expect(container.querySelector('rect[data-node="1|x"]')!.classList.contains('is-hot')).toBe(true);
+  await userEvent.unhover(container.querySelector('rect[data-node="1|x"]')!);
+  expect(svg.hasAttribute('data-hot')).toBe(false);
+  expect(container.querySelectorAll('.is-on, .is-hot')).toHaveLength(0);
+});
+
+test('hovering a ribbon lights that ribbon alone', async () => {
+  const { container } = draw();
+  await userEvent.hover(byAttr('data-link', '0|a|x')!);
+  expect([...container.querySelectorAll('.is-on')]).toEqual([byAttr('data-link', '0|a|x')]);
+});
+
+test('hover does not re-render the ribbons: their elements are the same nodes and none is added or lost', async () => {
+  const { container } = draw();
+  const before = [...container.querySelectorAll('path[data-link]')];
+  await userEvent.hover(before[0]!);
+  await userEvent.unhover(before[0]!);
+  expect([...container.querySelectorAll('path[data-link]')]).toEqual(before);
 });
 
 test('a screen reader gets a table of the flows', () => {
   const { container } = draw();
   const rows = [...container.querySelectorAll('tbody tr')].map((tr) => [...tr.children].map((c) => c.textContent));
-  expect(rows).toContainEqual(['One → Two', 'a', 'x', '$5']);
-  expect(rows).toContainEqual(['Two → Three', 'x', 'z', '$7']);
-  expect([...container.querySelectorAll('thead th')].map((c) => c.textContent)).toEqual(['Columns', 'From', 'To', 'Value']);
+  expect(rows).toContainEqual(['One → Two', 'a', 'a', 'x', '$5']);
+  // A later pair names the column-1 node the flow started from.
+  expect(rows).toContainEqual(['Two → Three', 'x', 'x', 'z', '$7']);
+  expect([...container.querySelectorAll('thead th')].map((c) => c.textContent)).toEqual(['Columns', 'From (column 1)', 'From', 'To', 'Value']);
+});
+
+test('many small ribbons of one pair are merged into one rest ribbon per (source, target), keeping the total', () => {
+  const many: Flow[] = Array.from({ length: 300 }, (_, i) => ({ source: 'x', target: 'z', origin: `o${i}`, value: 1 }));
+  const big: Flow[] = [{ source: 'x', target: 'z', origin: 'big', value: 5000 }];
+  const { container } = draw({ flows: [[{ source: 'big', target: 'x', value: 5000 }, ...many.map((f) => ({ source: f.origin!, target: 'x', value: 1 }))], [...big, ...many]] });
+  const pair1 = [...container.querySelectorAll('path[data-link]')].filter((p) => p.getAttribute('data-link')!.startsWith('1|'));
+  expect(pair1).toHaveLength(2);
+  const rest = pair1.find((p) => p.getAttribute('data-link')!.includes(REST_ORIGIN))!;
+  expect(rest.parentElement).not.toBeNull();
+  expect([...container.querySelectorAll('tbody tr')].some((tr) => tr.textContent === `Two → ThreeOther originsxz$300`)).toBe(true);
 });

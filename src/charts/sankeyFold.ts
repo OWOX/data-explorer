@@ -3,7 +3,7 @@
 import type { Field } from '../model/types';
 import type { Row } from '../sdk/types';
 import { BLANK_KEY, keyOf, OTHER_KEY } from './blank';
-import { measureKey, SANKEY_FLOW_LIMIT, TOP_N, type Measure } from './queries';
+import { measureKey, SANKEY_COLUMN_LIMIT, SANKEY_FLOW_LIMIT, TOP_N, type Measure } from './queries';
 import type { Flow } from './sankeyLayout';
 import { numberOf } from './Scorecards';
 
@@ -19,6 +19,8 @@ export type SankeyData = {
   negative: boolean;
   /** The flow read filled its row cap, so smaller combinations are missing from `flows`. */
   capped: boolean;
+  /** A column's total read filled its cap, so its smallest values were never read and its Other counts only the values read. */
+  columnCapped: boolean;
   /** Some column has no rows, or no flow is positive. */
   empty: boolean;
 };
@@ -28,7 +30,7 @@ export type SankeyData = {
  * minus the listed and the blank (summed as the rows beyond the top, which is the same number). If the read hit its cap the smallest values were
  * never returned, so Other counts only the values read.
  */
-export function foldColumn(rows: Row[], dim: Field, measure: Measure): { nodes: ColumnNode[]; listed: Set<string>; negative: boolean } {
+export function foldColumn(rows: Row[], dim: Field, measure: Measure): { nodes: ColumnNode[]; listed: Set<string>; negative: boolean; capped: boolean } {
   const key = measureKey(measure);
   let negative = false;
   let blank = 0;
@@ -44,18 +46,20 @@ export function foldColumn(rows: Row[], dim: Field, measure: Measure): { nodes: 
   const top = real.slice(0, TOP_N);
   const other = real.slice(TOP_N).reduce((s, n) => s + n.value, 0);
   const nodes = [{ key: BLANK_KEY, value: blank }, ...top, { key: OTHER_KEY, value: other }].filter((n) => n.value > 0);
-  return { nodes, listed: new Set(top.map((n) => n.key)), negative };
+  return { nodes, listed: new Set(top.map((n) => n.key)), negative, capped: rows.length >= SANKEY_COLUMN_LIMIT };
 }
 
 /** The node a value belongs to in a column: blank, one of the listed values, or Other. */
 const nodeOf = (v: unknown, listed: Set<string>): string => { const k = keyOf(v); return k === BLANK_KEY ? k : listed.has(k) ? k : OTHER_KEY; };
 
 /** Flow rows and column rows to nodes and flows: each flow row is mapped column by column, then summed per adjacent pair (and per first-column origin). */
-export function foldSankey({ flowRows, columnRows, dims, measure }: { flowRows: Row[]; columnRows: Row[][]; dims: Field[]; measure: Measure }): SankeyData {
+export function foldSankey({ flowRows, lowRows, columnRows, dims, measure }: { flowRows: Row[]; lowRows?: Row[]; columnRows: Row[][]; dims: Field[]; measure: Measure }): SankeyData {
   const cols = dims.map((d, i) => foldColumn(columnRows[i] ?? [], d, measure));
   const key = measureKey(measure);
   const sums: Map<string, Flow>[] = dims.slice(1).map(() => new Map());
-  let negative = cols.some((c) => c.negative);
+  // A capped flow read is sorted largest first, so a negative would be among the left-out flows: the 1-row ascending read shows it.
+  const low = numberOf(lowRows?.[0]?.[key]);
+  let negative = cols.some((c) => c.negative) || (low !== null && low < 0);
   for (const row of flowRows) {
     const v = numberOf(row[key]);
     if (v === null || v === 0) continue;
@@ -73,6 +77,7 @@ export function foldSankey({ flowRows, columnRows, dims, measure }: { flowRows: 
     flows,
     negative,
     capped: flowRows.length >= SANKEY_FLOW_LIMIT,
+    columnCapped: cols.some((c) => c.capped),
     empty: columnRows.slice(0, dims.length).some((r) => r.length === 0) || flows.every((p) => p.length === 0),
   };
 }

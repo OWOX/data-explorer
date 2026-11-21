@@ -1,6 +1,6 @@
 import type { Field } from '../model/types';
 import { BLANK_KEY, OTHER_KEY } from './blank';
-import { measureKey, SANKEY_FLOW_LIMIT, type Measure } from './queries';
+import { measureKey, SANKEY_COLUMN_LIMIT, SANKEY_FLOW_LIMIT, type Measure } from './queries';
 import { foldColumn, foldSankey } from './sankeyFold';
 
 const fld = (name: string): Field => ({ name, alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false });
@@ -78,4 +78,22 @@ test('no rows, or only zero flows, is empty', () => {
   expect(foldSankey({ flowRows: [], columnRows: cols, dims: [a, b], measure: sum }).empty).toBe(true);
   expect(foldSankey({ flowRows: [row({ a: 'x', b: 'p' }, 0)] as never, columnRows: cols, dims: [a, b], measure: sum }).empty).toBe(true);
   expect(foldSankey({ flowRows: [row({ a: 'x', b: 'p' }, 1)] as never, columnRows: [[], []], dims: [a, b], measure: sum }).empty).toBe(true);
+});
+
+test('a capped flow read hides negatives only the 1-row ascending read can show', () => {
+  const flowRows = Array.from({ length: SANKEY_FLOW_LIMIT }, () => row({ a: 'x', b: 'p' }, 1));
+  const cols = [[row({ a: 'x' }, 9000)], [row({ b: 'p' }, 8000)]] as never;
+  expect(foldSankey({ flowRows: flowRows as never, columnRows: cols, dims: [a, b], measure: sum }).negative).toBe(false);
+  expect(foldSankey({ flowRows: flowRows as never, lowRows: [row({ a: 'q', b: 'r' }, -3)] as never, columnRows: cols, dims: [a, b], measure: sum }).negative).toBe(true);
+  expect(foldSankey({ flowRows: flowRows as never, lowRows: [row({ a: 'q', b: 'r' }, 0)] as never, columnRows: cols, dims: [a, b], measure: sum }).negative).toBe(false);
+});
+
+test('a column read at its row cap is flagged: Other undercounts the unread values', () => {
+  const full = Array.from({ length: SANKEY_COLUMN_LIMIT }, (_, i) => row({ a: `v${i}` }, 1));
+  const flowRows = [row({ a: 'v0', b: 'p' }, 1)] as never;
+  const capped = foldSankey({ flowRows, columnRows: [full, [row({ b: 'p' }, 1)]] as never, dims: [a, b], measure: sum });
+  expect(capped.columnCapped).toBe(true);
+  expect(capped.capped).toBe(false);
+  expect(foldSankey({ flowRows, columnRows: [[row({ a: 'v0' }, 1)], [row({ b: 'p' }, 1)]] as never, dims: [a, b], measure: sum }).columnCapped).toBe(false);
+  expect(foldColumn(full as never, a, sum).capped).toBe(true);
 });

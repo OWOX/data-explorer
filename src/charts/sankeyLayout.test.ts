@@ -1,5 +1,5 @@
 import { BLANK_KEY, OTHER_KEY } from './blank';
-import { layoutSankey, NODE_GAP, type Flow } from './sankeyLayout';
+import { layoutSankey, NODE_GAP, REST_ORIGIN, type Flow } from './sankeyLayout';
 
 const flows: Flow[][] = [
   [{ source: 'a', target: 'x', value: 5 }, { source: 'a', target: 'y', value: 3 }, { source: 'b', target: 'y', value: 4 }, { source: BLANK_KEY, target: 'x', value: 2 }, { source: OTHER_KEY, target: 'y', value: 1 }, { source: 'b', target: OTHER_KEY, value: 2 }],
@@ -107,4 +107,35 @@ test('a width narrower than the label padding gives a step of 0, never negative'
   const l = layoutSankey({ flows, width: 0, padRight: 100, height: 200 });
   expect(l.nodes.every((n) => n.x >= 0)).toBe(true);
   expect(l.links.every((k) => Number.isFinite(k.x1))).toBe(true);
+});
+
+test('a real value fed only by a blank origin takes a series slot of its own, not the blank grey', () => {
+  const l = layoutSankey({ flows: [
+    [{ source: BLANK_KEY, target: 'x', value: 10 }, { source: 'a', target: 'y', value: 5 }],
+    [{ source: 'x', target: 'z', value: 10, origin: BLANK_KEY }, { source: 'y', target: 'z', value: 5, origin: 'a' }],
+  ], width: 600, height: 200 });
+  const tone = (c: number, k: string) => l.nodes.find((n) => n.col === c && n.key === k)!.tone;
+  expect(tone(0, BLANK_KEY)).toEqual({ kind: 'blank' });
+  expect(tone(1, 'x')).toMatchObject({ kind: 'series' });
+  expect(tone(1, 'x')).not.toEqual(tone(0, 'a'));
+  expect(tone(1, 'y')).toEqual(tone(0, 'a'));
+});
+
+test('small ribbons of one (source, target) merge into one rest ribbon; the total and big ribbons stay', () => {
+  const small: Flow[] = Array.from({ length: 50 }, (_, i) => ({ source: 'x', target: 'z', value: 1, origin: `o${i}` }));
+  const l = layoutSankey({ flows: [
+    [{ source: 'big', target: 'x', value: 5000 }, ...small.map((f) => ({ source: f.origin!, target: 'x', value: 1 }))],
+    [{ source: 'x', target: 'z', value: 5000, origin: 'big' }, ...small],
+  ], width: 600, height: 300 });
+  const pair1 = l.links.filter((k) => k.pair === 1);
+  expect(pair1).toHaveLength(2);
+  expect(pair1.find((k) => k.origin === REST_ORIGIN)!.value).toBe(50);
+  expect(pair1.find((k) => k.origin === 'big')!.value).toBe(5000);
+  // Node sizes still come from every flow.
+  expect(l.nodes.find((n) => n.col === 1 && n.key === 'x')!.value).toBe(5050);
+});
+
+test('a lone small ribbon keeps its origin', () => {
+  const l = layoutSankey({ flows: [[{ source: 'big', target: 'x', value: 5000 }, { source: 'a', target: 'x', value: 1 }], [{ source: 'x', target: 'z', value: 5000, origin: 'big' }, { source: 'x', target: 'z', value: 1, origin: 'a' }]], width: 600, height: 300 });
+  expect(l.links.filter((k) => k.pair === 1).map((k) => k.origin).sort()).toEqual(['a', 'big']);
 });

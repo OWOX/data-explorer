@@ -55,3 +55,30 @@ test('sankey columns: a new column takes the next unused dimension; picking a he
 test('sankey is wider with more columns', () => {
   expect(sankeyWidth(3)).toBe('clamp(20rem, 33rem, 100%)');
 });
+
+const j = (name: string) => ({ name, category: 'string', type: 'STRING', joined: { martId: 'C', label: 'Customers', aliasPath: 'c' } }) as never;
+const ltv = { name: 'c__ltv', category: 'number', type: 'NUMERIC', joined: { martId: 'C', label: 'Customers', aliasPath: 'c' } } as never;
+const two = (hasPk: boolean): ChartFields => ({
+  marts: [
+    { aliasPath: '', recordsId: 'records:M', title: '', hasPk, metrics: [{ field: amount, fn: 'SUM' }], dates: [], dimensions: [a, b] },
+    { aliasPath: 'c', recordsId: 'records:C', title: '', hasPk: true, metrics: [{ field: ltv, fn: 'SUM' }], dates: [], dimensions: [j('c__x'), j('c__y')] },
+  ], dates: [], dimensions: [a, b, j('c__x'), j('c__y')], counter: null,
+});
+
+test('sankey resolve: a saved Count Unique is kept on its own mart and falls back to a metric when a column comes from another mart (never written back)', () => {
+  const cf = two(true);
+  const spec = { id: 's', kind: 'sankey' as const, measure: 'records', dimensions: ['a', 'b'] };
+  expect(sankey.resolve(spec, cf)!.measure).toMatchObject({ kind: 'records', aliasPath: '' });
+  const mixed = sankey.resolve({ ...spec, dimensions: ['a', 'c__x'] }, cf)!;
+  expect(mixed.measure).toBeNull();
+  expect(spec.measure).toBe('records');
+  // Columns of the joined mart: its own measures only, the saved main-mart one is replaced for display.
+  const own = sankey.resolve({ ...spec, dimensions: ['c__x', 'c__y'] }, cf)!;
+  expect(own.measure).toMatchObject({ kind: 'metric', metric: { field: { name: 'c__ltv' } } });
+});
+
+test('sankey: a new or filled column prefers the first column\'s mart', () => {
+  const cf = two(false);
+  expect(withColumns(['c__x'], 2, cf.dimensions)).toEqual(['c__x', 'c__y']);
+  expect(sankey.resolve({ id: 's', kind: 'sankey', dimensions: ['c__y'] }, cf)!.dims.map((d) => d.name)).toEqual(['c__y', 'c__x']);
+});

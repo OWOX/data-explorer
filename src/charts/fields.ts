@@ -25,7 +25,18 @@ export const pieMeasures = (cf: ChartFields): Measure[] => measuresOf(cf).flatMa
   return [x.metric.fn === 'SUM' ? x : { kind: 'metric', metric: { ...x.metric, fn: 'SUM' } }];
 });
 
-const pathOf = (f: Field) => f.joined?.aliasPath ?? '';
+export const pathOf = (f: Field) => f.joined?.aliasPath ?? '';
+
+/** The data mart (alias path) a measure counts or sums over. */
+export const measurePath = (m: Measure): string => (m.kind === 'records' ? m.aliasPath : pathOf(m.metric.field));
+
+/**
+ * What a Sankey may sum: the columns' rows are added up in the plugin, which is only right when no join can repeat a record across them.
+ * The backend de-duplicates a SUM or a Count Unique per group of the read's columns, so one record that matches several joined rows (an order with 3 products)
+ * is whole in each group and counted once per group when the groups are added. The client cannot tell a one-to-many join from a many-to-one one,
+ * so a measure is offered only when every column is on the measure's own mart (same alias path, no joined dimension).
+ */
+export const sankeyMeasures = (cf: ChartFields, dims: Field[]): Measure[] => pieMeasures(cf).filter((m) => dims.every((d) => pathOf(d) === measurePath(m)));
 
 // The grid's own Σ function wins, so a chart and the grid never disagree about what a column means.
 function metricFn(f: Field, agg: Aggregation): AggFn | null {

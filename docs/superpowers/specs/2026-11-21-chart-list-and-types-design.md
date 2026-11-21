@@ -18,7 +18,7 @@ and the panels take only the width their content needs.
 6. Charts show the same data as the table. They never drop rows on their own: a blank (null) value is drawn as its own
    bar, slice or category, placed first. A member who wants it gone filters it out in the column filter. There is no
    per-chart "hide blanks" option (added and reverted on 2026-11-21).
-7. The Sankey is the one chart that adds up values in the plugin: it folds one grouped read into top values, (blank) and Other per column, for additive measures only. Column totals come from their own reads so node sizes stay exact.
+7. The Sankey is the one chart that adds up values in the plugin: it folds one grouped read into top values, (blank) and Other per column, for additive measures only. Column totals come from their own reads so node sizes stay exact. Adding rows is right only when no join repeats a record across them: the backend de-duplicates a SUM or a Count Unique per group of the read's columns, so a record matching several joined rows (an order with 3 products) is whole in each of those groups and is counted again when the groups are added. The client cannot tell a one-to-many join from a many-to-one one, so the Sankey offers a measure (Count Unique or SUM) only when every chosen column is on the measure's own mart (same alias path); with columns from several marts it draws a note instead. A saved measure that no longer fits falls back to the first that does, for display only. When the flow read is capped, a 1-row ascending read looks for negatives among the left-out flows; a column read at its cap is noted, since Other then counts only the values read.
 
 ## 1. Saved settings
 

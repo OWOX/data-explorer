@@ -11,6 +11,11 @@ export type SankeyNode = { col: number; key: string; x: number; y: number; w: nu
 export type SankeyLink = { pair: number; source: string; target: string; origin: string; value: number; path: string; tone: Tone; x0: number; x1: number; y0: number; y1: number; w: number };
 export type SankeyLayout = { nodes: SankeyNode[]; links: SankeyLink[]; height: number };
 
+/** The `origin` of a ribbon that stands for several small ribbons of one (source, target): their origins are not told apart. */
+export const REST_ORIGIN = '\u0000rest';
+/** A ribbon below this share of its pair's total is merged with the other small ones between the same two nodes. */
+export const REST_SHARE = 0.005;
+
 export const NODE_W = 12;
 export const NODE_GAP = 8;
 const MIN_H = 180;
@@ -20,6 +25,21 @@ const side = (k: string) => (isBlankKey(k) ? 0 : k === OTHER_KEY ? 2 : 1);
 /** Blank first, "Other" last, the rest by size (largest first). */
 const rankOf = (keys: string[], totals: Map<string, number>): string[] =>
   [...keys].sort((a, b) => side(a) - side(b) || (totals.get(b) ?? 0) - (totals.get(a) ?? 0));
+
+/** Ribbons below REST_SHARE of the pair's total become one ribbon (origin REST_ORIGIN) per (source, target); a lone small ribbon stays as it is. Sums are unchanged. */
+function mergeSmall(pair: Flow[]): Flow[] {
+  const total = pair.reduce((s, f) => s + f.value, 0);
+  const limit = total * REST_SHARE;
+  const rest = new Map<string, Flow[]>();
+  const kept: Flow[] = [];
+  for (const f of pair) {
+    if (f.value >= limit) { kept.push(f); continue; }
+    const id = `${f.source}\u0001${f.target}`;
+    rest.set(id, [...(rest.get(id) ?? []), f]);
+  }
+  for (const group of rest.values()) kept.push(group.length === 1 ? group[0]! : { source: group[0]!.source, target: group[0]!.target, origin: REST_ORIGIN, value: group.reduce((s, f) => s + f.value, 0) });
+  return kept;
+}
 
 /**
  * Columns evenly spaced across `width` (the last one keeps `padRight` for its labels). A column's nodes run blank first, then by size, "Other" last;
@@ -61,8 +81,9 @@ export function layoutSankey({ flows, columns, width, padRight = 0, height }: { 
       if (isBlankKey(key)) tones[c]!.set(key, { kind: 'blank' });
       else if (key === OTHER_KEY) tones[c]!.set(key, { kind: 'other' });
       else {
+        // Only a series tone is passed on: a real value fed mostly by a blank or Other origin takes a series slot of its own, not the grey.
         const from = new Map<string, number>();
-        if (c > 0) for (const f of drawn[c - 1]!) if (f.target === key) from.set(f.origin ?? f.source, (from.get(f.origin ?? f.source) ?? 0) + f.value);
+        if (c > 0) for (const f of drawn[c - 1]!) if (f.target === key && tones[0]!.get(f.origin ?? f.source)?.kind === 'series') from.set(f.origin ?? f.source, (from.get(f.origin ?? f.source) ?? 0) + f.value);
         const best = [...from].sort((a, b) => b[1] - a[1])[0]?.[0];
         tones[c]!.set(key, (best !== undefined && tones[0]!.get(best)) || { kind: 'series', index: slot++ });
       }
@@ -82,11 +103,11 @@ export function layoutSankey({ flows, columns, width, padRight = 0, height }: { 
   });
 
   const links: SankeyLink[] = [];
-  drawn.forEach((pair, i) => {
+  drawn.map((pair) => mergeSmall(pair)).forEach((pair, i) => {
     const outAt = new Map<string, number>();
     const inAt = new Map<string, number>();
     // Source slots run in the target's rank order, target slots in the source's: neighbours stay neighbours.
-    const first = (f: Flow) => rank[0]!.get(f.origin ?? f.source) ?? 0;
+    const first = (f: Flow) => rank[0]!.get(f.origin ?? f.source) ?? Number.MAX_SAFE_INTEGER;
     const bySource = [...pair].sort((a, b) => rank[i]!.get(a.source)! - rank[i]!.get(b.source)! || rank[i + 1]!.get(a.target)! - rank[i + 1]!.get(b.target)! || first(a) - first(b));
     const byTarget = [...pair].sort((a, b) => rank[i + 1]!.get(a.target)! - rank[i + 1]!.get(b.target)! || rank[i]!.get(a.source)! - rank[i]!.get(b.source)! || first(a) - first(b));
     const srcOff = new Map<Flow, number>();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chartFields, measuresOf, pickBucket, pieMeasures } from './fields';
+import { chartFields, measuresOf, pickBucket, pieMeasures, sankeyMeasures } from './fields';
 import type { Field, Schema } from '../model/types';
 import { NO_AGGREGATION } from '../model/aggregation';
 
@@ -110,4 +110,16 @@ describe('pickBucket', () => {
     ['2026-01-01 10:00:00 UTC', '2026-01-20 10:00:00 UTC', 'DAY'],
     ['2026-01-01T10:00:00Z', '2026-01-20T10:00:00Z', 'DAY'],
   ])('%s..%s → %s', (a, b, want) => expect(pickBucket(a, b)).toBe(want));
+});
+
+describe('the measures a Sankey may sum', () => {
+  const cf = chartFields(Object.assign([...schema, f('c__plan', 'string', { joined: { martId: 'C', label: 'Customers', aliasPath: 'c' } })], { primaryKey: ['id'] }), schema.map((x) => x.name).concat('c__plan'), NO_AGGREGATION, 'M', ['', 'c'], new Set(['c']))!;
+  const ids = (dims: string[]) => sankeyMeasures(cf, dims.map((n) => [...cf.dimensions].find((d) => d.name === n)!)).map((m) => (m.kind === 'records' ? `records@${m.aliasPath}` : m.metric.field.name));
+  it('are the own mart\'s Count Unique and metrics when every column is on that mart', () => {
+    expect(ids(['channel'])).toEqual(['records@', 'amount', 'qty']);
+    expect(ids(['c__city', 'c__plan'])).toEqual(['records@c', 'c__ltv']);
+  });
+  it('are none when the columns span marts: a joined row repeats a record, and adding the groups counts it again', () => {
+    expect(ids(['channel', 'c__city'])).toEqual([]);
+  });
 });

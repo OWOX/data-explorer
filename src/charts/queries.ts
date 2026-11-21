@@ -163,7 +163,7 @@ export const SANKEY_FLOW_LIMIT = 5000;
 /** The most distinct values one Sankey column's total read returns (largest first). Past it the smallest values are unread, so Other counts only the values read. */
 export const SANKEY_COLUMN_LIMIT = 10000;
 
-const bySize = (measure: Measure): TraverseOptions['sort'] => [{ column: measure.kind === 'metric' ? measure.metric.field.name : measureKey(measure), direction: 'desc' }];
+const bySize = (measure: Measure, direction: 'asc' | 'desc' = 'desc'): TraverseOptions['sort'] => [{ column: measure.kind === 'metric' ? measure.metric.field.name : measureKey(measure), direction }];
 
 /** The measure per combination of values of all the Sankey's columns, largest first, capped at SANKEY_FLOW_LIMIT. A blank value comes back as a NULL group. */
 export function sankeyFlowQuery(dims: Field[], measure: Measure, filter: TraverseFilter[], counter?: Field | null): TraverseOptions {
@@ -174,6 +174,11 @@ export function sankeyFlowQuery(dims: Field[], measure: Measure, filter: Travers
     limit: SANKEY_FLOW_LIMIT,
   };
   return withFilter(withCounter(o, filter, counter), filter);
+}
+
+/** The smallest combination: the flow read sorted the other way, one row. Read only when the flow read is capped, to see whether the left-out flows hold a negative. */
+export function sankeyLowQuery(dims: Field[], measure: Measure, filter: TraverseFilter[], counter?: Field | null): TraverseOptions {
+  return { ...sankeyFlowQuery(dims, measure, filter, counter), sort: bySize(measure, 'asc'), limit: 1 };
 }
 
 /** The measure per value of one Sankey column (blank included), largest first, capped at SANKEY_COLUMN_LIMIT: exact node sizes. */
