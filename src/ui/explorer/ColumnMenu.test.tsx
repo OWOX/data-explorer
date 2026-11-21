@@ -48,6 +48,18 @@ describe('sort mark and notes', () => {
     expect(within(data()).getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'none');
   });
 
+  test('stepping the sort mark to none moves focus to that column\'s menu icon', async () => {
+    setup();
+    await ready();
+    await openSubmenu(within(data()), 'status', 'Sort');
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Sort Z → A' }));
+    const mark = await within(data()).findByLabelText('Sorted Z to A: status');
+    mark.focus();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(within(data()).queryByLabelText(/^Sorted /)).toBeNull());
+    expect(within(data()).getByLabelText('Column menu status')).toHaveFocus();
+  });
+
   test('the Filter panel carries the OWOX note in its footer', async () => {
     setup();
     await ready();

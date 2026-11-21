@@ -264,7 +264,7 @@ button.dm-mark { cursor: pointer; }
 .dm-canvas.focused .dm-node { opacity: 0.25; }
 .dm-canvas.focused .dm-node.lit { opacity: 1; }
 .dm-canvas.focused .dm-node[aria-pressed='true'] { opacity: 1; }
-/* Selected reads as hovered does: the same colour, the same ring. What tells them apart is that
+/* Selected reads as hovered does: the same colour. What tells them apart is that
    everything else has stepped back, not that this one has grown. */
 .dm-canvas.sources-focused #band-sources .dm-node { opacity: 0.25; }
 .dm-canvas.sources-focused #band-sources .dm-node.lit { opacity: 1; }
@@ -314,7 +314,7 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
   background: color-mix(in oklab, var(--tone) 10%, var(--card));
 }
 /* The card under the pointer while a different one is chosen: its own colour, at half strength.
-   Written with `.lit` and `:hover` so it outranks the ring rule above rather than racing it, and
+   Written with `.lit` and `:hover` so it outranks the hover rule above rather than racing it, and
    `--tone` is used here rather than redefined — a variable cannot be set from itself. */
 .dm-node.lit.aside:hover {
   border-color: color-mix(in oklab, var(--tone) 50%, transparent);
@@ -331,7 +331,7 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 .dm-progress { color: var(--primary); }
 
 /* --- the big card: the Data and Row bands' content as one card, as wide as the band ------------- */
-/* The .dm-node look (background, border, radius), without its hover ring, lift or pointer: it is
+/* The .dm-node look (background, border, radius), without its hover colour, lift or pointer: it is
    not a control. `overflow: clip` rounds the corners without becoming the sticky header's scroller. */
 .dm-bigcard {
   position: relative; z-index: 2;
@@ -442,7 +442,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 :root.dark .dm-menu { --menu-bg: #2d2e30; --menu-fg: #e8eaed; --menu-hover: #3c4043; --menu-line: #5f6368; --menu-muted: #9aa0a6; box-shadow: 0 2px 6px rgba(0, 0, 0, .6); }
 .dm-menu-root { min-width: 200px; }
 /* The filter and aggregation forms keep the app's own tokens inside the Sheets-style frame. */
-/* Every second-level panel of the column menu has the width the widest editor had: 28rem, so a note wraps at the same place in each. */
+/* Every second-level panel of the column menu has the width the widest editor had: 19.6rem, so a note wraps at the same place in each. */
 .dm-menu-sub { width: min(19.6rem, calc(100vw - 16px)); }
 .dm-menu-editor { max-height: min(20rem, calc(100vh - 16px)); padding: 0; overflow: hidden; }
 /* The filter and aggregation editors inside the menu: Google Sheets' dialog look (Google Sans 14px, 36px controls, green primary, outlined secondary). */

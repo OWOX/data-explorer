@@ -257,7 +257,11 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
     return () => { document.removeEventListener('pointerdown', down, true); window.removeEventListener('scroll', away, true); };
   }, [menu]);
   // The sort mark steps this column's sort (ascending, descending, none) in place; it does not open the menu.
-  const cycleMark = () => env.setSort(field.name, direction === 'asc' ? 'desc' : direction === 'desc' ? null : 'asc');
+  // Stepping to none unmounts the mark, so focus moves to the column's menu icon rather than dropping to the page.
+  const cycleMark = () => {
+    env.setSort(field.name, direction === 'asc' ? 'desc' : direction === 'desc' ? null : 'asc');
+    if (direction === 'desc') icon.current?.focus();
+  };
   const Arrow = direction === 'desc' ? ArrowDown : ArrowUp;
   // The indicators shown beside the menu icon, in this order; each opens the menu at its own submenu.
   const marks: { sub: SubKey; on: boolean; tip?: string; label: string; icon: ReactNode; badge?: ReactNode }[] = [
