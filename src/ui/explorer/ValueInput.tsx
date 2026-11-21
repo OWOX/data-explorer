@@ -42,13 +42,15 @@ export function ValueInput({ op, value, onChange, source, className }: Props) {
     ? narrow(pool.filter((o) => !o.includes(',')), value)
     : pool.filter((o) => o !== value && o.toLowerCase().includes(value.trim().toLowerCase()));
   const shown = open && !!source && (loading || options.length > 0);
+  // The listbox is in the DOM once the values are in; while they load there is only a status note.
+  const listed = shown && !(loading && !loaded);
   const at = Math.min(hot, options.length - 1);
   const pick = (v: string) => { onChange(list ? addValue(value, v) : v); setHot(-1); };
 
   return (
     <>
       <input ref={setAnchor} aria-label="Value" className={className} type="text" value={value} autoComplete="off"
-        {...(source ? { role: 'combobox', 'aria-autocomplete': 'list' as const, 'aria-expanded': shown, 'aria-controls': shown ? id : undefined, 'aria-activedescendant': shown && at >= 0 ? `${id}-${at}` : undefined } : {})}
+        {...(source ? { role: 'combobox', 'aria-autocomplete': 'list' as const, 'aria-expanded': shown, 'aria-controls': listed ? id : undefined, 'aria-activedescendant': listed && at >= 0 ? `${id}-${at}` : undefined } : {})}
         onChange={(e) => { onChange(e.target.value); setOpen(true); setHot(-1); start(); }}
         onFocus={() => { setOpen(true); start(); }}
         onBlur={() => setOpen(false)}
@@ -63,7 +65,7 @@ export function ValueInput({ op, value, onChange, source, className }: Props) {
           } else if (e.key === 'Enter' && shown && at >= 0) { e.preventDefault(); pick(options[at]!); }
         }} />
       {shown && anchor && (
-        <Panel anchor={anchor} mode="below" role="menu" label="Suggested values" onEscape={() => setOpen(false)} focusSeq={0} className="dm-suggest">
+        <Panel anchor={anchor} mode="below" onEscape={() => setOpen(false)} focusSeq={0} className="dm-suggest">
           {loading && !loaded
             ? <div role="status" className="dm-suggest-note">Loading values…</div>
             : (

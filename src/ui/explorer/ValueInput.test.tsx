@@ -116,3 +116,15 @@ test('no suggestions on a number column', async () => {
   await userEvent.click(input());
   expect(load).not.toHaveBeenCalled();
 });
+
+test('the suggestion wrapper is no menu, and aria-controls points at the listbox only once it exists', async () => {
+  let done!: (v: string[]) => void;
+  render(<Harness src={source(() => new Promise((r) => { done = r; }))} />);
+  await userEvent.click(input());
+  await screen.findByRole('status');
+  expect(input()).not.toHaveAttribute('aria-controls');
+  done(['US']);
+  const box = await screen.findByRole('listbox', { name: 'Suggested values' });
+  expect(input()).toHaveAttribute('aria-controls', box.id);
+  expect(screen.queryByRole('menu')).toBeNull();
+});
