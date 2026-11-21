@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from 'react';
+import { useMemo, type KeyboardEvent } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
 import { useWidth } from '../useWidth';
 import type { Series } from './BarChart';
@@ -20,7 +20,8 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
   const seen = new Map<string, string>();
   for (const s of [...left, ...(right ? [right] : [])]) for (const p of s.points) if (!seen.has(p.x)) seen.set(p.x, p.label);
   const xs = [...seen].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([x, label]) => ({ x, label }));
-  const at = (s: Series, x: string) => s.points.find((p) => p.x === x);
+  const byX = useMemo(() => new Map([...left, ...(right ? [right] : [])].map((s) => [s, new Map(s.points.map((p) => [p.x, p]))] as const)), [left, right]);
+  const at = (s: Series, x: string) => byX.get(s)?.get(x);
   const maxOf = (ss: Series[]) => Math.max(0, ...ss.flatMap((s) => s.points.map((p) => p.y ?? 0)));
   const maxL = maxOf(left);
   const maxR = right ? maxOf([right]) : 0;
