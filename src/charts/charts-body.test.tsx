@@ -487,10 +487,17 @@ test('a hidden chart sends no query', async () => {
 });
 
 test('a chart whose fields are not shown is listed as columns hidden and drawn again when they return', async () => {
-  await charts({ columns: ['id', 'amount', 'created_at'], charts: { version: 2, charts: [{ id: 'p', kind: 'pie', dimension: 'status' }] } });
+  const t = await charts({ columns: ['id', 'amount', 'created_at'], charts: { version: 2, charts: [{ id: 'p', kind: 'pie', dimension: 'status' }] } });
   expect(data().querySelectorAll('section.dm-chart')).toHaveLength(0);
   await userEvent.click(screen.getByRole('button', { name: 'Charts options' }));
   expect(screen.getByRole('menuitemcheckbox', { name: 'Pie (columns hidden)' })).toBeTruthy();
+  await userEvent.keyboard('{Escape}');
+  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+  await userEvent.click(await screen.findByLabelText(/^status/i));
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(1));
+  expect(data().querySelector('section[data-chart-kind="Pie"]')).not.toBeNull();
+  expect(t.puts).not.toHaveBeenCalled();
 });
 
 test('Chart type switches a chart in place and keeps its usable saved fields', async () => {
@@ -517,4 +524,33 @@ test('a chart menu ends with Chart type, Copy to clipboard and Remove', async ()
   await userEvent.click(screen.getByRole('button', { name: 'Pie options' }));
   const rows = within(screen.getAllByRole('menu').at(-1)!).getAllByRole('menuitem').map((r) => r.textContent);
   expect(rows.slice(-3)).toEqual(['Chart type', 'Copy to clipboard', 'Remove']);
+});
+
+test('the grid’s chosen aggregation reaches the charts: Average ranks the bars, and a switch to Pie goes back to Sum', async () => {
+  const t = setup({ charts: { version: 2, charts: [{ id: 'r', kind: 'rankedBar', measure: 'amount', dimension: 'status' }] } });
+  await t.seeded;
+  t.view();
+  await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
+  await openSubmenu(within(data()), 'Amount', 'Aggregate');
+  const dialog = await screen.findByRole('dialog');
+  // Nothing is ticked yet: only Average, so no Sum rule can take precedence.
+  await userEvent.click(within(dialog).getByLabelText('Average'));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  const before = t.queries.length;
+  await userEvent.click(radio('Charts'));
+  await waitFor(() => expect(data().querySelector('section[data-chart-kind="Ranked bar"] svg[data-orientation="horizontal"]')).not.toBeNull());
+  const ranked = t.queries.slice(before).filter((q) => q.limit === 8);
+  expect(ranked.length).toBeGreaterThan(0);
+  expect(ranked.every((q) => q.aggregation?.[0]?.function === 'AVG')).toBe(true);
+
+  const switched = t.queries.length;
+  await userEvent.click(screen.getByRole('button', { name: 'Ranked bar options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Pie' }));
+  await waitFor(() => expect(data().querySelector('section[data-chart-kind="Pie"] [data-slice]')).not.toBeNull());
+  const pie = t.queries.slice(switched).filter((q) => q.limit === 8);
+  expect(pie.length).toBeGreaterThan(0);
+  expect(pie.every((q) => q.aggregation?.[0]?.function === 'SUM')).toBe(true);
+  expect((t.puts.mock.lastCall![1] as ChartSettings).charts).toEqual([{ id: 'r', kind: 'pie', measure: 'amount', dimension: 'status' }]);
 });
