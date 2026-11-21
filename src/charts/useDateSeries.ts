@@ -26,7 +26,7 @@ export function useDateSeries({ martId, cf, spark, date, bucket, measure, stack,
   const top = useChartQuery(martId, !idle && stack ? topValuesQuery(stack, measure, filter) : null, version);
   const names = top.rows?.map((row) => String(row[stack!.name]));
   // Unstacked, the series asks for the sparklines' read when it can (same key, one billed read for both). If that read fails, the series reads for itself, so the chart is never worse off than with its own read.
-  const sharedOptions = live && !stack ? sharedSeriesQuery(cf, spark, measure, bucket, filter) : null;
+  const sharedOptions = live && !stack ? sharedSeriesQuery(cf, spark, measure, bucket, filter, date) : null;
   const shared = useChartQuery(martId, sharedOptions, version);
   const viaShared = !!sharedOptions && !shared.error;
   // With a stack the series query waits for the top values.

@@ -16,7 +16,11 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
   onPick?: (x: string, seriesIndex?: number) => void; canPick?: (x: string) => boolean; xTitle?: string;
 }) {
   const { ref, width } = useWidth<HTMLDivElement>();
-  const xs = left[0]?.points ?? [];
+  // Buckets are the sorted union of every series' x, so a value is always placed under its own bucket (the two reads may differ).
+  const seen = new Map<string, string>();
+  for (const s of [...left, ...(right ? [right] : [])]) for (const p of s.points) if (!seen.has(p.x)) seen.set(p.x, p.label);
+  const xs = [...seen].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([x, label]) => ({ x, label }));
+  const at = (s: Series, x: string) => s.points.find((p) => p.x === x);
   const maxOf = (ss: Series[]) => Math.max(0, ...ss.flatMap((s) => s.points.map((p) => p.y ?? 0)));
   const maxL = maxOf(left);
   const maxR = right ? maxOf([right]) : 0;
@@ -30,8 +34,9 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
   const height = TOP + PLOT_H + AXIS_H + (xTitle ? TITLE_H : 0);
   const pathOf = (s: Series, max: number) => {
     let d = ''; let open = false;
-    s.points.forEach((p, i) => {
-      if (p.y === null) { open = false; return; }
+    xs.forEach((b, i) => {
+      const p = at(s, b.x);
+      if (!p || p.y === null) { open = false; return; }
       d += `${open ? ' L' : `${d ? ' ' : ''}M`}${px(i).toFixed(1)} ${py(p.y, max).toFixed(1)}`;
       open = true;
     });
@@ -40,9 +45,9 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
   const areaOf = (s: Series, max: number) => {
     // One closed shape per unbroken run, down to the zero line.
     const runs: number[][] = []; let run: number[] = [];
-    s.points.forEach((p, i) => { if (p.y === null) { if (run.length) runs.push(run); run = []; } else run.push(i); });
+    xs.forEach((b, i) => { if (at(s, b.x)?.y == null) { if (run.length) runs.push(run); run = []; } else run.push(i); });
     if (run.length) runs.push(run);
-    return runs.map((r) => `M${px(r[0]!).toFixed(1)} ${TOP + PLOT_H} ${r.map((i) => `L${px(i).toFixed(1)} ${py(s.points[i]!.y!, max).toFixed(1)}`).join(' ')} L${px(r.at(-1)!).toFixed(1)} ${TOP + PLOT_H} Z`).join(' ');
+    return runs.map((r) => `M${px(r[0]!).toFixed(1)} ${TOP + PLOT_H} ${r.map((i) => `L${px(i).toFixed(1)} ${py(at(s, xs[i]!.x)!.y!, max).toFixed(1)}`).join(' ')} L${px(r.at(-1)!).toFixed(1)} ${TOP + PLOT_H} Z`).join(' ');
   };
   const all = right ? [...left.map((s) => ({ s, max: maxL })), { s: right, max: maxR }] : left.map((s) => ({ s, max: maxL }));
   const pickable = (x: string) => !!onPick && (canPick?.(x) ?? true);
@@ -63,7 +68,7 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
         {area && all.map(({ s, max }) => <path key={`a-${s.name}`} data-area={s.name} d={areaOf(s, max)} fill={s.color} fillOpacity={0.18} stroke="none" />)}
         {all.map(({ s, max }, k) => <path key={s.name} data-line={s.name} d={pathOf(s, max)} fill="none" stroke={s.color} strokeWidth={2} strokeDasharray={right && k === all.length - 1 ? '5 3' : undefined} strokeLinejoin="round" strokeLinecap="round" />)}
         {xs.map((p, i) => {
-          const content = <TipLines lines={[p.label, ...all.filter(({ s }) => s.points[i]?.y != null).map(({ s }) => <span key={s.name}><span className="dm-chart-swatch" style={{ background: s.color }} /> {s.name}: {s.points[i]!.valueText}</span>)]} />;
+          const content = <TipLines lines={[p.label, ...all.filter(({ s }) => at(s, p.x)?.y != null).map(({ s }) => <span key={s.name}><span className="dm-chart-swatch" style={{ background: s.color }} /> {s.name}: {at(s, p.x)!.valueText}</span>)]} />;
           const pick = pickable(p.x) ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${p.label}`, style: { cursor: 'pointer' }, onClick: () => onPick!(p.x), onKeyDown: press(() => onPick!(p.x)) } : {};
           return <Tooltip key={p.x} content={content}><rect data-bucket={p.x} fill="transparent" x={px(i) - band / 2} y={TOP} width={band} height={PLOT_H} {...pick} /></Tooltip>;
         })}
@@ -75,7 +80,7 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
       )}
       <table className="sr-only">
         <thead><tr><th>{xTitle ?? 'Bucket'}</th>{all.map(({ s }) => <th key={s.name}>{s.name}</th>)}</tr></thead>
-        <tbody>{xs.map((p, i) => <tr key={p.x}><th scope="row">{p.label}</th>{all.map(({ s }) => <td key={s.name}>{s.points[i]?.valueText ?? ''}</td>)}</tr>)}</tbody>
+        <tbody>{xs.map((p) => <tr key={p.x}><th scope="row">{p.label}</th>{all.map(({ s }) => <td key={s.name}>{at(s, p.x)?.valueText ?? ''}</td>)}</tr>)}</tbody>
       </table>
     </div>
   );

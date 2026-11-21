@@ -49,12 +49,12 @@ export function sparkQueryOf(mart: ChartMart, spark: Spark, bucket: DateBucket |
 /**
  * The query an unstacked time series can ride on: its measure's own mart already reads every metric and its unique count by
  * the same date bucket for the sparklines, so the series rows are a column subset of those rows and the read is shared.
- * Null when the sparklines do not draw on the series' date (or are off or hidden), and the series reads for itself.
+ * Null when the sparklines do not draw on the series' `date` (or are off or hidden), and the series reads for itself.
  */
-export function sharedSeriesQuery(cf: ChartFields, spark: Spark, measure: Measure, bucket: DateBucket | null, filter: TraverseFilter[]): TraverseOptions | null {
+export function sharedSeriesQuery(cf: ChartFields, spark: Spark, measure: Measure, bucket: DateBucket | null, filter: TraverseFilter[], date: Field): TraverseOptions | null {
   const path = measure.kind === 'records' ? measure.aliasPath : measure.metric.field.joined?.aliasPath ?? '';
   const owner = cf.marts.find((m) => m.aliasPath === path);
-  if (!owner || !spark.date || sparkDate(owner, spark) !== spark.date) return null;
+  if (!owner || !spark.date || date !== spark.date || sparkDate(owner, spark) !== spark.date) return null;
   const has = measure.kind === 'records' ? owner.hasPk : owner.metrics.some((m) => metricKey(m) === metricKey(measure.metric));
   return has ? sparkQueryOf(owner, spark, bucket, filter) : null;
 }

@@ -173,3 +173,11 @@ test('LineChart: a null value breaks the line; a bucket is pickable by keyboard'
   await userEvent.keyboard('{Enter}');
   expect(onPick).toHaveBeenCalledWith('2026-01-01');
 });
+
+test('LineChart aligns a second series by bucket, not by position', () => {
+  const left = [{ name: 'A', color: 'red', points: [{ x: '2026-01-01', label: 'M1', y: 1, valueText: 'a1' }, { x: '2026-02-01', label: 'M2', y: 2, valueText: 'a2' }] }];
+  const right = { name: 'B', color: 'blue', points: [{ x: '2026-02-01', label: 'M2', y: 20, valueText: 'b2' }, { x: '2026-03-01', label: 'M3', y: 30, valueText: 'b3' }] };
+  const { container } = wrap(<LineChart left={left} right={right} area={false} ariaLabel="x" formatLeft={String} />);
+  const rows = [...container.querySelectorAll('tbody tr')].map((tr) => [...tr.children].map((c) => c.textContent));
+  expect(rows).toEqual([['M1', 'a1', ''], ['M2', 'a2', 'b2'], ['M3', '', 'b3']]);
+});
