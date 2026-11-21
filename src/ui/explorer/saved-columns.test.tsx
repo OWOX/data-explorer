@@ -175,18 +175,19 @@ test('after the 3 s fallback, an edit does not save the view until the late save
 });
 
 // The saved list and view sit behind a read that `gate` holds; the grid falls back to defaults after 3 s.
-async function lateSetup(gated: boolean) {
+async function lateSetup(gated: boolean, opts: { gridView?: object; blendFails?: boolean } = {}) {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   let release: () => void = () => undefined;
   const gate = gated ? new Promise<void>((r) => { release = r; }) : Promise.resolve();
   const t = setup(['id', 'status'], (ctx) => ({
     ...ctx,
+    owox: opts.blendFails ? { ...ctx.owox, getJson: ((path: string, q?: Record<string, string>) => (path.endsWith('/blendable-schema') ? Promise.reject(new Error('blendable boom')) : ctx.owox.getJson(path, q))) as Ctx['owox']['getJson'] } : ctx.owox,
     collections: <T,>(name: string) => {
       const inner = ctx.collections<T>(name);
       return name === SAVED ? { get: async (id: string) => { await gate; return inner.get(id); }, put: inner.put } : inner;
     },
   }));
-  await t.col.put('orders', { columns: ['id', 'status'], at: 'then', gridView: { fl: [['status', 'eq', 'paid', null, 1]], s: [['amount', -1]], l: 400 } } as never);
+  await t.col.put('orders', { columns: ['id', 'status'], at: 'then', gridView: opts.gridView ?? { fl: [['status', 'eq', 'paid', null, 1]], s: [['amount', -1]], l: 400 } } as never);
   const mounted = t.view();
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
   await vi.advanceTimersByTimeAsync(SAVED_COLUMNS_WAIT_MS + 50);
@@ -209,6 +210,45 @@ test('an edit made after the fallback keeps the saved filters and limit the late
     expect(Object.keys(saved.filters)).toEqual(['status']);
     expect(saved.limit).toBe(400);
     expect(saved.sorts).not.toBeNull();
+  } finally { vi.useRealTimers(); }
+});
+
+test('Undo of an edit held during the late read returns to the saved view, not the defaults', async () => {
+  try {
+    const { release, saveView } = await lateSetup(true);
+    await sortAmount();
+    await vi.advanceTimersByTimeAsync(100);
+    release();
+    await vi.advanceTimersByTimeAsync(200);
+    await waitFor(() => expect(saveView).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 500);
+    const last = saveView.mock.calls.at(-1)![1];
+    expect(Object.keys(last.filters)).toEqual(['status']);
+    expect(last.limit).toBe(400);
+  } finally { vi.useRealTimers(); }
+});
+
+test('with the joined marts unknown, the late view keeps its joined filters', async () => {
+  try {
+    const { release, saveView } = await lateSetup(true, { blendFails: true, gridView: { fl: [['customers__email', 'eq', 'a@b.c', null, 1], ['status', 'eq', 'paid', null, 1]], s: null, l: 400 } });
+    await sortAmount();
+    await vi.advanceTimersByTimeAsync(100);
+    release();
+    await vi.advanceTimersByTimeAsync(200);
+    await waitFor(() => expect(saveView).toHaveBeenCalledTimes(1));
+    expect(Object.keys(saveView.mock.calls[0]![1].filters).sort()).toEqual(['customers__email', 'status']);
+  } finally { vi.useRealTimers(); }
+});
+
+test('late sorts on columns that are not shown are dropped', async () => {
+  try {
+    const { release, saveView } = await lateSetup(true, { gridView: { fl: [], s: [['customers__email', 1]], l: 200 } });
+    release();
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 500);
+    expect(within(document.getElementById('band-data')!).getAllByRole('columnheader').some((h) => h.getAttribute('aria-sort') === 'ascending')).toBe(false);
+    expect(saveView).not.toHaveBeenCalled();
   } finally { vi.useRealTimers(); }
 });
 

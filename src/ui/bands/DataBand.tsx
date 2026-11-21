@@ -37,6 +37,8 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen }: 
   const showRows = useCallback((label: string | null, grouped = false, noKey: NoKey = false) => { if (gridId) setRows(label === null ? null : { id: gridId, label, grouped, noKey }); }, [gridId]);
   const save = useCallback((grid: GridState, edit = false) => { if (gridId) dispatch({ type: edit ? 'editGrid' : 'saveGrid', martId: gridId, grid }); }, [dispatch, gridId]);
 
+  const rebase = useCallback((parts: Partial<GridState>) => { if (gridId) dispatch({ type: 'rebaseGrid', martId: gridId, parts }); }, [dispatch, gridId]);
+
   // The switch edits the stored grid, so it waits for the grid's first save; absent view is the table.
   const saved = gridId ? grids[gridId] : undefined;
   const setView = (v: 'table' | 'charts') => {
@@ -57,7 +59,7 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen }: 
         <p className="dm-muted p-2 text-sm">You do not have access to this data mart</p>
       ) : (
         <ChartsMenuSlot.Provider value={slot}>
-          <MartGrid key={gridMart.id} martId={gridMart.id} model={model} seed={{ filters: selection.filters, saved: grids[gridMart.id] }} onChange={save} onRows={showRows} paused={held} />
+          <MartGrid key={gridMart.id} martId={gridMart.id} model={model} seed={{ filters: selection.filters, saved: grids[gridMart.id] }} onChange={save} onRebase={rebase} onRows={showRows} paused={held} />
         </ChartsMenuSlot.Provider>
       )}
     </Band>

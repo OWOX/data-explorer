@@ -73,6 +73,8 @@ export type Action =
   | { type: 'saveGrid'; martId: string; grid: GridState }
   /** The member changed the grid (a filter, a sort, an aggregation, a column shown or hidden, Reset): stored like `saveGrid`, and one step Undo covers. */
   | { type: 'editGrid'; martId: string; grid: GridState }
+  /** The saved view arrived late and replaced parts of the grid: the newest Undo entry's "before" takes them too, so Undo returns to the saved view, not the defaults. */
+  | { type: 'rebaseGrid'; martId: string; parts: Partial<GridState> }
   /** A view link opens: everything it carries is set at once. No history entry, so Undo has nothing to undo. */
   | { type: 'applyView'; selection: Selection; grid: GridState | null; search: string; found?: string[]; contextIds: string[]; storageIds: string[] | null }
   | { type: 'refreshModel' };
@@ -163,6 +165,14 @@ export function reducer(state: State, a: Action): State {
       const before = state.grids[a.martId] ?? null;
       if (deepEqual(before, a.grid)) return state;
       return { ...state, grids: { ...state.grids, [a.martId]: a.grid }, history: [...state.history, { ...cur, grids: { [a.martId]: before } }].slice(-HISTORY_LIMIT), future: [] };
+    }
+    case 'rebaseGrid': {
+      const top = state.history[state.history.length - 1];
+      const before = top?.grids?.[a.martId];
+      if (!top || !before) return state;
+      const next: GridState = { ...before, ...a.parts };
+      for (const k of Object.keys(next) as (keyof GridState)[]) if (next[k] === undefined) delete next[k];
+      return { ...state, history: [...state.history.slice(0, -1), { ...top, grids: { ...top.grids, [a.martId]: next } }] };
     }
     case 'saveGrid': return { ...state, grids: { ...state.grids, [a.martId]: a.grid } };
     case 'applyView': return {
