@@ -431,10 +431,37 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
 
   useEffect(() => { if (adoptedAgg) columnStore.saveAggregation(martId, adoptedAgg); }, [adoptedAgg, columnStore, martId]);
 
-  // Every change to what the grid shows is saved with the columns (after the same pause); what the grid opened with is not written back.
-  const viewKey = useRef<string | null>(null);
   // An edit made while the saved view was still being read waits for it, then is saved.
   const heldView = useRef<SavedView | null>(null);
+  const viewKey = useRef<string | null>(null);
+  // The parts of the view as the grid opened with them: a part still equal to this is one the member has not changed.
+  const [opened] = useState(() => ({ filters: JSON.stringify(allFilters), slices: JSON.stringify(allSlices), sorts: JSON.stringify(own), limit, view: JSON.stringify(view ?? null) }));
+  // When the late saved view arrives, the parts the member has not touched take its values and their own parts stay (adjusted during render, like the seed above).
+  const [mergedLate, setMergedLate] = useState<{ view: SavedView | null } | null>(null);
+  if (!holdView && lateView !== undefined && !mergedLate) {
+    if (!lateView) setMergedLate({ view: null });
+    else {
+      const f = JSON.stringify(allFilters) !== opened.filters ? allFilters : lateView.filters;
+      const sl = JSON.stringify(allSlices) !== opened.slices ? allSlices : (lateView.slices ?? {});
+      const so = JSON.stringify(own) !== opened.sorts ? own : lateView.sorts;
+      const lim = limit !== opened.limit ? limit : lateView.limit;
+      const vw = JSON.stringify(view ?? null) !== opened.view ? view : lateView.view;
+      setAllFilters(f); setAllSlices(sl); setOwn(so); setLimit(lim); setView(vw);
+      setMergedLate({ view: { filters: f, ...(Object.keys(sl).length ? { slices: sl } : {}), sorts: so, limit: lim, ...(vw ? { view: vw } : {}) } });
+    }
+  }
+  // The held edit is saved once the hold ends: as it stands if the saved view never came, else merged over it. An edit still held when the grid
+  // unmounts is dropped, not saved: it was made on defaults and would erase the saved view. (Declared before the save effect below, so the merged key is known to it.)
+  useEffect(() => {
+    if (!mergedLate) return;
+    const held = heldView.current;
+    heldView.current = null;
+    if (mergedLate.view) viewKey.current = JSON.stringify(mergedLate.view);
+    const out = mergedLate.view ?? held;
+    if (held && out) columnStore.saveView(martId, out);
+  }, [mergedLate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Every change to what the grid shows is saved with the columns (after the same pause); what the grid opened with is not written back.
   useEffect(() => {
     const v: SavedView = { filters: current.filters, ...(current.slices ? { slices: current.slices } : {}), sorts: current.sorts, limit: current.limit, ...(current.view ? { view: current.view } : {}) };
     const key = JSON.stringify(v);
@@ -442,26 +469,6 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     viewKey.current = key;
     if (last !== null && last !== key) { if (holdView) heldView.current = v; else columnStore.saveView(martId, v); }
   }, [current, columnStore, martId]); // eslint-disable-line react-hooks/exhaustive-deps
-  // The parts of the view as the grid opened with them: a part still equal to this is one the member has not changed.
-  const [opened] = useState(() => ({ filters: JSON.stringify(allFilters), slices: JSON.stringify(allSlices), sorts: JSON.stringify(own), limit, view: JSON.stringify(view ?? null) }));
-  // The held edit is saved when the hold ends: as it stands if the saved view never came, else merged over it (the saved parts the member did not touch,
-  // their own parts kept). An edit still held when the grid unmounts is dropped, not saved: it was made on defaults and would erase the saved view.
-  useEffect(() => {
-    if (holdView || lateView === undefined) return;
-    const held = heldView.current;
-    heldView.current = null;
-    if (!lateView) { if (held) columnStore.saveView(martId, held); return; }
-    const f = JSON.stringify(allFilters) !== opened.filters ? allFilters : lateView.filters;
-    const sl = JSON.stringify(allSlices) !== opened.slices ? allSlices : (lateView.slices ?? {});
-    const so = JSON.stringify(own) !== opened.sorts ? own : lateView.sorts;
-    const lim = limit !== opened.limit ? limit : lateView.limit;
-    const vw = JSON.stringify(view ?? null) !== opened.view ? view : lateView.view;
-    const merged: SavedView = { filters: f, ...(Object.keys(sl).length ? { slices: sl } : {}), sorts: so, limit: lim, ...(vw ? { view: vw } : {}) };
-    viewKey.current = JSON.stringify(merged);
-    setAllFilters(f); setAllSlices(sl); setOwn(so); setLimit(lim); setView(vw);
-    if (held) columnStore.saveView(martId, merged);
-  }, [holdView, lateView]); // eslint-disable-line react-hooks/exhaustive-deps
-
   useEffect(() => { const edit = editSeq !== seenSeq.current; seenSeq.current = editSeq; onChange(current, edit); }, [current, editSeq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every data mart's columns sit together: the main mart's own, then each joined mart's in the order it was added.

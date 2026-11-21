@@ -205,7 +205,7 @@ test('an edit made after the fallback keeps the saved filters and limit the late
     release();
     await vi.advanceTimersByTimeAsync(200);
     await waitFor(() => expect(saveView).toHaveBeenCalledTimes(1));
-    const saved = saveView.mock.calls[0][1];
+    const saved = saveView.mock.calls[0]![1];
     expect(Object.keys(saved.filters)).toEqual(['status']);
     expect(saved.limit).toBe(400);
     expect(saved.sorts).not.toBeNull();
