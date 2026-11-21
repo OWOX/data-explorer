@@ -8,9 +8,11 @@ test('add a Sankey from Add chart, set 3 columns, see 3 column titles and filter
   // A third dimension: Customers joins its name; is_gift is Orders' boolean.
   await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
   await expect(data(page).getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
-  await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel('is_gift').click();
-  await page.keyboard.press('Escape');
+  for (const name of ['is_gift', /created_at/i]) {
+    await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
+    await page.getByLabel(name).click();
+    await page.keyboard.press('Escape');
+  }
   await data(page).getByRole('radio', { name: 'Charts' }).click();
   await expect(data(page).locator('section.dm-chart')).toHaveCount(2);
 
@@ -27,7 +29,7 @@ test('add a Sankey from Add chart, set 3 columns, see 3 column titles and filter
   await page.getByRole('menuitemradio', { name: '3' }).click();
   await expect(sankey.locator('text.dm-chart-axis-title')).toHaveCount(3);
   await expect(sankey.locator('path[data-link]').first()).toBeVisible();
-  await page.screenshot({ path: 'tmp/sankey-e2e.png' });
+  await sankey.screenshot({ path: 'tmp/sankey-e2e.png' });
 
   // A node click filters the grid to that value: the Sankey is still drawn, narrowed to it.
   const before = await sankey.locator('rect[data-node]').count();
