@@ -125,10 +125,17 @@ and is not drawn.
    attributes, so no CSS variable or class is needed outside the page.
 3. It draws on a canvas at 2× scale with a plain background in the current theme's card colour: the title, the SVG,
    then the legend rows. No frame and no ⋮ button.
-4. It writes `image/png` with `navigator.clipboard.write`. The OWOX host grants `clipboard-write` only to privileged
-   plugins (`PluginRuntimePage.tsx`, `PRIVILEGED_ALLOW`), but every plugin frame has `allow-downloads`. When the
-   clipboard write fails, the PNG downloads as `<chart title>.png`.
-5. A toast says which happened: "Chart copied" or "Clipboard is blocked here, the chart was downloaded as PNG".
+4. It tries three routes in order. Each was checked in Chromium against a frame with the host's `sandbox` and `allow`
+   values (OWOX/owox-data-marts#1922):
+   1. `navigator.clipboard.write` with `image/png`. The OWOX host grants `clipboard-write` only to privileged plugins
+      (`PluginRuntimePage.tsx`, `PRIVILEGED_ALLOW`), so in this plugin's frame it fails with `NotAllowedError` until
+      #1922 lands.
+   2. A `copy` event fired by `execCommand('copy')`, setting `text/html` to `<img src="data:image/png;base64,…">`
+      and `text/plain` to the title. It works in a plain frame. It pastes as an image in rich-text editors (Docs,
+      Slides, Gmail), not in apps that read only `image/png`.
+   3. When both fail, the PNG downloads as `<chart title>.png` (every plugin frame has `allow-downloads`).
+5. A toast says which happened: "Chart copied" for routes 1 and 2, "Clipboard is blocked here, the chart was
+   downloaded as PNG" for route 3.
 
 ## 6. Panel width
 
@@ -152,7 +159,7 @@ and is not drawn.
    until a change.
 3. `useChartsDoc`: two quick changes both land; no `change` before load.
 4. SVG render tests for `LineChart`, `Heatmap`, `Scatter` and `SpreadChart`: marks, labels, keyboard picks.
-5. `copyImage`: the clipboard path, the download fallback, the inlined colours.
+5. `copyImage`: each of the three routes, the fall-through order, the inlined colours.
 6. Playwright, on the mock: add a chart from the header menu, switch its type, set a second measure, hide it, remove
    it, and copy it with the clipboard mocked. Existing chart e2e specs are updated for the moved menu.
 7. Vitest runs with `--poolOptions.threads.maxThreads=4`. Playwright runs with `--workers=1 --trace off`.
