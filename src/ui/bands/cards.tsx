@@ -151,6 +151,7 @@ export function MartCard({
   focused = false,
   onRemove,
   onSelect,
+  onPick,
   onOpenApp,
   onRetryCount,
   onNeedCount,
@@ -190,6 +191,8 @@ export function MartCard({
   /** Takes this joined mart out of the report; when absent the card has no ×. */
   onRemove?: () => void;
   onSelect: () => void;
+  /** A click on a card that cannot join the main mart only explains; this tells the page which card was picked, so the header can offer to make it main. */
+  onPick?: () => void;
   onOpenApp: () => void;
   /** Not needed on a ghost, which shows no count. */
   onRetryCount?: () => void;
@@ -210,7 +213,7 @@ export function MartCard({
     return () => clearTimeout(t);
   }, [hint]);
   const name = title ?? mart.title;
-  const choose = unjoinable ? () => setHint(true) : onSelect;
+  const choose = unjoinable ? () => { setHint(true); onPick?.(); } : onSelect;
   return (
     <article
       ref={el}
@@ -256,7 +259,7 @@ export function MartCard({
       </div>
       {/* The live region stays mounted so a screen reader announces the hint when it appears. */}
       <span aria-live="polite" className="dm-card-live">
-        {hint && unjoinable && mainTitle && <span role="status" className="dm-card-hint">{ghost ? `Can't join ${joinTitle ?? mainTitle}. Find it in the list and drag it onto ${mainTitle} to make it the main data mart.` : addViaEscape ? `Can't join ${joinTitle ?? mainTitle}. Press Escape, then click it to add it to ${mainTitle}.` : `Can't join ${joinTitle ?? mainTitle}. Drag it onto ${mainTitle} to make it the main data mart.`}</span>}
+        {hint && unjoinable && mainTitle && <span role="status" className="dm-card-hint">{ghost ? `Can't join ${joinTitle ?? mainTitle}. Use Make it main to make it the main data mart.` : addViaEscape ? `Can't join ${joinTitle ?? mainTitle}. Press Escape, then click it to add it to ${mainTitle}.` : `Can't join ${joinTitle ?? mainTitle}. Drag it onto ${mainTitle} to make it the main data mart.`}</span>}
       </span>
     </article>
   );

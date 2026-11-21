@@ -37,10 +37,13 @@ async function makeMain(page: Page, title: string) {
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText([title]);
 }
 
-/** A mart the main one cannot join has no card to select and no button on its ghost: the search makes it main. */
-async function makeMainViaGhost(page: Page, _from: string, title: string) {
-  await search(page, title);
-  await expect(heading(page).first()).toHaveText(title);
+/** A mart the main one cannot join is not in the band: hover the card it relates to, click its ghost (it explains and is picked), then use the header's "Make it main". */
+async function makeMainViaGhost(page: Page, from: string, title: string) {
+  await martCard(page, from).hover();
+  const ghost = band(page, 'marts').locator('article', { hasText: title }).first();
+  await ghost.hover();
+  await ghost.click();
+  await band(page, 'marts').getByRole('button', { name: 'Make it main' }).click();
 }
 
 const unfoldSources = (page: Page) => page.getByRole('button', { name: 'Show Data Sources' }).click();
@@ -227,12 +230,12 @@ test('filter, reset, columns, a row fills the Row band, Back returns', async ({ 
   await expect(row.getByText('Select a row.')).toBeVisible();
 });
 
-test('a click on a mart Orders cannot join explains instead of switching; searching for it makes it main, and Back restores the previous one', async ({ page }) => {
+test('a click on a mart Orders cannot join explains instead of switching; its Make it main button selects it, and Back restores the previous one', async ({ page }) => {
   await ordersGrid(page);
   await martCard(page, 'Orders').hover();
   const ghost = band(page, 'marts').locator('article', { hasText: 'Order Items' }).first();
   await ghost.click();
-  await expect(ghost.getByRole('status')).toContainText("Can't join Orders. Find it in the list and drag it onto Orders to make it the main data mart.");
+  await expect(ghost.getByRole('status')).toContainText("Can't join Orders. Use Make it main to make it the main data mart.");
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
   await makeMainViaGhost(page, 'Orders', 'Order Items');
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');
@@ -399,16 +402,16 @@ test('selecting a joinable mart adds its first text column; the × removes it; r
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
 });
 
-test('removing the main group promotes the next joined one; searching for a mart the main one cannot join makes it main', async ({ page }) => {
+test('removing the main group promotes the next joined one; make main on a mart the main one cannot join makes it main and keeps the old main joined', async ({ page }) => {
   const data = await ordersGrid(page);
   await martCard(page, 'Customers').click();
   await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', 'Customers']);
   await data.getByRole('button', { name: 'Remove Orders from the grid' }).click();
   await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Customers']);
   await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
-  // Customers cannot join Sessions: the ghost has no make-main button now, so the search is the way to it
+  // Customers cannot join Sessions, but Sessions can join Customers, so Customers stays as a joined mart
   await makeMainViaGhost(page, 'Customers', 'Sessions');
-  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Sessions']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Sessions', 'Customers']);
 });
 
 /** Waits for a body cell under "Amount · Sum" with a number in it (the grouped rows have arrived) and returns its text. */
