@@ -13,6 +13,7 @@ import { Tooltip } from '../Tooltip';
 import { FilterEditor } from './FilterEditor';
 import { FilterLinesIcon } from './FilterLinesIcon';
 import { Panel, Row, panelBeingEdited, useSubmenu } from './MenuParts';
+import { useOutsidePress } from '../outsidePress';
 
 type SubKey = 'filter' | 'slice' | 'aggregate' | 'format' | 'sort';
 
@@ -245,17 +246,17 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
     if (!menu) return;
     // Outside the menu, a press closes it; so does a scroll of anything that holds the column (a fixed menu would be left behind it).
     // A resize only repositions the panels (each listens for it): on a touch screen the on-screen keyboard resizes the viewport.
-    const down = (e: Event) => { const t = e.target as Element; if (!t.closest?.('[data-column-menu]') && !controls.current?.contains(t)) setMenu(null); };
     const away = (e: Event) => {
       const t = e.target;
       if (t instanceof Node && t !== document && (t as Element).closest?.('[data-column-menu]')) return;
       const holder = controls.current;
       if (t === document || (t instanceof Node && holder && t.contains(holder))) setMenu(null);
     };
-    document.addEventListener('pointerdown', down, true);
     window.addEventListener('scroll', away, true);
-    return () => { document.removeEventListener('pointerdown', down, true); window.removeEventListener('scroll', away, true); };
+    return () => window.removeEventListener('scroll', away, true);
   }, [menu]);
+  // A press outside the menu only closes it: it does not reach whatever is under the pointer.
+  useOutsidePress(!!menu, (t) => !!t.closest('[data-column-menu]') || !!controls.current?.contains(t), () => setMenu(null));
   // The sort mark steps this column's sort (ascending, descending, none) in place; it does not open the menu.
   // Stepping to none unmounts the mark, so focus moves to the column's menu icon rather than dropping to the page.
   const cycleMark = () => {

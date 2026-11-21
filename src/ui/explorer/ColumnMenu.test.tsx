@@ -569,3 +569,40 @@ describe('menuIconClass', () => {
     expect(idle).not.toContain('dm-ctl-on');
   });
 });
+
+describe('a press outside the open menu', () => {
+  test('a click on a band header closes the menu and does not fold the band', async () => {
+    setup();
+    await ready();
+    await openColumnMenu(within(data()), 'status');
+    await userEvent.click(data().querySelector('.dm-band-title')!);
+    await waitFor(() => expect(open()).toHaveLength(0));
+    expect(within(data()).getByRole('table')).toBeInTheDocument();
+    expect(data()).not.toHaveClass('folded');
+    // With nothing open, the same click folds as before.
+    await userEvent.click(data().querySelector('.dm-band-title')!);
+    await waitFor(() => expect(within(data()).queryByRole('table')).toBeNull());
+  });
+
+  test('a click on a grid cell closes the menu and does not select the cell', async () => {
+    setup();
+    await ready();
+    await openColumnMenu(within(data()), 'status');
+    const cell = bodyRows()[1]!.querySelectorAll('td')[1]!;
+    await userEvent.click(cell);
+    await waitFor(() => expect(open()).toHaveLength(0));
+    expect(data().querySelector('[data-selected]')).toBeNull();
+    await userEvent.click(cell);
+    expect(cell).toHaveAttribute('data-selected');
+  });
+
+  test('a press on the menu icon closes the open menu and a click inside it still works', async () => {
+    setup();
+    await ready();
+    const menu = await openColumnMenu(within(data()), 'status');
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Sort' }));
+    expect(await screen.findByRole('menuitemradio', { name: 'Sort A → Z' })).toBeInTheDocument();
+    await userEvent.click(within(data()).getByLabelText('Column menu status'));
+    await waitFor(() => expect(open()).toHaveLength(0));
+  });
+});

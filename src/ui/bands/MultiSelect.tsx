@@ -1,5 +1,5 @@
 import { ChevronDown } from 'lucide-react';
-import { useEffect } from 'react';
+import { useOutsidePress } from '../outsidePress';
 import { num } from '../format';
 import type { Mark } from '../storage-icons';
 import { SheetsChecklist, type ChecklistItem } from '../SheetsChecklist';
@@ -16,17 +16,11 @@ export function MultiSelect({ label, options, selected, onChange }: {
   selected: string[];
   onChange: (next: string[]) => void;
 }) {
-  // `<details name>` closes the other menu when one opens; nothing but this closes the last one
-  // when the pointer goes elsewhere.
-  useEffect(() => {
-    const close = (e: MouseEvent) => {
-      for (const menu of document.querySelectorAll<HTMLDetailsElement>('details.dm-filter[open]')) {
-        if (!menu.contains(e.target as Node)) menu.open = false;
-      }
-    };
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, []);
+  // `<details name>` closes the other menu when one opens; nothing but this closes the last one when the pointer goes elsewhere.
+  // The press that does it goes no further: it closes the menu and nothing under the pointer acts.
+  useOutsidePress(true, (t) => !!t.closest('details.dm-filter[open]') || !document.querySelector('details.dm-filter[open]'), () => {
+    for (const menu of document.querySelectorAll<HTMLDetailsElement>('details.dm-filter[open]')) menu.open = false;
+  });
 
   if (options.length === 0) return null;
   // Counted against the options on offer: a ticked id that has since gone is no reason to say "3"

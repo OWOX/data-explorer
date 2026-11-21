@@ -208,6 +208,8 @@ test('an array field takes no function; with one shown the grouped query is not 
   expect(within(dialog).getByRole('alert')).toHaveTextContent(`"tags" can't be grouped`);
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  // The menu behind the form stays open: a press outside only closes it.
+  await userEvent.keyboard('{Escape}');
   // hide tags, group, then show tags again: nothing grouped is sent
   await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
   await userEvent.click(await screen.findByLabelText('tags'));

@@ -28,6 +28,7 @@ import { TextDialog } from './export/TextDialog';
 import { UNRECOGNISED, useExportFlight, type Result } from './export/useExportFlight';
 import { copyText } from './clipboard';
 import type { GridRun } from './useMartRows';
+import { useOutsidePress } from '../outsidePress';
 
 type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; filters: ColumnFilter[]; /** Pre-join filters on joined fields. */ slices?: ColumnFilter[]; sorts: SortKey[]; /** Only the sorts the member set; Create Data Mart never adds the grid's implicit order. */ ownSorts?: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun;
   /** The main mart's storage, for Create Data Mart. */ storage?: { id: string; type: string; title?: string };
@@ -136,12 +137,12 @@ export function ExportMenu(p: Props) {
   }, [exporter, modelVersion]);
   // The menu closes on a press anywhere outside it, and when the host page outside the plugin frame is clicked (the window loses focus).
   useEffect(() => {
-    const outside = (e: Event) => { if (menu.current?.open && !menu.current.contains(e.target as Node)) menu.current.open = false; };
     const away = () => { if (menu.current?.open) menu.current.open = false; };
-    document.addEventListener('pointerdown', outside, true);
     window.addEventListener('blur', away);
-    return () => { document.removeEventListener('pointerdown', outside, true); window.removeEventListener('blur', away); };
+    return () => window.removeEventListener('blur', away);
   }, []);
+  // A press outside an open menu only closes it. The listener is always on: `open` is the native details state, not React's.
+  useOutsidePress(true, (t) => !menu.current?.open || menu.current.contains(t), () => { if (menu.current) menu.current.open = false; });
 
   const closeMenu = () => { if (menu.current) menu.current.open = false; };
   const focusSummary = () => menu.current?.querySelector<HTMLElement>('summary')?.focus();
