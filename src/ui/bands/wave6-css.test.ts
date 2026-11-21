@@ -1,0 +1,23 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const css = readFileSync(resolve(__dirname, 'bands.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const rules = (selector: RegExp) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => selector.test(m[1]!.trim())).map((m) => m[2]!);
+
+test('hover and pressed no longer draw a 2px overlay on a card', () => {
+  expect(css).not.toMatch(/\.dm-node::after/);
+  expect(css).not.toMatch(/\.dm-node:hover::after/);
+});
+
+test('only the selected card has a 2px border, and it keeps its size', () => {
+  const sel = rules(/^\.dm-node\[data-focused\],/).join(' ');
+  expect(sel).toContain('border-width: 2px');
+  expect(sel).toContain('padding: calc(0.75rem - 1px)');
+  expect(rules(/^\.dm-node:hover/).join(' ')).not.toContain('border-width');
+});
+
+test('a selected card shows its border instead of the keyboard ring', () => {
+  expect(rules(/^\.dm-node\[data-focused\]:focus-visible/).join(' ')).toContain('box-shadow: none');
+  expect(rules(/^\.dm-node:focus-visible$/).join(' ')).toContain('box-shadow');
+});
+
