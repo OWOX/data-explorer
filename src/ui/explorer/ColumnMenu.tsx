@@ -13,6 +13,7 @@ import { Tooltip } from '../Tooltip';
 import { FilterEditor } from './FilterEditor';
 import { FilterLinesIcon } from './FilterLinesIcon';
 import { Panel, Row, panelBeingEdited, useSubmenu } from './MenuParts';
+import { useOutsidePress } from '../outsidePress';
 
 type SubKey = 'filter' | 'slice' | 'aggregate' | 'format' | 'sort';
 
@@ -58,8 +59,8 @@ const CURRENCIES = ['USD', 'EUR', 'GBP', 'UAH'];
 const currenciesFor = (current: Format): string[] => (current.kind === 'money' && !CURRENCIES.includes(current.currency) ? [...CURRENCIES, current.currency] : CURRENCIES);
 
 /** The notes under the Filter and Slice panels, after the OWOX web app's output settings. */
-const FILTER_NOTE = 'Filters narrow the final result, applied to the SELECT after all JOINs. Use slices to narrow a joined data mart BEFORE it is JOINed in.';
-const SLICE_NOTE = 'Slices are pre-join filters: they narrow a joined data mart INSIDE its own subquery before the JOIN, reducing the rows pulled in. Because joins are LEFT JOINs, a slice does NOT reduce the number of rows in the final result: main-mart rows that no longer match a sliced row pass through with NULL on the joined columns. To drop those rows from the output, add a Filter on the joined column.';
+const FILTER_NOTE = <>Filters narrow the final result — applied <strong>after</strong> all joins.</>;
+const SLICE_NOTE = <>Slices filter the joined data mart <strong>before</strong> it is joined — reducing the rows pulled in.</>;
 
 /** The function's label in lower case, as the HAVING note and the Funnel tooltip name it: "sum". */
 const fnName = (f: AggFn) => AGG_LABELS[f].toLowerCase();
@@ -245,17 +246,17 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
     if (!menu) return;
     // Outside the menu, a press closes it; so does a scroll of anything that holds the column (a fixed menu would be left behind it).
     // A resize only repositions the panels (each listens for it): on a touch screen the on-screen keyboard resizes the viewport.
-    const down = (e: Event) => { const t = e.target as Element; if (!t.closest?.('[data-column-menu]') && !controls.current?.contains(t)) setMenu(null); };
     const away = (e: Event) => {
       const t = e.target;
       if (t instanceof Node && t !== document && (t as Element).closest?.('[data-column-menu]')) return;
       const holder = controls.current;
       if (t === document || (t instanceof Node && holder && t.contains(holder))) setMenu(null);
     };
-    document.addEventListener('pointerdown', down, true);
     window.addEventListener('scroll', away, true);
-    return () => { document.removeEventListener('pointerdown', down, true); window.removeEventListener('scroll', away, true); };
+    return () => window.removeEventListener('scroll', away, true);
   }, [menu]);
+  // A press outside the menu only closes it: it does not reach whatever is under the pointer.
+  useOutsidePress(!!menu, (t) => !!t.closest('[data-column-menu]') || !!controls.current?.contains(t), () => setMenu(null));
   // The sort mark steps this column's sort (ascending, descending, none) in place; it does not open the menu.
   // Stepping to none unmounts the mark, so focus moves to the column's menu icon rather than dropping to the page.
   const cycleMark = () => {

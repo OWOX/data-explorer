@@ -1,6 +1,7 @@
 import { EllipsisVertical } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Panel, Row, useSubmenu } from '../ui/explorer/MenuParts';
+import { useOutsidePress } from '../ui/outsidePress';
 
 /** A tick row (stays open: several can be changed in a row) or a row opening a submenu of radio choices (closes on a choice). */
 export type MenuItem =
@@ -17,8 +18,6 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
   const close = useCallback((refocus = true) => { dismiss(); setAnchor(null); setPlaced(false); if (refocus) button.current?.focus(); }, [dismiss]);
   useEffect(() => {
     if (!anchor) return;
-    // A press outside the menu closes it, as the column menu does.
-    const down = (e: Event) => { const t = e.target as Element; if (!t.closest?.('[data-column-menu]') && !holder.current?.contains(t)) close(false); };
     // A scroll of anything that holds the button closes it too (a fixed menu would be left behind), as the column menu does.
     const away = (e: Event) => {
       const t = e.target;
@@ -26,10 +25,11 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
       const h = holder.current;
       if (t === document || (t instanceof Node && h && t.contains(h))) close(false);
     };
-    document.addEventListener('pointerdown', down, true);
     window.addEventListener('scroll', away, true);
-    return () => { document.removeEventListener('pointerdown', down, true); window.removeEventListener('scroll', away, true); };
+    return () => window.removeEventListener('scroll', away, true);
   }, [anchor, close]);
+  // A press outside the menu only closes it, as the column menu does.
+  useOutsidePress(!!anchor, (t) => !!t.closest('[data-column-menu]') || !!holder.current?.contains(t), () => close(false));
   const picked = sub ? items[sub.key] : undefined;
   return (
     <span ref={holder} className="inline-flex">

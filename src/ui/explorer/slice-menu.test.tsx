@@ -53,8 +53,8 @@ test('Slice opens "Slice of {title}" with the banner; Apply sets the slice and C
   await waitFor(() => expect(headers()).toHaveLength(3));
   await openSubmenu(within(data()), 'Customers · city', 'Slice');
   const dialog = await screen.findByRole('dialog', { name: 'Slice of Customers · city' });
-  expect(within(dialog).getByText(/^Slices are pre-join filters: they narrow a joined data mart INSIDE its own subquery/)).toBeInTheDocument();
-  expect(within(dialog).getByText(/add a Filter on the joined column\.$/)).toBeInTheDocument();
+  const note = within(dialog).getByText((_, el) => el?.tagName === 'P' && el.textContent === 'Slices filter the joined data mart before it is joined — reducing the rows pulled in.');
+  expect(note.querySelector('strong')?.textContent).toBe('before');
   await userEvent.selectOptions(within(dialog).getByLabelText('Operator'), 'eq');
   await userEvent.type(within(dialog).getByLabelText('Value'), 'Kyiv');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
@@ -145,7 +145,7 @@ test('the note of a second-level panel comes after its Cancel / Apply row', asyn
   await openSubmenu(within(data()), 'Customers · city', 'Slice');
   const slice = await screen.findByRole('dialog', { name: 'Slice of Customers · city' });
   expect(slice.className).toContain('dm-menu-sub');
-  expect(after(within(slice).getByText(/^Slices are pre-join filters: they narrow a joined data mart/), within(slice).getByRole('button', { name: 'Apply' }))).toBe(true);
+  expect(after(within(slice).getByText((_, el) => el?.tagName === 'P' && el.textContent === 'Slices filter the joined data mart before it is joined — reducing the rows pulled in.'), within(slice).getByRole('button', { name: 'Apply' }))).toBe(true);
   await userEvent.keyboard('{Escape}{Escape}');
   await waitFor(() => expect(document.querySelector('[data-column-menu]')).toBeNull());
   await openSubmenu(within(data()), 'Customers · city', 'Aggregate');

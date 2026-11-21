@@ -152,6 +152,8 @@ test('Cmd+Z does nothing while a column menu or the Fields picker is open', asyn
   expect(undo()).toBeEnabled();
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(dialog).not.toBeInTheDocument());
+  // The menu behind the form stays open: a press outside only closes it, so close it before the next control is used.
+  await userEvent.keyboard('{Escape}');
   await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
   await screen.findByRole('dialog');
   await userEvent.keyboard('{Meta>}z{/Meta}');

@@ -182,6 +182,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               quality={dq.get(mart.id)}
               selected={node.path === ''}
               joined={node.path !== ''}
+              focused={pin === node.path}
               path={node.path}
               title={titleOf(node.path)}
               onRemove={node.path === '' ? undefined : () => {

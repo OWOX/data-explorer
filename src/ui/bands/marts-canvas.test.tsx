@@ -383,6 +383,21 @@ test('a second click on the pinned card lets its ghosts go, though the pointer s
   await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
 });
 
+test('only the pinned card is tinted: nothing is before a click, the pinned card after, the other cards stay plain', async () => {
+  setup();
+  await ready();
+  fireEvent.click(gridCard('Customers'));
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
+  await toCanvas();
+  await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+  expect(marts().querySelectorAll('article[data-focused]')).toHaveLength(0);
+  await userEvent.click(el('orders')!);
+  await waitFor(() => expect(el('orders')).toHaveAttribute('data-focused'));
+  expect(el('customers', 'customers')).not.toHaveAttribute('data-focused');
+  await userEvent.click(el('orders')!);
+  await waitFor(() => expect(marts().querySelectorAll('article[data-focused]')).toHaveLength(0));
+});
+
 test('clicking another card moves the pin', async () => {
   await joinCountriesUnderCustomers();
   await userEvent.click(el('orders')!);
