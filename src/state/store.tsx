@@ -181,7 +181,8 @@ export function reducer(state: State, a: Action): State {
         for (const k of Object.keys(next) as (keyof GridState)[]) if (next[k] === undefined) delete next[k];
         return { ...e, grids: { ...e.grids, [a.martId]: next } };
       };
-      const { [a.martId]: _gone, ...holds } = state.holds;
+      const holds = { ...state.holds };
+      delete holds[a.martId];
       return { ...state, holds, history: state.history.map((e, i) => (i >= from ? patch(e) : e)), future: state.future.map(patch) };
     }
     case 'saveGrid': return { ...state, grids: { ...state.grids, [a.martId]: a.grid } };
