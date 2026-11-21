@@ -97,7 +97,7 @@ export function TimeSeriesPanel({ martId, cf, r, filter, version, idle, hasFilte
         const shown = chart();
         // The bucket's date range, plus (stacked) the segment's value of the stack dimension.
         const pick = (x: string, i?: number) => onFilter([bucketFilter(date!, x, bucket!, bucketZone(date!)), ...(stack && i !== undefined && !shown[i]!.other ? [dimensionFilter(stack, shown[i]!.name)] : [])]);
-        return <BarChart series={shown} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={bucket ? pick : undefined} canPick={isBucketDate} stacked={!!stack} />;
+        return <BarChart series={shown} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={bucket ? pick : undefined} canPick={isBucketDate} stacked={!!stack} xTitle={columnTitle(date!)} />;
       })()}
     </ChartPanel>
   );

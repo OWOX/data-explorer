@@ -5,6 +5,7 @@ const CI = !!(globalThis as { process?: { env: Record<string, string | undefined
 
 export default defineConfig({
   plugins: [react()],
+  define: { __APP_VERSION__: JSON.stringify('dev') },
   test: {
     environment: 'jsdom',
     globals: true,

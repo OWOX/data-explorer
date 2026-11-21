@@ -162,6 +162,7 @@ test('the filter popover of an aggregated column says it filters before aggregat
   await aggregate('Amount', 'Sum');
   await openSubmenu(within(data()), 'Amount', 'Filter');
   expect(await screen.findByText('Filters rows before they are aggregated')).toBeInTheDocument();
+  expect(screen.getByText(/^Filters narrow the final result, applied to the SELECT after all JOINs\./)).toBeInTheDocument();
 });
 
 test('a column no longer shown loses its rules', async () => {

@@ -212,3 +212,27 @@ test('ticking a field in the main picker keeps the dragged order', async ({ page
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await titles(page)).filter((c) => c !== 'amount')).toEqual(moved);
 });
+
+test('dragging a column letter moves the column, shows the drop line, and a click on it still selects', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  const order = await titles(page);
+  const letters = data(page).locator('thead tr[data-chrome] th.dm-letter[data-letter-column]');
+  const a = await centre(letters.nth(0));
+  const second = (await letters.nth(1).boundingBox())!;
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(second.x + second.width - 4, a.y, { steps: 12 });
+  await expect(data(page).locator('[data-drag-ghost]')).toBeVisible();
+  await expect(indicator(page)).toBeVisible();
+  await page.screenshot({ path: 'tmp/w3t5-letter-mid.png' });
+  await page.mouse.up();
+  await expect.poll(() => titles(page)).toEqual([order[1], order[0], ...order.slice(2)]);
+  await page.screenshot({ path: 'tmp/w3t5-letter-after.png' });
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect.poll(() => titles(page)).toEqual(order);
+  // A press without movement selects the column.
+  const b = await centre(letters.nth(1));
+  await page.mouse.click(b.x, b.y);
+  await expect(data(page).locator('thead .dm-letter[data-selected]')).toHaveCount(1);
+  expect(await titles(page)).toEqual(order);
+});

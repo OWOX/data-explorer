@@ -443,7 +443,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-root { min-width: 200px; }
 /* The filter and aggregation forms keep the app's own tokens inside the Sheets-style frame. */
 /* Every second-level panel of the column menu has the width the widest editor had: 28rem, so a note wraps at the same place in each. */
-.dm-menu-sub { width: min(28rem, calc(100vw - 16px)); }
+.dm-menu-sub { width: min(19.6rem, calc(100vw - 16px)); }
 .dm-menu-editor { max-height: min(20rem, calc(100vh - 16px)); padding: 0; overflow: hidden; }
 /* The filter and aggregation editors inside the menu: Google Sheets' dialog look (Google Sans 14px, 36px controls, green primary, outlined secondary). */
 .dm-menu-editor { --btn-line: #dadce0; --btn-off-bg: #f1f3f4; --btn-off-fg: #80868b; font: 400 14px/20px 'Google Sans', Roboto, Arial, sans-serif; background: var(--menu-bg); color: var(--menu-fg); }
