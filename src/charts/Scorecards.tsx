@@ -24,7 +24,7 @@ export const metricLabel = (m: Metric): string => `${fieldLabel(m.field)} · ${A
 /** A measure's name in a menu and a chart title: the main mart's records are plain, a joined mart's say whose they are. */
 export function measureLabel(cf: ChartFields, m: Measure): string {
   if (m.kind === 'metric') return metricLabel(m.metric);
-  return m.aliasPath === '' ? 'Unique Records' : `${cf.marts.find((x) => x.aliasPath === m.aliasPath)?.title ?? ''} · Unique Records`;
+  return m.aliasPath === '' ? 'Count Unique' : `${cf.marts.find((x) => x.aliasPath === m.aliasPath)?.title ?? ''} · Count Unique`;
 }
 
 /** The radio options of a "Metric" menu: each measure under the id it is saved as. */
@@ -42,7 +42,7 @@ export const martMeasures = (mart: ChartMart): Measure[] => defaultCards(mart).m
 
 function defaultCards(mart: ChartMart): Card[] {
   return [
-    ...(mart.hasPk ? [{ id: mart.recordsId, label: 'Unique Records', key: uniqueKey(mart.aliasPath), measure: { kind: 'records', aliasPath: mart.aliasPath, recordsId: mart.recordsId } satisfies Measure }] : []),
+    ...(mart.hasPk ? [{ id: mart.recordsId, label: 'Count Unique', key: uniqueKey(mart.aliasPath), measure: { kind: 'records', aliasPath: mart.aliasPath, recordsId: mart.recordsId } satisfies Measure }] : []),
     ...mart.metrics.map((m) => ({ id: m.field.name, label: metricLabel(m), key: metricKey(m), measure: { kind: 'metric', metric: m } satisfies Measure })),
   ];
 }

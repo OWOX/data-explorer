@@ -6,19 +6,19 @@ import { isIdField } from '../state/join-plan';
 import type { Measure } from './queries';
 
 export type Metric = { field: Field; fn: AggFn };
-/** `recordsId` is what the mart's Unique Records is saved and keyed as (see `chartFields`). */
+/** `recordsId` is what the mart's Count Unique is saved and keyed as (see `chartFields`). */
 export type ChartMart = { aliasPath: string; recordsId: string; title: string; hasPk: boolean; metrics: Metric[]; dates: Field[]; dimensions: Field[] };
 /** `counter` is a main-mart field the warehouse may COUNT: a query with a slice and no column of its own reads it, so the slice has an explicit column list without a new group key. Null when the mart has none. */
 export type ChartFields = { marts: ChartMart[]; dimensions: Field[]; dates: Field[]; counter?: Field | null };
 export const MAX_BUCKETS = 60;
 
-/** Everything a chart can count, per chart mart in group order: its Unique Records when it has a key, then its metrics. Any mart's measure pairs with any mart's date or dimension. */
+/** Everything a chart can count, per chart mart in group order: its Count Unique when it has a key, then its metrics. Any mart's measure pairs with any mart's date or dimension. */
 export const measuresOf = (cf: ChartFields): Measure[] => cf.marts.flatMap((m): Measure[] => [
   ...(m.hasPk ? [{ kind: 'records', aliasPath: m.aliasPath, recordsId: m.recordsId } as const] : []),
   ...m.metrics.map((metric): Measure => ({ kind: 'metric', metric })),
 ]);
 
-/** A pie shows parts of a whole: only metrics the warehouse may sum, and always summed, whatever function the grid shows; every Unique Records counts too. */
+/** A pie shows parts of a whole: only metrics the warehouse may sum, and always summed, whatever function the grid shows; every Count Unique counts too. */
 export const pieMeasures = (cf: ChartFields): Measure[] => measuresOf(cf).flatMap((x): Measure[] => {
   if (x.kind === 'records') return [x];
   if (!allowedFunctions(x.metric.field).includes('SUM')) return [];

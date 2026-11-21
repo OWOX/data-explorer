@@ -11,7 +11,7 @@ const schema = [
   f('calc', 'number', { isCalculated: true }),
 ];
 
-describe('Unique Records of the main mart', () => {
+describe('Count Unique of the main mart', () => {
   it('is offered for a key hidden for reporting, which is not a field of the schema', () => {
     const hidden: Schema = Object.assign([f('amount', 'number'), f('channel', 'string')], { primaryKey: ['id'] });
     expect(chartFields(hidden, [], NO_AGGREGATION, 'M', [''])!.marts[0]!.hasPk).toBe(true);
@@ -72,7 +72,7 @@ describe('chartFields', () => {
 
 describe('measures', () => {
   const cf = chartFields(schema, ['id', 'date', 'amount', 'c__city', 'c__ltv'], NO_AGGREGATION, 'M', ['', 'c'], new Set(['c']), { '': 'Orders', c: 'Customers' });
-  it('lists, per mart in group order, its Unique Records (when keyed) then its metrics', () => {
+  it('lists, per mart in group order, its Count Unique (when keyed) then its metrics', () => {
     expect(measuresOf(cf).map((m) => (m.kind === 'records' ? ['records', m.recordsId, m.aliasPath] : ['metric', m.metric.field.name]))).toEqual([['records', 'records:M', ''], ['metric', 'amount'], ['records', 'records:C', 'c'], ['metric', 'c__ltv']]);
     expect(cf.marts.map((m) => m.title)).toEqual(['Orders', 'Customers']);
   });

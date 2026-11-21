@@ -11,7 +11,7 @@ test('Charts mode shows scorecards, a stacked time series and a pie, and Table b
   const widths = () => data(page).locator('th[data-group]').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
   const tableWidths = await widths();
   await data(page).getByRole('radio', { name: 'Charts' }).click();
-  await expect(data(page).getByText('Unique Records', { exact: true }).first()).toBeVisible();
+  await expect(data(page).getByText('Count Unique', { exact: true }).first()).toBeVisible();
   const group = data(page).locator('td[data-chart-group]').first();
   await expect(group).toBeVisible();
   const head = data(page).locator(`th[data-group="${await group.getAttribute('data-chart-group')}"]`);
