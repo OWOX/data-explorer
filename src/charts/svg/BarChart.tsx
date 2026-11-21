@@ -21,7 +21,7 @@ const TITLE_GAP = 8;
 const CHAR_W = 6;
 
 /** Stacked bars. Sizes are ratios of the largest stacked total, for drawing only; every shown value is the caller's text. */
-export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, canPick, stacked, xTitle, yTitle, integer = false }: { series: Series[]; orientation: 'vertical' | 'horizontal'; ariaLabel: string; formatTick: (n: number) => string;
+export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, canPick, stacked, xTitle, yTitle, integer = false, categorical = false }: { series: Series[]; orientation: 'vertical' | 'horizontal'; ariaLabel: string; formatTick: (n: number) => string;
   /** A click on a bucket (and, when stacked, on one of its segments: `seriesIndex`). */
   onPick?: (x: string, seriesIndex?: number) => void;
   /** Whether a bucket can be filtered to (a blank bucket has no range); default all. */
@@ -33,7 +33,9 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   /** The measure's name, on the value axis: beside the ticks of a vertical chart, under them on a horizontal one. */
   yTitle?: string;
   /** The measure counts whole things: the axis steps are whole numbers. */
-  integer?: boolean }) {
+  integer?: boolean;
+  /** The buckets are categories, not dates: every label shows, cut with an ellipsis to the width of its column (the whole text is in the label's title), instead of every k-th one. */
+  categorical?: boolean }) {
   const { ref, width } = useWidth<HTMLDivElement>();
   const xs = series[0]?.points ?? [];
   const totals = xs.map((_, i) => series.reduce((sum, s) => sum + Math.max(0, s.points[i]?.y ?? 0), 0));
@@ -49,7 +51,12 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   const titleH = bottomTitle ? TITLE_H : 0;
   const height = (vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H) + titleH;
   // Keep every k-th bucket label so none overlap.
-  const labelStep = vertical ? Math.max(1, Math.ceil((Math.max(...xs.map((p) => p.label.length), 0) * CHAR_W + 8) / band)) : 1;
+  const labelStep = vertical && !categorical ? Math.max(1, Math.ceil((Math.max(...xs.map((p) => p.label.length), 0) * CHAR_W + 8) / band)) : 1;
+  // A category label that does not fit its column is cut so it never runs into its neighbours or over the value axis.
+  const fitted = (label: string) => {
+    const room = Math.max(1, Math.floor((band - 4) / CHAR_W));
+    return label.length > room ? `${label.slice(0, Math.max(0, room - 1))}…` : label;
+  };
   const scale = (n: number) => (top > 0 ? n / top : 0) * (vertical ? PLOT_H : plotW);
 
   const isStacked = stacked ?? series.length > 1;
@@ -118,7 +125,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
         })}
         {xs.map((p, i) => (i % labelStep === 0 ? (
           vertical
-            ? <text key={p.x} className="dm-chart-text" x={left + i * band + band / 2} y={TOP + PLOT_H + 16} textAnchor="middle">{p.label}</text>
+            ? <text key={p.x} className="dm-chart-text" x={left + i * band + band / 2} y={TOP + PLOT_H + 16} textAnchor="middle">{categorical ? <><title>{p.label}</title>{fitted(p.label)}</> : p.label}</text>
             : <text key={p.x} className="dm-chart-text" x={left - 6} y={TOP + i * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle">{p.label}</text>
         ) : null))}
         {sideTitle && <YTitle x={8} mid={TOP + (vertical ? PLOT_H : xs.length * ROW_H) / 2} length={vertical ? PLOT_H : xs.length * ROW_H} text={sideTitle} />}
