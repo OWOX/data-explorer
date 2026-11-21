@@ -858,14 +858,32 @@ describe('a chain through a middle mart with no column of its own', () => {
     expect(sql).toContain('LEFT JOIN customers_owox ON base_owox.customer_id = customers_owox.id');
   });
 
-  test('two missing middle levels resolve by walking down to a source and climbing its relationships', () => {
+  test('two missing middle levels cannot be resolved when the synthetic hop names no relationship', () => {
     const e = [...edges, { id: 'e4', source: 'reg1', target: 'ctr1', joins: [{ sourceField: 'country_id', targetField: 'id' }] }];
     const deep: JoinedSource = { aliasPath: 'customers.region.country', martId: 'ctr1', label: 'Country', depth: 3, fields: [], uniqueCount: false, relationshipId: 'e4' };
     const name = f('customers__region__country__name', 'STRING', j('customers.region.country', 'ctr1', 'name'));
-    const sql = run({ visible: ['id', 'customers__region__country__name'], schema: [f('id', 'INTEGER'), name], sources: [{ ...deep, fields: [name] }], edges: e, titles: new Map([...titles, ['ctr1', 'Country']]) });
+    expect(run({ visible: ['id', 'customers__region__country__name'], schema: [f('id', 'INTEGER'), name], sources: [{ ...deep, fields: [name] }], edges: e, titles: new Map([...titles, ['ctr1', 'Country']]) })).toMatch(/^REASON The join to ".*" could not be resolved$/);
+  });
+
+  test('two levels resolve when every hop names its relationship', () => {
+    const e = [...edges, { id: 'e4', source: 'reg1', target: 'ctr1', joins: [{ sourceField: 'country_id', targetField: 'id' }] }];
+    const deep: JoinedSource = { aliasPath: 'customers.region.country', martId: 'ctr1', label: 'Country', depth: 3, fields: [], uniqueCount: false, relationshipId: 'e4' };
+    const name = f('customers__region__country__name', 'STRING', j('customers.region.country', 'ctr1', 'name'));
+    const sql = run({ visible: ['id', 'customers__region__country__name'], schema: [f('id', 'INTEGER'), name], sources: [{ ...deep, fields: [name] }, region()], edges: e, titles: new Map([...titles, ['ctr1', 'Country']]) });
     expect(sql).toContain('FROM [Customers](dm:cus1) AS t');
     expect(sql).toContain('FROM [Region](dm:reg1) AS t');
     expect(sql).toContain('LEFT JOIN customers_owox ON base_owox.customer_id = customers_owox.id');
+  });
+
+  test('a hop whose relationship is not in the model is not replaced by another route into the same mart', () => {
+    // main -> Y -> c, but Y is not on the canvas: the model has main -> X and X -> c only.
+    const e: Edge[] = [
+      { id: 'eX', source: 'ord1', target: 'cus1', joins: [{ sourceField: 'customer_id', targetField: 'id' }] },
+      { id: 'eXc', source: 'cus1', target: 'ctr1', joins: [{ sourceField: 'country_id', targetField: 'id' }] },
+    ];
+    const deep: JoinedSource = { aliasPath: 'y.country', martId: 'ctr1', label: 'Country', depth: 2, fields: [], uniqueCount: false, relationshipId: 'eYc' };
+    const name = f('y__country__name', 'STRING', j('y.country', 'ctr1', 'name'));
+    expect(run({ visible: ['id', 'y__country__name'], schema: [f('id', 'INTEGER'), name], sources: [{ ...deep, fields: [name] }], edges: e, titles: new Map([['ord1', 'Orders'], ['cus1', 'Customers'], ['ctr1', 'Country']]) })).toMatch(/^REASON The join to ".*" could not be resolved$/);
   });
 
   test('an unresolved middle mart is named by its title when the model has it', () => {
