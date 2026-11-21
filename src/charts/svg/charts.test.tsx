@@ -8,6 +8,7 @@ import { PieChart } from './PieChart';
 import { LineChart } from './LineChart';
 import { Heatmap } from './Heatmap';
 import { Scatter } from './Scatter';
+import { SpreadChart } from './SpreadChart';
 import { Sparkline, type Point } from './Sparkline';
 
 const pt = (i: number, y: number | null): Point => ({ x: `2026-0${i}`, y, label: `M${i}`, valueText: y === null ? '' : `v${y}` });
@@ -205,4 +206,14 @@ test('Scatter draws one dot per point and picks one by keyboard', async () => {
   screen.getByRole('button', { name: 'Filter to Q' }).focus();
   await userEvent.keyboard('{Enter}');
   expect(onPick).toHaveBeenCalledWith('q');
+});
+
+test('SpreadChart draws a box and a median per row, whiskers only with min and max', () => {
+  wrap(<SpreadChart ariaLabel="Sp" formatTick={String} rows={[
+    { key: 'a', label: 'A', p25: 2, p50: 3, p75: 5, min: 1, max: 9, text: 'median 3' },
+    { key: 'b', label: 'B', p25: 1, p50: 2, p75: 3, min: null, max: null, text: 'median 2' },
+  ]} />);
+  expect(document.querySelectorAll('rect[data-box]')).toHaveLength(2);
+  expect(document.querySelectorAll('line[data-median]')).toHaveLength(2);
+  expect(document.querySelectorAll('line[data-whisker]')).toHaveLength(1);
 });
