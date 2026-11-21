@@ -113,10 +113,16 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
     // A session list that names a joined field waits for the joined marts unless they are already known.
     return kept.length && (cached || !namesJoined(schema, seed.saved)) ? { columns: kept, cleaned: null, sources: cached ?? null, agg: sanitizeAggregation(seed.saved ? aggOf(seed.saved) : columnStore.aggregation(martId), full) } : null;
   });
+  // Once the wait is given up on, the saved view may still be on its way: the grid holds its saves until that read has settled, so an edit does not overwrite it.
+  const [holdView, setHoldView] = useState(false);
   useEffect(() => {
     if (initial) return;
     let live = true;
-    const timer = setTimeout(() => { live = false; setInitial({ columns: defaultColumns(schema), cleaned: null, sources: null, agg: sanitizeAggregation(seed.saved ? aggOf(seed.saved) : NO_AGGREGATION, schema) }); }, SAVED_COLUMNS_WAIT_MS);
+    const timer = setTimeout(() => {
+      live = false;
+      if (!seed.saved) { setHoldView(true); const release = () => setHoldView(false); columnStore.loadView(martId).then(release, release); }
+      setInitial({ columns: defaultColumns(schema), cleaned: null, sources: null, agg: sanitizeAggregation(seed.saved ? aggOf(seed.saved) : NO_AGGREGATION, schema) });
+    }, SAVED_COLUMNS_WAIT_MS);
     (async () => {
       const own = seed.saved?.columns;
       const saved = own ?? await columnStore.load(martId) ?? [];
@@ -155,7 +161,7 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
   // The cleanup of a saved list that named columns that are gone is the one save that is not the member's own change.
   useEffect(() => { if (cleaned) columnStore.save(martId, cleaned); }, [cleaned, columnStore, martId]);
   if (!initial) return <Skeleton rows={8} />;
-  return <Grid {...props} seed={seed.saved || !initial.saved ? seed : { ...seed, saved: initial.saved }} initialColumns={initial.columns} initialSources={initial.sources} initialAgg={initial.agg} />;
+  return <Grid {...props} holdView={holdView} seed={seed.saved || !initial.saved ? seed : { ...seed, saved: initial.saved }} initialColumns={initial.columns} initialSources={initial.sources} initialAgg={initial.agg} />;
 }
 
 // TanStack Table v9 builds the header groups and the row model; the headers and cells are drawn by the components above.
@@ -276,7 +282,7 @@ const withEntry = (m: Record<string, ColumnFilter>, key: string, value: ColumnFi
 
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
-function Grid({ martId, model, schema: native, seed, initialColumns, initialSources, initialAgg, onChange, onRows, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
+function Grid({ martId, model, schema: native, seed, holdView, initialColumns, initialSources, initialAgg, onChange, onRows, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; /** The member's saved view is still being read: its saves wait. */ holdView: boolean; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
   const { columnStore, blendable } = useServices();
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
@@ -403,13 +409,20 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
 
   // Every change to what the grid shows is saved with the columns (after the same pause); what the grid opened with is not written back.
   const viewKey = useRef<string | null>(null);
+  // An edit made while the saved view was still being read waits for it, then is saved.
+  const heldView = useRef<SavedView | null>(null);
   useEffect(() => {
     const v: SavedView = { filters: current.filters, ...(current.slices ? { slices: current.slices } : {}), sorts: current.sorts, limit: current.limit, ...(current.view ? { view: current.view } : {}) };
     const key = JSON.stringify(v);
     const last = viewKey.current;
     viewKey.current = key;
-    if (last !== null && last !== key) columnStore.saveView(martId, v);
-  }, [current, columnStore, martId]);
+    if (last !== null && last !== key) { if (holdView) heldView.current = v; else columnStore.saveView(martId, v); }
+  }, [current, columnStore, martId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (holdView || !heldView.current) return;
+    columnStore.saveView(martId, heldView.current);
+    heldView.current = null;
+  }, [holdView, columnStore, martId]);
 
   useEffect(() => { const edit = editSeq !== seenSeq.current; seenSeq.current = editSeq; onChange(current, edit); }, [current, editSeq]); // eslint-disable-line react-hooks/exhaustive-deps
 

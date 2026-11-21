@@ -147,6 +147,33 @@ test('a load slower than 3 s falls back to the defaults and the late result is i
   } finally { vi.useRealTimers(); }
 });
 
+test('after the 3 s fallback, an edit does not save the view until the late saved view has been read', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => { release = r; });
+    const t = setup(['id', 'status'], (ctx) => ({
+      ...ctx,
+      collections: <T,>(name: string) => {
+        const inner = ctx.collections<T>(name);
+        return name === SAVED ? { get: async (id: string) => { await gate; return inner.get(id); }, put: inner.put } : inner;
+      },
+    }));
+    await t.seeded;
+    t.view();
+    await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
+    await vi.advanceTimersByTimeAsync(SAVED_COLUMNS_WAIT_MS + 50);
+    await waitFor(() => expect(headers()).toHaveLength(5));
+    const saveView = vi.spyOn(t.services.current!.columnStore, 'saveView');
+    await userEvent.click(within(document.getElementById('band-data')!).getByRole('button', { name: /^Sort by Amount/ }));
+    await vi.advanceTimersByTimeAsync(100);
+    expect(saveView).not.toHaveBeenCalled();
+    release();
+    await vi.advanceTimersByTimeAsync(200);
+    await waitFor(() => expect(saveView).toHaveBeenCalledTimes(1));
+  } finally { vi.useRealTimers(); }
+});
+
 test('a moved column is saved, and a fresh mount reading the same store shows the saved order', async () => {
   const t = setup(['id', 'status', 'amount']);
   await t.seeded;
