@@ -11,7 +11,7 @@ test('Charts mode shows scorecards, a stacked time series and a pie, and Table b
   const widths = () => data(page).locator('th[data-group]').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
   const tableWidths = await widths();
   await data(page).getByRole('radio', { name: 'Charts' }).click();
-  await expect(data(page).getByText('Unique Records', { exact: true }).first()).toBeVisible();
+  await expect(data(page).getByText('Count Unique', { exact: true }).first()).toBeVisible();
   const group = data(page).locator('td[data-chart-group]').first();
   await expect(group).toBeVisible();
   const head = data(page).locator(`th[data-group="${await group.getAttribute('data-chart-group')}"]`);
@@ -93,4 +93,34 @@ test('the time series and the pie sit side by side when the band is wide, and Ch
   await page.setViewportSize({ width: 640, height: 900 });
   // The panels take the scroller's width once its resize is observed: wait for them to stack.
   await expect.poll(async () => { const [c, d] = [(await panels.nth(0).boundingBox())!, (await panels.nth(1).boundingBox())!]; return d.y >= c.y + c.height - 1; }).toBe(true);
+});
+
+test('a chart’s ⋮ shows on hover, in Sheets grey, and stays while its menu is open; the header ⋮ is always there', async ({ page }) => {
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  const panel = data(page).locator('section[data-chart-kind="Pie"]');
+  const dots = panel.getByRole('button', { name: 'Pie options' });
+  const header = data(page).getByRole('button', { name: 'Charts options' });
+  await expect(panel).toBeVisible();
+  await page.mouse.move(0, 0);
+  await expect(dots).toHaveCSS('opacity', '0');
+  await expect(header).toHaveCSS('opacity', '1');
+  await panel.hover();
+  await expect(dots).toHaveCSS('opacity', '1');
+  await expect(dots).toHaveCSS('color', 'rgb(95, 99, 104)');
+  await dots.click();
+  await page.mouse.move(0, 0);
+  await expect(dots).toHaveCSS('opacity', '1');
+  await page.keyboard.press('Escape');
+  await page.mouse.move(0, 0);
+  await dots.blur();
+  await expect(dots).toHaveCSS('opacity', '0');
+  await dots.focus();
+  await expect(dots).toHaveCSS('opacity', '1');
+});
+
+test('a chart that changes type animates its width instead of snapping', async ({ page }) => {
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  const panel = data(page).locator('section[data-chart-kind="Pie"]');
+  await expect(panel).toHaveCSS('transition-property', /width/);
+  await expect(panel.locator('.dm-chart-body')).toHaveCSS('transition-property', /height/);
 });

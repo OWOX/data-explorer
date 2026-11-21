@@ -20,7 +20,7 @@ export type Skipped = { mart: boolean; source: boolean; columns: number; filters
 /** What pruning a grid to a schema left out, counted. */
 export type Dropped = Pick<Skipped, 'columns' | 'filters' | 'sorts' | 'aggregations'>;
 
-const clampLimit = (n: number) => Math.min(PAGE_SIZE * 10, Math.max(PAGE_SIZE, Math.round(n / PAGE_SIZE) * PAGE_SIZE));
+export const clampLimit = (n: number) => Math.min(PAGE_SIZE * 10, Math.max(PAGE_SIZE, Math.round(n / PAGE_SIZE) * PAGE_SIZE));
 
 /** Prunes the grid to the fields on offer; with no column left it opens with its defaults. */
 export function pruneGrid(grid: GridState, schema: Schema): { grid: GridState | null; dropped: Dropped } {

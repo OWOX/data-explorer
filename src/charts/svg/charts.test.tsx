@@ -302,3 +302,29 @@ test('PieChart: the blank slice and a real value named "(blank)" are separate el
   expect(err.mock.calls.filter((c) => String(c[0]).includes('same key'))).toHaveLength(0);
   err.mockRestore();
 });
+
+const many = (n: number, label: (i: number) => string): Series[] => [{ name: 'A', color: 'red', points: Array.from({ length: n }, (_, i) => ({ x: `k${i}`, y: i + 1, label: label(i), valueText: `v${i}` })) }];
+const xLabels = (c: HTMLElement) => [...c.querySelectorAll('svg > text.dm-chart-text')];
+
+test('BarChart categorical: every label shows, cut to its column with the full text in a title; date buckets still skip', () => {
+  const long = (i: number) => `Category number ${i}`;
+  const cat = wrap(<BarChart series={many(30, long)} orientation="vertical" categorical ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const labels = xLabels(cat.container);
+  expect(labels).toHaveLength(30);
+  const first = labels[0]!;
+  expect(first.querySelector('title')).toHaveTextContent('Category number 0');
+  expect(first.textContent!.replace('Category number 0', '').length).toBeLessThan('Category number 0'.length);
+  expect(first.textContent).toMatch(/…/);
+  cat.unmount();
+  const dates = wrap(<BarChart series={many(30, long)} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} />);
+  expect(xLabels(dates.container).length).toBeLessThan(30);
+  for (const l of xLabels(dates.container)) expect(l.querySelector('title')).toBeNull();
+});
+
+test('BarChart categorical: a short label that fits is shown whole, and the first label stays right of the value axis', () => {
+  const { container } = wrap(<BarChart series={many(3, (i) => `c${i}`)} orientation="vertical" categorical ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const labels = xLabels(container);
+  expect(labels.map((l) => l.querySelector('title')?.textContent)).toEqual(['c0', 'c1', 'c2']);
+  const tickX = Math.max(...[...container.querySelectorAll('.dm-chart-tick text')].map((t) => Number(t.getAttribute('x'))));
+  expect(Number(labels[0]!.getAttribute('x'))).toBeGreaterThan(tickX);
+});

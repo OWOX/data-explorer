@@ -96,7 +96,7 @@ const splitName = (name: string): [string, string] | null => {
 };
 
 /** A rule as its tuple: [column, op, value?, fn?, 1?] for a filter, [column, op, value?, 1?] for a slice; trailing empty slots are left off. */
-function ruleTuple(column: Col, f: ColumnFilter, withFn: boolean): unknown[] {
+export function ruleTuple(column: Col, f: ColumnFilter, withFn: boolean): unknown[] {
   const t: unknown[] = [column, f.op, f.value === undefined ? undefined : f.value];
   if (withFn) t.push(f.fn);
   if (f.list) t.push(1);
@@ -148,6 +148,29 @@ const isPlain = (v: unknown): v is Record<string, unknown> => isRecord(v) && Obj
 /** A filter value the grid can render and query: a scalar, or a flat object of strings and numbers (ranges, relative presets). */
 const isFilterValue = (v: unknown): boolean =>
   v === undefined || isScalar(v) || (isPlain(v) && Object.entries(v).every(([k, x]) => !(k in Object.prototype) && (typeof x === 'string' || (typeof x === 'number' && Number.isFinite(x)))));
+
+/**
+ * One rule from its tuple: a filter is [column, op, value?, fn?, 1?]; a slice is [column, op, value?, 1?]. A null value or function is an empty slot before a later one.
+ * The trailing 1 marks a list (`a, b` is any of the two). Null when the tuple is malformed.
+ */
+export function decodeRule(e: unknown, withFn: boolean, name: (c: unknown) => string | null): ColumnFilter | null {
+  const arity = Array.isArray(e) ? e.length : 0;
+  const field = arity >= 2 && arity <= (withFn ? 5 : 4) ? name((e as unknown[])[0]) : null;
+  const op = (e as unknown[])[1];
+  if (field === null || !isOpId(op) || UNSAFE_KEYS.has(field)) return null;
+  const entry: ColumnFilter = { field, op };
+  const value = (e as unknown[])[2] as FilterValue | null | undefined;
+  const fn = withFn ? (e as unknown[])[3] : undefined;
+  const listFlag = (e as unknown[])[withFn ? 4 : 3];
+  const fnOk = fn === undefined || fn === null || isAggFn(fn);
+  // A relative filter needs a preset object; any other value must be safe to render and query. A function must be a known one.
+  const ok = (listFlag === undefined || listFlag === 1) && isFilterValue(value ?? undefined) && (entry.op !== 'relative' || (isPlain(value) && typeof (value as { kind?: unknown }).kind === 'string')) && fnOk;
+  if (!ok) return null;
+  if (value !== undefined && value !== null) entry.value = value;
+  if (isAggFn(fn)) entry.fn = fn;
+  if (listFlag === 1 && typeof entry.value === 'string' && (entry.op === 'eq' || entry.op === 'neq')) entry.list = true;
+  return entry;
+}
 
 /** The route's `s` param, or null when the route isn't a view link. */
 function payloadOf(route: string | undefined): string | null {
@@ -204,23 +227,8 @@ function shape(raw: unknown): DecodedView {
     const decodeRules = (list: unknown[], withFn: boolean): [string, ColumnFilter][] => {
       const out: [string, ColumnFilter][] = [];
       for (const e of list) {
-        const arity = Array.isArray(e) ? e.length : 0;
-        const field = arity >= 2 && arity <= (withFn ? 5 : 4) ? name((e as unknown[])[0]) : null;
-        const op = (e as unknown[])[1];
-        if (field === null || !isOpId(op) || UNSAFE_KEYS.has(field)) { dropped++; continue; }
-        const entry: ColumnFilter = { field, op };
-        const value = (e as unknown[])[2] as FilterValue | null | undefined;
-        const fn = withFn ? (e as unknown[])[3] : undefined;
-        const listFlag = (e as unknown[])[withFn ? 4 : 3];
-        const fnOk = fn === undefined || fn === null || isAggFn(fn);
-        // A relative filter needs a preset object; any other value must be safe to render and query. A function must be a known one.
-        const ok = (listFlag === undefined || listFlag === 1) && isFilterValue(value ?? undefined) && (entry.op !== 'relative' || (isPlain(value) && typeof (value as { kind?: unknown }).kind === 'string'))
-          && fnOk;
-        if (!ok) { dropped++; continue; }
-        if (value !== undefined && value !== null) entry.value = value;
-        if (isAggFn(fn)) entry.fn = fn;
-        if (listFlag === 1 && typeof entry.value === 'string' && (entry.op === 'eq' || entry.op === 'neq')) entry.list = true;
-        out.push([field, entry]);
+        const entry = decodeRule(e, withFn, name);
+        if (entry) out.push([entry.field, entry]); else dropped++;
       }
       return out;
     };

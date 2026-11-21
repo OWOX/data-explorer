@@ -36,13 +36,13 @@ function ScatterPanel({ martId, cf, r, filter, version, idle, hasFilters, format
     { kind: 'radio', label: 'Y metric', value: measureId(y), options: options.filter((o) => o.value !== measureId(x)), onPick: (v) => onChange({ measure2: v }) },
     ...tail,
   ];
-  const title = `${measureLabel(cf, y)} vs ${measureLabel(cf, x)} per ${fieldLabel(dim)}`;
+  const title = `${measureLabel(cf, y, [x, y])} vs ${measureLabel(cf, x, [x, y])} per ${fieldLabel(dim)}`;
   const full = read.rows?.length === SCATTER_LIMIT;
   return (
     <ChartPanel title={title} name="Scatter" items={ready ? items : null} width={BOX_WIDTH}
       loading={!read.rows && !read.error} error={read.error} onRetry={read.retry} empty={read.rows?.length === 0 ? emptyText(hasFilters) : null}
-      note={full ? `Only the ${SCATTER_LIMIT} values with the largest ${measureLabel(cf, x)} are drawn.` : undefined}>
-      {read.rows && <Scatter points={points} ariaLabel={title} xTitle={measureLabel(cf, x)} yTitle={measureLabel(cf, y)}
+      note={full ? `Only the ${SCATTER_LIMIT} values with the largest ${measureLabel(cf, x, [x, y])} are drawn.` : undefined}>
+      {read.rows && <Scatter points={points} ariaLabel={title} xTitle={measureLabel(cf, x, [x, y])} yTitle={measureLabel(cf, y, [x, y])}
         formatX={(n) => tickText(n, xt, xf)} formatY={(n) => tickText(n, yt, yf)} integerX={isIntegerMeasure(x)} integerY={isIntegerMeasure(y)} onPick={(k) => onFilter([dimensionFilter(dim, k)])} />}
     </ChartPanel>
   );
@@ -62,6 +62,6 @@ export const scatter: ChartKindDef<ScatterR> = {
     const y = list.find((m) => measureId(m) === spec.measure2 && measureId(m) !== measureId(x)) ?? list.find((m) => measureId(m) !== measureId(x));
     return y ? { dimension, x, y } : null;
   },
-  title: (r, cf) => `${measureLabel(cf, r.y)} vs ${measureLabel(cf, r.x)} per ${fieldLabel(r.dimension)}`,
+  title: (r, cf) => `${measureLabel(cf, r.y, [r.x, r.y])} vs ${measureLabel(cf, r.x, [r.x, r.y])} per ${fieldLabel(r.dimension)}`,
   Panel: ScatterPanel,
 };

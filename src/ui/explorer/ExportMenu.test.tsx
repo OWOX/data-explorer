@@ -1,3 +1,4 @@
+import { dragOntoMain } from '../bands/drag-main-test-utils';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
@@ -721,7 +722,7 @@ test('a failure after the report exists closes the dialog and reports in a toast
 });
 
 const headingText = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!).join(' + ');
-/** A card in the band is made main with its button (a click on a card only joins it or focuses it); one it cannot reach is reached through the search. */
+/** A card in the band is made main by dragging it onto the main card (a click on a card only joins it or focuses it); one it cannot reach is reached through the search. */
 const toMart = async (title: string) => {
   // A leaving card and a hover ghost can carry the same title: the card is the one that is neither.
   const card = [...document.querySelectorAll<HTMLElement>('#band-marts article:not([data-ghost]):not([data-leaving])')].find((a) => a.querySelector('.dm-node-title')?.textContent === title);
@@ -731,7 +732,7 @@ const toMart = async (title: string) => {
     await waitFor(() => expect(headingText() === title || headingText()!.startsWith(`${title} + `)).toBe(true));
     return;
   }
-  await userEvent.click(within(card).getByRole('button', { name: 'Make main data mart' }));
+  dragOntoMain(card, document.querySelector('#band-marts article[aria-pressed="true"]:not([data-path]):not([data-ghost])')!);
   await waitFor(() => expect(headingText() === title || headingText()!.startsWith(`${title} + `)).toBe(true));
 };
 

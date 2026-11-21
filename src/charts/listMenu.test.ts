@@ -15,7 +15,7 @@ test('the header list has the cards, Sparklines, one tick per chart and Add char
   const change = vi.fn();
   const items = listItems({ cf, settings: {}, resolved: [{ spec: { id: 'time-series', kind: 'timeSeries' }, title: 'amount · Sum by date' }, { spec: { id: 'pie', kind: 'pie' }, title: null }], change });
   // Card labels come from metricLabel: the field label (no alias here) and AGG_LABELS.SUM.
-  expect(items.map((i) => i.label)).toEqual(['Unique Records', 'amount · Sum', 'Sparklines', 'amount · Sum by date', 'Pie (columns hidden)', 'Add chart']);
+  expect(items.map((i) => i.label)).toEqual(['Count Unique', 'amount · Sum', 'Sparklines', 'amount · Sum by date', 'Pie (columns hidden)', 'Add chart']);
   const add = items.at(-1)!;
   // Later tasks register more kinds: only the two that exist now are pinned; spread is never eligible (no percentiles).
   expect(add.kind === 'radio' && add.options.map((o) => o.label)).toEqual(expect.arrayContaining(['Time series', 'Pie']));
@@ -52,7 +52,7 @@ test('each chart row, and each Add chart and Chart type option, carries its kind
   const icon = (label: string) => (items.find((i) => i.label === label) as { icon?: unknown }).icon;
   expect(icon('T')).toBe(KINDS.timeSeries.icon);
   expect(icon('Pie (columns hidden)')).toBe(KINDS.pie.icon);
-  expect(icon('Unique Records')).toBeUndefined();
+  expect(icon('Count Unique')).toBeUndefined();
   expect(icon('Sparklines')).toBeUndefined();
   const add = items.at(-1)!;
   expect(add.kind === 'radio' && add.options.every((o) => o.icon === KINDS[o.value as keyof typeof KINDS].icon)).toBe(true);
@@ -63,16 +63,16 @@ test('each chart row, and each Add chart and Chart type option, carries its kind
 
 test('a card shows its picked measure under its own id; a saved measure that is gone falls back to the default', () => {
   const mart = cf.marts[0]!;
-  expect(cardsOf(mart).map((c) => [c.id, c.label])).toEqual([['records:orders', 'Unique Records'], ['amount', 'amount · Sum']]);
+  expect(cardsOf(mart).map((c) => [c.id, c.label])).toEqual([['records:orders', 'Count Unique'], ['amount', 'amount · Sum']]);
   const picked = cardsOf(mart, { amount: 'records' });
-  expect(picked.map((c) => [c.id, c.label, c.key])).toEqual([['records:orders', 'Unique Records', 'Unique Count'], ['amount', 'Unique Records', 'Unique Count']]);
+  expect(picked.map((c) => [c.id, c.label, c.key])).toEqual([['records:orders', 'Count Unique', 'Unique Count'], ['amount', 'Count Unique', 'Unique Count']]);
   expect(cardsOf(mart, { amount: 'gone' })).toEqual(cardsOf(mart));
   expect(martMeasures(mart)).toHaveLength(2);
 });
 
 test('the header tick of a card is named by the measure it shows', () => {
   const items = listItems({ cf, settings: { scorecards: { metrics: { amount: 'records' } } }, resolved: [], change: vi.fn() });
-  expect(items.slice(0, 2).map((i) => i.label)).toEqual(['Unique Records', 'Unique Records']);
+  expect(items.slice(0, 2).map((i) => i.label)).toEqual(['Count Unique', 'Count Unique']);
 });
 
 test('setCardMetric saves the pick, clears it for the card’s own measure and keeps other settings; hideCard adds the id once', () => {

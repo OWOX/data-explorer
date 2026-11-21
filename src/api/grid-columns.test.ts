@@ -180,3 +180,69 @@ test('a bucket with a time zone the backend would refuse, or on a column that al
   const store = createColumnStore(ctxWith({ get, put: vi.fn() }));
   expect(await store.loadAggregation('m')).toEqual({ aggregations: [{ column: 'n', function: 'SUM' }], dateTrunc: [{ column: 'd3', unit: 'DAY', timeZone: 'Europe/Kyiv' }] });
 });
+
+describe('the saved grid view', () => {
+  const view = {
+    filters: { name: { field: 'name', op: 'eq' as const, value: 'a, b', list: true as const }, amount: { field: 'amount', op: 'gt' as const, value: 5, fn: 'SUM' as const } },
+    slices: { customers__city: { field: 'customers__city', op: 'contains' as const, value: 'x' } },
+    sorts: [{ field: 'amount', direction: 'desc' as const }],
+    limit: 400,
+    view: 'charts' as const,
+  };
+
+  test('every field round-trips through the doc, the list marker included', async () => {
+    vi.useFakeTimers();
+    let stored: unknown = null;
+    const put = vi.fn(async (_id: string, doc: unknown) => { stored = doc; return {}; });
+    const get = vi.fn(async () => (stored ? { document: stored } : null));
+    const a = createColumnStore(ctxWith({ get, put }));
+    await a.loadView('m');
+    a.saveView('m', view);
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
+    const b = createColumnStore(ctxWith({ get, put }));
+    expect(await b.loadView('m')).toEqual(view);
+  });
+
+  test('a null sort and the table survive as such', async () => {
+    const doc = { columns: [], at: 'x', gridView: { fl: [], s: null, l: 200 } };
+    const store = createColumnStore(ctxWith({ get: vi.fn(async () => ({ document: doc })), put: vi.fn() }));
+    expect(await store.loadView('m')).toEqual({ filters: {}, sorts: null, limit: 200 });
+  });
+
+  test('malformed rules, sorts and shapes are left out', async () => {
+    const doc = { columns: [], at: 'x', gridView: { fl: [['a', 'nope'], ['b', 'eq', 'v'], 'junk'], sl: [['c']], s: [['a', 1], ['b', 7], 3], l: 'x' } };
+    const bad = createColumnStore(ctxWith({ get: vi.fn(async () => ({ document: doc })), put: vi.fn() }));
+    expect(await bad.loadView('m')).toBeNull();
+    const ok = createColumnStore(ctxWith({ get: vi.fn(async () => ({ document: { ...doc, gridView: { ...doc.gridView, l: 100 } } })), put: vi.fn() }));
+    expect(await ok.loadView('m')).toEqual({ filters: { b: { field: 'b', op: 'eq', value: 'v' } }, sorts: [{ field: 'a', direction: 'asc' }], limit: 200 });
+  });
+
+  test('nothing is written before the doc is read, and a failed read never writes', async () => {
+    vi.useFakeTimers();
+    const put = vi.fn(async () => ({}));
+    const down = createColumnStore(ctxWith({ get: vi.fn().mockRejectedValue(new Error('down')), put }));
+    down.saveView('m', view);
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS * 2);
+    expect(put).not.toHaveBeenCalled();
+    const get = vi.fn(async () => ({ document: { columns: ['a'], at: 'x', picks: { j: ['j__f'] } } }));
+    const up = createColumnStore(ctxWith({ get, put }));
+    up.saveView('m', view);
+    expect(get).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(put).toHaveBeenCalledWith('m', expect.objectContaining({ columns: ['a'], picks: { j: ['j__f'] }, gridView: expect.anything() }));
+  });
+
+  test('changes are debounced into one write', async () => {
+    vi.useFakeTimers();
+    const put = vi.fn(async () => ({}));
+    const store = createColumnStore(ctxWith({ get: vi.fn(async () => null), put }));
+    store.saveView('m', view);
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS - 1);
+    store.saveView('m', { ...view, limit: 600 });
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS - 1);
+    expect(put).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(put).toHaveBeenCalledTimes(1);
+  });
+});

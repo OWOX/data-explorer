@@ -89,7 +89,7 @@ test('dragging a header in Table mode moves the column and shows the drop line',
 test('dragging a header in Charts mode moves the column too', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await data(page).getByRole('radio', { name: 'Charts' }).click();
-  await expect(data(page).getByText('Unique Records', { exact: true }).first()).toBeVisible();
+  await expect(data(page).getByText('Count Unique', { exact: true }).first()).toBeVisible();
   await expect(data(page).locator('svg').first()).toBeVisible();
   const order = await dragFirstPastSecond(page, 40);
   await expect.poll(() => titles(page)).toEqual([order[1], order[0], ...order.slice(2)]);

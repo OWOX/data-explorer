@@ -1,5 +1,5 @@
 // The cards themselves, ported from Data Flow: a source card and a data mart card.
-import { CircleX, Crown, ExternalLink, History, LoaderCircle, Plug } from 'lucide-react';
+import { CircleX, ExternalLink, History, LoaderCircle, Plug } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Context, DqSummary, Mart, Source } from '../../model/types';
 import { COUNT_CONCURRENCY } from '../../config';
@@ -8,7 +8,7 @@ import { dqCardTone, dqVisual } from '../icons';
 import { Hint, TipLines, Tooltip } from '../Tooltip';
 import { whenInView } from './inview';
 import type { CardTransition } from './transitions';
-import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
+import { DEFAULT_CONTEXT_ICON, DEFAULT_MART_ICON, PickedIcon } from './picked';
 import { useLatest } from '../useLatest';
 
 /** The element id Task 3's lines look cards up by: Data Flow's `src-` prefix and key sanitising. */
@@ -149,9 +149,9 @@ export function MartCard({
   path,
   title,
   focused = false,
-  onMakeMain,
   onRemove,
   onSelect,
+  onPick,
   onOpenApp,
   onRetryCount,
   onNeedCount,
@@ -182,8 +182,6 @@ export function MartCard({
   dropTarget?: boolean;
   /** The dragged card is over this one. */
   dropHot?: boolean;
-  /** Makes this mart the main one; when absent the card has no make-main button. */
-  onMakeMain?: () => void;
   /** The alias path this card stands for, when the mart is joined at one. */
   path?: string;
   /** What the card is called when that is not the mart's title: a joined source's label, which carries the alias path when two joins reach the mart. */
@@ -193,6 +191,8 @@ export function MartCard({
   /** Takes this joined mart out of the report; when absent the card has no ×. */
   onRemove?: () => void;
   onSelect: () => void;
+  /** A click on a card that cannot join the main mart only explains; this tells the page which card was picked, so the header can offer to make it main. */
+  onPick?: () => void;
   onOpenApp: () => void;
   /** Not needed on a ghost, which shows no count. */
   onRetryCount?: () => void;
@@ -213,7 +213,7 @@ export function MartCard({
     return () => clearTimeout(t);
   }, [hint]);
   const name = title ?? mart.title;
-  const choose = unjoinable ? () => setHint(true) : onSelect;
+  const choose = unjoinable ? () => { setHint(true); onPick?.(); } : onSelect;
   return (
     <article
       ref={el}
@@ -235,18 +235,11 @@ export function MartCard({
         </button>
       )}
       <div className="dm-node-head">
-        {/* Only an icon someone picked: the default box on every card would say nothing. */}
-        <PickedIcon icon={mart.icon} wrap="dm-logo" />
+        {/* The icon picked for the mart, or the host's default one, so every title has one before it. */}
+        <PickedIcon icon={mart.icon} fallback={DEFAULT_MART_ICON} wrap="dm-logo" />
         <Tooltip content={name}><span className="dm-node-title">{name}</span></Tooltip>
-        {/* From the right edge: the link, the (i) to its left, then the crown. */}
+        {/* From the right edge: the link, then the (i) to its left. */}
         <span className="dm-node-actions">
-          {onMakeMain && (
-            <span className="dm-card-reveal"><Tooltip content="Make main data mart">
-              <button type="button" aria-label="Make main data mart" className="dm-link" onClick={(e) => { e.stopPropagation(); onMakeMain(); }}>
-                <Crown size={14} />
-              </button>
-            </Tooltip></span>
-          )}
           {mart.description && <span className="dm-card-reveal"><Hint text={mart.description} label="Description" /></span>}
           <span className="dm-card-reveal"><Tooltip content="Open this data mart">
             <button type="button" aria-label="Open in OWOX" className="dm-link" onClick={(e) => { e.stopPropagation(); onOpenApp(); }}>
@@ -266,7 +259,7 @@ export function MartCard({
       </div>
       {/* The live region stays mounted so a screen reader announces the hint when it appears. */}
       <span aria-live="polite" className="dm-card-live">
-        {hint && unjoinable && mainTitle && <span role="status" className="dm-card-hint">{ghost ? `Can't join ${joinTitle ?? mainTitle}. Use Make main data mart to make it the main data mart.` : addViaEscape ? `Can't join ${joinTitle ?? mainTitle}. Press Escape, then click it to add it to ${mainTitle}.` : `Can't join ${joinTitle ?? mainTitle}. Drag it onto ${mainTitle} to make it the main data mart.`}</span>}
+        {hint && unjoinable && mainTitle && <span role="status" className="dm-card-hint">{ghost ? `Can't join ${joinTitle ?? mainTitle}. Use Make it main in the section header to make it the main data mart.` : addViaEscape ? `Can't join ${joinTitle ?? mainTitle}. Press Escape, then click it to add it to ${mainTitle}.` : `Can't join ${joinTitle ?? mainTitle}. Drag it onto ${mainTitle} to make it the main data mart.`}</span>}
       </span>
     </article>
   );

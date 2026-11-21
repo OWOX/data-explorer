@@ -21,11 +21,12 @@ export type LineR = { date: Field; bucket: DateBucket | 'AUTO'; measure: Measure
 
 function LinePanel({ martId, cf, r, spark, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<LineR>) {
   const { date, measure, measure2, stack } = r;
+  const scope = measure2 ? [measure, measure2] : [measure];
   const { bucket, error, retry } = useBucket(martId, date, r.bucket, filter, version, idle);
   const range = { error, retry };
-  const one = useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, version, idle, formatOf, range });
+  const one = useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, version, idle, formatOf, range, scope });
   // The second measure is its own unstacked series; with none, its hook reads nothing.
-  const two = useDateSeries({ martId, cf, spark, date, bucket, measure: measure2 ?? measure, stack: null, filter, version, idle: idle || !measure2, formatOf });
+  const two = useDateSeries({ martId, cf, spark, date, bucket, measure: measure2 ?? measure, stack: null, filter, version, idle: idle || !measure2, formatOf, scope });
   const failed = one.failed ?? (measure2 ? two.failed : undefined);
   const loading = one.loading || (!!measure2 && two.loading);
   const [lt, lf] = measureFormat(measure, formatOf);
@@ -67,6 +68,6 @@ export const line: ChartKindDef<LineR> = {
     const measure2 = list.find((m) => measureId(m) === spec.measure2 && measureId(m) !== measureId(measure)) ?? null;
     return { date, bucket: pickBucketChoice(spec.bucket), measure, measure2, stack: measure2 ? null : pickField(cf.dimensions, spec.stack, null), area: spec.area === true };
   },
-  title: (r, cf) => `${measureLabel(cf, r.measure)}${r.measure2 ? ` and ${measureLabel(cf, r.measure2)}` : ''} by date`,
+  title: (r, cf) => `${measureLabel(cf, r.measure, r.measure2 ? [r.measure, r.measure2] : undefined)}${r.measure2 ? ` and ${measureLabel(cf, r.measure2, [r.measure, r.measure2])}` : ''} by date`,
   Panel: LinePanel,
 };

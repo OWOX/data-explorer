@@ -37,7 +37,9 @@ test('Grid and Graph cards keep their background when selected; the border goes 
   expect(rest).toHaveLength(1);
   // Selecting a card no longer tints it: both path cards share the one card background.
   expect(tinted[0]!.bg).toBe(rest[0]!.bg);
-  expect(await marts(page).locator('article[data-focused]').first().evaluate((e) => getComputedStyle(e, '::after').borderTopWidth)).toBe('2px');
+  expect(await marts(page).locator('article[data-focused]').first().evaluate((e) => getComputedStyle(e).borderTopWidth)).toBe('2px');
+  // The other path card keeps its 1px border.
+  expect(await marts(page).locator('article[aria-pressed="true"]:not([data-focused])').first().evaluate((e) => getComputedStyle(e).borderTopWidth)).toBe('1px');
   void plain;
   await marts(page).screenshot({ path: 'tmp/w4t1-grid.png' });
   await marts(page).getByRole('radio', { name: 'Graph' }).click();

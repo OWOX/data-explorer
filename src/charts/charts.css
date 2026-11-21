@@ -37,6 +37,21 @@
 .dm-chart-title { font-size: 0.875rem; font-weight: 600; }
 .dm-chart-actions { display: flex; align-items: center; gap: 0.5rem; }
 .dm-chart-empty { font-size: 0.75rem; }
+/* A chart that changes size (bucket, type, second measure...) grows and shrinks instead of snapping. The width is a clamp()/min() expression: a transition runs between its computed lengths. The body follows its content's measured height. */
+.dm-chart { transition: width 200ms ease; }
+.dm-chart-body { transition: height 200ms ease; }
+/* Clipped only while the height moves; the tooltips are portalled to the page, so nothing else needs the clip. */
+.dm-chart-body[data-moving] { overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .dm-chart, .dm-chart-body { transition: none; } }
+/* Google Sheets' grey for a chart menu's dots. A chart's or scorecard's own menu shows on hover, on focus inside it and while open; opacity, not display, so it stays reachable by keyboard. The header's options menu has no such ancestor and stays visible. */
+.dm-menu-dots { color: #5f6368; }
+.dark .dm-menu-dots { color: #9aa0a6; }
+.dm-chart .dm-menu-dots, .dm-scorecard .dm-menu-dots { transition: opacity 120ms ease; }
+@media (hover: hover) {
+  .dm-chart:not(:hover):not(:focus-within) .dm-menu-dots[aria-expanded="false"],
+  .dm-scorecard:not(:hover):not(:focus-within) .dm-menu-dots[aria-expanded="false"] { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .dm-chart .dm-menu-dots, .dm-scorecard .dm-menu-dots { transition: none; } }
 
 /* Axes and gridlines stay quiet; text never wears a series colour. */
 .dm-chart-grid { stroke: var(--border); stroke-width: 1; }

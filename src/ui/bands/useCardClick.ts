@@ -5,6 +5,7 @@ import { PAGE_SIZE } from '../../config';
 import { joinedMartIds, ownNamesIn, planAddAt, planClick, planMakeMain, planRejoin, withoutPaths } from '../../state/join-plan';
 import { sourceOfModel, useServices, useStore, type GridState, type State } from '../../state/store';
 import type { Model } from '../../model/types';
+import { pruneGrid } from '../../state/view-link-resolve';
 import { defaultColumns } from '../../model/columns';
 
 /**
@@ -52,7 +53,9 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
     const picks = new Map<string, Picks>();
     const load = async (martId: string) => {
       const own = await schemas.get(martId).catch(() => []);
-      const joined = await blendable.get(martId).catch(() => [] as JoinedSource[]);
+      // A failed read leaves joined fields unknown, not gone: nothing saved for them is pruned.
+      let failed = false;
+      const joined = await blendable.get(martId).catch(() => { failed = true; return [] as JoinedSource[]; });
       sources.set(martId, joined);
       const have = latest.current.grids[martId];
       const agg = await columnStore.loadAggregation(martId);
@@ -61,8 +64,12 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
       else {
         const saved = (await columnStore.load(martId)) ?? [];
         const offered = new Set([...own, ...joined.flatMap((s) => s.fields)].map((f) => f.name));
-        const kept = saved.filter((c) => offered.has(c));
-        grids.set(martId, { filters: {}, sorts: null, limit: PAGE_SIZE, ...aggFields, ...have, columns: kept.length ? kept : defaultColumns(own) });
+        const kept = failed ? saved : saved.filter((c) => offered.has(c));
+        const columns = kept.length ? kept : defaultColumns(own);
+        // The mart opens with the view the member last left it with, pruned to the fields it offers now (a session grid, held above, wins).
+        const view = await columnStore.loadView(martId);
+        const opened: GridState = { filters: {}, sorts: null, limit: PAGE_SIZE, ...aggFields, ...view, ...have, columns };
+        grids.set(martId, view && !failed ? pruneGrid(opened, [...own, ...joined.flatMap((s) => s.fields)]).grid ?? opened : opened);
       }
       picks.set(martId, await columnStore.loadPicks(martId));
       await columnStore.loadLastShown(martId);

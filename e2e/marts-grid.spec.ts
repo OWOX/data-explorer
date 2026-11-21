@@ -26,7 +26,7 @@ test('grid: a click focuses a card and shows what joins under it, × removes', a
   await expect(data.locator('th[data-group="customers"]')).toHaveCount(0);
 });
 
-test('cards: only path cards have a white background in Grid; hover and selection thicken the border without moving the card', async ({ page }) => {
+test('cards: only path cards have a white background in Grid; hover leaves the border alone, only the selected card has a 2px one, and it does not move', async ({ page }) => {
   await page.goto('/?mock');
   const marts = page.locator('#band-marts');
   const main = marts.locator('article#dm-orders');
@@ -38,14 +38,23 @@ test('cards: only path cards have a white background in Grid; hover and selectio
   await expect(other).toBeVisible();
   expect(await bg(other)).toBe('rgba(0, 0, 0, 0)');
   expect(await bg(main)).not.toBe('rgba(0, 0, 0, 0)');
-  // The bold border is a 2px overlay: the box keeps its size.
+  // Every card has a 1px border; hovering does not thicken it and does not move the card.
   // Let the cards' entrance animation (250ms) finish, or the first measure can be mid-motion.
   await page.waitForTimeout(400);
+  const border = (l: typeof main) => l.evaluate((e) => getComputedStyle(e).borderTopWidth);
   const before = await other.boundingBox();
   await other.hover();
-  const after = await other.boundingBox();
-  expect(after).toEqual(before);
-  expect(await other.evaluate((e) => getComputedStyle(e, '::after').borderTopWidth)).toBe('2px');
+  expect(await other.boundingBox()).toEqual(before);
+  expect(await border(other)).toBe('1px');
+  expect(await border(main)).toBe('1px');
+  // Only the selected card (the focused one) has 2px, from the padding's share: its box keeps its size, and it shows no keyboard ring.
+  const mainBefore = await main.boundingBox();
+  await main.click();
+  await expect(main).toHaveAttribute('data-focused', '');
+  expect(await border(main)).toBe('2px');
+  expect(await main.boundingBox()).toEqual(mainBefore);
+  expect(await main.evaluate((e) => getComputedStyle(e).boxShadow)).toBe('none');
+  expect(await border(other)).toBe('1px');
 });
 
 test('the Data band fills the viewport below the bands above it and scrolls inside', async ({ page }) => {

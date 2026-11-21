@@ -7,7 +7,7 @@ export type Orientation = 'vertical' | 'horizontal';
 /** What a measure is saved as: the field name, `'records'` for the main mart's records (as before joined marts counted) and `records:<martId>` for a joined mart's (`records:<martId>@<aliasPath>` for a later copy of it). */
 export const measureId = (m: Measure): string => (m.kind === 'metric' ? m.metric.field.name : m.aliasPath === '' ? 'records' : m.recordsId);
 
-export const CHART_KINDS = ['timeSeries', 'pie', 'rankedBar', 'line', 'heatmap', 'scatter', 'spread'] as const;
+export const CHART_KINDS = ['timeSeries', 'bar', 'pie', 'rankedBar', 'line', 'heatmap', 'scatter', 'spread'] as const;
 export type ChartKind = (typeof CHART_KINDS)[number];
 export const isChartKind = (v: unknown): v is ChartKind => (CHART_KINDS as readonly unknown[]).includes(v);
 

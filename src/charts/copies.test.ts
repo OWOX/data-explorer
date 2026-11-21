@@ -26,7 +26,7 @@ describe('a mart joined twice and a self-join', () => {
     const cf = build();
     const opts = measureOptions(cf, measuresOf(cf)).filter((o) => o.value.startsWith('records'));
     expect(opts.map((o) => o.value)).toEqual(['records', 'records:C', 'records:C@b', 'records:M@s']);
-    expect(opts.map((o) => o.label)).toEqual(['Unique Records', 'Customers (a) · Unique Records', 'Customers (b) · Unique Records', 'Orders (s) · Unique Records']);
+    expect(opts.map((o) => o.label)).toEqual(['Count Unique', 'Customers (a) · Count Unique', 'Customers (b) · Count Unique', 'Orders (s) · Count Unique']);
   });
   it('resolves a saved copy to its own path, on the series and on the pie', () => {
     const cf = build();
@@ -41,7 +41,7 @@ describe('a mart joined twice and a self-join', () => {
   });
   it('has distinct card ids, and hiding one keeps the others', () => {
     const cf = build();
-    const ids = cf.marts.map((m) => cardsOf(m).find((c) => c.label === 'Unique Records')!.id);
+    const ids = cf.marts.map((m) => cardsOf(m).find((c) => c.label === 'Count Unique')!.id);
     expect(ids).toEqual(['records:M', 'records:C', 'records:C@b', 'records:M@s']);
     const all = cf.marts.flatMap((m) => cardsOf(m).map((c) => c.id));
     expect(new Set(all).size).toBe(all.length);

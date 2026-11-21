@@ -8,7 +8,7 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useServices } from '../../state/store';
 import { App } from '../App';
-import { SAVED_COLUMNS_WAIT_MS } from './MartGrid';
+import { SAVED_COLUMNS_WAIT_MS, VIEW_HOLD_MAX_MS } from './MartGrid';
 import { openColumnMenu } from './menu-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
@@ -144,6 +144,107 @@ test('a load slower than 3 s falls back to the defaults and the late result is i
     release();
     await vi.advanceTimersByTimeAsync(200);
     expect(headers()).toHaveLength(5);
+  } finally { vi.useRealTimers(); }
+});
+
+test('after the 3 s fallback, an edit does not save the view until the late saved view has been read', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => { release = r; });
+    const t = setup(['id', 'status'], (ctx) => ({
+      ...ctx,
+      collections: <T,>(name: string) => {
+        const inner = ctx.collections<T>(name);
+        return name === SAVED ? { get: async (id: string) => { await gate; return inner.get(id); }, put: inner.put } : inner;
+      },
+    }));
+    await t.seeded;
+    t.view();
+    await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
+    await vi.advanceTimersByTimeAsync(SAVED_COLUMNS_WAIT_MS + 50);
+    await waitFor(() => expect(headers()).toHaveLength(5));
+    const saveView = vi.spyOn(t.services.current!.columnStore, 'saveView');
+    await userEvent.click(within(document.getElementById('band-data')!).getByRole('button', { name: /^Sort by Amount/ }));
+    await vi.advanceTimersByTimeAsync(100);
+    expect(saveView).not.toHaveBeenCalled();
+    release();
+    await vi.advanceTimersByTimeAsync(200);
+    await waitFor(() => expect(saveView).toHaveBeenCalledTimes(1));
+  } finally { vi.useRealTimers(); }
+});
+
+// The saved list and view sit behind a read that `gate` holds; the grid falls back to defaults after 3 s.
+async function lateSetup(gated: boolean) {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  let release: () => void = () => undefined;
+  const gate = gated ? new Promise<void>((r) => { release = r; }) : Promise.resolve();
+  const t = setup(['id', 'status'], (ctx) => ({
+    ...ctx,
+    collections: <T,>(name: string) => {
+      const inner = ctx.collections<T>(name);
+      return name === SAVED ? { get: async (id: string) => { await gate; return inner.get(id); }, put: inner.put } : inner;
+    },
+  }));
+  await t.col.put('orders', { columns: ['id', 'status'], at: 'then', gridView: { fl: [['status', 'eq', 'paid', null, 1]], s: [['amount', -1]], l: 400 } } as never);
+  const mounted = t.view();
+  await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
+  await vi.advanceTimersByTimeAsync(SAVED_COLUMNS_WAIT_MS + 50);
+  await waitFor(() => expect(headers()).toHaveLength(5));
+  const saveView = vi.spyOn(t.services.current!.columnStore, 'saveView');
+  return { t, release, saveView, mounted };
+}
+const sortAmount = () => userEvent.click(within(document.getElementById('band-data')!).getByRole('button', { name: /^Sort by Amount/ }));
+
+test('an edit made after the fallback keeps the saved filters and limit the late read brings', async () => {
+  try {
+    const { release, saveView } = await lateSetup(true);
+    await sortAmount();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(saveView).not.toHaveBeenCalled();
+    release();
+    await vi.advanceTimersByTimeAsync(200);
+    await waitFor(() => expect(saveView).toHaveBeenCalledTimes(1));
+    const saved = saveView.mock.calls[0]![1];
+    expect(Object.keys(saved.filters)).toEqual(['status']);
+    expect(saved.limit).toBe(400);
+    expect(saved.sorts).not.toBeNull();
+  } finally { vi.useRealTimers(); }
+});
+
+test('with no edit made, the late saved view re-seeds the grid and nothing is written back', async () => {
+  try {
+    const { t, release, saveView } = await lateSetup(true);
+    release();
+    await vi.advanceTimersByTimeAsync(200);
+    await waitFor(() => expect(within(document.getElementById('band-data')!).getAllByRole('columnheader').some((h) => h.getAttribute('aria-sort') === 'descending')).toBe(true));
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 500);
+    expect(saveView).not.toHaveBeenCalled();
+    expect(t.put).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
+});
+
+test('an edit still held when the grid unmounts is dropped, not saved over the unread view', async () => {
+  try {
+    const { t, release, saveView, mounted } = await lateSetup(true);
+    await sortAmount();
+    await vi.advanceTimersByTimeAsync(100);
+    mounted.unmount();
+    release();
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 500);
+    expect(saveView).not.toHaveBeenCalled();
+    expect(t.put).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
+});
+
+test('a saved-view read that never settles does not hold the edit past the cap', async () => {
+  try {
+    const { saveView } = await lateSetup(true);
+    await sortAmount();
+    await vi.advanceTimersByTimeAsync(VIEW_HOLD_MAX_MS - 1000);
+    expect(saveView).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1500);
+    await waitFor(() => expect(saveView).toHaveBeenCalledTimes(1));
   } finally { vi.useRealTimers(); }
 });
 

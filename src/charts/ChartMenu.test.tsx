@@ -64,3 +64,25 @@ test('a row and a submenu option show their icon before the label, hidden from s
   expect((await screen.findByRole('menuitemradio', { name: 'Pie' })).querySelector('.dm-menu-glyph svg.lucide-chart-pie')).not.toBeNull();
   expect(screen.getByRole('menuitemradio', { name: 'Plain' }).querySelector('.dm-menu-glyph')).toBeNull();
 });
+
+test('the ResizeObserver callback that fires on observe does not shield a real scroll right after opening', async () => {
+  const Real = globalThis.ResizeObserver;
+  class Eager {
+    constructor(private cb: () => void) {}
+    observe() { this.cb(); }
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = Eager as unknown as typeof ResizeObserver;
+  try {
+    render(<div data-chart-kind="bar"><ChartMenu name="Sales" items={items} /></div>);
+    await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+    expect(screen.getByRole('menu', { name: 'Sales menu' })).toBeInTheDocument();
+    Object.defineProperty(window, 'scrollY', { value: 120, configurable: true });
+    fireEvent.scroll(document);
+    expect(screen.queryByRole('menu', { name: 'Sales menu' })).toBeNull();
+  } finally {
+    globalThis.ResizeObserver = Real;
+    Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+  }
+});
