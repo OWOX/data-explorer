@@ -5,9 +5,9 @@ import type { JoinedSource } from '../../api/blendable';
 import type { DqSummary, Model } from '../../model/types';
 import { buildJoinTree, ghostLevels, subtreePaths } from '../../state/join-tree';
 import { pathTitle } from '../../state/join-plan';
-import { closestTarget, dropTargets } from './canvas-drag';
+import { closestTarget, dragLinePath, dropTargets } from './canvas-drag';
 import { scrollBoxOf, zoomedScale } from './canvas-zoom';
-import { CARD_H, CARD_W, layoutTree } from './canvas-layout';
+import { CARD_W, layoutTree } from './canvas-layout';
 import { MartCard, contextsOf, martElementId, type CountState } from './cards';
 import { useLatest } from '../useLatest';
 import { useCanvasDrag } from './useCanvasDrag';
@@ -28,6 +28,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   click: (id: string, options?: ClickOptions) => Promise<void>;
 }) {
   const treeRef = useRef<HTMLDivElement>(null);
+  const sizerRef = useRef<HTMLDivElement>(null);
   // Zoom lives in memory only. The layout stays in unscaled pixels; the tree is drawn with a CSS scale.
   const [scale, setScale] = useState(1);
   const scaleRef = useLatest(scale);
@@ -38,6 +39,8 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   const [pinState, setPinState] = useState<{ main: string | null; path: string } | null>(null);
   const pinned = pinState !== null && pinState.main === mainId ? pinState.path : null;
   const setPinned = useCallback((path: string | null) => setPinState(path === null ? null : { main: mainId, path }), [mainId]);
+  // The tree and main mart of the latest render: a click that resolves later checks what its step left, not what it was started on.
+  const latest = useLatest({ tree, mainId });
   // The drop handler runs after render, so it reads the latest layout through a ref (the layout is built further down).
   const placedRef = useRef<ReturnType<typeof layoutTree>['placed']>([]);
   const drag = useCanvasDrag(
@@ -83,12 +86,16 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
       const r = tree.getBoundingClientRect();
       const lx = (e.clientX - r.left) / from;
       const ly = (e.clientY - r.top) / from;
+      // The sizer's height transition is for ghosts only: a zoom must apply its new size at once, or the scroll offset below is clamped to the old height.
+      const sizer = sizerRef.current;
+      if (sizer) sizer.style.transition = 'none';
       scaleRef.current = to;
       flushSync(() => setScale(to));
       // Keep the layout point that was under the pointer under it.
       const n = tree.getBoundingClientRect();
       box.scrollLeft += n.left - (e.clientX - lx * to);
       box.scrollTop += n.top - (e.clientY - ly * to);
+      if (sizer) requestAnimationFrame(() => { sizer.style.transition = ''; });
     };
     box.addEventListener('wheel', onWheel, { passive: false });
     return () => box.removeEventListener('wheel', onWheel);
@@ -147,18 +154,12 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     return path === '' || !source ? undefined : pathTitle(source, [...tree.nodes.keys()], sources ?? []);
   };
   const dragTitle = drag ? model.marts.get(tree.nodes.get(drag.path)?.martId ?? '')?.title : undefined;
-  let line: string | null = null;
-  const to = pick && layout.placed.find((p) => p.path === pick.target);
-  if (drag && to) {
-    const x2 = drag.x < to.x + CARD_W / 2 ? to.x : to.x + CARD_W;
-    const y2 = to.y + CARD_H / 2;
-    const pull = Math.max(40, Math.abs(x2 - drag.x) / 2);
-    const dir = x2 >= drag.x ? 1 : -1;
-    line = `M${drag.x} ${drag.y} C${drag.x + dir * pull} ${drag.y} ${x2 - dir * pull} ${y2} ${x2} ${y2}`;
-  }
+  // While a card is held (also with the pointer outside the box, where a release does nothing), a dashed line runs from it to every place it can be dropped; the closest one is drawn stronger.
   const at = new Map(layout.placed.map((p) => [p.path, p] as const));
+  const held = drag ? at.get(drag.path) : undefined;
+  const lines = held ? targets.flatMap((t) => { const to = at.get(t.target); return to ? [{ path: t.target, d: dragLinePath(held, to) }] : []; }) : [];
   return (
-    <div className="dm-tree-sizer" style={{ width: layout.width * scale, height: layout.height * scale }}>
+    <div ref={sizerRef} className="dm-tree-sizer" style={{ width: layout.width * scale, height: layout.height * scale }}>
     <div
       ref={treeRef}
       className="dm-tree"
@@ -173,7 +174,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
         const pos = at.get(node.path);
         if (!mart || !pos) return [];
         return [
-          <div key={node.path} className={`dm-tree-node${drag && node.path !== drag.path && !valid.has(node.path) ? ' dm-dimmed' : ''}`} data-tree-path={node.path} style={{ left: pos.x, top: pos.y, width: CARD_W }}>
+          <div key={node.path} className={`dm-tree-node${drag && node.path !== drag.path && (pick ? pick.target !== node.path : !valid.has(node.path)) ? ' dm-dimmed' : ''}`} data-tree-path={node.path} style={{ left: pos.x, top: pos.y, width: CARD_W }}>
             <MartCard
               mart={mart}
               contexts={contextsOf(model.contexts, mart.contextIds)}
@@ -199,7 +200,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
           </div>,
         ];
       })}
-      {line && <svg id="drag-line" aria-hidden><path d={line} /></svg>}
+      {lines.length > 0 && <svg id="drag-line" aria-hidden>{lines.map((l) => <path key={l.path} d={l.d} data-target={l.path} className={pick?.target === l.path ? 'closest' : undefined} />)}</svg>}
       {layout.ghosts.flatMap((spot) => {
         const g = ghosts.find((s) => s.aliasPath === spot.id);
         const mart = g && model.marts.get(g.martId);
@@ -216,7 +217,15 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               selected={false}
               joined={false}
               lit={false}
-              onSelect={() => { setPinned(null); clearHover(); click(g.martId, { addAt: g.aliasPath }).then(() => setFocusCard({ martId: g.martId, path: g.aliasPath }), () => undefined); }}
+              onSelect={() => { setPinned(null); clearHover(); 
+                // The added card is pinned, so what joins under it shows at once. A click that added nothing pins nothing.
+                const main = mainId;
+                click(g.martId, { addAt: g.aliasPath }).then(() => {
+                  if (latest.current.mainId !== main || !latest.current.tree.nodes.has(g.aliasPath)) return;
+                  setPinned(g.aliasPath);
+                  setFocusCard({ martId: g.martId, path: g.aliasPath });
+                }, () => undefined);
+              }}
               onOpenApp={() => onOpenApp(mart.id)}
             />
           </div>,

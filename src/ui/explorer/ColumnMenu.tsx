@@ -57,6 +57,10 @@ const CURRENCIES = ['USD', 'EUR', 'GBP', 'UAH'];
 /** The currencies the Money submenu lists: the four fixed ones, then the current one (an AI pick or an old choice) when it is another. */
 const currenciesFor = (current: Format): string[] => (current.kind === 'money' && !CURRENCIES.includes(current.currency) ? [...CURRENCIES, current.currency] : CURRENCIES);
 
+/** The notes under the Filter and Slice panels, after the OWOX web app's output settings. */
+const FILTER_NOTE = 'Filters narrow the final result, applied to the SELECT after all JOINs. Use slices to narrow a joined data mart BEFORE it is JOINed in.';
+const SLICE_NOTE = 'Slices are pre-join filters: they narrow a joined data mart INSIDE its own subquery before the JOIN, reducing the rows pulled in. Because joins are LEFT JOINs, a slice does NOT reduce the number of rows in the final result: main-mart rows that no longer match a sliced row pass through with NULL on the joined columns. To drop those rows from the output, add a Filter on the joined column.';
+
 /** The function's label in lower case, as the HAVING note and the Funnel tooltip name it: "sum". */
 const fnName = (f: AggFn) => AGG_LABELS[f].toLowerCase();
 /** What a filter says in a tooltip: a HAVING filter names its function and reads against the aggregate's type. */
@@ -156,15 +160,18 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
         <EditorPanel row={sub.row} seq={sub.seq} label={`Filter of ${title}`} onEscape={closeSub}>
           <FilterEditor key={JSON.stringify(env.filters[field.name])} field={having ? havingField(field, having) : field} value={env.filters[field.name]}
             onApply={(f) => { env.setFilter(field.name, having ? { ...f, fn: having } : f); onClose(); }} onClear={() => { env.setFilter(field.name, undefined); onClose(); }}
-            note={having ? <p className="mt-2 text-xs text-muted-foreground">Filters the {fnName(having)} after grouping</p>
-              : env.isAggregated(field.name) ? <p className="mt-2 text-xs text-muted-foreground">Filters rows before they are aggregated</p> : undefined} />
+            note={<>
+              <p className="mt-2 text-xs text-muted-foreground">{FILTER_NOTE}</p>
+              {having ? <p className="mt-2 text-xs text-muted-foreground">Filters the {fnName(having)} after grouping</p>
+                : env.isAggregated(field.name) ? <p className="mt-2 text-xs text-muted-foreground">Filters rows before they are aggregated</p> : null}
+            </>} />
         </EditorPanel>
       )}
       {placed && sub?.key === 'slice' && field.joined && (
         <EditorPanel row={sub.row} seq={sub.seq} label={`Slice of ${title}`} onEscape={closeSub}>
           <FilterEditor key={JSON.stringify(env.slices[field.name])} field={sliceField(field)} value={env.slices[field.name]}
             onApply={(f) => { env.setSlice(field.name, f); onClose(); }} onClear={() => { env.setSlice(field.name, undefined); onClose(); }}
-            note={<p className="mt-2 max-w-[18rem] text-xs text-muted-foreground">Slices filter the joined data mart before it is joined, reducing the rows pulled in.</p>} />
+            note={<p className="mt-2 text-xs text-muted-foreground">{SLICE_NOTE}</p>} />
         </EditorPanel>
       )}
       {placed && sub?.key === 'aggregate' && (
@@ -249,6 +256,12 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
     window.addEventListener('scroll', away, true);
     return () => { document.removeEventListener('pointerdown', down, true); window.removeEventListener('scroll', away, true); };
   }, [menu]);
+  // The sort mark steps this column's sort (ascending, descending, none) in place; it does not open the menu.
+  // Stepping to none unmounts the mark, so focus moves to the column's menu icon rather than dropping to the page.
+  const cycleMark = () => {
+    env.setSort(field.name, direction === 'asc' ? 'desc' : direction === 'desc' ? null : 'asc');
+    if (direction === 'desc') icon.current?.focus();
+  };
   const Arrow = direction === 'desc' ? ArrowDown : ArrowUp;
   // The indicators shown beside the menu icon, in this order; each opens the menu at its own submenu.
   const marks: { sub: SubKey; on: boolean; tip?: string; label: string; icon: ReactNode; badge?: ReactNode }[] = [
@@ -261,7 +274,7 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
     <span ref={controls} className="dm-hdr-controls">
       {marks.filter((m) => m.on).map((m) => {
         const button = (
-          <button key={m.sub} type="button" {...(m.sub === 'sort' ? { 'data-sort-mark': '' } : {})} aria-label={m.label} aria-haspopup="menu" className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => toggle(e.currentTarget, m.sub)}>
+          <button key={m.sub} type="button" {...(m.sub === 'sort' ? { 'data-sort-mark': '' } : {})} aria-label={m.label} {...(m.sub === 'sort' ? {} : { 'aria-haspopup': 'menu' as const })} className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => (m.sub === 'sort' ? cycleMark() : toggle(e.currentTarget, m.sub))}>
             {m.icon}{m.badge}
           </button>
         );

@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { CARD_H, CARD_W } from './canvas-layout';
 import { buildJoinTree } from '../../state/join-tree';
 import type { JoinedSource } from '../../api/blendable';
-import { closestTarget, dropTargets } from './canvas-drag';
+import { closestTarget, dragLinePath, dropTargets } from './canvas-drag';
 
 const t = (target: string) => ({ target, moves: new Map([['a.c', `${target}.c`]]) });
 const placed = [{ path: 'a', x: 0, y: 0 }, { path: 'b', x: 0, y: 300 }, { path: '', x: -400, y: 150 }];
@@ -27,4 +27,10 @@ test('dropTargets adds the current parent once, with no moves; the main mart has
   const own = dropTargets(tree, sources, 'c.k').filter((t) => t.target === 'c');
   expect(own).toHaveLength(1);
   expect(dropTargets(tree, sources, '').some((t) => t.target === null)).toBe(false);
+});
+
+test('a drag line leaves the held card on the side that faces the target and ends on the target edge', () => {
+  const held = { path: 'a', x: 352, y: 0 };
+  expect(dragLinePath(held, { path: 'b', x: 704, y: 144 })).toMatch(/^M576 56 .* 704 200$/);
+  expect(dragLinePath(held, { path: 'c', x: 0, y: 0 })).toMatch(/^M352 56 .* 224 56$/);
 });

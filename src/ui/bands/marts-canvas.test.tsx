@@ -57,7 +57,7 @@ test('hovering a card shows its ghosts; clicking a ghost adds that mart through 
   expect(headers().length).toBeGreaterThan(5);
 });
 
-test('a ghost keeps its place while the pointer is in its title bubble', async () => {
+test('a ghost keeps its place while the pointer is in its tooltip', async () => {
   setup();
   await ready();
   await toCanvas();
@@ -65,12 +65,12 @@ test('a ghost keeps its place while the pointer is in its title bubble', async (
   await userEvent.hover(el('orders')!);
   const ghost = await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="customers"]'); expect(g).not.toBeNull(); return g!; });
   await userEvent.hover(ghost.querySelector<HTMLElement>('.dm-node-title')!);
-  const bubble = await waitFor(() => { const b = document.querySelector<HTMLElement>('.dm-title-tip'); expect(b).not.toBeNull(); return b!; });
+  const bubble = await waitFor(() => { const b = document.querySelector<HTMLElement>('.dm-hint-body'); expect(b).not.toBeNull(); return b!; });
   expect(marts().contains(bubble)).toBe(false);
-  fireEvent.pointerOver(bubble.querySelector('.dm-title-tip-text')!);
+  fireEvent.pointerOver(bubble);
   await new Promise((r) => setTimeout(r, 600));
   expect(ghosts()).toContain('dm-customers@customers');
-  expect(document.querySelector('.dm-title-tip')).not.toBeNull();
+  expect(document.querySelector('.dm-hint-body')).not.toBeNull();
 });
 
 test('clicking a card pins its ghosts; Escape lets them go', async () => {
@@ -133,12 +133,16 @@ const joinCountriesUnderCustomers = async () => {
   await userEvent.hover(el('orders')!);
   await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="customers"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
+  // The added card is pinned: let the pin go so the next ghost is looked up under the card hovered.
+  await userEvent.keyboard('{Escape}');
   await userEvent.hover(el('orders')!);
   await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="stores"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores']));
+  await userEvent.keyboard('{Escape}');
   await userEvent.hover(el('customers', 'customers')!);
   await userEvent.click(await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost][data-mart-id="countries"]'); expect(g).not.toBeNull(); return g!; }));
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Stores', 'Countries']));
+  await userEvent.keyboard('{Escape}');
 };
 
 test('dragging countries from customers onto stores moves its columns to the stores path', async () => {
@@ -152,8 +156,12 @@ test('dragging countries from customers onto stores moves its columns to the sto
   fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
   await waitFor(() => expect(wrapper('orders')).toHaveClass('dm-dimmed'));
   expect(wrapper('stores', 'stores')).not.toHaveClass('dm-dimmed');
-  expect(wrapper('customers', 'customers')).not.toHaveClass('dm-dimmed');
-  expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(1);
+  // Only the closest target stays lit; the other target (the current parent) is dimmed with the rest.
+  expect(wrapper('customers', 'customers')).toHaveClass('dm-dimmed');
+  // A dashed line runs to every target, and the closest one is drawn stronger.
+  const lines = [...marts().querySelectorAll('svg#drag-line path')];
+  expect(lines.map((l) => l.getAttribute('data-target')).sort()).toEqual(['customers', 'stores']);
+  expect(lines.filter((l) => l.classList.contains('closest')).map((l) => l.getAttribute('data-target'))).toEqual(['stores']);
   expect(el('stores', 'stores')!.className).toBe(storesClass);
   fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
   await waitFor(() => expect(tips()).toContain('Stores → Countries'));
@@ -195,7 +203,7 @@ test('releasing near the current parent changes nothing and leaves the wires alo
   fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
   fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
   fireEvent.pointerMove(treeEl(), pointer(cu().x, cu().y));
-  await waitFor(() => expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(1));
+  await waitFor(() => expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(2));
   fireEvent.pointerUp(el('customers', 'customers')!, pointer(cu().x, cu().y, 0));
   await new Promise((r) => setTimeout(r, 50));
   expect(headers()).toEqual(before);
@@ -255,7 +263,9 @@ test('the line and the release both count the whole scroll box, and neither coun
   fireEvent.pointerMove(box, pointer(stores().x, stores().y));
   await waitFor(() => expect(line()).not.toBeNull());
   fireEvent.pointerMove(document.body, pointer(stores().x, stores().y));
-  await waitFor(() => expect(line()).toBeNull());
+  // Outside the box the target lines stay, none is closest, and a release does nothing.
+  await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')).toBeNull());
+  expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(2);
   fireEvent.pointerMove(box, pointer(stores().x, stores().y));
   await waitFor(() => expect(line()).not.toBeNull());
   fireEvent.pointerUp(box, pointer(stores().x, stores().y, 0));
@@ -335,6 +345,7 @@ test('two copies of one mart read with their paths, and so do their remove butto
   await within(marts()).findByText('Customers');
   fireEvent.click(gridCard('Customers'));
   await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+  fireEvent.keyDown(document, { key: 'Escape' });
   fireEvent.click(gridCard('Stores'));
   await waitFor(() => expect(el('stores', 'stores')).not.toBeNull());
   fireEvent.click(el('customers', 'customers')!);
@@ -501,12 +512,74 @@ test('at another scale the drag line and the drop pick use layout pixels', async
   fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
   fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
   fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
-  // The line ends on the stores card's edge in layout pixels, whatever the scale.
-  await waitFor(() => expect(marts().querySelector('svg#drag-line path')).not.toBeNull());
-  const d = marts().querySelector('svg#drag-line path')!.getAttribute('d')!;
-  const start = d.match(/^M([\d.]+) ([\d.]+)/)!;
-  expect(parseFloat(start[1]!)).toBeCloseTo(centre('stores', 'stores').x, 0);
-  expect(parseFloat(start[2]!)).toBeCloseTo(centre('stores', 'stores').y, 0);
+  // The closest line ends on the stores card's edge in layout pixels, whatever the scale.
+  await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')).not.toBeNull());
+  const d = marts().querySelector('svg#drag-line path.closest')!.getAttribute('d')!;
+  const end = d.match(/ ([\d.]+) ([\d.]+)$/)!;
+  expect(Math.abs(parseFloat(end[1]!) - centre('stores', 'stores').x)).toBe(112);
+  expect(parseFloat(end[2]!)).toBeCloseTo(centre('stores', 'stores').y, 0);
   fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
   await waitFor(() => expect(tips()).toContain('Stores → Countries'));
+});
+
+test('a click on a ghost adds it and pins it, its own ghosts show; a second click lets them go', async () => {
+  setup();
+  await ready();
+  await toCanvas();
+  await waitFor(() => expect(el('orders')).not.toBeNull());
+  await userEvent.hover(el('orders')!);
+  await userEvent.click(await waitFor(() => { const g = ghostEl('customers', 'customers'); expect(g).not.toBeNull(); return g!; }));
+  await waitFor(() => expect(ghostEl('countries', 'customers.countries')).not.toBeNull());
+  await userEvent.click(el('customers', 'customers')!);
+  await waitFor(() => expect(ghostEl('countries', 'customers.countries')).toBeNull());
+});
+
+test('Data Sources cards are lit and dimmed by the same rule in Grid and in Graph', async () => {
+  setup();
+  await ready();
+  await within(marts()).findByText('Customers');
+  fireEvent.click(gridCard('Customers'));
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
+  const sources = () => document.getElementById('band-sources')!;
+  const lit = () => [...sources().querySelectorAll('.dm-node')].map((n) => `${n.id}:${n.classList.contains('lit')}`);
+  const root = () => marts().closest('.dm-canvas')!;
+  await waitFor(() => expect(root()).toHaveClass('focused'));
+  const inGrid = lit();
+  expect(inGrid.some((s) => s.endsWith(':true'))).toBe(true);
+  await toCanvas();
+  await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+  // Graph dims the Sources band, and only that band, with the Grid's rule: the lit cards are the same.
+  expect(root()).toHaveClass('sources-focused');
+  expect(root()).not.toHaveClass('focused');
+  expect(lit()).toEqual(inGrid);
+});
+
+test('while a Graph card is held, every target gets a line, only the closest card stays lit, and the drop joins under it', async () => {
+  await joinCountriesUnderCustomers();
+  const stores = () => centre('stores', 'stores');
+  const c = () => centre('countries', 'customers.countries');
+  fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
+  await waitFor(() => expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(2));
+  const lit = [...marts().querySelectorAll('.dm-tree-node:not(.dm-dimmed)')].map((n) => n.getAttribute('data-tree-path'));
+  expect(lit.sort()).toEqual(['customers.countries', 'stores']);
+  // Moving next to the current parent changes the closest one.
+  const cu = centre('customers', 'customers');
+  fireEvent.pointerMove(treeEl(), pointer(cu.x, cu.y));
+  await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')?.getAttribute('data-target')).toBe('customers'));
+  fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
+  await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')?.getAttribute('data-target')).toBe('stores'));
+  fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
+  await waitFor(() => expect(tips()).toContain('Stores → Countries'));
+});
+
+test('a zoom step applies the new sizer height with no transition, and the transition returns after a frame', async () => {
+  await joinCountriesUnderCustomers();
+  const sizer = marts().querySelector<HTMLElement>('.dm-tree-sizer')!;
+  const before = sizer.style.height;
+  fireEvent.wheel(zoomBox(), { deltaY: 100, ctrlKey: true });
+  expect(sizer.style.height).not.toBe(before);
+  expect(sizer.style.transition).toBe('none');
+  await waitFor(() => expect(sizer.style.transition).toBe(''));
 });

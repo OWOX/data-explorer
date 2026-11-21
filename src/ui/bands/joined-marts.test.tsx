@@ -36,7 +36,8 @@ const title = () => within(data()).queryAllByRole('columnheader').filter((h) => 
 const headers = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden') && h.getAttribute('scope') !== 'colgroup').map((h) => h.textContent!);
 const groupTitles = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!);
 const ready = async () => { await waitFor(() => expect(headers()).toHaveLength(5)); await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true)); };
-const click = async (name: string) => { await within(marts()).findByText(name); fireEvent.click(card(name)); };
+// A card just added is focused, so the others are dimmed: the focus is let go before the next click.
+const click = async (name: string) => { await within(marts()).findByText(name); fireEvent.keyDown(document, { key: 'Escape' }); fireEvent.click(card(name)); };
 /** The × on a joined card: the only way a card takes a mart out. */
 const remove = async (name: string) => { await userEvent.click(within(card(name)).getByRole('button', { name: `Remove ${name} from the report` })); };
 const undo = () => userEvent.click(screen.getByRole('button', { name: 'Undo' }));

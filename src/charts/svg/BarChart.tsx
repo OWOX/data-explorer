@@ -13,16 +13,19 @@ const GAP = 2;
 const RADIUS = 4;
 const TOP = 8;
 const AXIS_H = 24;
+const TITLE_H = 18;
 const CHAR_W = 6;
 
 /** Stacked bars. Sizes are ratios of the largest stacked total, for drawing only; every shown value is the caller's text. */
-export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, canPick, stacked }: { series: Series[]; orientation: 'vertical' | 'horizontal'; ariaLabel: string; formatTick: (n: number) => string;
+export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, canPick, stacked, xTitle }: { series: Series[]; orientation: 'vertical' | 'horizontal'; ariaLabel: string; formatTick: (n: number) => string;
   /** A click on a bucket (and, when stacked, on one of its segments: `seriesIndex`). */
   onPick?: (x: string, seriesIndex?: number) => void;
   /** Whether a bucket can be filtered to (a blank bucket has no range); default all. */
   canPick?: (x: string) => boolean;
   /** Whether the series are stacked values of one dimension; default: more than one series. */
-  stacked?: boolean }) {
+  stacked?: boolean;
+  /** The X field's display name, shown under the bucket labels. */
+  xTitle?: string }) {
   const { ref, width } = useWidth<HTMLDivElement>();
   const xs = series[0]?.points ?? [];
   const totals = xs.map((_, i) => series.reduce((sum, s) => sum + Math.max(0, s.points[i]?.y ?? 0), 0));
@@ -33,7 +36,8 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   const left = vertical ? Math.max(32, Math.max(...ticks.map((t) => formatTick(t).length)) * CHAR_W + 12) : labelW;
   const plotW = Math.max(20, width - left - 8);
   const band = vertical ? plotW / Math.max(1, xs.length) : ROW_H;
-  const height = vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H;
+  const titleH = xTitle ? TITLE_H : 0;
+  const height = (vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H) + titleH;
   // Keep every k-th bucket label so none overlap.
   const labelStep = vertical ? Math.max(1, Math.ceil((Math.max(...xs.map((p) => p.label.length), 0) * CHAR_W + 8) / band)) : 1;
   const scale = (n: number) => (max > 0 ? n / max : 0) * (vertical ? PLOT_H : plotW);
@@ -107,6 +111,13 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
             ? <text key={p.x} className="dm-chart-text" x={left + i * band + band / 2} y={TOP + PLOT_H + 16} textAnchor="middle">{p.label}</text>
             : <text key={p.x} className="dm-chart-text" x={left - 6} y={TOP + i * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle">{p.label}</text>
         ) : null))}
+        {xTitle && (() => {
+          // Horizontal: the title sits in the reserved strip under the tick row, centred under the plot.
+          const room = Math.max(4, Math.floor(plotW / CHAR_W));
+          const text = xTitle.length > room ? `${xTitle.slice(0, room - 1)}…` : xTitle;
+          const y = (vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H) + 10;
+          return <text className="dm-chart-axis-title" x={left + plotW / 2} y={y} textAnchor="middle"><title>{xTitle}</title>{text}</text>;
+        })()}
         {bands}
         {marks}
       </svg>
@@ -116,7 +127,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
         </ul>
       )}
       <table className="sr-only">
-        <thead><tr><th>Bucket</th>{series.map((s) => <th key={s.name}>{s.name}</th>)}</tr></thead>
+        <thead><tr><th>{xTitle ?? 'Bucket'}</th>{series.map((s) => <th key={s.name}>{s.name}</th>)}</tr></thead>
         <tbody>{xs.map((p, i) => <tr key={p.x}><th scope="row">{p.label}</th>{series.map((s) => <td key={s.name}>{s.points[i]?.valueText ?? ''}</td>)}</tr>)}</tbody>
       </table>
     </div>

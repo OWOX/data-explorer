@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Database } from 'lucide-react';
 import { vi } from 'vitest';
@@ -184,82 +184,17 @@ describe('MartCard', () => {
     expect(container.querySelector('article')).toHaveClass('lit', 'aside');
   });
 
-  test('the OWOX link is not on the card until the title bubble opens, then it opens the app and does not select', async () => {
+  test('the OWOX link sits on the card head, opens the app and does not select', async () => {
     const { props } = renderMart();
-    expect(screen.queryByLabelText('Open in OWOX')).toBeNull();
-    await userEvent.hover(screen.getByText('Orders'));
-    await userEvent.click(await screen.findByLabelText('Open in OWOX'));
+    await userEvent.click(screen.getByLabelText('Open in OWOX'));
     expect(props.onOpenApp).toHaveBeenCalledTimes(1);
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
-  test('a click in the title bubble outside the link does not select the card', async () => {
-    const { props } = renderMart();
-    await userEvent.hover(screen.getByText('Orders'));
-    await screen.findByLabelText('Open in OWOX');
-    await userEvent.click(document.querySelector<HTMLElement>('.dm-title-tip-text')!);
-    expect(props.onSelect).not.toHaveBeenCalled();
-  });
-
-  test('the keyboard twin of the link opens the app', async () => {
-    const { props } = renderMart();
-    await userEvent.click(screen.getByLabelText('Open Orders in OWOX'));
-    expect(props.onOpenApp).toHaveBeenCalledTimes(1);
-    expect(props.onSelect).not.toHaveBeenCalled();
-  });
-
-  test('a click on the title closes the bubble after 500 ms even when the pointer moves over the title meanwhile', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      const { container } = renderMart();
-      const title = container.querySelector<HTMLElement>('.dm-node-title')!;
-      await user.hover(title);
-      await screen.findByLabelText('Open in OWOX');
-      fireEvent.pointerDown(title);
-      fireEvent.click(title);
-      fireEvent.pointerMove(title, { clientX: 5, clientY: 5 });
-      act(() => { vi.advanceTimersByTime(200); });
-      fireEvent.pointerMove(title, { clientX: 6, clientY: 6 });
-      act(() => { vi.advanceTimersByTime(400); });
-      await waitFor(() => expect(screen.queryByLabelText('Open in OWOX')).toBeNull());
-    } finally { vi.useRealTimers(); }
-  });
-
-  test('the title bubble stays 500 ms after the pointer leaves the title, and while the pointer is on it', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      const { container } = renderMart();
-      const title = container.querySelector<HTMLElement>('.dm-node-title')!;
-      await user.hover(title);
-      expect(await screen.findByLabelText('Open in OWOX')).toBeInTheDocument();
-      await user.unhover(title);
-      // Radix judges the pointer's exit from the bubble's grace area on the next pointer move.
-      fireEvent.pointerMove(document.body, { clientX: 900, clientY: 900 });
-      act(() => { vi.advanceTimersByTime(400); });
-      expect(screen.getByLabelText('Open in OWOX')).toBeInTheDocument();
-      act(() => { vi.advanceTimersByTime(200); });
-      await waitFor(() => expect(screen.queryByLabelText('Open in OWOX')).toBeNull());
-      // Coming back to the title within the delay keeps it open.
-      await user.hover(title);
-      await screen.findByLabelText('Open in OWOX');
-      fireEvent.pointerLeave(title);
-      fireEvent.pointerMove(document.body, { clientX: 900, clientY: 900 });
-      act(() => { vi.advanceTimersByTime(400); });
-      fireEvent.pointerEnter(title);
-      fireEvent.pointerMove(title, { clientX: 5, clientY: 5 });
-      act(() => { vi.advanceTimersByTime(600); });
-      expect(screen.getByLabelText('Open in OWOX')).toBeInTheDocument();
-      // Moving onto the bubble before the delay ends keeps it open.
-      await user.hover(title);
-      const link = await screen.findByLabelText('Open in OWOX');
-      await user.unhover(title);
-      fireEvent.pointerMove(link, { clientX: 5, clientY: 5 });
-      await user.hover(link);
-      act(() => { vi.advanceTimersByTime(1500); });
-      expect(screen.getByLabelText('Open in OWOX')).toBeInTheDocument();
-    } finally { vi.useRealTimers(); }
+  test('the head holds the crown, the description hint and the link, the link last', () => {
+    const { container } = renderMart({ onMakeMain: vi.fn(), mart: { ...mart, description: 'Sales orders' } });
+    const labels = [...container.querySelectorAll('.dm-node-actions [aria-label]')].map((b) => b.getAttribute('aria-label'));
+    expect(labels).toEqual(['Make main data mart', 'Description', 'Open in OWOX']);
   });
 
   test('click and Enter select', async () => {

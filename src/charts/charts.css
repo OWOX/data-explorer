@@ -40,6 +40,7 @@
 /* Axes and gridlines stay quiet; text never wears a series colour. */
 .dm-chart-grid { stroke: var(--border); stroke-width: 1; }
 .dm-chart-text { fill: var(--muted-foreground); font-size: 11px; }
+.dm-chart-axis-title { fill: var(--muted-foreground); font-size: 11px; }
 .dm-spark-line { fill: none; stroke: var(--dm-series-1); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .dm-pie-slice { stroke: var(--card); stroke-width: 2; }
 .dm-pie-slice:focus-visible { outline: none; stroke: var(--foreground); stroke-width: 3; }

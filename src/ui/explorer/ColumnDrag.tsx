@@ -23,6 +23,18 @@ const MAX_STEP = 16;
 
 type Col = { name: string; left: number; right: number };
 
+/** The ghost's left edge: follows the pointer, but stays between the group's first and last edge. */
+export function clampGhost(pointer: number, grab: number, width: number, lo: number, hi: number): number {
+  return Math.min(Math.max(pointer - grab, lo), Math.max(lo, hi - width));
+}
+
+/** The gap the pointer is over, as an index into the group's other columns: before the first one whose middle is right of it. */
+export function dropSlot(others: { left: number; right: number }[], pointer: number): number {
+  let slot = 0;
+  while (slot < others.length && pointer > (others[slot]!.left + others[slot]!.right) / 2) slot++;
+  return slot;
+}
+
 type Options = {
   scroller: RefObject<HTMLElement | null>;
   head: RefObject<HTMLElement | null>;
@@ -38,7 +50,7 @@ export function ColumnDragLayer(props: Options) {
 }
 
 /**
- * Dragging a field header sideways moves its column, as in Google Sheets. The press must be on a `th.dm-th[data-column]` and not on
+ * Dragging a field header or a column letter sideways moves its column, as in Google Sheets. The press must be on a `th.dm-th[data-column]` or `th.dm-letter[data-letter-column]` and not on
  * its controls (menu, info); past 4 px it becomes a drag, and the click the browser sends after it is swallowed so no sort toggles.
  * The drop slot is clamped to the column's own data mart. Escape or a cancelled pointer end the drag with no change.
  */
@@ -101,11 +113,10 @@ function useColumnDrag({ scroller, head, groupOf, onMove }: Options): ColumnDrag
       const width = me.right - me.left;
       const lo = cols[0]!.left;
       const hi = cols[cols.length - 1]!.right;
-      const ghost = Math.min(Math.max(px - drag.grab, lo), Math.max(lo, hi - width));
+      const ghost = clampGhost(px, drag.grab, width, lo, hi);
       // The slot is the gap before the first other column whose middle is right of the pointer.
       const others = cols.filter((_, i) => i !== at);
-      let slot = 0;
-      while (slot < others.length && px > (others[slot]!.left + others[slot]!.right) / 2) slot++;
+      const slot = dropSlot(others, px);
       drag.before = others[slot]?.name ?? null;
       drag.changes = drag.before !== (cols[at + 1]?.name ?? null);
       // Right of the sticky row-number gutter, and no lower than the last row (not onto Load more).
@@ -192,9 +203,10 @@ function useColumnDrag({ scroller, head, groupOf, onMove }: Options): ColumnDrag
       // Touch keeps scrolling the grid.
       if (e.button !== 0 || e.pointerType === 'touch') return;
       const t = e.target instanceof Element ? e.target : null;
-      const th = t?.closest<HTMLElement>('th.dm-th[data-column]');
+      // A field header, or its column letter above it: both start the same drag.
+      const th = t?.closest<HTMLElement>('th.dm-th[data-column], th.dm-letter[data-letter-column]');
       if (!t || !th || t.closest('.dm-hdr-controls, .dm-col-info')) return;
-      press = { column: th.dataset.column!, x: e.clientX, y: e.clientY };
+      press = { column: (th.dataset.column ?? th.dataset.letterColumn)!, x: e.clientX, y: e.clientY };
       last = { x: e.clientX, y: e.clientY };
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);

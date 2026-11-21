@@ -658,7 +658,10 @@ describe('folding and lines', () => {
     const before = rowQueries().length;
     // Orders joins Customers and Stores: both become columns of its grid, which is not read while the band is folded.
     fireEvent.click(martCard('Customers'));
-    await settle();
+    // Adding from the band focuses the new card; Stores joins Orders, not Customers, so let go of the focus first.
+    await waitFor(() => expect(martCard('Customers')).toHaveAttribute('data-focused'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(martCard('Customers')).not.toHaveAttribute('data-focused'));
     fireEvent.click(martCard('Stores'));
     await settle();
     expect(rowQueries()).toHaveLength(before);
