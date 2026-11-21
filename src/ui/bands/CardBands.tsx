@@ -22,7 +22,7 @@ import { useCardClick } from './useCardClick';
 import { useCardDrag } from './useCardDrag';
 import { litIds, revisionOf, useWires, type Wire } from './wires';
 import { MartsCanvas } from './MartsCanvas';
-import { buildJoinTree, ghostSources, subtreePaths, type TreeNode } from '../../state/join-tree';
+import { buildJoinTree, ghostSources, type TreeNode } from '../../state/join-tree';
 import { pathTitle } from '../../state/join-plan';
 import { useGridFocus } from './useGridFocus';
 import { useLatest } from '../useLatest';
@@ -361,9 +361,9 @@ export function CardBands({
                 dropHot={isMain && drag !== null && drag.overMain}
                 mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
                 onMakeMain={!isMain && mart.accessible ? () => void click(id, { mode: 'makeMain' }) : undefined}
-                onRemove={isMain ? undefined : () => {
+                onRemove={isMain || node.bare ? undefined : () => {
                   const parent = canvasTree!.nodes.get(node.parent!)!;
-                  void click(id, { removePaths: subtreePaths(canvasTree!, path) }).then(() => document.getElementById(martElementId(parent.martId, parent.path || undefined))?.focus(), () => undefined);
+                  void click(id, { removePaths: [path] }).then(() => document.getElementById(martElementId(parent.martId, parent.path || undefined))?.focus(), () => undefined);
                 }}
                 onSelect={() => toggleFocus(path)}
                 onOpenApp={() => onOpenApp(id)}

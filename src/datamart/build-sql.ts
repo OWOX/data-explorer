@@ -150,7 +150,17 @@ function prepare(input: MartSqlInput): Plan | Reason {
   });
 
   // The join of each path: its source, and the edge from its parent's mart.
-  const sourceOf = (path: string) => sources.find((s) => s.aliasPath === path);
+  // A middle mart with no field to offer is not in the sources list, but the relationship of a mart joined under it names it: that edge starts at the middle mart.
+  const sourceOf = (path: string): JoinedSource | undefined => {
+    const hit = sources.find((s) => s.aliasPath === path);
+    if (hit) return hit;
+    for (const below of sources) {
+      if (parentPath(below.aliasPath) !== path || !below.relationshipId) continue;
+      const via = edges.find((e) => e.id === below.relationshipId && e.target === below.martId);
+      if (via) return { aliasPath: path, martId: via.source, label: titles.get(via.source) ?? path, depth: path.split('.').length, fields: [], uniqueCount: false };
+    }
+    return undefined;
+  };
   const plans = new Map<string, PathPlan>();
   for (const path of order) {
     const source = sourceOf(path);

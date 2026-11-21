@@ -2,11 +2,10 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { JoinedSource } from '../../api/blendable';
 import type { Picks } from '../../api/grid-columns';
 import { PAGE_SIZE } from '../../config';
-import { inUsePaths, joinedMartIds, ownNamesIn, planAddAt, planClick, planMakeMain, planRejoin, withoutPaths } from '../../state/join-plan';
+import { joinedMartIds, ownNamesIn, planAddAt, planClick, planMakeMain, planRejoin, withoutPaths } from '../../state/join-plan';
 import { sourceOfModel, useServices, useStore, type GridState, type State } from '../../state/store';
 import type { Model } from '../../model/types';
 import { defaultColumns } from '../../model/columns';
-import { pathsToAdd } from '../../state/join-tree';
 
 /**
  * What a click on a data mart card does: add it to the main mart's grid, take it out, promote it, or make it the main mart.
@@ -18,7 +17,7 @@ export type ClickOptions = {
   only?: 'deselect';
   /** The mart becomes the main one (a drop on the main card, or its make-main button). */
   mode?: 'makeMain';
-  /** Add the mart through this alias path (a canvas ghost). A deep path brings the marts it passes through that are not in the grid yet, so the card lands under its own parent. */
+  /** Add the mart through this alias path (a canvas ghost). A deep path joins through the marts it passes, which get no columns of their own. */
   addAt?: string;
   /** Move marts to new alias paths (a canvas drop). */
   moves?: Map<string, string>;
@@ -79,14 +78,6 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
     if (id !== main && (makeMain || !main)) await load(id);
     // The mart being added or made main brings what it showed when it last left a grid.
     if (id !== main) await columnStore.loadLastShown(id);
-    // A ghost chain adds the marts on the way: read what they showed before the store is read, so nothing awaits between the read and the dispatch.
-    if (main && options?.addAt !== undefined) {
-      const known = sources.get(main) ?? [];
-      for (const path of pathsToAdd(inUsePaths(grids.get(main)?.columns ?? [], known), options.addAt)) {
-        const via = known.find((s) => s.aliasPath === path)?.martId;
-        if (via !== undefined && path !== options.addAt) await columnStore.loadLastShown(via);
-      }
-    }
     const now = latest.current;
     // The member moved on while this was being read.
     if (now.selection.martId !== main) return;
@@ -122,13 +113,9 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
       const own = defaultColumns(schemas.peek(main) ?? []);
       let next = g;
       if (options.addAt !== undefined) {
-        // The marts on the way (a ghost chain) first, each with what it showed last, then the clicked one.
-        for (const path of pathsToAdd(inUsePaths(g.columns, sourcesNow), options.addAt)) {
-          const martId = sourcesNow.find((s) => s.aliasPath === path)?.martId;
-          // An ancestor path with no source of its own (the list keeps only paths that have fields) cannot be added; the clicked path still is.
-          if (martId === undefined) continue;
-          next = planAddAt(next, sourcesNow, path, own, picks.get(main)?.[martId], columnStore.lastShown(martId));
-        }
+        // Only the clicked mart gets columns: the marts on the way stay joined through its alias path.
+        const martId = sourcesNow.find((s) => s.aliasPath === options.addAt)?.martId;
+        if (martId !== undefined) next = planAddAt(next, sourcesNow, options.addAt, own, picks.get(main)?.[martId], columnStore.lastShown(martId));
       } else next = planRejoin(g, sourcesNow, options.moves!, own);
       if (next === g) { await rendered(); return; }
       dispatch({ type: 'setMarts', selection: now.selection, grids: { [main]: next } });

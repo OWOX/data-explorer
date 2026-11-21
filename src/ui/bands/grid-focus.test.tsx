@@ -132,16 +132,16 @@ test('clicking the focused card again, the empty band or Escape clears the focus
   expect(el('products')).not.toHaveClass('dm-unjoinable');
 });
 
-test('the × takes a joined card and the paths under it out in one step', async () => {
+test('the × on a middle card takes only its own columns; the card stays bare and its leaf keeps its columns', async () => {
   setup();
   await joinCountriesTwice();
   await userEvent.click(within(el('customers', 'customers')!).getByRole('button', { name: 'Remove Customers from the report' }));
-  await waitFor(() => expect(el('customers', 'customers')).toBeNull());
-  expect(el('countries', 'customers.countries')).toBeNull();
+  await waitFor(() => expect(el('customers', 'customers')!.querySelector('.dm-card-remove')).toBeNull());
+  expect(el('countries', 'customers.countries')).not.toBeNull();
   expect(el('countries', 'stores.countries')).not.toBeNull();
-  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Stores', 'Countries']));
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Stores', 'Countries (customers.countries)', 'Countries (stores.countries)']));
   await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
-  await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+  await waitFor(() => expect(groupTitles()).toContain('Customers'));
   expect(el('countries', 'customers.countries')).not.toBeNull();
 });
 

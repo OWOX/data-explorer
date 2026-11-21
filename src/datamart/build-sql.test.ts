@@ -842,3 +842,23 @@ describe('HAVING filters', () => {
   });
 
 });
+
+describe('a chain through a middle mart with no column of its own', () => {
+  test('the middle hop is a CTE with only its join key and the leaf, joined from the main mart', () => {
+    const sql = run({ visible: ['id', 'customers__region__name'] });
+    expect(sql).toContain('customers_owox AS (');
+    expect(sql).toContain('customers__region_owox AS (');
+    expect(sql).toContain('LEFT JOIN customers_owox ON base_owox.customer_id = customers_owox.id');
+    expect(sql).not.toContain('customers__city');
+  });
+
+  test('a middle mart the source list lacks (no field to offer) resolves from the relationship of the mart below it', () => {
+    const sql = run({ visible: ['id', 'customers__region__name'], sources: [region([regionName])] });
+    expect(sql).toContain('FROM [Customers](dm:cus1) AS t');
+    expect(sql).toContain('LEFT JOIN customers_owox ON base_owox.customer_id = customers_owox.id');
+  });
+
+  test('a middle mart the source list lacks and no relationship names cannot be resolved', () => {
+    expect(run({ visible: ['id', 'customers__region__name'], sources: [{ ...region([regionName]), relationshipId: undefined }] })).toBe('REASON The join to "customers" could not be resolved');
+  });
+});

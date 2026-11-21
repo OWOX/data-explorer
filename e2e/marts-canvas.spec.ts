@@ -48,7 +48,7 @@ test('canvas: add marts through ghosts, move countries from customers to stores,
   await expect(page.locator('#tree-wires path[data-from="dm-customers@customers"][data-to="dm-countries@customers.countries"]')).toHaveCount(1);
 });
 
-test('canvas: Countries under both Customers and Stores, × removes a subtree, Undo restores it', async ({ page }) => {
+test('canvas: Countries under both Customers and Stores, × on a middle card keeps its leaf, Undo restores it', async ({ page }) => {
   await page.goto('/?mock');
   const marts = page.locator('#band-marts');
   const data = page.locator('#band-data');
@@ -70,10 +70,12 @@ test('canvas: Countries under both Customers and Stores, × removes a subtree, U
 
   await page.mouse.move(0, 0);
   await marts.locator('[id="dm-stores@stores"]').getByRole('button', { name: 'Remove Stores from the report' }).click();
-  await expect(marts.locator('[id="dm-stores@stores"]')).toHaveCount(0);
-  await expect(marts.locator('[id="dm-countries@stores.countries"]')).toHaveCount(0);
-  await expect(marts.locator('[id="dm-countries@customers.countries"]')).toBeVisible();
-  await expect(data.locator('th[data-group="countries"]')).toHaveCount(1);
+  // Stores loses its own columns but stays as a bare card, joined, with Countries under it still showing its columns.
+  await expect(data.locator('th[data-group="stores"]')).toHaveCount(0);
+  await expect(marts.locator('[id="dm-stores@stores"]')).toBeVisible();
+  await expect(marts.locator('[id="dm-stores@stores"]').getByRole('button', { name: 'Remove Stores from the report' })).toHaveCount(0);
+  await expect(marts.locator('[id="dm-countries@stores.countries"]')).toBeVisible();
+  await expect(data.locator('th[data-group="countries"]')).toHaveCount(2);
 
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(marts.locator('[id="dm-stores@stores"]')).toBeVisible();
