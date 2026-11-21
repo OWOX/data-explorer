@@ -24,7 +24,7 @@ export function ErrorBox({ error, onRetry, compact = false, context }: { error: 
       <Tooltip content="Copy error details">
         <button type="button" aria-label="Copy error details" onClick={() => { void copy(); }} className="inline-flex items-center gap-1 rounded p-0.5 text-foreground hover:bg-accent">
           {copied === 'ok' ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
-          {copied && <span className="text-xs" role="status">{copied === 'ok' ? 'Copied' : 'Copy failed'}</span>}
+          {copied && <span className="text-xs">{copied === 'ok' ? 'Copied' : 'Copy failed'}</span>}
         </button>
       </Tooltip>
       <button type="button" onClick={onRetry} className="rounded border px-2 py-0.5 text-foreground hover:bg-accent">Retry</button>

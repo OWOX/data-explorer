@@ -24,7 +24,7 @@ test('the report lists the chain, details, request and run id, and leaves creden
   expect(text).toMatchInlineSnapshot(`
     "Data Explorer error report
     time: 2026-11-20T10:00:00.000Z
-    plugin version: unknown
+    plugin version: dev
 
     name: OWOXApiError
     message: Failed to open OWOX Data Mart data stream
@@ -60,4 +60,14 @@ test('the copy button writes the report and confirms', async () => {
   const copied = writeText.mock.calls[0]?.[0] as string;
   expect(copied).toContain('data mart id: dm-1');
   expect(copied).toContain('FORBIDDEN');
+});
+
+test('the report masks bearer values, JWTs and token-like query parameters inside strings', () => {
+  const jwt = 'eyJhbGciOi.eyJzdWIiOiIx.c2ln_na-ture';
+  const err = new Error('failed');
+  (err as Error & { details?: unknown }).details = { note: `Authorization failed: Bearer abc.def ${jwt}`, url: 'https://x.io/a?id=1&access_token=zzz&api_key=yyy&sig=qq&page=2' };
+  const text = buildErrorReport(err, {}, new Date(0));
+  for (const s of ['abc.def', jwt, 'zzz', 'yyy', '=qq']) expect(text).not.toContain(s);
+  expect(text).toContain('id=1');
+  expect(text).toContain('page=2');
 });

@@ -25,6 +25,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+        env:
+          APP_VERSION: ${{ github.event.release.tag_name || github.sha }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

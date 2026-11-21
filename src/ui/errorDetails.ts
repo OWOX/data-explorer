@@ -9,6 +9,14 @@ const appVersion = (): string => (typeof __APP_VERSION__ !== 'undefined' && __AP
 const SECRET_KEY = /token|secret|password|passwd|authorization|credential|api[-_]?key|cookie|bearer/i;
 const REDACTED = '[redacted]';
 
+/** Credentials that sit inside a string value: bearer headers, JWTs, and token-like query parameters of a URL. */
+function maskString(v: string): string {
+  return v
+    .replace(/Bearer\s+\S+/gi, `Bearer ${REDACTED}`)
+    .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+/g, REDACTED)
+    .replace(/([?&][^=&\s]*(?:token|key|secret|signature|sig)[^=&\s]*=)[^&\s]*/gi, `$1${REDACTED}`);
+}
+
 /** JSON for the report with every credential-looking key blanked, at any depth. Cycles and unserialisable values never throw. */
 function safeJson(value: unknown, space?: number): string {
   const seen = new WeakSet<object>();
@@ -19,6 +27,7 @@ function safeJson(value: unknown, space?: number): string {
         if (seen.has(v)) return '[circular]';
         seen.add(v);
       }
+      if (typeof v === 'string') return maskString(v);
       return typeof v === 'bigint' ? v.toString() : v;
     }, space) ?? String(value);
   } catch {
