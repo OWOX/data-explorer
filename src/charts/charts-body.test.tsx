@@ -276,6 +276,11 @@ test('a v1 doc draws the default charts and keeps its hidden scorecards', async 
   expect(cardNames(group('orders'))).not.toContain('Amount · Sum');
 });
 
+test('with only a pie, the sparklines still draw under the cards', async () => {
+  await charts({ charts: { version: 2, charts: [{ id: 'pie', kind: 'pie' }] } });
+  await waitFor(() => expect(data().querySelectorAll('svg[aria-label*="trend"]').length).toBeGreaterThan(0));
+});
+
 test('a chart menu closes on scroll', async () => {
   await charts();
   await userEvent.click(panel('Scorecards'));

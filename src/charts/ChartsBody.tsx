@@ -24,7 +24,7 @@ const GUTTER_PX = 46;
 /**
  * The Charts mode's `<tbody>`: a strip of scorecards, one cell per data mart under that mart's header, then the panels
  * on a row of their own, as wide as the visible grid and pinned left so a wide table does not push them out of view.
- * The panels sit side by side while each still gets 30rem, and stack when the band is narrower.
+ * Each panel is as wide as its content needs and the panels wrap onto more rows when the band is narrow.
  * Settings load once per mart; a fallback a kind's `resolve` picks is never written back, only the member's own changes are.
  */
 export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter }: {
@@ -59,9 +59,9 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     const def = KINDS[spec.kind];
     return { spec, def, r: def && !spec.hidden ? def.resolve(spec, cf) : null };
   }), [specs, cf]);
-  // The sparklines draw on the first shown chart's date and bucket; with none, each mart's first date by Auto.
+  // The sparklines draw on the first shown chart's date and bucket; with none, the first date shown, by Auto.
   const lead = drawn.find((d) => d.r && (d.r as { date?: unknown }).date)?.r as { date: Field; bucket?: DateBucket | 'AUTO' } | undefined;
-  const spark: Spark = useMemo(() => ({ ...scorecardsOf(settings ?? {}), date: lead?.date ?? null }), [settings, lead?.date]);
+  const spark: Spark = useMemo(() => ({ ...scorecardsOf(settings ?? {}), date: lead?.date ?? cf.dates[0] ?? null }), [settings, lead?.date, cf]);
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
   const idle = paused || !settings || !!gate;
   const { bucket } = useBucket(martId, spark.date, lead?.bucket ?? 'AUTO', filter, version, idle);
