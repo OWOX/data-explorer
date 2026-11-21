@@ -39,6 +39,8 @@ test('cards: only path cards have a white background in Grid; hover and selectio
   expect(await bg(other)).toBe('rgba(0, 0, 0, 0)');
   expect(await bg(main)).not.toBe('rgba(0, 0, 0, 0)');
   // The bold border is a 2px overlay: the box keeps its size.
+  // Let the cards' entrance animation (250ms) finish, or the first measure can be mid-motion.
+  await page.waitForTimeout(400);
   const before = await other.boundingBox();
   await other.hover();
   const after = await other.boundingBox();
