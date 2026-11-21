@@ -53,7 +53,9 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
     const picks = new Map<string, Picks>();
     const load = async (martId: string) => {
       const own = await schemas.get(martId).catch(() => []);
-      const joined = await blendable.get(martId).catch(() => [] as JoinedSource[]);
+      // A failed read leaves joined fields unknown, not gone: nothing saved for them is pruned.
+      let failed = false;
+      const joined = await blendable.get(martId).catch(() => { failed = true; return [] as JoinedSource[]; });
       sources.set(martId, joined);
       const have = latest.current.grids[martId];
       const agg = await columnStore.loadAggregation(martId);
@@ -62,12 +64,12 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
       else {
         const saved = (await columnStore.load(martId)) ?? [];
         const offered = new Set([...own, ...joined.flatMap((s) => s.fields)].map((f) => f.name));
-        const kept = saved.filter((c) => offered.has(c));
+        const kept = failed ? saved : saved.filter((c) => offered.has(c));
         const columns = kept.length ? kept : defaultColumns(own);
         // The mart opens with the view the member last left it with, pruned to the fields it offers now (a session grid, held above, wins).
         const view = await columnStore.loadView(martId);
         const opened: GridState = { filters: {}, sorts: null, limit: PAGE_SIZE, ...aggFields, ...view, ...have, columns };
-        grids.set(martId, view ? pruneGrid(opened, [...own, ...joined.flatMap((s) => s.fields)]).grid ?? opened : opened);
+        grids.set(martId, view && !failed ? pruneGrid(opened, [...own, ...joined.flatMap((s) => s.fields)]).grid ?? opened : opened);
       }
       picks.set(martId, await columnStore.loadPicks(martId));
       await columnStore.loadLastShown(martId);
