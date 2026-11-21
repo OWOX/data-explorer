@@ -31,7 +31,15 @@ export function useFillHeight(id: string) {
     window.addEventListener('resize', apply);
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(apply);
     const page = el.parentElement;
-    if (observer && page) for (const child of Array.from(page.children)) { if (child === el) break; observer.observe(child); }
-    return () => { window.removeEventListener('resize', apply); observer?.disconnect(); };
+    const watchAbove = () => {
+      if (!observer || !page) return;
+      observer.disconnect();
+      for (const child of Array.from(page.children)) { if (child === el) break; observer.observe(child); }
+    };
+    watchAbove();
+    // A band mounted (or removed) above later changes what is watched, and the top itself.
+    const mutations = typeof MutationObserver === 'undefined' || !page ? null : new MutationObserver(() => { watchAbove(); apply(); });
+    if (page) mutations?.observe(page, { childList: true });
+    return () => { window.removeEventListener('resize', apply); observer?.disconnect(); mutations?.disconnect(); };
   }, [id]);
 }

@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { cleanup, render } from '@testing-library/react';
 import { fillHeight, useFillHeight } from './useFillHeight';
 
 function Band() {
@@ -53,6 +53,29 @@ test('only the siblings before the band are observed', () => {
     function H() { useFillHeight('band'); return null; }
     render(<H />);
     expect(seen.map((e) => e.id)).toEqual(['a']);
+  } finally {
+    globalThis.ResizeObserver = Real;
+  }
+});
+
+test('a band mounted above later is observed too, and the watchers are cleaned up', async () => {
+  const seen: string[] = [];
+  let disconnected = 0;
+  const Real = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class { constructor(public cb: () => void) {} observe(e: Element) { seen.push(e.id); } unobserve() {} disconnect() { disconnected++; } } as never;
+  try {
+    const { container, unmount } = render(<div><header id="a" /><section id="band" /></div>);
+    function H() { useFillHeight('band'); return null; }
+    render(<H />);
+    expect(seen).toEqual(['a']);
+    const late = document.createElement('div');
+    late.id = 'late';
+    container.firstElementChild!.insertBefore(late, document.getElementById('band'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(seen).toContain('late');
+    unmount();
+    cleanup();
+    expect(disconnected).toBeGreaterThan(0);
   } finally {
     globalThis.ResizeObserver = Real;
   }
