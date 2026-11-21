@@ -156,8 +156,12 @@ test('dragging countries from customers onto stores moves its columns to the sto
   fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
   await waitFor(() => expect(wrapper('orders')).toHaveClass('dm-dimmed'));
   expect(wrapper('stores', 'stores')).not.toHaveClass('dm-dimmed');
-  expect(wrapper('customers', 'customers')).not.toHaveClass('dm-dimmed');
-  expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(1);
+  // Only the closest target stays lit; the other target (the current parent) is dimmed with the rest.
+  expect(wrapper('customers', 'customers')).toHaveClass('dm-dimmed');
+  // A dashed line runs to every target, and the closest one is drawn stronger.
+  const lines = [...marts().querySelectorAll('svg#drag-line path')];
+  expect(lines.map((l) => l.getAttribute('data-target')).sort()).toEqual(['customers', 'stores']);
+  expect(lines.filter((l) => l.classList.contains('closest')).map((l) => l.getAttribute('data-target'))).toEqual(['stores']);
   expect(el('stores', 'stores')!.className).toBe(storesClass);
   fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
   await waitFor(() => expect(tips()).toContain('Stores → Countries'));
@@ -199,7 +203,7 @@ test('releasing near the current parent changes nothing and leaves the wires alo
   fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
   fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
   fireEvent.pointerMove(treeEl(), pointer(cu().x, cu().y));
-  await waitFor(() => expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(1));
+  await waitFor(() => expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(2));
   fireEvent.pointerUp(el('customers', 'customers')!, pointer(cu().x, cu().y, 0));
   await new Promise((r) => setTimeout(r, 50));
   expect(headers()).toEqual(before);
@@ -506,12 +510,12 @@ test('at another scale the drag line and the drop pick use layout pixels', async
   fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
   fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
   fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
-  // The line ends on the stores card's edge in layout pixels, whatever the scale.
-  await waitFor(() => expect(marts().querySelector('svg#drag-line path')).not.toBeNull());
-  const d = marts().querySelector('svg#drag-line path')!.getAttribute('d')!;
-  const start = d.match(/^M([\d.]+) ([\d.]+)/)!;
-  expect(parseFloat(start[1]!)).toBeCloseTo(centre('stores', 'stores').x, 0);
-  expect(parseFloat(start[2]!)).toBeCloseTo(centre('stores', 'stores').y, 0);
+  // The closest line ends on the stores card's edge in layout pixels, whatever the scale.
+  await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')).not.toBeNull());
+  const d = marts().querySelector('svg#drag-line path.closest')!.getAttribute('d')!;
+  const end = d.match(/ ([\d.]+) ([\d.]+)$/)!;
+  expect(Math.abs(parseFloat(end[1]!) - centre('stores', 'stores').x)).toBe(112);
+  expect(parseFloat(end[2]!)).toBeCloseTo(centre('stores', 'stores').y, 0);
   fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
   await waitFor(() => expect(tips()).toContain('Stores → Countries'));
 });
@@ -526,4 +530,44 @@ test('a click on a ghost adds it and pins it, its own ghosts show; a second clic
   await waitFor(() => expect(ghostEl('countries', 'customers.countries')).not.toBeNull());
   await userEvent.click(el('customers', 'customers')!);
   await waitFor(() => expect(ghostEl('countries', 'customers.countries')).toBeNull());
+});
+
+test('Data Sources cards are lit and dimmed by the same rule in Grid and in Graph', async () => {
+  setup();
+  await ready();
+  await within(marts()).findByText('Customers');
+  fireEvent.click(gridCard('Customers'));
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
+  const sources = () => document.getElementById('band-sources')!;
+  const lit = () => [...sources().querySelectorAll('.dm-node')].map((n) => `${n.id}:${n.classList.contains('lit')}`);
+  const root = () => marts().closest('.dm-canvas')!;
+  await waitFor(() => expect(root()).toHaveClass('focused'));
+  const inGrid = lit();
+  expect(inGrid.some((s) => s.endsWith(':true'))).toBe(true);
+  await toCanvas();
+  await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+  // Graph dims the Sources band, and only that band, with the Grid's rule: the lit cards are the same.
+  expect(root()).toHaveClass('sources-focused');
+  expect(root()).not.toHaveClass('focused');
+  expect(lit()).toEqual(inGrid);
+});
+
+test('while a Graph card is held, every target gets a line, only the closest card stays lit, and the drop joins under it', async () => {
+  await joinCountriesUnderCustomers();
+  const stores = () => centre('stores', 'stores');
+  const c = () => centre('countries', 'customers.countries');
+  fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
+  await waitFor(() => expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(2));
+  const lit = [...marts().querySelectorAll('.dm-tree-node:not(.dm-dimmed)')].map((n) => n.getAttribute('data-tree-path'));
+  expect(lit.sort()).toEqual(['customers.countries', 'stores']);
+  // Moving next to the current parent changes the closest one.
+  const cu = centre('customers', 'customers');
+  fireEvent.pointerMove(treeEl(), pointer(cu.x, cu.y));
+  await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')?.getAttribute('data-target')).toBe('customers'));
+  fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
+  await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')?.getAttribute('data-target')).toBe('stores'));
+  fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
+  await waitFor(() => expect(tips()).toContain('Stores → Countries'));
 });

@@ -305,7 +305,7 @@ export function CardBands({
   return (
     <div
       ref={canvas}
-      className={`dm-canvas${view === 'grid' && (pinned || hovered) ? ' focused' : ''}`}
+      className={`dm-canvas${view === 'grid' && (pinned || hovered) ? ' focused' : ''}${view === 'canvas' && pinned ? ' sources-focused' : ''}`}
       onClick={(e) => { if (focus !== null && e.target instanceof Element && e.target.closest('#band-marts .dm-band-body') && !e.target.closest('article, button, a')) clearFocus(); }}
       // A portaled title bubble bubbles its events through React; it is not in the canvas in the DOM, so it changes no hover.
       onPointerOver={(e) => { if (e.currentTarget.contains(e.target as Node)) setHovered(view === 'grid' ? nodeIdOf(e.target) : null); }}

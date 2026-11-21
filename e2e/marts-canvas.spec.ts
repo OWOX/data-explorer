@@ -30,11 +30,14 @@ test('canvas: add marts through ghosts, move countries from customers to stores,
   await page.mouse.down();
   await page.mouse.move(from!.x + from!.width / 2 + 10, from!.y + from!.height / 2 + 10, { steps: 4 });
   await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 6 });
-  await expect(marts.locator('svg#drag-line path')).toHaveCount(1);
+  // One dashed line per target (stores and the current parent, customers); the closest one is drawn stronger.
+  await expect(marts.locator('svg#drag-line path')).toHaveCount(2);
+  await expect(marts.locator('svg#drag-line path.closest')).toHaveAttribute('data-target', 'stores');
   const wrap = (id: string) => marts.locator(`.dm-tree-node:has([id="dm-${id}"])`);
   await expect(wrap('orders')).toHaveClass(/dm-dimmed/);
   await expect(marts.locator('.dm-tree-node.dm-dimmed:has([id="dm-orders"])')).toHaveCount(1);
-  await expect(wrap('customers@customers')).not.toHaveClass(/dm-dimmed/);
+  await expect(wrap('stores@stores')).not.toHaveClass(/dm-dimmed/);
+  await expect(wrap('customers@customers')).toHaveClass(/dm-dimmed/);
   await page.mouse.up();
   await expect(marts.locator('svg#drag-line')).toHaveCount(0);
 

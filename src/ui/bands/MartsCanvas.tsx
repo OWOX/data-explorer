@@ -5,9 +5,9 @@ import type { JoinedSource } from '../../api/blendable';
 import type { DqSummary, Model } from '../../model/types';
 import { buildJoinTree, ghostLevels, subtreePaths } from '../../state/join-tree';
 import { pathTitle } from '../../state/join-plan';
-import { closestTarget, dropTargets } from './canvas-drag';
+import { closestTarget, dragLinePath, dropTargets } from './canvas-drag';
 import { scrollBoxOf, zoomedScale } from './canvas-zoom';
-import { CARD_H, CARD_W, layoutTree } from './canvas-layout';
+import { CARD_W, layoutTree } from './canvas-layout';
 import { MartCard, contextsOf, martElementId, type CountState } from './cards';
 import { useLatest } from '../useLatest';
 import { useCanvasDrag } from './useCanvasDrag';
@@ -121,7 +121,6 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   useEffect(() => { placedRef.current = layout.placed; }, [layout]);
 
   const targets = useMemo(() => (drag ? dropTargets(tree, sources ?? [], drag.path) : []), [drag?.path, tree, sources]); // eslint-disable-line react-hooks/exhaustive-deps
-  const valid = new Set(targets.map((t) => t.target));
   const pick = drag?.inside ? closestTarget(targets, layout.placed, drag.x, drag.y) : null;
   const key = [...tree.nodes.keys(), '|', ...levels.flatMap((l) => [l.from, ...l.ghosts.map((g) => g.aliasPath)])].join('>');
   const wires = useMemo<Wire[]>(() => {
@@ -149,15 +148,10 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     return path === '' || !source ? undefined : pathTitle(source, [...tree.nodes.keys()], sources ?? []);
   };
   const dragTitle = drag ? model.marts.get(tree.nodes.get(drag.path)?.martId ?? '')?.title : undefined;
-  let line: string | null = null;
-  const to = pick && layout.placed.find((p) => p.path === pick.target);
-  if (drag && to) {
-    const x2 = drag.x < to.x + CARD_W / 2 ? to.x : to.x + CARD_W;
-    const y2 = to.y + CARD_H / 2;
-    const pull = Math.max(40, Math.abs(x2 - drag.x) / 2);
-    const dir = x2 >= drag.x ? 1 : -1;
-    line = `M${drag.x} ${drag.y} C${drag.x + dir * pull} ${drag.y} ${x2 - dir * pull} ${y2} ${x2} ${y2}`;
-  }
+  // While a card is held, a dashed line runs from it to every place it can be dropped; the closest one is drawn stronger.
+  const at0 = new Map(layout.placed.map((p) => [p.path, p] as const));
+  const held = drag?.inside ? at0.get(drag.path) : undefined;
+  const lines = held ? targets.flatMap((t) => { const to = at0.get(t.target); return to ? [{ path: t.target, d: dragLinePath(held, to) }] : []; }) : [];
   const at = new Map(layout.placed.map((p) => [p.path, p] as const));
   return (
     <div className="dm-tree-sizer" style={{ width: layout.width * scale, height: layout.height * scale }}>
@@ -175,7 +169,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
         const pos = at.get(node.path);
         if (!mart || !pos) return [];
         return [
-          <div key={node.path} className={`dm-tree-node${drag && node.path !== drag.path && !valid.has(node.path) ? ' dm-dimmed' : ''}`} data-tree-path={node.path} style={{ left: pos.x, top: pos.y, width: CARD_W }}>
+          <div key={node.path} className={`dm-tree-node${drag && node.path !== drag.path && pick?.target !== node.path ? ' dm-dimmed' : ''}`} data-tree-path={node.path} style={{ left: pos.x, top: pos.y, width: CARD_W }}>
             <MartCard
               mart={mart}
               contexts={contextsOf(model.contexts, mart.contextIds)}
@@ -201,7 +195,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
           </div>,
         ];
       })}
-      {line && <svg id="drag-line" aria-hidden><path d={line} /></svg>}
+      {lines.length > 0 && <svg id="drag-line" aria-hidden>{lines.map((l) => <path key={l.path} d={l.d} data-target={l.path} className={pick?.target === l.path ? 'closest' : undefined} />)}</svg>}
       {layout.ghosts.flatMap((spot) => {
         const g = ghosts.find((s) => s.aliasPath === spot.id);
         const mart = g && model.marts.get(g.martId);
