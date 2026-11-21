@@ -35,7 +35,7 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
   return (
     <span ref={holder} className="inline-flex">
       <button ref={button} type="button" aria-label={`${name} options`} aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => (anchor ? close(false) : setAnchor(e.currentTarget))}
-        className="inline-flex size-7 items-center justify-center rounded-md hover:bg-accent">
+        className="dm-menu-dots inline-flex size-7 items-center justify-center rounded-md hover:bg-accent">
         <EllipsisVertical className="size-4" aria-hidden />
       </button>
       {anchor && (
