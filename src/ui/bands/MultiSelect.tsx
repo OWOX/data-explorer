@@ -1,4 +1,5 @@
 import { ChevronDown } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { useOutsidePress } from '../outsidePress';
 import { num } from '../format';
 import type { Mark } from '../storage-icons';
@@ -17,10 +18,10 @@ export function MultiSelect({ label, options, selected, onChange }: {
   onChange: (next: string[]) => void;
 }) {
   // `<details name>` closes the other menu when one opens; nothing but this closes the last one when the pointer goes elsewhere.
-  // The press that does it goes no further: it closes the menu and nothing under the pointer acts.
-  useOutsidePress(true, (t) => !!t.closest('details.dm-filter[open]') || !document.querySelector('details.dm-filter[open]'), () => {
-    for (const menu of document.querySelectorAll<HTMLDetailsElement>('details.dm-filter[open]')) menu.open = false;
-  });
+  // The press that does it goes no further: it closes the menu and nothing under the pointer acts. Listening only while this one is open.
+  const menu = useRef<HTMLDetailsElement>(null);
+  const [shown, setShown] = useState(false);
+  useOutsidePress(shown, (t) => !!menu.current?.contains(t), () => { if (menu.current) menu.current.open = false; });
 
   if (options.length === 0) return null;
   // Counted against the options on offer: a ticked id that has since gone is no reason to say "3"
@@ -37,7 +38,7 @@ export function MultiSelect({ label, options, selected, onChange }: {
   }));
 
   return (
-    <details className="dm-filter" name="dm-filter">
+    <details ref={menu} className="dm-filter" name="dm-filter" onToggle={(e) => setShown(e.currentTarget.open)}>
       <summary>
         {label}
         <span className={typeof summary === 'string' ? 'dm-filter-all' : 'dm-filter-count'}>{summary}</span>
