@@ -504,7 +504,6 @@ test('Chart type switches a chart in place and keeps its usable saved fields', a
 test('a ranked bar draws one bar per top value; switching it to pie keeps its measure and dimension', async () => {
   const t = await charts({ charts: { version: 2, charts: [{ id: 'r', kind: 'rankedBar', measure: 'amount', dimension: 'status' }] } });
   await waitFor(() => expect(data().querySelector('section[data-chart-kind="Ranked bar"] svg[data-orientation="horizontal"]')).not.toBeNull());
-  // The ranked bar and the pie read the same top values, so the pie reuses this read.
   expect(t.queries.some((q) => q.limit === 8 && q.aggregation?.[0]?.function === 'SUM')).toBe(true);
   await userEvent.click(screen.getByRole('button', { name: 'Ranked bar options' }));
   await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));

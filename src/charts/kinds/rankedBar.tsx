@@ -49,6 +49,7 @@ function RankedBarPanel({ martId, cf, r, filter, version, idle, hasFilters, form
     </ChartPanel>
   );
 }
+
 export const rankedBar: ChartKindDef<RankedR> = {
   kind: 'rankedBar',
   label: 'Ranked bar',
