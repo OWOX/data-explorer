@@ -399,16 +399,16 @@ test('selecting a joinable mart adds its first text column; the × removes it; r
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
 });
 
-test('removing the main group promotes the next joined one; make main on a mart the main one cannot join makes it main and keeps the old main joined', async ({ page }) => {
+test('removing the main group promotes the next joined one; searching for a mart the main one cannot join makes it main', async ({ page }) => {
   const data = await ordersGrid(page);
   await martCard(page, 'Customers').click();
   await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', 'Customers']);
   await data.getByRole('button', { name: 'Remove Orders from the grid' }).click();
   await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Customers']);
   await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
-  // Customers cannot join Sessions, but Sessions can join Customers, so Customers stays as a joined mart
+  // Customers cannot join Sessions: the ghost has no make-main button now, so the search is the way to it
   await makeMainViaGhost(page, 'Customers', 'Sessions');
-  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Sessions', 'Customers']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Sessions']);
 });
 
 /** Waits for a body cell under "Amount · Sum" with a number in it (the grouped rows have arrived) and returns its text. */
