@@ -64,7 +64,10 @@ test('traverseData sorts by several keys, in order, each with its own direction,
 test('blendable-schema lists the marts an order joins to, with their fields as blended names', async () => {
   const dto = await createMockCtx(demoFixtures()).owox.getJson<BlendableSchemaDto>('/api/data-marts/orders/blendable-schema');
   const sources = dto.availableSources!;
-  expect(sources.filter((s) => s.depth === 1).map((s) => s.aliasPath).sort()).toEqual(['customers', 'products', 'stores']);
+  expect(sources.filter((s) => s.depth === 1).map((s) => s.aliasPath).sort()).toEqual(['customers', 'products', 'shipments', 'stores']);
+  // Lookups keyed by the target's primary key leave the order's rows whole; shipments hang several rows on one order.
+  const mult = (path: string) => sources.find((s) => s.aliasPath === path)!.mainGrainMultiplication;
+  expect([mult('customers'), mult('customers.countries'), mult('shipments')]).toEqual(['none', 'none', 'multiplies']);
   expect(sources.every((s) => s.isIncluded && s.isAccessibleForReporting)).toBe(true);
   // Countries is reached twice, through customers and through stores: two sources, told apart by their alias path.
   expect(sources.filter((s) => s.dataMartId === 'countries').map((s) => s.aliasPath).sort()).toEqual(['customers.countries', 'stores.countries']);

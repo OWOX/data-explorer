@@ -67,9 +67,9 @@ test('sankey: Columns adds a column filled with the next dimension, a column pic
   await userEvent.click(panel('Sankey'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Columns' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: '3' }));
-  // The third column is Products' (the next mart's), so no metric fits all three columns: the panel says so instead of drawing.
-  expect(await within(data()).findByText(NO_MEASURE_NOTE)).toBeInTheDocument();
-  expect(titles()).toHaveLength(0);
+  // The third column is Products' title: a lookup joined by Products' key, so Orders' metric still counts each order once and the flow draws.
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  expect(within(data()).queryByText(NO_MEASURE_NOTE)).toBeNull();
   const first = savedDims(t);
   expect(new Set(first).size).toBe(3);
   await userEvent.click(panel('Sankey'));
@@ -77,11 +77,22 @@ test('sankey: Columns adds a column filled with the next dimension, a column pic
   await userEvent.click((await screen.findAllByRole('menuitemradio')).find((el) => el.getAttribute('aria-checked') === 'false')!);
   await waitFor(() => expect(savedDims(t)[0]).not.toBe(first[0]));
   expect(new Set(savedDims(t)).size).toBe(3);
-  expect(data().querySelectorAll('path[data-link]')).toHaveLength(0);
   await userEvent.click(panel('Sankey'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Columns' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: '2' }));
   await waitFor(() => expect(titles()).toHaveLength(2));
+});
+
+test('sankey: a main mart metric by a column of a one-to-one joined mart draws', async () => {
+  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'] }] } });
+  await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
+  expect(within(data()).queryByText(NO_MEASURE_NOTE)).toBeNull();
+});
+
+test('sankey: a column of a mart that fans out the main rows shows the note', async () => {
+  await charts({ columns: [...dims, 'shipments__carrier'], charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'shipments__carrier'] }] } });
+  expect(await within(data()).findByText(NO_MEASURE_NOTE)).toBeInTheDocument();
+  expect(data().querySelectorAll('path[data-link]')).toHaveLength(0);
 });
 
 test('sankey: one flow read grouped on the columns plus one total read per column', async () => {

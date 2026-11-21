@@ -54,6 +54,11 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     joinTrees.set(martId, out);
     return out;
   }
+  /** A hop does not repeat its parent's rows when its join key is the target's primary key (a lookup); a key that is not one (order items of an order) fans out. */
+  const keyedByTargetPk = (e: EdgeDto): boolean => {
+    const pks = byId.get(e.targetDataMartId)!.fields.filter((x) => x.isPrimaryKey).map((x) => x.name);
+    return pks.length > 0 && e.joinConditions.length === pks.length && e.joinConditions.every((j) => pks.includes(j.targetFieldName));
+  };
   const blendedName = (aliasPath: string, field: string) => `${aliasPath.replaceAll('.', '__')}__${field}`;
 
   function blendableSchema(martId: string): BlendableSchemaDto {
@@ -61,7 +66,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     const hops = joinTree(martId);
     const availableSources: AvailableSourceDto[] = hops.map((h) => {
       const t = byId.get(h.martId)!;
-      return { aliasPath: h.aliasPath, title: t.title, defaultAlias: t.title, depth: h.depth, dataMartId: t.id, relationshipId: h.edges.at(-1)!.id, isIncluded: true, isAccessibleForReporting: t.accessible, uniqueCountAvailability: t.fields.some((x) => x.isPrimaryKey) ? 'available' : 'no-primary-key' };
+      return { aliasPath: h.aliasPath, title: t.title, defaultAlias: t.title, depth: h.depth, dataMartId: t.id, relationshipId: h.edges.at(-1)!.id, isIncluded: true, isAccessibleForReporting: t.accessible, uniqueCountAvailability: t.fields.some((x) => x.isPrimaryKey) ? 'available' : 'no-primary-key', mainGrainMultiplication: h.edges.every(keyedByTargetPk) ? 'none' : 'multiplies' };
     });
     const blendedFields: BlendedFieldDto[] = hops.flatMap((h) => {
       const t = byId.get(h.martId)!;

@@ -20,7 +20,7 @@ export const NEGATIVE_NOTE = 'Sankey needs values of 0 or more; this metric has 
 export const cappedNote = (n: number): string => `Showing the largest ${n.toLocaleString('en-US')} combinations; smaller flows are left out.`;
 
 export const columnCappedNote = (n: number): string => `A column has ${n.toLocaleString('en-US')} or more values; its smallest ones are not counted in Other.`;
-export const NO_MEASURE_NOTE = "Pick columns from one data mart: another mart's metric or count would be counted once per joined row.";
+export const NO_MEASURE_NOTE = 'These columns would count a row once per joined row. Pick columns from the metric\'s data mart or from marts joined one-to-one.';
 
 /** `measure` is null when no metric fits the columns (see `sankeyMeasures`): the panel then draws nothing but the note. */
 export type SankeyR = { dims: Field[]; measure: Measure | null };

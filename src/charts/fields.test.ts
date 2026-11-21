@@ -123,3 +123,35 @@ describe('the measures a Sankey may sum', () => {
     expect(ids(['channel', 'c__city'])).toEqual([]);
   });
 });
+
+describe('a main mart measure by columns of joined marts', () => {
+  const joined = (path: string, name: string) => f(name, 'string', { joined: { martId: path, label: path, aliasPath: path } });
+  const all = Object.assign([...schema, joined('c', 'c__name'), joined('c.r', 'c__r__name'), joined('i', 'i__sku')], { primaryKey: ['id'] });
+  const shown = all.map((x) => x.name);
+  const run = (mult: Record<string, 'none' | 'multiplies' | 'unknown'> | undefined, dims: string[]) => {
+    const cf = chartFields(all, shown, NO_AGGREGATION, 'M', ['', 'c', 'c.r', 'i'], new Set(['c']), {}, mult)!;
+    return sankeyMeasures(cf, dims.map((n) => cf.dimensions.find((d) => d.name === n)!)).map((m) => (m.kind === 'records' ? `records@${m.aliasPath}` : m.metric.field.name));
+  };
+  const main = ['records@', 'amount', 'qty'];
+  it('is offered when the joined mart is none', () => expect(run({ c: 'none' }, ['channel', 'c__name'])).toEqual(main));
+  it('is not offered when the joined mart multiplies', () => expect(run({ c: 'multiplies' }, ['channel', 'c__name'])).toEqual([]));
+  it('is not offered when the joined mart is unknown', () => expect(run({ c: 'unknown' }, ['channel', 'c__name'])).toEqual([]));
+  it('is not offered when the backend sends nothing', () => {
+    expect(run(undefined, ['channel', 'c__name'])).toEqual([]);
+    expect(run({}, ['channel', 'c__name'])).toEqual([]);
+  });
+  it('needs every mart on the path to be none', () => {
+    expect(run({ c: 'none', 'c.r': 'none' }, ['channel', 'c__r__name'])).toEqual(main);
+    expect(run({ c: 'multiplies', 'c.r': 'none' }, ['channel', 'c__r__name'])).toEqual([]);
+    expect(run({ 'c.r': 'none' }, ['channel', 'c__r__name'])).toEqual([]);
+  });
+  it('needs every chosen column to be none', () => {
+    expect(run({ c: 'none', i: 'multiplies' }, ['c__name', 'i__sku'])).toEqual([]);
+    expect(run({ c: 'none', i: 'none' }, ['c__name', 'i__sku'])).toEqual(main);
+  });
+  it('keeps a joined mart\'s measure on its own mart, whatever the multiplication', () => {
+    expect(run({ c: 'none', i: 'none' }, ['c__name', 'i__sku'])).not.toContain('c__ltv');
+    expect(run({ c: 'none' }, ['channel', 'c__name'])).not.toContain('records@c');
+    expect(run({ c: 'multiplies' }, ['c__name', 'c__city'])).toEqual(['records@c', 'c__ltv']);
+  });
+});
