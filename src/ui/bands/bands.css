@@ -180,6 +180,8 @@
   background: var(--card); cursor: pointer;
   transition: opacity 150ms, box-shadow 150ms;
 }
+/* In Grid, only the cards on the current path (the main and joined marts, and what the lit lines reach) sit on a white card; the rest let the band show through. */
+#band-marts .dm-band-grid > .dm-node:not(.dm-in-path) { background: transparent; }
 /* Held down, the card is being carried rather than pointed at. */
 .dm-node:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); }
 .dm-node.dm-unjoinable { opacity: 0.45; }
