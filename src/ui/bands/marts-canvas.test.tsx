@@ -190,6 +190,12 @@ test('the lines of a dragged card dim until the drop; ghost lines brighten with 
   expect(line(ghost.id)).not.toHaveClass('engaged');
   await userEvent.hover(ghost);
   await waitFor(() => expect(line(ghost.id)).toHaveClass('engaged'));
+  // A blur while the pointer is still on the ghost keeps its line engaged; leaving too lets it go.
+  fireEvent.focus(ghost);
+  fireEvent.blur(ghost);
+  expect(line(ghost.id)).toHaveClass('engaged');
+  await userEvent.unhover(ghost);
+  await waitFor(() => expect(line(ghost.id)).not.toHaveClass('engaged'));
 });
 
 test('Escape or a release away from any target changes nothing, and the next click still works', async () => {

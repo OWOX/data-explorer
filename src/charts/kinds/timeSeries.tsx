@@ -9,7 +9,7 @@ import { compactValue } from '../compact';
 import type { MenuItem } from '../ChartMenu';
 import { ChartPanel } from '../ChartPanel';
 import { measuresOf, type ChartFields } from '../fields';
-import { bucketZone, dateFilter, type Measure } from '../queries';
+import { bucketZone, type Measure } from '../queries';
 import { measureFormat, measureLabel, measureOptions } from '../Scorecards';
 import { measureId, pickBucketChoice, pickField, pickMeasure, type Orientation } from '../settings';
 import { BarChart } from '../svg/BarChart';

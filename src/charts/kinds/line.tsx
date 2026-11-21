@@ -7,7 +7,7 @@ import type { MenuItem } from '../ChartMenu';
 import { ChartPanel } from '../ChartPanel';
 import { bucketFilter, dimensionFilter, isBucketDate } from '../clickFilters';
 import { measuresOf } from '../fields';
-import { bucketZone, dateFilter, type Measure } from '../queries';
+import { bucketZone, type Measure } from '../queries';
 import { measureFormat, measureLabel, measureOptions } from '../Scorecards';
 import { measureId, pickBucketChoice, pickField, pickMeasure } from '../settings';
 import { LineChart } from '../svg/LineChart';

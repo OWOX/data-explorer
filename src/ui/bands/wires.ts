@@ -309,5 +309,5 @@ export function useWires(
       path.classList.toggle('held', held !== null && (from === held || to === held));
       path.classList.toggle('engaged', engaged !== null && to === engaged && path.classList.contains('ghost'));
     }
-  }, [wires, revision, held, engaged]);
+  }, [wires, revision, pinned, hovered, alsoKey, held, engaged]);
 }
