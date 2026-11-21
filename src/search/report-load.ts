@@ -64,6 +64,13 @@ function valueFor(kind: string, value: unknown, field: Field): { ok: true; value
  */
 export function fromTraverseFilter(rule: unknown, field: Field): ColumnFilter | null {
   if (!isRecord(rule) || typeof rule.column !== 'string' || typeof rule.operator !== 'string') return null;
+  if (rule.operator === 'in' || rule.operator === 'not_in') {
+    if (field.category !== 'string' || !Array.isArray(rule.value) || rule.value.length === 0) return null;
+    const vals = rule.value;
+    if (!vals.every((x): x is string => typeof x === 'string' && x.trim() !== '' && !x.includes(','))) return null;
+    const listed: ColumnFilter = { field: field.name, op: rule.operator === 'in' ? 'eq' : 'neq', value: vals.join(', '), list: true };
+    return isComplete(listed, field) ? listed : null;
+  }
   const op = opFor(rule.operator, field);
   const def = operatorsFor(field).find((o) => o.id === op);
   if (!def) return null;
