@@ -33,7 +33,7 @@ async function openColumnSub(data: Locator, title: string, row: 'Filter' | 'Aggr
 async function makeMain(page: Page, title: string) {
   await martCard(page, title).click();
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', title]);
-  await band(page, 'marts').getByRole('button', { name: 'Make it main' }).click();
+  await band(page, 'marts').getByRole('button', { name: /^Make .* the main data mart$/ }).click();
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText([title]);
 }
 
@@ -43,7 +43,7 @@ async function makeMainViaGhost(page: Page, from: string, title: string) {
   const ghost = band(page, 'marts').locator('article', { hasText: title }).first();
   await ghost.hover();
   await ghost.click();
-  await band(page, 'marts').getByRole('button', { name: 'Make it main' }).click();
+  await band(page, 'marts').getByRole('button', { name: /^Make .* the main data mart$/ }).click();
 }
 
 const unfoldSources = (page: Page) => page.getByRole('button', { name: 'Show Data Sources' }).click();
@@ -235,7 +235,7 @@ test('a click on a mart Orders cannot join explains instead of switching; its Ma
   await martCard(page, 'Orders').hover();
   const ghost = band(page, 'marts').locator('article', { hasText: 'Order Items' }).first();
   await ghost.click();
-  await expect(ghost.getByRole('status')).toContainText("Can't join Orders. Use Make it main to make it the main data mart.");
+  await expect(ghost.getByRole('status')).toContainText("Can't join Orders. Use Make it main in the section header to make it the main data mart.");
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
   await makeMainViaGhost(page, 'Orders', 'Order Items');
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');

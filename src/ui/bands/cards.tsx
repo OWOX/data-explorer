@@ -259,7 +259,7 @@ export function MartCard({
       </div>
       {/* The live region stays mounted so a screen reader announces the hint when it appears. */}
       <span aria-live="polite" className="dm-card-live">
-        {hint && unjoinable && mainTitle && <span role="status" className="dm-card-hint">{ghost ? `Can't join ${joinTitle ?? mainTitle}. Use Make it main to make it the main data mart.` : addViaEscape ? `Can't join ${joinTitle ?? mainTitle}. Press Escape, then click it to add it to ${mainTitle}.` : `Can't join ${joinTitle ?? mainTitle}. Drag it onto ${mainTitle} to make it the main data mart.`}</span>}
+        {hint && unjoinable && mainTitle && <span role="status" className="dm-card-hint">{ghost ? `Can't join ${joinTitle ?? mainTitle}. Use Make it main in the section header to make it the main data mart.` : addViaEscape ? `Can't join ${joinTitle ?? mainTitle}. Press Escape, then click it to add it to ${mainTitle}.` : `Can't join ${joinTitle ?? mainTitle}. Drag it onto ${mainTitle} to make it the main data mart.`}</span>}
       </span>
     </article>
   );
