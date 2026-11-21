@@ -83,6 +83,8 @@ export type SchemaFieldDto = {
   mode?: string;
   calculated?: unknown;
   allowedAggregations?: string[];
+  /** The nested fields of a struct field. */
+  fields?: SchemaFieldDto[];
 };
 export type DataMartDetailDto = { id: string; schema?: { fields?: SchemaFieldDto[] } | null };
 /** The part of GET /api/data-marts/:id/blendable-schema the plugin reads: the fields of joined data marts and which joins may be offered. */

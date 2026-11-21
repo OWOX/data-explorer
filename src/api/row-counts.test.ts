@@ -21,6 +21,11 @@ test('a hidden primary key still counts by Unique Count, which the backend compu
   expect(countOptions(hidden)).toEqual({ options: { uniqueCount: [''] }, key: 'Unique Count' });
 });
 
+test('a composite key with a disconnected component is no key: the visible component alone does not send a Unique Count', () => {
+  const part: Schema = Object.assign([{ ...withPk[0]! }], { primaryKey: [] as string[] });
+  expect(countOptions(part)).toBeNull();
+});
+
 test('a mart with only number, date and time fields and no key has no count', async () => {
   const only = [field('day', 'date', 'DATE'), field('amount', 'number'), field('t', 'time')];
   expect(countOptions(only)).toBeNull();

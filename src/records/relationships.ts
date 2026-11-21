@@ -11,7 +11,8 @@ export function primaryKeys(schema: Schema): string[] {
 
 /** Whether the main mart has a primary key at all, a hidden one included: Unique Count counts by it, a column or sort cannot name it. */
 export function hasPrimaryKey(schema: Schema): boolean {
-  return schema.some((f) => f.isPrimaryKey && !f.joined) || (schema.primaryKey?.length ?? 0) > 0;
+  // The loader's declared key decides when it is there: a key with a disconnected component is no key, whatever flags the other fields carry.
+  return schema.primaryKey ? schema.primaryKey.length > 0 : schema.some((f) => f.isPrimaryKey && !f.joined);
 }
 
 export type IncomingLink = {

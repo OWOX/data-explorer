@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { Ctx } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
+import { keyShown } from '../../sdk/mock/key-shown';
 import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
 import { openSubmenu } from '../explorer/menu-test-utils';
@@ -39,9 +40,9 @@ async function search(q: string) {
 const clearSearch = () => userEvent.click(screen.getByRole('button', { name: 'Clear search' }));
 
 // The orders grid used to open on its key; the key is no longer a default column, so these tests start from a grid that was saved with it.
-const withKeyShown = (c: Mock): Mock => { void c.collections('grid-columns').put('orders', { columns: ['id', 'customer_id', 'product_id', 'store_id', 'status'], at: new Date().toISOString() }); return c; };
-async function mountWith(wrap: (ctx: Mock) => Ctx = (c) => c, fixtures = demoFixtures()) {
-  const view = render(<AppServices ctx={titleSearchOnly(wrap(withKeyShown(createMockCtx(fixtures, { latencyMs: 0 }))))}><StoreProvider><App /><ModelReload /><SelectSecretLedger /></StoreProvider></AppServices>);
+const withKeyShown = (c: Mock): Mock => keyShown(c);
+async function mountWith(wrap: (ctx: Mock) => Ctx = (c) => c, fixtures = demoFixtures(), seedKey = true) {
+  const view = render(<AppServices ctx={titleSearchOnly(wrap((seedKey ? withKeyShown : (c: Mock) => c)(createMockCtx(fixtures, { latencyMs: 0 }))))}><StoreProvider><App /><ModelReload /><SelectSecretLedger /></StoreProvider></AppServices>);
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
   await waitFor(() => expect(document.querySelector('.dm-loadbar')).toBeNull());
   return view;
@@ -1328,6 +1329,17 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     // The mart is still counted by its key: Unique Count is sent for it, and no card says it cannot count.
     expect(queries.some((q) => q.id === 'stores' && (q.o as { uniqueCount?: string[] }).uniqueCount?.[0] === '')).toBe(true);
     expect(screen.queryByText(/Can't count records/)).toBeNull();
+  });
+
+  test('a fresh orders grid does not show its key column, and a row still opens', async () => {
+    await mountWith((c) => c, demoFixtures(), false);
+    const grid = await within(data()).findByRole('table');
+    await waitFor(() => expect(within(grid).getAllByRole('row').length).toBeGreaterThan(2));
+    expect(within(grid).queryByLabelText('Column menu id')).toBeNull();
+    expect(within(grid).getByLabelText('Column menu status')).toBeInTheDocument();
+    await userEvent.click(within(grid).getAllByRole('row')[2]!);
+    await waitFor(() => expect(within(row()).queryByText('Select a row.')).toBeNull());
+    expect(within(data()).queryByRole('note', { name: NO_PK })).toBeNull();
   });
 
   test('Referenced by leaves out a link whose join field is hidden for reporting', async () => {

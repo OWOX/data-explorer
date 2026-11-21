@@ -16,8 +16,19 @@ export interface SchemaLoader {
  * A disconnected key column is gone from the source, and the backend then counts by no key at all, so none is reported.
  */
 function declaredKey(fields: SchemaFieldDto[]): string[] {
-  const keys = fields.filter((f) => f.isPrimaryKey === true);
-  return keys.some((f) => f.status === 'DISCONNECTED') ? [] : keys.map((f) => f.name);
+  const keys: string[] = [];
+  let complete = true;
+  const walk = (nodes: SchemaFieldDto[], prefix: string, reachable: boolean) => {
+    for (const f of nodes) {
+      const path = prefix ? `${prefix}.${f.name}` : f.name;
+      // A calculated field has no warehouse column, so its status says nothing: it counts as connected (the backend's isConnected).
+      const here = reachable && (f.calculated !== undefined || f.status !== 'DISCONNECTED');
+      if (f.isPrimaryKey === true) { if (here) keys.push(path); else complete = false; }
+      if (Array.isArray(f.fields) && f.fields.length) walk(f.fields, path, here);
+    }
+  };
+  walk(fields, '', true);
+  return complete ? keys : [];
 }
 
 export function createSchemaLoader(ctx: Ctx): SchemaLoader {
