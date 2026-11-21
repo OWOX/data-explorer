@@ -18,12 +18,12 @@ export type JoinedSource = {
   uniqueCount: boolean;
   /** The relationship (edge) that exposes this source, when the backend says. */
   relationshipId?: string;
-  /** Whether joins down to this source repeat the main mart's rows; 'unknown' when the backend does not say. */
-  mainGrainMultiplication?: MainGrainMultiplication;
+  /** Whether joins down to this source leave the main mart's rows whole: 'none' when every hop is keyed by its target's primary key (a lookup), else 'collapses' (also when the backend does not say). */
+  mainGrainCollapse?: MainGrainCollapse;
 };
 
-export type MainGrainMultiplication = 'none' | 'multiplies' | 'unknown';
-const multiplicationOf = (v: unknown): MainGrainMultiplication => (v === 'none' || v === 'multiplies' ? v : 'unknown');
+export type MainGrainCollapse = 'none' | 'collapses';
+const collapseOf = (v: unknown): MainGrainCollapse => (v === 'none' ? 'none' : 'collapses');
 
 const owners = new WeakMap<JoinedSource[], Map<string, JoinedSource>>();
 /** The source a field name belongs to (the first, when two sources carry the same name), built once per sources array. */
@@ -57,7 +57,7 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
   offered.forEach((s) => labelUses.set(nameOf(s), (labelUses.get(nameOf(s)) ?? 0) + 1));
   for (const s of offered) {
     const base = nameOf(s);
-    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, fields: [], uniqueCount: s.uniqueCountAvailability === 'available', mainGrainMultiplication: multiplicationOf(s.mainGrainMultiplication), ...(s.relationshipId ? { relationshipId: s.relationshipId } : {}) });
+    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, fields: [], uniqueCount: s.uniqueCountAvailability === 'available', mainGrainCollapse: collapseOf(s.mainGrainCollapse), ...(s.relationshipId ? { relationshipId: s.relationshipId } : {}) });
   }
   for (const b of dto.blendedFields ?? []) {
     const source = byPath.get(b.aliasPath);

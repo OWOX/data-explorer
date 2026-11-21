@@ -65,9 +65,12 @@ test('blendable-schema lists the marts an order joins to, with their fields as b
   const dto = await createMockCtx(demoFixtures()).owox.getJson<BlendableSchemaDto>('/api/data-marts/orders/blendable-schema');
   const sources = dto.availableSources!;
   expect(sources.filter((s) => s.depth === 1).map((s) => s.aliasPath).sort()).toEqual(['customers', 'products', 'shipments', 'stores']);
-  // Lookups keyed by the target's primary key leave the order's rows whole; shipments hang several rows on one order.
-  const mult = (path: string) => sources.find((s) => s.aliasPath === path)!.mainGrainMultiplication;
-  expect([mult('customers'), mult('customers.countries'), mult('shipments')]).toEqual(['none', 'none', 'multiplies']);
+  // The backend's two verdicts: multiplication is 'none' when each hop is keyed by its parent's primary key (orders.id = shipments.order_id);
+  // collapse is 'none' when each hop is keyed by its target's primary key (a lookup: customers, countries).
+  const grain = (path: string) => { const x = sources.find((y) => y.aliasPath === path)!; return [x.mainGrainMultiplication, x.mainGrainCollapse]; };
+  expect(grain('customers')).toEqual(['multiplies', 'none']);
+  expect(grain('customers.countries')).toEqual(['multiplies', 'none']);
+  expect(grain('shipments')).toEqual(['none', 'collapses']);
   expect(sources.every((s) => s.isIncluded && s.isAccessibleForReporting)).toBe(true);
   // Countries is reached twice, through customers and through stores: two sources, told apart by their alias path.
   expect(sources.filter((s) => s.dataMartId === 'countries').map((s) => s.aliasPath).sort()).toEqual(['customers.countries', 'stores.countries']);

@@ -54,11 +54,12 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     joinTrees.set(martId, out);
     return out;
   }
-  /** A hop does not repeat its parent's rows when its join key is the target's primary key (a lookup); a key that is not one (order items of an order) fans out. */
-  const keyedByTargetPk = (e: EdgeDto): boolean => {
-    const pks = byId.get(e.targetDataMartId)!.fields.filter((x) => x.isPrimaryKey).map((x) => x.name);
-    return pks.length > 0 && e.joinConditions.length === pks.length && e.joinConditions.every((j) => pks.includes(j.targetFieldName));
-  };
+  const covers = (key: string[], pks: string[]) => pks.length > 0 && pks.every((k) => key.includes(k));
+  const pkOf = (id: string) => byId.get(id)!.fields.filter((x) => x.isPrimaryKey).map((x) => x.name);
+  /** One-to-many, as the backend's hopGrain: a hop keyed by its parent's primary key ('none') adds no rows to the parent; any other key fans out. */
+  const keyedByParentPk = (e: EdgeDto): boolean => covers(e.joinConditions.map((j) => j.sourceFieldName), pkOf(e.sourceDataMartId));
+  /** Lookup, as the backend's hopGrain: a hop keyed by its target's primary key ('none') matches a parent row to at most one target row. */
+  const keyedByTargetPk = (e: EdgeDto): boolean => covers(e.joinConditions.map((j) => j.targetFieldName), pkOf(e.targetDataMartId));
   const blendedName = (aliasPath: string, field: string) => `${aliasPath.replaceAll('.', '__')}__${field}`;
 
   function blendableSchema(martId: string): BlendableSchemaDto {
@@ -66,7 +67,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     const hops = joinTree(martId);
     const availableSources: AvailableSourceDto[] = hops.map((h) => {
       const t = byId.get(h.martId)!;
-      return { aliasPath: h.aliasPath, title: t.title, defaultAlias: t.title, depth: h.depth, dataMartId: t.id, relationshipId: h.edges.at(-1)!.id, isIncluded: true, isAccessibleForReporting: t.accessible, uniqueCountAvailability: t.fields.some((x) => x.isPrimaryKey) ? 'available' : 'no-primary-key', mainGrainMultiplication: h.edges.every(keyedByTargetPk) ? 'none' : 'multiplies' };
+      return { aliasPath: h.aliasPath, title: t.title, defaultAlias: t.title, depth: h.depth, dataMartId: t.id, relationshipId: h.edges.at(-1)!.id, isIncluded: true, isAccessibleForReporting: t.accessible, uniqueCountAvailability: t.fields.some((x) => x.isPrimaryKey) ? 'available' : 'no-primary-key', mainGrainMultiplication: h.edges.every(keyedByParentPk) ? 'none' : 'multiplies', mainGrainCollapse: h.edges.every(keyedByTargetPk) ? 'none' : 'collapses' };
     });
     const blendedFields: BlendedFieldDto[] = hops.flatMap((h) => {
       const t = byId.get(h.martId)!;

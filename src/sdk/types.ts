@@ -120,8 +120,10 @@ export type AvailableSourceDto = {
   isAccessibleForReporting: boolean;
   /** Whether a uniqueCount on this alias path works: 'available', else why not ('no-primary-key', 'disconnected-primary-key', ...). */
   uniqueCountAvailability?: string;
-  /** Whether the main mart's rows are repeated by the joins down to this source: 'none' (every hop is keyed by its parent's primary key), else 'multiplies' or 'unknown'. A backend that does not send it means 'unknown'. */
+  /** One-to-many: 'none' when every hop is keyed by its parent's primary key, else 'multiplies' or 'unknown'. */
   mainGrainMultiplication?: 'none' | 'multiplies' | 'unknown';
+  /** Lookup: 'none' when every hop is keyed by its target's primary key (a main row matches at most one joined row), else 'collapses'. A backend that does not send it means 'collapses'. */
+  mainGrainCollapse?: 'none' | 'collapses';
 };
 export type BlendableSchemaDto = { blendedFields?: BlendedFieldDto[]; availableSources?: AvailableSourceDto[] };
 export type DqSummaryDto = {
