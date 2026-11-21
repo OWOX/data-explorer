@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { monthsQuery, pieOtherQuery, rangeKeys, rangeQuery, scorecardsQuery, seriesOtherQuery, seriesQuery, sparklineQuery, topValuesQuery, uniqueKey, metricKey } from './queries';
+import { heatmapQuery, SCATTER_LIMIT, scatterQuery, spreadFns, spreadQuery, monthsQuery, pieOtherQuery, rangeKeys, rangeQuery, scorecardsQuery, seriesOtherQuery, seriesQuery, sparklineQuery, topValuesQuery, uniqueKey, metricKey } from './queries';
 import type { ChartMart, Metric } from './fields';
 import type { Measure } from './queries';
 import type { Field } from '../model/types';
@@ -134,5 +134,53 @@ describe('bucketZone', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('heatmap, scatter and spread queries', () => {
+  const fld = (name: string, category: string, extra: object = {}) => ({ name, category, type: category === 'number' ? 'NUMERIC' : category === 'date' ? 'DATE' : 'STRING', ...extra }) as never;
+  const status = fld('status', 'string');
+  const chan = fld('channel', 'string');
+  const day = fld('day', 'date');
+  const amountF = fld('amount', 'number');
+  const sum = { kind: 'metric', metric: { field: amountF, fn: 'SUM' } } as const;
+  const recs = { kind: 'records', aliasPath: '', recordsId: 'records:M' } as const;
+
+  it('heatmap by date buckets the date and keeps the rows to the top list', () => {
+    expect(heatmapQuery({ kind: 'date', date: day, bucket: 'MONTH' }, status, ['a', 'b'], sum, [])).toEqual({
+      column: ['day', 'status', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' }],
+      dateTrunc: [{ column: 'day', unit: 'MONTH' }], sort: [{ column: 'day', direction: 'asc' }],
+      filter: [{ column: 'status', operator: 'is_not_blank' }, { column: 'status', operator: 'in', value: ['a', 'b'] }],
+    });
+  });
+
+  it('heatmap by two dimensions keeps both axes to their top lists', () => {
+    const o = heatmapQuery({ kind: 'dim', dim: chan, top: ['x'] }, status, ['a'], recs, []);
+    expect(o.column).toEqual(['channel', 'status']);
+    expect(o.uniqueCount).toEqual(['']);
+    expect(o.filter).toEqual([
+      { column: 'status', operator: 'is_not_blank' }, { column: 'status', operator: 'in', value: ['a'] },
+      { column: 'channel', operator: 'is_not_blank' }, { column: 'channel', operator: 'in', value: ['x'] },
+    ]);
+  });
+
+  it('scatter reads two measures per dimension value, the top 200 by X', () => {
+    const avg = { kind: 'metric', metric: { field: amountF, fn: 'AVG' } } as const;
+    expect(scatterQuery(status, sum, avg, [])).toEqual({
+      column: ['status', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' }, { column: 'amount', function: 'AVG' }],
+      sort: [{ column: 'amount', direction: 'desc' }], limit: SCATTER_LIMIT,
+      filter: [{ column: 'status', operator: 'is_not_blank' }],
+    });
+  });
+
+  it('spread needs the three percentiles; whiskers only when MIN and MAX are allowed', () => {
+    expect(spreadFns(amountF)).toEqual([]);
+    const governed = fld('net', 'number', { allowedAggregations: ['P25', 'P50', 'P75', 'MIN', 'MAX'] });
+    expect(spreadFns(governed)).toEqual(['P50', 'P25', 'P75', 'MIN', 'MAX']);
+    expect(spreadFns(fld('n2', 'number', { allowedAggregations: ['P25', 'P50', 'P75'] }))).toEqual(['P50', 'P25', 'P75']);
+    expect(spreadQuery(status, governed, [])).toEqual({
+      column: ['status', 'net'], aggregation: ['P50', 'P25', 'P75', 'MIN', 'MAX'].map((fn) => ({ column: 'net', function: fn })),
+      sort: [{ column: 'net', direction: 'desc' }], limit: 8, filter: [{ column: 'status', operator: 'is_not_blank' }],
+    });
   });
 });
