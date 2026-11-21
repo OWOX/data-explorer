@@ -1748,7 +1748,7 @@ describe('ghost cards on hover', () => {
   test('a clicked ghost the main one cannot join is picked: the header offers Make it main, and it makes that mart the main one', async () => {
     await mountWith();
     await within(marts()).findByText('Customers');
-    expect(screen.queryByRole('button', { name: /^Make .* the main data mart$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Make it main: / })).toBeNull();
     fireEvent.pointerOver(cardOf('Customers'));
     const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
     fireEvent.click(ghost);
@@ -1757,9 +1757,9 @@ describe('ghost cards on hover', () => {
     fireEvent.pointerOver(document.body);
     await new Promise((r) => setTimeout(r, 500));
     expect(within(marts()).getByText('Sessions')).toBeInTheDocument();
-    await userEvent.click(await screen.findByRole('button', { name: /^Make .* the main data mart$/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /^Make it main: / }));
     await waitFor(() => expect(document.querySelector('#band-data thead tr[data-group-row] th[data-group]')).toHaveTextContent('Sessions'));
-    await waitFor(() => expect(screen.queryByRole('button', { name: /^Make .* the main data mart$/ })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^Make it main: / })).toBeNull());
   });
 
   test('a click on the band background drops the pick, and the header button goes', async () => {
@@ -1768,9 +1768,9 @@ describe('ghost cards on hover', () => {
     fireEvent.pointerOver(cardOf('Customers'));
     const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
     fireEvent.click(ghost);
-    await screen.findByRole('button', { name: /^Make .* the main data mart$/ });
+    await screen.findByRole('button', { name: /^Make it main: / });
     fireEvent.click(marts().querySelector('.dm-band-body')!);
-    await waitFor(() => expect(screen.queryByRole('button', { name: /^Make .* the main data mart$/ })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^Make it main: / })).toBeNull());
   });
 
   test('clicking a joinable card after picking a ghost drops the pick', async () => {
@@ -1779,9 +1779,9 @@ describe('ghost cards on hover', () => {
     fireEvent.pointerOver(cardOf('Customers'));
     const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
     fireEvent.click(ghost);
-    await screen.findByRole('button', { name: /^Make .* the main data mart$/ });
+    await screen.findByRole('button', { name: /^Make it main: / });
     fireEvent.click(cardOf('Products'));
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Make Sessions the main data mart' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Make it main: Sessions' })).toBeNull());
   });
 
   test('ghosts do not change the band total and request no row count', async () => {

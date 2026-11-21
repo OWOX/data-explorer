@@ -108,7 +108,7 @@ test('the header\'s make-main button makes the selected joined mart the main one
   await click('Customers');
   await waitFor(() => expect(title()).toBe('Orders + Customers'));
   expect(within(card('Customers')).queryByRole('button', { name: /make main/i })).toBeNull();
-  await userEvent.click(await screen.findByRole('button', { name: /^Make .* the main data mart$/ }));
+  await userEvent.click(await screen.findByRole('button', { name: /^Make it main: / }));
   await waitFor(() => expect(groupTitles()[0]).toBe('Customers'));
   expect(title()).toBe('Customers');
   // The old main leaves the band once the card animation ends.
@@ -120,7 +120,7 @@ test('the header\'s make-main button makes the selected joined mart the main one
 test('the make-main button is only there while a joined card is selected, in Grid and in Graph', async () => {
   setup();
   await ready();
-  const button = () => screen.queryByRole('button', { name: /^Make .* the main data mart$/ });
+  const button = () => screen.queryByRole('button', { name: /^Make it main: / });
   expect(button()).toBeNull();
   await click('Customers');
   await waitFor(() => expect(button()).not.toBeNull());

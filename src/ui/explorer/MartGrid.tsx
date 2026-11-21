@@ -85,6 +85,8 @@ export function MartGrid({ martId, model, seed, onChange, onRows, paused = false
 
 /** A saved-columns read slower than this is given up on for this mount. */
 export const SAVED_COLUMNS_WAIT_MS = 3000;
+/** The longest a saved view's read holds the grid's saves; past it the edit is saved as it stands. */
+export const VIEW_HOLD_MAX_MS = 10000;
 
 /** The names in `saved` the column picker still offers, in the saved order. */
 const offered = (schema: Schema, saved: string[]) => saved.filter((c) => schema.some((f) => f.name === c));
@@ -115,12 +117,34 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
   });
   // Once the wait is given up on, the saved view may still be on its way: the grid holds its saves until that read has settled, so an edit does not overwrite it.
   const [holdView, setHoldView] = useState(false);
+  // The saved view when it arrives after the grid mounted (null: it never came or held nothing); undefined until then. The grid merges it in.
+  const [lateView, setLateView] = useState<SavedView | null | undefined>(undefined);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const gone = useRef(false);
+  useEffect(() => { gone.current = false; return () => { gone.current = true; clearTimeout(holdTimer.current); }; }, []);
   useEffect(() => {
     if (initial) return;
     let live = true;
     const timer = setTimeout(() => {
       live = false;
-      if (!seed.saved) { setHoldView(true); const release = () => setHoldView(false); columnStore.loadView(martId).then(release, release); }
+      if (!seed.saved) {
+        setHoldView(true);
+        // The hold ends when the read settles, or after VIEW_HOLD_MAX_MS if it never does (then the member's edit is saved as it stands).
+        let settled = false;
+        const settle = (v: SavedView | null) => {
+          if (settled || gone.current) return;
+          settled = true;
+          clearTimeout(holdTimer.current);
+          setLateView(v ? lateGrid(v) : null);
+          setHoldView(false);
+        };
+        const lateGrid = (v: SavedView): SavedView => {
+          const full = withJoined(schema, blendable.peek(martId) ?? []);
+          return pruneGrid({ columns: defaultColumns(schema), ...v }, full).grid ?? v;
+        };
+        holdTimer.current = setTimeout(() => settle(null), VIEW_HOLD_MAX_MS);
+        columnStore.loadView(martId).then(settle, () => settle(null));
+      }
       setInitial({ columns: defaultColumns(schema), cleaned: null, sources: null, agg: sanitizeAggregation(seed.saved ? aggOf(seed.saved) : NO_AGGREGATION, schema) });
     }, SAVED_COLUMNS_WAIT_MS);
     (async () => {
@@ -161,7 +185,7 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
   // The cleanup of a saved list that named columns that are gone is the one save that is not the member's own change.
   useEffect(() => { if (cleaned) columnStore.save(martId, cleaned); }, [cleaned, columnStore, martId]);
   if (!initial) return <Skeleton rows={8} />;
-  return <Grid {...props} holdView={holdView} seed={seed.saved || !initial.saved ? seed : { ...seed, saved: initial.saved }} initialColumns={initial.columns} initialSources={initial.sources} initialAgg={initial.agg} />;
+  return <Grid {...props} holdView={holdView} lateView={lateView} seed={seed.saved || !initial.saved ? seed : { ...seed, saved: initial.saved }} initialColumns={initial.columns} initialSources={initial.sources} initialAgg={initial.agg} />;
 }
 
 // TanStack Table v9 builds the header groups and the row model; the headers and cells are drawn by the components above.
@@ -282,7 +306,7 @@ const withEntry = (m: Record<string, ColumnFilter>, key: string, value: ColumnFi
 
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
-function Grid({ martId, model, schema: native, seed, holdView, initialColumns, initialSources, initialAgg, onChange, onRows, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; /** The member's saved view is still being read: its saves wait. */ holdView: boolean; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
+function Grid({ martId, model, schema: native, seed, holdView, lateView, initialColumns, initialSources, initialAgg, onChange, onRows, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; /** The member's saved view is still being read: its saves wait. */ holdView: boolean; /** The saved view, once a late read delivers it: parts the member has not touched since the grid opened take its values. */ lateView: SavedView | null | undefined; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
   const { columnStore, blendable } = useServices();
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
@@ -418,11 +442,25 @@ function Grid({ martId, model, schema: native, seed, holdView, initialColumns, i
     viewKey.current = key;
     if (last !== null && last !== key) { if (holdView) heldView.current = v; else columnStore.saveView(martId, v); }
   }, [current, columnStore, martId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The parts of the view as the grid opened with them: a part still equal to this is one the member has not changed.
+  const [opened] = useState(() => ({ filters: JSON.stringify(allFilters), slices: JSON.stringify(allSlices), sorts: JSON.stringify(own), limit, view: JSON.stringify(view ?? null) }));
+  // The held edit is saved when the hold ends: as it stands if the saved view never came, else merged over it (the saved parts the member did not touch,
+  // their own parts kept). An edit still held when the grid unmounts is dropped, not saved: it was made on defaults and would erase the saved view.
   useEffect(() => {
-    if (holdView || !heldView.current) return;
-    columnStore.saveView(martId, heldView.current);
+    if (holdView || lateView === undefined) return;
+    const held = heldView.current;
     heldView.current = null;
-  }, [holdView, columnStore, martId]);
+    if (!lateView) { if (held) columnStore.saveView(martId, held); return; }
+    const f = JSON.stringify(allFilters) !== opened.filters ? allFilters : lateView.filters;
+    const sl = JSON.stringify(allSlices) !== opened.slices ? allSlices : (lateView.slices ?? {});
+    const so = JSON.stringify(own) !== opened.sorts ? own : lateView.sorts;
+    const lim = limit !== opened.limit ? limit : lateView.limit;
+    const vw = JSON.stringify(view ?? null) !== opened.view ? view : lateView.view;
+    const merged: SavedView = { filters: f, ...(Object.keys(sl).length ? { slices: sl } : {}), sorts: so, limit: lim, ...(vw ? { view: vw } : {}) };
+    viewKey.current = JSON.stringify(merged);
+    setAllFilters(f); setAllSlices(sl); setOwn(so); setLimit(lim); setView(vw);
+    if (held) columnStore.saveView(martId, merged);
+  }, [holdView, lateView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { const edit = editSeq !== seenSeq.current; seenSeq.current = editSeq; onChange(current, edit); }, [current, editSeq]); // eslint-disable-line react-hooks/exhaustive-deps
 

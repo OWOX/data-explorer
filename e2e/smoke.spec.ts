@@ -33,7 +33,7 @@ async function openColumnSub(data: Locator, title: string, row: 'Filter' | 'Aggr
 async function makeMain(page: Page, title: string) {
   await martCard(page, title).click();
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', title]);
-  await band(page, 'marts').getByRole('button', { name: /^Make .* the main data mart$/ }).click();
+  await band(page, 'marts').getByRole('button', { name: /^Make it main: / }).click();
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText([title]);
 }
 
@@ -43,7 +43,7 @@ async function makeMainViaGhost(page: Page, from: string, title: string) {
   const ghost = band(page, 'marts').locator('article', { hasText: title }).first();
   await ghost.hover();
   await ghost.click();
-  await band(page, 'marts').getByRole('button', { name: /^Make .* the main data mart$/ }).click();
+  await band(page, 'marts').getByRole('button', { name: /^Make it main: / }).click();
 }
 
 const unfoldSources = (page: Page) => page.getByRole('button', { name: 'Show Data Sources' }).click();
