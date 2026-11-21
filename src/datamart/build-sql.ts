@@ -150,25 +150,33 @@ function prepare(input: MartSqlInput): Plan | Reason {
   });
 
   // The join of each path: its source, and the edge from its parent's mart.
-  // A middle mart with no field to offer is not in the sources list, but the relationship of a mart joined under it names it: that edge starts at the middle mart.
+  // A middle mart with no field to offer is not in the sources list, but the relationship that reaches the mart below it starts at it.
+  // That mart may lack a source too, so this walks down to the nearest paths that have one and climbs back up their relationships.
   const sourceOf = (path: string): JoinedSource | undefined => {
     const hit = sources.find((s) => s.aliasPath === path);
     if (hit) return hit;
-    for (const below of sources) {
-      if (parentPath(below.aliasPath) !== path || !below.relationshipId) continue;
-      const via = edges.find((e) => e.id === below.relationshipId && e.target === below.martId);
-      if (via) return { aliasPath: path, martId: via.source, label: titles.get(via.source) ?? path, depth: path.split('.').length, fields: [], uniqueCount: false };
+    const depth = path.split('.').length;
+    const childPaths = new Set(sources.filter((s) => s.aliasPath.startsWith(`${path}.`)).map((s) => s.aliasPath.split('.').slice(0, depth + 1).join('.')));
+    for (const q of childPaths) {
+      const child = sourceOf(q);
+      if (!child) continue;
+      const incoming = edges.filter((e) => e.target === child.martId);
+      const via = (child.relationshipId ? incoming.find((e) => e.id === child.relationshipId) : undefined) ?? (incoming.length === 1 ? incoming[0] : undefined);
+      if (via) return { aliasPath: path, martId: via.source, label: titles.get(via.source) ?? path, depth, fields: [], uniqueCount: false };
     }
     return undefined;
   };
   const plans = new Map<string, PathPlan>();
   for (const path of order) {
     const source = sourceOf(path);
-    const label = source?.label ?? path;
+    // A mart the list does not know is named by its title when the model has one that matches the alias, else by the path.
+    const last = path.split('.').at(-1)!;
+    const label = source?.label ?? [...titles.values()].find((t) => t.toLowerCase().replace(/[^a-z0-9]+/g, '_') === last.toLowerCase()) ?? path;
     const unresolved = { reason: `The join to "${label}" could not be resolved` };
     if (!source) return unresolved;
     const parent = parentPath(path);
-    const parentMartId = parent ? sourceOf(parent)?.martId : main.id;
+    const parentSource = parent ? sourceOf(parent) : undefined;
+    const parentMartId = parent ? parentSource?.martId : main.id;
     if (!parentMartId || !safeId(source.martId)) return unresolved;
     let edge = source.relationshipId ? edges.find((e) => e.id === source.relationshipId && e.source === parentMartId && e.target === source.martId) : undefined;
     if (!edge) {

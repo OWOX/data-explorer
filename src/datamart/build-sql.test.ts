@@ -858,7 +858,21 @@ describe('a chain through a middle mart with no column of its own', () => {
     expect(sql).toContain('LEFT JOIN customers_owox ON base_owox.customer_id = customers_owox.id');
   });
 
+  test('two missing middle levels resolve by walking down to a source and climbing its relationships', () => {
+    const e = [...edges, { id: 'e4', source: 'reg1', target: 'ctr1', joins: [{ sourceField: 'country_id', targetField: 'id' }] }];
+    const deep: JoinedSource = { aliasPath: 'customers.region.country', martId: 'ctr1', label: 'Country', depth: 3, fields: [], uniqueCount: false, relationshipId: 'e4' };
+    const name = f('customers__region__country__name', 'STRING', j('customers.region.country', 'ctr1', 'name'));
+    const sql = run({ visible: ['id', 'customers__region__country__name'], schema: [f('id', 'INTEGER'), name], sources: [{ ...deep, fields: [name] }], edges: e, titles: new Map([...titles, ['ctr1', 'Country']]) });
+    expect(sql).toContain('FROM [Customers](dm:cus1) AS t');
+    expect(sql).toContain('FROM [Region](dm:reg1) AS t');
+    expect(sql).toContain('LEFT JOIN customers_owox ON base_owox.customer_id = customers_owox.id');
+  });
+
+  test('an unresolved middle mart is named by its title when the model has it', () => {
+    expect(run({ visible: ['id', 'customers__region__name'], edges: [...edges, { id: 'e9', source: 'itm1', target: 'reg1', joins: [{ sourceField: 'x', targetField: 'id' }] }], sources: [{ ...region([regionName]), relationshipId: undefined }] })).toBe('REASON The join to "Customers" could not be resolved');
+  });
+
   test('a middle mart the source list lacks and no relationship names cannot be resolved', () => {
-    expect(run({ visible: ['id', 'customers__region__name'], sources: [{ ...region([regionName]), relationshipId: undefined }] })).toBe('REASON The join to "customers" could not be resolved');
+    expect(run({ visible: ['id', 'customers__region__name'], sources: [{ ...region([regionName]), relationshipId: undefined }], edges: [...edges, { id: 'e9', source: 'itm1', target: 'reg1', joins: [{ sourceField: 'x', targetField: 'id' }] }], titles: new Map() })).toBe('REASON The join to "customers" could not be resolved');
   });
 });

@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JoinedSource } from '../../api/blendable';
 import type { DqSummary, Model } from '../../model/types';
-import { buildJoinTree, ghostLevels } from '../../state/join-tree';
+import { buildJoinTree, ghostLevels, subtreePaths } from '../../state/join-tree';
 import { pathTitle } from '../../state/join-plan';
 import { closestTarget, dragLinePath, dropTargets } from './canvas-drag';
 import { scrollBoxOf, zoomedScale } from './canvas-zoom';
@@ -184,9 +184,9 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               joined={node.path !== ''}
               path={node.path}
               title={titleOf(node.path)}
-              onRemove={node.path === '' || node.bare ? undefined : () => {
+              onRemove={node.path === '' ? undefined : () => {
                 const parent = tree.nodes.get(node.parent!)!;
-                void click(node.martId, { removePaths: [node.path] }).then(() => setFocusCard({ martId: parent.martId, path: parent.path }), () => undefined);
+                void click(node.martId, { removePaths: node.bare ? subtreePaths(tree, node.path) : [node.path] }).then(() => setFocusCard({ martId: parent.martId, path: parent.path }), () => undefined);
               }}
               lit={false}
               onSelect={() => {

@@ -73,8 +73,15 @@ test('canvas: Countries under both Customers and Stores, × on a middle card kee
   // Stores loses its own columns but stays as a bare card, joined, with Countries under it still showing its columns.
   await expect(data.locator('th[data-group="stores"]')).toHaveCount(0);
   await expect(marts.locator('[id="dm-stores@stores"]')).toBeVisible();
-  await expect(marts.locator('[id="dm-stores@stores"]').getByRole('button', { name: 'Remove Stores from the report' })).toHaveCount(0);
   await expect(marts.locator('[id="dm-countries@stores.countries"]')).toBeVisible();
+  await expect(data.locator('th[data-group="countries"]')).toHaveCount(2);
+  // The × on the bare card takes its whole subtree.
+  await marts.locator('[id="dm-stores@stores"]').getByRole('button', { name: 'Remove Stores from the report' }).click();
+  await expect(marts.locator('[id="dm-stores@stores"]')).toHaveCount(0);
+  await expect(marts.locator('[id="dm-countries@stores.countries"]')).toHaveCount(0);
+  await expect(data.locator('th[data-group="countries"]')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(marts.locator('[id="dm-stores@stores"]')).toBeVisible();
   await expect(data.locator('th[data-group="countries"]')).toHaveCount(2);
 
   await page.getByRole('button', { name: 'Undo' }).click();

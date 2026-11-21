@@ -310,13 +310,14 @@ test('x on a middle card takes only its own columns: it stays as a bare card wit
   await countriesUnderBoth();
   expect(el('orders')!.querySelector('.dm-card-remove')).toBeNull();
   await userEvent.click(within(el('stores', 'stores')!).getByRole('button', { name: /remove stores/i }));
-  await waitFor(() => expect(el('stores', 'stores')!.querySelector('.dm-card-remove')).toBeNull());
+  await waitFor(() => expect(groupTitles()).not.toContain('Stores'));
+  expect(el('stores', 'stores')).not.toBeNull();
   expect(el('countries', 'stores.countries')).not.toBeNull();
   expect(el('countries', 'customers.countries')).not.toBeNull();
-  expect(groupTitles()).not.toContain('Stores');
-  // The leaf goes, and the bare middle card with it.
-  await userEvent.click(within(el('countries', 'stores.countries')!).getByRole('button', { name: /remove countries/i }));
+  // The × on the bare card takes the whole subtree, in one Undo step.
+  await userEvent.click(within(el('stores', 'stores')!).getByRole('button', { name: /remove stores/i }));
   await waitFor(() => expect(el('stores', 'stores')).toBeNull());
+  expect(el('countries', 'stores.countries')).toBeNull();
   expect(el('countries', 'customers.countries')).not.toBeNull();
   await userEvent.click(screen.getByRole('button', { name: /undo/i }));
   await waitFor(() => expect(el('countries', 'stores.countries')).not.toBeNull());
@@ -435,7 +436,7 @@ test('clicking a ghost at the end of a chain adds only that mart: the marts on t
   await waitFor(() => expect(el('countries', 'customers.countries')).not.toBeNull());
   expect(el('customers', 'customers')).not.toBeNull();
   expect(groupTitles()).toEqual(['Orders', 'Countries']);
-  expect(el('customers', 'customers')!.querySelector('.dm-card-remove')).toBeNull();
+  expect(el('customers', 'customers')!.querySelector('.dm-card-remove')).not.toBeNull();
   await waitFor(() => expect(document.querySelector('#tree-wires path[data-from="dm-customers@customers"][data-to="dm-countries@customers.countries"]')).not.toBeNull());
 });
 
