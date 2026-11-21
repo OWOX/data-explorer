@@ -500,3 +500,15 @@ test('Chart type switches a chart in place and keeps its usable saved fields', a
   await userEvent.click(screen.getByRole('menuitemradio', { name: 'Time series' }));
   expect(t.puts).toHaveBeenLastCalledWith('orders', { version: 2, charts: [{ id: 'p', kind: 'timeSeries', measure: 'amount' }] });
 });
+
+test('a ranked bar draws one bar per top value; switching it to pie keeps its measure and dimension', async () => {
+  const t = await charts({ charts: { version: 2, charts: [{ id: 'r', kind: 'rankedBar', measure: 'amount', dimension: 'status' }] } });
+  await waitFor(() => expect(data().querySelector('section[data-chart-kind="Ranked bar"] svg[data-orientation="horizontal"]')).not.toBeNull());
+  // The ranked bar and the pie read the same top values, so the pie reuses this read.
+  expect(t.queries.some((q) => q.limit === 8 && q.aggregation?.[0]?.function === 'SUM')).toBe(true);
+  await userEvent.click(screen.getByRole('button', { name: 'Ranked bar options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Pie' }));
+  await waitFor(() => expect(data().querySelector('section[data-chart-kind="Pie"] [data-slice]')).not.toBeNull());
+  expect((t.puts.mock.lastCall![1] as ChartSettings).charts).toEqual([{ id: 'r', kind: 'pie', measure: 'amount', dimension: 'status' }]);
+});
