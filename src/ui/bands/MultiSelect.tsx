@@ -21,6 +21,8 @@ export function MultiSelect({ label, options, selected, onChange }: {
   // The press that does it goes no further: it closes the menu and nothing under the pointer acts. Listening only while this one is open.
   const menu = useRef<HTMLDetailsElement>(null);
   const [shown, setShown] = useState(false);
+  // The menu unmounts when the options run out, and its toggle never reports the close: without this, every press in the app stays swallowed.
+  if (options.length === 0 && shown) setShown(false);
   useOutsidePress(shown, (t) => !!menu.current?.contains(t), () => { if (menu.current) menu.current.open = false; });
 
   if (options.length === 0) return null;
