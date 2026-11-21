@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chartFields, measuresOf, pickBucket, pieMeasures } from './fields';
+import { chartFields, measuresOf, pickBucket, pieMeasures, sankeyMeasures } from './fields';
 import type { Field, Schema } from '../model/types';
 import { NO_AGGREGATION } from '../model/aggregation';
 
@@ -110,4 +110,46 @@ describe('pickBucket', () => {
     ['2026-01-01 10:00:00 UTC', '2026-01-20 10:00:00 UTC', 'DAY'],
     ['2026-01-01T10:00:00Z', '2026-01-20T10:00:00Z', 'DAY'],
   ])('%s..%s → %s', (a, b, want) => expect(pickBucket(a, b)).toBe(want));
+});
+
+describe('the measures a Sankey may sum', () => {
+  const cf = chartFields(Object.assign([...schema, f('c__plan', 'string', { joined: { martId: 'C', label: 'Customers', aliasPath: 'c' } })], { primaryKey: ['id'] }), schema.map((x) => x.name).concat('c__plan'), NO_AGGREGATION, 'M', ['', 'c'], new Set(['c']))!;
+  const ids = (dims: string[]) => sankeyMeasures(cf, dims.map((n) => [...cf.dimensions].find((d) => d.name === n)!)).map((m) => (m.kind === 'records' ? `records@${m.aliasPath}` : m.metric.field.name));
+  it('are the own mart\'s Count Unique and metrics when every column is on that mart', () => {
+    expect(ids(['channel'])).toEqual(['records@', 'amount', 'qty']);
+    expect(ids(['c__city', 'c__plan'])).toEqual(['records@c', 'c__ltv']);
+  });
+  it('are none when the columns span marts: a joined row repeats a record, and adding the groups counts it again', () => {
+    expect(ids(['channel', 'c__city'])).toEqual([]);
+  });
+});
+
+describe('a main mart measure by columns of joined marts', () => {
+  const joined = (path: string, name: string) => f(name, 'string', { joined: { martId: path, label: path, aliasPath: path } });
+  const all = Object.assign([...schema, joined('c', 'c__name'), joined('c.r', 'c__r__name'), joined('i', 'i__sku')], { primaryKey: ['id'] });
+  const shown = all.map((x) => x.name);
+  const run = (mult: Record<string, 'none' | 'collapses'> | undefined, dims: string[]) => {
+    const cf = chartFields(all, shown, NO_AGGREGATION, 'M', ['', 'c', 'c.r', 'i'], new Set(['c']), {}, mult)!;
+    return sankeyMeasures(cf, dims.map((n) => cf.dimensions.find((d) => d.name === n)!)).map((m) => (m.kind === 'records' ? `records@${m.aliasPath}` : m.metric.field.name));
+  };
+  const main = ['records@', 'amount', 'qty'];
+  it('is offered when the joined mart is a lookup (collapse none)', () => expect(run({ c: 'none' }, ['channel', 'c__name'])).toEqual(main));
+  it('is not offered when the joined mart collapses', () => expect(run({ c: 'collapses' }, ['channel', 'c__name'])).toEqual([]));
+  it('is not offered when the backend sends nothing', () => {
+    expect(run(undefined, ['channel', 'c__name'])).toEqual([]);
+    expect(run({}, ['channel', 'c__name'])).toEqual([]);
+  });
+  it('trusts the verdict on the path itself, not its ancestors', () => {
+    expect(run({ 'c.r': 'none' }, ['channel', 'c__r__name'])).toEqual(main);
+    expect(run({ c: 'none', 'c.r': 'collapses' }, ['channel', 'c__r__name'])).toEqual([]);
+  });
+  it('needs every chosen column to be a lookup', () => {
+    expect(run({ c: 'none', i: 'collapses' }, ['c__name', 'i__sku'])).toEqual([]);
+    expect(run({ c: 'none', i: 'none' }, ['c__name', 'i__sku'])).toEqual(main);
+  });
+  it("keeps a joined mart's measure on its own mart, whatever the verdict", () => {
+    expect(run({ c: 'none', i: 'none' }, ['c__name', 'i__sku'])).not.toContain('c__ltv');
+    expect(run({ c: 'none' }, ['channel', 'c__name'])).not.toContain('records@c');
+    expect(run({ c: 'collapses' }, ['c__name', 'c__city'])).toEqual(['records@c', 'c__ltv']);
+  });
 });

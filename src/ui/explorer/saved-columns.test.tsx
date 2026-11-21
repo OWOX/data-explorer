@@ -6,7 +6,7 @@ import { GRID_COLUMNS_COLLECTION, SAVE_DEBOUNCE_MS } from '../../api/grid-column
 import type { Ctx } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
-import { AppServices, StoreProvider, useServices } from '../../state/store';
+import { AppServices, StoreProvider, useServices, useStore, type State } from '../../state/store';
 import { App } from '../App';
 import { SAVED_COLUMNS_WAIT_MS, VIEW_HOLD_MAX_MS } from './MartGrid';
 import { openColumnMenu } from './menu-test-utils';
@@ -29,11 +29,13 @@ function setup(saved: string[] | null, tweak: (ctx: Mock) => Ctx = (c) => c) {
   const seeded = saved ? col.put('orders', { columns: saved, at: 'then' }) : Promise.resolve();
   const services: { current: ReturnType<typeof useServices> | null } = { current: null };
   const Probe = () => { services.current = useServices(); return null; };
+  const store: { current: State | null } = { current: null };
+  const StateProbe = () => { [store.current] = useStore(); return null; };
   const view = (strict = false) => {
-    const tree = <AppServices ctx={ctx}><Probe /><StoreProvider><App /></StoreProvider></AppServices>;
+    const tree = <AppServices ctx={ctx}><Probe /><StoreProvider><App /><StateProbe /></StoreProvider></AppServices>;
     return render(strict ? <StrictMode>{tree}</StrictMode> : tree);
   };
-  return { ctx, calls, put, view, services, seeded, col };
+  return { ctx, calls, put, view, services, seeded, col, store };
 }
 const headers = () => within(document.getElementById('band-data')!).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup').map((h) => h.textContent);
 const ordersCalls = (calls: { id: string; column?: string[] }[]) => calls.filter((c) => c.id === 'orders' && c.column && c.column.length > 1);
@@ -175,24 +177,25 @@ test('after the 3 s fallback, an edit does not save the view until the late save
 });
 
 // The saved list and view sit behind a read that `gate` holds; the grid falls back to defaults after 3 s.
-async function lateSetup(gated: boolean) {
+async function lateSetup(gated: boolean, opts: { gridView?: object; blendFails?: boolean } = {}) {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   let release: () => void = () => undefined;
   const gate = gated ? new Promise<void>((r) => { release = r; }) : Promise.resolve();
   const t = setup(['id', 'status'], (ctx) => ({
     ...ctx,
+    owox: opts.blendFails ? { ...ctx.owox, getJson: ((path: string, q?: Record<string, string>) => (path.endsWith('/blendable-schema') ? Promise.reject(new Error('blendable boom')) : ctx.owox.getJson(path, q))) as Ctx['owox']['getJson'] } : ctx.owox,
     collections: <T,>(name: string) => {
       const inner = ctx.collections<T>(name);
       return name === SAVED ? { get: async (id: string) => { await gate; return inner.get(id); }, put: inner.put } : inner;
     },
   }));
-  await t.col.put('orders', { columns: ['id', 'status'], at: 'then', gridView: { fl: [['status', 'eq', 'paid', null, 1]], s: [['amount', -1]], l: 400 } } as never);
+  await t.col.put('orders', { columns: ['id', 'status'], at: 'then', gridView: opts.gridView ?? { fl: [['status', 'eq', 'paid', null, 1]], s: [['amount', -1]], l: 400 } } as never);
   const mounted = t.view();
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
   await vi.advanceTimersByTimeAsync(SAVED_COLUMNS_WAIT_MS + 50);
   await waitFor(() => expect(headers()).toHaveLength(5));
   const saveView = vi.spyOn(t.services.current!.columnStore, 'saveView');
-  return { t, release, saveView, mounted };
+  return { t, release, saveView, mounted, store: t.store };
 }
 const sortAmount = () => userEvent.click(within(document.getElementById('band-data')!).getByRole('button', { name: /^Sort by Amount/ }));
 
@@ -209,6 +212,75 @@ test('an edit made after the fallback keeps the saved filters and limit the late
     expect(Object.keys(saved.filters)).toEqual(['status']);
     expect(saved.limit).toBe(400);
     expect(saved.sorts).not.toBeNull();
+  } finally { vi.useRealTimers(); }
+});
+
+test('Undo of an edit held during the late read returns to the saved view, not the defaults', async () => {
+  try {
+    const { release, saveView } = await lateSetup(true);
+    await sortAmount();
+    await vi.advanceTimersByTimeAsync(100);
+    release();
+    await vi.advanceTimersByTimeAsync(200);
+    await waitFor(() => expect(saveView).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 500);
+    const last = saveView.mock.calls.at(-1)![1];
+    expect(Object.keys(last.filters)).toEqual(['status']);
+    expect(last.limit).toBe(400);
+  } finally { vi.useRealTimers(); }
+});
+
+test('two held edits, then Undo twice, return to the saved view', async () => {
+  try {
+    const { release, saveView } = await lateSetup(true);
+    await sortAmount();
+    await sortAmount();
+    await vi.advanceTimersByTimeAsync(100);
+    release();
+    await vi.advanceTimersByTimeAsync(200);
+    await waitFor(() => expect(saveView).toHaveBeenCalled());
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 500);
+    const last = saveView.mock.calls.at(-1)![1];
+    expect(Object.keys(last.filters)).toEqual(['status']);
+    expect(last.limit).toBe(400);
+  } finally { vi.useRealTimers(); }
+});
+
+test('Undo of a held edit before the late view arrives does not lose the saved view', async () => {
+  try {
+    const { release, saveView } = await lateSetup(true);
+    await sortAmount();
+    await vi.advanceTimersByTimeAsync(100);
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    release();
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 500);
+    for (const [, v] of saveView.mock.calls) expect(v.filters).toHaveProperty('status');
+  } finally { vi.useRealTimers(); }
+});
+
+test('with the joined marts unknown, the late view keeps its joined filters', async () => {
+  try {
+    const { release, saveView } = await lateSetup(true, { blendFails: true, gridView: { fl: [['customers__email', 'eq', 'a@b.c', null, 1], ['status', 'eq', 'paid', null, 1]], s: null, l: 400 } });
+    await sortAmount();
+    await vi.advanceTimersByTimeAsync(100);
+    release();
+    await vi.advanceTimersByTimeAsync(200);
+    await waitFor(() => expect(saveView).toHaveBeenCalledTimes(1));
+    expect(Object.keys(saveView.mock.calls[0]![1].filters).sort()).toEqual(['customers__email', 'status']);
+  } finally { vi.useRealTimers(); }
+});
+
+test('late sorts on columns that are not shown are dropped', async () => {
+  try {
+    const { release, saveView } = await lateSetup(true, { gridView: { fl: [], s: [['customers__email', 1]], l: 200 } });
+    release();
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS + 500);
+    expect(within(document.getElementById('band-data')!).getAllByRole('columnheader').some((h) => h.getAttribute('aria-sort') === 'ascending')).toBe(false);
+    expect(saveView).not.toHaveBeenCalled();
   } finally { vi.useRealTimers(); }
 });
 
@@ -261,4 +333,16 @@ test('a moved column is saved, and a fresh mount reading the same store shows th
   t.view();
   await waitFor(() => expect(headers()).toHaveLength(3));
   expect(headers().join()).toMatch(/status.*id.*Amount/);
+});
+
+test('the hold ends once the late view arrives', async () => {
+  try {
+    const first = await lateSetup(true);
+    await sortAmount();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(first.store.current!.holds).toHaveProperty('orders');
+    first.release();
+    await vi.advanceTimersByTimeAsync(200);
+    await waitFor(() => expect(first.store.current!.holds).toEqual({}));
+  } finally { vi.useRealTimers(); }
 });

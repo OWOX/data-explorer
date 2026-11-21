@@ -25,7 +25,7 @@ export type Selection = {
 };
 
 /** A selection Undo or Redo returns to, with the grids the step also changed (null: the mart had none). */
-export type Entry = Selection & { grids?: Record<string, GridState | null> };
+export type Entry = Selection & { grids?: Record<string, GridState | null>; /** Order the entry was recorded in (from `State.seq`); it keeps it across Undo and Redo. Unlike a position, it survives the history being trimmed. */ seq?: number };
 
 /** What the Data band's grid keeps per mart for the session. */
 export type GridState = { columns: string[]; filters: Record<string, ColumnFilter>; /** Pre-join filters on joined fields, keyed by field name, one per field. Absent or empty when there are none. */ slices?: Record<string, ColumnFilter>; /** null: the member set none, so the grid opens in the default order (newest date first); a list, even an empty one, is their own. */ sorts: SortKey[] | null; limit: number; /** Functions per column, in the order chosen; any of these or a bucket groups the rows. */ aggregations?: AggregationRule[]; /** One date bucket per date column. */ dateTrunc?: DateTruncRule[]; /** Absent is the table. Part of the grid state so Undo and the view link carry it; saved in the member's grid-columns store with the filters, slices, sort and limit. */ view?: 'charts' };
@@ -44,6 +44,10 @@ export type State = {
   /** The storages ticked in the Data Marts filter; null is all of them. */
   storageIds: string[] | null;
   grids: Record<string, GridState>;
+  /** The seq the next history entry gets. */
+  seq: number;
+  /** Per mart whose saved view is still being read: the `seq` the next entry had when the grid began holding its saves. Entries from that seq on were made on defaults. */
+  holds: Record<string, number>;
   modelVersion: number;
 };
 
@@ -73,6 +77,11 @@ export type Action =
   | { type: 'saveGrid'; martId: string; grid: GridState }
   /** The member changed the grid (a filter, a sort, an aggregation, a column shown or hidden, Reset): stored like `saveGrid`, and one step Undo covers. */
   | { type: 'editGrid'; martId: string; grid: GridState }
+  /** The saved view arrived late and replaced parts of the grid: the newest Undo entry's "before" takes them too, so Undo returns to the saved view, not the defaults. */
+  | { type: 'holdGrid'; martId: string }
+  /** The hold ends with nothing to rebase: the grid went away, or the saved view turned out to be none. */
+  | { type: 'releaseGrid'; martId: string }
+  | { type: 'rebaseGrid'; martId: string; parts: Partial<GridState> }
   /** A view link opens: everything it carries is set at once. No history entry, so Undo has nothing to undo. */
   | { type: 'applyView'; selection: Selection; grid: GridState | null; search: string; found?: string[]; contextIds: string[]; storageIds: string[] | null }
   | { type: 'refreshModel' };
@@ -80,7 +89,7 @@ export type Action =
 export const HISTORY_LIMIT = 20;
 
 const emptySelection: Selection = { sourceKey: null, martId: null, record: null };
-export const initialState: State = { selection: emptySelection, history: [], future: [], search: '', found: [], contextIds: [], storageIds: null, grids: {}, modelVersion: 0 };
+export const initialState: State = { selection: emptySelection, history: [], future: [], search: '', found: [], contextIds: [], storageIds: null, grids: {}, seq: 0, holds: {}, modelVersion: 0 };
 
 /** The source stays selected only when it feeds the mart being selected. */
 const sourceFor = (current: Selection, martId: string, sourceOf: SourceOf): string | null =>
@@ -91,11 +100,11 @@ function step(state: State, from: 'history' | 'future', known: ((s: Selection) =
   const to = from === 'history' ? 'future' : 'history';
   const stack = [...state[from]];
   while (stack.length) {
-    const { grids: put, ...entry } = stack.pop()!;
+    const { grids: put, seq, ...entry } = stack.pop()!;
     if (!known || known(entry)) {
       const now = put ? valuesOf(state.grids, Object.keys(put)) : undefined;
       const current = state.selection;
-      return { ...state, selection: entry, grids: put ? applyGrids(state.grids, put) : state.grids, [from]: stack, [to]: [...state[to], now ? { ...current, grids: now } : current].slice(-HISTORY_LIMIT) };
+      return { ...state, selection: entry, grids: put ? applyGrids(state.grids, put) : state.grids, [from]: stack, [to]: [...state[to], { ...current, ...(now ? { grids: now } : {}), ...(seq !== undefined ? { seq } : {}) }].slice(-HISTORY_LIMIT) };
     }
   }
   return stack.length === state[from].length ? state : { ...state, [from]: stack };
@@ -104,7 +113,7 @@ function step(state: State, from: 'history' | 'future', known: ((s: Selection) =
 /** Every change to the selection goes through here: it is what Back steps over. */
 function move(state: State, next: Selection): State {
   if (deepEqual(next, state.selection)) return state;
-  return { ...state, selection: next, history: [...state.history, state.selection].slice(-HISTORY_LIMIT), future: [] };
+  return { ...state, selection: next, seq: state.seq + 1, history: [...state.history, { ...state.selection, seq: state.seq }].slice(-HISTORY_LIMIT), future: [] };
 }
 
 const applyGrids = (grids: Record<string, GridState>, put: Record<string, GridState | null>) => {
@@ -151,7 +160,7 @@ export function reducer(state: State, a: Action): State {
     case 'setMarts': {
       const before = valuesOf(state.grids, Object.keys(a.grids));
       if (!a.always && deepEqual(a.selection, cur) && deepEqual(before, a.grids)) return state;
-      return { ...state, selection: a.selection, grids: { ...state.grids, ...a.grids }, history: [...state.history, { ...cur, grids: before }].slice(-HISTORY_LIMIT), future: [] };
+      return { ...state, selection: a.selection, grids: { ...state.grids, ...a.grids }, seq: state.seq + 1, history: [...state.history, { ...cur, grids: before, seq: state.seq }].slice(-HISTORY_LIMIT), future: [] };
     }
     case 'fillGrid': {
       // Only an Undo leaves future entries (every later step clears them), so a non-empty future means the pick was undone while the AI worked.
@@ -162,7 +171,31 @@ export function reducer(state: State, a: Action): State {
     case 'editGrid': {
       const before = state.grids[a.martId] ?? null;
       if (deepEqual(before, a.grid)) return state;
-      return { ...state, grids: { ...state.grids, [a.martId]: a.grid }, history: [...state.history, { ...cur, grids: { [a.martId]: before } }].slice(-HISTORY_LIMIT), future: [] };
+      return { ...state, grids: { ...state.grids, [a.martId]: a.grid }, seq: state.seq + 1, history: [...state.history, { ...cur, grids: { [a.martId]: before }, seq: state.seq }].slice(-HISTORY_LIMIT), future: [] };
+    }
+    case 'holdGrid': return { ...state, holds: { ...state.holds, [a.martId]: state.seq } };
+    case 'releaseGrid': {
+      if (!(a.martId in state.holds)) return state;
+      const holds = { ...state.holds };
+      delete holds[a.martId];
+      return { ...state, holds };
+    }
+    case 'rebaseGrid': {
+      // Every edit made while the saved view was unread was recorded on the defaults, whatever it changed: each one's "before" takes the late view's parts,
+      // so no Undo or Redo returns to defaults that the next save would write over the saved view. Entries are told apart by `seq`, not position: history is trimmed, and an
+      // Undo below the hold or a Redo can reorder what is where. With no hold on record only the newest entry counts.
+      const from = state.holds[a.martId] ?? state.history.at(-1)?.seq ?? state.seq;
+      const patch = (e: Entry): Entry => {
+        if ((e.seq ?? -1) < from) return e;
+        const before = e.grids?.[a.martId];
+        if (!before) return e;
+        const next: GridState = { ...before, ...a.parts };
+        for (const k of Object.keys(next) as (keyof GridState)[]) if (next[k] === undefined) delete next[k];
+        return { ...e, grids: { ...e.grids, [a.martId]: next } };
+      };
+      const holds = { ...state.holds };
+      delete holds[a.martId];
+      return { ...state, holds, history: state.history.map(patch), future: state.future.map(patch) };
     }
     case 'saveGrid': return { ...state, grids: { ...state.grids, [a.martId]: a.grid } };
     case 'applyView': return {

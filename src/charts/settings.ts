@@ -7,7 +7,10 @@ export type Orientation = 'vertical' | 'horizontal';
 /** What a measure is saved as: the field name, `'records'` for the main mart's records (as before joined marts counted) and `records:<martId>` for a joined mart's (`records:<martId>@<aliasPath>` for a later copy of it). */
 export const measureId = (m: Measure): string => (m.kind === 'metric' ? m.metric.field.name : m.aliasPath === '' ? 'records' : m.recordsId);
 
-export const CHART_KINDS = ['timeSeries', 'bar', 'pie', 'rankedBar', 'line', 'heatmap', 'scatter', 'spread'] as const;
+export const SANKEY_MIN = 2;
+export const SANKEY_MAX = 5;
+
+export const CHART_KINDS = ['timeSeries', 'bar', 'pie', 'rankedBar', 'line', 'heatmap', 'sankey', 'scatter', 'spread'] as const;
 export type ChartKind = (typeof CHART_KINDS)[number];
 export const isChartKind = (v: unknown): v is ChartKind => (CHART_KINDS as readonly unknown[]).includes(v);
 
@@ -15,7 +18,7 @@ export const isChartKind = (v: unknown): v is ChartKind => (CHART_KINDS as reado
 export type ChartSpec = {
   id: string; kind: ChartKind; hidden?: boolean;
   measure?: string; measure2?: string | null; date?: string; bucket?: DateBucket | 'AUTO';
-  dimension?: string; dimension2?: string; stack?: string | null; orientation?: Orientation; area?: boolean;
+  dimension?: string; dimension2?: string; /** A Sankey's columns, left to right (2 to 5 dimensions). */ dimensions?: string[]; stack?: string | null; orientation?: Orientation; area?: boolean;
 };
 /** `metrics` is the measure each card shows when it is not the card's own: card id (its default's saved id) to measure id. */
 export type ChartSettings = { version?: 2; scorecards?: { hidden?: string[]; sparklines?: boolean; metrics?: Record<string, string> }; charts?: ChartSpec[] };

@@ -44,13 +44,16 @@ export function listItems({ cf, settings, resolved, change }: { cf: ChartFields;
   ];
 }
 
+/** A Sankey's first two columns stand for the one or two dimensions the other types keep, so a type switch carries them. */
+const fromSankey = (c: ChartSpec): ChartSpec => (c.dimensions && c.kind === 'sankey' ? { ...c, dimension: c.dimensions[0], dimension2: c.dimensions[1] } : c);
+
 /** The rows every chart's own menu ends with: Chart type (the eligible kinds; usable fields, id and hidden kept) and Remove. */
 export function tailItems({ cf, spec, change }: { cf: ChartFields; spec: ChartSpec; change: Change }): MenuItem[] {
   return [
     {
       kind: 'radio', label: 'Chart type', value: spec.kind,
       options: eligibleKinds(cf).map((k) => ({ value: k.kind, label: k.label, icon: k.icon })),
-      onPick: (v) => change((cur) => editCharts(cur, (list) => list.map((c) => (c.id === spec.id ? { id: c.id, ...(c.hidden !== undefined ? { hidden: c.hidden } : {}), ...KINDS[v as ChartKind]!.create(cf, c) } : c)))),
+      onPick: (v) => change((cur) => editCharts(cur, (list) => list.map((c) => (c.id === spec.id ? { id: c.id, ...(c.hidden !== undefined ? { hidden: c.hidden } : {}), ...KINDS[v as ChartKind]!.create(cf, fromSankey(c)) } : c)))),
     },
     { kind: 'action', label: 'Remove', onPick: () => change((cur) => editCharts(cur, (list) => list.filter((c) => c.id !== spec.id))) },
   ];

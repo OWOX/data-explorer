@@ -69,10 +69,10 @@ type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
 /** What the page hands the grid: the mart, what it opens with, and where its changes go. */
 /** Why a grid is a preview: the mart has no primary key, or its key is hidden for reporting. */
 export type NoKey = false | 'missing' | 'hidden';
-type GridProps = { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: NoKey) => void };
+type GridProps = { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: NoKey) => void; /** The grid begins holding its saves for the saved view: edits from now on are recorded on defaults. */ onHold?: () => void; /** The late saved view replaced parts of the grid a held edit was recorded on: Undo's "before" takes them too. */ onRebase?: (parts: Partial<GridState>) => void; /** The hold ends with nothing to rebase (the grid unmounted, or there was no saved view). */ onRelease?: () => void };
 
 /** The grid for one mart: loads the schema, then reads rows. Key it by mart id. */
-export function MartGrid({ martId, model, seed, onChange, onRows, paused = false }: GridProps & { /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
+export function MartGrid({ martId, model, seed, onChange, onHold, onRebase, onRelease, onRows, paused = false }: GridProps & { /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
   const [schemaVersion, setSchemaVersion] = useState(0);
   const { schema, error, failure } = useSchema(martId, schemaVersion);
   const { schemas, blendable } = useServices();
@@ -80,7 +80,7 @@ export function MartGrid({ martId, model, seed, onChange, onRows, paused = false
   const refreshMart = useCallback(() => { schemas.invalidate(martId); blendable.invalidate(martId); setSchemaVersion((v) => v + 1); }, [schemas, blendable, martId]);
   if (error) return <div className="p-4"><ErrorBox error={error} onRetry={() => setSchemaVersion((v) => v + 1)} /></div>;
   if (!schema) return <Skeleton rows={8} />;
-  return <SeededGrid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onRows={onRows} paused={paused} onRefresh={refreshMart} refreshError={failure} />;
+  return <SeededGrid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onHold={onHold} onRebase={onRebase} onRelease={onRelease} onRows={onRows} paused={paused} onRefresh={refreshMart} refreshError={failure} />;
 }
 
 /** A saved-columns read slower than this is given up on for this mount. */
@@ -138,12 +138,19 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
           setLateView(v ? lateGrid(v) : null);
           setHoldView(false);
         };
+        // Pruned like the on-time seed: with the joined marts unknown, joined names are parked (kept), and the saved aggregation keeps its HAVING filters.
         const lateGrid = (v: SavedView): SavedView => {
-          const full = withJoined(schema, blendable.peek(martId) ?? []);
-          return pruneGrid({ columns: defaultColumns(schema), ...v }, full).grid ?? v;
+          const known = blendable.peek(martId);
+          const agg = columnStore.aggregation(martId);
+          const raw: GridState = { columns: [], ...v, ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}) };
+          if (!known?.length && namesJoined(schema, raw)) return v;
+          const full = withJoined(schema, known ?? []);
+          // Every offered column counts as shown here, so the aggregation (and the HAVING filters on it) is judged by the fields, not by the default column set.
+          const out = pruneGrid({ ...raw, columns: full.map((f) => f.name) }, full).grid;
+          return out ? { filters: out.filters, ...(out.slices ? { slices: out.slices } : {}), sorts: out.sorts, limit: v.limit, ...(v.view ? { view: v.view } : {}) } : v;
         };
         holdTimer.current = setTimeout(() => settle(null), VIEW_HOLD_MAX_MS);
-        columnStore.loadView(martId).then(settle, () => settle(null));
+        columnStore.loadView(martId).then((v) => columnStore.loadAggregation(martId).then(() => v, () => v)).then(settle, () => settle(null));
       }
       setInitial({ columns: defaultColumns(schema), cleaned: null, sources: null, agg: sanitizeAggregation(seed.saved ? aggOf(seed.saved) : NO_AGGREGATION, schema) });
     }, SAVED_COLUMNS_WAIT_MS);
@@ -306,7 +313,7 @@ const withEntry = (m: Record<string, ColumnFilter>, key: string, value: ColumnFi
 
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
-function Grid({ martId, model, schema: native, seed, holdView, lateView, initialColumns, initialSources, initialAgg, onChange, onRows, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; /** The member's saved view is still being read: its saves wait. */ holdView: boolean; /** The saved view, once a late read delivers it: parts the member has not touched since the grid opened take its values. */ lateView: SavedView | null | undefined; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
+function Grid({ martId, model, schema: native, seed, holdView, lateView, initialColumns, initialSources, initialAgg, onChange, onHold, onRebase, onRelease, onRows, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; /** The member's saved view is still being read: its saves wait. */ holdView: boolean; /** The saved view, once a late read delivers it: parts the member has not touched since the grid opened take its values. */ lateView: SavedView | null | undefined; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
   const { columnStore, blendable } = useServices();
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
@@ -432,22 +439,33 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   useEffect(() => { if (adoptedAgg) columnStore.saveAggregation(martId, adoptedAgg); }, [adoptedAgg, columnStore, martId]);
 
   // An edit made while the saved view was still being read waits for it, then is saved.
+  useEffect(() => { if (holdView) onHold?.(); }, [holdView]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A grid that goes away ends its hold: nothing is left to rebase.
+  useEffect(() => () => onRelease?.(), []); // eslint-disable-line react-hooks/exhaustive-deps
   const heldView = useRef<SavedView | null>(null);
   const viewKey = useRef<string | null>(null);
   // The parts of the view as the grid opened with them: a part still equal to this is one the member has not changed.
   const [opened] = useState(() => ({ filters: JSON.stringify(allFilters), slices: JSON.stringify(allSlices), sorts: JSON.stringify(own), limit, view: JSON.stringify(view ?? null) }));
   // When the late saved view arrives, the parts the member has not touched take its values and their own parts stay (adjusted during render, like the seed above).
-  const [mergedLate, setMergedLate] = useState<{ view: SavedView | null } | null>(null);
+  const [mergedLate, setMergedLate] = useState<{ view: SavedView | null; /** The parts that took the saved view's values (the member had not changed them). */ taken?: Partial<GridState> } | null>(null);
   if (!holdView && lateView !== undefined && !mergedLate) {
     if (!lateView) setMergedLate({ view: null });
     else {
       const f = JSON.stringify(allFilters) !== opened.filters ? allFilters : lateView.filters;
       const sl = JSON.stringify(allSlices) !== opened.slices ? allSlices : (lateView.slices ?? {});
-      const so = JSON.stringify(own) !== opened.sorts ? own : lateView.sorts;
+      // The saved sorts are held to the columns shown, as the on-time seed does.
+      const lateSorts = lateView.sorts && (sortsOnColumns(lateView.sorts, visible).length || !lateView.sorts.length ? sortsOnColumns(lateView.sorts, visible) : null);
+      const so = JSON.stringify(own) !== opened.sorts ? own : lateSorts;
       const lim = limit !== opened.limit ? limit : lateView.limit;
       const vw = JSON.stringify(view ?? null) !== opened.view ? view : lateView.view;
       setAllFilters(f); setAllSlices(sl); setOwn(so); setLimit(lim); setView(vw);
-      setMergedLate({ view: { filters: f, ...(Object.keys(sl).length ? { slices: sl } : {}), sorts: so, limit: lim, ...(vw ? { view: vw } : {}) } });
+      const taken: Partial<GridState> = {};
+      if (f !== allFilters) taken.filters = f;
+      if (sl !== allSlices) taken.slices = Object.keys(sl).length ? sl : undefined;
+      if (JSON.stringify(own) === opened.sorts) taken.sorts = so;
+      if (limit === opened.limit) taken.limit = lim;
+      if (JSON.stringify(view ?? null) === opened.view) taken.view = vw;
+      setMergedLate({ view: { filters: f, ...(Object.keys(sl).length ? { slices: sl } : {}), sorts: so, limit: lim, ...(vw ? { view: vw } : {}) }, taken });
     }
   }
   // The held edit is saved once the hold ends: as it stands if the saved view never came, else merged over it. An edit still held when the grid
@@ -459,6 +477,9 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     if (mergedLate.view) viewKey.current = JSON.stringify(mergedLate.view);
     const out = mergedLate.view ?? held;
     if (held && out) columnStore.saveView(martId, out);
+    // The held edit was recorded on top of the defaults: Undo of it returns to the saved view, not to the defaults that would be saved over it.
+    if (mergedLate.taken) onRebase?.(mergedLate.taken);
+    else onRelease?.();
   }, [mergedLate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every change to what the grid shows is saved with the columns (after the same pause); what the grid opened with is not written back.

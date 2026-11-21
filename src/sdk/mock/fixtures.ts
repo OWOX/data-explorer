@@ -236,6 +236,8 @@ const edges: EdgeDto[] = [
   link('orders', 'customers', 'customer_id', 'id'),
   link('orders', 'products', 'product_id', 'id'),
   link('orders', 'stores', 'store_id', 'id'),
+  // One-to-many: an order has several shipments, so this join repeats the order's row.
+  link('orders', 'shipments', 'id', 'order_id'),
   link('order_items', 'orders', 'order_id', 'id'),
   link('order_items', 'products', 'product_id', 'id'),
   link('returns', 'orders', 'order_id', 'id'),

@@ -1,4 +1,6 @@
 // Backend queries behind every number the charts show: the plugin never sums, counts or buckets data itself.
+// The one exception is the Sankey (decision 7 in the chart-list spec): it adds up the rows of one grouped read into top values, (blank) and Other
+// per column, for additive measures only (pieMeasures). Its column totals still come from their own reads, so node sizes stay exact.
 import { aggregatedKey, allowedFunctions, isTimeZone, zonesBuckets, type AggFn, type DateBucket } from '../model/aggregation';
 import type { Field } from '../model/types';
 import type { TraverseFilter, TraverseOptions } from '../sdk/types';
@@ -156,7 +158,49 @@ export function scatterQuery(dim: Field, x: Measure, y: Measure, filter: Travers
   return withFilter(o, filter);
 }
 
-/** The functions a spread reads: the median first (it sorts the rows), the quartiles, and the whiskers when governance allows them. Empty when a percentile is not allowed. */
+/** The most combinations the Sankey's flow read returns (largest first). A read that fills it leaves smaller flows out. */
+export const SANKEY_FLOW_LIMIT = 5000;
+/** The rows the ascending negative check reads: NULL sums may sort ahead of the smallest real one. */
+export const SANKEY_LOW_LIMIT = 5;
+/** The most distinct values one Sankey column's total read returns (largest first). Past it the smallest values are unread, so Other counts only the values read. */
+export const SANKEY_COLUMN_LIMIT = 10000;
+
+const bySize = (measure: Measure, direction: 'asc' | 'desc' = 'desc'): TraverseOptions['sort'] => [{ column: measure.kind === 'metric' ? measure.metric.field.name : measureKey(measure), direction }];
+
+/** The measure per combination of values of all the Sankey's columns, largest first, capped at SANKEY_FLOW_LIMIT. A blank value comes back as a NULL group. */
+export function sankeyFlowQuery(dims: Field[], measure: Measure, filter: TraverseFilter[], counter?: Field | null): TraverseOptions {
+  const o: TraverseOptions = {
+    column: [...dims.map((d) => d.name), ...measureColumns(measure)],
+    ...measureParts(measure),
+    sort: bySize(measure),
+    limit: SANKEY_FLOW_LIMIT,
+  };
+  return withFilter(withCounter(o, filter, counter), filter);
+}
+
+/**
+ * The smallest combinations: the flow read sorted the other way, a few rows. Read only when a metric's flow read is capped, to see whether the left-out flows hold a negative.
+ * A HAVING `is_not_blank` on the aggregate keeps NULL sums out of the rows, so they cannot fill the few the read returns and hide the smallest real sum.
+ */
+export function sankeyLowQuery(dims: Field[], measure: Measure, filter: TraverseFilter[], counter?: Field | null): TraverseOptions {
+  const o = sankeyFlowQuery(dims, measure, filter, counter);
+  const notBlank: TraverseFilter[] = measure.kind === 'metric' ? [{ column: measure.metric.field.name, operator: 'is_not_blank', function: measure.metric.fn }] : [];
+  const rules = [...(o.filter ?? []), ...notBlank];
+  return { ...o, ...(rules.length ? { filter: rules } : {}), sort: bySize(measure, 'asc'), limit: SANKEY_LOW_LIMIT };
+}
+
+/** The measure per value of one Sankey column (blank included), largest first, capped at SANKEY_COLUMN_LIMIT: exact node sizes. */
+export function sankeyColumnQuery(dim: Field, measure: Measure, filter: TraverseFilter[], counter?: Field | null): TraverseOptions {
+  const o: TraverseOptions = {
+    column: [dim.name, ...measureColumns(measure)],
+    ...measureParts(measure),
+    sort: bySize(measure),
+    limit: SANKEY_COLUMN_LIMIT,
+  };
+  return withFilter(withCounter(o, filter, counter), filter);
+}
+
+/** The functions a spread reads:the median first (it sorts the rows), the quartiles, and the whiskers when governance allows them. Empty when a percentile is not allowed. */
 export function spreadFns(field: Field): AggFn[] {
   const allowed = allowedFunctions(field);
   if (!(['P25', 'P50', 'P75'] as const).every((fn) => allowed.includes(fn))) return [];
