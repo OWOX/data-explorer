@@ -12,6 +12,8 @@ import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, 
 import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
 import { chartFields } from '../../charts/fields';
 import { keysPlan, useHavingKeys } from '../../charts/havingKeys';
+import { readRows } from '../../api/rows';
+import { canSuggest, valuesOf, valuesQuery } from '../../filters/valueSuggest';
 import { dropOrphanHaving, toTraverseFilters, type ColumnFilter } from '../../filters/build';
 import { sliceField } from '../../filters/slice';
 import { ChartsBody } from '../../charts/ChartsBody';
@@ -19,7 +21,7 @@ import { useWidth } from '../../charts/useWidth';
 import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKey } from '../../model/sort';
 import { groupMap, moveColumn, moveColumnBy, orderColumns } from '../../state/column-order';
 import { joinedMartIds, joinedPaths, ownNamesIn, pathTitle } from '../../state/join-plan';
-import type { Model, Schema } from '../../model/types';
+import type { Field, Model, Schema } from '../../model/types';
 import { hasPrimaryKey, primaryKeys } from '../../records/relationships';
 import type { Row } from '../../sdk/types';
 import { sourceOfModel, useServices, useStore, type GridState } from '../../state/store';
@@ -594,6 +596,16 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     if (unapplied) setNote({ text: unapplied });
     edit(() => setAllFilters((cur) => withEntry(cur, name, f)));
   }, [schema, edit, setNote]);
+  // The suggested values of a text input: the distinct values of the column under the grid's rules without its own (a filter's menu leaves out the filter, a slice's the slice).
+  const { ctx } = useServices();
+  const mainKey = useMemo(() => hasPrimaryKey(native), [native]);
+  const valuesFor = useCallback((field: Field, scope: 'filter' | 'slice') => {
+    if (!mainKey || !canSuggest(field)) return null;
+    const without = (all: Record<string, ColumnFilter>, drop: boolean) => Object.values(all).filter((f) => !(drop && f.field === field.name));
+    const filter = toTraverseFilters(schema, without(filters, scope === 'filter').filter((f) => !f.fn), without(slices, scope === 'slice'));
+    const query = valuesQuery(field, filter);
+    return { key: JSON.stringify([martId, query]), load: async (signal: AbortSignal) => valuesOf(await readRows(ctx, martId, query, { signal }), field) };
+  }, [mainKey, schema, filters, slices, martId, ctx]);
   const menuEnv = useMemo<ColumnMenuEnv>(() => ({
     sorts: shownSorts, setSort, filters, slices, setSlice,
     setFilter,
@@ -609,7 +621,8 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
     move: (name, dir) => reorder(moveColumnBy(shown, name, dir, sources)),
     typeOf: (f, o) => outputType(f, o.fn),
     sortable: !charts,
-  }), [shownSorts, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, several, ownOn, ownNames, changeColumns, sources, reorder, charts]);
+    valuesFor,
+  }), [valuesFor, shownSorts, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, several, ownOn, ownNames, changeColumns, sources, reorder, charts]);
   // The selection, as Google Sheets has it: a cell (a frame and a fill handle), a block of cells (shift-click or Shift+Arrow: `to` is
   // the far end, the cell stays active), or whole columns or rows (a tint and a frame around the block); its column letters and row
   // numbers are lit. `from` is where a shift-click on a header extends from.

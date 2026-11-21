@@ -44,6 +44,8 @@ export type ColumnMenuEnv = {
   typeOf: (field: Field, output: Output) => string;
   /** False in Charts mode: no sort row and no sort mark. Absent means true. */
   sortable?: boolean;
+  /** The read behind a text input's suggested values (a Filter or a Slice on this column), or null when none can be made. */
+  valuesFor?: (field: Field, scope: 'filter' | 'slice') => { key: string; load: (signal: AbortSignal) => Promise<string[]> } | null;
 };
 
 const NOOP = () => undefined;
@@ -101,6 +103,9 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
   const having = env.filters[field.name]?.fn;
   const rootSeq = initial ? 0 : 1;
   const rows = useRef(new Map<string, HTMLElement>());
+  // The values read for this column's inputs, kept while the menu is open.
+  const [valueCache] = useState(() => new Map<string, string[]>());
+  const valuesOf = (f: Field, scope: 'filter' | 'slice') => { const v = env.valuesFor?.(f, scope); return v ? { ...v, cache: valueCache } : undefined; };
   const ref = (k: string) => (el: HTMLElement | null) => { if (el) rows.current.set(k, el); else rows.current.delete(k); };
   // A submenu is measured from its row, so it waits until the menu has its place; a menu opened from an indicator then opens that submenu.
   const placeDone = () => {
@@ -159,7 +164,7 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
       </Panel>
       {placed && sub?.key === 'filter' && (
         <EditorPanel row={sub.row} seq={sub.seq} label={`Filter of ${title}`} onEscape={closeSub}>
-          <FilterEditor key={JSON.stringify(env.filters[field.name])} field={having ? havingField(field, having) : field} value={env.filters[field.name]}
+          <FilterEditor key={JSON.stringify(env.filters[field.name])} field={having ? havingField(field, having) : field} value={env.filters[field.name]} values={having ? undefined : valuesOf(field, 'filter')}
             onApply={(f) => { env.setFilter(field.name, having ? { ...f, fn: having } : f); onClose(); }} onClear={() => { env.setFilter(field.name, undefined); onClose(); }}
             note={<>
               <p className="mt-2 text-xs text-muted-foreground">{FILTER_NOTE}</p>
@@ -170,7 +175,7 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
       )}
       {placed && sub?.key === 'slice' && field.joined && (
         <EditorPanel row={sub.row} seq={sub.seq} label={`Slice of ${title}`} onEscape={closeSub}>
-          <FilterEditor key={JSON.stringify(env.slices[field.name])} field={sliceField(field)} value={env.slices[field.name]}
+          <FilterEditor key={JSON.stringify(env.slices[field.name])} field={sliceField(field)} value={env.slices[field.name]} values={valuesOf(field, 'slice')}
             onApply={(f) => { env.setSlice(field.name, f); onClose(); }} onClear={() => { env.setSlice(field.name, undefined); onClose(); }}
             note={<p className="mt-2 text-xs text-muted-foreground">{SLICE_NOTE}</p>} />
         </EditorPanel>

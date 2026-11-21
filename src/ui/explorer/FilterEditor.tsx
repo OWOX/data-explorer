@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { DATE_PRESETS, RELATIVE_MAX_N, RELATIVE_PRESETS, RELATIVE_UNITS, fromRule, isDateTimeField, isPreset, operatorsFor, toRule, type OpId, type RelativeUnit } from '../../filters/catalogue';
+import { canSuggest } from '../../filters/valueSuggest';
 import { isComplete, type ColumnFilter, type FilterValue } from '../../filters/build';
 import { columnTitle } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
@@ -7,13 +8,16 @@ import { isDayType } from '../../model/field-category';
 import type { RelativeDatePreset } from '../../sdk/types';
 import { ActionForm } from '../ActionForm';
 import { Select } from '../Select';
+import { ValueInput, type ValueSource } from './ValueInput';
 import { Panel, Row, panelBeingEdited, useSubmenu } from './MenuParts';
 
 const input = 'dm-input h-8 w-full rounded-md border bg-background px-2 text-sm';
 
 type EditorProps = { field: Field; value: ColumnFilter | undefined; onApply: (f: ColumnFilter) => void; onClear: () => void;
   /** A note under the Cancel / Apply row, in the sticky footer with it. */
-  note?: ReactNode };
+  note?: ReactNode;
+  /** Where the known values of a text column come from; absent, the text input has no suggestions. */
+  values?: ValueSource };
 
 /** Date and timestamp columns open on the presets; the other operators are a step away. Time-of-day columns have no presets. */
 export function FilterEditor(p: EditorProps) {
@@ -96,7 +100,7 @@ function DateFilterEditor({ field, value, onApply, onClear, note }: EditorProps)
   );
 }
 
-function OperatorForm({ field, value, onApply, onClear, note, startOp }: EditorProps & { startOp?: OpId }) {
+function OperatorForm({ field, value, onApply, onClear, note, values, startOp }: EditorProps & { startOp?: OpId }) {
   const ops = operatorsFor(field).filter((o) => field.category !== 'date' || o.id !== 'relative');
   const [op, setOp] = useState<OpId>(startOp ?? (value && ops.some((o) => o.id === value.op) ? value.op : ops[0]!.id));
   const [val, setVal] = useState<FilterValue>(value?.op === op ? value.value : undefined);
@@ -111,8 +115,9 @@ function OperatorForm({ field, value, onApply, onClear, note, startOp }: EditorP
       <Select aria-label="Operator" value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); }}>
         {ops.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
       </Select>
-      {(def.value === 'text' || def.value === 'number') && (
-        <input aria-label="Value" className={input} type={def.value === 'number' ? 'number' : 'text'} value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />
+      {def.value === 'text' && <ValueInput op={op} value={String(val ?? '')} onChange={setVal} source={canSuggest(field) ? values : undefined} className={input} />}
+      {def.value === 'number' && (
+        <input aria-label="Value" className={input} type="number" value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />
       )}
       {def.value === 'date' && <input aria-label="Value" className={input} type={dateType} value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />}
       {(def.value === 'number-range' || def.value === 'date-range') && (
