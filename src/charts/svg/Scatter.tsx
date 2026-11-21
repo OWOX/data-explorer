@@ -32,7 +32,7 @@ export function Scatter({ points, ariaLabel, xTitle, yTitle, formatX, formatY, o
             <g key={k}>
               <line className="dm-chart-grid" x1={left} x2={left + plotW} y1={py(yv)} y2={py(yv)} />
               <text className="dm-chart-text" x={left - 6} y={py(yv)} textAnchor="end" dominantBaseline="middle">{formatY(yv)}</text>
-              <text className="dm-chart-text" x={px(xv)} y={TOP + PLOT_H + 14} textAnchor="middle">{formatX(xv)}</text>
+              <text className="dm-chart-text" x={px(xv)} y={TOP + PLOT_H + 14} textAnchor={k === 0 ? 'start' : k === ticks.length - 1 ? 'end' : 'middle'}>{formatX(xv)}</text>
             </g>
           );
         })}

@@ -26,7 +26,7 @@ export function SpreadChart({ rows, ariaLabel, formatTick, onPick }: { rows: Spr
         {ticks.map((t, k) => (
           <g key={k}>
             <line className="dm-chart-grid" x1={px(t)} x2={px(t)} y1={TOP} y2={TOP + rows.length * ROW_H} />
-            <text className="dm-chart-text" x={px(t)} y={TOP + rows.length * ROW_H + 14} textAnchor="middle">{formatTick(t)}</text>
+            <text className="dm-chart-text" x={px(t)} y={TOP + rows.length * ROW_H + 14} textAnchor={k === 0 ? 'start' : k === ticks.length - 1 ? 'end' : 'middle'}>{formatTick(t)}</text>
           </g>
         ))}
         {rows.map((r, i) => {
