@@ -86,6 +86,17 @@ test('hovering a node lights its ribbons through the DOM (data-hot, is-on) and l
   expect(container.querySelectorAll('.is-on, .is-hot')).toHaveLength(0);
 });
 
+test('a new layout clears the lit state, so a hover the old layout left behind cannot dim the chart', async () => {
+  const props = { titles: ['One', 'Two', 'Three'], ariaLabel: 'S', text: (v: number) => `$${v}`, onPickNode: () => {} };
+  const { container, rerender } = render(<TooltipProvider><Sankey {...props} flows={flows} /></TooltipProvider>);
+  const svg = container.querySelector('svg')!;
+  await userEvent.hover(container.querySelector('rect[data-node="1|x"]')!);
+  expect(svg.hasAttribute('data-hot')).toBe(true);
+  rerender(<TooltipProvider><Sankey {...props} flows={flows.map((p) => [...p])} /></TooltipProvider>);
+  expect(svg.hasAttribute('data-hot')).toBe(false);
+  expect(container.querySelectorAll('.is-on, .is-hot')).toHaveLength(0);
+});
+
 test('hovering a ribbon lights that ribbon alone', async () => {
   const { container } = draw();
   await userEvent.hover(byAttr('data-link', '0|a|x')!);

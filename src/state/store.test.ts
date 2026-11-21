@@ -387,8 +387,7 @@ describe('holdGrid and rebaseGrid: edits made on defaults while the saved view i
     expect(st.history).toEqual([]);
     expect(st.holds).toEqual({});
     // Redo goes back to the edit, taking the late parts.
-    expect(reducer(st, { type: 'redo' }).grids.a).toEqual(grid({ sorts: [] }));
-    expect(st.future[0]!.grids!.a).toMatchObject({ limit: 400 });
+    expect(reducer(st, { type: 'redo' }).grids.a).toEqual(grid({ sorts: [], limit: 400 }));
   });
 });
 

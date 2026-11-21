@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, type KeyboardEvent, type SyntheticEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
 import { BLANK_COLOR, labelOf, OTHER_KEY } from '../blank';
 import { layoutSankey, REST_ORIGIN, type Flow, type NodeSize, type SankeyLink, type Tone } from '../sankeyLayout';
@@ -40,6 +40,8 @@ export function Sankey({ titles, columns, flows, text, ariaLabel, onPickNode, on
   }, []);
   const drawable = width > 0;
   const layout = useMemo(() => layoutSankey({ flows, columns, width: Math.max(120, width), padRight: LABEL_PAD }), [flows, columns, width]);
+  // A new layout replaces the elements the lit state was set on, so a ribbon the pointer left with the old layout cannot leave the chart dimmed.
+  useEffect(() => { light(); }, [layout, light]);
   const height = TOP + layout.height + 4;
   const step = titles.length > 1 ? Math.max(0, (Math.max(120, width) - LABEL_PAD - 12) / (titles.length - 1)) : 0;
   const roomChars = Math.max(4, Math.floor((titles.length > 1 ? Math.min(step - 12 - 8, LABEL_PAD + 20) : LABEL_PAD) / CHAR_W));
