@@ -558,6 +558,17 @@ test('a ranked bar draws one bar per top value; switching it to pie keeps its me
   expect((t.puts.mock.lastCall![1] as ChartSettings).charts).toEqual([{ id: 'r', kind: 'pie', measure: 'amount', dimension: 'status' }]);
 });
 
+test('a bar chart draws vertical bars per top value; switching it to a ranked bar keeps its measure and dimension', async () => {
+  const t = await charts({ charts: { version: 2, charts: [{ id: 'b', kind: 'bar', measure: 'amount', dimension: 'status' }] } });
+  await waitFor(() => expect(data().querySelector('section[data-chart-kind="Bar chart"] svg[data-orientation="vertical"] rect[data-series]')).not.toBeNull());
+  expect(t.queries.some((q) => q.limit === 8 && q.aggregation?.[0]?.function === 'SUM')).toBe(true);
+  await userEvent.click(screen.getByRole('button', { name: 'Bar chart options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Ranked bar' }));
+  await waitFor(() => expect(data().querySelector('section[data-chart-kind="Ranked bar"] svg[data-orientation="horizontal"]')).not.toBeNull());
+  expect((t.puts.mock.lastCall![1] as ChartSettings).charts).toEqual([{ id: 'b', kind: 'rankedBar', measure: 'amount', dimension: 'status' }]);
+});
+
 test('a chart menu ends with Chart type, Copy to clipboard and Remove', async () => {
   await charts();
   await userEvent.click(screen.getByRole('button', { name: 'Pie options' }));
