@@ -17,7 +17,14 @@ function useMeasuredHeight() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  return { inner, height };
+  // The frame clips only while its height moves, so content taller than the shrinking frame does not spill over what is below.
+  const [moving, setMoving] = useState(false);
+  useEffect(() => {
+    setMoving(true);
+    const t = setTimeout(() => setMoving(false), 250);
+    return () => clearTimeout(t);
+  }, [height]);
+  return { inner, height, moving };
 }
 
 /** One chart's frame: title, extra buttons, its ⋮ menu (null before the saved settings load) and the width its content needs. */
@@ -25,7 +32,7 @@ export function ChartPanel({ title, name, items, extra, width, loading, error, o
   title: string; name: string; items: MenuItem[] | null; extra?: ReactNode; width: string;
   loading: boolean; error: unknown; onRetry: () => void; empty?: string | null; note?: string; children: ReactNode;
 }) {
-  const { inner, height } = useMeasuredHeight();
+  const { inner, height, moving } = useMeasuredHeight();
   const [section, setSection] = useState<HTMLElement | null>(null);
   const [toast, setToast] = useState<{ text: string; tone: 'success' | 'info' | 'error'; at: number } | null>(null);
   const say = (text: string, tone: 'success' | 'info' | 'error') => setToast((t) => ({ text, tone, at: (t?.at ?? 0) + 1 }));
@@ -49,7 +56,7 @@ export function ChartPanel({ title, name, items, extra, width, loading, error, o
         </div>
         {items && <div className="dm-chart-actions">{extra}<ChartMenu name={name} items={withCopy ?? items} /></div>}
       </header>
-      <div className="dm-chart-body" style={height === null ? undefined : { height }}>
+      <div className="dm-chart-body" data-moving={moving || undefined} style={height === null ? undefined : { height }}>
         <div ref={inner} className="dm-chart-fit">
           {error ? <ErrorBox error={error} onRetry={onRetry} />
             : loading ? <Skeleton rows={4} />

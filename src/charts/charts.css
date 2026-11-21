@@ -40,6 +40,8 @@
 /* A chart that changes size (bucket, type, second measure...) grows and shrinks instead of snapping. The width is a clamp()/min() expression: a transition runs between its computed lengths. The body follows its content's measured height. */
 .dm-chart { transition: width 200ms ease; }
 .dm-chart-body { transition: height 200ms ease; }
+/* Clipped only while the height moves; the tooltips are portalled to the page, so nothing else needs the clip. */
+.dm-chart-body[data-moving] { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .dm-chart, .dm-chart-body { transition: none; } }
 /* Google Sheets' grey for a chart menu's dots. A chart's or scorecard's own menu shows on hover, on focus inside it and while open; opacity, not display, so it stays reachable by keyboard. The header's options menu has no such ancestor and stays visible. */
 .dm-menu-dots { color: #5f6368; }
