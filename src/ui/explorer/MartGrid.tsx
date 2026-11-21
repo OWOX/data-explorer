@@ -24,6 +24,8 @@ import { joinedMartIds, joinedPaths, ownNamesIn, pathTitle } from '../../state/j
 import type { Field, Model, Schema } from '../../model/types';
 import { hasPrimaryKey, primaryKeys } from '../../records/relationships';
 import type { Row } from '../../sdk/types';
+import type { SavedView } from '../../api/grid-columns';
+import { pruneGrid } from '../../state/view-link-resolve';
 import { sourceOfModel, useServices, useStore, type GridState } from '../../state/store';
 import { ErrorBox, errorMessage } from '../ErrorBox';
 import { Toast } from '../Toast';
@@ -91,7 +93,7 @@ const offered = (schema: Schema, saved: string[]) => saved.filter((c) => schema.
 const namesJoined = (schema: Schema, saved: GridState | undefined) =>
   !!saved && [...saved.columns, ...Object.keys(saved.filters), ...Object.keys(saved.slices ?? {}), ...(saved.sorts ?? []).map((x) => x.field)].some((n) => !schema.some((f) => f.name === n));
 
-type Initial = { columns: string[]; cleaned: string[] | null; sources: JoinedSource[] | null; agg: Aggregation };
+type Initial = { columns: string[]; cleaned: string[] | null; sources: JoinedSource[] | null; agg: Aggregation; /** The member's saved view (filters, slices, sort, limit, Table/Charts), pruned to the fields on offer; only when the page holds no grid for the mart. */ saved?: GridState };
 
 const aggOf = (g: GridState | undefined): Aggregation => (g && (g.aggregations?.length || g.dateTrunc?.length) ? { aggregations: g.aggregations ?? [], dateTrunc: g.dateTrunc ?? [] } : NO_AGGREGATION);
 
@@ -118,7 +120,9 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
     (async () => {
       const own = seed.saved?.columns;
       const saved = own ?? await columnStore.load(martId) ?? [];
-      const needs = namesJoined(schema, own ? seed.saved : { columns: saved, filters: seed.saved?.filters ?? {}, sorts: seed.saved?.sorts ?? null, limit: 0 });
+      // A grid the page already holds (a view link, this session) wins over what is saved.
+      const stored = seed.saved ? null : await columnStore.loadView(martId);
+      const needs = namesJoined(schema, own ? seed.saved : { columns: saved, filters: stored?.filters ?? {}, slices: stored?.slices, sorts: stored?.sorts ?? null, limit: 0 });
       const agg = seed.saved ? aggOf(seed.saved) : await columnStore.loadAggregation(martId);
       let sources: JoinedSource[] | null = blendable.peek(martId) ?? null;
       let failed = false;
@@ -134,7 +138,16 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
       const dropped = !failed && saved.length > there.length;
       const regrouped = !failed && kept.length > 0 && kept.some((c, i) => c !== there[i]);
       // A session or link list is not a saved one: only a list read from the store is cleaned back into it.
-      setInitial({ columns: kept.length ? kept : defaultColumns(schema), cleaned: (dropped || regrouped) && !own ? kept : null, sources, agg: sanitizeAggregation(keepVisible(agg, kept), withJoined(schema, sources ?? [])) });
+      const full = withJoined(schema, sources ?? []);
+      const columns = kept.length ? kept : defaultColumns(schema);
+      const cleanAgg = sanitizeAggregation(keepVisible(agg, kept), full);
+      // Rules on fields the mart no longer has are left out. With the joined marts unread, names that cannot be checked stay (the grid parks them), as with the columns.
+      let savedGrid: GridState | undefined;
+      if (stored) {
+        const g: GridState = { columns, ...stored, ...(cleanAgg.aggregations.length ? { aggregations: cleanAgg.aggregations } : {}), ...(cleanAgg.dateTrunc.length ? { dateTrunc: cleanAgg.dateTrunc } : {}) };
+        savedGrid = failed ? g : (pruneGrid(g, full).grid ?? g);
+      }
+      setInitial({ columns, cleaned: (dropped || regrouped) && !own ? kept : null, sources, agg: cleanAgg, ...(savedGrid ? { saved: savedGrid } : {}) });
     })();
     return () => { live = false; clearTimeout(timer); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -142,7 +155,7 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
   // The cleanup of a saved list that named columns that are gone is the one save that is not the member's own change.
   useEffect(() => { if (cleaned) columnStore.save(martId, cleaned); }, [cleaned, columnStore, martId]);
   if (!initial) return <Skeleton rows={8} />;
-  return <Grid {...props} initialColumns={initial.columns} initialSources={initial.sources} initialAgg={initial.agg} />;
+  return <Grid {...props} seed={seed.saved || !initial.saved ? seed : { ...seed, saved: initial.saved }} initialColumns={initial.columns} initialSources={initial.sources} initialAgg={initial.agg} />;
 }
 
 // TanStack Table v9 builds the header groups and the row model; the headers and cells are drawn by the components above.
@@ -329,7 +342,7 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   const [fallback] = useState(() => defaultSort(native, visible));
   const sorts = own ?? fallback;
   const [limit, setLimit] = useState(() => seed.saved?.limit ?? PAGE_SIZE);
-  // Table or charts. Only the page (the switch, Undo, a view link) changes it, so it lives with the grid state but not in columnStore.
+  // Table or charts. The page (the switch, Undo, a view link) changes it; it is saved with the rest of the view.
   const [view, setView] = useState<GridState['view']>(() => seed.saved?.view);
   const [ownVersion, setVersion] = useState(0);
   // Set by a change the member makes to what the grid shows (a filter, a sort, an aggregation, columns, Reset): the save that follows is one Undo step.
@@ -387,6 +400,16 @@ function Grid({ martId, model, schema: native, seed, initialColumns, initialSour
   useEffect(() => { if (adopted) { columnStore.save(martId, adopted); columnStore.saveAggregation(martId, agg); } }, [adopted, columnStore, martId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (adoptedAgg) columnStore.saveAggregation(martId, adoptedAgg); }, [adoptedAgg, columnStore, martId]);
+
+  // Every change to what the grid shows is saved with the columns (after the same pause); what the grid opened with is not written back.
+  const viewKey = useRef<string | null>(null);
+  useEffect(() => {
+    const v: SavedView = { filters: current.filters, ...(current.slices ? { slices: current.slices } : {}), sorts: current.sorts, limit: current.limit, ...(current.view ? { view: current.view } : {}) };
+    const key = JSON.stringify(v);
+    const last = viewKey.current;
+    viewKey.current = key;
+    if (last !== null && last !== key) columnStore.saveView(martId, v);
+  }, [current, columnStore, martId]);
 
   useEffect(() => { const edit = editSeq !== seenSeq.current; seenSeq.current = editSeq; onChange(current, edit); }, [current, editSeq]); // eslint-disable-line react-hooks/exhaustive-deps
 
