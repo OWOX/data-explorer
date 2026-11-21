@@ -426,8 +426,8 @@ test('a pie of another mart’s Unique Records hides the share in the tooltip', 
   expect(screen.queryByText(/\(\d+%\)/)).toBeNull();
 });
 
-test('an unstacked time series (blanks off) rides on the sparklines read: one billed read where there were two, both without blank dates', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie' }] } });
+test('an unstacked time series with Show blanks ticked rides on the sparklines read: one billed read where there were two', async () => {
+  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', blanks: true }, { id: 'pie', kind: 'pie' }] } });
   await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
   await waitFor(() => expect(data().querySelectorAll('svg[aria-label*="trend"]').length).toBeGreaterThan(0));
   const byDate = (t.queries.slice(t.tableQueries())).filter((q) => q.dateTrunc?.length && q.column?.[0] === 'created_at');
@@ -435,23 +435,23 @@ test('an unstacked time series (blanks off) rides on the sparklines read: one bi
   expect(byDate).toHaveLength(1);
   expect(byDate[0]!.column).toEqual(['created_at', 'amount']);
   expect(byDate[0]!.uniqueCount).toEqual(['']);
-  expect(byDate[0]!.filter?.some((f) => f.column === 'created_at' && f.operator === 'is_not_blank')).toBe(true);
 });
 
-test('a time series with Show blanks ticked reads for itself on the plain filter; the sparklines still drop blank dates', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', blanks: true }, { id: 'pie', kind: 'pie' }] } });
+test('by default the time series leaves blank dates out and reads for itself; the sparklines read keeps its own filter', async () => {
+  const t = await charts();
   await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
   await waitFor(() => expect(data().querySelectorAll('svg[aria-label*="trend"]').length).toBeGreaterThan(0));
   const byDate = t.queries.slice(t.tableQueries()).filter((q) => q.dateTrunc?.length && q.column?.[0] === 'created_at');
+  const blankRule = { column: 'created_at', operator: 'is_not_blank' };
   const own = byDate.filter((q) => !q.uniqueCount);
   expect(own.length).toBeGreaterThan(0);
-  expect(own.every((q) => !q.filter?.some((f) => f.operator === 'is_not_blank'))).toBe(true);
+  expect(own.every((q) => q.filter?.some((f) => f.column === blankRule.column && f.operator === blankRule.operator))).toBe(true);
   const spark = byDate.filter((q) => q.uniqueCount);
   expect(spark.length).toBeGreaterThan(0);
-  expect(spark.every((q) => q.filter?.some((f) => f.column === 'created_at' && f.operator === 'is_not_blank'))).toBe(true);
+  expect(spark.every((q) => !q.filter?.some((f) => f.operator === 'is_not_blank'))).toBe(true);
 });
 
-test('Show blanks in the time series menu is unticked by default, saves blanks and then reads with blank dates kept', async () => {
+test('Show blanks in the time series menu is unticked by default, saves blanks and reads with blank dates kept', async () => {
   const t = await charts();
   await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
   await userEvent.click(panel('Time series'));
@@ -463,8 +463,9 @@ test('Show blanks in the time series menu is unticked by default, saves blanks a
   const from = t.queries.length;
   await userEvent.click(show);
   await waitFor(() => expect((t.puts.mock.lastCall![1] as ChartSettings).charts![0]).toMatchObject({ kind: 'timeSeries', blanks: true }));
-  // With blanks kept the series reads for itself on the plain filter: its own read has no blank rule.
-  await waitFor(() => expect(t.queries.slice(from).some((q) => q.dateTrunc?.length && !q.uniqueCount && q.column?.[0] === 'created_at' && !q.filter?.some((f) => f.operator === 'is_not_blank'))).toBe(true));
+  // With blanks kept the series rides on the sparklines' cached read again: nothing new asks for the blank rule.
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  expect(t.queries.slice(from).some((q) => q.filter?.some((f) => f.operator === 'is_not_blank'))).toBe(false);
 });
 
 test('a stacked time series still reads its own series', async () => {
@@ -477,7 +478,7 @@ test('a stacked time series still reads its own series', async () => {
 
 test('when the shared sparkline read fails, the bar chart draws from its own read, issued only after the failure', async () => {
   let refused = 0;
-  const t = await charts({ ...{ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie' }] } }, fail: (o) => { const shared = !!o.dateTrunc?.length && !!o.uniqueCount && o.column?.[0] === 'created_at'; if (shared) refused += 1; return shared; } });
+  const t = await charts({ ...{ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', blanks: true }, { id: 'pie', kind: 'pie' }] } }, fail: (o) => { const shared = !!o.dateTrunc?.length && !!o.uniqueCount && o.column?.[0] === 'created_at'; if (shared) refused += 1; return shared; } });
   await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
   const after = t.queries.slice(t.tableQueries());
   const sharedAt = after.findIndex((q) => q.dateTrunc?.length && q.uniqueCount);

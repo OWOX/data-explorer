@@ -27,8 +27,8 @@ export function useDateSeries({ martId, cf, spark, date, bucket, measure, stack,
   // The top values do not depend on the bucket, so they are read while the Auto range is still loading.
   const top = useChartQuery(martId, !idle && stack ? topValuesQuery(stack, measure, filter) : null, version);
   const names = top.rows?.map((row) => String(row[stack!.name]));
-  // Unstacked and without blanks, the series asks for the sparklines' read when it can (same key, one billed read for both; both drop blank dates). With blanks kept its filter differs, so it reads for itself. If that read fails, the series reads for itself, so the chart is never worse off than with its own read.
-  const sharedOptions = live && !stack && !blanks ? sharedSeriesQuery(cf, spark, measure, bucket, filter, date) : null;
+  // Unstacked with blanks kept, the series asks for the sparklines' read when it can (same key, one billed read for both). Without blanks its filter differs, so it reads for itself. If that read fails, the series reads for itself, so the chart is never worse off than with its own read.
+  const sharedOptions = live && !stack && blanks ? sharedSeriesQuery(cf, spark, measure, bucket, filter, date) : null;
   const shared = useChartQuery(martId, sharedOptions, version);
   const viaShared = !!sharedOptions && !shared.error;
   // With a stack the series query waits for the top values.
