@@ -73,6 +73,8 @@ test('the time series and the pie sit side by side when the band is wide, and Ch
   // One row of two at 1440px: same top, the pie to the right of the time series, a clear gap between them.
   expect(Math.abs(a.y - b.y)).toBeLessThanOrEqual(1);
   expect(b.x - (a.x + a.width)).toBeGreaterThanOrEqual(16);
+  // The pie takes only the width it needs: at most 26rem (416px).
+  expect(b.width).toBeLessThanOrEqual(417);
   // The panels' left edge is the scorecards' left edge, and the panels end inside the band.
   const card = (await data(page).locator('[data-card]').first().boundingBox())!;
   expect(Math.abs(a.x - card.x)).toBeLessThanOrEqual(1);
@@ -86,7 +88,7 @@ test('the time series and the pie sit side by side when the band is wide, and Ch
   await amount.hover();
   await expect(page.getByRole('tooltip').filter({ hasText: exact })).toBeVisible();
   await page.screenshot({ path: 'tmp/charts-e2e-side.png' });
-  await page.setViewportSize({ width: 900, height: 900 });
+  await page.setViewportSize({ width: 640, height: 900 });
   // The panels take the scroller's width once its resize is observed: wait for them to stack.
   await expect.poll(async () => { const [c, d] = [(await panels.nth(0).boundingBox())!, (await panels.nth(1).boundingBox())!]; return d.y >= c.y + c.height - 1; }).toBe(true);
 });
