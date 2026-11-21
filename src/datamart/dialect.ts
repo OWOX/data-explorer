@@ -257,7 +257,6 @@ function relative(d: Dialect, col: string, p: RelativeDatePreset, type: string):
 
 /** One complete filter as a SQL predicate on `col` (already a column reference). */
 export function renderFilter(d: Dialect, col: string, field: Field, f: ColumnFilter): string {
-  // The grid offers no list operator, so `toTraverseFilter` never returns `in` or `not_in`.
   const t = toTraverseFilter(f, field);
   const type = field.type.trim().toUpperCase();
   const cast = CAST_TYPES[d].has(type);
@@ -268,6 +267,8 @@ export function renderFilter(d: Dialect, col: string, field: Field, f: ColumnFil
   switch (t.operator) {
     case 'eq': return `${col} = ${lit(t.value)}`;
     case 'neq': return `(${col} IS NULL OR ${col} <> ${lit(t.value)})`;
+    case 'in': return `${col} IN (${t.value.map(lit).join(', ')})`;
+    case 'not_in': return `(${col} IS NULL OR ${col} NOT IN (${t.value.map(lit).join(', ')}))`;
     case 'gt': return `${col} > ${lit(t.value)}`;
     case 'lt': return `${col} < ${lit(t.value)}`;
     case 'gte': return `${col} >= ${lit(t.value)}`;
@@ -298,6 +299,5 @@ export function renderFilter(d: Dialect, col: string, field: Field, f: ColumnFil
     case 'is_false': return `${col} = FALSE`;
     case 'between': return `${col} BETWEEN ${lit(t.value.from)} AND ${lit(t.value.to)}`;
     case 'relative_date': return relative(d, col, t.value, type);
-    default: throw new Error(`Unsupported filter operator: ${t.operator}`);
   }
 }
