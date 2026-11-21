@@ -146,7 +146,9 @@ export function CardBands({
     card.focus();
     setFocusAdded(null);
   }, [focusAdded, canvasTree]);
+  const [pickState, setPickState] = useState<{ main: string | null; id: string } | null>(null);
   const addFromBand = (id: string, options?: { addAt?: string }) => {
+    setPickState(null);
     const before = new Set(canvasTree?.nodes.keys());
     // Only when focus is on the card being added: a click with the pointer elsewhere moves nothing.
     const hadFocus = document.activeElement?.closest('article')?.getAttribute('data-mart-id') === id;
@@ -175,7 +177,6 @@ export function CardBands({
   const shownIds = useMemo(() => new Set(visible.ids), [visible.ids]);
   // A card the main mart cannot join, clicked: it only explains, but it is the card the header's "Make it main" acts on, so a ghost stays on screen while it is picked.
   // The pick belongs to one main mart, and goes with a click on the band's background or on another card.
-  const [pickState, setPickState] = useState<{ main: string | null; id: string } | null>(null);
   const picked = pickState !== null && pickState.main === mainFor && view === 'grid' && model.marts.get(pickState.id)?.accessible === true ? pickState.id : null;
   const pick = (id: string) => { if (focus === null) setPickState({ main: mainFor, id }); };
   const ghostIds = useMemo(() => {
@@ -320,7 +321,7 @@ export function CardBands({
     <div
       ref={canvas}
       className={`dm-canvas${view === 'grid' && (pinned || hovered) ? ' focused' : ''}${view === 'canvas' && pinned ? ' sources-focused' : ''}`}
-      onClick={(e) => { if (focus !== null && e.target instanceof Element && e.target.closest('#band-marts .dm-band-body') && !e.target.closest('article, button, a')) { clearFocus(); setPickState(null); } }}
+      onClick={(e) => { if (e.target instanceof Element && e.target.closest('#band-marts .dm-band-body') && !e.target.closest('article, button, a')) { if (focus !== null) clearFocus(); setPickState(null); } }}
       // A portaled title bubble bubbles its events through React; it is not in the canvas in the DOM, so it changes no hover.
       onPointerOver={(e) => { if (e.currentTarget.contains(e.target as Node)) setHovered(view === 'grid' ? nodeIdOf(e.target) : null); }}
       onPointerLeave={() => setHovered(null)}
@@ -334,7 +335,7 @@ export function CardBands({
           return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => { rememberLeaving(null); dispatch({ type: 'selectSource', key: source.key }); if (view === 'canvas') pickView('grid'); }} />;
         })}
       </Band>
-      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={view === 'canvas' ? reportSize : visible.ids.length} hint="The main data mart first, and every mart it can join; or what the search and the filters match. Drag a card onto the main one to make it main." afterHint={<><ViewSwitch label="Show data marts as" options={MARTS_VIEWS} value={view} onChange={pickView} />{makeMainId !== null && <MakeMainButton onClick={() => { setPickState(null); void click(makeMainId, { mode: 'makeMain' }); }} />}{view === 'grid' && contextBadges}</>} toolbar={view === 'grid' ? storageFilter : undefined} grid={view === 'grid'} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
+      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={view === 'canvas' ? reportSize : visible.ids.length} hint="The main data mart first, and every mart it can join; or what the search and the filters match. Drag a card onto the main one to make it main." afterHint={<><ViewSwitch label="Show data marts as" options={MARTS_VIEWS} value={view} onChange={pickView} />{makeMainId !== null && <MakeMainButton title={model.marts.get(makeMainId)?.title ?? 'it'} onClick={() => { setPickState(null); void click(makeMainId, { mode: 'makeMain' }); }} />}{view === 'grid' && contextBadges}</>} toolbar={view === 'grid' ? storageFilter : undefined} grid={view === 'grid'} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
         {view === 'canvas' ? (
           <div
             className="dm-tree-scroll"
