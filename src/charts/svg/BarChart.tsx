@@ -102,7 +102,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
               {vertical ? <line className="dm-chart-grid" x1={left} x2={left + plotW} y1={pos} y2={pos} /> : <line className="dm-chart-grid" x1={pos} x2={pos} y1={TOP} y2={TOP + xs.length * ROW_H} />}
               {vertical
                 ? <text className="dm-chart-text" x={left - 6} y={pos} textAnchor="end" dominantBaseline="middle">{formatTick(t)}</text>
-                : <text className="dm-chart-text" x={pos} y={TOP + xs.length * ROW_H + 14} textAnchor="middle">{formatTick(t)}</text>}
+                : <text className="dm-chart-text" x={pos} y={TOP + xs.length * ROW_H + 14} textAnchor={k === 0 ? 'start' : k === ticks.length - 1 ? 'end' : 'middle'}>{formatTick(t)}</text>}
             </g>
           );
         })}

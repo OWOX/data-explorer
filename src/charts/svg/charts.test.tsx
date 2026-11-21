@@ -1,9 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { TooltipProvider } from '../../ui/Tooltip';
 import { ChartPanel } from '../ChartPanel';
 import { BarChart, type Series } from './BarChart';
 import { PieChart } from './PieChart';
+import { LineChart } from './LineChart';
+import { Heatmap } from './Heatmap';
+import { Scatter } from './Scatter';
+import { SpreadChart } from './SpreadChart';
 import { Sparkline, type Point } from './Sparkline';
 
 const pt = (i: number, y: number | null): Point => ({ x: `2026-0${i}`, y, label: `M${i}`, valueText: y === null ? '' : `v${y}` });
@@ -97,13 +102,13 @@ test('PieChart: 3 slices give 3 paths; one slice at 100% is a circle', () => {
 
 test('ChartPanel shows the error and Retry calls onRetry; empty text shows; the note is the (i) by the title', () => {
   const onRetry = vi.fn();
-  const { rerender } = wrap(<ChartPanel title="T" loading={false} error={new Error('nope')} onRetry={onRetry}>x</ChartPanel>);
+  const { rerender } = wrap(<ChartPanel title="T" name="T" items={null} width="20rem" loading={false} error={new Error('nope')} onRetry={onRetry}>x</ChartPanel>);
   expect(screen.getByRole('alert')).toHaveTextContent('nope');
   fireEvent.click(screen.getByText('Retry'));
   expect(onRetry).toHaveBeenCalled();
-  rerender(<TooltipProvider><ChartPanel title="T" loading={false} error={null} onRetry={onRetry} empty="No rows">x</ChartPanel></TooltipProvider>);
+  rerender(<TooltipProvider><ChartPanel title="T" name="T" items={null} width="20rem" loading={false} error={null} onRetry={onRetry} empty="No rows">x</ChartPanel></TooltipProvider>);
   expect(screen.getByText('No rows')).toBeInTheDocument();
-  rerender(<TooltipProvider><ChartPanel title="T" loading={false} error={null} onRetry={onRetry} note="Top 8">kid</ChartPanel></TooltipProvider>);
+  rerender(<TooltipProvider><ChartPanel title="T" name="T" items={null} width="20rem" loading={false} error={null} onRetry={onRetry} note="Top 8">kid</ChartPanel></TooltipProvider>);
   expect(screen.getByText('kid')).toBeInTheDocument();
   expect(screen.queryByText('Top 8')).toBeNull();
   expect(screen.getByRole('note', { name: 'About T' }).closest('.dm-chart-head')).not.toBeNull();
@@ -148,4 +153,100 @@ test('PieChart: clickable slices make the svg a group; share can be hidden', asy
   g.unmount();
   const i = wrap(<PieChart slices={slices} ariaLabel="p" />);
   expect(i.container.querySelector('svg')).toHaveAttribute('role', 'img');
+});
+
+
+const pts = (ys: (number | null)[]) => ys.map((y, i) => ({ x: `2026-0${i + 1}-01`, label: `M${i + 1}`, y, valueText: String(y) }));
+
+test('LineChart draws one path per series, a right axis for the second measure and area fills when asked', () => {
+  const { container } = wrap(<LineChart left={[{ name: 'A', color: 'red', points: pts([1, 3, 2]) }]} right={{ name: 'B', color: 'blue', points: pts([100, 50, 80]) }}
+    area ariaLabel="A and B" formatLeft={String} formatRight={(n) => `${n}%`} />);
+  expect(container.querySelectorAll('path[data-line]')).toHaveLength(2);
+  expect(container.querySelectorAll('path[data-area]')).toHaveLength(2);
+  expect(container.querySelector('[data-axis="right"]')).not.toBeNull();
+  expect(screen.getByRole('img', { name: 'A and B' })).toBeTruthy();
+});
+
+test('LineChart: a null value breaks the line; a bucket is pickable by keyboard', async () => {
+  const onPick = vi.fn();
+  const { container } = wrap(<LineChart left={[{ name: 'A', color: 'red', points: pts([1, null, 2]) }]} area={false} ariaLabel="A" formatLeft={String} onPick={onPick} />);
+  expect(container.querySelector('path[data-line]')!.getAttribute('d')!.match(/M/g)).toHaveLength(2);
+  const first = screen.getByRole('button', { name: 'Filter to M1' });
+  first.focus();
+  await userEvent.keyboard('{Enter}');
+  expect(onPick).toHaveBeenCalledWith('2026-01-01');
+});
+
+test('LineChart aligns a second series by bucket, not by position', () => {
+  const left = [{ name: 'A', color: 'red', points: [{ x: '2026-01-01', label: 'M1', y: 1, valueText: 'a1' }, { x: '2026-02-01', label: 'M2', y: 2, valueText: 'a2' }] }];
+  const right = { name: 'B', color: 'blue', points: [{ x: '2026-02-01', label: 'M2', y: 20, valueText: 'b2' }, { x: '2026-03-01', label: 'M3', y: 30, valueText: 'b3' }] };
+  const { container } = wrap(<LineChart left={left} right={right} area={false} ariaLabel="x" formatLeft={String} />);
+  const rows = [...container.querySelectorAll('tbody tr')].map((tr) => [...tr.children].map((c) => c.textContent));
+  expect(rows).toEqual([['M1', 'a1', ''], ['M2', 'a2', 'b2'], ['M3', '', 'b3']]);
+});
+
+test('Heatmap draws a cell per pair with a value, darker for larger values, and picks a cell by keyboard', async () => {
+  const onPick = vi.fn();
+  const values: Record<string, number> = { 'x1|y1': 1, 'x2|y1': 4 };
+  wrap(<Heatmap xs={[{ key: 'x1', label: 'X1' }, { key: 'x2', label: 'X2' }]} ys={[{ key: 'y1', label: 'Y1' }]} ariaLabel="H"
+    cell={(x, y) => (values[`${x}|${y}`] === undefined ? undefined : { value: values[`${x}|${y}`]!, text: String(values[`${x}|${y}`]) })} onPick={onPick} />);
+  const cells = document.querySelectorAll('rect[data-cell]');
+  expect(cells).toHaveLength(2);
+  expect(Number(cells[1]!.getAttribute('fill-opacity'))).toBeGreaterThan(Number(cells[0]!.getAttribute('fill-opacity')));
+  screen.getByRole('button', { name: 'Filter to X2, Y1' }).focus();
+  await userEvent.keyboard('{Enter}');
+  expect(onPick).toHaveBeenCalledWith('x2', 'y1');
+});
+
+test('Scatter draws one dot per point and picks one by keyboard', async () => {
+  const onPick = vi.fn();
+  wrap(<Scatter ariaLabel="S" xTitle="X" yTitle="Y" formatX={String} formatY={String} onPick={onPick}
+    points={[{ key: 'p', label: 'P', x: 1, y: 2, xText: '1', yText: '2' }, { key: 'q', label: 'Q', x: 3, y: 1, xText: '3', yText: '1' }]} />);
+  expect(document.querySelectorAll('circle[data-dot]')).toHaveLength(2);
+  screen.getByRole('button', { name: 'Filter to Q' }).focus();
+  await userEvent.keyboard('{Enter}');
+  expect(onPick).toHaveBeenCalledWith('q');
+});
+
+test('SpreadChart draws a box and a median per row, whiskers only with min and max', () => {
+  wrap(<SpreadChart ariaLabel="Sp" formatTick={String} rows={[
+    { key: 'a', label: 'A', p25: 2, p50: 3, p75: 5, min: 1, max: 9, text: 'median 3' },
+    { key: 'b', label: 'B', p25: 1, p50: 2, p75: 3, min: null, max: null, text: 'median 2' },
+  ]} />);
+  expect(document.querySelectorAll('rect[data-box]')).toHaveLength(2);
+  expect(document.querySelectorAll('line[data-median]')).toHaveLength(2);
+  expect(document.querySelectorAll('line[data-whisker]')).toHaveLength(1);
+});
+
+const tickTexts = (container: HTMLElement, y: string) => [...container.querySelectorAll('svg text')].filter((t) => t.getAttribute('y') === y);
+
+test('Heatmap with 60 buckets keeps every cell inside the svg width', () => {
+  const xs = Array.from({ length: 60 }, (_, i) => ({ key: `x${i}`, label: `X${i}` }));
+  const { container } = wrap(<Heatmap xs={xs} ys={[{ key: 'y1', label: 'Y1' }]} ariaLabel="H" cell={() => ({ value: 1, text: '1' })} />);
+  const vbWidth = Number(container.querySelector('svg')!.getAttribute('viewBox')!.split(' ')[2]);
+  const cells = [...container.querySelectorAll('rect[data-cell]')];
+  expect(cells).toHaveLength(60);
+  for (const c of cells) expect(Number(c.getAttribute('x')) + Number(c.getAttribute('width'))).toBeLessThanOrEqual(vbWidth);
+});
+
+test('a ranked bar anchors its first tick start and its last tick end', () => {
+  const { container } = wrap(<BarChart series={[two[1]!]} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const ticks = [...container.querySelectorAll('g.dm-chart-tick text')];
+  expect(ticks.map((t) => t.getAttribute('text-anchor'))).toEqual(['start', 'middle', 'middle', 'end']);
+});
+
+test('Scatter anchors its first x tick start and its last end', () => {
+  const { container } = wrap(<Scatter ariaLabel="S" xTitle="X" yTitle="Y" formatX={String} formatY={String}
+    points={[{ key: 'p', label: 'P', x: 1, y: 2, xText: '1', yText: '2' }, { key: 'q', label: 'Q', x: 3, y: 1, xText: '3', yText: '1' }]} />);
+  const xt = tickTexts(container, String(8 + 220 + 14));
+  expect(xt.length).toBe(4);
+  expect(xt[0]).toHaveAttribute('text-anchor', 'start');
+  expect(xt[3]).toHaveAttribute('text-anchor', 'end');
+});
+
+test('SpreadChart anchors its first tick start and its last end', () => {
+  const { container } = wrap(<SpreadChart ariaLabel="Sp" formatTick={String} rows={[{ key: 'a', label: 'A', p25: 2, p50: 3, p75: 5, min: 1, max: 9, text: 'm' }]} />);
+  const xt = [...container.querySelectorAll('svg g > text')].filter((t) => !t.hasAttribute('dominant-baseline'));
+  expect(xt[0]).toHaveAttribute('text-anchor', 'start');
+  expect(xt.at(-1)).toHaveAttribute('text-anchor', 'end');
 });

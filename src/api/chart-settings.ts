@@ -1,6 +1,6 @@
 import { isRecord } from '../model/guards';
 import { isDateBucket } from '../model/aggregation';
-import type { ChartSettings } from '../charts/settings';
+import { isChartKind, type ChartSettings, type ChartSpec } from '../charts/settings';
 import type { Ctx } from '../sdk/types';
 
 export const CHARTS_COLLECTION = 'charts';
@@ -13,7 +13,19 @@ export interface ChartSettingsStore {
 }
 
 const obj = (v: unknown): Record<string, unknown> | null => (isRecord(v) ? v : null);
-const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+
+function cleanSpec(v: unknown): ChartSpec | null {
+  const o = obj(v);
+  if (!o || typeof o.id !== 'string' || !isChartKind(o.kind)) return null;
+  const out: ChartSpec = { id: o.id, kind: o.kind };
+  if (typeof o.hidden === 'boolean') out.hidden = o.hidden;
+  for (const k of ['measure', 'date', 'dimension', 'dimension2'] as const) if (typeof o[k] === 'string') out[k] = o[k] as string;
+  for (const k of ['measure2', 'stack'] as const) if (o[k] === null || typeof o[k] === 'string') out[k] = o[k] as string | null;
+  if (o.bucket === 'AUTO' || isDateBucket(o.bucket)) out.bucket = o.bucket as ChartSpec['bucket'];
+  if (o.orientation === 'vertical' || o.orientation === 'horizontal') out.orientation = o.orientation;
+  if (typeof o.area === 'boolean') out.area = o.area;
+  return out;
+}
 
 // Drops what a stale or hand-edited doc could break the charts with: unknown keys and wrong types.
 function clean(doc: unknown): ChartSettings {
@@ -26,20 +38,11 @@ function clean(doc: unknown): ChartSettings {
     if (Array.isArray(sc.hidden)) out.scorecards.hidden = sc.hidden.filter((x): x is string => typeof x === 'string');
     if (typeof sc.sparklines === 'boolean') out.scorecards.sparklines = sc.sparklines;
   }
-  const ts = obj(d.timeSeries);
-  if (ts) {
-    out.timeSeries = {};
-    if (str(ts.date) !== undefined) out.timeSeries.date = ts.date as string;
-    if (ts.bucket === 'AUTO' || isDateBucket(ts.bucket)) out.timeSeries.bucket = ts.bucket as 'AUTO';
-    if (str(ts.metric) !== undefined) out.timeSeries.metric = ts.metric as string;
-    if (ts.stack === null || str(ts.stack) !== undefined) out.timeSeries.stack = ts.stack as string | null;
-    if (ts.orientation === 'vertical' || ts.orientation === 'horizontal') out.timeSeries.orientation = ts.orientation;
-  }
-  const pie = obj(d.pie);
-  if (pie) {
-    out.pie = {};
-    if (str(pie.metric) !== undefined) out.pie.metric = pie.metric as string;
-    if (str(pie.dimension) !== undefined) out.pie.dimension = pie.dimension as string;
+  // Charts are read from a version 2 doc only: a v1 doc's fixed panels are dropped, the defaults stand in.
+  if (d.version === 2 && Array.isArray(d.charts)) {
+    const seen = new Set<string>();
+    out.version = 2;
+    out.charts = d.charts.map(cleanSpec).filter((c): c is ChartSpec => !!c && !seen.has(c.id) && !!seen.add(c.id));
   }
   return out;
 }
