@@ -2,6 +2,7 @@ import type { Field, Schema } from '../model/types';
 import type { RelativeDatePreset, TraverseFilter, TraverseFilterRule } from '../sdk/types';
 import type { AggFn, AggregationRule } from '../model/aggregation';
 import { havingField, sliceField } from './slice';
+import { tokensOf } from './valueSuggest';
 import { isDateTimeField, operatorsFor, RELATIVE_MAX_N, RELATIVE_PRESETS, type OpId } from './catalogue';
 
 export type FilterValue = string | number | { from: string | number; to: string | number } | RelativeDatePreset | undefined;
@@ -70,6 +71,12 @@ export function toTraverseFilter(f: ColumnFilter, field: Field): TraverseFilterR
       return isNum
         ? { column, operator: 'between', value: { from: Number(r.from), to: Number(r.to) } }
         : { column, operator: 'between', value: { from: String(r.from), to: String(r.to) } };
+    }
+    case 'eq': case 'neq': {
+      // A text value with commas is a list: `a, b` is any of the two (the suggestions add values this way).
+      const list = field.category === 'string' && typeof f.value === 'string' && f.value.includes(',') ? tokensOf(f.value) : [];
+      if (list.length > 1) return { column, operator: f.op === 'eq' ? 'in' : 'not_in', value: list };
+      return { column, operator: f.op, value: list.length === 1 ? list[0]! : scalar(f.value) } as TraverseFilterRule;
     }
     default:
       return { column, operator: f.op, value: scalar(f.value) } as TraverseFilterRule;
