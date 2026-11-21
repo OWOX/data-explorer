@@ -22,7 +22,7 @@ test('the Export menu draws a visible line between the assistants, the destinati
   await page.screenshot({ path: 'tmp/w4t1-export-menu.png', clip: (await menu.boundingBox())! });
 });
 
-test('Grid tints only the focused card, Graph only the pinned one', async ({ page }) => {
+test('Grid and Graph cards keep their background when selected; the border goes bold instead', async ({ page }) => {
   await page.goto('/?mock');
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await marts(page).getByText('Customers', { exact: true }).first().click();
@@ -35,7 +35,9 @@ test('Grid tints only the focused card, Graph only the pinned one', async ({ pag
   const rest = states.filter((s) => !s.focused);
   expect(tinted).toHaveLength(1);
   expect(rest).toHaveLength(1);
-  expect(tinted[0]!.bg).not.toBe(rest[0]!.bg);
+  // Selecting a card no longer tints it: both path cards share the one card background.
+  expect(tinted[0]!.bg).toBe(rest[0]!.bg);
+  expect(await marts(page).locator('article[data-focused]').first().evaluate((e) => getComputedStyle(e, '::after').borderTopWidth)).toBe('2px');
   void plain;
   await marts(page).screenshot({ path: 'tmp/w4t1-grid.png' });
   await marts(page).getByRole('radio', { name: 'Graph' }).click();
