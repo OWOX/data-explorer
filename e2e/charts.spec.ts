@@ -1,7 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// Menus are driven faster than a 200ms resize settles, so the specs run without the chart animation (the last test turns it back on).
-test.beforeEach(async ({ page }) => { await page.emulateMedia({ reducedMotion: 'reduce' }); await page.goto('/?mock'); });
+test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
 const data = (page: Page) => page.locator('#band-data');
 
 test('Charts mode shows scorecards, a stacked time series and a pie, and Table brings the grid back', async ({ page }) => {
@@ -120,7 +119,6 @@ test('a chart’s ⋮ shows on hover, in Sheets grey, and stays while its menu i
 });
 
 test('a chart that changes type animates its width instead of snapping', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await data(page).getByRole('radio', { name: 'Charts' }).click();
   const panel = data(page).locator('section[data-chart-kind="Pie"]');
   await expect(panel).toHaveCSS('transition-property', /width/);

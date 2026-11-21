@@ -300,12 +300,53 @@ test('with only a pie, the sparklines still draw under the cards', async () => {
   await waitFor(() => expect(data().querySelectorAll('svg[aria-label*="trend"]').length).toBeGreaterThan(0));
 });
 
-test('a chart menu closes on scroll', async () => {
+test('a chart menu closes on a real scroll', async () => {
+  await charts();
+  await userEvent.click(panel('Charts'));
+  expect(await screen.findByRole('menu', { name: 'Charts menu' })).toBeInTheDocument();
+  const was = window.scrollY;
+  Object.defineProperty(window, 'scrollY', { value: was + 40, configurable: true });
+  try {
+    fireEvent.scroll(document);
+    await waitFor(() => expect(screen.queryByRole('menu', { name: 'Charts menu' })).toBeNull());
+  } finally { Object.defineProperty(window, 'scrollY', { value: was, configurable: true }); }
+});
+
+test('a chart menu stays open for a scroll event that moved nothing (the echo of a resize)', async () => {
   await charts();
   await userEvent.click(panel('Charts'));
   expect(await screen.findByRole('menu', { name: 'Charts menu' })).toBeInTheDocument();
   fireEvent.scroll(document);
-  await waitFor(() => expect(screen.queryByRole('menu', { name: 'Charts menu' })).toBeNull());
+  await new Promise((r) => setTimeout(r, 50));
+  expect(screen.getByRole('menu', { name: 'Charts menu' })).toBeInTheDocument();
+});
+
+test('a chart menu stays open while its panel is resizing, even when a scroll box moved', async () => {
+  await charts();
+  const dots = panel('Pie');
+  await userEvent.click(dots);
+  expect(await screen.findByRole('menu', { name: 'Pie menu' })).toBeInTheDocument();
+  const section = dots.closest('[data-chart-kind]') as HTMLElement;
+  class FakeTransition {}
+  const globals = globalThis as unknown as { CSSTransition?: unknown };
+  const had = globals.CSSTransition;
+  globals.CSSTransition = FakeTransition;
+  const running = Object.assign(new FakeTransition(), { playState: 'running' });
+  section.getAnimations = (() => [running]) as unknown as typeof section.getAnimations;
+  const was = window.scrollY;
+  Object.defineProperty(window, 'scrollY', { value: was + 40, configurable: true });
+  try {
+    fireEvent.scroll(document);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByRole('menu', { name: 'Pie menu' })).toBeInTheDocument();
+    // Once the animation is over, the same scroll closes it.
+    section.getAnimations = (() => []) as unknown as typeof section.getAnimations;
+    fireEvent.scroll(document);
+    await waitFor(() => expect(screen.queryByRole('menu', { name: 'Pie menu' })).toBeNull());
+  } finally {
+    Object.defineProperty(window, 'scrollY', { value: was, configurable: true });
+    globals.CSSTransition = had;
+  }
 });
 
 test('the card checklist rows are checkboxes', async () => {
