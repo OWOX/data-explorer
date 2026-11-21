@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ColumnFilter } from '../filters/build';
 import type { JoinedSource } from '../api/blendable';
 import type { Aggregation, DateBucket } from '../model/aggregation';
@@ -10,8 +11,10 @@ import { ErrorBox } from '../ui/ErrorBox';
 import { Skeleton } from '../ui/Skeleton';
 import { chartFields } from './fields';
 import type { HavingKeys } from './havingKeys';
-import { ChartMenu, type MenuItem } from './ChartMenu';
-import { cardsOf, MartCards, useScorecards } from './Scorecards';
+import { ChartMenu } from './ChartMenu';
+import { listItems, tailItems } from './listMenu';
+import { ChartsMenuSlot } from './menuSlot';
+import { MartCards, useScorecards } from './Scorecards';
 import { KINDS } from './kinds';
 import { chartsOf, patchChart, scorecardsOf, type ChartSettings, type ChartSpec, type Spark } from './settings';
 import { useBucket } from './useBucket';
@@ -66,6 +69,12 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   const idle = paused || !settings || !!gate;
   const { bucket } = useBucket(martId, spark.date, lead?.bucket ?? 'AUTO', filter, version, idle);
   const scores = useScorecards(martId, cf, filter, version, idle);
+  // The header list names every chart, hidden ones included; memoized so a resize resolves nothing again.
+  const resolved = useMemo(() => drawn.map(({ spec, def }) => {
+    const r = def?.resolve({ ...spec, hidden: false }, cf) ?? null;
+    return { spec, title: def && r ? def.title(r, cf) : null };
+  }), [drawn, cf]);
+  const slot = useContext(ChartsMenuSlot);
   const columns = groups.reduce((n, g) => n + g.span, 0);
 
   if (cf.marts.every((m) => m.metrics.length === 0 && !m.hasPk)) {
@@ -79,26 +88,17 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     );
   }
 
-  const patch = (edit: (cur: NonNullable<ChartSettings['scorecards']>) => NonNullable<ChartSettings['scorecards']>) => change((cur) => ({ ...cur, scorecards: edit(cur.scorecards ?? {}) }));
-  const toggleCard = (id: string) => patch((sc) => {
-    const hidden = new Set(sc.hidden ?? []);
-    if (!hidden.delete(id)) hidden.add(id);
-    return { ...sc, hidden: [...hidden] };
-  });
-  const items: MenuItem[] = [
-    ...cf.marts.flatMap((m, i) => cardsOf(m).map((c): MenuItem => ({ kind: 'check', label: i === 0 ? c.label : `${m.title} · ${c.label}`, checked: !spark.hidden.has(c.id), onToggle: () => toggleCard(c.id) }))),
-    { kind: 'check', label: 'Sparklines', checked: spark.sparklines, onToggle: () => patch((sc) => ({ ...sc, sparklines: !(sc.sparklines ?? true) })) },
-  ];
-
   return (
     <tbody>
       <tr data-chart-strip>
         <Gutter />
+        {/* `change` reads the latest-doc ref, but the menus only call it from handlers, never while rendering. */}
+        {/* eslint-disable-next-line react-hooks/refs */}
         {groups.map((g, i) => (
           <td key={g.path} colSpan={g.span} data-chart-group={g.id} data-chart-path={g.path}>
             <div className="flex items-start gap-1">
               <MartCards martId={martId} mart={cf.marts[i]!} main={g.path === ''} spark={spark} scores={scores} bucket={bucket} filter={filter} version={version} paused={idle} hasFilters={hasFilters} formatOf={formatOf} />
-              {g.path === '' && settings && <ChartMenu name="Scorecards" items={items} />}
+              {g.path === '' && slot && settings && createPortal(<ChartMenu name="Charts" items={listItems({ cf, settings, resolved, change })} />, slot)}
             </div>
           </td>
         ))}
@@ -110,9 +110,10 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
           {/* Pinned just right of the row-number gutter and as wide as the rest of the scroller, so the panels line up with
               the scorecards (the same 0.75rem inset) and stay in view however wide the table is. */}
           <div data-chart-panels className="dm-chart-panels sticky" style={{ left: GUTTER_PX, width: Math.max(0, scrollerWidth - GUTTER_PX) }}>
+            {/* eslint-disable-next-line react-hooks/refs -- `change` is only called from handlers */}
             {drawn.map(({ spec, def, r }) => def && r ? (
               <def.Panel key={spec.id} martId={martId} cf={cf} spec={spec} r={r} spark={spark} filter={filter} version={version} idle={idle}
-                hasFilters={hasFilters} formatOf={formatOf} ready={!!settings} tail={[]}
+                hasFilters={hasFilters} formatOf={formatOf} ready={!!settings} tail={tailItems({ cf, spec, change })}
                 onChange={(p: Partial<ChartSpec>) => change((cur) => patchChart(cur, spec.id, p))} onFilter={onFilter} />
             ) : null)}
           </div>

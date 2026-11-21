@@ -1,0 +1,45 @@
+import { vi } from 'vitest';
+import type { ChartFields } from './fields';
+import { listItems, tailItems } from './listMenu';
+import type { ChartSettings } from './settings';
+
+// A mart with a key, a date, a number and a string: every kind but spread is eligible once registered.
+const date = { name: 'created_at', category: 'date', type: 'TIMESTAMP' } as never;
+const dim = { name: 'status', category: 'string', type: 'STRING' } as never;
+const amount = { name: 'amount', category: 'number', type: 'NUMERIC' } as never;
+const cf: ChartFields = { marts: [{ aliasPath: '', recordsId: 'records:orders', title: '', hasPk: true, metrics: [{ field: amount, fn: 'SUM' }], dates: [date], dimensions: [dim] }], dates: [date], dimensions: [dim], counter: null };
+
+test('the header list has the cards, Sparklines, one tick per chart and Add chart with the eligible kinds', () => {
+  const change = vi.fn();
+  const items = listItems({ cf, settings: {}, resolved: [{ spec: { id: 'time-series', kind: 'timeSeries' }, title: 'amount · Sum by date' }, { spec: { id: 'pie', kind: 'pie' }, title: null }], change });
+  // Card labels come from metricLabel: the field label (no alias here) and AGG_LABELS.SUM.
+  expect(items.map((i) => i.label)).toEqual(['Unique Records', 'amount · Sum', 'Sparklines', 'amount · Sum by date', 'Pie (columns hidden)', 'Add chart']);
+  const add = items.at(-1)!;
+  // Later tasks register more kinds: only the two that exist now are pinned; spread is never eligible (no percentiles).
+  expect(add.kind === 'radio' && add.options.map((o) => o.label)).toEqual(expect.arrayContaining(['Time series', 'Pie']));
+  expect(add.kind === 'radio' && add.options.map((o) => o.label)).not.toContain('Spread');
+});
+
+test('unticking a chart hides it and keeps its setup; Add chart appends a new chart', () => {
+  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie', dimension: 'status' }] };
+  const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
+  const items = () => listItems({ cf, settings: s, resolved: (s.charts ?? []).map((spec) => ({ spec, title: 'P' })), change });
+  const tick = items().find((i) => i.label === 'P')!;
+  if (tick.kind === 'check') tick.onToggle();
+  expect(s.charts).toEqual([{ id: 'a', kind: 'pie', dimension: 'status', hidden: true }]);
+  const add = items().at(-1)!;
+  if (add.kind === 'radio') add.onPick('timeSeries');
+  expect(s.charts!.map((c) => c.kind)).toEqual(['pie', 'timeSeries']);
+  expect(s.charts![1]!.id).toMatch(/^c-/);
+});
+
+test('Chart type keeps the usable fields and the id; Remove deletes; removing the last chart saves an empty list', () => {
+  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie', measure: 'amount', dimension: 'status', hidden: false }] };
+  const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
+  const [type, remove] = tailItems({ cf, spec: s.charts![0]!, change });
+  expect(type!.label).toBe('Chart type');
+  if (type!.kind === 'radio') type!.onPick('timeSeries');
+  expect(s.charts).toEqual([{ id: 'a', kind: 'timeSeries', measure: 'amount', hidden: false }]);
+  if (remove!.kind === 'action') remove!.onPick();
+  expect(s).toEqual({ version: 2, charts: [] });
+});

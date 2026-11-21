@@ -166,10 +166,10 @@ test('a saved choice that names nothing shown falls back for this view and write
   expect(t.puts).not.toHaveBeenCalled();
 });
 
-test('hiding a card from the Scorecards menu removes it and saves', async () => {
+test('hiding a card from the Charts menu removes it and saves', async () => {
   const t = await charts();
   await waitFor(() => expect(cardNames(group('orders'))).toContain('Amount · Sum'));
-  await userEvent.click(screen.getByRole('button', { name: 'Scorecards options' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Charts options' }));
   await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Amount · Sum' }));
   await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Unique Records']));
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, scorecards: { hidden: ['amount'] } });
@@ -187,9 +187,9 @@ test('a change cannot be made before the saved settings load, and one made after
   await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
   await userEvent.click(radio('Charts'));
   await waitFor(() => expect(group('orders')).not.toBeNull());
-  expect(screen.queryByRole('button', { name: 'Scorecards options' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Charts options' })).toBeNull();
   release();
-  await userEvent.click(await screen.findByRole('button', { name: 'Scorecards options' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Charts options' }));
   await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Amount · Sum' }));
   await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { ...saved, scorecards: { hidden: ['amount'] } }));
 });
@@ -283,15 +283,15 @@ test('with only a pie, the sparklines still draw under the cards', async () => {
 
 test('a chart menu closes on scroll', async () => {
   await charts();
-  await userEvent.click(panel('Scorecards'));
-  expect(await screen.findByRole('menu', { name: 'Scorecards menu' })).toBeInTheDocument();
+  await userEvent.click(panel('Charts'));
+  expect(await screen.findByRole('menu', { name: 'Charts menu' })).toBeInTheDocument();
   fireEvent.scroll(document);
-  await waitFor(() => expect(screen.queryByRole('menu', { name: 'Scorecards menu' })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole('menu', { name: 'Charts menu' })).toBeNull());
 });
 
 test('the card checklist rows are checkboxes', async () => {
   await charts();
-  await userEvent.click(panel('Scorecards'));
+  await userEvent.click(panel('Charts'));
   expect(await screen.findByRole('menuitemcheckbox', { name: 'Sparklines' })).toHaveAttribute('aria-checked', 'true');
   expect(screen.queryAllByRole('menuitemradio')).toHaveLength(0);
 });
@@ -456,4 +456,47 @@ test('when the shared sparkline read fails, the bar chart draws from its own rea
   expect(sharedAt).toBeGreaterThanOrEqual(0);
   expect(ownAt).toBeGreaterThan(sharedAt);
   expect(after.filter((q) => q.dateTrunc?.length && !q.uniqueCount && q.column?.[0] === 'created_at')).toHaveLength(1);
+});
+
+test('the Charts menu sits in the band header and adds, hides and removes charts', async () => {
+  const t = await charts();
+  const header = data().querySelector('[data-chart-list-slot]')!;
+  await userEvent.click(within(header as HTMLElement).getByRole('button', { name: 'Charts options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Add chart' }));
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Pie' }));
+  await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(3));
+  const added = (t.puts.mock.lastCall![1] as ChartSettings).charts!;
+  expect(added.map((c) => c.kind)).toEqual(['timeSeries', 'pie', 'pie']);
+
+  await userEvent.click(within(header as HTMLElement).getByRole('button', { name: 'Charts options' }));
+  await userEvent.click(screen.getAllByRole('menuitemcheckbox', { name: /^Amount · Sum by / })[0]!);
+  await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(2));
+  // A tick keeps the menu open: close it before opening a chart's own.
+  await userEvent.keyboard('{Escape}');
+
+  const pies = screen.getAllByRole('button', { name: 'Pie options' });
+  await userEvent.click(pies[1]!);
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
+  await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(1));
+});
+
+test('a hidden chart sends no query', async () => {
+  const t = await charts({ charts: { version: 2, charts: [{ id: 'p', kind: 'pie', hidden: true }] } });
+  await waitFor(() => expect(group('orders')).not.toBeNull());
+  expect(t.queries.filter((q) => q.limit === 8)).toHaveLength(0);
+});
+
+test('a chart whose fields are not shown is listed as columns hidden and drawn again when they return', async () => {
+  await charts({ columns: ['id', 'amount', 'created_at'], charts: { version: 2, charts: [{ id: 'p', kind: 'pie', dimension: 'status' }] } });
+  expect(data().querySelectorAll('section.dm-chart')).toHaveLength(0);
+  await userEvent.click(screen.getByRole('button', { name: 'Charts options' }));
+  expect(screen.getByRole('menuitemcheckbox', { name: 'Pie (columns hidden)' })).toBeTruthy();
+});
+
+test('Chart type switches a chart in place and keeps its usable saved fields', async () => {
+  const t = await charts({ charts: { version: 2, charts: [{ id: 'p', kind: 'pie', measure: 'amount', dimension: 'status' }] } });
+  await userEvent.click(screen.getByRole('button', { name: 'Pie options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
+  await userEvent.click(screen.getByRole('menuitemradio', { name: 'Time series' }));
+  expect(t.puts).toHaveBeenLastCalledWith('orders', { version: 2, charts: [{ id: 'p', kind: 'timeSeries', measure: 'amount' }] });
 });
