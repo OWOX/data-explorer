@@ -41,10 +41,11 @@ describe('valuesQuery', () => {
 
 describe('a comma-separated value', () => {
   test('equals with several values is an `in` rule, does not equal is `not_in`', () => {
-    expect(toTraverseFilter({ field: 'country', op: 'eq', value: 'US, DE, ' }, f())).toEqual({ column: 'country', operator: 'in', value: ['US', 'DE'] });
-    expect(toTraverseFilter({ field: 'country', op: 'neq', value: 'US,DE' }, f())).toEqual({ column: 'country', operator: 'not_in', value: ['US', 'DE'] });
+    expect(toTraverseFilter({ field: 'country', op: 'eq', value: 'US, DE, ', list: true }, f())).toEqual({ column: 'country', operator: 'in', value: ['US', 'DE'] });
+    expect(toTraverseFilter({ field: 'country', op: 'neq', value: 'US,DE', list: true }, f())).toEqual({ column: 'country', operator: 'not_in', value: ['US', 'DE'] });
   });
-  test('one value with a trailing comma stays an equals', () => expect(toTraverseFilter({ field: 'country', op: 'eq', value: 'US, ' }, f())).toEqual({ column: 'country', operator: 'eq', value: 'US' }));
+  test('one value with a trailing comma stays an equals', () => expect(toTraverseFilter({ field: 'country', op: 'eq', value: 'US, ', list: true }, f())).toEqual({ column: 'country', operator: 'eq', value: 'US' }));
+  test('without the list marker a comma value stays one exact value', () => expect(toTraverseFilter({ field: 'country', op: 'eq', value: 'US, DE' }, f())).toEqual({ column: 'country', operator: 'eq', value: 'US, DE' }));
   test('a plain value is untouched; contains keeps its commas', () => {
     expect(toTraverseFilter({ field: 'country', op: 'eq', value: ' US ' }, f())).toEqual({ column: 'country', operator: 'eq', value: ' US ' });
     expect(toTraverseFilter({ field: 'country', op: 'contains', value: 'a, b' }, f())).toEqual({ column: 'country', operator: 'contains', value: 'a, b' });

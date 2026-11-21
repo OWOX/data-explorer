@@ -294,3 +294,16 @@ describe('view link slices and HAVING filters', () => {
     expect(await decodeViewLink(await route(valid({ g: g({ sl: 'x' }) })))).toBe('unreadable');
   });
 });
+
+describe('list rules in a link', () => {
+  it('round trips the list marker on a filter (with and without a function slot) and a slice, and an unmarked comma value stays unmarked', async () => {
+    const view = { ...base, grid: { ...base.grid!, filters: {
+      a: { field: 'a', op: 'eq' as const, value: 'x, y', list: true as const },
+      b: { field: 'b', op: 'neq' as const, value: 'x, y', list: true as const },
+      c: { field: 'c', op: 'eq' as const, value: 'x, y' },
+    }, slices: { d: { field: 'd', op: 'eq' as const, value: 'x, y', list: true as const } } } };
+    const d = (await decodeViewLink(await encodeViewLink(view))) as DecodedView;
+    expect(d.grid!.filters).toEqual(view.grid.filters);
+    expect(d.grid!.slices).toEqual(view.grid.slices);
+  });
+});

@@ -86,3 +86,9 @@ test('the blank category filters to blank, for a dimension and for a date bucket
   expect(dimensionFilter(dim, BLANK_KEY)).toEqual({ field: 'status', op: 'is_blank' });
   expect(bucketFilter(date, BLANK_KEY, 'MONTH')).toEqual({ field: 'day', op: 'is_blank' });
 });
+
+test('a chart click on a value with a comma stays one exact eq', () => {
+  const f = dimensionFilter({ name: 'city', category: 'string' } as Field, 'San Francisco, CA');
+  expect(f).toEqual({ field: 'city', op: 'eq', value: 'San Francisco, CA' });
+  expect(toTraverseFilter(f, { name: 'city', category: 'string' } as Field)).toEqual({ column: 'city', operator: 'eq', value: 'San Francisco, CA' });
+});

@@ -1,6 +1,7 @@
 import type { Field } from '../model/types';
 import { isDayType } from '../model/field-category';
 import { zonesBuckets } from '../model/aggregation';
+import { tokensOf } from './valueSuggest';
 import type { RelativeDatePreset } from '../sdk/types';
 
 export const OP_IDS = ['contains', 'not_contains', 'eq', 'neq', 'starts_with', 'ends_with', 'gt', 'gte', 'lt', 'lte', 'between', 'on', 'before', 'after', 'relative', 'is_true', 'is_false', 'is_blank', 'is_not_blank'] as const;
@@ -148,8 +149,9 @@ export const isDateTimeField = (field: Field) => field.category === 'date' && !i
 const ZONED_BOUND = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 
 /** What an applied filter says, for the tooltip on the header's filter mark: "Last 30 days", "equals Berlin", "between 1 and 5". */
-export function describeFilter(field: Field, filter: { op: OpId; value?: unknown }): string {
+export function describeFilter(field: Field, filter: { op: OpId; value?: unknown; list?: boolean }): string {
   if (filter.op === 'relative') return filter.value && typeof filter.value === 'object' && 'kind' in filter.value ? presetName(filter.value as RelativeDatePreset) : 'relative';
+  if (filter.list && typeof filter.value === 'string' && (filter.op === 'eq' || filter.op === 'neq')) return `${filter.op === 'eq' ? 'is any of' : 'is none of'} ${tokensOf(filter.value).join(', ')}`;
   const label = operatorsFor(field).find((o) => o.id === filter.op)?.label ?? filter.op;
   const v = filter.value;
   if (v === undefined || v === null || v === '') return label;

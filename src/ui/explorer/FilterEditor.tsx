@@ -105,7 +105,12 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
   const [op, setOp] = useState<OpId>(startOp ?? (value && ops.some((o) => o.id === value.op) ? value.op : ops[0]!.id));
   const [val, setVal] = useState<FilterValue>(value?.op === op ? value.value : undefined);
   const def = ops.find((o) => o.id === op)!;
-  const draft: ColumnFilter = { field: field.name, op, ...(def.value === 'none' ? {} : { value: val }) };
+  // A comma in a text eq/neq typed here makes a list (any of); the rule says so, so only editor values are read that way.
+  // A reopened rule stays as it was until the text is edited.
+  const [edited, setEdited] = useState(false);
+  const wasList = !!value?.list && value.op === op;
+  const isList = field.category === 'string' && (op === 'eq' || op === 'neq') && typeof val === 'string' && (edited ? val.includes(',') : wasList);
+  const draft: ColumnFilter = { field: field.name, op, ...(def.value === 'none' ? {} : { value: val }), ...(isList ? { list: true as const } : {}) };
   const range = (val ?? { from: '', to: '' }) as { from: string; to: string };
   const rel = (val ?? { kind: 'today' }) as RelativeDatePreset;
   const dateType = field.category === 'time' ? 'time' : isDateTimeField(field) ? 'datetime-local' : 'date';
@@ -115,7 +120,7 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
       <Select aria-label="Operator" value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); }}>
         {ops.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
       </Select>
-      {def.value === 'text' && <ValueInput op={op} value={String(val ?? '')} onChange={setVal} source={canSuggest(field) ? values : undefined} className={input} />}
+      {def.value === 'text' && <ValueInput op={op} value={String(val ?? '')} onChange={(v) => { setEdited(true); setVal(v); }} source={canSuggest(field) ? values : undefined} className={input} />}
       {def.value === 'number' && (
         <input aria-label="Value" className={input} type="number" value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />
       )}
