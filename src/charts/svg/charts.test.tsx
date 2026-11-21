@@ -7,6 +7,7 @@ import { BarChart, type Series } from './BarChart';
 import { PieChart } from './PieChart';
 import { LineChart } from './LineChart';
 import { Heatmap } from './Heatmap';
+import { Scatter } from './Scatter';
 import { Sparkline, type Point } from './Sparkline';
 
 const pt = (i: number, y: number | null): Point => ({ x: `2026-0${i}`, y, label: `M${i}`, valueText: y === null ? '' : `v${y}` });
@@ -194,4 +195,14 @@ test('Heatmap draws a cell per pair with a value, darker for larger values, and 
   screen.getByRole('button', { name: 'Filter to X2, Y1' }).focus();
   await userEvent.keyboard('{Enter}');
   expect(onPick).toHaveBeenCalledWith('x2', 'y1');
+});
+
+test('Scatter draws one dot per point and picks one by keyboard', async () => {
+  const onPick = vi.fn();
+  wrap(<Scatter ariaLabel="S" xTitle="X" yTitle="Y" formatX={String} formatY={String} onPick={onPick}
+    points={[{ key: 'p', label: 'P', x: 1, y: 2, xText: '1', yText: '2' }, { key: 'q', label: 'Q', x: 3, y: 1, xText: '3', yText: '1' }]} />);
+  expect(document.querySelectorAll('circle[data-dot]')).toHaveLength(2);
+  screen.getByRole('button', { name: 'Filter to Q' }).focus();
+  await userEvent.keyboard('{Enter}');
+  expect(onPick).toHaveBeenCalledWith('q');
 });
