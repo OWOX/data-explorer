@@ -25,6 +25,7 @@ test('sankey create: the first two dimensions, or the ones a heatmap / pie / bar
   expect(sankey.create(mk([a, b, c]))).toEqual({ kind: 'sankey', dimensions: ['a', 'b'] });
   expect(sankey.create(mk([a, b, c]), { id: 'h', kind: 'heatmap', measure: 'amount', dimension: 'c', dimension2: 'b' })).toEqual({ kind: 'sankey', measure: 'amount', dimensions: ['c', 'b'] });
   expect(sankey.create(mk([a, b, c]), { id: 'p', kind: 'pie', dimension: 'c' })).toEqual({ kind: 'sankey', dimensions: ['c', 'a'] });
+  expect(sankey.create(mk([a, b, c, d]), { id: 'b', kind: 'bar', dimension: 'c', stack: 'd' })).toEqual({ kind: 'sankey', dimensions: ['c', 'd'] });
 });
 
 test('sankey resolve: saved columns, missing ones replaced by unused dimensions, 2 to 5 columns', () => {

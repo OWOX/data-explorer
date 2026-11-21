@@ -1,6 +1,9 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
+
+const cap = vi.hoisted(() => ({ n: 5000 }));
+vi.mock('./queries', async (orig) => Object.defineProperties({ ...(await orig<typeof import('./queries')>()) }, { SANKEY_FLOW_LIMIT: { get: () => cap.n, enumerable: true } }));
 import { GRID_COLUMNS_COLLECTION } from '../api/grid-columns';
 import { CHARTS_COLLECTION } from '../api/chart-settings';
 import { createMockCtx } from '../sdk/mock/ctx';
@@ -75,4 +78,34 @@ test('sankey: Columns adds a column filled with the next dimension, a column pic
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Columns' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: '2' }));
   await waitFor(() => expect(titles()).toHaveLength(2));
+});
+
+test('sankey: one flow read grouped on the columns plus one total read per column', async () => {
+  const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'products__title'] }] } });
+  await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
+  const reads = t.queries.slice(t.tableQueries());
+  const flows = reads.filter((q) => q.column?.length === 4 && q.column.includes('status') && q.column.includes('is_gift') && q.column.includes('products__title'));
+  const totals = reads.filter((q) => q.column?.length === 2 && q.limit === 10000);
+  expect(flows).toHaveLength(1);
+  expect(totals).toHaveLength(3);
+  expect(flows[0]!.limit).toBe(5000);
+  expect(data().querySelector('section[data-chart-kind="Sankey"] [role="note"]')).toBeNull();
+});
+
+test('sankey: a flow read at its row cap draws what came back and says so', async () => {
+  cap.n = 3;
+  try {
+    await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+    await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
+    const hint = await within(data().querySelector<HTMLElement>('section[data-chart-kind="Sankey"]')!).findByRole('note');
+    await userEvent.hover(hint);
+    expect(await screen.findByText('Showing the largest 3 combinations; smaller flows are left out.')).toBeInTheDocument();
+  } finally { cap.n = 5000; }
+});
+
+test('sankey: negative values draw the empty state with a note, not a chart', async () => {
+  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] },
+    mapRow: (r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, k.includes(' | ') && typeof v === 'number' ? -v : v])) });
+  expect(await within(data()).findByText('Sankey needs values of 0 or more; this metric has negative values.')).toBeInTheDocument();
+  expect(data().querySelectorAll('path[data-link]')).toHaveLength(0);
 });

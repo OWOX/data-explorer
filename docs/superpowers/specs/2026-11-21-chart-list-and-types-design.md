@@ -18,6 +18,7 @@ and the panels take only the width their content needs.
 6. Charts show the same data as the table. They never drop rows on their own: a blank (null) value is drawn as its own
    bar, slice or category, placed first. A member who wants it gone filters it out in the column filter. There is no
    per-chart "hide blanks" option (added and reverted on 2026-11-21).
+7. The Sankey is the one chart that adds up values in the plugin: it folds one grouped read into top values, (blank) and Other per column, for additive measures only. Column totals come from their own reads so node sizes stay exact.
 
 ## 1. Saved settings
 

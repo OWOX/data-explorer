@@ -1,68 +1,28 @@
 import { Waypoints } from 'lucide-react';
+import { useMemo } from 'react';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
-import type { TraverseFilter } from '../../sdk/types';
+import type { Row } from '../../sdk/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
 import { ChartPanel } from '../ChartPanel';
-import { BLANK_KEY, keyOf, OTHER_KEY } from '../blank';
 import { dimensionFilter } from '../clickFilters';
 import { pieMeasures } from '../fields';
-import { measureKey, sankeyPairQuery, type Measure, type SankeySide } from '../queries';
-import type { Flow } from '../sankeyLayout';
-import { measureLabel, measureOptions, measureText, numberOf } from '../Scorecards';
+import { sankeyColumnQuery, sankeyFlowQuery, SANKEY_FLOW_LIMIT, type Measure } from '../queries';
+import { foldSankey } from '../sankeyFold';
+import { measureLabel, measureOptions, measureText } from '../Scorecards';
 import { measureId, pickMeasure, SANKEY_MAX, SANKEY_MIN } from '../settings';
 import { Sankey } from '../svg/Sankey';
 import { useChartQuery } from '../useChartQuery';
-import { useTopValues, type TopValues } from '../useTopValues';
 import { carry, type ChartKindDef, type PanelProps } from './types';
+
+export const NEGATIVE_NOTE = 'Sankey needs values of 0 or more; this metric has negative values.';
+export const cappedNote = (n: number): string => `Showing the largest ${n.toLocaleString('en-US')} combinations; smaller flows are left out.`;
 
 export type SankeyR = { dims: Field[]; measure: Measure };
 
 /** A column's panel width: 11rem per column, at least 20rem, at most the band. */
 export const sankeyWidth = (columns: number): string => `clamp(20rem, ${columns * 11}rem, 100%)`;
-
-/** The three ways a column's rows are read, in the order a pair's slots run: its listed values, its blank value, the values outside the list. Undefined when the column has none of that kind. */
-const sidesOf = (top: TopValues): (SankeySide | undefined)[] => [
-  top.names?.length ? { kind: 'in', top: top.names } : undefined,
-  top.categories?.some((c) => c.key === BLANK_KEY) ? { kind: 'blank' } : undefined,
-  top.other != null && top.names ? { kind: 'other', top: top.names } : undefined,
-];
-
-/**
- * The flows between two neighbouring columns: one read per (side of a, side of b), so up to 3 x 3 = 9 and usually 1 to 4
- * (the listed values on both sides; then Other / blank where a column has them). A list cannot name NULL, so blank is read apart; Other is `not_in`.
- */
-function usePair({ martId, cf, a, b, ta, tb, measure, filter, version, on }: {
-  martId: string; cf: PanelProps<SankeyR>['cf']; a: Field | undefined; b: Field | undefined; ta: TopValues; tb: TopValues;
-  measure: Measure; filter: TraverseFilter[]; version: number; on: boolean;
-}) {
-  const A = sidesOf(ta);
-  const B = sidesOf(tb);
-  const useRead = (slot: number) => {
-    const sa = A[Math.floor(slot / 3)];
-    const sb = B[slot % 3];
-    return { sa, sb, q: useChartQuery(martId, on && a && b && sa && sb ? sankeyPairQuery(a, sa, b, sb, measure, filter, cf.counter) : null, version) };
-  };
-  const reads = [useRead(0), useRead(1), useRead(2), useRead(3), useRead(4), useRead(5), useRead(6), useRead(7), useRead(8)];
-  const failed = reads.map((x) => x.q).find((q) => q.error);
-  const settled = on && reads.every((x) => x.q.rows || x.q.loading === false);
-  const key = measureKey(measure);
-  const sum = new Map<string, Flow>();
-  if (a && b) {
-    for (const { sa, sb, q } of reads) {
-      for (const row of q.rows ?? []) {
-        const value = numberOf(row[key]);
-        if (!sa || !sb || value === null || value <= 0) continue;
-        const source = sa.kind === 'in' ? keyOf(row[a.name]) : sa.kind === 'blank' ? BLANK_KEY : OTHER_KEY;
-        const target = sb.kind === 'in' ? keyOf(row[b.name]) : sb.kind === 'blank' ? BLANK_KEY : OTHER_KEY;
-        const id = `${source}\u0001${target}`;
-        sum.set(id, { source, target, value: (sum.get(id)?.value ?? 0) + value });
-      }
-    }
-  }
-  return { flows: [...sum.values()], settled, failed };
-}
 
 /** The dimensions after a change of one column: picking one that another column holds swaps the two. */
 export const setColumn = (names: string[], at: number, name: string): string[] => {
@@ -83,16 +43,21 @@ export const withColumns = (names: string[], count: number, all: Field[]): strin
 function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<SankeyR>) {
   const { dims, measure } = r;
   const n = dims.length;
-  const useCol = (i: number) => useTopValues({ martId, cf, dim: dims[i] ?? dims[0]!, measure, filter, version, idle: idle || i >= n });
-  const tops = [useCol(0), useCol(1), useCol(2), useCol(3), useCol(4)];
-  const known = (i: number) => !!tops[i]!.categories && !tops[i]!.loading;
-  const usePairOf = (i: number) => usePair({ martId, cf, a: dims[i], b: dims[i + 1], ta: tops[i]!, tb: tops[i + 1]!, measure, filter, version, on: !idle && i + 1 < n && known(i) && known(i + 1) });
-  const pairs = [usePairOf(0), usePairOf(1), usePairOf(2), usePairOf(3)].slice(0, n - 1);
-  const topsShown = tops.slice(0, n);
-  const failed = [...topsShown.map((t) => t.failed), ...pairs.map((p) => p.failed)].find((q) => q && q.error);
-  const settled = !idle && pairs.every((p) => p.settled);
-  const empty = topsShown.some((t) => t.empty) || (settled && pairs.every((p) => p.flows.length === 0));
-  const loading = !empty && !failed && !settled;
+  // One flow read and one total read per column: always 1 + 5 hooks, the unused ones get a null query.
+  const flow = useChartQuery(martId, idle ? null : sankeyFlowQuery(dims, measure, filter, cf.counter), version);
+  const useCol = (i: number) => useChartQuery(martId, idle || i >= n ? null : sankeyColumnQuery(dims[i]!, measure, filter, cf.counter), version);
+  const all = [useCol(0), useCol(1), useCol(2), useCol(3), useCol(4)];
+  const cols = all.slice(0, n);
+  const failed = [flow, ...cols].find((q) => q.error);
+  const settled = !idle && !!flow.rows && cols.every((q) => !!q.rows);
+  const data = useMemo(() => {
+    const columnRows = all.slice(0, n).map((q) => q.rows);
+    return flow.rows && columnRows.every((x) => x !== null) ? foldSankey({ flowRows: flow.rows, columnRows: columnRows as Row[][], dims, measure }) : null;
+    // `all` is rebuilt each render; its five row sets are the dependencies.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flow.rows, all[0]!.rows, all[1]!.rows, all[2]!.rows, all[3]!.rows, all[4]!.rows, n, dims, measure]);
+  const empty = settled && !!data && (data.negative || data.empty);
+  const loading = !empty && !failed && !data;
   const names = dims.map((d) => d.name);
   const maxColumns = Math.min(SANKEY_MAX, cf.dimensions.length);
   const dimOptions = cf.dimensions.map((d) => ({ value: d.name, label: columnTitle(d) }));
@@ -103,11 +68,12 @@ function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
     { kind: 'radio', label: 'Metric', value: measureId(measure), options: measureOptions(cf, pieMeasures(cf)), onPick: (v) => onChange({ measure: v }) },
     ...tail,
   ];
-  const title = `${measureLabel(cf, measure)} by ${dims.map(fieldLabel).join(' → ')}`;
+  const title = sankey.title(r, cf);
   return (
     <ChartPanel title={title} name="Sankey" items={ready ? items : null} width={sankeyWidth(n)}
-      loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})} empty={empty ? emptyText(hasFilters) : null}>
-      {settled && <Sankey titles={dims.map(columnTitle)} flows={pairs.map((p) => p.flows)} ariaLabel={title} text={(v) => measureText(measure, v, formatOf)}
+      loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})} empty={empty ? (data!.negative ? NEGATIVE_NOTE : emptyText(hasFilters)) : null}
+      note={data?.capped && !data.negative ? cappedNote(SANKEY_FLOW_LIMIT) : undefined}>
+      {data && <Sankey titles={dims.map(columnTitle)} columns={data.columns} flows={data.flows} ariaLabel={title} text={(v) => measureText(measure, v, formatOf)}
         onPickNode={(col, key) => onFilter([dimensionFilter(dims[col]!, key)])}
         onPickLink={(pair, source, target) => onFilter([dimensionFilter(dims[pair]!, source), dimensionFilter(dims[pair + 1]!, target)])} />}
     </ChartPanel>
@@ -120,7 +86,7 @@ export const sankey: ChartKindDef<SankeyR> = {
   icon: Waypoints,
   eligible: (cf) => cf.dimensions.length >= SANKEY_MIN && pieMeasures(cf).length > 0,
   create: (cf, from) => {
-    const saved = from?.dimensions ?? [from?.dimension, from?.dimension2].filter((x): x is string => !!x);
+    const saved = from?.dimensions ?? [from?.dimension, from?.dimension2, from?.stack].filter((x): x is string => !!x);
     return { kind: 'sankey', ...carry(from, ['measure']), dimensions: withColumns([...new Set(saved)].slice(0, SANKEY_MAX), Math.max(SANKEY_MIN, Math.min(saved.length, SANKEY_MAX)), cf.dimensions) };
   },
   resolve(spec, cf) {

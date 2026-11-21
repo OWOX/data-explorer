@@ -79,3 +79,32 @@ test('colour: the first column takes series slots, blank and Other keep their ow
 test('empty flows lay out nothing', () => {
   expect(layoutSankey({ flows: [[]], width: 300 })).toMatchObject({ nodes: [], links: [] });
 });
+
+test('exact column totals set node heights; ribbons never outgrow their node', () => {
+  const f: Flow[][] = [[{ source: 'a', target: 'x', value: 2 }]];
+  const l = layoutSankey({ flows: f, columns: [[{ key: 'a', value: 10 }, { key: 'b', value: 5 }, { key: 'z', value: 0 }], [{ key: 'x', value: 1 }]], width: 400, height: 200 });
+  const node = (c: number, k: string) => l.nodes.find((n) => n.col === c && n.key === k)!;
+  expect(node(0, 'a').value).toBe(10);
+  expect(node(0, 'b').value).toBe(5); // a node with no flow is still drawn at its total
+  expect(l.nodes.some((n) => n.key === 'z')).toBe(false);
+  expect(node(1, 'x').value).toBe(2); // the flow into it is larger than its total: never shorter than its ribbons
+  expect(node(0, 'a').h / node(0, 'b').h).toBeCloseTo(2);
+});
+
+test('a ribbon is coloured by its first-column origin in every pair', () => {
+  const f: Flow[][] = [
+    [{ source: 'a', target: 'x', value: 3, origin: 'a' }, { source: 'b', target: 'x', value: 2, origin: 'b' }],
+    [{ source: 'x', target: 'z', value: 3, origin: 'a' }, { source: 'x', target: 'z', value: 2, origin: 'b' }],
+  ];
+  const l = layoutSankey({ flows: f, width: 600, height: 200 });
+  const tone = (pair: number, origin: string) => l.links.find((k) => k.pair === pair && k.origin === origin)!.tone;
+  expect(tone(1, 'a')).toEqual(tone(0, 'a'));
+  expect(tone(1, 'b')).toEqual(tone(0, 'b'));
+  expect(tone(1, 'a')).not.toEqual(tone(1, 'b'));
+});
+
+test('a width narrower than the label padding gives a step of 0, never negative', () => {
+  const l = layoutSankey({ flows, width: 0, padRight: 100, height: 200 });
+  expect(l.nodes.every((n) => n.x >= 0)).toBe(true);
+  expect(l.links.every((k) => Number.isFinite(k.x1))).toBe(true);
+});
