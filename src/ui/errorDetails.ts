@@ -86,7 +86,7 @@ export function errorMessage(e: unknown): string {
 const nameOf = (e: unknown): string => (e instanceof Error ? e.name : isRecord(e) && typeof e.name === 'string' ? e.name : typeof e);
 
 function describe(e: unknown): string[] {
-  const lines = [`name: ${nameOf(e)}`, `message: ${plainMessage(e)}`];
+  const lines = [`name: ${nameOf(e)}`, `message: ${maskString(plainMessage(e))}`];
   if (isRecord(e)) {
     const { code, status } = codeAndStatus(e);
     if (code !== undefined) lines.push(`code: ${code}`);
