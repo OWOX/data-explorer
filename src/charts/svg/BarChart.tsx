@@ -3,6 +3,7 @@ import { Tooltip, TipLines } from '../../ui/Tooltip';
 import { useWidth } from '../useWidth';
 import type { Point } from './Sparkline';
 import { niceTicks } from './ticks';
+import { Y_TITLE_W, YTitle } from './YTitle';
 
 export type Series = { name: string; color: string; points: Point[]; /** The catch-all series: not a value of the stack dimension, so it cannot be filtered to. */ other?: boolean; /** The blank value of the stack dimension: its filter is "is blank", whatever its name. */ blank?: boolean };
 
@@ -20,15 +21,17 @@ const TITLE_GAP = 8;
 const CHAR_W = 6;
 
 /** Stacked bars. Sizes are ratios of the largest stacked total, for drawing only; every shown value is the caller's text. */
-export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, canPick, stacked, xTitle, integer = false }: { series: Series[]; orientation: 'vertical' | 'horizontal'; ariaLabel: string; formatTick: (n: number) => string;
+export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, canPick, stacked, xTitle, yTitle, integer = false }: { series: Series[]; orientation: 'vertical' | 'horizontal'; ariaLabel: string; formatTick: (n: number) => string;
   /** A click on a bucket (and, when stacked, on one of its segments: `seriesIndex`). */
   onPick?: (x: string, seriesIndex?: number) => void;
   /** Whether a bucket can be filtered to (a blank bucket has no range); default all. */
   canPick?: (x: string) => boolean;
   /** Whether the series are stacked values of one dimension; default: more than one series. */
   stacked?: boolean;
-  /** The X field's display name, shown under the bucket labels. */
+  /** The bucket (or category) field's display name: under the bucket labels of a vertical chart, beside them on a horizontal one. */
   xTitle?: string;
+  /** The measure's name, on the value axis: beside the ticks of a vertical chart, under them on a horizontal one. */
+  yTitle?: string;
   /** The measure counts whole things: the axis steps are whole numbers. */
   integer?: boolean }) {
   const { ref, width } = useWidth<HTMLDivElement>();
@@ -38,10 +41,12 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   const { ticks, top } = niceTicks(max, { integer });
   const vertical = orientation === 'vertical';
   const labelW = Math.min(160, Math.max(...xs.map((p) => p.label.length), 0) * CHAR_W + 12);
-  const left = vertical ? Math.max(32, Math.max(...ticks.map((t) => formatTick(t).length)) * CHAR_W + 12) : labelW;
+  const sideTitle = vertical ? yTitle : xTitle;
+  const bottomTitle = vertical ? xTitle : yTitle;
+  const left = (vertical ? Math.max(32, Math.max(...ticks.map((t) => formatTick(t).length)) * CHAR_W + 12) : labelW) + (sideTitle ? Y_TITLE_W : 0);
   const plotW = Math.max(20, width - left - 8);
   const band = vertical ? plotW / Math.max(1, xs.length) : ROW_H;
-  const titleH = xTitle ? TITLE_H : 0;
+  const titleH = bottomTitle ? TITLE_H : 0;
   const height = (vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H) + titleH;
   // Keep every k-th bucket label so none overlap.
   const labelStep = vertical ? Math.max(1, Math.ceil((Math.max(...xs.map((p) => p.label.length), 0) * CHAR_W + 8) / band)) : 1;
@@ -116,12 +121,13 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
             ? <text key={p.x} className="dm-chart-text" x={left + i * band + band / 2} y={TOP + PLOT_H + 16} textAnchor="middle">{p.label}</text>
             : <text key={p.x} className="dm-chart-text" x={left - 6} y={TOP + i * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle">{p.label}</text>
         ) : null))}
-        {xTitle && (() => {
-          // Horizontal: the title sits in the reserved strip under the tick row, centred under the plot.
+        {sideTitle && <YTitle x={8} mid={TOP + (vertical ? PLOT_H : xs.length * ROW_H) / 2} length={vertical ? PLOT_H : xs.length * ROW_H} text={sideTitle} />}
+        {bottomTitle && (() => {
+          // The title sits in the reserved strip under the tick row, centred under the plot.
           const room = Math.max(4, Math.floor(plotW / CHAR_W));
-          const text = xTitle.length > room ? `${xTitle.slice(0, room - 1)}…` : xTitle;
+          const text = bottomTitle.length > room ? `${bottomTitle.slice(0, room - 1)}…` : bottomTitle;
           const y = (vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H) + 10 + TITLE_GAP;
-          return <text className="dm-chart-axis-title" x={left + plotW / 2} y={y} textAnchor="middle"><title>{xTitle}</title>{text}</text>;
+          return <text className="dm-chart-axis-title" x={left + plotW / 2} y={y} textAnchor="middle"><title>{bottomTitle}</title>{text}</text>;
         })()}
         {bands}
         {marks}

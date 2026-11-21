@@ -3,6 +3,7 @@ import { Tooltip, TipLines } from '../../ui/Tooltip';
 import { useWidth } from '../useWidth';
 import type { Series } from './BarChart';
 import { niceTicks } from './ticks';
+import { Y_TITLE_W, YTitle } from './YTitle';
 
 const PLOT_H = 240;
 const TOP = 8;
@@ -14,9 +15,11 @@ const CHAR_W = 6;
 const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 
 /** Lines (and optional area fills) over buckets; a second measure on its own right axis. Positions are ratios for drawing only; every shown value is the caller's text. */
-export function LineChart({ left, right = null, area, ariaLabel, formatLeft, formatRight = formatLeft, onPick, canPick, xTitle, integerLeft = false, integerRight = false }: {
+export function LineChart({ left, right = null, area, ariaLabel, formatLeft, formatRight = formatLeft, onPick, canPick, xTitle, yTitle, yTitleRight, integerLeft = false, integerRight = false }: {
   left: Series[]; right?: Series | null; area: boolean; ariaLabel: string; formatLeft: (n: number) => string; formatRight?: (n: number) => string;
   onPick?: (x: string, seriesIndex?: number) => void; canPick?: (x: string) => boolean; xTitle?: string;
+  /** The left measure's name, and the right one's when there is a right axis, rotated beside the tick labels. */
+  yTitle?: string; yTitleRight?: string;
   /** The axis counts whole things: its steps are whole numbers. */
   integerLeft?: boolean; integerRight?: boolean;
 }) {
@@ -32,8 +35,8 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
   const maxR = right ? maxOf([right]) : 0;
   const tl = niceTicks(maxL, { integer: integerLeft });
   const tr = niceTicks(maxR, { integer: integerRight });
-  const leftW = Math.max(32, Math.max(...tl.ticks.map((t) => formatLeft(t).length)) * CHAR_W + 12);
-  const rightW = right ? Math.max(32, Math.max(...tr.ticks.map((t) => formatRight(t).length)) * CHAR_W + 12) : 8;
+  const leftW = Math.max(32, Math.max(...tl.ticks.map((t) => formatLeft(t).length)) * CHAR_W + 12) + (yTitle ? Y_TITLE_W : 0);
+  const rightW = (right ? Math.max(32, Math.max(...tr.ticks.map((t) => formatRight(t).length)) * CHAR_W + 12) : 8) + (right && yTitleRight ? Y_TITLE_W : 0);
   const plotW = Math.max(20, width - leftW - rightW);
   const step = xs.length > 1 ? plotW / (xs.length - 1) : 0;
   const px = (i: number) => leftW + (xs.length > 1 ? i * step : plotW / 2);
@@ -70,6 +73,8 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
           </g>
         ))}
         {right && tr.ticks.map((t) => <text key={t} data-axis="right" className="dm-chart-text" x={leftW + plotW + 6} y={py(t, tr.top)} dominantBaseline="middle">{formatRight(t)}</text>)}
+        {yTitle && <YTitle x={8} mid={TOP + PLOT_H / 2} length={PLOT_H} text={yTitle} />}
+        {right && yTitleRight && <YTitle x={leftW + plotW + rightW - 8} mid={TOP + PLOT_H / 2} length={PLOT_H} text={yTitleRight} />}
         {xs.map((p, i) => (i % labelStep === 0 ? <text key={p.x} className="dm-chart-text" x={px(i)} y={TOP + PLOT_H + 16} textAnchor="middle">{p.label}</text> : null))}
         {xTitle && <text className="dm-chart-axis-title" x={leftW + plotW / 2} y={TOP + PLOT_H + AXIS_H + 10 + TITLE_GAP} textAnchor="middle">{xTitle}</text>}
         {area && all.map(({ s, max }) => <path key={`a-${s.name}`} data-area={s.name} d={areaOf(s, max)} fill={s.color} fillOpacity={0.18} stroke="none" />)}

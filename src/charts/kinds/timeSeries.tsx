@@ -61,7 +61,7 @@ function TimeSeriesPanel({ martId, cf, r, spark, filter, version, idle, hasFilte
       {s.series && (() => {
         const shown = s.series;
         const pick = (x: string, i?: number) => onFilter([bucketFilter(date, x, bucket!, bucketZone(date)), ...(stack && i !== undefined && !shown[i]!.other ? [dimensionFilter(stack, shown[i]!.blank ? BLANK_KEY : shown[i]!.name)] : [])]);
-        return <BarChart series={shown} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={bucket ? pick : undefined} stacked={!!stack} xTitle={columnTitle(date)} integer={isIntegerMeasure(measure)} />;
+        return <BarChart series={shown} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={bucket ? pick : undefined} stacked={!!stack} xTitle={columnTitle(date)} yTitle={s.label} integer={isIntegerMeasure(measure)} />;
       })()}
     </ChartPanel>
   );

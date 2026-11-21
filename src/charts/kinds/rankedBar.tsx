@@ -37,7 +37,7 @@ function RankedBarPanel({ martId, cf, r, filter, version, idle, hasFilters, form
   return (
     <ChartPanel title={title} name="Ranked bar" items={ready ? items : null} width={BOX_WIDTH}
       loading={top.loading} error={top.failed?.error} onRetry={top.failed?.retry ?? (() => {})} empty={top.empty ? emptyText(hasFilters) : null}>
-      {top.categories && !top.loading && <BarChart series={series()} orientation="horizontal" ariaLabel={title} stacked={false} integer={isIntegerMeasure(measure)}
+      {top.categories && !top.loading && <BarChart series={series()} orientation="horizontal" ariaLabel={title} stacked={false} xTitle={columnTitle(dim)} yTitle={measureLabel(cf, measure)} integer={isIntegerMeasure(measure)}
         formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={(x) => onFilter([dimensionFilter(dim, x)])} canPick={(x) => x !== OTHER_X} />}
     </ChartPanel>
   );

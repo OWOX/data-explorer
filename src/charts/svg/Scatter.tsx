@@ -2,6 +2,7 @@ import type { KeyboardEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
 import { useWidth } from '../useWidth';
 import { niceTicks } from './ticks';
+import { Y_TITLE_W, YTitle } from './YTitle';
 
 export type Dot = { key: string; label: string; x: number; y: number; xText: string; yText: string };
 const PLOT_H = 220;
@@ -24,7 +25,7 @@ export function Scatter({ points, ariaLabel, xTitle, yTitle, formatX, formatY, o
   const tx = niceTicks(hi(points.map((p) => p.x)), { lo: lo(points.map((p) => p.x)), integer: integerX });
   const ty = niceTicks(hi(points.map((p) => p.y)), { lo: lo(points.map((p) => p.y)), integer: integerY });
   const [x0, x1, y0, y1] = [tx.ticks[0]!, tx.top, ty.ticks[0]!, ty.top];
-  const left = Math.max(32, Math.max(...ty.ticks.map((t) => formatY(t).length)) * CHAR_W + 12);
+  const left = Math.max(32, Math.max(...ty.ticks.map((t) => formatY(t).length)) * CHAR_W + 12) + Y_TITLE_W;
   const plotW = Math.max(20, width - left - 12);
   const px = (x: number) => left + (x1 > x0 ? (x - x0) / (x1 - x0) : 0.5) * plotW;
   const py = (y: number) => TOP + PLOT_H - (y1 > y0 ? (y - y0) / (y1 - y0) : 0.5) * PLOT_H;
@@ -40,7 +41,7 @@ export function Scatter({ points, ariaLabel, xTitle, yTitle, formatX, formatY, o
         ))}
         {tx.ticks.map((t, k) => <text key={`x${t}`} className="dm-chart-text" x={px(t)} y={TOP + PLOT_H + 14} textAnchor={k === 0 ? 'start' : k === tx.ticks.length - 1 ? 'end' : 'middle'}>{formatX(t)}</text>)}
         <text className="dm-chart-axis-title" x={left + plotW / 2} y={TOP + PLOT_H + 32 + TITLE_GAP} textAnchor="middle">{xTitle}</text>
-        <text className="dm-chart-axis-title" x={10} y={TOP + PLOT_H / 2} textAnchor="middle" transform={`rotate(-90 10 ${TOP + PLOT_H / 2})`}>{yTitle}</text>
+        <YTitle x={8} mid={TOP + PLOT_H / 2} length={PLOT_H} text={yTitle} />
         {points.map((p) => {
           const pick = onPick ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${p.label}`, style: { cursor: 'pointer' }, onClick: () => onPick(p.key), onKeyDown: press(() => onPick(p.key)) } : {};
           return <Tooltip key={p.key} content={`${p.label}: ${xTitle} ${p.xText}, ${yTitle} ${p.yText}`}><circle data-dot={p.key} cx={px(p.x)} cy={py(p.y)} r={4} fill="var(--dm-series-1)" fillOpacity={0.75} {...pick} /></Tooltip>;

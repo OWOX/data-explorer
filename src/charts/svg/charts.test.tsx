@@ -266,3 +266,25 @@ test('the X title keeps 8px more room under the tick labels in the line, scatter
   const heat = wrap(<Heatmap xs={[{ key: 'a', label: 'A' }]} ys={[{ key: 'r', label: 'R' }]} cell={() => ({ value: 1, text: '1' })} ariaLabel="h" xTitle="Col" />).container;
   expect(Number(heat.querySelector('.dm-chart-axis-title')!.getAttribute('y')) - tick(heat)).toBeGreaterThanOrEqual(26);
 });
+
+const yTitles = (c: HTMLElement) => [...c.querySelectorAll('[data-y-title]')].map((t) => ({ text: t.querySelector('title')!.textContent, rotated: t.getAttribute('transform')?.startsWith('rotate(-90') }));
+
+test('every chart with a Y axis draws its title vertically beside the ticks', () => {
+  const bar = wrap(<BarChart series={two} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} xTitle="Date" yTitle="Amount · Sum" />).container;
+  expect(yTitles(bar)).toEqual([{ text: 'Amount · Sum', rotated: true }]);
+  expect(bar.querySelector('.dm-chart-axis-title:not([data-y-title])')).toHaveTextContent('Date');
+  const line = wrap(<LineChart left={two} right={two[1]} area={false} ariaLabel="l" formatLeft={(n) => `${n}`} yTitle="Left" yTitleRight="Right" />).container;
+  expect(yTitles(line).map((t) => t.text)).toEqual(['Left', 'Right']);
+  const heat = wrap(<Heatmap xs={[{ key: 'a', label: 'A' }]} ys={[{ key: 'r', label: 'R' }]} cell={() => ({ value: 1, text: '1' })} ariaLabel="h" yTitle="Rows" />).container;
+  expect(yTitles(heat)).toEqual([{ text: 'Rows', rotated: true }]);
+  const spread = wrap(<SpreadChart rows={[{ key: 'a', label: 'A', p25: 1, p50: 2, p75: 3, min: null, max: null, text: 't' }]} ariaLabel="s" formatTick={(n) => `${n}`} yTitle="Channel" />).container;
+  expect(yTitles(spread)).toEqual([{ text: 'Channel', rotated: true }]);
+  const dots = wrap(<Scatter points={[{ key: 'a', label: 'A', x: 1, y: 2, xText: '1', yText: '2' }]} ariaLabel="sc" xTitle="X" yTitle="Y" formatX={(n) => `${n}`} formatY={(n) => `${n}`} />).container;
+  expect(yTitles(dots)).toEqual([{ text: 'Y', rotated: true }]);
+});
+
+test('a horizontal bar puts the measure under the value ticks and the category beside its labels', () => {
+  const { container } = wrap(<BarChart series={two} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} xTitle="Channel" yTitle="Amount · Sum" />);
+  expect(yTitles(container)).toEqual([{ text: 'Channel', rotated: true }]);
+  expect(container.querySelector('.dm-chart-axis-title:not([data-y-title])')).toHaveTextContent('Amount · Sum');
+});
