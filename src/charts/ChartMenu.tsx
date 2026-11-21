@@ -43,7 +43,9 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
     };
     window.addEventListener('scroll', away, true);
     // Each frame of the resize moves the button: the menu is placed again from it.
-    const ro = panel && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => { lastSize = performance.now(); follow((n) => n + 1); }) : null;
+    // The first callback comes on observe, not from a resize: it must not make a real scroll right after opening look like the resize's echo.
+    let seen = false;
+    const ro = panel && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => { if (!seen) { seen = true; return; } lastSize = performance.now(); follow((n) => n + 1); }) : null;
     if (panel) ro?.observe(panel);
     return () => { window.removeEventListener('scroll', away, true); ro?.disconnect(); };
   }, [anchor, close]);
