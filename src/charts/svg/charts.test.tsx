@@ -1,9 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { TooltipProvider } from '../../ui/Tooltip';
 import { ChartPanel } from '../ChartPanel';
 import { BarChart, type Series } from './BarChart';
 import { PieChart } from './PieChart';
+import { LineChart } from './LineChart';
 import { Sparkline, type Point } from './Sparkline';
 
 const pt = (i: number, y: number | null): Point => ({ x: `2026-0${i}`, y, label: `M${i}`, valueText: y === null ? '' : `v${y}` });
@@ -148,4 +150,26 @@ test('PieChart: clickable slices make the svg a group; share can be hidden', asy
   g.unmount();
   const i = wrap(<PieChart slices={slices} ariaLabel="p" />);
   expect(i.container.querySelector('svg')).toHaveAttribute('role', 'img');
+});
+
+
+const pts = (ys: (number | null)[]) => ys.map((y, i) => ({ x: `2026-0${i + 1}-01`, label: `M${i + 1}`, y, valueText: String(y) }));
+
+test('LineChart draws one path per series, a right axis for the second measure and area fills when asked', () => {
+  const { container } = wrap(<LineChart left={[{ name: 'A', color: 'red', points: pts([1, 3, 2]) }]} right={{ name: 'B', color: 'blue', points: pts([100, 50, 80]) }}
+    area ariaLabel="A and B" formatLeft={String} formatRight={(n) => `${n}%`} />);
+  expect(container.querySelectorAll('path[data-line]')).toHaveLength(2);
+  expect(container.querySelectorAll('path[data-area]')).toHaveLength(2);
+  expect(container.querySelector('[data-axis="right"]')).not.toBeNull();
+  expect(screen.getByRole('img', { name: 'A and B' })).toBeTruthy();
+});
+
+test('LineChart: a null value breaks the line; a bucket is pickable by keyboard', async () => {
+  const onPick = vi.fn();
+  const { container } = wrap(<LineChart left={[{ name: 'A', color: 'red', points: pts([1, null, 2]) }]} area={false} ariaLabel="A" formatLeft={String} onPick={onPick} />);
+  expect(container.querySelector('path[data-line]')!.getAttribute('d')!.match(/M/g)).toHaveLength(2);
+  const first = screen.getByRole('button', { name: 'Filter to M1' });
+  first.focus();
+  await userEvent.keyboard('{Enter}');
+  expect(onPick).toHaveBeenCalledWith('2026-01-01');
 });
