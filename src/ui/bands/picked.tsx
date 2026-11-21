@@ -3,7 +3,7 @@
 // recommended key or `lucide:<name>`; none, or one this library does not know, draws the default.
 import { createElement, useEffect, useState } from 'react';
 import {
-  Activity, BadgeCheck, BadgeDollarSign, BellRing, Blocks, Braces, Building2, Calendar,
+  Activity, Box, BadgeCheck, BadgeDollarSign, BellRing, Blocks, Braces, Building2, Calendar,
   ChartColumn, ChartNoAxesCombined, ChartPie, Cloud, Coins, CreditCard, Database, DatabaseZap, Eye,
   FileCode, FileSpreadsheet, FileText, Filter, Fingerprint, Flag, FlaskConical, Gauge, Globe, Goal,
   Handshake, Image, Layers, LayoutDashboard, LayoutTemplate, LifeBuoy, Mail, MapPin, Megaphone, Merge,
@@ -31,6 +31,9 @@ const RECOMMENDED = new Map<string, LucideIcon>(Object.entries({
   history: ScrollText, utm: Tag, attribution: Route, channels: Radio, budgets: PiggyBank, goals: Goal,
   identities: Fingerprint, cohorts: Blocks, alerts: BellRing, impressions: ScanEye,
 }));
+
+/** The host's default for a data mart with no icon picked (its DEFAULT_DATA_MART_ICON). */
+export const DEFAULT_MART_ICON: LucideIcon = Box;
 
 /** The host's default for a context with no icon picked. */
 export const DEFAULT_CONTEXT_ICON: LucideIcon = Tags;

@@ -8,7 +8,7 @@ import { dqCardTone, dqVisual } from '../icons';
 import { Hint, TipLines, Tooltip } from '../Tooltip';
 import { whenInView } from './inview';
 import type { CardTransition } from './transitions';
-import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
+import { DEFAULT_CONTEXT_ICON, DEFAULT_MART_ICON, PickedIcon } from './picked';
 import { useLatest } from '../useLatest';
 
 /** The element id Task 3's lines look cards up by: Data Flow's `src-` prefix and key sanitising. */
@@ -232,8 +232,8 @@ export function MartCard({
         </button>
       )}
       <div className="dm-node-head">
-        {/* Only an icon someone picked: the default box on every card would say nothing. */}
-        <PickedIcon icon={mart.icon} wrap="dm-logo" />
+        {/* The icon picked for the mart, or the host's default one, so every title has one before it. */}
+        <PickedIcon icon={mart.icon} fallback={DEFAULT_MART_ICON} wrap="dm-logo" />
         <Tooltip content={name}><span className="dm-node-title">{name}</span></Tooltip>
         {/* From the right edge: the link, then the (i) to its left. */}
         <span className="dm-node-actions">
