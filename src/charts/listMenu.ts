@@ -26,7 +26,7 @@ export function listItems({ cf, settings, resolved, change }: { cf: ChartFields;
     return { ...cur, scorecards: { ...cur.scorecards, hidden: [...h] } };
   });
   return [
-    ...cf.marts.flatMap((m, i) => cardsOf(m, settings.scorecards?.metrics).map((c): MenuItem => ({ kind: 'check', label: i === 0 ? c.label : `${m.title} · ${c.label}`, checked: !hidden.has(c.id), onToggle: () => toggleCard(c.id) }))),
+    ...cf.marts.flatMap((m, i) => cardsOf(m, settings.scorecards?.metrics).map((c): MenuItem => ({ kind: 'check', label: i === 0 ? (c.measure.kind === 'records' && cf.marts.length > 1 && m.title ? `${m.title} · ${c.label}` : c.label) : `${m.title} · ${c.label}`, checked: !hidden.has(c.id), onToggle: () => toggleCard(c.id) }))),
     { kind: 'check', label: 'Sparklines', checked: settings.scorecards?.sparklines ?? true, onToggle: () => change((cur) => ({ ...cur, scorecards: { ...cur.scorecards, sparklines: !(cur.scorecards?.sparklines ?? true) } })) },
     ...resolved.map(({ spec, title }): MenuItem => ({
       kind: 'check',

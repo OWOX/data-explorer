@@ -342,7 +342,7 @@ test('choosing Count Unique from the Metric menu saves the time series measure r
   await userEvent.click(panel('Time series'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
   const opts = await screen.findAllByRole('menuitemradio');
-  expect(opts[0]).toHaveAccessibleName('Count Unique');
+  expect(opts[0]).toHaveAccessibleName('Orders · Count Unique');
   await userEvent.click(opts[0]!);
   await waitFor(() => expect(screen.getByRole('heading', { name: /^Count Unique by / })).toBeInTheDocument());
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'records' }, { id: 'pie', kind: 'pie' }] });
@@ -354,7 +354,7 @@ test('the Metric menus list every mart’s Count Unique and metrics; a joined ma
   await userEvent.click(panel('Time series'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
   const opts = await screen.findAllByRole('menuitemradio');
-  expect(opts.map((o) => o.textContent)).toEqual(['Count Unique', 'Amount · Sum', 'Products · Count Unique', 'price · Sum']);
+  expect(opts.map((o) => o.textContent)).toEqual(['Orders · Count Unique', 'Amount · Sum', 'Products · Count Unique', 'price · Sum']);
   await userEvent.click(opts[2]!);
   await waitFor(() => expect(screen.getByRole('heading', { name: /^Products · Count Unique by / })).toBeInTheDocument());
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'records:products' }, { id: 'pie', kind: 'pie' }] });
@@ -372,7 +372,7 @@ test('a pie of a joined mart’s Count Unique by a dimension asks the backend fo
   expect(q?.aggregation).toBeUndefined();
   await userEvent.click(panel('Pie'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
-  expect((await screen.findAllByRole('menuitemradio')).map((o) => o.textContent)).toEqual(['Count Unique', 'Amount · Sum', 'Products · Count Unique', 'price · Sum']);
+  expect((await screen.findAllByRole('menuitemradio')).map((o) => o.textContent)).toEqual(['Orders · Count Unique', 'Amount · Sum', 'Products · Count Unique', 'price · Sum']);
 });
 
 const statusFilter = () => within(data()).queryByRole('button', { name: /^Filter status/i });

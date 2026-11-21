@@ -18,9 +18,11 @@ export type DateSeries = { series: Series[] | null; failed: { error: unknown; re
  * A measure over a date, one point per bucket, split by a dimension's top values plus "Other" when `stack` is set.
  * Unstacked, it rides on the sparklines' read when it can (same key, one billed read). Each value is a returned row's value.
  */
-export function useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, version, idle, formatOf, range }: {
+export function useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, version, idle, formatOf, range, scope }: {
   martId: string; cf: ChartFields; spark: Spark; date: Field; bucket: DateBucket | null; measure: Measure; stack: Field | null;
   filter: TraverseFilter[]; version: number; idle: boolean; formatOf: Formatter; range?: { error: unknown; retry: () => void };
+  /** The measures shown together with this one, so its label names its mart when they span more than one. */
+  scope?: Measure[];
 }): DateSeries {
   const live = !idle && !!bucket;
   // The top values do not depend on the bucket, so they are read while the Auto range is still loading.
@@ -46,7 +48,7 @@ export function useDateSeries({ martId, cf, spark, date, bucket, measure, stack,
   const hasValue = (rows: Row[] | null) => !!rows?.some((x) => x[key] != null);
   const hasOther = full && hasValue(other.rows);
   const hasBlank = needBlank && hasValue(blank.rows);
-  const label = measureLabel(cf, measure);
+  const label = measureLabel(cf, measure, scope);
   const failed = [...(range ? [range] : []), top, series, blank, other].find((q) => q.error);
   const empty = stack ? top.rows?.length === 0 : series.rows?.length === 0;
   const mainDone = !!series.rows || (!!stack && !!keys && !hasNames);
