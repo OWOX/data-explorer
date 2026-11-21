@@ -24,7 +24,6 @@ function cleanSpec(v: unknown): ChartSpec | null {
   if (o.bucket === 'AUTO' || isDateBucket(o.bucket)) out.bucket = o.bucket as ChartSpec['bucket'];
   if (o.orientation === 'vertical' || o.orientation === 'horizontal') out.orientation = o.orientation;
   if (typeof o.area === 'boolean') out.area = o.area;
-  if (typeof o.blanks === 'boolean') out.blanks = o.blanks;
   return out;
 }
 
