@@ -1,5 +1,5 @@
 import type { Field } from '../model/types';
-import { sankeyColumnQuery, sankeyFlowQuery, sankeyLowQuery, SANKEY_COLUMN_LIMIT, SANKEY_FLOW_LIMIT, type Measure } from './queries';
+import { sankeyColumnQuery, sankeyFlowQuery, sankeyLowQuery, SANKEY_COLUMN_LIMIT, SANKEY_FLOW_LIMIT, SANKEY_LOW_LIMIT, type Measure } from './queries';
 
 const fld = (name: string): Field => ({ name, alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false });
 const [src, dst, chan] = [fld('source'), fld('status'), fld('channel')];
@@ -38,10 +38,10 @@ test('pre-join slices are kept (the reads name columns) and HAVING rules are dro
   expect(sankeyColumnQuery(src, recs, [slice, having], fld('id')).filter).toEqual([slice]);
 });
 
-test('the low read is the flow read sorted the other way, one row', () => {
+test('the low read is the flow read sorted the other way, a few rows', () => {
   expect(sankeyLowQuery([src, dst], sum, base)).toEqual({
     column: ['source', 'status', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' }],
-    sort: [{ column: 'amount', direction: 'asc' }], limit: 1, filter: base,
+    sort: [{ column: 'amount', direction: 'asc' }], limit: SANKEY_LOW_LIMIT, filter: base,
   });
   expect(sankeyLowQuery([src, dst], recs, []).sort).toEqual([{ column: 'Unique Count', direction: 'asc' }]);
 });

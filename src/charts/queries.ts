@@ -160,6 +160,8 @@ export function scatterQuery(dim: Field, x: Measure, y: Measure, filter: Travers
 
 /** The most combinations the Sankey's flow read returns (largest first). A read that fills it leaves smaller flows out. */
 export const SANKEY_FLOW_LIMIT = 5000;
+/** The rows the ascending negative check reads: NULL sums may sort ahead of the smallest real one. */
+export const SANKEY_LOW_LIMIT = 5;
 /** The most distinct values one Sankey column's total read returns (largest first). Past it the smallest values are unread, so Other counts only the values read. */
 export const SANKEY_COLUMN_LIMIT = 10000;
 
@@ -176,9 +178,9 @@ export function sankeyFlowQuery(dims: Field[], measure: Measure, filter: Travers
   return withFilter(withCounter(o, filter, counter), filter);
 }
 
-/** The smallest combination: the flow read sorted the other way, one row. Read only when the flow read is capped, to see whether the left-out flows hold a negative. */
+/** The smallest combinations: the flow read sorted the other way, a few rows (a NULL sum may sort first, so one row is not enough). Read only when a metric's flow read is capped, to see whether the left-out flows hold a negative. */
 export function sankeyLowQuery(dims: Field[], measure: Measure, filter: TraverseFilter[], counter?: Field | null): TraverseOptions {
-  return { ...sankeyFlowQuery(dims, measure, filter, counter), sort: bySize(measure, 'asc'), limit: 1 };
+  return { ...sankeyFlowQuery(dims, measure, filter, counter), sort: bySize(measure, 'asc'), limit: SANKEY_LOW_LIMIT };
 }
 
 /** The measure per value of one Sankey column (blank included), largest first, capped at SANKEY_COLUMN_LIMIT: exact node sizes. */

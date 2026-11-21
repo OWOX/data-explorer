@@ -113,13 +113,22 @@ test('sankey: a flow read at its row cap draws what came back and says so', asyn
   try {
     const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
     await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
-    // Only a capped flow read is followed by the 1-row read from the other end, to find a negative among the left-out flows.
-    const low = t.queries.slice(t.tableQueries()).filter((q) => q.limit === 1);
+    // Only a capped flow read is followed by the few-row read from the other end, to find a negative among the left-out flows.
+    const low = t.queries.slice(t.tableQueries()).filter((q) => q.limit === 5 && q.sort?.[0]?.direction === 'asc');
     expect(low).toHaveLength(1);
     expect(low[0]!.sort?.[0]?.direction).toBe('asc');
     const hint = await within(data().querySelector<HTMLElement>('section[data-chart-kind="Sankey"]')!).findByRole('note');
     await userEvent.hover(hint);
     expect(await screen.findByText('Showing the largest 3 combinations; smaller flows are left out.')).toBeInTheDocument();
+  } finally { cap.n = 5000; }
+});
+
+test('sankey: a capped flow read of a count reads no low rows (a count is never negative)', async () => {
+  cap.n = 3;
+  try {
+    const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'], measure: 'records' }] } });
+    await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
+    expect(t.queries.slice(t.tableQueries()).filter((q) => q.limit === 5 && q.sort?.[0]?.direction === 'asc')).toHaveLength(0);
   } finally { cap.n = 5000; }
 });
 

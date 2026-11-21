@@ -86,6 +86,9 @@ test('a capped flow read hides negatives only the 1-row ascending read can show'
   expect(foldSankey({ flowRows: flowRows as never, columnRows: cols, dims: [a, b], measure: sum }).negative).toBe(false);
   expect(foldSankey({ flowRows: flowRows as never, lowRows: [row({ a: 'q', b: 'r' }, -3)] as never, columnRows: cols, dims: [a, b], measure: sum }).negative).toBe(true);
   expect(foldSankey({ flowRows: flowRows as never, lowRows: [row({ a: 'q', b: 'r' }, 0)] as never, columnRows: cols, dims: [a, b], measure: sum }).negative).toBe(false);
+  // A NULL sum sorts first on some warehouses: the negative behind it is still found, and the NULL alone is not one.
+  expect(foldSankey({ flowRows: flowRows as never, lowRows: [row({ a: 'q', b: 'r' }, null), row({ a: 'q', b: 's' }, -2)] as never, columnRows: cols, dims: [a, b], measure: sum }).negative).toBe(true);
+  expect(foldSankey({ flowRows: flowRows as never, lowRows: [row({ a: 'q', b: 'r' }, null)] as never, columnRows: cols, dims: [a, b], measure: sum }).negative).toBe(false);
 });
 
 test('a column read at its row cap is flagged: Other undercounts the unread values', () => {

@@ -52,9 +52,9 @@ function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
   const { dims, measure } = r;
   const n = dims.length;
   const off = idle || !measure;
-  // One flow read and one total read per column: always 1 + 5 hooks, the unused ones get a null query. A sixth, one row, only when the flow read is capped.
+  // One flow read and one total read per column: always 1 + 5 hooks, the unused ones get a null query. A sixth, a few rows, only when a metric's flow read is capped (a count is never negative).
   const flow = useChartQuery(martId, off ? null : sankeyFlowQuery(dims, measure, filter, cf.counter), version);
-  const capped = !!flow.rows && flow.rows.length >= SANKEY_FLOW_LIMIT;
+  const capped = !!flow.rows && flow.rows.length >= SANKEY_FLOW_LIMIT && measure?.kind === 'metric';
   const low = useChartQuery(martId, off || !capped ? null : sankeyLowQuery(dims, measure, filter, cf.counter), version);
   const useCol = (i: number) => useChartQuery(martId, off || i >= n ? null : sankeyColumnQuery(dims[i]!, measure, filter, cf.counter), version);
   const all = [useCol(0), useCol(1), useCol(2), useCol(3), useCol(4)];
