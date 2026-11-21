@@ -45,3 +45,19 @@ test('cards: only path cards have a white background in Grid; hover and selectio
   expect(after).toEqual(before);
   expect(await other.evaluate((e) => getComputedStyle(e, '::after').borderTopWidth)).toBe('2px');
 });
+
+test('the Data band fills the viewport below the bands above it and scrolls inside', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1800 });
+  await page.goto('/?mock');
+  const data = page.locator('#band-data');
+  await expect(data.locator('tbody tr').first()).toBeVisible();
+  const box = (await data.boundingBox())!;
+  // Tall viewport: the band runs from its top to the bottom of the screen (less the page padding), not to the end of its content.
+  expect(box.y + box.height).toBeGreaterThanOrEqual(1800 - 60);
+  expect(box.height).toBeGreaterThan(320);
+  // A short viewport: the band keeps its 20rem floor.
+  await page.setViewportSize({ width: 1440, height: 500 });
+  await expect.poll(async () => (await data.boundingBox())!.height).toBeGreaterThanOrEqual(320);
+  // The grid scrolls in its own frame.
+  expect(await data.locator('.dm-grid-frame').evaluate((e) => getComputedStyle(e).maxHeight)).toBe('none');
+});

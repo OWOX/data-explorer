@@ -2,7 +2,7 @@
 .dm-muted { color: var(--muted-foreground); }
 
 /* Three layers, in this order: band panels, the lines over them, the cards over both. */
-.dm-canvas { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.dm-canvas { position: relative; display: flex; flex-direction: column; gap: 1rem; flex: 1 0 auto; }
 
 /* The block chrome OWOX itself uses for Storage / Input Source / Output schema: a light panel with
    a rounded icon tile beside the title, no shadow, a hairline under it. */
@@ -625,6 +625,17 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
   transition: width 240ms ease-out, background 240ms ease-out;
 }
 .dm-loadbar-done span { background: #d9eed7; }
+
+/* --- the Data band takes the height left on the page, and its grid or charts scroll inside it --- */
+/* The page is a column at least a viewport tall: the canvas grows to fill it and the open Data band takes
+   whatever the bands above leave (never under 20rem): useFillHeight sets --dm-fill, the viewport below the band's top. Its content starts from a zero basis, so a tall grid
+   scrolls in its own frame rather than stretching the band. */
+#band-data:not(.folded) { flex: 1 0 auto; min-height: max(20rem, var(--dm-fill, 0px)); display: flex; flex-direction: column; }
+#band-data:not(.folded) .dm-band-reveal { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+#band-data:not(.folded) .dm-band-reveal-in { display: flex; flex-direction: column; overflow: hidden; }
+#band-data:not(.folded) .dm-bigcard { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+#band-data:not(.folded) .dm-grid-frame { max-height: none !important; flex: 1 1 0; }
+#band-data:not(.folded) .dm-grid-frame-charts { height: auto !important; }
 
 /* --- full screen: the Data band alone, fixed over the plugin area, its title row on top and the grid under it --- */
 /* Nothing is unmounted: the other bands and the header are only hidden, so the grid keeps its selection and scroll. */
