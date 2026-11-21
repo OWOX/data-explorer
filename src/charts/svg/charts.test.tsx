@@ -217,3 +217,36 @@ test('SpreadChart draws a box and a median per row, whiskers only with min and m
   expect(document.querySelectorAll('line[data-median]')).toHaveLength(2);
   expect(document.querySelectorAll('line[data-whisker]')).toHaveLength(1);
 });
+
+const tickTexts = (container: HTMLElement, y: string) => [...container.querySelectorAll('svg text')].filter((t) => t.getAttribute('y') === y);
+
+test('Heatmap with 60 buckets keeps every cell inside the svg width', () => {
+  const xs = Array.from({ length: 60 }, (_, i) => ({ key: `x${i}`, label: `X${i}` }));
+  const { container } = wrap(<Heatmap xs={xs} ys={[{ key: 'y1', label: 'Y1' }]} ariaLabel="H" cell={() => ({ value: 1, text: '1' })} />);
+  const vbWidth = Number(container.querySelector('svg')!.getAttribute('viewBox')!.split(' ')[2]);
+  const cells = [...container.querySelectorAll('rect[data-cell]')];
+  expect(cells).toHaveLength(60);
+  for (const c of cells) expect(Number(c.getAttribute('x')) + Number(c.getAttribute('width'))).toBeLessThanOrEqual(vbWidth);
+});
+
+test('a ranked bar anchors its first tick start and its last tick end', () => {
+  const { container } = wrap(<BarChart series={[two[1]!]} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const ticks = [...container.querySelectorAll('g.dm-chart-tick text')];
+  expect(ticks.map((t) => t.getAttribute('text-anchor'))).toEqual(['start', 'middle', 'middle', 'end']);
+});
+
+test('Scatter anchors its first x tick start and its last end', () => {
+  const { container } = wrap(<Scatter ariaLabel="S" xTitle="X" yTitle="Y" formatX={String} formatY={String}
+    points={[{ key: 'p', label: 'P', x: 1, y: 2, xText: '1', yText: '2' }, { key: 'q', label: 'Q', x: 3, y: 1, xText: '3', yText: '1' }]} />);
+  const xt = tickTexts(container, String(8 + 220 + 14));
+  expect(xt.length).toBe(4);
+  expect(xt[0]).toHaveAttribute('text-anchor', 'start');
+  expect(xt[3]).toHaveAttribute('text-anchor', 'end');
+});
+
+test('SpreadChart anchors its first tick start and its last end', () => {
+  const { container } = wrap(<SpreadChart ariaLabel="Sp" formatTick={String} rows={[{ key: 'a', label: 'A', p25: 2, p50: 3, p75: 5, min: 1, max: 9, text: 'm' }]} />);
+  const xt = [...container.querySelectorAll('svg g > text')].filter((t) => !t.hasAttribute('dominant-baseline'));
+  expect(xt[0]).toHaveAttribute('text-anchor', 'start');
+  expect(xt.at(-1)).toHaveAttribute('text-anchor', 'end');
+});
