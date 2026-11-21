@@ -363,7 +363,7 @@ export function CardBands({
                 onMakeMain={!isMain && mart.accessible ? () => void click(id, { mode: 'makeMain' }) : undefined}
                 onRemove={isMain ? undefined : () => {
                   const parent = canvasTree!.nodes.get(node.parent!)!;
-                  void click(id, { removePaths: subtreePaths(canvasTree!, path) }).then(() => document.getElementById(martElementId(parent.martId, parent.path || undefined))?.focus(), () => undefined);
+                  void click(id, { removePaths: node.bare ? subtreePaths(canvasTree!, path) : [path] }).then(() => document.getElementById(martElementId(parent.martId, parent.path || undefined))?.focus(), () => undefined);
                 }}
                 onSelect={() => toggleFocus(path)}
                 onOpenApp={() => onOpenApp(id)}

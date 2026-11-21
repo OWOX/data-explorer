@@ -2,6 +2,7 @@ import { vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMockCtx } from '../../sdk/mock/ctx';
+import { keyShown } from '../../sdk/mock/key-shown';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
@@ -12,7 +13,7 @@ const undo = () => screen.getByRole('button', { name: 'Undo' });
 
 // Grid edits are Undo steps: Cmd/Ctrl+Z puts the grid back, Cmd/Ctrl+Shift+Z re-applies the edit.
 function setup() {
-  const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  const ctx = keyShown(createMockCtx(demoFixtures(), { latencyMs: 0 }));
   render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
 }
 const data = () => document.getElementById('band-data')!;
@@ -151,6 +152,8 @@ test('Cmd+Z does nothing while a column menu or the Fields picker is open', asyn
   expect(undo()).toBeEnabled();
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(dialog).not.toBeInTheDocument());
+  // The menu behind the form stays open: a press outside only closes it, so close it before the next control is used.
+  await userEvent.keyboard('{Escape}');
   await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
   await screen.findByRole('dialog');
   await userEvent.keyboard('{Meta>}z{/Meta}');

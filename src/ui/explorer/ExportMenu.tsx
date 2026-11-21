@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { AlertTriangle, ArchiveRestore, Check, ChevronDown, Code, Copy, DatabaseZap, ExternalLink, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArchiveRestore, Check, ChevronDown, Box, Code, Copy, ExternalLink, Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { buildReportPayload, exportTitle, sheetUrl, type ExportSource } from '../../api/exports';
 import type { ColumnFilter } from '../../filters/build';
@@ -28,6 +28,7 @@ import { TextDialog } from './export/TextDialog';
 import { UNRECOGNISED, useExportFlight, type Result } from './export/useExportFlight';
 import { copyText } from './clipboard';
 import type { GridRun } from './useMartRows';
+import { useOutsidePress } from '../outsidePress';
 
 type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; filters: ColumnFilter[]; /** Pre-join filters on joined fields. */ slices?: ColumnFilter[]; sorts: SortKey[]; /** Only the sorts the member set; Create Data Mart never adds the grid's implicit order. */ ownSorts?: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun;
   /** The main mart's storage, for Create Data Mart. */ storage?: { id: string; type: string; title?: string };
@@ -136,12 +137,12 @@ export function ExportMenu(p: Props) {
   }, [exporter, modelVersion]);
   // The menu closes on a press anywhere outside it, and when the host page outside the plugin frame is clicked (the window loses focus).
   useEffect(() => {
-    const outside = (e: Event) => { if (menu.current?.open && !menu.current.contains(e.target as Node)) menu.current.open = false; };
     const away = () => { if (menu.current?.open) menu.current.open = false; };
-    document.addEventListener('pointerdown', outside, true);
     window.addEventListener('blur', away);
-    return () => { document.removeEventListener('pointerdown', outside, true); window.removeEventListener('blur', away); };
+    return () => window.removeEventListener('blur', away);
   }, []);
+  // A press outside an open menu only closes it. The listener is always on: `open` is the native details state, not React's.
+  useOutsidePress(true, (t) => !menu.current?.open || menu.current.contains(t), () => { if (menu.current) menu.current.open = false; });
 
   const closeMenu = () => { if (menu.current) menu.current.open = false; };
   const focusSummary = () => menu.current?.querySelector<HTMLElement>('summary')?.focus();
@@ -262,7 +263,7 @@ export function ExportMenu(p: Props) {
             <div role="separator" className="dm-menu-sep" />
             <div role="group" aria-label="Data mart" className="dm-export-mart">
               <ExportItem
-                action="create-mart" icon={DatabaseZap} label="Create Data Mart" off={'reason' in martSql ? martSql.reason : null}
+                action="create-mart" icon={Box} label="Create Data Mart" off={'reason' in martSql ? martSql.reason : null}
                 onClick={() => { if (!('reason' in martSql)) { closeMenu(); setMartDialog({ variants: martSql.variants, grouped: martSql.grouped, having: p.filters.some((f) => !!f.fn), joinedMarts: p.joinedMarts ?? [], storage: p.storage!, seq: nextSeq() }); } }}
               />
             </div>

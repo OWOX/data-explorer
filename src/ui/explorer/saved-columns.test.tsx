@@ -109,6 +109,8 @@ test('this session\'s columns win over the saved ones', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Fields of Orders' }));
   await userEvent.click(screen.getByLabelText(/amount/i));
   await waitFor(() => expect(headers()).toHaveLength(3));
+  // A press outside the open Fields picker only closes it.
+  await userEvent.keyboard('{Escape}');
   // Going to another mart and back keeps the session's grid without asking the member store again.
   const load = vi.spyOn(t.services.current!.columnStore, 'load');
   // The main mart cannot join Order Items, so a click on its card does nothing; the search selects it as the main one.

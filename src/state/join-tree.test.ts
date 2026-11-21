@@ -2,7 +2,7 @@
 import { expect, test } from 'vitest';
 import type { JoinedSource } from '../api/blendable';
 import type { Field } from '../model/types';
-import { buildJoinTree, chainAfterHover, ghostLevels, ghostSources, pathsToAdd, rejoinTargets, subtreePaths } from './join-tree';
+import { buildJoinTree, chainAfterHover, ghostLevels, ghostSources, rejoinTargets, subtreePaths } from './join-tree';
 
 const field = (path: string, own: string): Field => ({ name: `${path.replaceAll('.', '__')}__${own}`, alias: own, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: path.split('.').at(-1)!, label: path, aliasPath: path, originalName: own } });
 const src = (path: string, martId = path.split('.').at(-1)!): JoinedSource => ({ aliasPath: path, martId, label: martId, depth: path.split('.').length, fields: [field(path, 'name'), field(path, 'n')], uniqueCount: true });
@@ -18,10 +18,26 @@ test('builds the tree from the columns in use, children in column order', () => 
   expect(t.nodes.get('a.c')).toMatchObject({ martId: 'c', parent: 'a', children: [] });
 });
 
-test('a path whose parent is not in use hangs from the deepest in-use ancestor, else the main mart', () => {
+test('the marts a path passes through with no column of their own are bare nodes, so the chain shows', () => {
   const t = buildJoinTree('main', ['id', col('a.c.d')], sources);
-  expect(t.nodes.get('a.c.d')).toMatchObject({ parent: '' });
-  expect(t.nodes.get('')!.children).toEqual(['a.c.d']);
+  expect(t.nodes.get('a')).toMatchObject({ martId: 'a', parent: '', children: ['a.c'], bare: true });
+  expect(t.nodes.get('a.c')).toMatchObject({ martId: 'c', parent: 'a', children: ['a.c.d'], bare: true });
+  expect(t.nodes.get('a.c.d')).toMatchObject({ parent: 'a.c' });
+  expect(t.nodes.get('a.c.d')!.bare).toBeUndefined();
+  expect(t.nodes.get('')!.children).toEqual(['a']);
+});
+
+test('a middle path the source list does not have is skipped: the path hangs from the deepest ancestor that is a node', () => {
+  const t = buildJoinTree('main', ['id', col('a.c.d')], [src('a'), src('a.c.d')]);
+  expect(t.nodes.get('a.c.d')).toMatchObject({ parent: 'a' });
+  expect(t.nodes.has('a.c')).toBe(false);
+});
+
+test('a middle mart with columns is not bare, and keeps its leaf under it', () => {
+  const t = buildJoinTree('main', ['id', col('a.c'), col('a.c.d')], sources);
+  expect(t.nodes.get('a')).toMatchObject({ bare: true });
+  expect(t.nodes.get('a.c')!.bare).toBeUndefined();
+  expect(t.nodes.get('a.c')!.children).toEqual(['a.c.d']);
 });
 
 test('a mart reached by two in-use paths is a node on each path', () => {
@@ -72,11 +88,11 @@ test('the main mart cannot be dragged', () => {
   expect(rejoinTargets(t, sources, '')).toEqual([]);
 });
 
-test('rejoin: a stale tree parent is never a target', () => {
+test('rejoin: a leaf under bare middle marts can move up to the main mart', () => {
   const s4 = [...sources, src('d')].sort((p, q) => p.depth - q.depth);
   const t = buildJoinTree('main', ['id', col('a.c.d')], s4);
-  expect(t.nodes.get('a.c.d')).toMatchObject({ parent: '' });
-  expect(rejoinTargets(t, s4, 'a.c.d').map((x) => x.target)).toEqual([]);
+  expect(t.nodes.get('a.c.d')).toMatchObject({ parent: 'a.c' });
+  expect(rejoinTargets(t, s4, 'a.c.d').map((x) => x.target)).toEqual(['']);
 });
 
 test('rejoin: a target with two relations to the mart takes the one the subtree can follow', () => {
@@ -134,10 +150,4 @@ test('hovering a ghost makes it the last link of the chain; going back to an ear
   expect(chainAfterHover('', ['a', 'a.c'], 'b')).toEqual(['b']);
   expect(chainAfterHover('', ['a', 'a.c'], 'a.c.d')).toEqual(['a', 'a.c', 'a.c.d']);
   expect(chainAfterHover('', ['a'], 'zz.q')).toEqual(['a']);
-});
-
-test('pathsToAdd lists the missing ancestors shallowest first, then the path', () => {
-  expect(pathsToAdd(new Set(['']), 'a')).toEqual(['a']);
-  expect(pathsToAdd(new Set(['']), 'a.c.d')).toEqual(['a', 'a.c', 'a.c.d']);
-  expect(pathsToAdd(new Set(['', 'a']), 'a.c.d')).toEqual(['a.c', 'a.c.d']);
 });

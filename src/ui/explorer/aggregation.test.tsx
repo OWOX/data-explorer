@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { GRID_COLUMNS_COLLECTION } from '../../api/grid-columns';
 import { createMockCtx } from '../../sdk/mock/ctx';
+import { keyShown } from '../../sdk/mock/key-shown';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { SchemaFieldDto, TraverseOptions } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
@@ -11,7 +12,7 @@ import { openColumnMenu, openSubmenu } from './menu-test-utils';
 function setup(opts: { fields?: SchemaFieldDto[]; saved?: Record<string, unknown>; gate?: Promise<void> } = {}) {
   const fixtures = demoFixtures();
   if (opts.fields) fixtures.marts.find((m) => m.id === 'orders')!.fields.push(...opts.fields);
-  const ctx = createMockCtx(fixtures, { latencyMs: 0 });
+  const ctx = keyShown(createMockCtx(fixtures, { latencyMs: 0 }));
   if (opts.saved) void ctx.collections<Record<string, unknown>>(GRID_COLUMNS_COLLECTION).put('orders', { at: 'then', ...opts.saved });
   const puts: { id: string; doc: Record<string, unknown> }[] = [];
   const queries: { id: string; o: TraverseOptions }[] = [];
@@ -162,7 +163,7 @@ test('the filter popover of an aggregated column says it filters before aggregat
   await aggregate('Amount', 'Sum');
   await openSubmenu(within(data()), 'Amount', 'Filter');
   expect(await screen.findByText('Filters rows before they are aggregated')).toBeInTheDocument();
-  expect(screen.getByText(/^Filters narrow the final result, applied to the SELECT after all JOINs\./)).toBeInTheDocument();
+  expect(screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === 'Filters narrow the final result — applied after all joins.')).toBeInTheDocument();
 });
 
 test('a column no longer shown loses its rules', async () => {
@@ -208,6 +209,8 @@ test('an array field takes no function; with one shown the grouped query is not 
   expect(within(dialog).getByRole('alert')).toHaveTextContent(`"tags" can't be grouped`);
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  // The menu behind the form stays open: a press outside only closes it.
+  await userEvent.keyboard('{Escape}');
   // hide tags, group, then show tags again: nothing grouped is sent
   await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
   await userEvent.click(await screen.findByLabelText('tags'));

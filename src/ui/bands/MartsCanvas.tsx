@@ -182,11 +182,12 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               quality={dq.get(mart.id)}
               selected={node.path === ''}
               joined={node.path !== ''}
+              focused={pin === node.path}
               path={node.path}
               title={titleOf(node.path)}
               onRemove={node.path === '' ? undefined : () => {
                 const parent = tree.nodes.get(node.parent!)!;
-                void click(node.martId, { removePaths: subtreePaths(tree, node.path) }).then(() => setFocusCard({ martId: parent.martId, path: parent.path }), () => undefined);
+                void click(node.martId, { removePaths: node.bare ? subtreePaths(tree, node.path) : [node.path] }).then(() => setFocusCard({ martId: parent.martId, path: parent.path }), () => undefined);
               }}
               lit={false}
               onSelect={() => {

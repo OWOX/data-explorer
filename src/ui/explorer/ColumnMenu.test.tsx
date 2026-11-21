@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMockCtx } from '../../sdk/mock/ctx';
+import { keyShown } from '../../sdk/mock/key-shown';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
@@ -10,7 +11,7 @@ import { openColumnMenu, openSubmenu } from './menu-test-utils';
 import { placeBeside, placeBelow } from './menuPlacement';
 
 function setup(project?: Record<string, unknown>) {
-  const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  const ctx = keyShown(createMockCtx(demoFixtures(), { latencyMs: 0 }));
   if (project) void ctx.collections<Record<string, unknown>>('column-formats-project').put('orders', project);
   render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
   return ctx;
@@ -65,8 +66,9 @@ describe('sort mark and notes', () => {
     await ready();
     await openSubmenu(within(data()), 'status', 'Filter');
     const dialog = await screen.findByRole('dialog', { name: 'Filter of status' });
-    const note = within(dialog).getByText('Filters narrow the final result, applied to the SELECT after all JOINs. Use slices to narrow a joined data mart BEFORE it is JOINed in.');
+    const note = within(dialog).getByText((_, el) => el?.tagName === 'P' && el.textContent === 'Filters narrow the final result — applied after all joins.');
     expect(note.closest('.dm-menu-foot')).not.toBeNull();
+    expect(note.querySelector('strong')?.textContent).toBe('after');
   });
 });
 
@@ -566,5 +568,42 @@ describe('menuIconClass', () => {
     expect(idle).toContain('dm-reveal');
     expect(idle).not.toContain('dm-reveal-on');
     expect(idle).not.toContain('dm-ctl-on');
+  });
+});
+
+describe('a press outside the open menu', () => {
+  test('a click on a band header closes the menu and does not fold the band', async () => {
+    setup();
+    await ready();
+    await openColumnMenu(within(data()), 'status');
+    await userEvent.click(data().querySelector('.dm-band-title')!);
+    await waitFor(() => expect(open()).toHaveLength(0));
+    expect(within(data()).getByRole('table')).toBeInTheDocument();
+    expect(data()).not.toHaveClass('folded');
+    // With nothing open, the same click folds as before.
+    await userEvent.click(data().querySelector('.dm-band-title')!);
+    await waitFor(() => expect(within(data()).queryByRole('table')).toBeNull());
+  });
+
+  test('a click on a grid cell closes the menu and does not select the cell', async () => {
+    setup();
+    await ready();
+    await openColumnMenu(within(data()), 'status');
+    const cell = bodyRows()[1]!.querySelectorAll('td')[1]!;
+    await userEvent.click(cell);
+    await waitFor(() => expect(open()).toHaveLength(0));
+    expect(data().querySelector('[data-selected]')).toBeNull();
+    await userEvent.click(cell);
+    expect(cell).toHaveAttribute('data-selected');
+  });
+
+  test('a press on the menu icon closes the open menu and a click inside it still works', async () => {
+    setup();
+    await ready();
+    const menu = await openColumnMenu(within(data()), 'status');
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Sort' }));
+    expect(await screen.findByRole('menuitemradio', { name: 'Sort A → Z' })).toBeInTheDocument();
+    await userEvent.click(within(data()).getByLabelText('Column menu status'));
+    await waitFor(() => expect(open()).toHaveLength(0));
   });
 });

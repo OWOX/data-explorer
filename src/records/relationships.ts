@@ -4,8 +4,15 @@ import type { Edge, Field, Schema } from '../model/types';
 import { isDayType } from '../model/field-category';
 import type { Row } from '../sdk/types';
 
+/** The key fields a query may name: visible ones only, since the backend rejects a field hidden for reporting. */
 export function primaryKeys(schema: Schema): string[] {
   return schema.filter((f) => f.isPrimaryKey).map((f) => f.name);
+}
+
+/** Whether the main mart has a primary key at all, a hidden one included: Unique Count counts by it, a column or sort cannot name it. */
+export function hasPrimaryKey(schema: Schema): boolean {
+  // The loader's declared key decides when it is there: a key with a disconnected component is no key, whatever flags the other fields carry.
+  return schema.primaryKey ? schema.primaryKey.length > 0 : schema.some((f) => f.isPrimaryKey && !f.joined);
 }
 
 export type IncomingLink = {

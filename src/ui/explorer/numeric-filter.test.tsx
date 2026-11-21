@@ -2,6 +2,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMockCtx } from '../../sdk/mock/ctx';
+import { keyShown } from '../../sdk/mock/key-shown';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { SchemaFieldDto, TraverseOptions } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
@@ -12,7 +13,7 @@ function setup(fields: SchemaFieldDto[] = []) {
   const fixtures = demoFixtures();
   const orders = fixtures.marts.find((m) => m.id === 'orders')!;
   orders.fields = [...orders.fields, ...fields];
-  const ctx = createMockCtx(fixtures, { latencyMs: 0 });
+  const ctx = keyShown(createMockCtx(fixtures, { latencyMs: 0 }));
   const queries: TraverseOptions[] = [];
   const real = ctx.owox.dataMarts.traverseData.bind(ctx.owox.dataMarts);
   const spied = { ...ctx, owox: { ...ctx.owox, dataMarts: { ...ctx.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { if (id === 'orders' && !(o as { uniqueCount?: unknown }).uniqueCount) queries.push(o); return real(id, o); } } } };

@@ -68,3 +68,14 @@ test('no options, no control', () => {
   const { container } = render(<MultiSelect label="Storage" options={[]} selected={[]} onChange={() => {}} />);
   expect(container).toBeEmptyDOMElement();
 });
+
+test('a menu left open when its options run out stops swallowing presses', async () => {
+  const onOther = vi.fn();
+  const { container, rerender } = render(<><MultiSelect label="Storage" options={options} selected={['a']} onChange={() => {}} /><button onClick={onOther}>Other</button></>);
+  const details = container.querySelector('details')!;
+  details.open = true;
+  details.dispatchEvent(new Event('toggle'));
+  rerender(<><MultiSelect label="Storage" options={[]} selected={[]} onChange={() => {}} /><button onClick={onOther}>Other</button></>);
+  await userEvent.click(screen.getByRole('button', { name: 'Other' }));
+  expect(onOther).toHaveBeenCalledTimes(1);
+});

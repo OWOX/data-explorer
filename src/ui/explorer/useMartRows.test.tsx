@@ -11,13 +11,13 @@ import type { Schema } from '../../model/types';
 const f = (name: string, isPrimaryKey = false, type = 'STRING'): Schema[number] => ({ name, alias: null, type, category: type === 'STRING' ? 'string' : 'number', description: null, isPrimaryKey });
 const schema: Schema = [f('id', true, 'INT64'), f('a'), f('b'), f('c'), f('customer_id', false, 'INT64'), f('e'), f('g')];
 
-test('defaultColumns is the first 5 fields', () => {
-  expect(defaultColumns(schema)).toEqual(['id', 'a', 'b', 'c', 'customer_id']);
+test('defaultColumns is the first 5 fields, the key left out while a text field exists', () => {
+  expect(defaultColumns(schema)).toEqual(['a', 'b', 'c', 'customer_id', 'e']);
 });
 
 test('defaultColumns skips calculated fields', () => {
   const s: Schema = [f('id', true, 'INT64'), { ...f('margin'), isCalculated: true }, f('a')];
-  expect(defaultColumns(s)).toEqual(['id', 'a']);
+  expect(defaultColumns(s)).toEqual(['a']);
 });
 
 test('buildRowQuery adds primary keys, keeps schema order, applies complete filters only', () => {

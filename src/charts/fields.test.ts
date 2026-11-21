@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { chartFields, measuresOf, pickBucket, pieMeasures } from './fields';
-import type { Field } from '../model/types';
+import type { Field, Schema } from '../model/types';
 import { NO_AGGREGATION } from '../model/aggregation';
 
 const f = (name: string, category: Field['category'], extra: Partial<Field> = {}): Field => ({ name, alias: null, type: category === 'number' ? 'FLOAT' : category === 'date' ? 'DATE' : 'STRING', category, description: null, isPrimaryKey: false, ...extra });
@@ -10,6 +10,14 @@ const schema = [
   f('c__ltv', 'number', { joined: { martId: 'C', label: 'Customers', aliasPath: 'c' } }),
   f('calc', 'number', { isCalculated: true }),
 ];
+
+describe('Unique Records of the main mart', () => {
+  it('is offered for a key hidden for reporting, which is not a field of the schema', () => {
+    const hidden: Schema = Object.assign([f('amount', 'number'), f('channel', 'string')], { primaryKey: ['id'] });
+    expect(chartFields(hidden, [], NO_AGGREGATION, 'M', [''])!.marts[0]!.hasPk).toBe(true);
+    expect(chartFields([f('amount', 'number')], [], NO_AGGREGATION, 'M', [''])!.marts[0]!.hasPk).toBe(false);
+  });
+});
 
 describe('the counter of chartFields', () => {
   const pick = (fields: Field[]) => chartFields(fields, [], NO_AGGREGATION, 'M', [''])?.counter?.name ?? null;

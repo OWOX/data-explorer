@@ -27,7 +27,7 @@ test('a slice that matches no customer empties the joined columns, keeps every r
   const names = data(page).getByRole('cell', { name: /^[A-Z][a-z]+ [A-Z][a-z]+$/ });
   await expect(names.first()).toBeVisible();
   const dialog = await openSub(page, 'Customers · name', 'Slice');
-  await expect(dialog.getByText(/^Slices are pre-join filters/)).toBeVisible();
+  await expect(dialog.getByText('Slices filter the joined data mart before it is joined — reducing the rows pulled in.')).toBeVisible();
   // The second-level panels are 19.6rem wide at most (30 percent under the old 28rem).
   expect((await dialog.boundingBox())!.width).toBeLessThanOrEqual(19.6 * 16 + 1);
   await dialog.getByLabel('Operator').selectOption('contains');

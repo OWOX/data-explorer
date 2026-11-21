@@ -5,6 +5,7 @@ import { ActionForm } from '../ActionForm';
 import { Tooltip } from '../Tooltip';
 import { optionId, SearchResults } from './SearchResults';
 import type { SmartSearch } from './useSmartSearch';
+import { useOutsidePress } from '../outsidePress';
 
 /**
  * The search in a band's toolbar: an icon button that opens an input with a go button at its end. Typing fills a dropdown of
@@ -26,15 +27,11 @@ export function SearchBox({ smart, label }: { smart: SmartSearch; label: string 
       e.preventDefault(); e.stopPropagation();
       closeList();
     };
-    // A press outside the search closes only the dropdown, so the typed query stays. A press inside it (a result row too) is left alone.
-    const onDown = (e: Event) => {
-      if (e.target instanceof Element && e.target.closest('.dm-search-open')) return;
-      closeList();
-    };
     document.addEventListener('keydown', onKey, true);
-    document.addEventListener('pointerdown', onDown, true);
-    return () => { document.removeEventListener('keydown', onKey, true); document.removeEventListener('pointerdown', onDown, true); };
+    return () => document.removeEventListener('keydown', onKey, true);
   }, [listOpen, closeList]);
+  // A press outside the search closes only the dropdown, so the typed query stays. A press inside it (a result row too) is left alone.
+  useOutsidePress(listOpen, (t) => !!t.closest('.dm-search-open'), closeList);
 
   if (!open && !applied) {
     return (

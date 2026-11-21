@@ -5,12 +5,12 @@ import type { Model } from '../../model/types';
 import { useStore, type GridState } from '../../state/store';
 import { groupsLabel, recordsLabel } from '../format';
 import { Tooltip } from '../Tooltip';
-import { MartGrid } from '../explorer/MartGrid';
+import { MartGrid, type NoKey } from '../explorer/MartGrid';
 import { Band } from './Band';
 import { ViewSwitch, type SwitchOption } from './ViewSwitch';
 
 /** Shown as the warning's tooltip and at the end of the band's (i). */
-const NO_KEY_NOTE = 'Preview only: this data mart has no primary key.';
+const NO_KEY_NOTES = { missing: 'Preview only: this data mart has no primary key.', hidden: "Preview only: this data mart's primary key is hidden for reporting." } as const;
 const DATA_VIEWS: SwitchOption<'table' | 'charts'>[] = [
   { value: 'table', label: 'Table', icon: Table2 },
   { value: 'charts', label: 'Charts', icon: ChartColumn },
@@ -30,8 +30,8 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen }: 
   if (!held && shownId !== martId) setShownId(martId);
   const gridId = held ? shownId : martId;
   const gridMart = gridId ? model.marts.get(gridId) : undefined;
-  const [rows, setRows] = useState<{ id: string; label: string; grouped: boolean; noKey: boolean } | null>(null);
-  const showRows = useCallback((label: string | null, grouped = false, noKey = false) => { if (gridId) setRows(label === null ? null : { id: gridId, label, grouped, noKey }); }, [gridId]);
+  const [rows, setRows] = useState<{ id: string; label: string; grouped: boolean; noKey: NoKey } | null>(null);
+  const showRows = useCallback((label: string | null, grouped = false, noKey: NoKey = false) => { if (gridId) setRows(label === null ? null : { id: gridId, label, grouped, noKey }); }, [gridId]);
   const save = useCallback((grid: GridState, edit = false) => { if (gridId) dispatch({ type: edit ? 'editGrid' : 'saveGrid', martId: gridId, grid }); }, [dispatch, gridId]);
 
   // The switch edits the stored grid, so it waits for the grid's first save; absent view is the table.
@@ -43,9 +43,10 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen }: 
     dispatch({ type: 'editGrid', martId: gridId, grid: v === 'charts' ? { ...rest, view: 'charts' } : rest });
   };
 
-  const noKey = !!mart && rows?.id === mart.id && rows.noKey && !!gridMart?.accessible;
+  const noKey: NoKey = mart && rows?.id === mart.id && gridMart?.accessible ? rows.noKey : false;
+  const note = noKey ? NO_KEY_NOTES[noKey] : null;
   return (
-    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={`${fullScreen?.on ? HINT_FULL : HINT}${noKey ? ` ${NO_KEY_NOTE}` : ''}`} afterHint={<>{noKey && <NoKeyWarning />}{gridMart?.accessible && saved && <ViewSwitch label="Show data as" options={DATA_VIEWS} value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} />}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
+    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={`${fullScreen?.on ? HINT_FULL : HINT}${note ? ` ${note}` : ''}`} afterHint={<>{note && <NoKeyWarning note={note} />}{gridMart?.accessible && saved && <ViewSwitch label="Show data as" options={DATA_VIEWS} value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} />}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (
@@ -58,10 +59,10 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen }: 
 }
 
 /** A small warning next to the (i): the grid is a preview, and rows cannot be opened. */
-function NoKeyWarning() {
+function NoKeyWarning({ note }: { note: string }) {
   return (
-    <Tooltip content={NO_KEY_NOTE}>
-      <span className="dm-hint dm-hint-warn" tabIndex={0} role="note" aria-label={NO_KEY_NOTE}><TriangleAlert size={14} /></span>
+    <Tooltip content={note}>
+      <span className="dm-hint dm-hint-warn" tabIndex={0} role="note" aria-label={note}><TriangleAlert size={14} /></span>
     </Tooltip>
   );
 }

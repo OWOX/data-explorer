@@ -3,10 +3,13 @@
 import { sourceOfField, type JoinedSource } from '../api/blendable';
 import { parentPath } from './join-plan';
 
-export type TreeNode = { path: string; martId: string; parent: string | null; children: string[] };
+export type TreeNode = { path: string; martId: string; parent: string | null; children: string[]; /** A middle mart on the way to a mart in use: joined, with no column of its own. */ bare?: true };
 export type JoinTree = { nodes: Map<string, TreeNode> };
 
-/** The tree a grid shows. Every path in use is a node, even when another path of the same mart is in use; a path hangs from its deepest in-use ancestor. */
+/**
+ * The tree a grid shows. Every path in use is a node, even when another path of the same mart is in use; a path hangs from its deepest ancestor in the tree.
+ * A mart a path passes through with no column of its own is a bare node, so the chain stays visible: the report joins through it all the same.
+ */
 export function buildJoinTree(mainId: string, columns: string[], sources: JoinedSource[]): JoinTree {
   const pathOf = sourceOfField(sources);
   // In-use paths in the order their first column appears.
@@ -15,16 +18,30 @@ export function buildJoinTree(mainId: string, columns: string[], sources: Joined
     const s = pathOf.get(c);
     if (s && !used.includes(s)) used.push(s);
   }
-  const nodes = new Map<string, TreeNode>([['', { path: '', martId: mainId, parent: null, children: [] }]]);
   const inUse = new Set(used.map((s) => s.aliasPath));
-  // Parents before children: shallow first, column order within a depth.
-  for (const s of [...used].sort((p, q) => p.depth - q.depth)) {
-    let up = parentPath(s.aliasPath);
-    while (up !== '' && !inUse.has(up)) up = parentPath(up);
-    nodes.set(s.aliasPath, { path: s.aliasPath, martId: s.martId, parent: up, children: [] });
+  const byPath = new Map(sources.map((s) => [s.aliasPath, s] as const));
+  // Each path after the middle marts above it (shallowest first), in the order the first column below it appears.
+  const ordered: { source: JoinedSource; bare: boolean }[] = [];
+  const seen = new Set<string>();
+  for (const s of used) {
+    const missing: JoinedSource[] = [];
+    for (let p = parentPath(s.aliasPath); p !== '' && !inUse.has(p) && !seen.has(p); p = parentPath(p)) {
+      const via = byPath.get(p);
+      if (via) missing.unshift(via);
+    }
+    for (const via of missing) { seen.add(via.aliasPath); ordered.push({ source: via, bare: true }); }
+    ordered.push({ source: s, bare: false });
   }
-  // Children in column order.
-  for (const s of used) nodes.get(nodes.get(s.aliasPath)!.parent!)!.children.push(s.aliasPath);
+  const inTree = new Set(ordered.map((o) => o.source.aliasPath));
+  const nodes = new Map<string, TreeNode>([['', { path: '', martId: mainId, parent: null, children: [] }]]);
+  // Parents before children: shallow first, order of appearance within a depth.
+  for (const { source: s, bare } of [...ordered].sort((p, q) => p.source.depth - q.source.depth)) {
+    let up = parentPath(s.aliasPath);
+    while (up !== '' && !inTree.has(up)) up = parentPath(up);
+    nodes.set(s.aliasPath, { path: s.aliasPath, martId: s.martId, parent: up, children: [], ...(bare ? { bare: true as const } : {}) });
+  }
+  // Children in order of appearance.
+  for (const { source: s } of ordered) nodes.get(nodes.get(s.aliasPath)!.parent!)!.children.push(s.aliasPath);
   return { nodes };
 }
 
@@ -81,13 +98,6 @@ export function chainAfterHover(anchor: string | null, chain: string[], ghost: s
   if (parent === anchor) return [ghost];
   const at = chain.indexOf(parent);
   return at < 0 ? chain : [...chain.slice(0, at + 1), ghost];
-}
-
-/** Every alias path to add so `aliasPath` shows up under its own parents: its ancestors (shallowest first) that are not in use yet, then the path itself. */
-export function pathsToAdd(inUse: Set<string>, aliasPath: string): string[] {
-  const missing: string[] = [];
-  for (let p = parentPath(aliasPath); p !== '' && !inUse.has(p); p = parentPath(p)) missing.unshift(p);
-  return [...missing, aliasPath];
 }
 
 export type Rejoin = { target: string; moves: Map<string, string> };

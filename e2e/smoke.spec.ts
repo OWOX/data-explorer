@@ -3,7 +3,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 const band = (page: Page, id: 'sources' | 'marts' | 'data' | 'row') => page.locator(`#band-${id}`);
 const martCard = (page: Page, title: string) => band(page, 'marts').locator('article', { hasText: title }).first();
 
-test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
+test.beforeEach(async ({ page }) => { await page.goto('/?mock&keyshown'); });
 
 async function ordersGrid(page: Page) {
   const data = band(page, 'data');
@@ -588,6 +588,10 @@ test('a table wider than the page scrolls inside its card and never widens the b
   const data = await ordersGrid(page);
   for (const label of ['created_at', 'Acquisition Session ID', 'Net Revenue', 'Amount']) await tick(page, label);
   await martCard(page, 'Customers').click();
+  // Adding from the band focuses the new card, and Products joins Orders, not Customers: let go of the focus first.
+  await expect(martCard(page, 'Customers')).toHaveAttribute('data-focused', /.*/);
+  await page.keyboard.press('Escape');
+  await expect(martCard(page, 'Customers')).not.toHaveAttribute('data-focused', /.*/);
   await martCard(page, 'Products').click();
   await expect(data.getByRole('button', { name: 'Fields of Products' })).toBeVisible();
   await tick(page, 'email', 'Customers');

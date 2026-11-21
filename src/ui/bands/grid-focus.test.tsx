@@ -132,17 +132,22 @@ test('clicking the focused card again, the empty band or Escape clears the focus
   expect(el('products')).not.toHaveClass('dm-unjoinable');
 });
 
-test('the × takes a joined card and the paths under it out in one step', async () => {
+test('the × on a middle card takes only its own columns; on the bare card it takes the subtree, in one Undo step', async () => {
   setup();
   await joinCountriesTwice();
+  await userEvent.click(within(el('customers', 'customers')!).getByRole('button', { name: 'Remove Customers from the report' }));
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Stores', 'Countries (customers.countries)', 'Countries (stores.countries)']));
+  expect(el('customers', 'customers')).not.toBeNull();
+  expect(el('countries', 'customers.countries')).not.toBeNull();
+  expect(el('countries', 'stores.countries')).not.toBeNull();
+  // The × on the now bare card takes its whole subtree, in one Undo step.
   await userEvent.click(within(el('customers', 'customers')!).getByRole('button', { name: 'Remove Customers from the report' }));
   await waitFor(() => expect(el('customers', 'customers')).toBeNull());
   expect(el('countries', 'customers.countries')).toBeNull();
   expect(el('countries', 'stores.countries')).not.toBeNull();
-  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Stores', 'Countries']));
   await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
-  await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
-  expect(el('countries', 'customers.countries')).not.toBeNull();
+  await waitFor(() => expect(el('countries', 'customers.countries')).not.toBeNull());
+  expect(el('customers', 'customers')).not.toBeNull();
 });
 
 test('with a card focused, a dimmed card the main mart can join says to press Escape and click it', async () => {

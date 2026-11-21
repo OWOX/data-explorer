@@ -96,4 +96,10 @@ export function createBlendableLoader(ctx: Ctx): BlendableLoader {
 }
 
 /** The schema a grid reads and filters over: the mart's own fields, then the fields of the joined marts it has loaded. */
-export const withJoined = (schema: Schema, sources: JoinedSource[]): Schema => (sources.length ? [...schema, ...sources.flatMap((s) => s.fields)] : schema);
+export const withJoined = (schema: Schema, sources: JoinedSource[]): Schema => {
+  if (!sources.length) return schema;
+  const all: Schema = [...schema, ...sources.flatMap((s) => s.fields)];
+  // The main mart's declared key travels with its fields, so a key hidden for reporting is still known to the charts.
+  if (schema.primaryKey) all.primaryKey = schema.primaryKey;
+  return all;
+};

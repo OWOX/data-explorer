@@ -264,17 +264,17 @@ button.dm-mark { cursor: pointer; }
 .dm-canvas.focused .dm-node { opacity: 0.25; }
 .dm-canvas.focused .dm-node.lit { opacity: 1; }
 .dm-canvas.focused .dm-node[aria-pressed='true'] { opacity: 1; }
-/* Selected reads as hovered does: the same colour. What tells them apart is that
-   everything else has stepped back, not that this one has grown. */
+/* Every card in the report keeps its one 1px tone border. Only the selected card (the focused one in Grid, the pinned one
+   in Graph, the chosen source) takes the tone background, so with nothing selected no card has it. */
 .dm-canvas.sources-focused #band-sources .dm-node { opacity: 0.25; }
 .dm-canvas.sources-focused #band-sources .dm-node.lit { opacity: 1; }
 .dm-canvas.sources-focused #band-sources .dm-node[aria-pressed='true'] { opacity: 1; }
 .dm-node[aria-pressed='true'],
 .dm-node[aria-pressed='true']:hover {
   border-color: var(--tone);
-  background: color-mix(in oklab, var(--tone) 10%, var(--card));
 }
-/* The Grid view's focused card, whose joinable marts are shown: the same border, a stronger tint. */
+#band-sources .dm-node[aria-pressed='true'], #band-sources .dm-node[aria-pressed='true']:hover { background: color-mix(in oklab, var(--tone) 10%, var(--card)); }
+/* The selected data mart card: the Grid view's focused card, whose joinable marts are shown, or the card pinned in Graph. */
 .dm-node[data-focused], .dm-node[data-focused]:hover { background: color-mix(in oklab, var(--tone) 20%, var(--card)); }
 /* A data mart the member cannot open: still a card, but plainly not one to expect anything from. */
 .dm-noaccess { opacity: 0.6; filter: grayscale(0.8); }
@@ -307,18 +307,16 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
    between two marts, and both ends sit in one band, so one arriving at the card in hand is drawn
    thin against the ones leaving it. A source line crosses bands, which already say which way it goes. */
 #wires path.relationship.inbound, #tree-wires path.relationship.inbound { stroke-width: 1; }
-/* The card under the pointer takes its own run-health colour on its one 1px border and a light tint of it.
-   A card nothing has run stays grey. */
+/* The card under the pointer takes its own run-health colour on its one 1px border; a card nothing has run stays grey.
+   The background stays the card's own: only the selected card is tinted. */
 .dm-node.lit:hover {
   border-color: var(--tone);
-  background: color-mix(in oklab, var(--tone) 10%, var(--card));
 }
 /* The card under the pointer while a different one is chosen: its own colour, at half strength.
    Written with `.lit` and `:hover` so it outranks the hover rule above rather than racing it, and
    `--tone` is used here rather than redefined — a variable cannot be set from itself. */
 .dm-node.lit.aside:hover {
   border-color: color-mix(in oklab, var(--tone) 50%, transparent);
-  background: color-mix(in oklab, var(--tone) 5%, var(--card));
 }
 /* Status glyph tones. The fade belongs to the glyph, not the element: the mark wraps its own hint
    bubble, and an ancestor's opacity is a ceiling its children cannot rise above. */
@@ -574,8 +572,9 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-export-item:hover { background: var(--muted); }
 .dm-export-item svg { color: var(--muted-foreground); flex-shrink: 0; }
 .dm-export-menu { min-width: 14rem; }
-/* .dm-menu-sep draws with --menu-line, which only the column menu (.dm-menu) defines. */
-.dm-export-menu .dm-menu-sep { margin: 4px 0; border-top-color: var(--border); }
+/* .dm-menu-sep draws with --menu-line, which only the column menu (.dm-menu) defines. Outside it the var is undefined, so
+   the whole border-top declaration is invalid and the line has no style at all; the full shorthand is restated here. */
+.dm-export-menu .dm-menu-sep { height: 0; flex-shrink: 0; margin: 6px 0; border-top: 1px solid color-mix(in oklab, var(--foreground) 22%, var(--card)); }
 .dm-export-ai-row { display: flex; align-items: center; border-radius: 0.375rem; }
 .dm-export-ai-row:hover { background: var(--muted); }
 .dm-export-ai-row > .dm-export-item { flex: 1; min-width: 0; }

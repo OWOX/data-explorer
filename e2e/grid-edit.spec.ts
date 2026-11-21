@@ -32,6 +32,7 @@ test('Ctrl/Cmd+C copies the selected cell, a block and a column as tab-separated
 });
 
 test('Cmd/Ctrl+Z undoes an applied filter and Shift+Z applies it again', async ({ page }) => {
+  await page.goto('/?mock&keyshown'); // the id column is no default column any more
   await expect(data(page).getByRole('row')).toHaveCount(202);
   const icon = data(page).getByLabel('Column menu id');
   await icon.locator('xpath=ancestor::th').hover();

@@ -1,6 +1,7 @@
 // Which shown columns the charts draw: metrics (numbers), dimensions (text, booleans) and dates, grouped by the data mart they belong to.
 import { AGGREGATE_FUNCTIONS, allowedFunctions, canBucket, type AggFn, type Aggregation, type DateBucket } from '../model/aggregation';
-import type { Field } from '../model/types';
+import type { Field, Schema } from '../model/types';
+import { hasPrimaryKey } from '../records/relationships';
 import { isIdField } from '../state/join-plan';
 import type { Measure } from './queries';
 
@@ -36,7 +37,7 @@ function metricFn(f: Field, agg: Aggregation): AggFn | null {
 }
 
 /** `groupPaths` are the groups' alias paths, main first (titles are keyed by path). `shown` is the grid's shown column names (their order does not matter: the charts follow the schema's, so a column move changes nothing); `schema` the blended schema; `mainMartId` the grid's mart. */
-export function chartFields(schema: Field[], shown: string[], agg: Aggregation, mainMartId: string, groupPaths: string[], uniqueCountPaths?: ReadonlySet<string>, titles: Readonly<Record<string, string>> = {}): ChartFields {
+export function chartFields(schema: Schema, shown: string[], agg: Aggregation, mainMartId: string, groupPaths: string[], uniqueCountPaths?: ReadonlySet<string>, titles: Readonly<Record<string, string>> = {}): ChartFields {
   const by = new Map(schema.map((f) => [f.name, f]));
   const on = new Set(shown);
   const fields = [...by.values()].filter((f) => on.has(f.name));
@@ -49,7 +50,7 @@ export function chartFields(schema: Field[], shown: string[], agg: Aggregation, 
     const recordsId = aliasPath === '' ? `records:${mainMartId}` : taken.has(martId) ? `records:${martId}@${aliasPath}` : `records:${martId}`;
     taken.add(martId);
     // Blended fields carry no key flag: a joined mart has a key when the backend says a unique count works on its alias path.
-    const hasPk = aliasPath === '' ? schema.some((f) => f.isPrimaryKey && !f.joined) : !!uniqueCountPaths?.has(aliasPath);
+    const hasPk = aliasPath === '' ? hasPrimaryKey(schema) : !!uniqueCountPaths?.has(aliasPath);
     const metrics = own.flatMap((f): Metric[] => {
       if (f.category !== 'number' || isIdField(f) || f.isCalculated) return [];
       const fn = metricFn(f, agg);

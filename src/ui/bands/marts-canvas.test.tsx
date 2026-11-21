@@ -306,17 +306,24 @@ test('a mart already under another parent is still offered as a ghost, and addin
   expect(marts().querySelectorAll('article[data-mart-id="countries"]:not([data-ghost])')).toHaveLength(2);
 });
 
-test('x on a joined card removes its path and the subtree, the same mart elsewhere stays, Undo restores both', async () => {
+test('x on a middle card takes only its own columns: it stays as a bare card with its leaf, which keeps its columns; Undo restores them', async () => {
   await countriesUnderBoth();
   expect(el('orders')!.querySelector('.dm-card-remove')).toBeNull();
+  await userEvent.click(within(el('stores', 'stores')!).getByRole('button', { name: /remove stores/i }));
+  await waitFor(() => expect(groupTitles()).not.toContain('Stores'));
+  expect(el('stores', 'stores')).not.toBeNull();
+  expect(el('countries', 'stores.countries')).not.toBeNull();
+  expect(el('countries', 'customers.countries')).not.toBeNull();
+  // The × on the bare card takes the whole subtree, in one Undo step.
   await userEvent.click(within(el('stores', 'stores')!).getByRole('button', { name: /remove stores/i }));
   await waitFor(() => expect(el('stores', 'stores')).toBeNull());
   expect(el('countries', 'stores.countries')).toBeNull();
   expect(el('countries', 'customers.countries')).not.toBeNull();
   await userEvent.click(screen.getByRole('button', { name: /undo/i }));
-  await waitFor(() => expect(el('stores', 'stores')).not.toBeNull());
-  expect(el('countries', 'stores.countries')).not.toBeNull();
-  expect(el('countries', 'customers.countries')).not.toBeNull();
+  await waitFor(() => expect(el('countries', 'stores.countries')).not.toBeNull());
+  expect(el('stores', 'stores')).not.toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: /undo/i }));
+  await waitFor(() => expect(groupTitles()).toContain('Stores'));
 });
 
 test('the x moves focus to the parent card', async () => {
@@ -376,6 +383,21 @@ test('a second click on the pinned card lets its ghosts go, though the pointer s
   await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
 });
 
+test('only the pinned card is tinted: nothing is before a click, the pinned card after, the other cards stay plain', async () => {
+  setup();
+  await ready();
+  fireEvent.click(gridCard('Customers'));
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
+  await toCanvas();
+  await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+  expect(marts().querySelectorAll('article[data-focused]')).toHaveLength(0);
+  await userEvent.click(el('orders')!);
+  await waitFor(() => expect(el('orders')).toHaveAttribute('data-focused'));
+  expect(el('customers', 'customers')).not.toHaveAttribute('data-focused');
+  await userEvent.click(el('orders')!);
+  await waitFor(() => expect(marts().querySelectorAll('article[data-focused]')).toHaveLength(0));
+});
+
 test('clicking another card moves the pin', async () => {
   await joinCountriesUnderCustomers();
   await userEvent.click(el('orders')!);
@@ -417,7 +439,7 @@ test('hovering a ghost shows its own joinable marts to its right, wired from it;
   expect(ghostEl('customers', 'customers')).not.toBeNull();
 });
 
-test('clicking a ghost at the end of a chain adds the marts on the way too, so the cards sit where the chain showed them', async () => {
+test('clicking a ghost at the end of a chain adds only that mart: the marts on the way stay as bare cards with no columns', async () => {
   setup();
   await ready();
   await toCanvas();
@@ -428,7 +450,8 @@ test('clicking a ghost at the end of a chain adds the marts on the way too, so t
   await userEvent.click(ghostEl('countries', 'customers.countries')!);
   await waitFor(() => expect(el('countries', 'customers.countries')).not.toBeNull());
   expect(el('customers', 'customers')).not.toBeNull();
-  expect(groupTitles()).toEqual(['Orders', 'Customers', 'Countries']);
+  expect(groupTitles()).toEqual(['Orders', 'Countries']);
+  expect(el('customers', 'customers')!.querySelector('.dm-card-remove')).not.toBeNull();
   await waitFor(() => expect(document.querySelector('#tree-wires path[data-from="dm-customers@customers"][data-to="dm-countries@customers.countries"]')).not.toBeNull());
 });
 
