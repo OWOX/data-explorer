@@ -538,7 +538,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-filter-all { color: var(--muted-foreground); font-size: 0.6875rem; }
 .dm-filter-menu {
   position: absolute; z-index: 40; right: 0; top: calc(100% + 0.25rem);
-  min-width: 16rem; max-height: 22rem; overflow: auto;
+  min-width: 12rem; max-height: 18rem; overflow: auto;
   border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.375rem;
   background: var(--card); box-shadow: 0 8px 20px rgb(0 0 0 / 0.14);
 }
@@ -561,6 +561,35 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-filter-menu label:hover { background: var(--muted); }
 .dm-filter-menu label svg { color: var(--muted-foreground); flex-shrink: 0; }
 .dm-filter-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The checklist inside a section's filter menu, drawn as Data Flow's: plain checkboxes, a "Select all" header over a hairline,
+   quiet rows with the app font, a grey tick, and "only" on hover. The Sheets look stays for the pickers that are not these menus. */
+.dm-filter-menu .dm-checklist { gap: 0; font: inherit; font-size: 0.8125rem; }
+.dm-filter-menu .dm-checklist-top {
+  align-items: center; margin-bottom: 0.25rem; padding: 0.25rem 0.375rem 0.375rem;
+  border-bottom: 1px solid var(--border);
+}
+.dm-filter-menu .dm-checklist-links { gap: 0.25rem; font-weight: 500; color: var(--muted-foreground); }
+.dm-filter-menu .dm-checklist-link { color: var(--foreground); text-decoration: none; }
+.dm-filter-menu .dm-checklist-link:hover { text-decoration: underline; }
+.dm-filter-menu .dm-checklist-link:focus-visible { outline-color: var(--ring); }
+.dm-filter-menu .dm-checklist-count { font-size: 0.6875rem; }
+.dm-filter-menu .dm-checklist-search { margin: 0 0 0.25rem; }
+.dm-filter-menu .dm-checklist-search input { height: 1.75rem; border-radius: 0.375rem; padding: 0 1.75rem 0 0.5rem; font-size: 0.8125rem; }
+.dm-filter-menu .dm-checklist-search input:focus-visible { border-color: var(--muted-foreground); box-shadow: none; }
+.dm-filter-menu .dm-checklist-search svg { right: 0.5rem; }
+.dm-filter-menu .dm-checklist-row, .dm-filter-menu .dm-checklist-opt { min-height: 0; border-radius: 0.375rem; }
+.dm-filter-menu .dm-checklist-row:hover, .dm-filter-menu .dm-checklist-row:focus-within { background: var(--muted); }
+.dm-filter-menu .dm-checklist-opt { padding: 0.25rem 0.375rem; }
+.dm-filter-menu .dm-checklist-opt:focus-visible { box-shadow: inset 0 0 0 1px var(--muted-foreground); }
+.dm-filter-menu .dm-checklist-opt[aria-selected='true'] { font-weight: 500; }
+.dm-filter-menu .dm-checklist-check {
+  box-sizing: border-box; width: 1rem; height: 1rem; align-items: center;
+  border: 1px solid var(--border); border-radius: 0.25rem; background: var(--card); color: var(--primary-foreground);
+}
+.dm-filter-menu .dm-checklist-opt[aria-selected='true'] .dm-checklist-check { border-color: var(--muted-foreground); background: var(--muted-foreground); }
+.dm-filter-menu .dm-checklist-check svg { width: 0.75rem; height: 0.75rem; stroke-width: 3; }
+.dm-filter-menu .dm-checklist-empty { padding: 0.375rem; font-size: 0.8125rem; }
 
 /* --- export menu: reuses the filter menu's frame; its rows are buttons, not checkboxes --------------- */
 .dm-export > summary { gap: 0.25rem; }

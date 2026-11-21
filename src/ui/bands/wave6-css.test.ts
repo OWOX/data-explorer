@@ -32,3 +32,13 @@ test('full screen keeps the band corners of the normal mode', () => {
 test('the context badges sit at the right end of the card foot', () => {
   expect(rules(/^\.dm-contexts$/).join(' ')).toContain('justify-content: flex-end');
 });
+
+test('the filter menu is drawn as Data Flow\'s: its frame, a boxed checkbox, a hairline under the header', () => {
+  const menu = rules(/^\.dm-filter-menu$/).join(' ');
+  expect(menu).toContain('min-width: 12rem');
+  expect(menu).toContain('max-height: 18rem');
+  expect(rules(/^\.dm-filter-menu \.dm-checklist-check$/).join(' ')).toContain('border-radius: 0.25rem');
+  expect(rules(/^\.dm-filter-menu \.dm-checklist-top$/).join(' ')).toContain('border-bottom: 1px solid var(--border)');
+  // Not the Sheets blue.
+  expect(rules(/^\.dm-filter-menu \.dm-checklist-link$/).join(' ')).not.toContain('sheet-link');
+});
