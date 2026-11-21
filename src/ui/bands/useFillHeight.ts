@@ -2,9 +2,12 @@
 // so a band can take "everything left on the screen" without knowing what sits above it.
 import { useEffect } from 'react';
 
-/** The height from the element's top to the bottom of the viewport, less the page's bottom padding. */
+/**
+ * The height from the element's top to the bottom of the viewport, less the page's bottom padding. The top is measured in the document
+ * (viewport top plus the scroll), so scrolling the page does not change it.
+ */
 export function fillHeight(el: HTMLElement): number {
-  const top = el.getBoundingClientRect().top;
+  const top = el.getBoundingClientRect().top + window.scrollY;
   const main = el.closest('main');
   const pad = main ? parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0;
   return Math.max(0, Math.round(window.innerHeight - top - pad));
@@ -12,8 +15,8 @@ export function fillHeight(el: HTMLElement): number {
 
 /**
  * Keeps `--dm-fill` on the element with this id current. The top of the element moves when the bands above
- * it grow or fold, so those are watched too (through the page container). The element's own height does not
- * change its top, so setting the variable cannot feed back.
+ * it grow or fold, so only the siblings before it are watched (through the page container). What sits after it, and its own height,
+ * do not change its top, so setting the variable cannot feed back.
  */
 export function useFillHeight(id: string) {
   useEffect(() => {
@@ -28,7 +31,7 @@ export function useFillHeight(id: string) {
     window.addEventListener('resize', apply);
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(apply);
     const page = el.parentElement;
-    if (observer && page) for (const child of Array.from(page.children)) if (child !== el) observer.observe(child);
+    if (observer && page) for (const child of Array.from(page.children)) { if (child === el) break; observer.observe(child); }
     return () => { window.removeEventListener('resize', apply); observer?.disconnect(); };
   }, [id]);
 }
