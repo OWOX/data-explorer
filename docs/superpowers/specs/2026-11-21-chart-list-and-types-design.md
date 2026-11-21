@@ -57,8 +57,8 @@ type ChartKindDef<R> = {
   eligible(cf: ChartFields): boolean;                // the shown columns can draw it
   create(cf: ChartFields, from?: ChartSpec): Omit<ChartSpec, 'id'>; // defaults; `from` carries fields on a type switch
   resolve(spec: ChartSpec, cf: ChartFields): R | null; // saved names to shown fields; null when it cannot draw now
-  width(r: R, buckets?: number): string;             // the panel's CSS width (section 6)
-  Panel: (p: PanelProps<R>) => ReactNode;            // its ⋮ menu items come from the panel
+  title(r: R, cf: ChartFields): string;              // its name in the header list
+  Panel: (p: PanelProps<R>) => ReactNode;            // its ⋮ menu items and its width (section 6) come from the panel
 };
 ```
 
@@ -70,15 +70,15 @@ and fills the rest with its defaults. `id` and `hidden` never change.
 | 1 | `timeSeries` (today's bars) | a date and a measure | `seriesQuery`, `seriesOtherQuery`, as now | Date, Bucket, Metric, Stack, Orientation |
 | 2 | `pie` | a dimension and a `pieMeasures` entry | `topValuesQuery`, `pieOtherQuery`, as now | Metric, Dimension |
 | 3 | `rankedBar` | a dimension and a measure | the pie's two queries with the measure's own function, AVG included | Metric, Dimension |
-| 4 | `line` | a date and a measure | `seriesQuery` with one or two measures in one read | Date, Bucket, Metric, Second measure (Off or a measure), Stack (only with no second measure), Area |
+| 4 | `line` | a date and a measure | the time series's reads, once per measure (a second measure is its own unstacked series) | Date, Bucket, Metric, Second measure (Off or a measure), Stack (only with no second measure), Area |
 | 5 | `heatmap` | a dimension, plus a date or a second dimension | `topValuesQuery` for each dimension axis, then one `[x, y, measure]` read with `in` filters on both top lists | Rows, Columns (a date bucket or a dimension), Metric |
 | 6 | `scatter` | a dimension and two metrics | `[dim, m1, m2]`, sorted by m1 descending, limit 200 | Dimension, X metric, Y metric |
 | 7 | `spread` | a dimension and a metric whose `allowedFunctions` has P25, P50 and P75 | `[dim, metric]` with P25, P50, P75 (and MIN, MAX for whiskers when allowed), sorted by P50 descending, limit 8 | Dimension, Metric |
 
 1. Every query goes through the existing `withFilter` and `withCounter` rules, so the grid's filters and slices apply
    as they do now. Charts still show the data before HAVING.
-2. New query builders go in `src/charts/queries.ts` beside the current ones: `lineQuery`, `heatmapQuery`,
-   `scatterQuery`, `spreadQuery`.
+2. New query builders go in `src/charts/queries.ts` beside the current ones: `heatmapQuery`, `scatterQuery`,
+   `spreadQuery`.
 3. A click on a bar, cell, point or row adds the same filters `clickFilters.ts` adds today: `dimensionFilter` for a
    dimension value, `bucketFilter` for a date bucket. "Other" is never clickable.
 4. Each panel's ⋮ menu ends with Chart type ▸ (the eligible kinds), Copy to clipboard and Remove.
@@ -90,37 +90,32 @@ focusable with Enter and Space, and the series colours come from `--dm-series-*`
 
 ## 3. Shared settings state
 
-The doc moves out of `ChartsBody` into `src/charts/ChartsDoc.tsx`:
-
-```ts
-function ChartsDocProvider({ martId, children }): JSX.Element;
-function useChartsDoc(): { settings: ChartSettings | null; change(edit: (cur: ChartSettings) => ChartSettings): void };
-```
-
-It keeps today's rules. It loads once per mart and applies each change over the latest doc, so two quick changes both
-land. It saves after every change. It gives no `change` before the doc loads. The provider wraps the Data band, so the
-header menu and `ChartsBody` read one copy.
+The doc stays in `ChartsBody`, with today's rules: it loads once per mart, applies each change over the latest doc (so
+two quick changes both land), saves after every change and gives no `change` before the doc loads. The header menu
+needs the doc and the chart fields, which only `ChartsBody` has, so `ChartsBody` portals the menu into the header:
+the Data band renders an empty slot next to the Table / Charts switch and passes its element down through a context
+(`src/charts/menuSlot.ts`, `ChartsMenuSlot`).
 
 ## 4. Header menu
 
-`src/charts/ChartsListMenu.tsx`, placed in the Data band's `afterHint` right after the Table / Charts switch, only
-while the band shows Charts and the doc has loaded. It reuses `ChartMenu`, which gains one item kind: a row opening a
-submenu of actions (`{ kind: 'submenu', label, options: { value, label }[], onPick }`).
+Built by `src/charts/listMenu.ts` and portalled into the header slot (section 3), only while the band shows Charts
+and the doc has loaded. It reuses `ChartMenu`. "Add chart" and "Chart type" are its existing radio submenus;
+`ChartMenu` gains one item kind for Remove and Copy: `{ kind: 'action', label, onPick }`.
 
 1. A tick per scorecard, as today (moved from the scorecard strip, whose ⋮ goes away).
 2. Sparklines.
 3. One tick per chart in list order, labelled with its title ("Page Views · Sum by day"). Unticking sets `hidden`.
 4. Add chart ▸, listing the eligible kinds. A pick appends `{ id, ...create(cf) }`.
 
-A chart whose `resolve` gives null (its fields are no longer shown and no default exists) stays in the list, greyed,
-and is not drawn.
+A chart whose `resolve` gives null (its fields are no longer shown and no default exists) stays in the list as
+"<type> (columns hidden)", keeps its setup, is not drawn and sends no query.
 
 ## 5. Copy to clipboard
 
 `src/charts/copyImage.ts`.
 
-1. The panel gives the export its title, its `<svg>` element and its legend entries (`{ name, color }[]`, from the
-   series the panel already has).
+1. The panel gives the export its title and its own `<section>`. The export reads the chart's `<svg>` and the legend
+   entries (swatch colour and text) from it.
 2. The export clones the SVG and writes each element's computed `fill`, `stroke`, `font-*` and `opacity` as
    attributes, so no CSS variable or class is needed outside the page.
 3. It draws on a canvas at 2× scale with a plain background in the current theme's card colour: the title, the SVG,
@@ -139,8 +134,8 @@ and is not drawn.
 
 ## 6. Panel width
 
-1. `.dm-chart-panels` becomes a wrapping flex row with the same gaps and inset. Each panel sets its own width from
-   `width(r, buckets)`.
+1. `.dm-chart-panels` becomes a wrapping flex row with the same gaps and inset. Each panel sets its own width
+   (`ChartPanel`'s `width`), from its kind and its bucket count.
 2. Pie, ranked bar, scatter and spread: `min(100%, 26rem)`.
 3. Time series, line and heatmap: `clamp(20rem, <buckets × 28px + axis width>, 100%)`. Horizontal bars use `26rem`.
 4. Panel heights stay as they are now.
@@ -154,10 +149,10 @@ and is not drawn.
 ## 8. Testing
 
 1. Per kind: `eligible`, `create` (including a type switch from every other kind), `resolve` with missing fields,
-   `width`, and its query builder against the traverse options it must produce.
+   and its query builder against the traverse options it must produce.
 2. Settings: `clean` of a v1 doc keeps scorecards and drops charts; bad specs are dropped; defaults are not saved
    until a change.
-3. `useChartsDoc`: two quick changes both land; no `change` before load.
+3. `ChartsBody`: two quick changes both land; no `change` before load.
 4. SVG render tests for `LineChart`, `Heatmap`, `Scatter` and `SpreadChart`: marks, labels, keyboard picks.
 5. `copyImage`: each of the three routes, the fall-through order, the inlined colours.
 6. Playwright, on the mock: add a chart from the header menu, switch its type, set a second measure, hide it, remove
