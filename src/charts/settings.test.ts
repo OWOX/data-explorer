@@ -136,8 +136,8 @@ describe('saved doc v2', () => {
     expect(pickBucketChoice(undefined)).toBe('AUTO');
   });
   test('scorecardsOf reads hidden and sparklines with their defaults', () => {
-    expect(scorecardsOf({})).toEqual({ hidden: new Set(), sparklines: true });
-    expect(scorecardsOf({ scorecards: { hidden: ['x'], sparklines: false } })).toEqual({ hidden: new Set(['x']), sparklines: false });
+    expect(scorecardsOf({})).toEqual({ hidden: new Set(), sparklines: true, metrics: {} });
+    expect(scorecardsOf({ scorecards: { hidden: ['x'], sparklines: false, metrics: { a: 'b' } } })).toEqual({ hidden: new Set(['x']), sparklines: false, metrics: { a: 'b' } });
   });
   test('ids are unique and kinds are checked', () => {
     expect(newChartId()).not.toBe(newChartId());

@@ -65,6 +65,21 @@ test('Charts: each data mart has its own cards in its group cell, Unique Records
   await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
 });
 
+test('a card’s menu switches its metric, saves it under the card id, and the sparkline follows; Hide hides it', async () => {
+  const t = await charts();
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Unique Records', 'Amount · Sum']));
+  await userEvent.click(within(group('orders')!).getByRole('button', { name: 'Amount · Sum options' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Unique Records' }));
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Unique Records', 'Unique Records']));
+  expect(group('orders')!.querySelector('[data-card="amount"] svg[aria-label="Unique Records trend"]')).not.toBeNull();
+  expect(t.puts).toHaveBeenLastCalledWith('orders', { version: 2, scorecards: { metrics: { amount: 'records' } }, charts: undefined });
+  await userEvent.click(within(group('orders')!).getAllByRole('button', { name: 'Unique Records options' })[1]!);
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Hide' }));
+  await waitFor(() => expect(group('orders')!.querySelector('[data-card="amount"]')).toBeNull());
+  expect(t.puts).toHaveBeenLastCalledWith('orders', { version: 2, scorecards: { metrics: { amount: 'records' }, hidden: ['amount'] } });
+});
+
 test('a card is at most 10rem wide and does not grow to fill its mart’s cell', async () => {
   await charts();
   const card = await waitFor(() => { const c = group('orders')!.querySelector('[data-card]'); expect(c).not.toBeNull(); return c!; });

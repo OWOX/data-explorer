@@ -12,7 +12,7 @@ import { Skeleton } from '../ui/Skeleton';
 import { chartFields } from './fields';
 import type { HavingKeys } from './havingKeys';
 import { ChartMenu } from './ChartMenu';
-import { listItems, tailItems } from './listMenu';
+import { hideCard, listItems, setCardMetric, tailItems } from './listMenu';
 import { ChartsMenuSlot } from './menuSlot';
 import { MartCards, useScorecards } from './Scorecards';
 import { KINDS } from './kinds';
@@ -97,7 +97,8 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
         {groups.map((g, i) => (
           <td key={g.path} colSpan={g.span} data-chart-group={g.id} data-chart-path={g.path}>
             <div className="flex items-start gap-1">
-              <MartCards martId={martId} mart={cf.marts[i]!} main={g.path === ''} spark={spark} scores={scores} bucket={bucket} filter={filter} version={version} paused={idle} hasFilters={hasFilters} formatOf={formatOf} />
+              <MartCards martId={martId} mart={cf.marts[i]!} main={g.path === ''} spark={spark} scores={scores} bucket={bucket} filter={filter} version={version} paused={idle} hasFilters={hasFilters} formatOf={formatOf}
+                onMetric={settings ? (id, v) => change((cur) => setCardMetric(cur, id, v, cf.marts[i]!)) : undefined} onHide={settings ? (id) => change((cur) => hideCard(cur, id)) : undefined} />
               {g.path === '' && slot && settings && createPortal(<ChartMenu name="Charts" items={listItems({ cf, settings, resolved, change })} />, slot)}
             </div>
           </td>
