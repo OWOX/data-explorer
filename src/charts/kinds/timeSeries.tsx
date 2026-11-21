@@ -11,7 +11,7 @@ import type { MenuItem } from '../ChartMenu';
 import { ChartPanel } from '../ChartPanel';
 import { measuresOf, type ChartFields } from '../fields';
 import { bucketZone, type Measure } from '../queries';
-import { measureFormat, measureLabel, measureOptions } from '../Scorecards';
+import { isIntegerMeasure, measureFormat, measureLabel, measureOptions } from '../Scorecards';
 import { measureId, pickBucketChoice, pickField, pickMeasure, type Orientation } from '../settings';
 import { BarChart } from '../svg/BarChart';
 import { useBucket } from '../useBucket';
@@ -61,7 +61,7 @@ function TimeSeriesPanel({ martId, cf, r, spark, filter, version, idle, hasFilte
       {s.series && (() => {
         const shown = s.series;
         const pick = (x: string, i?: number) => onFilter([bucketFilter(date, x, bucket!, bucketZone(date)), ...(stack && i !== undefined && !shown[i]!.other ? [dimensionFilter(stack, shown[i]!.blank ? BLANK_KEY : shown[i]!.name)] : [])]);
-        return <BarChart series={shown} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={bucket ? pick : undefined} stacked={!!stack} xTitle={columnTitle(date)} />;
+        return <BarChart series={shown} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={bucket ? pick : undefined} stacked={!!stack} xTitle={columnTitle(date)} integer={isIntegerMeasure(measure)} />;
       })()}
     </ChartPanel>
   );

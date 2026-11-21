@@ -9,7 +9,7 @@ import { BLANK_KEY } from '../blank';
 import { bucketFilter, dimensionFilter } from '../clickFilters';
 import { measuresOf } from '../fields';
 import { bucketZone, type Measure } from '../queries';
-import { measureFormat, measureLabel, measureOptions } from '../Scorecards';
+import { isIntegerMeasure, measureFormat, measureLabel, measureOptions } from '../Scorecards';
 import { measureId, pickBucketChoice, pickField, pickMeasure } from '../settings';
 import { LineChart } from '../svg/LineChart';
 import { useBucket } from '../useBucket';
@@ -47,7 +47,7 @@ function LinePanel({ martId, cf, r, spark, filter, version, idle, hasFilters, fo
       {one.series && !loading && (() => {
         const left = one.series;
         const pick = (x: string, i?: number) => onFilter([bucketFilter(date, x, bucket!, bucketZone(date)), ...(stack && i !== undefined && !left[i]!.other ? [dimensionFilter(stack, left[i]!.blank ? BLANK_KEY : left[i]!.name)] : [])]);
-        return <LineChart left={left} right={rightSeries} area={r.area} ariaLabel={title} formatLeft={(n) => tickText(n, lt, lf)} formatRight={(n) => tickText(n, rt, rf)} onPick={bucket ? pick : undefined} xTitle={columnTitle(date)} />;
+        return <LineChart left={left} right={rightSeries} area={r.area} ariaLabel={title} formatLeft={(n) => tickText(n, lt, lf)} formatRight={(n) => tickText(n, rt, rf)} onPick={bucket ? pick : undefined} xTitle={columnTitle(date)} integerLeft={isIntegerMeasure(measure)} integerRight={!!measure2 && isIntegerMeasure(measure2)} />;
       })()}
     </ChartPanel>
   );

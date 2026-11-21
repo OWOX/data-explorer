@@ -250,3 +250,10 @@ test('SpreadChart anchors its first tick start and its last end', () => {
   expect(xt[0]).toHaveAttribute('text-anchor', 'start');
   expect(xt.at(-1)).toHaveAttribute('text-anchor', 'end');
 });
+
+test('BarChart: a count axis shows whole-number ticks only', () => {
+  const counts: Series[] = [{ name: 'n', color: 'red', points: [pt(1, 24), pt(2, 73)] }];
+  const { container } = wrap(<BarChart series={counts} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} integer />);
+  const ticks = [...container.querySelectorAll('.dm-chart-tick text')].map((t) => t.textContent);
+  expect(ticks).toEqual(['0', '20', '40', '60', '80']);
+});

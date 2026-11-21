@@ -2,6 +2,7 @@ import type { KeyboardEvent, MouseEvent } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
 import { useWidth } from '../useWidth';
 import type { Point } from './Sparkline';
+import { niceTicks } from './ticks';
 
 export type Series = { name: string; color: string; points: Point[]; /** The catch-all series: not a value of the stack dimension, so it cannot be filtered to. */ other?: boolean; /** The blank value of the stack dimension: its filter is "is blank", whatever its name. */ blank?: boolean };
 
@@ -17,7 +18,7 @@ const TITLE_H = 18;
 const CHAR_W = 6;
 
 /** Stacked bars. Sizes are ratios of the largest stacked total, for drawing only; every shown value is the caller's text. */
-export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, canPick, stacked, xTitle }: { series: Series[]; orientation: 'vertical' | 'horizontal'; ariaLabel: string; formatTick: (n: number) => string;
+export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, canPick, stacked, xTitle, integer = false }: { series: Series[]; orientation: 'vertical' | 'horizontal'; ariaLabel: string; formatTick: (n: number) => string;
   /** A click on a bucket (and, when stacked, on one of its segments: `seriesIndex`). */
   onPick?: (x: string, seriesIndex?: number) => void;
   /** Whether a bucket can be filtered to (a blank bucket has no range); default all. */
@@ -25,12 +26,14 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   /** Whether the series are stacked values of one dimension; default: more than one series. */
   stacked?: boolean;
   /** The X field's display name, shown under the bucket labels. */
-  xTitle?: string }) {
+  xTitle?: string;
+  /** The measure counts whole things: the axis steps are whole numbers. */
+  integer?: boolean }) {
   const { ref, width } = useWidth<HTMLDivElement>();
   const xs = series[0]?.points ?? [];
   const totals = xs.map((_, i) => series.reduce((sum, s) => sum + Math.max(0, s.points[i]?.y ?? 0), 0));
   const max = Math.max(0, ...totals);
-  const ticks = [0, 1, 2, 3].map((t) => (t / 3) * max);
+  const { ticks, top } = niceTicks(max, { integer });
   const vertical = orientation === 'vertical';
   const labelW = Math.min(160, Math.max(...xs.map((p) => p.label.length), 0) * CHAR_W + 12);
   const left = vertical ? Math.max(32, Math.max(...ticks.map((t) => formatTick(t).length)) * CHAR_W + 12) : labelW;
@@ -40,7 +43,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   const height = (vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H) + titleH;
   // Keep every k-th bucket label so none overlap.
   const labelStep = vertical ? Math.max(1, Math.ceil((Math.max(...xs.map((p) => p.label.length), 0) * CHAR_W + 8) / band)) : 1;
-  const scale = (n: number) => (max > 0 ? n / max : 0) * (vertical ? PLOT_H : plotW);
+  const scale = (n: number) => (top > 0 ? n / top : 0) * (vertical ? PLOT_H : plotW);
 
   const isStacked = stacked ?? series.length > 1;
   const pickable = (x: string) => !!onPick && (canPick?.(x) ?? true);

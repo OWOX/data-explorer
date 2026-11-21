@@ -1,4 +1,5 @@
 import { AUTO, formatValue, keepsUnit, type Format } from '../format/formats';
+import { isIntegerType } from '../model/field-category';
 import { AGG_LABELS, formatBucket, outputType, type AggFn, type DateBucket } from '../model/aggregation';
 import { fieldLabel } from '../model/fieldLabel';
 import type { Field } from '../model/types';
@@ -115,6 +116,9 @@ export const measureText = (m: Measure, v: unknown, formatOf: Formatter): string
 
 /** A measure's type and format, for an axis or a short value: Records are an integer count. */
 export const measureFormat = (m: Measure, formatOf: Formatter): [type: string, format: Format] => (m.kind === 'metric' ? metricFormat(m.metric.field, m.metric.fn, formatOf) : ['INTEGER', AUTO]);
+
+/** Whether a measure counts whole things (a records count, an integer field's sum or count), so its axis steps are whole numbers. */
+export const isIntegerMeasure = (m: Measure): boolean => m.kind === 'records' || isIntegerType(outputType(m.metric.field, m.metric.fn));
 
 export const numberOf = (v: unknown): number | null => {
   if (v === null || v === undefined || v === '') return null;

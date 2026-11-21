@@ -1,6 +1,6 @@
 import { AUTO } from '../format/formats';
 import type { Field } from '../model/types';
-import { metricText } from './Scorecards';
+import { isIntegerMeasure, metricText } from './Scorecards';
 
 const amount: Field = { name: 'amount', alias: null, type: 'FLOAT', category: 'number', description: null, isPrimaryKey: false };
 const text = (v: unknown) => metricText(amount, 'SUM', v, () => AUTO);
@@ -20,4 +20,13 @@ test('an integer is unchanged', () => {
 
 test('from 1e15 a float keeps its real digits', () => {
   expect(text(1234567890123456.5)).toBe('1,234,567,890,123,456.5');
+});
+
+test('records and integer fields count whole things; floats and averages do not', () => {
+  const int = { ...amount, type: 'INT64' };
+  expect(isIntegerMeasure({ kind: 'records', aliasPath: '', recordsId: 'records:m' })).toBe(true);
+  expect(isIntegerMeasure({ kind: 'metric', metric: { field: int, fn: 'SUM' } })).toBe(true);
+  expect(isIntegerMeasure({ kind: 'metric', metric: { field: int, fn: 'COUNT' } })).toBe(true);
+  expect(isIntegerMeasure({ kind: 'metric', metric: { field: int, fn: 'AVG' } })).toBe(false);
+  expect(isIntegerMeasure({ kind: 'metric', metric: { field: amount, fn: 'SUM' } })).toBe(false);
 });

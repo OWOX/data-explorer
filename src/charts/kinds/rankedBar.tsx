@@ -8,7 +8,7 @@ import { labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
 import { measuresOf } from '../fields';
 import type { Measure } from '../queries';
-import { measureFormat, measureLabel, measureOptions, measureText, numberOf } from '../Scorecards';
+import { isIntegerMeasure, measureFormat, measureLabel, measureOptions, measureText, numberOf } from '../Scorecards';
 import { measureId, pickField, pickMeasure } from '../settings';
 import { BarChart, type Series } from '../svg/BarChart';
 import { useTopValues } from '../useTopValues';
@@ -37,7 +37,7 @@ function RankedBarPanel({ martId, cf, r, filter, version, idle, hasFilters, form
   return (
     <ChartPanel title={title} name="Ranked bar" items={ready ? items : null} width={BOX_WIDTH}
       loading={top.loading} error={top.failed?.error} onRetry={top.failed?.retry ?? (() => {})} empty={top.empty ? emptyText(hasFilters) : null}>
-      {top.categories && !top.loading && <BarChart series={series()} orientation="horizontal" ariaLabel={title} stacked={false}
+      {top.categories && !top.loading && <BarChart series={series()} orientation="horizontal" ariaLabel={title} stacked={false} integer={isIntegerMeasure(measure)}
         formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={(x) => onFilter([dimensionFilter(dim, x)])} canPick={(x) => x !== OTHER_X} />}
     </ChartPanel>
   );

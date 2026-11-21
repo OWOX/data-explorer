@@ -8,7 +8,7 @@ import { keyOf, labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
 import { measuresOf } from '../fields';
 import { measureKey, SCATTER_LIMIT, scatterQuery, type Measure } from '../queries';
-import { measureFormat, measureLabel, measureOptions, measureText, numberOf } from '../Scorecards';
+import { isIntegerMeasure, measureFormat, measureLabel, measureOptions, measureText, numberOf } from '../Scorecards';
 import { measureId, pickField, pickMeasure } from '../settings';
 import { Scatter, type Dot } from '../svg/Scatter';
 import { useChartQuery } from '../useChartQuery';
@@ -43,7 +43,7 @@ function ScatterPanel({ martId, cf, r, filter, version, idle, hasFilters, format
       loading={!read.rows && !read.error} error={read.error} onRetry={read.retry} empty={read.rows?.length === 0 ? emptyText(hasFilters) : null}
       note={full ? `Only the ${SCATTER_LIMIT} values with the largest ${measureLabel(cf, x)} are drawn.` : undefined}>
       {read.rows && <Scatter points={points} ariaLabel={title} xTitle={measureLabel(cf, x)} yTitle={measureLabel(cf, y)}
-        formatX={(n) => tickText(n, xt, xf)} formatY={(n) => tickText(n, yt, yf)} onPick={(k) => onFilter([dimensionFilter(dim, k)])} />}
+        formatX={(n) => tickText(n, xt, xf)} formatY={(n) => tickText(n, yt, yf)} integerX={isIntegerMeasure(x)} integerY={isIntegerMeasure(y)} onPick={(k) => onFilter([dimensionFilter(dim, k)])} />}
     </ChartPanel>
   );
 }
