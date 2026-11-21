@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
 const data = (page: Page) => page.locator('#band-data');
 
-test('add a Sankey from Add chart, set 3 columns, see 3 column titles and filter by a node', async ({ page }) => {
+test('add a Sankey from Add chart, a column of another mart says why it cannot sum, filter by a node', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   // A third dimension: Customers joins its name; is_gift is Orders' boolean.
   await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
@@ -27,7 +27,13 @@ test('add a Sankey from Add chart, set 3 columns, see 3 column titles and filter
   await sankey.getByRole('button', { name: 'Sankey options' }).click();
   await page.getByRole('menuitem', { name: 'Columns' }).click();
   await page.getByRole('menuitemradio', { name: '3' }).click();
-  await expect(sankey.locator('text.dm-chart-axis-title')).toHaveCount(3);
+  // The third column is Customers' name: no metric fits columns of two marts, so the panel says so instead of adding a joined record up per row.
+  await expect(sankey.getByText(/Pick columns from one data mart/)).toBeVisible();
+  await expect(sankey.locator('path[data-link]')).toHaveCount(0);
+  await sankey.getByRole('button', { name: 'Sankey options' }).click();
+  await page.getByRole('menuitem', { name: 'Columns' }).click();
+  await page.getByRole('menuitemradio', { name: '2' }).click();
+  await expect(sankey.locator('text.dm-chart-axis-title')).toHaveCount(2);
   await expect(sankey.locator('path[data-link]').first()).toBeVisible();
   await sankey.screenshot({ path: 'tmp/sankey-e2e.png' });
 
