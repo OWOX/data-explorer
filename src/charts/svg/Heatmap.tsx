@@ -16,7 +16,7 @@ export function Heatmap({ xs, ys, cell, ariaLabel, onPick, canPickX, xTitle, yTi
 }) {
   const { ref, width } = useWidth<HTMLDivElement>();
   const left = Math.min(160, Math.max(...ys.map((y) => y.label.length), 0) * CHAR_W + 12);
-  const colW = Math.max(8, (width - left - 4) / Math.max(1, xs.length));
+  const colW = (width - left - 4) / Math.max(1, xs.length);
   const height = TOP + ys.length * ROW_H + AXIS_H + (xTitle ? 18 : 0);
   const max = Math.max(0, ...xs.flatMap((x) => ys.map((y) => cell(x.key, y.key)?.value ?? 0)));
   const labelStep = Math.max(1, Math.ceil((Math.max(...xs.map((x) => x.label.length), 0) * CHAR_W + 8) / colW));
