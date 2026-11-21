@@ -672,6 +672,15 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 @media (hover: none) { .dm-checklist-row .dm-filter-only { opacity: 1; } }
 .dm-card-live { display: contents; }
 
+/* "Make it main", beside the Grid / Graph switch: the same height and frame. */
+.dm-make-main {
+  display: inline-flex; align-items: center; gap: 0.25rem; height: 28px; padding: 0 0.625rem;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--card);
+  font-size: 0.8125rem; color: var(--foreground); cursor: pointer;
+}
+.dm-make-main:hover { background: var(--accent); color: var(--accent-foreground); }
+.dm-make-main:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+
 /* Table / Charts switch in the Data band header. */
 .dm-seg { display: inline-flex; height: 28px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .dm-seg button { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0 0.625rem; font-size: 0.8125rem; color: var(--muted-foreground); }

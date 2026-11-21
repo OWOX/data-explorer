@@ -1,7 +1,9 @@
+// The test runner drops CSS files from the module graph, so the stylesheet is read from disk; the project has no Node types.
+// @ts-expect-error TS2591: no @types/node
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 
-const css = readFileSync(resolve(__dirname, 'bands.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const read = readFileSync as (path: string, enc: 'utf8') => string;
+const css = read('src/ui/bands/bands.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const rules = (selector: RegExp) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => selector.test(m[1]!.trim())).map((m) => m[2]!);
 
 test('hover and pressed no longer draw a 2px overlay on a card', () => {

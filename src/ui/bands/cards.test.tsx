@@ -191,10 +191,10 @@ describe('MartCard', () => {
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
-  test('the head holds the crown, the description hint and the link, the link last', () => {
-    const { container } = renderMart({ onMakeMain: vi.fn(), mart: { ...mart, description: 'Sales orders' } });
+  test('the head holds the description hint and the link, the link last, and no make-main button', () => {
+    const { container } = renderMart({ mart: { ...mart, description: 'Sales orders' } });
     const labels = [...container.querySelectorAll('.dm-node-actions [aria-label]')].map((b) => b.getAttribute('aria-label'));
-    expect(labels).toEqual(['Make main data mart', 'Description', 'Open in OWOX']);
+    expect(labels).toEqual(['Description', 'Open in OWOX']);
   });
 
   test('click and Enter select', async () => {

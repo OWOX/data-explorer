@@ -5,6 +5,7 @@
 // frame, so a React re-render cannot reset it, and the drawn value lives outside the component, so the bar that
 // replaces the loading shell's one carries on from where it was.
 import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useLatest } from '../useLatest';
 
 /** Where the bar heads while a step is pending. */
 export const CREEP_TO = 0.9;
@@ -33,8 +34,7 @@ export function LoadBar({ fraction }: { fraction: number }) {
   const real = Math.min(1, Math.max(0, fraction));
   const pct = Math.round(real * 100);
   const fill = useRef<HTMLSpanElement>(null);
-  const latest = useRef(real);
-  latest.current = real;
+  const latest = useLatest(real);
   const paint = () => { if (fill.current) fill.current.style.width = `${(drawn.value * 100).toFixed(2)}%`; };
   useLayoutEffect(paint);
   useEffect(() => {
@@ -46,7 +46,7 @@ export function LoadBar({ fraction }: { fraction: number }) {
     };
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, []);
+  }, [latest]);
   return (
     <div className={`dm-loadbar${pct >= 100 ? ' dm-loadbar-done' : ''}`} role="progressbar" aria-label="Reading the project" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
       <span ref={fill} />
