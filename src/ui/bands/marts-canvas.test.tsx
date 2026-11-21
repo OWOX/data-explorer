@@ -263,7 +263,9 @@ test('the line and the release both count the whole scroll box, and neither coun
   fireEvent.pointerMove(box, pointer(stores().x, stores().y));
   await waitFor(() => expect(line()).not.toBeNull());
   fireEvent.pointerMove(document.body, pointer(stores().x, stores().y));
-  await waitFor(() => expect(line()).toBeNull());
+  // Outside the box the target lines stay, none is closest, and a release does nothing.
+  await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')).toBeNull());
+  expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(2);
   fireEvent.pointerMove(box, pointer(stores().x, stores().y));
   await waitFor(() => expect(line()).not.toBeNull());
   fireEvent.pointerUp(box, pointer(stores().x, stores().y, 0));
@@ -570,4 +572,14 @@ test('while a Graph card is held, every target gets a line, only the closest car
   await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')?.getAttribute('data-target')).toBe('stores'));
   fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
   await waitFor(() => expect(tips()).toContain('Stores → Countries'));
+});
+
+test('a zoom step applies the new sizer height with no transition, and the transition returns after a frame', async () => {
+  await joinCountriesUnderCustomers();
+  const sizer = marts().querySelector<HTMLElement>('.dm-tree-sizer')!;
+  const before = sizer.style.height;
+  fireEvent.wheel(zoomBox(), { deltaY: 100, ctrlKey: true });
+  expect(sizer.style.height).not.toBe(before);
+  expect(sizer.style.transition).toBe('none');
+  await waitFor(() => expect(sizer.style.transition).toBe(''));
 });

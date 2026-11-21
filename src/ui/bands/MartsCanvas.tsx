@@ -28,6 +28,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   click: (id: string, options?: ClickOptions) => Promise<void>;
 }) {
   const treeRef = useRef<HTMLDivElement>(null);
+  const sizerRef = useRef<HTMLDivElement>(null);
   // Zoom lives in memory only. The layout stays in unscaled pixels; the tree is drawn with a CSS scale.
   const [scale, setScale] = useState(1);
   const scaleRef = useLatest(scale);
@@ -85,12 +86,16 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
       const r = tree.getBoundingClientRect();
       const lx = (e.clientX - r.left) / from;
       const ly = (e.clientY - r.top) / from;
+      // The sizer's height transition is for ghosts only: a zoom must apply its new size at once, or the scroll offset below is clamped to the old height.
+      const sizer = sizerRef.current;
+      if (sizer) sizer.style.transition = 'none';
       scaleRef.current = to;
       flushSync(() => setScale(to));
       // Keep the layout point that was under the pointer under it.
       const n = tree.getBoundingClientRect();
       box.scrollLeft += n.left - (e.clientX - lx * to);
       box.scrollTop += n.top - (e.clientY - ly * to);
+      if (sizer) requestAnimationFrame(() => { sizer.style.transition = ''; });
     };
     box.addEventListener('wheel', onWheel, { passive: false });
     return () => box.removeEventListener('wheel', onWheel);
@@ -121,6 +126,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   useEffect(() => { placedRef.current = layout.placed; }, [layout]);
 
   const targets = useMemo(() => (drag ? dropTargets(tree, sources ?? [], drag.path) : []), [drag?.path, tree, sources]); // eslint-disable-line react-hooks/exhaustive-deps
+  const valid = new Set(targets.map((t) => t.target));
   const pick = drag?.inside ? closestTarget(targets, layout.placed, drag.x, drag.y) : null;
   const key = [...tree.nodes.keys(), '|', ...levels.flatMap((l) => [l.from, ...l.ghosts.map((g) => g.aliasPath)])].join('>');
   const wires = useMemo<Wire[]>(() => {
@@ -148,13 +154,12 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     return path === '' || !source ? undefined : pathTitle(source, [...tree.nodes.keys()], sources ?? []);
   };
   const dragTitle = drag ? model.marts.get(tree.nodes.get(drag.path)?.martId ?? '')?.title : undefined;
-  // While a card is held, a dashed line runs from it to every place it can be dropped; the closest one is drawn stronger.
-  const at0 = new Map(layout.placed.map((p) => [p.path, p] as const));
-  const held = drag?.inside ? at0.get(drag.path) : undefined;
-  const lines = held ? targets.flatMap((t) => { const to = at0.get(t.target); return to ? [{ path: t.target, d: dragLinePath(held, to) }] : []; }) : [];
+  // While a card is held (also with the pointer outside the box, where a release does nothing), a dashed line runs from it to every place it can be dropped; the closest one is drawn stronger.
   const at = new Map(layout.placed.map((p) => [p.path, p] as const));
+  const held = drag ? at.get(drag.path) : undefined;
+  const lines = held ? targets.flatMap((t) => { const to = at.get(t.target); return to ? [{ path: t.target, d: dragLinePath(held, to) }] : []; }) : [];
   return (
-    <div className="dm-tree-sizer" style={{ width: layout.width * scale, height: layout.height * scale }}>
+    <div ref={sizerRef} className="dm-tree-sizer" style={{ width: layout.width * scale, height: layout.height * scale }}>
     <div
       ref={treeRef}
       className="dm-tree"
@@ -169,7 +174,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
         const pos = at.get(node.path);
         if (!mart || !pos) return [];
         return [
-          <div key={node.path} className={`dm-tree-node${drag && node.path !== drag.path && pick?.target !== node.path ? ' dm-dimmed' : ''}`} data-tree-path={node.path} style={{ left: pos.x, top: pos.y, width: CARD_W }}>
+          <div key={node.path} className={`dm-tree-node${drag && node.path !== drag.path && (pick ? pick.target !== node.path : !valid.has(node.path)) ? ' dm-dimmed' : ''}`} data-tree-path={node.path} style={{ left: pos.x, top: pos.y, width: CARD_W }}>
             <MartCard
               mart={mart}
               contexts={contextsOf(model.contexts, mart.contextIds)}

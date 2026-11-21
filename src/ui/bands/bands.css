@@ -670,7 +670,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-tree-scroll { overflow: auto; padding: 1rem; }
 .dm-tree { position: relative; transform-origin: 0 0; }
 /* Sized to the scaled tree, so the scroll box scrolls what is drawn. */
-.dm-tree-sizer { position: relative; transition: height 200ms ease; overflow: clip; overflow-clip-margin: 12px; }
+.dm-tree-sizer { position: relative; transition: height 200ms ease; overflow: clip; overflow-clip-margin: 56px; }
 @media (prefers-reduced-motion: reduce) { .dm-tree-sizer { transition: none; } }
 .dm-tree-node { position: absolute; z-index: 2; }
 .dm-tree-node > .dm-node { width: 100%; }
