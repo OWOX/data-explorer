@@ -6,6 +6,7 @@ import { ChartPanel } from '../ChartPanel';
 import { BarChart, type Series } from './BarChart';
 import { PieChart } from './PieChart';
 import { LineChart } from './LineChart';
+import { Heatmap } from './Heatmap';
 import { Sparkline, type Point } from './Sparkline';
 
 const pt = (i: number, y: number | null): Point => ({ x: `2026-0${i}`, y, label: `M${i}`, valueText: y === null ? '' : `v${y}` });
@@ -180,4 +181,17 @@ test('LineChart aligns a second series by bucket, not by position', () => {
   const { container } = wrap(<LineChart left={left} right={right} area={false} ariaLabel="x" formatLeft={String} />);
   const rows = [...container.querySelectorAll('tbody tr')].map((tr) => [...tr.children].map((c) => c.textContent));
   expect(rows).toEqual([['M1', 'a1', ''], ['M2', 'a2', 'b2'], ['M3', '', 'b3']]);
+});
+
+test('Heatmap draws a cell per pair with a value, darker for larger values, and picks a cell by keyboard', async () => {
+  const onPick = vi.fn();
+  const values: Record<string, number> = { 'x1|y1': 1, 'x2|y1': 4 };
+  wrap(<Heatmap xs={[{ key: 'x1', label: 'X1' }, { key: 'x2', label: 'X2' }]} ys={[{ key: 'y1', label: 'Y1' }]} ariaLabel="H"
+    cell={(x, y) => (values[`${x}|${y}`] === undefined ? undefined : { value: values[`${x}|${y}`]!, text: String(values[`${x}|${y}`]) })} onPick={onPick} />);
+  const cells = document.querySelectorAll('rect[data-cell]');
+  expect(cells).toHaveLength(2);
+  expect(Number(cells[1]!.getAttribute('fill-opacity'))).toBeGreaterThan(Number(cells[0]!.getAttribute('fill-opacity')));
+  screen.getByRole('button', { name: 'Filter to X2, Y1' }).focus();
+  await userEvent.keyboard('{Enter}');
+  expect(onPick).toHaveBeenCalledWith('x2', 'y1');
 });
