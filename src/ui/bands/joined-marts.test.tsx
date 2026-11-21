@@ -102,18 +102,46 @@ test('taking the main group out promotes the next joined mart, which brings the 
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('the make-main button makes a joined mart the main one, and Undo takes it back in one step', async () => {
+test('the header\'s make-main button makes the selected joined mart the main one, and Undo takes it back in one step', async () => {
   setup();
   await ready();
   await click('Customers');
   await waitFor(() => expect(title()).toBe('Orders + Customers'));
-  await userEvent.click(within(card('Customers')).getByRole('button', { name: 'Make main data mart' }));
+  expect(within(card('Customers')).queryByRole('button', { name: /make main/i })).toBeNull();
+  await userEvent.click(await screen.findByRole('button', { name: 'Make it main' }));
   await waitFor(() => expect(groupTitles()[0]).toBe('Customers'));
   expect(title()).toBe('Customers');
   // The old main leaves the band once the card animation ends.
   await waitFor(() => expect(marts().querySelector('article')).toBe(card('Customers')));
   await undo();
   await waitFor(() => expect(title()).toBe('Orders + Customers'));
+});
+
+test('the make-main button is only there while a joined card is selected, in Grid and in Graph', async () => {
+  setup();
+  await ready();
+  const button = () => screen.queryByRole('button', { name: 'Make it main' });
+  expect(button()).toBeNull();
+  await click('Customers');
+  await waitFor(() => expect(button()).not.toBeNull());
+  // Only the selected card has the data-focused mark that gives it the 2px border.
+  expect(card('Customers')).toHaveAttribute('data-focused');
+  expect(marts().querySelectorAll('[data-focused]')).toHaveLength(1);
+  // The main card selected: it is already main, so there is nothing to offer.
+  fireEvent.click(card('Orders'));
+  await waitFor(() => expect(button()).toBeNull());
+  expect(card('Orders')).toHaveAttribute('data-focused');
+  expect(marts().querySelectorAll('[data-focused]')).toHaveLength(1);
+  // Graph: the pinned card is the selected one.
+  await userEvent.click(within(screen.getByRole('radiogroup', { name: 'Show data marts as' })).getByRole('radio', { name: 'Graph' }));
+  const node = await screen.findByTestId('marts-canvas');
+  expect(button()).toBeNull();
+  const customers = within(node).getByText('Customers').closest('article')!;
+  fireEvent.click(customers);
+  await waitFor(() => expect(button()).not.toBeNull());
+  expect(node.querySelectorAll('[data-focused]')).toHaveLength(1);
+  await userEvent.click(button()!);
+  await waitFor(() => expect(button()).toBeNull());
 });
 
 test('with Orders main, the band lists the marts it can join at any depth, and not Order Items', async () => {

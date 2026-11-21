@@ -7,6 +7,7 @@ import { keyShown } from '../../sdk/mock/key-shown';
 import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
 import { openSubmenu } from '../explorer/menu-test-utils';
+import { dragOntoMain } from './drag-main-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
 
@@ -57,12 +58,12 @@ const sources = () => band('band-sources');
 const martCard = (title: string) => within(marts()).getByText(title).closest('article')!;
 
 const headingText = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!).join(' + ');
-/** Presses the make-main button on a card: the way to a mart the main one cannot join. */
+/** Drags a card onto the main one: the way to a mart the main one cannot join (a click on it only joins it or explains). */
 async function makeMain(title: string) {
   await within(marts()).findByText(title);
-  await userEvent.click(within(martCard(title)).getByRole('button', { name: 'Make main data mart' }));
+  dragOntoMain(martCard(title), marts().querySelector('article[aria-pressed="true"]:not([data-path]):not([data-ghost])')!);
 }
-/** Makes a mart the main one with its make-main button: a click on the main card only focuses it. */
+/** Makes a mart the main one by dragging it onto the main card: a click on the main card only focuses it. */
 async function goTo(title: string) {
   await makeMain(title);
   await waitFor(() => expect(headingText() === title || headingText()!.startsWith(`${title} + `)).toBe(true));
@@ -1713,7 +1714,7 @@ describe('ghost cards on hover', () => {
     const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
     expect(ghost).toHaveClass('dm-unjoinable');
     fireEvent.click(ghost);
-    expect(await within(ghost).findByRole('status')).toHaveTextContent("Can't join Orders. Use Make main data mart to make it the main data mart.");
+    expect(await within(ghost).findByRole('status')).toHaveTextContent("Can't join Orders. Find it in the list and drag it onto Orders to make it the main data mart.");
   });
 
   test('crossing another card on the way to a ghost keeps the ghosts', async () => {
@@ -1736,13 +1737,12 @@ describe('ghost cards on hover', () => {
     await waitFor(() => expect(within(marts()).queryByText('Sessions')).toBeNull(), { timeout: 1500 });
   });
 
-  test('the make-main button on a ghost makes it the main data mart', async () => {
+  test('a ghost has no make-main button', async () => {
     await mountWith();
     await within(marts()).findByText('Customers');
     fireEvent.pointerOver(cardOf('Customers'));
     const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
-    await userEvent.click(within(ghost).getByRole('button', { name: 'Make main data mart' }));
-    await waitFor(() => expect(headingText()).toBe('Sessions'));
+    expect(within(ghost).queryByRole('button', { name: /make (it )?main/i })).toBeNull();
   });
 
   test('ghosts do not change the band total and request no row count', async () => {

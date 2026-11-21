@@ -15,7 +15,7 @@ import { overOf, useGhostChain } from './useGhostChain';
 import type { ClickOptions } from './useCardClick';
 import { revisionOf, useWires, type Wire } from './wires';
 
-export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpenApp, onRetryCount, onRequestCount, click }: {
+export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart }: {
   model: Model;
   mainId: string | null;
   columns: string[];
@@ -26,6 +26,8 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   onRetryCount: (id: string) => void;
   onRequestCount: (id: string) => void;
   click: (id: string, options?: ClickOptions) => Promise<void>;
+  /** Told which mart the pinned (selected) card is, or null when none is. */
+  onSelectedMart?: (martId: string | null) => void;
 }) {
   const treeRef = useRef<HTMLDivElement>(null);
   const sizerRef = useRef<HTMLDivElement>(null);
@@ -120,6 +122,11 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   // A pin on a path the tree lost, or one kept for another main mart, is dropped now so it does not come back (main A, B, A).
   if (pinState !== null && pin === null) setPinState(null);
   // A pinned card keeps its ghosts while another card is hovered, as in the Grid; hovered ghosts still extend the chain from it.
+  const pinnedMart = pin === null || pin === '' ? null : tree.nodes.get(pin)?.martId ?? null;
+  useEffect(() => {
+    onSelectedMart?.(pinnedMart);
+    return () => onSelectedMart?.(null);
+  }, [pinnedMart, onSelectedMart]);
   const anchor = drag ? null : pin ?? hover.anchor;
   const { levels } = useMemo(
     () => (sources ? ghostLevels(tree, sources, anchor, hover.chain, (s) => model.marts.get(s.martId)?.accessible === true) : { levels: [], chain: [] }),

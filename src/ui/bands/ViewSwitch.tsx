@@ -1,4 +1,4 @@
-import type { LucideIcon } from 'lucide-react';
+import { House, type LucideIcon } from 'lucide-react';
 import { useRef } from 'react';
 
 export type SwitchOption<T extends string> = { value: T; label: string; icon: LucideIcon };
@@ -24,5 +24,14 @@ export function ViewSwitch<T extends string>({ label, options, value, onChange }
         </button>
       ))}
     </div>
+  );
+}
+
+/** Makes the selected card the main data mart. Sits beside the Grid / Graph switch; the caller shows it only when the selected card can be made main. */
+export function MakeMainButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" className="dm-make-main" onClick={onClick}>
+      <House size={14} aria-hidden />Make it main
+    </button>
   );
 }

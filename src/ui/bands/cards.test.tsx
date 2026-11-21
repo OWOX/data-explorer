@@ -80,13 +80,6 @@ describe('SourceCard', () => {
 });
 
 describe('MartCard', () => {
-  test('draws the picked icon only when one is set', () => {
-    const { container, rerender, props } = renderMart();
-    expect(container.querySelector('.dm-logo')).toBeNull();
-    rerender(<TooltipProvider><MartCard {...props} mart={{ ...mart, icon: 'orders' }} /></TooltipProvider>);
-    expect(container.querySelector('.dm-logo svg')).not.toBeNull();
-  });
-
   test('the open link and the (i) of a card sit in a reveal wrapper (shown by hover or focus of the card, still focusable)', () => {
     const { container } = renderMart();
     expect(screen.getByLabelText('Description').closest('.dm-card-reveal')).not.toBeNull();
@@ -191,10 +184,23 @@ describe('MartCard', () => {
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
-  test('the head holds the crown, the description hint and the link, the link last', () => {
-    const { container } = renderMart({ onMakeMain: vi.fn(), mart: { ...mart, description: 'Sales orders' } });
+  test('the head holds the description hint and the link, the link last, and no make-main button', () => {
+    const { container } = renderMart({ mart: { ...mart, description: 'Sales orders' } });
     const labels = [...container.querySelectorAll('.dm-node-actions [aria-label]')].map((b) => b.getAttribute('aria-label'));
-    expect(labels).toEqual(['Make main data mart', 'Description', 'Open in OWOX']);
+    expect(labels).toEqual(['Description', 'Open in OWOX']);
+  });
+
+  test('every card shows an icon before its title: the picked one, or the default when the mart has none', () => {
+    const { container, rerender, props } = renderMart();
+    const head = container.querySelector('.dm-node-head')!;
+    // No icon picked: the host's default one, ahead of the title.
+    expect(head.firstElementChild).toHaveClass('dm-logo');
+    expect(head.querySelector('.dm-logo svg')).toHaveClass('lucide-box');
+    expect(head.querySelector('.dm-logo ~ .dm-node-title')).not.toBeNull();
+    rerender(<TooltipProvider><MartCard {...props} mart={{ ...mart, icon: 'orders' }} /></TooltipProvider>);
+    // A picked icon replaces the default.
+    expect(container.querySelectorAll('.dm-node-head .dm-logo svg')).toHaveLength(1);
+    expect(container.querySelector('.dm-logo svg')).not.toHaveClass('lucide-box');
   });
 
   test('click and Enter select', async () => {

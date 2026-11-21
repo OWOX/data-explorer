@@ -180,18 +180,16 @@
   background: var(--card); cursor: pointer;
   transition: opacity 150ms, box-shadow 150ms;
 }
-/* Selected or hovered, the border goes bold. The 2px line is an overlay laid over the card's own 1px
-   border, so the box does not change size and nothing around it shifts. */
-.dm-node::after {
-  content: ''; position: absolute; inset: -1px; border: 2px solid transparent; border-radius: inherit;
-  pointer-events: none; transition: border-color 150ms;
+/* Every card has a 1px border. The one selected card (the focused one in Grid, the pinned one in Graph, the chosen source) has 2px
+   in its tone; the extra pixel comes out of the padding, so the box keeps its size and nothing around it shifts. Hover changes nothing here. */
+.dm-node[data-focused], #band-sources .dm-node[aria-pressed='true'] {
+  border-width: 2px; border-color: var(--tone); padding: calc(0.75rem - 1px);
 }
-.dm-node:hover::after, .dm-node[aria-pressed='true']::after, .dm-node[data-focused]::after { border-color: var(--tone); }
-.dm-node.lit.aside:hover::after { border-color: color-mix(in oklab, var(--tone) 50%, transparent); }
 /* In Grid, only the cards on the current path (the main and joined marts, and what the lit lines reach) sit on a white card; the rest let the band show through. */
 #band-marts .dm-band-grid > .dm-node:not(.dm-in-path) { background: transparent; }
-/* Held down, the card is being carried rather than pointed at. */
+/* The keyboard ring is for a card that is not selected: the selected one already shows its border. */
 .dm-node:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); }
+.dm-node[data-focused]:focus-visible, #band-sources .dm-node[aria-pressed='true']:focus-visible { box-shadow: none; }
 .dm-node.dm-unjoinable { opacity: 0.45; }
 .dm-node.dm-unjoinable:hover, .dm-node.dm-unjoinable:focus-visible { opacity: 0.7; }
 .dm-node.dm-ghost { border-width: 1px; border-style: dashed; opacity: 0.5; transition: none; }
@@ -247,7 +245,7 @@
   font-size: 0.6875rem; line-height: 1.5;
 }
 
-.dm-contexts { position: relative; display: flex; gap: 0.25rem; flex: 1; min-width: 0; overflow: hidden; }
+.dm-contexts { position: relative; display: flex; justify-content: flex-end; gap: 0.25rem; flex: 1; min-width: 0; overflow: hidden; }
 .dm-contexts .dm-badge { flex-shrink: 0; white-space: nowrap; }
 /* Folded, the row holds one chip that always fits, and its bubble has to get out above the card. */
 .dm-contexts-bare { overflow: visible; }
@@ -274,14 +272,9 @@ button.dm-mark { cursor: pointer; }
 .dm-canvas.focused .dm-node { opacity: 0.25; }
 .dm-canvas.focused .dm-node.lit { opacity: 1; }
 .dm-canvas.focused .dm-node[aria-pressed='true'] { opacity: 1; }
-/* The selected card (the focused one in Grid, the pinned one in Graph, the chosen source) draws its bold border through the ::after overlay above; no card changes background. */
 .dm-canvas.sources-focused #band-sources .dm-node { opacity: 0.25; }
 .dm-canvas.sources-focused #band-sources .dm-node.lit { opacity: 1; }
 .dm-canvas.sources-focused #band-sources .dm-node[aria-pressed='true'] { opacity: 1; }
-.dm-node[aria-pressed='true'],
-.dm-node[aria-pressed='true']:hover {
-  border-color: var(--tone);
-}
 /* A data mart the member cannot open: still a card, but plainly not one to expect anything from. */
 .dm-noaccess { opacity: 0.6; filter: grayscale(0.8); }
 /* The row count's retry: a badge that is also a button, without the browser's button chrome. */
@@ -545,7 +538,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-filter-all { color: var(--muted-foreground); font-size: 0.6875rem; }
 .dm-filter-menu {
   position: absolute; z-index: 40; right: 0; top: calc(100% + 0.25rem);
-  min-width: 16rem; max-height: 22rem; overflow: auto;
+  min-width: 12rem; max-height: 18rem; overflow: auto;
   border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.375rem;
   background: var(--card); box-shadow: 0 8px 20px rgb(0 0 0 / 0.14);
 }
@@ -568,6 +561,35 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-filter-menu label:hover { background: var(--muted); }
 .dm-filter-menu label svg { color: var(--muted-foreground); flex-shrink: 0; }
 .dm-filter-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The checklist inside a section's filter menu, drawn as Data Flow's: plain checkboxes, a "Select all" header over a hairline,
+   quiet rows with the app font, a grey tick, and "only" on hover. The Sheets look stays for the pickers that are not these menus. */
+.dm-filter-menu .dm-checklist { gap: 0; font: inherit; font-size: 0.8125rem; }
+.dm-filter-menu .dm-checklist-top {
+  align-items: center; margin-bottom: 0.25rem; padding: 0.25rem 0.375rem 0.375rem;
+  border-bottom: 1px solid var(--border);
+}
+.dm-filter-menu .dm-checklist-links { gap: 0.25rem; font-weight: 500; color: var(--muted-foreground); }
+.dm-filter-menu .dm-checklist-link { color: var(--foreground); text-decoration: none; }
+.dm-filter-menu .dm-checklist-link:hover { text-decoration: underline; }
+.dm-filter-menu .dm-checklist-link:focus-visible { outline-color: var(--ring); }
+.dm-filter-menu .dm-checklist-count { font-size: 0.6875rem; }
+.dm-filter-menu .dm-checklist-search { margin: 0 0 0.25rem; }
+.dm-filter-menu .dm-checklist-search input { height: 1.75rem; border-radius: 0.375rem; padding: 0 1.75rem 0 0.5rem; font-size: 0.8125rem; }
+.dm-filter-menu .dm-checklist-search input:focus-visible { border-color: var(--muted-foreground); box-shadow: none; }
+.dm-filter-menu .dm-checklist-search svg { right: 0.5rem; }
+.dm-filter-menu .dm-checklist-row, .dm-filter-menu .dm-checklist-opt { min-height: 0; border-radius: 0.375rem; }
+.dm-filter-menu .dm-checklist-row:hover, .dm-filter-menu .dm-checklist-row:focus-within { background: var(--muted); }
+.dm-filter-menu .dm-checklist-opt { padding: 0.25rem 0.375rem; }
+.dm-filter-menu .dm-checklist-opt:focus-visible { box-shadow: inset 0 0 0 1px var(--muted-foreground); }
+.dm-filter-menu .dm-checklist-opt[aria-selected='true'] { font-weight: 500; }
+.dm-filter-menu .dm-checklist-check {
+  box-sizing: border-box; width: 1rem; height: 1rem; align-items: center;
+  border: 1px solid var(--border); border-radius: 0.25rem; background: var(--card); color: var(--primary-foreground);
+}
+.dm-filter-menu .dm-checklist-opt[aria-selected='true'] .dm-checklist-check { border-color: var(--muted-foreground); background: var(--muted-foreground); }
+.dm-filter-menu .dm-checklist-check svg { width: 0.75rem; height: 0.75rem; stroke-width: 3; }
+.dm-filter-menu .dm-checklist-empty { padding: 0.375rem; font-size: 0.8125rem; }
 
 /* --- export menu: reuses the filter menu's frame; its rows are buttons, not checkboxes --------------- */
 .dm-export > summary { gap: 0.25rem; }
@@ -623,9 +645,13 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-loadbar span {
   display: block; height: 100%; border-radius: inherit;
   background: #cee2f7;
-  transition: width 240ms ease-out, background 240ms ease-out;
+  /* The width is animated frame by frame in LoadBar.tsx; only the colour is a transition. */
+  transition: background 240ms ease-out;
 }
 .dm-loadbar-done span { background: #d9eed7; }
+/* Once full it lingers (LOADED_HOLD_MS), then fades just before the bodies open. */
+.dm-loadbar-done { animation: dm-loadbar-fade 200ms ease-in 250ms forwards; }
+@keyframes dm-loadbar-fade { to { opacity: 0; } }
 
 /* --- the Data band takes the height left on the page, and its grid or charts scroll inside it --- */
 /* The page is a column at least a viewport tall: the canvas grows to fill it and the open Data band takes
@@ -641,7 +667,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 /* --- full screen: the Data band alone, fixed over the plugin area, its title row on top and the grid under it --- */
 /* Nothing is unmounted: the other bands and the header are only hidden, so the grid keeps its selection and scroll. */
 .dm-full .dm-page-header, .dm-full .dm-canvas > :not(#band-data) { display: none; }
-.dm-full #band-data { position: fixed; inset: 0; min-height: 0; z-index: 40; display: flex; flex-direction: column; border-radius: 0; border-bottom: 0; background: var(--background); }
+.dm-full #band-data { position: fixed; inset: 0; min-height: 0; z-index: 40; display: flex; flex-direction: column; border-bottom: 0; background: var(--background); }
 .dm-full #band-data .dm-band-reveal { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); }
 .dm-full #band-data .dm-band-reveal-in { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0.5rem; }
 .dm-full #band-data .dm-bigcard { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
@@ -674,6 +700,15 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-checklist-row:hover .dm-filter-only, .dm-checklist-row:focus-within .dm-filter-only { opacity: 1; }
 @media (hover: none) { .dm-checklist-row .dm-filter-only { opacity: 1; } }
 .dm-card-live { display: contents; }
+
+/* "Make it main", beside the Grid / Graph switch: the same height and frame. */
+.dm-make-main {
+  display: inline-flex; align-items: center; gap: 0.25rem; height: 28px; padding: 0 0.625rem;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--card);
+  font-size: 0.8125rem; color: var(--foreground); cursor: pointer;
+}
+.dm-make-main:hover { background: var(--accent); color: var(--accent-foreground); }
+.dm-make-main:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 
 /* Table / Charts switch in the Data band header. */
 .dm-seg { display: inline-flex; height: 28px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }

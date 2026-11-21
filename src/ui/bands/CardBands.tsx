@@ -10,7 +10,7 @@ import { useRememberLeaving } from '../../state/leaving';
 import { useServices, useStore } from '../../state/store';
 import { storageMark } from '../storage-icons';
 import { Band } from './Band';
-import { ViewSwitch, type SwitchOption } from './ViewSwitch';
+import { MakeMainButton, ViewSwitch, type SwitchOption } from './ViewSwitch';
 import { MultiSelect } from './MultiSelect';
 import { ContextBadges } from './ContextBadges';
 import { useSmartSearchScope } from './SmartSearchScope';
@@ -124,6 +124,8 @@ export function CardBands({
   // waits 400 ms, so the pointer can cross the gap to a ghost.
   const [ghostOf, setGhostOf] = useState<string | null>(null);
   const click = useCardClick(model);
+  // The Graph's pinned card, when it is a joined one (the Grid's own is `focus`, below).
+  const [graphSelected, setGraphSelected] = useState<string | null>(null);
   const drag = useCardDrag(canvas, selection.martId, (id) => model.marts.get(id)?.title ?? id, (id) => void click(id, { mode: 'makeMain' }), (id) => view === 'grid' && model.marts.get(id)?.accessible === true);
 
   // The report tree: a joined mart is a node per alias path, in Graph and in Grid, and a source line reaches each of them.
@@ -300,6 +302,10 @@ export function CardBands({
   // In Graph the band counts the marts of the report tree.
   const reportSize = canvasTree ? canvasTree.nodes.size : 0;
 
+  // The selected card, when it is a joined mart the member can open: the header offers to make it the main one.
+  const selectedJoined = view === 'canvas' ? graphSelected : focus ? canvasTree?.nodes.get(focus)?.martId ?? null : null;
+  const makeMainId = selectedJoined !== null && selectedJoined !== mainFor && model.marts.get(selectedJoined)?.accessible === true ? selectedJoined : null;
+
   const unjoinableFor = (id: string) => !!selection.martId && visible.joinable !== null && id !== selection.martId && !joined.includes(id) && !visible.joinable.has(id);
 
   return (
@@ -320,7 +326,7 @@ export function CardBands({
           return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => { rememberLeaving(null); dispatch({ type: 'selectSource', key: source.key }); if (view === 'canvas') pickView('grid'); }} />;
         })}
       </Band>
-      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={view === 'canvas' ? reportSize : visible.ids.length} hint="The main data mart first, and every mart it can join; or what the search and the filters match. Drag a card onto the main one to make it main." afterHint={<><ViewSwitch label="Show data marts as" options={MARTS_VIEWS} value={view} onChange={pickView} />{view === 'grid' && contextBadges}</>} toolbar={view === 'grid' ? storageFilter : undefined} grid={view === 'grid'} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
+      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={view === 'canvas' ? reportSize : visible.ids.length} hint="The main data mart first, and every mart it can join; or what the search and the filters match. Drag a card onto the main one to make it main." afterHint={<><ViewSwitch label="Show data marts as" options={MARTS_VIEWS} value={view} onChange={pickView} />{makeMainId !== null && <MakeMainButton onClick={() => void click(makeMainId, { mode: 'makeMain' })} />}{view === 'grid' && contextBadges}</>} toolbar={view === 'grid' ? storageFilter : undefined} grid={view === 'grid'} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
         {view === 'canvas' ? (
           <div
             className="dm-tree-scroll"
@@ -328,7 +334,7 @@ export function CardBands({
             // Scrolling this box moves its cards without resizing anything, so tell the page wires to look again.
             onScroll={(e) => e.currentTarget.dispatchEvent(new Event('animationend', { bubbles: true }))}
           >
-            <MartsCanvas model={model} mainId={selection.martId} columns={mainColumns} sources={joinSources} counts={counts} dq={dq} onOpenApp={onOpenApp} onRetryCount={onRetryCount} onRequestCount={onRequestCount} click={click} />
+            <MartsCanvas model={model} mainId={selection.martId} columns={mainColumns} sources={joinSources} counts={counts} dq={dq} onOpenApp={onOpenApp} onRetryCount={onRetryCount} onRequestCount={onRequestCount} click={click} onSelectedMart={setGraphSelected} />
           </div>
         ) : <>
         {(visible.ids.length === 0 || noMatch) && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
@@ -360,7 +366,6 @@ export function CardBands({
                 dropTarget={isMain && drag !== null}
                 dropHot={isMain && drag !== null && drag.overMain}
                 mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
-                onMakeMain={!isMain && mart.accessible ? () => void click(id, { mode: 'makeMain' }) : undefined}
                 onRemove={isMain ? undefined : () => {
                   const parent = canvasTree!.nodes.get(node.parent!)!;
                   void click(id, { removePaths: node.bare ? subtreePaths(canvasTree!, path) : [path] }).then(() => document.getElementById(martElementId(parent.martId, parent.path || undefined))?.focus(), () => undefined);
@@ -395,7 +400,6 @@ export function CardBands({
                   mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
                   joinTitle={focus !== null ? model.marts.get(canvasTree?.nodes.get(focus)?.martId ?? '')?.title : undefined}
                   addViaEscape={focus !== null && !at && !!mainId && visible.joinable?.has(id) === true}
-                  onMakeMain={mainId && mart.accessible ? () => void click(id, { mode: 'makeMain' }) : undefined}
                   onSelect={() => (at ? addFromBand(id, { addAt: at.aliasPath }) : addFromBand(id))}
                   onOpenApp={() => onOpenApp(id)}
                   onRetryCount={() => onRetryCount(id)}
@@ -443,7 +447,6 @@ export function CardBands({
               aside={aside.has(el)}
               unjoinable={unjoinableFor(id)}
               mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
-              onMakeMain={mainId && id !== mainId ? () => void click(id, { mode: 'makeMain' }) : undefined}
               onSelect={() => addFromBand(id)}
               onOpenApp={() => onOpenApp(id)}
             />,
