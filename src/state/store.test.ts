@@ -23,7 +23,7 @@ test('selectSource toggles, clears the mart and the record, and pushes history',
   const start = s({ selection: sel({ martId: 'a', record: { martId: 'a', pk: { id: 1 } } }) });
   const on = reducer(start, { type: 'selectSource', key: 'Shopify' });
   expect(on.selection).toEqual(sel({ sourceKey: 'Shopify' }));
-  expect(on.history).toEqual([start.selection]);
+  expect(on.history).toMatchObject([start.selection]);
   const off = reducer(on, { type: 'selectSource', key: 'Shopify' });
   expect(off.selection).toEqual(sel());
   expect(off.history).toHaveLength(2);
@@ -34,7 +34,7 @@ test('selectMart keeps the source only when it feeds the mart, and clears the re
   const start = s({ selection: sel({ sourceKey: 'Shopify', martId: 'a', record: { martId: 'a', pk: { id: 1 } } }) });
   const kept = reducer(start, { type: 'selectMart', id: 'b', sourceOf });
   expect(kept.selection).toEqual(sel({ sourceKey: 'Shopify', martId: 'b' }));
-  expect(kept.history).toEqual([start.selection]);
+  expect(kept.history).toMatchObject([start.selection]);
   expect(reducer(start, { type: 'selectMart', id: 'c', sourceOf }).selection).toEqual(sel({ martId: 'c' }));
   expect(reducer(start, { type: 'selectMart', id: 'd', sourceOf }).selection.sourceKey).toBeNull();
 });
@@ -49,7 +49,7 @@ test('openRecord sets the mart and the record, keeping the grid filters of the s
   const start = s({ selection: sel({ martId: 'a', filters }) });
   const st = reducer(start, { type: 'openRecord', martId: 'a', pk: { id: 7 }, sourceOf });
   expect(st.selection).toEqual(sel({ martId: 'a', filters, record: { martId: 'a', pk: { id: 7 } } }));
-  expect(st.history).toEqual([start.selection]);
+  expect(st.history).toMatchObject([start.selection]);
   const other = reducer(start, { type: 'openRecord', martId: 'c', pk: { id: 7 }, sourceOf });
   expect(other.selection).toEqual(sel({ martId: 'c', record: { martId: 'c', pk: { id: 7 } } }));
 });
@@ -58,7 +58,7 @@ test('follow a record target selects its mart and opens the record in one step',
   const start = s({ selection: sel({ sourceKey: 'Shopify', martId: 'a' }) });
   const st = reducer(start, { type: 'follow', target: { kind: 'record', martId: 'b', pk: { id: 3 } }, sourceOf });
   expect(st.selection).toEqual(sel({ sourceKey: 'Shopify', martId: 'b', record: { martId: 'b', pk: { id: 3 } } }));
-  expect(st.history).toEqual([start.selection]);
+  expect(st.history).toMatchObject([start.selection]);
 });
 
 test('follow a filtered mart selects it with the filters and clears the record', () => {
@@ -66,7 +66,7 @@ test('follow a filtered mart selects it with the filters and clears the record',
   const start = s({ selection: sel({ martId: 'a', record: { martId: 'a', pk: { id: 1 } } }) });
   const st = reducer(start, { type: 'follow', target: { kind: 'mart', martId: 'c', filters }, sourceOf });
   expect(st.selection).toEqual(sel({ martId: 'c', filters }));
-  expect(st.history).toEqual([start.selection]);
+  expect(st.history).toMatchObject([start.selection]);
 });
 
 test('undo restores the previous selection, in order, and does nothing with no history', () => {
@@ -303,7 +303,7 @@ describe('editGrid', () => {
   test('stores the grid and pushes the previous one as a step', () => {
     const st = reducer(base(), { type: 'editGrid', martId: 'a', grid: filtered });
     expect(st.grids.a).toBe(filtered);
-    expect(st.history).toEqual([{ ...sel({ martId: 'a' }), grids: { a: grid() } }]);
+    expect(st.history).toMatchObject([{ ...sel({ martId: 'a' }), grids: { a: grid() } }]);
     expect(st.future).toEqual([]);
   });
 
@@ -388,6 +388,62 @@ describe('holdGrid and rebaseGrid: edits made on defaults while the saved view i
     expect(st.holds).toEqual({});
     // Redo goes back to the edit, taking the late parts.
     expect(reducer(st, { type: 'redo' }).grids.a).toEqual(grid({ sorts: [], limit: 400 }));
+  });
+});
+
+describe('holds survive a trimmed history (entries are told apart by seq)', () => {
+  const grid = (over: Partial<GridState> = {}): GridState => ({ columns: ['a', 'b'], filters: {}, sorts: null, limit: 100, ...over });
+  const late = { limit: 400 };
+  const open = () => s({ selection: sel({ martId: 'a' }), grids: { a: grid() } });
+  const edit = (st: State, i: number) => reducer(st, { type: 'editGrid', martId: 'a', grid: grid({ columns: [`c${i}`] }) });
+  const fill = (st: State, n: number) => { for (let i = 0; i < n; i++) st = edit(st, 1000 + i); return st; };
+
+  test('a hold begun with a full history still patches its edits', () => {
+    let st = fill(open(), HISTORY_LIMIT);
+    expect(st.history).toHaveLength(HISTORY_LIMIT);
+    st = reducer(st, { type: 'holdGrid', martId: 'a' });
+    st = edit(st, 1);
+    st = reducer(st, { type: 'rebaseGrid', martId: 'a', parts: late });
+    expect(st.history.at(-1)!.grids!.a!.limit).toBe(400);
+    expect(st.history.at(-2)!.grids!.a!.limit).toBe(100);
+  });
+
+  test('18 entries and 3 held edits: all three are patched', () => {
+    let st = fill(open(), 18);
+    st = reducer(st, { type: 'holdGrid', martId: 'a' });
+    for (let i = 0; i < 3; i++) st = edit(st, i);
+    expect(st.history).toHaveLength(HISTORY_LIMIT);
+    st = reducer(st, { type: 'rebaseGrid', martId: 'a', parts: late });
+    expect(st.history.slice(-3).map((e) => e.grids!.a!.limit)).toEqual([400, 400, 400]);
+    expect(st.history.slice(0, -3).every((e) => e.grids!.a!.limit === 100)).toBe(true);
+  });
+
+  test('Undo below the hold, then a new held edit: it is patched', () => {
+    let st = edit(open(), 0);
+    st = reducer(st, { type: 'holdGrid', martId: 'a' });
+    st = edit(st, 1);
+    st = reducer(reducer(st, { type: 'undo' }), { type: 'undo' });
+    st = edit(st, 2);
+    st = reducer(st, { type: 'rebaseGrid', martId: 'a', parts: late });
+    expect(reducer(st, { type: 'undo' }).grids.a).toEqual(grid({ limit: 400 }));
+  });
+
+  test('Redo after the rebase keeps pre-hold future entries off the late view', () => {
+    let st = edit(open(), 0);
+    st = reducer(st, { type: 'undo' });
+    st = reducer(st, { type: 'holdGrid', martId: 'a' });
+    st = reducer(st, { type: 'rebaseGrid', martId: 'a', parts: late });
+    // The pre-hold edit stays as it was recorded; Redo returns its own result.
+    expect(st.future[0]!.grids!.a).toEqual(grid({ columns: ['c0'] }));
+    expect(reducer(st, { type: 'redo' }).grids.a).toEqual(grid({ columns: ['c0'] }));
+  });
+
+  test('releaseGrid drops the hold and nothing else', () => {
+    const st = reducer(open(), { type: 'holdGrid', martId: 'a' });
+    const out = reducer(st, { type: 'releaseGrid', martId: 'a' });
+    expect(out.holds).toEqual({});
+    expect(out.history).toBe(st.history);
+    expect(reducer(out, { type: 'releaseGrid', martId: 'a' })).toBe(out);
   });
 });
 

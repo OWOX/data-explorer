@@ -69,10 +69,10 @@ type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
 /** What the page hands the grid: the mart, what it opens with, and where its changes go. */
 /** Why a grid is a preview: the mart has no primary key, or its key is hidden for reporting. */
 export type NoKey = false | 'missing' | 'hidden';
-type GridProps = { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: NoKey) => void; /** The grid begins holding its saves for the saved view: edits from now on are recorded on defaults. */ onHold?: () => void; /** The late saved view replaced parts of the grid a held edit was recorded on: Undo's "before" takes them too. */ onRebase?: (parts: Partial<GridState>) => void };
+type GridProps = { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: NoKey) => void; /** The grid begins holding its saves for the saved view: edits from now on are recorded on defaults. */ onHold?: () => void; /** The late saved view replaced parts of the grid a held edit was recorded on: Undo's "before" takes them too. */ onRebase?: (parts: Partial<GridState>) => void; /** The hold ends with nothing to rebase (the grid unmounted, or there was no saved view). */ onRelease?: () => void };
 
 /** The grid for one mart: loads the schema, then reads rows. Key it by mart id. */
-export function MartGrid({ martId, model, seed, onChange, onHold, onRebase, onRows, paused = false }: GridProps & { /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
+export function MartGrid({ martId, model, seed, onChange, onHold, onRebase, onRelease, onRows, paused = false }: GridProps & { /** The band is folded: nothing is read until it opens. */ paused?: boolean }) {
   const [schemaVersion, setSchemaVersion] = useState(0);
   const { schema, error, failure } = useSchema(martId, schemaVersion);
   const { schemas, blendable } = useServices();
@@ -80,7 +80,7 @@ export function MartGrid({ martId, model, seed, onChange, onHold, onRebase, onRo
   const refreshMart = useCallback(() => { schemas.invalidate(martId); blendable.invalidate(martId); setSchemaVersion((v) => v + 1); }, [schemas, blendable, martId]);
   if (error) return <div className="p-4"><ErrorBox error={error} onRetry={() => setSchemaVersion((v) => v + 1)} /></div>;
   if (!schema) return <Skeleton rows={8} />;
-  return <SeededGrid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onHold={onHold} onRebase={onRebase} onRows={onRows} paused={paused} onRefresh={refreshMart} refreshError={failure} />;
+  return <SeededGrid martId={martId} model={model} schema={schema} seed={seed} onChange={onChange} onHold={onHold} onRebase={onRebase} onRelease={onRelease} onRows={onRows} paused={paused} onRefresh={refreshMart} refreshError={failure} />;
 }
 
 /** A saved-columns read slower than this is given up on for this mount. */
@@ -313,7 +313,7 @@ const withEntry = (m: Record<string, ColumnFilter>, key: string, value: ColumnFi
 
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
-function Grid({ martId, model, schema: native, seed, holdView, lateView, initialColumns, initialSources, initialAgg, onChange, onHold, onRebase, onRows, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; /** The member's saved view is still being read: its saves wait. */ holdView: boolean; /** The saved view, once a late read delivers it: parts the member has not touched since the grid opened take its values. */ lateView: SavedView | null | undefined; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
+function Grid({ martId, model, schema: native, seed, holdView, lateView, initialColumns, initialSources, initialAgg, onChange, onHold, onRebase, onRelease, onRows, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; /** The member's saved view is still being read: its saves wait. */ holdView: boolean; /** The saved view, once a late read delivers it: parts the member has not touched since the grid opened take its values. */ lateView: SavedView | null | undefined; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
   const { columnStore, blendable } = useServices();
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
@@ -440,6 +440,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
 
   // An edit made while the saved view was still being read waits for it, then is saved.
   useEffect(() => { if (holdView) onHold?.(); }, [holdView]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A grid that goes away ends its hold: nothing is left to rebase.
+  useEffect(() => () => onRelease?.(), []); // eslint-disable-line react-hooks/exhaustive-deps
   const heldView = useRef<SavedView | null>(null);
   const viewKey = useRef<string | null>(null);
   // The parts of the view as the grid opened with them: a part still equal to this is one the member has not changed.
@@ -476,7 +478,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     const out = mergedLate.view ?? held;
     if (held && out) columnStore.saveView(martId, out);
     // The held edit was recorded on top of the defaults: Undo of it returns to the saved view, not to the defaults that would be saved over it.
-    if (mergedLate.taken) onRebase?.(mergedLate.taken ?? {});
+    if (mergedLate.taken) onRebase?.(mergedLate.taken);
+    else onRelease?.();
   }, [mergedLate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every change to what the grid shows is saved with the columns (after the same pause); what the grid opened with is not written back.
