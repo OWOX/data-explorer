@@ -623,9 +623,13 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-loadbar span {
   display: block; height: 100%; border-radius: inherit;
   background: #cee2f7;
-  transition: width 240ms ease-out, background 240ms ease-out;
+  /* The width is animated frame by frame in LoadBar.tsx; only the colour is a transition. */
+  transition: background 240ms ease-out;
 }
 .dm-loadbar-done span { background: #d9eed7; }
+/* Once full it lingers (LOADED_HOLD_MS), then fades just before the bodies open. */
+.dm-loadbar-done { animation: dm-loadbar-fade 200ms ease-in 250ms forwards; }
+@keyframes dm-loadbar-fade { to { opacity: 0; } }
 
 /* --- the Data band takes the height left on the page, and its grid or charts scroll inside it --- */
 /* The page is a column at least a viewport tall: the canvas grows to fill it and the open Data band takes
