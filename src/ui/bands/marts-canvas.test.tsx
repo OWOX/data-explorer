@@ -171,6 +171,27 @@ test('dragging countries from customers onto stores moves its columns to the sto
   await waitFor(() => expect(tips()).toContain('Customers → Countries'));
 });
 
+test('the lines of a dragged card dim until the drop; ghost lines brighten with their card', async () => {
+  await joinCountriesUnderCustomers();
+  const held = () => [...marts().querySelectorAll<SVGPathElement>('#tree-wires path.held')].map((p) => p.dataset.tip);
+  const c = () => centre('countries', 'customers.countries');
+  expect(held()).toEqual([]);
+  fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
+  await waitFor(() => expect(held()).toEqual(['Customers → Countries']));
+  fireEvent.keyDown(document, { key: 'Escape' });
+  await waitFor(() => expect(held()).toEqual([]));
+  fireEvent.pointerUp(window, pointer(c().x + 40, c().y, 0));
+  // Hovering a ghost engages its line; the line of a ghost not under the pointer stays as it is.
+  await userEvent.hover(el('orders')!);
+  const ghost = await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost]'); expect(g).not.toBeNull(); return g!; });
+  const line = (id: string) => marts().querySelector<SVGPathElement>(`#tree-wires path.ghost[data-to="${id}"]`);
+  await waitFor(() => expect(line(ghost.id)).not.toBeNull());
+  expect(line(ghost.id)).not.toHaveClass('engaged');
+  await userEvent.hover(ghost);
+  await waitFor(() => expect(line(ghost.id)).toHaveClass('engaged'));
+});
+
 test('Escape or a release away from any target changes nothing, and the next click still works', async () => {
   await joinCountriesUnderCustomers();
   const before = headers();

@@ -679,7 +679,11 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 /* The tree's lines are always drawn: the layout is the report, not a crowd to thin out. */
 #tree-wires path { opacity: 1; }
 #tree-wires .relationship { stroke-dasharray: none; }
-#tree-wires .relationship.ghost { stroke-dasharray: 5 4; }
+#tree-wires .relationship.ghost { stroke-dasharray: 5 4; opacity: 0.5; }
+/* A ghost's line follows its card: 0.85 while the ghost is hovered or focused (as .dm-node.dm-ghost). */
+#tree-wires .relationship.ghost.engaged { opacity: 0.85; }
+/* The lines of a card in hand step back at once, and return on drop. */
+#tree-wires path.held { opacity: 0.35; transition: none; }
 #drag-line { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 2; }
 #drag-line path { fill: none; stroke: var(--muted-foreground); stroke-width: 1.5; stroke-dasharray: 6 4; opacity: 0.6; }
 #drag-line path.closest { stroke-width: 2.5; opacity: 1; }
