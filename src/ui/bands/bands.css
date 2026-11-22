@@ -497,7 +497,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-label { flex: 1 1 auto; }
 .dm-menu-group + .dm-menu-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--menu-line); }
 /* padding-left 36px: a row's icon sits after the 16px row padding, the check column (16px wide, -4px margin) and the 8px gap. */
-.dm-menu-head { display: flex; height: 28px; flex-shrink: 0; align-items: center; gap: 8px; padding: 0 16px 0 36px; color: var(--menu-muted); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.dm-menu-head { display: flex; height: 28px; flex-shrink: 0; align-items: center; gap: 8px; padding: 0 16px; color: var(--menu-muted); font-size: 12px; font-weight: 500; white-space: nowrap; }
 .dm-menu-head svg { flex-shrink: 0; }
 .dm-menu-glyph { display: inline-flex; flex-shrink: 0; color: var(--menu-muted); }
 .dm-menu-check { display: inline-flex; width: 16px; flex-shrink: 0; justify-content: center; margin-left: -4px; color: var(--sheet-green); }

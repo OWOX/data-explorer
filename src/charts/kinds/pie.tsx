@@ -1,4 +1,4 @@
-import { ChartPie, Sigma, Tag } from 'lucide-react';
+import { ChartPie, Gauge, Tag } from 'lucide-react';
 import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
@@ -34,7 +34,7 @@ function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, 
     ];
   };
   const items: MenuItem[] = [
-    { kind: 'radio', label: 'Metric', icon: Sigma, value: measureId(measure), options: [], groups: measureGroups(cf, pieMeasures(cf)), onPick: (v) => onChange({ measure: v }) },
+    { kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(cf, pieMeasures(cf)), onPick: (v) => onChange({ measure: v }) },
     { kind: 'radio', label: 'Dimension', icon: Tag, value: dim.name, options: [], groups: fieldGroups(cf, cf.dimensions), onPick: (v) => onChange({ dimension: v }) },
     ...tail,
   ];

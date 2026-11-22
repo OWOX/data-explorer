@@ -1,4 +1,4 @@
-import { Columns3, Sigma, Tag, Waypoints } from 'lucide-react';
+import { Columns3, Gauge, Tag, Waypoints } from 'lucide-react';
 import { useMemo } from 'react';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
@@ -77,7 +77,7 @@ function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
     { kind: 'radio', label: 'Columns', icon: Columns3, value: String(n), options: Array.from({ length: maxColumns - SANKEY_MIN + 1 }, (_, i) => ({ value: String(SANKEY_MIN + i), label: String(SANKEY_MIN + i) })),
       onPick: (v) => onChange({ dimensions: withColumns(names, Number(v), cf.dimensions) }) },
     ...dims.map((d, i): MenuItem => ({ kind: 'radio', label: `Column ${i + 1}`, icon: Tag, value: d.name, options: [], groups: dimGroups, onPick: (v) => onChange({ dimensions: setColumn(names, i, v) }) })),
-    ...(measure ? [{ kind: 'radio', label: 'Metric', icon: Sigma, value: measureId(measure), options: [], groups: measureGroups(cf, sankeyMeasures(cf, dims)), onPick: (v: string) => onChange({ measure: v }) } as MenuItem] : []),
+    ...(measure ? [{ kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(cf, sankeyMeasures(cf, dims)), onPick: (v: string) => onChange({ measure: v }) } as MenuItem] : []),
     ...tail,
   ];
   const title = sankey.title(r, cf);

@@ -1,4 +1,4 @@
-import { EyeOff, Sigma } from 'lucide-react';
+import { EyeOff, Gauge } from 'lucide-react';
 import { AUTO, formatValue, keepsUnit, type Format } from '../format/formats';
 import { isIntegerType } from '../model/field-category';
 import { AGG_LABELS, formatBucket, outputType, type AggFn, type DateBucket } from '../model/aggregation';
@@ -176,7 +176,7 @@ export function MartCards({ martId, mart, main, spark, scores, bucket, filter, v
           {onHide && (
             <div className="absolute right-0.5 top-0.5">
               <ChartMenu name={c.label} items={[
-                ...(martMeasures(mart).length > 1 ? [{ kind: 'radio', label: 'Metric', icon: Sigma, value: measureId(c.measure), options: [], groups: choices, onPick: (v: string) => onMetric?.(c.id, v) } as MenuItem] : []),
+                ...(martMeasures(mart).length > 1 ? [{ kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(c.measure), options: [], groups: choices, onPick: (v: string) => onMetric?.(c.id, v) } as MenuItem] : []),
                 { kind: 'action', label: 'Hide', icon: EyeOff, onPick: () => onHide(c.id) },
               ]} />
             </div>

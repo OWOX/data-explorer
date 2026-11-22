@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent, type SyntheticEvent } from 'react';
+import { useId, useCallback, useEffect, useMemo, useRef, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
-import { BLANK_COLOR, blankOutline, thinColor, labelOf, OTHER_KEY } from '../blank';
+import { BLANK_COLOR, thinColor, labelOf, OTHER_KEY } from '../blank';
+import { BlankDefs, blankFill } from './BlankPattern';
 import { layoutSankey, REST_ORIGIN, type Flow, type NodeSize, type SankeyLink, type Tone } from '../sankeyLayout';
 import { OTHER_COLOR, seriesColor } from '../useDateSeries';
 import { useWidth } from '../useWidth';
@@ -25,6 +26,7 @@ export function Sankey({ titles, columns, flows, text, ariaLabel, onPickNode, on
 }) {
   const { ref, width } = useWidth<HTMLDivElement>();
   const root = useRef<SVGSVGElement>(null);
+  const blankId = `dm-blank-${useId().replace(/:/g, '')}`;
   // Lights a ribbon (by element) or a node's ribbons (by `col|key`); no argument clears.
   const light = useCallback((link?: Element | null, node?: string) => {
     const svg = root.current;
@@ -72,6 +74,7 @@ export function Sankey({ titles, columns, flows, text, ariaLabel, onPickNode, on
     <div ref={ref} className="dm-sankey">
       <svg ref={root} role={onPickNode || onPickLink ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${Math.max(120, width)} ${height}`}>
         {titles.map((t, c) => <text key={c} className="dm-chart-axis-title" x={c * step} y={12} textAnchor="start">{clip(t, roomChars + 6)}</text>)}
+        <BlankDefs id={blankId} />
         <g transform={`translate(0 ${TOP})`}>
           <g>
             {ribbons}
@@ -84,7 +87,7 @@ export function Sankey({ titles, columns, flows, text, ariaLabel, onPickNode, on
             return (
               <g key={`${n.col}|${n.key}`}>
                 <Tooltip content={`${name}: ${text(n.value)}`}>
-                  <rect className="dm-sankey-node" data-node={`${n.col}|${n.key}`} x={n.x} y={n.y} width={n.w} height={Math.max(1, n.h)} fill={colorOf(n.tone)} {...blankOutline(colorOf(n.tone))} {...hoverNode(n.col, n.key)} {...pick} />
+                  <rect className="dm-sankey-node" data-node={`${n.col}|${n.key}`} x={n.x} y={n.y} width={n.w} height={Math.max(1, n.h)} fill={blankFill(colorOf(n.tone), blankId)} {...hoverNode(n.col, n.key)} {...pick} />
                 </Tooltip>
                 {n.h >= 12 && (
                   <text className="dm-chart-text" x={n.x + n.w + 4} y={n.y + n.h / 2} dominantBaseline="middle" pointerEvents="none">

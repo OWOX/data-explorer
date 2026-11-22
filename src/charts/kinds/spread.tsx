@@ -1,4 +1,4 @@
-import { ChartCandlestick, Sigma, Tag } from 'lucide-react';
+import { ChartCandlestick, Gauge, Tag } from 'lucide-react';
 import { aggregatedKey, AGG_LABELS, type AggFn } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
@@ -38,7 +38,7 @@ function SpreadPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
   const [tt, tf] = metricFormat(field, 'P50', formatOf);
   const items: MenuItem[] = [
     { kind: 'radio', label: 'Dimension', icon: Tag, value: dim.name, options: [], groups: fieldGroups(cf, cf.dimensions), onPick: (x) => onChange({ dimension: x }) },
-    { kind: 'radio', label: 'Metric', icon: Sigma, value: field.name, options: [], groups: fieldGroups(cf, fieldsOf(cf)), onPick: (x) => onChange({ measure: x }) },
+    { kind: 'radio', label: 'Metric', icon: Gauge, value: field.name, options: [], groups: fieldGroups(cf, fieldsOf(cf)), onPick: (x) => onChange({ measure: x }) },
     ...tail,
   ];
   const title = `${fieldLabel(field)} spread by ${fieldLabel(dim)}`;

@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Calendar, CalendarRange, ChartColumn, Layers, Sigma } from 'lucide-react';
+import { ArrowRightLeft, Calendar, CalendarRange, ChartColumn, ChartColumnStacked, Gauge } from 'lucide-react';
 import { formatValue, type Format } from '../../format/formats';
 import { BUCKET_LABELS, DATE_BUCKETS, type DateBucket } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
@@ -31,7 +31,7 @@ export function dateMenu(cf: ChartFields, r: { date: Field; bucket: DateBucket |
   return [
     ...(cf.dates.length > 1 ? [{ kind: 'radio', label: 'Date field', icon: Calendar, value: r.date.name, options: [], groups: fieldGroups(cf, cf.dates), onPick: (v: string) => onChange({ date: v }) } as MenuItem] : []),
     { kind: 'radio', label: 'Bucket', icon: CalendarRange, value: r.bucket, options: [{ value: 'AUTO', label: 'Auto' }, ...DATE_BUCKETS.map((b) => ({ value: b, label: BUCKET_LABELS[b] }))], onPick: (v) => onChange({ bucket: v as DateBucket | 'AUTO' }) },
-    ...(measures.length > 1 ? [{ kind: 'radio', label: 'Metric', icon: Sigma, value: measureId(r.measure), options: [], groups: measureGroups(cf, measures), onPick: (v: string) => onChange({ measure: v }) } as MenuItem] : []),
+    ...(measures.length > 1 ? [{ kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(r.measure), options: [], groups: measureGroups(cf, measures), onPick: (v: string) => onChange({ measure: v }) } as MenuItem] : []),
   ];
 }
 
@@ -42,7 +42,7 @@ function TimeSeriesPanel({ martId, cf, r, spark, filter, version, idle, hasFilte
   const [tickType, tickFormat] = measureFormat(measure, formatOf);
   const items: MenuItem[] = [
     ...dateMenu(cf, r, onChange),
-    { kind: 'radio', label: 'Stack by', icon: Layers, value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }], groups: fieldGroups(cf, cf.dimensions), onPick: (v) => onChange({ stack: v === '' ? null : v }) },
+    { kind: 'radio', label: 'Stack by', icon: ChartColumnStacked, value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }], groups: fieldGroups(cf, cf.dimensions), onPick: (v) => onChange({ stack: v === '' ? null : v }) },
     { kind: 'radio', label: 'Orientation', icon: ArrowRightLeft, value: r.orientation, options: [{ value: 'vertical', label: 'Vertical' }, { value: 'horizontal', label: 'Horizontal' }], onPick: (v) => onChange({ orientation: v as Orientation }) },
     ...tail,
   ];

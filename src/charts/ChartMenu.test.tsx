@@ -60,8 +60,10 @@ test('a row and a submenu option show their icon before the label, hidden from s
   expect(withIcon.querySelector('.dm-menu-check')!.nextElementSibling).toBe(glyph!.parentElement);
   expect(glyph!.parentElement!.nextElementSibling).toHaveClass('dm-menu-label');
   expect(screen.getByRole('menuitemcheckbox', { name: 'Sparklines' }).querySelector('.dm-menu-glyph svg.lucide-hash')).not.toBeNull();
-  // A submenu row has the tick column's room, so its icon sits in the same column.
-  expect(screen.getByRole('menuitem', { name: 'Chart type' }).querySelector('.dm-menu-check')!.nextElementSibling).toHaveClass('dm-menu-glyph');
+  // A submenu row reserves no tick column: its icon is the row's first child.
+  const sub = screen.getByRole('menuitem', { name: 'Chart type' });
+  expect(sub.querySelector('.dm-menu-check')).toBeNull();
+  expect(sub.firstElementChild).toHaveClass('dm-menu-glyph');
   await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
   expect((await screen.findByRole('menuitemradio', { name: 'Pie' })).querySelector('.dm-menu-glyph svg.lucide-chart-pie')).not.toBeNull();
   expect(screen.getByRole('menuitemradio', { name: 'Plain' }).querySelector('.dm-menu-glyph')).toBeNull();

@@ -1,4 +1,4 @@
-import { ChartArea, ChartLine, ChartNoAxesCombined, Layers } from 'lucide-react';
+import { ChartArea, ChartLine, ChartNoAxesCombined, ChartColumnStacked } from 'lucide-react';
 import { BUCKET_LABELS, type DateBucket } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
@@ -36,7 +36,7 @@ function LinePanel({ martId, cf, r, spark, filter, version, idle, hasFilters, fo
   const items: MenuItem[] = [
     ...dateMenu(cf, r, onChange),
     { kind: 'radio', label: 'Second measure', icon: ChartNoAxesCombined, value: measure2 ? measureId(measure2) : '', options: [{ value: '', label: 'Off' }], groups: measureGroups(cf, others), onPick: (v) => onChange({ measure2: v === '' ? null : v }) },
-    ...(measure2 ? [] : [{ kind: 'radio', label: 'Stack by', icon: Layers, value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }], groups: fieldGroups(cf, cf.dimensions), onPick: (v: string) => onChange({ stack: v === '' ? null : v }) } as MenuItem]),
+    ...(measure2 ? [] : [{ kind: 'radio', label: 'Stack by', icon: ChartColumnStacked, value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }], groups: fieldGroups(cf, cf.dimensions), onPick: (v: string) => onChange({ stack: v === '' ? null : v }) } as MenuItem]),
     { kind: 'check', label: 'Area', icon: ChartArea, checked: r.area, onToggle: () => onChange({ area: !r.area }) },
     ...tail,
   ];

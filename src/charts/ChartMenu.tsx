@@ -75,9 +75,9 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
           {items.map((it, i) => it.kind === 'check' ? (
             <Row key={i} check checkbox checked={it.checked} label={it.label} glyph={<it.icon className="size-4" />} onActivate={it.onToggle} onHover={hoverOther} onLeaveRow={leaveRow} />
           ) : it.kind === 'action' ? (
-            <Row key={i} slot label={it.label} glyph={<it.icon className="size-4" />} onActivate={() => { close(); it.onPick(); }} onHover={hoverOther} onLeaveRow={leaveRow} />
+            <Row key={i} label={it.label} glyph={<it.icon className="size-4" />} onActivate={() => { close(); it.onPick(); }} onHover={hoverOther} onLeaveRow={leaveRow} />
           ) : (
-            <Row key={i} sub slot expanded={sub?.key === i} label={it.label} glyph={<it.icon className="size-4" />} onActivate={(r) => open(i, r, true)} onOpen={(r) => open(i, r, true)}
+            <Row key={i} sub expanded={sub?.key === i} label={it.label} glyph={<it.icon className="size-4" />} onActivate={(r) => open(i, r, true)} onOpen={(r) => open(i, r, true)}
               onHover={(r) => hoverRow(i, r)} onLeaveRow={leaveRow} />
           ))}
         </Panel>

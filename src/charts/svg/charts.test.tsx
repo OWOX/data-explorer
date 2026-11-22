@@ -329,14 +329,17 @@ test('BarChart categorical: a short label that fits is shown whole, and the firs
   expect(Number(labels[0]!.getAttribute('x'))).toBeGreaterThan(tickX);
 });
 
-test('a blank pie slice carries data-blank and its legend swatch has a border', () => {
+test('a blank pie slice carries data-blank and its legend swatch is hatched without a border', () => {
   const slices = [{ name: 'A', value: 3, valueText: '3', color: 'red' }, { key: '\u0000blank', name: '(blank)', value: 1, valueText: '1', color: 'var(--dm-blank)', blank: true }];
   const { container } = wrap(<PieChart slices={slices} ariaLabel="By channel" />);
   expect(container.querySelector('[data-slice="(blank)"]')).toHaveAttribute('data-blank');
   expect(container.querySelector('[data-slice="A"]')).not.toHaveAttribute('data-blank');
   const swatches = container.querySelectorAll<HTMLElement>('.dm-chart-legend .dm-chart-swatch');
-  expect(swatches[1]!.style.border).toContain('1px solid');
-  expect(swatches[0]!.style.border).toBe('');
+  expect(swatches[1]!.style.background).toContain('repeating-linear-gradient');
+  expect(swatches[1]!.style.border).toBe('');
+  expect(swatches[0]!.style.background).toBe('red');
+  expect(container.querySelector('[data-slice="(blank)"]')!.getAttribute('fill')).toMatch(/^url\(#dm-blank-/);
+  expect(container.querySelector('[data-slice="A"]')).toHaveAttribute('fill', 'red');
 });
 
 test('a blank line series draws in the stroke grey, not the light blank fill', () => {

@@ -1,4 +1,4 @@
-import { CalendarRange, Columns3, Grid3x3, Rows3, Sigma } from 'lucide-react';
+import { CalendarRange, Columns3, Grid3x3, Rows3, Gauge } from 'lucide-react';
 import { BUCKET_LABELS, DATE_BUCKETS, formatBucket, type DateBucket } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
@@ -60,7 +60,7 @@ function HeatmapPanel({ martId, cf, r, filter, version, idle, hasFilters, format
     { kind: 'radio', label: 'Columns', icon: Columns3, value: cols.kind === 'date' ? `date:${cols.date.name}` : `dim:${cols.dim.name}`, options: [], groups: colGroups,
       onPick: (v) => onChange(v.startsWith('date:') ? { date: v.slice(5), dimension2: undefined } : { dimension2: v.slice(4) }) },
     ...(cols.kind === 'date' ? [{ kind: 'radio', label: 'Bucket', icon: CalendarRange, value: cols.bucket, options: [{ value: 'AUTO', label: 'Auto' }, ...DATE_BUCKETS.map((b) => ({ value: b, label: BUCKET_LABELS[b] }))], onPick: (v: string) => onChange({ bucket: v as DateBucket | 'AUTO' }) } as MenuItem] : []),
-    { kind: 'radio', label: 'Metric', icon: Sigma, value: measureId(measure), options: [], groups: measureGroups(cf, measuresOf(cf)), onPick: (v) => onChange({ measure: v }) },
+    { kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(cf, measuresOf(cf)), onPick: (v) => onChange({ measure: v }) },
     ...tail,
   ];
   const xLabel = cols.kind === 'date' ? fieldLabel(cols.date) : fieldLabel(cols.dim);
