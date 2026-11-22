@@ -54,3 +54,20 @@ test('copyHtml puts text/html and text/plain on the copy event', () => {
   expect(set).toHaveBeenCalledWith('text/html', '<img>');
   expect(set).toHaveBeenCalledWith('text/plain', 'T');
 });
+
+test('copyImage strokes a bordered legend swatch and leaves a plain one unstroked', async () => {
+  const el = document.createElement('section');
+  el.innerHTML = '<svg role="img" width="100" height="50" viewBox="0 0 100 50"></svg><ul class="dm-chart-legend"><li><span class="dm-chart-swatch" style="background: red"></span>A</li><li><span class="dm-chart-swatch" style="background: #ddd; border: 1px solid rgb(10, 20, 30)"></span>(blank)</li></ul>';
+  document.body.appendChild(el);
+  const calls: string[] = [];
+  const ctx = new Proxy({}, { get: (_t, k) => (k === 'strokeRect' ? () => calls.push('strokeRect') : () => {}), set: () => true });
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as never);
+  vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((cb) => cb(png));
+  vi.stubGlobal('Image', class { onload: () => void = () => {}; set src(_v: string) { queueMicrotask(() => this.onload()); } });
+  URL.createObjectURL = vi.fn(() => 'blob:x');
+  URL.revokeObjectURL = vi.fn();
+  const mod = await import('./copyImage');
+  await mod.internals.render(el, 'T');
+  expect(calls).toEqual(['strokeRect']);
+  vi.unstubAllGlobals();
+});
