@@ -129,6 +129,8 @@ test('a filter set from a column header changes the chart queries', async () => 
 });
 
 test('Table, Charts, Table reads the grid rows once and writes no columns', async () => {
+  // Toggling Table/Charts is saved with the member's view after SAVE_DEBOUNCE_MS: that write lands whenever the runner gets to it, so wait for it and judge what it holds.
+  // The columns it carries must be the ones already saved (no prune, no default fallback); a fast machine used to finish before the write landed and never saw it.
   const t = await charts();
   await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
   await userEvent.click(radio('Table'));
@@ -136,7 +138,9 @@ test('Table, Charts, Table reads the grid rows once and writes no columns', asyn
   await new Promise((r) => setTimeout(r, 100));
   // The grid's own query is the only one with a page limit of 201 (200 + 1).
   expect(t.queries.filter((q) => q.limit === 201)).toHaveLength(1);
-  expect(t.gridPuts).not.toHaveBeenCalled();
+  await waitFor(() => expect(t.gridPuts).toHaveBeenCalled(), { timeout: 5000 });
+  for (const [, doc] of t.gridPuts.mock.calls) expect(doc).toEqual(expect.objectContaining({ columns: COLUMNS }));
+  expect(t.gridPuts.mock.calls.every(([, doc]) => !('picks' in doc))).toBe(true);
 });
 
 test('a selection made in Table does not stay lit in Charts or when Table returns', async () => {

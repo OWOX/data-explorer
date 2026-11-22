@@ -105,8 +105,10 @@ describe('the search box', () => {
     expect(screen.getByRole('combobox', { name: 'Search data marts' })).toHaveValue('customers');
     await userEvent.click(screen.getByRole('button', { name: 'Clear search' }));
     expect(screen.getByRole('combobox', { name: 'Search data marts' })).toHaveValue('');
-    // the band shows the main mart's neighbours again
-    expect(await within(marts()).findByText('Orders')).toBeInTheDocument();
+    // The band shows the main mart (Customers, picked by the search) and what it can join again. Orders joins Customers the other way round (many to one), so it
+    // is listed only while the join sources are still loading (every neighbour then); waiting for it raced that read, and a slow runner missed the window.
+    await waitFor(() => expect(cardTitles()).toEqual(['Customers', 'Countries']));
+    expect(within(marts()).queryByText('No data marts match.')).toBeNull();
     const box = screen.getByRole('combobox', { name: 'Search data marts' });
     await userEvent.type(box, 'products');
     await userEvent.click(screen.getByRole('button', { name: 'Search' }));
