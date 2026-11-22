@@ -59,7 +59,9 @@ function joinPaths(p: QueryParts, joins: JoinGrain): Set<string> {
 export function answers(read: QueryParts, asked: QueryParts, joins: JoinGrain): boolean {
   if (read.rest !== asked.rest || read.grouped !== asked.grouped) return false;
   if (!same(read.keys, asked.keys) || !within(asked.aggs, read.aggs) || !within(asked.unique, read.unique)) return false;
-  const kept = joinPaths(asked, joins);
+  // A query that keeps 'customers.countries' still joins through 'customers', though no column or count sits on it.
+  const kept = new Set<string>();
+  for (const path of joinPaths(asked, joins)) { const parts = path.split('.'); for (let i = 1; i <= parts.length; i++) kept.add(parts.slice(0, i).join('.')); }
   for (const path of joinPaths(read, joins)) if (!kept.has(path) && !joins.keepsGrain(path)) return false;
   return true;
 }
