@@ -43,11 +43,11 @@ async function joinTwo() {
 }
 
 describe('the stylesheet', () => {
-  test('one mart dimming: the Grid-wide focus dimming is gone, a faded card is at half, the Sources band keeps its own', () => {
+  test('one mart dimming: the Grid-wide focus dimming is gone, a faded card is at 30%, the Sources band keeps its own', () => {
     expect(css).not.toMatch(/\.dm-canvas\.focused/);
     expect(rules(/^\.dm-canvas\.sources-focused #band-sources \.dm-node$/)).toContain('opacity: 0.25');
     expect(css).not.toMatch(/dm-unjoinable/);
-    expect(rules(/^\.dm-node\.dm-faded$/)).toContain('opacity: 0.5');
+    expect(rules(/^\.dm-node\.dm-faded$/)).toContain('opacity: 0.3');
   });
   test('a ghost and an off-path card are dashed at full strength', () => {
     expect(rules(/^\.dm-node\.dm-ghost, \.dm-node\.dm-offpath$/)).toContain('border-style: dashed');
