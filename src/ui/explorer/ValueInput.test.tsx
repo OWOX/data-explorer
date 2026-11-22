@@ -167,6 +167,15 @@ test('a reopened contains filter: a pick adds to the saved value', async () => {
   expect(op().value).toBe('eq');
 });
 
+test('a reopened contains filter: typing a second value after the saved one keeps the suggestions', async () => {
+  render(<FilterEditor field={country} value={{ field: 'country', op: 'contains', value: 'Ukraine' }} onApply={vi.fn()} onClear={vi.fn()} values={source(loadOf(['United States', 'Ukraine', 'Germany']))} />);
+  await userEvent.click(input());
+  await userEvent.type(input(), ', Ger');
+  await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
+  expect(op().value).toBe('eq');
+  expect(input().value).toBe('Ukraine, Germany, ');
+});
+
 test('a reopened contains value with a comma is sent as it was, and a pick does not make it a list', async () => {
   const onApply = vi.fn();
   render(<FilterEditor field={country} value={{ field: 'country', op: 'contains', value: 'a,b' }} onApply={onApply} onClear={vi.fn()} values={source(loadOf(['a,bc', 'Ukraine']))} />);

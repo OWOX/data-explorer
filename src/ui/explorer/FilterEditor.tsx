@@ -111,7 +111,7 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
   // Under contains / does not contain the text was built by suggestion picks (a trailing ", " is the separator, not part of the value).
   // A reopened single value is the first token.
   const [base, setBase] = useState<string | null>(value?.op === op && (op === 'contains' || op === 'not_contains') && typeof value.value === 'string' && !value.value.includes(',') && !value.list ? value.value : null);
-  const inPick = base !== null && typeof val === 'string' && (base.endsWith(', ') ? val.startsWith(base) : val === base);
+  const inPick = base !== null && typeof val === 'string' && (base.endsWith(', ') ? val.startsWith(base) : val === base || val.startsWith(`${base},`));
   const wasList = !!value?.list && value.op === op;
   const isList = field.category === 'string' && (op === 'eq' || op === 'neq') && typeof val === 'string' && (edited ? val.includes(',') : wasList);
   const sent = inPick && base!.endsWith(', ') && (op === 'contains' || op === 'not_contains') && typeof val === 'string' ? tokensOf(val).join(', ') : val;
@@ -125,7 +125,7 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
       <Select aria-label="Operator" value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); setBase(null); }}>
         {ops.map((o) => <option key={o.id} value={o.id}>{isList && o.id === op && (o.id === 'eq' || o.id === 'neq') ? LIST_LABELS[o.id] : o.label}</option>)}
       </Select>
-      {def.value === 'text' && <ValueInput op={op} value={String(val ?? '')} onChange={(v, b) => { setEdited(true); setVal(v); setBase(b ?? (base !== null && base.endsWith(', ') && v.startsWith(base) ? base : null)); }} inPick={inPick} onOp={(o) => { setOp(o as OpId); setBase(null); }} source={canSuggest(field) ? values : undefined} className={input} />}
+      {def.value === 'text' && <ValueInput op={op} value={String(val ?? '')} onChange={(v, b) => { setEdited(true); setVal(v); setBase(b ?? (base !== null && v.startsWith(base.endsWith(', ') ? base : `${base},`) ? base : null)); }} inPick={inPick} onOp={(o) => { setOp(o as OpId); setBase(null); }} source={canSuggest(field) ? values : undefined} className={input} />}
       {def.value === 'number' && (
         <input aria-label="Value" className={input} type="number" value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />
       )}
