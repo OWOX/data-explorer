@@ -7,7 +7,7 @@ import { fieldGroups, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
-import { measuresOf } from '../fields';
+import { measuresOf, menuOf } from '../fields';
 import type { Measure } from '../queries';
 import { isIntegerMeasure, measureFormat, measureLabel, measureText, numberOf } from '../Scorecards';
 import { measureId, pickField, pickMeasure } from '../settings';
@@ -31,8 +31,8 @@ function categoryPanel(orientation: 'vertical' | 'horizontal', name: string) {
     ] }];
     const [tickType, tickFormat] = measureFormat(measure, formatOf);
     const items: MenuItem[] = [
-      { kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(cf, measuresOf(cf)), onPick: (v) => onChange({ measure: v }) },
-      { kind: 'radio', label: 'Dimension', icon: Tag, value: dim.name, options: [], groups: fieldGroups(cf, cf.dimensions), onPick: (v) => onChange({ dimension: v }) },
+      { kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(menuOf(cf), measuresOf(menuOf(cf))), onPick: (v) => onChange({ measure: v }) },
+      { kind: 'radio', label: 'Dimension', icon: Tag, value: dim.name, options: [], groups: fieldGroups(menuOf(cf), menuOf(cf).dimensions), onPick: (v) => onChange({ dimension: v }) },
       ...tail,
     ];
     const title = `${measureLabel(cf, measure)} by ${fieldLabel(dim)}`;

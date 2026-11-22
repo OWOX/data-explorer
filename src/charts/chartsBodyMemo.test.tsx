@@ -19,14 +19,14 @@ test('a resize (only scrollerWidth changes) rebuilds neither the chart fields no
   const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const props = {
     martId: 'orders', schema: [f('amount', 'number')], shown: ['amount'], agg: { aggregations: [], dateTrunc: [] }, filter: [], groups: [{ id: 'orders', path: '', span: 1, title: 'Orders' }],
-    version: 0, paused: true, hasFilters: false, sources: [], formatOf: () => ({ kind: 'auto' }) as never, onFilter: () => {},
+    version: 0, paused: true, hasFilters: false, sources: [], formatOf: () => ({ kind: 'auto' }) as never, onFilter: () => {}, onShowColumns: () => {},
   };
   const ui = (w: number) => <AppServices ctx={ctx}><StoreProvider><table><ChartsBody {...props} scrollerWidth={w} /></table></StoreProvider></AppServices>;
   const resolve = vi.spyOn(KINDS.timeSeries!, 'resolve');
   const { rerender } = render(ui(500));
   const spy = vi.mocked(fields.chartFields);
   const after = spy.mock.calls.length;
-  expect(after).toBe(1);
+  expect(after).toBe(2); // the shown columns, and every column for the menus
   const resolved = resolve.mock.calls.length;
   expect(resolved).toBeGreaterThanOrEqual(1);
   rerender(ui(600));

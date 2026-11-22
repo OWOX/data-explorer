@@ -141,15 +141,18 @@ test.describe('grouped submenus', () => {
     expect(await rows.count()).toBeGreaterThan(2);
     for (const row of await rows.all()) await expect(row.locator('.dm-menu-glyph svg')).toHaveCount(1);
     await page.getByRole('menuitem', { name: 'Dimension' }).click();
+    // The marts come first; a mart's fields are on the next level.
     const sub = page.getByRole('menu', { name: 'Dimension' });
-    const orders = sub.getByRole('group', { name: 'Orders' });
-    const customers = sub.getByRole('group', { name: 'Customers' });
-    await expect(orders.locator('.dm-menu-head')).toHaveText('Orders');
-    await expect(customers.locator('.dm-menu-head')).toHaveText('Customers');
-    await expect(customers.getByRole('menuitemradio', { name: 'name' })).toBeVisible();
-    await expect(sub.getByRole('menuitemradio', { name: /·/ })).toHaveCount(0);
-    // The headers are not menu items: ArrowDown walks the options only.
-    const options = sub.getByRole('menuitemradio');
+    const marts = sub.getByRole('menuitemradio');
+    await expect(marts.filter({ hasText: 'Orders' })).toBeVisible();
+    await expect(marts.filter({ hasText: 'Customers' })).toBeVisible();
+    await expect(sub.getByRole('menuitemradio', { name: 'name' })).toHaveCount(0);
+    await marts.filter({ hasText: 'Customers' }).click();
+    const fields = page.getByRole('menu', { name: 'Customers' });
+    await expect(fields.getByRole('menuitemradio', { name: 'name' })).toBeVisible();
+    await expect(fields.getByRole('menuitemradio', { name: /·/ })).toHaveCount(0);
+    // ArrowDown walks the options only and wraps.
+    const options = fields.getByRole('menuitemradio');
     const count = await options.count();
     await expect(options.first()).toBeFocused();
     for (let i = 1; i < count; i++) {
@@ -158,5 +161,22 @@ test.describe('grouped submenus', () => {
     }
     await page.keyboard.press('ArrowDown');
     await expect(options.nth(0)).toBeFocused();
+    // Escape closes one level.
+    await page.keyboard.press('Escape');
+    await expect(fields).toHaveCount(0);
+    await expect(sub).toBeVisible();
   });
+});
+
+test('choosing a metric that is not a shown column adds it to the table', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await expect(data(page).getByRole('columnheader', { name: /Net Revenue/ })).toHaveCount(0);
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  const pie = data(page).locator('section[data-chart-kind="Pie"]');
+  await pie.hover();
+  await pie.getByRole('button', { name: 'Pie options' }).click();
+  await page.getByRole('menuitem', { name: 'Metric' }).click();
+  await page.getByRole('menuitemradio', { name: /Net Revenue/ }).click();
+  await data(page).getByRole('radio', { name: 'Table' }).click();
+  await expect(data(page).getByRole('columnheader', { name: /Net Revenue/ })).toBeVisible();
 });

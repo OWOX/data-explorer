@@ -8,7 +8,7 @@ import { fieldGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { isBlankKey, keyOf, labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
-import type { ChartFields } from '../fields';
+import { menuOf, type ChartFields } from '../fields';
 import { spreadFns, spreadQuery } from '../queries';
 import { metricFormat, metricText, numberOf } from '../Scorecards';
 import { pickField } from '../settings';
@@ -37,8 +37,8 @@ function SpreadPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
   rows.sort((a, b) => Number(isBlankKey(b.key)) - Number(isBlankKey(a.key)));
   const [tt, tf] = metricFormat(field, 'P50', formatOf);
   const items: MenuItem[] = [
-    { kind: 'radio', label: 'Dimension', icon: Tag, value: dim.name, options: [], groups: fieldGroups(cf, cf.dimensions), onPick: (x) => onChange({ dimension: x }) },
-    { kind: 'radio', label: 'Metric', icon: Gauge, value: field.name, options: [], groups: fieldGroups(cf, fieldsOf(cf)), onPick: (x) => onChange({ measure: x }) },
+    { kind: 'radio', label: 'Dimension', icon: Tag, value: dim.name, options: [], groups: fieldGroups(menuOf(cf), menuOf(cf).dimensions), onPick: (x) => onChange({ dimension: x }) },
+    { kind: 'radio', label: 'Metric', icon: Gauge, value: field.name, options: [], groups: fieldGroups(menuOf(cf), fieldsOf(menuOf(cf))), onPick: (x) => onChange({ measure: x }) },
     ...tail,
   ];
   const title = `${fieldLabel(field)} spread by ${fieldLabel(dim)}`;

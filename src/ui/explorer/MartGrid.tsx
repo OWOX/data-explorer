@@ -604,6 +604,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     // A joined mart that has just left remembers what it was showing, as its own field names.
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
   }, [sources, native, markEdit, agg, applyAgg, visible, columnStore, martId, setVisible, setOwn]);
+  // A chart menu's choice of a field that is not shown: the shown columns and the new ones, in one edit.
+  const showColumns = useCallback((names: string[]) => changeColumns([...new Set([...shown, ...names])]), [changeColumns, shown]);
   // A moved column keeps its sorts, filters and functions: only the order changes, and it is one Undo step. The cell selection is dropped (its columns moved).
   const reorder = useCallback((cols: string[]) => {
     if (cols === shown) return;
@@ -940,7 +942,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
             ))}
           </thead>
           {/* ChartsBody renders its own <tbody>: nesting one in another makes the parser pull the headers out of the table. */}
-          {charts && !blocked ? <ChartsBody martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
+          {charts && !blocked ? <ChartsBody martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} onShowColumns={showColumns} />
           : <tbody>
             {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`}</td></tr>
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>

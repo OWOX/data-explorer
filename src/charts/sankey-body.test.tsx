@@ -74,7 +74,8 @@ test('sankey: Columns adds a column filled with the next dimension, a column pic
   expect(new Set(first).size).toBe(3);
   await userEvent.click(panel('Sankey'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Column 1' }));
-  await userEvent.click((await screen.findAllByRole('menuitemradio')).find((el) => el.getAttribute('aria-checked') === 'false')!);
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Products' }));
+  await userEvent.click((await within(await screen.findByRole('menu', { name: 'Products' })).findAllByRole('menuitemradio')).find((el) => el.getAttribute('aria-checked') === 'false')!);
   await waitFor(() => expect(savedDims(t)[0]).not.toBe(first[0]));
   expect(new Set(savedDims(t)).size).toBe(3);
   await userEvent.click(panel('Sankey'));
