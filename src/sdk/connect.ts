@@ -9,7 +9,7 @@ export async function bootContext(): Promise<Ctx | 'outside-host'> {
     // ?latency=3000 slows every read, as a real API does (default 250 ms).
     const latency = Number(new URLSearchParams(location.search).get('latency') ?? 250);
     // ?ai=0 is a project with no AI configured.
-    const ctx = createMockCtx(demoFixtures({ sheets: sheets === '0' || sheets === '1' ? Number(sheets) as 0 | 1 : 2 }), { latencyMs: Number.isFinite(latency) ? latency : 250, ai: new URLSearchParams(location.search).get('ai') !== '0' });
+    const ctx = createMockCtx(demoFixtures({ sheets: sheets === '0' || sheets === '1' ? Number(sheets) as 0 | 1 : 2 }), { latencyMs: Number.isFinite(latency) ? Math.max(0, latency) : 250, ai: new URLSearchParams(location.search).get('ai') !== '0' });
     // ?keyshown opens the orders grid with its key column, as it was before the key left the default columns (the e2e specs about that column use it).
     if (new URLSearchParams(location.search).has('keyshown')) (await import('./mock/key-shown')).keyShown(ctx);
     return ctx;
