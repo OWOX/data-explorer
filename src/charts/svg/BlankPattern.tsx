@@ -1,11 +1,12 @@
 import { BLANK_COLOR } from '../blank';
 
-/** The hatch a blank mark is filled with: thin diagonal stripes in the blank colour on a transparent ground, so it reads in both themes. Defined once per chart; `id` must be unique per chart instance (useId). */
+/** The hatch a blank mark is filled with: thin diagonal stripes in the blank colour on a solid blank-colour ground, so it reads in both themes. Defined once per chart; `id` must be unique per chart instance (useId). */
 export function BlankDefs({ id }: { id: string }) {
   return (
     <defs>
       <pattern id={id} width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-        <rect width="2" height="4" fill={BLANK_COLOR} />
+        <rect width="4" height="4" fill={BLANK_COLOR} />
+        <rect width="2" height="4" fill="var(--dm-blank-hatch)" />
       </pattern>
     </defs>
   );

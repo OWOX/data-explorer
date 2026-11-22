@@ -56,8 +56,12 @@ test('a row and a submenu option show their icon before the label, hidden from s
   const withIcon = screen.getByRole('menuitemcheckbox', { name: 'Orders by date' });
   const glyph = withIcon.querySelector('.dm-menu-glyph svg.lucide-chart-line');
   expect(glyph).toHaveAttribute('aria-hidden', 'true');
-  // After the tick column, before the label.
-  expect(withIcon.querySelector('.dm-menu-check')!.nextElementSibling).toBe(glyph!.parentElement);
+  // No left tick column: the glyph is the first child, and the tick sits at the right end.
+  expect(withIcon.querySelector('.dm-menu-check')).toBeNull();
+  expect(withIcon.firstElementChild).toBe(glyph!.parentElement);
+  expect(withIcon.lastElementChild).toHaveClass('dm-menu-tick');
+  expect(withIcon.lastElementChild!.querySelector('svg')).not.toBeNull();
+  expect(withIcon).toHaveAttribute('aria-checked', 'true');
   expect(glyph!.parentElement!.nextElementSibling).toHaveClass('dm-menu-label');
   expect(screen.getByRole('menuitemcheckbox', { name: 'Sparklines' }).querySelector('.dm-menu-glyph svg.lucide-hash')).not.toBeNull();
   // A submenu row reserves no tick column: its icon is the row's first child.

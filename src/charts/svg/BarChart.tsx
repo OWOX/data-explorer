@@ -1,6 +1,5 @@
-import type { KeyboardEvent, MouseEvent } from 'react';
+import { useId, type KeyboardEvent, type MouseEvent } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
-import { useId } from 'react';
 import { swatchStyle } from '../blank';
 import { BlankDefs, blankFill } from './BlankPattern';
 import { useWidth } from '../useWidth';

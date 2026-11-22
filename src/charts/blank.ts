@@ -14,7 +14,7 @@ export const BLANK_STROKE = 'var(--muted-foreground)';
 export const thinColor = (color: string): string => (color === BLANK_COLOR ? BLANK_STROKE : color);
 
 /** The legend swatch's style for a colour: its fill, or for the blank colour the same diagonal hatch the marks use (see BlankPattern), with no border. */
-export const swatchStyle = (color: string): { background: string } => (color === BLANK_COLOR ? { background: `repeating-linear-gradient(135deg, ${BLANK_COLOR} 0 1.4px, transparent 1.4px 2.8px)` } : { background: color });
+export const swatchStyle = (color: string): { background: string } => (color === BLANK_COLOR ? { background: `repeating-linear-gradient(135deg, var(--dm-blank-hatch) 0 1.4px, ${BLANK_COLOR} 1.4px 2.8px)` } : { background: color });
 
 /** A returned value as a category key: null (or missing) is the blank key, anything else its text. */
 export const keyOf = (v: unknown): string => (v === null || v === undefined ? BLANK_KEY : String(v));

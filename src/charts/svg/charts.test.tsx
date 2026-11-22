@@ -350,3 +350,13 @@ test('a blank line series draws in the stroke grey, not the light blank fill', (
   expect(container.querySelector('[data-line="A"]')).toHaveAttribute('stroke', 'red');
   expect((container.querySelector('.dm-chart-legend .dm-chart-swatch') as HTMLElement).style.border).toBe('');
 });
+
+test('a blank bar is filled with the hatch pattern and has no stroke', () => {
+  const blank: Series = { key: '\u0000blank', name: '(blank)', color: 'var(--dm-blank)', blank: true, points: [pt(1, 2)] };
+  const { container } = wrap(<BarChart series={[blank, { name: 'A', color: 'red', points: [pt(1, 3)] }]} orientation="vertical" stacked ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const rect = container.querySelector('rect[data-series="(blank)"]')!;
+  expect(rect.getAttribute('fill')).toMatch(/^url\(#dm-blank-/);
+  expect(rect.getAttribute('stroke')).toBeNull();
+  expect(container.querySelector('pattern')!.id).toBe(rect.getAttribute('fill')!.slice(5, -1));
+  expect(container.querySelector('rect[data-series="A"]')).toHaveAttribute('fill', 'red');
+});
