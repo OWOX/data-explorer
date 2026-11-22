@@ -2,8 +2,8 @@ import { ChartColumn, ChartSpline, Hash, Plus, Trash2 } from 'lucide-react';
 import type { MenuItem } from './ChartMenu';
 import type { ChartFields, ChartMart } from './fields';
 import { eligibleKinds, KINDS } from './kinds';
-import { cardsOf } from './Scorecards';
-import { editCharts, measureId, newChartId, patchChart, type ChartKind, type ChartSettings, type ChartSpec } from './settings';
+import { cardsOf, sparkDate } from './Scorecards';
+import { editCharts, measureId, newChartId, patchChart, type ChartKind, type ChartSettings, type ChartSpec, type Spark } from './settings';
 
 type Change = (edit: (cur: ChartSettings) => ChartSettings) => void;
 
@@ -19,8 +19,12 @@ export function setCardMetric(cur: ChartSettings, id: string, measure: string, m
   return { ...cur, scorecards: { ...cur.scorecards, metrics } };
 }
 
-/** Saves the date a card's sparkline is drawn on. */
-export const setCardDate = (cur: ChartSettings, id: string, date: string): ChartSettings => ({ ...cur, scorecards: { ...cur.scorecards, dates: { ...cur.scorecards?.dates, [id]: date } } });
+/** Saves the date a card's sparkline is drawn on. Picking the mart's own date (the one the trends follow) clears the choice, so the card follows later chart date changes. */
+export function setCardDate(cur: ChartSettings, id: string, date: string, mart: ChartMart, spark: Spark): ChartSettings {
+  const rest = Object.fromEntries(Object.entries(cur.scorecards?.dates ?? {}).filter(([k]) => k !== id));
+  const dates = sparkDate(mart, spark)?.name === date ? rest : { ...rest, [id]: date };
+  return { ...cur, scorecards: { ...cur.scorecards, dates } };
+}
 
 export function listItems({ cf, settings, resolved, change }: { cf: ChartFields; settings: ChartSettings; resolved: { spec: ChartSpec; title: string | null }[]; change: Change }): MenuItem[] {
   const hidden = new Set(settings.scorecards?.hidden ?? []);

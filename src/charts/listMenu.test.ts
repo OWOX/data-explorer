@@ -85,8 +85,19 @@ test('setCardMetric saves the pick, clears it for the card’s own measure and k
   expect(h.scorecards?.hidden).toEqual(['amount']);
 });
 
-test('setCardDate saves the date per card and keeps the other picks', () => {
-  const a = setCardDate({ scorecards: { metrics: { amount: 'records' } } }, 'amount', 'created_at');
-  expect(a.scorecards).toEqual({ metrics: { amount: 'records' }, dates: { amount: 'created_at' } });
-  expect(setCardDate(a, 'amount', 'paid_at').scorecards?.dates).toEqual({ amount: 'paid_at' });
+test('setCardDate saves the date per card, clears it for the mart date, and keeps the other picks', () => {
+  const mart = cf.marts[0]!;
+  const d2 = { name: 'paid_at', category: 'date', type: 'TIMESTAMP' } as never;
+  const spark = { hidden: new Set<string>(), sparklines: true, metrics: {}, dates: {}, date };
+  const m2 = { ...mart, dates: [date, d2] };
+  const a = setCardDate({ scorecards: { metrics: { amount: 'records' } } }, 'amount', 'paid_at', m2, spark);
+  expect(a.scorecards).toEqual({ metrics: { amount: 'records' }, dates: { amount: 'paid_at' } });
+  expect(setCardDate(a, 'amount', 'created_at', m2, spark).scorecards?.dates).toEqual({});
+});
+
+test('a metric a card shows through its pick has no card of its own', () => {
+  const qty = { name: 'qty', category: 'number', type: 'INT64' } as never;
+  const mart = { ...cf.marts[0]!, metrics: [{ field: amount, fn: 'SUM' as const }, { field: qty, fn: 'SUM' as const }] };
+  expect(cardsOf(mart, { amount: 'qty' }).map((c) => [c.id, c.measure.kind === 'metric' ? c.measure.metric.field.name : 'records'])).toEqual([['records:orders', 'records'], ['amount', 'qty']]);
+  expect(cardsOf(mart, { amount: 'records' }).map((c) => c.id)).toEqual(['records:orders', 'amount', 'qty']);
 });

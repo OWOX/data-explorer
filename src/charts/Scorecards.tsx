@@ -17,6 +17,7 @@ import { measureId, type Spark } from './settings';
 import { fieldGroups, measureGroups } from './menuGroups';
 import { Sparkline, type Point } from './svg/Sparkline';
 import type { JoinGrain } from './answers';
+import { useBucket } from './useBucket';
 import { useChartQuery, type ChartResult } from './useChartQuery';
 
 export type Card = { id: string; label: string; key: string; measure: Measure };
@@ -37,11 +38,14 @@ export function measureLabel(cf: ChartFields, m: Measure, scope: Measure[] = [m]
   return title && new Set(scope.map(pathOfMeasure)).size > 1 ? `${title} · Count Unique` : 'Count Unique';
 }
 
-/** A mart's cards: its record count (when it has a primary key), then one per metric. A card keeps its id (what hides it and what a pick is saved under) and shows the measure `metrics` picked for it, when that is still one of the mart's. */
+/** A mart's cards: its record count (when it has a primary key), then one per metric not already shown by another card's pick. A card keeps its id (what hides it and what a pick is saved under) and shows the measure `metrics` picked for it, when that is still one of the mart's. */
 export function cardsOf(mart: ChartMart, metrics: Record<string, string> = {}): Card[] {
   const own = defaultCards(mart);
   const byMeasure = new Map(own.map((c) => [measureId(c.measure), c]));
-  return own.map((c) => { const pick = byMeasure.get(metrics[c.id] ?? ''); return pick ? { ...pick, id: c.id } : c; });
+  const shown = own.map((c) => { const pick = byMeasure.get(metrics[c.id] ?? ''); return { card: pick ? { ...pick, id: c.id } : c, picked: !!pick }; });
+  // A metric a card already shows through its pick does not also get its own card (a column shown by the pick would otherwise appear twice).
+  const taken = new Set(shown.filter((x) => x.picked && x.card.measure.kind === 'metric').map((x) => measureId(x.card.measure)));
+  return shown.filter((x) => x.picked || x.card.measure.kind !== 'metric' || !taken.has(measureId(x.card.measure))).map((x) => x.card);
 }
 
 /** The measures a card of this mart can show: the mart's own, in card order. */
@@ -150,17 +154,21 @@ export const numberOf = (v: unknown): number | null => {
 };
 
 /** One card: its label and ⋮ menu, its value and its own sparkline (the date picked for it, read once per date and shared by the cards on it). */
-function ScoreCard({ martId, mart, menuMart, card: c, spark, row, bucket, filter, version, paused, joins, formatOf, choices, onMetric, onDate, onHide }: {
-  martId: string; mart: ChartMart; menuMart: ChartMart; card: Card; spark: Spark; row: Row | undefined; bucket: DateBucket | null; filter: TraverseFilter[]; version: number; paused: boolean; joins?: JoinGrain; formatOf: Formatter;
+function ScoreCard({ martId, mart, menuMart, card: c, spark, row, bucket, autoBucket, filter, version, paused, joins, formatOf, choices, onMetric, onDate, onHide }: {
+  martId: string; mart: ChartMart; menuMart: ChartMart; card: Card; spark: Spark; row: Row | undefined; bucket: DateBucket | null; /** Whether the charts' bucket is Auto, so a card on its own date picks its own. */ autoBucket: boolean; filter: TraverseFilter[]; version: number; paused: boolean; joins?: JoinGrain; formatOf: Formatter;
   choices: ReturnType<typeof measureGroups>; onMetric?: (cardId: string, measure: string) => void; onDate?: (cardId: string, date: string) => void; onHide?: (cardId: string) => void;
 }) {
   const date = cardDate(mart, spark, c.id);
-  const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, bucket, filter, date), version, joins);
+  // A date other than the charts' keeps the 60-bucket cap by its own range; a chosen bucket is shared.
+  const own = autoBucket && date !== spark.date;
+  const mine = useBucket(martId, own ? date : null, 'AUTO', filter, version, paused);
+  const cardBucket = own ? mine.bucket : bucket;
+  const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, cardBucket, filter, date), version, joins);
   const dated = date ? datedRows(trend.rows ?? [], date.name) : [];
   const points: Point[] = dated.map((s) => ({
     x: String(s[date!.name]),
     y: numberOf(s[c.key]),
-    label: formatBucket(s[date!.name], bucket!) ?? '',
+    label: formatBucket(s[date!.name], cardBucket!) ?? '',
     valueText: textOf(c, s, formatOf),
   }));
   return (
@@ -183,8 +191,8 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, bucket, filter
 }
 
 /** The cards of one data mart, wrapping inside its group's cell. The main mart's cell also shows the strip's error and empty state. `menuMart` is the same mart with every column: its metrics and dates are what a card's menu offers. */
-export function MartCards({ martId, mart, menuMart = mart, main, spark, scores, bucket, filter, version, paused, joins, hasFilters, formatOf, onMetric, onDate, onHide }: {
-  martId: string; mart: ChartMart; menuMart?: ChartMart; main: boolean; spark: Spark; scores: ChartResult; bucket: DateBucket | null; filter: TraverseFilter[]; version: number; paused: boolean; /** What lets a sparkline read be reused after a column is dropped. */ joins?: JoinGrain; hasFilters: boolean; formatOf: Formatter;
+export function MartCards({ martId, mart, menuMart = mart, main, spark, scores, bucket, autoBucket = true, filter, version, paused, joins, hasFilters, formatOf, onMetric, onDate, onHide }: {
+  martId: string; mart: ChartMart; menuMart?: ChartMart; main: boolean; spark: Spark; scores: ChartResult; bucket: DateBucket | null; /** Whether the charts' bucket is Auto. */ autoBucket?: boolean; filter: TraverseFilter[]; version: number; paused: boolean; /** What lets a sparkline read be reused after a column is dropped. */ joins?: JoinGrain; hasFilters: boolean; formatOf: Formatter;
   /** A card's ⋮ menu: pick the measure a card shows, the date its trend is drawn on, and hide it. Without them (the settings are still loading) the cards have no menu. */
   onMetric?: (cardId: string, measure: string) => void; onDate?: (cardId: string, date: string) => void; onHide?: (cardId: string) => void;
 }) {
@@ -196,7 +204,7 @@ export function MartCards({ martId, mart, menuMart = mart, main, spark, scores, 
   return (
     <div className="flex min-w-0 flex-1 flex-wrap gap-2">
       {cards.map((c) => (
-        <ScoreCard key={c.id} martId={martId} mart={mart} menuMart={menuMart} card={c} spark={spark} row={row} bucket={bucket} filter={filter} version={version} paused={paused} joins={joins} formatOf={formatOf}
+        <ScoreCard key={c.id} martId={martId} mart={mart} menuMart={menuMart} card={c} spark={spark} row={row} bucket={bucket} autoBucket={autoBucket} filter={filter} version={version} paused={paused} joins={joins} formatOf={formatOf}
           choices={choices} onMetric={onMetric} onDate={onDate} onHide={onHide} />
       ))}
     </div>

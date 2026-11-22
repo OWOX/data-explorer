@@ -667,6 +667,17 @@ test('choosing a field that is not a shown column adds the column to the grid an
   await waitFor(() => expect(screen.getByRole('heading', { name: /^Net Revenue · Sum by / })).toBeInTheDocument());
 });
 
+test('a card’s Metric pick of a hidden column shows the column once, with no extra card of its own', async () => {
+  const t = await charts({ columns: ['id', 'status', 'amount', 'created_at'] });
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Amount · Sum']));
+  await userEvent.click(within(group('orders')!).getByRole('button', { name: 'Amount · Sum options' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Net Revenue · Sum' }));
+  await waitFor(() => expect(t.gridPuts).toHaveBeenCalled());
+  expect(t.gridPuts.mock.calls.at(-1)![1].columns).toContain('net_revenue');
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Net Revenue · Sum']));
+});
+
 const lastGrid = (t: { gridPuts: { mock: { calls: unknown[][] } } }) => t.gridPuts.mock.calls.at(-1)![1] as { columns: string[]; aggregations?: { column: string; function: string }[] };
 
 test('in a grouped grid a metric shown by a chart choice gets an aggregation rule in the same edit', async () => {
