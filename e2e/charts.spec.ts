@@ -126,7 +126,6 @@ test('a chart that changes type animates its width instead of snapping', async (
 });
 
 test.describe('grouped submenus', () => {
-  test.use({ deviceScaleFactor: 2 });
   test('a Dimension submenu lists its fields under each data mart, and the arrow keys skip the mart headers', async ({ page }) => {
     await expect(data(page).getByRole('row')).toHaveCount(202);
     await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();

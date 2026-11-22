@@ -77,11 +77,13 @@ test('the badges sit right-aligned next to the Storage button, and a narrow head
   expect(await edges()).toBeLessThanOrEqual(16);
 
   await page.setViewportSize({ width: 400, height: 700 });
-  await page.waitForTimeout(300);
-  const tops = new Set<number>();
-  for (const b of await group.getByRole('button').all()) tops.add(Math.round((await b.boundingBox())!.y));
-  expect(tops.size).toBeLessThanOrEqual(2);
-  expect(await edges()).toBeLessThanOrEqual(16);
+  const lines = async () => {
+    const tops = new Set<number>();
+    for (const b of await group.getByRole('button').all()) tops.add(Math.round((await b.boundingBox())!.y));
+    return tops.size;
+  };
+  await expect.poll(lines).toBeLessThanOrEqual(2);
+  await expect.poll(edges).toBeLessThanOrEqual(16);
 });
 
 test('at a very narrow width the badges take two lines and the rest goes behind the chip, right-aligned', async ({ page }) => {
