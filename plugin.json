@@ -1,6 +1,6 @@
 {
   "name": "Data Explorer",
-  "description": "Browse data marts, their relationships and their rows.",
+  "description": "Explore data you know exists somewhere in your organization. Pick what you need in a few clicks, and it's joined automatically. Get it as a spreadsheet, as charts, or as a data set for your AI assistant.",
   "delivery": { "type": "remote", "url": "https://owox.github.io/data-explorer/" },
   "credentials": [{ "id": "ai", "models": ["fast", "reasoning"], "optional": true }],
   "collections": [

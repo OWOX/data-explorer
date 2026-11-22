@@ -198,7 +198,7 @@
 .dm-node.dm-ghost, .dm-node.dm-offpath { border-width: 1px; border-style: dashed; }
 .dm-node.dm-ghost { transition: none; }
 /* Dimming has one meaning: another card is hovered, and this one is not it, on a line with it, or a mart it can join. */
-.dm-node.dm-faded { opacity: 0.5; }
+.dm-node.dm-faded { opacity: 0.3; }
 .dm-drag-ghost { position: fixed; z-index: 60; pointer-events: none; padding: 6px 10px; border-radius: 8px; font-size: 13px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 4px 12px rgb(0 0 0 / 0.18); }
 .dm-canvas [data-mart-id] { user-select: none; }
 /* The card under the pointer takes its own run-health colour on its one 1px border and a light tint of it.
@@ -269,7 +269,7 @@ button.dm-mark { cursor: pointer; }
 .dm-spin { animation: dm-spin 1s linear infinite; }
 @keyframes dm-spin { to { rotate: 360deg; } }
 
-/* Hovering a card drops what it does not touch to half (.dm-faded, set by the view); a pinned or focused card dims no report mart.
+/* Hovering a card drops what it does not touch to 30% (.dm-faded, set by the view); a pinned or focused card dims no report mart.
    With a main mart set, Grid also dims the marts outside the report unless the hovered or focused card can join them.
    With a mart pinned, the Data Sources that do not feed it drop back, in both views. */
 .dm-canvas.sources-focused #band-sources .dm-node { opacity: 0.25; }
