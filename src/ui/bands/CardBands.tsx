@@ -20,6 +20,7 @@ import { MartCard, SourceCard, contextsOf, martElementId, sourceElementId, type 
 import { useCardTransitions } from './transitions';
 import { useCardClick } from './useCardClick';
 import { useCardDrag } from './useCardDrag';
+import { edgeOf, relationshipNote } from './relationshipNote';
 import { litIds, revisionOf, useWires, type Wire } from './wires';
 import { MartsCanvas } from './MartsCanvas';
 import { buildJoinTree, ghostSources, subtreePaths, type TreeNode } from '../../state/join-tree';
@@ -54,7 +55,7 @@ export function WireTipLayer({ canvas }: { canvas: RefObject<HTMLElement | null>
     const root = canvas.current;
     if (!root) return;
     const move = (e: PointerEvent) => {
-      const text = e.target instanceof Element ? e.target.closest<SVGPathElement>('#wires path, #tree-wires path')?.dataset.tip : undefined;
+      const text = e.target instanceof Element ? e.target.closest<SVGElement>('#wires :is(path, circle), #tree-wires :is(path, circle)')?.dataset.tip : undefined;
       setTip(text ? { text, x: e.clientX, y: e.clientY } : (cur) => (cur === null ? cur : null));
     };
     const leave = () => setTip(null);
@@ -255,9 +256,11 @@ export function CardBands({
       const parent = canvasTree!.nodes.get(n.parent)!;
       if (!shown.has(parent.martId)) continue;
       // The join fields when the source's relationship is known, the two titles otherwise.
-      const edge = model.edges.find((e) => e.id === joinSources?.find((x) => x.aliasPath === n.path)?.relationshipId && e.source === parent.martId && e.target === n.martId);
+      const relId = joinSources?.find((x) => x.aliasPath === n.path)?.relationshipId;
+      const edge = edgeOf(model.edges, parent.martId, n.martId, n.path, relId);
       const title = edge && edge.joins.length > 0 ? edge.joins.map((j) => `${j.sourceField} → ${j.targetField}`).join(', ') : `${model.marts.get(parent.martId)?.title ?? parent.martId} → ${model.marts.get(n.martId)?.title ?? n.martId}`;
-      out.push({ id: `tree:${n.path}`, from: martElementId(parent.martId, parent.path || undefined), to: martElementId(n.martId, n.path), kind: 'relationship', title, joined: true });
+      const note = relationshipNote(edge, model.marts.get(n.martId)?.title ?? '');
+      out.push({ id: `tree:${n.path}`, from: martElementId(parent.martId, parent.path || undefined), to: martElementId(n.martId, n.path), kind: 'relationship', title, joined: true, ...(note ? { note } : {}) });
     }
     // The focused card offers the marts it can take: a dashed line to each, the band cards and the ghosts alike.
     const focusNode = focus === null ? undefined : canvasTree?.nodes.get(focus);
@@ -296,7 +299,8 @@ export function CardBands({
     // The other edges between marts stay plain: dashed, and drawn when a card on one is lit.
     for (const e of model.edges) {
       if (!shown.has(e.source) || !shown.has(e.target) || (inReport.has(e.source) && inReport.has(e.target))) continue;
-      out.push({ id: `edge:${e.id}`, from: cardOf(e.source), to: cardOf(e.target), kind: 'relationship', title: e.joins.map((j) => `${j.sourceField} → ${j.targetField}`).join(', ') });
+      const note = relationshipNote(e, model.marts.get(e.target)?.title ?? '');
+      out.push({ id: `edge:${e.id}`, from: cardOf(e.source), to: cardOf(e.target), kind: 'relationship', title: e.joins.map((j) => `${j.sourceField} → ${j.targetField}`).join(', '), ...(note ? { note } : {}) });
     }
     return out;
   // `treeKey` stands for canvasTree.

@@ -1,4 +1,4 @@
-import { Gauge, Tag, type LucideIcon } from 'lucide-react';
+import { Gauge, Shapes, type LucideIcon } from 'lucide-react';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
@@ -32,7 +32,7 @@ function categoryPanel(orientation: 'vertical' | 'horizontal', name: string) {
     const [tickType, tickFormat] = measureFormat(measure, formatOf);
     const items: MenuItem[] = [
       { kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(menuOf(cf), measuresOf(menuOf(cf))), onPick: (v) => onChange({ measure: v }) },
-      { kind: 'radio', label: 'Dimension', icon: Tag, value: dim.name, options: [], groups: fieldGroups(menuOf(cf), menuOf(cf).dimensions), onPick: (v) => onChange({ dimension: v }) },
+      { kind: 'radio', label: 'Dimension', icon: Shapes, value: dim.name, options: [], groups: fieldGroups(menuOf(cf), menuOf(cf).dimensions), onPick: (v) => onChange({ dimension: v }) },
       ...tail,
     ];
     const title = `${measureLabel(cf, measure)} by ${fieldLabel(dim)}`;

@@ -1,4 +1,4 @@
-import { ChartScatter, Gauge, Tag } from 'lucide-react';
+import { ChartScatter, Gauge, Shapes } from 'lucide-react';
 import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
@@ -32,7 +32,7 @@ function ScatterPanel({ martId, cf, r, filter, version, idle, hasFilters, format
   const [yt, yf] = measureFormat(y, formatOf);
   const all = measuresOf(menuOf(cf));
   const items: MenuItem[] = [
-    { kind: 'radio', label: 'Dimension', icon: Tag, value: dim.name, options: [], groups: fieldGroups(menuOf(cf), menuOf(cf).dimensions), onPick: (v) => onChange({ dimension: v }) },
+    { kind: 'radio', label: 'Dimension', icon: Shapes, value: dim.name, options: [], groups: fieldGroups(menuOf(cf), menuOf(cf).dimensions), onPick: (v) => onChange({ dimension: v }) },
     { kind: 'radio', label: 'X metric', icon: Gauge, value: measureId(x), options: [], groups: measureGroups(menuOf(cf), all), onPick: (v) => onChange({ measure: v }) },
     { kind: 'radio', label: 'Y metric', icon: Gauge, value: measureId(y), options: [], groups: measureGroups(menuOf(cf), all.filter((m) => measureId(m) !== measureId(x))), onPick: (v) => onChange({ measure2: v }) },
     ...tail,

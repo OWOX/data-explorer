@@ -2,7 +2,7 @@ import { ChartSpline, Hash } from 'lucide-react';
 import { vi } from 'vitest';
 import type { ChartFields } from './fields';
 import { KINDS } from './kinds';
-import { hideCard, listItems, setCardDate, setCardMetric, tailItems } from './listMenu';
+import { dropPicksOf, hideCard, listItems, setCardDate, setCardMetric, tailItems } from './listMenu';
 import { cardsOf, martMeasures } from './Scorecards';
 import type { ChartSettings } from './settings';
 
@@ -100,4 +100,13 @@ test('a metric a card shows through its pick has no card of its own', () => {
   const mart = { ...cf.marts[0]!, metrics: [{ field: amount, fn: 'SUM' as const }, { field: qty, fn: 'SUM' as const }] };
   expect(cardsOf(mart, { amount: 'qty' }).map((c) => [c.id, c.measure.kind === 'metric' ? c.measure.metric.field.name : 'records'])).toEqual([['records:orders', 'records'], ['amount', 'qty']]);
   expect(cardsOf(mart, { amount: 'records' }).map((c) => c.id)).toEqual(['records:orders', 'amount', 'qty']);
+});
+
+test('dropPicksOf drops the metric and date picks that name a hidden column, and returns the same object when none do', () => {
+  const cur: ChartSettings = { scorecards: { hidden: ['x'], metrics: { id: 'amount', a: 'other' }, dates: { id: 'created_at', b: 'paid_at' } } };
+  expect(dropPicksOf(cur, new Set(['amount', 'paid_at']))).toEqual({ scorecards: { hidden: ['x'], metrics: { a: 'other' }, dates: { id: 'created_at' } } });
+  expect(dropPicksOf(cur, new Set(['status']))).toBe(cur);
+  const bare: ChartSettings = { scorecards: { hidden: ['x'] } };
+  expect(dropPicksOf(bare, new Set(['amount']))).toBe(bare);
+  expect(dropPicksOf({}, new Set(['amount']))).toEqual({});
 });

@@ -81,7 +81,9 @@ test('the gap above Clear and Apply equals the gap between the operator and the 
   const op = await top(dialog.getByLabel('Operator'));
   const val = await top(dialog.getByLabel('Value'));
   const clear = await top(dialog.getByRole('button', { name: 'Clear' }));
-  expect(Math.abs((clear.y - (val.y + val.height)) - (val.y - (op.y + op.height)))).toBeLessThanOrEqual(1);
+  // The line reserved under the value (for the loading and no-match notes) is part of the value's block: the gap is measured from its bottom.
+  const slot = await top(dialog.locator('.dm-suggest-slot'));
+  expect(Math.abs((clear.y - (slot.y + slot.height)) - (val.y - (op.y + op.height)))).toBeLessThanOrEqual(1);
 });
 
 test('the suggestions are as wide as the input, and Reload values is the last row once the values are in', async ({ page }) => {

@@ -1,4 +1,4 @@
-import type { Ctx, ConnectorDto, ConnectorSummaryDto, ContextDto, ModelCanvasPageDto } from '../sdk/types';
+import type { Ctx, ConnectorDto, ConnectorSummaryDto, ContextDto, ModelCanvasPageDto, RelationshipDto } from '../sdk/types';
 import type { Edge, Mart, Model } from '../model/types';
 import { cleanSummary, groupSources, sourceKeyFor } from '../model/sources';
 import { runPool } from './pool';
@@ -52,6 +52,13 @@ export type LoadProgress = { done: number; total: number };
 /** The reads before the storages are known: the storages, the marts, the contexts and the connectors. */
 export const FIRST_STEPS = 4;
 
+/** How long the model waits for the relationships' names: past it the lines stay unnamed, so a slow read never holds the model back. */
+export const NAMES_WAIT_MS = 1500;
+const within = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> => new Promise((resolve) => {
+  const t = setTimeout(() => resolve(fallback), ms);
+  p.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(fallback); });
+});
+
 /** `onProgress` hears every finished read. Each storage adds two more once the storages are known: its canvas and its edges. */
 export async function loadModel(ctx: Ctx, onProgress?: (p: LoadProgress) => void): Promise<Model> {
   let done = 0;
@@ -69,7 +76,10 @@ export async function loadModel(ctx: Ctx, onProgress?: (p: LoadProgress) => void
   const marts = new Map<string, Mart>();
   const results = await runPool(storages, STORAGE_CONCURRENCY, async (s) => {
     // A storage that fails still counts as read: the bar must be able to fill.
-    const [nodes, edges] = await Promise.all([canvasNodes(ctx, s.id).then(step, (e) => { step(null); throw e; }), ctx.owox.models.getEdges(s.id).then(step, (e) => { step(null); throw e; })]);
+    // The names and descriptions of the relationships are decoration: a failed read leaves the lines unnamed and is not counted.
+    const [nodes, edges, named] = await Promise.all([canvasNodes(ctx, s.id).then(step, (e) => { step(null); throw e; }), ctx.owox.models.getEdges(s.id).then(step, (e) => { step(null); throw e; }),
+      within(ctx.owox.getJson<RelationshipDto[]>(`/api/data-storages/${encodeURIComponent(s.id)}/relationships`).then((r) => (Array.isArray(r) ? r : [])), NAMES_WAIT_MS, [])]);
+    const names = new Map(named.map((r) => [r.id, r]));
     for (const n of nodes) {
       const item = listed.get(n.id);
       const connectorName = item?.definitionType === 'CONNECTOR' ? item.connectorSourceName || undefined : undefined;
@@ -87,7 +97,7 @@ export async function loadModel(ctx: Ctx, onProgress?: (p: LoadProgress) => void
         ...(connectorName ? { connectorName } : {}),
       });
     }
-    return edges;
+    return edges.map((e) => ({ ...e, targetAlias: names.get(e.id)?.targetAlias?.trim() || undefined, description: names.get(e.id)?.description?.trim() || undefined }));
   });
   const failedStorages: Model['failedStorages'] = [];
   const rawEdges = results.flatMap((r, i) => {
@@ -105,6 +115,8 @@ export async function loadModel(ctx: Ctx, onProgress?: (p: LoadProgress) => void
       source: e.sourceDataMartId,
       target: e.targetDataMartId,
       joins: e.joinConditions.map((j) => ({ sourceField: j.sourceFieldName, targetField: j.targetFieldName })),
+      ...(e.targetAlias ? { alias: e.targetAlias } : {}),
+      ...(e.description ? { description: e.description } : {}),
     }));
 
   const sources = groupSources(marts.values(), bundled, custom);

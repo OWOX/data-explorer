@@ -71,6 +71,8 @@ export type EdgeDto = {
   targetDataMartId: string;
   joinConditions: { sourceFieldName: string; targetFieldName: string }[];
 };
+/** The part of a storage's relationships the plugin reads: what a relationship is called and what it means. */
+export type RelationshipDto = { id: string; targetAlias?: string | null; description?: string | null };
 export type ContextDto = { id: string; name: string; description: string | null; icon?: string | null };
 export type SchemaFieldDto = {
   name: string;

@@ -384,7 +384,9 @@ test('typed text that matches no value keeps the panel open with a note and the 
   expect(options()).toEqual([]);
   expect(screen.getByRole('status')).toHaveTextContent('No matching values');
   await userEvent.click(screen.getByRole('button', { name: /Reload values/ }));
-  await waitFor(() => expect(options()).toEqual(['ZA']));
+  // The reloaded values hold ZA: it is now the typed text, so there is nothing left to suggest and the note goes.
+  await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+  expect(options()).toEqual([]);
   expect(load).toHaveBeenCalledTimes(2);
 });
 
@@ -417,4 +419,117 @@ test('the reload row is reachable by keyboard when nothing matches', async () =>
   await screen.findByText('No matching values');
   await userEvent.keyboard('{ArrowDown}{Enter}');
   await waitFor(() => expect(options()).toEqual(['US']));
+});
+
+test('the panel closes once the typed text is a known value, and comes back when it matches nothing', async () => {
+  render(<Harness op="starts_with" src={source(loadOf(['US', 'DE']))} />);
+  await userEvent.click(input());
+  await waitFor(() => expect(options()).toEqual(['US', 'DE']));
+  await userEvent.type(input(), 'US');
+  expect(screen.queryByRole('status')).toBeNull();
+  expect(screen.queryByRole('button', { name: /Reload values/ })).toBeNull();
+  await userEvent.type(input(), 'X');
+  expect(screen.getByRole('status')).toHaveTextContent('No matching values');
+  expect(screen.getByRole('button', { name: /Reload values/ })).toBeInTheDocument();
+});
+
+test('a picked value in a single-value operator closes the panel', async () => {
+  render(<Harness op="starts_with" src={source(loadOf(['US', 'DE']))} />);
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'US' }));
+  expect(input().value).toBe('US');
+  expect(screen.queryByRole('status')).toBeNull();
+  expect(screen.queryByRole('button', { name: /Reload values/ })).toBeNull();
+});
+
+test('in list mode the panel closes once every value is picked', async () => {
+  render(<Harness op="eq" src={source(loadOf(['US', 'DE']))} />);
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'US' }));
+  expect(options()).toEqual(['DE']);
+  await userEvent.click(screen.getByRole('option', { name: 'DE' }));
+  expect(input().value).toBe('US, DE, ');
+  expect(screen.queryByRole('status')).toBeNull();
+  expect(screen.queryByRole('button', { name: /Reload values/ })).toBeNull();
+  await userEvent.type(input(), 'ZZ');
+  expect(screen.getByRole('status')).toHaveTextContent('No matching values');
+});
+
+test('Enter does not reload when the pointer, not the arrow keys, put the reload row under the cursor', async () => {
+  const load = vi.fn().mockResolvedValue([]);
+  const apply = vi.fn();
+  render(<form onSubmit={(e) => { e.preventDefault(); apply(); }}><Harness src={source(load)} /></form>);
+  await userEvent.click(input());
+  const reload = await screen.findByRole('button', { name: /Reload values/ });
+  await userEvent.hover(reload);
+  expect(reload).toHaveAttribute('data-hot');
+  await userEvent.keyboard('{Enter}');
+  expect(load).toHaveBeenCalledTimes(1);
+  expect(apply).toHaveBeenCalledTimes(1);
+});
+
+test('a reload is not repeated by a second Enter, nor by Enter after the input is left and refocused', async () => {
+  const load = vi.fn().mockResolvedValue([]);
+  render(<Harness src={source(load)} />);
+  await userEvent.click(input());
+  await screen.findByText('No matching values');
+  await userEvent.keyboard('{ArrowDown}{Enter}');
+  await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+  await userEvent.keyboard('{Enter}');
+  expect(load).toHaveBeenCalledTimes(2);
+  await userEvent.keyboard('{ArrowDown}');
+  await userEvent.tab();
+  await userEvent.tab({ shift: true });
+  await userEvent.keyboard('{Enter}');
+  expect(load).toHaveBeenCalledTimes(2);
+});
+
+test('the no-match note and Reload sit in the editor\'s flow next to the input, not in the floating panel', async () => {
+  render(<Harness src={source(loadOf(['US', 'DE']))} />);
+  await userEvent.click(input());
+  await waitFor(() => expect(options()).toEqual(['US', 'DE']));
+  expect(screen.getByRole('listbox').closest('.dm-suggest')).not.toBeNull();
+  await userEvent.type(input(), 'ZZ');
+  const note = screen.getByRole('status');
+  expect(note).toHaveTextContent('No matching values');
+  expect(note.closest('.dm-suggest')).toBeNull();
+  expect(screen.getByRole('button', { name: /Reload values/ }).closest('.dm-suggest')).toBeNull();
+  expect(input().parentElement).toContainElement(note);
+});
+
+test('in a list, typing the one value that is left closes the panel, and a longer match keeps it', async () => {
+  render(<Harness op="eq" src={source(loadOf(['paid', 'paid_late', 'open']))} />);
+  await userEvent.click(input());
+  await waitFor(() => expect(options()).toEqual(['paid', 'paid_late', 'open']));
+  await userEvent.type(input(), 'paid');
+  expect(options()).toEqual(['paid', 'paid_late']);
+  await userEvent.type(input(), '_late');
+  expect(screen.queryByRole('listbox')).toBeNull();
+  expect(screen.queryByRole('status')).toBeNull();
+});
+
+test('a slot of the same structure sits under the input whether idle, loading or with no match, focused or not', async () => {
+  let done!: (v: string[]) => void;
+  const { container } = render(<><Harness src={source(() => new Promise((r) => { done = r; }))} /><button>Apply</button></>);
+  const slot = () => container.querySelectorAll('.dm-suggest-slot');
+  const idle = slot()[0]!;
+  expect(slot()).toHaveLength(1);
+  expect(idle.parentElement).toBe(input().parentElement);
+  await userEvent.click(input());
+  expect(await screen.findByText('Loading values…')).toBeInTheDocument();
+  expect(slot()).toHaveLength(1);
+  expect(slot()[0]).toBe(idle);
+  done(['US']);
+  await userEvent.type(input(), 'ZZ');
+  expect(screen.getByText('No matching values').closest('.dm-suggest-slot')).toBe(idle);
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(slot()[0]).toBe(idle);
+  expect(screen.getByText('No matching values')).toBeInTheDocument();
+});
+
+test('in a list a typed word that differs only by case still offers the value that fixes it', async () => {
+  render(<Harness op="eq" src={source(loadOf(['paid', 'open']))} />);
+  await userEvent.click(input());
+  await userEvent.type(input(), 'Paid');
+  expect(options()).toEqual(['paid']);
 });

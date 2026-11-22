@@ -1,5 +1,5 @@
 import { describe, vi } from 'vitest';
-import { loadModel } from './model';
+import { loadModel, NAMES_WAIT_MS } from './model';
 import { stubCtx } from './test-ctx';
 
 test('loadModel merges storages, canvas nodes, list contexts, edges and contexts', async () => {
@@ -212,4 +212,45 @@ describe('custom connectors', () => {
     const { ctx } = run([['a', 'FiberyTasks']], { summaries: () => ({ oops: 1 }) });
     expect((await loadModel(ctx)).sources[0]!.key).toBe('FiberyTasks');
   });
+});
+
+test('loadModel names the edges from the storage relationships, and a failed read leaves them unnamed', async () => {
+  const run = async (rel: () => unknown) => {
+    const getJson = vi.fn(async (path: string, query?: Record<string, string>) => {
+      if (path === '/api/contexts') return [];
+      if (path === '/api/model-canvas/data-marts') return { items: [{ id: 'a', title: 'Orders', description: null, fieldCount: 1 }, { id: 'b', title: 'Sessions', description: null, fieldCount: 1 }], total: 2, nextOffset: null };
+      if (path === '/api/data-storages/s1/relationships') return rel();
+      throw new Error(`unexpected ${path} ${query?.storageId}`);
+    });
+    const ctx = stubCtx({
+      storages: { list: async () => [{ id: 's1', title: 'BQ', type: 'GOOGLE_BIGQUERY' }] },
+      models: { getEdges: async () => [{ id: 'e1', sourceDataMartId: 'a', targetDataMartId: 'b', joinConditions: [] }] },
+      dataMarts: { list: async () => [], traverseData: vi.fn() },
+      getJson,
+    });
+    return (await loadModel(ctx)).edges[0]!;
+  };
+  expect(await run(() => [{ id: 'e1', targetAlias: 'first_session', description: ' How a visit starts ' }])).toMatchObject({ alias: 'first_session', description: 'How a visit starts' });
+  expect(await run(() => { throw new Error('no'); })).toEqual({ id: 'e1', source: 'a', target: 'b', joins: [] });
+});
+
+test('loadModel does not wait for a slow relationships read: past the wait the lines are unnamed', async () => {
+  vi.useFakeTimers();
+  try {
+    const getJson = vi.fn(async (path: string) => {
+      if (path === '/api/contexts') return [];
+      if (path === '/api/model-canvas/data-marts') return { items: [{ id: 'a', title: 'Orders', description: null, fieldCount: 1 }, { id: 'b', title: 'Sessions', description: null, fieldCount: 1 }], total: 2, nextOffset: null };
+      if (path === '/api/data-storages/s1/relationships') return new Promise(() => undefined);
+      return [];
+    });
+    const ctx = stubCtx({
+      storages: { list: async () => [{ id: 's1', title: 'BQ', type: 'GOOGLE_BIGQUERY' }] },
+      models: { getEdges: async () => [{ id: 'e1', sourceDataMartId: 'a', targetDataMartId: 'b', joinConditions: [] }] },
+      dataMarts: { list: async () => [], traverseData: vi.fn() },
+      getJson,
+    });
+    const loading = loadModel(ctx);
+    await vi.advanceTimersByTimeAsync(NAMES_WAIT_MS + 10);
+    expect((await loading).edges[0]).toEqual({ id: 'e1', source: 'a', target: 'b', joins: [] });
+  } finally { vi.useRealTimers(); }
 });

@@ -26,6 +26,18 @@ export function setCardDate(cur: ChartSettings, id: string, date: string, mart: 
   return { ...cur, scorecards: { ...cur.scorecards, dates } };
 }
 
+/**
+ * Drops the card picks that name one of the columns the member has just hidden (a metric picked for a card, a date picked for its trend),
+ * so showing the column again later does not silently switch the card. The same object comes back when nothing names them, so callers can skip the save.
+ */
+export function dropPicksOf(cur: ChartSettings, hidden: ReadonlySet<string>): ChartSettings {
+  const keep = (m: Record<string, string> | undefined) => Object.fromEntries(Object.entries(m ?? {}).filter(([, v]) => !hidden.has(v)));
+  const m = keep(cur.scorecards?.metrics);
+  const d = keep(cur.scorecards?.dates);
+  if (Object.keys(m).length === Object.keys(cur.scorecards?.metrics ?? {}).length && Object.keys(d).length === Object.keys(cur.scorecards?.dates ?? {}).length) return cur;
+  return { ...cur, scorecards: { ...cur.scorecards, ...(cur.scorecards?.metrics ? { metrics: m } : {}), ...(cur.scorecards?.dates ? { dates: d } : {}) } };
+}
+
 export function listItems({ cf, settings, resolved, change }: { cf: ChartFields; settings: ChartSettings; resolved: { spec: ChartSpec; title: string | null }[]; change: Change }): MenuItem[] {
   const hidden = new Set(settings.scorecards?.hidden ?? []);
   const toggleCard = (id: string) => change((cur) => {

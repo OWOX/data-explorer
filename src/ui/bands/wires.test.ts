@@ -200,6 +200,53 @@ describe('useWires', () => {
   });
 });
 
+describe('the dot of a named relationship', () => {
+  afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.unstubAllGlobals(); });
+
+  it('is drawn after the line of a wire with a note only, and says the note, then the line, on hover', () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    const canvas = document.createElement('div');
+    canvas.innerHTML = '<div id="a"></div><div id="b"></div><div id="c"></div>';
+    document.body.append(canvas);
+    const wires = [{ ...wire('named', 'a', 'b'), note: 'First session: How a visit starts' }, wire('plain', 'a', 'c')];
+    renderHook(() => useWires({ current: canvas }, wires, { pinned: null, hovered: null }, 0));
+    const dots = canvas.querySelectorAll<SVGCircleElement>('circle.dm-wire-dot');
+    expect(dots).toHaveLength(1);
+    expect(dots[0]!.previousElementSibling).toBe(canvas.querySelector('path[data-to="b"]'));
+    expect(dots[0]!.dataset.tip).toContain('First session: How a visit starts');
+    expect(canvas.querySelector<SVGPathElement>('path[data-to="b"]')!.dataset.tip).toMatch(/^First session/);
+    expect(canvas.querySelector<SVGPathElement>('path[data-to="c"]')!.dataset.tip).not.toContain('First');
+  });
+});
+
+describe('the dot of a line with no box', () => {
+  afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.unstubAllGlobals(); });
+
+  it('is not drawn: only a measured line has a middle', () => {
+    vi.stubGlobal('ResizeObserver', class { constructor(cb: () => void) { setTimeout(cb, 0); } observe() {} disconnect() {} });
+    const canvas = document.createElement('div');
+    canvas.innerHTML = '<div id="a"></div>';
+    document.body.append(canvas);
+    renderHook(() => useWires({ current: canvas }, [{ ...wire('w', 'a', 'gone'), note: 'Named' }], { pinned: null, hovered: null }, 0));
+    expect(canvas.querySelector('circle.dm-wire-dot')!.getAttribute('display')).toBe('none');
+  });
+});
+
+describe('wires that share a line', () => {
+  afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.unstubAllGlobals(); });
+
+  it('say every relationship on the one line, with one dot', () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    const canvas = document.createElement('div');
+    canvas.innerHTML = '<div id="a"></div><div id="b"></div>';
+    document.body.append(canvas);
+    const wires = [{ ...wire('one', 'a', 'b'), note: 'First session' }, { ...wire('two', 'a', 'b'), note: 'Last session: Before the lead' }, wire('three', 'a', 'b')];
+    renderHook(() => useWires({ current: canvas }, wires, { pinned: null, hovered: null }, 0));
+    expect(canvas.querySelectorAll('circle.dm-wire-dot')).toHaveLength(1);
+    expect(canvas.querySelector<SVGCircleElement>('circle.dm-wire-dot')!.dataset.tip).toMatch(/^First session; Last session: Before the lead/);
+  });
+});
+
 describe('a hub with many neighbours', () => {
   const N = 35;
   const ids = Array.from({ length: N }, (_, i) => `n${String(i).padStart(2, '0')}`);

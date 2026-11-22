@@ -181,6 +181,21 @@ test('a saved choice that names nothing shown falls back for this view and write
   expect(t.puts).not.toHaveBeenCalled();
 });
 
+test('hiding a column drops the card picks that name it, in one write; a pick of another column stays', async () => {
+  const t = await charts({ charts: { scorecards: { metrics: { id: 'amount' }, dates: { amount: 'created_at' } } } });
+  await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
+  const menu = await openColumnMenu(within(data()), 'created_at');
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
+  await waitFor(() => expect(t.puts).toHaveBeenCalledTimes(1));
+  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, scorecards: { metrics: { id: 'amount' }, dates: {} } });
+});
+
+test('a saved pick of a column the grid does not open with (columns read late or failed) is never erased by loading', async () => {
+  const t = await charts({ columns: ['id', 'status', 'created_at'], charts: { scorecards: { metrics: { id: 'amount' }, dates: { id: 'paid_at' } } } });
+  await new Promise((r) => setTimeout(r, 100));
+  expect(t.puts).not.toHaveBeenCalled();
+});
+
 test('hiding a card from the Charts menu removes it and saves', async () => {
   const t = await charts();
   await waitFor(() => expect(cardNames(group('orders'))).toContain('Amount · Sum'));
@@ -189,6 +204,22 @@ test('hiding a card from the Charts menu removes it and saves', async () => {
   await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique']));
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, scorecards: { hidden: ['amount'] } });
   expect(cardNames(group('products'))).toEqual(['Count Unique', 'price · Sum']);
+});
+
+test('hiding a column while Charts has not loaded its settings still drops the pick, through the store', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const t = setup({ charts: { version: 2, scorecards: { dates: { amount: 'created_at' }, hidden: ['x'] } }, gate });
+  await t.seeded;
+  t.view();
+  t.puts.mockClear();
+  await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
+  await userEvent.click(radio('Charts'));
+  await waitFor(() => expect(group('orders')).not.toBeNull());
+  const menu = await openColumnMenu(within(data()), 'created_at');
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
+  release();
+  await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, scorecards: { dates: {}, hidden: ['x'] } }));
 });
 
 test('a change cannot be made before the saved settings load, and one made after keeps the rest of the doc', async () => {

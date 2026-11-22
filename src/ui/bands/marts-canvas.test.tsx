@@ -643,3 +643,24 @@ test('Escape in a drag only cancels the drag: the pinned card stays pinned', asy
   fireEvent.pointerUp(window, pointer(c().x + 40, c().y, 0));
   await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
 });
+
+test('Graph: three relationships from one mart to another each name their own line, and the dot sits on each', () => {
+  const mk = (id: string, title: string): Mart => ({ id, title, description: '', icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
+  const edge = (id: string, alias: string, description?: string) => ({ id, source: 'contact', target: 'session', joins: [], alias, ...(description ? { description } : {}) });
+  const model = { marts: new Map([['contact', mk('contact', 'Contact')], ['session', mk('session', 'Session | Entity')]]), sources: [], contexts: [], failedStorages: [],
+    edges: [edge('r1', 'first_session', 'How the contact first arrived'), edge('r2', 'last_session_before_mql'), edge('r3', 'session_entity')] } as unknown as Model;
+  const path = (alias: string, rel: string) => ({ aliasPath: alias, martId: 'session', label: 'Session | Entity', depth: 1, relationshipId: rel, uniqueCount: true,
+    fields: [{ name: `${alias}__x`, alias: 'x', type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: 'session', label: 'Session | Entity', aliasPath: alias, originalName: 'x' } }] });
+  const joined = [path('first_session', 'r1'), path('last_session_before_mql', 'r2'), path('session_entity', 'r3')] as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
+  render(
+    <TooltipProvider>
+      <MartsCanvas model={model} mainId="contact" columns={['id', 'first_session__x', 'last_session_before_mql__x', 'session_entity__x']} sources={joined} counts={new Map()} dq={new Map()} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
+    </TooltipProvider>,
+  );
+  const tip = (path: string) => document.querySelector<SVGPathElement>(`#tree-wires path[data-to="${martElementId('session', path)}"]`)!.dataset.tip!;
+  expect(tip('first_session')).toMatch(/^First session: How the contact first arrived/);
+  expect(tip('last_session_before_mql')).toMatch(/^Last session before MQL ·/);
+  // The default name (the mart's own title) with no description says nothing, so that line has no dot.
+  expect(tip('session_entity')).not.toMatch(/Session entity/);
+  expect(document.querySelectorAll('#tree-wires circle.dm-wire-dot')).toHaveLength(2);
+});

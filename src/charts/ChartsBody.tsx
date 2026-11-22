@@ -12,7 +12,7 @@ import { Skeleton } from '../ui/Skeleton';
 import { chartFields, menuOf } from './fields';
 import type { HavingKeys } from './havingKeys';
 import { ChartMenu } from './ChartMenu';
-import { hideCard, listItems, setCardDate, setCardMetric, tailItems } from './listMenu';
+import { dropPicksOf, hideCard, listItems, setCardDate, setCardMetric, tailItems } from './listMenu';
 import { ChartsMenuSlot } from './menuSlot';
 import { joinGrainOf } from './answers';
 import { MartCards, useScorecards } from './Scorecards';
@@ -31,13 +31,15 @@ const GUTTER_PX = 46;
  * Each panel is as wide as its content needs and the panels wrap onto more rows when the band is narrow.
  * Settings load once per mart; a fallback a kind's `resolve` picks is never written back, only the member's own changes are.
  */
-export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter, onShowColumns }: {
+export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter, onShowColumns, pruneRef }: {
   martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; /** The grid has a filter on an aggregate that the charts cannot follow for this grouping. */ havingNote?: boolean; /** Stands in for the charts while the passing group keys load, fail to load, or are none. */ gate?: HavingKeys['gate']; groups: { id: string; path: string; span: number; title: string; icon?: string | null }[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
   formatOf: (column: string, type: string) => Format; scrollerWidth: number;
   /** Applies the clicked mark's filters to the grid, as a filter edit (one Undo step). */
   onFilter: (add: ColumnFilter[]) => void;
   /** Shows these columns in the grid (added to the shown ones): a menu choice of a field that is not shown has to put it on screen. */
   onShowColumns: (names: string[], buckets?: Readonly<Record<string, DateBucket>>) => void;
+  /** The grid hands over the columns the member just hid; the card picks that named them go in one write. Set while this body is mounted. */
+  pruneRef?: { current: ((hidden: string[]) => boolean) | null };
 }) {
   const { chartSettings } = useServices();
   const [settings, setSettings] = useState<ChartSettings | null>(null);
@@ -57,6 +59,13 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     chartSettings.save(martId, next);
   };
 
+  // A pick whose column the member hides goes with it, in the same action. Only the member's own edit prunes: a failed or late read of the columns never erases what is saved.
+  useEffect(() => {
+    if (!pruneRef) return;
+    // False while the saved settings are not loaded: the grid then prunes through the store, as when Charts is closed.
+    pruneRef.current = (hidden) => { const gone = new Set(hidden); if (!latest.current) return false; if (dropPicksOf(latest.current, gone) !== latest.current) change((cur) => dropPicksOf(cur, gone)); return true; };
+    return () => { pruneRef.current = null; };
+  });
   // A resize re-renders this body on every step: the fields and the resolved choices only change with their inputs, so a resize rebuilds neither.
   // Charts draw from the shown columns (`cf`); the menus list every column of the same marts (`cf.menu`), and picking a hidden one shows it (see `showPicked`).
   const cf = useMemo(() => {

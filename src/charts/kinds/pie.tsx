@@ -1,4 +1,4 @@
-import { ChartPie, Gauge, Tag } from 'lucide-react';
+import { ChartPie, Gauge, Shapes } from 'lucide-react';
 import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
@@ -35,7 +35,7 @@ function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, 
   };
   const items: MenuItem[] = [
     { kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(menuOf(cf), pieMeasures(menuOf(cf))), onPick: (v) => onChange({ measure: v }) },
-    { kind: 'radio', label: 'Dimension', icon: Tag, value: dim.name, options: [], groups: fieldGroups(menuOf(cf), menuOf(cf).dimensions), onPick: (v) => onChange({ dimension: v }) },
+    { kind: 'radio', label: 'Dimension', icon: Shapes, value: dim.name, options: [], groups: fieldGroups(menuOf(cf), menuOf(cf).dimensions), onPick: (v) => onChange({ dimension: v }) },
     ...tail,
   ];
   // A measure of another mart than the dimension's can repeat one row in several slices (a one-to-many join), and a records measure of another mart counts each mart's rows per slice: the slices overlap, so the parts are not shares of a whole.
