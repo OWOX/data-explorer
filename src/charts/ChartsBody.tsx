@@ -12,12 +12,12 @@ import { Skeleton } from '../ui/Skeleton';
 import { chartFields, menuOf } from './fields';
 import type { HavingKeys } from './havingKeys';
 import { ChartMenu } from './ChartMenu';
-import { dropStalePicks, hideCard, listItems, setCardDate, setCardMetric, tailItems } from './listMenu';
+import { dropPicksOf, hideCard, listItems, setCardDate, setCardMetric, tailItems } from './listMenu';
 import { ChartsMenuSlot } from './menuSlot';
 import { joinGrainOf } from './answers';
-import { MartCards, martMeasures, useScorecards } from './Scorecards';
+import { MartCards, useScorecards } from './Scorecards';
 import { KINDS } from './kinds';
-import { chartsOf, measureId, patchChart, scorecardsOf, type ChartSettings, type ChartSpec, type Spark } from './settings';
+import { chartsOf, patchChart, scorecardsOf, type ChartSettings, type ChartSpec, type Spark } from './settings';
 import { useBucket } from './useBucket';
 
 /** The gutter cell of a row that is not a data row; the grid has the same one. */
@@ -31,13 +31,15 @@ const GUTTER_PX = 46;
  * Each panel is as wide as its content needs and the panels wrap onto more rows when the band is narrow.
  * Settings load once per mart; a fallback a kind's `resolve` picks is never written back, only the member's own changes are.
  */
-export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter, onShowColumns }: {
+export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter, onShowColumns, pruneRef }: {
   martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; /** The grid has a filter on an aggregate that the charts cannot follow for this grouping. */ havingNote?: boolean; /** Stands in for the charts while the passing group keys load, fail to load, or are none. */ gate?: HavingKeys['gate']; groups: { id: string; path: string; span: number; title: string; icon?: string | null }[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
   formatOf: (column: string, type: string) => Format; scrollerWidth: number;
   /** Applies the clicked mark's filters to the grid, as a filter edit (one Undo step). */
   onFilter: (add: ColumnFilter[]) => void;
   /** Shows these columns in the grid (added to the shown ones): a menu choice of a field that is not shown has to put it on screen. */
   onShowColumns: (names: string[], buckets?: Readonly<Record<string, DateBucket>>) => void;
+  /** The grid hands over the columns the member just hid; the card picks that named them go in one write. Set while this body is mounted. */
+  pruneRef?: { current: ((hidden: string[]) => void) | null };
 }) {
   const { chartSettings } = useServices();
   const [settings, setSettings] = useState<ChartSettings | null>(null);
@@ -57,22 +59,18 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     chartSettings.save(martId, next);
   };
 
+  // A pick whose column the member hides goes with it, in the same action. Only the member's own edit prunes: a failed or late read of the columns never erases what is saved.
+  useEffect(() => {
+    if (!pruneRef) return;
+    pruneRef.current = (hidden) => { const gone = new Set(hidden); if (latest.current && dropPicksOf(latest.current, gone) !== latest.current) change((cur) => dropPicksOf(cur, gone)); };
+    return () => { pruneRef.current = null; };
+  });
   // A resize re-renders this body on every step: the fields and the resolved choices only change with their inputs, so a resize rebuilds neither.
   // Charts draw from the shown columns (`cf`); the menus list every column of the same marts (`cf.menu`), and picking a hidden one shows it (see `showPicked`).
   const cf = useMemo(() => {
     const build = (on: string[]) => chartFields(schema, on, agg, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), Object.fromEntries(groups.map((g) => [g.path, g.title])), Object.fromEntries(sources.map((x) => [x.aliasPath, x.mainGrainCollapse ?? 'collapses'])), Object.fromEntries(groups.map((g) => [g.path, g.icon])));
     return { ...build(shown), menu: build(schema.map((f) => f.name)) };
   }, [schema, shown, agg, martId, groups, sources]);
-  // A card's saved pick of a column that is no longer shown is dropped, once the saved settings are in: shown again later, the column must not
-  // quietly take the card over. One write, and none when nothing is stale.
-  useEffect(() => {
-    if (!settings) return;
-    const metrics = new Set(cf.marts.flatMap((m) => martMeasures(m).map(measureId)));
-    const dates = new Set(cf.marts.flatMap((m) => m.dates.map((d) => d.name)));
-    if (dropStalePicks(settings, metrics, dates) !== settings) change((cur) => dropStalePicks(cur, metrics, dates));
-    // `change` only reads refs and state setters, so it is left out on purpose.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings, cf]);
   const schemaNames = useMemo(() => new Set(schema.map((f) => f.name)), [schema]);
   const joins = useMemo(() => joinGrainOf(sources), [sources]);
   const specs = chartsOf(settings ?? {});

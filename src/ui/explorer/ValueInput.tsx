@@ -51,7 +51,7 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
   };
   const start = () => { if (key !== undefined && !source?.cache.has(key) && !status[key]) read(); };
   // A reload forgets what was kept for this read and asks again.
-  const reload = () => { if (key === undefined) return; source?.cache.delete(key); read(); };
+  const reload = () => { if (key === undefined) return; source?.cache.delete(key); read(); setHot(-1); setKeyed(false); };
 
   // Pick mode lasts while the picked text is still there; typing after it narrows by the text after the last comma.
   const list = LIST_OPS.has(op) || (op in SWITCH && inPick);
@@ -64,7 +64,7 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
     : pool.filter((o) => o !== value && o.toLowerCase().includes(value.trim().toLowerCase()));
   // A value that is already the text (a pick) or, in a list, every value picked, leaves nothing to suggest: the panel closes instead of saying "No matching values" over the Apply button.
   const settled = !options.length && (list
-    ? text.slice(text.lastIndexOf(',') + 1).trim() === '' && pool.some((o) => !o.includes(',')) && !narrow(pool.filter((o) => !o.includes(',')), text).length
+    ? text.slice(text.lastIndexOf(',') + 1).trim() === '' && pool.some((o) => !o.includes(','))
     : pool.includes(value));
   // Once the values are in, the panel stays up with no match too, so the reload row can still be reached.
   const shown = open && !!source && (loading || options.length > 0 || (!!loaded && !settled));
@@ -91,7 +91,7 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
         {...(source ? { role: 'combobox', 'aria-autocomplete': 'list' as const, 'aria-expanded': shown, 'aria-controls': listed && options.length ? id : undefined, 'aria-activedescendant': listed && at >= 0 ? (onReload ? `${id}-reload` : `${id}-${at}`) : undefined } : {})}
         onChange={(e) => { onChange(e.target.value); setOpen(true); setHot(-1); setKeyed(false); start(); }}
         onFocus={() => { setOpen(true); start(); }}
-        onBlur={() => setOpen(false)}
+        onBlur={() => { setOpen(false); setHot(-1); setKeyed(false); }}
         onKeyDown={(e) => {
           if (!source) return;
           if (e.key === 'Escape' && shown) { e.preventDefault(); e.stopPropagation(); setOpen(false); return; }

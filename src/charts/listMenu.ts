@@ -27,15 +27,14 @@ export function setCardDate(cur: ChartSettings, id: string, date: string, mart: 
 }
 
 /**
- * Drops the card picks that point at a column that is no longer shown (a metric picked for a card, a date picked for its trend), so showing
- * the column again later does not silently switch the card. The same object comes back when nothing is stale, so callers can skip the save.
+ * Drops the card picks that name one of the columns the member has just hidden (a metric picked for a card, a date picked for its trend),
+ * so showing the column again later does not silently switch the card. The same object comes back when nothing names them, so callers can skip the save.
  */
-export function dropStalePicks(cur: ChartSettings, metrics: ReadonlySet<string>, dates: ReadonlySet<string>): ChartSettings {
-  const keep = (m: Record<string, string> | undefined, known: ReadonlySet<string>) => Object.fromEntries(Object.entries(m ?? {}).filter(([, v]) => known.has(v)));
-  const m = keep(cur.scorecards?.metrics, metrics);
-  const d = keep(cur.scorecards?.dates, dates);
-  const same = (a: Record<string, string> | undefined, b: Record<string, string>) => Object.keys(a ?? {}).length === Object.keys(b).length;
-  if (same(cur.scorecards?.metrics, m) && same(cur.scorecards?.dates, d)) return cur;
+export function dropPicksOf(cur: ChartSettings, hidden: ReadonlySet<string>): ChartSettings {
+  const keep = (m: Record<string, string> | undefined) => Object.fromEntries(Object.entries(m ?? {}).filter(([, v]) => !hidden.has(v)));
+  const m = keep(cur.scorecards?.metrics);
+  const d = keep(cur.scorecards?.dates);
+  if (Object.keys(m).length === Object.keys(cur.scorecards?.metrics ?? {}).length && Object.keys(d).length === Object.keys(cur.scorecards?.dates ?? {}).length) return cur;
   return { ...cur, scorecards: { ...cur.scorecards, ...(cur.scorecards?.metrics ? { metrics: m } : {}), ...(cur.scorecards?.dates ? { dates: d } : {}) } };
 }
 

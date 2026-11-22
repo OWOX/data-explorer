@@ -465,3 +465,19 @@ test('Enter does not reload when the pointer, not the arrow keys, put the reload
   expect(load).toHaveBeenCalledTimes(1);
   expect(apply).toHaveBeenCalledTimes(1);
 });
+
+test('a reload is not repeated by a second Enter, nor by Enter after the input is left and refocused', async () => {
+  const load = vi.fn().mockResolvedValue([]);
+  render(<Harness src={source(load)} />);
+  await userEvent.click(input());
+  await screen.findByText('No matching values');
+  await userEvent.keyboard('{ArrowDown}{Enter}');
+  await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+  await userEvent.keyboard('{Enter}');
+  expect(load).toHaveBeenCalledTimes(2);
+  await userEvent.keyboard('{ArrowDown}');
+  await userEvent.tab();
+  await userEvent.tab({ shift: true });
+  await userEvent.keyboard('{Enter}');
+  expect(load).toHaveBeenCalledTimes(2);
+});

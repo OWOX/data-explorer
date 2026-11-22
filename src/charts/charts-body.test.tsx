@@ -181,17 +181,18 @@ test('a saved choice that names nothing shown falls back for this view and write
   expect(t.puts).not.toHaveBeenCalled();
 });
 
-test('a card pick of a column that is not shown is dropped from the saved settings once, and nothing is written when nothing is stale', async () => {
-  const t = await charts({ columns: ['id', 'status', 'created_at'], charts: { scorecards: { metrics: { id: 'amount' }, hidden: ['x'] } } });
+test('hiding a column drops the card picks that name it, in one write; a pick of another column stays', async () => {
+  const t = await charts({ charts: { scorecards: { metrics: { id: 'amount' }, dates: { amount: 'created_at' } } } });
+  await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
+  const menu = await openColumnMenu(within(data()), 'created_at');
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
   await waitFor(() => expect(t.puts).toHaveBeenCalledTimes(1));
-  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, scorecards: { metrics: {}, hidden: ['x'] } });
-  await new Promise((r) => setTimeout(r, 50));
-  expect(t.puts).toHaveBeenCalledTimes(1);
+  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, scorecards: { metrics: { id: 'amount' }, dates: {} } });
 });
 
-test('a pick of a shown column is kept and writes nothing', async () => {
-  const t = await charts({ charts: { scorecards: { metrics: { id: 'amount' } } } });
-  await new Promise((r) => setTimeout(r, 50));
+test('a saved pick of a column the grid does not open with (columns read late or failed) is never erased by loading', async () => {
+  const t = await charts({ columns: ['id', 'status', 'created_at'], charts: { scorecards: { metrics: { id: 'amount' }, dates: { id: 'paid_at' } } } });
+  await new Promise((r) => setTimeout(r, 100));
   expect(t.puts).not.toHaveBeenCalled();
 });
 
