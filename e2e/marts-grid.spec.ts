@@ -18,8 +18,11 @@ test('grid: a click focuses a card and shows what joins under it, × removes', a
   await customers.click();
   await expect(customers).toHaveAttribute('data-focused', '');
   await expect(data.locator('th[data-group="customers"]')).toHaveCount(1);
-  await expect(marts.locator('article#dm-countries')).not.toHaveClass(/dm-unjoinable/);
-  await expect(marts.locator('article#dm-products')).toHaveClass(/dm-unjoinable/);
+  // A mart outside the report that can join it is full strength with a dashed border.
+  await expect(marts.locator('article#dm-countries')).toHaveClass(/dm-offpath/);
+  await expect(marts.locator('article#dm-countries')).not.toHaveClass(/dm-faded/);
+  await expect(marts.locator('article#dm-countries')).toHaveCSS('border-top-style', 'dashed');
+  await expect(marts.locator('article#dm-countries')).toHaveCSS('opacity', '1');
 
   // The x on the joined card takes it out.
   await customers.getByRole('button', { name: 'Remove Customers from the report' }).click();

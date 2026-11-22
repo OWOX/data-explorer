@@ -136,9 +136,9 @@ describe('the pipeline', () => {
     await search('orders');
     await waitFor(() => expect(headings()).toBe('Orders'));
     expect(spy).toHaveBeenCalledWith('/api/search', { q: 'orders', entityTypes: 'DATA_MART,REPORT', excludeDrafts: 'true', limit: '20' });
-    // the engine ranks a title hit above a description hit (the mock scores a title word 20, a description word 8); cards that leave are gone once their transition ends
-    await waitFor(() => expect(cardTitles()).toHaveLength(5));
-    expect(cardTitles()).toEqual(['Orders', 'Order Items', 'Customers', 'Returns', 'Payments']);
+    // the main mart first, then the hits it can join (the engine ranks a title hit above a description hit); the hits it cannot join are left out, and cards that leave are gone once their transition ends
+    await waitFor(() => expect(cardTitles()).toHaveLength(2));
+    expect(cardTitles()).toEqual(['Orders', 'Customers']);
     await waitFor(() => expect(within(marts()).queryByText('Stores')).toBeNull());
     expect(Z('Orders')).toHaveAttribute('aria-pressed', 'true');
   });

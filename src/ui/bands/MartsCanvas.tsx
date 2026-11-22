@@ -6,6 +6,7 @@ import type { DqSummary, Model } from '../../model/types';
 import { buildJoinTree, ghostLevels, subtreePaths } from '../../state/join-tree';
 import { pathTitle } from '../../state/join-plan';
 import { closestTarget, dragLinePath, dropTargets } from './canvas-drag';
+import { DragLines } from './DragLines';
 import { scrollBoxOf, zoomedScale } from './canvas-zoom';
 import { CARD_W, layoutTree } from './canvas-layout';
 import { MartCard, contextsOf, martElementId, type CountState } from './cards';
@@ -13,7 +14,7 @@ import { useLatest } from '../useLatest';
 import { useCanvasDrag } from './useCanvasDrag';
 import { overOf, useGhostChain } from './useGhostChain';
 import type { ClickOptions } from './useCardClick';
-import { revisionOf, useWires, type Wire } from './wires';
+import { litIds, revisionOf, useWires, type Wire } from './wires';
 
 export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart }: {
   model: Model;
@@ -58,10 +59,6 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   );
   // The hover side: the card whose ghosts show and the chain of ghosts from it. 
   const hover = useGhostChain(pinned);
-  // The ghost under the pointer and the one with focus are tracked apart, so a blur does not drop the line while the pointer is still on the ghost.
-  const [pointerGhost, setPointerGhost] = useState<string | null>(null);
-  const [focusGhost, setFocusGhost] = useState<string | null>(null);
-  const ghostOver = pointerGhost ?? focusGhost;
   const { clear: clearHover, mute: muteHover } = hover;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setPinned(null); clearHover(); } };
@@ -140,13 +137,16 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   const valid = new Set(targets.map((t) => t.target));
   const pick = drag?.inside ? closestTarget(targets, layout.placed, drag.x, drag.y) : null;
   const key = [...tree.nodes.keys(), '|', ...levels.flatMap((l) => [l.from, ...l.ghosts.map((g) => g.aliasPath)])].join('>');
+  // Released nearest the current parent, its tree wire is the closest line: it carries the stronger style the closest dashed line has.
+  const heldParent = drag ? tree.nodes.get(drag.path)?.parent ?? null : null;
+  const strongPath = drag && heldParent !== null && pick?.target === heldParent ? drag.path : null;
   const wires = useMemo<Wire[]>(() => {
     const title = (id: string) => model.marts.get(id)?.title ?? id;
     const out: Wire[] = [];
     for (const node of tree.nodes.values()) {
       if (node.parent === null) continue;
       const parent = tree.nodes.get(node.parent)!;
-      out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}`, sideways: true });
+      out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}`, sideways: true, joined: true, ...(node.path === strongPath ? { strong: true } : {}) });
     }
     for (const level of levels) {
       const fromPath = level.from;
@@ -155,13 +155,18 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     return out;
     // `key` stands for tree and the ghost levels: the memo must not rebuild on every hover.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, model]);
-  const heldNode = drag ? tree.nodes.get(drag.path) : undefined;
-  const engagedGhost = ghostOver === null ? undefined : ghosts.find((g) => g.aliasPath === ghostOver);
-  useWires(treeRef, wires, { pinned: null, hovered: null }, revisionOf(key), 'tree-wires', scale, {
-    held: heldNode ? martElementId(heldNode.martId, heldNode.path) : null,
-    engaged: engagedGhost ? martElementId(engagedGhost.martId, engagedGhost.aliasPath) : null,
-  });
+  }, [key, model, strongPath]);
+  // The hovered card or ghost and what it touches (its path neighbours and the ghosts hanging from it): every other card fades to half.
+  const hoverEl = (() => {
+    const over = hover.at;
+    if (!over || drag) return null;
+    if (over.ghost !== null) { const g = ghosts.find((x) => x.aliasPath === over.ghost); return g ? martElementId(g.martId, g.aliasPath) : null; }
+    const n = over.card === null ? undefined : tree.nodes.get(over.card);
+    return n ? martElementId(n.martId, n.path) : null;
+  })();
+  const near = hoverEl === null ? null : litIds(wires, hoverEl);
+  const fadedAt = (martId: string, path: string) => near !== null && !near.has(martElementId(martId, path));
+  useWires(treeRef, wires, { pinned: null, hovered: null }, revisionOf(key), 'tree-wires', scale);
 
   if (!mainId) return <p className="dm-muted text-sm">Select a data mart.</p>;
   // A card carries its path in its title only when the report reaches that mart through more than one path.
@@ -170,10 +175,10 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     return path === '' || !source ? undefined : pathTitle(source, [...tree.nodes.keys()], sources ?? []);
   };
   const dragTitle = drag ? model.marts.get(tree.nodes.get(drag.path)?.martId ?? '')?.title : undefined;
-  // While a card is held (also with the pointer outside the box, where a release does nothing), a dashed line runs from it to every place it can be dropped; the closest one is drawn stronger.
+  // While a card is held (also with the pointer outside the box, where a release does nothing), a line runs from it to every place it can be dropped: dashed to every target but its current parent (the tree wire to that one is already solid), the closest one stronger.
   const at = new Map(layout.placed.map((p) => [p.path, p] as const));
   const held = drag ? at.get(drag.path) : undefined;
-  const lines = held ? targets.flatMap((t) => { const to = at.get(t.target); return to ? [{ path: t.target, d: dragLinePath(held, to) }] : []; }) : [];
+  const lines = held ? targets.flatMap((t) => { const to = at.get(t.target); return to && t.moves.size > 0 ? [{ target: t.target, d: dragLinePath(held, to), current: false, closest: pick?.target === t.target }] : []; }) : [];
   return (
     <div ref={sizerRef} className="dm-tree-sizer" style={{ width: layout.width * scale, height: layout.height * scale }}>
     <div
@@ -181,17 +186,16 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
       className="dm-tree"
       style={{ width: layout.width, height: layout.height, transform: scale === 1 ? undefined : `scale(${scale})` }}
       // A portaled title bubble bubbles its events here through React; it is not under the tree in the DOM, so it is not the pointer leaving the cards.
-      onPointerOver={(e) => { if (!e.currentTarget.contains(e.target as Node)) return; const over = overOf(e.target); setPointerGhost(over.ghost); hover.onOver(over); }}
-      onPointerLeave={() => { setPointerGhost(null); hover.onLeave(); }}
-      onBlur={() => setFocusGhost(null)}
-      onFocus={(e) => { if (!e.currentTarget.contains(e.target as Node)) return; const over = overOf(e.target); if (over.ghost !== null) { setFocusGhost(over.ghost); hover.onOver(over); } }}
+      onPointerOver={(e) => { if (!e.currentTarget.contains(e.target as Node)) return; const over = overOf(e.target); hover.onOver(over); }}
+      onPointerLeave={() => hover.onLeave()}
+      onFocus={(e) => { if (!e.currentTarget.contains(e.target as Node)) return; const over = overOf(e.target); if (over.ghost !== null) hover.onOver(over); }}
     >
       {[...tree.nodes.values()].flatMap((node) => {
         const mart = model.marts.get(node.martId);
         const pos = at.get(node.path);
         if (!mart || !pos) return [];
         return [
-          <div key={node.path} className={`dm-tree-node${drag && node.path !== drag.path && (pick ? pick.target !== node.path : !valid.has(node.path)) ? ' dm-dimmed' : ''}`} data-tree-path={node.path} style={{ left: pos.x, top: pos.y, width: CARD_W }}>
+          <div key={node.path} className="dm-tree-node" data-tree-path={node.path} style={{ left: pos.x, top: pos.y, width: CARD_W }}>
             <MartCard
               mart={mart}
               contexts={contextsOf(model.contexts, mart.contextIds)}
@@ -200,6 +204,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               selected={node.path === ''}
               joined={node.path !== ''}
               focused={pin === node.path}
+              faded={drag ? node.path !== drag.path && !valid.has(node.path) : fadedAt(node.martId, node.path)}
               path={node.path}
               title={titleOf(node.path)}
               onRemove={node.path === '' ? undefined : () => {
@@ -218,7 +223,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
           </div>,
         ];
       })}
-      {lines.length > 0 && <svg id="drag-line" aria-hidden>{lines.map((l) => <path key={l.path} d={l.d} data-target={l.path} className={pick?.target === l.path ? 'closest' : undefined} />)}</svg>}
+      <DragLines lines={lines} />
       {layout.ghosts.flatMap((spot) => {
         const g = ghosts.find((s) => s.aliasPath === spot.id);
         const mart = g && model.marts.get(g.martId);
@@ -228,6 +233,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
             <MartCard
               mart={mart}
               ghost
+              faded={fadedAt(g.martId, g.aliasPath)}
               path={g.aliasPath}
               title={pathTitle(g, [...tree.nodes.keys()], sources ?? [])}
               contexts={contextsOf(model.contexts, mart.contextIds)}

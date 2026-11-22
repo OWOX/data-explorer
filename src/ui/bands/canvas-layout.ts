@@ -1,4 +1,4 @@
-// Where each card of the canvas goes: the column is the depth in the tree, leaves stack, a parent is centred on its children.
+// Where each card of the canvas goes: the column is the depth in the tree, leaves stack, a parent is centred on its children, and the main mart sits in the first row of the first column.
 import type { JoinTree } from '../../state/join-tree';
 
 export const CARD_W = 224; // 14rem, the grid's minimum card width
@@ -34,7 +34,8 @@ export function layoutTree(
     if (node.children.length === 0) row = nextRow++;
     else {
       const rows = node.children.map((c) => place(c, depth + 1));
-      row = (rows[0]! + rows.at(-1)!) / 2;
+      // The main mart is the top-left card, whatever its children do.
+      row = depth === 0 ? 0 : (rows[0]! + rows.at(-1)!) / 2;
     }
     slot.set(path, { depth, row });
     placed.push({ path, x: colX(depth), y: rowY(row) });

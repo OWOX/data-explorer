@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useEffect } from 'react';
 import userEvent from '@testing-library/user-event';
 import type { Ctx } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
@@ -7,7 +8,6 @@ import { keyShown } from '../../sdk/mock/key-shown';
 import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
 import { openSubmenu } from '../explorer/menu-test-utils';
-import { dragOntoMain } from './drag-main-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
 
@@ -18,8 +18,10 @@ function ModelReload() {
   return <button type="button" onClick={() => dispatch({ type: 'refreshModel' })}>Reload model (test probe)</button>;
 }
 // A mart nobody here can open cannot be made main from the page; this probe selects it the way a restored view would.
+let selectMartById: (id: string) => void = () => undefined;
 function SelectSecretLedger() {
   const [, dispatch] = useStore();
+  useEffect(() => { selectMartById = (id) => dispatch({ type: 'selectMart', id, sourceOf: () => null }); }, [dispatch]);
   return <button type="button" onClick={() => dispatch({ type: 'selectMart', id: 'secret_ledger', sourceOf: () => null })}>Select Secret Ledger (test probe)</button>;
 }
 const reloadModel = () => userEvent.click(screen.getByRole('button', { name: 'Reload model (test probe)' }));
@@ -58,14 +60,13 @@ const sources = () => band('band-sources');
 const martCard = (title: string) => within(marts()).getByText(title).closest('article')!;
 
 const headingText = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!).join(' + ');
-/** Drags a card onto the main one: the way to a mart the main one cannot join (a click on it only joins it or explains). */
-async function makeMain(title: string) {
-  await within(marts()).findByText(title);
-  dragOntoMain(martCard(title), marts().querySelector('article[aria-pressed="true"]:not([data-path]):not([data-ghost])')!);
+/** Makes a mart the main one the way a search does: the probe selects it. */
+function makeMain(title: string) {
+  act(() => selectMartById(title.toLowerCase().replace(/[^a-z0-9]+/g, '_')));
 }
-/** Makes a mart the main one by dragging it onto the main card: a click on the main card only focuses it. */
+/** Makes a mart the main one: a click on a card in the band only joins it or focuses it. */
 async function goTo(title: string) {
-  await makeMain(title);
+  makeMain(title);
   await waitFor(() => expect(headingText() === title || headingText()!.startsWith(`${title} + `)).toBe(true));
 }
 
@@ -362,7 +363,7 @@ describe('the grid', () => {
     await mountApp();
     await within(data()).findByRole('table');
     await search('daily');
-    await makeMain('Daily KPIs');
+    makeMain('Daily KPIs');
     const warning = await within(data()).findByRole('note', { name: NO_PK });
     expect(warning).toBeInTheDocument();
     // The sentence is gone from above the grid; it is the warning's tooltip and the end of the (i) hint.
@@ -470,7 +471,7 @@ describe('the record', () => {
     await mountApp();
     await within(data()).findByRole('table');
     await search('order items');
-    await makeMain('Order Items');
+    makeMain('Order Items');
     await within(data()).findByText('Order Items');
     await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
     await userEvent.click(within(data()).getAllByRole('row')[2]!);
@@ -534,9 +535,9 @@ describe('search, contexts and refresh', () => {
     await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
     expect(within(marts()).queryByText('Campaigns')).toBeNull();
     await clearSearch();
-    await search('campaign');
-    expect(await within(marts()).findByText('Campaigns')).toBeInTheDocument();
-    expect(within(marts()).getByText('Campaigns').closest('article')!.querySelector('.dm-badge-shrink')).toBeNull();
+    await search('customer');
+    expect(await within(marts()).findByText('Customers')).toBeInTheDocument();
+    expect(within(marts()).getByText('Customers').closest('article')!.querySelector('.dm-badge-shrink')).toBeNull();
   });
 
   test('the toolbar holds the Contexts badges and then Storage, flush right; the Grid / Graph switch stays in the title row after the hint', async () => {
@@ -565,13 +566,14 @@ describe('search, contexts and refresh', () => {
     const group = within(marts()).getByRole('group', { name: 'Contexts' });
     await userEvent.click(within(group).getByRole('button', { name: 'Marketing' }));
     await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
-    expect(within(marts()).getByText('Campaigns')).toBeInTheDocument();
+    // Campaigns is in the context but the main mart cannot join it: it is not shown.
+    expect(within(marts()).queryByText('Campaigns')).toBeNull();
     expect(within(group).getByRole('button', { name: 'Marketing' })).toHaveAttribute('aria-pressed', 'true');
     // The main mart's card stays although it is not in the context.
     expect(within(marts()).getByText('Orders')).toBeInTheDocument();
     await userEvent.click(within(group).getByRole('button', { name: 'Sales' }));
     expect(await within(marts()).findByText('Orders')).toBeInTheDocument();
-    expect(within(marts()).getByText('Campaigns')).toBeInTheDocument();
+    expect(within(marts()).queryByText('Campaigns')).toBeNull();
     expect(within(data()).getByText('Orders')).toBeInTheDocument();
     await userEvent.click(within(group).getByRole('button', { name: 'Marketing' }));
     await userEvent.click(within(group).getByRole('button', { name: 'Sales' }));
@@ -731,18 +733,22 @@ describe('folding and lines', () => {
     expect(svg.querySelectorAll('path.relationship').length).toBeGreaterThan(0);
   });
 
-  test('hovering a card focuses the canvas and lights its lines; Escape lets go', async () => {
+  test('hovering a card lights its lines and fades the cards it does not touch; leaving restores them; the selected mart alone fades nothing', async () => {
     await ordersGrid();
     const canvas = document.querySelector('.dm-canvas')!;
     const customers = martCard('Customers');
+    expect(canvas.querySelectorAll('.dm-faded:not(.dm-offpath)')).toHaveLength(0); // the selected mart stays pinned and dims no report card
     fireEvent.pointerOver(customers);
-    expect(canvas).toHaveClass('focused');
     expect(customers).toHaveClass('lit');
+    expect(customers).not.toHaveClass('dm-faded');
     expect(martCard('Orders')).toHaveClass('lit'); // joined to Customers
+    expect(martCard('Orders')).not.toHaveClass('dm-faded');
     expect(customers).not.toHaveClass('aside'); // the pinned mart lights it too
+    expect(canvas.querySelectorAll('.dm-faded').length).toBeGreaterThan(0);
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(canvas).toHaveClass('focused'); // the selected mart stays pinned
     expect(customers).toHaveClass('lit');
+    fireEvent.pointerLeave(canvas);
+    expect(canvas.querySelectorAll('.dm-faded:not(.dm-offpath)')).toHaveLength(0);
   });
 
   test('a card lit only by the pointer while another is pinned is drawn aside, and Escape clears it', async () => {
@@ -889,14 +895,15 @@ describe('the storage filter', () => {
     expect(within(sources()).getByText('Shopify').closest('article')).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('a selected mart in an unticked storage leaves the Data Marts band but stays in the Data band', async () => {
+  test('a selected mart in an unticked storage stays in the Data Marts band, first, and in the Data band', async () => {
     await ordersGrid();
     // The band lists Payments for a search; its make-main button makes it the main mart.
     await search('payments');
-    await makeMain('Payments');
+    makeMain('Payments');
     await within(data()).findByText('Payments');
     await userEvent.click(within(storageMenu()).getByRole('option', { name: /Sales Lake/ }));
-    await waitFor(() => expect(within(marts()).queryByText('Payments')).toBeNull());
+    await waitFor(() => expect(marts().querySelector('article')).toHaveAttribute('data-mart-id', 'payments'));
+    expect(within(marts()).getByText('Payments')).toBeInTheDocument();
     expect(within(data()).getByText('Payments')).toBeInTheDocument();
   });
 
@@ -927,7 +934,9 @@ describe('the storage filter', () => {
     }));
     await within(data()).findByRole('table');
     await userEvent.click(within(storageMenu()).getByRole('button', { name: 'Clear' }));
-    await waitFor(() => expect(within(marts()).queryByText('Orders')).toBeNull());
+    // The main mart is the one card left, whatever the storage filter says.
+    await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
+    expect(within(marts()).getByText('Orders')).toBeInTheDocument();
     hide.current = true;
     await reloadModel();
     await waitFor(() => expect(within(data()).getByText('Select a data mart.')).toBeInTheDocument());
@@ -1194,7 +1203,7 @@ describe('the default sort', () => {
     const calls = await spyOnTraverse();
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await search('daily');
-    await makeMain('Daily KPIs');
+    makeMain('Daily KPIs');
     const day = await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
     expect(day.closest('th')).toHaveAttribute('aria-sort', 'descending');
     expect(calls.filter((c) => c.id === 'daily_kpis').at(-1)!.o.sort).toEqual([{ column: 'day', direction: 'desc' }]);
@@ -1215,7 +1224,7 @@ describe('the default sort', () => {
     const calls = await spyOnTraverse();
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await search('daily');
-    await makeMain('Daily KPIs');
+    makeMain('Daily KPIs');
     await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
     const sortOf = () => calls.filter((c) => c.id === 'daily_kpis').at(-1)!.o.sort;
     await userEvent.click(within(data()).getByRole('button', { name: /^Sort by revenue,/ }));
@@ -1411,7 +1420,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
   test('a filter panel is capped at 20rem (bands.css .dm-menu-editor) with no title row above the scrolling body', async () => {
     await ordersGrid();
     await search('daily');
-    await makeMain('Daily KPIs');
+    makeMain('Daily KPIs');
     await within(data()).findByText('Daily KPIs');
     await openSubmenu(within(data()), 'day', 'Filter');
     const body = (await screen.findByRole('menu', { name: 'Filter day' })).closest('[data-popover-body]')!;
@@ -1626,16 +1635,15 @@ describe('whole column and row selection, and the header layout', () => {
   });
 });
 
-test('a mart the main one cannot join is dimmed in a search, and a click explains instead of switching', async () => {
+test('a mart the main one cannot join is not shown in a search, one it can join at depth 2 is', async () => {
   await mountWith();
   await search('Order Items');
   const marts = document.getElementById('band-marts')!;
-  const items = (await within(marts).findByText('Order Items')).closest('article')!;
-  expect(items).toHaveClass('dm-unjoinable');
-  fireEvent.click(items);
-  expect(await within(items).findByRole('status')).toHaveTextContent("Can't join Orders. Drag it onto Orders to make it the main data mart.");
+  await waitFor(() => expect(within(marts).queryByText('Order Items')).toBeNull());
   expect(marts.querySelector('article')).toHaveTextContent('Orders');
-  expect(within(document.getElementById('band-data')!).queryAllByRole('columnheader').some((h) => h.textContent === 'Order Items')).toBe(false);
+  await search('Countries');
+  expect(await within(marts).findByText('Countries')).toBeInTheDocument();
+  expect(marts.querySelector('.dm-faded:not(.dm-offpath)')).toBeNull();
 });
 
 test('with a mart nobody can open as the main one, a click on another card makes it the main one', async () => {
@@ -1662,26 +1670,27 @@ test('a click on an unreadable main card focuses it and does not deselect it', a
   expect(within(data()).getByText('You do not have access to this data mart')).toBeInTheDocument();
 });
 
-test('a failed read of the main mart joins leaves the one-hop band with nothing dimmed', async () => {
+test('a failed read of the main mart joins leaves the one-hop band with no report card dimmed', async () => {
   await mountWith((c) => ({ ...c, owox: { ...c.owox, getJson: ((path: string, q?: Record<string, string>) => (path.endsWith('/blendable-schema') ? Promise.reject(new Error('blendable down')) : c.owox.getJson(path, q))) as Ctx['owox']['getJson'] } }));
   await within(data()).findByRole('table');
   await within(marts()).findByText('Customers');
   // Let the failed read settle.
   await new Promise((r) => setTimeout(r, 50));
   expect(within(marts()).getAllByRole('article').length).toBeGreaterThan(1);
-  expect(marts().querySelectorAll('.dm-unjoinable')).toHaveLength(0);
+  expect(marts().querySelectorAll('.dm-faded:not(.dm-offpath)')).toHaveLength(0);
 });
 
 describe('ghost cards on hover', () => {
   const marts = () => document.getElementById('band-marts')!;
   const cardOf = (t: string) => within(marts()).getByText(t).closest('article')!;
+  // The search leaves Orders and Customers in the band: Countries, which Customers joins, is the ghost on hover.
+  const narrow = async () => { await mountWith(); await within(marts()).findByText('Customers'); await search('Customers'); await waitFor(() => expect(within(marts()).queryByText('Products')).toBeNull()); };
 
   test('hovering a card shows its neighbours that are not in the band, dashed, after the last card', async () => {
-    await mountWith();
-    await within(marts()).findByText('Customers');
-    expect(within(marts()).queryByText('Sessions')).toBeNull();
+    await narrow();
+    expect(within(marts()).queryByText('Countries')).toBeNull();
     fireEvent.pointerOver(cardOf('Customers'));
-    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
+    const ghost = (await within(marts()).findByText('Countries')).closest('article')!;
     expect(ghost).toHaveClass('dm-ghost');
     expect(ghost).toHaveAttribute('data-ghost');
     const all = [...marts().querySelectorAll('article')];
@@ -1689,112 +1698,62 @@ describe('ghost cards on hover', () => {
   });
 
   test('the ghosts stay while the pointer crosses to them, and go once it leaves', async () => {
-    await mountWith();
-    await within(marts()).findByText('Customers');
+    await narrow();
     fireEvent.pointerOver(cardOf('Customers'));
-    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
+    const ghost = (await within(marts()).findByText('Countries')).closest('article')!;
     fireEvent.pointerOver(marts());
     fireEvent.pointerOver(ghost);
     await new Promise((r) => setTimeout(r, 500));
-    expect(within(marts()).getByText('Sessions')).toBeInTheDocument();
+    expect(within(marts()).getByText('Countries')).toBeInTheDocument();
     fireEvent.pointerLeave(document.querySelector('.dm-canvas')!);
-    await waitFor(() => expect(within(marts()).queryByText('Sessions')).toBeNull());
+    await waitFor(() => expect(within(marts()).queryByText('Countries')).toBeNull());
   });
 
   test('keyboard focus on a card shows the same ghosts', async () => {
-    await mountWith();
-    await within(marts()).findByText('Customers');
+    await narrow();
     fireEvent.focus(cardOf('Customers'));
-    expect(await within(marts()).findByText('Sessions')).toBeInTheDocument();
-  });
-
-  test('a ghost of a mart the main one cannot join is dimmed and explains on click', async () => {
-    await mountWith();
-    await within(marts()).findByText('Customers');
-    fireEvent.pointerOver(cardOf('Customers'));
-    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
-    expect(ghost).toHaveClass('dm-unjoinable');
-    fireEvent.click(ghost);
-    expect(await within(ghost).findByRole('status')).toHaveTextContent("Can't join Orders. Use Make it main in the section header to make it the main data mart.");
+    expect(await within(marts()).findByText('Countries')).toBeInTheDocument();
   });
 
   test('crossing another card on the way to a ghost keeps the ghosts', async () => {
-    await mountWith();
-    await within(marts()).findByText('Customers');
+    await narrow();
     fireEvent.pointerOver(cardOf('Customers'));
-    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
-    fireEvent.pointerOver(cardOf('Products'));
+    const ghost = (await within(marts()).findByText('Countries')).closest('article')!;
+    fireEvent.pointerOver(cardOf('Orders'));
     fireEvent.pointerOver(ghost);
     await new Promise((r) => setTimeout(r, 500));
-    expect(within(marts()).getByText('Sessions')).toBeInTheDocument();
+    expect(within(marts()).getByText('Countries')).toBeInTheDocument();
   });
 
   test('resting on another card for over 400 ms switches the ghosts', async () => {
-    await mountWith();
-    await within(marts()).findByText('Customers');
+    await narrow();
     fireEvent.pointerOver(cardOf('Customers'));
-    await within(marts()).findByText('Sessions');
-    fireEvent.pointerOver(cardOf('Products'));
-    await waitFor(() => expect(within(marts()).queryByText('Sessions')).toBeNull(), { timeout: 1500 });
+    await within(marts()).findByText('Countries');
+    fireEvent.pointerOver(cardOf('Orders'));
+    await waitFor(() => expect(within(marts()).queryByText('Countries')).toBeNull(), { timeout: 1500 });
   });
 
   test('a ghost has no make-main button', async () => {
-    await mountWith();
-    await within(marts()).findByText('Customers');
+    await narrow();
     fireEvent.pointerOver(cardOf('Customers'));
-    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
+    const ghost = (await within(marts()).findByText('Countries')).closest('article')!;
     expect(within(ghost).queryByRole('button', { name: /make (it )?main/i })).toBeNull();
-  });
-
-  test('a clicked ghost the main one cannot join is picked: the header offers Make it main, and it makes that mart the main one', async () => {
-    await mountWith();
-    await within(marts()).findByText('Customers');
-    expect(screen.queryByRole('button', { name: /^Make it main: / })).toBeNull();
-    fireEvent.pointerOver(cardOf('Customers'));
-    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
-    fireEvent.click(ghost);
-    expect(ghost).toHaveAttribute('data-focused');
-    // The pointer leaves for the header: the picked ghost stays.
-    fireEvent.pointerOver(document.body);
-    await new Promise((r) => setTimeout(r, 500));
-    expect(within(marts()).getByText('Sessions')).toBeInTheDocument();
-    await userEvent.click(await screen.findByRole('button', { name: /^Make it main: / }));
-    await waitFor(() => expect(document.querySelector('#band-data thead tr[data-group-row] th[data-group]')).toHaveTextContent('Sessions'));
-    await waitFor(() => expect(screen.queryByRole('button', { name: /^Make it main: / })).toBeNull());
-  });
-
-  test('a click on the band background drops the pick, and the header button goes', async () => {
-    await mountWith();
-    await within(marts()).findByText('Customers');
-    fireEvent.pointerOver(cardOf('Customers'));
-    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
-    fireEvent.click(ghost);
-    await screen.findByRole('button', { name: /^Make it main: / });
-    fireEvent.click(marts().querySelector('.dm-band-body')!);
-    await waitFor(() => expect(screen.queryByRole('button', { name: /^Make it main: / })).toBeNull());
-  });
-
-  test('clicking a joinable card after picking a ghost drops the pick', async () => {
-    await mountWith();
-    await within(marts()).findByText('Customers');
-    fireEvent.pointerOver(cardOf('Customers'));
-    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
-    fireEvent.click(ghost);
-    await screen.findByRole('button', { name: /^Make it main: / });
-    fireEvent.click(cardOf('Products'));
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Make it main: Sessions' })).toBeNull());
   });
 
   test('ghosts do not change the band total and request no row count', async () => {
     const calls = await spyOnTraverse();
     await within(marts()).findByText('Customers');
+    await search('Customers');
+    await waitFor(() => expect(within(marts()).queryByText('Products')).toBeNull());
+    await settle();
+    calls.length = 0;
     const total = () => document.querySelector('#band-marts .dm-band-count')!.textContent;
     const before = total();
     fireEvent.pointerOver(cardOf('Customers'));
-    const ghost = (await within(marts()).findByText('Sessions')).closest('article')!;
+    const ghost = (await within(marts()).findByText('Countries')).closest('article')!;
     await settle();
     expect(total()).toBe(before);
-    const sessions = ghost.id.slice(3);
-    expect(calls.filter((c) => c.id === sessions)).toEqual([]);
+    const hidden = ghost.id.slice(3);
+    expect(calls.filter((c) => c.id === hidden)).toEqual([]);
   });
 });

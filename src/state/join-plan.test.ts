@@ -1,6 +1,6 @@
 import type { JoinedSource } from '../api/blendable';
 import type { Field } from '../model/types';
-import { joinedPaths, withoutPaths, planAddAt, planRejoin, defaultJoinFields, fieldsFor, inUsePaths, isIdField, joinedMartIds, planClick, planMakeMain, sourceOfMart, withoutMart, type PlanEnv } from './join-plan';
+import { joinedPaths, withoutPaths, planAddAt, planRejoin, defaultJoinFields, fieldsFor, inUsePaths, isIdField, joinedMartIds, planClick, planMakeMain, shortestSource, sourceOfMart, withoutMart, type PlanEnv } from './join-plan';
 import type { GridState } from './store';
 
 const f = (name: string, category: Field['category'], martId: string): Field => ({ name, alias: null, type: 'STRING', category, description: null, isPrimaryKey: false, joined: { martId, label: martId, aliasPath: martId, originalName: name.slice(martId.length + 2) } });
@@ -530,5 +530,37 @@ describe('refit pins: what each call site does to sorts, aggregations, buckets, 
     const grid = g(['id', 'customers__id', 'customers__city'], { sorts: [{ field: 'customers__city', direction: 'asc' }], aggregations: [{ column: 'customers__id', function: 'SUM' }, { column: 'customers__city', function: 'COUNT' }], dateTrunc: [{ column: 'customers__id', unit: 'DAY' }] });
     const out = planRejoin(grid, [...ordersSources, target], new Map([['customers', 'a.customers']]), ['id']);
     expect(out).toEqual({ ...grid, columns: ['id', 'a__customers__city'], sorts: [{ field: 'a__customers__city', direction: 'asc' }], aggregations: [{ column: 'a__customers__city', function: 'COUNT' }], dateTrunc: undefined, filters: {}, slices: undefined });
+  });
+});
+
+describe('a click on a mart outside the report joins it by the shortest chain', () => {
+  const direct = src('x', 'x', [f('x__a', 'string', 'x')]);
+  const viaP = src('p.x', 'x', [f('p__x__a', 'string', 'x')], 2);
+  const viaQ = src('q.x', 'x', [f('q__x__a', 'string', 'x')], 2);
+  const long = src('p.r.x', 'x', [f('p__r__x__a', 'string', 'x')], 3);
+  const p = src('p', 'p', [f('p__n', 'string', 'p')]);
+  const q = src('q', 'q', [f('q__n', 'string', 'q')]);
+
+  test('the path with the fewest marts wins over a deeper one that hangs from a mart in use', () => {
+    expect(shortestSource([direct, viaP, long], 'x', new Set(['', 'p']))!.aliasPath).toBe('x');
+    expect(shortestSource([viaP, long], 'x', new Set(['', 'p']))!.aliasPath).toBe('p.x');
+  });
+
+  test('on a tie the path through marts already in the report wins, then the first by title', () => {
+    expect(shortestSource([viaP, viaQ], 'x', new Set(['', 'q']))!.aliasPath).toBe('q.x');
+    expect(shortestSource([viaP, viaQ], 'x', new Set(['']))!.aliasPath).toBe('p.x');
+  });
+
+  test('the click adds the mart by that path, and the middle mart joins with no column of its own', () => {
+    const sources = [p, q, viaP, viaQ];
+    const plan = planClick({ ...env({ orders: g(['id']) }, 'orders'), sourcesOf: () => sources }, 'x');
+    expect(plan.grids.orders!.columns).toEqual(['id', 'p__x__a']);
+  });
+
+  test('a path in use makes the chain through it the one to reuse', () => {
+    const sources = [p, q, viaP, viaQ];
+    const plan = planClick({ ...env({ orders: g(['id', 'q__n']) }, 'orders'), sourcesOf: () => sources }, 'x');
+    expect(plan.grids.orders!.columns).toContain('q__x__a');
+    expect(plan.grids.orders!.columns).not.toContain('p__x__a');
   });
 });

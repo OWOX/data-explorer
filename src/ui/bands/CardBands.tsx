@@ -23,7 +23,9 @@ import { useCardDrag } from './useCardDrag';
 import { litIds, revisionOf, useWires, type Wire } from './wires';
 import { MartsCanvas } from './MartsCanvas';
 import { buildJoinTree, ghostSources, subtreePaths, type TreeNode } from '../../state/join-tree';
-import { pathTitle } from '../../state/join-plan';
+import { closestGridTarget, gridTargets, measureGridDrag } from './useGridDrag';
+import { DragLines } from './DragLines';
+import { parentPath, pathTitle, shortestSource } from '../../state/join-plan';
 import { useGridFocus } from './useGridFocus';
 import { useLatest } from '../useLatest';
 import type { JoinedSource } from '../../api/blendable';
@@ -67,7 +69,6 @@ export function CardBands({
   model,
   visible,
   storageIds,
-  joined: joinedProp,
   joinSources,
   mainColumns,
   counts,
@@ -86,8 +87,6 @@ export function CardBands({
   visible: VisibleResult;
   /** The storages the Data Marts band is narrowed to; null is all of them. */
   storageIds: string[] | null;
-  /** The joined data marts selected with the main one, in the order they were added. */
-  joined: string[];
   /** The main mart's joinable sources, or null while they load. */
   joinSources: JoinedSource[] | null;
   /** The main grid's columns. */
@@ -126,12 +125,23 @@ export function CardBands({
   const click = useCardClick(model);
   // The Graph's pinned card, when it is a joined one (the Grid's own is `focus`, below).
   const [graphSelected, setGraphSelected] = useState<string | null>(null);
-  const drag = useCardDrag(canvas, selection.martId, (id) => model.marts.get(id)?.title ?? id, (id) => void click(id, { mode: 'makeMain' }), (id) => view === 'grid' && model.marts.get(id)?.accessible === true);
 
   // The report tree: a joined mart is a node per alias path, in Graph and in Grid, and a source line reaches each of them.
   const mainFor = selection.martId;
   const canvasTree = useMemo(() => (mainFor ? buildJoinTree(mainFor, mainColumns, joinSources ?? []) : null), [mainFor, mainColumns, joinSources]);
   const { focus, toggle: toggleFocus, clear: clearFocus, show: showFocus } = useGridFocus(mainFor, canvasTree, view === 'grid');
+  // Only joined cards are dragged: dropped near another mart they are rejoined under it. Making a mart main is the header's button.
+  const drag = useCardDrag(
+    canvas,
+    (id) => model.marts.get(id)?.title ?? id,
+    (path, x, y) => {
+      const node = canvasTree?.nodes.get(path);
+      const pick = closestGridTarget(gridTargets(canvas.current, canvasTree, joinSources, path), x, y);
+      if (node && pick && pick.moves.size > 0) void click(node.martId, { moves: pick.moves });
+    },
+    (path) => view === 'grid' && canvasTree?.nodes.has(path) === true && path !== '',
+    (path, x, y, inside) => measureGridDrag(canvas.current, canvasTree, joinSources, path, x, y, inside),
+  );
   // The tree and main mart of the latest render: a click that resolves later checks what its step left, not what it was started on.
   const latestTree = useLatest({ main: mainFor, tree: canvasTree });
   // A card added from the band moves from the outside list to the report list, so React remounts it and focus would drop to the page:
@@ -146,9 +156,7 @@ export function CardBands({
     card.focus();
     setFocusAdded(null);
   }, [focusAdded, canvasTree]);
-  const [pickState, setPickState] = useState<{ main: string | null; id: string } | null>(null);
   const addFromBand = (id: string, options?: { addAt?: string }) => {
-    setPickState(null);
     const before = new Set(canvasTree?.nodes.keys());
     // Only when focus is on the card being added: a click with the pointer elsewhere moves nothing.
     const hadFocus = document.activeElement?.closest('article')?.getAttribute('data-mart-id') === id;
@@ -175,18 +183,17 @@ export function CardBands({
   }, []);
 
   const shownIds = useMemo(() => new Set(visible.ids), [visible.ids]);
-  // A card the main mart cannot join, clicked: it only explains, but it is the card the header's "Make it main" acts on, so a ghost stays on screen while it is picked.
-  // The pick belongs to one main mart, and goes with a click on the band's background or on another card.
-  const picked = pickState !== null && pickState.main === mainFor && view === 'grid' && model.marts.get(pickState.id)?.accessible === true ? pickState.id : null;
-  const pick = (id: string) => { if (focus === null) setPickState({ main: mainFor, id }); };
+  const dragging = drag !== null;
+  // A card in hand ignores the hover: the lines and the dim are the drag's.
+  const liveHover = dragging ? null : hovered;
   const ghostIds = useMemo(() => {
     if (view !== 'grid') return [];
-    const keep = picked !== null && !shownIds.has(picked) ? [picked] : [];
-    if (!ghostOf || focus !== null) return keep;
+    if (!ghostOf || focus !== null || dragging) return [];
     const ticked = (id: string) => storageTicked(model, storageIds, id);
-    const near = neighbours(ghostOf, model.edges).filter((id) => !shownIds.has(id) && model.marts.get(id)?.accessible && ticked(id));
-    return keep.length && !near.includes(keep[0]!) ? [...near, ...keep] : near;
-  }, [ghostOf, model, shownIds, storageIds, view, focus, picked]);
+    // With a main mart only what it can join is offered, as in the band.
+    const reachable = (id: string) => visible.joinable === null || visible.joinable.has(id);
+    return neighbours(ghostOf, model.edges).filter((id) => !shownIds.has(id) && model.marts.get(id)?.accessible && ticked(id) && reachable(id));
+  }, [ghostOf, model, shownIds, storageIds, view, focus, visible.joinable, dragging]);
   // A mart card's element id is `dm-<id>`, or `dm-<id>@<alias path>` for a joined card (see martElementId).
   const hoveredMart = hovered?.startsWith('dm-') ? hovered.slice(3).split('@')[0]! : null;
   const overGhost = hoveredMart !== null && ghostIds.includes(hoveredMart);
@@ -209,17 +216,19 @@ export function CardBands({
   };
   const reportMarts = useMemo(() => new Set(canvasTree ? [...canvasTree.nodes.values()].map((n) => n.martId) : []), [canvasTree]);
   const focusSources = useMemo(() => {
-    if (focus === null || !canvasTree || !joinSources) return [];
+    if (focus === null || !canvasTree || !joinSources || dragging) return [];
     const ticked = (id: string) => storageTicked(model, storageIds, id);
     return ghostSources(canvasTree, joinSources, focus).filter((s) => model.marts.get(s.martId)?.accessible && ticked(s.martId));
-  }, [focus, canvasTree, joinSources, model, storageIds]);
+  }, [focus, canvasTree, joinSources, model, storageIds, dragging]);
   const inBand = (id: string) => shownIds.has(id) && !reportMarts.has(id);
   const joinableAt = new Map<string, JoinedSource>();
   for (const s of focusSources) if (inBand(s.martId) && !joinableAt.has(s.martId)) joinableAt.set(s.martId, s);
   const focusGhosts = focusSources.filter((s) => !inBand(s.martId));
   const focusKey = focusGhosts.map((s) => s.aliasPath).join('|');
   const idsKey = [...visible.ids, ...ghostIds].join('|');
-  const treeKey = (canvasTree ? [...canvasTree.nodes.keys()].join('>') : '') + (focusKey ? `|${focusKey}` : '');
+  // The focused card and the band cards it can take are part of the lines drawn, so they are part of the key.
+  const focusLinks = focus === null ? '' : `|${focus}:${[...joinableAt].map(([id, s]) => `${id}@${s.aliasPath}`).join(',')}`;
+  const treeKey = (canvasTree ? [...canvasTree.nodes.keys()].join('>') : '') + (focusKey ? `|${focusKey}` : '') + focusLinks;
   // Memoised: a new array rebuilds every path, and the lines would blink on each hover.
   const wires = useMemo<Wire[]>(() => {
     const ids = idsKey ? idsKey.split('|') : [];
@@ -248,10 +257,43 @@ export function CardBands({
       // The join fields when the source's relationship is known, the two titles otherwise.
       const edge = model.edges.find((e) => e.id === joinSources?.find((x) => x.aliasPath === n.path)?.relationshipId && e.source === parent.martId && e.target === n.martId);
       const title = edge && edge.joins.length > 0 ? edge.joins.map((j) => `${j.sourceField} → ${j.targetField}`).join(', ') : `${model.marts.get(parent.martId)?.title ?? parent.martId} → ${model.marts.get(n.martId)?.title ?? n.martId}`;
-      out.push({ id: `tree:${n.path}`, from: martElementId(parent.martId, parent.path || undefined), to: martElementId(n.martId, n.path), kind: 'relationship', title });
+      out.push({ id: `tree:${n.path}`, from: martElementId(parent.martId, parent.path || undefined), to: martElementId(n.martId, n.path), kind: 'relationship', title, joined: true });
+    }
+    // The focused card offers the marts it can take: a dashed line to each, the band cards and the ghosts alike.
+    const focusNode = focus === null ? undefined : canvasTree?.nodes.get(focus);
+    if (focusNode && shown.has(focusNode.martId)) {
+      const from = martElementId(focusNode.martId, focusNode.path || undefined);
+      const name = (id: string) => model.marts.get(id)?.title ?? id;
+      for (const [id, source] of joinableAt) out.push({ id: `ghost:${id}@${source.aliasPath}`, from, to: martElementId(id), kind: 'relationship', title: `${name(focusNode.martId)} → ${name(id)}`, dashed: true });
+      for (const source of focusGhosts) out.push({ id: `ghost:${source.aliasPath}`, from, to: martElementId(source.martId, source.aliasPath), kind: 'relationship', title: `${name(focusNode.martId)} → ${name(source.martId)}`, dashed: true });
     }
     // A report mart's own card: the main one, or the first path it is joined at.
     const cardOf = (id: string) => { const n = nodes.find((x) => x.martId === id); return n ? martElementId(id, n.path || undefined) : martElementId(id); };
+    // Every shown mart outside the report gets one dashed line, drawn at once: from the last hop of its shortest chain to the report,
+    // which is a card of the report or another outside mart. A band card the focused card can take has its line from that card instead.
+    if (joinSources) {
+      const inUse = new Set(nodes.map((n) => n.path));
+      const outside = (path: string) => { const id = joinSources.find((x) => x.aliasPath === path)?.martId; return id !== undefined && shown.has(id) && !inReport.has(id) ? id : null; };
+      const hopCard = (path: string): string => {
+        for (let p = path; ; p = parentPath(p)) {
+          const node = canvasTree!.nodes.get(p);
+          if (node) return martElementId(node.martId, node.path || undefined);
+          const id = p === '' ? null : outside(p);
+          if (id !== null) return martElementId(id);
+          if (p === '') return martElementId(canvasTree!.nodes.get('')!.martId);
+        }
+      };
+      const name = (id: string) => model.marts.get(id)?.title ?? id;
+      for (const id of ids) {
+        if (inReport.has(id) || (focus !== null && joinableAt.has(id)) || !model.marts.get(id)?.accessible) continue;
+        const source = shortestSource(joinSources, id, inUse);
+        if (!source) continue;
+        const parent = parentPath(source.aliasPath);
+        const parentMart = canvasTree!.nodes.get(parent)?.martId ?? joinSources.find((x) => x.aliasPath === parent)?.martId;
+        out.push({ id: `ghost:${source.aliasPath}@band`, from: hopCard(parent), to: martElementId(id), kind: 'relationship', title: `${parentMart ? name(parentMart) : ''} → ${name(id)}`, dashed: true });
+      }
+    }
+    // The other edges between marts stay plain: dashed, and drawn when a card on one is lit.
     for (const e of model.edges) {
       if (!shown.has(e.source) || !shown.has(e.target) || (inReport.has(e.source) && inReport.has(e.target))) continue;
       out.push({ id: `edge:${e.id}`, from: cardOf(e.source), to: cardOf(e.target), kind: 'relationship', title: e.joins.map((j) => `${j.sourceField} → ${j.targetField}`).join(', ') });
@@ -259,7 +301,7 @@ export function CardBands({
     return out;
   // `treeKey` stands for canvasTree.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idsKey, treeKey, model, view]);
+  }, [idsKey, treeKey, model, view, joinSources]);
 
   const pinned = useMemo(() => {
     if (selection.martId && idsKey.split('|').includes(selection.martId)) return martElementId(selection.martId);
@@ -267,22 +309,43 @@ export function CardBands({
     return null;
   }, [selection.martId, selection.sourceKey, idsKey, model.sources]);
 
-  // The same array until the set or its order changes, so the memos below do not rebuild on every render.
-  const joinedKey = joinedProp.join('|');
-  const joined = useMemo(() => (joinedKey ? joinedKey.split('|') : []), [joinedKey]);
   // In Grid a joined card is one per alias path, and each line to the main card is raised with it.
   const joinedEls = useMemo(() => (canvasTree ? [...canvasTree.nodes.values()].filter((n) => n.path !== '').map((n) => martElementId(n.martId, n.path)) : []), [canvasTree]);
-  useWires(canvas, wires, { pinned, hovered, also: joinedEls }, useMemo(() => revisionOf(idsKey + treeKey), [idsKey, treeKey]));
+  useWires(canvas, wires, { pinned, hovered: liveHover, also: joinedEls }, useMemo(() => revisionOf(idsKey + treeKey), [idsKey, treeKey]));
 
-  const { lit, aside } = useMemo(() => {
+  // The hovered card as `reach` reads it: set at once, and let go 400 ms after the pointer leaves, so crossing the gap between cards
+  // (or to a ghost) does not blink the cards outside the report.
+  const [laggedHover, setLaggedHover] = useState<string | null>(null);
+  // Adjusted while rendering: a hover is taken at once.
+  if (liveHover !== null && laggedHover !== liveHover) setLaggedHover(liveHover);
+  useEffect(() => {
+    if (liveHover !== null) return;
+    const t = setTimeout(() => setLaggedHover(null), 400);
+    return () => clearTimeout(t);
+  }, [liveHover]);
+  const { lit, aside, near, reach } = useMemo(() => {
     // The cards of the selected joined marts light their own neighbours too, so a mart connected only to a joined one is not dimmed.
     const pinnedSet = pinned ? new Set([...litIds(wires, pinned), ...joinedEls.flatMap((el) => [...litIds(wires, el)])]) : null;
-    const hoveredSet = hovered ? litIds(wires, hovered) : null;
+    const hoveredSet = liveHover ? litIds(wires, liveHover) : null;
     const lit = new Set([...(pinnedSet ?? []), ...(hoveredSet ?? [])]);
     // Lit only by the pointer while another card is pinned: drawn at half strength.
     const aside = new Set([...lit].filter((id) => pinnedSet !== null && !pinnedSet.has(id)));
-    return { lit, aside };
-  }, [wires, pinned, hovered, joinedEls]);
+    // While a card is hovered, the cards that are not it or on a line with it fade to half.
+    // With a main mart, a mart outside the report stays full strength only while it can join the hovered or the focused card.
+    const focusNode = focus === null ? undefined : canvasTree?.nodes.get(focus);
+    const focusSet = focusNode ? litIds(wires, martElementId(focusNode.martId, focusNode.path || undefined)) : null;
+    const reachSet = laggedHover ? litIds(wires, laggedHover) : null;
+    return { lit, aside, near: hoveredSet, reach: new Set([...(reachSet ?? []), ...(focusSet ?? [])]) };
+  }, [wires, pinned, liveHover, laggedHover, joinedEls, focus, canvasTree]);
+  // A card in hand dims every card that is not a place to drop it (the same half dim as a hover); the targets and the card itself stay.
+  const dragView = drag?.view;
+  // A card in the report fades only with a hover (it is not on a line with the hovered card). A card outside it, with a main mart set,
+  // is faded at rest, except the marts the hovered or focused card can join. The drag rule wins over both.
+  const fadedOf = (el: string, outside = false) => {
+    if (dragView) return el !== dragView.held && !dragView.els.has(el);
+    if (outside && mainFor !== null) return !reach.has(el);
+    return near !== null && !near.has(el);
+  };
 
   // Cards animate in and out as the set changes; a leaving card keeps its object, which the model may no longer hold.
   const shownMarts = useMemo(() => visible.ids.flatMap((id) => model.marts.get(id) ?? []), [visible.ids, model]);
@@ -311,17 +374,15 @@ export function CardBands({
   // In Graph the band counts the marts of the report tree.
   const reportSize = canvasTree ? canvasTree.nodes.size : 0;
 
-  // The selected card (a joined one, or a ghost or band card the main mart cannot join that was clicked), when the member can open it: the header offers to make it the main one.
-  const selectedJoined = view === 'canvas' ? graphSelected : picked ?? (focus ? canvasTree?.nodes.get(focus)?.martId ?? null : null);
+  // The selected card (a joined one), when the member can open it: the header offers to make it the main one.
+  const selectedJoined = view === 'canvas' ? graphSelected : focus ? canvasTree?.nodes.get(focus)?.martId ?? null : null;
   const makeMainId = selectedJoined !== null && selectedJoined !== mainFor && model.marts.get(selectedJoined)?.accessible === true ? selectedJoined : null;
-
-  const unjoinableFor = (id: string) => !!selection.martId && visible.joinable !== null && id !== selection.martId && !joined.includes(id) && !visible.joinable.has(id);
 
   return (
     <div
       ref={canvas}
-      className={`dm-canvas${view === 'grid' && (pinned || hovered) ? ' focused' : ''}${view === 'canvas' && pinned ? ' sources-focused' : ''}`}
-      onClick={(e) => { if (e.target instanceof Element && e.target.closest('#band-marts .dm-band-body') && !e.target.closest('article, button, a')) { if (focus !== null) clearFocus(); setPickState(null); } }}
+      className={`dm-canvas${pinned ? ' sources-focused' : ''}`}
+      onClick={(e) => { if (e.target instanceof Element && e.target.closest('#band-marts .dm-band-body') && !e.target.closest('article, button, a')) { if (focus !== null) clearFocus(); } }}
       // A portaled title bubble bubbles its events through React; it is not in the canvas in the DOM, so it changes no hover.
       onPointerOver={(e) => { if (e.currentTarget.contains(e.target as Node)) setHovered(view === 'grid' ? nodeIdOf(e.target) : null); }}
       onPointerLeave={() => setHovered(null)}
@@ -335,7 +396,7 @@ export function CardBands({
           return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => { rememberLeaving(null); dispatch({ type: 'selectSource', key: source.key }); if (view === 'canvas') pickView('grid'); }} />;
         })}
       </Band>
-      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={view === 'canvas' ? reportSize : visible.ids.length} hint="The main data mart first, and every mart it can join; or what the search and the filters match. Drag a card onto the main one to make it main." afterHint={<><ViewSwitch label="Show data marts as" options={MARTS_VIEWS} value={view} onChange={pickView} />{makeMainId !== null && <MakeMainButton title={model.marts.get(makeMainId)?.title ?? 'it'} onClick={() => { setPickState(null); void click(makeMainId, { mode: 'makeMain' }); }} />}</>} toolbar={view === 'grid' ? <>{contextBadges}{storageFilter}</> : undefined} grid={view === 'grid'} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
+      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={view === 'canvas' ? reportSize : visible.ids.length} hint="The main data mart first, and every mart it can join; or what the search and the filters match. Drag a joined card near another to join it there." afterHint={<><ViewSwitch label="Show data marts as" options={MARTS_VIEWS} value={view} onChange={pickView} />{makeMainId !== null && <MakeMainButton title={model.marts.get(makeMainId)?.title ?? 'it'} onClick={() => { void click(makeMainId, { mode: 'makeMain' }); }} />}</>} toolbar={view === 'grid' ? <>{contextBadges}{storageFilter}</> : undefined} grid={view === 'grid'} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
         {view === 'canvas' ? (
           <div
             className="dm-tree-scroll"
@@ -348,7 +409,6 @@ export function CardBands({
         ) : <>
         {(visible.ids.length === 0 || noMatch) && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
         {(() => {
-          const mainId = selection.martId;
           const nodes = canvasTree ? [...canvasTree.nodes.values()] : [];
           const reportCard = (node: TreeNode) => {
             const mart = model.marts.get(node.martId);
@@ -372,14 +432,12 @@ export function CardBands({
                 focused={focus === path}
                 lit={lit.has(el)}
                 aside={aside.has(el)}
-                dropTarget={isMain && drag !== null}
-                dropHot={isMain && drag !== null && drag.overMain}
-                mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
+                faded={fadedOf(el)}
                 onRemove={isMain ? undefined : () => {
                   const parent = canvasTree!.nodes.get(node.parent!)!;
                   void click(id, { removePaths: node.bare ? subtreePaths(canvasTree!, path) : [path] }).then(() => document.getElementById(martElementId(parent.martId, parent.path || undefined))?.focus(), () => undefined);
                 }}
-                onSelect={() => { setPickState(null); toggleFocus(path); }}
+                onSelect={() => { toggleFocus(path); }}
                 onOpenApp={() => onOpenApp(id)}
                 onRetryCount={() => onRetryCount(id)}
                 onNeedCount={() => onRequestCount(id)}
@@ -405,13 +463,9 @@ export function CardBands({
                   joined={false}
                   lit={lit.has(el)}
                   aside={aside.has(el)}
-                  unjoinable={focus !== null ? !at : unjoinableFor(id)}
-                  mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
-                  joinTitle={focus !== null ? model.marts.get(canvasTree?.nodes.get(focus)?.martId ?? '')?.title : undefined}
-                  addViaEscape={focus !== null && !at && !!mainId && visible.joinable?.has(id) === true}
-                  focused={picked === id}
+                  faded={fadedOf(el, true)}
+                  offPath={mainFor !== null}
                   onSelect={() => (at ? addFromBand(id, { addAt: at.aliasPath }) : addFromBand(id))}
-                  onPick={() => pick(id)}
                   onOpenApp={() => onOpenApp(id)}
                   onRetryCount={() => onRetryCount(id)}
                   onNeedCount={() => onRequestCount(id)}
@@ -421,6 +475,7 @@ export function CardBands({
             {focusGhosts.flatMap((s) => {
               const mart = model.marts.get(s.martId);
               if (!mart) return [];
+              const el = martElementId(s.martId, s.aliasPath);
               return [
                 <MartCard
                   key={`focus-ghost-${s.aliasPath}`}
@@ -432,7 +487,8 @@ export function CardBands({
                   quality={dq.get(mart.id)}
                   selected={false}
                   joined={false}
-                  lit={false}
+                  lit={lit.has(el)}
+                  faded={fadedOf(el, true)}
                   onSelect={() => addFromBand(mart.id, { addAt: s.aliasPath })}
                   onOpenApp={() => onOpenApp(mart.id)}
                 />,
@@ -444,7 +500,6 @@ export function CardBands({
           const mart = model.marts.get(id);
           if (!mart) return [];
           const el = martElementId(id);
-          const mainId = selection.martId;
           return [
             <MartCard
               key={`ghost-${id}`}
@@ -456,11 +511,8 @@ export function CardBands({
               joined={false}
               lit={lit.has(el)}
               aside={aside.has(el)}
-              unjoinable={unjoinableFor(id)}
-              mainTitle={mainId ? model.marts.get(mainId)?.title : undefined}
-              focused={picked === id}
+              faded={fadedOf(el, true)}
               onSelect={() => addFromBand(id)}
-              onPick={() => pick(id)}
               onOpenApp={() => onOpenApp(id)}
             />,
           ];
@@ -469,6 +521,7 @@ export function CardBands({
       </Band>
       <CardClickContext.Provider value={click}>{children}</CardClickContext.Provider>
       {drag && <div className="dm-drag-ghost" style={{ left: drag.x + 8, top: drag.y + 8 }} aria-hidden>{drag.title}</div>}
+      <DragLines lines={dragView?.lines ?? []} />
       <WireTipLayer canvas={canvas} />
     </div>
   );

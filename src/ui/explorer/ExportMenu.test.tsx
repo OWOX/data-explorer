@@ -1,6 +1,6 @@
-import { dragOntoMain } from '../bands/drag-main-test-utils';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useEffect } from 'react';
 import { vi } from 'vitest';
 import type { JoinedSource } from '../../api/blendable';
 import { exportTitle, POLL_INTERVAL_MS, POLL_TIMEOUT_MS, type StoredReport } from '../../api/exports';
@@ -8,7 +8,7 @@ import { martAppUrl } from '../../config';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { Ctx } from '../../sdk/types';
-import { AppServices, StoreProvider } from '../../state/store';
+import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
 import { TooltipProvider } from '../Tooltip';
 import type { ColumnFilter } from '../../filters/build';
@@ -21,6 +21,13 @@ import type { GridRun } from './useMartRows';
 
 type Call = string;
 
+// This probe selects a mart the way a restored view would.
+let selectMartById: (id: string) => void = () => undefined;
+function SelectProbe() {
+  const [, dispatch] = useStore();
+  useEffect(() => { selectMartById = (id) => dispatch({ type: 'selectMart', id, sourceOf: () => null }); }, [dispatch]);
+  return null;
+}
 function setup(sheets: 0 | 1 | 2, remembered: StoredReport[] = [], runMs?: number) {
   const base = createMockCtx(demoFixtures({ sheets }), { latencyMs: 0, runMs });
   const calls: Call[] = [];
@@ -37,7 +44,7 @@ function setup(sheets: 0 | 1 | 2, remembered: StoredReport[] = [], runMs?: numbe
     },
   };
   const seeded = remembered.length ? ctx.collections('exports').put('orders', { reports: remembered }) : Promise.resolve();
-  const view = () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
+  const view = () => render(<AppServices ctx={ctx}><StoreProvider><SelectProbe /><App /></StoreProvider></AppServices>);
   return { ctx, calls, open, view, seeded };
 }
 type T = ReturnType<typeof setup>;
@@ -722,17 +729,9 @@ test('a failure after the report exists closes the dialog and reports in a toast
 });
 
 const headingText = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!).join(' + ');
-/** A card in the band is made main by dragging it onto the main card (a click on a card only joins it or focuses it); one it cannot reach is reached through the search. */
+/** A mart is made main the way a restored view would: a click on a card in the band only joins it or focuses it. */
 const toMart = async (title: string) => {
-  // A leaving card and a hover ghost can carry the same title: the card is the one that is neither.
-  const card = [...document.querySelectorAll<HTMLElement>('#band-marts article:not([data-ghost]):not([data-leaving])')].find((a) => a.querySelector('.dm-node-title')?.textContent === title);
-  if (!card || card.classList.contains('dm-unjoinable')) {
-    if (!screen.queryByRole('combobox', { name: 'Search data marts' })) await userEvent.click(screen.getByRole('button', { name: 'Search data marts' }));
-    await userEvent.type(screen.getByRole('combobox', { name: 'Search data marts' }), `${title}{Enter}`);
-    await waitFor(() => expect(headingText() === title || headingText()!.startsWith(`${title} + `)).toBe(true));
-    return;
-  }
-  dragOntoMain(card, document.querySelector('#band-marts article[aria-pressed="true"]:not([data-path]):not([data-ghost])')!);
+  act(() => selectMartById(title.toLowerCase().replace(/[^a-z0-9]+/g, '_')));
   await waitFor(() => expect(headingText() === title || headingText()!.startsWith(`${title} + `)).toBe(true));
 };
 

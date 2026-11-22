@@ -30,14 +30,17 @@ test('canvas: add marts through ghosts, move countries from customers to stores,
   await page.mouse.down();
   await page.mouse.move(from!.x + from!.width / 2 + 10, from!.y + from!.height / 2 + 10, { steps: 4 });
   await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 6 });
-  // One dashed line per target (stores and the current parent, customers); the closest one is drawn stronger.
-  await expect(marts.locator('svg#drag-line path')).toHaveCount(2);
+  // One dashed line to the other target (stores), drawn stronger as the closest.
+  await expect(marts.locator('svg#drag-line path')).toHaveCount(1);
   await expect(marts.locator('svg#drag-line path.closest')).toHaveAttribute('data-target', 'stores');
-  const wrap = (id: string) => marts.locator(`.dm-tree-node:has([id="dm-${id}"])`);
-  await expect(wrap('orders')).toHaveClass(/dm-dimmed/);
-  await expect(marts.locator('.dm-tree-node.dm-dimmed:has([id="dm-orders"])')).toHaveCount(1);
-  await expect(wrap('stores@stores')).not.toHaveClass(/dm-dimmed/);
-  await expect(wrap('customers@customers')).toHaveClass(/dm-dimmed/);
+  const card = (id: string) => marts.locator(`[id="dm-${id}"]`);
+  await expect(card('orders')).toHaveClass(/dm-faded/);
+  await expect(card('stores@stores')).not.toHaveClass(/dm-faded/);
+  await expect(card('customers@customers')).not.toHaveClass(/dm-faded/);
+  // The tree wire to the mart it hangs from now is the one solid line; the other target gets a dashed one.
+  await expect(page.locator('#tree-wires path[data-from="dm-customers@customers"][data-to="dm-countries@customers.countries"]')).toHaveCount(1);
+  await expect(marts.locator('svg#drag-line path.joined')).toHaveCount(0);
+  await expect(marts.locator('svg#drag-line path.ghost')).toHaveAttribute('data-target', 'stores');
   await page.mouse.up();
   await expect(marts.locator('svg#drag-line')).toHaveCount(0);
 

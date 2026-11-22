@@ -65,19 +65,21 @@ export type VisibleResult = {
   ids: string[];
   /** The mart a first load selects: most inbound edges among the marts the member can open. */
   focusId: string | null;
-  /** With a main mart set and its joins read: the marts it can join. The band dims the rest. Null otherwise. */
+  /** With a main mart set and its joins read: the marts it can join, the only ones the band shows besides the path. Null otherwise. */
   joinable: Set<string> | null;
 };
 
 /** Which marts the Data Marts band shows, by the first rule that applies (spec, "Which marts show"). */
 export function computeVisible({ model, selection, search, contextIds, storageIds = null, joined = [], filtered = [], found = [], joinable = null }: VisibleInput): VisibleResult {
   const inbound = inboundCounts(model.edges);
-  // A mart in an unticked storage is out of every rule below, the selected one included.
+  // A mart in an unticked storage is out of every rule below, except the main mart: it is always shown, first.
   const inStorage = (id: string) => storageIds === null || storageIds.includes(model.marts.get(id)?.storageId ?? '');
   const accessible = [...model.marts.values()].filter((m) => m.accessible && inStorage(m.id));
   const focusId = pickFocus(accessible.map((m) => m.id), model.marts, inbound);
   const selectedId = selection.martId && model.marts.has(selection.martId) ? selection.martId : null;
   const joinableSet = selectedId && joinable ? new Set(joinable) : null;
+  // With a main mart whose joins are read, a search or a context only narrows the marts it can join; the others are not shown.
+  const reachable = (id: string) => joinableSet === null || joinableSet.has(id);
   const rankOf = (first: string | null) => rank(model.marts, inbound, first);
   const order = (ids: string[], first = selectedId) => ids.sort(rankOf(first));
   // Main first, then the selected joined marts, then everything else breadth first from them over the edges, so cards that are
@@ -96,25 +98,26 @@ export function computeVisible({ model, selection, search, contextIds, storageId
     return [...out, ...ids.filter((id) => !placed.has(id)).sort(byRank)];
   };
   // A mart with a column on the grid or a filter applied is always shown: no search, context or storage filter takes it away.
-  // The main mart is one of them (unless its storage is unticked, which takes it out of every rule).
-  const always = [...new Set([...(selectedId && inStorage(selectedId) ? [selectedId] : []), ...joined, ...filtered])].filter((id) => model.marts.has(id));
+  // The main mart is one of them, whatever the storage filter says.
+  const always = [...new Set([...(selectedId ? [selectedId] : []), ...joined, ...filtered])].filter((id) => model.marts.has(id));
   const withJoined = (ids: string[]) => (selectedId ? [...new Set([...ids, ...always])] : ids);
 
   // 0. A smart search found marts: the main mart and the joined marts first, then the hits, best first, then the marts whose title matches the query, then the marts that are always shown.
   if (found.length > 0) {
-    const hits = found.filter((id) => model.marts.get(id)?.accessible && inStorage(id));
-    const titled = accessible.filter((m) => matchesSearch(m, search) && matchesContexts(m, contextIds)).map((m) => m.id);
+    const hits = found.filter((id) => model.marts.get(id)?.accessible && inStorage(id) && reachable(id));
+    const titled = accessible.filter((m) => reachable(m.id) && matchesSearch(m, search) && matchesContexts(m, contextIds)).map((m) => m.id);
     // The main mart first, then its joined marts, then the hits.
     const head = always.filter((id) => id === selectedId || joined.includes(id));
     return { ids: [...new Set([...head, ...hits, ...titled, ...always])], focusId, joinable: joinableSet };
   }
 
-  // 1. A search, or a selected context badge: the matches, narrowed to the selected source.
+  // 1. A search, or a selected context badge: the matches, narrowed to the selected source and, with a main mart, to what it can join.
   if (search.trim() || contextIds.length > 0) {
     const source = selection.sourceKey;
     const ids: string[] = [];
     for (const mart of accessible) {
       if (source && mart.sourceKey !== source) continue;
+      if (!reachable(mart.id)) continue;
       if (!matchesContexts(mart, contextIds)) continue;
       if (!matchesSearch(mart, search)) continue;
       ids.push(mart.id);

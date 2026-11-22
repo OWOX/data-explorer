@@ -178,39 +178,6 @@ describe('useWires', () => {
   });
 });
 
-describe('useWires marks', () => {
-  afterEach(() => { cleanup(); document.body.innerHTML = ''; });
-  const setup = () => {
-    const canvas = document.createElement('div');
-    document.body.append(canvas);
-    const wires = [wire('w1', 'a', 'b'), wire('w2', 'b', 'c'), { ...wire('w3', 'a', 'g'), dashed: true }];
-    const ref = { current: canvas };
-    const hook = renderHook(({ marks }) => useWires(ref, wires, { pinned: null, hovered: null }, 0, 'wires', 1, marks), {
-      initialProps: { marks: {} as { held?: string | null; engaged?: string | null } },
-    });
-    const flags = (cls: string) => [...canvas.querySelectorAll('#wires > path')].map((p) => p.classList.contains(cls));
-    return { hook, flags };
-  };
-
-  it('classes `held` the lines that touch the card in hand, and drops it on release', () => {
-    const { hook, flags } = setup();
-    expect(flags('held')).toEqual([false, false, false]);
-    hook.rerender({ marks: { held: 'b' } });
-    expect(flags('held')).toEqual([true, true, false]);
-    hook.rerender({ marks: { held: null } });
-    expect(flags('held')).toEqual([false, false, false]);
-  });
-
-  it('classes `engaged` only a ghost line that ends at the hovered ghost', () => {
-    const { hook, flags } = setup();
-    expect(flags('ghost')).toEqual([false, false, true]);
-    hook.rerender({ marks: { engaged: 'g' } });
-    expect(flags('engaged')).toEqual([false, false, true]);
-    hook.rerender({ marks: { engaged: 'c' } });
-    expect(flags('engaged')).toEqual([false, false, false]);
-  });
-});
-
 describe('a hub with many neighbours', () => {
   const N = 35;
   const ids = Array.from({ length: N }, (_, i) => `n${String(i).padStart(2, '0')}`);

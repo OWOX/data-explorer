@@ -49,7 +49,7 @@ function usePinWhenLeaving(card: React.RefObject<HTMLElement | null>, transition
   }, [card, transition?.leaving]);
 }
 
-const cardClass = (lit: boolean, aside: boolean, extra?: string) => ['dm-node', lit ? 'lit' : '', aside ? 'aside' : '', extra ?? ''].filter(Boolean).join(' ');
+const cardClass = (lit: boolean, aside: boolean, extra?: string, faded = false) => ['dm-node', lit ? 'lit' : '', aside ? 'aside' : '', faded ? 'dm-faded' : '', extra ?? ''].filter(Boolean).join(' ');
 
 export function SourceCard({
   source,
@@ -138,20 +138,15 @@ export function MartCard({
   joined = false,
   lit,
   aside = false,
+  faded = false,
   transition,
-  unjoinable = false,
-  mainTitle,
-  joinTitle,
-  addViaEscape = false,
+  offPath = false,
   ghost = false,
-  dropTarget = false,
-  dropHot = false,
   path,
   title,
   focused = false,
   onRemove,
   onSelect,
-  onPick,
   onOpenApp,
   onRetryCount,
   onNeedCount,
@@ -168,20 +163,12 @@ export function MartCard({
   /** Lit by a card other than the pinned one: drawn at half strength. */
   aside?: boolean;
   transition?: CardTransition;
-  /** The main mart cannot join this one: the card is dimmed, and a click explains instead of selecting. */
-  unjoinable?: boolean;
-  /** The title of the main mart, named in the unjoinable hint. */
-  mainTitle?: string;
-  /** The card that cannot be joined by this one, when it is not the main mart (the focused card in Grid). Defaults to the main mart. */
-  joinTitle?: string;
-  /** The mart is dimmed under the focused card but the main mart can join it: the hint says to press Escape and click it. */
-  addViaEscape?: boolean;
+  /** Another card is hovered and this one is not among the marts it touches: drawn at half strength. */
+  faded?: boolean;
+  /** The mart is not in the report but can join it: the border is dashed (a hover ghost always is). */
+  offPath?: boolean;
   /** The card is a hover ghost: a neighbour of the hovered card that is not in the band, drawn dashed while that card is hovered. It asks for no count and cannot be dragged. */
   ghost?: boolean;
-  /** A drag is under way and this card accepts a drop. */
-  dropTarget?: boolean;
-  /** The dragged card is over this one. */
-  dropHot?: boolean;
   /** The alias path this card stands for, when the mart is joined at one. */
   path?: string;
   /** What the card is called when that is not the mart's title: a joined source's label, which carries the alias path when two joins reach the mart. */
@@ -191,8 +178,6 @@ export function MartCard({
   /** Takes this joined mart out of the report; when absent the card has no ×. */
   onRemove?: () => void;
   onSelect: () => void;
-  /** A click on a card that cannot join the main mart only explains; this tells the page which card was picked, so the header can offer to make it main. */
-  onPick?: () => void;
   onOpenApp: () => void;
   /** Not needed on a ghost, which shows no count. */
   onRetryCount?: () => void;
@@ -206,14 +191,7 @@ export function MartCard({
     if (!mart.accessible || ghost || !el.current) return;
     return whenInView(el.current, () => need.current?.());
   }, [mart.accessible, ghost, need]);
-  const [hint, setHint] = useState(false);
-  useEffect(() => {
-    if (!hint) return;
-    const t = setTimeout(() => setHint(false), 3000);
-    return () => clearTimeout(t);
-  }, [hint]);
   const name = title ?? mart.title;
-  const choose = unjoinable ? () => { setHint(true); onPick?.(); } : onSelect;
   return (
     <article
       ref={el}
@@ -224,10 +202,10 @@ export function MartCard({
       data-node
       data-tone={dqCardTone(quality)}
       aria-pressed={selected || joined}
-      className={cardClass(lit, aside, [selected || joined || lit ? 'dm-in-path' : '', mart.accessible ? '' : 'dm-noaccess', unjoinable ? 'dm-unjoinable' : '', ghost ? 'dm-ghost' : '', dropTarget ? 'dm-drop-target' : '', dropHot ? 'dm-drop-hot' : '', transition?.className ?? ''].filter(Boolean).join(' '))}
+      className={cardClass(lit, aside, [selected || joined || lit ? 'dm-in-path' : '', mart.accessible ? '' : 'dm-noaccess', offPath ? 'dm-offpath' : '', ghost ? 'dm-ghost' : '', transition?.className ?? ''].filter(Boolean).join(' '), faded)}
       {...(transition?.leaving ? { 'data-leaving': '' } : {})}
       {...(ghost ? { 'data-ghost': '' } : {})}
-      {...selectable(choose)}
+      {...selectable(onSelect)}
     >
       {onRemove && (
         <button type="button" aria-label={`Remove ${name} from the report`} className="dm-card-remove" onClick={(e) => { e.stopPropagation(); onRemove(); }}>
@@ -257,10 +235,6 @@ export function MartCard({
         {mart.dataLastUpdatedAt && <Mark tone="idle" lines={[`Data updated ${relativeTime(mart.dataLastUpdatedAt)}`]}><History size={14} /></Mark>}
         <Contexts contexts={contexts} />
       </div>
-      {/* The live region stays mounted so a screen reader announces the hint when it appears. */}
-      <span aria-live="polite" className="dm-card-live">
-        {hint && unjoinable && mainTitle && <span role="status" className="dm-card-hint">{ghost ? `Can't join ${joinTitle ?? mainTitle}. Use Make it main in the section header to make it the main data mart.` : addViaEscape ? `Can't join ${joinTitle ?? mainTitle}. Press Escape, then click it to add it to ${mainTitle}.` : `Can't join ${joinTitle ?? mainTitle}. Drag it onto ${mainTitle} to make it the main data mart.`}</span>}
-      </span>
     </article>
   );
 }

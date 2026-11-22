@@ -180,7 +180,6 @@ function AppBody() {
           model={model}
           visible={visible}
           storageIds={storageIds}
-          joined={joined}
           joinSources={joinSources}
           mainColumns={mainColumns ?? []}
           counts={counts}

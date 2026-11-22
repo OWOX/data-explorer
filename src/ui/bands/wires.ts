@@ -31,8 +31,12 @@ export type Wire = {
   kind: 'source' | 'relationship';
   /** Said in the tooltip: lines pass under cards, so they have to say what they are. */
   title: string;
-  /** A ghost line: drawn dashed where the layer draws its lines solid. */
+  /** A join that can be made but is not yet: drawn dashed, always, at full strength. Solid is a join in the report. */
   dashed?: boolean;
+  /** A join in the report (the path): drawn solid, always, at full strength. */
+  joined?: boolean;
+  /** The closest line of a card in hand: drawn stronger. */
+  strong?: boolean;
   /** Always leave the parent's right edge and enter the child's left edge at mid-height, whatever the boxes' vertical gap. */
   sideways?: boolean;
 };
@@ -164,8 +168,6 @@ export function useWires(
   layerId = 'wires',
   /** The canvas is drawn with a CSS scale: measured client boxes are divided by it to get the canvas's own pixels. */
   scale = 1,
-  /** `held`: the id of a card in hand, its lines dim. `engaged`: the id of a hovered ghost, its ghost line brightens. */
-  marks: { held?: string | null; engaged?: string | null } = {},
 ) {
   /** The drawn lines, kept across a selection change: building belongs to the cards, lighting to the selection. */
   const drawn = useRef<SVGPathElement[]>([]);
@@ -176,7 +178,6 @@ export function useWires(
   /** The paths currently carrying classes, so putting them out costs their own number (invariant 4). */
   const alight = useRef<SVGPathElement[]>([]);
   const { pinned, hovered } = selection;
-  const { held = null, engaged = null } = marks;
   const alsoKey = (selection.also ?? []).join('|');
 
   useEffect(() => {
@@ -186,7 +187,7 @@ export function useWires(
 
     const paths = (drawn.current = wires.map((wire) => {
       const path = document.createElementNS(NS, 'path');
-      path.setAttribute('class', wire.dashed ? `${wire.kind} ghost` : wire.kind);
+      path.setAttribute('class', [wire.kind, wire.dashed ? 'ghost' : '', wire.joined ? 'joined' : '', wire.strong ? 'closest' : ''].filter(Boolean).join(' '));
       path.setAttribute('marker-end', `url(#arrowhead-${layerId})`);
       path.dataset.from = wire.from;
       path.dataset.to = wire.to;
@@ -301,13 +302,4 @@ export function useWires(
       lightAgain.current = () => {};
     };
   }, [canvasRef, wires, revision, pinned, hovered, alsoKey]);
-
-  // Classes only: the look is in bands.css. Redone when the lines are rebuilt.
-  useEffect(() => {
-    for (const path of drawn.current) {
-      const { from, to } = path.dataset;
-      path.classList.toggle('held', held !== null && (from === held || to === held));
-      path.classList.toggle('engaged', engaged !== null && to === engaged && path.classList.contains('ghost'));
-    }
-  }, [wires, revision, pinned, hovered, alsoKey, held, engaged]);
 }
