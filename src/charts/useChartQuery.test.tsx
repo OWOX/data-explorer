@@ -156,14 +156,14 @@ test('a query for a subset of a read already made reads nothing and shows its ro
   const wrapper = setup(traverseData);
   const both: TraverseOptions = { column: ['a', 'b'], aggregation: [{ column: 'a', function: 'SUM' }, { column: 'b', function: 'SUM' }] };
   const one: TraverseOptions = { column: ['a'], aggregation: [{ column: 'a', function: 'SUM' }] };
-  const { result, rerender } = renderHook(({ o }) => useChartQuery('m', o, 0), { wrapper, initialProps: { o: both } });
+  const { result, rerender } = renderHook(({ o }) => useChartQuery('m', o, 0, { pathOf: () => undefined, keepsGrain: () => true }), { wrapper, initialProps: { o: both } });
   await waitFor(() => expect(result.current.rows).not.toBeNull());
   rerender({ o: one });
   expect(result.current.rows).toEqual([{ a: 1, b: 2 }]);
   await act(async () => { await Promise.resolve(); });
   expect(traverseData).toHaveBeenCalledTimes(1);
   // Another mart is never answered from it.
-  const other = renderHook(() => useChartQuery('n', one, 0), { wrapper });
+  const other = renderHook(() => useChartQuery('n', one, 0, { pathOf: () => undefined, keepsGrain: () => true }), { wrapper });
   await waitFor(() => expect(other.result.current.rows).not.toBeNull());
   expect(traverseData).toHaveBeenCalledTimes(2);
 });

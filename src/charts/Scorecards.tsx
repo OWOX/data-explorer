@@ -16,6 +16,7 @@ import { metricKey, scorecardsQuery, sparklineQuery, uniqueKey, type Measure } f
 import { measureId, type Spark } from './settings';
 import { measureGroups } from './menuGroups';
 import { Sparkline, type Point } from './svg/Sparkline';
+import type { JoinGrain } from './answers';
 import { useChartQuery, type ChartResult } from './useChartQuery';
 
 export type Card = { id: string; label: string; key: string; measure: Measure };
@@ -80,8 +81,8 @@ export function sharedSeriesQuery(cf: ChartFields, spark: Spark, measure: Measur
 }
 
 /** One query for every value card of every data mart. Nothing runs while paused. */
-export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean): ChartResult {
-  return useChartQuery(martId, paused ? null : scorecardsQuery(cf.marts, filter, cf.counter), version);
+export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean, joins?: JoinGrain): ChartResult {
+  return useChartQuery(martId, paused ? null : scorecardsQuery(cf.marts, filter, cf.counter), version, joins);
 }
 
 export type Formatter = (column: string, type: string) => Format;
@@ -149,8 +150,8 @@ export const numberOf = (v: unknown): number | null => {
 };
 
 /** The cards of one data mart, wrapping inside its group's cell. The main mart's cell also shows the strip's error and empty state. */
-export function MartCards({ martId, mart, main, spark, scores, bucket, filter, version, paused, hasFilters, formatOf, onMetric, onHide }: {
-  martId: string; mart: ChartMart; main: boolean; spark: Spark; scores: ChartResult; bucket: DateBucket | null; filter: TraverseFilter[]; version: number; paused: boolean; hasFilters: boolean; formatOf: Formatter;
+export function MartCards({ martId, mart, main, spark, scores, bucket, filter, version, paused, joins, hasFilters, formatOf, onMetric, onHide }: {
+  martId: string; mart: ChartMart; main: boolean; spark: Spark; scores: ChartResult; bucket: DateBucket | null; filter: TraverseFilter[]; version: number; paused: boolean; /** What lets a sparkline read be reused after a column is dropped. */ joins?: JoinGrain; hasFilters: boolean; formatOf: Formatter;
   /** A card's ⋮ menu: pick the measure a card shows, and hide it. Without them (the settings are still loading) the cards have no menu. */
   onMetric?: (cardId: string, measure: string) => void; onHide?: (cardId: string) => void;
 }) {
@@ -158,7 +159,7 @@ export function MartCards({ martId, mart, main, spark, scores, bucket, filter, v
   const choices = measureGroups({ marts: [mart], dimensions: [], dates: [] }, martMeasures(mart));
   // The group's own date when it has one, else the chart date's mart's: a joined mart without a date draws no trend.
   const date = sparkDate(mart, spark);
-  const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, bucket, filter), version);
+  const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, bucket, filter), version, joins);
   if (scores.error) return main ? <ErrorBox error={scores.error} onRetry={scores.retry} /> : null;
   if (scores.rows && scores.rows.length === 0) return main ? <p className="dm-muted text-sm">{emptyText(hasFilters)}</p> : null;
   const row = scores.rows?.[0];

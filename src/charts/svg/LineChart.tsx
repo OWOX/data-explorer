@@ -1,5 +1,6 @@
 import { useMemo, type KeyboardEvent } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
+import { swatchStyle } from '../blank';
 import { useWidth } from '../useWidth';
 import type { Series } from './BarChart';
 import { niceTicks } from './ticks';
@@ -80,14 +81,14 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
         {area && all.map(({ s, max }) => <path key={`a-${s.key ?? s.name}`} data-area={s.name} d={areaOf(s, max)} fill={s.color} fillOpacity={0.18} stroke="none" />)}
         {all.map(({ s, max }, k) => <path key={s.key ?? s.name} data-line={s.name} d={pathOf(s, max)} fill="none" stroke={s.color} strokeWidth={2} strokeDasharray={right && k === all.length - 1 ? '5 3' : undefined} strokeLinejoin="round" strokeLinecap="round" />)}
         {xs.map((p, i) => {
-          const content = <TipLines lines={[p.label, ...all.filter(({ s }) => at(s, p.x)?.y != null).map(({ s }) => <span key={s.key ?? s.name}><span className="dm-chart-swatch" style={{ background: s.color }} /> {s.name}: {at(s, p.x)!.valueText}</span>)]} />;
+          const content = <TipLines lines={[p.label, ...all.filter(({ s }) => at(s, p.x)?.y != null).map(({ s }) => <span key={s.key ?? s.name}><span className="dm-chart-swatch" style={swatchStyle(s.color)} /> {s.name}: {at(s, p.x)!.valueText}</span>)]} />;
           const pick = pickable(p.x) ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${p.label}`, style: { cursor: 'pointer' }, onClick: () => onPick!(p.x), onKeyDown: press(() => onPick!(p.x)) } : {};
           return <Tooltip key={p.x} content={content}><rect data-bucket={p.x} fill="transparent" x={px(i) - band / 2} y={TOP} width={band} height={PLOT_H} {...pick} /></Tooltip>;
         })}
       </svg>
       {all.length > 1 && (
         <ul className="dm-chart-legend">
-          {all.map(({ s }, k) => <li key={s.key ?? s.name}><span className="dm-chart-swatch" style={{ background: s.color }} />{s.name}{right && k === all.length - 1 ? ' (right axis)' : ''}</li>)}
+          {all.map(({ s }, k) => <li key={s.key ?? s.name}><span className="dm-chart-swatch" style={swatchStyle(s.color)} />{s.name}{right && k === all.length - 1 ? ' (right axis)' : ''}</li>)}
         </ul>
       )}
       <table className="sr-only">
