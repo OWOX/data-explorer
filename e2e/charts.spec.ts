@@ -149,7 +149,6 @@ test.describe('grouped submenus', () => {
     await expect(customers.locator('.dm-menu-head')).toHaveText('Customers');
     await expect(customers.getByRole('menuitemradio', { name: 'name' })).toBeVisible();
     await expect(sub.getByRole('menuitemradio', { name: /·/ })).toHaveCount(0);
-    await page.screenshot({ path: 'tmp/w7t2-menu.png' });
     // The headers are not menu items: ArrowDown walks the options only.
     const options = sub.getByRole('menuitemradio');
     const count = await options.count();
