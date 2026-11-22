@@ -167,6 +167,17 @@ test('a reopened contains filter: a pick adds to the saved value', async () => {
   expect(op().value).toBe('eq');
 });
 
+test('a reopened contains value with a comma is sent as it was, and a pick does not make it a list', async () => {
+  const onApply = vi.fn();
+  render(<FilterEditor field={country} value={{ field: 'country', op: 'contains', value: 'a,b' }} onApply={onApply} onClear={vi.fn()} values={source(loadOf(['a,bc', 'Ukraine']))} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'contains', value: 'a,b' });
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'a,bc' }));
+  expect(op().value).toBe('contains');
+  expect(input().value).toBe('a,bc');
+});
+
 test('a comma typed by hand under contains does not switch the operator', async () => {
   const onApply = form();
   await userEvent.selectOptions(op(), 'contains');

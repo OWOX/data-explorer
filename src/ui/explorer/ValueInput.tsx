@@ -9,8 +9,8 @@ export type ValueSource = { key: string; load: (signal: AbortSignal) => Promise<
 const SWITCH: Record<string, string> = { contains: 'eq', not_contains: 'neq' };
 
 type Props = { op: string; value: string; onChange: (v: string, base?: string) => void; source?: ValueSource; className: string;
-  /** The text the picks built (or a reopened single value): while the value still starts with it, "contains" reads as a list; a hand-typed comma is a literal one. */
-  base?: string | null;
+  /** The text is still what the picks built (or a reopened single value), so "contains" reads as a list; a hand-typed comma is a literal one. */
+  inPick?: boolean;
   /** Asks the form to change the operator (to the list form after the second pick). */
   onOp?: (op: string) => void };
 
@@ -18,7 +18,7 @@ type Props = { op: string; value: string; onChange: (v: string, base?: string) =
  * A text input with the column's known values under it. The values load on first focus; typing narrows them by the text after the last comma;
  * a pick adds the value to the comma-separated list (for the list operators) and the input keeps its focus. A failed read shows nothing.
  */
-export function ValueInput({ op, value, onChange, source, className, base = null, onOp }: Props) {
+export function ValueInput({ op, value, onChange, source, className, inPick = false, onOp }: Props) {
   const [anchor, setAnchor] = useState<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [hot, setHot] = useState(-1);
@@ -43,10 +43,9 @@ export function ValueInput({ op, value, onChange, source, className, base = null
   };
 
   // Pick mode lasts while the picked text is still there; typing after it narrows by the text after the last comma.
-  const inPick = op in SWITCH && base !== null && (base.endsWith(', ') ? value.startsWith(base) : value === base);
-  const list = LIST_OPS.has(op) || inPick;
+  const list = LIST_OPS.has(op) || (op in SWITCH && inPick);
   // A reopened single value counts as one token: the next pick follows it.
-  const text = inPick && !base!.endsWith(', ') ? `${value}, ` : value;
+  const text = inPick && !value.includes(',') ? `${value}, ` : value;
   // A value with a comma would read as two in a list, so it is not offered there.
   const pool = loaded ?? [];
   const options = list
@@ -57,11 +56,12 @@ export function ValueInput({ op, value, onChange, source, className, base = null
   const listed = shown && !(loading && !loaded);
   const at = Math.min(hot, options.length - 1);
   const pick = (v: string) => {
-    if (op in SWITCH) {
+    // A value with a comma cannot join a list: it replaces the text.
+    if (op in SWITCH && !v.includes(',')) {
       const next = addValue(inPick ? text : '', v);
       onChange(next, next);
       if (tokensOf(next).length >= 2) onOp?.(SWITCH[op]!);
-    } else onChange(list ? addValue(text, v) : v);
+    } else onChange(list && !(op in SWITCH) ? addValue(text, v) : v);
     setHot(-1);
   };
 
