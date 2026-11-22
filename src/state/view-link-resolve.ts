@@ -2,6 +2,7 @@ import { PAGE_SIZE } from '../config';
 import { dropOrphanHaving, type ColumnFilter } from '../filters/build';
 import { keepVisible, sanitizeAggregation } from '../model/aggregation';
 import type { Model, Schema } from '../model/types';
+import { keepUnique, uniqueKey } from '../model/unique-count';
 import type { GridState, Selection } from './store';
 import type { DecodedView } from './view-link';
 
@@ -18,13 +19,13 @@ export type AppliedView = {
 export type Skipped = { mart: boolean; source: boolean; columns: number; filters: number; sorts: number; aggregations: number; contexts: number; storages: number; /** The link names marts a search found and none of them is available. */ found: boolean };
 
 /** What pruning a grid to a schema left out, counted. */
-export type Dropped = Pick<Skipped, 'columns' | 'filters' | 'sorts' | 'aggregations'>;
+export type Dropped = Pick<Skipped, 'columns' | 'filters' | 'sorts' | 'aggregations'> & { /** Unique Counts left out: the mart offers no such metric now, or has no column on the grid. Callers count them with the aggregations, or on their own. */ uniqueCount: number };
 
 export const clampLimit = (n: number) => Math.min(PAGE_SIZE * 10, Math.max(PAGE_SIZE, Math.round(n / PAGE_SIZE) * PAGE_SIZE));
 
 /** Prunes the grid to the fields on offer; with no column left it opens with its defaults. */
 export function pruneGrid(grid: GridState, schema: Schema): { grid: GridState | null; dropped: Dropped } {
-  const dropped: Dropped = { columns: 0, filters: 0, sorts: 0, aggregations: 0 };
+  const dropped: Dropped = { columns: 0, filters: 0, sorts: 0, aggregations: 0, uniqueCount: 0 };
   const offered = new Set(schema.map((f) => f.name));
   const columns = grid.columns.filter((c) => offered.has(c));
   dropped.columns += grid.columns.length - columns.length;
@@ -37,9 +38,14 @@ export function pruneGrid(grid: GridState, schema: Schema): { grid: GridState | 
   for (const [k, f] of Object.entries(grid.slices ?? {})) {
     if (schema.some((x) => x.name === f.field && x.joined)) slices[k] = f; else dropped.filters++;
   }
+  // A Unique Count whose metric is not offered (no usable key, a joined mart that is gone or not on the grid) is left out and counted.
+  const uniqueCount = keepUnique(grid.uniqueCount, schema, columns);
+  dropped.uniqueCount += (grid.uniqueCount?.length ?? 0) - uniqueCount.length;
+  // The metric's column can be sorted by its row key.
+  const metricKeys = new Set(uniqueCount.map(uniqueKey));
   let sorts = grid.sorts;
   if (sorts) {
-    const kept = sorts.filter((s) => offered.has(s.field));
+    const kept = sorts.filter((s) => offered.has(s.field) || metricKeys.has(s.field));
     dropped.sorts += sorts.length - kept.length;
     // An empty list means the member chose no sort, so a list emptied by pruning goes back to the default order.
     sorts = kept.length || !sorts.length ? kept : null;
@@ -59,6 +65,8 @@ export function pruneGrid(grid: GridState, schema: Schema): { grid: GridState | 
   delete out.dateTrunc;
   if (agg.aggregations.length) out.aggregations = agg.aggregations;
   if (agg.dateTrunc.length) out.dateTrunc = agg.dateTrunc;
+  delete out.uniqueCount;
+  if (uniqueCount.length) out.uniqueCount = uniqueCount;
   return { grid: out, dropped };
 }
 
@@ -112,7 +120,7 @@ export async function resolveView(
       skipped.columns += pruned.dropped.columns;
       skipped.filters += pruned.dropped.filters;
       skipped.sorts += pruned.dropped.sorts;
-      skipped.aggregations += pruned.dropped.aggregations;
+      skipped.aggregations += pruned.dropped.aggregations + pruned.dropped.uniqueCount;
     } else grid = g;
   }
 

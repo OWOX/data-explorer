@@ -389,7 +389,7 @@ describe('the dropdown', () => {
     await settle();
     await waitFor(() => expect(options().length).toBeGreaterThan(3));
     const rows = rowsText();
-    expect(rows[0]).toMatch(/^Ad-hoc report forOrderswithfilters$/);
+    expect(rows[0]).toBe('Ad-hoc report');
     const isReport = (o: HTMLElement) => !!o.querySelector('.lucide-file-spreadsheet');
     const reports = options().filter(isReport);
     expect(options().slice(1, reports.length + 1)).toEqual(reports);
@@ -426,7 +426,7 @@ describe('the dropdown', () => {
     await u.click(chip('Sales'));
     expect(chip('Sales')).toHaveAttribute('aria-pressed', 'true');
     expect(box).toHaveFocus();
-    expect(rowsText()[0]).toMatch(/^Ad-hoc report for/);
+    expect(rowsText()[0]).toBe('Ad-hoc report');
     expect(marts()).toEqual(['Orders', 'Payments']);
     await u.click(chip('Catalog'));
     expect(marts()).toEqual(['Order Items', 'Orders', 'Payments']);
@@ -487,7 +487,7 @@ describe('the dropdown', () => {
     await ready();
     const u = user();
     await typeIn(u, 'daily kpis last month');
-    await waitFor(() => expect(rowsText()[0]).toMatch(/Daily KPIs/));
+    await waitFor(() => expect(options()[0]).not.toHaveAttribute('aria-disabled'));
     await u.keyboard('{Enter}');
     await waitFor(() => expect(headings()).toBe('Daily KPIs'));
     await waitFor(() => expect(data().querySelector('.dm-ctl-on')).not.toBeNull());
@@ -526,7 +526,7 @@ describe('the dropdown', () => {
     await ready();
     const u = user();
     await typeIn(u, 'paid orders last month');
-    await waitFor(() => expect(rowsText()[0]).toMatch(/Orders/));
+    await waitFor(() => expect(options()[0]).not.toHaveAttribute('aria-disabled'));
     await u.keyboard('{Enter}');
     await waitFor(() => expect(answer).toBeDefined());
     await u.click(within(data()).getByRole('button', { name: /^Sort by status/ }));
@@ -545,7 +545,7 @@ describe('the dropdown', () => {
     await ready();
     const u = user();
     await typeIn(u, 'paid orders last month');
-    await waitFor(() => expect(rowsText()[0]).toMatch(/Orders/));
+    await waitFor(() => expect(options()[0]).not.toHaveAttribute('aria-disabled'));
     await u.keyboard('{Enter}');
     await waitFor(() => expect(answer).toBeDefined());
     await undo();
@@ -561,7 +561,7 @@ describe('the dropdown', () => {
     await ready();
     const u = user();
     await typeIn(u, 'who are our buyers');
-    await waitFor(() => expect(rowsText()[0]).toMatch(/Customers/));
+    await waitFor(() => expect(options()[0]).not.toHaveAttribute('aria-disabled'));
     await u.keyboard('{Enter}');
     expect(await screen.findByRole('status', { name: 'Search notice' })).toHaveTextContent("AI couldn't set up the view. Showing the default view.");
     expect(headings()).toBe('Customers');
@@ -638,7 +638,7 @@ describe('the dropdown', () => {
     const u = user();
     await typeIn(u, 'customers');
     await waitFor(() => expect(ai.tasks).toEqual(['discover']));
-    await waitFor(() => expect(rowsText()[0]).toMatch(/Customers/));
+    await waitFor(() => expect(options()[0]).not.toHaveAttribute('aria-disabled'));
     await u.click(options().find((o) => o.textContent!.startsWith('Customers'))!);
     await waitFor(() => expect(headings()).toBe('Customers'));
     await act(async () => { await vi.advanceTimersByTimeAsync(500); });
@@ -698,7 +698,7 @@ describe('the dropdown', () => {
     await ready();
     const u = user();
     await typeIn(u, 'customers');
-    await waitFor(() => expect(rowsText()[0]).toMatch(/Customers/));
+    await waitFor(() => expect(options()[0]).not.toHaveAttribute('aria-disabled'));
     await u.click(options().find((o) => o.textContent!.startsWith('Customers'))!);
     await waitFor(() => expect(headings()).toBe('Customers'));
     await u.keyboard('{Enter}');
@@ -727,7 +727,7 @@ describe('the dropdown', () => {
     await ready();
     const u = user();
     await typeIn(u, 'paid orders last month');
-    await waitFor(() => expect(rowsText()[0]).toMatch(/Orders/));
+    await waitFor(() => expect(options()[0]).not.toHaveAttribute('aria-disabled'));
     await u.keyboard('{Enter}');
     await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('dm-ctl-on'));
     await undo();

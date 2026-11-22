@@ -99,8 +99,11 @@ export function reportToGrid(report: ReportDto, schema: Schema, nativeSchema: Sc
   const skipped: ReportSkipped = { columns: 0, filters: 0, sorts: 0, aggregations: 0, slices: 0, having: 0, uniqueCount: false };
   const byName = new Map(schema.map((x) => [x.name, x]));
 
+  // `true` is the main mart's Unique Count; an array lists alias paths ('' is the main mart). What is not a path is left out and reported.
   const unique = report.uniqueCountConfig;
-  skipped.uniqueCount = unique === true || (Array.isArray(unique) && unique.length > 0);
+  const wanted: unknown[] = unique === true ? [''] : Array.isArray(unique) ? unique : [];
+  const uniqueCount = [...new Set(wanted.filter((p): p is string => typeof p === 'string'))];
+  skipped.uniqueCount = uniqueCount.length < new Set(wanted).size;
 
   // HAVING rules are read only against an aggregation the report carries, so those are collected first.
   const aggFns = new Set<string>();
@@ -159,9 +162,12 @@ export function reportToGrid(report: ReportDto, schema: Schema, nativeSchema: Sc
     limit: PAGE_SIZE,
     ...(aggregations.length ? { aggregations } : {}),
     ...(dateTrunc.length ? { dateTrunc } : {}),
+    ...(uniqueCount.length ? { uniqueCount } : {}),
   };
 
   const { grid, dropped } = pruneGrid(built, schema);
+  // A metric the grid cannot offer (no usable key, a joined mart that is not on the grid) is still reported.
+  if (dropped.uniqueCount > 0) skipped.uniqueCount = true;
   skipped.columns += dropped.columns;
   skipped.filters += dropped.filters;
   skipped.sorts += dropped.sorts;

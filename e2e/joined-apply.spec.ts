@@ -91,7 +91,8 @@ test('far right: many joined columns ticked, scrolled to the last one, Aggregate
   for (const label of ['email', 'city']) await picker.getByLabel(label, { exact: true }).click();
   await page.keyboard.press('Escape');
   await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByRole('dialog').getByRole('option').nth(6).click();
+  // The first option is the mart's Unique Count; the seventh field is the eighth option.
+  await page.getByRole('dialog').getByRole('option').nth(7).click();
   await page.keyboard.press('Escape');
   let dialog = await openSub(page, 'Customers · city', 'Aggregate');
   await click(page, dialog.getByLabel('Count Unique'));

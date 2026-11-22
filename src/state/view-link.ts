@@ -42,7 +42,7 @@ type ViewLinkV1 = {
   ctx: string[];
   st: string[] | null;
   f: Folded;
-  g: null | { c: Col[]; fl: unknown[][]; /** Slices, the same tuple as a filter's but without the function slot. */ sl?: unknown[][]; s: [Col, 1 | -1][] | null; l: number; /** Aggregations: [column, function]. */ ag?: [Col, AggFn][]; /** Date buckets: [column, unit, time zone?]. */ dt?: [Col, DateBucket, string?][]; /** Charts view; absent is the table. */ vw?: 1 };
+  g: null | { c: Col[]; fl: unknown[][]; /** Slices, the same tuple as a filter's but without the function slot. */ sl?: unknown[][]; s: [Col, 1 | -1][] | null; l: number; /** Aggregations: [column, function]. */ ag?: [Col, AggFn][]; /** Date buckets: [column, unit, time zone?]. */ dt?: [Col, DateBucket, string?][]; /** Charts view; absent is the table. */ vw?: 1; /** Alias paths whose Unique Count is on ('' is the main mart). */ uc?: string[] };
 };
 
 /** At most this many aggregation rules and this many date buckets are read from a link; the rest count as dropped. */
@@ -135,6 +135,7 @@ export async function encodeViewLink(view: Omit<DecodedView, 'dropped' | 'droppe
       ...(g.aggregations?.length ? { ag: g.aggregations.map((r): [Col, AggFn] => [col(r.column), r.function]) } : {}),
       ...(g.dateTrunc?.length ? { dt: g.dateTrunc.map((r): [Col, DateBucket, string?] => (r.timeZone ? [col(r.column), r.unit, r.timeZone] : [col(r.column), r.unit])) } : {}),
       ...(g.view === 'charts' ? { vw: 1 as const } : {}),
+      ...(g.uniqueCount?.length ? { uc: g.uniqueCount } : {}),
     },
   };
   const packed = await pipe(new TextEncoder().encode(JSON.stringify(payload)), new CompressionStream('deflate-raw'));
@@ -267,9 +268,16 @@ function shape(raw: unknown): DecodedView {
       bucketed.add(column);
       dateTrunc.push({ column, unit, ...(typeof zone === 'string' && zone ? { timeZone: zone } : {}) });
     }
+    // Unique Count paths: strings only, no repeat, past the cap or unsafe name is left out and counted with the aggregations.
+    if (g.uc !== undefined && !Array.isArray(g.uc)) throw new Error('bad unique counts');
+    const uniqueCount: string[] = [];
+    for (const [i, p] of ((g.uc as unknown[] | undefined) ?? []).entries()) {
+      if (typeof p !== 'string' || UNSAFE_KEYS.has(p) || i >= MAX_AGG_RULES || uniqueCount.includes(p)) { droppedAggregations++; continue; }
+      uniqueCount.push(p);
+    }
     // Only 1 means charts; any other value is left out and counted, so a newer link still opens as the table.
     if (g.vw !== undefined && g.vw !== 1) dropped++;
-    grid = { columns, filters: Object.fromEntries(filterEntries), ...(sliceEntries.length ? { slices: Object.fromEntries(sliceEntries) } : {}), sorts, limit: g.l, ...(aggregations.length ? { aggregations } : {}), ...(dateTrunc.length ? { dateTrunc } : {}), ...(g.vw === 1 ? { view: 'charts' as const } : {}) };
+    grid = { columns, filters: Object.fromEntries(filterEntries), ...(sliceEntries.length ? { slices: Object.fromEntries(sliceEntries) } : {}), sorts, limit: g.l, ...(aggregations.length ? { aggregations } : {}), ...(dateTrunc.length ? { dateTrunc } : {}), ...(g.vw === 1 ? { view: 'charts' as const } : {}), ...(uniqueCount.length ? { uniqueCount } : {}) };
   }
 
   const found = Array.isArray(fd) ? [...new Set(fd.filter((x): x is string => typeof x === 'string'))].slice(0, MAX_FOUND) : [];

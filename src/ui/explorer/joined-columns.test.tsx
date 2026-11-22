@@ -69,7 +69,8 @@ test('the Orders tab lists only Orders\' own fields: no joined group, and nothin
   t.view();
   await openPicker();
   const picker = within(await screen.findByRole('dialog'));
-  expect(picker.getAllByRole('option')).toHaveLength(10);
+  // Its own fields, after the mart's Unique Count row.
+  expect(picker.getAllByRole('option')).toHaveLength(11);
   expect(picker.queryByRole('button', { name: /^Customers/ })).toBeNull();
   expect(t.reads).toEqual([BLEND]);
 });
@@ -80,7 +81,7 @@ test('a joined tab lists that mart\'s fields with a count, each with its descrip
   t.view();
   await openPicker('Customers');
   const picker = within(await screen.findByRole('dialog'));
-  expect(picker.getAllByRole('option').map((c) => c.textContent)).toEqual(['id', 'name', 'email', 'city', 'Country']);
+  expect(picker.getAllByRole('option').map((c) => c.textContent)).toEqual(['Unique Count', 'id', 'name', 'email', 'city', 'Country']);
   expect(picker.queryByText(/Fields ·/)).toBeNull();
   expect(picker.getByLabelText('About name')).toBeInTheDocument();
   await userEvent.click(picker.getByLabelText('city'));

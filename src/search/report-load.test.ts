@@ -152,6 +152,41 @@ describe('reportToGrid', () => {
     expect(run(null)).toBe(false);
   });
 
+  describe('Unique Count', () => {
+    const keyed: Schema = Object.assign([name, amount, country], { primaryKey: ['id'], joinedUniqueCount: ['customers'] });
+    const load = (u: unknown, extra: object = {}) => reportToGrid(rep({ columnConfig: ['name', 'amount', 'customers__country_code'], uniqueCountConfig: u, ...extra }), keyed, keyed);
+
+    test('true is the main mart, an array lists alias paths, and nothing is left out', () => {
+      expect(load(true).grid?.uniqueCount).toEqual(['']);
+      expect(load(true).skipped).toEqual(none);
+      expect(load(['', 'customers']).grid?.uniqueCount).toEqual(['', 'customers']);
+      expect(load(['', 'customers']).skipped).toEqual(none);
+      expect(load(null).grid?.uniqueCount).toBeUndefined();
+      expect(load([]).grid?.uniqueCount).toBeUndefined();
+    });
+
+    test('a path the grid cannot offer is reported and the rest is kept', () => {
+      const r = load(['', 'campaigns']);
+      expect(r.grid?.uniqueCount).toEqual(['']);
+      expect(r.skipped).toEqual({ ...none, uniqueCount: true });
+      // The main mart with no primary key offers none either.
+      const unkeyed = reportToGrid(rep({ uniqueCountConfig: true }), schema, schema);
+      expect(unkeyed.grid?.uniqueCount).toBeUndefined();
+      expect(unkeyed.skipped.uniqueCount).toBe(true);
+    });
+
+    test('a sort on the count column is kept with the count', () => {
+      expect(load(true, { sortConfig: [{ column: 'Unique Count', direction: 'desc' }] }).grid?.sorts).toEqual([{ field: 'Unique Count', direction: 'desc' }]);
+    });
+
+    test('survives a round trip with buildReportPayload', () => {
+      const g = grid(['name', 'customers__country_code'], [], { uniqueCount: ['', 'customers'], sorts: [{ field: 'customers__unique_count', direction: 'asc' }] });
+      const { payload } = buildReportPayload(keyed, g.columns, [], g.sorts ?? [], undefined, [], g.uniqueCount);
+      expect(payload.uniqueCountConfig).toEqual(['', 'customers']);
+      expect(reportToGrid({ id: 'r', ...payload }, keyed, keyed).grid).toEqual(g);
+    });
+  });
+
   test('an invalid bucket time zone is dropped and the rule kept', () => {
     const r = reportToGrid(rep({ columnConfig: ['stamp', 'amount'], dateTruncConfig: [{ column: 'stamp', unit: 'MONTH', timeZone: 'not a zone!' }] }), schema, schema);
     expect(r.grid?.dateTrunc).toEqual([{ column: 'stamp', unit: 'MONTH' }]);

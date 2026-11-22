@@ -54,8 +54,8 @@ test('ticking a field on one Countries group keeps two Countries groups, with th
   await setup(both);
   await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Countries (Customers)' }));
   const dialog = await screen.findByRole('dialog');
-  // Only this path's fields are listed.
-  expect(within(dialog).getAllByRole('option')).toHaveLength(2);
+  // Only this path's fields are listed, after the mart's Unique Count row.
+  expect(within(dialog).getAllByRole('option')).toHaveLength(3);
   await userEvent.click(within(dialog).getByRole('option', { name: /code/i }));
   await waitFor(() => expect(probe.state.grids.orders!.columns).toContain('customers__countries__code'));
   await userEvent.keyboard('{Escape}');

@@ -409,6 +409,16 @@ describe('withoutPaths', () => {
   test('a path with no field in use returns the same grid', () => {
     expect(withoutPaths(two, ps, ['zzz'], ['id'])).toBe(two);
   });
+  test('removing a path takes its Unique Count and that count\'s sort with it, and keeps the others', () => {
+    const out = withoutPaths({ ...two, uniqueCount: ['', 'a.c', 'b.c'], sorts: [{ field: 'a__c__unique_count', direction: 'asc' }, { field: 'Unique Count', direction: 'desc' }] }, ps, ['a.c'], ['id']);
+    expect(out.uniqueCount).toEqual(['', 'b.c']);
+    expect(out.sorts).toEqual([{ field: 'Unique Count', direction: 'desc' }]);
+    expect(withoutPaths({ ...two, uniqueCount: ['a.c'] }, ps, ['a.c'], ['id']).uniqueCount).toBeUndefined();
+  });
+  test('a grid whose only change is a Unique Count on a removed path is touched', () => {
+    const bare = { columns: ['id'], filters: {}, sorts: null, limit: 100, uniqueCount: ['a.c'] } as GridState;
+    expect(withoutPaths(bare, ps, ['a.c'], ['id']).uniqueCount).toBeUndefined();
+  });
   test('a path that holds none of the columns changes nothing', () => {
     expect(withoutPaths(two, ps, ['b'], ['id']).columns).toEqual(two.columns);
   });

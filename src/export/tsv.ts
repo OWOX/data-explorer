@@ -1,6 +1,7 @@
 import { AGG_LABELS, formatBucket, outputsOf, outputType, type Aggregation, type DateBucket } from '../model/aggregation';
 import { columnTitle } from '../model/fieldLabel';
 import type { Field } from '../model/types';
+import { uniqueField, uniqueKey, withUniqueAfter } from '../model/unique-count';
 import type { Row } from '../sdk/types';
 import { displayText } from '../ui/format';
 
@@ -22,13 +23,21 @@ export const cellText = (v: unknown, type?: string): string => field(displayText
 
 export type TsvColumn = { key: string; title: string; type?: string; bucket?: DateBucket };
 
-/** The grid's columns as the grid shows them: one per column, or per function of an aggregated column ("Amount · Sum"). The title keeps the data mart prefix. */
-export function tsvColumns(fields: Field[], agg?: Aggregation): TsvColumn[] {
+/**
+ * The grid's columns as the grid shows them: one per column, or per function of an aggregated column ("Amount · Sum"). The title keeps the data mart prefix.
+ * A data mart's Unique Count (`uniqueCount`, its alias paths) follows that mart's own columns, headed "Unique Count".
+ */
+export function tsvColumns(fields: Field[], agg?: Aggregation, uniqueCount: readonly string[] = []): TsvColumn[] {
   const byName = new Map(fields.map((f) => [f.name, f]));
-  return outputsOf(fields.map((f) => f.name), agg ?? { aggregations: [], dateTrunc: [] }).map((o) => {
+  const outputs = outputsOf(fields.map((f) => f.name), agg ?? { aggregations: [], dateTrunc: [] });
+  const cols = outputs.map((o): { col: TsvColumn; path: string; field: Field } => {
     const f = byName.get(o.column)!;
-    return { key: o.key, title: o.fn ? `${columnTitle(f)} · ${AGG_LABELS[o.fn]}` : columnTitle(f), type: outputType(f, o.fn), ...(o.bucket ? { bucket: o.bucket } : {}) };
+    return { col: { key: o.key, title: o.fn ? `${columnTitle(f)} · ${AGG_LABELS[o.fn]}` : columnTitle(f), type: outputType(f, o.fn), ...(o.bucket ? { bucket: o.bucket } : {}) }, path: f.joined?.aliasPath ?? '', field: f };
   });
+  return withUniqueAfter(cols, (c) => c.path, uniqueCount, (path, last) => {
+    const metric = uniqueField(path, { martId: last.field.joined?.martId ?? '', label: last.field.joined?.label ?? '' });
+    return { col: { key: uniqueKey(path), title: columnTitle(metric), type: metric.type }, path, field: metric };
+  }).map((c) => c.col);
 }
 
 /** The grid as tab-separated values with a header row of the column titles; lines end with `\n`. A grouped grid is copied as shown. */

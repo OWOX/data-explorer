@@ -1,5 +1,5 @@
 // Which shown columns the charts draw: metrics (numbers), dimensions (text, booleans) and dates, grouped by the data mart they belong to.
-import { AGGREGATE_FUNCTIONS, allowedFunctions, canBucket, isGrouped, type AggFn, type Aggregation, type DateBucket } from '../model/aggregation';
+import { AGGREGATE_FUNCTIONS, allowedFunctions, canBucket, isGrouped, type AggFn, type Grouping, type DateBucket, type Aggregation } from '../model/aggregation';
 import type { MainGrainCollapse } from '../api/blendable';
 import type { Field, Schema } from '../model/types';
 import { hasPrimaryKey } from '../records/relationships';
@@ -66,7 +66,7 @@ export function metricFn(f: Field, agg: Aggregation): AggFn | null {
  * The rules a grouped grid needs for columns just shown by a chart choice: without one a column is a group key and multiplies the rows.
  * A metric gets the function the chart sums it with, a date the chart's bucket (Month when none is known); a dimension stays a key. An ungrouped grid needs no rule.
  */
-export function ruleNewColumns(cur: Aggregation, fresh: Field[], buckets: Readonly<Record<string, DateBucket>> = {}): Aggregation {
+export function ruleNewColumns(cur: Grouping, fresh: Field[], buckets: Readonly<Record<string, DateBucket>> = {}): Aggregation {
   if (!isGrouped(cur)) return cur;
   const aggregations = [...cur.aggregations, ...fresh.flatMap((f): { column: string; function: AggFn }[] => {
     const fn = f.category === 'number' && !isIdField(f) && !f.isCalculated ? metricFn(f, cur) : null;

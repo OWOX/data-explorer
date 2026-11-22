@@ -34,6 +34,20 @@ describe('view link codec', () => {
     expect(await decodeViewLink(r)).toEqual({ ...base, dropped: 0, droppedAggregations: 0 });
   });
 
+  it('round trips the Unique Count paths, with a sort on their row keys', async () => {
+    const withCounts = { ...base, grid: { ...base.grid!, uniqueCount: ['', 'orders.customers'], sorts: [{ field: 'Unique Count', direction: 'desc' as const }, { field: 'orders_customers__unique_count', direction: 'asc' as const }] } };
+    expect(await decodeViewLink(await encodeViewLink(withCounts))).toEqual({ ...withCounts, dropped: 0, droppedAggregations: 0 });
+    // A link without the part (made before it existed) opens with none.
+    expect((await decodeViewLink(await encodeViewLink(base)))!).not.toHaveProperty('grid.uniqueCount');
+  });
+
+  it('leaves out and counts a malformed or repeated Unique Count path', async () => {
+    const g = { c: ['id'], fl: [], s: null, l: 200, uc: ['', '', 7, '__proto__', 'a'] };
+    const out = await decodeViewLink(await route(valid({ g })));
+    expect(out).toMatchObject({ grid: { uniqueCount: ['', 'a'] }, droppedAggregations: 3 });
+    expect(await decodeViewLink(await route(valid({ g: { ...g, uc: 'x' } })))).toBe('unreadable');
+  });
+
   it('round trips null sorts, empty sorts and a null grid', async () => {
     const g = base.grid!;
     for (const v of [{ ...base, grid: { ...g, sorts: null } }, { ...base, grid: { ...g, sorts: [] } }, { ...base, grid: null, record: null, storageIds: null }]) {

@@ -4,6 +4,7 @@ import { sourceOfField, type JoinedSource } from '../api/blendable';
 import type { Picks } from '../api/grid-columns';
 import { sortsOnColumns } from '../model/sort';
 import { keepVisible } from '../model/aggregation';
+import { uniqueKey } from '../model/unique-count';
 import { dropOrphanHaving } from '../filters/build';
 import { orderColumns } from './column-order';
 import type { Field } from '../model/types';
@@ -143,12 +144,14 @@ const keepSlices = (slices: GridState['slices'], keep: (field: string) => boolea
   return Object.keys(kept).length ? kept : undefined;
 };
 
-/** The grid's sorts and aggregation rules cut down to `columns`: no sorts left is `null`, an empty rule list is `undefined`. */
-const refitRules = (grid: GridState, columns: string[]) => {
-  const kept = grid.sorts && sortsOnColumns(grid.sorts, columns);
+/** The grid's sorts and aggregation rules cut down to `columns`: no sorts left is `null`, an empty rule list is `undefined`. The Unique Count of a path in `goneUnique` goes, and with it its sort. */
+const refitRules = (grid: GridState, columns: string[], goneUnique: ReadonlySet<string> = new Set()) => {
+  const uniqueCount = (grid.uniqueCount ?? []).filter((p) => !goneUnique.has(p));
+  const kept = grid.sorts && sortsOnColumns(grid.sorts, [...columns, ...uniqueCount.map(uniqueKey)]);
   const agg = keepVisible({ aggregations: grid.aggregations ?? [], dateTrunc: grid.dateTrunc ?? [] }, columns);
   return {
     aggregation: agg,
+    uniqueCount: uniqueCount.length ? uniqueCount : undefined,
     sorts: grid.sorts && grid.sorts.length > 0 && kept!.length === 0 ? null : kept,
     aggregations: agg.aggregations.length ? agg.aggregations : undefined,
     dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined,
@@ -156,8 +159,8 @@ const refitRules = (grid: GridState, columns: string[]) => {
 };
 
 /** The grid on new columns, without the filters and slices of the fields `keep` rejects. */
-const refit = (grid: GridState, columns: string[], keep: (field: string) => boolean): GridState => {
-  const { aggregation, ...rules } = refitRules(grid, columns);
+const refit = (grid: GridState, columns: string[], keep: (field: string) => boolean, goneUnique?: ReadonlySet<string>): GridState => {
+  const { aggregation, ...rules } = refitRules(grid, columns, goneUnique);
   return {
     ...grid,
     columns,
@@ -174,7 +177,7 @@ export function withoutMart(grid: GridState, sources: JoinedSource[], martId: st
   let columns = grid.columns.filter((c) => !names.has(c));
   // A grid always keeps a column: when only the joined mart's were shown, the mart's own defaults come back.
   if (columns.length === 0) columns = own;
-  return { removed, grid: refit(grid, columns, (k) => !names.has(k)) };
+  return { removed, grid: refit(grid, columns, (k) => !names.has(k), new Set(sources.filter((s) => s.martId === martId).map((s) => s.aliasPath))) };
 }
 
 /** The grid with every field of these exact alias paths taken out (the same grid when none is in use): columns, filters, sorts, aggregations, buckets. A grid left with no column gets `own`. */
@@ -185,11 +188,12 @@ export function withoutPaths(grid: GridState, sources: JoinedSource[], paths: st
     || Object.keys(grid.slices ?? {}).some((k) => gone.has(k))
     || (grid.sorts ?? []).some((k) => gone.has(k.field))
     || (grid.aggregations ?? []).some((a) => gone.has(a.column))
-    || (grid.dateTrunc ?? []).some((d) => gone.has(d.column));
+    || (grid.dateTrunc ?? []).some((d) => gone.has(d.column))
+    || (grid.uniqueCount ?? []).some((p) => paths.includes(p));
   if (!touched) return grid;
   let columns = grid.columns.filter((c) => !gone.has(c));
   if (columns.length === 0) columns = own;
-  return refit(grid, columns, (k) => !gone.has(k));
+  return refit(grid, columns, (k) => !gone.has(k), new Set(paths));
 }
 
 export type Plan = {
@@ -248,8 +252,8 @@ const becomeMain = (env: PlanEnv, id: string, remember: Plan['remember'] = []): 
   const last = (env.lastShownOf ?? noShown)(id)?.filter((n) => offered.has(n)) ?? [];
   const restored = last.length > 0 && !(last.length === grid.columns.length && last.every((c, i) => c === grid.columns[i]));
   if (last.length > 0) {
-    const { sorts, aggregations, dateTrunc } = refitRules(grid, last);
-    grid = { ...grid, columns: last, sorts, aggregations, dateTrunc };
+    const { sorts, aggregations, dateTrunc, uniqueCount } = refitRules(grid, last);
+    grid = { ...grid, columns: last, sorts, aggregations, dateTrunc, uniqueCount };
     // Its memory stays: forgetting it here could not be undone.
   }
   if (joined.length === 0 && !restored) return { selection, grids: {}, saves: [], remember };
@@ -389,7 +393,10 @@ export function planRejoin(grid: GridState, sources: JoinedSource[], moves: Map<
   if (columns.length === 0) columns = own;
   const filters = Object.fromEntries(Object.entries(grid.filters).flatMap(([k, f]) => { const m = map(k); return m ? [[m, { ...f, field: m }]] : []; }));
   const slices = Object.fromEntries(Object.entries(grid.slices ?? {}).flatMap(([k, f]) => { const m = map(k); return m ? [[m, { ...f, field: m }]] : []; }));
-  const sorts = grid.sorts && grid.sorts.flatMap((s) => { const m = map(s.field); return m ? [{ ...s, field: m }] : []; });
+  // A moved path's Unique Count moves with it (and its sort); the grid drops it later if the new path cannot count.
+  const uniqueCount = grid.uniqueCount?.map((p) => moves.get(p) ?? p);
+  const uniqueSorts = new Map(grid.uniqueCount?.flatMap((p) => (moves.has(p) ? [[uniqueKey(p), uniqueKey(moves.get(p)!)] as const] : [])));
+  const sorts = grid.sorts && grid.sorts.flatMap((s) => { const m = uniqueSorts.get(s.field) ?? map(s.field); return m ? [{ ...s, field: m }] : []; });
   const aggregations = grid.aggregations?.flatMap((a) => { const m = map(a.column); return m ? [{ ...a, column: m }] : []; });
   const dateTrunc = grid.dateTrunc?.flatMap((d) => { const m = map(d.column); return m ? [{ ...d, column: m }] : []; });
   return {
@@ -400,5 +407,6 @@ export function planRejoin(grid: GridState, sources: JoinedSource[], moves: Map<
     sorts: grid.sorts && grid.sorts.length > 0 && sorts!.length === 0 ? null : sorts,
     aggregations: aggregations?.length ? aggregations : undefined,
     dateTrunc: dateTrunc?.length ? dateTrunc : undefined,
+    uniqueCount: uniqueCount?.length ? [...new Set(uniqueCount)] : undefined,
   };
 }

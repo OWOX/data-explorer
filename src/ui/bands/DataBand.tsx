@@ -11,14 +11,16 @@ import { Band } from './Band';
 import { useFillHeight } from './useFillHeight';
 import { ViewSwitch, type SwitchOption } from './ViewSwitch';
 
-/** Shown as the warning's tooltip and at the end of the band's (i). */
-const NO_KEY_NOTES = { missing: 'Preview only: this data mart has no primary key.', hidden: "Preview only: this data mart's primary key is hidden for reporting." } as const;
+/** Shown as the warning's tooltip and at the end of the band's (i). A key hidden for reporting is still a key: no warning. */
+const NO_KEY_NOTE = 'Preview only: this data mart has no primary key.';
 const DATA_VIEWS: SwitchOption<'table' | 'charts'>[] = [
   { value: 'table', label: 'Table', icon: Table2 },
   { value: 'charts', label: 'Charts', icon: ChartColumn },
 ];
 const HINT = 'The rows of the selected data mart. Click a row to open it below.';
 const HINT_FULL = 'The rows of the selected data mart. Exit full screen to see an opened row.';
+/** A key hidden for reporting cannot be filtered on, so a row cannot be opened: the hint does not offer it. */
+const HINT_NO_OPEN = 'The rows of the selected data mart.';
 
 export function DataBand({ model, folded, onFold, loading = null, fullScreen }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null; fullScreen?: { on: boolean; onToggle: () => void } }) {
   useFillHeight('band-data');
@@ -52,9 +54,10 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen }: 
 
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const noKey: NoKey = mart && rows?.id === mart.id && gridMart?.accessible ? rows.noKey : false;
-  const note = noKey ? NO_KEY_NOTES[noKey] : null;
+  const note = noKey === 'missing' ? NO_KEY_NOTE : null;
+  const hint = noKey === 'hidden' ? HINT_NO_OPEN : fullScreen?.on ? HINT_FULL : HINT;
   return (
-    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={`${fullScreen?.on ? HINT_FULL : HINT}${note ? ` ${note}` : ''}`} afterHint={<>{note && <NoKeyWarning note={note} />}{gridMart?.accessible && saved && <ViewSwitch label="Show data as" options={DATA_VIEWS} value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} />}{gridMart?.accessible && saved?.view === 'charts' && <span ref={setSlot} data-chart-list-slot className="inline-flex" />}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
+    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={`${hint}${note ? ` ${note}` : ''}`} afterHint={<>{note && <NoKeyWarning note={note} />}{gridMart?.accessible && saved && <ViewSwitch label="Show data as" options={DATA_VIEWS} value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} />}{gridMart?.accessible && saved?.view === 'charts' && <span ref={setSlot} data-chart-list-slot className="inline-flex" />}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (
