@@ -10,7 +10,7 @@ import { emptyText, isNumericType } from '../format';
 import { withJoined, type JoinedSource } from '../../api/blendable';
 import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type Grouping, type AggregationDraft, type DateBucket, type Output } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
-import { keepUnique, uniqueField, uniqueKey, uniquePathsOf } from '../../model/unique-count';
+import { dropUniqueSorts, keepUnique, uniqueField, uniqueKey, uniquePathsOf, withUniqueAfter } from '../../model/unique-count';
 import { chartFields, ruleNewColumns } from '../../charts/fields';
 import { keysPlan, useHavingKeys } from '../../charts/havingKeys';
 import { readRows } from '../../api/rows';
@@ -521,7 +521,12 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const aggNow = useMemo(() => sanitizeAggregation(keptAgg, schema), [keptAgg, schema]);
   // The Unique Counts that apply: the mart offers the metric and (for a joined mart) a column of it is shown. With the joined marts unread, a joined path is parked, not dropped.
   const ucNow = useMemo(() => keepUnique(uc, schema, shown), [uc, schema, shown]);
-  if (sourcesRead && !sameList(ucNow, uc)) setUc(ucNow);
+  if (sourcesRead && !sameList(ucNow, uc)) {
+    setUc(ucNow);
+    // A metric dropped here (a Refresh changed what a mart offers) takes the member's sort on its column with it.
+    const lost = uc.filter((p) => !ucNow.includes(p));
+    if (lost.length) setOwn(dropUniqueSorts(own, lost));
+  }
   // A Unique Count groups the rows, like a function does.
   const gridAgg = useMemo<Grouping>(() => (ucNow.length ? { ...aggNow, uniqueCount: ucNow } : aggNow), [aggNow, ucNow]);
   // A rule that was applied and is dropped now (a Refresh narrowed the functions the field allows) is not silent: the toast says it was removed.
@@ -584,11 +589,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const outputs = useMemo(() => {
     const base = outputsOf(wanted.map((f) => f.name), aggNow);
     if (!ucNow.length) return base;
-    const pathOf = (o: Output | undefined) => (o ? byName.get(o.column)?.joined?.aliasPath ?? '' : null);
-    return base.flatMap((o, i): Output[] => {
-      const path = pathOf(o)!;
-      return pathOf(base[i + 1]) !== path && ucNow.includes(path) ? [o, { key: uniqueKey(path), column: uniqueKey(path), unique: path, sortable: true }] : [o];
-    });
+    return withUniqueAfter(base, (o) => byName.get(o.column)?.joined?.aliasPath ?? '', ucNow, (path): Output => ({ key: uniqueKey(path), column: uniqueKey(path), unique: path, sortable: true }));
   }, [wanted, aggNow, ucNow, byName]);
   // The stand-in fields of the Unique Count columns, by row key.
   const uniqueFields = useMemo(() => new Map(ucNow.map((p) => { const src = sources.find((x) => x.aliasPath === p); return [uniqueKey(p), uniqueField(p, src && { martId: src.martId, label: src.label })] as const; })), [ucNow, sources]);
@@ -628,9 +629,10 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const env = useMemo(() => ({ sorts: shownSorts, toggleSort, sortable: !charts }), [shownSorts, toggleSort, charts]);
   // A mart's Unique Count on or off: one Undo step. Off, its sort goes with it, so no ordering is left that the reader cannot see.
   const setUnique = useCallback((path: string, on: boolean) => edit(() => {
-    setUc(on ? [...ucNow.filter((p) => p !== path), path] : ucNow.filter((p) => p !== path));
+    // From the member's own list, so a joined path parked until its marts are read stays.
+    setUc(on ? [...uc.filter((p) => p !== path), path] : uc.filter((p) => p !== path));
     if (!on) setOwn((cur) => { const kept = cur && cur.filter((x) => x.field !== uniqueKey(path)); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
-  }), [edit, ucNow, setUc, setOwn]);
+  }), [edit, uc, setUc, setOwn]);
   const toggleUnique = useCallback((path: string) => setUnique(path, !ucNow.includes(path)), [setUnique, ucNow]);
   const removeUnique = useCallback((path: string) => setUnique(path, false), [setUnique]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.

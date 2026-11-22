@@ -1,5 +1,6 @@
 // A data mart's Unique Count in the Data grid: the number of its distinct records, counted by its primary key. It is a metric of the mart, not of a column.
 import { hasPrimaryKey } from '../records/relationships';
+import type { SortKey } from './sort';
 import type { Field, Schema } from './types';
 
 export const UNIQUE_COUNT_LABEL = 'Unique Count';
@@ -25,3 +26,22 @@ export const uniqueField = (path: string, joined?: { martId: string; label: stri
   name: uniqueKey(path), alias: UNIQUE_COUNT_LABEL, type: 'INTEGER', category: 'number', description: null, isPrimaryKey: false, isCalculated: true,
   ...(path ? { joined: { martId: joined?.martId ?? '', label: joined?.label ?? '', aliasPath: path } } : {}),
 });
+
+/** `items` (a grid's columns, grouped by mart) with a Unique Count item after the last item of each mart whose path is in `paths`. `pathOf` gives an item's alias path. One rule for the grid and for the clipboard copy, so they match column for column. */
+export function withUniqueAfter<T>(items: readonly T[], pathOf: (item: T) => string, paths: readonly string[], make: (path: string, last: T) => T): T[] {
+  if (!paths.length) return [...items];
+  return items.flatMap((item, i): T[] => {
+    const path = pathOf(item);
+    const next = items[i + 1];
+    return (next === undefined || pathOf(next) !== path) && paths.includes(path) ? [item, make(path, item)] : [item];
+  });
+}
+
+/** The sorts without the ones on the row keys of `paths`. The same list when none is; a list emptied this way is `null`, as a hidden column's sorts are (the default order returns). */
+export function dropUniqueSorts(sorts: SortKey[] | null, paths: readonly string[]): SortKey[] | null {
+  if (!sorts || !paths.length) return sorts;
+  const keys = new Set(paths.map(uniqueKey));
+  const kept = sorts.filter((s) => !keys.has(s.field));
+  if (kept.length === sorts.length) return sorts;
+  return sorts.length > 0 && kept.length === 0 ? null : kept;
+}

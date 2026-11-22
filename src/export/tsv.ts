@@ -1,7 +1,7 @@
 import { AGG_LABELS, formatBucket, outputsOf, outputType, type Aggregation, type DateBucket } from '../model/aggregation';
 import { columnTitle } from '../model/fieldLabel';
 import type { Field } from '../model/types';
-import { uniqueField, uniqueKey } from '../model/unique-count';
+import { uniqueField, uniqueKey, withUniqueAfter } from '../model/unique-count';
 import type { Row } from '../sdk/types';
 import { displayText } from '../ui/format';
 
@@ -30,15 +30,14 @@ export type TsvColumn = { key: string; title: string; type?: string; bucket?: Da
 export function tsvColumns(fields: Field[], agg?: Aggregation, uniqueCount: readonly string[] = []): TsvColumn[] {
   const byName = new Map(fields.map((f) => [f.name, f]));
   const outputs = outputsOf(fields.map((f) => f.name), agg ?? { aggregations: [], dateTrunc: [] });
-  const pathOf = (o: { column: string } | undefined) => (o ? byName.get(o.column)?.joined?.aliasPath ?? '' : null);
-  return outputs.flatMap((o, i): TsvColumn[] => {
+  const cols = outputs.map((o): { col: TsvColumn; path: string; field: Field } => {
     const f = byName.get(o.column)!;
-    const col: TsvColumn = { key: o.key, title: o.fn ? `${columnTitle(f)} · ${AGG_LABELS[o.fn]}` : columnTitle(f), type: outputType(f, o.fn), ...(o.bucket ? { bucket: o.bucket } : {}) };
-    const path = pathOf(o)!;
-    if (pathOf(outputs[i + 1]) === path || !uniqueCount.includes(path)) return [col];
-    const metric = uniqueField(path, { martId: f.joined?.martId ?? '', label: f.joined?.label ?? '' });
-    return [col, { key: uniqueKey(path), title: columnTitle(metric), type: metric.type }];
+    return { col: { key: o.key, title: o.fn ? `${columnTitle(f)} · ${AGG_LABELS[o.fn]}` : columnTitle(f), type: outputType(f, o.fn), ...(o.bucket ? { bucket: o.bucket } : {}) }, path: f.joined?.aliasPath ?? '', field: f };
   });
+  return withUniqueAfter(cols, (c) => c.path, uniqueCount, (path, last) => {
+    const metric = uniqueField(path, { martId: last.field.joined?.martId ?? '', label: last.field.joined?.label ?? '' });
+    return { col: { key: uniqueKey(path), title: columnTitle(metric), type: metric.type }, path, field: metric };
+  }).map((c) => c.col);
 }
 
 /** The grid as tab-separated values with a header row of the column titles; lines end with `\n`. A grouped grid is copied as shown. */

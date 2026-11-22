@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Field, Schema } from './types';
-import { keepUnique, uniqueField, uniqueKey, uniquePathsOf } from './unique-count';
+import { dropUniqueSorts, keepUnique, uniqueField, uniqueKey, uniquePathsOf, withUniqueAfter } from './unique-count';
 
 const f = (name: string, extra: Partial<Field> = {}): Field => ({ name, alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, ...extra });
 const joined = (name: string, aliasPath: string): Field => f(name, { joined: { martId: aliasPath, label: aliasPath, aliasPath } });
@@ -31,5 +31,28 @@ describe('the Unique Count metric of a mart', () => {
     const main = uniqueField('');
     expect(main).toMatchObject({ name: 'Unique Count', alias: 'Unique Count', category: 'number', isCalculated: true });
     expect(uniqueField('c', { martId: 'customers', label: 'Customers' }).joined).toEqual({ martId: 'customers', label: 'Customers', aliasPath: 'c' });
+  });
+});
+
+describe('withUniqueAfter', () => {
+  const pathOf = (s: string) => (s.includes('__') ? s.split('__')[0]! : '');
+  it('puts a mart\'s metric after its last item, for the marts asked, and nowhere else', () => {
+    const items = ['a', 'b', 'c__x', 'c__y', 'd__z'];
+    const make = (path: string) => `U(${path})`;
+    expect(withUniqueAfter(items, pathOf, ['', 'c'], make)).toEqual(['a', 'b', 'U()', 'c__x', 'c__y', 'U(c)', 'd__z']);
+    expect(withUniqueAfter(items, pathOf, [], make)).toEqual(items);
+    expect(withUniqueAfter(items, pathOf, ['d'], make)).toEqual(['a', 'b', 'c__x', 'c__y', 'd__z', 'U(d)']);
+  });
+});
+
+describe('dropUniqueSorts', () => {
+  const sorts = [{ field: 'Unique Count', direction: 'asc' as const }, { field: 'c__unique_count', direction: 'desc' as const }, { field: 'a', direction: 'asc' as const }];
+  it('takes the sorts of the dropped paths, keeps the rest, and gives null when none is left', () => {
+    expect(dropUniqueSorts(sorts, ['c'])).toEqual([sorts[0], sorts[2]]);
+    expect(dropUniqueSorts(sorts, [])).toBe(sorts);
+    expect(dropUniqueSorts(sorts, ['x'])).toBe(sorts);
+    expect(dropUniqueSorts(null, [''])).toBeNull();
+    expect(dropUniqueSorts([sorts[0]!], [''])).toBeNull();
+    expect(dropUniqueSorts([], [''])).toEqual([]);
   });
 });

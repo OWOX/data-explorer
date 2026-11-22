@@ -12,7 +12,7 @@ import { openColumnMenu } from './menu-test-utils';
 type Mock = ReturnType<typeof createMockCtx>;
 
 /** The grid of a mart: `grid` is stored for it before the page reads it; `main` makes it the selected mart. */
-function setup(opts: { main?: string; grid?: GridState; hideStoreKey?: boolean; saved?: object } = {}) {
+function setup(opts: { main?: string; grid?: GridState; hideStoreKey?: boolean; saved?: object; blendFails?: boolean } = {}) {
   const f = demoFixtures();
   if (opts.hideStoreKey) {
     const stores = f.marts.find((m) => m.id === 'stores')!;
@@ -21,7 +21,9 @@ function setup(opts: { main?: string; grid?: GridState; hideStoreKey?: boolean; 
   const base: Mock = createMockCtx(f, { latencyMs: 0 });
   const queries: { id: string; o: TraverseOptions }[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
-  const ctx: Ctx = { ...base, owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { queries.push({ id, o }); return real(id, o); } } } };
+  const realGet = base.owox.getJson.bind(base.owox);
+  const getJson = (<T,>(path: string, query?: Record<string, string>) => (opts.blendFails && path.endsWith('/blendable-schema') ? Promise.reject(new Error('blendable boom')) : realGet<T>(path, query))) as Mock['owox']['getJson'];
+  const ctx: Ctx = { ...base, owox: { ...base.owox, getJson, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { queries.push({ id, o }); return real(id, o); } } } };
   const state: { current: ReturnType<typeof useStore>[0] | null } = { current: null };
   function Probe() {
     const [s, dispatch] = useStore();
@@ -187,5 +189,29 @@ describe('the Unique Count column', () => {
     await t.view();
     await waitFor(() => expect(headers()).toEqual(['id', 'status', 'Unique Count']));
     expect(t.of('orders').every((q) => !q.o.uniqueCount?.includes('campaigns'))).toBe(true);
+  });
+
+  test('a saved view whose only Unique Count is unavailable, and which sorts on it, opens ungrouped with no sort on that key', async () => {
+    const t = setup({ saved: { columns: ['id', 'status'], at: 'then', gridView: { fl: [], s: [['campaigns__unique_count', 1], ['status', -1]], l: 200, uc: ['campaigns'] } } });
+    await t.view();
+    await waitFor(() => expect(headers()).toEqual(['id', 'status']));
+    // The record count (no columns) asks for the main mart's count on its own; the grid's reads name columns.
+    await waitFor(() => expect(t.of('orders').filter((q) => q.o.column?.length).length).toBeGreaterThan(0));
+    for (const q of t.of('orders').filter((q) => q.o.column?.length)) {
+      expect(q.o.uniqueCount).toBeUndefined();
+      expect((q.o.sort ?? []).map((x) => x.column)).not.toContain('campaigns__unique_count');
+    }
+    expect(t.state.current!.grids.orders!.uniqueCount).toBeUndefined();
+    expect(t.state.current!.grids.orders!.sorts).toEqual([{ field: 'status', direction: 'desc' }]);
+  });
+
+  test('a toggle made before the joined marts are read keeps a parked joined path', async () => {
+    const t = setup({ blendFails: true, grid: { columns: ['id', 'status', 'customers__name'], filters: {}, sorts: null, limit: 200, uniqueCount: ['customers'] } });
+    await t.view();
+    await waitFor(() => expect(headers()).toEqual(['id', 'status']));
+    await userEvent.click((await picker('Orders')).getByRole('option', { name: 'Unique Count' }));
+    await waitFor(() => expect(headers()).toContain('Unique Count'));
+    await waitFor(() => expect(t.state.current!.grids.orders!.uniqueCount).toEqual(['customers', '']));
+    expect(t.of('orders').at(-1)!.o.uniqueCount).toEqual(['']);
   });
 });
