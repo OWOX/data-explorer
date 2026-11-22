@@ -163,6 +163,16 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   })();
   const near = hoverEl === null ? null : litIds(wires, hoverEl);
   const fadedAt = (martId: string, path: string) => near !== null && !near.has(martElementId(martId, path));
+  // Released nearest the current parent, its tree wire is the closest line: it takes the stronger style the closest dashed line has.
+  const heldNode = drag ? tree.nodes.get(drag.path) : undefined;
+  const parentNode = heldNode?.parent != null ? tree.nodes.get(heldNode.parent) : undefined;
+  const parentClosest = heldNode !== undefined && parentNode !== undefined && pick?.target === parentNode.path;
+  useEffect(() => {
+    if (!parentClosest || !heldNode || !parentNode) return;
+    const wire = treeRef.current?.querySelector(`#tree-wires path[data-from="${martElementId(parentNode.martId, parentNode.path)}"][data-to="${martElementId(heldNode.martId, heldNode.path)}"]`);
+    wire?.classList.add('closest');
+    return () => wire?.classList.remove('closest');
+  }, [parentClosest, heldNode, parentNode, key]);
   useWires(treeRef, wires, { pinned: null, hovered: null }, revisionOf(key), 'tree-wires', scale);
 
   if (!mainId) return <p className="dm-muted text-sm">Select a data mart.</p>;

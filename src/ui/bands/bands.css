@@ -746,7 +746,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-canvas > #drag-line { z-index: 50; }
 #drag-line path { fill: none; stroke: var(--muted-foreground); stroke-linecap: round; stroke-width: 2; stroke-dasharray: 5 4; }
 #drag-line path.joined { stroke-dasharray: none; }
-#drag-line path.closest { stroke-width: 3; }
+#drag-line path.closest, #tree-wires path.closest { stroke-width: 3; }
 
 /* The dropdown under the open search box: reports, data marts, then the ad-hoc row. */
 .dm-search-open { position: relative; }

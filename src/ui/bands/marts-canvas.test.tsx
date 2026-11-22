@@ -590,12 +590,14 @@ test('while a Graph card is held, every other target gets a dashed line, every t
   await waitFor(() => expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(1));
   const lit = [...marts().querySelectorAll('.dm-tree-node:has(article:not(.dm-faded))')].map((n) => n.getAttribute('data-tree-path'));
   expect(lit.sort()).toEqual(['customers', 'customers.countries', 'stores']);
-  // Moving next to the current parent: it has no drag line, so no dashed line is the closest.
+  // Moving next to the current parent: its tree wire is the stronger line, and no dashed line is.
   const cu = centre('customers', 'customers');
   fireEvent.pointerMove(treeEl(), pointer(cu.x, cu.y));
   await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')).toBeNull());
+  await waitFor(() => expect(marts().querySelector('#tree-wires path.closest')?.getAttribute('data-to')).toBe('dm-countries@customers.countries'));
   fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
   await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')?.getAttribute('data-target')).toBe('stores'));
+  expect(marts().querySelector('#tree-wires path.closest')).toBeNull();
   fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
   await waitFor(() => expect(tips()).toContain('Stores → Countries'));
 });

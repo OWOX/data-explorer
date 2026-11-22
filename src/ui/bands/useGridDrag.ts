@@ -41,10 +41,13 @@ export function measureGridDrag(root: HTMLElement | null, tree: JoinTree | null,
   const targets = gridTargets(root, tree, sources, path);
   const pick = inside ? closestGridTarget(targets, x, y) : null;
   const origin = root.getBoundingClientRect();
+  // The arcs stay under the band's top edge, and never rise more than 40px above the cards.
+  const bodyTop = root.querySelector('#band-marts .dm-band-body')?.getBoundingClientRect().top ?? origin.top;
+  const rise = Math.max(6, Math.min(40, from.top - bodyTop - 4));
   const box = (r: DOMRect) => ({ x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height });
   return {
     held: heldEl,
     els: new Set(targets.map((t) => t.el)),
-    lines: targets.map((t) => ({ target: t.target.target, d: boxLinePath(box(from), box(t.box), true), current: t.target.target === held.parent, closest: pick?.target === t.target.target })),
+    lines: targets.map((t) => ({ target: t.target.target, d: boxLinePath(box(from), box(t.box), rise), current: t.target.target === held.parent, closest: pick?.target === t.target.target })),
   };
 }
