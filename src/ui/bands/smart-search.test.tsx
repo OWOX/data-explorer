@@ -378,11 +378,8 @@ describe('the dropdown', () => {
     return box;
   };
 
-  test('typing shows report rows, then mart rows, then the ad-hoc row, with at most three contexts as "A, B & C"', async () => {
-    const fx = demoFixtures();
-    fx.contexts.push({ id: 'c-extra', name: 'Extra', description: null, icon: null });
-    fx.marts.find((m) => m.id === 'orders')!.contexts = ['c-sales', 'c-catalog', 'c-marketing', 'c-extra'];
-    setup({ ctx: createMockCtx(fx, { latencyMs: 0, ai: false }) }).view();
+  test('typing shows the ad-hoc row, then report rows, then mart rows, with no contexts on the rows', async () => {
+    setup({ ai: false }).view();
     await ready();
     const u = user();
     await u.click(screen.getByRole('button', { name: 'Search data marts' }));
@@ -392,15 +389,52 @@ describe('the dropdown', () => {
     await settle();
     await waitFor(() => expect(options().length).toBeGreaterThan(3));
     const rows = rowsText();
+    expect(rows[0]).toMatch(/^Ad-hoc report forOrderswithfilters$/);
     const isReport = (o: HTMLElement) => !!o.querySelector('.lucide-file-spreadsheet');
     const reports = options().filter(isReport);
-    expect(options().slice(0, reports.length)).toEqual(reports);
-    expect(reports[0]).toHaveTextContent('Paid orders by monthofOrdersfromSales, Catalog & Marketing');
-    expect(reports[0]).not.toHaveTextContent('Extra');
-    const marts = options().slice(reports.length, -1);
+    expect(options().slice(1, reports.length + 1)).toEqual(reports);
+    expect(reports[0]).toHaveTextContent(/^Paid orders by monthofOrders$/);
+    const marts = options().slice(reports.length + 1);
     expect(marts.length).toBeGreaterThan(0);
-    expect(marts[0]).toHaveTextContent(/^OrdersfromSales, Catalog & Marketing$/);
-    expect(rows.at(-1)).toMatch(/^Ad-hoc report forOrdersfromSales, Catalog & Marketingwithfilters$/);
+    expect(marts[0]).toHaveTextContent(/^Orders$/);
+  });
+
+  test('the context filter offers only the found marts\' contexts, and several picked at once keep the marts in any of them', async () => {
+    const fx = demoFixtures();
+    const set = (id: string, contexts: string[]) => { fx.marts.find((m) => m.id === id)!.contexts = contexts; };
+    fx.contexts.push({ id: 'c-other', name: 'Other', description: null, icon: null });
+    set('orders', ['c-sales']);
+    set('order_items', ['c-catalog']);
+    set('payments', ['c-sales', 'c-marketing']);
+    set('returns', ['c-marketing']);
+    // a mart the search does not find: its context is not offered
+    set('campaigns', ['c-other']);
+    setup({ ctx: createMockCtx(fx, { latencyMs: 0, ai: false }) }).view();
+    await ready();
+    const u = user();
+    const box = await typeIn(u, 'orders');
+    await waitFor(() => expect(options().length).toBeGreaterThan(3));
+    const martOf = (o: HTMLElement) => o.querySelector('.dm-sr-chip .dm-sr-name')!.textContent!;
+    const marts = () => [...new Set(options().slice(1).map(martOf))].sort();
+    expect(marts()).toEqual(['Customers', 'Order Items', 'Orders', 'Payments', 'Returns']);
+    const filter = screen.getByRole('group', { name: 'Filter by context' });
+    expect(within(filter).getAllByRole('button').map((c) => c.textContent)).toEqual(['Sales', 'Catalog', 'Marketing']);
+    const chip = (name: string) => within(filter).getByRole('button', { name });
+    // out of the Tab order, so the focus stays in the input
+    expect(chip('Sales')).toHaveAttribute('tabindex', '-1');
+
+    await u.click(chip('Sales'));
+    expect(chip('Sales')).toHaveAttribute('aria-pressed', 'true');
+    expect(box).toHaveFocus();
+    expect(rowsText()[0]).toMatch(/^Ad-hoc report for/);
+    expect(marts()).toEqual(['Orders', 'Payments']);
+    await u.click(chip('Catalog'));
+    expect(marts()).toEqual(['Order Items', 'Orders', 'Payments']);
+    await u.click(chip('Sales'));
+    expect(chip('Sales')).toHaveAttribute('aria-pressed', 'false');
+    expect(marts()).toEqual(['Order Items']);
+    await u.click(chip('Catalog'));
+    expect(marts()).toEqual(['Customers', 'Order Items', 'Orders', 'Payments', 'Returns']);
   });
 
   test('under two characters only a disabled ad-hoc row shows, and no search call is made', async () => {
@@ -453,7 +487,7 @@ describe('the dropdown', () => {
     await ready();
     const u = user();
     await typeIn(u, 'daily kpis last month');
-    await waitFor(() => expect(rowsText().at(-1)).toMatch(/Daily KPIs/));
+    await waitFor(() => expect(rowsText()[0]).toMatch(/Daily KPIs/));
     await u.keyboard('{Enter}');
     await waitFor(() => expect(headings()).toBe('Daily KPIs'));
     await waitFor(() => expect(data().querySelector('.dm-ctl-on')).not.toBeNull());
@@ -472,13 +506,14 @@ describe('the dropdown', () => {
     const u = user();
     const box = await typeIn(u, 'paid orders');
     await waitFor(() => expect(release).toBeDefined());
-    await waitFor(() => expect(rowsText()[0]).toMatch(/Paid orders by month/));
+    await waitFor(() => expect(rowsText()[1]).toMatch(/Paid orders by month/));
+    // the ad-hoc row is still disabled, so the first press lands on the report
     await u.keyboard('{ArrowDown}');
-    expect(options()[0]).toHaveAttribute('aria-selected', 'true');
+    expect(options()[1]).toHaveAttribute('aria-selected', 'true');
     release!();
-    await waitFor(() => expect(options().at(-1)).not.toHaveTextContent(/pending|Looking/i));
+    await waitFor(() => expect(options()[0]).not.toHaveAttribute('aria-disabled'));
     await act(async () => { await vi.advanceTimersByTimeAsync(100); });
-    expect(box).toHaveAttribute('aria-activedescendant', options()[0]!.id);
+    expect(box).toHaveAttribute('aria-activedescendant', options()[1]!.id);
     await u.keyboard('{Enter}');
     await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('dm-ctl-on'));
     expect(ai.tasks).not.toContain('fields');
@@ -491,7 +526,7 @@ describe('the dropdown', () => {
     await ready();
     const u = user();
     await typeIn(u, 'paid orders last month');
-    await waitFor(() => expect(rowsText().at(-1)).toMatch(/Orders/));
+    await waitFor(() => expect(rowsText()[0]).toMatch(/Orders/));
     await u.keyboard('{Enter}');
     await waitFor(() => expect(answer).toBeDefined());
     await u.click(within(data()).getByRole('button', { name: /^Sort by status/ }));
@@ -510,7 +545,7 @@ describe('the dropdown', () => {
     await ready();
     const u = user();
     await typeIn(u, 'paid orders last month');
-    await waitFor(() => expect(rowsText().at(-1)).toMatch(/Orders/));
+    await waitFor(() => expect(rowsText()[0]).toMatch(/Orders/));
     await u.keyboard('{Enter}');
     await waitFor(() => expect(answer).toBeDefined());
     await undo();
@@ -526,7 +561,7 @@ describe('the dropdown', () => {
     await ready();
     const u = user();
     await typeIn(u, 'who are our buyers');
-    await waitFor(() => expect(rowsText().at(-1)).toMatch(/Customers/));
+    await waitFor(() => expect(rowsText()[0]).toMatch(/Customers/));
     await u.keyboard('{Enter}');
     expect(await screen.findByRole('status', { name: 'Search notice' })).toHaveTextContent("AI couldn't set up the view. Showing the default view.");
     expect(headings()).toBe('Customers');
@@ -556,6 +591,9 @@ describe('the dropdown', () => {
     expect(options().at(-1)).toHaveAttribute('aria-selected', 'true');
     await u.keyboard('{ArrowDown}');
     expect(options()[0]).toHaveAttribute('aria-selected', 'true');
+    await u.keyboard('{ArrowDown}');
+    expect(options()[1]).toHaveTextContent(/^Paid orders by month/);
+    expect(options()[1]).toHaveAttribute('aria-selected', 'true');
     await u.keyboard('{Enter}');
     await waitFor(() => expect(reads.some((r) => r.includes('"paid"'))).toBe(true));
     await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('dm-ctl-on'));
@@ -600,7 +638,7 @@ describe('the dropdown', () => {
     const u = user();
     await typeIn(u, 'customers');
     await waitFor(() => expect(ai.tasks).toEqual(['discover']));
-    await waitFor(() => expect(rowsText().at(-1)).toMatch(/Customers/));
+    await waitFor(() => expect(rowsText()[0]).toMatch(/Customers/));
     await u.click(options().find((o) => o.textContent!.startsWith('Customers'))!);
     await waitFor(() => expect(headings()).toBe('Customers'));
     await act(async () => { await vi.advanceTimersByTimeAsync(500); });
@@ -660,7 +698,7 @@ describe('the dropdown', () => {
     await ready();
     const u = user();
     await typeIn(u, 'customers');
-    await waitFor(() => expect(rowsText().at(-1)).toMatch(/Customers/));
+    await waitFor(() => expect(rowsText()[0]).toMatch(/Customers/));
     await u.click(options().find((o) => o.textContent!.startsWith('Customers'))!);
     await waitFor(() => expect(headings()).toBe('Customers'));
     await u.keyboard('{Enter}');
@@ -677,7 +715,7 @@ describe('the dropdown', () => {
     const before = options().length;
     await u.type(box, 'x');
     expect(options()).toHaveLength(before);
-    expect(options().at(-1)).toHaveAttribute('aria-disabled', 'true');
+    expect(options()[0]).toHaveAttribute('aria-disabled', 'true');
     await u.clear(box);
     await u.type(box, 'o');
     expect(options()).toHaveLength(1);
@@ -689,7 +727,7 @@ describe('the dropdown', () => {
     await ready();
     const u = user();
     await typeIn(u, 'paid orders last month');
-    await waitFor(() => expect(rowsText().at(-1)).toMatch(/Orders/));
+    await waitFor(() => expect(rowsText()[0]).toMatch(/Orders/));
     await u.keyboard('{Enter}');
     await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('dm-ctl-on'));
     await undo();

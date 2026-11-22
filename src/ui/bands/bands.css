@@ -525,12 +525,12 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
   color: var(--foreground); font: inherit; font-size: 0.8125rem;
 }
 /* The search is an icon button until it is opened; opened, a go button sits at the end of the input. */
-.dm-search-btn, .dm-search button {
+.dm-search-btn, .dm-search button:where(:not(.dm-badge-toggle)) {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
   border: 0; background: none; color: var(--muted-foreground); cursor: pointer; border-radius: 0.25rem;
 }
 .dm-search-btn { width: 2rem; height: 2rem; border: 1px solid var(--border); border-radius: 0.375rem; background: var(--card); }
-.dm-search-btn:hover, .dm-search button:hover:not(:disabled) { color: var(--foreground); background: var(--muted); }
+.dm-search-btn:hover, .dm-search button:where(:not(.dm-badge-toggle)):hover:not(:disabled) { color: var(--foreground); background: var(--muted); }
 .dm-search-open input { width: 14rem; }
 .dm-search-go { display: inline-flex; }
 .dm-search-go button { width: 1.5rem; height: 1.5rem; background: var(--primary); color: var(--primary-foreground); }
@@ -757,15 +757,19 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 #drag-line path.joined { stroke-dasharray: none; }
 #drag-line path.closest, #tree-wires path.closest { stroke-width: 3; }
 
-/* The dropdown under the open search box: reports, data marts, then the ad-hoc row. */
+/* The dropdown under the open search box: a context filter, then the ad-hoc row, reports and data marts. */
 .dm-search-open { position: relative; }
 .dm-search-results {
   position: absolute; top: calc(100% + 0.25rem); right: 0; z-index: 30;
-  box-sizing: border-box; width: min(34rem, 90vw); max-height: 20rem; overflow-y: auto;
-  margin: 0; padding: 0.25rem; list-style: none;
+  display: flex; flex-direction: column;
+  box-sizing: border-box; width: min(34rem, 90vw); max-height: 20rem; overflow: hidden;
+  margin: 0; padding: 0.25rem;
   border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card); color: var(--foreground);
   box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
 }
+.dm-search-contexts { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.25rem 0.25rem 0.375rem; margin-bottom: 0.25rem; border-bottom: 1px solid var(--border); }
+/* Only the rows scroll, so the context filter stays in view. */
+.dm-search-list { min-height: 0; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
 .dm-search-row {
   display: flex; align-items: center; gap: 0.375rem; min-width: 0; padding: 0.375rem 0.5rem;
   border-radius: 0.25rem; font-size: 0.8125rem; white-space: nowrap; overflow: hidden; cursor: pointer;
