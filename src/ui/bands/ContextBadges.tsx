@@ -6,9 +6,11 @@ import { fitBadges } from './fitBadges';
 import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
 
 const GAP = 4;
+/** The badges wrap onto this many lines before the rest goes behind the chip. */
+const LINES = 2;
 
 /**
- * A badge per context, in one line: the ones that fit stay, the rest go behind a "+N (tag) more" chip that
+ * A badge per context, on at most two lines: the ones that fit stay, the rest go behind a "+N (tag) more" chip that
  * opens a list of them. A hidden badge still toggles its context, and a selected one lights the chip.
  */
 export function ContextBadges({ contexts, selectedIds, onToggle }: { contexts: Context[]; selectedIds: string[]; onToggle: (id: string) => void }) {
@@ -24,7 +26,7 @@ export function ContextBadges({ contexts, selectedIds, onToggle }: { contexts: C
       const parts = [...probe.current.children] as HTMLElement[];
       const chip = parts.pop();
       if (!chip) return;
-      setKept(fitBadges(parts.map((p) => p.getBoundingClientRect().width), chip.getBoundingClientRect().width, box.current.clientWidth, GAP));
+      setKept(fitBadges(parts.map((p) => p.getBoundingClientRect().width), chip.getBoundingClientRect().width, box.current.clientWidth, GAP, LINES));
     };
     measure();
     const ro = new ResizeObserver(measure);

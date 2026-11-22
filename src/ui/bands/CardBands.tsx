@@ -300,7 +300,7 @@ export function CardBands({
     />
   );
 
-  // A badge per context, in the title row: click to select it. Offered once the project has a context.
+  // A badge per context, in the toolbar left of the Storage filter: click to select it. Offered once the project has a context.
   const contextBadges = model.contexts.length === 0 ? undefined : (
     <ContextBadges contexts={model.contexts} selectedIds={contextIds} onToggle={(id) => dispatch({ type: 'toggleContext', id })} />
   );
@@ -335,7 +335,7 @@ export function CardBands({
           return <SourceCard key={source.key} source={source} transition={sourceCards.transitionOf(source)} selected={selection.sourceKey === source.key} lit={lit.has(id)} aside={aside.has(id)} onSelect={() => { rememberLeaving(null); dispatch({ type: 'selectSource', key: source.key }); if (view === 'canvas') pickView('grid'); }} />;
         })}
       </Band>
-      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={view === 'canvas' ? reportSize : visible.ids.length} hint="The main data mart first, and every mart it can join; or what the search and the filters match. Drag a card onto the main one to make it main." afterHint={<><ViewSwitch label="Show data marts as" options={MARTS_VIEWS} value={view} onChange={pickView} />{makeMainId !== null && <MakeMainButton title={model.marts.get(makeMainId)?.title ?? 'it'} onClick={() => { setPickState(null); void click(makeMainId, { mode: 'makeMain' }); }} />}{view === 'grid' && contextBadges}</>} toolbar={view === 'grid' ? storageFilter : undefined} grid={view === 'grid'} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
+      <Band id="band-marts" icon={<Box size={18} />} title="Data Marts" total={view === 'canvas' ? reportSize : visible.ids.length} hint="The main data mart first, and every mart it can join; or what the search and the filters match. Drag a card onto the main one to make it main." afterHint={<><ViewSwitch label="Show data marts as" options={MARTS_VIEWS} value={view} onChange={pickView} />{makeMainId !== null && <MakeMainButton title={model.marts.get(makeMainId)?.title ?? 'it'} onClick={() => { setPickState(null); void click(makeMainId, { mode: 'makeMain' }); }} />}</>} toolbar={view === 'grid' ? <>{contextBadges}{storageFilter}</> : undefined} grid={view === 'grid'} folded={foldedMarts} onFold={onFoldMarts} loading={loading}>
         {view === 'canvas' ? (
           <div
             className="dm-tree-scroll"

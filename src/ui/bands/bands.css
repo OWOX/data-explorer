@@ -35,9 +35,12 @@
   display: flex; flex-wrap: wrap; align-items: center; align-content: center; justify-content: space-between;
   gap: 0.5rem 1rem; padding: 1rem; cursor: pointer;
 }
-/* The marts band has the badges, so it gets a fixed basis: they must not decide whether the toolbar wraps, or their width and the wrap would chase each other. */
 .dm-band-titlegroup { display: flex; align-items: center; gap: 0.5rem; align-self: center; min-width: 0; flex: 1 1 auto; }
-.dm-band-titlegroup:has(.dm-context-filter) { flex-basis: 18rem; }
+/* The marts band has the badges in its toolbar. The title group keeps its own width on the left, and the toolbar takes the rest with a fixed basis: the badges' width must not decide whether the header wraps, or the two would chase each other. */
+.dm-band-head:has(.dm-context-filter) .dm-band-titlegroup { flex: 0 1 auto; }
+.dm-band-head:has(.dm-context-filter) .dm-band-actions { flex: 1 1 24rem; }
+.dm-band-tools:has(.dm-context-filter) { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; }
+.dm-band-tools:has(.dm-context-filter) > :not(.dm-context-filter) { flex: none; }
 .dm-band-actions { display: flex; align-items: center; gap: 0.5rem; align-self: center; margin-left: auto; min-width: 0; }
 /* CollapsibleCardContent: px-4 pt-1, with the air under it the card's p-0 leaves out. */
 .dm-band-reveal { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 0fr; transition: grid-template-rows 200ms; }
@@ -139,9 +142,9 @@
 .dm-tip-lines { display: flex; flex-direction: column; gap: 0.125rem; }
 .dm-tip-lines > span:first-child { font-weight: 500; }
 
-/* The context badges in the Data Marts title row: Data Flow's chip, a button that toggles. */
-/* Takes whatever width is left (basis 0), never less than a "+NN more" chip, so what it holds cannot move the toolbar. */
-.dm-context-filter { position: relative; display: flex; flex: 1 1 0; flex-wrap: nowrap; align-items: center; gap: 0.25rem; min-width: 5.5rem; overflow: hidden; }
+/* The context badges in the Data Marts toolbar, left of the Storage filter: Data Flow's chip, a button that toggles. */
+/* Takes whatever width is left (basis 0), never less than a "+NN more" chip, so what it holds cannot move the toolbar. Wraps onto two lines, each one flush right, so the last badge ends next to the Storage button. */
+.dm-context-filter { position: relative; display: flex; flex: 1 1 0; flex-wrap: wrap; align-items: center; align-content: center; justify-content: flex-end; gap: 0.25rem; min-width: 5.5rem; overflow: hidden; }
 .dm-context-filter .dm-badge { flex-shrink: 0; white-space: nowrap; }
 /* The measuring copy of the badges: laid out at natural width, never seen. */
 .dm-context-probe { position: absolute; top: 0; left: 0; display: flex; gap: 0.25rem; width: max-content; visibility: hidden; pointer-events: none; }

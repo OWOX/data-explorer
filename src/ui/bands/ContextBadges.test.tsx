@@ -23,16 +23,26 @@ test('when the row is wide enough every badge shows and there is no chip', () =>
   expect(group.querySelector('[data-context-more]')).toBeNull();
 });
 
-test('a narrow row keeps what fits and puts the rest behind a "+N more" chip', async () => {
-  layout(150);
+test('a row that fits the badges on two lines has no chip', () => {
+  layout(110);
+  render(<ContextBadges contexts={contexts} selectedIds={[]} onToggle={() => {}} />);
+  const group = screen.getByRole('group', { name: 'Contexts' });
+  // 50 + 4 + 50 = 104 per line: two lines hold all four.
+  expect(within(group).getAllByRole('button')).toHaveLength(4);
+  expect(group.querySelector('[data-context-more]')).toBeNull();
+});
+
+test('a narrow row keeps what fits on two lines and puts the rest behind a "+N more" chip', async () => {
+  layout(100);
   const toggled: string[] = [];
   render(<ContextBadges contexts={contexts} selectedIds={[]} onToggle={(id) => toggled.push(id)} />);
   const group = screen.getByRole('group', { name: 'Contexts' });
-  // 44 chip + 4 + 50 + 4 + 50 = 152 > 150: one badge and the chip.
+  // One badge per line, and the chip shares the second line with Bravo: 50 + 4 + 44 = 98 <= 100.
   expect(within(group).getByRole('button', { name: 'Alpha' })).toBeInTheDocument();
-  expect(within(group).queryByRole('button', { name: 'Bravo' })).toBeNull();
-  const chip = within(group).getByRole('button', { name: '3 more contexts' });
-  expect(chip).toHaveTextContent('+3');
+  expect(within(group).getByRole('button', { name: 'Bravo' })).toBeInTheDocument();
+  expect(within(group).queryByRole('button', { name: 'Charlie' })).toBeNull();
+  const chip = within(group).getByRole('button', { name: '2 more contexts' });
+  expect(chip).toHaveTextContent('+2');
   expect(chip).not.toHaveAttribute('data-on');
   await userEvent.click(chip);
   const list = await screen.findByRole('group', { name: 'Hidden contexts' });
@@ -41,7 +51,7 @@ test('a narrow row keeps what fits and puts the rest behind a "+N more" chip', a
 });
 
 test('a selected context behind the chip lights it', () => {
-  layout(150);
+  layout(100);
   render(<ContextBadges contexts={contexts} selectedIds={['delta']} onToggle={() => {}} />);
-  expect(screen.getByRole('button', { name: '3 more contexts, 1 selected' })).toHaveAttribute('data-on');
+  expect(screen.getByRole('button', { name: '2 more contexts, 1 selected' })).toHaveAttribute('data-on');
 });
