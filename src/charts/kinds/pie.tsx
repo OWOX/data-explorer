@@ -1,14 +1,15 @@
-import { ChartPie } from 'lucide-react';
-import { columnTitle, fieldLabel } from '../../model/fieldLabel';
+import { ChartPie, Sigma, Tag } from 'lucide-react';
+import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
 import { BLANK_COLOR, BLANK_KEY, BLANK_LABEL, OTHER_KEY } from '../blank';
 import { dimensionFilter } from '../clickFilters';
 import type { MenuItem } from '../ChartMenu';
+import { fieldGroups, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { pieMeasures } from '../fields';
 import type { Measure } from '../queries';
-import { measureLabel, measureOptions, measureText, numberOf } from '../Scorecards';
+import { measureLabel, measureText, numberOf } from '../Scorecards';
 import { measureId, pickField, pickMeasure } from '../settings';
 import { PieChart, type Slice } from '../svg/PieChart';
 import { OTHER_COLOR, seriesColor } from '../useDateSeries';
@@ -33,8 +34,8 @@ function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, 
     ];
   };
   const items: MenuItem[] = [
-    { kind: 'radio', label: 'Metric', value: measureId(measure), options: measureOptions(cf, pieMeasures(cf)), onPick: (v) => onChange({ measure: v }) },
-    { kind: 'radio', label: 'Dimension', value: dim.name, options: cf.dimensions.map((d) => ({ value: d.name, label: columnTitle(d) })), onPick: (v) => onChange({ dimension: v }) },
+    { kind: 'radio', label: 'Metric', icon: Sigma, value: measureId(measure), options: [], groups: measureGroups(cf, pieMeasures(cf)), onPick: (v) => onChange({ measure: v }) },
+    { kind: 'radio', label: 'Dimension', icon: Tag, value: dim.name, options: [], groups: fieldGroups(cf, cf.dimensions), onPick: (v) => onChange({ dimension: v }) },
     ...tail,
   ];
   // A measure of another mart than the dimension's can repeat one row in several slices (a one-to-many join), and a records measure of another mart counts each mart's rows per slice: the slices overlap, so the parts are not shares of a whole.

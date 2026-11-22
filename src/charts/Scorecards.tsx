@@ -1,3 +1,4 @@
+import { EyeOff, Sigma } from 'lucide-react';
 import { AUTO, formatValue, keepsUnit, type Format } from '../format/formats';
 import { isIntegerType } from '../model/field-category';
 import { AGG_LABELS, formatBucket, outputType, type AggFn, type DateBucket } from '../model/aggregation';
@@ -13,6 +14,7 @@ import { compactValue } from './compact';
 import type { ChartFields, ChartMart, Metric } from './fields';
 import { metricKey, scorecardsQuery, sparklineQuery, uniqueKey, type Measure } from './queries';
 import { measureId, type Spark } from './settings';
+import { measureGroups } from './menuGroups';
 import { Sparkline, type Point } from './svg/Sparkline';
 import { useChartQuery, type ChartResult } from './useChartQuery';
 
@@ -153,7 +155,7 @@ export function MartCards({ martId, mart, main, spark, scores, bucket, filter, v
   onMetric?: (cardId: string, measure: string) => void; onHide?: (cardId: string) => void;
 }) {
   const cards = cardsOf(mart, spark.metrics).filter((c) => !spark.hidden.has(c.id));
-  const choices = measureOptions({ marts: [mart], dimensions: [], dates: [] }, martMeasures(mart));
+  const choices = measureGroups({ marts: [mart], dimensions: [], dates: [] }, martMeasures(mart));
   // The group's own date when it has one, else the chart date's mart's: a joined mart without a date draws no trend.
   const date = sparkDate(mart, spark);
   const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, bucket, filter), version);
@@ -176,8 +178,8 @@ export function MartCards({ martId, mart, main, spark, scores, bucket, filter, v
           {onHide && (
             <div className="absolute right-0.5 top-0.5">
               <ChartMenu name={c.label} items={[
-                ...(choices.length > 1 ? [{ kind: 'radio', label: 'Metric', value: measureId(c.measure), options: choices, onPick: (v: string) => onMetric?.(c.id, v) } as MenuItem] : []),
-                { kind: 'action', label: 'Hide', onPick: () => onHide(c.id) },
+                ...(martMeasures(mart).length > 1 ? [{ kind: 'radio', label: 'Metric', icon: Sigma, value: measureId(c.measure), options: [], groups: choices, onPick: (v: string) => onMetric?.(c.id, v) } as MenuItem] : []),
+                { kind: 'action', label: 'Hide', icon: EyeOff, onPick: () => onHide(c.id) },
               ]} />
             </div>
           )}

@@ -1,3 +1,4 @@
+import { Copy } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ErrorBox } from '../ui/ErrorBox';
 import { Skeleton } from '../ui/Skeleton';
@@ -37,7 +38,7 @@ export function ChartPanel({ title, name, items, extra, width, loading, error, o
   const [section, setSection] = useState<HTMLElement | null>(null);
   const [toast, setToast] = useState<{ text: string; tone: 'success' | 'info' | 'error'; at: number } | null>(null);
   const say = (text: string, tone: 'success' | 'info' | 'error') => setToast((t) => ({ text, tone, at: (t?.at ?? 0) + 1 }));
-  const copy: MenuItem = { kind: 'action', label: 'Copy to clipboard', onPick: () => {
+  const copy: MenuItem = { kind: 'action', label: 'Copy to clipboard', icon: Copy, onPick: () => {
     if (!section || loading || error || empty) { say('Nothing to copy yet', 'info'); return; }
     copyChart(section, title).then(
       (how) => how === 'copied' ? say('Chart copied', 'success')

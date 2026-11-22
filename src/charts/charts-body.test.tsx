@@ -268,7 +268,7 @@ test('pie menu: a chosen dimension redraws the pie and saves', async () => {
   await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
   await userEvent.click(panel('Pie'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
-  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Products · Name' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Name' }));
   await waitFor(() => expect(data().querySelector('[data-slice="Other"]')).not.toBeNull());
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', dimension: 'products__title' }] });
 });
@@ -281,7 +281,7 @@ test('two quick edits both land in the saved doc', async () => {
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Horizontal' }));
   await userEvent.click(panel('Pie'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
-  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Products · Name' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Name' }));
   expect(t.puts).toHaveBeenLastCalledWith('orders', { version: 2, charts: [
     { id: 'time-series', kind: 'timeSeries', orientation: 'horizontal' },
     { id: 'pie', kind: 'pie', dimension: 'products__title' },
@@ -383,7 +383,8 @@ test('choosing Count Unique from the Metric menu saves the time series measure r
   await userEvent.click(panel('Time series'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
   const opts = await screen.findAllByRole('menuitemradio');
-  expect(opts[0]).toHaveAccessibleName('Orders · Count Unique');
+  expect(opts[0]).toHaveAccessibleName('Count Unique');
+  expect(within(screen.getByRole('group', { name: 'Orders' })).getByRole('menuitemradio', { name: 'Count Unique' })).toBe(opts[0]);
   await userEvent.click(opts[0]!);
   await waitFor(() => expect(screen.getByRole('heading', { name: /^Count Unique by / })).toBeInTheDocument());
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'records' }, { id: 'pie', kind: 'pie' }] });
@@ -395,7 +396,8 @@ test('the Metric menus list every mart’s Count Unique and metrics; a joined ma
   await userEvent.click(panel('Time series'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
   const opts = await screen.findAllByRole('menuitemradio');
-  expect(opts.map((o) => o.textContent)).toEqual(['Orders · Count Unique', 'Amount · Sum', 'Products · Count Unique', 'price · Sum']);
+  expect(opts.map((o) => o.textContent)).toEqual(['Count Unique', 'Amount · Sum', 'Count Unique', 'price · Sum']);
+  expect(within(screen.getByRole('menu', { name: 'Metric' })).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Orders', 'Products']);
   await userEvent.click(opts[2]!);
   await waitFor(() => expect(screen.getByRole('heading', { name: /^Products · Count Unique by / })).toBeInTheDocument());
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'records:products' }, { id: 'pie', kind: 'pie' }] });
@@ -413,7 +415,7 @@ test('a pie of a joined mart’s Count Unique by a dimension asks the backend fo
   expect(q?.aggregation).toBeUndefined();
   await userEvent.click(panel('Pie'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
-  expect((await screen.findAllByRole('menuitemradio')).map((o) => o.textContent)).toEqual(['Orders · Count Unique', 'Amount · Sum', 'Products · Count Unique', 'price · Sum']);
+  expect((await screen.findAllByRole('menuitemradio')).map((o) => o.textContent)).toEqual(['Count Unique', 'Amount · Sum', 'Count Unique', 'price · Sum']);
 });
 
 const statusFilter = () => within(data()).queryByRole('button', { name: /^Filter status/i });
@@ -438,7 +440,7 @@ test('a pie slice is keyboard reachable and "Other" is not clickable', async () 
   await charts({ columns: withDims });
   await userEvent.click(panel('Pie'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
-  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Products · Name' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Name' }));
   await waitFor(() => expect(data().querySelector('[data-slice="Other"]')).not.toBeNull());
   expect(data().querySelector('[data-slice="Other"]')!.hasAttribute('tabindex')).toBe(false);
   expect(data().querySelector('[data-slice]:not([data-slice="Other"])')!.getAttribute('aria-label')).toMatch(/^Filter to /);

@@ -1,13 +1,22 @@
 import { EllipsisVertical, type LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { DEFAULT_MART_ICON, PickedIcon } from '../ui/bands/picked';
 import { Panel, Row, useSubmenu } from '../ui/explorer/MenuParts';
 import { useOutsidePress } from '../ui/outsidePress';
 
-/** A tick row (stays open: several can be changed in a row), an action row (closes the menu, then runs) or a row opening a submenu of radio choices (closes on a choice). */
+/** One choice of a submenu. */
+export type MenuOption = { value: string; label: string; icon?: LucideIcon };
+/** The choices that belong to one data mart: a header with the mart's icon and title, then the options. */
+export type MenuGroup = { title: string; /** The mart's picked icon; the default mart icon when none. */ icon?: string | null; options: MenuOption[] };
+
+/**
+ * A tick row (stays open: several can be changed in a row), an action row (closes the menu, then runs) or a row opening a submenu of radio choices (closes on a choice).
+ * Every row has an icon. A radio's `options` come first without a header (Off, No stacking); its `groups` follow, each under its data mart's header.
+ */
 export type MenuItem =
-  | { kind: 'check'; label: string; icon?: LucideIcon; checked: boolean; onToggle: () => void }
-  | { kind: 'radio'; label: string; value: string; options: { value: string; label: string; icon?: LucideIcon }[]; onPick: (value: string) => void }
-  | { kind: 'action'; label: string; onPick: () => void };
+  | { kind: 'check'; label: string; icon: LucideIcon; checked: boolean; onToggle: () => void }
+  | { kind: 'radio'; label: string; icon: LucideIcon; value: string; options: MenuOption[]; groups?: MenuGroup[]; onPick: (value: string) => void }
+  | { kind: 'action'; label: string; icon: LucideIcon; onPick: () => void };
 
 /** How long after the panel last changed size a scroll is still taken to come from the resize. */
 const RESIZE_GRACE_MS = 150;
@@ -52,6 +61,9 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
   // A press outside the menu only closes it, as the column menu does.
   useOutsidePress(!!anchor, (t) => !!t.closest('[data-column-menu]') || !!holder.current?.contains(t), () => close(false));
   const picked = sub ? items[sub.key] : undefined;
+  const choice = (o: MenuOption) => picked?.kind === 'radio' && (
+    <Row key={o.value} check checked={o.value === picked.value} label={o.label} glyph={o.icon && <o.icon className="size-4" />} onActivate={() => { picked.onPick(o.value); close(); }} />
+  );
   return (
     <span ref={holder} className="inline-flex">
       <button ref={button} type="button" aria-label={`${name} options`} aria-haspopup="menu" aria-expanded={!!anchor} onClick={(e) => (anchor ? close(false) : setAnchor(e.currentTarget))}
@@ -61,18 +73,27 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
       {anchor && (
         <Panel anchor={anchor} mode="below" role="menu" label={`${name} menu`} onEscape={() => (sub ? closeSub() : close())} onTab={() => close()} onPlaced={() => setPlaced(true)} focusSeq={1} className="dm-menu-root">
           {items.map((it, i) => it.kind === 'check' ? (
-            <Row key={i} check checkbox checked={it.checked} label={it.label} glyph={it.icon && <it.icon className="size-4" />} onActivate={it.onToggle} onHover={hoverOther} onLeaveRow={leaveRow} />
+            <Row key={i} check checkbox checked={it.checked} label={it.label} glyph={<it.icon className="size-4" />} onActivate={it.onToggle} onHover={hoverOther} onLeaveRow={leaveRow} />
           ) : it.kind === 'action' ? (
-            <Row key={i} label={it.label} onActivate={() => { close(); it.onPick(); }} onHover={hoverOther} onLeaveRow={leaveRow} />
+            <Row key={i} slot label={it.label} glyph={<it.icon className="size-4" />} onActivate={() => { close(); it.onPick(); }} onHover={hoverOther} onLeaveRow={leaveRow} />
           ) : (
-            <Row key={i} sub expanded={sub?.key === i} label={it.label} onActivate={(r) => open(i, r, true)} onOpen={(r) => open(i, r, true)}
+            <Row key={i} sub slot expanded={sub?.key === i} label={it.label} glyph={<it.icon className="size-4" />} onActivate={(r) => open(i, r, true)} onOpen={(r) => open(i, r, true)}
               onHover={(r) => hoverRow(i, r)} onLeaveRow={leaveRow} />
           ))}
         </Panel>
       )}
       {anchor && placed && sub && picked?.kind === 'radio' && (
         <Panel anchor={sub.row} mode="beside" role="menu" label={picked.label} onEscape={closeSub} onLeave={closeSub} onTab={() => close()} focusSeq={sub.seq}>
-          {picked.options.map((o) => <Row key={o.value} check checked={o.value === picked.value} label={o.label} glyph={o.icon && <o.icon className="size-4" />} onActivate={() => { picked.onPick(o.value); close(); }} />)}
+          {picked.options.map((o) => choice(o))}
+          {picked.groups?.map((g, gi) => (
+            <div key={gi} role="group" aria-label={g.title} className="dm-menu-group">
+              <div role="presentation" className="dm-menu-head">
+                <PickedIcon icon={g.icon} fallback={DEFAULT_MART_ICON} size={14} />
+                <span className="dm-menu-label">{g.title}</span>
+              </div>
+              {g.options.map((o) => choice(o))}
+            </div>
+          ))}
         </Panel>
       )}
     </span>

@@ -1,14 +1,15 @@
-import { ChartScatter } from 'lucide-react';
-import { columnTitle, fieldLabel } from '../../model/fieldLabel';
+import { ChartScatter, Sigma, Tag } from 'lucide-react';
+import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
+import { fieldGroups, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { keyOf, labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
 import { measuresOf } from '../fields';
 import { measureKey, SCATTER_LIMIT, scatterQuery, type Measure } from '../queries';
-import { isIntegerMeasure, measureFormat, measureLabel, measureOptions, measureText, numberOf } from '../Scorecards';
+import { isIntegerMeasure, measureFormat, measureLabel, measureText, numberOf } from '../Scorecards';
 import { measureId, pickField, pickMeasure } from '../settings';
 import { Scatter, type Dot } from '../svg/Scatter';
 import { useChartQuery } from '../useChartQuery';
@@ -29,11 +30,11 @@ function ScatterPanel({ martId, cf, r, filter, version, idle, hasFilters, format
   });
   const [xt, xf] = measureFormat(x, formatOf);
   const [yt, yf] = measureFormat(y, formatOf);
-  const options = measureOptions(cf, measuresOf(cf));
+  const all = measuresOf(cf);
   const items: MenuItem[] = [
-    { kind: 'radio', label: 'Dimension', value: dim.name, options: cf.dimensions.map((d) => ({ value: d.name, label: columnTitle(d) })), onPick: (v) => onChange({ dimension: v }) },
-    { kind: 'radio', label: 'X metric', value: measureId(x), options, onPick: (v) => onChange({ measure: v }) },
-    { kind: 'radio', label: 'Y metric', value: measureId(y), options: options.filter((o) => o.value !== measureId(x)), onPick: (v) => onChange({ measure2: v }) },
+    { kind: 'radio', label: 'Dimension', icon: Tag, value: dim.name, options: [], groups: fieldGroups(cf, cf.dimensions), onPick: (v) => onChange({ dimension: v }) },
+    { kind: 'radio', label: 'X metric', icon: Sigma, value: measureId(x), options: [], groups: measureGroups(cf, all), onPick: (v) => onChange({ measure: v }) },
+    { kind: 'radio', label: 'Y metric', icon: Sigma, value: measureId(y), options: [], groups: measureGroups(cf, all.filter((m) => measureId(m) !== measureId(x))), onPick: (v) => onChange({ measure2: v }) },
     ...tail,
   ];
   const title = `${measureLabel(cf, y, [x, y])} vs ${measureLabel(cf, x, [x, y])} per ${fieldLabel(dim)}`;

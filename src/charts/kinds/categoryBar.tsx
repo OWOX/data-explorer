@@ -1,14 +1,15 @@
-import type { LucideIcon } from 'lucide-react';
+import { Sigma, Tag, type LucideIcon } from 'lucide-react';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
+import { fieldGroups, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
 import { measuresOf } from '../fields';
 import type { Measure } from '../queries';
-import { isIntegerMeasure, measureFormat, measureLabel, measureOptions, measureText, numberOf } from '../Scorecards';
+import { isIntegerMeasure, measureFormat, measureLabel, measureText, numberOf } from '../Scorecards';
 import { measureId, pickField, pickMeasure } from '../settings';
 import { BarChart, type Series } from '../svg/BarChart';
 import { useTopValues } from '../useTopValues';
@@ -30,8 +31,8 @@ function categoryPanel(orientation: 'vertical' | 'horizontal', name: string) {
     ] }];
     const [tickType, tickFormat] = measureFormat(measure, formatOf);
     const items: MenuItem[] = [
-      { kind: 'radio', label: 'Metric', value: measureId(measure), options: measureOptions(cf, measuresOf(cf)), onPick: (v) => onChange({ measure: v }) },
-      { kind: 'radio', label: 'Dimension', value: dim.name, options: cf.dimensions.map((d) => ({ value: d.name, label: columnTitle(d) })), onPick: (v) => onChange({ dimension: v }) },
+      { kind: 'radio', label: 'Metric', icon: Sigma, value: measureId(measure), options: [], groups: measureGroups(cf, measuresOf(cf)), onPick: (v) => onChange({ measure: v }) },
+      { kind: 'radio', label: 'Dimension', icon: Tag, value: dim.name, options: [], groups: fieldGroups(cf, cf.dimensions), onPick: (v) => onChange({ dimension: v }) },
       ...tail,
     ];
     const title = `${measureLabel(cf, measure)} by ${fieldLabel(dim)}`;

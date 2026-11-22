@@ -124,3 +124,41 @@ test('a chart that changes type animates its width instead of snapping', async (
   await expect(panel).toHaveCSS('transition-property', /width/);
   await expect(panel.locator('.dm-chart-body')).toHaveCSS('transition-property', /height/);
 });
+
+test.describe('grouped submenus', () => {
+  test.use({ deviceScaleFactor: 2 });
+  test('a Dimension submenu lists its fields under each data mart, and the arrow keys skip the mart headers', async ({ page }) => {
+    await expect(data(page).getByRole('row')).toHaveCount(202);
+    await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
+    await expect(data(page).getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
+    await data(page).getByRole('radio', { name: 'Charts' }).click();
+    const pie = data(page).locator('section[data-chart-kind="Pie"]');
+    await pie.hover();
+    await pie.getByRole('button', { name: 'Pie options' }).click();
+    // Every row of the chart menu leads with an icon.
+    const menu = page.getByRole('menu', { name: 'Pie menu' });
+    await expect(menu).toBeVisible();
+    const rows = menu.getByRole('menuitem');
+    expect(await rows.count()).toBeGreaterThan(2);
+    for (const row of await rows.all()) await expect(row.locator('.dm-menu-glyph svg')).toHaveCount(1);
+    await page.getByRole('menuitem', { name: 'Dimension' }).click();
+    const sub = page.getByRole('menu', { name: 'Dimension' });
+    const orders = sub.getByRole('group', { name: 'Orders' });
+    const customers = sub.getByRole('group', { name: 'Customers' });
+    await expect(orders.locator('.dm-menu-head')).toHaveText('Orders');
+    await expect(customers.locator('.dm-menu-head')).toHaveText('Customers');
+    await expect(customers.getByRole('menuitemradio', { name: 'name' })).toBeVisible();
+    await expect(sub.getByRole('menuitemradio', { name: /·/ })).toHaveCount(0);
+    await page.screenshot({ path: 'tmp/w7t2-menu.png' });
+    // The headers are not menu items: ArrowDown walks the options only.
+    const options = sub.getByRole('menuitemradio');
+    const count = await options.count();
+    await expect(options.first()).toBeFocused();
+    for (let i = 1; i < count; i++) {
+      await page.keyboard.press('ArrowDown');
+      await expect(options.nth(i)).toBeFocused();
+    }
+    await page.keyboard.press('ArrowDown');
+    await expect(options.nth(0)).toBeFocused();
+  });
+});
