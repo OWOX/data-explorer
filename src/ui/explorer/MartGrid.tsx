@@ -639,15 +639,15 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const [removing, setRemoving] = useState(false);
   const head = useRef<HTMLTableSectionElement>(null);
   const remove = (g: (typeof groups)[number], index: number) => {
-    // A joined group takes its path and every path under it; the main group deselects the main mart.
-    const gone = (path: string) => (g.main ? path === '' : path === g.path || path.startsWith(`${g.path}.`));
+    // A joined group takes only its own columns: the marts joined through it keep theirs and stay joined through it. The main group deselects the main mart.
+    const gone = (path: string) => (g.main ? path === '' : path === g.path);
     // Focus lands on the nearest tab that is still there (its remove button, else its Columns button) once the tab is gone.
     const next = [...groups.slice(index + 1), ...groups.slice(0, index).reverse()].find((x) => !gone(x.path))?.path;
     // Taking the main tab away promotes the next one and the grid remounts (DataBand keys it by mart): the new grid focuses its Columns button.
     const promoted = g.main && groups[1] ? groups[1].id : null;
     askFocusFor(promoted);
     setRemoving(true);
-    (g.main ? cardClick(g.id, { only: 'deselect' }) : cardClick(g.id, { removePaths: joinedPaths(shown, sources).filter(gone) })).catch(() => undefined).finally(() => {
+    (g.main ? cardClick(g.id, { only: 'deselect' }) : cardClick(g.id, { removePaths: [g.path] })).catch(() => undefined).finally(() => {
       // The focus waits for the render that re-enables the buttons: a timer could fire before it and find the target's remove button still disabled.
       focusAfterRemove.current = next ?? null;
       setRemoving(false);

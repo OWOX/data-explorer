@@ -90,3 +90,30 @@ test('canvas: Countries under both Customers and Stores, × on a middle card kee
   await expect(data.locator('th[data-group="countries"]')).toHaveCount(2);
   await page.mouse.move(0, 0);
 });
+
+test('grid: the × on a middle mart header takes only its own columns; the Countries behind it keep theirs', async ({ page }) => {
+  await page.goto('/?mock');
+  const marts = page.locator('#band-marts');
+  const data = page.locator('#band-data');
+  await marts.getByRole('radio', { name: 'Graph' }).click();
+  await marts.locator('article#dm-orders').hover();
+  await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
+  await page.keyboard.press('Escape');
+  await expect(marts.locator('[id="dm-customers@customers"]')).toBeVisible();
+  await page.mouse.move(0, 0);
+  await marts.locator('[id="dm-customers@customers"]').hover();
+  await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toBeVisible();
+  await marts.locator('article[data-ghost][data-mart-id="countries"]').click();
+  await page.keyboard.press('Escape');
+  await expect(data.locator('th[data-group="countries"]')).toHaveCount(1);
+  await expect(data.locator('th[data-group="customers"]')).toHaveCount(1);
+
+  await data.locator('th[data-group="customers"]').hover();
+  await data.getByRole('button', { name: 'Remove Customers from the grid' }).click();
+  await expect(data.locator('th[data-group="customers"]')).toHaveCount(0);
+  await expect(data.locator('th[data-group="countries"]')).toHaveCount(1);
+  // Customers stays on the canvas as a bare card, joined, with Countries under it.
+  await expect(marts.locator('[id="dm-customers@customers"]')).toBeVisible();
+  await expect(marts.locator('[id="dm-countries@customers.countries"]')).toBeVisible();
+  await page.mouse.move(0, 0);
+});

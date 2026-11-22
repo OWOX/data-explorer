@@ -150,3 +150,20 @@ test('a reader served from the cache keeps its rows after the cache evicts its k
   expect(reader.result.current.rows).toEqual([{ a: 1 }]);
   expect(reader.result.current.loading).toBe(false);
 });
+
+test('a query for a subset of a read already made reads nothing and shows its rows on the first render', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ a: 1, b: 2 }]));
+  const wrapper = setup(traverseData);
+  const both: TraverseOptions = { column: ['a', 'b'], aggregation: [{ column: 'a', function: 'SUM' }, { column: 'b', function: 'SUM' }] };
+  const one: TraverseOptions = { column: ['a'], aggregation: [{ column: 'a', function: 'SUM' }] };
+  const { result, rerender } = renderHook(({ o }) => useChartQuery('m', o, 0), { wrapper, initialProps: { o: both } });
+  await waitFor(() => expect(result.current.rows).not.toBeNull());
+  rerender({ o: one });
+  expect(result.current.rows).toEqual([{ a: 1, b: 2 }]);
+  await act(async () => { await Promise.resolve(); });
+  expect(traverseData).toHaveBeenCalledTimes(1);
+  // Another mart is never answered from it.
+  const other = renderHook(() => useChartQuery('n', one, 0), { wrapper });
+  await waitFor(() => expect(other.result.current.rows).not.toBeNull());
+  expect(traverseData).toHaveBeenCalledTimes(2);
+});

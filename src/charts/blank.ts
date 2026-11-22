@@ -5,8 +5,8 @@ export const BLANK_KEY = '\u0000blank';
 export const OTHER_KEY = '\u0000other';
 /** What the blank category reads as. */
 export const BLANK_LABEL = '(blank)';
-/** The blank category's colour in a stack or a pie: neutral, so the series colours of real values do not shift. */
-export const BLANK_COLOR = 'var(--muted-foreground)';
+/** The blank category's colour in a stack or a pie: a light grey (see charts.css), so the series colours of real values do not shift. */
+export const BLANK_COLOR = 'var(--dm-blank)';
 
 /** A returned value as a category key: null (or missing) is the blank key, anything else its text. */
 export const keyOf = (v: unknown): string => (v === null || v === undefined ? BLANK_KEY : String(v));

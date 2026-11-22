@@ -40,12 +40,14 @@ test('the x on one Countries group leaves the other', async () => {
   expect(titles()).toEqual(['Orders', 'Customers', 'Countries']);
 });
 
-test('the x on Customers takes customers.countries with it and keeps stores.countries', async () => {
+test('the x on Customers takes only its own columns: the Countries behind it keep theirs and stay joined through it', async () => {
   await setup(both);
   remove('Customers');
-  await waitFor(() => expect(paths()).toEqual(['', 'stores.countries']));
-  expect(titles()).toEqual(['Orders', 'Countries']);
-  expect(probe.state.grids.orders!.columns).not.toContain('customers__countries__name');
+  await waitFor(() => expect(paths()).toEqual(['', 'customers.countries', 'stores.countries']));
+  expect(titles()).toEqual(['Orders', 'Countries (customers.countries)', 'Countries (stores.countries)']);
+  const cols = probe.state.grids.orders!.columns;
+  expect(cols).toContain('customers__countries__name');
+  expect(cols).not.toContain('customers__name');
 });
 
 test('ticking a field on one Countries group keeps two Countries groups, with the field in its own group', async () => {
