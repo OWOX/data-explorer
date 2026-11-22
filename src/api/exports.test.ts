@@ -31,6 +31,12 @@ describe('buildReportPayload', () => {
     ]);
   });
 
+  test('the grid\'s Unique Count paths are sent as uniqueCountConfig, null when there are none', () => {
+    expect(buildReportPayload(schema, ['id'], [], [], undefined, [], ['', 'customers']).payload.uniqueCountConfig).toEqual(['', 'customers']);
+    expect(buildReportPayload(schema, ['id'], [], [], undefined, [], []).payload.uniqueCountConfig).toBeNull();
+    expect(buildReportPayload(schema, ['id'], [], []).payload.uniqueCountConfig).toBeNull();
+  });
+
   test('joined columns are exported like any shown column: columnConfig, filterConfig, sortConfig and the opt-out, by blended name', () => {
     const joined = f('customers__email', 'STRING', 'string', { alias: 'email', joined: { martId: 'customers', label: 'Customers', aliasPath: 'customers' } });
     const withJoined: Schema = [...schema, joined, f('products__price', 'NUMERIC', 'number', { joined: { martId: 'products', label: 'Products', aliasPath: 'products' } })];
@@ -40,6 +46,7 @@ describe('buildReportPayload', () => {
       filterConfig: [{ column: 'customers__email', operator: 'contains', value: 'example' }, { column: 'products__price', operator: 'gt', value: 10 }],
       sortConfig: [{ column: 'customers__email', direction: 'asc' }],
       autoAggregationOptOut: ['id', 'customers__email', 'products__price'],
+      uniqueCountConfig: null,
     });
   });
 
@@ -85,7 +92,7 @@ const live = (id: string, over: object = {}) => ({ id, title: `T-${id}`, dataDes
 const notFound = () => Object.assign(new Error('Report not found'), { payload: { code: 'HTTP_ERROR', status: 404 } });
 
 const dest = { id: 'd1', title: 'Team Sheets', type: 'GOOGLE_SHEETS' };
-const payload: ReportPayload = { columnConfig: ['id'], filterConfig: null, sortConfig: null, autoAggregationOptOut: ['id'] };
+const payload: ReportPayload = { columnConfig: ['id'], filterConfig: null, sortConfig: null, autoAggregationOptOut: ['id'], uniqueCountConfig: null };
 
 /** A ctx whose reports run for `runs` polls before they finish with `final`. */
 function exportCtx(final: { status: string; error?: string } = { status: 'SUCCESS' }, runs = 1, stored: StoredReport[] = []) {
@@ -355,6 +362,18 @@ describe('exporter', () => {
       if (grouped) expect(body).toMatchObject({ ...rules, limitConfig: null, uniqueCountConfig: null });
       else expect(body).toMatchObject({ aggregationConfig: null, dateTruncConfig: null, limitConfig: null, uniqueCountConfig: null });
     }
+  });
+
+  test('the PUT carries the grid\'s Unique Count paths as uniqueCountConfig', async () => {
+    const { ctx } = exportCtx({ status: 'SUCCESS' }, 1, [{ reportId: 'r1' }]);
+    const ex = createExporter(ctx);
+    vi.useFakeTimers();
+    try {
+      const p = ex.run({ martId: 'orders', destination: dest, title: 'Old', source: { kind: 'update', report: { reportId: 'r1', destinationId: 'd1', spreadsheetId: 'sheet1', sheetId: 7, title: 'Old' } }, payload: { ...payload, uniqueCountConfig: ['', 'customers'] } });
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+      await p;
+    } finally { vi.useRealTimers(); }
+    expect((ctx.owox.putJson as ReturnType<typeof vi.fn>).mock.calls[0]![1]).toMatchObject({ uniqueCountConfig: ['', 'customers'] });
   });
 
   test('a report another tab stored since the first read survives a local change', async () => {

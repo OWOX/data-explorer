@@ -633,7 +633,7 @@ test('the Fields picker is on each tab and lists only that mart; the toolbar has
   await data.getByRole('button', { name: 'Fields of Customers' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText(/^Fields · /)).toHaveCount(0);
-  await expect(dialog.getByRole('option')).toHaveCount(5);
+  await expect(dialog.getByRole('option')).toHaveCount(6);
   await expect(dialog.getByLabel('email', { exact: true })).toBeVisible();
   await expect(dialog.getByLabel('status', { exact: true })).toHaveCount(0);
 });

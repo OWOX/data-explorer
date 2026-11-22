@@ -43,6 +43,8 @@ export type ColumnMenuEnv = {
   move: (field: string, dir: -1 | 1) => void;
   /** The warehouse type the column shows, after any aggregation function. */
   typeOf: (field: Field, output: Output) => string;
+  /** Takes a data mart's Unique Count column off the grid (by the mart's alias path). */
+  removeUnique?: (path: string) => void;
   /** False in Charts mode: no sort row and no sort mark. Absent means true. */
   sortable?: boolean;
   /** The read behind a text input's suggested values (a Filter or a Slice on this column), or null when none can be made. */
@@ -145,21 +147,26 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
   const canSort = output.sortable && env.sortable !== false;
   const on: Record<SubKey, boolean> = { filter: !!env.filters[field.name], slice: !!env.slices[field.name], aggregate: aggOn(env.draftOf(field.name)), format: formatActive(env, field, output, type), sort: canSort && !!dir };
   const glyph: Record<SubKey, ReactNode> = { filter: <Funnel />, slice: <Layers />, aggregate: <Sigma />, format: <Hash />, sort: <ArrowUpDown /> };
+  // A data mart's Unique Count is read-only: it takes no filter, no function and no format, and it is not a field that can move or hide.
+  const metric = output.unique !== undefined;
   const rowFor = (k: SubKey, label: string, haspopup: 'menu' | 'dialog') => (
     <Row key={k} label={label} icon={glyph[k]} active={on[k]} sub haspopup={haspopup} expanded={sub?.key === k} rowRef={ref(k)} onActivate={(r) => open(k, r, true)} onOpen={(r) => open(k, r, true)} onHover={(r) => hoverRow(k, r)} onLeaveRow={leaveRow} />
   );
   return (
     <>
       <Panel anchor={anchor} mode="below" role="menu" label={`Menu of ${title}`} onEscape={() => (sub ? closeSub() : onClose())} onTab={() => onClose()} onPlaced={placeDone} focusSeq={rootSeq} className="dm-menu-root">
-        {rowFor('filter', 'Filter', 'dialog')}
-        {field.joined && rowFor('slice', 'Slice', 'dialog')}
-        {aggregable && rowFor('aggregate', 'Aggregate', 'dialog')}
-        {formats.length > 0 && rowFor('format', 'Format', 'menu')}
+        {!metric && rowFor('filter', 'Filter', 'dialog')}
+        {!metric && field.joined && rowFor('slice', 'Slice', 'dialog')}
+        {!metric && aggregable && rowFor('aggregate', 'Aggregate', 'dialog')}
+        {!metric && formats.length > 0 && rowFor('format', 'Format', 'menu')}
         {canSort && rowFor('sort', 'Sort', 'menu')}
+        {canSort && metric && <Divider />}
+        {metric ? <Row label="Remove Unique Count" icon={<EyeOff />} onActivate={() => { env.removeUnique?.(output.unique!); onClose(false); }} onHover={hoverOther} onLeaveRow={leaveRow} /> : (<>
         <Divider />
         <Row label="Move left" icon={<ArrowLeft />} disabled={!env.canMove(field.name, -1)} onActivate={() => moveBy(-1)} onHover={hoverOther} onLeaveRow={leaveRow} />
         <Row label="Move right" icon={<ArrowRight />} disabled={!env.canMove(field.name, 1)} onActivate={() => moveBy(1)} onHover={hoverOther} onLeaveRow={leaveRow} />
         <Row label="Hide column" icon={<EyeOff />} disabled={!env.canHide(field.name)} onActivate={hide} onHover={hoverOther} onLeaveRow={leaveRow} />
+        </>)}
       </Panel>
       {placed && sub?.key === 'filter' && (
         <EditorPanel row={sub.row} seq={sub.seq} label={`Filter of ${title}`} onEscape={closeSub}>

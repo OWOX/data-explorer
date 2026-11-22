@@ -3,6 +3,7 @@
 // per column, for additive measures only (pieMeasures). Its column totals still come from their own reads, so node sizes stay exact.
 import { aggregatedKey, allowedFunctions, isTimeZone, zonesBuckets, type AggFn, type DateBucket } from '../model/aggregation';
 import type { Field } from '../model/types';
+import { uniqueKey } from '../model/unique-count';
 import type { TraverseFilter, TraverseOptions } from '../sdk/types';
 import type { ChartMart, Metric } from './fields';
 
@@ -13,7 +14,7 @@ export type Measure = { kind: 'metric'; metric: Metric } | { kind: 'records'; al
 
 export const metricKey = (m: Metric): string => aggregatedKey(m.field.name, m.fn);
 /** The row key of a mart's unique count (the backend's contract: each dot of the alias path becomes `_`). */
-export const uniqueKey = (aliasPath: string): string => (aliasPath === '' ? 'Unique Count' : `${aliasPath.replaceAll('.', '_')}__unique_count`);
+export { uniqueKey };
 export const measureKey = (m: Measure): string => (m.kind === 'metric' ? metricKey(m.metric) : uniqueKey(m.aliasPath));
 export const rangeKeys = (date: Field): { min: string; max: string } => ({ min: aggregatedKey(date.name, 'MIN'), max: aggregatedKey(date.name, 'MAX') });
 

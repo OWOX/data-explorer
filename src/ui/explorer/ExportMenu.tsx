@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import { buildReportPayload, exportTitle, sheetUrl, type ExportSource } from '../../api/exports';
 import type { ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
+import { uniqueKey } from '../../model/unique-count';
 import type { Edge, Schema } from '../../model/types';
 import type { JoinedSource } from '../../api/blendable';
 import { buildMartSql } from '../../datamart/build-sql';
@@ -30,7 +31,7 @@ import { copyText } from './clipboard';
 import type { GridRun } from './useMartRows';
 import { useOutsidePress } from '../outsidePress';
 
-type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; filters: ColumnFilter[]; /** Pre-join filters on joined fields. */ slices?: ColumnFilter[]; sorts: SortKey[]; /** Only the sorts the member set; Create Data Mart never adds the grid's implicit order. */ ownSorts?: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun;
+type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; /** The alias paths whose data mart's Unique Count is a column of the grid. */ uniqueCount?: string[]; filters: ColumnFilter[]; /** Pre-join filters on joined fields. */ slices?: ColumnFilter[]; sorts: SortKey[]; /** Only the sorts the member set; Create Data Mart never adds the grid's implicit order. */ ownSorts?: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun;
   /** The main mart's storage, for Create Data Mart. */ storage?: { id: string; type: string; title?: string };
   /** Reading the main mart's joined sources failed. */ joinsFailed?: boolean;
   /** The joined data marts the grid selects, as the Data Marts band shows them. */ joinedMarts?: { id: string; title: string }[];
@@ -99,6 +100,7 @@ export function ExportMenu(p: Props) {
     : sqlHave && 'reason' in sqlHave.result && sqlHave.opening === opening ? sqlHave.result.reason
     : 'Reading the SQL from OWOX…';
   // Create Data Mart: why it is off, else the SQL of each variant (grouping on or off, sorting on or off), built from the props as they are now.
+  const metricKeys = useMemo(() => new Set((p.uniqueCount ?? []).map(uniqueKey)), [p.uniqueCount]);
   const martSql = useMemo((): { reason: string } | { variants: MartVariants; grouped: boolean } => {
     if (!p.storage) return { reason: "The data mart's storage isn't available to you" };
     if (!p.sources) return { reason: p.joinsFailed ? "The data mart's joins couldn't be read" : "Loading the data mart's joins…" };
@@ -107,7 +109,8 @@ export function ExportMenu(p: Props) {
     const base = { dialect: d.dialect, main: { id: p.martId, title: p.martTitle }, schema: p.schema, visible: p.visible, filters: p.filters, ...(p.slices ? { slices: p.slices } : {}), sources: p.sources, edges: p.edges ?? [], titles: p.titles ?? new Map() };
     const kept = p.aggregation && keepVisible(p.aggregation, p.visible);
     const grouped = isGrouped(kept);
-    const own = p.ownSorts ?? [];
+    // Create Data Mart reads fields: a sort on a Unique Count column has nothing to sort.
+    const own = (p.ownSorts ?? []).filter((x) => !metricKeys.has(x.field));
     const variant = (grouping: boolean): MartVariant => {
       // A sort on an aggregated output has no meaning on raw rows.
       const aggregated = new Set(kept?.aggregations.map((r) => r.column));
@@ -120,7 +123,7 @@ export function ExportMenu(p: Props) {
     const off = variant(false);
     if ('reason' in off.plain) return off.plain;
     return { variants: { off, on: grouped ? variant(true) : off }, grouped };
-  }, [p.storage, p.sources, p.joinsFailed, p.edges, p.titles, p.martId, p.martTitle, p.schema, p.visible, p.aggregation, p.filters, p.slices, p.ownSorts]);
+  }, [p.storage, p.sources, p.joinsFailed, p.edges, p.titles, p.martId, p.martTitle, p.schema, p.visible, p.aggregation, p.filters, p.slices, p.ownSorts, metricKeys]);
   const [martDialog, setMartDialog] = useState<{ variants: MartVariants; grouped: boolean; having: boolean; joinedMarts: { id: string; title: string }[]; storage: { id: string; type: string; title?: string }; seq: number } | null>(null);
   const menu = useRef<HTMLDetailsElement>(null);
 
@@ -152,7 +155,7 @@ export function ExportMenu(p: Props) {
     // A spreadsheet an earlier attempt made and left unused is reused, also after the menu was remounted.
     const left = exporter.made(p.martId, destination.id);
     const source: ExportSource = wanted.kind === 'new' && left ? { kind: 'existing', target: left } : wanted;
-    const { payload, notes } = buildReportPayload(p.schema, p.visible, p.filters, p.sorts, p.aggregation, p.slices);
+    const { payload, notes } = buildReportPayload(p.schema, p.visible, p.filters, p.sorts, p.aggregation, p.slices, p.uniqueCount);
     setResult(null);
     setCopy(null);
     if (source.kind === 'update' && !sheetUrl(source.report)) { setResult({ kind: 'error', text: UNRECOGNISED }); return; }
@@ -173,7 +176,7 @@ export function ExportMenu(p: Props) {
   }
 
   function copyPrompt(assistant: Assistant) {
-    const prompt = buildAiPrompt({ projectId: ctx.projectId, martId: p.martId, martTitle: p.martTitle, schema: p.schema, visible: p.visible, aggregation: p.aggregation, filters: p.filters, slices: p.slices, sorts: p.sorts });
+    const prompt = buildAiPrompt({ projectId: ctx.projectId, martId: p.martId, martTitle: p.martTitle, schema: p.schema, visible: p.visible, aggregation: p.aggregation, filters: p.filters, slices: p.slices, sorts: p.sorts.filter((x) => !metricKeys.has(x.field)) });
     return copyOut(prompt, (ok) => ({
       message: ok ? `Prompt copied. Paste it into ${assistant}` : `Could not copy. Copy the prompt, then paste it into ${assistant}`,
       show: 'Show prompt', showWhenOk: true,
@@ -185,7 +188,7 @@ export function ExportMenu(p: Props) {
   function copyData() {
     if (!p.rows?.length || p.loading) { closeMenu(); return; }
     const fields = p.visible.flatMap((name) => p.schema.find((f) => f.name === name) ?? []);
-    const tsv = buildTsv(tsvColumns(fields, p.aggregation), p.rows);
+    const tsv = buildTsv(tsvColumns(fields, p.aggregation, p.uniqueCount), p.rows);
     const count = `${p.rows.length} ${p.rows.length === 1 ? 'row' : 'rows'}`;
     return copyOut(tsv, (ok) => ({
       message: !ok ? 'Could not copy. Copy the data by hand' : p.hasMore ? `Copied the first ${count}. Load more to copy more.` : `Copied ${count}`,

@@ -113,3 +113,10 @@ test('a grouped grid is copied as shown: one column per function with the mart p
   const tsv = build(tsvColumns(fields, agg), [{ status: 'paid', 'amount | SUM': 40, 'amount | COUNTUNIQUE': 2, created_at: '2026-11-01', 'customers__city | STRINGAGG': 'Kyiv, Lviv' }]);
   expect(tsv).toBe('status\tamount · Sum\tamount · Count Unique\tcreated_at\tCustomers · city · Combined\npaid\t40\t2\tNov 2026\tKyiv, Lviv');
 });
+
+test('a data mart\'s Unique Count is a column after that mart\'s own columns, headed "Unique Count", counted as a number', () => {
+  const fields = [f('status'), f('customers__city', { joined: { martId: 'c', label: 'Customers', aliasPath: 'customers' }, alias: 'city' })];
+  const columns = tsvColumns(fields, undefined, ['', 'customers']);
+  expect(columns.map((c) => c.key)).toEqual(['status', 'Unique Count', 'customers__city', 'customers__unique_count']);
+  expect(build(columns, [{ status: 'paid', 'Unique Count': 1234, customers__city: 'Kyiv', customers__unique_count: 5 }])).toBe('status\tUnique Count\tCustomers · city\tCustomers · Unique Count\npaid\t1234\tKyiv\t5');
+});

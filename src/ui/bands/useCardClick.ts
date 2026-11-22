@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import type { JoinedSource } from '../../api/blendable';
+import { withJoined, type JoinedSource } from '../../api/blendable';
 import type { Picks } from '../../api/grid-columns';
 import { PAGE_SIZE } from '../../config';
 import { joinedMartIds, ownNamesIn, planAddAt, planClick, planMakeMain, planRejoin, withoutPaths } from '../../state/join-plan';
@@ -69,7 +69,7 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
         // The mart opens with the view the member last left it with, pruned to the fields it offers now (a session grid, held above, wins).
         const view = await columnStore.loadView(martId);
         const opened: GridState = { filters: {}, sorts: null, limit: PAGE_SIZE, ...aggFields, ...view, ...have, columns };
-        grids.set(martId, view && !failed ? pruneGrid(opened, [...own, ...joined.flatMap((s) => s.fields)]).grid ?? opened : opened);
+        grids.set(martId, view && !failed ? pruneGrid(opened, withJoined(own, joined)).grid ?? opened : opened);
       }
       picks.set(martId, await columnStore.loadPicks(martId));
       await columnStore.loadLastShown(martId);

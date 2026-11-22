@@ -17,7 +17,10 @@ export type DateTruncRule = { column: string; unit: DateBucket; timeZone?: strin
 export type Aggregation = { aggregations: AggregationRule[]; dateTrunc: DateTruncRule[] };
 export const NO_AGGREGATION: Aggregation = { aggregations: [], dateTrunc: [] };
 
-export const isGrouped = (a: Aggregation | undefined): boolean => !!a && (a.aggregations.length > 0 || a.dateTrunc.length > 0);
+/** What groups the grid's rows: the aggregation, and the alias paths whose Unique Count is on (it counts per group, so it groups like a function). */
+export type Grouping = Aggregation & { uniqueCount?: readonly string[] };
+
+export const isGrouped = (a: Grouping | undefined): boolean => !!a && (a.aggregations.length > 0 || a.dateTrunc.length > 0 || !!a.uniqueCount?.length);
 
 /** Title Case label per function (mirror of the backend REPORT_AGGREGATE_FUNCTION_LABELS). */
 export const AGG_LABELS: Record<AggFn, string> = {
@@ -112,7 +115,7 @@ export function sanitizeAggregation(a: Aggregation, fields: readonly Field[]): A
 }
 
 /** A shown column the grouped query cannot carry: an array, JSON, struct or geography field, or a calculated one, with no rule of its own. It would become a GROUP BY key. */
-export function ungroupableColumn(fields: readonly Field[], a: Aggregation): Field | null {
+export function ungroupableColumn(fields: readonly Field[], a: Grouping): Field | null {
   if (!isGrouped(a)) return null;
   return fields.find((f) => f.category === 'other' && !a.aggregations.some((r) => r.column === f.name) && !a.dateTrunc.some((r) => r.column === f.name)) ?? null;
 }
@@ -133,6 +136,8 @@ export type Output = {
   column: string;
   fn?: AggFn;
   bucket?: DateBucket;
+  /** A data mart's Unique Count: the mart's alias path ('' is the main mart). `key` is its row key and `column` the same, as it names no field. */
+  unique?: string;
   /** Whether the output can be sorted: a group key, or the first function of an aggregated column (the backend sorts that alias). */
   sortable: boolean;
 };

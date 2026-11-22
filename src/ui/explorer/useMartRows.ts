@@ -2,27 +2,30 @@ import { useEffect, useRef, useState } from 'react';
 import { readRows } from '../../api/rows';
 import { toTraverseFilters, type ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
-import { isGrouped, type Aggregation } from '../../model/aggregation';
+import { isGrouped, type Grouping } from '../../model/aggregation';
 import type { Schema } from '../../model/types';
+import { uniqueKey } from '../../model/unique-count';
 import type { Row, TraverseOptions } from '../../sdk/types';
 import { useServices } from '../../state/store';
 
 /**
- * Grouped (a function or a bucket on a visible column): exactly the visible columns, in schema order (a column move must not change the query), each function its own output;
+ * Grouped (a function or a bucket on a visible column, or a data mart's Unique Count): exactly the visible columns, in schema order (a column move must not change the query), each function its own output;
  * every column without a rule is a group key. Primary keys are not added and no key tie-breaker sorts are, since a key would split the groups.
  */
-function buildGroupedQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, sorts: SortKey[], agg: Aggregation, slices: ColumnFilter[]): TraverseOptions {
+function buildGroupedQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, sorts: SortKey[], agg: Grouping, slices: ColumnFilter[]): TraverseOptions {
   const shown = new Set(visible);
   const column = schema.map((f) => f.name).filter((n) => shown.has(n));
   const aggregations = agg.aggregations.filter((r) => column.includes(r.column));
   // A HAVING filter is sent only with its aggregation, which the converter checks against the rules this query carries.
   const filter = toTraverseFilters(schema, filters, slices, aggregations);
   const dateTrunc = agg.dateTrunc.filter((r) => column.includes(r.column));
-  const sort = sorts.filter((s) => column.includes(s.field)).map((s) => ({ column: s.field, direction: s.direction }));
-  return { column, ...(filter.length ? { filter } : {}), ...(aggregations.length ? { aggregation: aggregations } : {}), ...(dateTrunc.length ? { dateTrunc } : {}), ...(sort.length ? { sort } : {}), limit: limit + 1 };
+  const uniqueKeys = (agg.uniqueCount ?? []).map(uniqueKey);
+  const sort = sorts.filter((s) => column.includes(s.field) || uniqueKeys.includes(s.field)).map((s) => ({ column: s.field, direction: s.direction }));
+  const uniqueCount = agg.uniqueCount ?? [];
+  return { column, ...(filter.length ? { filter } : {}), ...(aggregations.length ? { aggregation: aggregations } : {}), ...(dateTrunc.length ? { dateTrunc } : {}), ...(uniqueCount.length ? { uniqueCount: [...uniqueCount] } : {}), ...(sort.length ? { sort } : {}), limit: limit + 1 };
 }
 
-export function buildRowQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, sorts: SortKey[] = [], agg?: Aggregation, slices: ColumnFilter[] = []): TraverseOptions {
+export function buildRowQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, sorts: SortKey[] = [], agg?: Grouping, slices: ColumnFilter[] = []): TraverseOptions {
   if (isGrouped(agg)) return buildGroupedQuery(schema, visible, filters, limit, sorts, agg!, slices);
   const need = new Set(visible);
   schema.filter((f) => f.isPrimaryKey).forEach((f) => need.add(f.name));
@@ -42,7 +45,7 @@ export type GridRun = { state: 'none' } | { state: 'paused' } | { state: 'runnin
 
 type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null; shape: string; runId: string | null; errorRunId: string | null };
 /** What the rows are rows of: plain rows, or groups over these columns and rules. Rows of one shape never stand in for another's. */
-const shapeOf = (o: TraverseOptions | null): string => (o?.aggregation?.length || o?.dateTrunc?.length ? JSON.stringify([o.column, o.aggregation, o.dateTrunc]) : 'plain');
+const shapeOf = (o: TraverseOptions | null): string => (o?.aggregation?.length || o?.dateTrunc?.length || o?.uniqueCount?.length ? JSON.stringify([o.column, o.aggregation, o.dateTrunc, o.uniqueCount]) : 'plain');
 type Query = { dataKey: string; columns: string[]; key: string };
 
 /** `paused` keeps the key (and the rows) but reads nothing; what was read for a key is not read again when the pause ends. */
@@ -54,7 +57,7 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
   // already hold them, so the query identity stays and nothing is fetched; a column that was never loaded re-reads.
   const columns = options?.column;
   // A grouped query is the exception: every column without a rule is a group key, so fewer columns are different rows, not a subset of them.
-  const grouped = !!(options?.aggregation?.length || options?.dateTrunc?.length);
+  const grouped = !!(options?.aggregation?.length || options?.dateTrunc?.length || options?.uniqueCount?.length);
   const dataKey = `${martId}:${version}:${JSON.stringify({ ...options, column: grouped ? options?.column : undefined })}`;
   const [query, setQuery] = useState<Query>({ dataKey, columns: columns ?? [], key: `${dataKey}:${(columns ?? []).join(',')}` });
   if (query.dataKey !== dataKey || !(columns ?? []).every((c) => query.columns.includes(c))) {

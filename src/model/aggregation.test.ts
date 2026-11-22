@@ -55,6 +55,12 @@ test('applying a draft rewrites that column\'s rules and keeps the others in pla
   expect(draftOf('b', a)).toEqual({ functions: ['MIN'], bucket: null, timeZone: null });
 });
 
+test('a Unique Count groups the rows like a function does', () => {
+  expect(isGrouped({ ...NO_AGGREGATION, uniqueCount: [''] })).toBe(true);
+  expect(isGrouped({ ...NO_AGGREGATION, uniqueCount: [] })).toBe(false);
+  expect(isGrouped({ aggregations: [], dateTrunc: [] })).toBe(false);
+});
+
 test('a grid is grouped as soon as one column has a function or a bucket; rules of hidden columns are dropped', () => {
   expect(isGrouped(NO_AGGREGATION)).toBe(false);
   expect(isGrouped(undefined)).toBe(false);
