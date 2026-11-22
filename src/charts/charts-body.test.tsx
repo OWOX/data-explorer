@@ -8,6 +8,7 @@ import { demoFixtures } from '../sdk/mock/fixtures';
 import type { Ctx, Row, TraverseOptions } from '../sdk/types';
 import { AppServices, StoreProvider } from '../state/store';
 import { App } from '../ui/App';
+import { SAVED_COLUMNS_WAIT_MS } from '../ui/explorer/MartGrid';
 import { openColumnMenu, openSubmenu } from '../ui/explorer/menu-test-utils';
 import type { ChartSettings } from './settings';
 
@@ -36,6 +37,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
   return { queries, puts, gridPuts, seeded, view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
 }
 
+const lastGrid = (t: { gridPuts: { mock: { calls: unknown[][] } } }) => t.gridPuts.mock.calls.at(-1)![1] as { columns: string[]; aggregations?: { column: string; function: string }[] };
 const data = () => document.getElementById('band-data')!;
 const radio = (name: string) => within(data()).getByRole('radio', { name });
 const group = (id: string) => data().querySelector<HTMLElement>(`td[data-chart-group="${id}"]`);
@@ -128,9 +130,9 @@ test('a filter set from a column header changes the chart queries', async () => 
   await waitFor(() => expect(t.queries.at(-1)!.filter).toEqual(expect.arrayContaining([expect.objectContaining({ column: 'status' })])));
 });
 
-test('Table, Charts, Table reads the grid rows once and writes no columns', async () => {
-  // Toggling Table/Charts is saved with the member's view after SAVE_DEBOUNCE_MS: that write lands whenever the runner gets to it, so wait for it and judge what it holds.
-  // The columns it carries must be the ones already saved (no prune, no default fallback); a fast machine used to finish before the write landed and never saw it.
+test('Table, Charts, Table reads the grid rows once and writes the saved columns back unchanged', async () => {
+  // Toggling Table/Charts saves the member's view after SAVE_DEBOUNCE_MS, a write of the whole doc: wait for that write, then give a late bad one (the
+  // saved-columns fallback fires at SAVED_COLUMNS_WAIT_MS, a prune at a hide) time to land. Every write must carry the saved columns and no picks.
   const t = await charts();
   await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
   await userEvent.click(radio('Table'));
@@ -138,7 +140,8 @@ test('Table, Charts, Table reads the grid rows once and writes no columns', asyn
   await new Promise((r) => setTimeout(r, 100));
   // The grid's own query is the only one with a page limit of 201 (200 + 1).
   expect(t.queries.filter((q) => q.limit === 201)).toHaveLength(1);
-  await waitFor(() => expect(t.gridPuts).toHaveBeenCalled(), { timeout: 5000 });
+  await waitFor(() => expect(t.gridPuts.mock.calls.some(([, d]) => 'gridView' in d)).toBe(true), { timeout: 5000 });
+  await new Promise((r) => setTimeout(r, SAVED_COLUMNS_WAIT_MS + 200));
   for (const [, doc] of t.gridPuts.mock.calls) expect(doc).toEqual(expect.objectContaining({ columns: COLUMNS }));
   expect(t.gridPuts.mock.calls.every(([, doc]) => !('picks' in doc))).toBe(true);
 });
@@ -696,8 +699,7 @@ test('choosing a field that is not a shown column adds the column to the grid an
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Orders' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Net Revenue · Sum' }));
-  await waitFor(() => expect(t.gridPuts).toHaveBeenCalled());
-  expect(t.gridPuts.mock.calls.at(-1)![1].columns).toContain('net_revenue');
+  await waitFor(() => expect(lastGrid(t).columns).toContain('net_revenue'));
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'net_revenue' }, { id: 'pie', kind: 'pie' }] });
   await waitFor(() => expect(screen.getByRole('heading', { name: /^Net Revenue · Sum by / })).toBeInTheDocument());
 });
@@ -708,20 +710,17 @@ test('a card’s Metric pick of a hidden column shows the column once, with no e
   await userEvent.click(within(group('orders')!).getByRole('button', { name: 'Amount · Sum options' }));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Net Revenue · Sum' }));
-  await waitFor(() => expect(t.gridPuts).toHaveBeenCalled());
-  expect(t.gridPuts.mock.calls.at(-1)![1].columns).toContain('net_revenue');
+  await waitFor(() => expect(lastGrid(t).columns).toContain('net_revenue'));
   await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Net Revenue · Sum']));
 });
 
-const lastGrid = (t: { gridPuts: { mock: { calls: unknown[][] } } }) => t.gridPuts.mock.calls.at(-1)![1] as { columns: string[]; aggregations?: { column: string; function: string }[] };
 
 test('in a grouped grid a metric shown by a chart choice gets an aggregation rule in the same edit', async () => {
   const t = await charts({ columns: ['status', 'amount', 'created_at'], aggregations: [{ column: 'amount', function: 'SUM' }] });
   await userEvent.click(panel('Time series'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Net Revenue · Sum' }));
-  await waitFor(() => expect(t.gridPuts).toHaveBeenCalled());
-  expect(lastGrid(t).columns).toContain('net_revenue');
+  await waitFor(() => expect(lastGrid(t).columns).toContain('net_revenue'));
   expect(lastGrid(t).aggregations).toEqual([{ column: 'amount', function: 'SUM' }, { column: 'net_revenue', function: 'SUM' }]);
 });
 
@@ -731,8 +730,7 @@ test('Stack by a hidden dimension shows the column', async () => {
   await userEvent.click(panel('Time series'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Stack by' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'is_gift' }));
-  await waitFor(() => expect(t.gridPuts).toHaveBeenCalled());
-  expect(lastGrid(t).columns).toContain('is_gift');
+  await waitFor(() => expect(lastGrid(t).columns).toContain('is_gift'));
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', stack: 'is_gift' }, { id: 'pie', kind: 'pie' }] });
 });
 
@@ -742,7 +740,6 @@ test('a hidden field of a joined mart is shown when a chart picks it', async () 
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Products' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Name' }));
-  await waitFor(() => expect(t.gridPuts).toHaveBeenCalled());
-  expect(lastGrid(t).columns).toContain('products__title');
+  await waitFor(() => expect(lastGrid(t).columns).toContain('products__title'));
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', dimension: 'products__title' }] });
 });

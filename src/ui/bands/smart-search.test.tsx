@@ -103,9 +103,22 @@ describe('the search box', () => {
     await search('customers');
     await waitFor(() => expect(headings()).toBe('Customers'));
     expect(screen.getByRole('combobox', { name: 'Search data marts' })).toHaveValue('customers');
+    // The band alone cannot tell an applied search from a cleared one (both settle on the main mart and what it can join), so the search state is read from the view link.
+    const copied = async () => {
+      window.__copiedLink = undefined;
+      await userEvent.click(screen.getByRole('button', { name: /copy link/i }));
+      await waitFor(() => expect(window.__copiedLink).toBeDefined());
+      return (await decodeViewLink(window.__copiedLink!)) as { search?: string; found?: string[] };
+    };
+    const applied = await copied();
+    expect(applied.search).toBe('customers');
+    expect(applied.found).toContain('customers');
     await userEvent.click(screen.getByRole('button', { name: 'Clear search' }));
     expect(screen.getByRole('combobox', { name: 'Search data marts' })).toHaveValue('');
-    // The band shows the main mart (Customers, picked by the search) and what it can join again. Orders joins Customers the other way round (many to one), so it
+    const cleared = await copied();
+    expect(cleared.search ?? '').toBe('');
+    expect(cleared.found ?? []).toEqual([]);
+    // The band shows the main mart (Customers, picked by the search) and what it can join. Orders joins Customers the other way round (many to one), so it
     // is listed only while the join sources are still loading (every neighbour then); waiting for it raced that read, and a slow runner missed the window.
     await waitFor(() => expect(cardTitles()).toEqual(['Customers', 'Countries']));
     expect(within(marts()).queryByText('No data marts match.')).toBeNull();
