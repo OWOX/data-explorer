@@ -37,7 +37,15 @@ export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (pat
     };
     // The whole scroll box counts as the canvas, so the margin around the tree is not a dead zone.
     const over = (e: PointerEvent) => e.target instanceof Node && scrollBoxOf(el).contains(e.target);
-    const end = () => { press = null; dragging = false; setDrag(null); };
+    // The move work (a re-render) runs once per animation frame, with the latest pointer.
+    let frame = 0;
+    let latestMove: PointerEvent | null = null;
+    const end = () => { cancelAnimationFrame(frame); frame = 0; latestMove = null; press = null; dragging = false; setDrag(null); };
+    const flush = () => {
+      frame = 0;
+      const e = latestMove;
+      if (e && press) setDrag({ path: press.path, ...local(e), clientX: e.clientX, clientY: e.clientY, inside: over(e) });
+    };
     const down = (e: PointerEvent) => {
       cancelled = false;
       if (e.button !== 0) return;
@@ -57,7 +65,8 @@ export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (pat
       if (!dragging && Math.hypot(e.clientX - press.x, e.clientY - press.y) < START_PX) return;
       dragging = true;
       e.preventDefault();
-      setDrag({ path: press.path, ...local(e), clientX: e.clientX, clientY: e.clientY, inside: over(e) });
+      latestMove = e;
+      frame ||= requestAnimationFrame(flush);
     };
     const up = (e: PointerEvent) => {
       if (cancelled) { cancelled = false; swallowNextClick(); return; }
@@ -78,6 +87,7 @@ export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (pat
     window.addEventListener('pointercancel', cancel);
     document.addEventListener('keydown', key);
     return () => {
+      cancelAnimationFrame(frame);
       setDrag(null);
       el.removeEventListener('pointerdown', down);
       window.removeEventListener('pointermove', move);

@@ -166,8 +166,6 @@ export function useWires(
   layerId = 'wires',
   /** The canvas is drawn with a CSS scale: measured client boxes are divided by it to get the canvas's own pixels. */
   scale = 1,
-  /** `held`: the id of a card in hand, its lines dim. */
-  marks: { held?: string | null } = {},
 ) {
   /** The drawn lines, kept across a selection change: building belongs to the cards, lighting to the selection. */
   const drawn = useRef<SVGPathElement[]>([]);
@@ -178,7 +176,6 @@ export function useWires(
   /** The paths currently carrying classes, so putting them out costs their own number (invariant 4). */
   const alight = useRef<SVGPathElement[]>([]);
   const { pinned, hovered } = selection;
-  const { held = null } = marks;
   const alsoKey = (selection.also ?? []).join('|');
 
   useEffect(() => {
@@ -303,12 +300,4 @@ export function useWires(
       lightAgain.current = () => {};
     };
   }, [canvasRef, wires, revision, pinned, hovered, alsoKey]);
-
-  // Classes only: the look is in bands.css. Redone when the lines are rebuilt.
-  useEffect(() => {
-    for (const path of drawn.current) {
-      const { from, to } = path.dataset;
-      path.classList.toggle('held', held !== null && (from === held || to === held));
-    }
-  }, [wires, revision, pinned, hovered, alsoKey, held]);
 }

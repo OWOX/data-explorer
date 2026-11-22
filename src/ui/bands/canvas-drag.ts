@@ -40,7 +40,14 @@ export function dragLinePath(from: Placed, to: Placed): string {
 }
 
 /** The same for boxes of any size (the Grid's cards are not the Graph's size). */
-export function boxLinePath(from: Box, to: Box): string {
+export function boxLinePath(from: Box, to: Box, arcOverRow = false): string {
+  // Cards in one row (the Grid): the line arcs over the cards between, higher the farther the target, so lines to neighbours do not run on top of each other.
+  if (arcOverRow && Math.abs(from.y - to.y) < 8 && to.x !== from.x) {
+    const x1 = from.x + from.w / 2;
+    const x2 = to.x + to.w / 2;
+    const h = 28 + Math.abs(x2 - x1) / 12;
+    return `M${x1} ${from.y} C${x1} ${from.y - h} ${x2} ${to.y - h} ${x2} ${to.y}`;
+  }
   const y1 = from.y + from.h / 2;
   const y2 = to.y + to.h / 2;
   // Two cards in one column: both lines bow out on the right.

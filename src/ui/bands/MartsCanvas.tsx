@@ -172,11 +172,10 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     return path === '' || !source ? undefined : pathTitle(source, [...tree.nodes.keys()], sources ?? []);
   };
   const dragTitle = drag ? model.marts.get(tree.nodes.get(drag.path)?.martId ?? '')?.title : undefined;
-  // While a card is held (also with the pointer outside the box, where a release does nothing), a line runs from it to every place it can be dropped: solid to its current parent, dashed to the others, the closest one stronger.
+  // While a card is held (also with the pointer outside the box, where a release does nothing), a line runs from it to every place it can be dropped: dashed to every target but its current parent (the tree wire to that one is already solid), the closest one stronger.
   const at = new Map(layout.placed.map((p) => [p.path, p] as const));
   const held = drag ? at.get(drag.path) : undefined;
-  const currentParent = drag ? tree.nodes.get(drag.path)?.parent : undefined;
-  const lines = held ? targets.flatMap((t) => { const to = at.get(t.target); return to ? [{ target: t.target, d: dragLinePath(held, to), current: t.target === currentParent, closest: pick?.target === t.target }] : []; }) : [];
+  const lines = held ? targets.flatMap((t) => { const to = at.get(t.target); return to && t.moves.size > 0 ? [{ target: t.target, d: dragLinePath(held, to), current: false, closest: pick?.target === t.target }] : []; }) : [];
   return (
     <div ref={sizerRef} className="dm-tree-sizer" style={{ width: layout.width * scale, height: layout.height * scale }}>
     <div

@@ -743,7 +743,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 #tree-wires path { opacity: 1; }
 /* The lines of a card in hand, in Grid and Graph alike: solid to the mart it is joined under now, dashed (as every join that can be made) to the others, the closest one stronger. */
 #drag-line { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 2; }
-.dm-canvas > #drag-line { z-index: 1; }
+.dm-canvas > #drag-line { z-index: 50; }
 #drag-line path { fill: none; stroke: var(--muted-foreground); stroke-linecap: round; stroke-width: 2; stroke-dasharray: 5 4; }
 #drag-line path.joined { stroke-dasharray: none; }
 #drag-line path.closest { stroke-width: 3; }

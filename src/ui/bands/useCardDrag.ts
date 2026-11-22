@@ -29,7 +29,17 @@ export function useCardDrag<V>(canvas: RefObject<HTMLElement | null>, titleOf: (
       setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
     };
     const over = (e: PointerEvent) => e.target instanceof Node && root.contains(e.target);
-    const end = () => { press = null; dragging = false; setDrag(null); };
+    // The move work (measuring the targets, a re-render) runs once per animation frame, with the latest pointer.
+    let frame = 0;
+    let latestMove: PointerEvent | null = null;
+    const end = () => { cancelAnimationFrame(frame); frame = 0; latestMove = null; press = null; dragging = false; setDrag(null); };
+    const flush = () => {
+      frame = 0;
+      const e = latestMove;
+      if (!e || !press) return;
+      const inside = over(e);
+      setDrag({ path: press.path, martId: press.martId, title: latest.current.titleOf(press.martId), x: e.clientX, y: e.clientY, inside, view: latest.current.measure(press.path, e.clientX, e.clientY, inside) });
+    };
     const cancel = () => { cancelled = false; end(); };
     const down = (e: PointerEvent) => {
       cancelled = false;
@@ -50,8 +60,8 @@ export function useCardDrag<V>(canvas: RefObject<HTMLElement | null>, titleOf: (
       if (!dragging && Math.hypot(e.clientX - press.x, e.clientY - press.y) < START_PX) return;
       dragging = true;
       e.preventDefault();
-      const inside = over(e);
-      setDrag({ path: press.path, martId: press.martId, title: latest.current.titleOf(press.martId), x: e.clientX, y: e.clientY, inside, view: latest.current.measure(press.path, e.clientX, e.clientY, inside) });
+      latestMove = e;
+      frame ||= requestAnimationFrame(flush);
     };
     const up = (e: PointerEvent) => {
       if (cancelled) { cancelled = false; swallowNextClick(); return; }
@@ -71,6 +81,7 @@ export function useCardDrag<V>(canvas: RefObject<HTMLElement | null>, titleOf: (
     window.addEventListener('pointercancel', cancel);
     document.addEventListener('keydown', key);
     return () => {
+      cancelAnimationFrame(frame);
       root.removeEventListener('pointerdown', down);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);

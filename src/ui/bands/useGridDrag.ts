@@ -45,6 +45,6 @@ export function measureGridDrag(root: HTMLElement | null, tree: JoinTree | null,
   return {
     held: heldEl,
     els: new Set(targets.map((t) => t.el)),
-    lines: targets.map((t) => ({ target: t.target.target, d: boxLinePath(box(from), box(t.box)), current: t.target.target === held.parent, closest: pick?.target === t.target.target })),
+    lines: targets.map((t) => ({ target: t.target.target, d: boxLinePath(box(from), box(t.box), true), current: t.target.target === held.parent, closest: pick?.target === t.target.target })),
   };
 }

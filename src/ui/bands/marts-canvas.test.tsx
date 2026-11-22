@@ -158,11 +158,11 @@ test('dragging countries from customers onto stores moves its columns to the sto
   expect(el('stores', 'stores')).not.toHaveClass('dm-faded');
   expect(el('customers', 'customers')).not.toHaveClass('dm-faded');
   expect(el('countries', 'customers.countries')).not.toHaveClass('dm-faded');
-  // A line runs to every target: solid to the current parent, dashed to the other; the closest one is drawn stronger.
+  // A dashed line runs to every target but the current parent, whose own tree wire stays the one solid line; the closest one is drawn stronger.
   const lines = [...marts().querySelectorAll('svg#drag-line path')];
-  expect(lines.map((l) => l.getAttribute('data-target')).sort()).toEqual(['customers', 'stores']);
-  expect(lines.find((l) => l.getAttribute('data-target') === 'customers')).toHaveClass('joined');
-  expect(lines.find((l) => l.getAttribute('data-target') === 'stores')).toHaveClass('ghost');
+  expect(lines.map((l) => l.getAttribute('data-target'))).toEqual(['stores']);
+  expect(lines[0]).toHaveClass('ghost');
+  expect(tips()).toContain('Customers → Countries');
   expect(lines.filter((l) => l.classList.contains('closest')).map((l) => l.getAttribute('data-target'))).toEqual(['stores']);
   expect(el('stores', 'stores')!.className).toBe(storesClass);
   fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
@@ -205,7 +205,7 @@ test('releasing near the current parent changes nothing and leaves the wires alo
   fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
   fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
   fireEvent.pointerMove(treeEl(), pointer(cu().x, cu().y));
-  await waitFor(() => expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(2));
+  await waitFor(() => expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(1));
   fireEvent.pointerUp(el('customers', 'customers')!, pointer(cu().x, cu().y, 0));
   await new Promise((r) => setTimeout(r, 50));
   expect(headers()).toEqual(before);
@@ -267,7 +267,7 @@ test('the line and the release both count the whole scroll box, and neither coun
   fireEvent.pointerMove(document.body, pointer(stores().x, stores().y));
   // Outside the box the target lines stay, none is closest, and a release does nothing.
   await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')).toBeNull());
-  expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(2);
+  expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(1);
   fireEvent.pointerMove(box, pointer(stores().x, stores().y));
   await waitFor(() => expect(line()).not.toBeNull());
   fireEvent.pointerUp(box, pointer(stores().x, stores().y, 0));
@@ -580,20 +580,20 @@ test('Data Sources cards are lit and dimmed by the same rule in Grid and in Grap
   expect(lit()).toEqual(inGrid);
 });
 
-test('while a Graph card is held, every target gets a line, every target stays lit, and the drop joins under the closest', async () => {
+test('while a Graph card is held, every other target gets a dashed line, every target stays lit, and the drop joins under the closest', async () => {
   await joinCountriesUnderCustomers();
   const stores = () => centre('stores', 'stores');
   const c = () => centre('countries', 'customers.countries');
   fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
   fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
   fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
-  await waitFor(() => expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(2));
+  await waitFor(() => expect(marts().querySelectorAll('svg#drag-line path')).toHaveLength(1));
   const lit = [...marts().querySelectorAll('.dm-tree-node:has(article:not(.dm-faded))')].map((n) => n.getAttribute('data-tree-path'));
   expect(lit.sort()).toEqual(['customers', 'customers.countries', 'stores']);
-  // Moving next to the current parent changes the closest one.
+  // Moving next to the current parent: it has no drag line, so no dashed line is the closest.
   const cu = centre('customers', 'customers');
   fireEvent.pointerMove(treeEl(), pointer(cu.x, cu.y));
-  await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')?.getAttribute('data-target')).toBe('customers'));
+  await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')).toBeNull());
   fireEvent.pointerMove(treeEl(), pointer(stores().x, stores().y));
   await waitFor(() => expect(marts().querySelector('svg#drag-line path.closest')?.getAttribute('data-target')).toBe('stores'));
   fireEvent.pointerUp(el('stores', 'stores')!, pointer(stores().x, stores().y, 0));
