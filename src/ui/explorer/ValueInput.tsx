@@ -12,13 +12,15 @@ type Props = { op: string; value: string; onChange: (v: string, base?: string) =
   /** The text is still what the picks built (or a reopened single value), so "contains" reads as a list; a hand-typed comma is a literal one. */
   inPick?: boolean;
   /** Asks the form to change the operator (to the list form after the second pick). */
-  onOp?: (op: string) => void };
+  onOp?: (op: string) => void;
+  /** Called once the column's values are in the cache. */
+  onLoad?: () => void };
 
 /**
  * A text input with the column's known values under it. The values load on first focus; typing narrows them by the text after the last comma;
  * a pick adds the value to the comma-separated list (for the list operators) and the input keeps its focus. A failed read shows nothing.
  */
-export function ValueInput({ op, value, onChange, source, className, inPick = false, onOp }: Props) {
+export function ValueInput({ op, value, onChange, source, className, inPick = false, onOp, onLoad }: Props) {
   const [anchor, setAnchor] = useState<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [hot, setHot] = useState(-1);
@@ -37,7 +39,7 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
     flights.current.add(ac);
     setStatus((s) => ({ ...s, [key]: 'loading' }));
     source.load(ac.signal).then(
-      (values) => { if (!ac.signal.aborted) { source.cache.set(key, values); setStatus((s) => ({ ...s, [key]: 'done' })); } },
+      (values) => { if (!ac.signal.aborted) { source.cache.set(key, values); setStatus((s) => ({ ...s, [key]: 'done' })); onLoad?.(); } },
       () => { if (!ac.signal.aborted) setStatus((s) => ({ ...s, [key]: 'failed' })); },
     );
   };

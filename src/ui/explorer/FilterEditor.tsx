@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { DATE_PRESETS, LIST_LABELS, RELATIVE_MAX_N, RELATIVE_PRESETS, RELATIVE_UNITS, fromRule, isDateTimeField, isPreset, operatorsFor, toRule, type OpId, type RelativeUnit } from '../../filters/catalogue';
-import { canSuggest, tokensOf } from '../../filters/valueSuggest';
+import { canSuggest, keepsPicks, tokensOf } from '../../filters/valueSuggest';
 import { isComplete, type ColumnFilter, type FilterValue } from '../../filters/build';
 import { columnTitle } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
@@ -109,13 +109,22 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
   // A reopened rule stays as it was until the text is edited.
   const [edited, setEdited] = useState(false);
   // Under contains / does not contain the text was built by suggestion picks (a trailing ", " is the separator, not part of the value).
-  // A reopened single value is the first token.
-  const [base, setBase] = useState<string | null>(value?.op === op && (op === 'contains' || op === 'not_contains') && typeof value.value === 'string' && !value.value.includes(',') && !value.list ? value.value : null);
-  const inPick = base !== null && typeof val === 'string' && (base.endsWith(', ') ? val.startsWith(base) : val === base || val.startsWith(`${base},`));
+  // `undefined` means no pick yet: a reopened single value seeds pick mode only when it is one of the column's loaded suggestions,
+  // otherwise it is plain contains text (a fragment such as "Ukr" must not become the first token of a list).
+  const [base, setBase] = useState<string | null | undefined>(undefined);
+  const [, setLoadedTick] = useState(0);
+  const loadedValues = values && canSuggest(field) ? values.cache.get(values.key) : undefined;
+  const seed = value?.op === op && (op === 'contains' || op === 'not_contains') && typeof value.value === 'string' && !value.value.includes(',') && !value.list ? value.value : null;
+  const eb = base !== undefined ? base : seed !== null && loadedValues?.includes(seed) ? seed : null;
+  const inPick = eb !== null && typeof val === 'string' && keepsPicks(eb, val);
   const wasList = !!value?.list && value.op === op;
   const isList = field.category === 'string' && (op === 'eq' || op === 'neq') && typeof val === 'string' && (edited ? val.includes(',') : wasList);
-  const sent = inPick && base!.endsWith(', ') && (op === 'contains' || op === 'not_contains') && typeof val === 'string' ? tokensOf(val).join(', ') : val;
-  const draft: ColumnFilter = { field: field.name, op, ...(def.value === 'none' ? {} : { value: sent }), ...(isList ? { list: true as const } : {}) };
+  // In pick mode the text is a list of picks: two or more values send as the list form, as the second pick would have switched it.
+  const picked = inPick && (op === 'contains' || op === 'not_contains') && typeof val === 'string' ? tokensOf(val) : null;
+  const toList = !!picked && picked.length >= 2;
+  const sendOp: OpId = toList ? (op === 'contains' ? 'eq' : 'neq') : op;
+  const sent = picked ? picked.join(', ') : val;
+  const draft: ColumnFilter = { field: field.name, op: sendOp, ...(def.value === 'none' ? {} : { value: sent }), ...(isList || toList ? { list: true as const } : {}) };
   const range = (val ?? { from: '', to: '' }) as { from: string; to: string };
   const rel = (val ?? { kind: 'today' }) as RelativeDatePreset;
   const dateType = field.category === 'time' ? 'time' : isDateTimeField(field) ? 'datetime-local' : 'date';
@@ -125,7 +134,7 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
       <Select aria-label="Operator" value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); setBase(null); }}>
         {ops.map((o) => <option key={o.id} value={o.id}>{isList && o.id === op && (o.id === 'eq' || o.id === 'neq') ? LIST_LABELS[o.id] : o.label}</option>)}
       </Select>
-      {def.value === 'text' && <ValueInput op={op} value={String(val ?? '')} onChange={(v, b) => { setEdited(true); setVal(v); setBase(b ?? (base !== null && v.startsWith(base.endsWith(', ') ? base : `${base},`) ? base : null)); }} inPick={inPick} onOp={(o) => { setOp(o as OpId); setBase(null); }} source={canSuggest(field) ? values : undefined} className={input} />}
+      {def.value === 'text' && <ValueInput op={op} value={String(val ?? '')} onChange={(v, b) => { setEdited(true); setVal(v); setBase(b ?? (eb !== null && keepsPicks(eb, v) ? eb : null)); }} inPick={inPick} onLoad={() => setLoadedTick((t) => t + 1)} onOp={(o) => { setOp(o as OpId); setBase(null); }} source={canSuggest(field) ? values : undefined} className={input} />}
       {def.value === 'number' && (
         <input aria-label="Value" className={input} type="number" value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />
       )}
