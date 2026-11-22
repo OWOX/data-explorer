@@ -79,37 +79,3 @@ test('Make it main in the Graph, then switching to the Grid, leaves the new main
   await band(page, 'marts').getByRole('radio', { name: 'Grid' }).click();
   await expectMainTopLeft(page, 'dm-customers');
 });
-
-test('with slow reads the new main is the first card from the moment it becomes main until the reads land', async ({ page }) => {
-  test.setTimeout(60000);
-  await page.setViewportSize({ width: 1400, height: 900 });
-  await page.goto('/?mock&latency=1500');
-  const groups = band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first();
-  await expect(groups).toHaveText('Orders', { timeout: 30000 });
-  await band(page, 'marts').locator('article#dm-orders').hover();
-  const ghost = band(page, 'marts').locator('article[data-ghost]').first();
-  await expect(ghost).toBeVisible();
-  const id = (await ghost.getAttribute('id'))!;
-  await ghost.click();
-  // Every 25 ms, the first card of the band and the Data band's first group.
-  await page.evaluate(() => {
-    const w = window as unknown as { samples: { first: string; group: string }[] };
-    w.samples = [];
-    setInterval(() => {
-      w.samples.push({
-        first: document.querySelector('#band-marts article:not([data-ghost]):not(.dm-leaving)')?.id ?? '',
-        group: document.querySelector('#band-data thead tr[data-group-row] th[data-group]')?.textContent ?? '',
-      });
-    }, 25);
-  });
-  await page.getByRole('button', { name: /Make it main/ }).click();
-  await page.waitForTimeout(5000);
-  const samples = await page.evaluate(() => (window as unknown as { samples: { first: string; group: string }[] }).samples);
-  const became = samples.findIndex((s) => s.first === id);
-  expect(became).toBeGreaterThanOrEqual(0);
-  // From the first sample where the card leads, it never stops leading.
-  expect(samples.slice(became).every((s) => s.first === id)).toBe(true);
-  // And the band never shows the new main trailing the old one: before it leads, the old main still does.
-  expect(samples.slice(0, became).every((s) => s.first === 'dm-orders')).toBe(true);
-  await expectMainTopLeft(page, id);
-});

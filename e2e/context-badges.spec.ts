@@ -82,7 +82,6 @@ test('the badges sit right-aligned next to the Storage button, and a narrow head
   for (const b of await group.getByRole('button').all()) tops.add(Math.round((await b.boundingBox())!.y));
   expect(tops.size).toBeLessThanOrEqual(2);
   expect(await edges()).toBeLessThanOrEqual(16);
-  await page.locator('#band-marts header').screenshot({ path: 'tmp/w7t1-narrow.png' });
 });
 
 test('at a very narrow width the badges take two lines and the rest goes behind the chip, right-aligned', async ({ page }) => {
@@ -98,14 +97,4 @@ test('at a very narrow width the badges take two lines and the rest goes behind 
   const row = (await group.boundingBox())!;
   const box = (await chip.boundingBox())!;
   expect(row.x + row.width - (box.x + box.width)).toBeLessThanOrEqual(2);
-});
-
-test('header screenshot at 2x', async ({ browser }) => {
-  const context = await browser.newContext({ viewport: { width: 1400, height: 700 }, deviceScaleFactor: 2 });
-  const page = await context.newPage();
-  await page.goto('/?mock');
-  await expect(page.locator('#band-marts').getByRole('group', { name: 'Contexts' })).toBeVisible();
-  await page.waitForTimeout(300);
-  await page.locator('#band-marts header').screenshot({ path: 'tmp/w7t1-header.png' });
-  await context.close();
 });
