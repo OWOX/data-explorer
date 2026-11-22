@@ -145,8 +145,6 @@ export function MartCard({
   transition,
   offPath = false,
   ghost = false,
-  dropTarget = false,
-  dropHot = false,
   path,
   title,
   focused = false,
@@ -174,10 +172,6 @@ export function MartCard({
   offPath?: boolean;
   /** The card is a hover ghost: a neighbour of the hovered card that is not in the band, drawn dashed while that card is hovered. It asks for no count and cannot be dragged. */
   ghost?: boolean;
-  /** A drag is under way and this card accepts a drop. */
-  dropTarget?: boolean;
-  /** The dragged card is over this one. */
-  dropHot?: boolean;
   /** The alias path this card stands for, when the mart is joined at one. */
   path?: string;
   /** What the card is called when that is not the mart's title: a joined source's label, which carries the alias path when two joins reach the mart. */
@@ -211,7 +205,7 @@ export function MartCard({
       data-node
       data-tone={dqCardTone(quality)}
       aria-pressed={selected || joined}
-      className={cardClass(lit, aside, [selected || joined || lit ? 'dm-in-path' : '', mart.accessible ? '' : 'dm-noaccess', offPath ? 'dm-offpath' : '', ghost ? 'dm-ghost' : '', dropTarget ? 'dm-drop-target' : '', dropHot ? 'dm-drop-hot' : '', transition?.className ?? ''].filter(Boolean).join(' '), faded)}
+      className={cardClass(lit, aside, [selected || joined || lit ? 'dm-in-path' : '', mart.accessible ? '' : 'dm-noaccess', offPath ? 'dm-offpath' : '', ghost ? 'dm-ghost' : '', transition?.className ?? ''].filter(Boolean).join(' '), faded)}
       {...(transition?.leaving ? { 'data-leaving': '' } : {})}
       {...(ghost ? { 'data-ghost': '' } : {})}
       {...selectable(onSelect)}

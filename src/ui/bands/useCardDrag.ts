@@ -1,24 +1,25 @@
 import { useEffect, useState, type RefObject } from 'react';
-import { martElementId } from './cards';
 import { useLatest } from '../useLatest';
 
-type CardDrag = { id: string; title: string; x: number; y: number; overMain: boolean };
+/** The pointer is in client coordinates; `inside` is whether it is over the canvas, where a release counts; `view` is what `measure` said for this move. */
+export type CardDrag<V> = { path: string; martId: string; title: string; x: number; y: number; inside: boolean; view: V };
 
 /** A press becomes a drag once the pointer has moved this far, so a click stays a click. */
 const START_PX = 5;
 
 /**
- * Dragging a data mart card onto the main card. A press on any card but the main one (not on its buttons, not on a ghost)
- * becomes a drag past 5 px; a release over the main card calls `onDrop`. A release elsewhere, Escape or a cancelled pointer
- * end the drag with no change. The click the browser sends after a drag is swallowed, so it does not also toggle the card.
+ * Dragging a joined card in the Grid to rejoin it under another mart. A press on a joined card (one with an alias path; not the
+ * main one, not its buttons, not a ghost) becomes a drag past 5 px; a release over the canvas calls `onDrop` with the pointer.
+ * A release outside it, Escape or a cancelled pointer end the drag with no change. The click the browser sends after a drag is
+ * swallowed, so it does not also toggle the card. `measure` reads the page on each move (where the targets are), so the view can draw from it.
  */
-export function useCardDrag(canvas: RefObject<HTMLElement | null>, mainId: string | null, titleOf: (id: string) => string, onDrop: (id: string) => void, canDrag: (id: string) => boolean): CardDrag | null {
-  const [drag, setDrag] = useState<CardDrag | null>(null);
-  const latest = useLatest({ mainId, titleOf, onDrop, canDrag });
+export function useCardDrag<V>(canvas: RefObject<HTMLElement | null>, titleOf: (martId: string) => string, onDrop: (path: string, x: number, y: number) => void, canDrag: (path: string) => boolean, measure: (path: string, x: number, y: number, inside: boolean) => V): CardDrag<V> | null {
+  const [drag, setDrag] = useState<CardDrag<V> | null>(null);
+  const latest = useLatest({ titleOf, onDrop, canDrag, measure });
   useEffect(() => {
     const root = canvas.current;
     if (!root) return;
-    let press: { id: string; x: number; y: number } | null = null;
+    let press: { path: string; martId: string; x: number; y: number } | null = null;
     let dragging = false;
     // Escape ended a drag: the release that follows still gets its click swallowed, and does nothing else.
     let cancelled = false;
@@ -27,41 +28,41 @@ export function useCardDrag(canvas: RefObject<HTMLElement | null>, mainId: strin
       window.addEventListener('click', swallow, { capture: true, once: true });
       setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
     };
-    const overMain = (x: number, y: number) => {
-      const main = latest.current.mainId;
-      const hit = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(x, y) : null;
-      return !!main && !!hit?.closest(`#${CSS.escape(martElementId(main))}`);
-    };
+    const over = (e: PointerEvent) => e.target instanceof Node && root.contains(e.target);
     const end = () => { press = null; dragging = false; setDrag(null); };
     const cancel = () => { cancelled = false; end(); };
     const down = (e: PointerEvent) => {
       cancelled = false;
-      if (e.button !== 0 || !latest.current.mainId) return;
+      if (e.button !== 0) return;
       const t = e.target instanceof Element ? e.target : null;
       if (!t || t.closest('button, a, input, [data-ghost]')) return;
-      const id = t.closest<HTMLElement>('[data-mart-id]')?.dataset.martId;
-      if (!id || id === latest.current.mainId || !latest.current.canDrag(id)) return;
+      const card = t.closest<HTMLElement>('[data-mart-id][data-path]');
+      const path = card?.dataset.path;
+      if (!card || !path || !latest.current.canDrag(path)) return;
       dragging = false;
-      press = { id, x: e.clientX, y: e.clientY };
+      press = { path, martId: card.dataset.martId!, x: e.clientX, y: e.clientY };
     };
     const move = (e: PointerEvent) => {
+      if (!(e.buttons & 1)) cancelled = false;
       if (!press) return;
       // The release happened out of our sight: let go of the drag.
       if (!(e.buttons & 1)) { end(); return; }
       if (!dragging && Math.hypot(e.clientX - press.x, e.clientY - press.y) < START_PX) return;
       dragging = true;
       e.preventDefault();
-      setDrag({ id: press.id, title: latest.current.titleOf(press.id), x: e.clientX, y: e.clientY, overMain: overMain(e.clientX, e.clientY) });
+      const inside = over(e);
+      setDrag({ path: press.path, martId: press.martId, title: latest.current.titleOf(press.martId), x: e.clientX, y: e.clientY, inside, view: latest.current.measure(press.path, e.clientX, e.clientY, inside) });
     };
     const up = (e: PointerEvent) => {
       if (cancelled) { cancelled = false; swallowNextClick(); return; }
       if (!press) return;
-      const { id } = press;
+      const { path } = press;
       const wasDrag = dragging;
-      const dropped = wasDrag && overMain(e.clientX, e.clientY);
+      const inside = over(e);
       end();
-      if (wasDrag) swallowNextClick();
-      if (dropped) latest.current.onDrop(id);
+      if (!wasDrag) return;
+      swallowNextClick();
+      if (inside) latest.current.onDrop(path, e.clientX, e.clientY);
     };
     const key = (e: KeyboardEvent) => { if (e.key !== 'Escape' || !press) return; cancelled = dragging; end(); };
     root.addEventListener('pointerdown', down);

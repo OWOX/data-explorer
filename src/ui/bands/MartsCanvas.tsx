@@ -6,6 +6,7 @@ import type { DqSummary, Model } from '../../model/types';
 import { buildJoinTree, ghostLevels, subtreePaths } from '../../state/join-tree';
 import { pathTitle } from '../../state/join-plan';
 import { closestTarget, dragLinePath, dropTargets } from './canvas-drag';
+import { DragLines } from './DragLines';
 import { scrollBoxOf, zoomedScale } from './canvas-zoom';
 import { CARD_W, layoutTree } from './canvas-layout';
 import { MartCard, contextsOf, martElementId, type CountState } from './cards';
@@ -166,10 +167,8 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   })();
   const near = hoverEl === null ? null : litIds(wires, hoverEl);
   const fadedAt = (martId: string, path: string) => near !== null && !near.has(martElementId(martId, path));
-  const heldNode = drag ? tree.nodes.get(drag.path) : undefined;
   const engagedGhost = ghostOver === null ? undefined : ghosts.find((g) => g.aliasPath === ghostOver);
   useWires(treeRef, wires, { pinned: null, hovered: null }, revisionOf(key), 'tree-wires', scale, {
-    held: heldNode ? martElementId(heldNode.martId, heldNode.path) : null,
     engaged: engagedGhost ? martElementId(engagedGhost.martId, engagedGhost.aliasPath) : null,
   });
 
@@ -180,10 +179,11 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     return path === '' || !source ? undefined : pathTitle(source, [...tree.nodes.keys()], sources ?? []);
   };
   const dragTitle = drag ? model.marts.get(tree.nodes.get(drag.path)?.martId ?? '')?.title : undefined;
-  // While a card is held (also with the pointer outside the box, where a release does nothing), a dashed line runs from it to every place it can be dropped; the closest one is drawn stronger.
+  // While a card is held (also with the pointer outside the box, where a release does nothing), a line runs from it to every place it can be dropped: solid to its current parent, dashed to the others, the closest one stronger.
   const at = new Map(layout.placed.map((p) => [p.path, p] as const));
   const held = drag ? at.get(drag.path) : undefined;
-  const lines = held ? targets.flatMap((t) => { const to = at.get(t.target); return to ? [{ path: t.target, d: dragLinePath(held, to) }] : []; }) : [];
+  const currentParent = drag ? tree.nodes.get(drag.path)?.parent : undefined;
+  const lines = held ? targets.flatMap((t) => { const to = at.get(t.target); return to ? [{ target: t.target, d: dragLinePath(held, to), current: t.target === currentParent, closest: pick?.target === t.target }] : []; }) : [];
   return (
     <div ref={sizerRef} className="dm-tree-sizer" style={{ width: layout.width * scale, height: layout.height * scale }}>
     <div
@@ -201,7 +201,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
         const pos = at.get(node.path);
         if (!mart || !pos) return [];
         return [
-          <div key={node.path} className={`dm-tree-node${drag && node.path !== drag.path && (pick ? pick.target !== node.path : !valid.has(node.path)) ? ' dm-dimmed' : ''}`} data-tree-path={node.path} style={{ left: pos.x, top: pos.y, width: CARD_W }}>
+          <div key={node.path} className="dm-tree-node" data-tree-path={node.path} style={{ left: pos.x, top: pos.y, width: CARD_W }}>
             <MartCard
               mart={mart}
               contexts={contextsOf(model.contexts, mart.contextIds)}
@@ -210,7 +210,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               selected={node.path === ''}
               joined={node.path !== ''}
               focused={pin === node.path}
-              faded={fadedAt(node.martId, node.path)}
+              faded={drag ? node.path !== drag.path && !valid.has(node.path) : fadedAt(node.martId, node.path)}
               path={node.path}
               title={titleOf(node.path)}
               onRemove={node.path === '' ? undefined : () => {
@@ -229,7 +229,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
           </div>,
         ];
       })}
-      {lines.length > 0 && <svg id="drag-line" aria-hidden>{lines.map((l) => <path key={l.path} d={l.d} data-target={l.path} className={pick?.target === l.path ? 'closest' : undefined} />)}</svg>}
+      <DragLines lines={lines} />
       {layout.ghosts.flatMap((spot) => {
         const g = ghosts.find((s) => s.aliasPath === spot.id);
         const mart = g && model.marts.get(g.martId);

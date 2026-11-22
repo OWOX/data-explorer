@@ -199,8 +199,6 @@
 .dm-node.dm-ghost { transition: none; }
 /* Dimming has one meaning: another card is hovered, and this one is not it, on a line with it, or a mart it can join. */
 .dm-node.dm-faded { opacity: 0.5; }
-.dm-node.dm-drop-target { outline: 2px dashed var(--primary); outline-offset: 2px; }
-.dm-node.dm-drop-hot { outline-style: solid; }
 .dm-drag-ghost { position: fixed; z-index: 60; pointer-events: none; padding: 6px 10px; border-radius: 8px; font-size: 13px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 4px 12px rgb(0 0 0 / 0.18); }
 .dm-canvas [data-mart-id] { user-select: none; }
 /* The card under the pointer takes its own run-health colour on its one 1px border and a light tint of it.
@@ -737,14 +735,14 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-tree-node { position: absolute; z-index: 2; }
 .dm-tree-node > .dm-node { width: 100%; }
 .dm-tree-node { transition: opacity 120ms; }
-.dm-tree-node.dm-dimmed { opacity: 0.15; filter: grayscale(1); }
 /* The tree's lines are always drawn: the layout is the report, not a crowd to thin out. */
 #tree-wires path { opacity: 1; }
-/* The lines of a card in hand step back at once, and return on drop. */
-#tree-wires .source.held, #tree-wires .relationship.held { opacity: 0.35; transition: none; }
-#drag-line { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 2; }
-#drag-line path { fill: none; stroke: var(--muted-foreground); stroke-width: 1.5; stroke-dasharray: 6 4; opacity: 0.6; }
-#drag-line path.closest { stroke-width: 2.5; opacity: 1; }
+/* The lines of a card in hand, in Grid and Graph alike: solid to the mart it is joined under now, dashed (as every join that can be made) to the others, the closest one stronger. */
+#drag-line { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 2; }
+.dm-canvas > #drag-line { z-index: 1; }
+#drag-line path { fill: none; stroke: var(--muted-foreground); stroke-linecap: round; stroke-width: 2; stroke-dasharray: 5 4; }
+#drag-line path.joined { stroke-dasharray: none; }
+#drag-line path.closest { stroke-width: 3; }
 
 /* The dropdown under the open search box: reports, data marts, then the ad-hoc row. */
 .dm-search-open { position: relative; }

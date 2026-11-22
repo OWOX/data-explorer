@@ -8,7 +8,6 @@ import { keyShown } from '../../sdk/mock/key-shown';
 import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
 import { openSubmenu } from '../explorer/menu-test-utils';
-import { dragOntoMain } from './drag-main-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
 
@@ -61,19 +60,13 @@ const sources = () => band('band-sources');
 const martCard = (title: string) => within(marts()).getByText(title).closest('article')!;
 
 const headingText = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!).join(' + ');
-/** Drags a card onto the main one: the way to a mart the main one cannot join (a click on it only joins it or explains). */
-async function makeMain(title: string) {
-  // A mart the main one cannot join is not in the band (a smart search or a source would select it): the probe selects it.
-  if (!within(marts()).queryByText(title)) {
-    act(() => selectMartById(title.toLowerCase().replace(/[^a-z0-9]+/g, '_')));
-    return;
-  }
-  await within(marts()).findByText(title);
-  dragOntoMain(martCard(title), marts().querySelector('article[aria-pressed="true"]:not([data-path]):not([data-ghost])')!);
+/** Makes a mart the main one the way a search does: the probe selects it. */
+function makeMain(title: string) {
+  act(() => selectMartById(title.toLowerCase().replace(/[^a-z0-9]+/g, '_')));
 }
-/** Makes a mart the main one by dragging it onto the main card: a click on the main card only focuses it. */
+/** Makes a mart the main one: a click on a card in the band only joins it or focuses it. */
 async function goTo(title: string) {
-  await makeMain(title);
+  makeMain(title);
   await waitFor(() => expect(headingText() === title || headingText()!.startsWith(`${title} + `)).toBe(true));
 }
 
@@ -370,7 +363,7 @@ describe('the grid', () => {
     await mountApp();
     await within(data()).findByRole('table');
     await search('daily');
-    await makeMain('Daily KPIs');
+    makeMain('Daily KPIs');
     const warning = await within(data()).findByRole('note', { name: NO_PK });
     expect(warning).toBeInTheDocument();
     // The sentence is gone from above the grid; it is the warning's tooltip and the end of the (i) hint.
@@ -478,7 +471,7 @@ describe('the record', () => {
     await mountApp();
     await within(data()).findByRole('table');
     await search('order items');
-    await makeMain('Order Items');
+    makeMain('Order Items');
     await within(data()).findByText('Order Items');
     await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
     await userEvent.click(within(data()).getAllByRole('row')[2]!);
@@ -906,7 +899,7 @@ describe('the storage filter', () => {
     await ordersGrid();
     // The band lists Payments for a search; its make-main button makes it the main mart.
     await search('payments');
-    await makeMain('Payments');
+    makeMain('Payments');
     await within(data()).findByText('Payments');
     await userEvent.click(within(storageMenu()).getByRole('option', { name: /Sales Lake/ }));
     await waitFor(() => expect(marts().querySelector('article')).toHaveAttribute('data-mart-id', 'payments'));
@@ -1210,7 +1203,7 @@ describe('the default sort', () => {
     const calls = await spyOnTraverse();
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await search('daily');
-    await makeMain('Daily KPIs');
+    makeMain('Daily KPIs');
     const day = await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
     expect(day.closest('th')).toHaveAttribute('aria-sort', 'descending');
     expect(calls.filter((c) => c.id === 'daily_kpis').at(-1)!.o.sort).toEqual([{ column: 'day', direction: 'desc' }]);
@@ -1231,7 +1224,7 @@ describe('the default sort', () => {
     const calls = await spyOnTraverse();
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await search('daily');
-    await makeMain('Daily KPIs');
+    makeMain('Daily KPIs');
     await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
     const sortOf = () => calls.filter((c) => c.id === 'daily_kpis').at(-1)!.o.sort;
     await userEvent.click(within(data()).getByRole('button', { name: /^Sort by revenue,/ }));
@@ -1427,7 +1420,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
   test('a filter panel is capped at 20rem (bands.css .dm-menu-editor) with no title row above the scrolling body', async () => {
     await ordersGrid();
     await search('daily');
-    await makeMain('Daily KPIs');
+    makeMain('Daily KPIs');
     await within(data()).findByText('Daily KPIs');
     await openSubmenu(within(data()), 'day', 'Filter');
     const body = (await screen.findByRole('menu', { name: 'Filter day' })).closest('[data-popover-body]')!;

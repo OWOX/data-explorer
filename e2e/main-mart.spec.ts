@@ -5,11 +5,11 @@ const martCard = (page: Page, title: string) => band(page, 'marts').locator('art
 
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
 
-test('dragging Customers onto Orders makes Customers the main data mart, first in the band and in the grid', async ({ page }) => {
+test('dragging a card onto the main card makes nothing main: Make it main is the way', async ({ page }) => {
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
   await martCard(page, 'Customers').dragTo(martCard(page, 'Orders'));
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Customers');
-  await expect(band(page, 'marts').locator('article').first()).toContainText('Customers');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await expect(band(page, 'marts').locator('article').first()).toContainText('Orders');
 });
 
 test('Copy SQL is enabled once the grid has loaded', async ({ page, context }) => {
