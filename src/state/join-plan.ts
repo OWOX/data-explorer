@@ -67,6 +67,22 @@ export const sourceOfMart = (sources: JoinedSource[], martId: string, inUse?: Se
   return (inUse && paths.find((s) => inUse.has(parentPath(s.aliasPath)))) || paths[0];
 };
 
+/**
+ * The source a click on a mart outside the report joins by: the path with the fewest marts. Ties go to the path that reuses
+ * the most marts already in the report (every prefix of a path in use), then to the first by title (the list's order).
+ */
+export const shortestSource = (sources: JoinedSource[], martId: string, inUse: Set<string>): JoinedSource | undefined => {
+  const inReport = new Set<string>();
+  for (const p of inUse) for (let q = p; q !== ''; q = parentPath(q)) inReport.add(q);
+  const reused = (s: JoinedSource) => { let n = 0; for (let q = parentPath(s.aliasPath); q !== ''; q = parentPath(q)) if (inReport.has(q)) n++; return n; };
+  let best: JoinedSource | undefined;
+  for (const s of sources) {
+    if (s.martId !== martId) continue;
+    if (!best || s.depth < best.depth || (s.depth === best.depth && reused(s) > reused(best))) best = s;
+  }
+  return best;
+};
+
 export const isJoinable = (sources: JoinedSource[], martId: string) => sources.some((s) => s.martId === martId);
 
 /** A key by name or alias: a primary key, `id`, a name ending in `_id` or `Id`, or an alias ending in " ID" (any case). */
@@ -286,8 +302,10 @@ export function planClick(env: PlanEnv, id: string): Plan {
   }
 
   if (isJoinable(sources, id)) {
-    const columns = orderColumns([...grid.columns, ...fieldsFor(sources, id, env.picksOf(main)[id], shownOf(id), inUsePaths(grid.columns, sources)).filter((n) => !grid.columns.includes(n))], sources, env.ownColumns(main));
-    return { selection: env.selection, grids: { [main]: { ...grid, columns } }, saves: [{ martId: main, columns }], remember: [] };
+    // Through the shortest chain to the main mart; the marts on the way join bare (the join tree shows them).
+    const via = shortestSource(sources, id, inUsePaths(grid.columns, sources))!;
+    const next = planAddAt(grid, sources, via.aliasPath, env.ownColumns(main), env.picksOf(main)[id], shownOf(id));
+    return { selection: env.selection, grids: { [main]: next }, saves: [{ martId: main, columns: next.columns }], remember: [] };
   }
 
   // A mart the main one cannot join does not replace it. The member drags it onto the main card for that (planMakeMain).

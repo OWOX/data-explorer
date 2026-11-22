@@ -272,11 +272,27 @@ describe('joinable', () => {
     expect(r.joinable).toEqual(new Set());
   });
 
-  test('rule 1 lists every match and reports the joinable set for dimming', () => {
+  test('rule 1 with a main mart: a match shows only when the main mart can join it', () => {
+    const m = modelOf(['a', 'b', 'c', 'cz'], [e('a', 'b')]);
+    const r = runWith(m, sel({ martId: 'a' }), { search: 'c', joinable: ['b', 'cz'] });
+    expect(r.ids).toEqual(['a', 'cz']);
+    expect(r.joinable).toEqual(new Set(['b', 'cz']));
+  });
+
+  test('rule 1 with a main mart whose joins are still loading: every match shows', () => {
     const m = modelOf(['a', 'b', 'c'], [e('a', 'b')]);
-    const r = runWith(m, sel({ martId: 'a' }), { search: 'c', joinable: ['b'] });
-    expect(r.ids).toEqual(['a', 'c']);
-    expect(r.joinable).toEqual(new Set(['b']));
+    expect(runWith(m, sel({ martId: 'a' }), { search: 'c', joinable: null }).ids).toEqual(['a', 'c']);
+  });
+
+  test('a mart reachable at depth 2 shows and an unreachable one is hidden, with or without a search', () => {
+    const m = modelOf(['a', 'b', 'deep', 'lone'], [e('a', 'b'), e('b', 'deep')]);
+    expect(new Set(runWith(m, sel({ martId: 'a' }), { joinable: ['b', 'deep'] }).ids)).toEqual(new Set(['a', 'b', 'deep']));
+    expect(runWith(m, sel({ martId: 'a' }), { search: 'e', joinable: ['b', 'deep'] }).ids).toEqual(['a', 'deep']);
+  });
+
+  test('rule 0 with a main mart: smart search hits the main mart cannot join are left out', () => {
+    const m = modelOf(['a', 'b', 'c'], [e('a', 'b')]);
+    expect(runWith(m, sel({ martId: 'a' }), { found: ['c', 'b'], search: 'zzz', joinable: ['b'] }).ids).toEqual(['a', 'b']);
   });
 
   test('with no main mart the joinable set is null', () => {

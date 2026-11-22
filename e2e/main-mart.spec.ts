@@ -44,30 +44,6 @@ test('Make it main on a focused joined card puts it first and top-left', async (
   await expectMainTopLeft(page, 'dm-customers');
 });
 
-test('Make it main on a picked card the main mart cannot join puts it first and top-left', async ({ page }) => {
-  await page.setViewportSize({ width: 1400, height: 900 });
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
-  await band(page, 'marts').getByRole('button', { name: 'Marketing' }).click();
-  const campaigns = band(page, 'marts').locator('article#dm-campaigns');
-  await expect(campaigns).toHaveClass(/dm-unjoinable/);
-  await campaigns.click();
-  await page.getByRole('button', { name: /Make it main: Campaigns/ }).click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Campaigns');
-  await expectMainTopLeft(page, 'dm-campaigns');
-});
-
-test('Make it main on a ghost the main mart cannot join puts it first and top-left', async ({ page }) => {
-  await page.setViewportSize({ width: 1400, height: 900 });
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
-  await band(page, 'marts').locator('article#dm-orders').hover();
-  const ghost = band(page, 'marts').locator('article[data-ghost]').first();
-  await expect(ghost).toBeVisible();
-  const id = await ghost.getAttribute('id');
-  await ghost.click();
-  await page.getByRole('button', { name: /Make it main/ }).click();
-  await expectMainTopLeft(page, id!);
-});
-
 test('Make it main in the Graph, then switching to the Grid, leaves the new main first and top-left', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');

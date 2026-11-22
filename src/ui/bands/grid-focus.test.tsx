@@ -150,13 +150,14 @@ test('the × on a middle card takes only its own columns; on the bare card it ta
   expect(el('customers', 'customers')).not.toBeNull();
 });
 
-test('with a card focused, a dimmed card the main mart can join says to press Escape and click it', async () => {
+test('with a card focused, a dimmed card the main mart can join still adds on a click, by its shortest chain', async () => {
   setup();
   await joinCustomersAndStores();
   fireEvent.click(el('stores', 'stores')!);
   await waitFor(() => expect(el('products')).toHaveClass('dm-unjoinable'));
   fireEvent.click(el('products')!);
-  expect(await within(el('products')!).findByRole('status')).toHaveTextContent("Can't join Stores. Press Escape, then click it to add it to Orders.");
+  await waitFor(() => expect(el('products', 'products')).not.toBeNull());
+  expect(within(marts()).queryByRole('status')).toBeNull();
 });
 
 test('Enter on a joinable card adds it and focus lands on its new report card', async () => {

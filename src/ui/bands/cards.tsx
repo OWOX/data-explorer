@@ -140,9 +140,6 @@ export function MartCard({
   aside = false,
   transition,
   unjoinable = false,
-  mainTitle,
-  joinTitle,
-  addViaEscape = false,
   ghost = false,
   dropTarget = false,
   dropHot = false,
@@ -151,7 +148,6 @@ export function MartCard({
   focused = false,
   onRemove,
   onSelect,
-  onPick,
   onOpenApp,
   onRetryCount,
   onNeedCount,
@@ -168,14 +164,8 @@ export function MartCard({
   /** Lit by a card other than the pinned one: drawn at half strength. */
   aside?: boolean;
   transition?: CardTransition;
-  /** The main mart cannot join this one: the card is dimmed, and a click explains instead of selecting. */
+  /** The mart does not join under the focused card (it joins by a longer chain): the card is dimmed, and a click still adds it. */
   unjoinable?: boolean;
-  /** The title of the main mart, named in the unjoinable hint. */
-  mainTitle?: string;
-  /** The card that cannot be joined by this one, when it is not the main mart (the focused card in Grid). Defaults to the main mart. */
-  joinTitle?: string;
-  /** The mart is dimmed under the focused card but the main mart can join it: the hint says to press Escape and click it. */
-  addViaEscape?: boolean;
   /** The card is a hover ghost: a neighbour of the hovered card that is not in the band, drawn dashed while that card is hovered. It asks for no count and cannot be dragged. */
   ghost?: boolean;
   /** A drag is under way and this card accepts a drop. */
@@ -191,8 +181,6 @@ export function MartCard({
   /** Takes this joined mart out of the report; when absent the card has no ×. */
   onRemove?: () => void;
   onSelect: () => void;
-  /** A click on a card that cannot join the main mart only explains; this tells the page which card was picked, so the header can offer to make it main. */
-  onPick?: () => void;
   onOpenApp: () => void;
   /** Not needed on a ghost, which shows no count. */
   onRetryCount?: () => void;
@@ -206,14 +194,7 @@ export function MartCard({
     if (!mart.accessible || ghost || !el.current) return;
     return whenInView(el.current, () => need.current?.());
   }, [mart.accessible, ghost, need]);
-  const [hint, setHint] = useState(false);
-  useEffect(() => {
-    if (!hint) return;
-    const t = setTimeout(() => setHint(false), 3000);
-    return () => clearTimeout(t);
-  }, [hint]);
   const name = title ?? mart.title;
-  const choose = unjoinable ? () => { setHint(true); onPick?.(); } : onSelect;
   return (
     <article
       ref={el}
@@ -227,7 +208,7 @@ export function MartCard({
       className={cardClass(lit, aside, [selected || joined || lit ? 'dm-in-path' : '', mart.accessible ? '' : 'dm-noaccess', unjoinable ? 'dm-unjoinable' : '', ghost ? 'dm-ghost' : '', dropTarget ? 'dm-drop-target' : '', dropHot ? 'dm-drop-hot' : '', transition?.className ?? ''].filter(Boolean).join(' '))}
       {...(transition?.leaving ? { 'data-leaving': '' } : {})}
       {...(ghost ? { 'data-ghost': '' } : {})}
-      {...selectable(choose)}
+      {...selectable(onSelect)}
     >
       {onRemove && (
         <button type="button" aria-label={`Remove ${name} from the report`} className="dm-card-remove" onClick={(e) => { e.stopPropagation(); onRemove(); }}>
@@ -257,10 +238,6 @@ export function MartCard({
         {mart.dataLastUpdatedAt && <Mark tone="idle" lines={[`Data updated ${relativeTime(mart.dataLastUpdatedAt)}`]}><History size={14} /></Mark>}
         <Contexts contexts={contexts} />
       </div>
-      {/* The live region stays mounted so a screen reader announces the hint when it appears. */}
-      <span aria-live="polite" className="dm-card-live">
-        {hint && unjoinable && mainTitle && <span role="status" className="dm-card-hint">{ghost ? `Can't join ${joinTitle ?? mainTitle}. Use Make it main in the section header to make it the main data mart.` : addViaEscape ? `Can't join ${joinTitle ?? mainTitle}. Press Escape, then click it to add it to ${mainTitle}.` : `Can't join ${joinTitle ?? mainTitle}. Drag it onto ${mainTitle} to make it the main data mart.`}</span>}
-      </span>
     </article>
   );
 }
