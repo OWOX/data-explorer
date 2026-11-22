@@ -1,17 +1,24 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { LIST_OPS, addValue, narrow } from '../../filters/valueSuggest';
+import { LIST_OPS, addValue, narrow, tokensOf } from '../../filters/valueSuggest';
 import { Panel } from './MenuParts';
 
 /** Where a text input's suggestions come from. `key` names the read (column and rules), so a read is made once per key while the menu is open. */
 export type ValueSource = { key: string; load: (signal: AbortSignal) => Promise<string[]>; cache: Map<string, string[]> };
 
-type Props = { op: string; value: string; onChange: (v: string) => void; source?: ValueSource; className: string };
+/** Under these text operators a pick adds to the text; the second pick switches the operator to the list form. */
+const SWITCH: Record<string, string> = { contains: 'eq', not_contains: 'neq' };
+
+type Props = { op: string; value: string; onChange: (v: string, picked?: boolean) => void; source?: ValueSource; className: string;
+  /** The text was built by picks, so it reads as a list; a hand-typed comma under "contains" is a literal one. */
+  picked?: boolean;
+  /** Asks the form to change the operator (to the list form after the second pick). */
+  onOp?: (op: string) => void };
 
 /**
  * A text input with the column's known values under it. The values load on first focus; typing narrows them by the text after the last comma;
  * a pick adds the value to the comma-separated list (for the list operators) and the input keeps its focus. A failed read shows nothing.
  */
-export function ValueInput({ op, value, onChange, source, className }: Props) {
+export function ValueInput({ op, value, onChange, source, className, picked = false, onOp }: Props) {
   const [anchor, setAnchor] = useState<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [hot, setHot] = useState(-1);
@@ -35,7 +42,7 @@ export function ValueInput({ op, value, onChange, source, className }: Props) {
     );
   };
 
-  const list = LIST_OPS.has(op);
+  const list = LIST_OPS.has(op) || (op in SWITCH && picked);
   // A value with a comma would read as two in a list, so it is not offered there.
   const pool = loaded ?? [];
   const options = list
@@ -45,13 +52,20 @@ export function ValueInput({ op, value, onChange, source, className }: Props) {
   // The listbox is in the DOM once the values are in; while they load there is only a status note.
   const listed = shown && !(loading && !loaded);
   const at = Math.min(hot, options.length - 1);
-  const pick = (v: string) => { onChange(list ? addValue(value, v) : v); setHot(-1); };
+  const pick = (v: string) => {
+    if (op in SWITCH) {
+      const next = addValue(picked ? value : '', v);
+      onChange(next, true);
+      if (tokensOf(next).length >= 2) onOp?.(SWITCH[op]!);
+    } else onChange(list ? addValue(value, v) : v);
+    setHot(-1);
+  };
 
   return (
     <>
       <input ref={setAnchor} aria-label="Value" className={className} type="text" value={value} autoComplete="off"
         {...(source ? { role: 'combobox', 'aria-autocomplete': 'list' as const, 'aria-expanded': shown, 'aria-controls': listed ? id : undefined, 'aria-activedescendant': listed && at >= 0 ? `${id}-${at}` : undefined } : {})}
-        onChange={(e) => { onChange(e.target.value); setOpen(true); setHot(-1); start(); }}
+        onChange={(e) => { onChange(e.target.value, false); setOpen(true); setHot(-1); start(); }}
         onFocus={() => { setOpen(true); start(); }}
         onBlur={() => setOpen(false)}
         onKeyDown={(e) => {

@@ -68,3 +68,9 @@ test('main mart: a never-reordered grid ends up in schema order', async () => {
   await userEvent.click(screen.getByLabelText('name'));
   expect(onChange).toHaveBeenLastCalledWith(['id', 'name', 'city']);
 });
+
+test('Displaying is the number of columns of the mart visible in the grid', async () => {
+  await open(['id', 'city']);
+  expect(screen.getByText('Displaying 2')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Select all 3' })).toBeInTheDocument();
+});

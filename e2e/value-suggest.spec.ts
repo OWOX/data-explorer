@@ -55,3 +55,31 @@ test('the keyboard picks: arrows and Enter', async ({ page }) => {
   await expect(value).toHaveValue(/^\w+, $/);
   await expect(dialog).toBeVisible();
 });
+
+test('two picks under contains keep the list open and switch the operator to is any of', async ({ page }) => {
+  const dialog = await openFilter(page, 'status');
+  await dialog.getByLabel('Operator').selectOption('contains');
+  const value = dialog.getByLabel('Value');
+  await value.focus();
+  const list = page.getByRole('listbox', { name: 'Suggested values' });
+  await list.getByRole('option', { name: 'new', exact: true }).click();
+  await expect(value).toHaveValue('new, ');
+  await expect(dialog.getByLabel('Operator')).toHaveValue('contains');
+  await expect(list).toBeVisible();
+  await expect(value).toBeFocused();
+  await list.getByRole('option', { name: 'paid', exact: true }).click();
+  await expect(value).toHaveValue('new, paid, ');
+  await expect(dialog.getByLabel('Operator')).toHaveValue('eq');
+  await expect(dialog.getByLabel('Operator').locator('option:checked')).toHaveText('is any of');
+  await expect(list).toBeVisible();
+  await expect(value).toBeFocused();
+});
+
+test('the gap above Clear and Apply equals the gap between the operator and the value', async ({ page }) => {
+  const dialog = await openFilter(page, 'status');
+  const top = async (l: ReturnType<Page['locator']>) => (await l.boundingBox())!;
+  const op = await top(dialog.getByLabel('Operator'));
+  const val = await top(dialog.getByLabel('Value'));
+  const clear = await top(dialog.getByRole('button', { name: 'Clear' }));
+  expect(clear.y - (val.y + val.height)).toBe(val.y - (op.y + op.height));
+});

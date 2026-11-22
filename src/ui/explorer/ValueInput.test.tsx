@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { expect, test, vi } from 'vitest';
@@ -103,11 +103,57 @@ test('Enter with nothing highlighted is left to the form', async () => {
   expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'eq', value: 'US' });
 });
 
-test('an operator that takes one text: a pick replaces the text', async () => {
-  render(<Harness op="contains" src={source(loadOf(['United States', 'Ukraine']))} start="un" />);
-  await userEvent.click(input());
+const form = (onApply = vi.fn()) => {
+  render(<FilterEditor field={country} value={undefined} onApply={onApply} onClear={vi.fn()} values={source(loadOf(['United States', 'Ukraine', 'Germany']))} />);
+  return onApply;
+};
+const op = () => screen.getByLabelText('Operator') as HTMLSelectElement;
+
+test('under contains a pick keeps the list and focus, and one pick stays contains with that value', async () => {
+  const onApply = form();
+  await userEvent.selectOptions(op(), 'contains');
+  await userEvent.type(input(), 'un');
   await userEvent.click(await screen.findByRole('option', { name: 'United States' }));
-  expect(input().value).toBe('United States');
+  expect(input().value).toBe('United States, ');
+  expect(input()).toHaveFocus();
+  expect(op().value).toBe('contains');
+  expect(within(screen.getByRole('listbox')).getAllByRole('option').map((o) => o.textContent)).toEqual(['Ukraine', 'Germany']);
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'contains', value: 'United States' });
+});
+
+test('under contains the second pick switches to is any of', async () => {
+  const onApply = form();
+  await userEvent.selectOptions(op(), 'contains');
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
+  expect(input().value).toBe('Ukraine, Germany, ');
+  expect(input()).toHaveFocus();
+  expect(op().value).toBe('eq');
+  expect(op().selectedOptions[0]!.textContent).toBe('is any of');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'eq', value: 'Ukraine, Germany, ', list: true });
+});
+
+test('under does not contain the second pick switches to is none of', async () => {
+  form();
+  await userEvent.selectOptions(op(), 'not_contains');
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
+  expect(op().value).toBe('not_contains');
+  await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
+  expect(op().value).toBe('neq');
+  expect(op().selectedOptions[0]!.textContent).toBe('is none of');
+});
+
+test('a comma typed by hand under contains does not switch the operator', async () => {
+  const onApply = form();
+  await userEvent.selectOptions(op(), 'contains');
+  await userEvent.type(input(), 'a, b');
+  expect(op().value).toBe('contains');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'contains', value: 'a, b' });
 });
 
 test('no suggestions on a number column', async () => {

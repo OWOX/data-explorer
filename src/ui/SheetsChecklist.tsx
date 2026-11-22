@@ -26,12 +26,14 @@ const SEARCH_FROM = 8;
  * a search box, then rows where a chosen value carries a check mark. Select all and Clear act on the rows that match
  * the search. `onChange` gets the whole new selection (values not on offer are left as they were).
  */
-export function SheetsChecklist({ items, selected, onChange, label }: {
+export function SheetsChecklist({ items, selected, onChange, label, displaying }: {
   items: ChecklistItem[];
   selected: string[];
   onChange: (next: string[]) => void;
   /** The list's accessible name. */
   label: string;
+  /** The number "Displaying" shows; defaults to the rows on offer (those the search matches). */
+  displaying?: number;
 }) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState<string | null>(null);
@@ -84,7 +86,7 @@ export function SheetsChecklist({ items, selected, onChange, label }: {
           <span aria-hidden>-</span>
           <button type="button" className="dm-checklist-link" onClick={clear}>Clear</button>
         </span>
-        <span className="dm-checklist-count">{`Displaying ${shown.length}`}</span>
+        <span className="dm-checklist-count">{`Displaying ${displaying ?? shown.length}`}</span>
       </div>
       {hasSearch && (
       <div className="dm-checklist-search">
