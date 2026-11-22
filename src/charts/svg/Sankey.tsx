@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
-import { BLANK_COLOR, blankOutline, labelOf, OTHER_KEY } from '../blank';
+import { BLANK_COLOR, blankOutline, thinColor, labelOf, OTHER_KEY } from '../blank';
 import { layoutSankey, REST_ORIGIN, type Flow, type NodeSize, type SankeyLink, type Tone } from '../sankeyLayout';
 import { OTHER_COLOR, seriesColor } from '../useDateSeries';
 import { useWidth } from '../useWidth';
@@ -60,7 +60,7 @@ export function Sankey({ titles, columns, flows, text, ariaLabel, onPickNode, on
       const tip = `${nodeName(l.source)} → ${nodeName(l.target)}${l.pair > 0 ? ` (from ${originName(l.origin)})` : ''}: ${text(l.value)} (${Math.round((l.value / (totals[l.pair] || 1)) * 100)}%)`;
       return (
         <Tooltip key={linkKey(l)} content={tip}>
-          <path className="dm-sankey-link" data-link={`${l.pair}|${l.source}|${l.target}${l.pair > 0 ? `|${l.origin}` : ''}`} data-from={`${l.pair}|${l.source}`} data-to={`${l.pair + 1}|${l.target}`} d={l.path} fill={colorOf(l.tone)} {...hoverLink} {...pick} />
+          <path className="dm-sankey-link" data-link={`${l.pair}|${l.source}|${l.target}${l.pair > 0 ? `|${l.origin}` : ''}`} data-from={`${l.pair}|${l.source}`} data-to={`${l.pair + 1}|${l.target}`} d={l.path} fill={thinColor(colorOf(l.tone))} {...hoverLink} {...pick} />
         </Tooltip>
       );
     });

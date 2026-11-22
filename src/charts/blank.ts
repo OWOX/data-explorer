@@ -8,6 +8,11 @@ export const BLANK_LABEL = '(blank)';
 /** The blank category's colour in a stack or a pie: a light grey (see charts.css), so the series colours of real values do not shift. */
 export const BLANK_COLOR = 'var(--dm-blank)';
 
+/** The blank category's colour for thin marks: a line, a line's area, a Sankey ribbon. The light fill above vanishes at 2px or 0.4 opacity, so these take the muted grey. */
+export const BLANK_STROKE = 'var(--muted-foreground)';
+/** The colour a thin mark takes for a series colour: the blank colour becomes the stroke grey, any other colour stays. */
+export const thinColor = (color: string): string => (color === BLANK_COLOR ? BLANK_STROKE : color);
+
 /** A light blank fill alone is faint on white and next to "Other", so a mark or swatch in the blank colour gets the chart frame's 1px outline. */
 export const blankOutline = (color: string): { stroke?: string; strokeWidth?: number } => (color === BLANK_COLOR ? { stroke: 'var(--dm-chart-frame)', strokeWidth: 1 } : {});
 /** The legend swatch's style for a colour: its fill, with the same outline for the blank colour. */
