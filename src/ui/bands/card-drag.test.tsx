@@ -71,7 +71,7 @@ test('a card in the band, or the main card, is not dragged; a drop on the main c
   fireEvent.pointerMove(window, pointer(40, 2000));
   fireEvent.pointerMove(window, pointer(centre('dm-orders').x, centre('dm-orders').y));
   expect(document.querySelector('.dm-drag-ghost')).toBeNull();
-  expect(marts().querySelector('.dm-faded')).toBeNull();
+  expect(marts().querySelector('.dm-faded:not(.dm-offpath)')).toBeNull();
   fireEvent.pointerUp(el('orders')!, pointer(centre('dm-orders').x, centre('dm-orders').y, 0));
   fireEvent.click(customers);
   // The click still joins it: a plain click is a click.
@@ -105,7 +105,7 @@ test('a held joined card dims what it cannot join under, and draws a solid line 
   expect(dashedLines()).toEqual(['stores']);
   fireEvent.keyDown(document, { key: 'Escape' });
   await waitFor(() => expect(paths()).toHaveLength(0));
-  expect(marts().querySelector('.dm-faded')).toBeNull();
+  expect(marts().querySelector('.dm-faded:not(.dm-offpath)')).toBeNull();
   fireEvent.pointerUp(window, pointer(0, 0, 0));
 });
 

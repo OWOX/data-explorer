@@ -313,7 +313,7 @@ export function CardBands({
   const joinedEls = useMemo(() => (canvasTree ? [...canvasTree.nodes.values()].filter((n) => n.path !== '').map((n) => martElementId(n.martId, n.path)) : []), [canvasTree]);
   useWires(canvas, wires, { pinned, hovered: liveHover, also: joinedEls }, useMemo(() => revisionOf(idsKey + treeKey), [idsKey, treeKey]));
 
-  const { lit, aside, near } = useMemo(() => {
+  const { lit, aside, near, reach } = useMemo(() => {
     // The cards of the selected joined marts light their own neighbours too, so a mart connected only to a joined one is not dimmed.
     const pinnedSet = pinned ? new Set([...litIds(wires, pinned), ...joinedEls.flatMap((el) => [...litIds(wires, el)])]) : null;
     const hoveredSet = liveHover ? litIds(wires, liveHover) : null;
@@ -321,11 +321,20 @@ export function CardBands({
     // Lit only by the pointer while another card is pinned: drawn at half strength.
     const aside = new Set([...lit].filter((id) => pinnedSet !== null && !pinnedSet.has(id)));
     // While a card is hovered, the cards that are not it or on a line with it fade to half.
-    return { lit, aside, near: hoveredSet };
-  }, [wires, pinned, liveHover, joinedEls]);
+    // With a main mart, a mart outside the report stays full strength only while it can join the hovered or the focused card.
+    const focusNode = focus === null ? undefined : canvasTree?.nodes.get(focus);
+    const focusSet = focusNode ? litIds(wires, martElementId(focusNode.martId, focusNode.path || undefined)) : null;
+    return { lit, aside, near: hoveredSet, reach: new Set([...(hoveredSet ?? []), ...(focusSet ?? [])]) };
+  }, [wires, pinned, liveHover, joinedEls, focus, canvasTree]);
   // A card in hand dims every card that is not a place to drop it (the same half dim as a hover); the targets and the card itself stay.
   const dragView = drag?.view;
-  const fadedOf = (el: string) => (dragView ? el !== dragView.held && !dragView.els.has(el) : near !== null && !near.has(el));
+  // A card in the report fades only with a hover (it is not on a line with the hovered card). A card outside it, with a main mart set,
+  // is faded at rest, except the marts the hovered or focused card can join. The drag rule wins over both.
+  const fadedOf = (el: string, outside = false) => {
+    if (dragView) return el !== dragView.held && !dragView.els.has(el);
+    if (outside && mainFor !== null) return !reach.has(el);
+    return near !== null && !near.has(el);
+  };
 
   // Cards animate in and out as the set changes; a leaving card keeps its object, which the model may no longer hold.
   const shownMarts = useMemo(() => visible.ids.flatMap((id) => model.marts.get(id) ?? []), [visible.ids, model]);
@@ -443,7 +452,7 @@ export function CardBands({
                   joined={false}
                   lit={lit.has(el)}
                   aside={aside.has(el)}
-                  faded={fadedOf(el)}
+                  faded={fadedOf(el, true)}
                   offPath={mainFor !== null}
                   onSelect={() => (at ? addFromBand(id, { addAt: at.aliasPath }) : addFromBand(id))}
                   onOpenApp={() => onOpenApp(id)}
@@ -468,7 +477,7 @@ export function CardBands({
                   selected={false}
                   joined={false}
                   lit={lit.has(el)}
-                  faded={fadedOf(el)}
+                  faded={fadedOf(el, true)}
                   onSelect={() => addFromBand(mart.id, { addAt: s.aliasPath })}
                   onOpenApp={() => onOpenApp(mart.id)}
                 />,
@@ -491,7 +500,7 @@ export function CardBands({
               joined={false}
               lit={lit.has(el)}
               aside={aside.has(el)}
-              faded={fadedOf(el)}
+              faded={fadedOf(el, true)}
               onSelect={() => addFromBand(id)}
               onOpenApp={() => onOpenApp(id)}
             />,

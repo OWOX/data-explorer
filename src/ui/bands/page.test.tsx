@@ -737,7 +737,7 @@ describe('folding and lines', () => {
     await ordersGrid();
     const canvas = document.querySelector('.dm-canvas')!;
     const customers = martCard('Customers');
-    expect(canvas.querySelectorAll('.dm-faded')).toHaveLength(0); // the selected mart stays pinned and dims nothing
+    expect(canvas.querySelectorAll('.dm-faded:not(.dm-offpath)')).toHaveLength(0); // the selected mart stays pinned and dims no report card
     fireEvent.pointerOver(customers);
     expect(customers).toHaveClass('lit');
     expect(customers).not.toHaveClass('dm-faded');
@@ -748,7 +748,7 @@ describe('folding and lines', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(customers).toHaveClass('lit');
     fireEvent.pointerLeave(canvas);
-    expect(canvas.querySelectorAll('.dm-faded')).toHaveLength(0);
+    expect(canvas.querySelectorAll('.dm-faded:not(.dm-offpath)')).toHaveLength(0);
   });
 
   test('a card lit only by the pointer while another is pinned is drawn aside, and Escape clears it', async () => {
@@ -1643,7 +1643,7 @@ test('a mart the main one cannot join is not shown in a search, one it can join 
   expect(marts.querySelector('article')).toHaveTextContent('Orders');
   await search('Countries');
   expect(await within(marts).findByText('Countries')).toBeInTheDocument();
-  expect(marts.querySelector('.dm-faded')).toBeNull();
+  expect(marts.querySelector('.dm-faded:not(.dm-offpath)')).toBeNull();
 });
 
 test('with a mart nobody can open as the main one, a click on another card makes it the main one', async () => {
@@ -1677,7 +1677,7 @@ test('a failed read of the main mart joins leaves the one-hop band with nothing 
   // Let the failed read settle.
   await new Promise((r) => setTimeout(r, 50));
   expect(within(marts()).getAllByRole('article').length).toBeGreaterThan(1);
-  expect(marts().querySelectorAll('.dm-faded')).toHaveLength(0);
+  expect(marts().querySelectorAll('.dm-faded:not(.dm-offpath)')).toHaveLength(0);
 });
 
 describe('ghost cards on hover', () => {

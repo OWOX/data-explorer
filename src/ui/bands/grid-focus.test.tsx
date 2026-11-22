@@ -71,11 +71,10 @@ test('a click on a joined card removes nothing and shows what joins under it', a
   await waitFor(() => expect(el('customers', 'customers')).toHaveAttribute('data-focused'));
   expect(headers()).toEqual(before);
   expect(el('customers', 'customers')).toHaveAttribute('aria-pressed', 'true');
-  // Every mart outside the report that can join it is full strength with a dashed border, whichever card is focused; the report cards keep their own.
-  for (const outside of [el('countries'), el('products')]) {
-    expect(outside).toHaveClass('dm-offpath');
-    expect(outside).not.toHaveClass('dm-faded');
-  }
+  // Every mart outside the report has a dashed border; only the ones the focused card can join stay at full strength, the others are dimmed.
+  for (const outside of [el('countries'), el('products')]) expect(outside).toHaveClass('dm-offpath');
+  expect(el('countries')).not.toHaveClass('dm-faded');
+  expect(el('products')).toHaveClass('dm-faded');
   for (const inReport of [el('stores', 'stores'), el('orders')]) {
     expect(inReport).not.toHaveClass('dm-offpath');
     expect(inReport).not.toHaveClass('dm-faded');
@@ -132,7 +131,8 @@ test('clicking the focused card again, the empty band or Escape clears the focus
   await waitFor(() => expect(focused()).not.toBeNull());
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(focused()).toBeNull());
-  expect(el('products')).not.toHaveClass('dm-faded');
+  // Nothing is focused or hovered: the cards outside the report are dimmed.
+  expect(el('products')).toHaveClass('dm-faded');
 });
 
 test('the × on a middle card takes only its own columns; on the bare card it takes the subtree, in one Undo step', async () => {
@@ -219,7 +219,7 @@ test('a click on an outside card adds it and focuses it, its joinable marts show
   // Countries joins under Customers, Products joins the report some other way: both are outside it, dashed and full strength.
   expect(el('countries')).toHaveClass('dm-offpath');
   expect(el('products')).toHaveClass('dm-offpath');
-  expect(el('products')).not.toHaveClass('dm-faded');
+  expect(el('products')).toHaveClass('dm-faded');
   fireEvent.click(el('customers', 'customers')!);
   await waitFor(() => expect(marts().querySelector('[data-focused]')).toBeNull());
   expect(el('products')).toHaveClass('dm-offpath');

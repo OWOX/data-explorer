@@ -79,7 +79,6 @@ describe('Grid', () => {
     expect(wire('wires', 'dm-orders', 'dm-products')).toHaveClass('ghost');
     expect(wire('wires', 'dm-orders', 'dm-products')).not.toHaveClass('joined');
     expect(el('products')).toHaveClass('dm-offpath');
-    expect(el('products')).not.toHaveClass('dm-faded');
     expect(el('orders')).not.toHaveClass('dm-offpath');
     expect(el('customers', 'customers')).not.toHaveClass('dm-offpath');
   });
@@ -121,8 +120,11 @@ describe('Grid', () => {
     expect(marts().querySelectorAll('[data-focused]')).toHaveLength(1);
     await waitFor(() => expect(wire('wires', 'dm-customers@customers', 'dm-countries')).not.toBeNull());
     expect(wire('wires', 'dm-customers@customers', 'dm-countries')).toHaveClass('ghost');
-    // Focusing dims nothing.
-    expect(faded()).toEqual([]);
+    // Focusing dims no report card; of the cards outside it only what the focused card can join stays at full strength.
+    expect(faded()).not.toContain('dm-orders');
+    expect(faded()).not.toContain('dm-customers@customers');
+    expect(faded()).not.toContain('dm-countries');
+    expect(faded()).toContain('dm-products');
   });
 
   test('hovering a card fades every card that is not it, on a line with it, or a mart it can join; leaving restores them', async () => {
@@ -131,13 +133,35 @@ describe('Grid', () => {
     fireEvent.click(await bandCard('Customers'));
     await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(faded()).toEqual([]);
+    // At rest the report is at full strength and every mart outside it is dimmed.
+    expect(faded()).toEqual(['dm-categories', 'dm-countries', 'dm-products', 'dm-shipments', 'dm-stores']);
     fireEvent.pointerOver(el('customers', 'customers')!);
     expect(faded()).not.toContain('dm-customers@customers');
     expect(faded()).not.toContain('dm-orders'); // its path neighbour
+    expect(faded()).not.toContain('dm-countries'); // joins Customers
     expect(faded()).toContain('dm-products'); // joins Orders, not Customers
-    for (const card of marts().querySelectorAll('article.dm-faded')) expect(card).toHaveClass('dm-node');
     fireEvent.pointerLeave(marts().closest('.dm-canvas')!);
+    expect(faded()).toEqual(['dm-categories', 'dm-countries', 'dm-products', 'dm-shipments', 'dm-stores']);
+    // The hovered main card undims what it can join, and the union with a focused card stays undimmed.
+    fireEvent.pointerOver(el('orders')!);
+    expect(faded()).not.toContain('dm-products');
+    expect(faded()).toContain('dm-countries');
+    fireEvent.pointerLeave(marts().closest('.dm-canvas')!);
+    fireEvent.click(el('customers', 'customers')!);
+    await waitFor(() => expect(el('customers', 'customers')).toHaveAttribute('data-focused'));
+    fireEvent.pointerOver(el('orders')!);
+    expect(faded()).not.toContain('dm-countries'); // focused card's
+    expect(faded()).not.toContain('dm-products'); // hovered card's
+    expect(faded()).toContain('dm-categories');
+  });
+
+  test('with no main mart nothing is dimmed at rest', async () => {
+    setup();
+    await ready();
+    const shopify = within(document.getElementById('band-sources')!).getByText('Shopify').closest('article')!;
+    fireEvent.click(shopify);
+    await waitFor(() => expect(marts().querySelector('.dm-offpath')).toBeNull());
+    expect(marts().querySelectorAll('article').length).toBeGreaterThan(0);
     expect(faded()).toEqual([]);
   });
 
