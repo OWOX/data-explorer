@@ -313,6 +313,16 @@ export function CardBands({
   const joinedEls = useMemo(() => (canvasTree ? [...canvasTree.nodes.values()].filter((n) => n.path !== '').map((n) => martElementId(n.martId, n.path)) : []), [canvasTree]);
   useWires(canvas, wires, { pinned, hovered: liveHover, also: joinedEls }, useMemo(() => revisionOf(idsKey + treeKey), [idsKey, treeKey]));
 
+  // The hovered card as `reach` reads it: set at once, and let go 400 ms after the pointer leaves, so crossing the gap between cards
+  // (or to a ghost) does not blink the cards outside the report.
+  const [laggedHover, setLaggedHover] = useState<string | null>(null);
+  // Adjusted while rendering: a hover is taken at once.
+  if (liveHover !== null && laggedHover !== liveHover) setLaggedHover(liveHover);
+  useEffect(() => {
+    if (liveHover !== null) return;
+    const t = setTimeout(() => setLaggedHover(null), 400);
+    return () => clearTimeout(t);
+  }, [liveHover]);
   const { lit, aside, near, reach } = useMemo(() => {
     // The cards of the selected joined marts light their own neighbours too, so a mart connected only to a joined one is not dimmed.
     const pinnedSet = pinned ? new Set([...litIds(wires, pinned), ...joinedEls.flatMap((el) => [...litIds(wires, el)])]) : null;
@@ -324,8 +334,9 @@ export function CardBands({
     // With a main mart, a mart outside the report stays full strength only while it can join the hovered or the focused card.
     const focusNode = focus === null ? undefined : canvasTree?.nodes.get(focus);
     const focusSet = focusNode ? litIds(wires, martElementId(focusNode.martId, focusNode.path || undefined)) : null;
-    return { lit, aside, near: hoveredSet, reach: new Set([...(hoveredSet ?? []), ...(focusSet ?? [])]) };
-  }, [wires, pinned, liveHover, joinedEls, focus, canvasTree]);
+    const reachSet = laggedHover ? litIds(wires, laggedHover) : null;
+    return { lit, aside, near: hoveredSet, reach: new Set([...(reachSet ?? []), ...(focusSet ?? [])]) };
+  }, [wires, pinned, liveHover, laggedHover, joinedEls, focus, canvasTree]);
   // A card in hand dims every card that is not a place to drop it (the same half dim as a hover); the targets and the card itself stay.
   const dragView = drag?.view;
   // A card in the report fades only with a hover (it is not on a line with the hovered card). A card outside it, with a main mart set,

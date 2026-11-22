@@ -269,7 +269,8 @@ button.dm-mark { cursor: pointer; }
 .dm-spin { animation: dm-spin 1s linear infinite; }
 @keyframes dm-spin { to { rotate: 360deg; } }
 
-/* Hovering a card drops what it does not touch to half (.dm-faded, set by the view); a pinned or focused card dims no mart.
+/* Hovering a card drops what it does not touch to half (.dm-faded, set by the view); a pinned or focused card dims no report mart.
+   With a main mart set, Grid also dims the marts outside the report unless the hovered or focused card can join them.
    With a mart pinned, the Data Sources that do not feed it drop back, in both views. */
 .dm-canvas.sources-focused #band-sources .dm-node { opacity: 0.25; }
 .dm-canvas.sources-focused #band-sources .dm-node.lit { opacity: 1; }

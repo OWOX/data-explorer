@@ -79,6 +79,7 @@ describe('Grid', () => {
     expect(wire('wires', 'dm-orders', 'dm-products')).toHaveClass('ghost');
     expect(wire('wires', 'dm-orders', 'dm-products')).not.toHaveClass('joined');
     expect(el('products')).toHaveClass('dm-offpath');
+    expect(el('products')).toHaveClass('dm-faded'); // nothing hovered or focused can join it
     expect(el('orders')).not.toHaveClass('dm-offpath');
     expect(el('customers', 'customers')).not.toHaveClass('dm-offpath');
   });
@@ -140,19 +141,44 @@ describe('Grid', () => {
     expect(faded()).not.toContain('dm-orders'); // its path neighbour
     expect(faded()).not.toContain('dm-countries'); // joins Customers
     expect(faded()).toContain('dm-products'); // joins Orders, not Customers
+    for (const card of marts().querySelectorAll('article.dm-faded')) expect(card).toHaveClass('dm-node');
     fireEvent.pointerLeave(marts().closest('.dm-canvas')!);
-    expect(faded()).toEqual(['dm-categories', 'dm-countries', 'dm-products', 'dm-shipments', 'dm-stores']);
+    // The marts outside the report are dimmed again once the 400 ms grace has passed.
+    await waitFor(() => expect(faded()).toEqual(['dm-categories', 'dm-countries', 'dm-products', 'dm-shipments', 'dm-stores']), { timeout: 2000 });
     // The hovered main card undims what it can join, and the union with a focused card stays undimmed.
     fireEvent.pointerOver(el('orders')!);
     expect(faded()).not.toContain('dm-products');
     expect(faded()).toContain('dm-countries');
     fireEvent.pointerLeave(marts().closest('.dm-canvas')!);
+    await waitFor(() => expect(faded()).toContain('dm-products'), { timeout: 2000 });
     fireEvent.click(el('customers', 'customers')!);
     await waitFor(() => expect(el('customers', 'customers')).toHaveAttribute('data-focused'));
     fireEvent.pointerOver(el('orders')!);
     expect(faded()).not.toContain('dm-countries'); // focused card's
     expect(faded()).not.toContain('dm-products'); // hovered card's
     expect(faded()).toContain('dm-categories');
+  });
+
+  test('crossing the gap between cards does not blink the marts outside the report; they dim 400 ms after the pointer is gone', async () => {
+    setup();
+    await ready();
+    fireEvent.click(await bandCard('Customers'));
+    await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+    fireEvent.keyDown(document, { key: 'Escape' });
+    const canvas = marts().closest('.dm-canvas')!;
+    fireEvent.pointerOver(el('customers', 'customers')!);
+    expect(faded()).not.toContain('dm-countries');
+    // The pointer is over the gap: nothing blinks, and the next card takes over.
+    fireEvent.pointerLeave(canvas);
+    expect(faded()).not.toContain('dm-countries');
+    await new Promise((r) => setTimeout(r, 200));
+    expect(faded()).not.toContain('dm-countries');
+    fireEvent.pointerOver(el('orders')!);
+    expect(faded()).not.toContain('dm-products');
+    fireEvent.pointerLeave(canvas);
+    await new Promise((r) => setTimeout(r, 200));
+    expect(faded()).not.toContain('dm-products');
+    await waitFor(() => expect(faded()).toEqual(['dm-categories', 'dm-countries', 'dm-products', 'dm-shipments', 'dm-stores']), { timeout: 2000 });
   });
 
   test('with no main mart nothing is dimmed at rest', async () => {

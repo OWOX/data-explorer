@@ -1670,7 +1670,7 @@ test('a click on an unreadable main card focuses it and does not deselect it', a
   expect(within(data()).getByText('You do not have access to this data mart')).toBeInTheDocument();
 });
 
-test('a failed read of the main mart joins leaves the one-hop band with nothing dimmed', async () => {
+test('a failed read of the main mart joins leaves the one-hop band with no report card dimmed', async () => {
   await mountWith((c) => ({ ...c, owox: { ...c.owox, getJson: ((path: string, q?: Record<string, string>) => (path.endsWith('/blendable-schema') ? Promise.reject(new Error('blendable down')) : c.owox.getJson(path, q))) as Ctx['owox']['getJson'] } }));
   await within(data()).findByRole('table');
   await within(marts()).findByText('Customers');
