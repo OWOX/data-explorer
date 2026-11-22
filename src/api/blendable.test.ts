@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import { createBlendableLoader, joinedSources, sourceOfField } from './blendable';
+import { pathTitle } from '../state/join-plan';
 import { stubCtx } from './test-ctx';
 import type { BlendableSchemaDto } from '../sdk/types';
 
@@ -53,6 +54,35 @@ test('a deeper duplicate is told apart by the titles of the marts above it, neve
   });
   expect(sources.map((s) => s.label)).toEqual(['Country (Organization)', 'Country (Contact › Organization)']);
   expect(sources.some((s) => s.label.includes('_'))).toBe(false);
+});
+
+const twice = (...paths: string[]) => {
+  const ok = { isIncluded: true, isAccessibleForReporting: true };
+  return {
+    availableSources: paths.map((aliasPath, i) => ({ aliasPath, title: aliasPath.includes('.') ? 'Country' : 'Organization', depth: aliasPath.split('.').length, dataMartId: aliasPath.includes('.') ? 'c' : 'o', relationshipId: `r${i}`, ...ok })),
+    blendedFields: paths.map((aliasPath) => ({ name: `${aliasPath}__n`, aliasPath, sourceDataMartId: 'o', originalFieldName: 'n', type: 'STRING' })),
+  };
+};
+
+test('two depth-1 joins to one mart are told apart by the alias of their key, else by an ordinal', () => {
+  const dto = twice('billing_org', 'shipping_org');
+  expect(joinedSources(dto, (s) => (s.aliasPath === 'billing_org' ? 'Billing org' : 'Shipping org')).map((s) => s.label)).toEqual(['Organization (by Billing org)', 'Organization (by Shipping org)']);
+  expect(joinedSources(dto).map((s) => s.label)).toEqual(['Organization', 'Organization 2']);
+  // One key alias is not enough to separate them.
+  expect(joinedSources(dto, (s) => (s.aliasPath === 'billing_org' ? 'Billing org' : undefined)).map((s) => s.label)).toEqual(['Organization', 'Organization 2']);
+});
+
+test('a deeper collision under parents with one title is told apart the same way, and a card keeps its plain name when only one path is in use', () => {
+  const dto = twice('a.x', 'b.x');
+  dto.availableSources.push(
+    { aliasPath: 'a', title: 'Contact', depth: 1, dataMartId: 'k', isIncluded: true, isAccessibleForReporting: true } as never,
+    { aliasPath: 'b', title: 'Contact', depth: 1, dataMartId: 'k', isIncluded: true, isAccessibleForReporting: true } as never,
+  );
+  const sources = joinedSources(dto);
+  expect(sources.map((s) => s.label)).toEqual(['Country (Contact)', 'Country (Contact) 2']);
+  expect(joinedSources(dto, (s) => `Key of ${s.aliasPath}`).map((s) => s.label)).toEqual(['Country (Contact, by Key of a.x)', 'Country (Contact, by Key of b.x)']);
+  expect(pathTitle(sources[0]!, ['a.x'], sources)).toBe('Country');
+  expect(pathTitle(sources[1]!, ['a.x', 'b.x'], sources)).toBe('Country (Contact) 2');
 });
 
 test('a joined field is a column: the blended name, its own type, its label, and where it came from', () => {

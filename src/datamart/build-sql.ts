@@ -163,7 +163,7 @@ function prepare(input: MartSqlInput): Plan | Reason {
       const incoming = edges.filter((e) => e.target === child.martId);
       // Only the relationship the child names is climbed: the model holds canvas marts only, so a lone incoming edge may belong to another route.
       const via = child.relationshipId ? incoming.find((e) => e.id === child.relationshipId) : undefined;
-      if (via) return { aliasPath: path, martId: via.source, label: titles.get(via.source) ?? path, depth, fields: [], uniqueCount: false };
+      if (via) return { aliasPath: path, martId: via.source, label: titles.get(via.source) ?? '', depth, fields: [], uniqueCount: false };
     }
     return undefined;
   };
