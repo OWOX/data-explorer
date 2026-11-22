@@ -12,7 +12,6 @@ import { useLatest } from '../useLatest';
 
 /** How long typing must pause before the search runs. */
 const SEARCH_DEBOUNCE_MS = 300;
-const MAX_CONTEXTS = 3;
 const SHORT_REASON = 'Type at least 2 characters';
 const NO_MART_REASON = 'No data mart found';
 
@@ -21,12 +20,13 @@ export type Row =
   | { kind: 'mart'; martId: string }
   | { kind: 'adhoc'; martId: string | null; pending: boolean; disabled: boolean; reason?: string };
 
-/** The first three of a mart's contexts that the model holds, in the mart's order. */
-export function contextsOf(mart: Mart | undefined, model: Model): Context[] {
-  if (!mart) return [];
-  const known = new Map(model.contexts.map((c) => [c.id, c]));
-  return mart.contextIds.flatMap((id) => { const c = known.get(id); return c ? [c] : []; }).slice(0, MAX_CONTEXTS);
+/** The contexts the found marts belong to, in the model's order: the choices of the dropdown's context filter. */
+export function contextsOfFound(martIds: string[], model: Model): Context[] {
+  const ids = new Set(martIds.flatMap((id) => model.marts.get(id)?.contextIds ?? []));
+  return model.contexts.filter((c) => ids.has(c.id));
 }
+
+const inContexts = (mart: Mart | undefined, ids: string[]) => !!mart && mart.contextIds.some((id) => ids.includes(id));
 
 type Found = { query: string; hits: SearchHits; martId: string | null; pending: boolean };
 type Entry = { query: string; ctl: AbortController; done: Promise<{ hits: SearchHits; martId: string | null } | null> };
@@ -35,7 +35,7 @@ const NO_HITS: SearchHits = { reports: [], marts: [] };
 /**
  * The Data Marts band's search: the box's open and typed state, the dropdown that fills while the member types, and what a pick
  * does. Once typing pauses, OWOX's search runs (and one AI question that names the ad-hoc report's mart, when the project has a
- * model). The list shows reports, then data marts, then the ad-hoc row. Nothing is applied before a pick; the AI's view of an
+ * model). The list shows the ad-hoc row, then reports, then data marts, and a context filter over the found ones. Nothing is applied before a pick; the AI's view of an
  * ad-hoc report is asked for only after the member picks that row.
  */
 export function useSmartSearch(model: Model) {
@@ -49,6 +49,7 @@ export function useSmartSearch(model: Model) {
   const [searching, setSearching] = useState(false);
   const [building, setBuilding] = useState(false);
   const [highlighted, setHighlighted] = useState<number | null>(null);
+  const [contextIds, setContextIds] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   // Hidden until the stored choice has been read, so a member who dismissed it never sees it flash.
   const [hintDismissed, setHintDismissed] = useState(true);
@@ -102,23 +103,40 @@ export function useSmartSearch(model: Model) {
   }, [ctx, aiConfigured, aiTimeoutMs, latest]);
 
   const trimmed = draft.trim();
-  const rows = useMemo<Row[]>(() => {
+  const allRows = useMemo<Row[]>(() => {
     if (!trimmed) return [];
     if (trimmed.length < MIN_QUERY) return [{ kind: 'adhoc', martId: null, pending: false, disabled: true, reason: SHORT_REASON }];
     // The previous query's reports and marts stay while a new one is in flight; only the ad-hoc row waits.
     if (!found) return [{ kind: 'adhoc', martId: null, pending: true, disabled: true }];
     const stale = found.query !== trimmed;
-    const out: Row[] = [
+    return [
+      found.pending || stale
+        ? { kind: 'adhoc', martId: null, pending: true, disabled: true }
+        : found.martId
+          ? { kind: 'adhoc', martId: found.martId, pending: false, disabled: false }
+          : { kind: 'adhoc', martId: null, pending: false, disabled: true, reason: NO_MART_REASON },
       ...found.hits.reports.map((r): Row => ({ kind: 'report', id: r.id, title: r.title, martId: r.martId })),
       ...found.hits.marts.map((martId): Row => ({ kind: 'mart', martId })),
     ];
-    out.push(found.pending || stale
-      ? { kind: 'adhoc', martId: null, pending: true, disabled: true }
-      : found.martId
-        ? { kind: 'adhoc', martId: found.martId, pending: false, disabled: false }
-        : { kind: 'adhoc', martId: null, pending: false, disabled: true, reason: NO_MART_REASON });
-    return out;
   }, [trimmed, found]);
+  /** The filter's choices: the contexts of the marts the rows name. */
+  const contexts = useMemo(
+    () => contextsOfFound(allRows.flatMap((r) => (r.kind === 'adhoc' ? [] : [r.martId])), model),
+    [allRows, model],
+  );
+  // A picked context that the current rows no longer offer stops filtering, and comes back if a later query offers it again.
+  const activeContextIds = useMemo(() => contextIds.filter((id) => contexts.some((c) => c.id === id)), [contextIds, contexts]);
+  // The ad-hoc row is never filtered out: the AI picks its mart on its own.
+  const rows = useMemo(
+    () => (activeContextIds.length
+      ? allRows.filter((r) => r.kind === 'adhoc' || inContexts(model.marts.get(r.martId), activeContextIds))
+      : allRows),
+    [allRows, activeContextIds, model],
+  );
+  const toggleContext = useCallback((id: string) => {
+    setContextIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+    setHighlighted(null);
+  }, []);
 
   const typed = useCallback((value: string) => {
     setDraft(value);
@@ -236,7 +254,7 @@ export function useSmartSearch(model: Model) {
   const clear = () => {
     stopTimer(); stopSearch(); stopPick();
     setDraft(''); draftRef.current = '';
-    setFound(null); setHighlighted(null); setNotice(null); setListShown(false);
+    setFound(null); setHighlighted(null); setNotice(null); setListShown(false); setContextIds([]);
     if (state.search || state.found.length) dispatch({ type: 'search', q: '' });
   };
 
@@ -259,6 +277,7 @@ export function useSmartSearch(model: Model) {
     submit: () => pick(),
     clear,
     rows, highlighted, setHighlighted, move, pick,
+    contexts, activeContextIds, toggleContext,
     listOpen,
     closeList: () => { setListShown(false); setHighlighted(null); },
     notice,

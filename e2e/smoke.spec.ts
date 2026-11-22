@@ -118,14 +118,15 @@ test('search finds the marts through OWOX search and makes the best one the main
   await expect(heading(page)).toHaveText(['Campaigns']);
 });
 
-test('search dropdown: reports first, then marts, then the ad-hoc row', async ({ page }) => {
+test('search dropdown: the ad-hoc row first, then reports, then marts, under a context filter', async ({ page }) => {
   await ordersGrid(page);
   await page.locator('header.dm-page-header').getByRole('button', { name: 'Search data marts' }).click();
   const box = page.locator('header.dm-page-header').getByRole('combobox', { name: 'Search data marts' });
   await box.fill('paid orders');
   const options = page.getByRole('listbox').getByRole('option');
-  await expect(options.first()).toContainText('Paid orders by month');
-  await expect(options.last()).toContainText('Ad-hoc report for');
+  await expect(options.first()).toContainText('Ad-hoc report for');
+  await expect(options.nth(1)).toContainText('Paid orders by month');
+  await expect(page.getByRole('group', { name: 'Filter by context' }).getByRole('button').first()).toBeVisible();
   await expect(box).toHaveAttribute('aria-expanded', 'true');
 });
 
