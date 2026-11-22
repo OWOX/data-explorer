@@ -20,15 +20,15 @@ export type ChartSpec = {
   measure?: string; measure2?: string | null; date?: string; bucket?: DateBucket | 'AUTO';
   dimension?: string; dimension2?: string; /** A Sankey's columns, left to right (2 to 5 dimensions). */ dimensions?: string[]; stack?: string | null; orientation?: Orientation; area?: boolean;
 };
-/** `metrics` is the measure each card shows when it is not the card's own: card id (its default's saved id) to measure id. */
-export type ChartSettings = { version?: 2; scorecards?: { hidden?: string[]; sparklines?: boolean; metrics?: Record<string, string> }; charts?: ChartSpec[] };
-/** What the scorecards need: hidden cards, the sparklines switch, each card's picked measure and the date their trends are drawn on. */
-export type Spark = { hidden: Set<string>; sparklines: boolean; metrics: Record<string, string>; date: Field | null };
+/** `metrics` is the measure each card shows when it is not the card's own: card id (its default's saved id) to measure id. `dates` is the date field each card's sparkline is drawn on: card id to field name. */
+export type ChartSettings = { version?: 2; scorecards?: { hidden?: string[]; sparklines?: boolean; metrics?: Record<string, string>; dates?: Record<string, string> }; charts?: ChartSpec[] };
+/** What the scorecards need: hidden cards, the sparklines switch, each card's picked measure, the date each card picked for its trend, and the default date the trends are drawn on. */
+export type Spark = { hidden: Set<string>; sparklines: boolean; metrics: Record<string, string>; dates: Record<string, string>; date: Field | null };
 
 /** What a mart shows before the member changes anything: today's two panels. Fixed ids, so an edit of a default keeps its id. */
 export const DEFAULT_CHARTS: readonly ChartSpec[] = [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie' }];
 export const chartsOf = (s: ChartSettings): readonly ChartSpec[] => s.charts ?? DEFAULT_CHARTS;
-export const scorecardsOf = (s: ChartSettings) => ({ hidden: new Set(s.scorecards?.hidden ?? []), sparklines: s.scorecards?.sparklines ?? true, metrics: s.scorecards?.metrics ?? {} });
+export const scorecardsOf = (s: ChartSettings) => ({ hidden: new Set(s.scorecards?.hidden ?? []), sparklines: s.scorecards?.sparklines ?? true, metrics: s.scorecards?.metrics ?? {}, dates: s.scorecards?.dates ?? {} });
 
 export const pickMeasure = (list: Measure[], saved?: string | null): Measure | null =>
   list.find((m) => measureId(m) === saved) ?? list.find((m) => m.kind === 'metric') ?? list[0] ?? null;

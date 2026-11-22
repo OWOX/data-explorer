@@ -16,7 +16,7 @@ const main: ChartMart = { aliasPath: '', recordsId: 'records:orders', title: 'Or
 const cf: ChartFields = { marts: [main], dimensions: [], dates: [date, other], counter: null };
 const metric: Measure = { kind: 'metric', metric: amount };
 const records: Measure = { kind: 'records', aliasPath: '', recordsId: 'records:orders' };
-const resolved = (over: Partial<Spark> = {}): Spark => ({ hidden: new Set(), sparklines: true, metrics: {}, date: null, ...over });
+const resolved = (over: Partial<Spark> = {}): Spark => ({ hidden: new Set(), sparklines: true, metrics: {}, dates: {}, date: null, ...over });
 const rs = resolved({ date });
 
 describe('sharedSeriesQuery', () => {

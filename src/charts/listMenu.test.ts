@@ -2,7 +2,7 @@ import { ChartSpline, Hash } from 'lucide-react';
 import { vi } from 'vitest';
 import type { ChartFields } from './fields';
 import { KINDS } from './kinds';
-import { hideCard, listItems, setCardMetric, tailItems } from './listMenu';
+import { hideCard, listItems, setCardDate, setCardMetric, tailItems } from './listMenu';
 import { cardsOf, martMeasures } from './Scorecards';
 import type { ChartSettings } from './settings';
 
@@ -83,4 +83,10 @@ test('setCardMetric saves the pick, clears it for the card’s own measure and k
   expect(setCardMetric(a, 'amount', 'amount', mart).scorecards?.metrics).toEqual({});
   const h = hideCard(hideCard({}, 'amount'), 'amount');
   expect(h.scorecards?.hidden).toEqual(['amount']);
+});
+
+test('setCardDate saves the date per card and keeps the other picks', () => {
+  const a = setCardDate({ scorecards: { metrics: { amount: 'records' } } }, 'amount', 'created_at');
+  expect(a.scorecards).toEqual({ metrics: { amount: 'records' }, dates: { amount: 'created_at' } });
+  expect(setCardDate(a, 'amount', 'paid_at').scorecards?.dates).toEqual({ amount: 'paid_at' });
 });

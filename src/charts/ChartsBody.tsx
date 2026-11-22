@@ -9,10 +9,10 @@ import type { TraverseFilter } from '../sdk/types';
 import { useServices } from '../state/store';
 import { ErrorBox } from '../ui/ErrorBox';
 import { Skeleton } from '../ui/Skeleton';
-import { chartFields } from './fields';
+import { chartFields, menuOf } from './fields';
 import type { HavingKeys } from './havingKeys';
 import { ChartMenu } from './ChartMenu';
-import { hideCard, listItems, setCardMetric, tailItems } from './listMenu';
+import { hideCard, listItems, setCardDate, setCardMetric, tailItems } from './listMenu';
 import { ChartsMenuSlot } from './menuSlot';
 import { joinGrainOf } from './answers';
 import { MartCards, useScorecards } from './Scorecards';
@@ -93,6 +93,11 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     const unit = chosen && chosen !== 'AUTO' ? chosen : bucket;
     onShowColumns(missing, p.date && unit ? { [p.date]: unit } : undefined);
   };
+  // A card's metric or date that is not a shown column is shown with the pick (a date by the bucket the sparklines use).
+  const showCardPick = (name: string, isDate: boolean) => {
+    if (shown.includes(name) || !schemaNames.has(name)) return;
+    onShowColumns([name], isDate && bucket ? { [name]: bucket } : undefined);
+  };
   const slot = useContext(ChartsMenuSlot);
   const columns = groups.reduce((n, g) => n + g.span, 0);
 
@@ -117,7 +122,9 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
           <td key={g.path} colSpan={g.span} data-chart-group={g.id} data-chart-path={g.path}>
             <div className="flex items-start gap-1">
               <MartCards martId={martId} mart={cf.marts[i]!} main={g.path === ''} spark={spark} scores={scores} bucket={bucket} filter={filter} version={version} paused={idle} joins={joins} hasFilters={hasFilters} formatOf={formatOf}
-                onMetric={settings ? (id, v) => change((cur) => setCardMetric(cur, id, v, cf.marts[i]!)) : undefined} onHide={settings ? (id) => change((cur) => hideCard(cur, id)) : undefined} />
+                menuMart={menuOf(cf).marts[i]}
+                onMetric={settings ? (id, v) => { showCardPick(v, false); change((cur) => setCardMetric(cur, id, v, cf.marts[i]!)); } : undefined}
+                onDate={settings ? (id, v) => { showCardPick(v, true); change((cur) => setCardDate(cur, id, v)); } : undefined} onHide={settings ? (id) => change((cur) => hideCard(cur, id)) : undefined} />
               {g.path === '' && slot && settings && createPortal(<ChartMenu name="Charts" items={listItems({ cf, settings, resolved, change })} />, slot)}
             </div>
           </td>

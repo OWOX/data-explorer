@@ -1,4 +1,4 @@
-import { EyeOff, Gauge } from 'lucide-react';
+import { Calendar, EyeOff, Gauge } from 'lucide-react';
 import { AUTO, formatValue, keepsUnit, type Format } from '../format/formats';
 import { isIntegerType } from '../model/field-category';
 import { AGG_LABELS, formatBucket, outputType, type AggFn, type DateBucket } from '../model/aggregation';
@@ -14,7 +14,7 @@ import { compactValue } from './compact';
 import type { ChartFields, ChartMart, Metric } from './fields';
 import { metricKey, scorecardsQuery, sparklineQuery, uniqueKey, type Measure } from './queries';
 import { measureId, type Spark } from './settings';
-import { measureGroups } from './menuGroups';
+import { fieldGroups, measureGroups } from './menuGroups';
 import { Sparkline, type Point } from './svg/Sparkline';
 import type { JoinGrain } from './answers';
 import { useChartQuery, type ChartResult } from './useChartQuery';
@@ -57,9 +57,12 @@ function defaultCards(mart: ChartMart): Card[] {
 /** The date a mart's sparklines are drawn on: the chart date when the mart has it, else the mart's first date (a joined mart without a date draws no trend). */
 export const sparkDate = (mart: ChartMart, spark: Spark): Field | null => (spark.date && mart.dates.includes(spark.date) ? spark.date : mart.dates[0] ?? null);
 
+/** The date one card's sparkline is drawn on: the date picked for the card when the mart still shows it, else the mart's own (`sparkDate`). */
+export const cardDate = (mart: ChartMart, spark: Spark, cardId: string): Field | null => mart.dates.find((d) => d.name === spark.dates[cardId]) ?? sparkDate(mart, spark);
+
 /** The query behind a mart's sparklines, or null when there are none to draw. One place decides, so the cards and the time series ask for the same key. */
-export function sparkQueryOf(mart: ChartMart, spark: Spark, bucket: DateBucket | null, filter: TraverseFilter[]): TraverseOptions | null {
-  const date = sparkDate(mart, spark);
+export function sparkQueryOf(mart: ChartMart, spark: Spark, bucket: DateBucket | null, filter: TraverseFilter[], pick: Field | null = null): TraverseOptions | null {
+  const date = pick ?? sparkDate(mart, spark);
   const cards = cardsOf(mart).filter((c) => !spark.hidden.has(c.id));
   return spark.sparklines && cards.length > 0 && date && bucket ? sparklineQuery(mart, date, bucket, filter) : null;
 }
@@ -146,22 +149,15 @@ export const numberOf = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-/** The cards of one data mart, wrapping inside its group's cell. The main mart's cell also shows the strip's error and empty state. */
-export function MartCards({ martId, mart, main, spark, scores, bucket, filter, version, paused, joins, hasFilters, formatOf, onMetric, onHide }: {
-  martId: string; mart: ChartMart; main: boolean; spark: Spark; scores: ChartResult; bucket: DateBucket | null; filter: TraverseFilter[]; version: number; paused: boolean; /** What lets a sparkline read be reused after a column is dropped. */ joins?: JoinGrain; hasFilters: boolean; formatOf: Formatter;
-  /** A card's ⋮ menu: pick the measure a card shows, and hide it. Without them (the settings are still loading) the cards have no menu. */
-  onMetric?: (cardId: string, measure: string) => void; onHide?: (cardId: string) => void;
+/** One card: its label and ⋮ menu, its value and its own sparkline (the date picked for it, read once per date and shared by the cards on it). */
+function ScoreCard({ martId, mart, menuMart, card: c, spark, row, bucket, filter, version, paused, joins, formatOf, choices, onMetric, onDate, onHide }: {
+  martId: string; mart: ChartMart; menuMart: ChartMart; card: Card; spark: Spark; row: Row | undefined; bucket: DateBucket | null; filter: TraverseFilter[]; version: number; paused: boolean; joins?: JoinGrain; formatOf: Formatter;
+  choices: ReturnType<typeof measureGroups>; onMetric?: (cardId: string, measure: string) => void; onDate?: (cardId: string, date: string) => void; onHide?: (cardId: string) => void;
 }) {
-  const cards = cardsOf(mart, spark.metrics).filter((c) => !spark.hidden.has(c.id));
-  const choices = measureGroups({ marts: [mart], dimensions: [], dates: [] }, martMeasures(mart));
-  // The group's own date when it has one, else the chart date's mart's: a joined mart without a date draws no trend.
-  const date = sparkDate(mart, spark);
-  const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, bucket, filter), version, joins);
-  if (scores.error) return main ? <ErrorBox error={scores.error} onRetry={scores.retry} /> : null;
-  if (scores.rows && scores.rows.length === 0) return main ? <p className="dm-muted text-sm">{emptyText(hasFilters)}</p> : null;
-  const row = scores.rows?.[0];
+  const date = cardDate(mart, spark, c.id);
+  const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, bucket, filter, date), version, joins);
   const dated = date ? datedRows(trend.rows ?? [], date.name) : [];
-  const points = (c: Card): Point[] => dated.map((s) => ({
+  const points: Point[] = dated.map((s) => ({
     x: String(s[date!.name]),
     y: numberOf(s[c.key]),
     label: formatBucket(s[date!.name], bucket!) ?? '',
@@ -169,21 +165,39 @@ export function MartCards({ martId, mart, main, spark, scores, bucket, filter, v
   }));
   return (
     // A card is at most 10rem (basis, no growth) and may shrink in a narrow group; only the label truncates, so a number is never cut.
+    <div data-card={c.id} className="dm-scorecard relative min-w-0 flex-[0_1_10rem] overflow-hidden px-3 py-2">
+      <div className={`dm-muted truncate text-xs ${onHide ? 'pr-6' : ''}`} title={c.label}>{c.label}</div>
+      {onHide && (
+        <div className="absolute right-0.5 top-0.5">
+          <ChartMenu name={c.label} items={[
+            ...(martMeasures(menuMart).length > 1 ? [{ kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(c.measure), options: [], groups: choices, onPick: (v: string) => onMetric?.(c.id, v) } as MenuItem] : []),
+            ...(menuMart.dates.length > 1 ? [{ kind: 'radio', label: 'Date field', icon: Calendar, value: date?.name ?? '', options: [], groups: fieldGroups({ marts: [menuMart], dimensions: [], dates: [] }, menuMart.dates), onPick: (v: string) => onDate?.(c.id, v) } as MenuItem] : []),
+            { kind: 'action', label: 'Hide', icon: EyeOff, onPick: () => onHide(c.id) },
+          ]} />
+        </div>
+      )}
+      {row ? <CardValue card={c} row={row} formatOf={formatOf} /> : <Skeleton rows={1} />}
+      {dated.length > 0 && <Sparkline points={points} ariaLabel={`${c.label} trend`} />}
+    </div>
+  );
+}
+
+/** The cards of one data mart, wrapping inside its group's cell. The main mart's cell also shows the strip's error and empty state. `menuMart` is the same mart with every column: its metrics and dates are what a card's menu offers. */
+export function MartCards({ martId, mart, menuMart = mart, main, spark, scores, bucket, filter, version, paused, joins, hasFilters, formatOf, onMetric, onDate, onHide }: {
+  martId: string; mart: ChartMart; menuMart?: ChartMart; main: boolean; spark: Spark; scores: ChartResult; bucket: DateBucket | null; filter: TraverseFilter[]; version: number; paused: boolean; /** What lets a sparkline read be reused after a column is dropped. */ joins?: JoinGrain; hasFilters: boolean; formatOf: Formatter;
+  /** A card's ⋮ menu: pick the measure a card shows, the date its trend is drawn on, and hide it. Without them (the settings are still loading) the cards have no menu. */
+  onMetric?: (cardId: string, measure: string) => void; onDate?: (cardId: string, date: string) => void; onHide?: (cardId: string) => void;
+}) {
+  const cards = cardsOf(mart, spark.metrics).filter((c) => !spark.hidden.has(c.id));
+  const choices = measureGroups({ marts: [menuMart], dimensions: [], dates: [] }, martMeasures(menuMart));
+  if (scores.error) return main ? <ErrorBox error={scores.error} onRetry={scores.retry} /> : null;
+  if (scores.rows && scores.rows.length === 0) return main ? <p className="dm-muted text-sm">{emptyText(hasFilters)}</p> : null;
+  const row = scores.rows?.[0];
+  return (
     <div className="flex min-w-0 flex-1 flex-wrap gap-2">
       {cards.map((c) => (
-        <div key={c.id} data-card={c.id} className="dm-scorecard relative min-w-0 flex-[0_1_10rem] overflow-hidden px-3 py-2">
-          <div className={`dm-muted truncate text-xs ${onHide ? 'pr-6' : ''}`} title={c.label}>{c.label}</div>
-          {onHide && (
-            <div className="absolute right-0.5 top-0.5">
-              <ChartMenu name={c.label} items={[
-                ...(martMeasures(mart).length > 1 ? [{ kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(c.measure), options: [], groups: choices, onPick: (v: string) => onMetric?.(c.id, v) } as MenuItem] : []),
-                { kind: 'action', label: 'Hide', icon: EyeOff, onPick: () => onHide(c.id) },
-              ]} />
-            </div>
-          )}
-          {row ? <CardValue card={c} row={row} formatOf={formatOf} /> : <Skeleton rows={1} />}
-          {dated.length > 0 && <Sparkline points={points(c)} ariaLabel={`${c.label} trend`} />}
-        </div>
+        <ScoreCard key={c.id} martId={martId} mart={mart} menuMart={menuMart} card={c} spark={spark} row={row} bucket={bucket} filter={filter} version={version} paused={paused} joins={joins} formatOf={formatOf}
+          choices={choices} onMetric={onMetric} onDate={onDate} onHide={onHide} />
       ))}
     </div>
   );
