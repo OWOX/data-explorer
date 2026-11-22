@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { Field } from '../model/types';
 import { toTraverseFilter } from './build';
-import { addValue, canSuggest, keepsPicks, lastToken, narrow, valuesOf, valuesQuery } from './valueSuggest';
+import { addValue, canSuggest, keepsPicks, lastToken, mergeValues, narrow, valuesOf, valuesQuery } from './valueSuggest';
 
 const f = (over: Partial<Field> = {}): Field => ({ name: 'country', alias: 'Country', type: 'STRING', category: 'string', description: null, isPrimaryKey: false, ...over });
 
@@ -73,4 +73,8 @@ describe('keepsPicks', () => {
     expect(keepsPicks('a.b, ', 'a.b, c')).toBe(true);
     expect(keepsPicks('a.b, ', 'aXb, c')).toBe(false);
   });
+});
+
+test('mergeValues keeps the first list first and drops repeats', () => {
+  expect(mergeValues(['b', 'a'], ['a', 'c'])).toEqual(['b', 'a', 'c']);
 });

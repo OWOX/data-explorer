@@ -115,7 +115,7 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
   const [, setLoadedTick] = useState(0);
   const loadedValues = values && canSuggest(field) ? values.cache.get(values.key) : undefined;
   const seed = value?.op === op && (op === 'contains' || op === 'not_contains') && typeof value.value === 'string' && !value.value.includes(',') && !value.list ? value.value : null;
-  const eb = base !== undefined ? base : seed !== null && loadedValues?.includes(seed) ? seed : null;
+  const eb = base !== undefined ? base : seed !== null && (loadedValues?.includes(seed) || values?.loaded?.includes(seed)) ? seed : null;
   const inPick = eb !== null && typeof val === 'string' && keepsPicks(eb, val);
   const wasList = !!value?.list && value.op === op;
   const isList = field.category === 'string' && (op === 'eq' || op === 'neq') && typeof val === 'string' && (edited ? val.includes(',') : wasList);

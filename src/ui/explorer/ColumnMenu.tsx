@@ -2,6 +2,7 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, EyeOff, Funnel,
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { formatsFor, keepsUnit, type Format } from '../../format/formats';
 import { describeFilter } from '../../filters/catalogue';
+import { valueCache } from '../../filters/valueSuggest';
 import { havingField, sliceField } from '../../filters/slice';
 import type { ColumnFilter } from '../../filters/build';
 import { BUCKET_LABELS, AGG_LABELS, allowedFunctions, canBucket, type AggFn, type AggregationDraft, type Output } from '../../model/aggregation';
@@ -45,7 +46,7 @@ export type ColumnMenuEnv = {
   /** False in Charts mode: no sort row and no sort mark. Absent means true. */
   sortable?: boolean;
   /** The read behind a text input's suggested values (a Filter or a Slice on this column), or null when none can be made. */
-  valuesFor?: (field: Field, scope: 'filter' | 'slice') => { key: string; load: (signal: AbortSignal) => Promise<string[]> } | null;
+  valuesFor?: (field: Field, scope: 'filter' | 'slice') => { key: string; load?: (signal: AbortSignal) => Promise<string[]>; loaded?: string[] } | null;
 };
 
 const NOOP = () => undefined;
@@ -103,8 +104,6 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
   const having = env.filters[field.name]?.fn;
   const rootSeq = initial ? 0 : 1;
   const rows = useRef(new Map<string, HTMLElement>());
-  // The values read for this column's inputs, kept while the menu is open.
-  const [valueCache] = useState(() => new Map<string, string[]>());
   const valuesOf = (f: Field, scope: 'filter' | 'slice') => { const v = env.valuesFor?.(f, scope); return v ? { ...v, cache: valueCache } : undefined; };
   const ref = (k: string) => (el: HTMLElement | null) => { if (el) rows.current.set(k, el); else rows.current.delete(k); };
   // A submenu is measured from its row, so it waits until the menu has its place; a menu opened from an indicator then opens that submenu.

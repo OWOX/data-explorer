@@ -325,3 +325,52 @@ test('the suggestion wrapper is no menu, and aria-controls points at the listbox
   expect(input()).toHaveAttribute('aria-controls', box.id);
   expect(screen.queryByRole('menu')).toBeNull();
 });
+
+test('the values of the loaded rows show at once, and the server values merge after them without duplicates', async () => {
+  let done!: (v: string[]) => void;
+  const src: ValueSource = { ...source(() => new Promise((r) => { done = r; })), loaded: ['US', 'DE'] };
+  render(<Harness src={src} />);
+  await userEvent.click(input());
+  expect(options()).toEqual(['US', 'DE']);
+  expect(screen.queryByRole('status')).toBeNull();
+  done(['FR', 'DE', 'US']);
+  await waitFor(() => expect(options()).toEqual(['US', 'DE', 'FR']));
+});
+
+test('loaded rows narrow by the typed text like server values do', async () => {
+  const src: ValueSource = { ...source(loadOf([])), loaded: ['Spain', 'Sweden', 'Italy'] };
+  render(<Harness src={src} />);
+  await userEvent.click(input());
+  await userEvent.type(input(), 'S');
+  await waitFor(() => expect(options()).toEqual(['Spain', 'Sweden']));
+});
+
+test('without a read, the loaded rows are still offered, and there is no reload row', async () => {
+  const src: ValueSource = { key: 'k', loaded: ['US'], cache: new Map() };
+  render(<Harness src={src} />);
+  await userEvent.click(input());
+  expect(options()).toEqual(['US']);
+  expect(screen.queryByRole('button', { name: /Reload values/ })).toBeNull();
+});
+
+test('values already in the cache are not read again, and Reload values drops them and reads once more', async () => {
+  const load = vi.fn().mockResolvedValue(['US', 'DE']);
+  const src = source(load);
+  src.cache.set('k', ['US']);
+  render(<Harness src={src} />);
+  await userEvent.click(input());
+  expect(load).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole('button', { name: /Reload values/ }));
+  await waitFor(() => expect(options()).toEqual(['US', 'DE']));
+  expect(load).toHaveBeenCalledTimes(1);
+  expect(src.cache.get('k')).toEqual(['US', 'DE']);
+  expect(input()).toHaveFocus();
+});
+
+test('the reload row is not shown while the values are still loading', async () => {
+  const src: ValueSource = { ...source(() => new Promise(() => undefined)), loaded: ['US'] };
+  render(<Harness src={src} />);
+  await userEvent.click(input());
+  expect(options()).toEqual(['US']);
+  expect(screen.queryByRole('button', { name: /Reload values/ })).toBeNull();
+});

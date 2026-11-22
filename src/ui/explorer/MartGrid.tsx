@@ -702,12 +702,15 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const { ctx } = useServices();
   const mainKey = useMemo(() => hasPrimaryKey(native), [native]);
   const valuesFor = useCallback((field: Field, scope: 'filter' | 'slice') => {
-    if (!mainKey || !canSuggest(field)) return null;
+    if (!canSuggest(field)) return null;
+    // The distinct values of the rows already on the grid show at once, and still do when the mart has no key to read the rest with.
+    const loaded = valuesOf(rows ?? [], field);
+    if (!mainKey) return { key: JSON.stringify([martId, field.name, 'rows']), loaded };
     const without = (all: Record<string, ColumnFilter>, drop: boolean) => Object.values(all).filter((f) => !(drop && f.field === field.name));
     const filter = toTraverseFilters(schema, without(filters, scope === 'filter').filter((f) => !f.fn), without(slices, scope === 'slice'));
     const query = valuesQuery(field, filter);
-    return { key: JSON.stringify([martId, query]), load: async (signal: AbortSignal) => valuesOf(await readRows(ctx, martId, query, { signal }), field) };
-  }, [mainKey, schema, filters, slices, martId, ctx]);
+    return { key: JSON.stringify([martId, query]), loaded, load: async (signal: AbortSignal) => valuesOf(await readRows(ctx, martId, query, { signal }), field) };
+  }, [mainKey, schema, filters, slices, martId, ctx, rows]);
   const menuEnv = useMemo<ColumnMenuEnv>(() => ({
     sorts: shownSorts, setSort, filters, slices, setSlice,
     setFilter,

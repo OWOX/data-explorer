@@ -135,8 +135,11 @@ body { color: var(--foreground); font-family: var(--font-sans); }
 * { border-color: var(--border); }
 
 /* The suggested values under a text filter input. */
-.dm-suggest { width: min(19.6rem, calc(100vw - 16px)); max-height: 14rem; overflow-y: auto; padding: 4px 0; z-index: 60; }
+.dm-suggest { min-width: 0; max-height: 14rem; overflow-y: auto; padding: 4px 0; z-index: 60; }
 .dm-suggest-option, .dm-suggest-note { padding: 6px 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 20px; }
 .dm-suggest-option { cursor: pointer; }
 .dm-suggest-option[data-hot], .dm-suggest-option:hover { background: var(--menu-hover); }
 .dm-suggest-note { color: var(--menu-muted); }
+/* The reload row is a button that looks like a note: it is the popup's last row. */
+.dm-suggest-reload { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--border); cursor: pointer; }
+.dm-suggest-reload:hover { background: var(--menu-hover); }
