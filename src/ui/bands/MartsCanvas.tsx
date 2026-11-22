@@ -166,7 +166,15 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   })();
   const near = hoverEl === null ? null : litIds(wires, hoverEl);
   const fadedAt = (martId: string, path: string) => near !== null && !near.has(martElementId(martId, path));
-  useWires(treeRef, wires, { pinned: null, hovered: null }, revisionOf(key), 'tree-wires', scale);
+  // A line dims with the card it arrives at, by the same rule as the card.
+  const fadedTargets = new Set<string>();
+  for (const w of wires) {
+    const node = [...tree.nodes.values()].find((n) => martElementId(n.martId, n.path) === w.to);
+    const ghost = node ? undefined : ghosts.find((g) => martElementId(g.martId, g.aliasPath) === w.to);
+    const faded = drag ? (node ? node.path !== drag.path && !valid.has(node.path) : false) : near !== null && !near.has(w.to);
+    if ((node || ghost) && faded) fadedTargets.add(w.to);
+  }
+  useWires(treeRef, wires, { pinned: null, hovered: null }, revisionOf(key), 'tree-wires', scale, fadedTargets);
 
   if (!mainId) return <p className="dm-muted text-sm">Select a data mart.</p>;
   // A card carries its path in its title only when the report reaches that mart through more than one path.

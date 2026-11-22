@@ -49,6 +49,11 @@ describe('the stylesheet', () => {
     expect(css).not.toMatch(/dm-unjoinable/);
     expect(rules(/^\.dm-node\.dm-faded$/)).toContain('opacity: 0.3');
   });
+  test('a line dims with the card it arrives at, at the same 30%, and only a line that is drawn', () => {
+    expect(rules(/^#wires path\.faded:is\(\.lit, \.joined, \.ghost, \.lit\.aside\), #tree-wires path\.faded$/)).toContain('opacity: 0.3');
+    // After the rule that holds a drawn line at full strength, so it wins.
+    expect(css.indexOf('#tree-wires path.faded')).toBeGreaterThan(css.indexOf('#wires path.relationship.joined, #wires path.relationship.ghost'));
+  });
   test('a ghost and an off-path card are dashed at full strength', () => {
     expect(rules(/^\.dm-node\.dm-ghost, \.dm-node\.dm-offpath$/)).toContain('border-style: dashed');
     expect(rules(/^\.dm-node\.dm-ghost/)).not.toContain('opacity');

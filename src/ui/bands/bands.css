@@ -311,6 +311,9 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 #wires path.relationship.inbound, #tree-wires path.relationship.inbound { stroke-width: 1; }
 /* After the lit and aside rules, so a line that is drawn at rest keeps full strength whatever lights it. */
 #wires path.relationship.joined, #wires path.relationship.ghost, #tree-wires path.relationship.joined, #tree-wires path.relationship.ghost { opacity: 1; }
+/* A line dims with the card it arrives at, at the card's own 30%. Only a line that is drawn: one at rest in Grid is hidden and stays so.
+   Listed with `.lit.aside` so it outranks that half-strength rule, and after the rule above so it wins the full-strength one. */
+#wires path.faded:is(.lit, .joined, .ghost, .lit.aside), #tree-wires path.faded { opacity: 0.3; }
 /* The card under the pointer takes its own run-health colour on its one 1px border; a card nothing has run stays grey.
    The background stays the card's own: only the selected card is tinted. */
 .dm-node.lit:hover {
