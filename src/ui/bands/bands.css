@@ -201,6 +201,13 @@
 .dm-node.dm-faded { opacity: 0.3; }
 .dm-drag-ghost { position: fixed; z-index: 60; pointer-events: none; padding: 6px 10px; border-radius: 8px; font-size: 13px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 4px 12px rgb(0 0 0 / 0.18); }
 .dm-canvas [data-mart-id] { user-select: none; }
+/* The dot on the middle of a line whose relationship has a name or a description: it follows its line's opacity (the line it sits after),
+   and takes the pointer only while it shows, so a hidden line leaves the cards clickable. */
+.dm-wire-dot { fill: var(--muted-foreground); stroke: var(--background); stroke-width: 1.5; opacity: 0; pointer-events: none; transition: opacity 150ms; }
+:is(#wires, #tree-wires) path.lit + .dm-wire-dot { opacity: 1; pointer-events: all; }
+:is(#wires, #tree-wires) path.lit.aside + .dm-wire-dot { opacity: 0.5; }
+:is(#wires, #tree-wires) path.relationship:is(.joined, .ghost) + .dm-wire-dot { opacity: 1; pointer-events: all; }
+:is(#wires, #tree-wires) path.faded:is(.lit, .joined, .ghost, .lit.aside) + .dm-wire-dot { opacity: 0.3; }
 /* The card under the pointer takes its own run-health colour on its one 1px border and a light tint of it.
    A card nothing has run stays grey. */
 .dm-node-head { display: flex; align-items: center; gap: 0.5rem; min-height: 1.5rem; }

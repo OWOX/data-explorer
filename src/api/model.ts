@@ -1,4 +1,4 @@
-import type { Ctx, ConnectorDto, ConnectorSummaryDto, ContextDto, ModelCanvasPageDto } from '../sdk/types';
+import type { Ctx, ConnectorDto, ConnectorSummaryDto, ContextDto, ModelCanvasPageDto, RelationshipDto } from '../sdk/types';
 import type { Edge, Mart, Model } from '../model/types';
 import { cleanSummary, groupSources, sourceKeyFor } from '../model/sources';
 import { runPool } from './pool';
@@ -69,7 +69,10 @@ export async function loadModel(ctx: Ctx, onProgress?: (p: LoadProgress) => void
   const marts = new Map<string, Mart>();
   const results = await runPool(storages, STORAGE_CONCURRENCY, async (s) => {
     // A storage that fails still counts as read: the bar must be able to fill.
-    const [nodes, edges] = await Promise.all([canvasNodes(ctx, s.id).then(step, (e) => { step(null); throw e; }), ctx.owox.models.getEdges(s.id).then(step, (e) => { step(null); throw e; })]);
+    // The names and descriptions of the relationships are decoration: a failed read leaves the lines unnamed and is not counted.
+    const [nodes, edges, named] = await Promise.all([canvasNodes(ctx, s.id).then(step, (e) => { step(null); throw e; }), ctx.owox.models.getEdges(s.id).then(step, (e) => { step(null); throw e; }),
+      ctx.owox.getJson<RelationshipDto[]>(`/api/data-storages/${encodeURIComponent(s.id)}/relationships`).then((r) => (Array.isArray(r) ? r : []), (): RelationshipDto[] => [])]);
+    const names = new Map(named.map((r) => [r.id, r]));
     for (const n of nodes) {
       const item = listed.get(n.id);
       const connectorName = item?.definitionType === 'CONNECTOR' ? item.connectorSourceName || undefined : undefined;
@@ -87,7 +90,7 @@ export async function loadModel(ctx: Ctx, onProgress?: (p: LoadProgress) => void
         ...(connectorName ? { connectorName } : {}),
       });
     }
-    return edges;
+    return edges.map((e) => ({ ...e, targetAlias: names.get(e.id)?.targetAlias?.trim() || undefined, description: names.get(e.id)?.description?.trim() || undefined }));
   });
   const failedStorages: Model['failedStorages'] = [];
   const rawEdges = results.flatMap((r, i) => {
@@ -105,6 +108,8 @@ export async function loadModel(ctx: Ctx, onProgress?: (p: LoadProgress) => void
       source: e.sourceDataMartId,
       target: e.targetDataMartId,
       joins: e.joinConditions.map((j) => ({ sourceField: j.sourceFieldName, targetField: j.targetFieldName })),
+      ...(e.targetAlias ? { alias: e.targetAlias } : {}),
+      ...(e.description ? { description: e.description } : {}),
     }));
 
   const sources = groupSources(marts.values(), bundled, custom);

@@ -26,7 +26,7 @@ const SEARCH_FROM = 8;
  * a search box, then rows where a chosen value carries a check mark. Select all and Clear act on the rows that match
  * the search. `onChange` gets the whole new selection (values not on offer are left as they were).
  */
-export function SheetsChecklist({ items, selected, onChange, label, displaying }: {
+export function SheetsChecklist({ items, selected, onChange, label, displaying, lead }: {
   items: ChecklistItem[];
   selected: string[];
   onChange: (next: string[]) => void;
@@ -34,6 +34,8 @@ export function SheetsChecklist({ items, selected, onChange, label, displaying }
   label: string;
   /** The number "Displaying" shows; defaults to the rows on offer (those the search matches). */
   displaying?: number;
+  /** A row above the others that is not one of them: Select all, Clear and the counts leave it alone, and it has its own toggle. */
+  lead?: { item: ChecklistItem; on: boolean; onToggle: () => void };
 }) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState<string | null>(null);
@@ -44,10 +46,14 @@ export function SheetsChecklist({ items, selected, onChange, label, displaying }
   const shown = q ? items.filter((i) => i.text.toLowerCase().includes(q)) : items;
   const on = new Set(selected);
   const hasSearch = items.length >= SEARCH_FROM;
-  const stop = shown.some((i) => i.value === active) ? active : shown[0]?.value;
+  // The lead row shows while the search matches it, and comes first.
+  const leading = lead && (!q || lead.item.text.toLowerCase().includes(q)) ? [lead.item] : [];
+  const rowsShown = [...leading, ...shown];
+  const stop = rowsShown.some((i) => i.value === active) ? active : rowsShown[0]?.value;
 
   const toggle = (item: ChecklistItem) => {
     if (item.disabled) return;
+    if (lead && item === lead.item) { lead.onToggle(); return; }
     onChange(on.has(item.value) ? selected.filter((v) => v !== item.value) : [...selected, item.value]);
   };
   const selectAll = () => {
@@ -108,8 +114,8 @@ export function SheetsChecklist({ items, selected, onChange, label, displaying }
         </div>
       )}
       <div ref={list} id={id} role="listbox" aria-label={label} aria-multiselectable="true" className="dm-checklist-list">
-        {shown.map((item) => {
-          const sel = on.has(item.value);
+        {rowsShown.map((item) => {
+          const sel = lead && item === lead.item ? lead.on : on.has(item.value);
           return (
             <div key={item.value} role="presentation" className="dm-checklist-row dm-reveal-host">
               <div
@@ -123,7 +129,7 @@ export function SheetsChecklist({ items, selected, onChange, label, displaying }
                 className="dm-checklist-opt"
                 onClick={() => toggle(item)}
                 onFocus={() => setActive(item.value)}
-                onKeyDown={(e) => onRowKey(e, item, shown.indexOf(item))}
+                onKeyDown={(e) => onRowKey(e, item, rowsShown.indexOf(item))}
               >
                 <span className="dm-checklist-check" aria-hidden>{sel && <Check size={14} />}</span>
                 <span className="dm-checklist-label">{item.label ?? item.text}</span>
@@ -133,7 +139,7 @@ export function SheetsChecklist({ items, selected, onChange, label, displaying }
             </div>
           );
         })}
-        {shown.length === 0 && <p className="dm-checklist-empty">No matches</p>}
+        {rowsShown.length === 0 && <p className="dm-checklist-empty">No matches</p>}
       </div>
     </div>
   );

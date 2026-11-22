@@ -200,6 +200,25 @@ describe('useWires', () => {
   });
 });
 
+describe('the dot of a named relationship', () => {
+  afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.unstubAllGlobals(); });
+
+  it('is drawn after the line of a wire with a note only, and says the note, then the line, on hover', () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    const canvas = document.createElement('div');
+    canvas.innerHTML = '<div id="a"></div><div id="b"></div><div id="c"></div>';
+    document.body.append(canvas);
+    const wires = [{ ...wire('named', 'a', 'b'), note: 'First session: How a visit starts' }, wire('plain', 'a', 'c')];
+    renderHook(() => useWires({ current: canvas }, wires, { pinned: null, hovered: null }, 0));
+    const dots = canvas.querySelectorAll<SVGCircleElement>('circle.dm-wire-dot');
+    expect(dots).toHaveLength(1);
+    expect(dots[0]!.previousElementSibling).toBe(canvas.querySelector('path[data-to="b"]'));
+    expect(dots[0]!.dataset.tip).toContain('First session: How a visit starts');
+    expect(canvas.querySelector<SVGPathElement>('path[data-to="b"]')!.dataset.tip).toMatch(/^First session/);
+    expect(canvas.querySelector<SVGPathElement>('path[data-to="c"]')!.dataset.tip).not.toContain('First');
+  });
+});
+
 describe('a hub with many neighbours', () => {
   const N = 35;
   const ids = Array.from({ length: N }, (_, i) => `n${String(i).padStart(2, '0')}`);

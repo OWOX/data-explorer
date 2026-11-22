@@ -14,6 +14,7 @@ import { useLatest } from '../useLatest';
 import { useCanvasDrag } from './useCanvasDrag';
 import { overOf, useGhostChain } from './useGhostChain';
 import type { ClickOptions } from './useCardClick';
+import { relationshipNote } from './relationshipNote';
 import { litIds, revisionOf, useWires, type Wire } from './wires';
 
 export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart }: {
@@ -146,7 +147,10 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     for (const node of tree.nodes.values()) {
       if (node.parent === null) continue;
       const parent = tree.nodes.get(node.parent)!;
-      out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}`, sideways: true, joined: true, ...(node.path === strongPath ? { strong: true } : {}) });
+      // Two relationships between the same marts cannot be told apart here, so a note is shown only when there is one.
+      const between = model.edges.filter((e) => e.source === parent.martId && e.target === node.martId);
+      const note = between.length === 1 ? relationshipNote(between[0], title(node.martId)) : null;
+      out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}`, ...(note ? { note } : {}), sideways: true, joined: true, ...(node.path === strongPath ? { strong: true } : {}) });
     }
     for (const level of levels) {
       const fromPath = level.from;

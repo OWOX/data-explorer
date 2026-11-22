@@ -31,6 +31,8 @@ export type Wire = {
   kind: 'source' | 'relationship';
   /** Said in the tooltip: lines pass under cards, so they have to say what they are. */
   title: string;
+  /** What the relationship is called and means, when it has a custom name or a description: said first in the tooltip, and a dot on the line's middle says there is something to hover. */
+  note?: string;
   /** A join that can be made but is not yet: drawn dashed, always, at full strength. Solid is a join in the report. */
   dashed?: boolean;
   /** A join in the report (the path): drawn solid, always, at full strength. */
@@ -175,6 +177,8 @@ export function useWires(
 ) {
   /** The drawn lines, kept across a selection change: building belongs to the cards, lighting to the selection. */
   const drawn = useRef<SVGPathElement[]>([]);
+  /** The dot of each wire that has a note, by wire index; it sits on the middle of the line that carries the wire. */
+  const dots = useRef<(SVGCircleElement | undefined)[]>([]);
   /** Which wire's path carries each wire's line (invariants 1 and 2). */
   const leads = useRef<number[]>([]);
   /** Light again, now that the lines have moved (invariant 3). */
@@ -197,9 +201,19 @@ export function useWires(
       path.dataset.from = wire.from;
       path.dataset.to = wire.to;
       // Read by the canvas, which says it in the shared bubble: a native <title> would be a second tooltip style.
-      path.dataset.tip = wire.title;
+      path.dataset.tip = wire.note ? `${wire.note} · ${wire.title}` : wire.title;
       svg.append(path);
       return path;
+    }));
+    // The dot follows its line's opacity (the sibling rules in bands.css) and is the only part of a line that takes the pointer while it is faint.
+    const marks = (dots.current = wires.map((wire, i) => {
+      if (!wire.note) return undefined;
+      const dot = document.createElementNS(NS, 'circle');
+      dot.setAttribute('class', 'dm-wire-dot');
+      dot.setAttribute('r', '4');
+      dot.dataset.tip = `${wire.note} · ${wire.title}`;
+      paths[i]!.after(dot);
+      return dot;
     }));
     alight.current = [];
     leads.current = [];
@@ -232,6 +246,16 @@ export function useWires(
         else {
           path.removeAttribute('d');
           path.classList.remove(...LIT_CLASSES);
+        }
+        const dot = marks[i];
+        if (!dot) return;
+        if (data && typeof path.getTotalLength === 'function') {
+          const mid = path.getPointAtLength(path.getTotalLength() / 2);
+          dot.setAttribute('cx', String(mid.x));
+          dot.setAttribute('cy', String(mid.y));
+        } else {
+          dot.removeAttribute('cx');
+          dot.removeAttribute('cy');
         }
       });
       watch();
@@ -273,6 +297,7 @@ export function useWires(
       canvas.removeEventListener('animationend', settle);
       canvas.removeEventListener('animationcancel', settle);
       for (const path of paths) path.remove();
+      for (const dot of marks) dot?.remove();
       if (made) svg.remove();
     };
   }, [canvasRef, wires, revision, layerId, scale]);
