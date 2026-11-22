@@ -374,3 +374,47 @@ test('the reload row is not shown while the values are still loading', async () 
   expect(options()).toEqual(['US']);
   expect(screen.queryByRole('button', { name: /Reload values/ })).toBeNull();
 });
+
+test('typed text that matches no value keeps the panel open with a note and the reload row', async () => {
+  const load = vi.fn().mockResolvedValueOnce(['US', 'DE']).mockResolvedValueOnce(['US', 'DE', 'ZA']);
+  render(<Harness src={source(load)} />);
+  await userEvent.click(input());
+  await waitFor(() => expect(options()).toEqual(['US', 'DE']));
+  await userEvent.type(input(), 'ZA');
+  expect(options()).toEqual([]);
+  expect(screen.getByRole('status')).toHaveTextContent('No matching values');
+  await userEvent.click(screen.getByRole('button', { name: /Reload values/ }));
+  await waitFor(() => expect(options()).toEqual(['ZA']));
+  expect(load).toHaveBeenCalledTimes(2);
+});
+
+test('an empty list from the server still offers the reload row', async () => {
+  render(<Harness src={source(loadOf([]))} />);
+  await userEvent.click(input());
+  expect(await screen.findByText('No matching values')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Reload values/ })).toBeInTheDocument();
+});
+
+test('ArrowDown past the last option reaches the reload row, and Enter reloads', async () => {
+  const load = vi.fn().mockResolvedValueOnce(['US', 'DE']).mockResolvedValueOnce(['US', 'DE', 'FR']);
+  render(<Harness src={source(load)} />);
+  await userEvent.click(input());
+  await waitFor(() => expect(options()).toEqual(['US', 'DE']));
+  await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}');
+  const reload = screen.getByRole('button', { name: /Reload values/ });
+  expect(reload).toHaveAttribute('data-hot');
+  expect(input()).toHaveAttribute('aria-activedescendant', reload.id);
+  await userEvent.keyboard('{Enter}');
+  await waitFor(() => expect(options()).toEqual(['US', 'DE', 'FR']));
+  expect(load).toHaveBeenCalledTimes(2);
+  expect(input().value).toBe('');
+});
+
+test('the reload row is reachable by keyboard when nothing matches', async () => {
+  const load = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce(['US']);
+  render(<Harness src={source(load)} />);
+  await userEvent.click(input());
+  await screen.findByText('No matching values');
+  await userEvent.keyboard('{ArrowDown}{Enter}');
+  await waitFor(() => expect(options()).toEqual(['US']));
+});

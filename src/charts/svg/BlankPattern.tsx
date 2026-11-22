@@ -1,6 +1,6 @@
 import { BLANK_COLOR } from '../blank';
 
-/** The hatch a blank mark is filled with: thin diagonal stripes in the blank colour on a solid blank-colour ground, so it reads in both themes. Defined once per chart; `id` must be unique per chart instance (useId). */
+/** The hatch a blank mark is filled with: thin diagonal stripes in `--dm-blank-hatch` on a solid `--dm-blank` ground, so it reads in both themes. Defined once per chart; `id` must be unique per chart instance (useId). */
 export function BlankDefs({ id }: { id: string }) {
   return (
     <defs>

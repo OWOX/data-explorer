@@ -1,7 +1,7 @@
 import { knownFunctions } from '../model/aggregation';
 import { categorizeFieldType } from '../model/field-category';
 import type { Edge, Field, Schema } from '../model/types';
-import type { AvailableSourceDto, BlendableSchemaDto, Ctx, DataMartDetailDto } from '../sdk/types';
+import type { AvailableSourceDto, BlendableSchemaDto, Ctx } from '../sdk/types';
 
 /** The backend's `isArrayFieldType`: ARRAY, bare or with a parameter (`ARRAY<STRING>`). */
 export const isArrayType = (type: string | undefined) => /^ARRAY(?:\s*[<(]|$)/i.test(type?.trim() ?? '');
@@ -54,10 +54,10 @@ export interface BlendableLoader {
   useKeys(ctx: KeyContext): void;
 }
 
-/** Joined fields of a mart as columns: only included, readable sources; no hidden or calculated field. Depth first, then title. */
 /** The alias of the parent mart's key field a join goes by (a field alias only, never the raw name), when it is known. */
 export type KeyAlias = (source: AvailableSourceDto) => string | undefined;
 
+/** Joined fields of a mart as columns: only included, readable sources; no hidden or calculated field. Depth first, then title. */
 export function joinedSources(dto: BlendableSchemaDto, keyAlias?: KeyAlias): JoinedSource[] {
   const offered = (dto.availableSources ?? []).filter((s) => s.isIncluded && s.isAccessibleForReporting);
   const byPath = new Map<string, JoinedSource>();

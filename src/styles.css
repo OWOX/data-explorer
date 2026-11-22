@@ -142,4 +142,4 @@ body { color: var(--foreground); font-family: var(--font-sans); }
 .dm-suggest-note { color: var(--menu-muted); }
 /* The reload row is a button that looks like a note: it is the popup's last row. */
 .dm-suggest-reload { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--border); cursor: pointer; }
-.dm-suggest-reload:hover { background: var(--menu-hover); }
+.dm-suggest-reload[data-hot], .dm-suggest-reload:hover { background: var(--menu-hover); }

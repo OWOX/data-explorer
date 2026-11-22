@@ -159,8 +159,9 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, bucket, autoBu
   choices: ReturnType<typeof measureGroups>; onMetric?: (cardId: string, measure: string) => void; onDate?: (cardId: string, date: string) => void; onHide?: (cardId: string) => void;
 }) {
   const date = cardDate(mart, spark, c.id);
-  // A date other than the charts' keeps the 60-bucket cap by its own range; a chosen bucket is shared.
-  const own = autoBucket && date !== spark.date;
+  // A date the member picked for this card, other than the charts', keeps the 60-bucket cap by its own range; a chosen bucket is shared.
+  // A joined mart's default date is not a pick: it rides the charts' bucket, so it costs no range read of its own.
+  const own = autoBucket && !!spark.dates[c.id] && date?.name !== spark.date?.name;
   const mine = useBucket(martId, own ? date : null, 'AUTO', filter, version, paused);
   const cardBucket = own ? mine.bucket : bucket;
   const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, cardBucket, filter, date), version, joins);

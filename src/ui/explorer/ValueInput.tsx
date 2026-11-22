@@ -60,10 +60,14 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
   const options = list
     ? narrow(pool.filter((o) => !o.includes(',')), text)
     : pool.filter((o) => o !== value && o.toLowerCase().includes(value.trim().toLowerCase()));
-  const shown = open && !!source && (loading || options.length > 0);
+  // Once the values are in, the panel stays up with no match too, so the reload row can still be reached.
+  const shown = open && !!source && (loading || options.length > 0 || !!loaded);
   // The listbox is in the DOM once the values are in; while they load there is only a status note.
   const listed = shown && !(loading && !loaded && !options.length);
-  const at = Math.min(hot, options.length - 1);
+  // The reload row (only values from the server can be out of date) comes after the last option in the arrow-key order.
+  const rows = options.length + (loaded ? 1 : 0);
+  const at = Math.min(hot, rows - 1);
+  const onReload = !!loaded && at === options.length;
   const pick = (v: string) => {
     // A value with a comma cannot join a list: it replaces the text.
     if (op in SWITCH && !v.includes(',')) {
@@ -77,7 +81,7 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
   return (
     <>
       <input ref={setAnchor} aria-label="Value" className={className} type="text" value={value} autoComplete="off"
-        {...(source ? { role: 'combobox', 'aria-autocomplete': 'list' as const, 'aria-expanded': shown, 'aria-controls': listed ? id : undefined, 'aria-activedescendant': listed && at >= 0 ? `${id}-${at}` : undefined } : {})}
+        {...(source ? { role: 'combobox', 'aria-autocomplete': 'list' as const, 'aria-expanded': shown, 'aria-controls': listed && options.length ? id : undefined, 'aria-activedescendant': listed && at >= 0 ? (onReload ? `${id}-reload` : `${id}-${at}`) : undefined } : {})}
         onChange={(e) => { onChange(e.target.value); setOpen(true); setHot(-1); start(); }}
         onFocus={() => { setOpen(true); start(); }}
         onBlur={() => setOpen(false)}
@@ -85,17 +89,19 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
           if (!source) return;
           if (e.key === 'Escape' && shown) { e.preventDefault(); e.stopPropagation(); setOpen(false); return; }
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-            if (!options.length) return;
+            if (!rows) return;
             e.preventDefault();
             setOpen(true);
-            setHot(e.key === 'ArrowDown' ? (at + 1) % options.length : at <= 0 ? options.length - 1 : at - 1);
-          } else if (e.key === 'Enter' && shown && at >= 0) { e.preventDefault(); pick(options[at]!); }
+            setHot(e.key === 'ArrowDown' ? (at + 1) % rows : at < 0 ? Math.max(options.length - 1, 0) : at === 0 ? rows - 1 : at - 1);
+          } else if (e.key === 'Enter' && shown && at >= 0) { e.preventDefault(); if (onReload) reload(); else pick(options[at]!); }
         }} />
       {shown && anchor && (
         <Panel anchor={anchor} mode="below" onEscape={() => setOpen(false)} focusSeq={0} matchWidth className="dm-suggest">
           {!listed
             ? <div role="status" className="dm-suggest-note">Loading values…</div>
-            : (
+            : !options.length
+              ? <div role="status" className="dm-suggest-note">No matching values</div>
+              : (
               // Pressing an option must not take focus from the input: several can be picked in a row.
               <div id={id} role="listbox" aria-label="Suggested values" onMouseDown={(e) => e.preventDefault()}>
                 {options.map((o, i) => (
@@ -106,7 +112,7 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
             )}
           {/* Only values that came from the server can be out of date; the rows on the grid are what the grid shows. */}
           {loaded && (
-            <button type="button" className="dm-suggest-note dm-suggest-reload" onMouseDown={(e) => e.preventDefault()} onClick={reload}>
+            <button type="button" id={`${id}-reload`} data-hot={onReload ? '' : undefined} className="dm-suggest-note dm-suggest-reload" onMouseDown={(e) => e.preventDefault()} onClick={reload} onMouseEnter={() => setHot(options.length)}>
               <RotateCw size={14} aria-hidden="true" />Reload values
             </button>
           )}
