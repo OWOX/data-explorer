@@ -883,7 +883,7 @@ describe('a chain through a middle mart with no column of its own', () => {
     ];
     const deep: JoinedSource = { aliasPath: 'y.country', martId: 'ctr1', label: 'Country', depth: 2, fields: [], uniqueCount: false, relationshipId: 'eYc' };
     const name = f('y__country__name', 'STRING', j('y.country', 'ctr1', 'name'));
-    expect(run({ visible: ['id', 'y__country__name'], schema: [f('id', 'INTEGER'), name], sources: [{ ...deep, fields: [name] }], edges: e, titles: new Map([['ord1', 'Orders'], ['cus1', 'Customers'], ['ctr1', 'Country']]) })).toMatch(/^REASON The join to ".*" could not be resolved$/);
+    expect(run({ visible: ['id', 'y__country__name'], schema: [f('id', 'INTEGER'), name], sources: [{ ...deep, fields: [name] }], edges: e, titles: new Map([['ord1', 'Orders'], ['cus1', 'Customers'], ['ctr1', 'Country']]) })).toMatch(/^REASON A join could not be resolved$/);
   });
 
   test('an unresolved middle mart is named by its title when the model has it', () => {
@@ -891,6 +891,6 @@ describe('a chain through a middle mart with no column of its own', () => {
   });
 
   test('a middle mart the source list lacks and no relationship names cannot be resolved', () => {
-    expect(run({ visible: ['id', 'customers__region__name'], sources: [{ ...region([regionName]), relationshipId: undefined }], edges: [...edges, { id: 'e9', source: 'itm1', target: 'reg1', joins: [{ sourceField: 'x', targetField: 'id' }] }], titles: new Map() })).toBe('REASON The join to "customers" could not be resolved');
+    expect(run({ visible: ['id', 'customers__region__name'], sources: [{ ...region([regionName]), relationshipId: undefined }], edges: [...edges, { id: 'e9', source: 'itm1', target: 'reg1', joins: [{ sourceField: 'x', targetField: 'id' }] }], titles: new Map() })).toBe('REASON A join could not be resolved');
   });
 });

@@ -170,10 +170,10 @@ function prepare(input: MartSqlInput): Plan | Reason {
   const plans = new Map<string, PathPlan>();
   for (const path of order) {
     const source = sourceOf(path);
-    // A mart the list does not know is named by its title when the model has one that matches the alias, else by the path.
+    // A mart the list does not know is named by its title when the model has one that matches the alias, else not named (the alias path is not for the user).
     const last = path.split('.').at(-1)!;
-    const label = source?.label ?? [...titles.values()].find((t) => t.toLowerCase().replace(/[^a-z0-9]+/g, '_') === last.toLowerCase()) ?? path;
-    const unresolved = { reason: `The join to "${label}" could not be resolved` };
+    const label = source?.label ?? [...titles.values()].find((t) => t.toLowerCase().replace(/[^a-z0-9]+/g, '_') === last.toLowerCase());
+    const unresolved = { reason: label ? `The join to "${label}" could not be resolved` : 'A join could not be resolved' };
     if (!source) return unresolved;
     const parent = parentPath(path);
     const parentSource = parent ? sourceOf(parent) : undefined;
@@ -196,7 +196,7 @@ function prepare(input: MartSqlInput): Plan | Reason {
     const jf = field.joined;
     if (!jf) continue;
     const label = field.alias || field.name;
-    if (!jf.originalName) return { reason: `The column "${field.name}" could not be resolved` };
+    if (!jf.originalName) return { reason: `The column "${label}" could not be resolved` };
     if (!isJoinFn(jf.aggregateFunction)) return { reason: `OWOX didn't say how the join rolls up "${label}". Reload the data mart and try again.` };
     if (isArrayType(jf.sourceType ?? field.type)) return { reason: `"${label}" is a list field from a joined data mart, which a data mart can't save yet. Hide it or remove its filter.` };
     const list = own.get(jf.aliasPath) ?? [];

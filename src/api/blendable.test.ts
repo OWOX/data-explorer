@@ -33,9 +33,26 @@ test('joinedSources offers included, readable sources only, with no hidden or ca
   expect(sources[0]!.fields.map((f) => f.name)).toEqual(['customers__email']);
 });
 
-test('a source is named by its display prefix, and by its alias path too when two joins reach the same mart', () => {
+test('a source is named by its display prefix, and by the titles of the marts it is reached through too when two joins reach the same mart', () => {
   const sources = joinedSources(dto);
-  expect(sources.map((s) => s.label)).toEqual(['Buyers', 'Countries (customers.countries)', 'Countries (stores.countries)']);
+  expect(sources.map((s) => s.label)).toEqual(['Buyers', 'Countries (Buyers)', 'Countries (Stores)']);
+});
+
+test('a deeper duplicate is told apart by the titles of the marts above it, never by an alias path', () => {
+  const ok = { isIncluded: true, isAccessibleForReporting: true };
+  const fld = (aliasPath: string) => ({ name: `${aliasPath}__n`, aliasPath, sourceDataMartId: 'c', originalFieldName: 'n', type: 'STRING' });
+  const sources = joinedSources({
+    availableSources: [
+      { aliasPath: 'visitor_entity', title: 'Contact', depth: 1, dataMartId: 'k', ...ok },
+      { aliasPath: 'visitor_entity.session_entity_new_sql', title: 'Organization', depth: 2, dataMartId: 'o', ...ok },
+      { aliasPath: 'visitor_entity.session_entity_new_sql.country', title: 'Country', depth: 3, dataMartId: 'c', ...ok },
+      { aliasPath: 'org', title: 'Organization', depth: 1, dataMartId: 'o', ...ok },
+      { aliasPath: 'org.country', title: 'Country', depth: 2, dataMartId: 'c', ...ok },
+    ],
+    blendedFields: ['visitor_entity.session_entity_new_sql.country', 'org.country'].map(fld),
+  });
+  expect(sources.map((s) => s.label)).toEqual(['Country (Organization)', 'Country (Contact › Organization)']);
+  expect(sources.some((s) => s.label.includes('_'))).toBe(false);
 });
 
 test('a joined field is a column: the blended name, its own type, its label, and where it came from', () => {

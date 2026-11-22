@@ -9,7 +9,7 @@ import { columnLetter } from './columnLetters';
 import { emptyText, isNumericType } from '../format';
 import { withJoined, type JoinedSource } from '../../api/blendable';
 import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type AggregationDraft, type DateBucket, type Output } from '../../model/aggregation';
-import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
+import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import { chartFields, ruleNewColumns } from '../../charts/fields';
 import { keysPlan, useHavingKeys } from '../../charts/havingKeys';
 import { readRows } from '../../api/rows';
@@ -237,7 +237,7 @@ function SortTitle({ field, output }: { field: Schema[number]; output: Output })
       <span className="truncate">{shown}</span>
     </button>
   );
-  return <OverflowTip text={label} extra={field.joined || output.fn ? undefined : fieldTitle(field)} measure={(el) => el.querySelector('.truncate')}>{button}</OverflowTip>;
+  return <OverflowTip text={label} measure={(el) => el.querySelector('.truncate')}>{button}</OverflowTip>;
 }
 
 /** One shown column as the header and the cells read it: resolved once per column, not once per cell. */

@@ -771,12 +771,13 @@ describe('folding and lines', () => {
 describe('column headers and band toolbars', () => {
   const head = (b: HTMLElement) => b.querySelector<HTMLElement>('.dm-band-head')!;
 
-  test('a column shows its alias, and its tooltip holds the technical name; no alias shows the name', async () => {
+  test('a column shows its alias, with no tooltip of the technical name; no alias shows the name', async () => {
     const grid = await ordersGrid();
     const customer = within(grid).getByText('Customer');
     expect(customer.closest('button')).not.toHaveAttribute('title');
     await userEvent.hover(customer);
-    expect((await screen.findAllByText('customer_id')).length).toBeGreaterThan(0);
+    await settle();
+    expect(screen.queryByText('customer_id')).toBeNull();
     expect(within(grid).queryByText('customer_id')).toBeNull();
     expect(within(grid).getByLabelText('Column menu Customer')).toBeInTheDocument();
     const id = within(grid).getByText('id', { selector: 'span.truncate' });
@@ -1035,11 +1036,11 @@ describe('column sort', () => {
     expect(calls.filter((c) => c.id === 'orders')).toHaveLength(before);
   });
 
-  test('a header tooltip holds the technical name of an aliased column; a plain, short one has none', async () => {
+  test('a header tooltip never holds the technical name of an aliased column', async () => {
     const grid = await ordersGrid();
     for (const name of ['Customer', 'status']) expect(sortBtn(grid, name)).not.toHaveAttribute('title');
     const tip = () => document.querySelector('[role="tooltip"]')?.textContent ?? null;
-    for (const [name, text] of [['Customer', 'customer_id'], ['status', null]] as const) {
+    for (const [name, text] of [['Customer', null], ['status', null]] as const) {
       await userEvent.hover(sortBtn(grid, name));
       if (text) await waitFor(() => expect(tip()).toBe(text)); else await settle();
       if (!text) expect(tip()).toBeNull();

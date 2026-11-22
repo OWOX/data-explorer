@@ -22,10 +22,10 @@ async function setup(extra: string[]) {
 const both = ['customers__name', 'customers__countries__name', 'stores__countries__name'];
 const remove = (title: string) => fireEvent.click(within(data()).getByRole('button', { name: `Remove ${title} from the grid` }));
 
-test('two adjacent paths of one mart are two column groups, each titled with its path', async () => {
+test('two adjacent paths of one mart are two column groups, each titled with its parent mart', async () => {
   await setup(both);
   expect(paths()).toEqual(['', 'customers', 'customers.countries', 'stores.countries']);
-  expect(titles()).toEqual(['Orders', 'Customers', 'Countries (customers.countries)', 'Countries (stores.countries)']);
+  expect(titles()).toEqual(['Orders', 'Customers', 'Countries (Customers)', 'Countries (Stores)']);
 });
 
 test('a mart reached through one path is titled without it', async () => {
@@ -35,7 +35,7 @@ test('a mart reached through one path is titled without it', async () => {
 
 test('the x on one Countries group leaves the other', async () => {
   await setup(both);
-  remove('Countries (stores.countries)');
+  remove('Countries (Stores)');
   await waitFor(() => expect(paths()).toEqual(['', 'customers', 'customers.countries']));
   expect(titles()).toEqual(['Orders', 'Customers', 'Countries']);
 });
@@ -44,7 +44,7 @@ test('the x on Customers takes only its own columns: the Countries behind it kee
   await setup(both);
   remove('Customers');
   await waitFor(() => expect(paths()).toEqual(['', 'customers.countries', 'stores.countries']));
-  expect(titles()).toEqual(['Orders', 'Countries (customers.countries)', 'Countries (stores.countries)']);
+  expect(titles()).toEqual(['Orders', 'Countries (Customers)', 'Countries (Stores)']);
   const cols = probe.state.grids.orders!.columns;
   expect(cols).toContain('customers__countries__name');
   expect(cols).not.toContain('customers__name');
@@ -52,7 +52,7 @@ test('the x on Customers takes only its own columns: the Countries behind it kee
 
 test('ticking a field on one Countries group keeps two Countries groups, with the field in its own group', async () => {
   await setup(both);
-  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Countries (customers.countries)' }));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Countries (Customers)' }));
   const dialog = await screen.findByRole('dialog');
   // Only this path's fields are listed.
   expect(within(dialog).getAllByRole('option')).toHaveLength(2);

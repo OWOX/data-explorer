@@ -10,8 +10,10 @@ export const isArrayType = (type: string | undefined) => /^ARRAY(?:\s*[<(]|$)/i.
 export type JoinedSource = {
   aliasPath: string;
   martId: string;
-  /** What the picker and the column headers call it: the join's display prefix, with the alias path added when two joins reach the same mart. */
+  /** What the picker and the column headers call it: the join's display prefix, with the parent marts' titles added when two joins reach the same mart. */
   label: string;
+  /** The titles of the marts this one is reached through ("Contact › Organization"); absent for a mart the main one joins directly. */
+  via?: string;
   depth: number;
   fields: Field[];
   /** A uniqueCount on this alias path works (the backend says `available`): the joined mart has a usable primary key. */
@@ -57,9 +59,16 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
   const nameOf = (s: (typeof offered)[number]) => (s.defaultAlias?.trim() || s.title);
   const labelUses = new Map<string, number>();
   offered.forEach((s) => labelUses.set(nameOf(s), (labelUses.get(nameOf(s)) ?? 0) + 1));
+  // The titles of the marts along a path, parents only ("Contact › Organization"); a hop whose title is unknown is left out, never shown as its alias.
+  const titleAt = new Map((dto.availableSources ?? []).map((s) => [s.aliasPath, nameOf(s)]));
+  const humanPath = (path: string) => {
+    const parts = path.split('.');
+    return parts.slice(0, -1).map((_, i) => titleAt.get(parts.slice(0, i + 1).join('.'))).filter((t): t is string => !!t).join(' › ');
+  };
   for (const s of offered) {
     const base = nameOf(s);
-    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, fields: [], uniqueCount: s.uniqueCountAvailability === 'available', mainGrainCollapse: collapseOf(s.mainGrainCollapse), mainGrainMultiplication: s.mainGrainMultiplication ?? 'unknown', ...(s.relationshipId ? { relationshipId: s.relationshipId } : {}) });
+    const via = humanPath(s.aliasPath);
+    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: via && (labelUses.get(base) ?? 0) > 1 ? `${base} (${via})` : base, ...(via ? { via } : {}), depth: s.depth, fields: [], uniqueCount: s.uniqueCountAvailability === 'available', mainGrainCollapse: collapseOf(s.mainGrainCollapse), mainGrainMultiplication: s.mainGrainMultiplication ?? 'unknown', ...(s.relationshipId ? { relationshipId: s.relationshipId } : {}) });
   }
   for (const b of dto.blendedFields ?? []) {
     const source = byPath.get(b.aliasPath);
