@@ -56,7 +56,6 @@ export function SourceCard({
   selected,
   lit,
   aside = false,
-  faded = false,
   transition,
   onSelect,
 }: {
@@ -65,8 +64,6 @@ export function SourceCard({
   lit: boolean;
   /** Lit by a card other than the pinned one: drawn at half strength. */
   aside?: boolean;
-  /** Another card is hovered and this one is not among the marts it touches: drawn at half strength. */
-  faded?: boolean;
   transition?: CardTransition;
   onSelect: () => void;
 }) {
@@ -78,7 +75,7 @@ export function SourceCard({
       id={sourceElementId(source.key)}
       data-node
       aria-pressed={selected}
-      className={cardClass(lit, aside, transition?.className, faded)}
+      className={cardClass(lit, aside, transition?.className)}
       {...(transition?.leaving ? { 'data-leaving': '' } : {})}
       {...selectable(onSelect)}
     >

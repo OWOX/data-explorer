@@ -43,9 +43,9 @@ async function joinTwo() {
 }
 
 describe('the stylesheet', () => {
-  test('one dimming: the Grid-wide focus dimming is gone, and a faded card is at half', () => {
+  test('one mart dimming: the Grid-wide focus dimming is gone, a faded card is at half, the Sources band keeps its own', () => {
     expect(css).not.toMatch(/\.dm-canvas\.focused/);
-    expect(css).not.toMatch(/sources-focused/);
+    expect(rules(/^\.dm-canvas\.sources-focused #band-sources \.dm-node$/)).toContain('opacity: 0.25');
     expect(css).not.toMatch(/dm-unjoinable/);
     expect(rules(/^\.dm-node\.dm-faded$/)).toContain('opacity: 0.5');
   });
@@ -82,6 +82,35 @@ describe('Grid', () => {
     expect(el('products')).not.toHaveClass('dm-faded');
     expect(el('orders')).not.toHaveClass('dm-offpath');
     expect(el('customers', 'customers')).not.toHaveClass('dm-offpath');
+  });
+
+  test('a mart reachable only through another outside mart has one dashed line, from that mart, with or without a focus', async () => {
+    setup();
+    await ready();
+    fireEvent.click(await bandCard('Customers'));
+    await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+    fireEvent.keyDown(document, { key: 'Escape' });
+    // Categories joins through Products, which is outside the report too.
+    await waitFor(() => expect(wire('wires', 'dm-products', 'dm-categories')).not.toBeNull());
+    expect(wire('wires', 'dm-products', 'dm-categories')).toHaveClass('relationship', 'ghost');
+    expect(wire('wires', 'dm-products', 'dm-categories')).not.toHaveClass('joined');
+    expect(document.querySelectorAll('#wires path[data-to="dm-categories"].ghost')).toHaveLength(1);
+    fireEvent.click(el('customers', 'customers')!);
+    await waitFor(() => expect(el('customers', 'customers')).toHaveAttribute('data-focused'));
+    expect(wire('wires', 'dm-products', 'dm-categories')).toHaveClass('ghost');
+    // Lines between two marts of the report stay solid.
+    expect(wire('wires', 'dm-orders', 'dm-customers@customers')).toHaveClass('joined');
+  });
+
+  test('hovering a mart fades no Data Sources card, and a pinned mart dims the sources that do not feed it', async () => {
+    setup();
+    await ready();
+    fireEvent.click(await bandCard('Customers'));
+    await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
+    expect(marts().closest('.dm-canvas')).toHaveClass('sources-focused');
+    fireEvent.pointerOver(el('customers', 'customers')!);
+    expect(faded().length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('#band-sources .dm-faded')).toHaveLength(0);
   });
 
   test('a focused card has the 2px border, and what it can join is dashed from it', async () => {

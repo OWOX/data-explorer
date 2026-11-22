@@ -59,10 +59,6 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   );
   // The hover side: the card whose ghosts show and the chain of ghosts from it. 
   const hover = useGhostChain(pinned);
-  // The ghost under the pointer and the one with focus are tracked apart, so a blur does not drop the line while the pointer is still on the ghost.
-  const [pointerGhost, setPointerGhost] = useState<string | null>(null);
-  const [focusGhost, setFocusGhost] = useState<string | null>(null);
-  const ghostOver = pointerGhost ?? focusGhost;
   const { clear: clearHover, mute: muteHover } = hover;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setPinned(null); clearHover(); } };
@@ -167,10 +163,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   })();
   const near = hoverEl === null ? null : litIds(wires, hoverEl);
   const fadedAt = (martId: string, path: string) => near !== null && !near.has(martElementId(martId, path));
-  const engagedGhost = ghostOver === null ? undefined : ghosts.find((g) => g.aliasPath === ghostOver);
-  useWires(treeRef, wires, { pinned: null, hovered: null }, revisionOf(key), 'tree-wires', scale, {
-    engaged: engagedGhost ? martElementId(engagedGhost.martId, engagedGhost.aliasPath) : null,
-  });
+  useWires(treeRef, wires, { pinned: null, hovered: null }, revisionOf(key), 'tree-wires', scale);
 
   if (!mainId) return <p className="dm-muted text-sm">Select a data mart.</p>;
   // A card carries its path in its title only when the report reaches that mart through more than one path.
@@ -191,10 +184,9 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
       className="dm-tree"
       style={{ width: layout.width, height: layout.height, transform: scale === 1 ? undefined : `scale(${scale})` }}
       // A portaled title bubble bubbles its events here through React; it is not under the tree in the DOM, so it is not the pointer leaving the cards.
-      onPointerOver={(e) => { if (!e.currentTarget.contains(e.target as Node)) return; const over = overOf(e.target); setPointerGhost(over.ghost); hover.onOver(over); }}
-      onPointerLeave={() => { setPointerGhost(null); hover.onLeave(); }}
-      onBlur={() => setFocusGhost(null)}
-      onFocus={(e) => { if (!e.currentTarget.contains(e.target as Node)) return; const over = overOf(e.target); if (over.ghost !== null) { setFocusGhost(over.ghost); hover.onOver(over); } }}
+      onPointerOver={(e) => { if (!e.currentTarget.contains(e.target as Node)) return; const over = overOf(e.target); hover.onOver(over); }}
+      onPointerLeave={() => hover.onLeave()}
+      onFocus={(e) => { if (!e.currentTarget.contains(e.target as Node)) return; const over = overOf(e.target); if (over.ghost !== null) hover.onOver(over); }}
     >
       {[...tree.nodes.values()].flatMap((node) => {
         const mart = model.marts.get(node.martId);

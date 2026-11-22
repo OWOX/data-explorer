@@ -269,7 +269,11 @@ button.dm-mark { cursor: pointer; }
 .dm-spin { animation: dm-spin 1s linear infinite; }
 @keyframes dm-spin { to { rotate: 360deg; } }
 
-/* Hovering a card drops what it does not touch to half (.dm-faded, set by the view); a pinned or focused card dims nothing. */
+/* Hovering a card drops what it does not touch to half (.dm-faded, set by the view); a pinned or focused card dims no mart.
+   With a mart pinned, the Data Sources that do not feed it drop back, in both views. */
+.dm-canvas.sources-focused #band-sources .dm-node { opacity: 0.25; }
+.dm-canvas.sources-focused #band-sources .dm-node.lit { opacity: 1; }
+.dm-canvas.sources-focused #band-sources .dm-node[aria-pressed='true'] { opacity: 1; }
 /* A data mart the member cannot open: still a card, but plainly not one to expect anything from. */
 .dm-noaccess { opacity: 0.6; filter: grayscale(0.8); }
 /* The row count's retry: a badge that is also a button, without the browser's button chrome. */

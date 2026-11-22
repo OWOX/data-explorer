@@ -186,7 +186,7 @@ describe('useWires marks', () => {
     const wires = [wire('w1', 'a', 'b'), wire('w2', 'b', 'c'), { ...wire('w3', 'a', 'g'), dashed: true }];
     const ref = { current: canvas };
     const hook = renderHook(({ marks }) => useWires(ref, wires, { pinned: null, hovered: null }, 0, 'wires', 1, marks), {
-      initialProps: { marks: {} as { held?: string | null; engaged?: string | null } },
+      initialProps: { marks: {} as { held?: string | null } },
     });
     const flags = (cls: string) => [...canvas.querySelectorAll('#wires > path')].map((p) => p.classList.contains(cls));
     return { hook, flags };
@@ -199,15 +199,6 @@ describe('useWires marks', () => {
     expect(flags('held')).toEqual([true, true, false]);
     hook.rerender({ marks: { held: null } });
     expect(flags('held')).toEqual([false, false, false]);
-  });
-
-  it('classes `engaged` only a ghost line that ends at the hovered ghost', () => {
-    const { hook, flags } = setup();
-    expect(flags('ghost')).toEqual([false, false, true]);
-    hook.rerender({ marks: { engaged: 'g' } });
-    expect(flags('engaged')).toEqual([false, false, true]);
-    hook.rerender({ marks: { engaged: 'c' } });
-    expect(flags('engaged')).toEqual([false, false, false]);
   });
 });
 

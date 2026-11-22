@@ -173,24 +173,6 @@ test('dragging countries from customers onto stores moves its columns to the sto
   await waitFor(() => expect(tips()).toContain('Customers → Countries'));
 });
 
-test('ghost lines brighten with their card', async () => {
-  await joinCountriesUnderCustomers();
-  // Hovering a ghost engages its line; the line of a ghost not under the pointer stays as it is.
-  await userEvent.hover(el('orders')!);
-  const ghost = await waitFor(() => { const g = marts().querySelector<HTMLElement>('article[data-ghost]'); expect(g).not.toBeNull(); return g!; });
-  const line = (id: string) => marts().querySelector<SVGPathElement>(`#tree-wires path.ghost[data-to="${id}"]`);
-  await waitFor(() => expect(line(ghost.id)).not.toBeNull());
-  expect(line(ghost.id)).not.toHaveClass('engaged');
-  await userEvent.hover(ghost);
-  await waitFor(() => expect(line(ghost.id)).toHaveClass('engaged'));
-  // A blur while the pointer is still on the ghost keeps its line engaged; leaving too lets it go.
-  fireEvent.focus(ghost);
-  fireEvent.blur(ghost);
-  expect(line(ghost.id)).toHaveClass('engaged');
-  await userEvent.unhover(ghost);
-  await waitFor(() => expect(line(ghost.id)).not.toHaveClass('engaged'));
-});
-
 test('Escape or a release away from any target changes nothing, and the next click still works', async () => {
   await joinCountriesUnderCustomers();
   const before = headers();
@@ -577,7 +559,7 @@ test('a click on a ghost adds it and pins it, its own ghosts show; a second clic
   await waitFor(() => expect(ghostEl('countries', 'customers.countries')).toBeNull());
 });
 
-test('Data Sources cards are lit by the same rule in Grid and in Graph, and neither dims them at rest', async () => {
+test('Data Sources cards are lit and dimmed by the same rule in Grid and in Graph', async () => {
   setup();
   await ready();
   await within(marts()).findByText('Customers');
@@ -587,13 +569,13 @@ test('Data Sources cards are lit by the same rule in Grid and in Graph, and neit
   const lit = () => [...sources().querySelectorAll('.dm-node')].map((n) => `${n.id}:${n.classList.contains('lit')}`);
   const root = () => marts().closest('.dm-canvas')!;
   await waitFor(() => expect(lit().some((s) => s.endsWith(':true'))).toBe(true));
-  expect(sources().querySelectorAll('.dm-faded')).toHaveLength(0);
+  expect(root()).toHaveClass('sources-focused');
   const inGrid = lit();
   expect(inGrid.some((s) => s.endsWith(':true'))).toBe(true);
   await toCanvas();
   await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
-  // The lit cards are the same, and a resting Graph dims nothing either.
-  expect(root()).not.toHaveClass('sources-focused');
+  // Both views dim the Sources band the same way, and the lit cards are the same.
+  expect(root()).toHaveClass('sources-focused');
   expect(document.querySelectorAll('.dm-faded')).toHaveLength(0);
   expect(lit()).toEqual(inGrid);
 });
