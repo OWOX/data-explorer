@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { DATE_PRESETS, RELATIVE_MAX_N, RELATIVE_PRESETS, RELATIVE_UNITS, fromRule, isDateTimeField, isPreset, operatorsFor, toRule, type OpId, type RelativeUnit } from '../../filters/catalogue';
+import { DATE_PRESETS, LIST_LABELS, RELATIVE_MAX_N, RELATIVE_PRESETS, RELATIVE_UNITS, fromRule, isDateTimeField, isPreset, operatorsFor, toRule, type OpId, type RelativeUnit } from '../../filters/catalogue';
 import { canSuggest, tokensOf } from '../../filters/valueSuggest';
 import { isComplete, type ColumnFilter, type FilterValue } from '../../filters/build';
 import { columnTitle } from '../../model/fieldLabel';
@@ -109,21 +109,23 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
   // A reopened rule stays as it was until the text is edited.
   const [edited, setEdited] = useState(false);
   // Under contains / does not contain the text was built by suggestion picks (a trailing ", " is the separator, not part of the value).
-  const [picked, setPicked] = useState(false);
+  // A reopened single value is the first token.
+  const [base, setBase] = useState<string | null>(value?.op === op && (op === 'contains' || op === 'not_contains') && typeof value.value === 'string' && !value.list ? value.value : null);
+  const inPick = base !== null && typeof val === 'string' && (base.endsWith(', ') ? val.startsWith(base) : val === base);
   const wasList = !!value?.list && value.op === op;
   const isList = field.category === 'string' && (op === 'eq' || op === 'neq') && typeof val === 'string' && (edited ? val.includes(',') : wasList);
-  const sent = picked && (op === 'contains' || op === 'not_contains') && typeof val === 'string' ? tokensOf(val).join(', ') : val;
+  const sent = inPick && (op === 'contains' || op === 'not_contains') && typeof val === 'string' ? tokensOf(val).join(', ') : val;
   const draft: ColumnFilter = { field: field.name, op, ...(def.value === 'none' ? {} : { value: sent }), ...(isList ? { list: true as const } : {}) };
   const range = (val ?? { from: '', to: '' }) as { from: string; to: string };
   const rel = (val ?? { kind: 'today' }) as RelativeDatePreset;
   const dateType = field.category === 'time' ? 'time' : isDateTimeField(field) ? 'datetime-local' : 'date';
 
   return (
-    <ActionForm className="flex flex-col gap-2" onAction={() => { if (isComplete(draft, field)) onApply(draft); }}>
-      <Select aria-label="Operator" value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); setPicked(false); }}>
-        {ops.map((o) => <option key={o.id} value={o.id}>{isList && o.id === 'eq' ? 'is any of' : isList && o.id === 'neq' ? 'is none of' : o.label}</option>)}
+    <ActionForm className="dm-filter-form flex flex-col gap-2" onAction={() => { if (isComplete(draft, field)) onApply(draft); }}>
+      <Select aria-label="Operator" value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); setBase(null); }}>
+        {ops.map((o) => <option key={o.id} value={o.id}>{isList && o.id === op && (o.id === 'eq' || o.id === 'neq') ? LIST_LABELS[o.id] : o.label}</option>)}
       </Select>
-      {def.value === 'text' && <ValueInput op={op} value={String(val ?? '')} onChange={(v, p) => { setEdited(true); setVal(v); setPicked(!!p); }} picked={picked} onOp={(o) => { setOp(o as OpId); setPicked(false); }} source={canSuggest(field) ? values : undefined} className={input} />}
+      {def.value === 'text' && <ValueInput op={op} value={String(val ?? '')} onChange={(v, b) => { setEdited(true); setVal(v); setBase(b ?? (base !== null && base.endsWith(', ') && v.startsWith(base) ? base : null)); }} base={inPick ? base : null} onOp={(o) => { setOp(o as OpId); setBase(null); }} source={canSuggest(field) ? values : undefined} className={input} />}
       {def.value === 'number' && (
         <input aria-label="Value" className={input} type="number" value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />
       )}

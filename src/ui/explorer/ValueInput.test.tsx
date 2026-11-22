@@ -147,6 +147,26 @@ test('under does not contain the second pick switches to is none of', async () =
   expect(op().selectedOptions[0]!.textContent).toBe('is none of');
 });
 
+test('under contains a pick, some typing and another pick still make a list', async () => {
+  form();
+  await userEvent.selectOptions(op(), 'contains');
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
+  await userEvent.type(input(), 'Ger');
+  expect(within(screen.getByRole('listbox')).getAllByRole('option').map((o) => o.textContent)).toEqual(['Germany']);
+  await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
+  expect(input().value).toBe('Ukraine, Germany, ');
+  expect(op().value).toBe('eq');
+});
+
+test('a reopened contains filter: a pick adds to the saved value', async () => {
+  render(<FilterEditor field={country} value={{ field: 'country', op: 'contains', value: 'Ukraine' }} onApply={vi.fn()} onClear={vi.fn()} values={source(loadOf(['United States', 'Ukraine', 'Germany']))} />);
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
+  expect(input().value).toBe('Ukraine, Germany, ');
+  expect(op().value).toBe('eq');
+});
+
 test('a comma typed by hand under contains does not switch the operator', async () => {
   const onApply = form();
   await userEvent.selectOptions(op(), 'contains');

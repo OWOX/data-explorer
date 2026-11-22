@@ -148,10 +148,13 @@ export const isDateTimeField = (field: Field) => field.category === 'date' && !i
 /** A bound with a time part, as a zoned chart click sends it. */
 const ZONED_BOUND = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 
+/** What the list forms of text equals / does not equal are called (as in the OWOX output controls). */
+export const LIST_LABELS = { eq: 'is any of', neq: 'is none of' } as const;
+
 /** What an applied filter says, for the tooltip on the header's filter mark: "Last 30 days", "equals Berlin", "between 1 and 5". */
 export function describeFilter(field: Field, filter: { op: OpId; value?: unknown; list?: boolean }): string {
   if (filter.op === 'relative') return filter.value && typeof filter.value === 'object' && 'kind' in filter.value ? presetName(filter.value as RelativeDatePreset) : 'relative';
-  if (filter.list && typeof filter.value === 'string' && (filter.op === 'eq' || filter.op === 'neq')) return `${filter.op === 'eq' ? 'is any of' : 'is none of'} ${tokensOf(filter.value).join(', ')}`;
+  if (filter.list && typeof filter.value === 'string' && (filter.op === 'eq' || filter.op === 'neq')) return `${LIST_LABELS[filter.op]} ${tokensOf(filter.value).join(', ')}`;
   const label = operatorsFor(field).find((o) => o.id === filter.op)?.label ?? filter.op;
   const v = filter.value;
   if (v === undefined || v === null || v === '') return label;

@@ -8,9 +8,9 @@ export type ValueSource = { key: string; load: (signal: AbortSignal) => Promise<
 /** Under these text operators a pick adds to the text; the second pick switches the operator to the list form. */
 const SWITCH: Record<string, string> = { contains: 'eq', not_contains: 'neq' };
 
-type Props = { op: string; value: string; onChange: (v: string, picked?: boolean) => void; source?: ValueSource; className: string;
-  /** The text was built by picks, so it reads as a list; a hand-typed comma under "contains" is a literal one. */
-  picked?: boolean;
+type Props = { op: string; value: string; onChange: (v: string, base?: string) => void; source?: ValueSource; className: string;
+  /** The text the picks built (or a reopened single value): while the value still starts with it, "contains" reads as a list; a hand-typed comma is a literal one. */
+  base?: string | null;
   /** Asks the form to change the operator (to the list form after the second pick). */
   onOp?: (op: string) => void };
 
@@ -18,7 +18,7 @@ type Props = { op: string; value: string; onChange: (v: string, picked?: boolean
  * A text input with the column's known values under it. The values load on first focus; typing narrows them by the text after the last comma;
  * a pick adds the value to the comma-separated list (for the list operators) and the input keeps its focus. A failed read shows nothing.
  */
-export function ValueInput({ op, value, onChange, source, className, picked = false, onOp }: Props) {
+export function ValueInput({ op, value, onChange, source, className, base = null, onOp }: Props) {
   const [anchor, setAnchor] = useState<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [hot, setHot] = useState(-1);
@@ -42,11 +42,15 @@ export function ValueInput({ op, value, onChange, source, className, picked = fa
     );
   };
 
-  const list = LIST_OPS.has(op) || (op in SWITCH && picked);
+  // Pick mode lasts while the picked text is still there; typing after it narrows by the text after the last comma.
+  const inPick = op in SWITCH && base !== null && (base.endsWith(', ') ? value.startsWith(base) : value === base);
+  const list = LIST_OPS.has(op) || inPick;
+  // A reopened single value counts as one token: the next pick follows it.
+  const text = inPick && !base!.endsWith(', ') ? `${value}, ` : value;
   // A value with a comma would read as two in a list, so it is not offered there.
   const pool = loaded ?? [];
   const options = list
-    ? narrow(pool.filter((o) => !o.includes(',')), value)
+    ? narrow(pool.filter((o) => !o.includes(',')), text)
     : pool.filter((o) => o !== value && o.toLowerCase().includes(value.trim().toLowerCase()));
   const shown = open && !!source && (loading || options.length > 0);
   // The listbox is in the DOM once the values are in; while they load there is only a status note.
@@ -54,10 +58,10 @@ export function ValueInput({ op, value, onChange, source, className, picked = fa
   const at = Math.min(hot, options.length - 1);
   const pick = (v: string) => {
     if (op in SWITCH) {
-      const next = addValue(picked ? value : '', v);
-      onChange(next, true);
+      const next = addValue(inPick ? text : '', v);
+      onChange(next, next);
       if (tokensOf(next).length >= 2) onOp?.(SWITCH[op]!);
-    } else onChange(list ? addValue(value, v) : v);
+    } else onChange(list ? addValue(text, v) : v);
     setHot(-1);
   };
 
@@ -65,7 +69,7 @@ export function ValueInput({ op, value, onChange, source, className, picked = fa
     <>
       <input ref={setAnchor} aria-label="Value" className={className} type="text" value={value} autoComplete="off"
         {...(source ? { role: 'combobox', 'aria-autocomplete': 'list' as const, 'aria-expanded': shown, 'aria-controls': listed ? id : undefined, 'aria-activedescendant': listed && at >= 0 ? `${id}-${at}` : undefined } : {})}
-        onChange={(e) => { onChange(e.target.value, false); setOpen(true); setHot(-1); start(); }}
+        onChange={(e) => { onChange(e.target.value); setOpen(true); setHot(-1); start(); }}
         onFocus={() => { setOpen(true); start(); }}
         onBlur={() => setOpen(false)}
         onKeyDown={(e) => {
