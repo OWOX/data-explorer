@@ -1,3 +1,4 @@
+import { EyeOff, Sigma } from 'lucide-react';
 import { AUTO, formatValue, keepsUnit, type Format } from '../format/formats';
 import { isIntegerType } from '../model/field-category';
 import { AGG_LABELS, formatBucket, outputType, type AggFn, type DateBucket } from '../model/aggregation';
@@ -13,7 +14,9 @@ import { compactValue } from './compact';
 import type { ChartFields, ChartMart, Metric } from './fields';
 import { metricKey, scorecardsQuery, sparklineQuery, uniqueKey, type Measure } from './queries';
 import { measureId, type Spark } from './settings';
+import { measureGroups } from './menuGroups';
 import { Sparkline, type Point } from './svg/Sparkline';
+import type { JoinGrain } from './answers';
 import { useChartQuery, type ChartResult } from './useChartQuery';
 
 export type Card = { id: string; label: string; key: string; measure: Measure };
@@ -33,9 +36,6 @@ export function measureLabel(cf: ChartFields, m: Measure, scope: Measure[] = [m]
   if (m.aliasPath !== '') return `${title} · Count Unique`;
   return title && new Set(scope.map(pathOfMeasure)).size > 1 ? `${title} · Count Unique` : 'Count Unique';
 }
-
-/** The radio options of a "Metric" menu: each measure under the id it is saved as. */
-export const measureOptions = (cf: ChartFields, list: Measure[]) => list.map((m) => ({ value: measureId(m), label: measureLabel(cf, m, list) }));
 
 /** A mart's cards: its record count (when it has a primary key), then one per metric. A card keeps its id (what hides it and what a pick is saved under) and shows the measure `metrics` picked for it, when that is still one of the mart's. */
 export function cardsOf(mart: ChartMart, metrics: Record<string, string> = {}): Card[] {
@@ -78,8 +78,8 @@ export function sharedSeriesQuery(cf: ChartFields, spark: Spark, measure: Measur
 }
 
 /** One query for every value card of every data mart. Nothing runs while paused. */
-export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean): ChartResult {
-  return useChartQuery(martId, paused ? null : scorecardsQuery(cf.marts, filter, cf.counter), version);
+export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean, joins?: JoinGrain): ChartResult {
+  return useChartQuery(martId, paused ? null : scorecardsQuery(cf.marts, filter, cf.counter), version, joins);
 }
 
 export type Formatter = (column: string, type: string) => Format;
@@ -147,16 +147,16 @@ export const numberOf = (v: unknown): number | null => {
 };
 
 /** The cards of one data mart, wrapping inside its group's cell. The main mart's cell also shows the strip's error and empty state. */
-export function MartCards({ martId, mart, main, spark, scores, bucket, filter, version, paused, hasFilters, formatOf, onMetric, onHide }: {
-  martId: string; mart: ChartMart; main: boolean; spark: Spark; scores: ChartResult; bucket: DateBucket | null; filter: TraverseFilter[]; version: number; paused: boolean; hasFilters: boolean; formatOf: Formatter;
+export function MartCards({ martId, mart, main, spark, scores, bucket, filter, version, paused, joins, hasFilters, formatOf, onMetric, onHide }: {
+  martId: string; mart: ChartMart; main: boolean; spark: Spark; scores: ChartResult; bucket: DateBucket | null; filter: TraverseFilter[]; version: number; paused: boolean; /** What lets a sparkline read be reused after a column is dropped. */ joins?: JoinGrain; hasFilters: boolean; formatOf: Formatter;
   /** A card's ⋮ menu: pick the measure a card shows, and hide it. Without them (the settings are still loading) the cards have no menu. */
   onMetric?: (cardId: string, measure: string) => void; onHide?: (cardId: string) => void;
 }) {
   const cards = cardsOf(mart, spark.metrics).filter((c) => !spark.hidden.has(c.id));
-  const choices = measureOptions({ marts: [mart], dimensions: [], dates: [] }, martMeasures(mart));
+  const choices = measureGroups({ marts: [mart], dimensions: [], dates: [] }, martMeasures(mart));
   // The group's own date when it has one, else the chart date's mart's: a joined mart without a date draws no trend.
   const date = sparkDate(mart, spark);
-  const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, bucket, filter), version);
+  const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, bucket, filter), version, joins);
   if (scores.error) return main ? <ErrorBox error={scores.error} onRetry={scores.retry} /> : null;
   if (scores.rows && scores.rows.length === 0) return main ? <p className="dm-muted text-sm">{emptyText(hasFilters)}</p> : null;
   const row = scores.rows?.[0];
@@ -176,8 +176,8 @@ export function MartCards({ martId, mart, main, spark, scores, bucket, filter, v
           {onHide && (
             <div className="absolute right-0.5 top-0.5">
               <ChartMenu name={c.label} items={[
-                ...(choices.length > 1 ? [{ kind: 'radio', label: 'Metric', value: measureId(c.measure), options: choices, onPick: (v: string) => onMetric?.(c.id, v) } as MenuItem] : []),
-                { kind: 'action', label: 'Hide', onPick: () => onHide(c.id) },
+                ...(martMeasures(mart).length > 1 ? [{ kind: 'radio', label: 'Metric', icon: Sigma, value: measureId(c.measure), options: [], groups: choices, onPick: (v: string) => onMetric?.(c.id, v) } as MenuItem] : []),
+                { kind: 'action', label: 'Hide', icon: EyeOff, onPick: () => onHide(c.id) },
               ]} />
             </div>
           )}

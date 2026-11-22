@@ -1,17 +1,26 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { LIST_OPS, addValue, narrow } from '../../filters/valueSuggest';
+import { LIST_OPS, addValue, narrow, tokensOf } from '../../filters/valueSuggest';
 import { Panel } from './MenuParts';
 
 /** Where a text input's suggestions come from. `key` names the read (column and rules), so a read is made once per key while the menu is open. */
 export type ValueSource = { key: string; load: (signal: AbortSignal) => Promise<string[]>; cache: Map<string, string[]> };
 
-type Props = { op: string; value: string; onChange: (v: string) => void; source?: ValueSource; className: string };
+/** Under these text operators a pick adds to the text; the second pick switches the operator to the list form. */
+const SWITCH: Record<string, string> = { contains: 'eq', not_contains: 'neq' };
+
+type Props = { op: string; value: string; onChange: (v: string, base?: string) => void; source?: ValueSource; className: string;
+  /** The text is still what the picks built (or a reopened single value), so "contains" reads as a list; a hand-typed comma is a literal one. */
+  inPick?: boolean;
+  /** Asks the form to change the operator (to the list form after the second pick). */
+  onOp?: (op: string) => void;
+  /** Called once the column's values are in the cache. */
+  onLoad?: () => void };
 
 /**
  * A text input with the column's known values under it. The values load on first focus; typing narrows them by the text after the last comma;
  * a pick adds the value to the comma-separated list (for the list operators) and the input keeps its focus. A failed read shows nothing.
  */
-export function ValueInput({ op, value, onChange, source, className }: Props) {
+export function ValueInput({ op, value, onChange, source, className, inPick = false, onOp, onLoad }: Props) {
   const [anchor, setAnchor] = useState<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [hot, setHot] = useState(-1);
@@ -30,22 +39,33 @@ export function ValueInput({ op, value, onChange, source, className }: Props) {
     flights.current.add(ac);
     setStatus((s) => ({ ...s, [key]: 'loading' }));
     source.load(ac.signal).then(
-      (values) => { if (!ac.signal.aborted) { source.cache.set(key, values); setStatus((s) => ({ ...s, [key]: 'done' })); } },
+      (values) => { if (!ac.signal.aborted) { source.cache.set(key, values); setStatus((s) => ({ ...s, [key]: 'done' })); onLoad?.(); } },
       () => { if (!ac.signal.aborted) setStatus((s) => ({ ...s, [key]: 'failed' })); },
     );
   };
 
-  const list = LIST_OPS.has(op);
+  // Pick mode lasts while the picked text is still there; typing after it narrows by the text after the last comma.
+  const list = LIST_OPS.has(op) || (op in SWITCH && inPick);
+  // A reopened single value counts as one token: the next pick follows it.
+  const text = inPick && !value.includes(',') ? `${value}, ` : value;
   // A value with a comma would read as two in a list, so it is not offered there.
   const pool = loaded ?? [];
   const options = list
-    ? narrow(pool.filter((o) => !o.includes(',')), value)
+    ? narrow(pool.filter((o) => !o.includes(',')), text)
     : pool.filter((o) => o !== value && o.toLowerCase().includes(value.trim().toLowerCase()));
   const shown = open && !!source && (loading || options.length > 0);
   // The listbox is in the DOM once the values are in; while they load there is only a status note.
   const listed = shown && !(loading && !loaded);
   const at = Math.min(hot, options.length - 1);
-  const pick = (v: string) => { onChange(list ? addValue(value, v) : v); setHot(-1); };
+  const pick = (v: string) => {
+    // A value with a comma cannot join a list: it replaces the text.
+    if (op in SWITCH && !v.includes(',')) {
+      const next = addValue(inPick ? text : '', v);
+      onChange(next, next);
+      if (tokensOf(next).length >= 2) onOp?.(SWITCH[op]!);
+    } else onChange(list && !(op in SWITCH) ? addValue(text, v) : v);
+    setHot(-1);
+  };
 
   return (
     <>

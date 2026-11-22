@@ -14,6 +14,7 @@ import type { HavingKeys } from './havingKeys';
 import { ChartMenu } from './ChartMenu';
 import { hideCard, listItems, setCardMetric, tailItems } from './listMenu';
 import { ChartsMenuSlot } from './menuSlot';
+import { joinGrainOf } from './answers';
 import { MartCards, useScorecards } from './Scorecards';
 import { KINDS } from './kinds';
 import { chartsOf, patchChart, scorecardsOf, type ChartSettings, type ChartSpec, type Spark } from './settings';
@@ -31,7 +32,7 @@ const GUTTER_PX = 46;
  * Settings load once per mart; a fallback a kind's `resolve` picks is never written back, only the member's own changes are.
  */
 export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter }: {
-  martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; /** The grid has a filter on an aggregate that the charts cannot follow for this grouping. */ havingNote?: boolean; /** Stands in for the charts while the passing group keys load, fail to load, or are none. */ gate?: HavingKeys['gate']; groups: { id: string; path: string; span: number; title: string }[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
+  martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; /** The grid has a filter on an aggregate that the charts cannot follow for this grouping. */ havingNote?: boolean; /** Stands in for the charts while the passing group keys load, fail to load, or are none. */ gate?: HavingKeys['gate']; groups: { id: string; path: string; span: number; title: string; icon?: string | null }[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
   formatOf: (column: string, type: string) => Format; scrollerWidth: number;
   /** Applies the clicked mark's filters to the grid, as a filter edit (one Undo step). */
   onFilter: (add: ColumnFilter[]) => void;
@@ -55,7 +56,8 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   };
 
   // A resize re-renders this body on every step: the fields and the resolved choices only change with their inputs, so a resize rebuilds neither.
-  const cf = useMemo(() => chartFields(schema, shown, agg, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), Object.fromEntries(groups.map((g) => [g.path, g.title])), Object.fromEntries(sources.map((x) => [x.aliasPath, x.mainGrainCollapse ?? 'collapses']))), [schema, shown, agg, martId, groups, sources]);
+  const cf = useMemo(() => chartFields(schema, shown, agg, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), Object.fromEntries(groups.map((g) => [g.path, g.title])), Object.fromEntries(sources.map((x) => [x.aliasPath, x.mainGrainCollapse ?? 'collapses'])), Object.fromEntries(groups.map((g) => [g.path, g.icon]))), [schema, shown, agg, martId, groups, sources]);
+  const joins = useMemo(() => joinGrainOf(sources), [sources]);
   const specs = chartsOf(settings ?? {});
   // Hidden charts resolve to nothing, so they mount no panel and read nothing.
   const drawn = useMemo(() => specs.map((spec) => {
@@ -68,7 +70,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
   const idle = paused || !settings || !!gate;
   const { bucket } = useBucket(martId, spark.date, lead?.bucket ?? 'AUTO', filter, version, idle);
-  const scores = useScorecards(martId, cf, filter, version, idle);
+  const scores = useScorecards(martId, cf, filter, version, idle, joins);
   // The header list names every chart, hidden ones included; memoized so a resize resolves nothing again.
   const resolved = useMemo(() => drawn.map(({ spec, def }) => {
     const r = def?.resolve({ ...spec, hidden: false }, cf) ?? null;
@@ -97,7 +99,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
         {groups.map((g, i) => (
           <td key={g.path} colSpan={g.span} data-chart-group={g.id} data-chart-path={g.path}>
             <div className="flex items-start gap-1">
-              <MartCards martId={martId} mart={cf.marts[i]!} main={g.path === ''} spark={spark} scores={scores} bucket={bucket} filter={filter} version={version} paused={idle} hasFilters={hasFilters} formatOf={formatOf}
+              <MartCards martId={martId} mart={cf.marts[i]!} main={g.path === ''} spark={spark} scores={scores} bucket={bucket} filter={filter} version={version} paused={idle} joins={joins} hasFilters={hasFilters} formatOf={formatOf}
                 onMetric={settings ? (id, v) => change((cur) => setCardMetric(cur, id, v, cf.marts[i]!)) : undefined} onHide={settings ? (id) => change((cur) => hideCard(cur, id)) : undefined} />
               {g.path === '' && slot && settings && createPortal(<ChartMenu name="Charts" items={listItems({ cf, settings, resolved, change })} />, slot)}
             </div>

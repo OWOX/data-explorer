@@ -1,3 +1,4 @@
+import { ChartColumn, ChartSpline, Hash, Plus, Trash2 } from 'lucide-react';
 import type { MenuItem } from './ChartMenu';
 import type { ChartFields, ChartMart } from './fields';
 import { eligibleKinds, KINDS } from './kinds';
@@ -26,18 +27,18 @@ export function listItems({ cf, settings, resolved, change }: { cf: ChartFields;
     return { ...cur, scorecards: { ...cur.scorecards, hidden: [...h] } };
   });
   return [
-    ...cf.marts.flatMap((m, i) => cardsOf(m, settings.scorecards?.metrics).map((c): MenuItem => ({ kind: 'check', label: i === 0 ? (c.measure.kind === 'records' && cf.marts.length > 1 && m.title ? `${m.title} · ${c.label}` : c.label) : `${m.title} · ${c.label}`, checked: !hidden.has(c.id), onToggle: () => toggleCard(c.id) }))),
-    { kind: 'check', label: 'Sparklines', checked: settings.scorecards?.sparklines ?? true, onToggle: () => change((cur) => ({ ...cur, scorecards: { ...cur.scorecards, sparklines: !(cur.scorecards?.sparklines ?? true) } })) },
+    ...cf.marts.flatMap((m, i) => cardsOf(m, settings.scorecards?.metrics).map((c): MenuItem => ({ kind: 'check', icon: Hash, label: i === 0 ? (c.measure.kind === 'records' && cf.marts.length > 1 && m.title ? `${m.title} · ${c.label}` : c.label) : `${m.title} · ${c.label}`, checked: !hidden.has(c.id), onToggle: () => toggleCard(c.id) }))),
+    { kind: 'check', icon: ChartSpline, label: 'Sparklines', checked: settings.scorecards?.sparklines ?? true, onToggle: () => change((cur) => ({ ...cur, scorecards: { ...cur.scorecards, sparklines: !(cur.scorecards?.sparklines ?? true) } })) },
     ...resolved.map(({ spec, title }): MenuItem => ({
       kind: 'check',
       // A chart that cannot draw with the shown columns keeps its place and setup; its title needs fields, so it is named by type.
       label: title ?? `${KINDS[spec.kind]?.label ?? spec.kind} (columns hidden)`,
-      icon: KINDS[spec.kind]?.icon,
+      icon: KINDS[spec.kind]?.icon ?? ChartColumn,
       checked: !spec.hidden,
       onToggle: () => change((cur) => patchChart(cur, spec.id, { hidden: !spec.hidden })),
     })),
     {
-      kind: 'radio', label: 'Add chart', value: '',
+      kind: 'radio', label: 'Add chart', icon: Plus, value: '',
       options: eligibleKinds(cf).map((k) => ({ value: k.kind, label: k.label, icon: k.icon })),
       onPick: (v) => change((cur) => editCharts(cur, (list) => [...list, { id: newChartId(), ...KINDS[v as ChartKind]!.create(cf) }])),
     },
@@ -51,10 +52,10 @@ const fromSankey = (c: ChartSpec): ChartSpec => (c.dimensions && c.kind === 'san
 export function tailItems({ cf, spec, change }: { cf: ChartFields; spec: ChartSpec; change: Change }): MenuItem[] {
   return [
     {
-      kind: 'radio', label: 'Chart type', value: spec.kind,
+      kind: 'radio', label: 'Chart type', icon: ChartColumn, value: spec.kind,
       options: eligibleKinds(cf).map((k) => ({ value: k.kind, label: k.label, icon: k.icon })),
       onPick: (v) => change((cur) => editCharts(cur, (list) => list.map((c) => (c.id === spec.id ? { id: c.id, ...(c.hidden !== undefined ? { hidden: c.hidden } : {}), ...KINDS[v as ChartKind]!.create(cf, fromSankey(c)) } : c)))),
     },
-    { kind: 'action', label: 'Remove', onPick: () => change((cur) => editCharts(cur, (list) => list.filter((c) => c.id !== spec.id))) },
+    { kind: 'action', label: 'Remove', icon: Trash2, onPick: () => change((cur) => editCharts(cur, (list) => list.filter((c) => c.id !== spec.id))) },
   ];
 }

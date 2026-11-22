@@ -3,7 +3,8 @@ import { NO_AGGREGATION } from '../model/aggregation';
 import type { Field } from '../model/types';
 import { chartFields, measuresOf, pieMeasures } from './fields';
 import { sharesWhole } from './kinds/pie';
-import { cardsOf, measureOptions } from './Scorecards';
+import { cardsOf } from './Scorecards';
+import { measureGroups } from './menuGroups';
 import { measureId, pickMeasure, scorecardsOf } from './settings';
 
 const f = (name: string, category: Field['category'], extra: Partial<Field> = {}): Field => ({ name, alias: null, type: category === 'number' ? 'FLOAT' : 'STRING', category, description: null, isPrimaryKey: false, ...extra });
@@ -22,11 +23,14 @@ describe('a mart joined twice and a self-join', () => {
   it('gives each path its own records id', () => {
     expect(build().marts.map((m) => m.recordsId)).toEqual(['records:M', 'records:C', 'records:C@b', 'records:M@s']);
   });
-  it('has distinct Metric option values and labels', () => {
+  it('has distinct Metric group titles, each with Count Unique', () => {
     const cf = build();
-    const opts = measureOptions(cf, measuresOf(cf)).filter((o) => o.value.startsWith('records'));
-    expect(opts.map((o) => o.value)).toEqual(['records', 'records:C', 'records:C@b', 'records:M@s']);
-    expect(opts.map((o) => o.label)).toEqual(['Count Unique', 'Customers (a) · Count Unique', 'Customers (b) · Count Unique', 'Orders (s) · Count Unique']);
+    const groups = measureGroups(cf, measuresOf(cf));
+    const titles = groups.map((g) => g.title);
+    expect(new Set(titles).size).toBe(titles.length);
+    expect(titles).toEqual(expect.arrayContaining(['Customers (a)', 'Customers (b)', 'Orders (s)']));
+    const records = groups.map((g) => g.options.find((o) => o.label === 'Count Unique')!);
+    expect(records.map((o) => o.value)).toEqual(['records', 'records:C', 'records:C@b', 'records:M@s']);
   });
   it('resolves a saved copy to its own path, on the series and on the pie', () => {
     const cf = build();

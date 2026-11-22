@@ -57,3 +57,15 @@ export function addValue(text: string, value: string): string {
   if (done.some((t) => t.toLowerCase() === value.toLowerCase())) return text;
   return `${[...done, value].join(', ')}, `;
 }
+
+/**
+ * Whether `text` still starts with the picked values in `base` followed by a comma (spaces around the comma do not matter).
+ * A base that does not end in a separator is a single reopened value, so the text may also be just that value.
+ */
+export function keepsPicks(base: string, text: string): boolean {
+  const toks = tokensOf(base);
+  if (!toks.length) return false;
+  const esc = toks.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const end = base.trimEnd().endsWith(',') ? ',' : '(?:,|$)';
+  return new RegExp(`^\\s*${esc.join('\\s*,\\s*')}\\s*${end}`).test(text);
+}

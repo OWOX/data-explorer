@@ -35,9 +35,12 @@
   display: flex; flex-wrap: wrap; align-items: center; align-content: center; justify-content: space-between;
   gap: 0.5rem 1rem; padding: 1rem; cursor: pointer;
 }
-/* The marts band has the badges, so it gets a fixed basis: they must not decide whether the toolbar wraps, or their width and the wrap would chase each other. */
 .dm-band-titlegroup { display: flex; align-items: center; gap: 0.5rem; align-self: center; min-width: 0; flex: 1 1 auto; }
-.dm-band-titlegroup:has(.dm-context-filter) { flex-basis: 18rem; }
+/* The marts band has the badges in its toolbar. The title group keeps its own width on the left, and the toolbar takes the rest with a fixed basis: the badges' width must not decide whether the header wraps, or the two would chase each other. */
+.dm-band-head:has(.dm-context-filter) .dm-band-titlegroup { flex: 0 1 auto; }
+.dm-band-head:has(.dm-context-filter) .dm-band-actions { flex: 1 1 24rem; }
+.dm-band-tools:has(.dm-context-filter) { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; }
+.dm-band-tools:has(.dm-context-filter) > :not(.dm-context-filter) { flex: none; }
 .dm-band-actions { display: flex; align-items: center; gap: 0.5rem; align-self: center; margin-left: auto; min-width: 0; }
 /* CollapsibleCardContent: px-4 pt-1, with the air under it the card's p-0 leaves out. */
 .dm-band-reveal { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 0fr; transition: grid-template-rows 200ms; }
@@ -139,9 +142,9 @@
 .dm-tip-lines { display: flex; flex-direction: column; gap: 0.125rem; }
 .dm-tip-lines > span:first-child { font-weight: 500; }
 
-/* The context badges in the Data Marts title row: Data Flow's chip, a button that toggles. */
-/* Takes whatever width is left (basis 0), never less than a "+NN more" chip, so what it holds cannot move the toolbar. */
-.dm-context-filter { position: relative; display: flex; flex: 1 1 0; flex-wrap: nowrap; align-items: center; gap: 0.25rem; min-width: 5.5rem; overflow: hidden; }
+/* The context badges in the Data Marts toolbar, left of the Storage filter: Data Flow's chip, a button that toggles. */
+/* Takes whatever width is left (basis 0), never less than a "+NN more" chip, so what it holds cannot move the toolbar. Wraps onto two lines, each one flush right, so the last badge ends next to the Storage button. */
+.dm-context-filter { position: relative; display: flex; flex: 1 1 0; flex-wrap: wrap; align-items: center; align-content: center; justify-content: flex-end; gap: 0.25rem; min-width: 5.5rem; overflow: hidden; }
 .dm-context-filter .dm-badge { flex-shrink: 0; white-space: nowrap; }
 /* The measuring copy of the badges: laid out at natural width, never seen. */
 .dm-context-probe { position: absolute; top: 0; left: 0; display: flex; gap: 0.25rem; width: max-content; visibility: hidden; pointer-events: none; }
@@ -473,6 +476,11 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-fly-form .dm-select { flex: 1 1 auto; }
 .dm-menu-fly-form input[type='number'] { width: 4rem; flex: 0 0 auto; }
 .dm-menu-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+/* The filter form only: the action row sits one form gap (8px) under the last input, as the value input sits under the operator. The Aggregation editor keeps its own spacing. */
+.dm-filter-form .dm-menu-actions { margin-top: 0; }
+.dm-menu-editor [data-popover-body] .dm-filter-form .dm-menu-foot { margin-top: -8px; }
+.dm-menu-editor input[type='date'], .dm-menu-editor input[type='datetime-local'], .dm-menu-editor input[type='time'] { accent-color: var(--sheet-green); color-scheme: light; }
+:root.dark .dm-menu-editor input[type='date'], :root.dark .dm-menu-editor input[type='datetime-local'], :root.dark .dm-menu-editor input[type='time'] { color-scheme: dark; }
 /* In the Aggregate and Filter editors the form scrolls under the footer (the action row and the note under it), which stays on screen with the panel's background. */
 .dm-menu-editor [data-popover-body] .dm-menu-foot { position: sticky; bottom: -16px; z-index: 1; margin: 0 -16px -16px; padding: 8px 16px 16px; background: var(--menu-bg); }
 .dm-menu-row { display: flex; width: 100%; height: 32px; flex-shrink: 0; align-items: center; gap: 8px; padding: 0 16px; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; white-space: nowrap; }
@@ -482,6 +490,10 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-icon svg { width: 12px; height: 12px; }
 .dm-menu-icon[data-on] { background: var(--sheet-green); color: var(--sheet-green-fg); }
 .dm-menu-label { flex: 1 1 auto; }
+.dm-menu-group + .dm-menu-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--menu-line); }
+/* padding-left 36px: a row's icon sits after the 16px row padding, the check column (16px wide, -4px margin) and the 8px gap. */
+.dm-menu-head { display: flex; height: 28px; flex-shrink: 0; align-items: center; gap: 8px; padding: 0 16px 0 36px; color: var(--menu-muted); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.dm-menu-head svg { flex-shrink: 0; }
 .dm-menu-glyph { display: inline-flex; flex-shrink: 0; color: var(--menu-muted); }
 .dm-menu-check { display: inline-flex; width: 16px; flex-shrink: 0; justify-content: center; margin-left: -4px; color: var(--sheet-green); }
 .dm-menu-arrow { flex-shrink: 0; margin-right: -6px; color: var(--menu-muted); }

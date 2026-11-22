@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
-import { BLANK_COLOR, labelOf, OTHER_KEY } from '../blank';
+import { BLANK_COLOR, blankOutline, thinColor, labelOf, OTHER_KEY } from '../blank';
 import { layoutSankey, REST_ORIGIN, type Flow, type NodeSize, type SankeyLink, type Tone } from '../sankeyLayout';
 import { OTHER_COLOR, seriesColor } from '../useDateSeries';
 import { useWidth } from '../useWidth';
@@ -60,7 +60,7 @@ export function Sankey({ titles, columns, flows, text, ariaLabel, onPickNode, on
       const tip = `${nodeName(l.source)} → ${nodeName(l.target)}${l.pair > 0 ? ` (from ${originName(l.origin)})` : ''}: ${text(l.value)} (${Math.round((l.value / (totals[l.pair] || 1)) * 100)}%)`;
       return (
         <Tooltip key={linkKey(l)} content={tip}>
-          <path className="dm-sankey-link" data-link={`${l.pair}|${l.source}|${l.target}${l.pair > 0 ? `|${l.origin}` : ''}`} data-from={`${l.pair}|${l.source}`} data-to={`${l.pair + 1}|${l.target}`} d={l.path} fill={colorOf(l.tone)} {...hoverLink} {...pick} />
+          <path className="dm-sankey-link" data-link={`${l.pair}|${l.source}|${l.target}${l.pair > 0 ? `|${l.origin}` : ''}`} data-from={`${l.pair}|${l.source}`} data-to={`${l.pair + 1}|${l.target}`} d={l.path} fill={thinColor(colorOf(l.tone))} {...hoverLink} {...pick} />
         </Tooltip>
       );
     });
@@ -84,7 +84,7 @@ export function Sankey({ titles, columns, flows, text, ariaLabel, onPickNode, on
             return (
               <g key={`${n.col}|${n.key}`}>
                 <Tooltip content={`${name}: ${text(n.value)}`}>
-                  <rect className="dm-sankey-node" data-node={`${n.col}|${n.key}`} x={n.x} y={n.y} width={n.w} height={Math.max(1, n.h)} fill={colorOf(n.tone)} {...hoverNode(n.col, n.key)} {...pick} />
+                  <rect className="dm-sankey-node" data-node={`${n.col}|${n.key}`} x={n.x} y={n.y} width={n.w} height={Math.max(1, n.h)} fill={colorOf(n.tone)} {...blankOutline(colorOf(n.tone))} {...hoverNode(n.col, n.key)} {...pick} />
                 </Tooltip>
                 {n.h >= 12 && (
                   <text className="dm-chart-text" x={n.x + n.w + 4} y={n.y + n.h / 2} dominantBaseline="middle" pointerEvents="none">

@@ -539,15 +539,16 @@ describe('search, contexts and refresh', () => {
     expect(within(marts()).getByText('Campaigns').closest('article')!.querySelector('.dm-badge-shrink')).toBeNull();
   });
 
-  test('the toolbar holds Storage (the search is in the page header); the Grid / Graph switch and then the Contexts badges sit in the title row after the hint', async () => {
+  test('the toolbar holds the Contexts badges and then Storage, flush right; the Grid / Graph switch stays in the title row after the hint', async () => {
     await ordersGrid();
     const tools = marts().querySelector('.dm-band-tools')!;
-    const kinds = [...tools.children].map((c) => (c.matches('button.dm-search-btn') ? 'search' : c.querySelector('summary')?.firstChild?.textContent));
-    expect(kinds).toEqual(['Storage']);
+    const kinds = [...tools.children].map((c) => (c.matches('.dm-context-filter') ? 'contexts' : c.matches('button.dm-search-btn') ? 'search' : c.querySelector('summary')?.firstChild?.textContent));
+    expect(kinds).toEqual(['contexts', 'Storage']);
     const head = marts().querySelector('.dm-band-titlegroup')!;
+    expect(head.querySelector('.dm-context-filter')).toBeNull();
     const order = [...head.children].map((c) => c.className.split(' ')[0]);
-    expect(order.indexOf('dm-context-filter')).toBeGreaterThan(order.indexOf('dm-hint'));
-    expect(head.querySelector('.dm-context-filter')!.previousElementSibling).toBe(within(marts()).getByRole('radiogroup', { name: 'Show data marts as' }));
+    expect(order.indexOf('dm-seg')).toBeGreaterThan(order.indexOf('dm-hint'));
+    expect(head.contains(within(marts()).getByRole('radiogroup', { name: 'Show data marts as' }))).toBe(true);
   });
 
   test('the Contexts badges show each context with its icon; none selected is no filter', async () => {

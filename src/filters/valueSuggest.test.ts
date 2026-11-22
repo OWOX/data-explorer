@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { Field } from '../model/types';
 import { toTraverseFilter } from './build';
-import { addValue, canSuggest, lastToken, narrow, valuesOf, valuesQuery } from './valueSuggest';
+import { addValue, canSuggest, keepsPicks, lastToken, narrow, valuesOf, valuesQuery } from './valueSuggest';
 
 const f = (over: Partial<Field> = {}): Field => ({ name: 'country', alias: 'Country', type: 'STRING', category: 'string', description: null, isPrimaryKey: false, ...over });
 
@@ -49,5 +49,28 @@ describe('a comma-separated value', () => {
   test('a plain value is untouched; contains keeps its commas', () => {
     expect(toTraverseFilter({ field: 'country', op: 'eq', value: ' US ' }, f())).toEqual({ column: 'country', operator: 'eq', value: ' US ' });
     expect(toTraverseFilter({ field: 'country', op: 'contains', value: 'a, b' }, f())).toEqual({ column: 'country', operator: 'contains', value: 'a, b' });
+  });
+});
+
+describe('keepsPicks', () => {
+  test('a picked list followed by a comma, with or without the space', () => {
+    expect(keepsPicks('Ukraine, ', 'Ukraine, Ger')).toBe(true);
+    expect(keepsPicks('Ukraine, ', 'Ukraine,')).toBe(true);
+    expect(keepsPicks('Ukraine, ', 'Ukraine , Ger')).toBe(true);
+    expect(keepsPicks('Ukraine, Germany, ', 'Ukraine,Germany, x')).toBe(true);
+  });
+  test('a picked base needs the comma; a single reopened value may stand alone', () => {
+    expect(keepsPicks('Ukraine, ', 'Ukraine')).toBe(false);
+    expect(keepsPicks('Ukraine', 'Ukraine')).toBe(true);
+    expect(keepsPicks('Ukraine', 'Ukraine, Ger')).toBe(true);
+  });
+  test('a changed or longer first value drops it', () => {
+    expect(keepsPicks('Ukraine, ', 'Ukrain, Ger')).toBe(false);
+    expect(keepsPicks('Ukraine', 'Ukrainer, x')).toBe(false);
+    expect(keepsPicks('', 'x')).toBe(false);
+  });
+  test('regex characters in a value are literal', () => {
+    expect(keepsPicks('a.b, ', 'a.b, c')).toBe(true);
+    expect(keepsPicks('a.b, ', 'aXb, c')).toBe(false);
   });
 });

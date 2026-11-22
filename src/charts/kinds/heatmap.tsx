@@ -1,15 +1,16 @@
-import { Grid3x3 } from 'lucide-react';
+import { CalendarRange, Columns3, Grid3x3, Rows3, Sigma } from 'lucide-react';
 import { BUCKET_LABELS, DATE_BUCKETS, formatBucket, type DateBucket } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
+import { fieldGroups, groupByMart, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { BLANK_KEY, BLANK_LABEL, blankFirst, keyOf, labelOf } from '../blank';
 import { bucketFilter, dimensionFilter } from '../clickFilters';
 import { measuresOf } from '../fields';
 import { bucketZone, heatmapQuery, measureKey, type HeatX, type Measure } from '../queries';
-import { measureLabel, measureOptions, measureText, numberOf } from '../Scorecards';
+import { measureLabel, measureText, numberOf } from '../Scorecards';
 import { measureId, pickBucketChoice, pickField, pickMeasure } from '../settings';
 import { Heatmap } from '../svg/Heatmap';
 import { useBucket } from '../useBucket';
@@ -53,13 +54,13 @@ function HeatmapPanel({ martId, cf, r, filter, version, idle, hasFilters, format
     ? blankFirst([...new Set(cellRows.map((row) => keyOf(row[xCol])))].sort()).map((k) => ({ key: k, label: k === BLANK_KEY ? BLANK_LABEL : formatBucket(k, bucket!) ?? k }))
     : (xTop.categories ?? []).map((c) => ({ key: c.key, label: labelOf(c.key) }));
   const ys = (yTop.categories ?? []).map((c) => ({ key: c.key, label: labelOf(c.key) }));
-  const colOptions = [...cf.dates.map((d) => ({ value: `date:${d.name}`, label: columnTitle(d) })), ...cf.dimensions.filter((d) => d !== y).map((d) => ({ value: `dim:${d.name}`, label: columnTitle(d) }))];
+  const colGroups = groupByMart(cf, [...cf.dates.map((f) => ({ f, id: `date:${f.name}` })), ...cf.dimensions.filter((d) => d !== y).map((f) => ({ f, id: `dim:${f.name}` }))], (c) => c.f.joined?.aliasPath ?? '', (c) => ({ value: c.id, label: fieldLabel(c.f) }));
   const items: MenuItem[] = [
-    { kind: 'radio', label: 'Rows', value: y.name, options: cf.dimensions.map((d) => ({ value: d.name, label: columnTitle(d) })), onPick: (v) => onChange({ dimension: v }) },
-    { kind: 'radio', label: 'Columns', value: cols.kind === 'date' ? `date:${cols.date.name}` : `dim:${cols.dim.name}`, options: colOptions,
+    { kind: 'radio', label: 'Rows', icon: Rows3, value: y.name, options: [], groups: fieldGroups(cf, cf.dimensions), onPick: (v) => onChange({ dimension: v }) },
+    { kind: 'radio', label: 'Columns', icon: Columns3, value: cols.kind === 'date' ? `date:${cols.date.name}` : `dim:${cols.dim.name}`, options: [], groups: colGroups,
       onPick: (v) => onChange(v.startsWith('date:') ? { date: v.slice(5), dimension2: undefined } : { dimension2: v.slice(4) }) },
-    ...(cols.kind === 'date' ? [{ kind: 'radio', label: 'Bucket', value: cols.bucket, options: [{ value: 'AUTO', label: 'Auto' }, ...DATE_BUCKETS.map((b) => ({ value: b, label: BUCKET_LABELS[b] }))], onPick: (v: string) => onChange({ bucket: v as DateBucket | 'AUTO' }) } as MenuItem] : []),
-    { kind: 'radio', label: 'Metric', value: measureId(measure), options: measureOptions(cf, measuresOf(cf)), onPick: (v) => onChange({ measure: v }) },
+    ...(cols.kind === 'date' ? [{ kind: 'radio', label: 'Bucket', icon: CalendarRange, value: cols.bucket, options: [{ value: 'AUTO', label: 'Auto' }, ...DATE_BUCKETS.map((b) => ({ value: b, label: BUCKET_LABELS[b] }))], onPick: (v: string) => onChange({ bucket: v as DateBucket | 'AUTO' }) } as MenuItem] : []),
+    { kind: 'radio', label: 'Metric', icon: Sigma, value: measureId(measure), options: [], groups: measureGroups(cf, measuresOf(cf)), onPick: (v) => onChange({ measure: v }) },
     ...tail,
   ];
   const xLabel = cols.kind === 'date' ? fieldLabel(cols.date) : fieldLabel(cols.dim);

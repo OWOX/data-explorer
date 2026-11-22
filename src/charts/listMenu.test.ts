@@ -1,3 +1,4 @@
+import { ChartSpline, Hash } from 'lucide-react';
 import { vi } from 'vitest';
 import type { ChartFields } from './fields';
 import { KINDS } from './kinds';
@@ -46,14 +47,14 @@ test('Chart type keeps the usable fields and the id; Remove deletes; removing th
   expect(s).toEqual({ version: 2, charts: [] });
 });
 
-test('each chart row, and each Add chart and Chart type option, carries its kind icon; cards and Sparklines carry none', () => {
+test('each chart row, and each Add chart and Chart type option, carries its kind icon; cards and Sparklines carry their own', () => {
   const change = vi.fn();
   const items = listItems({ cf, settings: {}, resolved: [{ spec: { id: 'a', kind: 'timeSeries' }, title: 'T' }, { spec: { id: 'b', kind: 'pie' }, title: null }], change });
   const icon = (label: string) => (items.find((i) => i.label === label) as { icon?: unknown }).icon;
   expect(icon('T')).toBe(KINDS.timeSeries.icon);
   expect(icon('Pie (columns hidden)')).toBe(KINDS.pie.icon);
-  expect(icon('Count Unique')).toBeUndefined();
-  expect(icon('Sparklines')).toBeUndefined();
+  expect(icon('Count Unique')).toBe(Hash);
+  expect(icon('Sparklines')).toBe(ChartSpline);
   const add = items.at(-1)!;
   expect(add.kind === 'radio' && add.options.every((o) => o.icon === KINDS[o.value as keyof typeof KINDS].icon)).toBe(true);
   const type = tailItems({ cf, spec: { id: 'a', kind: 'pie' }, change })[0]!;

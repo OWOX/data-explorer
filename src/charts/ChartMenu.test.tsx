@@ -1,15 +1,15 @@
 import { vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ChartPie, ChartLine } from 'lucide-react';
+import { ChartPie, ChartLine, Calendar, Hash, Trash2 } from 'lucide-react';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { HOVER_MS } from '../ui/explorer/MenuParts';
 
 afterEach(cleanup);
 
 const items: MenuItem[] = [
-  { kind: 'check', label: 'Totals', checked: false, onToggle: () => undefined },
-  { kind: 'radio', label: 'Bucket', value: 'day', options: [{ value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }], onPick: () => undefined },
+  { kind: 'check', label: 'Totals', icon: Hash, checked: false, onToggle: () => undefined },
+  { kind: 'radio', label: 'Bucket', icon: Calendar, value: 'day', options: [{ value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }], onPick: () => undefined },
 ];
 const wait = (ms: number) => act(() => new Promise<void>((r) => setTimeout(r, ms)));
 
@@ -39,7 +39,7 @@ test('hovering a submenu row opens it only after the pointer has rested, and Esc
 
 test('an action row closes the menu and runs', async () => {
   const onPick = vi.fn();
-  render(<ChartMenu name="Sales" items={[{ kind: 'action', label: 'Remove', onPick }]} />);
+  render(<ChartMenu name="Sales" items={[{ kind: 'action', label: 'Remove', icon: Trash2, onPick }]} />);
   await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
   await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
   expect(onPick).toHaveBeenCalledOnce();
@@ -49,8 +49,8 @@ test('an action row closes the menu and runs', async () => {
 test('a row and a submenu option show their icon before the label, hidden from screen readers', async () => {
   render(<ChartMenu name="Sales" items={[
     { kind: 'check', label: 'Orders by date', icon: ChartLine, checked: true, onToggle: () => undefined },
-    { kind: 'check', label: 'Sparklines', checked: true, onToggle: () => undefined },
-    { kind: 'radio', label: 'Chart type', value: 'pie', options: [{ value: 'pie', label: 'Pie', icon: ChartPie }, { value: 'x', label: 'Plain' }], onPick: () => undefined },
+    { kind: 'check', label: 'Sparklines', icon: Hash, checked: true, onToggle: () => undefined },
+    { kind: 'radio', label: 'Chart type', icon: Calendar, value: 'pie', options: [{ value: 'pie', label: 'Pie', icon: ChartPie }, { value: 'x', label: 'Plain' }], onPick: () => undefined },
   ]} />);
   await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
   const withIcon = screen.getByRole('menuitemcheckbox', { name: 'Orders by date' });
@@ -59,7 +59,9 @@ test('a row and a submenu option show their icon before the label, hidden from s
   // After the tick column, before the label.
   expect(withIcon.querySelector('.dm-menu-check')!.nextElementSibling).toBe(glyph!.parentElement);
   expect(glyph!.parentElement!.nextElementSibling).toHaveClass('dm-menu-label');
-  expect(screen.getByRole('menuitemcheckbox', { name: 'Sparklines' }).querySelector('.dm-menu-glyph')).toBeNull();
+  expect(screen.getByRole('menuitemcheckbox', { name: 'Sparklines' }).querySelector('.dm-menu-glyph svg.lucide-hash')).not.toBeNull();
+  // A submenu row has the tick column's room, so its icon sits in the same column.
+  expect(screen.getByRole('menuitem', { name: 'Chart type' }).querySelector('.dm-menu-check')!.nextElementSibling).toHaveClass('dm-menu-glyph');
   await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
   expect((await screen.findByRole('menuitemradio', { name: 'Pie' })).querySelector('.dm-menu-glyph svg.lucide-chart-pie')).not.toBeNull();
   expect(screen.getByRole('menuitemradio', { name: 'Plain' }).querySelector('.dm-menu-glyph')).toBeNull();

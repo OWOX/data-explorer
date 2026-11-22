@@ -1,4 +1,4 @@
-import { ChartColumn } from 'lucide-react';
+import { ArrowRightLeft, Calendar, CalendarRange, ChartColumn, Layers, Sigma } from 'lucide-react';
 import { formatValue, type Format } from '../../format/formats';
 import { BUCKET_LABELS, DATE_BUCKETS, type DateBucket } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
@@ -8,10 +8,11 @@ import { BLANK_KEY } from '../blank';
 import { bucketFilter, dimensionFilter } from '../clickFilters';
 import { compactValue } from '../compact';
 import type { MenuItem } from '../ChartMenu';
+import { fieldGroups, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { measuresOf, type ChartFields } from '../fields';
 import { bucketZone, type Measure } from '../queries';
-import { isIntegerMeasure, measureFormat, measureLabel, measureOptions } from '../Scorecards';
+import { isIntegerMeasure, measureFormat, measureLabel } from '../Scorecards';
 import { measureId, pickBucketChoice, pickField, pickMeasure, type Orientation } from '../settings';
 import { BarChart } from '../svg/BarChart';
 import { useBucket } from '../useBucket';
@@ -26,11 +27,11 @@ export const tickText = (n: number, type: string, format: Format): string => com
 
 /** The shared rows of a date chart's menu: Date field (when there is a choice), Bucket and Metric (when there is a choice). */
 export function dateMenu(cf: ChartFields, r: { date: Field; bucket: DateBucket | 'AUTO'; measure: Measure }, onChange: PanelProps<unknown>['onChange']): MenuItem[] {
-  const measures = measureOptions(cf, measuresOf(cf));
+  const measures = measuresOf(cf);
   return [
-    ...(cf.dates.length > 1 ? [{ kind: 'radio', label: 'Date field', value: r.date.name, options: cf.dates.map((d) => ({ value: d.name, label: columnTitle(d) })), onPick: (v: string) => onChange({ date: v }) } as MenuItem] : []),
-    { kind: 'radio', label: 'Bucket', value: r.bucket, options: [{ value: 'AUTO', label: 'Auto' }, ...DATE_BUCKETS.map((b) => ({ value: b, label: BUCKET_LABELS[b] }))], onPick: (v) => onChange({ bucket: v as DateBucket | 'AUTO' }) },
-    ...(measures.length > 1 ? [{ kind: 'radio', label: 'Metric', value: measureId(r.measure), options: measures, onPick: (v: string) => onChange({ measure: v }) } as MenuItem] : []),
+    ...(cf.dates.length > 1 ? [{ kind: 'radio', label: 'Date field', icon: Calendar, value: r.date.name, options: [], groups: fieldGroups(cf, cf.dates), onPick: (v: string) => onChange({ date: v }) } as MenuItem] : []),
+    { kind: 'radio', label: 'Bucket', icon: CalendarRange, value: r.bucket, options: [{ value: 'AUTO', label: 'Auto' }, ...DATE_BUCKETS.map((b) => ({ value: b, label: BUCKET_LABELS[b] }))], onPick: (v) => onChange({ bucket: v as DateBucket | 'AUTO' }) },
+    ...(measures.length > 1 ? [{ kind: 'radio', label: 'Metric', icon: Sigma, value: measureId(r.measure), options: [], groups: measureGroups(cf, measures), onPick: (v: string) => onChange({ measure: v }) } as MenuItem] : []),
   ];
 }
 
@@ -41,8 +42,8 @@ function TimeSeriesPanel({ martId, cf, r, spark, filter, version, idle, hasFilte
   const [tickType, tickFormat] = measureFormat(measure, formatOf);
   const items: MenuItem[] = [
     ...dateMenu(cf, r, onChange),
-    { kind: 'radio', label: 'Stack by', value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }, ...cf.dimensions.map((d) => ({ value: d.name, label: columnTitle(d) }))], onPick: (v) => onChange({ stack: v === '' ? null : v }) },
-    { kind: 'radio', label: 'Orientation', value: r.orientation, options: [{ value: 'vertical', label: 'Vertical' }, { value: 'horizontal', label: 'Horizontal' }], onPick: (v) => onChange({ orientation: v as Orientation }) },
+    { kind: 'radio', label: 'Stack by', icon: Layers, value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }], groups: fieldGroups(cf, cf.dimensions), onPick: (v) => onChange({ stack: v === '' ? null : v }) },
+    { kind: 'radio', label: 'Orientation', icon: ArrowRightLeft, value: r.orientation, options: [{ value: 'vertical', label: 'Vertical' }, { value: 'horizontal', label: 'Horizontal' }], onPick: (v) => onChange({ orientation: v as Orientation }) },
     ...tail,
   ];
   const title = `${s.label} by ${BUCKET_LABELS[bucket ?? 'DAY'].toLowerCase()}`;

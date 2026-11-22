@@ -58,6 +58,7 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange }:
     if (next.length === 0) next = visible.slice(0, 1);
     onChange(next);
   };
+  const shownNow = emptied ? [] : visible.filter((c) => mine.has(c));
   const items: ChecklistItem[] = fields.map((f) => ({
     value: f.name,
     text: fieldLabel(f),
@@ -71,7 +72,7 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange }:
       <button type="button" aria-label={`Fields of ${title}`} className="dm-ctl dm-ctl-lg dm-reveal"><Columns3 className="dm-icon" aria-hidden /></button>
     }>
       <div className="flex flex-col gap-2">
-        <SheetsChecklist label={`Fields of ${title}`} items={items} selected={emptied ? [] : visible.filter((c) => mine.has(c))} onChange={apply} />
+        <SheetsChecklist label={`Fields of ${title}`} items={items} selected={shownNow} displaying={shownNow.length} onChange={apply} />
       </div>
     </Popover>
   );

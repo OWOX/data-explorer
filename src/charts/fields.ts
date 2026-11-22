@@ -8,7 +8,7 @@ import type { Measure } from './queries';
 
 export type Metric = { field: Field; fn: AggFn };
 /** `recordsId` is what the mart's Count Unique is saved and keyed as (see `chartFields`). */
-export type ChartMart = { aliasPath: string; recordsId: string; title: string; hasPk: boolean; metrics: Metric[]; dates: Field[]; dimensions: Field[] };
+export type ChartMart = { aliasPath: string; recordsId: string; title: string; /** The mart's own picked icon, as the grid group header shows it. */ icon?: string | null; hasPk: boolean; metrics: Metric[]; dates: Field[]; dimensions: Field[] };
 /** `counter` is a main-mart field the warehouse may COUNT: a query with a slice and no column of its own reads it, so the slice has an explicit column list without a new group key. Null when the mart has none. */
 export type ChartFields = { marts: ChartMart[]; dimensions: Field[]; dates: Field[]; counter?: Field | null;
   /** Per alias path of a joined mart: 'none' when every join down to it is a lookup keyed by its target's primary key, so a main row matches at most one joined row. A path not listed collapses. */
@@ -58,7 +58,7 @@ function metricFn(f: Field, agg: Aggregation): AggFn | null {
 }
 
 /** `groupPaths` are the groups' alias paths, main first (titles are keyed by path). `shown` is the grid's shown column names (their order does not matter: the charts follow the schema's, so a column move changes nothing); `schema` the blended schema; `mainMartId` the grid's mart. */
-export function chartFields(schema: Schema, shown: string[], agg: Aggregation, mainMartId: string, groupPaths: string[], uniqueCountPaths?: ReadonlySet<string>, titles: Readonly<Record<string, string>> = {}, collapse?: Readonly<Record<string, MainGrainCollapse>>): ChartFields {
+export function chartFields(schema: Schema, shown: string[], agg: Aggregation, mainMartId: string, groupPaths: string[], uniqueCountPaths?: ReadonlySet<string>, titles: Readonly<Record<string, string>> = {}, collapse?: Readonly<Record<string, MainGrainCollapse>>, icons: Readonly<Record<string, string | null | undefined>> = {}): ChartFields {
   const by = new Map(schema.map((f) => [f.name, f]));
   const on = new Set(shown);
   const fields = [...by.values()].filter((f) => on.has(f.name));
@@ -81,6 +81,7 @@ export function chartFields(schema: Schema, shown: string[], agg: Aggregation, m
       aliasPath,
       recordsId,
       title: titles[aliasPath] ?? '',
+      icon: icons[aliasPath],
       hasPk,
       metrics,
       dates: own.filter((f) => canBucket(f)),

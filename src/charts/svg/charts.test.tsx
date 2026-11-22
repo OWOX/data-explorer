@@ -328,3 +328,22 @@ test('BarChart categorical: a short label that fits is shown whole, and the firs
   const tickX = Math.max(...[...container.querySelectorAll('.dm-chart-tick text')].map((t) => Number(t.getAttribute('x'))));
   expect(Number(labels[0]!.getAttribute('x'))).toBeGreaterThan(tickX);
 });
+
+test('a blank pie slice carries data-blank and its legend swatch has a border', () => {
+  const slices = [{ name: 'A', value: 3, valueText: '3', color: 'red' }, { key: '\u0000blank', name: '(blank)', value: 1, valueText: '1', color: 'var(--dm-blank)', blank: true }];
+  const { container } = wrap(<PieChart slices={slices} ariaLabel="By channel" />);
+  expect(container.querySelector('[data-slice="(blank)"]')).toHaveAttribute('data-blank');
+  expect(container.querySelector('[data-slice="A"]')).not.toHaveAttribute('data-blank');
+  const swatches = container.querySelectorAll<HTMLElement>('.dm-chart-legend .dm-chart-swatch');
+  expect(swatches[1]!.style.border).toContain('1px solid');
+  expect(swatches[0]!.style.border).toBe('');
+});
+
+test('a blank line series draws in the stroke grey, not the light blank fill', () => {
+  const blank: Series = { key: '\u0000blank', name: '(blank)', color: 'var(--dm-blank)', blank: true, points: [pt(1, 1), pt(2, 2)] };
+  const { container } = wrap(<LineChart left={[blank, { name: 'A', color: 'red', points: [pt(1, 1), pt(2, 2)] }]} area ariaLabel="Trend" formatLeft={String} />);
+  expect(container.querySelector('[data-line="(blank)"]')).toHaveAttribute('stroke', 'var(--muted-foreground)');
+  expect(container.querySelector('[data-area="(blank)"]')).toHaveAttribute('fill', 'var(--muted-foreground)');
+  expect(container.querySelector('[data-line="A"]')).toHaveAttribute('stroke', 'red');
+  expect((container.querySelector('.dm-chart-legend .dm-chart-swatch') as HTMLElement).style.border).toBe('');
+});

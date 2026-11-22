@@ -1,16 +1,17 @@
-import { Waypoints } from 'lucide-react';
+import { Columns3, Sigma, Tag, Waypoints } from 'lucide-react';
 import { useMemo } from 'react';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import type { Row } from '../../sdk/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
+import { fieldGroups, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { dimensionFilter } from '../clickFilters';
 import { pathOf, pieMeasures, sankeyMeasures } from '../fields';
 import { sankeyColumnQuery, sankeyFlowQuery, sankeyLowQuery, SANKEY_COLUMN_LIMIT, SANKEY_FLOW_LIMIT, type Measure } from '../queries';
 import { foldSankey } from '../sankeyFold';
-import { measureLabel, measureOptions, measureText } from '../Scorecards';
+import { measureLabel, measureText } from '../Scorecards';
 import { measureId, pickMeasure, SANKEY_MAX, SANKEY_MIN } from '../settings';
 import { Sankey } from '../svg/Sankey';
 import { useChartQuery } from '../useChartQuery';
@@ -71,12 +72,12 @@ function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
   const loading = !!measure && !empty && !failed && !data;
   const names = dims.map((d) => d.name);
   const maxColumns = Math.min(SANKEY_MAX, cf.dimensions.length);
-  const dimOptions = cf.dimensions.map((d) => ({ value: d.name, label: columnTitle(d) }));
+  const dimGroups = fieldGroups(cf, cf.dimensions);
   const items: MenuItem[] = [
-    { kind: 'radio', label: 'Columns', value: String(n), options: Array.from({ length: maxColumns - SANKEY_MIN + 1 }, (_, i) => ({ value: String(SANKEY_MIN + i), label: String(SANKEY_MIN + i) })),
+    { kind: 'radio', label: 'Columns', icon: Columns3, value: String(n), options: Array.from({ length: maxColumns - SANKEY_MIN + 1 }, (_, i) => ({ value: String(SANKEY_MIN + i), label: String(SANKEY_MIN + i) })),
       onPick: (v) => onChange({ dimensions: withColumns(names, Number(v), cf.dimensions) }) },
-    ...dims.map((d, i): MenuItem => ({ kind: 'radio', label: `Column ${i + 1}`, value: d.name, options: dimOptions, onPick: (v) => onChange({ dimensions: setColumn(names, i, v) }) })),
-    ...(measure ? [{ kind: 'radio', label: 'Metric', value: measureId(measure), options: measureOptions(cf, sankeyMeasures(cf, dims)), onPick: (v: string) => onChange({ measure: v }) } as MenuItem] : []),
+    ...dims.map((d, i): MenuItem => ({ kind: 'radio', label: `Column ${i + 1}`, icon: Tag, value: d.name, options: [], groups: dimGroups, onPick: (v) => onChange({ dimensions: setColumn(names, i, v) }) })),
+    ...(measure ? [{ kind: 'radio', label: 'Metric', icon: Sigma, value: measureId(measure), options: [], groups: measureGroups(cf, sankeyMeasures(cf, dims)), onPick: (v: string) => onChange({ measure: v }) } as MenuItem] : []),
     ...tail,
   ];
   const title = sankey.title(r, cf);
