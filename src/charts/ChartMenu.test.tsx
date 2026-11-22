@@ -110,15 +110,15 @@ describe('a field menu over several data marts', () => {
     const second = await screen.findByRole('menu', { name: 'Metric' });
     expect(second).toHaveTextContent('Off');
     expect(screen.queryByRole('menuitemradio', { name: 'Amount' })).toBeNull();
-    expect(screen.getByRole('menuitemradio', { name: 'Products' })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('menuitemradio', { name: 'Orders' })).toHaveAttribute('aria-checked', 'false');
-    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Orders' }));
+    expect(screen.getByRole('menuitem', { name: 'Products' }).querySelector('.dm-menu-tick svg')).not.toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Orders' }).querySelector('.dm-menu-tick svg')).toBeNull();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Orders' }));
     await screen.findByRole('menu', { name: 'Orders' });
     // Escape closes one level.
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('menu', { name: 'Orders' })).toBeNull();
     expect(screen.getByRole('menu', { name: 'Metric' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Orders' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Orders' }));
     await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Tax' }));
     expect(onPick).toHaveBeenCalledWith('b');
     expect(screen.queryByRole('menu')).toBeNull();
@@ -129,7 +129,7 @@ describe('a field menu over several data marts', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Metric' }));
     await screen.findByRole('menu', { name: 'Metric' });
-    screen.getByRole('menuitemradio', { name: 'Orders' }).focus();
+    screen.getByRole('menuitem', { name: 'Orders' }).focus();
     await userEvent.keyboard('{ArrowRight}');
     await screen.findByRole('menu', { name: 'Orders' });
     await userEvent.keyboard('{ArrowLeft}');
@@ -142,6 +142,6 @@ describe('a field menu over several data marts', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Metric' }));
     await screen.findByRole('menuitemradio', { name: 'Amount' });
-    expect(screen.queryByRole('menuitemradio', { name: 'Orders' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Orders' })).toBeNull();
   });
 });

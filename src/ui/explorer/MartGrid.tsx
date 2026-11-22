@@ -8,9 +8,9 @@ import { PAGE_SIZE } from '../../config';
 import { columnLetter } from './columnLetters';
 import { emptyText, isNumericType } from '../format';
 import { withJoined, type JoinedSource } from '../../api/blendable';
-import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
+import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type AggregationDraft, type DateBucket, type Output } from '../../model/aggregation';
 import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
-import { chartFields } from '../../charts/fields';
+import { chartFields, ruleNewColumns } from '../../charts/fields';
 import { keysPlan, useHavingKeys } from '../../charts/havingKeys';
 import { readRows } from '../../api/rows';
 import { canSuggest, valuesOf, valuesQuery } from '../../filters/valueSuggest';
@@ -590,11 +590,11 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const shownSorts = useMemo(() => (grouped ? (own ?? []) : gridSorts), [grouped, own, gridSorts]);
   const env = useMemo(() => ({ sorts: shownSorts, toggleSort, sortable: !charts }), [shownSorts, toggleSort, charts]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
-  const changeColumns = useCallback((picked: string[]) => {
+  const changeColumns = useCallback((picked: string[], more?: (cur: Aggregation) => Aggregation) => {
     const cols = orderColumns(picked, sources, defaultColumns(native));
     markEdit();
     setVisible(cols);
-    const nextAgg = keepVisible(agg, cols);
+    const nextAgg = keepVisible(more ? more(agg) : agg, cols);
     // A HAVING filter on a hidden column's function goes with it, in the same step.
     if (nextAgg !== agg) applyAgg(nextAgg);
     setOwn((cur) => { const kept = cur && sortsOnColumns(cur, cols); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
@@ -605,7 +605,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
   }, [sources, native, markEdit, agg, applyAgg, visible, columnStore, martId, setVisible, setOwn]);
   // A chart menu's choice of a field that is not shown: the shown columns and the new ones, in one edit.
-  const showColumns = useCallback((names: string[]) => changeColumns([...new Set([...shown, ...names])]), [changeColumns, shown]);
+  // In a grouped grid a new column without a rule would become a group key and multiply the rows: a metric gets the function the chart sums it with, a date the chart's bucket (Month when none is known yet). A dimension is a key, as intended.
+  const showColumns = useCallback((names: string[], buckets?: Readonly<Record<string, DateBucket>>) => changeColumns([...new Set([...shown, ...names])], (cur) => ruleNewColumns(cur, names.flatMap((n) => (shown.includes(n) ? [] : [byName.get(n)!])), buckets)), [changeColumns, shown, byName]);
   // A moved column keeps its sorts, filters and functions: only the order changes, and it is one Undo step. The cell selection is dropped (its columns moved).
   const reorder = useCallback((cols: string[]) => {
     if (cols === shown) return;

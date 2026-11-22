@@ -1,5 +1,5 @@
 // Which shown columns the charts draw: metrics (numbers), dimensions (text, booleans) and dates, grouped by the data mart they belong to.
-import { AGGREGATE_FUNCTIONS, allowedFunctions, canBucket, type AggFn, type Aggregation, type DateBucket } from '../model/aggregation';
+import { AGGREGATE_FUNCTIONS, allowedFunctions, canBucket, isGrouped, type AggFn, type Aggregation, type DateBucket } from '../model/aggregation';
 import type { MainGrainCollapse } from '../api/blendable';
 import type { Field, Schema } from '../model/types';
 import { hasPrimaryKey } from '../records/relationships';
@@ -54,12 +54,26 @@ export const sankeyMeasures = (cf: ChartFields, dims: Field[]): Measure[] => pie
 });
 
 // The grid's own Σ function wins, so a chart and the grid never disagree about what a column means.
-function metricFn(f: Field, agg: Aggregation): AggFn | null {
+export function metricFn(f: Field, agg: Aggregation): AggFn | null {
   const allowed = allowedFunctions(f);
   const chosen = agg.aggregations.find((r) => r.column === f.name && allowed.includes(r.function));
   if (chosen) return chosen.function;
   if (allowed.includes('SUM')) return 'SUM';
   return AGGREGATE_FUNCTIONS.find((fn) => allowed.includes(fn)) ?? null;
+}
+
+/**
+ * The rules a grouped grid needs for columns just shown by a chart choice: without one a column is a group key and multiplies the rows.
+ * A metric gets the function the chart sums it with, a date the chart's bucket (Month when none is known); a dimension stays a key. An ungrouped grid needs no rule.
+ */
+export function ruleNewColumns(cur: Aggregation, fresh: Field[], buckets: Readonly<Record<string, DateBucket>> = {}): Aggregation {
+  if (!isGrouped(cur)) return cur;
+  const aggregations = [...cur.aggregations, ...fresh.flatMap((f): { column: string; function: AggFn }[] => {
+    const fn = f.category === 'number' && !isIdField(f) && !f.isCalculated ? metricFn(f, cur) : null;
+    return fn ? [{ column: f.name, function: fn }] : [];
+  })];
+  const dateTrunc = [...cur.dateTrunc, ...fresh.filter((f) => canBucket(f) && !cur.dateTrunc.some((r) => r.column === f.name)).map((f) => ({ column: f.name, unit: buckets[f.name] ?? ('MONTH' as DateBucket) }))];
+  return { aggregations, dateTrunc };
 }
 
 /** `groupPaths` are the groups' alias paths, main first (titles are keyed by path). `shown` is the grid's shown column names (their order does not matter: the charts follow the schema's, so a column move changes nothing); `schema` the blended schema; `mainMartId` the grid's mart. */

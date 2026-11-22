@@ -143,7 +143,7 @@ test.describe('grouped submenus', () => {
     await page.getByRole('menuitem', { name: 'Dimension' }).click();
     // The marts come first; a mart's fields are on the next level.
     const sub = page.getByRole('menu', { name: 'Dimension' });
-    const marts = sub.getByRole('menuitemradio');
+    const marts = sub.getByRole('menuitem');
     await expect(marts.filter({ hasText: 'Orders' })).toBeVisible();
     await expect(marts.filter({ hasText: 'Customers' })).toBeVisible();
     await expect(sub.getByRole('menuitemradio', { name: 'name' })).toHaveCount(0);

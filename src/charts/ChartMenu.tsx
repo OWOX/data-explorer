@@ -92,7 +92,7 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
           {/* One mart with options needs no level of its own: its options are listed here. */}
           {groups.length === 1 && groups[0]!.options.map((o) => choice(o, marts.hoverOther))}
           {groups.length > 1 && groups.map((g, gi) => (
-            <Row key={gi} sub check tickEnd checked={g.options.some((o) => o.value === picked.value)} expanded={marts.sub?.key === gi} label={g.title}
+            <Row key={gi} sub tick checked={g.options.some((o) => o.value === picked.value)} expanded={marts.sub?.key === gi} label={g.title}
               glyph={<PickedIcon icon={g.icon} fallback={DEFAULT_MART_ICON} size={16} />}
               onActivate={(r) => marts.open(gi, r, true)} onOpen={(r) => marts.open(gi, r, true)} onHover={(r) => marts.hoverRow(gi, r)} onLeaveRow={marts.leaveRow} />
           ))}

@@ -37,7 +37,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   /** Applies the clicked mark's filters to the grid, as a filter edit (one Undo step). */
   onFilter: (add: ColumnFilter[]) => void;
   /** Shows these columns in the grid (added to the shown ones): a menu choice of a field that is not shown has to put it on screen. */
-  onShowColumns: (names: string[]) => void;
+  onShowColumns: (names: string[], buckets?: Readonly<Record<string, DateBucket>>) => void;
 }) {
   const { chartSettings } = useServices();
   const [settings, setSettings] = useState<ChartSettings | null>(null);
@@ -63,6 +63,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     const build = (on: string[]) => chartFields(schema, on, agg, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), Object.fromEntries(groups.map((g) => [g.path, g.title])), Object.fromEntries(sources.map((x) => [x.aliasPath, x.mainGrainCollapse ?? 'collapses'])), Object.fromEntries(groups.map((g) => [g.path, g.icon])));
     return { ...build(shown), menu: build(schema.map((f) => f.name)) };
   }, [schema, shown, agg, martId, groups, sources]);
+  const schemaNames = useMemo(() => new Set(schema.map((f) => f.name)), [schema]);
   const joins = useMemo(() => joinGrainOf(sources), [sources]);
   const specs = chartsOf(settings ?? {});
   // Hidden charts resolve to nothing, so they mount no panel and read nothing.
@@ -83,10 +84,14 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     return { spec, title: def && r ? def.title(r, cf) : null };
   }), [drawn, cf]);
   // A chosen field that is not a shown column is added to the grid with the choice. Records ids and Off ('') name no column.
-  const showPicked = (p: Partial<ChartSpec>) => {
+  // A newly shown date is truncated by the chart's bucket: the one picked with it, else the chart's own when concrete, else the one the charts resolved.
+  const showPicked = (spec: ChartSpec, p: Partial<ChartSpec>) => {
     const named = [p.measure, p.measure2, p.date, p.dimension, p.dimension2, p.stack, ...(p.dimensions ?? [])];
-    const missing = [...new Set(named.filter((n): n is string => !!n && !shown.includes(n) && schema.some((f) => f.name === n)))];
-    if (missing.length > 0) onShowColumns(missing);
+    const missing = [...new Set(named.filter((n): n is string => !!n && !shown.includes(n) && schemaNames.has(n)))];
+    if (missing.length === 0) return;
+    const chosen = p.bucket ?? spec.bucket;
+    const unit = chosen && chosen !== 'AUTO' ? chosen : bucket;
+    onShowColumns(missing, p.date && unit ? { [p.date]: unit } : undefined);
   };
   const slot = useContext(ChartsMenuSlot);
   const columns = groups.reduce((n, g) => n + g.span, 0);
@@ -129,7 +134,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
             {drawn.map(({ spec, def, r }) => def && r ? (
               <def.Panel key={spec.id} martId={martId} cf={cf} spec={spec} r={r} spark={spark} filter={filter} version={version} idle={idle}
                 hasFilters={hasFilters} formatOf={formatOf} ready={!!settings} tail={tailItems({ cf, spec, change })}
-                onChange={(p: Partial<ChartSpec>) => { showPicked(p); change((cur) => patchChart(cur, spec.id, p)); }} onFilter={onFilter} />
+                onChange={(p: Partial<ChartSpec>) => { showPicked(spec, p); change((cur) => patchChart(cur, spec.id, p)); }} onFilter={onFilter} />
             ) : null)}
           </div>
           {havingNote && <p data-chart-note className="mt-1 text-xs text-muted-foreground" style={{ position: 'sticky', left: GUTTER_PX }}>Charts can't apply filters on aggregates for this grouping.</p>}
