@@ -630,7 +630,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const table = useTable({ features, data: rows ?? [], columns });
   const rowsLabel = rows ? `${rows.length}${hasMore ? '+' : ''}` : null;
   // The Data band's title row shows the no-primary-key warning, so it is told whether this grid is a plain preview.
-  // `hidden`: the mart has a key but it is hidden for reporting, so no row can be opened by it.
+  // `hidden`: the mart has a key but it is hidden for reporting, so no row can be opened by it. Only `missing` is warned about.
   const noKey: NoKey = grouped || pks.length > 0 ? false : hasPrimaryKey(native) ? 'hidden' : 'missing';
   useEffect(() => { onRows?.(rowsLabel, grouped, noKey); }, [rowsLabel, grouped, noKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const cardClick = useContext(CardClickContext);
