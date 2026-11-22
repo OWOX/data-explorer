@@ -166,6 +166,8 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, bucket, autoBu
   const mine = useBucket(martId, own ? date : null, 'AUTO', filter, version, paused);
   const cardBucket = own ? mine.bucket : bucket;
   const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, cardBucket, filter, date), version, joins);
+  // A changed date has no trend yet (its range, then its rows, are still being read): a placeholder holds the sparkline's place instead of a stale or empty box.
+  const waiting = !paused && spark.sparklines && !!date && (trend.loading || (own && !mine.bucket));
   const dated = date ? datedRows(trend.rows ?? [], date.name) : [];
   const points: Point[] = dated.map((s) => ({
     x: String(s[date!.name]),
@@ -187,7 +189,8 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, bucket, autoBu
         </div>
       )}
       {row ? <CardValue card={c} row={row} formatOf={formatOf} /> : <Skeleton rows={1} />}
-      {dated.length > 0 && <Sparkline points={points} ariaLabel={`${c.label} trend`} />}
+      {waiting && <div aria-label="Loading trend" className="mt-1 h-6 animate-pulse rounded bg-muted motion-reduce:animate-none" />}
+      {!waiting && dated.length > 0 && <Sparkline points={points} ariaLabel={`${c.label} trend`} />}
     </div>
   );
 }
