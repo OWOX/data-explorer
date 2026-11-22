@@ -9,7 +9,7 @@ function section(withSvg = true) {
 }
 const png = new Blob(['x'], { type: 'image/png' });
 
-afterEach(() => { vi.restoreAllMocks(); document.body.innerHTML = ''; });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); document.body.innerHTML = ''; });
 
 test('inlineStyles writes computed fill and stroke onto the clone', () => {
   const s = section();
@@ -69,5 +69,4 @@ test('copyImage strokes a bordered legend swatch and leaves a plain one unstroke
   const mod = await import('./copyImage');
   await mod.internals.render(el, 'T');
   expect(calls).toEqual(['strokeRect']);
-  vi.unstubAllGlobals();
 });
