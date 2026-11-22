@@ -1,7 +1,8 @@
 import { vi } from 'vitest';
-import { createBlendableLoader, joinedSources, sourceOfField } from './blendable';
+import { createBlendableLoader, joinedSources, keyAliasOf, sourceOfField } from './blendable';
 import { pathTitle } from '../state/join-plan';
 import { stubCtx } from './test-ctx';
+import type { Edge, Schema } from '../model/types';
 import type { BlendableSchemaDto } from '../sdk/types';
 
 const dto: BlendableSchemaDto = {
@@ -227,4 +228,45 @@ test('sourceOfField maps each field name to its first source and builds the map 
   expect(map.get('nope')).toBeUndefined();
   expect(sourceOfField(sources)).toBe(map);
   expect(sourceOfField([a, b])).not.toBe(map);
+});
+
+describe('the key alias of a join', () => {
+  const fld = (name: string, alias: string | null) => ({ name, alias, type: 'STRING', category: 'string' as const, description: null, isPrimaryKey: false });
+  const edge = (id: string, sourceField: string): Edge => ({ id, source: 'm', target: 'o', joins: [{ sourceField, targetField: 'id' }] });
+  const two = twice('billing_org', 'shipping_org');
+  const main: Schema = [fld('billing_id', 'Billing org'), fld('shipping_id', 'shipping_id')];
+  const edges = [edge('r0', 'billing_id'), edge('r1', 'shipping_id')];
+  const labels = (dtoIn: BlendableSchemaDto, ctx: Parameters<typeof keyAliasOf>[2]) => joinedSources(dtoIn, keyAliasOf('m', dtoIn, ctx)).map((x) => x.label);
+
+  test('relationship -> first join condition -> the parent field alias, for a mart the main one joins', () => {
+    const alt: Schema = [fld('billing_id', 'Billing org'), fld('shipping_id', 'Shipping org')];
+    expect(labels(two, { edges, schemaOf: () => alt })).toEqual(['Organization (by Billing org)', 'Organization (by Shipping org)']);
+  });
+
+  test('a missing alias (unset, or the raw name), a missing edge or a missing schema falls back to ordinals', () => {
+    expect(labels(two, { edges, schemaOf: () => main })).toEqual(['Organization', 'Organization 2']);
+    expect(labels(two, { edges: [], schemaOf: () => [fld('billing_id', 'Billing org'), fld('shipping_id', 'Shipping org')] })).toEqual(['Organization', 'Organization 2']);
+    expect(labels(two, { edges, schemaOf: () => undefined })).toEqual(['Organization', 'Organization 2']);
+  });
+
+  test('a deeper path reads the alias of the key from its parent path\'s own blended fields', () => {
+    const deep = twice('a.x', 'b.x') as { availableSources: unknown[]; blendedFields: unknown[] } & BlendableSchemaDto;
+    deep.availableSources.push({ aliasPath: 'a', title: 'Contact', depth: 1, dataMartId: 'k', isIncluded: true, isAccessibleForReporting: true } as never, { aliasPath: 'b', title: 'Contact', depth: 1, dataMartId: 'k', isIncluded: true, isAccessibleForReporting: true } as never);
+    deep.blendedFields.push(
+      { name: 'a__org', aliasPath: 'a', sourceDataMartId: 'k', originalFieldName: 'org_id', type: 'STRING', alias: 'Home org' },
+      { name: 'b__org', aliasPath: 'b', sourceDataMartId: 'k', originalFieldName: 'org_id', type: 'STRING', alias: 'Work org' },
+    );
+    const got = joinedSources(deep, keyAliasOf('m', deep, { edges: [edge('r0', 'org_id'), edge('r1', 'org_id')], schemaOf: () => undefined }));
+    expect(got.filter((x) => x.depth === 2).map((x) => x.label)).toEqual(['Country (Contact, by Home org)', 'Country (Contact, by Work org)']);
+  });
+
+  test('the loader labels by ordinal first, then again once it is given the edges and schemas, and tells subscribers', async () => {
+    const loader = createBlendableLoader(stubCtx({ getJson: vi.fn(async () => two) }));
+    const told = vi.fn();
+    loader.subscribe(told);
+    expect((await loader.get('m')).map((x) => x.label)).toEqual(['Organization', 'Organization 2']);
+    loader.useKeys({ edges, schemaOf: () => [fld('billing_id', 'Billing org'), fld('shipping_id', 'Shipping org')] });
+    expect(loader.peek('m')!.map((x) => x.label)).toEqual(['Organization (by Billing org)', 'Organization (by Shipping org)']);
+    expect(told).toHaveBeenCalledTimes(1);
+  });
 });

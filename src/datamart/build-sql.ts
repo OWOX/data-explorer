@@ -186,7 +186,7 @@ function prepare(input: MartSqlInput): Plan | Reason {
       edge = candidates[0]!;
     }
     if (edge.joins.length === 0) return unresolved;
-    if (edge.joins.some((j) => j.sourceField.includes('.') || j.targetField.includes('.'))) return { reason: `The join to "${label}" uses a nested key, which OWOX can't join on` };
+    if (edge.joins.some((j) => j.sourceField.includes('.') || j.targetField.includes('.'))) return { reason: label ? `The join to "${label}" uses a nested key, which OWOX can't join on` : "A join uses a nested key, which OWOX can't join on" };
     plans.set(path, { source, edge });
   }
 
@@ -218,7 +218,7 @@ function prepare(input: MartSqlInput): Plan | Reason {
 
   const ref = (f: Field) => (f.joined ? `${cte.get(rootOf(f.joined.aliasPath))}.${ident(d, f.name)}` : `base_owox.${fieldRef(d, f.name)}`);
 
-  const mart = (path: string) => { const { source } = plans.get(path)!; return martRef(source.martId, titles.get(source.martId) ?? source.label); };
+  const mart = (path: string) => { const { source } = plans.get(path)!; return martRef(source.martId, titles.get(source.martId) || source.label || 'data mart'); };
 
   // One dedup CTE per path: its own fields rolled up by its join key, its children's values rolled up again. Emitted children first.
   const ctes = [`  base_owox AS (\n    SELECT *\n    FROM ${martRef(main.id, main.title)}\n  )`];

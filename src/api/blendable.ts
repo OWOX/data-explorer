@@ -1,6 +1,6 @@
 import { knownFunctions } from '../model/aggregation';
 import { categorizeFieldType } from '../model/field-category';
-import type { Field, Schema } from '../model/types';
+import type { Edge, Field, Schema } from '../model/types';
 import type { AvailableSourceDto, BlendableSchemaDto, Ctx, DataMartDetailDto } from '../sdk/types';
 
 /** The backend's `isArrayFieldType`: ARRAY, bare or with a parameter (`ARRAY<STRING>`). */
@@ -50,6 +50,8 @@ export interface BlendableLoader {
   /** Called whenever a mart's joined sources were forgotten, so a holder of its own copy reads them again. */
   subscribe(fn: () => void): () => void;
   clear(): void;
+  /** The model's edges and the loaded schemas, so two joins to one mart can be told apart by their key; the joins already read are labelled again and subscribers told. */
+  useKeys(ctx: KeyContext): void;
 }
 
 /** Joined fields of a mart as columns: only included, readable sources; no hidden or calculated field. Depth first, then title. */
@@ -108,38 +110,31 @@ export function joinedSources(dto: BlendableSchemaDto, keyAlias?: KeyAlias): Joi
   return [...byPath.values()].filter((s) => s.fields.length > 0).sort((a, b) => a.depth - b.depth || a.label.localeCompare(b.label) || a.aliasPath.localeCompare(b.aliasPath));
 }
 
-/**
- * The alias of the key field each colliding join goes by (relationship -> its first join condition -> that field of the parent mart),
- * read only when two joins would otherwise share a label. A failed read leaves the join without one (the ordinal then tells them apart).
- */
-async function readKeyAlias(ctx: Ctx, martId: string, dto: BlendableSchemaDto, wanted: AvailableSourceDto[]): Promise<KeyAlias> {
-  const aliases = new Map<string, string>();
-  try {
-    const edges = (await Promise.all((await ctx.owox.storages.list()).map((st) => ctx.owox.models.getEdges(st.id).catch(() => [])))).flat();
-    const martOf = new Map((dto.availableSources ?? []).map((a) => [a.aliasPath, a.dataMartId]));
-    const details = new Map<string, Promise<DataMartDetailDto | null>>();
-    const detail = (id: string) => details.get(id) ?? details.set(id, ctx.owox.getJson<DataMartDetailDto>(`/api/data-marts/${encodeURIComponent(id)}`).catch(() => null)).get(id)!;
-    await Promise.all(wanted.map(async (s) => {
-      const key = edges.find((e) => e.id === s.relationshipId)?.joinConditions[0]?.sourceFieldName;
-      const i = s.aliasPath.lastIndexOf('.');
-      const parentId = i < 0 ? martId : martOf.get(s.aliasPath.slice(0, i));
-      if (!key || !parentId) return;
-      const alias = (await detail(parentId))?.schema?.fields?.find((f) => f.name === key)?.alias?.trim();
-      if (alias && alias !== key) aliases.set(s.aliasPath, alias);
-    }));
-  } catch { /* the ordinal tells them apart */ }
-  return (s) => aliases.get(s.aliasPath);
-}
+/** What the loader knows without a read: the model's edges and the schemas already loaded. */
+export type KeyContext = { edges: Edge[]; schemaOf: (martId: string) => Schema | undefined };
 
-/** The joined sources of a mart; the join keys are read from the backend only when two joins would share a label. */
-async function sourcesOf(ctx: Ctx, martId: string, dto: BlendableSchemaDto): Promise<JoinedSource[]> {
-  const asked: AvailableSourceDto[] = [];
-  const first = joinedSources(dto, (s) => { if (s.relationshipId) asked.push(s); return undefined; });
-  return asked.length ? joinedSources(dto, await readKeyAlias(ctx, martId, dto, asked)) : first;
+/**
+ * The alias of the key a join goes by: the join's relationship -> its first join condition -> that field of the parent mart,
+ * from the parent's loaded schema (the main mart) or from the parent path's own blended fields. Only a set alias that differs from the raw name counts.
+ */
+export function keyAliasOf(martId: string, dto: BlendableSchemaDto, ctx: KeyContext): KeyAlias {
+  return (s) => {
+    const key = ctx.edges.find((e) => e.id === s.relationshipId)?.joins[0]?.sourceField;
+    if (!key) return undefined;
+    const i = s.aliasPath.lastIndexOf('.');
+    const alias = i < 0
+      ? ctx.schemaOf(martId)?.find((f) => f.name === key)?.alias
+      : dto.blendedFields?.find((b) => b.aliasPath === s.aliasPath.slice(0, i) && b.originalFieldName === key)?.alias;
+    const shown = alias?.trim();
+    return shown && shown !== key ? shown : undefined;
+  };
 }
 
 export function createBlendableLoader(ctx: Ctx): BlendableLoader {
   const done = new Map<string, JoinedSource[]>();
+  const dtos = new Map<string, BlendableSchemaDto>();
+  let keys: KeyContext | null = null;
+  const label = (martId: string, dto: BlendableSchemaDto) => joinedSources(dto, keys ? keyAliasOf(martId, dto, keys) : undefined);
   const inflight = new Map<string, Promise<JoinedSource[]>>();
   const listeners = new Set<() => void>();
   return {
@@ -149,16 +144,24 @@ export function createBlendableLoader(ctx: Ctx): BlendableLoader {
       const running = inflight.get(martId);
       if (running) return running;
       const p = ctx.owox.getJson<BlendableSchemaDto>(`/api/data-marts/${encodeURIComponent(martId)}/blendable-schema`)
-        .then((dto) => sourcesOf(ctx, martId, dto))
-        .then((sources) => { if (inflight.get(martId) === p) done.set(martId, sources); return sources; })
+        .then((dto) => { const sources = label(martId, dto); if (inflight.get(martId) === p) { done.set(martId, sources); dtos.set(martId, dto); } return sources; })
         .finally(() => { if (inflight.get(martId) === p) inflight.delete(martId); });
       inflight.set(martId, p);
       return p;
     },
     peek: (martId) => done.get(martId),
-    invalidate(martId) { done.delete(martId); inflight.delete(martId); listeners.forEach((l) => l()); },
+    invalidate(martId) { done.delete(martId); dtos.delete(martId); inflight.delete(martId); listeners.forEach((l) => l()); },
     subscribe(fn) { listeners.add(fn); return () => { listeners.delete(fn); }; },
-    clear() { done.clear(); inflight.clear(); },
+    clear() { done.clear(); dtos.clear(); inflight.clear(); },
+    useKeys(next) {
+      keys = next;
+      let changed = false;
+      for (const [martId, dto] of dtos) {
+        const now = label(martId, dto);
+        if (now.map((x) => x.label).join('\n') !== done.get(martId)?.map((x) => x.label).join('\n')) { done.set(martId, now); changed = true; }
+      }
+      if (changed) listeners.forEach((l) => l());
+    },
   };
 }
 
