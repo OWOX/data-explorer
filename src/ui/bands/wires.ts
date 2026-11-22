@@ -35,6 +35,8 @@ export type Wire = {
   dashed?: boolean;
   /** A join in the report (the path): drawn solid, always, at full strength. */
   joined?: boolean;
+  /** The closest line of a card in hand: drawn stronger. */
+  strong?: boolean;
   /** Always leave the parent's right edge and enter the child's left edge at mid-height, whatever the boxes' vertical gap. */
   sideways?: boolean;
 };
@@ -185,7 +187,7 @@ export function useWires(
 
     const paths = (drawn.current = wires.map((wire) => {
       const path = document.createElementNS(NS, 'path');
-      path.setAttribute('class', [wire.kind, wire.dashed ? 'ghost' : '', wire.joined ? 'joined' : ''].filter(Boolean).join(' '));
+      path.setAttribute('class', [wire.kind, wire.dashed ? 'ghost' : '', wire.joined ? 'joined' : '', wire.strong ? 'closest' : ''].filter(Boolean).join(' '));
       path.setAttribute('marker-end', `url(#arrowhead-${layerId})`);
       path.dataset.from = wire.from;
       path.dataset.to = wire.to;

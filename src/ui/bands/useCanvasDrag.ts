@@ -80,12 +80,13 @@ export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (pat
       if (inside) { const p = local(e); latest.current.onDrop(path, p.x, p.y); }
     };
     const cancel = () => { cancelled = false; end(); };
-    const key = (e: KeyboardEvent) => { if (e.key !== 'Escape' || !press) return; cancelled = dragging; end(); };
+    // Escape in a drag only ends the drag: the capture phase and stopImmediatePropagation keep it from the focus and pin handlers.
+    const key = (e: KeyboardEvent) => { if (e.key !== 'Escape' || !press) return; if (dragging) e.stopImmediatePropagation(); cancelled = dragging; end(); };
     el.addEventListener('pointerdown', down);
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', cancel);
-    document.addEventListener('keydown', key);
+    document.addEventListener('keydown', key, { capture: true });
     return () => {
       cancelAnimationFrame(frame);
       setDrag(null);
@@ -93,7 +94,7 @@ export function useCanvasDrag(root: RefObject<HTMLElement | null>, canDrag: (pat
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
-      document.removeEventListener('keydown', key);
+      document.removeEventListener('keydown', key, { capture: true });
     };
     // `active` re-attaches the listeners when the root element appears later.
   }, [root, active, latest]);

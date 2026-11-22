@@ -37,8 +37,8 @@ async function makeMain(page: Page, title: string) {
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText([title]);
 }
 
-/** A mart the main one cannot join is not in the band: find it by search, which makes the best match the main mart (a click does it if it has not). */
-async function makeMainViaGhost(page: Page, title: string) {
+/** Makes a mart main through the header search: find it by search, which makes the best match the main mart (a click does it if it has not). */
+async function makeMainViaSearch(page: Page, title: string) {
   const header = page.locator('header.dm-page-header');
   const box = header.getByRole('combobox', { name: 'Search data marts' });
   if (!(await box.isVisible())) await header.getByRole('button', { name: /^Search data marts/ }).click();
@@ -240,7 +240,7 @@ test('a mart Orders cannot join is not in the band, not even as a ghost; a searc
   await ordersGrid(page);
   await martCard(page, 'Orders').hover();
   await expect(band(page, 'marts').locator('article', { hasText: 'Order Items' })).toHaveCount(0);
-  await makeMainViaGhost(page, 'Order Items');
+  await makeMainViaSearch(page, 'Order Items');
   await expect(martCard(page, 'Order Items')).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
@@ -266,7 +266,7 @@ test('a reference column shows the stored value as plain text; Referenced by ope
 
 test('the storage filter drops the marts of an unticked storage and leaves the selection alone', async ({ page }) => {
   await ordersGrid(page);
-  await makeMainViaGhost(page, 'Payments');
+  await makeMainViaSearch(page, 'Payments');
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Payments');
   await expect(band(page, 'marts').getByText('Customers', { exact: true })).toBeVisible();
   const menu = band(page, 'marts').locator('details.dm-filter', { hasText: 'Storage' });
@@ -309,7 +309,7 @@ test('a date column filter opens on presets; a preset applies at once and names 
 
 test('Undo and Redo step through the selection', async ({ page }) => {
   await ordersGrid(page);
-  await makeMainViaGhost(page, 'Order Items');
+  await makeMainViaSearch(page, 'Order Items');
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
@@ -411,7 +411,7 @@ test('removing the main group promotes the next joined one; a mart the main one 
   await data.getByRole('button', { name: 'Remove Orders from the grid' }).click();
   await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Customers']);
   await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
-  await makeMainViaGhost(page, 'Sessions');
+  await makeMainViaSearch(page, 'Sessions');
   await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Sessions']);
 });
 
@@ -736,7 +736,7 @@ test('a link to a data mart the opener cannot see shows a notice and the page st
   await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
   await notice.getByRole('button', { name: 'Dismiss' }).click();
   await expect(notice).toHaveCount(0);
-  await makeMainViaGhost(opened, 'Order Items');
+  await makeMainViaSearch(opened, 'Order Items');
   await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');
 });
 

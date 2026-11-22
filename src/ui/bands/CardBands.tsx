@@ -184,6 +184,8 @@ export function CardBands({
 
   const shownIds = useMemo(() => new Set(visible.ids), [visible.ids]);
   const dragging = drag !== null;
+  // A card in hand ignores the hover: the lines and the dim are the drag's.
+  const liveHover = dragging ? null : hovered;
   const ghostIds = useMemo(() => {
     if (view !== 'grid') return [];
     if (!ghostOf || focus !== null || dragging) return [];
@@ -309,18 +311,18 @@ export function CardBands({
 
   // In Grid a joined card is one per alias path, and each line to the main card is raised with it.
   const joinedEls = useMemo(() => (canvasTree ? [...canvasTree.nodes.values()].filter((n) => n.path !== '').map((n) => martElementId(n.martId, n.path)) : []), [canvasTree]);
-  useWires(canvas, wires, { pinned, hovered, also: joinedEls }, useMemo(() => revisionOf(idsKey + treeKey), [idsKey, treeKey]));
+  useWires(canvas, wires, { pinned, hovered: liveHover, also: joinedEls }, useMemo(() => revisionOf(idsKey + treeKey), [idsKey, treeKey]));
 
   const { lit, aside, near } = useMemo(() => {
     // The cards of the selected joined marts light their own neighbours too, so a mart connected only to a joined one is not dimmed.
     const pinnedSet = pinned ? new Set([...litIds(wires, pinned), ...joinedEls.flatMap((el) => [...litIds(wires, el)])]) : null;
-    const hoveredSet = hovered ? litIds(wires, hovered) : null;
+    const hoveredSet = liveHover ? litIds(wires, liveHover) : null;
     const lit = new Set([...(pinnedSet ?? []), ...(hoveredSet ?? [])]);
     // Lit only by the pointer while another card is pinned: drawn at half strength.
     const aside = new Set([...lit].filter((id) => pinnedSet !== null && !pinnedSet.has(id)));
     // While a card is hovered, the cards that are not it or on a line with it fade to half.
     return { lit, aside, near: hoveredSet };
-  }, [wires, pinned, hovered, joinedEls]);
+  }, [wires, pinned, liveHover, joinedEls]);
   // A card in hand dims every card that is not a place to drop it (the same half dim as a hover); the targets and the card itself stay.
   const dragView = drag?.view;
   const fadedOf = (el: string) => (dragView ? el !== dragView.held && !dragView.els.has(el) : near !== null && !near.has(el));

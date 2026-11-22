@@ -41,13 +41,17 @@ export function measureGridDrag(root: HTMLElement | null, tree: JoinTree | null,
   const targets = gridTargets(root, tree, sources, path);
   const pick = inside ? closestGridTarget(targets, x, y) : null;
   const origin = root.getBoundingClientRect();
-  // The arcs stay under the band's top edge, and never rise more than 40px above the cards.
-  const bodyTop = root.querySelector('#band-marts .dm-band-body')?.getBoundingClientRect().top ?? origin.top;
-  const rise = Math.max(6, Math.min(40, from.top - bodyTop - 4));
+  // The arcs stay inside the band body and rise at most 40px from the cards. A first-row card has next to no room above, so the arc
+  // goes below the row (into the gap to the next row, or the band's bottom padding) when there is more room there.
+  const body = root.querySelector('#band-marts .dm-band-body')?.getBoundingClientRect();
+  const nextTop = Math.min(body?.bottom ?? Infinity, ...[...root.querySelectorAll('#band-marts .dm-band-body article')].map((a) => a.getBoundingClientRect().top).filter((top) => top > from.bottom));
+  const above = body ? from.top - body.top - 4 : 0;
+  const below = nextTop - from.bottom - 4;
+  const rise = Math.max(3, Math.min(40, Math.max(above, below)));
   const box = (r: DOMRect) => ({ x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height });
   return {
     held: heldEl,
     els: new Set(targets.map((t) => t.el)),
-    lines: targets.map((t) => ({ target: t.target.target, d: boxLinePath(box(from), box(t.box), rise), current: t.target.target === held.parent, closest: pick?.target === t.target.target })),
+    lines: targets.map((t) => ({ target: t.target.target, d: boxLinePath(box(from), box(t.box), below > above ? -rise : rise), current: t.target.target === held.parent, closest: pick?.target === t.target.target })),
   };
 }

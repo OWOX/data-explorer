@@ -46,8 +46,12 @@ export function boxLinePath(from: Box, to: Box, arcRise?: number): string {
     const x1 = from.x + from.w / 2;
     const x2 = to.x + to.w / 2;
     // The curve peaks at 3/4 of the control height, so the control height is capped at 4/3 of the room (`arcRise`, the most the line may rise above the cards).
-    const h = ((arcRise * 4) / 3) * (0.4 + 0.6 * Math.min(1, Math.abs(x2 - x1) / 800));
-    return `M${x1} ${from.y} C${x1} ${from.y - h} ${x2} ${to.y - h} ${x2} ${to.y}`;
+    // A negative `arcRise` is room below the row instead: the arc leaves the bottom edges.
+    const side = arcRise < 0 ? 1 : -1;
+    const h = ((Math.abs(arcRise) * 4) / 3) * (0.4 + 0.6 * Math.min(1, Math.abs(x2 - x1) / 800));
+    const y = side === 1 ? from.y + from.h : from.y;
+    const y2 = side === 1 ? to.y + to.h : to.y;
+    return `M${x1} ${y} C${x1} ${y + side * h} ${x2} ${y2 + side * h} ${x2} ${y2}`;
   }
   const y1 = from.y + from.h / 2;
   const y2 = to.y + to.h / 2;

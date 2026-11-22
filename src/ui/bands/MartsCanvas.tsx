@@ -137,13 +137,16 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   const valid = new Set(targets.map((t) => t.target));
   const pick = drag?.inside ? closestTarget(targets, layout.placed, drag.x, drag.y) : null;
   const key = [...tree.nodes.keys(), '|', ...levels.flatMap((l) => [l.from, ...l.ghosts.map((g) => g.aliasPath)])].join('>');
+  // Released nearest the current parent, its tree wire is the closest line: it carries the stronger style the closest dashed line has.
+  const heldParent = drag ? tree.nodes.get(drag.path)?.parent ?? null : null;
+  const strongPath = drag && heldParent !== null && pick?.target === heldParent ? drag.path : null;
   const wires = useMemo<Wire[]>(() => {
     const title = (id: string) => model.marts.get(id)?.title ?? id;
     const out: Wire[] = [];
     for (const node of tree.nodes.values()) {
       if (node.parent === null) continue;
       const parent = tree.nodes.get(node.parent)!;
-      out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}`, sideways: true, joined: true });
+      out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}`, sideways: true, joined: true, ...(node.path === strongPath ? { strong: true } : {}) });
     }
     for (const level of levels) {
       const fromPath = level.from;
@@ -152,7 +155,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     return out;
     // `key` stands for tree and the ghost levels: the memo must not rebuild on every hover.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, model]);
+  }, [key, model, strongPath]);
   // The hovered card or ghost and what it touches (its path neighbours and the ghosts hanging from it): every other card fades to half.
   const hoverEl = (() => {
     const over = hover.at;
@@ -163,16 +166,6 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   })();
   const near = hoverEl === null ? null : litIds(wires, hoverEl);
   const fadedAt = (martId: string, path: string) => near !== null && !near.has(martElementId(martId, path));
-  // Released nearest the current parent, its tree wire is the closest line: it takes the stronger style the closest dashed line has.
-  const heldNode = drag ? tree.nodes.get(drag.path) : undefined;
-  const parentNode = heldNode?.parent != null ? tree.nodes.get(heldNode.parent) : undefined;
-  const parentClosest = heldNode !== undefined && parentNode !== undefined && pick?.target === parentNode.path;
-  useEffect(() => {
-    if (!parentClosest || !heldNode || !parentNode) return;
-    const wire = treeRef.current?.querySelector(`#tree-wires path[data-from="${martElementId(parentNode.martId, parentNode.path)}"][data-to="${martElementId(heldNode.martId, heldNode.path)}"]`);
-    wire?.classList.add('closest');
-    return () => wire?.classList.remove('closest');
-  }, [parentClosest, heldNode, parentNode, key]);
   useWires(treeRef, wires, { pinned: null, hovered: null }, revisionOf(key), 'tree-wires', scale);
 
   if (!mainId) return <p className="dm-muted text-sm">Select a data mart.</p>;

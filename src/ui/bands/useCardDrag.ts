@@ -1,7 +1,7 @@
 import { useEffect, useState, type RefObject } from 'react';
 import { useLatest } from '../useLatest';
 
-/** The pointer is in client coordinates; `inside` is whether it is over the canvas, where a release counts; `view` is what `measure` said for this move. */
+/** The pointer is in client coordinates; `inside` is whether it is over the canvas, where a release counts (over the Data Marts band); `view` is what `measure` said for this move. */
 export type CardDrag<V> = { path: string; martId: string; title: string; x: number; y: number; inside: boolean; view: V };
 
 /** A press becomes a drag once the pointer has moved this far, so a click stays a click. */
@@ -9,7 +9,7 @@ const START_PX = 5;
 
 /**
  * Dragging a joined card in the Grid to rejoin it under another mart. A press on a joined card (one with an alias path; not the
- * main one, not its buttons, not a ghost) becomes a drag past 5 px; a release over the canvas calls `onDrop` with the pointer.
+ * main one, not its buttons, not a ghost) becomes a drag past 5 px; a release over the Data Marts band calls `onDrop` with the pointer.
  * A release outside it, Escape or a cancelled pointer end the drag with no change. The click the browser sends after a drag is
  * swallowed, so it does not also toggle the card. `measure` reads the page on each move (where the targets are), so the view can draw from it.
  */
@@ -28,7 +28,8 @@ export function useCardDrag<V>(canvas: RefObject<HTMLElement | null>, titleOf: (
       window.addEventListener('click', swallow, { capture: true, once: true });
       setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
     };
-    const over = (e: PointerEvent) => e.target instanceof Node && root.contains(e.target);
+    // Only the Data Marts band's body counts, as the Graph's scroll box does: a release over the other bands does nothing.
+    const over = (e: PointerEvent) => e.target instanceof Element && !!e.target.closest('#band-marts .dm-band-body') && root.contains(e.target);
     // The move work (measuring the targets, a re-render) runs once per animation frame, with the latest pointer.
     let frame = 0;
     let latestMove: PointerEvent | null = null;
@@ -74,19 +75,20 @@ export function useCardDrag<V>(canvas: RefObject<HTMLElement | null>, titleOf: (
       swallowNextClick();
       if (inside) latest.current.onDrop(path, e.clientX, e.clientY);
     };
-    const key = (e: KeyboardEvent) => { if (e.key !== 'Escape' || !press) return; cancelled = dragging; end(); };
+    // Escape in a drag only ends the drag: the capture phase and stopImmediatePropagation keep it from the focus and pin handlers.
+    const key = (e: KeyboardEvent) => { if (e.key !== 'Escape' || !press) return; if (dragging) e.stopImmediatePropagation(); cancelled = dragging; end(); };
     root.addEventListener('pointerdown', down);
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', cancel);
-    document.addEventListener('keydown', key);
+    document.addEventListener('keydown', key, { capture: true });
     return () => {
       cancelAnimationFrame(frame);
       root.removeEventListener('pointerdown', down);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
-      document.removeEventListener('keydown', key);
+      document.removeEventListener('keydown', key, { capture: true });
     };
   }, [canvas, latest]);
   return drag;

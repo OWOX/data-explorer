@@ -56,7 +56,8 @@ const startDrag = () => {
   fireEvent.pointerDown(held(), pointer(c.x, c.y));
   fireEvent.pointerMove(window, pointer(c.x + 40, c.y));
 };
-const moveTo = (id: string) => fireEvent.pointerMove(marts(), pointer(centre(id).x, centre(id).y));
+const body = () => marts().querySelector<HTMLElement>('.dm-band-body')!;
+const moveTo = (id: string) => fireEvent.pointerMove(body(), pointer(centre(id).x, centre(id).y));
 const releaseAt = (id: string) => fireEvent.pointerUp(el(id.replace(/^dm-/, '').split('@')[0]!, id.split('@')[1])!, pointer(centre(id).x, centre(id).y, 0));
 
 afterEach(() => vi.restoreAllMocks());
@@ -136,4 +137,45 @@ test('dropping nearest to the current parent changes nothing', async () => {
   expect(el('countries', 'customers.countries')).not.toBeNull();
   expect(headers()).toEqual(before);
   expect(paths()).toHaveLength(0);
+});
+
+test('a release over another band does nothing; a release over the Data Marts band counts', async () => {
+  setup();
+  await join();
+  startDrag();
+  moveTo('dm-stores@stores');
+  await waitFor(() => expect(closestLine()).toEqual(['stores']));
+  fireEvent.pointerMove(data(), pointer(centre('dm-stores@stores').x, centre('dm-stores@stores').y));
+  await waitFor(() => expect(closestLine()).toEqual([]));
+  fireEvent.pointerUp(data(), pointer(centre('dm-stores@stores').x, centre('dm-stores@stores').y, 0));
+  await new Promise((r) => setTimeout(r, 50));
+  expect(el('countries', 'customers.countries')).not.toBeNull();
+  expect(el('countries', 'stores.countries')).toBeNull();
+});
+
+test('Escape in a drag only cancels the drag: the Grid focus stays', async () => {
+  setup();
+  await join();
+  fireEvent.click(el('customers', 'customers')!);
+  await waitFor(() => expect(el('customers', 'customers')).toHaveAttribute('data-focused'));
+  startDrag();
+  await waitFor(() => expect(paths().length).toBeGreaterThan(0));
+  fireEvent.keyDown(document, { key: 'Escape' });
+  await waitFor(() => expect(paths()).toHaveLength(0));
+  expect(el('customers', 'customers')).toHaveAttribute('data-focused');
+  fireEvent.pointerUp(window, pointer(0, 0, 0));
+  // The next Escape lets the focus go.
+  fireEvent.keyDown(document, { key: 'Escape' });
+  await waitFor(() => expect(el('customers', 'customers')).not.toHaveAttribute('data-focused'));
+});
+
+test('hovering during a drag lights nothing', async () => {
+  setup();
+  await join();
+  startDrag();
+  await waitFor(() => expect(paths().length).toBeGreaterThan(0));
+  fireEvent.pointerOver(el('orders')!);
+  await new Promise((r) => setTimeout(r, 50));
+  expect(document.querySelectorAll('#wires path.lit')).toHaveLength(0);
+  fireEvent.keyDown(document, { key: 'Escape' });
 });

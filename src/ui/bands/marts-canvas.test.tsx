@@ -611,3 +611,35 @@ test('a zoom step applies the new sizer height with no transition, and the trans
   expect(sizer.style.transition).toBe('none');
   await waitFor(() => expect(sizer.style.transition).toBe(''));
 });
+
+test('hover first, then grab: the parent tree wire is still the stronger line when the parent is the closest target', async () => {
+  await joinCountriesUnderCustomers();
+  // Hovering a card shows ghosts; grabbing drops them, which rebuilds the wires.
+  await userEvent.hover(el('orders')!);
+  await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
+  const c = () => centre('countries', 'customers.countries');
+  fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
+  const cu = centre('customers', 'customers');
+  fireEvent.pointerMove(treeEl(), pointer(cu.x, cu.y));
+  await waitFor(() => expect(ghosts()).toEqual([]));
+  await waitFor(() => expect(marts().querySelector('#tree-wires path.closest')?.getAttribute('data-to')).toBe('dm-countries@customers.countries'));
+  fireEvent.keyDown(document, { key: 'Escape' });
+  await waitFor(() => expect(marts().querySelector('#tree-wires path.closest')).toBeNull());
+  fireEvent.pointerUp(window, pointer(cu.x, cu.y, 0));
+});
+
+test('Escape in a drag only cancels the drag: the pinned card stays pinned', async () => {
+  await joinCountriesUnderCustomers();
+  await userEvent.click(el('orders')!);
+  await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
+  await userEvent.unhover(el('orders')!);
+  const c = () => centre('countries', 'customers.countries');
+  fireEvent.pointerDown(el('countries', 'customers.countries')!, pointer(c().x, c().y));
+  fireEvent.pointerMove(treeEl(), pointer(c().x + 40, c().y));
+  await waitFor(() => expect(marts().querySelector('svg#drag-line path')).not.toBeNull());
+  fireEvent.keyDown(document, { key: 'Escape' });
+  await waitFor(() => expect(marts().querySelector('svg#drag-line path')).toBeNull());
+  fireEvent.pointerUp(window, pointer(c().x + 40, c().y, 0));
+  await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
+});
