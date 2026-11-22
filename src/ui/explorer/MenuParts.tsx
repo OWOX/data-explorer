@@ -62,7 +62,7 @@ export function useSubmenu<K extends string | number>({ isEditing = () => false,
 
 const viewport = () => ({ width: window.innerWidth, height: window.innerHeight });
 const boxOf = (el: HTMLElement) => el.getBoundingClientRect();
-const ITEM = '[role="menuitem"], [role="menuitemradio"]';
+const ITEM = '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]';
 
 /**
  * One floating panel of the menu, drawn in a portal on the body and kept inside the viewport (flipped left or up when it has no room).

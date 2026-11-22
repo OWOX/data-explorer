@@ -47,3 +47,12 @@ test('dropping a grain-preserving join is answered; dropping one that changes th
   // A count path alone counts as a join.
   expect(answersQuery({ ...without, uniqueCount: ['', 'o'] }, without, joins)).toBe(false);
 });
+
+test('a join kept through a dotted path keeps its ancestors', () => {
+  const nested = joinGrainOf([src('customers', 'cu__x', 'none', 'multiplies'), src('customers.countries', 'co__y', 'none', 'none')]);
+  const sum = (column: string) => ({ column, function: 'SUM' as const });
+  const both: TraverseOptions = { column: ['m', 'cu__x', 'co__y'], aggregation: [sum('m'), sum('cu__x'), sum('co__y')], uniqueCount: [''] };
+  const deep: TraverseOptions = { column: ['m', 'co__y'], aggregation: [sum('m'), sum('co__y')], uniqueCount: [''] };
+  expect(answersQuery(both, deep, nested)).toBe(true);
+  expect(answersQuery(both, without, nested)).toBe(false);
+});

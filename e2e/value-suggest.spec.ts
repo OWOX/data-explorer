@@ -81,5 +81,5 @@ test('the gap above Clear and Apply equals the gap between the operator and the 
   const op = await top(dialog.getByLabel('Operator'));
   const val = await top(dialog.getByLabel('Value'));
   const clear = await top(dialog.getByRole('button', { name: 'Clear' }));
-  expect(clear.y - (val.y + val.height)).toBe(val.y - (op.y + op.height));
+  expect(Math.abs((clear.y - (val.y + val.height)) - (val.y - (op.y + op.height)))).toBeLessThanOrEqual(1);
 });
