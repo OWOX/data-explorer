@@ -176,6 +176,117 @@ test('a reopened contains filter: typing a second value after the saved one keep
   expect(input().value).toBe('Ukraine, Germany, ');
 });
 
+const reopened = (v: string, onApply = vi.fn(), opId: 'contains' | 'not_contains' = 'contains', src = source(loadOf(['United States', 'Ukraine', 'Germany']))) => {
+  render(<FilterEditor field={country} value={{ field: 'country', op: opId, value: v }} onApply={onApply} onClear={vi.fn()} values={src} />);
+  return onApply;
+};
+
+test('a reopened contains fragment that is not a suggestion stays plain contains: a pick replaces it and is not a list', async () => {
+  const onApply = reopened('Ukr');
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
+  expect(op().value).toBe('contains');
+  expect(input().value).toBe('Ukraine, ');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'contains', value: 'Ukraine' });
+});
+
+test('a reopened contains value that is a suggestion: typing a second value and picking makes a list', async () => {
+  reopened('Ukraine');
+  await userEvent.click(input());
+  await userEvent.type(input(), ', Ger');
+  await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
+  expect(op().value).toBe('eq');
+  expect(op().selectedOptions[0]!.textContent).toBe('is any of');
+  expect(input().value).toBe('Ukraine, Germany, ');
+});
+
+test('a pick plus a typed second value: Apply sends the list form', async () => {
+  const onApply = form();
+  await userEvent.selectOptions(op(), 'contains');
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
+  await userEvent.type(input(), 'Germany');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'eq', value: 'Ukraine, Germany', list: true });
+});
+
+test('a pick plus a typed second value: Enter sends the list form', async () => {
+  const onApply = form();
+  await userEvent.selectOptions(op(), 'contains');
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
+  await userEvent.type(input(), 'Germany');
+  await userEvent.keyboard('{Escape}{Enter}');
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'eq', value: 'Ukraine, Germany', list: true });
+});
+
+test('under does not contain a typed second value sends is none of', async () => {
+  const onApply = form();
+  await userEvent.selectOptions(op(), 'not_contains');
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
+  await userEvent.type(input(), 'Germany');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'neq', value: 'Ukraine, Germany', list: true });
+});
+
+test('a reopened suggestion plus a typed second value sends the list form', async () => {
+  const onApply = reopened('Ukraine');
+  await userEvent.click(input());
+  await screen.findAllByRole('option');
+  await userEvent.type(input(), ', Germany');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'eq', value: 'Ukraine, Germany', list: true });
+});
+
+test('typing before the suggestions load still seeds pick mode once they arrive', async () => {
+  let done!: (v: string[]) => void;
+  const onApply = reopened('Ukraine', vi.fn(), 'contains', source(() => new Promise<string[]>((r) => { done = r; })));
+  await userEvent.click(input());
+  await userEvent.type(input(), ', Germany');
+  done(['United States', 'Ukraine', 'Germany']);
+  await waitFor(() => expect(op().selectedOptions[0]!.textContent).toBe('is any of'));
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'eq', value: 'Ukraine, Germany', list: true });
+});
+
+test('the operator shows what Apply will send: "is any of" for two values, "contains" for one', async () => {
+  form();
+  await userEvent.selectOptions(op(), 'contains');
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
+  expect(op().selectedOptions[0]!.textContent).toBe('contains');
+  await userEvent.type(input(), 'Germany');
+  expect(op().selectedOptions[0]!.textContent).toBe('is any of');
+});
+
+test('deleting the space after the comma keeps pick mode and sends no trailing separator', async () => {
+  const onApply = form();
+  await userEvent.selectOptions(op(), 'contains');
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
+  await userEvent.type(input(), '{Backspace}');
+  expect(input().value).toBe('Ukraine,');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenLastCalledWith({ field: 'country', op: 'contains', value: 'Ukraine' });
+  await userEvent.type(input(), 'Ger');
+  await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
+  expect(op().value).toBe('eq');
+});
+
+test('spaces before the comma keep pick mode', async () => {
+  form();
+  await userEvent.selectOptions(op(), 'contains');
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'Ukraine' }));
+  await userEvent.keyboard('{ArrowLeft}{ArrowLeft} {End}Ger');
+  expect(input().value).toBe('Ukraine , Ger');
+  await userEvent.click(await screen.findByRole('option', { name: 'Germany' }));
+  expect(op().value).toBe('eq');
+  expect(input().value).toBe('Ukraine, Germany, ');
+});
+
 test('a reopened contains value with a comma is sent as it was, and a pick does not make it a list', async () => {
   const onApply = vi.fn();
   render(<FilterEditor field={country} value={{ field: 'country', op: 'contains', value: 'a,b' }} onApply={onApply} onClear={vi.fn()} values={source(loadOf(['a,bc', 'Ukraine']))} />);
