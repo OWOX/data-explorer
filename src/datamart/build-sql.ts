@@ -163,17 +163,17 @@ function prepare(input: MartSqlInput): Plan | Reason {
       const incoming = edges.filter((e) => e.target === child.martId);
       // Only the relationship the child names is climbed: the model holds canvas marts only, so a lone incoming edge may belong to another route.
       const via = child.relationshipId ? incoming.find((e) => e.id === child.relationshipId) : undefined;
-      if (via) return { aliasPath: path, martId: via.source, label: titles.get(via.source) ?? path, depth, fields: [], uniqueCount: false };
+      if (via) return { aliasPath: path, martId: via.source, label: titles.get(via.source) ?? '', depth, fields: [], uniqueCount: false };
     }
     return undefined;
   };
   const plans = new Map<string, PathPlan>();
   for (const path of order) {
     const source = sourceOf(path);
-    // A mart the list does not know is named by its title when the model has one that matches the alias, else by the path.
+    // A mart the list does not know is named by its title when the model has one that matches the alias, else not named (the alias path is not for the user).
     const last = path.split('.').at(-1)!;
-    const label = source?.label ?? [...titles.values()].find((t) => t.toLowerCase().replace(/[^a-z0-9]+/g, '_') === last.toLowerCase()) ?? path;
-    const unresolved = { reason: `The join to "${label}" could not be resolved` };
+    const label = source?.label ?? [...titles.values()].find((t) => t.toLowerCase().replace(/[^a-z0-9]+/g, '_') === last.toLowerCase());
+    const unresolved = { reason: label ? `The join to "${label}" could not be resolved` : 'A join could not be resolved' };
     if (!source) return unresolved;
     const parent = parentPath(path);
     const parentSource = parent ? sourceOf(parent) : undefined;
@@ -186,7 +186,7 @@ function prepare(input: MartSqlInput): Plan | Reason {
       edge = candidates[0]!;
     }
     if (edge.joins.length === 0) return unresolved;
-    if (edge.joins.some((j) => j.sourceField.includes('.') || j.targetField.includes('.'))) return { reason: `The join to "${label}" uses a nested key, which OWOX can't join on` };
+    if (edge.joins.some((j) => j.sourceField.includes('.') || j.targetField.includes('.'))) return { reason: label ? `The join to "${label}" uses a nested key, which OWOX can't join on` : "A join uses a nested key, which OWOX can't join on" };
     plans.set(path, { source, edge });
   }
 
@@ -196,7 +196,7 @@ function prepare(input: MartSqlInput): Plan | Reason {
     const jf = field.joined;
     if (!jf) continue;
     const label = field.alias || field.name;
-    if (!jf.originalName) return { reason: `The column "${field.name}" could not be resolved` };
+    if (!jf.originalName) return { reason: `The column "${label}" could not be resolved` };
     if (!isJoinFn(jf.aggregateFunction)) return { reason: `OWOX didn't say how the join rolls up "${label}". Reload the data mart and try again.` };
     if (isArrayType(jf.sourceType ?? field.type)) return { reason: `"${label}" is a list field from a joined data mart, which a data mart can't save yet. Hide it or remove its filter.` };
     const list = own.get(jf.aliasPath) ?? [];
@@ -218,7 +218,7 @@ function prepare(input: MartSqlInput): Plan | Reason {
 
   const ref = (f: Field) => (f.joined ? `${cte.get(rootOf(f.joined.aliasPath))}.${ident(d, f.name)}` : `base_owox.${fieldRef(d, f.name)}`);
 
-  const mart = (path: string) => { const { source } = plans.get(path)!; return martRef(source.martId, titles.get(source.martId) ?? source.label); };
+  const mart = (path: string) => { const { source } = plans.get(path)!; return martRef(source.martId, titles.get(source.martId) || source.label || 'data mart'); };
 
   // One dedup CTE per path: its own fields rolled up by its join key, its children's values rolled up again. Emitted children first.
   const ctes = [`  base_owox AS (\n    SELECT *\n    FROM ${martRef(main.id, main.title)}\n  )`];

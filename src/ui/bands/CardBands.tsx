@@ -311,7 +311,6 @@ export function CardBands({
 
   // In Grid a joined card is one per alias path, and each line to the main card is raised with it.
   const joinedEls = useMemo(() => (canvasTree ? [...canvasTree.nodes.values()].filter((n) => n.path !== '').map((n) => martElementId(n.martId, n.path)) : []), [canvasTree]);
-  useWires(canvas, wires, { pinned, hovered: liveHover, also: joinedEls }, useMemo(() => revisionOf(idsKey + treeKey), [idsKey, treeKey]));
 
   // The hovered card as `reach` reads it: set at once, and let go 400 ms after the pointer leaves, so crossing the gap between cards
   // (or to a ghost) does not blink the cards outside the report.
@@ -346,6 +345,13 @@ export function CardBands({
     if (outside && mainFor !== null) return !reach.has(el);
     return near !== null && !near.has(el);
   };
+  // A line dims with the card it arrives at. The cards in the report are the tree's; every other one on a wire is outside it.
+  const fadedTargets = new Set<string>();
+  {
+    const reportEls = new Set(canvasTree ? [...canvasTree.nodes.values()].map((n) => martElementId(n.martId, n.path || undefined)) : []);
+    for (const w of wires) if (fadedOf(w.to, !reportEls.has(w.to))) fadedTargets.add(w.to);
+  }
+  useWires(canvas, wires, { pinned, hovered: liveHover, also: joinedEls }, useMemo(() => revisionOf(idsKey + treeKey), [idsKey, treeKey]), 'wires', 1, fadedTargets);
 
   // Cards animate in and out as the set changes; a leaving card keeps its object, which the model may no longer hold.
   const shownMarts = useMemo(() => visible.ids.flatMap((id) => model.marts.get(id) ?? []), [visible.ids, model]);

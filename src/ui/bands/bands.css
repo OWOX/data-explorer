@@ -311,6 +311,9 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 #wires path.relationship.inbound, #tree-wires path.relationship.inbound { stroke-width: 1; }
 /* After the lit and aside rules, so a line that is drawn at rest keeps full strength whatever lights it. */
 #wires path.relationship.joined, #wires path.relationship.ghost, #tree-wires path.relationship.joined, #tree-wires path.relationship.ghost { opacity: 1; }
+/* A line dims with the card it arrives at, at the card's own 30%. Only a line that is drawn: one at rest in Grid is hidden and stays so.
+   Listed with `.lit.aside` so it outranks that half-strength rule, and after the rule above so it wins the full-strength one. */
+#wires path.faded:is(.lit, .joined, .ghost, .lit.aside), #tree-wires path.faded { opacity: 0.3; }
 /* The card under the pointer takes its own run-health colour on its one 1px border; a card nothing has run stays grey.
    The background stays the card's own: only the selected card is tinted. */
 .dm-node.lit:hover {
@@ -493,11 +496,9 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-icon[data-on] { background: var(--sheet-green); color: var(--sheet-green-fg); }
 .dm-menu-label { flex: 1 1 auto; }
 .dm-menu-group + .dm-menu-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--menu-line); }
-/* padding-left 36px: a row's icon sits after the 16px row padding, the check column (16px wide, -4px margin) and the 8px gap. */
-.dm-menu-head { display: flex; height: 28px; flex-shrink: 0; align-items: center; gap: 8px; padding: 0 16px 0 36px; color: var(--menu-muted); font-size: 12px; font-weight: 500; white-space: nowrap; }
-.dm-menu-head svg { flex-shrink: 0; }
 .dm-menu-glyph { display: inline-flex; flex-shrink: 0; color: var(--menu-muted); }
 .dm-menu-check { display: inline-flex; width: 16px; flex-shrink: 0; justify-content: center; margin-left: -4px; color: var(--sheet-green); }
+.dm-menu-tick { display: inline-flex; width: 16px; flex-shrink: 0; justify-content: center; margin-right: -4px; color: var(--sheet-green); }
 .dm-menu-arrow { flex-shrink: 0; margin-right: -6px; color: var(--menu-muted); }
 .dm-menu-sep { height: 0; margin: 8px 0; border-top: 1px solid var(--menu-line); }
 .dm-menu-row[role='menuitemradio'], .dm-menu-row[aria-checked] { padding-left: 16px; }

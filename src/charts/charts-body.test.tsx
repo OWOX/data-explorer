@@ -14,7 +14,7 @@ import type { ChartSettings } from './settings';
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
 const COLUMNS = ['id', 'status', 'amount', 'created_at', 'products__price'];
 
-function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row } = {}) {
+function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[] } = {}) {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
@@ -30,7 +30,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
     },
   };
   const seeded = Promise.all([
-    ctx.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: opts.columns ?? COLUMNS, at: 'then' }),
+    ctx.collections<{ columns: string[]; at: string; aggregations?: unknown }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: opts.columns ?? COLUMNS, at: 'then', ...(opts.aggregations ? { aggregations: opts.aggregations } : {}) }),
     opts.charts ? ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', opts.charts) : undefined,
   ]);
   return { queries, puts, gridPuts, seeded, view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
@@ -218,6 +218,7 @@ test('time series: stacking by a dimension draws several series and saves the ch
   await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
   await userEvent.click(panel('Time series'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Stack by' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Orders' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'status' }));
   await waitFor(() => expect(series().size).toBeGreaterThan(1));
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', stack: 'status' }, { id: 'pie', kind: 'pie' }] });
@@ -268,6 +269,7 @@ test('pie menu: a chosen dimension redraws the pie and saves', async () => {
   await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
   await userEvent.click(panel('Pie'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Products' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Name' }));
   await waitFor(() => expect(data().querySelector('[data-slice="Other"]')).not.toBeNull());
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', dimension: 'products__title' }] });
@@ -281,6 +283,7 @@ test('two quick edits both land in the saved doc', async () => {
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Horizontal' }));
   await userEvent.click(panel('Pie'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Products' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Name' }));
   expect(t.puts).toHaveBeenLastCalledWith('orders', { version: 2, charts: [
     { id: 'time-series', kind: 'timeSeries', orientation: 'horizontal' },
@@ -382,10 +385,10 @@ test('choosing Count Unique from the Metric menu saves the time series measure r
   await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
   await userEvent.click(panel('Time series'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
-  const opts = await screen.findAllByRole('menuitemradio');
-  expect(opts[0]).toHaveAccessibleName('Count Unique');
-  expect(within(screen.getByRole('group', { name: 'Orders' })).getByRole('menuitemradio', { name: 'Count Unique' })).toBe(opts[0]);
-  await userEvent.click(opts[0]!);
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Orders' }));
+  const opts = await within(await screen.findByRole('menu', { name: 'Orders' })).findAllByRole('menuitemradio');
+  expect(opts.map((o) => o.textContent)).toEqual(['Count Unique', 'Amount · Sum', 'Net Revenue · Sum']);
+  await userEvent.click(within(screen.getByRole('menu', { name: 'Orders' })).getByRole('menuitemradio', { name: 'Count Unique' }));
   await waitFor(() => expect(screen.getByRole('heading', { name: /^Count Unique by / })).toBeInTheDocument());
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'records' }, { id: 'pie', kind: 'pie' }] });
 });
@@ -395,10 +398,12 @@ test('the Metric menus list every mart’s Count Unique and metrics; a joined ma
   await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
   await userEvent.click(panel('Time series'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
-  const opts = await screen.findAllByRole('menuitemradio');
-  expect(opts.map((o) => o.textContent)).toEqual(['Count Unique', 'Amount · Sum', 'Count Unique', 'price · Sum']);
-  expect(within(screen.getByRole('menu', { name: 'Metric' })).getAllByRole('group').map((g) => g.getAttribute('aria-label'))).toEqual(['Orders', 'Products']);
-  await userEvent.click(opts[2]!);
+  // Marts first; a mart's metrics are on the next level.
+  expect((await within(await screen.findByRole('menu', { name: 'Metric' })).findAllByRole('menuitem')).map((o) => o.textContent)).toEqual(['Orders', 'Products']);
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Products' }));
+  const opts = await within(await screen.findByRole('menu', { name: 'Products' })).findAllByRole('menuitemradio');
+  expect(opts.map((o) => o.textContent)).toEqual(['Count Unique', 'price · Sum']);
+  await userEvent.click(opts[0]!);
   await waitFor(() => expect(screen.getByRole('heading', { name: /^Products · Count Unique by / })).toBeInTheDocument());
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'records:products' }, { id: 'pie', kind: 'pie' }] });
   const q = t.queries.find((o) => o.dateTrunc && o.uniqueCount?.[0] && o.uniqueCount[0] !== '');
@@ -415,7 +420,7 @@ test('a pie of a joined mart’s Count Unique by a dimension asks the backend fo
   expect(q?.aggregation).toBeUndefined();
   await userEvent.click(panel('Pie'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
-  expect((await screen.findAllByRole('menuitemradio')).map((o) => o.textContent)).toEqual(['Count Unique', 'Amount · Sum', 'Count Unique', 'price · Sum']);
+  expect((await within(await screen.findByRole('menu', { name: 'Metric' })).findAllByRole('menuitem')).map((o) => o.textContent)).toEqual(['Orders', 'Products']);
 });
 
 const statusFilter = () => within(data()).queryByRole('button', { name: /^Filter status/i });
@@ -440,6 +445,7 @@ test('a pie slice is keyboard reachable and "Other" is not clickable', async () 
   await charts({ columns: withDims });
   await userEvent.click(panel('Pie'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Products' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Name' }));
   await waitFor(() => expect(data().querySelector('[data-slice="Other"]')).not.toBeNull());
   expect(data().querySelector('[data-slice="Other"]')!.hasAttribute('tabindex')).toBe(false);
@@ -646,4 +652,62 @@ test('the grid’s chosen aggregation reaches the charts: Average ranks the bars
   expect(pie.length).toBeGreaterThan(0);
   expect(pie.every((q) => q.aggregation?.[0]?.function === 'SUM')).toBe(true);
   expect((t.puts.mock.lastCall![1] as ChartSettings).charts).toEqual([{ id: 'r', kind: 'pie', measure: 'amount', dimension: 'status' }]);
+});
+
+test('choosing a field that is not a shown column adds the column to the grid and saves the choice', async () => {
+  const t = await charts({ columns: COLUMNS });
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  await userEvent.click(panel('Time series'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Orders' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Net Revenue · Sum' }));
+  await waitFor(() => expect(t.gridPuts).toHaveBeenCalled());
+  expect(t.gridPuts.mock.calls.at(-1)![1].columns).toContain('net_revenue');
+  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'net_revenue' }, { id: 'pie', kind: 'pie' }] });
+  await waitFor(() => expect(screen.getByRole('heading', { name: /^Net Revenue · Sum by / })).toBeInTheDocument());
+});
+
+test('a card’s Metric pick of a hidden column shows the column once, with no extra card of its own', async () => {
+  const t = await charts({ columns: ['id', 'status', 'amount', 'created_at'] });
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Amount · Sum']));
+  await userEvent.click(within(group('orders')!).getByRole('button', { name: 'Amount · Sum options' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Net Revenue · Sum' }));
+  await waitFor(() => expect(t.gridPuts).toHaveBeenCalled());
+  expect(t.gridPuts.mock.calls.at(-1)![1].columns).toContain('net_revenue');
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Net Revenue · Sum']));
+});
+
+const lastGrid = (t: { gridPuts: { mock: { calls: unknown[][] } } }) => t.gridPuts.mock.calls.at(-1)![1] as { columns: string[]; aggregations?: { column: string; function: string }[] };
+
+test('in a grouped grid a metric shown by a chart choice gets an aggregation rule in the same edit', async () => {
+  const t = await charts({ columns: ['status', 'amount', 'created_at'], aggregations: [{ column: 'amount', function: 'SUM' }] });
+  await userEvent.click(panel('Time series'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Net Revenue · Sum' }));
+  await waitFor(() => expect(t.gridPuts).toHaveBeenCalled());
+  expect(lastGrid(t).columns).toContain('net_revenue');
+  expect(lastGrid(t).aggregations).toEqual([{ column: 'amount', function: 'SUM' }, { column: 'net_revenue', function: 'SUM' }]);
+});
+
+test('Stack by a hidden dimension shows the column', async () => {
+  const t = await charts({ columns: ['id', 'status', 'amount', 'created_at'] });
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  await userEvent.click(panel('Time series'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Stack by' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'is_gift' }));
+  await waitFor(() => expect(t.gridPuts).toHaveBeenCalled());
+  expect(lastGrid(t).columns).toContain('is_gift');
+  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', stack: 'is_gift' }, { id: 'pie', kind: 'pie' }] });
+});
+
+test('a hidden field of a joined mart is shown when a chart picks it', async () => {
+  const t = await charts({ columns: COLUMNS });
+  await userEvent.click(panel('Pie'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Products' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Name' }));
+  await waitFor(() => expect(t.gridPuts).toHaveBeenCalled());
+  expect(lastGrid(t).columns).toContain('products__title');
+  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', dimension: 'products__title' }] });
 });

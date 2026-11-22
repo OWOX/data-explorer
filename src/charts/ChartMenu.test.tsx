@@ -56,12 +56,18 @@ test('a row and a submenu option show their icon before the label, hidden from s
   const withIcon = screen.getByRole('menuitemcheckbox', { name: 'Orders by date' });
   const glyph = withIcon.querySelector('.dm-menu-glyph svg.lucide-chart-line');
   expect(glyph).toHaveAttribute('aria-hidden', 'true');
-  // After the tick column, before the label.
-  expect(withIcon.querySelector('.dm-menu-check')!.nextElementSibling).toBe(glyph!.parentElement);
+  // No left tick column: the glyph is the first child, and the tick sits at the right end.
+  expect(withIcon.querySelector('.dm-menu-check')).toBeNull();
+  expect(withIcon.firstElementChild).toBe(glyph!.parentElement);
+  expect(withIcon.lastElementChild).toHaveClass('dm-menu-tick');
+  expect(withIcon.lastElementChild!.querySelector('svg')).not.toBeNull();
+  expect(withIcon).toHaveAttribute('aria-checked', 'true');
   expect(glyph!.parentElement!.nextElementSibling).toHaveClass('dm-menu-label');
   expect(screen.getByRole('menuitemcheckbox', { name: 'Sparklines' }).querySelector('.dm-menu-glyph svg.lucide-hash')).not.toBeNull();
-  // A submenu row has the tick column's room, so its icon sits in the same column.
-  expect(screen.getByRole('menuitem', { name: 'Chart type' }).querySelector('.dm-menu-check')!.nextElementSibling).toHaveClass('dm-menu-glyph');
+  // A submenu row reserves no tick column: its icon is the row's first child.
+  const sub = screen.getByRole('menuitem', { name: 'Chart type' });
+  expect(sub.querySelector('.dm-menu-check')).toBeNull();
+  expect(sub.firstElementChild).toHaveClass('dm-menu-glyph');
   await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
   expect((await screen.findByRole('menuitemradio', { name: 'Pie' })).querySelector('.dm-menu-glyph svg.lucide-chart-pie')).not.toBeNull();
   expect(screen.getByRole('menuitemradio', { name: 'Plain' }).querySelector('.dm-menu-glyph')).toBeNull();
@@ -87,4 +93,55 @@ test('the ResizeObserver callback that fires on observe does not shield a real s
     globalThis.ResizeObserver = Real;
     Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
   }
+});
+
+describe('a field menu over several data marts', () => {
+  const groups = [
+    { title: 'Orders', options: [{ value: 'a', label: 'Amount' }, { value: 'b', label: 'Tax' }] },
+    { title: 'Products', options: [{ value: 'c', label: 'Price' }] },
+  ];
+  const radio = (g: typeof groups, onPick = vi.fn()): MenuItem[] => [{ kind: 'radio', label: 'Metric', icon: Hash, value: 'c', options: [{ value: '', label: 'Off' }], groups: g, onPick }];
+
+  test('lists the marts first, ticks the one holding the choice, and opens its options on a third level', async () => {
+    const onPick = vi.fn();
+    render(<ChartMenu name="Sales" items={radio(groups, onPick)} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Metric' }));
+    const second = await screen.findByRole('menu', { name: 'Metric' });
+    expect(second).toHaveTextContent('Off');
+    expect(screen.queryByRole('menuitemradio', { name: 'Amount' })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Products' }).querySelector('.dm-menu-tick svg')).not.toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Orders' }).querySelector('.dm-menu-tick svg')).toBeNull();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Orders' }));
+    await screen.findByRole('menu', { name: 'Orders' });
+    // Escape closes one level.
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('menu', { name: 'Orders' })).toBeNull();
+    expect(screen.getByRole('menu', { name: 'Metric' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Orders' }));
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Tax' }));
+    expect(onPick).toHaveBeenCalledWith('b');
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  test('ArrowRight opens a mart and ArrowLeft closes it', async () => {
+    render(<ChartMenu name="Sales" items={radio(groups)} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Metric' }));
+    await screen.findByRole('menu', { name: 'Metric' });
+    screen.getByRole('menuitem', { name: 'Orders' }).focus();
+    await userEvent.keyboard('{ArrowRight}');
+    await screen.findByRole('menu', { name: 'Orders' });
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(screen.queryByRole('menu', { name: 'Orders' })).toBeNull();
+    expect(screen.getByRole('menu', { name: 'Metric' })).toBeInTheDocument();
+  });
+
+  test('a single mart is skipped: its options are listed directly', async () => {
+    render(<ChartMenu name="Sales" items={radio(groups.slice(0, 1))} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Metric' }));
+    await screen.findByRole('menuitemradio', { name: 'Amount' });
+    expect(screen.queryByRole('menuitem', { name: 'Orders' })).toBeNull();
+  });
 });

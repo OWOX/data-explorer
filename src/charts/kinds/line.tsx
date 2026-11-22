@@ -1,4 +1,4 @@
-import { ChartArea, ChartLine, ChartNoAxesCombined, Layers } from 'lucide-react';
+import { ChartArea, ChartLine, ChartNoAxesCombined, ChartColumnStacked } from 'lucide-react';
 import { BUCKET_LABELS, type DateBucket } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
@@ -8,7 +8,7 @@ import { fieldGroups, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { BLANK_KEY } from '../blank';
 import { bucketFilter, dimensionFilter } from '../clickFilters';
-import { measuresOf } from '../fields';
+import { measuresOf, menuOf } from '../fields';
 import { bucketZone, type Measure } from '../queries';
 import { isIntegerMeasure, measureFormat, measureLabel } from '../Scorecards';
 import { measureId, pickBucketChoice, pickField, pickMeasure } from '../settings';
@@ -32,11 +32,11 @@ function LinePanel({ martId, cf, r, spark, filter, version, idle, hasFilters, fo
   const loading = one.loading || (!!measure2 && two.loading);
   const [lt, lf] = measureFormat(measure, formatOf);
   const [rt, rf] = measure2 ? measureFormat(measure2, formatOf) : [lt, lf];
-  const others = measuresOf(cf).filter((m) => measureId(m) !== measureId(measure));
+  const others = measuresOf(menuOf(cf)).filter((m) => measureId(m) !== measureId(measure));
   const items: MenuItem[] = [
     ...dateMenu(cf, r, onChange),
-    { kind: 'radio', label: 'Second measure', icon: ChartNoAxesCombined, value: measure2 ? measureId(measure2) : '', options: [{ value: '', label: 'Off' }], groups: measureGroups(cf, others), onPick: (v) => onChange({ measure2: v === '' ? null : v }) },
-    ...(measure2 ? [] : [{ kind: 'radio', label: 'Stack by', icon: Layers, value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }], groups: fieldGroups(cf, cf.dimensions), onPick: (v: string) => onChange({ stack: v === '' ? null : v }) } as MenuItem]),
+    { kind: 'radio', label: 'Second measure', icon: ChartNoAxesCombined, value: measure2 ? measureId(measure2) : '', options: [{ value: '', label: 'Off' }], groups: measureGroups(menuOf(cf), others), onPick: (v) => onChange({ measure2: v === '' ? null : v }) },
+    ...(measure2 ? [] : [{ kind: 'radio', label: 'Stack by', icon: ChartColumnStacked, value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }], groups: fieldGroups(menuOf(cf), menuOf(cf).dimensions), onPick: (v: string) => onChange({ stack: v === '' ? null : v }) } as MenuItem]),
     { kind: 'check', label: 'Area', icon: ChartArea, checked: r.area, onToggle: () => onChange({ area: !r.area }) },
     ...tail,
   ];

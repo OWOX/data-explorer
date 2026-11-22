@@ -63,3 +63,9 @@ test('scorecard metrics keep string values only and are dropped when not an obje
   expect(await load({ scorecards: { metrics: ['x'] } })).toEqual({ scorecards: {} });
   expect(await load({ scorecards: { metrics: 'x' } })).toEqual({ scorecards: {} });
 });
+
+test('scorecard dates keep string values only, as metrics do', async () => {
+  const load = (doc: unknown) => createChartSettings(ctxWith(async () => ({ document: doc }), async () => {})).load('M');
+  expect(await load({ scorecards: { dates: { amount: 'created_at', bad: 3 } } })).toEqual({ scorecards: { dates: { amount: 'created_at' } } });
+  expect(await load({ scorecards: { dates: 'x' } })).toEqual({ scorecards: {} });
+});

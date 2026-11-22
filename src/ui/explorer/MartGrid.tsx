@@ -8,9 +8,9 @@ import { PAGE_SIZE } from '../../config';
 import { columnLetter } from './columnLetters';
 import { emptyText, isNumericType } from '../format';
 import { withJoined, type JoinedSource } from '../../api/blendable';
-import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type AggregationDraft, type Output } from '../../model/aggregation';
-import { columnTitle, fieldLabel, fieldTitle } from '../../model/fieldLabel';
-import { chartFields } from '../../charts/fields';
+import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type AggregationDraft, type DateBucket, type Output } from '../../model/aggregation';
+import { columnTitle, fieldLabel } from '../../model/fieldLabel';
+import { chartFields, ruleNewColumns } from '../../charts/fields';
 import { keysPlan, useHavingKeys } from '../../charts/havingKeys';
 import { readRows } from '../../api/rows';
 import { canSuggest, valuesOf, valuesQuery } from '../../filters/valueSuggest';
@@ -237,7 +237,7 @@ function SortTitle({ field, output }: { field: Schema[number]; output: Output })
       <span className="truncate">{shown}</span>
     </button>
   );
-  return <OverflowTip text={label} extra={field.joined || output.fn ? undefined : fieldTitle(field)} measure={(el) => el.querySelector('.truncate')}>{button}</OverflowTip>;
+  return <OverflowTip text={label} measure={(el) => el.querySelector('.truncate')}>{button}</OverflowTip>;
 }
 
 /** One shown column as the header and the cells read it: resolved once per column, not once per cell. */
@@ -590,11 +590,11 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const shownSorts = useMemo(() => (grouped ? (own ?? []) : gridSorts), [grouped, own, gridSorts]);
   const env = useMemo(() => ({ sorts: shownSorts, toggleSort, sortable: !charts }), [shownSorts, toggleSort, charts]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
-  const changeColumns = useCallback((picked: string[]) => {
+  const changeColumns = useCallback((picked: string[], more?: (cur: Aggregation) => Aggregation) => {
     const cols = orderColumns(picked, sources, defaultColumns(native));
     markEdit();
     setVisible(cols);
-    const nextAgg = keepVisible(agg, cols);
+    const nextAgg = keepVisible(more ? more(agg) : agg, cols);
     // A HAVING filter on a hidden column's function goes with it, in the same step.
     if (nextAgg !== agg) applyAgg(nextAgg);
     setOwn((cur) => { const kept = cur && sortsOnColumns(cur, cols); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
@@ -604,6 +604,9 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     // A joined mart that has just left remembers what it was showing, as its own field names.
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
   }, [sources, native, markEdit, agg, applyAgg, visible, columnStore, martId, setVisible, setOwn]);
+  // A chart menu's choice of a field that is not shown: the shown columns and the new ones, in one edit.
+  // In a grouped grid a new column without a rule would become a group key and multiply the rows: a metric gets the function the chart sums it with, a date the chart's bucket (Month when none is known yet). A dimension is a key, as intended.
+  const showColumns = useCallback((names: string[], buckets?: Readonly<Record<string, DateBucket>>) => changeColumns([...new Set([...shown, ...names])], (cur) => ruleNewColumns(cur, names.flatMap((n) => (shown.includes(n) ? [] : [byName.get(n)!])), buckets)), [changeColumns, shown, byName]);
   // A moved column keeps its sorts, filters and functions: only the order changes, and it is one Undo step. The cell selection is dropped (its columns moved).
   const reorder = useCallback((cols: string[]) => {
     if (cols === shown) return;
@@ -702,12 +705,15 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const { ctx } = useServices();
   const mainKey = useMemo(() => hasPrimaryKey(native), [native]);
   const valuesFor = useCallback((field: Field, scope: 'filter' | 'slice') => {
-    if (!mainKey || !canSuggest(field)) return null;
+    if (!canSuggest(field)) return null;
+    // The distinct values of the rows already on the grid show at once, and still do when the mart has no key to read the rest with.
+    const loaded = valuesOf(rows ?? [], field);
+    if (!mainKey) return { key: JSON.stringify([martId, field.name, 'rows']), loaded };
     const without = (all: Record<string, ColumnFilter>, drop: boolean) => Object.values(all).filter((f) => !(drop && f.field === field.name));
     const filter = toTraverseFilters(schema, without(filters, scope === 'filter').filter((f) => !f.fn), without(slices, scope === 'slice'));
     const query = valuesQuery(field, filter);
-    return { key: JSON.stringify([martId, query]), load: async (signal: AbortSignal) => valuesOf(await readRows(ctx, martId, query, { signal }), field) };
-  }, [mainKey, schema, filters, slices, martId, ctx]);
+    return { key: JSON.stringify([martId, query]), loaded, load: async (signal: AbortSignal) => valuesOf(await readRows(ctx, martId, query, { signal }), field) };
+  }, [mainKey, schema, filters, slices, martId, ctx, rows]);
   const menuEnv = useMemo<ColumnMenuEnv>(() => ({
     sorts: shownSorts, setSort, filters, slices, setSlice,
     setFilter,
@@ -937,7 +943,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
             ))}
           </thead>
           {/* ChartsBody renders its own <tbody>: nesting one in another makes the parser pull the headers out of the table. */}
-          {charts && !blocked ? <ChartsBody martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
+          {charts && !blocked ? <ChartsBody martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} onShowColumns={showColumns} />
           : <tbody>
             {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`}</td></tr>
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>

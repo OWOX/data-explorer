@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chartFields, measuresOf, pickBucket, pieMeasures, sankeyMeasures } from './fields';
+import { chartFields, measuresOf, ruleNewColumns, pickBucket, pieMeasures, sankeyMeasures } from './fields';
 import type { Field, Schema } from '../model/types';
 import { NO_AGGREGATION } from '../model/aggregation';
 
@@ -151,5 +151,23 @@ describe('a main mart measure by columns of joined marts', () => {
     expect(run({ c: 'none', i: 'none' }, ['c__name', 'i__sku'])).not.toContain('c__ltv');
     expect(run({ c: 'none' }, ['channel', 'c__name'])).not.toContain('records@c');
     expect(run({ c: 'collapses' }, ['c__name', 'c__city'])).toEqual(['records@c', 'c__ltv']);
+  });
+});
+
+describe('rules for columns a chart choice has just shown', () => {
+  const by = (n: string) => schema.find((x) => x.name === n)!;
+  const grouped = { aggregations: [{ column: 'qty', function: 'SUM' as const }], dateTrunc: [] };
+  it('leaves an ungrouped grid alone', () => {
+    expect(ruleNewColumns(NO_AGGREGATION, [by('amount'), by('date')])).toBe(NO_AGGREGATION);
+  });
+  it('gives a metric the grid\'s function, so the new column is not a group key', () => {
+    expect(ruleNewColumns({ ...grouped, aggregations: [...grouped.aggregations, { column: 'amount', function: 'AVG' }] }, [by('c__ltv')]).aggregations).toEqual([{ column: 'qty', function: 'SUM' }, { column: 'amount', function: 'AVG' }, { column: 'c__ltv', function: 'SUM' }]);
+  });
+  it('truncates a date by the chart\'s bucket, Month when none is known, and leaves a dimension a key', () => {
+    expect(ruleNewColumns(grouped, [by('date')], { date: 'WEEK' }).dateTrunc).toEqual([{ column: 'date', unit: 'WEEK' }]);
+    expect(ruleNewColumns(grouped, [by('date')]).dateTrunc).toEqual([{ column: 'date', unit: 'MONTH' }]);
+    const out = ruleNewColumns(grouped, [by('channel'), by('id')]);
+    expect(out.aggregations).toEqual(grouped.aggregations);
+    expect(out.dateTrunc).toEqual([]);
   });
 });

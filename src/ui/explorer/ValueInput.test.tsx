@@ -325,3 +325,96 @@ test('the suggestion wrapper is no menu, and aria-controls points at the listbox
   expect(input()).toHaveAttribute('aria-controls', box.id);
   expect(screen.queryByRole('menu')).toBeNull();
 });
+
+test('the values of the loaded rows show at once, and the server values merge after them without duplicates', async () => {
+  let done!: (v: string[]) => void;
+  const src: ValueSource = { ...source(() => new Promise((r) => { done = r; })), loaded: ['US', 'DE'] };
+  render(<Harness src={src} />);
+  await userEvent.click(input());
+  expect(options()).toEqual(['US', 'DE']);
+  expect(screen.queryByRole('status')).toBeNull();
+  done(['FR', 'DE', 'US']);
+  await waitFor(() => expect(options()).toEqual(['US', 'DE', 'FR']));
+});
+
+test('loaded rows narrow by the typed text like server values do', async () => {
+  const src: ValueSource = { ...source(loadOf([])), loaded: ['Spain', 'Sweden', 'Italy'] };
+  render(<Harness src={src} />);
+  await userEvent.click(input());
+  await userEvent.type(input(), 'S');
+  await waitFor(() => expect(options()).toEqual(['Spain', 'Sweden']));
+});
+
+test('without a read, the loaded rows are still offered, and there is no reload row', async () => {
+  const src: ValueSource = { key: 'k', loaded: ['US'], cache: new Map() };
+  render(<Harness src={src} />);
+  await userEvent.click(input());
+  expect(options()).toEqual(['US']);
+  expect(screen.queryByRole('button', { name: /Reload values/ })).toBeNull();
+});
+
+test('values already in the cache are not read again, and Reload values drops them and reads once more', async () => {
+  const load = vi.fn().mockResolvedValue(['US', 'DE']);
+  const src = source(load);
+  src.cache.set('k', ['US']);
+  render(<Harness src={src} />);
+  await userEvent.click(input());
+  expect(load).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole('button', { name: /Reload values/ }));
+  await waitFor(() => expect(options()).toEqual(['US', 'DE']));
+  expect(load).toHaveBeenCalledTimes(1);
+  expect(src.cache.get('k')).toEqual(['US', 'DE']);
+  expect(input()).toHaveFocus();
+});
+
+test('the reload row is not shown while the values are still loading', async () => {
+  const src: ValueSource = { ...source(() => new Promise(() => undefined)), loaded: ['US'] };
+  render(<Harness src={src} />);
+  await userEvent.click(input());
+  expect(options()).toEqual(['US']);
+  expect(screen.queryByRole('button', { name: /Reload values/ })).toBeNull();
+});
+
+test('typed text that matches no value keeps the panel open with a note and the reload row', async () => {
+  const load = vi.fn().mockResolvedValueOnce(['US', 'DE']).mockResolvedValueOnce(['US', 'DE', 'ZA']);
+  render(<Harness src={source(load)} />);
+  await userEvent.click(input());
+  await waitFor(() => expect(options()).toEqual(['US', 'DE']));
+  await userEvent.type(input(), 'ZA');
+  expect(options()).toEqual([]);
+  expect(screen.getByRole('status')).toHaveTextContent('No matching values');
+  await userEvent.click(screen.getByRole('button', { name: /Reload values/ }));
+  await waitFor(() => expect(options()).toEqual(['ZA']));
+  expect(load).toHaveBeenCalledTimes(2);
+});
+
+test('an empty list from the server still offers the reload row', async () => {
+  render(<Harness src={source(loadOf([]))} />);
+  await userEvent.click(input());
+  expect(await screen.findByText('No matching values')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Reload values/ })).toBeInTheDocument();
+});
+
+test('ArrowDown past the last option reaches the reload row, and Enter reloads', async () => {
+  const load = vi.fn().mockResolvedValueOnce(['US', 'DE']).mockResolvedValueOnce(['US', 'DE', 'FR']);
+  render(<Harness src={source(load)} />);
+  await userEvent.click(input());
+  await waitFor(() => expect(options()).toEqual(['US', 'DE']));
+  await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}');
+  const reload = screen.getByRole('button', { name: /Reload values/ });
+  expect(reload).toHaveAttribute('data-hot');
+  expect(input()).toHaveAttribute('aria-activedescendant', reload.id);
+  await userEvent.keyboard('{Enter}');
+  await waitFor(() => expect(options()).toEqual(['US', 'DE', 'FR']));
+  expect(load).toHaveBeenCalledTimes(2);
+  expect(input().value).toBe('');
+});
+
+test('the reload row is reachable by keyboard when nothing matches', async () => {
+  const load = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce(['US']);
+  render(<Harness src={source(load)} />);
+  await userEvent.click(input());
+  await screen.findByText('No matching values');
+  await userEvent.keyboard('{ArrowDown}{Enter}');
+  await waitFor(() => expect(options()).toEqual(['US']));
+});

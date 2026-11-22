@@ -13,11 +13,14 @@
   --dm-series-9: #C5C5C5;
   /* The blank category: a light grey, lighter than "Other", so the two slices never read as one. */
   --dm-blank: #DDE2E8;
+  /* The stripes of a blank mark's hatch: darker than its ground so they show on white. */
+  --dm-blank-hatch: #B9C2CD;
   --dm-chart-frame: #9E9E9E;
 }
 .dark {
   --dm-series-9: #606060;
   --dm-blank: #AEB8C6;
+  --dm-blank-hatch: #8E99A8;
   --dm-chart-frame: #6B6B6B;
 }
 
@@ -62,8 +65,6 @@
 .dm-chart-axis-title { fill: var(--muted-foreground); font-size: 11px; }
 .dm-spark-line { fill: none; stroke: var(--dm-series-1); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .dm-pie-slice { stroke: var(--card); stroke-width: 2; }
-/* The blank slice is a light grey: the chart frame's outline keeps it apart from the card and from "Other". */
-.dm-pie-slice[data-blank] { stroke: var(--dm-chart-frame); stroke-width: 1; }
 .dm-pie-slice:focus-visible { outline: none; stroke: var(--foreground); stroke-width: 3; }
 .dm-bar-chart rect:focus-visible { outline: none; stroke: var(--foreground); stroke-width: 3; }
 .dm-bar-chart rect:hover, .dm-pie-slice:hover { opacity: 0.85; }

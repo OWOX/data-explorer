@@ -149,6 +149,28 @@ describe('useWires', () => {
     expect(canvas.querySelector('#wires')).toBeNull();
   });
 
+  it('dims the line that arrives at a faded card, and lets go when the card is back', () => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const canvas = document.createElement('div');
+    canvas.innerHTML = '<div id="dm-1"></div><div id="dm-2"></div>';
+    document.body.append(canvas);
+    const wires = [wire('w1', 'dm-1', 'dm-2'), wire('w2', 'dm-2', 'dm-1')];
+    const ref = { current: canvas };
+    const { rerender } = renderHook(({ faded }) => useWires(ref, wires, { pinned: null, hovered: null }, 0, 'wires', 1, faded), {
+      initialProps: { faded: new Set<string>(['dm-2']) as ReadonlySet<string> },
+    });
+    const paths = () => [...canvas.querySelectorAll('#wires > path')];
+    expect(paths().map((p) => p.classList.contains('faded'))).toEqual([true, false]);
+    rerender({ faded: new Set<string>() });
+    expect(paths().map((p) => p.classList.contains('faded'))).toEqual([false, false]);
+  });
+
   it('re-measures one frame after an animation ends', () => {
     vi.useFakeTimers();
     let calls = 0;

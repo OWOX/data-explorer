@@ -22,7 +22,7 @@ export function useModel() {
     setError(null);
     if (modelVersion > 0) { schemas.clear(); blendable.clear(); }
     loadModel(ctx, (p) => { if (live) setProgress(p); }).then(
-      (m) => { if (live) setModel(m); },
+      (m) => { if (live) { blendable.useKeys({ edges: m.edges, schemaOf: schemas.peek }); setModel(m); } },
       (e) => { if (live) setError(e); },
     );
     return () => { live = false; };

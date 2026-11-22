@@ -1,6 +1,8 @@
 import { vi } from 'vitest';
-import { createBlendableLoader, joinedSources, sourceOfField } from './blendable';
+import { createBlendableLoader, joinedSources, keyAliasOf, sourceOfField } from './blendable';
+import { pathTitle } from '../state/join-plan';
 import { stubCtx } from './test-ctx';
+import type { Edge, Schema } from '../model/types';
 import type { BlendableSchemaDto } from '../sdk/types';
 
 const dto: BlendableSchemaDto = {
@@ -33,9 +35,55 @@ test('joinedSources offers included, readable sources only, with no hidden or ca
   expect(sources[0]!.fields.map((f) => f.name)).toEqual(['customers__email']);
 });
 
-test('a source is named by its display prefix, and by its alias path too when two joins reach the same mart', () => {
+test('a source is named by its display prefix, and by the titles of the marts it is reached through too when two joins reach the same mart', () => {
   const sources = joinedSources(dto);
-  expect(sources.map((s) => s.label)).toEqual(['Buyers', 'Countries (customers.countries)', 'Countries (stores.countries)']);
+  expect(sources.map((s) => s.label)).toEqual(['Buyers', 'Countries (Buyers)', 'Countries (Stores)']);
+});
+
+test('a deeper duplicate is told apart by the titles of the marts above it, never by an alias path', () => {
+  const ok = { isIncluded: true, isAccessibleForReporting: true };
+  const fld = (aliasPath: string) => ({ name: `${aliasPath}__n`, aliasPath, sourceDataMartId: 'c', originalFieldName: 'n', type: 'STRING' });
+  const sources = joinedSources({
+    availableSources: [
+      { aliasPath: 'visitor_entity', title: 'Contact', depth: 1, dataMartId: 'k', ...ok },
+      { aliasPath: 'visitor_entity.session_entity_new_sql', title: 'Organization', depth: 2, dataMartId: 'o', ...ok },
+      { aliasPath: 'visitor_entity.session_entity_new_sql.country', title: 'Country', depth: 3, dataMartId: 'c', ...ok },
+      { aliasPath: 'org', title: 'Organization', depth: 1, dataMartId: 'o', ...ok },
+      { aliasPath: 'org.country', title: 'Country', depth: 2, dataMartId: 'c', ...ok },
+    ],
+    blendedFields: ['visitor_entity.session_entity_new_sql.country', 'org.country'].map(fld),
+  });
+  expect(sources.map((s) => s.label)).toEqual(['Country (Organization)', 'Country (Contact › Organization)']);
+  expect(sources.some((s) => s.label.includes('_'))).toBe(false);
+});
+
+const twice = (...paths: string[]) => {
+  const ok = { isIncluded: true, isAccessibleForReporting: true };
+  return {
+    availableSources: paths.map((aliasPath, i) => ({ aliasPath, title: aliasPath.includes('.') ? 'Country' : 'Organization', depth: aliasPath.split('.').length, dataMartId: aliasPath.includes('.') ? 'c' : 'o', relationshipId: `r${i}`, ...ok })),
+    blendedFields: paths.map((aliasPath) => ({ name: `${aliasPath}__n`, aliasPath, sourceDataMartId: 'o', originalFieldName: 'n', type: 'STRING' })),
+  };
+};
+
+test('two depth-1 joins to one mart are told apart by the alias of their key, else by an ordinal', () => {
+  const dto = twice('billing_org', 'shipping_org');
+  expect(joinedSources(dto, (s) => (s.aliasPath === 'billing_org' ? 'Billing org' : 'Shipping org')).map((s) => s.label)).toEqual(['Organization (by Billing org)', 'Organization (by Shipping org)']);
+  expect(joinedSources(dto).map((s) => s.label)).toEqual(['Organization', 'Organization 2']);
+  // One key alias is not enough to separate them.
+  expect(joinedSources(dto, (s) => (s.aliasPath === 'billing_org' ? 'Billing org' : undefined)).map((s) => s.label)).toEqual(['Organization', 'Organization 2']);
+});
+
+test('a deeper collision under parents with one title is told apart the same way, and a card keeps its plain name when only one path is in use', () => {
+  const dto = twice('a.x', 'b.x');
+  dto.availableSources.push(
+    { aliasPath: 'a', title: 'Contact', depth: 1, dataMartId: 'k', isIncluded: true, isAccessibleForReporting: true } as never,
+    { aliasPath: 'b', title: 'Contact', depth: 1, dataMartId: 'k', isIncluded: true, isAccessibleForReporting: true } as never,
+  );
+  const sources = joinedSources(dto);
+  expect(sources.map((s) => s.label)).toEqual(['Country (Contact)', 'Country (Contact) 2']);
+  expect(joinedSources(dto, (s) => `Key of ${s.aliasPath}`).map((s) => s.label)).toEqual(['Country (Contact, by Key of a.x)', 'Country (Contact, by Key of b.x)']);
+  expect(pathTitle(sources[0]!, ['a.x'], sources)).toBe('Country');
+  expect(pathTitle(sources[1]!, ['a.x', 'b.x'], sources)).toBe('Country (Contact) 2');
 });
 
 test('a joined field is a column: the blended name, its own type, its label, and where it came from', () => {
@@ -180,4 +228,45 @@ test('sourceOfField maps each field name to its first source and builds the map 
   expect(map.get('nope')).toBeUndefined();
   expect(sourceOfField(sources)).toBe(map);
   expect(sourceOfField([a, b])).not.toBe(map);
+});
+
+describe('the key alias of a join', () => {
+  const fld = (name: string, alias: string | null) => ({ name, alias, type: 'STRING', category: 'string' as const, description: null, isPrimaryKey: false });
+  const edge = (id: string, sourceField: string): Edge => ({ id, source: 'm', target: 'o', joins: [{ sourceField, targetField: 'id' }] });
+  const two = twice('billing_org', 'shipping_org');
+  const main: Schema = [fld('billing_id', 'Billing org'), fld('shipping_id', 'shipping_id')];
+  const edges = [edge('r0', 'billing_id'), edge('r1', 'shipping_id')];
+  const labels = (dtoIn: BlendableSchemaDto, ctx: Parameters<typeof keyAliasOf>[2]) => joinedSources(dtoIn, keyAliasOf('m', dtoIn, ctx)).map((x) => x.label);
+
+  test('relationship -> first join condition -> the parent field alias, for a mart the main one joins', () => {
+    const alt: Schema = [fld('billing_id', 'Billing org'), fld('shipping_id', 'Shipping org')];
+    expect(labels(two, { edges, schemaOf: () => alt })).toEqual(['Organization (by Billing org)', 'Organization (by Shipping org)']);
+  });
+
+  test('a missing alias (unset, or the raw name), a missing edge or a missing schema falls back to ordinals', () => {
+    expect(labels(two, { edges, schemaOf: () => main })).toEqual(['Organization', 'Organization 2']);
+    expect(labels(two, { edges: [], schemaOf: () => [fld('billing_id', 'Billing org'), fld('shipping_id', 'Shipping org')] })).toEqual(['Organization', 'Organization 2']);
+    expect(labels(two, { edges, schemaOf: () => undefined })).toEqual(['Organization', 'Organization 2']);
+  });
+
+  test('a deeper path reads the alias of the key from its parent path\'s own blended fields', () => {
+    const deep = twice('a.x', 'b.x') as { availableSources: unknown[]; blendedFields: unknown[] } & BlendableSchemaDto;
+    deep.availableSources.push({ aliasPath: 'a', title: 'Contact', depth: 1, dataMartId: 'k', isIncluded: true, isAccessibleForReporting: true } as never, { aliasPath: 'b', title: 'Contact', depth: 1, dataMartId: 'k', isIncluded: true, isAccessibleForReporting: true } as never);
+    deep.blendedFields.push(
+      { name: 'a__org', aliasPath: 'a', sourceDataMartId: 'k', originalFieldName: 'org_id', type: 'STRING', alias: 'Home org' },
+      { name: 'b__org', aliasPath: 'b', sourceDataMartId: 'k', originalFieldName: 'org_id', type: 'STRING', alias: 'Work org' },
+    );
+    const got = joinedSources(deep, keyAliasOf('m', deep, { edges: [edge('r0', 'org_id'), edge('r1', 'org_id')], schemaOf: () => undefined }));
+    expect(got.filter((x) => x.depth === 2).map((x) => x.label)).toEqual(['Country (Contact, by Home org)', 'Country (Contact, by Work org)']);
+  });
+
+  test('the loader labels by ordinal first, then again once it is given the edges and schemas, and tells subscribers', async () => {
+    const loader = createBlendableLoader(stubCtx({ getJson: vi.fn(async () => two) }));
+    const told = vi.fn();
+    loader.subscribe(told);
+    expect((await loader.get('m')).map((x) => x.label)).toEqual(['Organization', 'Organization 2']);
+    loader.useKeys({ edges, schemaOf: () => [fld('billing_id', 'Billing org'), fld('shipping_id', 'Shipping org')] });
+    expect(loader.peek('m')!.map((x) => x.label)).toEqual(['Organization (by Billing org)', 'Organization (by Shipping org)']);
+    expect(told).toHaveBeenCalledTimes(1);
+  });
 });

@@ -13,10 +13,8 @@ export const BLANK_STROKE = 'var(--muted-foreground)';
 /** The colour a thin mark takes for a series colour: the blank colour becomes the stroke grey, any other colour stays. */
 export const thinColor = (color: string): string => (color === BLANK_COLOR ? BLANK_STROKE : color);
 
-/** A light blank fill alone is faint on white and next to "Other", so a mark or swatch in the blank colour gets the chart frame's 1px outline. */
-export const blankOutline = (color: string): { stroke?: string; strokeWidth?: number } => (color === BLANK_COLOR ? { stroke: 'var(--dm-chart-frame)', strokeWidth: 1 } : {});
-/** The legend swatch's style for a colour: its fill, with the same outline for the blank colour. */
-export const swatchStyle = (color: string): { background: string; border?: string } => (color === BLANK_COLOR ? { background: color, border: '1px solid var(--dm-chart-frame)' } : { background: color });
+/** The legend swatch's style for a colour: its fill, or for the blank colour the same diagonal hatch the marks use (see BlankPattern), with no border. */
+export const swatchStyle = (color: string): { background: string } => (color === BLANK_COLOR ? { background: `repeating-linear-gradient(135deg, var(--dm-blank-hatch) 0 1.4px, ${BLANK_COLOR} 1.4px 2.8px)` } : { background: color });
 
 /** A returned value as a category key: null (or missing) is the blank key, anything else its text. */
 export const keyOf = (v: unknown): string => (v === null || v === undefined ? BLANK_KEY : String(v));

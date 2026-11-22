@@ -24,11 +24,14 @@ const RESIZE_GRACE_MS = 150;
 /** The ⋮ button of a chart and its menu, built from the same panel and rows as the column menu. */
 export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const { sub, open, hoverRow, hoverOther, leaveRow, closeSub, dismiss } = useSubmenu<number>();
+  // The data marts of the open submenu: a third level, one mart's options. It closes with the submenu it hangs off.
+  const marts = useSubmenu<number>();
+  const { dismiss: dismissMart } = marts;
+  const { sub, open, hoverRow, hoverOther, leaveRow, closeSub, dismiss } = useSubmenu<number>({ onReset: dismissMart });
   const [placed, setPlaced] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const holder = useRef<HTMLSpanElement>(null);
-  const close = useCallback((refocus = true) => { dismiss(); setAnchor(null); setPlaced(false); if (refocus) button.current?.focus(); }, [dismiss]);
+  const close = useCallback((refocus = true) => { dismissMart(); dismiss(); setAnchor(null); setPlaced(false); if (refocus) button.current?.focus(); }, [dismiss, dismissMart]);
   // The chart panel animates its size after a setting change (a reopened menu meets it mid-way): the menu follows its button instead of closing.
   const [, follow] = useState(0);
   useEffect(() => {
@@ -61,8 +64,9 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
   // A press outside the menu only closes it, as the column menu does.
   useOutsidePress(!!anchor, (t) => !!t.closest('[data-column-menu]') || !!holder.current?.contains(t), () => close(false));
   const picked = sub ? items[sub.key] : undefined;
-  const choice = (o: MenuOption) => picked?.kind === 'radio' && (
-    <Row key={o.value} check checked={o.value === picked.value} label={o.label} glyph={o.icon && <o.icon className="size-4" />} onActivate={() => { picked.onPick(o.value); close(); }} />
+  const groups = picked?.kind === 'radio' ? picked.groups ?? [] : [];
+  const choice = (o: MenuOption, hover?: () => void) => picked?.kind === 'radio' && (
+    <Row key={o.value} check checked={o.value === picked.value} label={o.label} glyph={o.icon && <o.icon className="size-4" />} onActivate={() => { picked.onPick(o.value); close(); }} onHover={hover} />
   );
   return (
     <span ref={holder} className="inline-flex">
@@ -73,27 +77,30 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
       {anchor && (
         <Panel anchor={anchor} mode="below" role="menu" label={`${name} menu`} onEscape={() => (sub ? closeSub() : close())} onTab={() => close()} onPlaced={() => setPlaced(true)} focusSeq={1} className="dm-menu-root">
           {items.map((it, i) => it.kind === 'check' ? (
-            <Row key={i} check checkbox checked={it.checked} label={it.label} glyph={<it.icon className="size-4" />} onActivate={it.onToggle} onHover={hoverOther} onLeaveRow={leaveRow} />
+            <Row key={i} check checkbox tickEnd checked={it.checked} label={it.label} glyph={<it.icon className="size-4" />} onActivate={it.onToggle} onHover={hoverOther} onLeaveRow={leaveRow} />
           ) : it.kind === 'action' ? (
-            <Row key={i} slot label={it.label} glyph={<it.icon className="size-4" />} onActivate={() => { close(); it.onPick(); }} onHover={hoverOther} onLeaveRow={leaveRow} />
+            <Row key={i} label={it.label} glyph={<it.icon className="size-4" />} onActivate={() => { close(); it.onPick(); }} onHover={hoverOther} onLeaveRow={leaveRow} />
           ) : (
-            <Row key={i} sub slot expanded={sub?.key === i} label={it.label} glyph={<it.icon className="size-4" />} onActivate={(r) => open(i, r, true)} onOpen={(r) => open(i, r, true)}
+            <Row key={i} sub expanded={sub?.key === i} label={it.label} glyph={<it.icon className="size-4" />} onActivate={(r) => open(i, r, true)} onOpen={(r) => open(i, r, true)}
               onHover={(r) => hoverRow(i, r)} onLeaveRow={leaveRow} />
           ))}
         </Panel>
       )}
       {anchor && placed && sub && picked?.kind === 'radio' && (
-        <Panel anchor={sub.row} mode="beside" role="menu" label={picked.label} onEscape={closeSub} onLeave={closeSub} onTab={() => close()} focusSeq={sub.seq}>
-          {picked.options.map((o) => choice(o))}
-          {picked.groups?.map((g, gi) => (
-            <div key={gi} role="group" aria-label={g.title} className="dm-menu-group">
-              <div role="presentation" className="dm-menu-head">
-                <PickedIcon icon={g.icon} fallback={DEFAULT_MART_ICON} size={14} />
-                <span className="dm-menu-label">{g.title}</span>
-              </div>
-              {g.options.map((o) => choice(o))}
-            </div>
+        <Panel anchor={sub.row} mode="beside" role="menu" label={picked.label} onEscape={() => (marts.sub ? marts.closeSub() : closeSub())} onLeave={closeSub} onTab={() => close()} focusSeq={sub.seq}>
+          {picked.options.map((o) => choice(o, marts.hoverOther))}
+          {/* One mart with options needs no level of its own: its options are listed here. */}
+          {groups.length === 1 && groups[0]!.options.map((o) => choice(o, marts.hoverOther))}
+          {groups.length > 1 && groups.map((g, gi) => (
+            <Row key={gi} sub tick checked={g.options.some((o) => o.value === picked.value)} expanded={marts.sub?.key === gi} label={g.title}
+              glyph={<PickedIcon icon={g.icon} fallback={DEFAULT_MART_ICON} size={16} />}
+              onActivate={(r) => marts.open(gi, r, true)} onOpen={(r) => marts.open(gi, r, true)} onHover={(r) => marts.hoverRow(gi, r)} onLeaveRow={marts.leaveRow} />
           ))}
+        </Panel>
+      )}
+      {anchor && placed && sub && picked?.kind === 'radio' && marts.sub && groups[marts.sub.key] && (
+        <Panel anchor={marts.sub.row} mode="beside" role="menu" label={groups[marts.sub.key]!.title} onEscape={marts.closeSub} onLeave={marts.closeSub} onTab={() => close()} focusSeq={marts.sub.seq}>
+          {groups[marts.sub.key]!.options.map((o) => choice(o))}
         </Panel>
       )}
     </span>

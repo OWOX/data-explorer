@@ -1,7 +1,7 @@
 import { knownFunctions } from '../model/aggregation';
 import { categorizeFieldType } from '../model/field-category';
-import type { Field, Schema } from '../model/types';
-import type { BlendableSchemaDto, Ctx } from '../sdk/types';
+import type { Edge, Field, Schema } from '../model/types';
+import type { AvailableSourceDto, BlendableSchemaDto, Ctx } from '../sdk/types';
 
 /** The backend's `isArrayFieldType`: ARRAY, bare or with a parameter (`ARRAY<STRING>`). */
 export const isArrayType = (type: string | undefined) => /^ARRAY(?:\s*[<(]|$)/i.test(type?.trim() ?? '');
@@ -10,8 +10,10 @@ export const isArrayType = (type: string | undefined) => /^ARRAY(?:\s*[<(]|$)/i.
 export type JoinedSource = {
   aliasPath: string;
   martId: string;
-  /** What the picker and the column headers call it: the join's display prefix, with the alias path added when two joins reach the same mart. */
+  /** What the picker and the column headers call it: the join's display prefix, with a business-readable tiebreaker added when two joins reach the same mart: the titles of the marts above it, the alias of the key it joins by, else an ordinal. */
   label: string;
+  /** What the mart is called without anything that tells two joins to it apart; absent when that is the label. */
+  name?: string;
   depth: number;
   fields: Field[];
   /** A uniqueCount on this alias path works (the backend says `available`): the joined mart has a usable primary key. */
@@ -48,18 +50,47 @@ export interface BlendableLoader {
   /** Called whenever a mart's joined sources were forgotten, so a holder of its own copy reads them again. */
   subscribe(fn: () => void): () => void;
   clear(): void;
+  /** The model's edges and the loaded schemas, so two joins to one mart can be told apart by their key; the joins already read are labelled again and subscribers told. */
+  useKeys(ctx: KeyContext): void;
 }
 
+/** The alias of the parent mart's key field a join goes by (a field alias only, never the raw name), when it is known. */
+export type KeyAlias = (source: AvailableSourceDto) => string | undefined;
+
 /** Joined fields of a mart as columns: only included, readable sources; no hidden or calculated field. Depth first, then title. */
-export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
+export function joinedSources(dto: BlendableSchemaDto, keyAlias?: KeyAlias): JoinedSource[] {
   const offered = (dto.availableSources ?? []).filter((s) => s.isIncluded && s.isAccessibleForReporting);
   const byPath = new Map<string, JoinedSource>();
-  const nameOf = (s: (typeof offered)[number]) => (s.defaultAlias?.trim() || s.title);
+  const nameOf = (s: AvailableSourceDto) => (s.defaultAlias?.trim() || s.title);
   const labelUses = new Map<string, number>();
   offered.forEach((s) => labelUses.set(nameOf(s), (labelUses.get(nameOf(s)) ?? 0) + 1));
+  // The titles of the marts along a path, parents only ("Contact › Organization"); a hop whose title is unknown is left out, never shown as its alias.
+  const titleAt = new Map((dto.availableSources ?? []).map((s) => [s.aliasPath, nameOf(s)]));
+  const humanPath = (path: string) => {
+    const parts = path.split('.');
+    return parts.slice(0, -1).map((_, i) => titleAt.get(parts.slice(0, i + 1).join('.'))).filter((t): t is string => !!t).join(' › ');
+  };
+  const withParts = (base: string, ...parts: (string | undefined)[]) => { const p = parts.filter(Boolean); return p.length ? `${base} (${p.join(', ')})` : base; };
+  const labels = new Map<string, string>();
+  const vias = new Map<string, string>();
   for (const s of offered) {
     const base = nameOf(s);
-    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label: (labelUses.get(base) ?? 0) > 1 ? `${base} (${s.aliasPath})` : base, depth: s.depth, fields: [], uniqueCount: s.uniqueCountAvailability === 'available', mainGrainCollapse: collapseOf(s.mainGrainCollapse), mainGrainMultiplication: s.mainGrainMultiplication ?? 'unknown', ...(s.relationshipId ? { relationshipId: s.relationshipId } : {}) });
+    const via = (labelUses.get(base) ?? 0) > 1 ? humanPath(s.aliasPath) : '';
+    vias.set(s.aliasPath, via);
+    labels.set(s.aliasPath, withParts(base, via));
+  }
+  // Labels that still collide (two joins at one depth, two parents with one title) are told apart by the alias of the key they join by, else by an ordinal in the order listed.
+  const groups = new Map<string, typeof offered>();
+  for (const s of offered) groups.set(labels.get(s.aliasPath)!, [...(groups.get(labels.get(s.aliasPath)!) ?? []), s]);
+  for (const [label, group] of groups) {
+    if (group.length < 2) continue;
+    const keyed = group.map((s) => withParts(nameOf(s), vias.get(s.aliasPath), (() => { const k = keyAlias?.(s)?.trim(); return k ? `by ${k}` : undefined; })()));
+    if (new Set(keyed).size === group.length && keyed.every((l) => l !== label)) group.forEach((s, i) => labels.set(s.aliasPath, keyed[i]!));
+    else group.forEach((s, i) => { if (i > 0) labels.set(s.aliasPath, `${label} ${i + 1}`); });
+  }
+  for (const s of offered) {
+    const label = labels.get(s.aliasPath)!;
+    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label, ...(label !== nameOf(s) ? { name: nameOf(s) } : {}), depth: s.depth, fields: [], uniqueCount: s.uniqueCountAvailability === 'available', mainGrainCollapse: collapseOf(s.mainGrainCollapse), mainGrainMultiplication: s.mainGrainMultiplication ?? 'unknown', ...(s.relationshipId ? { relationshipId: s.relationshipId } : {}) });
   }
   for (const b of dto.blendedFields ?? []) {
     const source = byPath.get(b.aliasPath);
@@ -79,8 +110,31 @@ export function joinedSources(dto: BlendableSchemaDto): JoinedSource[] {
   return [...byPath.values()].filter((s) => s.fields.length > 0).sort((a, b) => a.depth - b.depth || a.label.localeCompare(b.label) || a.aliasPath.localeCompare(b.aliasPath));
 }
 
+/** What the loader knows without a read: the model's edges and the schemas already loaded. */
+export type KeyContext = { edges: Edge[]; schemaOf: (martId: string) => Schema | undefined };
+
+/**
+ * The alias of the key a join goes by: the join's relationship -> its first join condition -> that field of the parent mart,
+ * from the parent's loaded schema (the main mart) or from the parent path's own blended fields. Only a set alias that differs from the raw name counts.
+ */
+export function keyAliasOf(martId: string, dto: BlendableSchemaDto, ctx: KeyContext): KeyAlias {
+  return (s) => {
+    const key = ctx.edges.find((e) => e.id === s.relationshipId)?.joins[0]?.sourceField;
+    if (!key) return undefined;
+    const i = s.aliasPath.lastIndexOf('.');
+    const alias = i < 0
+      ? ctx.schemaOf(martId)?.find((f) => f.name === key)?.alias
+      : dto.blendedFields?.find((b) => b.aliasPath === s.aliasPath.slice(0, i) && b.originalFieldName === key)?.alias;
+    const shown = alias?.trim();
+    return shown && shown !== key ? shown : undefined;
+  };
+}
+
 export function createBlendableLoader(ctx: Ctx): BlendableLoader {
   const done = new Map<string, JoinedSource[]>();
+  const dtos = new Map<string, BlendableSchemaDto>();
+  let keys: KeyContext | null = null;
+  const label = (martId: string, dto: BlendableSchemaDto) => joinedSources(dto, keys ? keyAliasOf(martId, dto, keys) : undefined);
   const inflight = new Map<string, Promise<JoinedSource[]>>();
   const listeners = new Set<() => void>();
   return {
@@ -90,15 +144,24 @@ export function createBlendableLoader(ctx: Ctx): BlendableLoader {
       const running = inflight.get(martId);
       if (running) return running;
       const p = ctx.owox.getJson<BlendableSchemaDto>(`/api/data-marts/${encodeURIComponent(martId)}/blendable-schema`)
-        .then((dto) => { const sources = joinedSources(dto); if (inflight.get(martId) === p) done.set(martId, sources); return sources; })
+        .then((dto) => { const sources = label(martId, dto); if (inflight.get(martId) === p) { done.set(martId, sources); dtos.set(martId, dto); } return sources; })
         .finally(() => { if (inflight.get(martId) === p) inflight.delete(martId); });
       inflight.set(martId, p);
       return p;
     },
     peek: (martId) => done.get(martId),
-    invalidate(martId) { done.delete(martId); inflight.delete(martId); listeners.forEach((l) => l()); },
+    invalidate(martId) { done.delete(martId); dtos.delete(martId); inflight.delete(martId); listeners.forEach((l) => l()); },
     subscribe(fn) { listeners.add(fn); return () => { listeners.delete(fn); }; },
-    clear() { done.clear(); inflight.clear(); },
+    clear() { done.clear(); dtos.clear(); inflight.clear(); },
+    useKeys(next) {
+      keys = next;
+      let changed = false;
+      for (const [martId, dto] of dtos) {
+        const now = label(martId, dto);
+        if (now.map((x) => x.label).join('\n') !== done.get(martId)?.map((x) => x.label).join('\n')) { done.set(martId, now); changed = true; }
+      }
+      if (changed) listeners.forEach((l) => l());
+    },
   };
 }
 

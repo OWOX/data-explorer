@@ -1,9 +1,13 @@
+import { RotateCw } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { LIST_OPS, addValue, narrow, tokensOf } from '../../filters/valueSuggest';
+import { LIST_OPS, addValue, mergeValues, narrow, tokensOf } from '../../filters/valueSuggest';
 import { Panel } from './MenuParts';
 
-/** Where a text input's suggestions come from. `key` names the read (column and rules), so a read is made once per key while the menu is open. */
-export type ValueSource = { key: string; load: (signal: AbortSignal) => Promise<string[]>; cache: Map<string, string[]> };
+/**
+ * Where a text input's suggestions come from. `loaded` are the distinct values of the rows already on the grid: they show at once.
+ * `key` names the read (column and rules): its values are read once and kept in `cache` until a reload. Without `load` only `loaded` is offered.
+ */
+export type ValueSource = { key: string; load?: (signal: AbortSignal) => Promise<string[]>; loaded?: string[]; cache: Map<string, string[]> };
 
 /** Under these text operators a pick adds to the text; the second pick switches the operator to the list form. */
 const SWITCH: Record<string, string> = { contains: 'eq', not_contains: 'neq' };
@@ -33,8 +37,8 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
   const key = source?.key;
   const loaded = source && key !== undefined ? source.cache.get(key) : undefined;
   const loading = !!key && status[key] === 'loading';
-  const start = () => {
-    if (!source || key === undefined || source.cache.has(key) || status[key]) return;
+  const read = () => {
+    if (!source?.load || key === undefined) return;
     const ac = new AbortController();
     flights.current.add(ac);
     setStatus((s) => ({ ...s, [key]: 'loading' }));
@@ -43,20 +47,27 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
       () => { if (!ac.signal.aborted) setStatus((s) => ({ ...s, [key]: 'failed' })); },
     );
   };
+  const start = () => { if (key !== undefined && !source?.cache.has(key) && !status[key]) read(); };
+  // A reload forgets what was kept for this read and asks again.
+  const reload = () => { if (key === undefined) return; source?.cache.delete(key); read(); };
 
   // Pick mode lasts while the picked text is still there; typing after it narrows by the text after the last comma.
   const list = LIST_OPS.has(op) || (op in SWITCH && inPick);
   // A reopened single value counts as one token: the next pick follows it.
   const text = inPick && !value.includes(',') ? `${value}, ` : value;
   // A value with a comma would read as two in a list, so it is not offered there.
-  const pool = loaded ?? [];
+  const pool = mergeValues(source?.loaded ?? [], loaded ?? []);
   const options = list
     ? narrow(pool.filter((o) => !o.includes(',')), text)
     : pool.filter((o) => o !== value && o.toLowerCase().includes(value.trim().toLowerCase()));
-  const shown = open && !!source && (loading || options.length > 0);
+  // Once the values are in, the panel stays up with no match too, so the reload row can still be reached.
+  const shown = open && !!source && (loading || options.length > 0 || !!loaded);
   // The listbox is in the DOM once the values are in; while they load there is only a status note.
-  const listed = shown && !(loading && !loaded);
-  const at = Math.min(hot, options.length - 1);
+  const listed = shown && !(loading && !loaded && !options.length);
+  // The reload row (only values from the server can be out of date) comes after the last option in the arrow-key order.
+  const rows = options.length + (loaded ? 1 : 0);
+  const at = Math.min(hot, rows - 1);
+  const onReload = !!loaded && at === options.length;
   const pick = (v: string) => {
     // A value with a comma cannot join a list: it replaces the text.
     if (op in SWITCH && !v.includes(',')) {
@@ -70,7 +81,7 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
   return (
     <>
       <input ref={setAnchor} aria-label="Value" className={className} type="text" value={value} autoComplete="off"
-        {...(source ? { role: 'combobox', 'aria-autocomplete': 'list' as const, 'aria-expanded': shown, 'aria-controls': listed ? id : undefined, 'aria-activedescendant': listed && at >= 0 ? `${id}-${at}` : undefined } : {})}
+        {...(source ? { role: 'combobox', 'aria-autocomplete': 'list' as const, 'aria-expanded': shown, 'aria-controls': listed && options.length ? id : undefined, 'aria-activedescendant': listed && at >= 0 ? (onReload ? `${id}-reload` : `${id}-${at}`) : undefined } : {})}
         onChange={(e) => { onChange(e.target.value); setOpen(true); setHot(-1); start(); }}
         onFocus={() => { setOpen(true); start(); }}
         onBlur={() => setOpen(false)}
@@ -78,17 +89,19 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
           if (!source) return;
           if (e.key === 'Escape' && shown) { e.preventDefault(); e.stopPropagation(); setOpen(false); return; }
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-            if (!options.length) return;
+            if (!rows) return;
             e.preventDefault();
             setOpen(true);
-            setHot(e.key === 'ArrowDown' ? (at + 1) % options.length : at <= 0 ? options.length - 1 : at - 1);
-          } else if (e.key === 'Enter' && shown && at >= 0) { e.preventDefault(); pick(options[at]!); }
+            setHot(e.key === 'ArrowDown' ? (at + 1) % rows : at < 0 ? Math.max(options.length - 1, 0) : at === 0 ? rows - 1 : at - 1);
+          } else if (e.key === 'Enter' && shown && at >= 0) { e.preventDefault(); if (onReload) reload(); else pick(options[at]!); }
         }} />
       {shown && anchor && (
-        <Panel anchor={anchor} mode="below" onEscape={() => setOpen(false)} focusSeq={0} className="dm-suggest">
-          {loading && !loaded
+        <Panel anchor={anchor} mode="below" onEscape={() => setOpen(false)} focusSeq={0} matchWidth className="dm-suggest">
+          {!listed
             ? <div role="status" className="dm-suggest-note">Loading values…</div>
-            : (
+            : !options.length
+              ? <div role="status" className="dm-suggest-note">No matching values</div>
+              : (
               // Pressing an option must not take focus from the input: several can be picked in a row.
               <div id={id} role="listbox" aria-label="Suggested values" onMouseDown={(e) => e.preventDefault()}>
                 {options.map((o, i) => (
@@ -97,6 +110,12 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
                 ))}
               </div>
             )}
+          {/* Only values that came from the server can be out of date; the rows on the grid are what the grid shows. */}
+          {loaded && (
+            <button type="button" id={`${id}-reload`} data-hot={onReload ? '' : undefined} className="dm-suggest-note dm-suggest-reload" onMouseDown={(e) => e.preventDefault()} onClick={reload} onMouseEnter={() => setHot(options.length)}>
+              <RotateCw size={14} aria-hidden="true" />Reload values
+            </button>
+          )}
         </Panel>
       )}
     </>

@@ -83,3 +83,20 @@ test('the gap above Clear and Apply equals the gap between the operator and the 
   const clear = await top(dialog.getByRole('button', { name: 'Clear' }));
   expect(Math.abs((clear.y - (val.y + val.height)) - (val.y - (op.y + op.height)))).toBeLessThanOrEqual(1);
 });
+
+test('the suggestions are as wide as the input, and Reload values is the last row once the values are in', async ({ page }) => {
+  const dialog = await openFilter(page, 'status');
+  await dialog.getByLabel('Operator').selectOption('eq');
+  const value = dialog.getByLabel('Value');
+  await value.focus();
+  const list = page.getByRole('listbox', { name: 'Suggested values' });
+  await expect(list).toBeVisible();
+  const panel = page.locator('.dm-suggest');
+  const input = (await value.boundingBox())!;
+  expect(Math.abs((await panel.boundingBox())!.width - input.width)).toBeLessThanOrEqual(1);
+  const reload = panel.getByRole('button', { name: 'Reload values' });
+  await expect(reload).toBeVisible();
+  await reload.click();
+  await expect(list.getByRole('option')).toHaveCount(5);
+  await expect(value).toBeFocused();
+});

@@ -130,3 +130,11 @@ test('many small ribbons of one pair are merged into one rest ribbon per (source
   expect(rest.parentElement).not.toBeNull();
   expect([...container.querySelectorAll('tbody tr')].some((tr) => tr.textContent === `Two → ThreeOther originsxz$300`)).toBe(true);
 });
+
+test('a blank node is filled with the hatch pattern and has no stroke', () => {
+  const { container } = draw();
+  const blank = byAttr('data-node', `0|${BLANK_KEY}`)!;
+  expect(blank.getAttribute('fill')).toMatch(/^url\(#dm-blank-/);
+  expect(blank.getAttribute('stroke')).toBeNull();
+  expect(container.querySelector('pattern')).not.toBeNull();
+});

@@ -68,7 +68,7 @@ const ITEM = '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox
  * One floating panel of the menu, drawn in a portal on the body and kept inside the viewport (flipped left or up when it has no room).
  * Escape, and for a submenu Left, are handled here: the deepest open panel takes the key, so Escape closes the submenu first, then the menu.
  */
-export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onPlaced, returnTo, focusSeq, form, className = '', children }: { anchor: HTMLElement; mode: 'below' | 'beside'; /** None for a plain container (a suggestion list holds its own listbox); it then takes no label either. */ role?: 'menu' | 'dialog'; label?: string; onEscape: () => void; onLeave?: () => void; /** Tab in a menu closes it (the editors keep their own Tab order). */ onTab?: () => void; /** Called once the panel has its place, so a submenu can be measured from its rows. */ onPlaced?: () => void; /** A submenu in a dialog keeps Tab inside the dialog's order: Tab past its last control, or Shift+Tab before its first, returns focus to this row. */ returnTo?: HTMLElement; focusSeq: number; /** The panel holds a form: a click or a focus in it counts as an edit, so hover intent leaves it open. */ form?: boolean; className?: string; children: ReactNode }) {
+export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onPlaced, returnTo, focusSeq, form, matchWidth, className = '', children }: { anchor: HTMLElement; mode: 'below' | 'beside'; /** None for a plain container (a suggestion list holds its own listbox); it then takes no label either. */ role?: 'menu' | 'dialog'; label?: string; onEscape: () => void; onLeave?: () => void; /** Tab in a menu closes it (the editors keep their own Tab order). */ onTab?: () => void; /** Called once the panel has its place, so a submenu can be measured from its rows. */ onPlaced?: () => void; /** A submenu in a dialog keeps Tab inside the dialog's order: Tab past its last control, or Shift+Tab before its first, returns focus to this row. */ returnTo?: HTMLElement; focusSeq: number; /** The panel holds a form: a click or a focus in it counts as an edit, so hover intent leaves it open. */ form?: boolean; /** The panel is as wide as its anchor (a suggestion list under its input). */ matchWidth?: boolean; className?: string; children: ReactNode }) {
   const el = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<Place | null>(null);
   const place = useCallback(() => {
@@ -118,7 +118,7 @@ export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onP
   };
   return createPortal(
     <div ref={el} role={role} aria-label={role ? label : undefined} tabIndex={-1} data-column-menu="" data-form={form ? '' : undefined} data-side={pos?.side} onKeyDown={onKeyDown} onInput={() => { if (el.current) el.current.dataset.edited = ''; }} onChange={() => { if (el.current) el.current.dataset.edited = ''; }}
-      style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? 'visible' : 'hidden' }}
+      style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? 'visible' : 'hidden', ...(matchWidth ? { width: boxOf(anchor).width } : {}) }}
       className={`dm-menu ${className}`}>
       {children}
     </div>,
@@ -126,8 +126,8 @@ export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onP
   );
 }
 
-export function Row({ label, icon, glyph, active, check, checkbox, slot, checked, sub, expanded, haspopup, disabled, tabbable, onLeaveRow, rowRef, onActivate, onOpen, onHover }: {
-  label: string; /** A muted glyph between the tick column and the label (a chart's type). */ glyph?: ReactNode; /** A first-level glyph in its own slot: outlined, or filled when the member has set this on the column. */ icon?: ReactNode; active?: boolean; check?: boolean; /** A check row that is its own choice, not one of a radio group: announced as a checkbox. */ checkbox?: boolean; /** Keeps the check column's room without being a choice row. */ slot?: boolean; checked?: boolean; sub?: boolean; expanded?: boolean; haspopup?: 'menu' | 'dialog'; disabled?: boolean; /** In the date filter's dialog the rows are reached with Tab; in a menu they are reached with the arrow keys. */ tabbable?: boolean;
+export function Row({ label, icon, glyph, active, check, checkbox, slot, tickEnd, tick, checked, sub, expanded, haspopup, disabled, tabbable, onLeaveRow, rowRef, onActivate, onOpen, onHover }: {
+  label: string; /** A muted glyph between the tick column and the label (a chart's type). */ glyph?: ReactNode; /** A first-level glyph in its own slot: outlined, or filled when the member has set this on the column. */ icon?: ReactNode; active?: boolean; check?: boolean; /** A check row that is its own choice, not one of a radio group: announced as a checkbox. */ checkbox?: boolean; /** Keeps the check column's room without being a choice row. */ slot?: boolean; /** A check row shows its tick at the row's right end (where a submenu row has its chevron) and has no left tick column. */ tickEnd?: boolean; /** A submenu row that holds the current choice: the tick sits before its chevron, and the row stays a plain menu item. */ tick?: boolean; checked?: boolean; sub?: boolean; expanded?: boolean; haspopup?: 'menu' | 'dialog'; disabled?: boolean; /** In the date filter's dialog the rows are reached with Tab; in a menu they are reached with the arrow keys. */ tabbable?: boolean;
   onLeaveRow?: () => void; rowRef?: (el: HTMLElement | null) => void; onActivate: (row: HTMLElement) => void; onOpen?: (row: HTMLElement) => void; onHover?: (row: HTMLElement) => void;
 }) {
   return (
@@ -138,9 +138,10 @@ export function Row({ label, icon, glyph, active, check, checkbox, slot, checked
       onMouseEnter={(e) => onHover?.(e.currentTarget)} onMouseLeave={onLeaveRow}
       onKeyDown={(e) => { if (sub && e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); onOpen?.(e.currentTarget); } }}>
       {icon && <span className="dm-menu-icon" data-on={active ? '' : undefined} aria-hidden>{icon}</span>}
-      {(check || slot) && <span className="dm-menu-check" aria-hidden>{checked && <Check className="size-4" />}</span>}
+      {((check && !tickEnd) || slot) && <span className="dm-menu-check" aria-hidden>{checked && <Check className="size-4" />}</span>}
       {glyph && <span className="dm-menu-glyph" aria-hidden>{glyph}</span>}
       <span className="dm-menu-label">{label}</span>
+      {((tickEnd && check) || tick) && <span className="dm-menu-tick" aria-hidden>{checked && <Check className="size-4" />}</span>}
       {sub && <ChevronRight aria-hidden className="dm-menu-arrow size-4" />}
     </button>
   );

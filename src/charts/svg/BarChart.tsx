@@ -1,6 +1,7 @@
-import type { KeyboardEvent, MouseEvent } from 'react';
+import { useId, type KeyboardEvent, type MouseEvent } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
-import { blankOutline, swatchStyle } from '../blank';
+import { swatchStyle } from '../blank';
+import { BlankDefs, blankFill } from './BlankPattern';
 import { useWidth } from '../useWidth';
 import type { Point } from './Sparkline';
 import { niceTicks } from './ticks';
@@ -38,6 +39,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   /** The buckets are categories, not dates: every label shows, cut with an ellipsis to the width of its column (the whole text is in the label's title), instead of every k-th one. */
   categorical?: boolean }) {
   const { ref, width } = useWidth<HTMLDivElement>();
+  const blankId = `dm-blank-${useId().replace(/:/g, '')}`;
   const xs = series[0]?.points ?? [];
   const totals = xs.map((_, i) => series.reduce((sum, s) => sum + Math.max(0, s.points[i]?.y ?? 0), 0));
   const max = Math.max(0, ...totals);
@@ -87,7 +89,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
       const at = offset;
       offset += size;
       const round = k === live.length - 1; // only the data end is rounded
-      const common = { 'data-series': s.name, fill: s.color, ...blankOutline(s.color), style: { pointerEvents: 'none' as const, ...(round ? { clipPath: `inset(0 round ${vertical ? `${RADIUS}px ${RADIUS}px 0 0` : `0 ${RADIUS}px ${RADIUS}px 0`})` } : {}) } };
+      const common = { 'data-series': s.name, fill: blankFill(s.color, blankId), style: { pointerEvents: 'none' as const, ...(round ? { clipPath: `inset(0 round ${vertical ? `${RADIUS}px ${RADIUS}px 0 0` : `0 ${RADIUS}px ${RADIUS}px 0`})` } : {}) } };
       const rect = vertical
         ? <rect {...common} x={left + i * band + GAP / 2} y={TOP + PLOT_H - at - seg} width={Math.max(1, band - GAP)} height={seg} />
         : <rect {...common} x={left + at} y={TOP + i * ROW_H + GAP / 2} width={seg} height={ROW_H - GAP} />;
@@ -113,6 +115,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   return (
     <div ref={ref} className="dm-bar-chart">
       <svg role={anyPick ? 'group' : 'img'} aria-label={ariaLabel} data-orientation={orientation} width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+        <BlankDefs id={blankId} />
         {ticks.map((t, k) => {
           const pos = vertical ? TOP + PLOT_H - scale(t) : left + scale(t);
           return (

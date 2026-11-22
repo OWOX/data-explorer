@@ -348,7 +348,7 @@ test('with Customers joined, the source line reaches its path card', async () =>
   await waitFor(() => expect(document.querySelector('#wires path.source[data-to="dm-customers@customers"]')).not.toBeNull());
 });
 
-test('two copies of one mart read with their paths, and so do their remove buttons', async () => {
+test('two copies of one mart read with their parent marts, and so do their remove buttons', async () => {
   setup();
   await ready();
   await within(marts()).findByText('Customers');
@@ -365,8 +365,8 @@ test('two copies of one mart read with their paths, and so do their remove butto
   fireEvent.click(marts().querySelector<HTMLElement>('article[data-ghost][id="dm-countries@stores.countries"]')!);
   await waitFor(() => expect(el('countries', 'stores.countries')).not.toBeNull());
   await toCanvas();
-  await waitFor(() => expect(within(el('countries', 'customers.countries')!).getByText('Countries (customers.countries)')).toBeInTheDocument());
-  expect(within(el('countries', 'stores.countries')!).getByRole('button', { name: 'Remove Countries (stores.countries) from the report' })).toBeInTheDocument();
+  await waitFor(() => expect(within(el('countries', 'customers.countries')!).getByText('Countries (Customers)')).toBeInTheDocument());
+  expect(within(el('countries', 'stores.countries')!).getByRole('button', { name: 'Remove Countries (Stores) from the report' })).toBeInTheDocument();
 });
 
 const ghostEl = (id: string, path: string) => marts().querySelector<HTMLElement>(`article[data-ghost][id="${martElementId(id, path)}"]`);

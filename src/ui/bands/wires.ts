@@ -48,6 +48,8 @@ export type Box = { left: number; right: number; top: number; bottom: number; wi
 
 type Direction = 'outbound' | 'inbound';
 
+const NONE: ReadonlySet<string> = new Set();
+
 const LIT_CLASSES = ['lit', 'aside', 'outbound', 'inbound'] as const;
 
 /** Leave each box from the side that faces the other one: down/up across bands, sideways within one. */
@@ -168,6 +170,8 @@ export function useWires(
   layerId = 'wires',
   /** The canvas is drawn with a CSS scale: measured client boxes are divided by it to get the canvas's own pixels. */
   scale = 1,
+  /** Element ids of the cards drawn faded: a line arriving at one dims with it. */
+  faded: ReadonlySet<string> = NONE,
 ) {
   /** The drawn lines, kept across a selection change: building belongs to the cards, lighting to the selection. */
   const drawn = useRef<SVGPathElement[]>([]);
@@ -179,6 +183,7 @@ export function useWires(
   const alight = useRef<SVGPathElement[]>([]);
   const { pinned, hovered } = selection;
   const alsoKey = (selection.also ?? []).join('|');
+  const fadedKey = [...faded].sort().join('|');
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -283,6 +288,9 @@ export function useWires(
     const paths = drawn.current;
 
     const focus = () => {
+      // The carrier path's target is the card it dims with; a follower has no path of its own to dim.
+      const dim = new Set(fadedKey ? fadedKey.split('|') : []);
+      wires.forEach((wire, i) => paths[i]?.classList.toggle('faded', dim.has(wire.to)));
       for (const path of alight.current) path.classList.remove(...LIT_CLASSES);
       alight.current = [];
       const on = new Set<SVGPathElement>();
@@ -301,5 +309,5 @@ export function useWires(
     return () => {
       lightAgain.current = () => {};
     };
-  }, [canvasRef, wires, revision, pinned, hovered, alsoKey]);
+  }, [canvasRef, wires, revision, pinned, hovered, alsoKey, fadedKey]);
 }

@@ -6,6 +6,15 @@ export const SUGGEST_LIMIT = 50;
 /** The row key of the mart's unique count: the order the values come in. */
 const COUNT_KEY = 'Unique Count';
 
+/**
+ * The server's values per read key (mart, field and the other rules), kept for the browser session: a read is made once per key
+ * until the member asks for a reload. Not tied to an open menu, so closing and reopening it does not query again.
+ */
+export const valueCache = new Map<string, string[]>();
+
+/** `first` then `then`, each value once. */
+export const mergeValues = (first: string[], then: string[]): string[] => [...new Set([...first, ...then])];
+
 /** The operators whose value is a list (`a, b` reads as `in`), so a pick adds to what is typed. The others take one text: a pick replaces it. */
 export const LIST_OPS: ReadonlySet<string> = new Set(['eq', 'neq']);
 
