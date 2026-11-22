@@ -507,3 +507,29 @@ test('in a list, typing the one value that is left closes the panel, and a longe
   expect(screen.queryByRole('listbox')).toBeNull();
   expect(screen.queryByRole('status')).toBeNull();
 });
+
+test('a slot of the same structure sits under the input whether idle, loading or with no match, focused or not', async () => {
+  let done!: (v: string[]) => void;
+  const { container } = render(<><Harness src={source(() => new Promise((r) => { done = r; }))} /><button>Apply</button></>);
+  const slot = () => container.querySelectorAll('.dm-suggest-slot');
+  const idle = slot()[0]!;
+  expect(slot()).toHaveLength(1);
+  expect(idle.parentElement).toBe(input().parentElement);
+  await userEvent.click(input());
+  expect(await screen.findByText('Loading values…')).toBeInTheDocument();
+  expect(slot()).toHaveLength(1);
+  expect(slot()[0]).toBe(idle);
+  done(['US']);
+  await userEvent.type(input(), 'ZZ');
+  expect(screen.getByText('No matching values').closest('.dm-suggest-slot')).toBe(idle);
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(slot()[0]).toBe(idle);
+  expect(screen.getByText('No matching values')).toBeInTheDocument();
+});
+
+test('in a list a typed word that differs only by case still offers the value that fixes it', async () => {
+  render(<Harness op="eq" src={source(loadOf(['paid', 'open']))} />);
+  await userEvent.click(input());
+  await userEvent.type(input(), 'Paid');
+  expect(options()).toEqual(['paid']);
+});

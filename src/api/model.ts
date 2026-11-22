@@ -52,6 +52,13 @@ export type LoadProgress = { done: number; total: number };
 /** The reads before the storages are known: the storages, the marts, the contexts and the connectors. */
 export const FIRST_STEPS = 4;
 
+/** How long the model waits for the relationships' names: past it the lines stay unnamed, so a slow read never holds the model back. */
+export const NAMES_WAIT_MS = 1500;
+const within = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> => new Promise((resolve) => {
+  const t = setTimeout(() => resolve(fallback), ms);
+  p.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(fallback); });
+});
+
 /** `onProgress` hears every finished read. Each storage adds two more once the storages are known: its canvas and its edges. */
 export async function loadModel(ctx: Ctx, onProgress?: (p: LoadProgress) => void): Promise<Model> {
   let done = 0;
@@ -71,7 +78,7 @@ export async function loadModel(ctx: Ctx, onProgress?: (p: LoadProgress) => void
     // A storage that fails still counts as read: the bar must be able to fill.
     // The names and descriptions of the relationships are decoration: a failed read leaves the lines unnamed and is not counted.
     const [nodes, edges, named] = await Promise.all([canvasNodes(ctx, s.id).then(step, (e) => { step(null); throw e; }), ctx.owox.models.getEdges(s.id).then(step, (e) => { step(null); throw e; }),
-      ctx.owox.getJson<RelationshipDto[]>(`/api/data-storages/${encodeURIComponent(s.id)}/relationships`).then((r) => (Array.isArray(r) ? r : []), (): RelationshipDto[] => [])]);
+      within(ctx.owox.getJson<RelationshipDto[]>(`/api/data-storages/${encodeURIComponent(s.id)}/relationships`).then((r) => (Array.isArray(r) ? r : [])), NAMES_WAIT_MS, [])]);
     const names = new Map(named.map((r) => [r.id, r]));
     for (const n of nodes) {
       const item = listed.get(n.id);

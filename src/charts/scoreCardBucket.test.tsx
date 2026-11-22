@@ -57,3 +57,9 @@ test('a card waiting for its own bucket shows the placeholder too', () => {
   show(mart([created, updated]), { hidden: new Set(), sparklines: true, metrics: {}, dates: { amount: 'updated_at' }, date: created }, false);
   expect(screen.getByLabelText('Loading trend')).toBeInTheDocument();
 });
+
+test('a failed own-bucket read ends the placeholder', () => {
+  useBucket.mockReturnValue({ bucket: null as never, error: new Error('range failed') as never, retry: () => {} });
+  show(mart([created, updated]), { hidden: new Set(), sparklines: true, metrics: {}, dates: { amount: 'updated_at' }, date: created }, false);
+  expect(screen.queryByLabelText('Loading trend')).toBeNull();
+});

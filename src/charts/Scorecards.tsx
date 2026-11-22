@@ -167,7 +167,7 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, bucket, autoBu
   const cardBucket = own ? mine.bucket : bucket;
   const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, cardBucket, filter, date), version, joins);
   // A changed date has no trend yet (its range, then its rows, are still being read): a placeholder holds the sparkline's place instead of a stale or empty box.
-  const waiting = !paused && spark.sparklines && !!date && (trend.loading || (own && !mine.bucket));
+  const waiting = !paused && spark.sparklines && !!date && (trend.loading || (own && !mine.bucket && !mine.error));
   const dated = date ? datedRows(trend.rows ?? [], date.name) : [];
   const points: Point[] = dated.map((s) => ({
     x: String(s[date!.name]),

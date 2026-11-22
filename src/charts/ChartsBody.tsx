@@ -39,7 +39,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   /** Shows these columns in the grid (added to the shown ones): a menu choice of a field that is not shown has to put it on screen. */
   onShowColumns: (names: string[], buckets?: Readonly<Record<string, DateBucket>>) => void;
   /** The grid hands over the columns the member just hid; the card picks that named them go in one write. Set while this body is mounted. */
-  pruneRef?: { current: ((hidden: string[]) => void) | null };
+  pruneRef?: { current: ((hidden: string[]) => boolean) | null };
 }) {
   const { chartSettings } = useServices();
   const [settings, setSettings] = useState<ChartSettings | null>(null);
@@ -62,7 +62,8 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   // A pick whose column the member hides goes with it, in the same action. Only the member's own edit prunes: a failed or late read of the columns never erases what is saved.
   useEffect(() => {
     if (!pruneRef) return;
-    pruneRef.current = (hidden) => { const gone = new Set(hidden); if (latest.current && dropPicksOf(latest.current, gone) !== latest.current) change((cur) => dropPicksOf(cur, gone)); };
+    // False while the saved settings are not loaded: the grid then prunes through the store, as when Charts is closed.
+    pruneRef.current = (hidden) => { const gone = new Set(hidden); if (!latest.current) return false; if (dropPicksOf(latest.current, gone) !== latest.current) change((cur) => dropPicksOf(cur, gone)); return true; };
     return () => { pruneRef.current = null; };
   });
   // A resize re-renders this body on every step: the fields and the resolved choices only change with their inputs, so a resize rebuilds neither.

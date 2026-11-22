@@ -219,6 +219,19 @@ describe('the dot of a named relationship', () => {
   });
 });
 
+describe('the dot of a line with no box', () => {
+  afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.unstubAllGlobals(); });
+
+  it('is not drawn: only a measured line has a middle', () => {
+    vi.stubGlobal('ResizeObserver', class { constructor(cb: () => void) { setTimeout(cb, 0); } observe() {} disconnect() {} });
+    const canvas = document.createElement('div');
+    canvas.innerHTML = '<div id="a"></div>';
+    document.body.append(canvas);
+    renderHook(() => useWires({ current: canvas }, [{ ...wire('w', 'a', 'gone'), note: 'Named' }], { pinned: null, hovered: null }, 0));
+    expect(canvas.querySelector('circle.dm-wire-dot')!.getAttribute('display')).toBe('none');
+  });
+});
+
 describe('wires that share a line', () => {
   afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.unstubAllGlobals(); });
 

@@ -141,7 +141,9 @@ body { color: var(--foreground); font-family: var(--font-sans); }
 .dm-suggest-option[data-hot], .dm-suggest-option:hover { background: var(--menu-hover); }
 .dm-suggest-note { color: var(--menu-muted); }
 /* The reload row is a button that looks like a note: it is the popup's last row. */
-/* The no-match note, in the editor's flow under the input (not floating, so it cannot cover Apply). */
-.dm-suggest-inline { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+/* One line reserved under a suggesting input: the loading and no-match notes live in it, so the editor's buttons never move. */
+.dm-suggest-slot { display: flex; align-items: center; gap: 4px; height: 28px; overflow: hidden; }
+.dm-suggest-slot .dm-suggest-note { padding: 0 4px; }
+.dm-suggest-reload.dm-suggest-reload-inline { width: auto; border-top: 0; padding: 0 6px; border-radius: 4px; }
 .dm-suggest-reload { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--border); cursor: pointer; }
 .dm-suggest-reload[data-hot], .dm-suggest-reload:hover { background: var(--menu-hover); }

@@ -1,5 +1,5 @@
 import { Columns3 } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { AGG_LABELS, applyDraft, draftOf, type Aggregation } from '../../model/aggregation';
 import type { Field } from '../../model/types';
 import { Popover } from '../Popover';
@@ -13,7 +13,7 @@ import { FieldHint, FieldLabel } from './FieldLabel';
  * The main mart's own fields that stay keep the order they have on the grid (the member may have dragged them); a newly
  * ticked one goes right after the nearest field before it in the schema that is shown, or first when none is, so a grid
  * that was never reordered stays in schema order. `locked` names the ticked fields that cannot be unticked.
- * `unique` is the mart's primary key column, when Count Unique can count by it: a first row ticks it with that function (shown, and counted), unticking removes both.
+ * `unique` is the mart's primary key column, when Count Unique can count by it: a first row ticks it with that function (shown, and counted), unticking removes the function, and the key too when the tick was what showed it (never a locked or last column).
  */
 export function ColumnPicker({ title, fields, main, visible, locked, onChange, unique, agg }: {
   title: string;
@@ -62,8 +62,10 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
     if (next.length === 0) next = visible.slice(0, 1);
     onChange(next);
   };
+  // Whether the Count Unique tick put the key on the grid (it was not shown before): only then does unticking take the column away again.
+  const addedKey = useRef(false);
   const counted = !!unique && !!agg && set.has(unique) && draftOf(unique, agg).functions.includes('COUNT_DISTINCT');
-  // The same two steps as showing the key and choosing Count Unique in its menu, in one edit. Unticked, the function goes, and the key with it unless it is the only column or carries other functions.
+  // The same two steps as showing the key and choosing Count Unique in its menu, in one edit. Unticked, the function goes; the key goes with it only when the tick put it there (and it is not locked, not the last column, and carries no other function).
   const toggleUnique = () => {
     if (!unique || !agg) return;
     const rule = (cur: Aggregation, on: boolean) => {
@@ -71,12 +73,15 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
       return applyDraft(unique, { ...d, functions: on ? [...d.functions.filter((f) => f !== 'COUNT_DISTINCT'), 'COUNT_DISTINCT'] : d.functions.filter((f) => f !== 'COUNT_DISTINCT') }, cur);
     };
     if (!counted) {
+      addedKey.current = !set.has(unique);
       const cols = set.has(unique) ? visible : main ? [...ownInOrder(new Set([...visible.filter((c) => mine.has(c)), unique])), ...visible.filter((c) => !mine.has(c))] : [...visible, unique];
       onChange(cols, (cur) => rule(cur, true));
       return;
     }
     const keepsOthers = draftOf(unique, agg).functions.length > 1;
-    onChange(keepsOthers || visible.length === 1 ? visible : visible.filter((c) => c !== unique), (cur) => rule(cur, false));
+    const dropKey = addedKey.current && !keepsOthers && visible.length > 1 && !locked(unique);
+    addedKey.current = false;
+    onChange(dropKey ? visible.filter((c) => c !== unique) : visible, (cur) => rule(cur, false));
   };
   const shownNow = emptied ? [] : visible.filter((c) => mine.has(c));
   const items: ChecklistItem[] = fields.map((f) => ({

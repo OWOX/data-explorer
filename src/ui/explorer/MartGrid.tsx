@@ -317,7 +317,8 @@ const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Obje
 function Grid({ martId, model, schema: native, seed, holdView, lateView, initialColumns, initialSources, initialAgg, onChange, onHold, onRebase, onRelease, onRows, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; /** The member's saved view is still being read: its saves wait. */ holdView: boolean; /** The saved view, once a late read delivers it: parts the member has not touched since the grid opened take its values. */ lateView: SavedView | null | undefined; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
   const { columnStore, blendable, chartSettings } = useServices();
   // Set by the open charts body: the hidden columns whose card picks it drops (it holds the loaded settings).
-  const pruneCards = useRef<((hidden: string[]) => void) | null>(null);
+  const pruneCards = useRef<((hidden: string[]) => boolean) | null>(null);
+  const pruneChain = useRef<Promise<void>>(Promise.resolve());
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
   const [sources, setSources] = useState<JoinedSource[]>(initialSources ?? []);
@@ -599,8 +600,10 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     // A card's saved pick of a column the member hides goes with it: through the open charts body, else straight in the store. Never from a load, so a failed or late read keeps every pick.
     const hidden = visible.filter((n) => !cols.includes(n));
     if (hidden.length > 0) {
-      if (pruneCards.current) pruneCards.current(hidden);
-      else void chartSettings.load(martId).then((cur) => { const next = dropPicksOf(cur, new Set(hidden)); if (next !== cur) chartSettings.save(martId, { ...next, version: 2 }); });
+      if (!pruneCards.current?.(hidden)) {
+        // One load then save at a time per mart, so two quick hides do not both start from the same saved doc.
+        pruneChain.current = pruneChain.current.then(() => chartSettings.load(martId)).then((cur) => { const next = dropPicksOf(cur, new Set(hidden)); if (next !== cur) chartSettings.save(martId, { ...next, version: 2 }); }).catch(() => {});
+      }
     }
     setVisible(cols);
     const nextAgg = keepVisible(more ? more(agg) : agg, cols);

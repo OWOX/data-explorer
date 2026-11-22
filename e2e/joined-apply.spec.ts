@@ -5,14 +5,7 @@ test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
 const data = (page: Page) => page.locator('#band-data');
 
 async function centre(loc: Locator) { const b = (await loc.boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }
-// A member clicks a button that has stopped moving: a note under the value input appears when its suggestions land and moves Apply.
-async function still(loc: Locator) {
-  await expect(loc.page().getByText('Loading values…')).toHaveCount(0);
-  let last = '';
-  await expect.poll(async () => { const now = JSON.stringify(await loc.boundingBox()); const same = now === last; last = now; return same; }, { intervals: [150] }).toBe(true);
-}
 async function click(page: Page, loc: Locator) { const p = await centre(loc); await page.mouse.move(p.x, p.y, { steps: 8 }); await page.mouse.down(); await page.mouse.up(); }
-async function apply(page: Page, loc: Locator) { await still(loc); await click(page, loc); }
 async function addCustomers(page: Page) {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
@@ -33,7 +26,7 @@ test('Aggregate Apply on a joined column groups the rows', async ({ page }) => {
   await addCustomers(page);
   const dialog = await openSub(page, 'Customers · name', 'Aggregate');
   await click(page, dialog.getByLabel('Count Unique'));
-  await apply(page, dialog.getByRole('button', { name: 'Apply' }));
+  await click(page, dialog.getByRole('button', { name: 'Apply' }));
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(data(page).getByRole('columnheader', { name: /name · Count Unique/ })).toBeVisible();
 });
@@ -43,7 +36,7 @@ test('Filter Apply on a joined column filters the rows', async ({ page }) => {
   const dialog = await openSub(page, 'Customers · name', 'Filter');
   await dialog.getByLabel('Operator').selectOption('contains');
   await dialog.getByLabel('Value').fill('zzzz-none');
-  await apply(page, dialog.getByRole('button', { name: 'Apply' }));
+  await click(page, dialog.getByRole('button', { name: 'Apply' }));
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(data(page).getByRole('button', { name: 'Filter Customers · name' })).toBeVisible();
   await expect.poll(async () => data(page).getByRole('row').count()).toBeLessThan(10);
@@ -54,20 +47,20 @@ test('a filter on status, then Aggregate (two functions) on a joined column, the
   let dialog = await openSub(page, 'status', 'Filter');
   await dialog.getByLabel('Operator').selectOption('neq');
   await dialog.getByLabel('Value').fill('zzzz');
-  await apply(page, dialog.getByRole('button', { name: 'Apply' }));
+  await click(page, dialog.getByRole('button', { name: 'Apply' }));
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(data(page).getByRole('button', { name: 'Filter status' })).toBeVisible();
   dialog = await openSub(page, 'Customers · name', 'Aggregate');
   await click(page, dialog.getByLabel('Count Unique'));
   await click(page, dialog.getByLabel('Combined'));
-  await apply(page, dialog.getByRole('button', { name: 'Apply' }));
+  await click(page, dialog.getByRole('button', { name: 'Apply' }));
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(data(page).getByRole('columnheader', { name: /name · Count Unique/ })).toBeVisible();
   await expect(data(page).getByRole('columnheader', { name: /name · Combined/ })).toBeVisible();
   await expect(data(page).getByRole('button', { name: 'Filter status' })).toBeVisible();
   dialog = await openSub(page, 'status', 'Filter');
   await dialog.getByLabel('Value').fill('paid');
-  await apply(page, dialog.getByRole('button', { name: 'Apply' }));
+  await click(page, dialog.getByRole('button', { name: 'Apply' }));
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(data(page).getByRole('columnheader', { name: /name · Count Unique/ })).toBeVisible();
 });
@@ -78,13 +71,13 @@ for (const [w, h] of [[1000, 640], [800, 500]] as const) {
     await addCustomers(page);
     let dialog = await openSub(page, 'Customers · name', 'Aggregate');
     await click(page, dialog.getByLabel('Count Unique'));
-    await apply(page, dialog.getByRole('button', { name: 'Apply' }));
+    await click(page, dialog.getByRole('button', { name: 'Apply' }));
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(data(page).getByRole('columnheader', { name: /name · Count Unique/ })).toBeVisible();
     dialog = await openSub(page, 'status', 'Filter');
     await dialog.getByLabel('Operator').selectOption('neq');
     await dialog.getByLabel('Value').fill('zzzz');
-    await apply(page, dialog.getByRole('button', { name: 'Apply' }));
+    await click(page, dialog.getByRole('button', { name: 'Apply' }));
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(data(page).getByRole('button', { name: 'Filter status' })).toBeVisible();
   });
@@ -103,13 +96,13 @@ test('far right: many joined columns ticked, scrolled to the last one, Aggregate
   let dialog = await openSub(page, 'Customers · city', 'Aggregate');
   await click(page, dialog.getByLabel('Count Unique'));
   await click(page, dialog.getByLabel('Combined'));
-  await apply(page, dialog.getByRole('button', { name: 'Apply' }));
+  await click(page, dialog.getByRole('button', { name: 'Apply' }));
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(data(page).getByRole('columnheader', { name: /city · Count Unique/ })).toBeVisible();
   dialog = await openSub(page, 'status', 'Filter');
   await dialog.getByLabel('Operator').selectOption('neq');
   await dialog.getByLabel('Value').fill('zzzz');
-  await apply(page, dialog.getByRole('button', { name: 'Apply' }));
+  await click(page, dialog.getByRole('button', { name: 'Apply' }));
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(data(page).getByRole('button', { name: 'Filter status' })).toBeVisible();
 });

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TooltipProvider } from '@radix-ui/react-tooltip';
@@ -103,14 +104,37 @@ describe('the Count Unique row', () => {
     expect(more(none)).toEqual({ aggregations: [{ column: 'id', function: 'COUNT_DISTINCT' }], dateTrunc: [] });
   });
 
-  test('is ticked when the key is shown with Count Unique, and unticking removes the key and the function', async () => {
-    const agg: Aggregation = { aggregations: [{ column: 'id', function: 'COUNT_DISTINCT' }], dateTrunc: [] };
-    const onChange = await openUnique(['id', 'name'], agg);
-    expect(screen.getByRole('option', { name: 'Count Unique' })).toHaveAttribute('aria-selected', 'true');
+  // A grid that applies each edit, so tick then untick can be told apart from a key that was already shown.
+  function Live({ start, locked = false }: { start: string[]; locked?: boolean }) {
+    const [visible, setVisible] = useState(start);
+    const [agg, setAgg] = useState<Aggregation>(none);
+    return <TooltipProvider><ColumnPicker title="Orders" fields={fields} main visible={visible} locked={(n) => locked && n === 'id'} unique="id" agg={agg}
+      onChange={(cols, more) => { setVisible(cols); if (more) setAgg(more(agg)); }} /></TooltipProvider>;
+  }
+  const openLive = async (start: string[], locked = false) => {
+    render(<Live start={start} locked={locked} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Fields of Orders' }));
+  };
+  const ids = () => screen.getAllByRole('option').filter((o) => o.getAttribute('aria-selected') === 'true').map((o) => o.getAttribute('aria-label'));
+
+  test('unticking removes the key when the tick put it on the grid, and the function only when it was already shown', async () => {
+    await openLive(['name']);
     await userEvent.click(screen.getByRole('option', { name: 'Count Unique' }));
-    const [cols, more] = onChange.mock.calls.at(-1)!;
-    expect(cols).toEqual(['name']);
-    expect(more(agg)).toEqual({ aggregations: [], dateTrunc: [] });
+    expect(ids()).toEqual(['Count Unique', 'id', 'name']);
+    await userEvent.click(screen.getByRole('option', { name: 'Count Unique' }));
+    expect(ids()).toEqual(['name']);
+    cleanup();
+    await openLive(['id', 'name']);
+    await userEvent.click(screen.getByRole('option', { name: 'Count Unique' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Count Unique' }));
+    expect(ids()).toEqual(['id', 'name']);
+  });
+
+  test('a locked key stays when Count Unique is unticked', async () => {
+    await openLive(['name'], true);
+    await userEvent.click(screen.getByRole('option', { name: 'Count Unique' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Count Unique' }));
+    expect(ids()).toEqual(['id', 'name']);
   });
 
   test('a key shown without the function is not ticked, and ticking only adds the function', async () => {

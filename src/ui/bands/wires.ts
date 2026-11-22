@@ -218,6 +218,7 @@ export function useWires(
       const dot = document.createElementNS(NS, 'circle');
       dot.setAttribute('class', 'dm-wire-dot');
       dot.setAttribute('r', '4');
+      dot.setAttribute('display', 'none');
       dot.dataset.tip = tipOf(wire);
       paths[i]!.after(dot);
       return dot;
@@ -260,9 +261,12 @@ export function useWires(
           const mid = path.getPointAtLength(path.getTotalLength() / 2);
           dot.setAttribute('cx', String(mid.x));
           dot.setAttribute('cy', String(mid.y));
+          dot.removeAttribute('display');
         } else {
+          // A line with no box has no middle: the dot is not drawn (an unplaced circle would sit at the canvas corner).
           dot.removeAttribute('cx');
           dot.removeAttribute('cy');
+          dot.setAttribute('display', 'none');
         }
       });
       watch();
