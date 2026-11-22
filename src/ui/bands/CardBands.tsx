@@ -20,7 +20,7 @@ import { MartCard, SourceCard, contextsOf, martElementId, sourceElementId, type 
 import { useCardTransitions } from './transitions';
 import { useCardClick } from './useCardClick';
 import { useCardDrag } from './useCardDrag';
-import { relationshipNote } from './relationshipNote';
+import { edgeOf, relationshipNote } from './relationshipNote';
 import { litIds, revisionOf, useWires, type Wire } from './wires';
 import { MartsCanvas } from './MartsCanvas';
 import { buildJoinTree, ghostSources, subtreePaths, type TreeNode } from '../../state/join-tree';
@@ -256,7 +256,8 @@ export function CardBands({
       const parent = canvasTree!.nodes.get(n.parent)!;
       if (!shown.has(parent.martId)) continue;
       // The join fields when the source's relationship is known, the two titles otherwise.
-      const edge = model.edges.find((e) => e.id === joinSources?.find((x) => x.aliasPath === n.path)?.relationshipId && e.source === parent.martId && e.target === n.martId);
+      const relId = joinSources?.find((x) => x.aliasPath === n.path)?.relationshipId;
+      const edge = edgeOf(model.edges, parent.martId, n.martId, n.path, relId);
       const title = edge && edge.joins.length > 0 ? edge.joins.map((j) => `${j.sourceField} → ${j.targetField}`).join(', ') : `${model.marts.get(parent.martId)?.title ?? parent.martId} → ${model.marts.get(n.martId)?.title ?? n.martId}`;
       const note = relationshipNote(edge, model.marts.get(n.martId)?.title ?? '');
       out.push({ id: `tree:${n.path}`, from: martElementId(parent.martId, parent.path || undefined), to: martElementId(n.martId, n.path), kind: 'relationship', title, joined: true, ...(note ? { note } : {}) });

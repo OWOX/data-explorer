@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
-import { aliasWords, isCustomAlias, relationshipNote } from './relationshipNote';
+import type { Edge } from '../../model/types';
+import { aliasWords, edgeOf, isCustomAlias, relationshipNote } from './relationshipNote';
 
 test('an alias is said in words, keeping known acronyms upper-case', () => {
   expect(aliasWords('first_session')).toBe('First session');
@@ -23,4 +24,14 @@ test('a note exists for a custom name or a description, and says the name in wor
   expect(relationshipNote({ alias: 'first_session' }, 'Sessions')).toBe('First session');
   expect(relationshipNote({ alias: 'customers', description: 'Who bought' }, 'Customers')).toBe('Who bought');
   expect(relationshipNote({ alias: 'first_session', description: 'How a visit starts' }, 'Sessions')).toBe('First session: How a visit starts');
+});
+
+test('the relationship of a line: the one the source names, else the one whose alias ends the path, else the only one', () => {
+  const e = (id: string, alias?: string): Edge => ({ id, source: 'c', target: 's', joins: [], ...(alias ? { alias } : {}) });
+  const three = [e('r1', 'first_session'), e('r2', 'last_session'), e('r3', 'last_session_before_mql')];
+  expect(edgeOf(three, 'c', 's', 'x', 'r2')?.id).toBe('r2');
+  expect(edgeOf(three, 'c', 's', 'a.last_session_before_mql')?.id).toBe('r3');
+  expect(edgeOf(three, 'c', 's', 'nothing')).toBeUndefined();
+  expect(edgeOf([e('only')], 'c', 's', 'whatever')?.id).toBe('only');
+  expect(edgeOf(three, 's', 'c', 'first_session')).toBeUndefined();
 });

@@ -15,6 +15,17 @@ const slugOf = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_')
 /** A name the member gave the relationship: an alias that is not just the target mart's title as an alias. */
 export const isCustomAlias = (alias: string | undefined, targetTitle: string): boolean => !!alias?.trim() && slugOf(alias) !== slugOf(targetTitle);
 
+/**
+ * The relationship a line stands for: the one the joined source names (`relationshipId`) when it is among the edges from `parent` to `target`,
+ * else the one whose alias ends the alias path, else the only one there is. Null when several fit and nothing tells them apart.
+ */
+export function edgeOf(edges: readonly Edge[], parent: string, target: string, path: string, relationshipId?: string): Edge | undefined {
+  const between = edges.filter((e) => e.source === parent && e.target === target);
+  const named = relationshipId ? between.find((e) => e.id === relationshipId) : undefined;
+  const last = path.slice(path.lastIndexOf('.') + 1);
+  return named ?? between.find((e) => e.alias !== undefined && e.alias === last) ?? (between.length === 1 ? between[0] : undefined);
+}
+
 /** What hovering a line says about its relationship, or null when it has neither a custom name nor a description (then there is nothing to hover for). */
 export function relationshipNote(edge: Pick<Edge, 'alias' | 'description'> | undefined, targetTitle: string): string | null {
   const name = isCustomAlias(edge?.alias, targetTitle) ? aliasWords(edge!.alias!) : '';

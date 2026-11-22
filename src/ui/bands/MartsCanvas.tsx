@@ -14,7 +14,7 @@ import { useLatest } from '../useLatest';
 import { useCanvasDrag } from './useCanvasDrag';
 import { overOf, useGhostChain } from './useGhostChain';
 import type { ClickOptions } from './useCardClick';
-import { relationshipNote } from './relationshipNote';
+import { edgeOf, relationshipNote } from './relationshipNote';
 import { litIds, revisionOf, useWires, type Wire } from './wires';
 
 export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart }: {
@@ -147,9 +147,9 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     for (const node of tree.nodes.values()) {
       if (node.parent === null) continue;
       const parent = tree.nodes.get(node.parent)!;
-      // Two relationships between the same marts cannot be told apart here, so a note is shown only when there is one.
-      const between = model.edges.filter((e) => e.source === parent.martId && e.target === node.martId);
-      const note = between.length === 1 ? relationshipNote(between[0], title(node.martId)) : null;
+      // Each joined copy is its own node, keyed by its alias path: the line belongs to the one relationship that path names.
+      const edge = edgeOf(model.edges, parent.martId, node.martId, node.path, sources?.find((x) => x.aliasPath === node.path)?.relationshipId);
+      const note = relationshipNote(edge, title(node.martId));
       out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}`, ...(note ? { note } : {}), sideways: true, joined: true, ...(node.path === strongPath ? { strong: true } : {}) });
     }
     for (const level of levels) {
@@ -159,7 +159,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     return out;
     // `key` stands for tree and the ghost levels: the memo must not rebuild on every hover.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, model, strongPath]);
+  }, [key, model, strongPath, sources]);
   // The hovered card or ghost and what it touches (its path neighbours and the ghosts hanging from it): every other card fades to half.
   const hoverEl = (() => {
     const over = hover.at;

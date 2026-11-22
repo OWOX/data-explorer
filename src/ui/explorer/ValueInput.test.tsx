@@ -384,7 +384,9 @@ test('typed text that matches no value keeps the panel open with a note and the 
   expect(options()).toEqual([]);
   expect(screen.getByRole('status')).toHaveTextContent('No matching values');
   await userEvent.click(screen.getByRole('button', { name: /Reload values/ }));
-  await waitFor(() => expect(options()).toEqual(['ZA']));
+  // The reloaded values hold ZA: it is now the typed text, so there is nothing left to suggest and the note goes.
+  await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+  expect(options()).toEqual([]);
   expect(load).toHaveBeenCalledTimes(2);
 });
 
@@ -480,4 +482,28 @@ test('a reload is not repeated by a second Enter, nor by Enter after the input i
   await userEvent.tab({ shift: true });
   await userEvent.keyboard('{Enter}');
   expect(load).toHaveBeenCalledTimes(2);
+});
+
+test('the no-match note and Reload sit in the editor\'s flow next to the input, not in the floating panel', async () => {
+  render(<Harness src={source(loadOf(['US', 'DE']))} />);
+  await userEvent.click(input());
+  await waitFor(() => expect(options()).toEqual(['US', 'DE']));
+  expect(screen.getByRole('listbox').closest('.dm-suggest')).not.toBeNull();
+  await userEvent.type(input(), 'ZZ');
+  const note = screen.getByRole('status');
+  expect(note).toHaveTextContent('No matching values');
+  expect(note.closest('.dm-suggest')).toBeNull();
+  expect(screen.getByRole('button', { name: /Reload values/ }).closest('.dm-suggest')).toBeNull();
+  expect(input().parentElement).toContainElement(note);
+});
+
+test('in a list, typing the one value that is left closes the panel, and a longer match keeps it', async () => {
+  render(<Harness op="eq" src={source(loadOf(['paid', 'paid_late', 'open']))} />);
+  await userEvent.click(input());
+  await waitFor(() => expect(options()).toEqual(['paid', 'paid_late', 'open']));
+  await userEvent.type(input(), 'paid');
+  expect(options()).toEqual(['paid', 'paid_late']);
+  await userEvent.type(input(), '_late');
+  expect(screen.queryByRole('listbox')).toBeNull();
+  expect(screen.queryByRole('status')).toBeNull();
 });

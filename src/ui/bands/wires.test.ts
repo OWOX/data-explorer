@@ -219,6 +219,21 @@ describe('the dot of a named relationship', () => {
   });
 });
 
+describe('wires that share a line', () => {
+  afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.unstubAllGlobals(); });
+
+  it('say every relationship on the one line, with one dot', () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    const canvas = document.createElement('div');
+    canvas.innerHTML = '<div id="a"></div><div id="b"></div>';
+    document.body.append(canvas);
+    const wires = [{ ...wire('one', 'a', 'b'), note: 'First session' }, { ...wire('two', 'a', 'b'), note: 'Last session: Before the lead' }, wire('three', 'a', 'b')];
+    renderHook(() => useWires({ current: canvas }, wires, { pinned: null, hovered: null }, 0));
+    expect(canvas.querySelectorAll('circle.dm-wire-dot')).toHaveLength(1);
+    expect(canvas.querySelector<SVGCircleElement>('circle.dm-wire-dot')!.dataset.tip).toMatch(/^First session; Last session: Before the lead/);
+  });
+});
+
 describe('a hub with many neighbours', () => {
   const N = 35;
   const ids = Array.from({ length: N }, (_, i) => `n${String(i).padStart(2, '0')}`);
