@@ -22,10 +22,12 @@ export function overOf(target: EventTarget | null): Over {
  * A card shows its ghosts at once, also when the pointer comes from another card. Leaving everything waits `GHOST_GRACE_MS` before the ghosts go.
  * `mute` keeps a card's own hover from showing its ghosts until the pointer goes elsewhere (the second click on a pinned card hides them).
  * While a card is pinned, hovering another card changes nothing; hovered ghosts extend the chain from the pin.
+ * `at` is the card or ghost the pointer is on, held for the same grace after it leaves: the other cards fade while it is set.
  */
 export function useGhostChain(pinned: string | null) {
   const [shown, setShown] = useState<Shown>(NOTHING);
   const [muted, setMuted] = useState<string | null>(null);
+  const [at, setAt] = useState<Over | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // The handlers are stable and read the pin through a ref.
   const pin = useRef(pinned);
@@ -37,10 +39,11 @@ export function useGhostChain(pinned: string | null) {
     if (over.card === null && over.ghost === null) {
       setMuted(null);
       if (timer.current !== undefined) return;
-      timer.current = setTimeout(() => { timer.current = undefined; setShown(NOTHING); }, GHOST_GRACE_MS);
+      timer.current = setTimeout(() => { timer.current = undefined; setShown(NOTHING); setAt(null); }, GHOST_GRACE_MS);
       return;
     }
     cancel();
+    setAt((cur) => (cur !== null && cur.card === over.card && cur.ghost === over.ghost ? cur : over));
     if (over.card !== null) {
       setMuted((m) => (m === over.card ? m : null));
       // A pinned card keeps the ghosts: another card under the pointer shows nothing of its own.
@@ -55,10 +58,10 @@ export function useGhostChain(pinned: string | null) {
     });
   }, []);
   const onLeave = useCallback(() => onOver({ card: null, ghost: null }), [onOver]);
-  const clear = useCallback(() => { cancel(); setShown(NOTHING); setMuted(null); }, []);
+  const clear = useCallback(() => { cancel(); setShown(NOTHING); setMuted(null); setAt(null); }, []);
   const mute = useCallback((path: string) => { cancel(); setShown(NOTHING); setMuted(path); }, []);
 
   // A hovered card that was muted shows nothing; the pointer is still on it.
   const hovered = shown.anchor !== null && shown.anchor === muted ? NOTHING : shown;
-  return { anchor: hovered.anchor, chain: hovered.chain, onOver, onLeave, clear, mute };
+  return { anchor: hovered.anchor, chain: hovered.chain, at, onOver, onLeave, clear, mute };
 }

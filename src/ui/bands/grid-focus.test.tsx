@@ -71,12 +71,15 @@ test('a click on a joined card removes nothing and shows what joins under it', a
   await waitFor(() => expect(el('customers', 'customers')).toHaveAttribute('data-focused'));
   expect(headers()).toEqual(before);
   expect(el('customers', 'customers')).toHaveAttribute('aria-pressed', 'true');
-  // Countries is joinable under Customers and keeps its look; Products is not and is dimmed.
-  expect(el('countries')).not.toHaveClass('dm-unjoinable');
-  expect(el('products')).toHaveClass('dm-unjoinable');
-  // The report cards are never dimmed.
-  expect(el('stores', 'stores')).not.toHaveClass('dm-unjoinable');
-  expect(el('orders')).not.toHaveClass('dm-unjoinable');
+  // Every mart outside the report that can join it is full strength with a dashed border, whichever card is focused; the report cards keep their own.
+  for (const outside of [el('countries'), el('products')]) {
+    expect(outside).toHaveClass('dm-offpath');
+    expect(outside).not.toHaveClass('dm-faded');
+  }
+  for (const inReport of [el('stores', 'stores'), el('orders')]) {
+    expect(inReport).not.toHaveClass('dm-offpath');
+    expect(inReport).not.toHaveClass('dm-faded');
+  }
 });
 
 test('a click on the main card focuses it and does not deselect', async () => {
@@ -88,7 +91,7 @@ test('a click on the main card focuses it and does not deselect', async () => {
   expect(el('orders')).toHaveAttribute('aria-pressed', 'true');
   expect(groupTitles()).toEqual(['Orders']);
   expect(headers()).toHaveLength(5);
-  expect(el('customers')).not.toHaveClass('dm-unjoinable');
+  expect(el('customers')).not.toHaveClass('dm-faded');
 });
 
 test('a click on a ghost while a card is focused adds it under that path', async () => {
@@ -129,7 +132,7 @@ test('clicking the focused card again, the empty band or Escape clears the focus
   await waitFor(() => expect(focused()).not.toBeNull());
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(focused()).toBeNull());
-  expect(el('products')).not.toHaveClass('dm-unjoinable');
+  expect(el('products')).not.toHaveClass('dm-faded');
 });
 
 test('the × on a middle card takes only its own columns; on the bare card it takes the subtree, in one Undo step', async () => {
@@ -150,11 +153,12 @@ test('the × on a middle card takes only its own columns; on the bare card it ta
   expect(el('customers', 'customers')).not.toBeNull();
 });
 
-test('with a card focused, a dimmed card the main mart can join still adds on a click, by its shortest chain', async () => {
+test('with a card focused, a card it cannot take directly still adds on a click, by its shortest chain', async () => {
   setup();
   await joinCustomersAndStores();
   fireEvent.click(el('stores', 'stores')!);
-  await waitFor(() => expect(el('products')).toHaveClass('dm-unjoinable'));
+  await waitFor(() => expect(el('stores', 'stores')).toHaveAttribute('data-focused'));
+  expect(el('products')).toHaveClass('dm-offpath');
   fireEvent.click(el('products')!);
   await waitFor(() => expect(el('products', 'products')).not.toBeNull());
   expect(within(marts()).queryByRole('status')).toBeNull();
@@ -212,12 +216,13 @@ test('a click on an outside card adds it and focuses it, its joinable marts show
   fireEvent.click(await bandCard('Customers'));
   await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
   await waitFor(() => expect(el('customers', 'customers')).toHaveAttribute('data-focused'));
-  // Countries joins under Customers: it is joinable there, Products is not.
-  expect(el('countries')).not.toHaveClass('dm-unjoinable');
-  expect(el('products')).toHaveClass('dm-unjoinable');
+  // Countries joins under Customers, Products joins the report some other way: both are outside it, dashed and full strength.
+  expect(el('countries')).toHaveClass('dm-offpath');
+  expect(el('products')).toHaveClass('dm-offpath');
+  expect(el('products')).not.toHaveClass('dm-faded');
   fireEvent.click(el('customers', 'customers')!);
   await waitFor(() => expect(marts().querySelector('[data-focused]')).toBeNull());
-  expect(el('products')).not.toHaveClass('dm-unjoinable');
+  expect(el('products')).toHaveClass('dm-offpath');
 });
 
 test('a click on a ghost deep in the focus chain adds it and focuses the new card', async () => {

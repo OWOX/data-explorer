@@ -49,13 +49,14 @@ function usePinWhenLeaving(card: React.RefObject<HTMLElement | null>, transition
   }, [card, transition?.leaving]);
 }
 
-const cardClass = (lit: boolean, aside: boolean, extra?: string) => ['dm-node', lit ? 'lit' : '', aside ? 'aside' : '', extra ?? ''].filter(Boolean).join(' ');
+const cardClass = (lit: boolean, aside: boolean, extra?: string, faded = false) => ['dm-node', lit ? 'lit' : '', aside ? 'aside' : '', faded ? 'dm-faded' : '', extra ?? ''].filter(Boolean).join(' ');
 
 export function SourceCard({
   source,
   selected,
   lit,
   aside = false,
+  faded = false,
   transition,
   onSelect,
 }: {
@@ -64,6 +65,8 @@ export function SourceCard({
   lit: boolean;
   /** Lit by a card other than the pinned one: drawn at half strength. */
   aside?: boolean;
+  /** Another card is hovered and this one is not among the marts it touches: drawn at half strength. */
+  faded?: boolean;
   transition?: CardTransition;
   onSelect: () => void;
 }) {
@@ -75,7 +78,7 @@ export function SourceCard({
       id={sourceElementId(source.key)}
       data-node
       aria-pressed={selected}
-      className={cardClass(lit, aside, transition?.className)}
+      className={cardClass(lit, aside, transition?.className, faded)}
       {...(transition?.leaving ? { 'data-leaving': '' } : {})}
       {...selectable(onSelect)}
     >
@@ -138,8 +141,9 @@ export function MartCard({
   joined = false,
   lit,
   aside = false,
+  faded = false,
   transition,
-  unjoinable = false,
+  offPath = false,
   ghost = false,
   dropTarget = false,
   dropHot = false,
@@ -164,8 +168,10 @@ export function MartCard({
   /** Lit by a card other than the pinned one: drawn at half strength. */
   aside?: boolean;
   transition?: CardTransition;
-  /** The mart does not join under the focused card (it joins by a longer chain): the card is dimmed, and a click still adds it. */
-  unjoinable?: boolean;
+  /** Another card is hovered and this one is not among the marts it touches: drawn at half strength. */
+  faded?: boolean;
+  /** The mart is not in the report but can join it: the border is dashed (a hover ghost always is). */
+  offPath?: boolean;
   /** The card is a hover ghost: a neighbour of the hovered card that is not in the band, drawn dashed while that card is hovered. It asks for no count and cannot be dragged. */
   ghost?: boolean;
   /** A drag is under way and this card accepts a drop. */
@@ -205,7 +211,7 @@ export function MartCard({
       data-node
       data-tone={dqCardTone(quality)}
       aria-pressed={selected || joined}
-      className={cardClass(lit, aside, [selected || joined || lit ? 'dm-in-path' : '', mart.accessible ? '' : 'dm-noaccess', unjoinable ? 'dm-unjoinable' : '', ghost ? 'dm-ghost' : '', dropTarget ? 'dm-drop-target' : '', dropHot ? 'dm-drop-hot' : '', transition?.className ?? ''].filter(Boolean).join(' '))}
+      className={cardClass(lit, aside, [selected || joined || lit ? 'dm-in-path' : '', mart.accessible ? '' : 'dm-noaccess', offPath ? 'dm-offpath' : '', ghost ? 'dm-ghost' : '', dropTarget ? 'dm-drop-target' : '', dropHot ? 'dm-drop-hot' : '', transition?.className ?? ''].filter(Boolean).join(' '), faded)}
       {...(transition?.leaving ? { 'data-leaving': '' } : {})}
       {...(ghost ? { 'data-ghost': '' } : {})}
       {...selectable(onSelect)}

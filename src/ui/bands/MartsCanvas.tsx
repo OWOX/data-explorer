@@ -13,7 +13,7 @@ import { useLatest } from '../useLatest';
 import { useCanvasDrag } from './useCanvasDrag';
 import { overOf, useGhostChain } from './useGhostChain';
 import type { ClickOptions } from './useCardClick';
-import { revisionOf, useWires, type Wire } from './wires';
+import { litIds, revisionOf, useWires, type Wire } from './wires';
 
 export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart }: {
   model: Model;
@@ -146,7 +146,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     for (const node of tree.nodes.values()) {
       if (node.parent === null) continue;
       const parent = tree.nodes.get(node.parent)!;
-      out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}`, sideways: true });
+      out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}`, sideways: true, joined: true });
     }
     for (const level of levels) {
       const fromPath = level.from;
@@ -156,6 +156,16 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     // `key` stands for tree and the ghost levels: the memo must not rebuild on every hover.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, model]);
+  // The hovered card or ghost and what it touches (its path neighbours and the ghosts hanging from it): every other card fades to half.
+  const hoverEl = (() => {
+    const over = hover.at;
+    if (!over || drag) return null;
+    if (over.ghost !== null) { const g = ghosts.find((x) => x.aliasPath === over.ghost); return g ? martElementId(g.martId, g.aliasPath) : null; }
+    const n = over.card === null ? undefined : tree.nodes.get(over.card);
+    return n ? martElementId(n.martId, n.path) : null;
+  })();
+  const near = hoverEl === null ? null : litIds(wires, hoverEl);
+  const fadedAt = (martId: string, path: string) => near !== null && !near.has(martElementId(martId, path));
   const heldNode = drag ? tree.nodes.get(drag.path) : undefined;
   const engagedGhost = ghostOver === null ? undefined : ghosts.find((g) => g.aliasPath === ghostOver);
   useWires(treeRef, wires, { pinned: null, hovered: null }, revisionOf(key), 'tree-wires', scale, {
@@ -200,6 +210,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               selected={node.path === ''}
               joined={node.path !== ''}
               focused={pin === node.path}
+              faded={fadedAt(node.martId, node.path)}
               path={node.path}
               title={titleOf(node.path)}
               onRemove={node.path === '' ? undefined : () => {
@@ -228,6 +239,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
             <MartCard
               mart={mart}
               ghost
+              faded={fadedAt(g.martId, g.aliasPath)}
               path={g.aliasPath}
               title={pathTitle(g, [...tree.nodes.keys()], sources ?? [])}
               contexts={contextsOf(model.contexts, mart.contextIds)}

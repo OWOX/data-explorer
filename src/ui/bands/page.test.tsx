@@ -740,18 +740,22 @@ describe('folding and lines', () => {
     expect(svg.querySelectorAll('path.relationship').length).toBeGreaterThan(0);
   });
 
-  test('hovering a card focuses the canvas and lights its lines; Escape lets go', async () => {
+  test('hovering a card lights its lines and fades the cards it does not touch; leaving restores them; the selected mart alone fades nothing', async () => {
     await ordersGrid();
     const canvas = document.querySelector('.dm-canvas')!;
     const customers = martCard('Customers');
+    expect(canvas.querySelectorAll('.dm-faded')).toHaveLength(0); // the selected mart stays pinned and dims nothing
     fireEvent.pointerOver(customers);
-    expect(canvas).toHaveClass('focused');
     expect(customers).toHaveClass('lit');
+    expect(customers).not.toHaveClass('dm-faded');
     expect(martCard('Orders')).toHaveClass('lit'); // joined to Customers
+    expect(martCard('Orders')).not.toHaveClass('dm-faded');
     expect(customers).not.toHaveClass('aside'); // the pinned mart lights it too
+    expect(canvas.querySelectorAll('.dm-faded').length).toBeGreaterThan(0);
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(canvas).toHaveClass('focused'); // the selected mart stays pinned
     expect(customers).toHaveClass('lit');
+    fireEvent.pointerLeave(canvas);
+    expect(canvas.querySelectorAll('.dm-faded')).toHaveLength(0);
   });
 
   test('a card lit only by the pointer while another is pinned is drawn aside, and Escape clears it', async () => {
@@ -898,14 +902,15 @@ describe('the storage filter', () => {
     expect(within(sources()).getByText('Shopify').closest('article')).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('a selected mart in an unticked storage leaves the Data Marts band but stays in the Data band', async () => {
+  test('a selected mart in an unticked storage stays in the Data Marts band, first, and in the Data band', async () => {
     await ordersGrid();
     // The band lists Payments for a search; its make-main button makes it the main mart.
     await search('payments');
     await makeMain('Payments');
     await within(data()).findByText('Payments');
     await userEvent.click(within(storageMenu()).getByRole('option', { name: /Sales Lake/ }));
-    await waitFor(() => expect(within(marts()).queryByText('Payments')).toBeNull());
+    await waitFor(() => expect(marts().querySelector('article')).toHaveAttribute('data-mart-id', 'payments'));
+    expect(within(marts()).getByText('Payments')).toBeInTheDocument();
     expect(within(data()).getByText('Payments')).toBeInTheDocument();
   });
 
@@ -936,7 +941,9 @@ describe('the storage filter', () => {
     }));
     await within(data()).findByRole('table');
     await userEvent.click(within(storageMenu()).getByRole('button', { name: 'Clear' }));
-    await waitFor(() => expect(within(marts()).queryByText('Orders')).toBeNull());
+    // The main mart is the one card left, whatever the storage filter says.
+    await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
+    expect(within(marts()).getByText('Orders')).toBeInTheDocument();
     hide.current = true;
     await reloadModel();
     await waitFor(() => expect(within(data()).getByText('Select a data mart.')).toBeInTheDocument());
@@ -1643,7 +1650,7 @@ test('a mart the main one cannot join is not shown in a search, one it can join 
   expect(marts.querySelector('article')).toHaveTextContent('Orders');
   await search('Countries');
   expect(await within(marts).findByText('Countries')).toBeInTheDocument();
-  expect(marts.querySelector('.dm-unjoinable')).toBeNull();
+  expect(marts.querySelector('.dm-faded')).toBeNull();
 });
 
 test('with a mart nobody can open as the main one, a click on another card makes it the main one', async () => {
@@ -1677,7 +1684,7 @@ test('a failed read of the main mart joins leaves the one-hop band with nothing 
   // Let the failed read settle.
   await new Promise((r) => setTimeout(r, 50));
   expect(within(marts()).getAllByRole('article').length).toBeGreaterThan(1);
-  expect(marts().querySelectorAll('.dm-unjoinable')).toHaveLength(0);
+  expect(marts().querySelectorAll('.dm-faded')).toHaveLength(0);
 });
 
 describe('ghost cards on hover', () => {

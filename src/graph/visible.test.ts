@@ -120,9 +120,9 @@ describe('storageIds', () => {
     expect(new Set(only(model(), sel({ martId: 'b' }), ['s1']).ids)).toEqual(new Set(['a', 'b']));
   });
 
-  test('rule 2: a selected mart in an unticked storage leaves the band, its neighbours stay', () => {
+  test('rule 2: a selected mart in an unticked storage stays, first, with its neighbours', () => {
     const r = only(model(), sel({ martId: 'c' }), ['s1']);
-    expect(r.ids).toEqual(['b']);
+    expect(r.ids).toEqual(['c', 'b']);
   });
 
   test('rule 3: a source feeds only its marts in ticked storages', () => {
@@ -137,8 +137,8 @@ describe('storageIds', () => {
     expect(new Set(r.ids)).toEqual(new Set(['c', 'd']));
   });
 
-  test('no storage ticked shows nothing', () => {
-    expect(only(model(), sel({ martId: 'b' }), []).ids).toEqual([]);
+  test('no storage ticked shows only the main mart', () => {
+    expect(only(model(), sel({ martId: 'b' }), []).ids).toEqual(['b']);
   });
 });
 
@@ -259,10 +259,10 @@ describe('joinable', () => {
     expect(r.ids).toEqual(['a', 'b', 'c', 'd']);
   });
 
-  test('rule 0 with a main mart in an unticked storage: the head holds only the joined marts', () => {
+  test('rule 0 with a main mart in an unticked storage: the main mart is still first', () => {
     const m = modelOf(['a', 'b', 'c', 'd'], [e('a', 'b')], [{ storageId: 's2' }, {}, {}, {}]);
     const r = runWith(m, sel({ martId: 'a' }), { found: ['c', 'd'], joined: ['b'], search: 'zzz', storageIds: ['s'] });
-    expect(r.ids).toEqual(['b', 'c', 'd']);
+    expect(r.ids).toEqual(['a', 'b', 'c', 'd']);
   });
 
   test('rule 2 with a joinable set that is empty shows the main mart and the always-shown marts only', () => {
@@ -300,10 +300,10 @@ describe('joinable', () => {
     expect(runWith(m, sel({ sourceKey: 's1' }), { joinable: ['b'] }).joinable).toBeNull();
   });
 
-  test('a main mart in an unticked storage is not put first, and the joinable band still renders', () => {
+  test('a main mart in an unticked storage is still put first, with the joinable band', () => {
     const m = modelOf(['a', 'b'], [e('a', 'b')], [{ storageId: 's2' }, {}]);
     const r = runWith(m, sel({ martId: 'a' }), { joinable: ['b'], storageIds: ['s'] });
-    expect(r.ids).toEqual(['b']);
+    expect(r.ids).toEqual(['a', 'b']);
   });
 });
 

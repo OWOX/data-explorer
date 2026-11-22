@@ -31,8 +31,10 @@ export type Wire = {
   kind: 'source' | 'relationship';
   /** Said in the tooltip: lines pass under cards, so they have to say what they are. */
   title: string;
-  /** A ghost line: drawn dashed where the layer draws its lines solid. */
+  /** A join that can be made but is not yet: drawn dashed, always, at full strength. Solid is a join in the report. */
   dashed?: boolean;
+  /** A join in the report (the path): drawn solid, always, at full strength. */
+  joined?: boolean;
   /** Always leave the parent's right edge and enter the child's left edge at mid-height, whatever the boxes' vertical gap. */
   sideways?: boolean;
 };
@@ -186,7 +188,7 @@ export function useWires(
 
     const paths = (drawn.current = wires.map((wire) => {
       const path = document.createElementNS(NS, 'path');
-      path.setAttribute('class', wire.dashed ? `${wire.kind} ghost` : wire.kind);
+      path.setAttribute('class', [wire.kind, wire.dashed ? 'ghost' : '', wire.joined ? 'joined' : ''].filter(Boolean).join(' '));
       path.setAttribute('marker-end', `url(#arrowhead-${layerId})`);
       path.dataset.from = wire.from;
       path.dataset.to = wire.to;

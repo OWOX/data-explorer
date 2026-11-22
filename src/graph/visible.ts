@@ -72,7 +72,7 @@ export type VisibleResult = {
 /** Which marts the Data Marts band shows, by the first rule that applies (spec, "Which marts show"). */
 export function computeVisible({ model, selection, search, contextIds, storageIds = null, joined = [], filtered = [], found = [], joinable = null }: VisibleInput): VisibleResult {
   const inbound = inboundCounts(model.edges);
-  // A mart in an unticked storage is out of every rule below, the selected one included.
+  // A mart in an unticked storage is out of every rule below, except the main mart: it is always shown, first.
   const inStorage = (id: string) => storageIds === null || storageIds.includes(model.marts.get(id)?.storageId ?? '');
   const accessible = [...model.marts.values()].filter((m) => m.accessible && inStorage(m.id));
   const focusId = pickFocus(accessible.map((m) => m.id), model.marts, inbound);
@@ -98,8 +98,8 @@ export function computeVisible({ model, selection, search, contextIds, storageId
     return [...out, ...ids.filter((id) => !placed.has(id)).sort(byRank)];
   };
   // A mart with a column on the grid or a filter applied is always shown: no search, context or storage filter takes it away.
-  // The main mart is one of them (unless its storage is unticked, which takes it out of every rule).
-  const always = [...new Set([...(selectedId && inStorage(selectedId) ? [selectedId] : []), ...joined, ...filtered])].filter((id) => model.marts.has(id));
+  // The main mart is one of them, whatever the storage filter says.
+  const always = [...new Set([...(selectedId ? [selectedId] : []), ...joined, ...filtered])].filter((id) => model.marts.has(id));
   const withJoined = (ids: string[]) => (selectedId ? [...new Set([...ids, ...always])] : ids);
 
   // 0. A smart search found marts: the main mart and the joined marts first, then the hits, best first, then the marts whose title matches the query, then the marts that are always shown.

@@ -584,7 +584,7 @@ test('a click on a ghost adds it and pins it, its own ghosts show; a second clic
   await waitFor(() => expect(ghostEl('countries', 'customers.countries')).toBeNull());
 });
 
-test('Data Sources cards are lit and dimmed by the same rule in Grid and in Graph', async () => {
+test('Data Sources cards are lit by the same rule in Grid and in Graph, and neither dims them at rest', async () => {
   setup();
   await ready();
   await within(marts()).findByText('Customers');
@@ -593,14 +593,15 @@ test('Data Sources cards are lit and dimmed by the same rule in Grid and in Grap
   const sources = () => document.getElementById('band-sources')!;
   const lit = () => [...sources().querySelectorAll('.dm-node')].map((n) => `${n.id}:${n.classList.contains('lit')}`);
   const root = () => marts().closest('.dm-canvas')!;
-  await waitFor(() => expect(root()).toHaveClass('focused'));
+  await waitFor(() => expect(lit().some((s) => s.endsWith(':true'))).toBe(true));
+  expect(sources().querySelectorAll('.dm-faded')).toHaveLength(0);
   const inGrid = lit();
   expect(inGrid.some((s) => s.endsWith(':true'))).toBe(true);
   await toCanvas();
   await waitFor(() => expect(el('customers', 'customers')).not.toBeNull());
-  // Graph dims the Sources band, and only that band, with the Grid's rule: the lit cards are the same.
-  expect(root()).toHaveClass('sources-focused');
-  expect(root()).not.toHaveClass('focused');
+  // The lit cards are the same, and a resting Graph dims nothing either.
+  expect(root()).not.toHaveClass('sources-focused');
+  expect(document.querySelectorAll('.dm-faded')).toHaveLength(0);
   expect(lit()).toEqual(inGrid);
 });
 

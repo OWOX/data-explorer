@@ -193,10 +193,12 @@
 /* The keyboard ring is for a card that is not selected: the selected one already shows its border. */
 .dm-node:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary); }
 .dm-node[data-focused]:focus-visible, #band-sources .dm-node[aria-pressed='true']:focus-visible { box-shadow: none; }
-.dm-node.dm-unjoinable { opacity: 0.45; }
-.dm-node.dm-unjoinable:hover, .dm-node.dm-unjoinable:focus-visible { opacity: 0.7; }
-.dm-node.dm-ghost { border-width: 1px; border-style: dashed; opacity: 0.5; transition: none; }
-.dm-node.dm-ghost:hover, .dm-node.dm-ghost:focus-visible { opacity: 0.85; }
+/* A mart that is not in the report but can join it (a hover or focus ghost, or a band card with a main mart set) is not dimmed:
+   its 1px border is dashed, as its line is. Solid is in the report, dashed is a join that can be made. */
+.dm-node.dm-ghost, .dm-node.dm-offpath { border-width: 1px; border-style: dashed; }
+.dm-node.dm-ghost { transition: none; }
+/* Dimming has one meaning: another card is hovered, and this one is not it, on a line with it, or a mart it can join. */
+.dm-node.dm-faded { opacity: 0.5; }
 .dm-node.dm-drop-target { outline: 2px dashed var(--primary); outline-offset: 2px; }
 .dm-node.dm-drop-hot { outline-style: solid; }
 .dm-drag-ghost { position: fixed; z-index: 60; pointer-events: none; padding: 6px 10px; border-radius: 8px; font-size: 13px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 4px 12px rgb(0 0 0 / 0.18); }
@@ -269,14 +271,7 @@ button.dm-mark { cursor: pointer; }
 .dm-spin { animation: dm-spin 1s linear infinite; }
 @keyframes dm-spin { to { rotate: 360deg; } }
 
-/* Hovering a card is the only way to read a graph this dense: everything it does not touch drops
-   back, and its own lines come forward. Clicking pins that state so the pointer can leave. */
-.dm-canvas.focused .dm-node { opacity: 0.25; }
-.dm-canvas.focused .dm-node.lit { opacity: 1; }
-.dm-canvas.focused .dm-node[aria-pressed='true'] { opacity: 1; }
-.dm-canvas.sources-focused #band-sources .dm-node { opacity: 0.25; }
-.dm-canvas.sources-focused #band-sources .dm-node.lit { opacity: 1; }
-.dm-canvas.sources-focused #band-sources .dm-node[aria-pressed='true'] { opacity: 1; }
+/* Hovering a card drops what it does not touch to half (.dm-faded, set by the view); a pinned or focused card dims nothing. */
 /* A data mart the member cannot open: still a card, but plainly not one to expect anything from. */
 .dm-noaccess { opacity: 0.6; filter: grayscale(0.8); }
 /* The row count's retry: a badge that is also a button, without the browser's button chrome. */
@@ -298,7 +293,10 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 /* Blue crosses a band boundary: a source feeding a mart. Grey stays inside the Data Marts band:
    a join between two marts. */
 #wires .source, #tree-wires .source { stroke: var(--primary); }
+/* Solid is a join in the report (.joined), always drawn. Dashed is a join that can be made: with .ghost it is always drawn too,
+   at full strength; a plain one waits for a hover. Both views draw the same. */
 #wires .relationship, #tree-wires .relationship { stroke: var(--muted-foreground); stroke-dasharray: 5 4; }
+#wires .relationship.joined, #tree-wires .relationship.joined { stroke-dasharray: none; }
 #wires path.lit, #tree-wires path.lit { opacity: 1; }
 /* A second card's lines, while another is chosen: the lines they always were, at half strength.
    Colour says what a line is, so fading says which card asked for it. One class heavier than the
@@ -308,6 +306,8 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
    between two marts, and both ends sit in one band, so one arriving at the card in hand is drawn
    thin against the ones leaving it. A source line crosses bands, which already say which way it goes. */
 #wires path.relationship.inbound, #tree-wires path.relationship.inbound { stroke-width: 1; }
+/* After the lit and aside rules, so a line that is drawn at rest keeps full strength whatever lights it. */
+#wires path.relationship.joined, #wires path.relationship.ghost, #tree-wires path.relationship.joined, #tree-wires path.relationship.ghost { opacity: 1; }
 /* The card under the pointer takes its own run-health colour on its one 1px border; a card nothing has run stays grey.
    The background stays the card's own: only the selected card is tinted. */
 .dm-node.lit:hover {
@@ -740,10 +740,6 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-tree-node.dm-dimmed { opacity: 0.15; filter: grayscale(1); }
 /* The tree's lines are always drawn: the layout is the report, not a crowd to thin out. */
 #tree-wires path { opacity: 1; }
-#tree-wires .relationship { stroke-dasharray: none; }
-#tree-wires .relationship.ghost { stroke-dasharray: 5 4; opacity: 0.5; }
-/* A ghost's line follows its card: 0.85 while the ghost is hovered or focused (as .dm-node.dm-ghost). */
-#tree-wires .relationship.ghost.engaged { opacity: 0.85; }
 /* The lines of a card in hand step back at once, and return on drop. */
 #tree-wires .source.held, #tree-wires .relationship.held { opacity: 0.35; transition: none; }
 #drag-line { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 2; }
