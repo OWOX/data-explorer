@@ -399,39 +399,42 @@ describe('the dropdown', () => {
     expect(marts[0]).toHaveTextContent(/^Orders$/);
   });
 
-  test('the context filter offers only the found marts\' contexts, and a click on several narrows the rows to marts in any of them', async () => {
+  test('the context filter offers only the found marts\' contexts, and several picked at once keep the marts in any of them', async () => {
     const fx = demoFixtures();
-    fx.contexts.push({ id: 'c-unused', name: 'Unused', description: null, icon: null });
+    const set = (id: string, contexts: string[]) => { fx.marts.find((m) => m.id === id)!.contexts = contexts; };
+    fx.contexts.push({ id: 'c-other', name: 'Other', description: null, icon: null });
+    set('orders', ['c-sales']);
+    set('order_items', ['c-catalog']);
+    set('payments', ['c-sales', 'c-marketing']);
+    set('returns', ['c-marketing']);
+    // a mart the search does not find: its context is not offered
+    set('campaigns', ['c-other']);
     setup({ ctx: createMockCtx(fx, { latencyMs: 0, ai: false }) }).view();
     await ready();
     const u = user();
     const box = await typeIn(u, 'orders');
     await waitFor(() => expect(options().length).toBeGreaterThan(3));
-    const filter = screen.getByRole('group', { name: 'Filter by context' });
-    const chips = within(filter).getAllByRole('button');
-    const names = chips.map((c) => c.textContent);
-    expect(names).not.toContain('Unused');
     const martOf = (o: HTMLElement) => o.querySelector('.dm-sr-chip .dm-sr-name')!.textContent!;
-    const shown = () => options().slice(1).map(martOf);
-    const inCtx = (title: string, ids: string[]) => fx.marts.find((m) => m.title === title)!.contexts.some((c) => ids.includes(c));
-    const all = shown();
-    const ids = names.map((n) => fx.contexts.find((c) => c.name === n)!.id);
-    // every offered context belongs to a found mart
-    expect(ids.every((id) => all.some((t) => inCtx(t, [id])))).toBe(true);
+    const marts = () => [...new Set(options().slice(1).map(martOf))].sort();
+    expect(marts()).toEqual(['Customers', 'Order Items', 'Orders', 'Payments', 'Returns']);
+    const filter = screen.getByRole('group', { name: 'Filter by context' });
+    expect(within(filter).getAllByRole('button').map((c) => c.textContent)).toEqual(['Sales', 'Catalog', 'Marketing']);
+    const chip = (name: string) => within(filter).getByRole('button', { name });
+    // out of the Tab order, so the focus stays in the input
+    expect(chip('Sales')).toHaveAttribute('tabindex', '-1');
 
-    await u.click(chips[0]!);
-    expect(chips[0]).toHaveAttribute('aria-pressed', 'true');
+    await u.click(chip('Sales'));
+    expect(chip('Sales')).toHaveAttribute('aria-pressed', 'true');
     expect(box).toHaveFocus();
     expect(rowsText()[0]).toMatch(/^Ad-hoc report for/);
-    expect(shown().every((t) => inCtx(t, [ids[0]!]))).toBe(true);
-    if (chips.length > 1) {
-      await u.click(chips[1]!);
-      expect(shown().every((t) => inCtx(t, [ids[0]!, ids[1]!]))).toBe(true);
-      expect(shown().length).toBe(all.filter((t) => inCtx(t, [ids[0]!, ids[1]!])).length);
-    }
-    await u.click(chips[0]!);
-    if (chips.length > 1) await u.click(chips[1]!);
-    expect(shown()).toEqual(all);
+    expect(marts()).toEqual(['Orders', 'Payments']);
+    await u.click(chip('Catalog'));
+    expect(marts()).toEqual(['Order Items', 'Orders', 'Payments']);
+    await u.click(chip('Sales'));
+    expect(chip('Sales')).toHaveAttribute('aria-pressed', 'false');
+    expect(marts()).toEqual(['Order Items']);
+    await u.click(chip('Catalog'));
+    expect(marts()).toEqual(['Customers', 'Order Items', 'Orders', 'Payments', 'Returns']);
   });
 
   test('under two characters only a disabled ad-hoc row shows, and no search call is made', async () => {

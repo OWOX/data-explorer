@@ -1,5 +1,5 @@
 import { Box, FileSpreadsheet, Funnel, Loader2, Sparkles } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import type { Context, Model } from '../../model/types';
 import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
 import type { Row } from './useSmartSearch';
@@ -54,6 +54,10 @@ type Smart = {
  */
 export function SearchResults({ smart, id }: { smart: Smart; id: string }) {
   const { rows, highlighted, model, contexts, activeContextIds } = smart;
+  // The arrows can land on a row below the fold; Enter picks it, so it has to be seen.
+  useEffect(() => {
+    if (highlighted !== null) document.getElementById(optionId(id, highlighted))?.scrollIntoView?.({ block: 'nearest' });
+  }, [highlighted, id]);
   return (
     <div className="dm-search-results">
       {contexts.length > 0 && (
@@ -62,6 +66,8 @@ export function SearchResults({ smart, id }: { smart: Smart; id: string }) {
             <button
               key={c.id}
               type="button"
+              // Out of the Tab order: a click leaves the focus in the input, and Escape there closes the list without losing it.
+              tabIndex={-1}
               aria-pressed={activeContextIds.includes(c.id)}
               className="dm-badge dm-badge-toggle"
               // The press must not take focus from the input, so the arrows and Enter keep working.
