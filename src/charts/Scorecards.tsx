@@ -37,9 +37,6 @@ export function measureLabel(cf: ChartFields, m: Measure, scope: Measure[] = [m]
   return title && new Set(scope.map(pathOfMeasure)).size > 1 ? `${title} · Count Unique` : 'Count Unique';
 }
 
-/** The radio options of a "Metric" menu: each measure under the id it is saved as. */
-export const measureOptions = (cf: ChartFields, list: Measure[]) => list.map((m) => ({ value: measureId(m), label: measureLabel(cf, m, list) }));
-
 /** A mart's cards: its record count (when it has a primary key), then one per metric. A card keeps its id (what hides it and what a pick is saved under) and shows the measure `metrics` picked for it, when that is still one of the mart's. */
 export function cardsOf(mart: ChartMart, metrics: Record<string, string> = {}): Card[] {
   const own = defaultCards(mart);
