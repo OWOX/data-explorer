@@ -39,3 +39,8 @@ test('a joined mart without the chart date uses its default date with no range r
   show(mart([updated]), { hidden: new Set(), sparklines: true, metrics: {}, dates: {}, date: created });
   expect(asked().every((d) => d === null)).toBe(true);
 });
+
+test('a saved date the mart no longer shows falls back to the mart default and reads no range of its own', () => {
+  show(mart([created]), { hidden: new Set(), sparklines: true, metrics: {}, dates: { amount: 'updated_at' }, date: updated });
+  expect(asked().every((d) => d === null)).toBe(true);
+});

@@ -26,6 +26,19 @@ export function setCardDate(cur: ChartSettings, id: string, date: string, mart: 
   return { ...cur, scorecards: { ...cur.scorecards, dates } };
 }
 
+/**
+ * Drops the card picks that point at a column that is no longer shown (a metric picked for a card, a date picked for its trend), so showing
+ * the column again later does not silently switch the card. The same object comes back when nothing is stale, so callers can skip the save.
+ */
+export function dropStalePicks(cur: ChartSettings, metrics: ReadonlySet<string>, dates: ReadonlySet<string>): ChartSettings {
+  const keep = (m: Record<string, string> | undefined, known: ReadonlySet<string>) => Object.fromEntries(Object.entries(m ?? {}).filter(([, v]) => known.has(v)));
+  const m = keep(cur.scorecards?.metrics, metrics);
+  const d = keep(cur.scorecards?.dates, dates);
+  const same = (a: Record<string, string> | undefined, b: Record<string, string>) => Object.keys(a ?? {}).length === Object.keys(b).length;
+  if (same(cur.scorecards?.metrics, m) && same(cur.scorecards?.dates, d)) return cur;
+  return { ...cur, scorecards: { ...cur.scorecards, ...(cur.scorecards?.metrics ? { metrics: m } : {}), ...(cur.scorecards?.dates ? { dates: d } : {}) } };
+}
+
 export function listItems({ cf, settings, resolved, change }: { cf: ChartFields; settings: ChartSettings; resolved: { spec: ChartSpec; title: string | null }[]; change: Change }): MenuItem[] {
   const hidden = new Set(settings.scorecards?.hidden ?? []);
   const toggleCard = (id: string) => change((cur) => {

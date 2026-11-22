@@ -260,6 +260,16 @@ describe('the key alias of a join', () => {
     expect(got.filter((x) => x.depth === 2).map((x) => x.label)).toEqual(['Country (Contact, by Home org)', 'Country (Contact, by Work org)']);
   });
 
+  test('relabelling by key never reorders the sources: they are ordered by the mart\'s own title', () => {
+    const three = twice('billing_org', 'shipping_org') as { availableSources: unknown[]; blendedFields: unknown[] } & BlendableSchemaDto;
+    three.availableSources.push({ aliasPath: 'other', title: 'Organization 1', depth: 1, dataMartId: 'p', isIncluded: true, isAccessibleForReporting: true } as never);
+    three.blendedFields.push({ name: 'other__n', aliasPath: 'other', sourceDataMartId: 'p', originalFieldName: 'n', type: 'STRING' });
+    const alt: Schema = [fld('billing_id', 'Billing org'), fld('shipping_id', 'Shipping org')];
+    const paths = (alias?: Parameters<typeof joinedSources>[1]) => joinedSources(three, alias).map((x) => x.aliasPath);
+    expect(paths(keyAliasOf('m', three, { edges, schemaOf: () => alt }))).toEqual(paths());
+    expect(paths()).toEqual(['billing_org', 'shipping_org', 'other']);
+  });
+
   test('the loader labels by ordinal first, then again once it is given the edges and schemas, and tells subscribers', async () => {
     const loader = createBlendableLoader(stubCtx({ getJson: vi.fn(async () => two) }));
     const told = vi.fn();

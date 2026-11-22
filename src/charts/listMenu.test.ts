@@ -2,7 +2,7 @@ import { ChartSpline, Hash } from 'lucide-react';
 import { vi } from 'vitest';
 import type { ChartFields } from './fields';
 import { KINDS } from './kinds';
-import { hideCard, listItems, setCardDate, setCardMetric, tailItems } from './listMenu';
+import { dropStalePicks, hideCard, listItems, setCardDate, setCardMetric, tailItems } from './listMenu';
 import { cardsOf, martMeasures } from './Scorecards';
 import type { ChartSettings } from './settings';
 
@@ -100,4 +100,13 @@ test('a metric a card shows through its pick has no card of its own', () => {
   const mart = { ...cf.marts[0]!, metrics: [{ field: amount, fn: 'SUM' as const }, { field: qty, fn: 'SUM' as const }] };
   expect(cardsOf(mart, { amount: 'qty' }).map((c) => [c.id, c.measure.kind === 'metric' ? c.measure.metric.field.name : 'records'])).toEqual([['records:orders', 'records'], ['amount', 'qty']]);
   expect(cardsOf(mart, { amount: 'records' }).map((c) => c.id)).toEqual(['records:orders', 'amount', 'qty']);
+});
+
+test('dropStalePicks drops the metric and date picks of columns that are no longer shown, and returns the same object when none are', () => {
+  const cur: ChartSettings = { scorecards: { hidden: ['x'], metrics: { id: 'amount', a: 'gone' }, dates: { id: 'created_at', b: 'paid_at' } } };
+  expect(dropStalePicks(cur, new Set(['amount', 'records']), new Set(['created_at']))).toEqual({ scorecards: { hidden: ['x'], metrics: { id: 'amount' }, dates: { id: 'created_at' } } });
+  expect(dropStalePicks(cur, new Set(['amount', 'gone']), new Set(['created_at', 'paid_at']))).toBe(cur);
+  const bare: ChartSettings = { scorecards: { hidden: ['x'] } };
+  expect(dropStalePicks(bare, new Set(), new Set())).toBe(bare);
+  expect(dropStalePicks({}, new Set(), new Set())).toEqual({});
 });

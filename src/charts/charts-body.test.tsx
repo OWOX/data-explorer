@@ -181,6 +181,20 @@ test('a saved choice that names nothing shown falls back for this view and write
   expect(t.puts).not.toHaveBeenCalled();
 });
 
+test('a card pick of a column that is not shown is dropped from the saved settings once, and nothing is written when nothing is stale', async () => {
+  const t = await charts({ columns: ['id', 'status', 'created_at'], charts: { scorecards: { metrics: { id: 'amount' }, hidden: ['x'] } } });
+  await waitFor(() => expect(t.puts).toHaveBeenCalledTimes(1));
+  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, scorecards: { metrics: {}, hidden: ['x'] } });
+  await new Promise((r) => setTimeout(r, 50));
+  expect(t.puts).toHaveBeenCalledTimes(1);
+});
+
+test('a pick of a shown column is kept and writes nothing', async () => {
+  const t = await charts({ charts: { scorecards: { metrics: { id: 'amount' } } } });
+  await new Promise((r) => setTimeout(r, 50));
+  expect(t.puts).not.toHaveBeenCalled();
+});
+
 test('hiding a card from the Charts menu removes it and saves', async () => {
   const t = await charts();
   await waitFor(() => expect(cardNames(group('orders'))).toContain('Amount · Sum'));

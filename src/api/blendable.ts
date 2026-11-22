@@ -57,7 +57,7 @@ export interface BlendableLoader {
 /** The alias of the parent mart's key field a join goes by (a field alias only, never the raw name), when it is known. */
 export type KeyAlias = (source: AvailableSourceDto) => string | undefined;
 
-/** Joined fields of a mart as columns: only included, readable sources; no hidden or calculated field. Depth first, then title. */
+/** Joined fields of a mart as columns: only included, readable sources; no hidden or calculated field. Depth first, then the mart's own title (never the label, which a key alias or ordinal changes), so relabelling never reorders. */
 export function joinedSources(dto: BlendableSchemaDto, keyAlias?: KeyAlias): JoinedSource[] {
   const offered = (dto.availableSources ?? []).filter((s) => s.isIncluded && s.isAccessibleForReporting);
   const byPath = new Map<string, JoinedSource>();
@@ -107,7 +107,7 @@ export function joinedSources(dto: BlendableSchemaDto, keyAlias?: KeyAlias): Joi
       joined: { martId: source.martId, label: source.label, aliasPath: source.aliasPath, originalName: b.originalFieldName, ...(b.sourceFieldType ? { sourceType: b.sourceFieldType } : {}), ...(typeof b.aggregateFunction === 'string' && b.aggregateFunction ? { aggregateFunction: b.aggregateFunction } : {}) },
     });
   }
-  return [...byPath.values()].filter((s) => s.fields.length > 0).sort((a, b) => a.depth - b.depth || a.label.localeCompare(b.label) || a.aliasPath.localeCompare(b.aliasPath));
+  return [...byPath.values()].filter((s) => s.fields.length > 0).sort((a, b) => a.depth - b.depth || (a.name ?? a.label).localeCompare(b.name ?? b.label) || a.aliasPath.localeCompare(b.aliasPath));
 }
 
 /** What the loader knows without a read: the model's edges and the schemas already loaded. */

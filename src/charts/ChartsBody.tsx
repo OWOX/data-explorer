@@ -12,12 +12,12 @@ import { Skeleton } from '../ui/Skeleton';
 import { chartFields, menuOf } from './fields';
 import type { HavingKeys } from './havingKeys';
 import { ChartMenu } from './ChartMenu';
-import { hideCard, listItems, setCardDate, setCardMetric, tailItems } from './listMenu';
+import { dropStalePicks, hideCard, listItems, setCardDate, setCardMetric, tailItems } from './listMenu';
 import { ChartsMenuSlot } from './menuSlot';
 import { joinGrainOf } from './answers';
-import { MartCards, useScorecards } from './Scorecards';
+import { MartCards, martMeasures, useScorecards } from './Scorecards';
 import { KINDS } from './kinds';
-import { chartsOf, patchChart, scorecardsOf, type ChartSettings, type ChartSpec, type Spark } from './settings';
+import { chartsOf, measureId, patchChart, scorecardsOf, type ChartSettings, type ChartSpec, type Spark } from './settings';
 import { useBucket } from './useBucket';
 
 /** The gutter cell of a row that is not a data row; the grid has the same one. */
@@ -63,6 +63,16 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     const build = (on: string[]) => chartFields(schema, on, agg, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), Object.fromEntries(groups.map((g) => [g.path, g.title])), Object.fromEntries(sources.map((x) => [x.aliasPath, x.mainGrainCollapse ?? 'collapses'])), Object.fromEntries(groups.map((g) => [g.path, g.icon])));
     return { ...build(shown), menu: build(schema.map((f) => f.name)) };
   }, [schema, shown, agg, martId, groups, sources]);
+  // A card's saved pick of a column that is no longer shown is dropped, once the saved settings are in: shown again later, the column must not
+  // quietly take the card over. One write, and none when nothing is stale.
+  useEffect(() => {
+    if (!settings) return;
+    const metrics = new Set(cf.marts.flatMap((m) => martMeasures(m).map(measureId)));
+    const dates = new Set(cf.marts.flatMap((m) => m.dates.map((d) => d.name)));
+    if (dropStalePicks(settings, metrics, dates) !== settings) change((cur) => dropStalePicks(cur, metrics, dates));
+    // `change` only reads refs and state setters, so it is left out on purpose.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings, cf]);
   const schemaNames = useMemo(() => new Set(schema.map((f) => f.name)), [schema]);
   const joins = useMemo(() => joinGrainOf(sources), [sources]);
   const specs = chartsOf(settings ?? {});
