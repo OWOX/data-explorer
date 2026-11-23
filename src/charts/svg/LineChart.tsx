@@ -1,8 +1,9 @@
-import { useMemo, type KeyboardEvent } from 'react';
+import { useId, useMemo, type KeyboardEvent } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
-import { swatchStyle, thinColor } from '../blank';
+import { BLANK_KEY, swatchStyle, thinColor } from '../blank';
 import { useWidth } from '../useWidth';
 import type { Series } from './BarChart';
+import { BlankDefs, blankLines } from './BlankPattern';
 import { niceTicks } from './ticks';
 import { XTitle, Y_TITLE_W, YTitle } from './YTitle';
 
@@ -25,6 +26,7 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
   integerLeft?: boolean; integerRight?: boolean;
 }) {
   const { ref, width } = useWidth<HTMLDivElement>();
+  const blankId = `dm-blank-${useId().replace(/:/g, '')}`;
   // Buckets are the sorted union of every series' x, so a value is always placed under its own bucket (the two reads may differ).
   const seen = new Map<string, string>();
   for (const s of [...left, ...(right ? [right] : [])]) for (const p of s.points) if (!seen.has(p.x)) seen.set(p.x, p.label);
@@ -67,6 +69,7 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
   return (
     <div ref={ref} className="dm-line-chart">
       <svg role={xs.some((p) => pickable(p.x)) ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+        <BlankDefs id={blankId} lines />
         {tl.ticks.map((t) => (
           <g key={t}>
             <line className="dm-chart-grid" x1={leftW} x2={leftW + plotW} y1={py(t, tl.top)} y2={py(t, tl.top)} />
@@ -78,6 +81,7 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
         {right && yTitleRight && <YTitle x={leftW + plotW + rightW - 8} mid={TOP + PLOT_H / 2} length={PLOT_H} text={yTitleRight} />}
         {xs.map((p, i) => (i % labelStep === 0 ? <text key={p.x} className="dm-chart-text" x={px(i)} y={TOP + PLOT_H + 16} textAnchor="middle">{p.label}</text> : null))}
         {xTitle && <XTitle x={leftW + plotW / 2} y={TOP + PLOT_H + AXIS_H + 10 + TITLE_GAP} width={plotW} text={xTitle} />}
+        {xs.map((p, i) => (p.x === BLANK_KEY ? <rect key="blank-band" data-blank-hatch={p.x} x={Math.max(leftW, px(i) - band / 2)} y={TOP} width={Math.min(band, plotW)} height={PLOT_H} fill={blankLines(blankId)} style={{ pointerEvents: 'none' }} /> : null))}
         {area && all.map(({ s, max }) => <path key={`a-${s.key ?? s.name}`} data-area={s.name} d={areaOf(s, max)} fill={thinColor(s.color)} fillOpacity={0.18} stroke="none" />)}
         {all.map(({ s, max }, k) => <path key={s.key ?? s.name} data-line={s.name} d={pathOf(s, max)} fill="none" stroke={thinColor(s.color)} strokeWidth={2} strokeDasharray={right && k === all.length - 1 ? '5 3' : undefined} strokeLinejoin="round" strokeLinecap="round" />)}
         {xs.map((p, i) => {

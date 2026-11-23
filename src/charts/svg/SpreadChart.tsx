@@ -43,8 +43,8 @@ export function SpreadChart({ rows, ariaLabel, formatTick, onPick, yTitle }: { r
             <Tooltip key={r.key} content={`${r.label}: ${r.text}`}>
               <g {...pick}>
                 <text className="dm-chart-text" x={left - 6} y={mid} textAnchor="end" dominantBaseline="middle">{r.label}</text>
-                {r.min !== null && r.max !== null && <line data-whisker={r.key} x1={px(r.min)} x2={px(r.max)} y1={mid} y2={mid} stroke="var(--dm-series-1)" strokeWidth={1.5} />}
-                <rect data-box={r.key} x={px(r.p25)} y={mid - 7} width={Math.max(1, px(r.p75) - px(r.p25))} height={14} fill={isBlankKey(r.key) ? blankFill(BLANK_COLOR, blankId) : 'var(--dm-series-1)'} fillOpacity={isBlankKey(r.key) ? 1 : 0.35} stroke="var(--dm-series-1)" />
+                {r.min !== null && r.max !== null && <line data-whisker={r.key} x1={px(r.min)} x2={px(r.max)} y1={mid} y2={mid} stroke={isBlankKey(r.key) ? 'var(--muted-foreground)' : 'var(--dm-series-1)'} strokeWidth={1.5} />}
+                <rect data-box={r.key} x={px(r.p25)} y={mid - 7} width={Math.max(1, px(r.p75) - px(r.p25))} height={14} fill={isBlankKey(r.key) ? blankFill(BLANK_COLOR, blankId) : 'var(--dm-series-1)'} fillOpacity={isBlankKey(r.key) ? 1 : 0.35} stroke={isBlankKey(r.key) ? 'var(--muted-foreground)' : 'var(--dm-series-1)'} />
                 <line data-median={r.key} x1={px(r.p50)} x2={px(r.p50)} y1={mid - 8} y2={mid + 8} stroke="var(--foreground)" strokeWidth={2} />
               </g>
             </Tooltip>

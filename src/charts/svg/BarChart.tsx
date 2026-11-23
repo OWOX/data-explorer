@@ -1,7 +1,7 @@
 import { useId, type KeyboardEvent, type MouseEvent } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
 import { BLANK_COLOR, BLANK_KEY, swatchStyle } from '../blank';
-import { BlankDefs, blankFill } from './BlankPattern';
+import { BlankDefs, blankFill, blankLines } from './BlankPattern';
 import { useWidth } from '../useWidth';
 import type { Point } from './Sparkline';
 import { niceTicks } from './ticks';
@@ -95,7 +95,13 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
       const rect = vertical
         ? <rect {...common} x={left + i * band + GAP / 2} y={TOP + PLOT_H - at - seg} width={Math.max(1, band - GAP)} height={seg} />
         : <rect {...common} x={left + at} y={TOP + i * ROW_H + GAP / 2} width={seg} height={ROW_H - GAP} />;
-      return rect;
+      if (!(isStacked && xs[i]?.x === BLANK_KEY)) return rect;
+      // A stacked blank bucket keeps its series colours; stripes over each segment mark it as blank.
+      const rest = { style: common.style };
+      const over = vertical
+        ? <rect {...rest} fill={blankLines(blankId)} data-blank-hatch={s.name} x={left + i * band + GAP / 2} y={TOP + PLOT_H - at - seg} width={Math.max(1, band - GAP)} height={seg} />
+        : <rect {...rest} fill={blankLines(blankId)} data-blank-hatch={s.name} x={left + at} y={TOP + i * ROW_H + GAP / 2} width={seg} height={ROW_H - GAP} />;
+      return <g key={`${i}-${k}`}>{rect}{over}</g>;
     });
   });
 
@@ -117,7 +123,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   return (
     <div ref={ref} className="dm-bar-chart">
       <svg role={anyPick ? 'group' : 'img'} aria-label={ariaLabel} data-orientation={orientation} width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
-        <BlankDefs id={blankId} />
+        <BlankDefs id={blankId} lines={isStacked} />
         {ticks.map((t, k) => {
           const pos = vertical ? TOP + PLOT_H - scale(t) : left + scale(t);
           return (

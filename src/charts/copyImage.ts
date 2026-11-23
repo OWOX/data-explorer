@@ -3,7 +3,7 @@
 
 const SCALE = 2;
 const PAD = 16;
-const STYLE_PROPS = ['fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-dasharray', 'opacity', 'font-size', 'font-family', 'font-weight'] as const;
+const STYLE_PROPS = ['fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-dasharray', 'stroke-linejoin', 'stroke-linecap', 'opacity', 'font-size', 'font-family', 'font-weight'] as const;
 
 /** Writes each element's computed paint and font onto the clone, so the image needs no stylesheet or CSS variable. */
 export function inlineStyles(source: SVGElement, clone: SVGElement): void {
