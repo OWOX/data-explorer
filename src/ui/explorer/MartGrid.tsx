@@ -940,10 +940,12 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
                       <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} unique={g.main ? uniqueKey : undefined} agg={agg} open={fieldsOpen === g.path} onOpenChange={(o) => {
                         setFieldsOpen((cur) => (o ? g.path : cur === g.path ? null : cur));
                       }} onCloseAutoFocus={(e) => {
-                        // A list opened from a rule mark gives focus back to that mark, not to the Fields button.
+                        // A list opened from a rule mark gives focus back to that mark, not to the Fields button. Focus the member already moved elsewhere (a Tab out of the list) stays where it went.
                         const m = openedBy.current;
                         openedBy.current = null;
-                        if (m?.isConnected) { e.preventDefault(); m.focus(); }
+                        const a = document.activeElement;
+                        const lost = !a || a === document.body || !!(e.currentTarget as Element | null)?.contains(a);
+                        if (m?.isConnected && lost) { e.preventDefault(); m.focus(); }
                       }} />
                       {(several || !g.main) && (
                         <Tooltip content={`Remove ${g.title} from the grid`}>
