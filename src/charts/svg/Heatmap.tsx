@@ -3,6 +3,7 @@ import { Tooltip } from '../../ui/Tooltip';
 import { BLANK_KEY } from '../blank';
 import { BlankDefs, blankLines } from './BlankPattern';
 import { fitText, textWidth } from './fitText';
+import { CutLabel } from './CutLabel';
 import { useWidth } from '../useWidth';
 import { XTitle, Y_TITLE_W, YTitle } from './YTitle';
 
@@ -33,7 +34,7 @@ export function Heatmap({ xs, ys, cell, ariaLabel, onPick, canPickX, xTitle, yTi
       <svg role={onPick ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
         <BlankDefs id={blankId} lines />
         {yTitle && <YTitle x={8} mid={TOP + (ys.length * ROW_H) / 2} length={ys.length * ROW_H} text={yTitle} />}
-        {ys.map((y, j) => <text key={y.key} className="dm-chart-text" x={left - 6} y={TOP + j * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle"><title>{y.label}</title>{fitText(y.label, labelW - 10)}</text>)}
+        {ys.map((y, j) => <CutLabel key={y.key} full={y.label} shown={fitText(y.label, labelW - 10)} className="dm-chart-text" x={left - 6} y={TOP + j * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle" />)}
         {xs.map((x, i) => (i % labelStep === 0 ? <text key={x.key} className="dm-chart-text" x={left + i * colW + colW / 2} y={TOP + ys.length * ROW_H + 16} textAnchor="middle">{x.label}</text> : null))}
         {xTitle && <XTitle x={left + (xs.length * colW) / 2} y={TOP + ys.length * ROW_H + AXIS_H + 10 + TITLE_GAP} width={xs.length * colW} text={xTitle} />}
         {xs.flatMap((x, i) => ys.map((y, j) => {

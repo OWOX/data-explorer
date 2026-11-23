@@ -1,5 +1,6 @@
 import { useId, type KeyboardEvent, type MouseEvent } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
+import { CutLabel } from './CutLabel';
 import { BLANK_COLOR, BLANK_KEY, swatchStyle } from '../blank';
 import { BlankDefs, blankFill, blankLines } from './BlankPattern';
 import { fitText, textWidth } from './fitText';
@@ -15,6 +16,8 @@ const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key 
 const PLOT_H = 240;
 const ROW_H = 20;
 const GAP = 2;
+/** The white seam between two segments of a stack. */
+const SEAM = 1;
 const RADIUS = 2;
 const TOP = 8;
 const AXIS_H = 24;
@@ -87,7 +90,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
     return live.map((s, k) => {
       const p = s.points[i]!;
       const size = scale(p.y!);
-      const seg = Math.max(0.5, size - (k === live.length - 1 ? 0 : GAP)); // the surface gap sits below each lower segment
+      const seg = Math.max(0.5, size - (k === live.length - 1 ? 0 : SEAM)); // the seam sits below each lower segment
       const at = offset;
       offset += size;
       const round = k === live.length - 1; // only the data end is rounded
@@ -137,8 +140,8 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
         })}
         {xs.map((p, i) => (i % labelStep === 0 ? (
           vertical
-            ? <text key={p.x} className="dm-chart-text" x={left + i * band + band / 2} y={TOP + PLOT_H + 16} textAnchor="middle">{categorical ? <><title>{p.label}</title>{fitted(p.label)}</> : p.label}</text>
-            : <text key={p.x} className="dm-chart-text" x={left - 6} y={TOP + i * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle"><title>{p.label}</title>{rowLabel(p.label)}</text>
+            ? <CutLabel key={p.x} full={p.label} shown={categorical ? fitted(p.label) : p.label} className="dm-chart-text" x={left + i * band + band / 2} y={TOP + PLOT_H + 16} textAnchor="middle" />
+            : <CutLabel key={p.x} full={p.label} shown={rowLabel(p.label)} className="dm-chart-text" x={left - 6} y={TOP + i * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle" />
         ) : null))}
         {sideTitle && <YTitle x={8} mid={TOP + (vertical ? PLOT_H : xs.length * ROW_H) / 2} length={vertical ? PLOT_H : xs.length * ROW_H} text={sideTitle} />}
         {bottomTitle && <XTitle x={left + plotW / 2} y={(vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H) + 10 + TITLE_GAP} width={plotW} text={bottomTitle} />}
