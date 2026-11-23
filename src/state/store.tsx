@@ -55,7 +55,7 @@ export type State = {
 export type SourceOf = (martId: string) => string | null;
 
 export type Action =
-  | { type: 'init'; focusId: string }
+  | { type: 'init'; focusId: string; sourceKey?: string | null }
   | { type: 'selectSource'; key: string | null }
   | { type: 'selectMart'; id: string; sourceOf: SourceOf }
   | { type: 'openRecord'; martId: string; pk: Record<string, unknown>; sourceOf: SourceOf }
@@ -126,7 +126,7 @@ const valuesOf = (grids: Record<string, GridState>, keys: string[]): Record<stri
 export function reducer(state: State, a: Action): State {
   const cur = state.selection;
   switch (a.type) {
-    case 'init': return cur.martId ? state : { ...state, selection: { ...cur, martId: a.focusId } };
+    case 'init': return cur.martId ? state : { ...state, selection: { ...cur, martId: a.focusId, ...(a.sourceKey !== undefined ? { sourceKey: a.sourceKey } : {}) } };
     case 'selectSource': return move(state, { sourceKey: a.key === cur.sourceKey ? null : a.key, martId: null, record: null });
     case 'selectMart': return move(state, { sourceKey: sourceFor(cur, a.id, a.sourceOf), martId: a.id, record: null });
     case 'openRecord': return move(state, {

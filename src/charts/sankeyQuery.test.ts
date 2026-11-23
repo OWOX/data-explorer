@@ -47,3 +47,12 @@ test('the low read is the flow read sorted the other way, a few rows', () => {
   // A count has no NULL sum: no HAVING.
   expect(sankeyLowQuery([src, dst], recs, []).filter).toBeUndefined();
 });
+
+test('fan-out reads one pair at a time: two columns plus the measure, capped like the flow read, with its own few-row read', () => {
+  const o = sankeyFlowQuery([src, dst], sum, base);
+  expect(o).toEqual({ column: ['source', 'status', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' }], sort: [{ column: 'amount', direction: 'desc' }], limit: SANKEY_FLOW_LIMIT, filter: base });
+  const low = sankeyLowQuery([dst, chan], sum, base);
+  expect(low.column).toEqual(['status', 'channel', 'amount']);
+  expect(low.sort).toEqual([{ column: 'amount', direction: 'asc' }]);
+  expect(low.limit).toBe(SANKEY_LOW_LIMIT);
+});

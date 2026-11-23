@@ -267,8 +267,10 @@ export function CardBands({
     if (focusNode && shown.has(focusNode.martId)) {
       const from = martElementId(focusNode.martId, focusNode.path || undefined);
       const name = (id: string) => model.marts.get(id)?.title ?? id;
-      for (const [id, source] of joinableAt) out.push({ id: `ghost:${id}@${source.aliasPath}`, from, to: martElementId(id), kind: 'relationship', title: `${name(focusNode.martId)} → ${name(id)}`, dashed: true });
-      for (const source of focusGhosts) out.push({ id: `ghost:${source.aliasPath}`, from, to: martElementId(source.martId, source.aliasPath), kind: 'relationship', title: `${name(focusNode.martId)} → ${name(source.martId)}`, dashed: true });
+      // A dashed line names its relationship like a solid one, so the second relationship to a mart gets its own dot.
+      const noteOfGhost = (parentId: string, source: JoinedSource) => relationshipNote(edgeOf(model.edges, parentId, source.martId, source.aliasPath, source.relationshipId), name(source.martId));
+      for (const [id, source] of joinableAt) { const note = noteOfGhost(focusNode.martId, source); out.push({ id: `ghost:${id}@${source.aliasPath}`, from, to: martElementId(id), kind: 'relationship', title: `${name(focusNode.martId)} → ${name(id)}`, dashed: true, ...(note ? { note } : {}) }); }
+      for (const source of focusGhosts) { const note = noteOfGhost(focusNode.martId, source); out.push({ id: `ghost:${source.aliasPath}`, from, to: martElementId(source.martId, source.aliasPath), kind: 'relationship', title: `${name(focusNode.martId)} → ${name(source.martId)}`, dashed: true, ...(note ? { note } : {}) }); }
     }
     // A report mart's own card: the main one, or the first path it is joined at.
     const cardOf = (id: string) => { const n = nodes.find((x) => x.martId === id); return n ? martElementId(id, n.path || undefined) : martElementId(id); };
@@ -293,7 +295,8 @@ export function CardBands({
         if (!source) continue;
         const parent = parentPath(source.aliasPath);
         const parentMart = canvasTree!.nodes.get(parent)?.martId ?? joinSources.find((x) => x.aliasPath === parent)?.martId;
-        out.push({ id: `ghost:${source.aliasPath}@band`, from: hopCard(parent), to: martElementId(id), kind: 'relationship', title: `${parentMart ? name(parentMart) : ''} → ${name(id)}`, dashed: true });
+        const note = parentMart ? relationshipNote(edgeOf(model.edges, parentMart, id, source.aliasPath, source.relationshipId), name(id)) : null;
+        out.push({ id: `ghost:${source.aliasPath}@band`, from: hopCard(parent), to: martElementId(id), kind: 'relationship', title: `${parentMart ? name(parentMart) : ''} → ${name(id)}`, dashed: true, ...(note ? { note } : {}) });
       }
     }
     // The other edges between marts stay plain: dashed, and drawn when a card on one is lit.

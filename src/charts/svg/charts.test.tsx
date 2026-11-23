@@ -13,6 +13,8 @@ import { SpreadChart } from './SpreadChart';
 import { Sparkline, type Point } from './Sparkline';
 
 const pt = (i: number, y: number | null): Point => ({ x: `2026-0${i}`, y, label: `M${i}`, valueText: y === null ? '' : `v${y}` });
+/** True once the app tooltip is open with exactly this text. */
+const tipText = async (text: string) => (await screen.findAllByRole('tooltip')).some((t) => t.textContent === text);
 const wrap = (ui: React.ReactElement) => render(<TooltipProvider>{ui}</TooltipProvider>);
 
 test('Sparkline renders one path with the aria label, and a table of the values', () => {
@@ -46,14 +48,17 @@ test('BarChart shows the X field name under the bucket labels, and nothing witho
   expect(container.querySelector('.dm-chart-axis-title')).toBeNull();
 });
 
-test('BarChart truncates a long X field name and keeps the full name in a title', () => {
+test('BarChart truncates a long X field name and shows the full name in the app tooltip', async () => {
   const long = 'a_very_long_field_name_'.repeat(8);
   const { container } = wrap(<BarChart series={two} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} xTitle={long} />);
   const el = container.querySelector('.dm-chart-axis-title')!;
   const shown = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('');
   expect(shown).toMatch(/…$/);
   expect(shown.length).toBeLessThan(long.length);
-  expect(el.querySelector('title')).toHaveTextContent(long);
+  expect(el.querySelector('title')).toBeNull();
+  expect(el).toHaveAttribute('aria-label', long);
+  await userEvent.hover(el);
+  expect(await tipText(long)).toBe(true);
 });
 
 test('BarChart horizontal: rows are 20px with a 2px gap, no legend for one series', () => {
@@ -268,7 +273,7 @@ test('the X title keeps 8px more room under the tick labels in the line, scatter
   expect(Number(heat.querySelector('.dm-chart-axis-title')!.getAttribute('y')) - tick(heat)).toBeGreaterThanOrEqual(26);
 });
 
-const yTitles = (c: HTMLElement) => [...c.querySelectorAll('[data-y-title]')].map((t) => ({ text: t.querySelector('title')!.textContent, rotated: t.getAttribute('transform')?.startsWith('rotate(-90') }));
+const yTitles = (c: HTMLElement) => [...c.querySelectorAll('[data-y-title]')].map((t) => ({ text: t.getAttribute('aria-label') ?? t.textContent, rotated: t.getAttribute('transform')?.startsWith('rotate(-90') }));
 
 test('every chart with a Y axis draws its title vertically beside the ticks', () => {
   const bar = wrap(<BarChart series={two} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} xTitle="Date" yTitle="Amount · Sum" />).container;
@@ -307,13 +312,16 @@ test('PieChart: the blank slice and a real value named "(blank)" are separate el
 const many = (n: number, label: (i: number) => string): Series[] => [{ name: 'A', color: 'red', points: Array.from({ length: n }, (_, i) => ({ x: `k${i}`, y: i + 1, label: label(i), valueText: `v${i}` })) }];
 const xLabels = (c: HTMLElement) => [...c.querySelectorAll('svg > text.dm-chart-text')];
 
-test('BarChart categorical: every label shows, cut to its column with the full text in a title; date buckets still skip', () => {
+test('BarChart categorical: every label shows, cut to its column with the full text in the app tooltip; date buckets still skip', async () => {
   const long = (i: number) => `Category number ${i}`;
   const cat = wrap(<BarChart series={many(30, long)} orientation="vertical" categorical ariaLabel="b" formatTick={(n) => `${n}`} />);
   const labels = xLabels(cat.container);
   expect(labels).toHaveLength(30);
   const first = labels[0]!;
-  expect(first.querySelector('title')).toHaveTextContent('Category number 0');
+  expect(first.querySelector('title')).toBeNull();
+  expect(first).toHaveAttribute('aria-label', 'Category number 0');
+  await userEvent.hover(first);
+  expect(await tipText('Category number 0')).toBe(true);
   expect(first.textContent!.replace('Category number 0', '').length).toBeLessThan('Category number 0'.length);
   expect(first.textContent).toMatch(/…/);
   cat.unmount();
@@ -325,7 +333,8 @@ test('BarChart categorical: every label shows, cut to its column with the full t
 test('BarChart categorical: a short label that fits is shown whole, and the first label stays right of the value axis', () => {
   const { container } = wrap(<BarChart series={many(3, (i) => `c${i}`)} orientation="vertical" categorical ariaLabel="b" formatTick={(n) => `${n}`} />);
   const labels = xLabels(container);
-  expect(labels.map((l) => l.querySelector('title')?.textContent)).toEqual(['c0', 'c1', 'c2']);
+  expect(labels.map((l) => l.textContent)).toEqual(['c0', 'c1', 'c2']);
+  for (const l of labels) expect(l.querySelector('title')).toBeNull();
   const tickX = Math.max(...[...container.querySelectorAll('.dm-chart-tick text')].map((t) => Number(t.getAttribute('x'))));
   expect(Number(labels[0]!.getAttribute('x'))).toBeGreaterThan(tickX);
 });
@@ -362,7 +371,7 @@ test('a blank bar is filled with the hatch pattern and has no stroke', () => {
   expect(container.querySelector('rect[data-series="A"]')).toHaveAttribute('fill', 'red');
 });
 
-test('the line, heatmap and scatter X titles are cut to the plot with the full text in a hover title', () => {
+test('the line, heatmap and scatter X titles are cut to the plot with the full text in the app tooltip', async () => {
   const long = 'Created at | A long data mart title '.repeat(6).trim();
   const shownOf = (el: Element) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('');
   const charts = [
@@ -372,7 +381,8 @@ test('the line, heatmap and scatter X titles are cut to the plot with the full t
   ];
   for (const { container } of charts) {
     const title = container.querySelector('.dm-chart-axis-title:not([data-y-title])')!;
-    expect(title.querySelector('title')).toHaveTextContent(long);
+    expect(title.querySelector('title')).toBeNull();
+    expect(title).toHaveAttribute('aria-label', long);
     expect(shownOf(title)).toMatch(/…$/);
     expect(shownOf(title).length).toBeLessThan(long.length);
   }
@@ -481,16 +491,17 @@ test('Heatmap keeps the focusable cell as the tooltip trigger and the spread bla
   expect(sp.container.querySelector('line[data-whisker]')).toHaveAttribute('stroke', 'var(--muted-foreground)');
 });
 
-test('a horizontal bar chart cuts a long row label with an ellipsis and keeps the full text in a title; a short one is unchanged', () => {
+test('a horizontal bar chart cuts a long row label with an ellipsis and keeps the full text for the app tooltip; a short one is unchanged', () => {
   const long = 'Google Sheets Export Run Successful and then some more';
   const s: Series[] = [{ name: 'C', color: 'red', points: [px('short', 1), px(long, 2)] }];
   const { container } = wrap(<BarChart series={s} orientation="horizontal" stacked={false} ariaLabel="b" formatTick={String} yTitle="Usage" xTitle="Activity" />);
-  const texts = [...container.querySelectorAll('text.dm-chart-text')].filter((t) => t.querySelector('title'));
-  const short = texts.find((t) => t.querySelector('title')!.textContent === 'short')!;
-  const cut = texts.find((t) => t.querySelector('title')!.textContent === long)!;
-  expect(short.textContent).toBe('shortshort');
-  expect(cut.textContent!.replace(long, '')).toMatch(/…$/);
-  expect(cut.textContent!.length).toBeLessThan(long.length * 2);
+  const texts = [...container.querySelectorAll('text.dm-chart-text')];
+  const short = texts.find((t) => t.textContent === 'short')!;
+  const cut = texts.find((t) => t.getAttribute('aria-label') === long)!;
+  expect(short).not.toHaveAttribute('aria-label');
+  expect(cut.textContent).toMatch(/…$/);
+  expect(cut.textContent!.length).toBeLessThan(long.length);
+  expect(container.querySelector('title')).toBeNull();
 });
 
 test('bars have a 2px corner radius', () => {
@@ -510,13 +521,13 @@ const LONG = 'Automation Operation Run Successful and a lot more text after it';
 /** The shown (cut) text of a label and its right edge, the way the charts position it. */
 const shownOf = (el: Element) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('');
 
-test('row labels of bar, heatmap and spread are cut with a title and end clear of the side title strip', () => {
+test('row labels of bar, heatmap and spread are cut and end clear of the side title strip', () => {
   const bar = wrap(<BarChart series={[{ name: 'C', color: 'red', points: [px(LONG, 2)] }]} orientation="horizontal" stacked={false} ariaLabel="b" formatTick={String} yTitle="Usage" xTitle="Activity" />);
   const heat = wrap(<Heatmap xs={[{ key: 'x', label: 'X' }]} ys={[{ key: LONG, label: LONG }]} ariaLabel="H" yTitle="Rows" cell={() => ({ value: 1, text: '1' })} />);
   const row = { key: LONG, label: LONG, p25: 1, p50: 2, p75: 3, min: null, max: null, text: 't' };
   const sp = wrap(<SpreadChart ariaLabel="Sp" formatTick={String} rows={[row]} yTitle="Rows" />);
   for (const { container } of [bar, heat, sp]) {
-    const t = [...container.querySelectorAll('text.dm-chart-text')].find((e) => e.querySelector('title')?.textContent === LONG)!;
+    const t = [...container.querySelectorAll('text.dm-chart-text')].find((e) => e.textContent!.startsWith(LONG.slice(0, 12)))!;
     expect(shownOf(t)).toMatch(/…$/);
     expect(shownOf(t).length).toBeLessThan(LONG.length);
     expect(+t.getAttribute('x')! - shownOf(t).length * 6).toBeGreaterThanOrEqual(16); // jsdom estimate: 6px a character
@@ -529,4 +540,20 @@ test('fitText cuts on code points, so an emoji is never split', async () => {
   expect(cut).toMatch(/…$/);
   expect([...cut].every((c) => c !== '\uFFFD' && !/[\uD800-\uDFFF]/.test(c) || c.length === 2)).toBe(true);
   expect(fitText('short', 400)).toBe('short');
+});
+
+test('a cut row label shows the full text in the app tooltip; a short one has none; no native title', async () => {
+  const long = 'Organic Search | Direct | Referral | A very long channel grouping';
+  const { container } = wrap(<Heatmap xs={[{ key: 'x1', label: 'X1' }]} ys={[{ key: 'y1', label: long }, { key: 'y2', label: 'Short' }]} ariaLabel="H" cell={() => ({ value: 1, text: '1' })} />);
+  expect(container.querySelector('title')).toBeNull();
+  const cut = container.querySelector(`text[aria-label="${long}"]`)!;
+  expect(cut.textContent).toMatch(/…$/);
+  expect(container.querySelectorAll('text[aria-label]')).toHaveLength(1);
+  await userEvent.hover(cut);
+  expect(await tipText(long)).toBe(true);
+
+  const bars = wrap(<BarChart series={many(2, () => long)} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} />).container;
+  expect(bars.querySelector('title')).toBeNull();
+  await userEvent.hover(bars.querySelector(`text[aria-label="${long}"]`)!);
+  expect(await tipText(long)).toBe(true);
 });

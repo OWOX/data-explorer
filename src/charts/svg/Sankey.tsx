@@ -1,5 +1,6 @@
 import { useId, useCallback, useEffect, useMemo, useRef, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
+import { CutLabel } from './CutLabel';
 import { BLANK_COLOR, thinColor, labelOf, OTHER_KEY } from '../blank';
 import { BlankDefs, blankFill } from './BlankPattern';
 import { layoutSankey, REST_ORIGIN, type Flow, type NodeSize, type SankeyLink, type Tone } from '../sankeyLayout';
@@ -20,8 +21,8 @@ const clip = (text: string, max: number): string => (text.length <= max ? text :
  * (a ribbon takes the colour of its first-column node); `text` formats a value. A node click gives its column and key, a ribbon click its pair and both keys;
  * "Other" is never clickable. Hover never re-renders: it sets `data-hot` on the svg and `is-on` / `is-hot` on the lit elements, and charts.css does the dimming. Only nodes are tab stops: ribbons answer the mouse, and the screen-reader table lists them.
  */
-export function Sankey({ titles, columns, flows, text, ariaLabel, onPickNode, onPickLink }: {
-  titles: string[]; columns?: NodeSize[][]; flows: Flow[][]; text: (value: number) => string; ariaLabel: string;
+export function Sankey({ titles, columns, flows, fit, text, ariaLabel, onPickNode, onPickLink }: {
+  titles: string[]; columns?: NodeSize[][]; flows: Flow[][]; /** Fan-out mode: ribbons that add up to more than their node are scaled to fit it. */ fit?: boolean; text: (value: number) => string; ariaLabel: string;
   onPickNode?: (col: number, key: string) => void; onPickLink?: (pair: number, source: string, target: string) => void;
 }) {
   const { ref, width } = useWidth<HTMLDivElement>();
@@ -41,15 +42,15 @@ export function Sankey({ titles, columns, flows, text, ariaLabel, onPickNode, on
     }
   }, []);
   const drawable = width > 0;
-  const layout = useMemo(() => layoutSankey({ flows, columns, width: Math.max(120, width), padRight: LABEL_PAD }), [flows, columns, width]);
+  const layout = useMemo(() => layoutSankey({ flows, columns, width: Math.max(120, width), padRight: LABEL_PAD, fit }), [flows, columns, width, fit]);
   // A new layout replaces the elements the lit state was set on, so a ribbon the pointer left with the old layout cannot leave the chart dimmed.
   useEffect(() => { light(); }, [layout, light]);
   const height = TOP + layout.height + 4;
   const step = titles.length > 1 ? Math.max(0, (Math.max(120, width) - LABEL_PAD - 12) / (titles.length - 1)) : 0;
   const roomChars = Math.max(4, Math.floor((titles.length > 1 ? Math.min(step - 12 - 8, LABEL_PAD + 20) : LABEL_PAD) / CHAR_W));
-  const originCell = (l: SankeyLink) => (l.origin === REST_ORIGIN ? 'Other origins' : nodeName(l.origin));
+  const originCell = (l: SankeyLink) => (l.origin === undefined ? '' : l.origin === REST_ORIGIN ? 'Other origins' : nodeName(l.origin));
   const colTitle = (c: number) => titles[c] ?? '';
-  const linkKey = (l: SankeyLink) => `${l.pair}|${l.source}|${l.target}|${l.origin}`;
+  const linkKey = (l: SankeyLink) => `${l.pair}|${l.source}|${l.target}|${l.origin ?? ''}`;
   const hoverLink = { onMouseEnter: (e: SyntheticEvent) => light(e.currentTarget), onMouseLeave: () => light(), onFocus: (e: SyntheticEvent) => light(e.currentTarget), onBlur: () => light() };
   const hoverNode = (col: number, key: string) => ({ onMouseEnter: () => light(null, `${col}|${key}`), onMouseLeave: () => light(), onFocus: () => light(null, `${col}|${key}`), onBlur: () => light() });
   // The ribbons are built once per layout: hover touches the DOM only (see `light`), so thousands of paths and tooltips are not re-rendered by it.
@@ -59,10 +60,10 @@ export function Sankey({ titles, columns, flows, text, ariaLabel, onPickNode, on
     return layout.links.map((l) => {
       const click = !!onPickLink && l.source !== OTHER_KEY && l.target !== OTHER_KEY;
       const pick = click ? { style: { cursor: 'pointer' }, onClick: () => onPickLink!(l.pair, l.source, l.target) } : {};
-      const tip = `${nodeName(l.source)} → ${nodeName(l.target)}${l.pair > 0 ? ` (from ${originName(l.origin)})` : ''}: ${text(l.value)} (${Math.round((l.value / (totals[l.pair] || 1)) * 100)}%)`;
+      const tip = `${nodeName(l.source)} → ${nodeName(l.target)}${l.pair > 0 && l.origin !== undefined ? ` (from ${originName(l.origin)})` : ''}: ${text(l.value)} (${Math.round((l.value / (totals[l.pair] || 1)) * 100)}%)`;
       return (
         <Tooltip key={linkKey(l)} content={tip}>
-          <path className="dm-sankey-link" data-link={`${l.pair}|${l.source}|${l.target}${l.pair > 0 ? `|${l.origin}` : ''}`} data-from={`${l.pair}|${l.source}`} data-to={`${l.pair + 1}|${l.target}`} d={l.path} fill={thinColor(colorOf(l.tone))} {...hoverLink} {...pick} />
+          <path className="dm-sankey-link" data-link={`${l.pair}|${l.source}|${l.target}${l.pair > 0 && l.origin !== undefined ? `|${l.origin}` : ''}`} data-from={`${l.pair}|${l.source}`} data-to={`${l.pair + 1}|${l.target}`} d={l.path} fill={thinColor(colorOf(l.tone))} {...hoverLink} {...pick} />
         </Tooltip>
       );
     });
@@ -73,7 +74,7 @@ export function Sankey({ titles, columns, flows, text, ariaLabel, onPickNode, on
   return (
     <div ref={ref} className="dm-sankey">
       <svg ref={root} role={onPickNode || onPickLink ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${Math.max(120, width)} ${height}`}>
-        {titles.map((t, c) => <text key={c} className="dm-chart-axis-title" x={c * step} y={12} textAnchor="start"><title>{t}</title>{clip(t, roomChars + 6)}</text>)}
+        {titles.map((t, c) => <CutLabel key={c} full={t} shown={clip(t, roomChars + 6)} className="dm-chart-axis-title" x={c * step} y={12} textAnchor="start" />)}
         <BlankDefs id={blankId} />
         <g transform={`translate(0 ${TOP})`}>
           <g>
@@ -89,12 +90,10 @@ export function Sankey({ titles, columns, flows, text, ariaLabel, onPickNode, on
                 <Tooltip content={`${name}: ${text(n.value)}`}>
                   <rect className="dm-sankey-node" data-node={`${n.col}|${n.key}`} x={n.x} y={n.y} width={n.w} height={Math.max(1, n.h)} fill={blankFill(colorOf(n.tone), blankId)} {...hoverNode(n.col, n.key)} {...pick} />
                 </Tooltip>
-                {n.h >= 12 && (
-                  <text className="dm-chart-text" x={n.x + n.w + 4} y={n.y + n.h / 2} dominantBaseline="middle" pointerEvents="none">
-                    <title>{label}</title>
-                    {clip(label, roomChars)}
-                  </text>
-                )}
+                {n.h >= 12 && (label.length > roomChars
+                  // A cut label shows its full text on hover; an uncut one stays out of the pointer's way so the ribbons under it stay hoverable.
+                  ? <Tooltip content={label}><text className="dm-chart-text" x={n.x + n.w + 4} y={n.y + n.h / 2} dominantBaseline="middle">{clip(label, roomChars)}</text></Tooltip>
+                  : <text className="dm-chart-text" x={n.x + n.w + 4} y={n.y + n.h / 2} dominantBaseline="middle" pointerEvents="none">{label}</text>)}
               </g>
             );
           })}

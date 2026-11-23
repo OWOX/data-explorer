@@ -237,3 +237,23 @@ test('a click on a ghost deep in the focus chain adds it and focuses the new car
   fireEvent.click(ghost('countries', 'stores.countries')!);
   await waitFor(() => expect(el('countries', 'stores.countries')).toHaveAttribute('data-focused'));
 });
+
+test('the dashed line to a ghost carries its relationship name, with a dot that says it', async () => {
+  const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  const getJson = ctx.owox.getJson.bind(ctx.owox) as (url: string, ...rest: unknown[]) => Promise<unknown>;
+  (ctx.owox as { getJson: unknown }).getJson = (url: string, ...rest: unknown[]) => (url.endsWith('/relationships')
+    ? Promise.resolve([{ id: 'e-stores-countries', targetAlias: 'store_country', description: 'Where the store is' }])
+    : getJson(url, ...rest));
+  render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
+  await joinCustomersAndStores();
+  fireEvent.click(el('customers', 'customers')!);
+  fireEvent.click(await bandCard('Countries'));
+  await waitFor(() => expect(el('countries', 'customers.countries')).not.toBeNull());
+  fireEvent.click(el('stores', 'stores')!);
+  await waitFor(() => expect(ghost('countries', 'stores.countries')).not.toBeNull());
+  const line = () => document.querySelector<SVGPathElement>(`path.ghost[data-to="${martElementId('countries', 'stores.countries')}"]`);
+  await waitFor(() => expect(line()?.dataset.tip).toMatch(/^Store country: Where the store is/));
+  const dot = line()!.nextElementSibling!;
+  expect(dot.classList.contains('dm-wire-dot')).toBe(true);
+  expect((dot as SVGElement).dataset.tip).toMatch(/^Store country: Where the store is/);
+});

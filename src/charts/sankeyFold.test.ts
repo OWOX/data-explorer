@@ -100,3 +100,49 @@ test('a column read at its row cap is flagged: Other undercounts the unread valu
   expect(foldSankey({ flowRows, columnRows: [[row({ a: 'v0' }, 1)], [row({ b: 'p' }, 1)]] as never, dims: [a, b], measure: sum }).columnCapped).toBe(false);
   expect(foldColumn(full as never, a, sum).capped).toBe(true);
 });
+
+describe('fan-out: one read per adjacent pair', () => {
+  const col = (k: string, vals: [string | null, number][]) => vals.map(([v, n]) => row({ [k]: v }, n));
+  const columnRows = [col('a', [['x', 5], ['y', 4]]), col('b', [['p', 7], ['q', 6]]), col('c', [['m', 8], ['n', 1]])];
+  // Records sit in both b values, so the pairs add up to more than a column.
+  const pairRows = [
+    [row({ a: 'x', b: 'p' }, 5), row({ a: 'y', b: 'p' }, 2), row({ a: 'y', b: 'q' }, 4), row({ a: 'x', b: 'q' }, 2)],
+    [row({ b: 'p', c: 'm' }, 7), row({ b: 'q', c: 'm' }, 1), row({ b: 'q', c: 'n' }, 1), row({ b: 'q', c: null }, 0)],
+  ];
+  const d = foldSankey({ pairRows: pairRows as never, columnRows: columnRows as never, dims: [a, b, c], measure: sum });
+
+  it('folds each pair on its own two columns, with the backend numbers kept as they are', () => {
+    expect(d.flows).toHaveLength(2);
+    expect(d.flows[0]!.find((f) => f.source === 'x' && f.target === 'p')!.value).toBe(5);
+    expect(d.flows[0]!.reduce((s, f) => s + f.value, 0)).toBe(13); // more than column a's 9: the overlap is accepted
+    expect(d.flows[1]!.find((f) => f.source === 'q' && f.target === 'n')!.value).toBe(1);
+    expect(d.flows[1]).toHaveLength(3); // the zero flow is not drawn
+    expect(d.negative).toBe(false);
+    expect(d.empty).toBe(false);
+  });
+
+  it('has an origin in the first pair only (the source), none later', () => {
+    expect(d.flows[0]!.every((f) => f.origin === f.source)).toBe(true);
+    expect(d.flows[1]!.every((f) => f.origin === undefined)).toBe(true);
+  });
+
+  it('sums values outside the listed ones into Other, and a blank into the blank node', () => {
+    const many = names(9);
+    const cols = [many.map((v, i) => row({ a: v }, 100 - i)), col('b', [['p', 500]])];
+    const rows = [[row({ a: 'v00', b: 'p' }, 60), row({ a: 'v08', b: 'p' }, 3), row({ a: 'v07', b: 'p' }, 4), row({ a: null, b: 'p' }, 2)]];
+    const e = foldSankey({ pairRows: rows as never, columnRows: cols as never, dims: [a, b], measure: sum });
+    expect(e.flows[0]!.find((f) => f.source === 'v00')!.value).toBe(60);
+    expect(e.flows[0]!.find((f) => f.source === OTHER_KEY)!.value).toBe(3);
+    expect(e.flows[0]!.find((f) => f.source === 'v07')!.value).toBe(4);
+    expect(e.flows[0]!.find((f) => f.source === BLANK_KEY)!.value).toBe(2);
+  });
+
+  it('flags a negative pair flow and a capped pair read', () => {
+    const neg = foldSankey({ pairRows: [[row({ a: 'x', b: 'p' }, -1)]] as never, columnRows: columnRows.slice(0, 2) as never, dims: [a, b], measure: sum });
+    expect(neg.negative).toBe(true);
+    const low = foldSankey({ pairRows: [[row({ a: 'x', b: 'p' }, 1)]] as never, pairLowRows: [[row({ a: 'y', b: 'q' }, -2)]] as never, columnRows: columnRows.slice(0, 2) as never, dims: [a, b], measure: sum });
+    expect(low.negative).toBe(true);
+    const cap = foldSankey({ pairRows: [Array.from({ length: SANKEY_FLOW_LIMIT }, () => row({ a: 'x', b: 'p' }, 1))] as never, columnRows: columnRows.slice(0, 2) as never, dims: [a, b], measure: sum });
+    expect(cap.capped).toBe(true);
+  });
+});

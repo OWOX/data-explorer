@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { MainMart } from '../api/preferences';
 import { LOADED_HOLD_MS, martAppUrl } from '../config';
 import { tickedStorages } from '../graph/storages';
 import { computeVisible } from '../graph/visible';
@@ -24,6 +25,7 @@ export function App() {
 type Fold = 'sources' | 'marts' | 'data' | 'row';
 /** Only the Data Sources band starts folded; the member's saved choice, when there is one, replaces this. */
 const DEFAULT_FOLDED: Record<Fold, boolean> = { sources: true, marts: false, data: false, row: false };
+const mainKey = (martId: string, sourceKey: string | null) => `${martId}\n${sourceKey ?? ''}`;
 const bandId = (band: Fold) => `band-${band}`;
 
 function AppBody() {
@@ -38,6 +40,11 @@ function AppBody() {
   // made before the read settles is written once it has (a write before it would overwrite what it is about to read).
   const [prefsReady, setPrefsReady] = useState(false);
   const saved = useRef<Record<string, boolean>>({});
+  // The main mart the member had last: read with the folds and used once, by the first load pick. Null when none or the read failed.
+  const remembered = useRef<MainMart | null>(null);
+  // The last value stored (as far as known), and the selection that was applied for the member (first-load pick, view link, fallback). Only a change away from it is saved.
+  const lastWritten = useRef<string | null>(null);
+  const applied = useRef<string | null | undefined>(undefined);
   const clicked = useRef<Partial<Record<Fold, boolean>>>({});
   const write = (changes: Partial<Record<Fold, boolean>>) => {
     saved.current = { ...saved.current, ...Object.fromEntries((Object.keys(changes) as Fold[]).map((b) => [bandId(b), changes[b]!])) };
@@ -45,9 +52,11 @@ function AppBody() {
   };
   useEffect(() => {
     let live = true;
-    preferences.loadFolded().then((stored) => {
+    Promise.all([preferences.loadFolded(), preferences.loadMainMart()]).then(([stored, main]) => {
       if (!live) return;
       saved.current = stored;
+      remembered.current = main ?? null;
+      lastWritten.current = main ? mainKey(main.martId, main.sourceKey) : null;
       const known = Object.fromEntries((Object.keys(DEFAULT_FOLDED) as Fold[]).flatMap((b) => (typeof stored[bandId(b)] === 'boolean' ? [[b, stored[bandId(b)]!]] : [])));
       setFolds(known);
       if (Object.keys(clicked.current).length > 0) write(clicked.current);
@@ -134,18 +143,51 @@ function AppBody() {
       return;
     }
     // Nothing selected on purpose (the last selected mart was clicked off) stays that way.
-    if (!martId && !sourceKey) { if (!state.selection.cleared) dispatch({ type: 'init', focusId }); return; }
+    if (!martId && !sourceKey) {
+      // The first load waits for the saved preferences: it opens the mart the member had last, or the focus mart when that one is gone or not shown.
+      if (state.selection.cleared || !prefsReady) return;
+      const last = remembered.current;
+      const openable = !!last && !!model.marts.get(last.martId)?.accessible && (storageIds === null || storageIds.includes(model.marts.get(last.martId)!.storageId));
+      // The remembered mart serves this pick only; later empty selections (a source toggled off and on) get the focus mart.
+      remembered.current = null;
+      if (!last || !openable) { applied.current = mainKey(focusId, null); dispatch({ type: 'init', focusId }); return; }
+      const keep = last.sourceKey && model.sources.some((x) => x.key === last.sourceKey) && sourceOfModel(model)(last.martId) === last.sourceKey ? last.sourceKey : null;
+      applied.current = mainKey(last.martId, keep);
+      dispatch({ type: 'init', focusId: last.martId, sourceKey: keep });
+      return;
+    }
     const martGone = !!martId && !model.marts.has(martId);
     const sourceGone = !!sourceKey && !model.sources.some((x) => x.key === sourceKey);
     if (!martGone && !sourceGone) return;
     const keep = sourceGone ? null : sourceKey;
+    // A fallback is not the member's choice: it is not saved.
+    if (!martGone && martId) applied.current = mainKey(martId, null);
+    if (martGone) applied.current = mainKey(focusId, keep && sourceOfModel(model)(focusId) === keep ? keep : null);
     dispatch({
       type: 'replace',
       selection: martGone
         ? { sourceKey: keep && sourceOfModel(model)(focusId) === keep ? keep : null, martId: focusId, record: null }
         : { ...state.selection, sourceKey: null },
     });
-  }, [model, link.pending, focusId, martId, sourceKey, state.selection, dispatch]);
+  }, [model, link.pending, prefsReady, storageIds, focusId, martId, sourceKey, state.selection, dispatch]);
+  // The member's own selection changes are remembered. The mart the page opened on (remembered, focus fallback or view link) is not: a shared link
+  // or a temporary fallback must not replace the saved one. Nothing is written before the saved value is read.
+  useEffect(() => {
+    if (!prefsReady || link.pending) return;
+    if (!martId) {
+      // A link that opened on a source alone has no mart to adopt; a mart clicked off is the member's own choice, so the next one is saved.
+      // Not cleared on every empty selection: the first-load pick sets `applied` and dispatches in the same commit, while the mart is still empty.
+      if ((sourceKey && applied.current === undefined) || state.selection.cleared) { applied.current = null; remembered.current = null; }
+      return;
+    }
+    const key = mainKey(martId, sourceKey);
+    if (applied.current === undefined) { applied.current = key; remembered.current = null; return; }
+    if (key === applied.current) return;
+    applied.current = null;
+    if (key === lastWritten.current) return;
+    lastWritten.current = key;
+    preferences.saveMainMart({ martId, sourceKey });
+  }, [prefsReady, link.pending, martId, sourceKey, state.selection.cleared, preferences]);
 
   // A failed refresh keeps the loaded model on screen; the error shows in the header.
   if (error && !model) return <div className="p-6"><ErrorBox error={error} onRetry={reload} /></div>;
