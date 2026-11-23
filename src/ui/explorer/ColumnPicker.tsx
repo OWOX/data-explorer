@@ -9,7 +9,7 @@ import { FieldHint, FieldLabel } from './FieldLabel';
 import { describeFilter } from '../../filters/catalogue';
 import { sliceField } from '../../filters/slice';
 import type { ColumnFilter } from '../../filters/build';
-import { Tooltip, TipLines } from '../Tooltip';
+import { Tooltip } from '../Tooltip';
 import { describeColumnFilter } from './ColumnMenu';
 
 /**
@@ -17,18 +17,20 @@ import { describeColumnFilter } from './ColumnMenu';
  * such a rule, and their tooltip lists the rules one per line. A click opens the mart's Fields list.
  * A slice only counts on a joined mart's field, as in the column header.
  */
-export function MartRuleMarks({ title, fields, filters, slices, onOpen }: {
+export function MartRuleMarks({ title, fields, filters, slices, expanded, onOpen }: {
   title: string;
   fields: Field[];
   filters: Record<string, ColumnFilter>;
   slices: Record<string, ColumnFilter>;
-  onOpen: () => void;
+  /** The mart's Fields list is open. */
+  expanded: boolean;
+  onOpen: (mark: HTMLElement) => void;
 }) {
   const filterLines = fields.filter((f) => filters[f.name]).map((f) => `Filter: ${describeColumnFilter(f, filters[f.name]!)}`);
   const sliceLines = fields.filter((f) => slices[f.name] && f.joined).map((f) => `Slice: ${describeFilter(sliceField(f), slices[f.name]!)}`);
   const mark = (lines: string[], label: string, icon: ReactNode) => lines.length > 0 && (
-    <Tooltip content={<TipLines lines={lines} />}>
-      <button type="button" data-mart-mark={label.toLowerCase()} aria-label={`${label} rules in ${title}`} className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={onOpen}>{icon}</button>
+    <Tooltip content={<span className="dm-tip-lines dm-tip-plain">{lines.map((l) => <span key={l}>{l}</span>)}</span>}>
+      <button type="button" data-mart-mark={label.toLowerCase()} aria-label={`${label} rules in ${title}`} aria-haspopup="dialog" aria-expanded={expanded} className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => onOpen(e.currentTarget)}>{icon}</button>
     </Tooltip>
   );
   return <>{mark(filterLines, 'Filter', <Funnel className="dm-icon" aria-hidden />)}{mark(sliceLines, 'Slice', <Layers className="dm-icon" aria-hidden />)}</>;

@@ -141,6 +141,7 @@
 .dm-tip-fixed { position: fixed; }
 .dm-tip-lines { display: flex; flex-direction: column; gap: 0.125rem; }
 .dm-tip-lines > span:first-child { font-weight: 500; }
+.dm-tip-plain > span:first-child { font-weight: inherit; }
 
 /* The context badges in the Data Marts toolbar, left of the Storage filter: Data Flow's chip, a button that toggles. */
 /* Takes whatever width is left (basis 0), never less than a "+NN more" chip, so what it holds cannot move the toolbar. Wraps onto two lines, each one flush right, so the last badge ends next to the Storage button. */

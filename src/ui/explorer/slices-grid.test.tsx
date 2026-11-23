@@ -196,27 +196,38 @@ test('the sparkline buckets only the rows of the passing groups', async () => {
 });
 
 describe('the data mart title row', () => {
-  const marked: GridState = { columns: ['id', 'status'], filters: { country: { field: 'country', op: 'eq', value: 'Ukraine' } }, slices: { customers__country_code: slice }, sorts: null, limit: 200 };
+  // The status filter and the country slice are both on fields that are not columns.
+  const hidden: GridState = { columns: ['id', 'customers__city'], filters: { status: { field: 'status', op: 'eq', value: 'paid' } }, slices: { customers__country_code: slice }, sorts: null, limit: 200 };
 
-  test('the Funnel and Layers marks show for rules on fields that are not columns, and a click opens the Fields list', async () => {
-    setup({ ...sliced, columns: ['id', 'status', 'customers__city'], filters: { status: { field: 'status', op: 'eq', value: 'paid' } } });
+  test('the Funnel and Layers marks show for rules on fields that are not columns, list the rules, and open the Fields list', async () => {
+    setup(hidden);
     const filterMark = await screen.findByRole('button', { name: /^Filter rules in / });
-    expect(filterMark).toBeVisible();
-    expect(await screen.findByRole('button', { name: /^Slice rules in / })).toBeVisible();
+    const sliceMark = await screen.findByRole('button', { name: /^Slice rules in / });
+    await userEvent.hover(filterMark);
+    expect((await screen.findAllByText(/^Filter: .*paid/)).length).toBeGreaterThan(0);
+    await userEvent.unhover(filterMark);
+    await userEvent.hover(sliceMark);
+    expect((await screen.findAllByText(/^Slice: .*PL/)).length).toBeGreaterThan(0);
     await userEvent.click(filterMark);
     expect(await screen.findByRole('listbox', { name: /^Fields of / })).toBeVisible();
+    expect(filterMark).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(filterMark).toHaveFocus());
   });
 
-  test('no rules, no marks; the Fields button has no tooltip text of its own', async () => {
+  test('no rules, no marks; the Fields button shows no tooltip', async () => {
     setup({ columns: ['id', 'status'], filters: {}, sorts: null, limit: 200 });
-    await screen.findAllByRole('button', { name: /^Fields of / });
+    const button = (await screen.findAllByRole('button', { name: /^Fields of / }))[0]!;
     expect(screen.queryByRole('button', { name: /^(Filter|Slice) rules in / })).toBeNull();
+    await userEvent.hover(button);
+    await new Promise((r) => setTimeout(r, 350));
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
-  test('the (i) description hint sits in a revealed slot, so it shows with hover or focus only', async () => {
-    setup(marked);
-    const hints = await screen.findAllByRole('note');
-    const own = hints.find((h) => h.closest('[data-group]'));
-    if (own) expect(own.parentElement).toHaveClass('dm-reveal');
+  test('the (i) description hint of the data mart sits in a revealed slot, so it shows with hover or focus only', async () => {
+    setup(hidden);
+    const group = await waitFor(() => { const g = document.querySelector<HTMLElement>('th[data-group-path=""]'); if (!g) throw new Error('no group'); return g; });
+    const hint = within(group).getByRole('note', { name: /^About / });
+    expect(hint.parentElement).toHaveClass('dm-reveal');
   });
 });

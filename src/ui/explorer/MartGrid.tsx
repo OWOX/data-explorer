@@ -352,6 +352,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const [allFilters, setAllFilters] = useState<Record<string, ColumnFilter>>(() => seed.saved?.filters ?? {});
   // The data mart (by group path) whose Fields list is open.
   const [fieldsOpen, setFieldsOpen] = useState<string | null>(null);
+  const openedBy = useRef<HTMLElement | null>(null);
   const [allSlices, setAllSlices] = useState<Record<string, ColumnFilter>>(() => seed.saved?.slices ?? {});
   const filters = useMemo(() => pickOffered(allFilters, schema), [allFilters, schema]);
   const slices = useMemo(() => pickOffered(allSlices, schema), [allSlices, schema]);
@@ -934,9 +935,13 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
                     <div className="flex min-w-0 items-center gap-1">
                       <span className="inline-flex shrink-0 text-muted-foreground"><PickedIcon icon={g.icon} fallback={Box} size={14} /></span>
                       <span className="truncate">{g.title}</span>
-                      <MartRuleMarks title={g.title} fields={fieldsOf(g)} filters={filters} slices={slices} onOpen={() => setFieldsOpen(g.path)} />
+                      <MartRuleMarks title={g.title} fields={fieldsOf(g)} filters={filters} slices={slices} expanded={fieldsOpen === g.path} onOpen={(mark) => { openedBy.current = mark; setFieldsOpen(g.path); }} />
                       {g.description?.trim() && <span className="dm-reveal"><Hint text={g.description} label={`About ${g.title}`} /></span>}
-                      <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} unique={g.main ? uniqueKey : undefined} agg={agg} open={fieldsOpen === g.path} onOpenChange={(o) => setFieldsOpen((cur) => (o ? g.path : cur === g.path ? null : cur))} />
+                      <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} unique={g.main ? uniqueKey : undefined} agg={agg} open={fieldsOpen === g.path} onOpenChange={(o) => {
+                        setFieldsOpen((cur) => (o ? g.path : cur === g.path ? null : cur));
+                        // A list opened from a rule mark gives focus back to that mark (after the popover's own return to the Fields button).
+                        if (!o && openedBy.current) { const m = openedBy.current; openedBy.current = null; window.setTimeout(() => { if (m.isConnected) m.focus(); }, 30); }
+                      }} />
                       {(several || !g.main) && (
                         <Tooltip content={`Remove ${g.title} from the grid`}>
                           <button type="button" aria-label={`Remove ${g.title} from the grid`} data-remove disabled={removing} onClick={() => remove(g, i)} className="dm-reveal dm-gx"><X className="size-3.5" aria-hidden /></button>
