@@ -10,7 +10,6 @@ export type Axis = { key: string; label: string };
 const ROW_H = 24;
 const TOP = 4;
 const AXIS_H = 24;
-const CHAR_W = 6;
 /** The space between the tick labels and the axis title. */
 const TITLE_GAP = 8;
 const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
@@ -27,7 +26,7 @@ export function Heatmap({ xs, ys, cell, ariaLabel, onPick, canPickX, xTitle, yTi
   const colW = (width - left - 4) / Math.max(1, xs.length);
   const height = TOP + ys.length * ROW_H + AXIS_H + (xTitle ? 18 + TITLE_GAP : 0);
   const max = Math.max(0, ...xs.flatMap((x) => ys.map((y) => cell(x.key, y.key)?.value ?? 0)));
-  const labelStep = Math.max(1, Math.ceil((Math.max(...xs.map((x) => x.label.length), 0) * CHAR_W + 8) / colW));
+  const labelStep = Math.max(1, Math.ceil((Math.max(...xs.map((x) => textWidth(x.label)), 0) + 8) / colW));
   const pickable = (x: string) => !!onPick && (canPickX?.(x) ?? true);
   return (
     <div ref={ref} className="dm-heatmap">

@@ -55,7 +55,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   const titleH = bottomTitle ? TITLE_H : 0;
   const height = (vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H) + titleH;
   // Keep every k-th bucket label so none overlap.
-  const labelStep = vertical && !categorical ? Math.max(1, Math.ceil((Math.max(...xs.map((p) => p.label.length), 0) * CHAR_W + 8) / band)) : 1;
+  const labelStep = vertical && !categorical ? Math.max(1, Math.ceil((Math.max(...xs.map((p) => textWidth(p.label)), 0) + 8) / band)) : 1;
   // A category label that does not fit its column is cut so it never runs into its neighbours or over the value axis.
   const fitted = (label: string) => fitText(label, Math.max(CHAR_W, band - 4));
   /** A row label on the left of a horizontal chart: cut to the label column (the side title's strip lies beyond it). */

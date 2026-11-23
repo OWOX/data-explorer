@@ -418,6 +418,7 @@ test('SpreadChart hatches the blank row box and keeps the others tinted', () => 
   const row = (key: string) => ({ key, label: key, p25: 1, p50: 2, p75: 3, min: null, max: null, text: 't' });
   const { container } = wrap(<SpreadChart ariaLabel="Sp" formatTick={String} rows={[row(BLANK), row('A')]} />);
   expect(container.querySelectorAll('rect[data-box]')[0]!.getAttribute('fill')).toMatch(/^url\(#dm-blank-/);
+  expect(container.querySelector(`pattern[id="${patternOf(container.querySelectorAll('rect[data-box]')[0]!)}"]`)).not.toBeNull();
   expect(container.querySelector('rect[data-box="A"]')).toHaveAttribute('fill', 'var(--dm-series-1)');
 });
 
@@ -425,6 +426,7 @@ test('Scatter hatches the blank dot and keeps the others in the series colour', 
   const dot = (key: string) => ({ key, label: key, x: 1, y: 2, xText: '1', yText: '2' });
   const { container } = wrap(<Scatter ariaLabel="S" xTitle="X" yTitle="Y" formatX={String} formatY={String} points={[dot(BLANK), dot('A')]} />);
   expect(container.querySelectorAll('circle[data-dot]')[0]!.getAttribute('fill')).toMatch(/^url\(#dm-blank-/);
+  expect(container.querySelector(`pattern[id="${patternOf(container.querySelectorAll('circle[data-dot]')[0]!)}"]`)).not.toBeNull();
   expect(container.querySelector('circle[data-dot="A"]')).toHaveAttribute('fill', 'var(--dm-series-1)');
 });
 
@@ -445,7 +447,12 @@ test('LineChart shades the blank date bucket with a stripes-only column band, an
   expect(band.getAttribute('fill')).toMatch(/^url\(#dm-blank-.*-lines\)$/);
   expect((band as SVGElement).style.pointerEvents).toBe('none');
   expect(container.querySelector(`pattern[id="${band.getAttribute('fill')!.slice(5, -1)}"]`)).not.toBeNull();
-  expect(container.querySelector('[data-line="A"]')!.getAttribute('d')).toMatch(/^M[^M]*$/);
+  // The line starts after the blank bucket; the blank value is a lone grey dot.
+  expect(container.querySelector('[data-line="A"]')!.getAttribute('d')!.match(/M/g)).toHaveLength(2);
+  expect(container.querySelector('circle[data-blank-dot="A"]')).toHaveAttribute('fill', 'var(--muted-foreground)');
+  const x = +band.getAttribute('x')!; const w = +band.getAttribute('width')!;
+  const first = +container.querySelector('rect[data-bucket="2026-01-01"]')!.getAttribute('x')! + (+container.querySelector('rect[data-bucket="2026-01-01"]')!.getAttribute('width')! / 2);
+  expect(x + w).toBeLessThan(first); // never reaches the first real date
   const none = wrap(<LineChart left={[{ ...a, points: a.points.slice(1) }]} area={false} ariaLabel="l" formatLeft={String} />);
   expect(none.container.querySelector('rect[data-blank-hatch]')).toBeNull();
 });
@@ -489,4 +496,37 @@ test('a horizontal bar chart cuts a long row label with an ellipsis and keeps th
 test('bars have a 2px corner radius', () => {
   const { container } = wrap(<BarChart series={[{ name: 'C', color: 'red', points: [px('a', 1)] }]} orientation="vertical" stacked={false} ariaLabel="b" formatTick={String} />);
   expect((container.querySelector('rect[data-series]') as SVGElement).style.clipPath).toContain('round 2px 2px 0px 0px');
+});
+
+test('a line chart with only a blank bucket and one date does not hatch the date', () => {
+  const a: Series = { name: 'A', color: 'red', points: [px(BLANK, 1), px('2026-01-01', 2)] };
+  const { container } = wrap(<LineChart left={[a]} area={false} ariaLabel="l" formatLeft={String} />);
+  const band = container.querySelector('rect[data-blank-hatch]')!;
+  const date = container.querySelector('rect[data-bucket="2026-01-01"]')!;
+  expect(+band.getAttribute('x')! + +band.getAttribute('width')!).toBeLessThanOrEqual(+date.getAttribute('x')! + +date.getAttribute('width')! / 2);
+});
+
+const LONG = 'Automation Operation Run Successful and a lot more text after it';
+/** The shown (cut) text of a label and its right edge, the way the charts position it. */
+const shownOf = (el: Element) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('');
+
+test('row labels of bar, heatmap and spread are cut with a title and end clear of the side title strip', () => {
+  const bar = wrap(<BarChart series={[{ name: 'C', color: 'red', points: [px(LONG, 2)] }]} orientation="horizontal" stacked={false} ariaLabel="b" formatTick={String} yTitle="Usage" xTitle="Activity" />);
+  const heat = wrap(<Heatmap xs={[{ key: 'x', label: 'X' }]} ys={[{ key: LONG, label: LONG }]} ariaLabel="H" yTitle="Rows" cell={() => ({ value: 1, text: '1' })} />);
+  const row = { key: LONG, label: LONG, p25: 1, p50: 2, p75: 3, min: null, max: null, text: 't' };
+  const sp = wrap(<SpreadChart ariaLabel="Sp" formatTick={String} rows={[row]} yTitle="Rows" />);
+  for (const { container } of [bar, heat, sp]) {
+    const t = [...container.querySelectorAll('text.dm-chart-text')].find((e) => e.querySelector('title')?.textContent === LONG)!;
+    expect(shownOf(t)).toMatch(/…$/);
+    expect(shownOf(t).length).toBeLessThan(LONG.length);
+    expect(+t.getAttribute('x')! - shownOf(t).length * 6).toBeGreaterThanOrEqual(16); // jsdom estimate: 6px a character
+  }
+});
+
+test('fitText cuts on code points, so an emoji is never split', async () => {
+  const { fitText } = await import('./fitText');
+  const cut = fitText('ab😀😀😀😀😀😀😀😀', 40);
+  expect(cut).toMatch(/…$/);
+  expect([...cut].every((c) => c !== '\uFFFD' && !/[\uD800-\uDFFF]/.test(c) || c.length === 2)).toBe(true);
+  expect(fitText('short', 400)).toBe('short');
 });

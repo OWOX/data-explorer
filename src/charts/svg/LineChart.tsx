@@ -1,9 +1,10 @@
 import { useId, useMemo, type KeyboardEvent } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
-import { BLANK_KEY, swatchStyle, thinColor } from '../blank';
+import { BLANK_KEY, BLANK_STROKE, swatchStyle, thinColor } from '../blank';
 import { useWidth } from '../useWidth';
 import type { Series } from './BarChart';
 import { BlankDefs, blankLines } from './BlankPattern';
+import { textWidth } from './fitText';
 import { niceTicks } from './ticks';
 import { XTitle, Y_TITLE_W, YTitle } from './YTitle';
 
@@ -13,7 +14,6 @@ const AXIS_H = 24;
 const TITLE_H = 26;
 /** The space between the tick labels and the axis title. */
 const TITLE_GAP = 8;
-const CHAR_W = 6;
 const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 
 /** Lines (and optional area fills) over buckets; a second measure on its own right axis. Positions are ratios for drawing only; every shown value is the caller's text. */
@@ -38,8 +38,8 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
   const maxR = right ? maxOf([right]) : 0;
   const tl = niceTicks(maxL, { integer: integerLeft });
   const tr = niceTicks(maxR, { integer: integerRight });
-  const leftW = Math.max(32, Math.max(...tl.ticks.map((t) => formatLeft(t).length)) * CHAR_W + 12) + (yTitle ? Y_TITLE_W : 0);
-  const rightW = (right ? Math.max(32, Math.max(...tr.ticks.map((t) => formatRight(t).length)) * CHAR_W + 12) : 8) + (right && yTitleRight ? Y_TITLE_W : 0);
+  const leftW = Math.max(32, Math.max(...tl.ticks.map((t) => textWidth(formatLeft(t)))) + 12) + (yTitle ? Y_TITLE_W : 0);
+  const rightW = (right ? Math.max(32, Math.max(...tr.ticks.map((t) => textWidth(formatRight(t)))) + 12) : Math.max(8, Math.ceil(textWidth(xs.at(-1)?.label ?? '') / 2) + 2)) + (right && yTitleRight ? Y_TITLE_W : 0);
   const plotW = Math.max(20, width - leftW - rightW);
   const step = xs.length > 1 ? plotW / (xs.length - 1) : 0;
   const px = (i: number) => leftW + (xs.length > 1 ? i * step : plotW / 2);
@@ -51,20 +51,20 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
       const p = at(s, b.x);
       if (!p || p.y === null) { open = false; return; }
       d += `${open ? ' L' : `${d ? ' ' : ''}M`}${px(i).toFixed(1)} ${py(p.y, max).toFixed(1)}`;
-      open = true;
+      open = b.x !== BLANK_KEY; // the blank bucket is no step in time: the line starts after it
     });
     return d;
   };
   const areaOf = (s: Series, max: number) => {
     // One closed shape per unbroken run, down to the zero line.
     const runs: number[][] = []; let run: number[] = [];
-    xs.forEach((b, i) => { if (at(s, b.x)?.y == null) { if (run.length) runs.push(run); run = []; } else run.push(i); });
+    xs.forEach((b, i) => { if (at(s, b.x)?.y == null || b.x === BLANK_KEY) { if (run.length) runs.push(run); run = []; } else run.push(i); });
     if (run.length) runs.push(run);
     return runs.map((r) => `M${px(r[0]!).toFixed(1)} ${TOP + PLOT_H} ${r.map((i) => `L${px(i).toFixed(1)} ${py(at(s, xs[i]!.x)!.y!, max).toFixed(1)}`).join(' ')} L${px(r.at(-1)!).toFixed(1)} ${TOP + PLOT_H} Z`).join(' ');
   };
   const all = right ? [...left.map((s) => ({ s, max: tl.top })), { s: right, max: tr.top }] : left.map((s) => ({ s, max: tl.top }));
   const pickable = (x: string) => !!onPick && (canPick?.(x) ?? true);
-  const labelStep = Math.max(1, Math.ceil((Math.max(...xs.map((p) => p.label.length), 0) * CHAR_W + 8) / Math.max(1, step || plotW)));
+  const labelStep = Math.max(1, Math.ceil((Math.max(...xs.map((p) => textWidth(p.label)), 0) + 8) / Math.max(1, step || plotW)));
   const band = xs.length > 1 ? step : plotW;
   return (
     <div ref={ref} className="dm-line-chart">
@@ -81,8 +81,9 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
         {right && yTitleRight && <YTitle x={leftW + plotW + rightW - 8} mid={TOP + PLOT_H / 2} length={PLOT_H} text={yTitleRight} />}
         {xs.map((p, i) => (i % labelStep === 0 ? <text key={p.x} className="dm-chart-text" x={px(i)} y={TOP + PLOT_H + 16} textAnchor="middle">{p.label}</text> : null))}
         {xTitle && <XTitle x={leftW + plotW / 2} y={TOP + PLOT_H + AXIS_H + 10 + TITLE_GAP} width={plotW} text={xTitle} />}
-        {xs.map((p, i) => (p.x === BLANK_KEY ? <rect key="blank-band" data-blank-hatch={p.x} x={Math.max(leftW, px(i) - band / 2)} y={TOP} width={Math.min(band, plotW)} height={PLOT_H} fill={blankLines(blankId)} style={{ pointerEvents: 'none' }} /> : null))}
+        {xs.map((p, i) => (p.x === BLANK_KEY ? <rect key="blank-band" data-blank-hatch={p.x} x={Math.max(leftW, px(i) - band / 2)} y={TOP} width={Math.min(leftW + plotW, px(i) + band / 2) - Math.max(leftW, px(i) - band / 2)} height={PLOT_H} fill={blankLines(blankId)} style={{ pointerEvents: 'none' }} /> : null))}
         {area && all.map(({ s, max }) => <path key={`a-${s.key ?? s.name}`} data-area={s.name} d={areaOf(s, max)} fill={thinColor(s.color)} fillOpacity={0.18} stroke="none" />)}
+        {xs.flatMap((p, i) => (p.x === BLANK_KEY ? all.filter(({ s }) => at(s, p.x)?.y != null).map(({ s, max }) => <circle key={`blank-dot-${s.key ?? s.name}`} data-blank-dot={s.name} cx={px(i)} cy={py(at(s, p.x)!.y!, max)} r={3} fill={BLANK_STROKE} style={{ pointerEvents: 'none' }} />) : []))}
         {all.map(({ s, max }, k) => <path key={s.key ?? s.name} data-line={s.name} d={pathOf(s, max)} fill="none" stroke={thinColor(s.color)} strokeWidth={2} strokeDasharray={right && k === all.length - 1 ? '5 3' : undefined} strokeLinejoin="round" strokeLinecap="round" />)}
         {xs.map((p, i) => {
           const content = <TipLines lines={[p.label, ...all.filter(({ s }) => at(s, p.x)?.y != null).map(({ s }) => <span key={s.key ?? s.name}><span className="dm-chart-swatch" style={swatchStyle(thinColor(s.color))} /> {s.name}: {at(s, p.x)!.valueText}</span>)]} />;
