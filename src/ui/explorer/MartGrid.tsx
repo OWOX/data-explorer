@@ -1025,8 +1025,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
                     <div className="flex min-w-0 items-center gap-1">
                       <span className="inline-flex shrink-0 text-muted-foreground"><PickedIcon icon={g.icon} fallback={Box} size={14} /></span>
                       <span className="truncate">{g.title}</span>
-                      <MartRuleMarks title={g.title} fields={fieldsOf(g)} filters={filters} slices={slices} expanded={fieldsOpen === g.path} onOpen={(mark) => { openedBy.current = mark; setFieldsOpen(g.path); }} />
                       {g.description?.trim() && <span className="dm-reveal"><Hint text={g.description} label={`About ${g.title}`} /></span>}
+                      <MartRuleMarks title={g.title} fields={fieldsOf(g)} filters={filters} slices={slices} expanded={fieldsOpen === g.path} onOpen={(mark) => { openedBy.current = mark; setFieldsOpen(g.path); }} />
                       <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} unique={uniqueOffered.has(g.path) ? { on: ucNow.includes(g.path), onToggle: () => toggleUnique(g.path) } : undefined} open={fieldsOpen === g.path} onOpenChange={(o) => {
                         setFieldsOpen((cur) => (o ? g.path : cur === g.path ? null : cur));
                       }} onCloseAutoFocus={(e) => {
