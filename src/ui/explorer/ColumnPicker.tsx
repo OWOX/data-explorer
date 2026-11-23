@@ -113,7 +113,7 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
     value: f.name,
     text: fieldLabel(f),
     label: <FieldLabel field={f} hint={false} />,
-    action: <FieldMenuButton field={f} />,
+    action: <FieldMenuButton field={f} onHide={() => apply(shownNow.filter((n) => n !== f.name))} />,
     extra: <FieldHint field={f} decorative />,
     description: f.description?.trim() || undefined,
     disabled: set.has(f.name) && (visible.length === 1 || locked(f.name)),

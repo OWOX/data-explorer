@@ -270,6 +270,25 @@ describe('field actions from the Fields list', () => {
       expect(t.state.current!.grids.orders!.columns).toEqual(['id', 'customers__city']);
     });
 
+    test('Hide column from its Fields list menu keeps the list open until it closes, and after Undo the list stays closed', async () => {
+      const t = setup(rules);
+      await waitFor(() => expect(t.state.current!.grids.orders).toBeDefined());
+      const { list, icon } = await rowIcon('customers__city', 'Customers');
+      await userEvent.click(icon);
+      await userEvent.click(within(await screen.findByRole('menu', { name: /^Menu of / })).getByRole('menuitem', { name: 'Hide column' }));
+      // The mart stays on the grid, with its list, while the list is open.
+      await waitFor(() => expect(screen.queryByRole('menu', { name: /^Menu of / })).toBeNull());
+      expect(list).toBeVisible();
+      expect(t.state.current!.grids.orders!.columns).toEqual(['id', 'customers__city']);
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['id']));
+      expect(screen.queryByRole('listbox', { name: /^Fields of / })).toBeNull();
+      await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+      await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['id', 'customers__city']));
+      await within(data()).findByRole('button', { name: 'Fields of Customers' });
+      expect(screen.queryByRole('listbox', { name: /^Fields of / })).toBeNull();
+    });
+
     test('Hide column in its header menu, and Undo brings them back', async () => {
       const t = setup(rules);
       await waitFor(() => expect(t.state.current!.grids.orders).toBeDefined());

@@ -104,7 +104,7 @@ const Divider = () => <div role="separator" className="dm-menu-sep" />;
 /** The panels whose fields count as an edit in progress. */
 const EDITING = '[data-column-menu][role="dialog"], [data-column-menu][data-form]';
 
-function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; output: Output; anchor: HTMLElement; initial: SubKey | null; onClose: (refocus?: boolean) => void }) {
+function MenuPopup({ field, output, anchor, initial, onClose, onHide }: { field: Field; output: Output; anchor: HTMLElement; initial: SubKey | null; onClose: (refocus?: boolean) => void; /** Replaces the grid's Hide (the Fields list unticks the field through its own path). */ onHide?: () => void }) {
   const env = useContext(ColumnMenuEnvContext);
   const title = columnTitle(field);
   const type = env.typeOf(field, output);
@@ -136,6 +136,7 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
   const current = env.formatOf(field.name, type);
   // After Hide column the column is gone: focus goes to the next column's menu icon, or the previous one when it was the last.
   const hide = () => {
+    if (onHide) { onHide(); onClose(); return; }
     const head = anchor.closest('thead');
     const icons = head ? [...head.querySelectorAll<HTMLElement>('[data-menu-icon]')] : [];
     const mine = anchor.closest('.dm-hdr-controls')?.querySelector('[data-menu-icon]');
@@ -316,7 +317,7 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
  * It is green whenever the field has a rule set on it, shown or not; otherwise it is grey and appears with the row's hover or focus.
  * Arrow Right from the row's option reaches it (it is not a Tab stop of its own).
  */
-export function FieldMenuButton({ field }: { field: Field }) {
+export function FieldMenuButton({ field, onHide }: { field: Field; onHide?: () => void }) {
   const env = useContext(ColumnMenuEnvContext);
   const output = env.outputOf(field.name);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -332,7 +333,7 @@ export function FieldMenuButton({ field }: { field: Field }) {
         className={`dm-ctl dm-ctl-lg dm-row-ctl${active ? ' dm-ctl-on' : ''}`} onClick={(e) => { const a = e.currentTarget; setAnchor((cur) => (cur ? null : a)); }}>
         <FilterLinesIcon className="dm-icon" />
       </button>
-      {anchor && <MenuPopup field={field} output={output} anchor={anchor} initial={null} onClose={close} />}
+      {anchor && <MenuPopup field={field} output={output} anchor={anchor} initial={null} onClose={close} onHide={onHide} />}
     </>
   );
 }

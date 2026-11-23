@@ -201,3 +201,16 @@ test('the selected Chart type is marked with the green check, on the left of its
   const x = Math.min(...panels.map((b) => b.x)); const y = Math.min(...panels.map((b) => b.y));
   await page.screenshot({ path: 'tmp/chart-type-check.png', clip: { x, y, width: Math.max(...panels.map((b) => b.x + b.width)) - x, height: Math.max(...panels.map((b) => b.y + b.height)) - y } });
 });
+
+test('a root menu with a check row aligns every row label with the check rows', async ({ page }) => {
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  await data(page).getByRole('button', { name: 'Charts options' }).click();
+  const menu = page.getByRole('menu', { name: 'Charts menu' });
+  const check = menu.getByRole('menuitemcheckbox').first();
+  await expect(check.locator('.dm-menu-check svg')).toHaveCSS('color', 'rgb(24, 128, 56)');
+  const labels = await menu.locator('.dm-menu-row .dm-menu-label').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().x)));
+  expect(labels.length).toBeGreaterThan(1);
+  expect(new Set(labels).size).toBe(1);
+  const b = (await menu.boundingBox())!;
+  await page.screenshot({ path: 'tmp/chart-menu-check-mixed.png', clip: b });
+});

@@ -65,6 +65,8 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
   }, [anchor, close]);
   // A press outside the menu only closes it, as the column menu does.
   useOutsidePress(!!anchor, (t) => !!t.closest('[data-column-menu]') || !!holder.current?.contains(t), () => close(false));
+  // A menu with a check row gives every root row the check column, so labels line up.
+  const slot = items.some((it) => it.kind === 'check');
   const picked = sub ? items[sub.key] : undefined;
   const groups = picked?.kind === 'radio' ? picked.groups ?? [] : [];
   const choice = (o: MenuOption, hover?: () => void) => picked?.kind === 'radio' && (
@@ -81,9 +83,9 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
           {items.map((it, i) => it.kind === 'check' ? (
             <Row key={i} check checkbox checked={it.checked} label={it.label} glyph={<it.icon className="size-4" />} onActivate={it.onToggle} onHover={hoverOther} onLeaveRow={leaveRow} />
           ) : it.kind === 'action' ? (
-            <Row key={i} label={it.label} glyph={<it.icon className="size-4" />} onActivate={() => { close(); it.onPick(); }} onHover={hoverOther} onLeaveRow={leaveRow} />
+            <Row key={i} slot={slot} label={it.label} glyph={<it.icon className="size-4" />} onActivate={() => { close(); it.onPick(); }} onHover={hoverOther} onLeaveRow={leaveRow} />
           ) : (
-            <Row key={i} sub expanded={sub?.key === i} label={it.label} glyph={<it.icon className="size-4" />} onActivate={(r) => open(i, r, true)} onOpen={(r) => open(i, r, true)}
+            <Row key={i} sub slot={slot} expanded={sub?.key === i} label={it.label} glyph={<it.icon className="size-4" />} onActivate={(r) => open(i, r, true)} onOpen={(r) => open(i, r, true)}
               onHover={(r) => hoverRow(i, r)} onLeaveRow={leaveRow} />
           ))}
         </Panel>

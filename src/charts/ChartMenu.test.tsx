@@ -64,10 +64,10 @@ test('a row and a submenu option show their icon before the label, hidden from s
   expect(withIcon).toHaveAttribute('aria-checked', 'true');
   expect(glyph!.parentElement!.nextElementSibling).toHaveClass('dm-menu-label');
   expect(screen.getByRole('menuitemcheckbox', { name: 'Sparklines' }).querySelector('.dm-menu-glyph svg.lucide-hash')).not.toBeNull();
-  // A submenu row reserves no tick column: its icon is the row's first child.
+  // Beside check rows a submenu row keeps the empty check column, so its icon lines up with theirs.
   const sub = screen.getByRole('menuitem', { name: 'Chart type' });
-  expect(sub.querySelector('.dm-menu-check')).toBeNull();
-  expect(sub.firstElementChild).toHaveClass('dm-menu-glyph');
+  expect(sub.firstElementChild).toHaveClass('dm-menu-check');
+  expect(sub.firstElementChild!.nextElementSibling).toHaveClass('dm-menu-glyph');
   await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
   expect((await screen.findByRole('menuitemradio', { name: 'Pie' })).querySelector('.dm-menu-glyph svg.lucide-chart-pie')).not.toBeNull();
   expect(screen.getByRole('menuitemradio', { name: 'Plain' }).querySelector('.dm-menu-glyph')).toBeNull();
@@ -170,4 +170,21 @@ test('a radio without a trailing action has no divider or extra row', async () =
   const sub = await screen.findByRole('menu', { name: 'Bucket' });
   expect(sub.querySelector('[role="separator"]')).toBeNull();
   expect(within(sub).queryAllByRole('menuitem')).toHaveLength(0);
+});
+
+test('when a root row is a check row every root row has the check column, and none has it otherwise', async () => {
+  const plain: MenuItem[] = [
+    { kind: 'action', label: 'Remove', icon: Trash2, onPick: () => undefined },
+    { kind: 'radio', label: 'Bucket', icon: Calendar, value: 'day', options: [{ value: 'day', label: 'Day' }], onPick: () => undefined },
+  ];
+  const { unmount } = render(<ChartMenu name="Sales" items={plain} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+  const rootOf = () => screen.getByRole('menu', { name: 'Sales menu' });
+  expect(rootOf().querySelectorAll('.dm-menu-check')).toHaveLength(0);
+  unmount();
+  render(<ChartMenu name="Sales" items={[{ kind: 'check', label: 'Area', icon: Hash, checked: true, onToggle: () => undefined }, ...plain]} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+  const rows = [...rootOf().querySelectorAll('.dm-menu-row')];
+  expect(rows).toHaveLength(3);
+  for (const r of rows) expect(r.querySelector('.dm-menu-check')).not.toBeNull();
 });

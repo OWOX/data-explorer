@@ -701,6 +701,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     if (button && takeFocusFor(martId)) button.focus();
   }, [groups, martId]);
   const several = groups.length > 1;
+  // A mart that leaves the grid (Remove, Undo of an add) takes its open Fields list with it; it must not reopen when the mart comes back.
+  if (fieldsOpen !== null && !groups.some((g) => g.path === fieldsOpen)) setFieldsOpen(null);
   // The first data mart is the main one: its last own column stays while a joined mart is shown.
   const ownNames = useMemo(() => new Set(native.map((f) => f.name)), [native]);
   const ownOn = shown.filter((n) => ownNames.has(n)).length;
@@ -982,7 +984,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
                         const m = openedBy.current;
                         openedBy.current = null;
                         const a = document.activeElement;
-                        const lost = !a || a === document.body || !!(e.currentTarget as Element | null)?.contains(a);
+                        const lost = !a || a === document.body;
                         if (m?.isConnected && lost) { e.preventDefault(); m.focus(); }
                       }} />
                       {(several || !g.main) && (
