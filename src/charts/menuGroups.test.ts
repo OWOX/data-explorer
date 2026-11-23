@@ -35,7 +35,7 @@ test('an axis title names the field and the data mart the menus group it under',
   expect(martTitleOf(cf, '')).toBe('Contacts');
   expect(martTitleOf(cf, 'org')).toBe('Contact Organization');
   expect(axisTitle(cf, schema[2]!)).toBe('channel | Contacts');
-  expect(axisTitle(cf, schema[3]!)).toBe('Contact Organization · org__name | Contact Organization');
+  expect(axisTitle(cf, schema[3]!)).toBe('org__name | Contact Organization');
 });
 
 test('a measure axis title carries the mart of its field, a Count Unique the mart it counts', () => {
@@ -48,4 +48,9 @@ test('a measure axis title carries the mart of its field, a Count Unique the mar
 test('a mart without a title adds no suffix', () => {
   const bare = chartFields(schema, ['id', 'channel'], NO_AGGREGATION, 'M', ['']);
   expect(axisTitle(bare, schema[2]!)).toBe('channel');
+});
+
+test('a joined mart\'s Count Unique names its mart once on the axis', () => {
+  const orgRecords = measuresOf(cf).find((m) => m.kind === 'records' && m.aliasPath === 'org')!;
+  expect(measureAxisTitle(cf, orgRecords)).toBe('Count Unique | Contact Organization');
 });

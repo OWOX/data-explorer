@@ -49,7 +49,7 @@ function LinePanel({ martId, cf, r, spark, filter, version, idle, hasFilters, fo
       {one.series && !loading && (() => {
         const left = one.series;
         const pick = (x: string, i?: number) => onFilter([bucketFilter(date, x, bucket!, bucketZone(date)), ...(stack && i !== undefined && !left[i]!.other ? [dimensionFilter(stack, left[i]!.blank ? BLANK_KEY : left[i]!.name)] : [])]);
-        return <LineChart left={left} right={rightSeries} area={r.area} ariaLabel={title} formatLeft={(n) => tickText(n, lt, lf)} formatRight={(n) => tickText(n, rt, rf)} onPick={bucket ? pick : undefined} xTitle={axisTitle(cf, date)} yTitle={measureAxisTitle(cf, measure, scope)} yTitleRight={measure2 ? measureAxisTitle(cf, measure2, scope) : undefined} integerLeft={isIntegerMeasure(measure)} integerRight={!!measure2 && isIntegerMeasure(measure2)} />;
+        return <LineChart left={left} right={rightSeries} area={r.area} ariaLabel={title} formatLeft={(n) => tickText(n, lt, lf)} formatRight={(n) => tickText(n, rt, rf)} onPick={bucket ? pick : undefined} xTitle={axisTitle(cf, date)} yTitle={measureAxisTitle(cf, measure)} yTitleRight={measure2 ? measureAxisTitle(cf, measure2) : undefined} integerLeft={isIntegerMeasure(measure)} integerRight={!!measure2 && isIntegerMeasure(measure2)} />;
       })()}
     </ChartPanel>
   );

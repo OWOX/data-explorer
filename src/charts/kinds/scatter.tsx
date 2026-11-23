@@ -43,7 +43,7 @@ function ScatterPanel({ martId, cf, r, filter, version, idle, hasFilters, format
     <ChartPanel title={title} name="Scatter" items={ready ? items : null} width={BOX_WIDTH}
       loading={!read.rows && !read.error} error={read.error} onRetry={read.retry} empty={read.rows?.length === 0 ? emptyText(hasFilters) : null}
       note={full ? `Only the ${SCATTER_LIMIT} values with the largest ${measureLabel(cf, x, [x, y])} are drawn.` : undefined}>
-      {read.rows && <Scatter points={points} ariaLabel={title} xTitle={measureAxisTitle(cf, x, [x, y])} yTitle={measureAxisTitle(cf, y, [x, y])}
+      {read.rows && <Scatter points={points} ariaLabel={title} xTitle={measureAxisTitle(cf, x)} yTitle={measureAxisTitle(cf, y)}
         formatX={(n) => tickText(n, xt, xf)} formatY={(n) => tickText(n, yt, yf)} integerX={isIntegerMeasure(x)} integerY={isIntegerMeasure(y)} onPick={(k) => onFilter([dimensionFilter(dim, k)])} />}
     </ChartPanel>
   );
