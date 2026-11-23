@@ -473,3 +473,20 @@ test('Heatmap keeps the focusable cell as the tooltip trigger and the spread bla
   expect(sp.container.querySelector('rect[data-box]')).toHaveAttribute('stroke', 'var(--muted-foreground)');
   expect(sp.container.querySelector('line[data-whisker]')).toHaveAttribute('stroke', 'var(--muted-foreground)');
 });
+
+test('a horizontal bar chart cuts a long row label with an ellipsis and keeps the full text in a title; a short one is unchanged', () => {
+  const long = 'Google Sheets Export Run Successful and then some more';
+  const s: Series[] = [{ name: 'C', color: 'red', points: [px('short', 1), px(long, 2)] }];
+  const { container } = wrap(<BarChart series={s} orientation="horizontal" stacked={false} ariaLabel="b" formatTick={String} yTitle="Usage" xTitle="Activity" />);
+  const texts = [...container.querySelectorAll('text.dm-chart-text')].filter((t) => t.querySelector('title'));
+  const short = texts.find((t) => t.querySelector('title')!.textContent === 'short')!;
+  const cut = texts.find((t) => t.querySelector('title')!.textContent === long)!;
+  expect(short.textContent).toBe('shortshort');
+  expect(cut.textContent!.replace(long, '')).toMatch(/…$/);
+  expect(cut.textContent!.length).toBeLessThan(long.length * 2);
+});
+
+test('bars have a 2px corner radius', () => {
+  const { container } = wrap(<BarChart series={[{ name: 'C', color: 'red', points: [px('a', 1)] }]} orientation="vertical" stacked={false} ariaLabel="b" formatTick={String} />);
+  expect((container.querySelector('rect[data-series]') as SVGElement).style.clipPath).toContain('round 2px 2px 0px 0px');
+});

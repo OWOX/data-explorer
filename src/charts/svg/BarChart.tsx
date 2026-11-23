@@ -2,6 +2,7 @@ import { useId, type KeyboardEvent, type MouseEvent } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
 import { BLANK_COLOR, BLANK_KEY, swatchStyle } from '../blank';
 import { BlankDefs, blankFill, blankLines } from './BlankPattern';
+import { fitText, textWidth } from './fitText';
 import { useWidth } from '../useWidth';
 import type { Point } from './Sparkline';
 import { niceTicks } from './ticks';
@@ -14,7 +15,7 @@ const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key 
 const PLOT_H = 240;
 const ROW_H = 20;
 const GAP = 2;
-const RADIUS = 4;
+const RADIUS = 2;
 const TOP = 8;
 const AXIS_H = 24;
 const TITLE_H = 26;
@@ -45,10 +46,10 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   const max = Math.max(0, ...totals);
   const { ticks, top } = niceTicks(max, { integer });
   const vertical = orientation === 'vertical';
-  const labelW = Math.min(160, Math.max(...xs.map((p) => p.label.length), 0) * CHAR_W + 12);
+  const labelW = Math.min(160, Math.max(...xs.map((p) => textWidth(p.label)), 0) + 12);
   const sideTitle = vertical ? yTitle : xTitle;
   const bottomTitle = vertical ? xTitle : yTitle;
-  const left = (vertical ? Math.max(32, Math.max(...ticks.map((t) => formatTick(t).length)) * CHAR_W + 12) : labelW) + (sideTitle ? Y_TITLE_W : 0);
+  const left = (vertical ? Math.max(32, Math.max(...ticks.map((t) => textWidth(formatTick(t)))) + 12) : labelW) + (sideTitle ? Y_TITLE_W : 0);
   const plotW = Math.max(20, width - left - 8);
   const band = vertical ? plotW / Math.max(1, xs.length) : ROW_H;
   const titleH = bottomTitle ? TITLE_H : 0;
@@ -56,10 +57,9 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   // Keep every k-th bucket label so none overlap.
   const labelStep = vertical && !categorical ? Math.max(1, Math.ceil((Math.max(...xs.map((p) => p.label.length), 0) * CHAR_W + 8) / band)) : 1;
   // A category label that does not fit its column is cut so it never runs into its neighbours or over the value axis.
-  const fitted = (label: string) => {
-    const room = Math.max(1, Math.floor((band - 4) / CHAR_W));
-    return label.length > room ? `${label.slice(0, Math.max(0, room - 1))}…` : label;
-  };
+  const fitted = (label: string) => fitText(label, Math.max(CHAR_W, band - 4));
+  /** A row label on the left of a horizontal chart: cut to the label column (the side title's strip lies beyond it). */
+  const rowLabel = (label: string) => fitText(label, labelW - 10);
   const scale = (n: number) => (top > 0 ? n / top : 0) * (vertical ? PLOT_H : plotW);
 
   const isStacked = stacked ?? series.length > 1;
@@ -138,7 +138,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
         {xs.map((p, i) => (i % labelStep === 0 ? (
           vertical
             ? <text key={p.x} className="dm-chart-text" x={left + i * band + band / 2} y={TOP + PLOT_H + 16} textAnchor="middle">{categorical ? <><title>{p.label}</title>{fitted(p.label)}</> : p.label}</text>
-            : <text key={p.x} className="dm-chart-text" x={left - 6} y={TOP + i * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle">{p.label}</text>
+            : <text key={p.x} className="dm-chart-text" x={left - 6} y={TOP + i * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle"><title>{p.label}</title>{rowLabel(p.label)}</text>
         ) : null))}
         {sideTitle && <YTitle x={8} mid={TOP + (vertical ? PLOT_H : xs.length * ROW_H) / 2} length={vertical ? PLOT_H : xs.length * ROW_H} text={sideTitle} />}
         {bottomTitle && <XTitle x={left + plotW / 2} y={(vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H) + 10 + TITLE_GAP} width={plotW} text={bottomTitle} />}

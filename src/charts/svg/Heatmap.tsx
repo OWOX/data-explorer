@@ -2,6 +2,7 @@ import { useId, type KeyboardEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
 import { BLANK_KEY } from '../blank';
 import { BlankDefs, blankLines } from './BlankPattern';
+import { fitText, textWidth } from './fitText';
 import { useWidth } from '../useWidth';
 import { XTitle, Y_TITLE_W, YTitle } from './YTitle';
 
@@ -21,7 +22,8 @@ export function Heatmap({ xs, ys, cell, ariaLabel, onPick, canPickX, xTitle, yTi
 }) {
   const { ref, width } = useWidth<HTMLDivElement>();
   const blankId = `dm-blank-${useId().replace(/:/g, '')}`;
-  const left = Math.min(160, Math.max(...ys.map((y) => y.label.length), 0) * CHAR_W + 12) + (yTitle ? Y_TITLE_W : 0);
+  const labelW = Math.min(160, Math.max(...ys.map((y) => textWidth(y.label)), 0) + 12);
+  const left = labelW + (yTitle ? Y_TITLE_W : 0);
   const colW = (width - left - 4) / Math.max(1, xs.length);
   const height = TOP + ys.length * ROW_H + AXIS_H + (xTitle ? 18 + TITLE_GAP : 0);
   const max = Math.max(0, ...xs.flatMap((x) => ys.map((y) => cell(x.key, y.key)?.value ?? 0)));
@@ -32,7 +34,7 @@ export function Heatmap({ xs, ys, cell, ariaLabel, onPick, canPickX, xTitle, yTi
       <svg role={onPick ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
         <BlankDefs id={blankId} lines />
         {yTitle && <YTitle x={8} mid={TOP + (ys.length * ROW_H) / 2} length={ys.length * ROW_H} text={yTitle} />}
-        {ys.map((y, j) => <text key={y.key} className="dm-chart-text" x={left - 6} y={TOP + j * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle">{y.label}</text>)}
+        {ys.map((y, j) => <text key={y.key} className="dm-chart-text" x={left - 6} y={TOP + j * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle"><title>{y.label}</title>{fitText(y.label, labelW - 10)}</text>)}
         {xs.map((x, i) => (i % labelStep === 0 ? <text key={x.key} className="dm-chart-text" x={left + i * colW + colW / 2} y={TOP + ys.length * ROW_H + 16} textAnchor="middle">{x.label}</text> : null))}
         {xTitle && <XTitle x={left + (xs.length * colW) / 2} y={TOP + ys.length * ROW_H + AXIS_H + 10 + TITLE_GAP} width={xs.length * colW} text={xTitle} />}
         {xs.flatMap((x, i) => ys.map((y, j) => {
