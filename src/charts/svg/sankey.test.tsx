@@ -28,10 +28,14 @@ test('draws a node per value and a filled ribbon per flow, with the column title
   expect(byAttr('data-node', `0|${BLANK_KEY}`)).not.toBeNull();
 });
 
-test('a column title shows its full text in the shared tooltip', async () => {
-  draw({ titles: ['One', 'Two', 'Three'] });
-  await userEvent.hover(screen.getByText('Two', { selector: 'text.dm-chart-axis-title' }));
-  expect(await screen.findByRole('tooltip')).toHaveTextContent('Two');
+test('a column title that is cut shows its full text in the shared tooltip and as its name; one that fits has neither', async () => {
+  const long = 'A very long column title that cannot fit';
+  const { container } = draw({ titles: ['One', long, 'Three'] });
+  const cut = [...container.querySelectorAll('text.dm-chart-axis-title')].find((t) => t.getAttribute('aria-label') === long)!;
+  expect(cut.textContent).not.toBe(long);
+  expect(container.querySelector('text.dm-chart-axis-title:not([aria-label])')?.textContent).toBe('One');
+  await userEvent.hover(cut);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(long);
 });
 
 test('labels name the node and its value', () => {
@@ -149,13 +153,23 @@ test('a blank node is filled with the hatch pattern and has no stroke', () => {
 
 test('fan-out: ribbons that add up to more than their node are scaled to fit it; the tooltip keeps the exact value', async () => {
   const fan: Flow[][] = [[{ source: 'a', target: 'x', value: 8, origin: 'a' }, { source: 'a', target: 'y', value: 8, origin: 'a' }]];
-  const { container } = draw({ titles: ['One', 'Two'], flows: fan, fit: true, columns: [[{ key: 'a', value: 10 }], [{ key: 'x', value: 8 }, { key: 'y', value: 8 }]] });
-  const node = container.querySelector('rect[data-node="0|a"]')!;
-  const h = Number(node.getAttribute('height'));
-  const links = [...container.querySelectorAll('path[data-link]')];
-  expect(links).toHaveLength(2);
-  const heights = links.map((l) => { const nums = l.getAttribute('d')!.match(/-?\d+\.?\d*/g)!.map(Number); return nums[1]! ; });
-  expect(heights[1]! - heights[0]!).toBeLessThanOrEqual(h / 2 + 0.01);
-  await userEvent.hover(links[0]!);
-  expect(await screen.findAllByText(/8/)).not.toHaveLength(0);
+  const columns = [[{ key: 'a', value: 10 }], [{ key: 'x', value: 8 }, { key: 'y', value: 8 }]];
+  // The ribbons' widths at the source end, and the node's height.
+  const measure = (fit: boolean) => {
+    const { container, unmount } = draw({ titles: ['One', 'Two'], flows: fan, fit, columns });
+    const h = Number(container.querySelector('rect[data-node="0|a"]')!.getAttribute('height'));
+    const widths = [...container.querySelectorAll('path[data-link]')].map((l) => { const nums = l.getAttribute('d')!.match(/-?\d+\.?\d*/g)!.map(Number); return nums[nums.length - 1]! - nums[1]!; });
+    const links = [...container.querySelectorAll('path[data-link]')];
+    return { h, widths, links, unmount };
+  };
+  const off = measure(false);
+  off.unmount();
+  const on = measure(true);
+  // Without fit the node grows to hold 16; with fit it is its column total (10) and the ribbons add up to exactly that.
+  expect(on.h / off.h).toBeCloseTo(10 / 16, 1);
+  expect(off.widths[0]! + off.widths[1]!).toBeCloseTo(off.h, 0);
+  expect(on.widths).toHaveLength(2);
+  expect(on.widths[0]! + on.widths[1]!).toBeCloseTo(on.h, 0);
+  await userEvent.hover(on.links[0]!);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('a → x: $8 (50%)');
 });

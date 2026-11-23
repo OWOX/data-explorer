@@ -21,14 +21,14 @@ const SHOPIFY = 'Shopify';
 const GA4 = 'GoogleAnalytics4';
 type Saved = { martId: string; sourceKey?: string | null };
 // `fail` makes reading the stored mart throw; `delayMs` holds that read back; `route` opens a view link; `sources.gone` makes the next model read list every mart without a connector.
-async function setup(saved?: unknown, opts: { fail?: boolean; delayMs?: number; route?: string; sources?: { gone: boolean } } = {}) {
+async function setup(saved?: unknown, opts: { fail?: boolean; delayMs?: number; route?: string; sources?: { gone: boolean }; slowModel?: boolean } = {}) {
   const real = createMockCtx(demoFixtures(), { latencyMs: 0 });
   if (saved !== undefined) await real.collections('preferences').put('main-mart', saved as never);
   const puts: unknown[] = [];
   const ctx: Ctx = {
     ...real,
     route: opts.route,
-    owox: { ...real.owox, dataMarts: { ...real.owox.dataMarts, list: async () => (await real.owox.dataMarts.list()).map((m) => (opts.sources?.gone ? { ...m, definitionType: 'SQL' as const } : m)) } },
+    owox: { ...real.owox, dataMarts: { ...real.owox.dataMarts, list: async () => (opts.slowModel ? await new Promise((r) => setTimeout(r, 0)) : undefined, await real.owox.dataMarts.list()).map((m) => (opts.sources?.gone ? { ...m, definitionType: 'SQL' as const } : m)) } },
     collections: <T,>(name: string) => {
       const c = real.collections<T>(name);
       const get = async (id: string) => {
@@ -196,6 +196,14 @@ describe('the remembered main data mart', () => {
     await act(async () => box.dispatch({ type: 'refreshModel' }));
     await waitFor(() => expect(box.latest.selection.sourceKey).toBeNull());
     expect(box.latest.selection.martId).toBe('returns');
+    await quiet();
+    expect(puts).toEqual([]);
+  });
+
+  test('preferences ready before the model still open the remembered mart, with no write', async () => {
+    const { puts } = await setup({ martId: 'returns', sourceKey: null }, { slowModel: true });
+    await settled();
+    await waitFor(() => expect(box.latest.selection.martId).toBe('returns'));
     await quiet();
     expect(puts).toEqual([]);
   });

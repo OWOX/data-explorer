@@ -117,14 +117,18 @@ test('sankey: a main mart metric by a column of a one-to-one joined mart draws',
 });
 
 test('sankey: a column of a mart that fans out the main rows draws per-pair reads and says ribbons can overlap', async () => {
-  const t = await charts({ columns: [...dims, 'shipments__carrier'], charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'shipments__carrier'] }] } });
+  const t = await charts({ columns: [...dims, 'shipments__carrier'], charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'shipments__carrier'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   const hint = await within(data().querySelector<HTMLElement>('section[data-chart-kind="Sankey"]')!).findByRole('note');
   await userEvent.hover(hint);
   expect((await screen.findAllByText(FAN_OUT_NOTE)).length).toBeGreaterThan(0);
   const reads = t.queries.slice(t.tableQueries());
-  expect(reads.filter((q) => q.limit === 5000 && q.column?.length === 3)).toHaveLength(1);
-  expect(reads.filter((q) => q.limit === 5000 && q.column?.length === 3)[0]!.column).toEqual(expect.arrayContaining(['status', 'shipments__carrier']));
+  // One read per pair of neighbouring columns (each with the metric), and none for all three columns at once.
+  const pairs = reads.filter((q) => q.limit === cap.n && q.column?.length === 3);
+  expect(pairs).toHaveLength(2);
+  expect(pairs.some((q) => q.column!.includes('status') && q.column!.includes('is_gift') && !q.column!.includes('shipments__carrier'))).toBe(true);
+  expect(pairs.some((q) => q.column!.includes('is_gift') && q.column!.includes('shipments__carrier') && !q.column!.includes('status'))).toBe(true);
+  expect(reads.filter((q) => q.column?.includes('status') && q.column.includes('is_gift') && q.column.includes('shipments__carrier'))).toHaveLength(0);
   // The Metric stays in the menu.
   await userEvent.click(panel('Sankey'));
   expect(await screen.findByRole('menuitem', { name: 'Metric' })).toBeInTheDocument();

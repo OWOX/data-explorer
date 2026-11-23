@@ -177,7 +177,7 @@ function AppBody() {
     if (!martId) {
       // A link that opened on a source alone has no mart to adopt; a mart clicked off is the member's own choice, so the next one is saved.
       // Not cleared on every empty selection: the first-load pick sets `applied` and dispatches in the same commit, while the mart is still empty.
-      if (applied.current === undefined || state.selection.cleared) { applied.current = null; remembered.current = null; }
+      if ((sourceKey && applied.current === undefined) || state.selection.cleared) { applied.current = null; remembered.current = null; }
       return;
     }
     const key = mainKey(martId, sourceKey);

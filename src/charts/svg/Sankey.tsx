@@ -1,5 +1,6 @@
 import { useId, useCallback, useEffect, useMemo, useRef, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
+import { CutLabel } from './CutLabel';
 import { BLANK_COLOR, thinColor, labelOf, OTHER_KEY } from '../blank';
 import { BlankDefs, blankFill } from './BlankPattern';
 import { layoutSankey, REST_ORIGIN, type Flow, type NodeSize, type SankeyLink, type Tone } from '../sankeyLayout';
@@ -73,7 +74,7 @@ export function Sankey({ titles, columns, flows, fit, text, ariaLabel, onPickNod
   return (
     <div ref={ref} className="dm-sankey">
       <svg ref={root} role={onPickNode || onPickLink ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${Math.max(120, width)} ${height}`}>
-        {titles.map((t, c) => <Tooltip key={c} content={t}><text className="dm-chart-axis-title" x={c * step} y={12} textAnchor="start">{clip(t, roomChars + 6)}</text></Tooltip>)}
+        {titles.map((t, c) => <CutLabel key={c} full={t} shown={clip(t, roomChars + 6)} className="dm-chart-axis-title" x={c * step} y={12} textAnchor="start" />)}
         <BlankDefs id={blankId} />
         <g transform={`translate(0 ${TOP})`}>
           <g>
