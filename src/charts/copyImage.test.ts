@@ -71,3 +71,14 @@ test('copyImage strokes a bordered legend swatch and leaves a plain one unstroke
   await mod.internals.render(el, 'T');
   expect(calls).toEqual(['strokeRect']);
 });
+
+test('inlineStyles carries stroke-linejoin and stroke-linecap, so an exported pie keeps its round joins', () => {
+  const s = section();
+  const svg = s.querySelector('svg')!;
+  vi.spyOn(window, 'getComputedStyle').mockImplementation(() => ({ getPropertyValue: (p: string) => (p === 'stroke-linejoin' ? 'round' : p === 'stroke-linecap' ? 'round' : p === 'fill' ? 'url("#dm-blank-x")' : '') }) as never);
+  const clone = svg.cloneNode(true) as SVGElement;
+  inlineStyles(svg, clone);
+  expect(clone.querySelector('rect')!.getAttribute('stroke-linejoin')).toBe('round');
+  expect(clone.querySelector('rect')!.getAttribute('stroke-linecap')).toBe('round');
+  expect(clone.querySelector('rect')!.getAttribute('fill')).toBe('url("#dm-blank-x")');
+});

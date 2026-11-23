@@ -180,7 +180,7 @@
 .dm-node {
   position: relative; z-index: 2;
   display: flex; flex-direction: column; gap: 0.5rem;
-  padding: 0.75rem; border: 1px solid var(--border); border-radius: 0.625rem;
+  padding: 0.75rem; border: 1px solid var(--mart-line); border-radius: 0.625rem;
   background: var(--card); cursor: pointer;
   transition: opacity 150ms, box-shadow 150ms;
 }
@@ -204,7 +204,7 @@
 .dm-canvas [data-mart-id] { user-select: none; }
 /* The dot on the middle of a line whose relationship has a name or a description: it follows its line's opacity (the line it sits after),
    and takes the pointer only while it shows, so a hidden line leaves the cards clickable. */
-.dm-wire-dot { fill: var(--muted-foreground); stroke: var(--background); stroke-width: 1.5; opacity: 0; pointer-events: none; transition: opacity 150ms; }
+.dm-wire-dot { fill: var(--mart-line); stroke: var(--background); stroke-width: 1.5; opacity: 0; pointer-events: none; transition: opacity 150ms; }
 :is(#wires, #tree-wires) path.lit + .dm-wire-dot { opacity: 1; pointer-events: all; }
 :is(#wires, #tree-wires) path.lit.aside + .dm-wire-dot { opacity: 0.5; }
 :is(#wires, #tree-wires) path.relationship:is(.joined, .ghost) + .dm-wire-dot { opacity: 1; pointer-events: all; }
@@ -301,12 +301,12 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
   opacity: 0; transition: opacity 150ms;
   pointer-events: stroke;
 }
-/* Blue crosses a band boundary: a source feeding a mart. Grey stays inside the Data Marts band:
+/* Blue crosses a band boundary: a source feeding a mart. The card border colour (--mart-line) stays inside the Data Marts band:
    a join between two marts. */
 #wires .source, #tree-wires .source { stroke: var(--primary); }
 /* Solid is a join in the report (.joined), always drawn. Dashed is a join that can be made: with .ghost it is always drawn too,
    at full strength; a plain one waits for a hover. Both views draw the same. */
-#wires .relationship, #tree-wires .relationship { stroke: var(--muted-foreground); stroke-dasharray: 5 4; }
+#wires .relationship, #tree-wires .relationship { stroke: var(--mart-line); stroke-dasharray: 5 4; }
 #wires .relationship.joined, #tree-wires .relationship.joined { stroke-dasharray: none; }
 #wires path.lit, #tree-wires path.lit { opacity: 1; }
 /* A second card's lines, while another is chosen: the lines they always were, at half strength.
@@ -762,7 +762,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 /* The lines of a card in hand, in Grid and Graph alike: solid to the mart it is joined under now, dashed (as every join that can be made) to the others, the closest one stronger. */
 #drag-line { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 2; }
 .dm-canvas > #drag-line { z-index: 50; }
-#drag-line path { fill: none; stroke: var(--muted-foreground); stroke-linecap: round; stroke-width: 2; stroke-dasharray: 5 4; }
+#drag-line path { fill: none; stroke: var(--mart-line); stroke-linecap: round; stroke-width: 2; stroke-dasharray: 5 4; }
 #drag-line path.joined { stroke-dasharray: none; }
 #drag-line path.closest, #tree-wires path.closest { stroke-width: 3; }
 

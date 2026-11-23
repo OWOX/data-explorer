@@ -64,7 +64,8 @@
 .dm-chart-text { fill: var(--muted-foreground); font-size: 11px; }
 .dm-chart-axis-title { fill: var(--muted-foreground); font-size: 11px; }
 .dm-spark-line { fill: none; stroke: var(--dm-series-1); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.dm-pie-slice { stroke: var(--card); stroke-width: 2; }
+/* Round joins: a miter join at the centre, where every slice meets at a sharp angle, juts out as a white spike over the thin slices. */
+.dm-pie-slice { stroke: var(--card); stroke-width: 2; stroke-linejoin: round; }
 .dm-pie-slice:focus-visible { outline: none; stroke: var(--foreground); stroke-width: 3; }
 .dm-bar-chart rect:focus-visible { outline: none; stroke: var(--foreground); stroke-width: 3; }
 .dm-bar-chart rect:hover, .dm-pie-slice:hover { opacity: 0.85; }

@@ -57,6 +57,8 @@
   --toast-success-bg: #ecfdf5; --toast-success-fg: #166534; --toast-success-border: #d6dfe6;
   --toast-error-bg: #fee2e2; --toast-error-fg: #991b1b; --toast-error-border: #ead1d1;
   --toast-info-bg: #e8edfb; --toast-info-fg: #1d4ed8; --toast-info-border: #cad5f6;
+  /* Data Marts cards and the lines between them: one shade darker than --border, so a 1px dashed edge reads like the section icon's chip. */
+  --mart-line: #cbd5e1;
 }
 
 .dark {
@@ -94,6 +96,7 @@
   --toast-success-bg: #0b2a1b; --toast-success-fg: #86efac; --toast-success-border: #14532d;
   --toast-error-bg: #3b1219; --toast-error-fg: #fca5a5; --toast-error-border: #7f1d1d;
   --toast-info-bg: #14234d; --toast-info-fg: #93c5fd; --toast-info-border: #1e3a8a;
+  --mart-line: #334155;
 }
 
 /* Toast card, in the host app's react-hot-toast look: a pill, no shadow, a 1px bottom border only. */

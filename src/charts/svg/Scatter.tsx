@@ -1,5 +1,8 @@
-import type { KeyboardEvent } from 'react';
+import { useId, type KeyboardEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
+import { BLANK_COLOR, isBlankKey } from '../blank';
+import { BlankDefs, blankFill } from './BlankPattern';
+import { textWidth } from './fitText';
 import { useWidth } from '../useWidth';
 import { niceTicks } from './ticks';
 import { XTitle, Y_TITLE_W, YTitle } from './YTitle';
@@ -8,7 +11,6 @@ export type Dot = { key: string; label: string; x: number; y: number; xText: str
 const PLOT_H = 220;
 const TOP = 8;
 const AXIS_H = 48;
-const CHAR_W = 6;
 /** The space between the tick labels and the axis title. */
 const TITLE_GAP = 8;
 const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
@@ -20,12 +22,13 @@ export function Scatter({ points, ariaLabel, xTitle, yTitle, formatX, formatY, o
   integerX?: boolean; integerY?: boolean;
 }) {
   const { ref, width } = useWidth<HTMLDivElement>();
+  const blankId = `dm-blank-${useId().replace(/:/g, '')}`;
   const lo = (v: number[]) => Math.min(0, ...v);
   const hi = (v: number[]) => Math.max(0, ...v);
   const tx = niceTicks(hi(points.map((p) => p.x)), { lo: lo(points.map((p) => p.x)), integer: integerX });
   const ty = niceTicks(hi(points.map((p) => p.y)), { lo: lo(points.map((p) => p.y)), integer: integerY });
   const [x0, x1, y0, y1] = [tx.ticks[0]!, tx.top, ty.ticks[0]!, ty.top];
-  const left = Math.max(32, Math.max(...ty.ticks.map((t) => formatY(t).length)) * CHAR_W + 12) + Y_TITLE_W;
+  const left = Math.max(32, Math.max(...ty.ticks.map((t) => textWidth(formatY(t)))) + 12) + Y_TITLE_W;
   const plotW = Math.max(20, width - left - 12);
   const px = (x: number) => left + (x1 > x0 ? (x - x0) / (x1 - x0) : 0.5) * plotW;
   const py = (y: number) => TOP + PLOT_H - (y1 > y0 ? (y - y0) / (y1 - y0) : 0.5) * PLOT_H;
@@ -33,6 +36,7 @@ export function Scatter({ points, ariaLabel, xTitle, yTitle, formatX, formatY, o
   return (
     <div ref={ref} className="dm-scatter">
       <svg role={onPick ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+        <BlankDefs id={blankId} />
         {ty.ticks.map((t) => (
           <g key={`y${t}`}>
             <line className="dm-chart-grid" x1={left} x2={left + plotW} y1={py(t)} y2={py(t)} />
@@ -44,7 +48,7 @@ export function Scatter({ points, ariaLabel, xTitle, yTitle, formatX, formatY, o
         <YTitle x={8} mid={TOP + PLOT_H / 2} length={PLOT_H} text={yTitle} />
         {points.map((p) => {
           const pick = onPick ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${p.label}`, style: { cursor: 'pointer' }, onClick: () => onPick(p.key), onKeyDown: press(() => onPick(p.key)) } : {};
-          return <Tooltip key={p.key} content={`${p.label}: ${xTitle} ${p.xText}, ${yTitle} ${p.yText}`}><circle data-dot={p.key} cx={px(p.x)} cy={py(p.y)} r={4} fill="var(--dm-series-1)" fillOpacity={0.75} {...pick} /></Tooltip>;
+          return <Tooltip key={p.key} content={`${p.label}: ${xTitle} ${p.xText}, ${yTitle} ${p.yText}`}><circle data-dot={p.key} cx={px(p.x)} cy={py(p.y)} r={4} {...(isBlankKey(p.key) ? { fill: blankFill(BLANK_COLOR, blankId), stroke: 'var(--muted-foreground)' } : { fill: 'var(--dm-series-1)', fillOpacity: 0.75 })} {...pick} /></Tooltip>;
         })}
       </svg>
       <table className="sr-only">
