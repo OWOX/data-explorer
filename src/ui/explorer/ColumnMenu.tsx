@@ -15,6 +15,7 @@ import { FilterEditor } from './FilterEditor';
 import { FilterLinesIcon } from './FilterLinesIcon';
 import { Panel, Row, panelBeingEdited, useSubmenu } from './MenuParts';
 import { useOutsidePress } from '../outsidePress';
+import { useLatest } from '../useLatest';
 
 type SubKey = 'filter' | 'slice' | 'aggregate' | 'format' | 'sort';
 
@@ -38,6 +39,10 @@ export type ColumnMenuEnv = {
   setFormat: (column: string, f: Format | null) => void;
   canHide: (field: string) => boolean;
   hide: (field: string) => void;
+  /** Whether the field is a column on the grid. A field of the Fields list that is not has no Move rows, and Aggregate, Sort and Format first show it as a column. */
+  isShown: (field: string) => boolean;
+  /** The output the grid gives the field: its first one when shown, else the plain column it would be. */
+  outputOf: (field: string) => Output;
   /** Whether the column has a neighbour on that side inside its own data mart's group. */
   canMove: (field: string, dir: -1 | 1) => boolean;
   move: (field: string, dir: -1 | 1) => void;
@@ -52,7 +57,7 @@ export type ColumnMenuEnv = {
 const NOOP = () => undefined;
 export const ColumnMenuEnvContext = createContext<ColumnMenuEnv>({
   sorts: [], setSort: NOOP, filters: {}, setFilter: NOOP, slices: {}, setSlice: NOOP, isAggregated: () => false, draftOf: () => ({ functions: [], bucket: null, timeZone: null }), blockerFor: () => undefined,
-  changeAgg: NOOP, formatOf: () => ({ kind: 'auto' }), memberFormat: () => undefined, setFormat: NOOP, canHide: () => true, hide: NOOP, canMove: () => false, move: NOOP, typeOf: (f) => f.type,
+  changeAgg: NOOP, formatOf: () => ({ kind: 'auto' }), memberFormat: () => undefined, setFormat: NOOP, isShown: () => true, outputOf: (name) => ({ key: name, column: name, sortable: true }), canHide: () => true, hide: NOOP, canMove: () => false, move: NOOP, typeOf: (f) => f.type,
 });
 
 const FORMAT_LABELS: Record<Format['kind'], string> = { auto: 'Automatic', plain: 'Plain number', percent: 'Percent', money: 'Money', date: 'Date', datetime: 'Date time', time: 'Time' };
@@ -79,6 +84,12 @@ function formatActive(env: ColumnMenuEnv, field: Field, output: Output, type: st
   return keepsUnit(output.fn) && formatsFor(type).length > 0 && !!own && own.kind !== 'auto' && env.formatOf(field.name, type).kind !== 'auto';
 }
 
+/** Whether the member set something on the field (a filter, a slice, a function or bucket, a sort, a format), shown or not: it lights the menu icon. */
+function fieldActive(env: ColumnMenuEnv, field: Field, output: Output): boolean {
+  const canSort = output.sortable && env.sortable !== false;
+  return !!env.filters[field.name] || (!!env.slices[field.name] && !!field.joined) || aggOn(env.draftOf(field.name)) || (canSort && env.sorts.some((s) => s.field === field.name)) || formatActive(env, field, output, env.typeOf(field, output));
+}
+
 /** A form submenu: a dialog panel beside its row, with a scrolling body. */
 function EditorPanel({ row, seq, label, onEscape, children }: { row: HTMLElement; seq: number; label: string; onEscape: () => void; children: ReactNode }) {
   return (
@@ -102,6 +113,8 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
   const [money, setMoney] = useState<{ row: HTMLElement; seq: number } | null>(null);
   const [placed, setPlaced] = useState(false);
   const having = env.filters[field.name]?.fn;
+  // A field opened from the Fields list may not be a column: it has no Move rows and nothing to hide.
+  const shown = env.isShown(field.name);
   const rootSeq = initial ? 0 : 1;
   const rows = useRef(new Map<string, HTMLElement>());
   const valuesOf = (f: Field, scope: 'filter' | 'slice') => { const v = env.valuesFor?.(f, scope); return v ? { ...v, cache: valueCache } : undefined; };
@@ -157,9 +170,9 @@ function MenuPopup({ field, output, anchor, initial, onClose }: { field: Field; 
         {formats.length > 0 && rowFor('format', 'Format', 'menu')}
         {canSort && rowFor('sort', 'Sort', 'menu')}
         <Divider />
-        <Row label="Move left" icon={<ArrowLeft />} disabled={!env.canMove(field.name, -1)} onActivate={() => moveBy(-1)} onHover={hoverOther} onLeaveRow={leaveRow} />
-        <Row label="Move right" icon={<ArrowRight />} disabled={!env.canMove(field.name, 1)} onActivate={() => moveBy(1)} onHover={hoverOther} onLeaveRow={leaveRow} />
-        <Row label="Hide column" icon={<EyeOff />} disabled={!env.canHide(field.name)} onActivate={hide} onHover={hoverOther} onLeaveRow={leaveRow} />
+        {shown && <Row label="Move left" icon={<ArrowLeft />} disabled={!env.canMove(field.name, -1)} onActivate={() => moveBy(-1)} onHover={hoverOther} onLeaveRow={leaveRow} />}
+        {shown && <Row label="Move right" icon={<ArrowRight />} disabled={!env.canMove(field.name, 1)} onActivate={() => moveBy(1)} onHover={hoverOther} onLeaveRow={leaveRow} />}
+        <Row label="Hide column" icon={<EyeOff />} disabled={!shown || !env.canHide(field.name)} onActivate={hide} onHover={hoverOther} onLeaveRow={leaveRow} />
       </Panel>
       {placed && sub?.key === 'filter' && (
         <EditorPanel row={sub.row} seq={sub.seq} label={`Filter of ${title}`} onEscape={closeSub}>
@@ -227,6 +240,27 @@ export function menuIconClass(active: boolean): string {
   return active ? 'dm-ctl dm-ctl-lg dm-ctl-on dm-reveal dm-reveal-on' : 'dm-ctl dm-ctl-lg dm-reveal';
 }
 
+/**
+ * Closes an open column menu on a press outside it, and on a scroll of anything that holds its opener (a fixed menu would be left behind it).
+ * A press outside only closes it: it does not reach whatever is under the pointer. A resize only repositions the panels (each listens for it):
+ * on a touch screen the on-screen keyboard resizes the viewport. `holder` is the element the menu opened from; presses on it are the opener's own.
+ */
+function useMenuDismiss(open: boolean, holder: { current: HTMLElement | null }, close: () => void) {
+  const closeNow = useLatest(close);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => {
+      const t = e.target;
+      if (t instanceof Node && t !== document && (t as Element).closest?.('[data-column-menu]')) return;
+      const el = holder.current;
+      if (t === document || (t instanceof Node && el && t.contains(el))) closeNow.current();
+    };
+    window.addEventListener('scroll', away, true);
+    return () => window.removeEventListener('scroll', away, true);
+  }, [open, holder, closeNow]);
+  useOutsidePress(open, (t) => !!t.closest('[data-column-menu]') || !!holder.current?.contains(t), close);
+}
+
 export function ColumnControls({ field, output }: { field: Field; output: Output }) {
   const env = useContext(ColumnMenuEnvContext);
   const [menu, setMenu] = useState<{ anchor: HTMLElement; sub: SubKey | null } | null>(null);
@@ -239,28 +273,11 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
   const aggregated = aggOn(draft);
   const at = env.sorts.findIndex((s) => s.field === field.name);
   const direction = at < 0 ? null : env.sorts[at]!.direction;
-  const type = env.typeOf(field, output);
-  // Active means the member set something: an AI project pick does not light the icon.
-  const formatOn = formatActive(env, field, output, type);
   const canSort = output.sortable && env.sortable !== false;
-  const active = !!filter || (!!slice && !!field.joined) || aggregated || (canSort && !!direction) || formatOn;
+  const active = fieldActive(env, field, output);
   const close = useCallback((refocus = true) => { setMenu(null); if (refocus) icon.current?.focus(); }, []);
   const toggle = (anchor: HTMLElement, sub: SubKey | null) => setMenu((cur) => (cur && cur.sub === sub ? null : { anchor, sub }));
-  useEffect(() => {
-    if (!menu) return;
-    // Outside the menu, a press closes it; so does a scroll of anything that holds the column (a fixed menu would be left behind it).
-    // A resize only repositions the panels (each listens for it): on a touch screen the on-screen keyboard resizes the viewport.
-    const away = (e: Event) => {
-      const t = e.target;
-      if (t instanceof Node && t !== document && (t as Element).closest?.('[data-column-menu]')) return;
-      const holder = controls.current;
-      if (t === document || (t instanceof Node && holder && t.contains(holder))) setMenu(null);
-    };
-    window.addEventListener('scroll', away, true);
-    return () => window.removeEventListener('scroll', away, true);
-  }, [menu]);
-  // A press outside the menu only closes it: it does not reach whatever is under the pointer.
-  useOutsidePress(!!menu, (t) => !!t.closest('[data-column-menu]') || !!controls.current?.contains(t), () => setMenu(null));
+  useMenuDismiss(!!menu, controls, () => setMenu(null));
   // The sort mark steps this column's sort (ascending, descending, none) in place; it does not open the menu.
   // Stepping to none unmounts the mark, so focus moves to the column's menu icon rather than dropping to the page.
   const cycleMark = () => {
@@ -291,5 +308,31 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
       </button>
       {menu && <MenuPopup key={menu.sub ?? 'root'} field={field} output={output} anchor={menu.anchor} initial={menu.sub} onClose={close} />}
     </span>
+  );
+}
+
+/**
+ * The column menu icon of a row in a data mart's Fields list: the same menu the header opens, for a field that may not be a column.
+ * It is green whenever the field has a rule set on it, shown or not; otherwise it is grey and appears with the row's hover or focus.
+ * Arrow Right from the row's option reaches it (it is not a Tab stop of its own).
+ */
+export function FieldMenuButton({ field }: { field: Field }) {
+  const env = useContext(ColumnMenuEnvContext);
+  const output = env.outputOf(field.name);
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const icon = useRef<HTMLButtonElement>(null);
+  const title = columnTitle(field);
+  const close = () => { setAnchor(null); icon.current?.focus(); };
+  // A press or scroll outside only closes the menu; focus stays where the press put it.
+  useMenuDismiss(!!anchor, icon, () => setAnchor(null));
+  const active = fieldActive(env, field, output);
+  return (
+    <>
+      <button ref={icon} type="button" tabIndex={-1} data-row-action aria-label={`Column menu ${title}`} aria-haspopup="menu" aria-expanded={!!anchor} data-field={field.name}
+        className={`dm-ctl dm-ctl-lg dm-row-ctl${active ? ' dm-ctl-on' : ''}`} onClick={(e) => { const a = e.currentTarget; setAnchor((cur) => (cur ? null : a)); }}>
+        <FilterLinesIcon className="dm-icon" />
+      </button>
+      {anchor && <MenuPopup field={field} output={output} anchor={anchor} initial={null} onClose={close} />}
+    </>
   );
 }

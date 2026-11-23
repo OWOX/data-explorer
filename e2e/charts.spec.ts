@@ -6,7 +6,7 @@ const data = (page: Page) => page.locator('#band-data');
 test('Charts mode shows scorecards, a stacked time series and a pie, and Table brings the grid back', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel(/created_at/i).click();
+  await page.getByRole('option', { name: /created_at/i }).click();
   await page.keyboard.press('Escape');
   const widths = () => data(page).locator('th[data-group]').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
   const tableWidths = await widths();
@@ -64,7 +64,7 @@ test('the time series and the pie sit side by side when the band is wide, and Ch
   // Amount is a default column now: only created_at is ticked.
   for (const name of [/created_at/i]) {
     await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
-    await page.getByLabel(name).click();
+    await page.getByRole('option', { name }).click();
     await page.keyboard.press('Escape');
   }
   await data(page).getByRole('radio', { name: 'Charts' }).click();

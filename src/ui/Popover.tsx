@@ -13,8 +13,10 @@ export function Popover({ trigger, children, align = 'start', open, onOpenChange
   const shown = open ?? own;
   const set = (o: boolean) => { setOwn(o); onOpenChange?.(o); };
   const id = useId();
-  // Inside is the trigger, the content, and any other popper layer (a Select or a tooltip opened from it).
-  useOutsidePress(shown, (t) => !!t.closest(`[data-popover-trigger="${id}"], [data-radix-popper-content-wrapper]`), () => set(false));
+  // Inside is the trigger, the content, and any other popper layer (a Select or a tooltip opened from it), or a column menu opened from a row.
+  useOutsidePress(shown, (t) => !!t.closest(`[data-popover-trigger="${id}"], [data-radix-popper-content-wrapper], [data-column-menu]`), () => set(false));
+  // A column menu is another layer on top: its focus, its pointer and its Escape are its own and leave this popover open.
+  const inMenu = (e: Event) => { if ((e.target as Element | null)?.closest?.('[data-column-menu]')) e.preventDefault(); };
   return (
     <P.Root open={shown} onOpenChange={set}>
       {tip ? (
@@ -24,7 +26,7 @@ export function Popover({ trigger, children, align = 'start', open, onOpenChange
         </T.Root>
       ) : <P.Trigger asChild data-popover-trigger={id}>{trigger}</P.Trigger>}
       <P.Portal>
-        <P.Content aria-label={label} onCloseAutoFocus={onCloseAutoFocus} align={align} sideOffset={4} collisionPadding={8} className="z-50 flex max-h-[min(20rem,var(--radix-popover-content-available-height))] w-64 flex-col overflow-hidden rounded-md border bg-background text-sm shadow-md">
+        <P.Content aria-label={label} onCloseAutoFocus={onCloseAutoFocus} onInteractOutside={inMenu} onEscapeKeyDown={inMenu} align={align} sideOffset={4} collisionPadding={8} className="z-50 flex max-h-[min(20rem,var(--radix-popover-content-available-height))] w-64 flex-col overflow-hidden rounded-md border bg-background text-sm shadow-md">
           <div data-popover-body="" className="min-h-0 overflow-y-auto p-3">{children}</div>
         </P.Content>
       </P.Portal>

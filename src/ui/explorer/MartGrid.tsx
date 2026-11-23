@@ -20,7 +20,7 @@ import { ChartsBody } from '../../charts/ChartsBody';
 import { dropPicksOf } from '../../charts/listMenu';
 import { useWidth } from '../../charts/useWidth';
 import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKey } from '../../model/sort';
-import { groupMap, moveColumn, moveColumnBy, orderColumns } from '../../state/column-order';
+import { groupMap, moveColumn, moveColumnBy, orderColumns, ownInSchemaOrder } from '../../state/column-order';
 import { joinedMartIds, joinedPaths, ownNamesIn, pathTitle } from '../../state/join-plan';
 import type { Field, Model, Schema } from '../../model/types';
 import { hasPrimaryKey, primaryKeys } from '../../records/relationships';
@@ -312,6 +312,13 @@ const pickOffered = (rules: Record<string, ColumnFilter>, schema: Schema, offere
 /** The map with one entry set, or taken out when the value is undefined. */
 const withEntry = (m: Record<string, ColumnFilter>, key: string, value: ColumnFilter | undefined) => { const n = { ...m }; if (value) n[key] = value; else delete n[key]; return n; };
 
+/** The member's sorts after a menu choice. With none of their own (null) a choice replaces the default; after that it sets the field's direction where it stands in the order of precedence, or adds it last. Removing drops the field (the member's own empty list is no sort at all). */
+const nextSorts = (field: string, direction: SortDirection | null) => (cur: SortKey[] | null): SortKey[] | null => {
+  if (direction === null) return cur === null ? [] : cur.filter((s) => s.field !== field);
+  if (cur === null) return [{ field, direction }];
+  return cur.some((s) => s.field === field) ? cur.map((s) => (s.field === field ? { field, direction } : s)) : [...cur, { field, direction }];
+};
+
 const toFilterMap = (list: ColumnFilter[]): Record<string, ColumnFilter> => Object.fromEntries(list.map((f) => [f.field, f]));
 
 function Grid({ martId, model, schema: native, seed, holdView, lateView, initialColumns, initialSources, initialAgg, onChange, onHold, onRebase, onRelease, onRows, paused, onRefresh, refreshError }: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown; /** The member's saved view is still being read: its saves wait. */ holdView: boolean; /** The saved view, once a late read delivers it: parts the member has not touched since the grid opened take its values. */ lateView: SavedView | null | undefined; initialColumns: string[]; initialAgg: Aggregation; initialSources: JoinedSource[] | null }) {
@@ -355,6 +362,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const openedBy = useRef<HTMLElement | null>(null);
   const [allSlices, setAllSlices] = useState<Record<string, ColumnFilter>>(() => seed.saved?.slices ?? {});
   const filters = useMemo(() => pickOffered(allFilters, schema), [allFilters, schema]);
+  // A rule does not need its field on the grid: a filter or slice on a hidden field of a data mart that is on the grid (or a hidden field of the main mart) applies,
+  // because the schema offers every field of the joined marts. Only a field this visit does not offer is parked: that includes a joined mart's field when the joined marts could not be read, so a slice on a mart with no shown column cannot reach the query then.
   const slices = useMemo(() => pickOffered(allSlices, schema), [allSlices, schema]);
   const offeredKey = schema.map((f) => f.name).join('\u0000');
   const [seenOffered, setSeenOffered] = useState({ key: offeredKey, schema });
@@ -588,11 +597,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   // The menu's sort choices. With no sort of the member's own, a choice replaces the default (as a title click does); after that it sets the
   // column's direction where it stands in the order of precedence, or adds it last, which is what the title's first click does. Removing
   // drops the column, and removing the default's own column leaves the member's own empty list (no sort at all).
-  const setSort = useCallback((field: string, direction: SortDirection | null) => edit(() => setOwn((cur) => {
-    if (direction === null) return cur === null ? [] : cur.filter((s) => s.field !== field);
-    if (cur === null) return [{ field, direction }];
-    return cur.some((s) => s.field === field) ? cur.map((s) => (s.field === field ? { field, direction } : s)) : [...cur, { field, direction }];
-  })), [edit, setOwn]);
+  const setSort = useCallback((field: string, direction: SortDirection | null) => edit(() => setOwn(nextSorts(field, direction))), [edit, setOwn]);
   // The implicit first-key sort is sent and exported but not shown: no arrow, no aria-sort, so the first click is not a no-op.
   const shownSorts = useMemo(() => (grouped ? (own ?? []) : gridSorts), [grouped, own, gridSorts]);
   const env = useMemo(() => ({ sorts: shownSorts, toggleSort, sortable: !charts }), [shownSorts, toggleSort, charts]);
@@ -731,23 +736,48 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     const query = valuesQuery(field, filter);
     return { key: JSON.stringify([martId, query]), loaded, load: async (signal: AbortSignal) => valuesOf(await readRows(ctx, martId, query, { signal }), field) };
   }, [mainKey, schema, filters, slices, martId, ctx, rows]);
-  const menuEnv = useMemo<ColumnMenuEnv>(() => ({
-    sorts: shownSorts, setSort, filters, slices, setSlice,
-    setFilter,
-    isAggregated: (column) => aggNow.aggregations.some((r) => r.column === column) || aggNow.dateTrunc.some((r) => r.column === column),
-    draftOf: (column) => draftOf(column, aggNow),
-    blockerFor: (name) => blockers.find((b) => b.name !== name)?.title,
-    changeAgg,
-    formatOf, memberFormat, setFormat,
-    // The same rule as the Fields picker: the last column, and the last of the main mart's while a joined mart is shown, stay.
-    canHide: (name) => shown.length > 1 && !(several && ownOn === 1 && ownNames.has(name)),
-    hide: (name) => changeColumns(shown.filter((n) => n !== name)),
-    canMove: (name, dir) => moveColumnBy(shown, name, dir, sources) !== shown,
-    move: (name, dir) => reorder(moveColumnBy(shown, name, dir, sources)),
-    typeOf: (f, o) => outputType(f, o.fn),
-    sortable: !charts,
-    valuesFor,
-  }), [valuesFor, shownSorts, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, several, ownOn, ownNames, changeColumns, sources, reorder, charts]);
+  const menuEnv = useMemo<ColumnMenuEnv>(() => {
+    // The columns with a field that is not shown added where ticking it in the Fields list would put it (a joined field goes last, with its mart); null when it is shown already.
+    const withField = (name: string): string[] | null => {
+      if (shown.includes(name)) return null;
+      return byName.get(name)?.joined ? [...shown, name] : [...ownInSchemaOrder(shown, native.map((f) => f.name), new Set([...shown.filter((c) => ownNames.has(c)), name])), ...shown.filter((c) => !ownNames.has(c))];
+    };
+    return {
+      sorts: shownSorts, filters, slices,
+      // Filter and Slice keep the columns as they are: a hidden field stays hidden and its rule still reaches the query.
+      setSlice, setFilter,
+      // Aggregate, Sort and Format on a field that is not a column first show it, in the same edit, so Undo takes both back.
+      setSort: (field, direction) => {
+        const cols = withField(field);
+        if (!cols) { setSort(field, direction); return; }
+        edit(() => { changeColumns(cols); setOwn(nextSorts(field, direction)); });
+      },
+      isAggregated: (column) => aggNow.aggregations.some((r) => r.column === column) || aggNow.dateTrunc.some((r) => r.column === column),
+      draftOf: (column) => draftOf(column, aggNow),
+      blockerFor: (name) => blockers.find((b) => b.name !== name)?.title,
+      changeAgg: (column, draft) => {
+        const cols = withField(column);
+        if (!cols) { changeAgg(column, draft); return; }
+        edit(() => changeColumns(cols, (cur) => applyDraft(column, draft, cur)));
+      },
+      formatOf, memberFormat,
+      setFormat: (column, f) => {
+        const cols = withField(column);
+        if (cols) edit(() => changeColumns(cols));
+        setFormat(column, f);
+      },
+      isShown: (name) => shown.includes(name),
+      outputOf: (name) => outputs.find((o) => o.column === name) ?? { key: name, column: name, sortable: true },
+      // The same rule as the Fields picker: the last column, and the last of the main mart's while a joined mart is shown, stay.
+      canHide: (name) => shown.length > 1 && !(several && ownOn === 1 && ownNames.has(name)),
+      hide: (name) => changeColumns(shown.filter((n) => n !== name)),
+      canMove: (name, dir) => moveColumnBy(shown, name, dir, sources) !== shown,
+      move: (name, dir) => reorder(moveColumnBy(shown, name, dir, sources)),
+      typeOf: (f, o) => outputType(f, o.fn),
+      sortable: !charts,
+      valuesFor,
+    };
+  }, [valuesFor, shownSorts, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, several, ownOn, ownNames, changeColumns, sources, reorder, charts, byName, native, outputs, edit, setOwn]);
   // The selection, as Google Sheets has it: a cell (a frame and a fill handle), a block of cells (shift-click or Shift+Arrow: `to` is
   // the far end, the cell stays active), or whole columns or rows (a tint and a frame around the block); its column letters and row
   // numbers are lit. `from` is where a shift-click on a header extends from.

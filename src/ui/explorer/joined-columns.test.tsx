@@ -178,7 +178,7 @@ test('when the joined marts cannot be read, a saved joined column is left out of
   expect(t.put).not.toHaveBeenCalled();
   await openPicker();
   // the own fields still work
-  await userEvent.click(screen.getByLabelText(/amount/i));
+  await userEvent.click(screen.getByRole('option', { name: /amount/i }));
   await waitFor(() => expect(headers()).toContain('Amount'));
 });
 

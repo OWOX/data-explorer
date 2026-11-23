@@ -97,7 +97,7 @@ test('a member change in the picker is saved; seeding is not', async () => {
   await waitFor(() => expect(headers()).toHaveLength(2));
   expect(t.put).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole('button', { name: 'Fields of Orders' }));
-  await userEvent.click(screen.getByLabelText(/amount/i));
+  await userEvent.click(screen.getByRole('option', { name: /amount/i }));
   await waitFor(() => expect(headers()).toHaveLength(3));
   await waitFor(() => expect(t.put).toHaveBeenCalledTimes(1), { timeout: SAVE_DEBOUNCE_MS + 1500 });
   expect(t.put).toHaveBeenCalledWith('orders', { columns: ['id', 'status', 'amount'], at: expect.any(String) });
@@ -109,7 +109,7 @@ test('this session\'s columns win over the saved ones', async () => {
   const { unmount } = t.view();
   await waitFor(() => expect(headers()).toHaveLength(2));
   await userEvent.click(screen.getByRole('button', { name: 'Fields of Orders' }));
-  await userEvent.click(screen.getByLabelText(/amount/i));
+  await userEvent.click(screen.getByRole('option', { name: /amount/i }));
   await waitFor(() => expect(headers()).toHaveLength(3));
   // A press outside the open Fields picker only closes it.
   await userEvent.keyboard('{Escape}');

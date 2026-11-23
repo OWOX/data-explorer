@@ -7,7 +7,7 @@ import type { Aggregation } from '../../model/aggregation';
 import type { Field } from '../../model/types';
 import { ColumnPicker } from './ColumnPicker';
 
-const fields = ['id', 'name', 'city'].map((name) => ({ name }) as Field);
+const fields = ['id', 'name', 'city'].map((name) => ({ name, type: 'STRING', category: 'string' }) as Field);
 const open = async (visible: string[], locked: (n: string) => boolean = () => false) => {
   const onChange = vi.fn();
   render(<TooltipProvider><ColumnPicker title="Orders" fields={fields} main visible={visible} locked={locked} onChange={onChange} /></TooltipProvider>);
@@ -34,7 +34,7 @@ test('Clear keeps a locked field', async () => {
 });
 
 test('the Fields hint is a pointer shortcut: not in the Tab order, and the option carries the description', async () => {
-  const described = [{ name: 'id', description: 'The order key' }, { name: 'name' }, { name: 'city' }] as Field[];
+  const described = [{ name: 'id', type: 'STRING', category: 'string', description: 'The order key' }, { name: 'name', type: 'STRING', category: 'string' }, { name: 'city', type: 'STRING', category: 'string' }] as Field[];
   render(<TooltipProvider><ColumnPicker title="Orders" fields={described} main visible={['id']} locked={() => false} onChange={vi.fn()} /></TooltipProvider>);
   await userEvent.click(screen.getByRole('button', { name: 'Fields of Orders' }));
   const list = await screen.findByRole('listbox', { name: 'Fields of Orders' });

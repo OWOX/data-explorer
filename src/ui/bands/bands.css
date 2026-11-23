@@ -719,6 +719,12 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-checklist-label { display: inline-flex; min-width: 0; flex: 1; align-items: center; gap: 0.375rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dm-checklist-label svg { color: var(--muted-foreground); flex-shrink: 0; }
 .dm-checklist-empty { margin: 0; padding: 0.375rem; color: var(--muted-foreground); }
+.dm-checklist-row > .dm-row-ctl { margin-right: 0.375rem; }
+/* The column menu icon of a field row: grey, and there only while the row is hovered or focused; green and always there when the field has a rule (.dm-ctl-on) or its menu is open. */
+.dm-row-ctl { color: var(--muted-foreground); opacity: 0; transition: opacity 120ms; }
+.dm-row-ctl.dm-ctl-on { color: var(--sheet-green); }
+.dm-reveal-host:hover .dm-row-ctl, .dm-reveal-host:has(:focus-visible) .dm-row-ctl, .dm-row-ctl.dm-ctl-on, .dm-row-ctl[aria-expanded='true'], .dm-row-ctl:focus-visible { opacity: 1; }
+@media (hover: none) { .dm-row-ctl { opacity: 1; } }
 .dm-checklist-row .dm-filter-only { opacity: 0; }
 .dm-checklist-row:hover .dm-filter-only, .dm-checklist-row:focus-within .dm-filter-only { opacity: 1; }
 @media (hover: none) { .dm-checklist-row .dm-filter-only { opacity: 1; } }

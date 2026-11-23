@@ -38,7 +38,7 @@ const sumLoaded = () => waitFor(() => expect(sumCell()).toMatch(/\d/));
 
 async function showColumn(label: string | RegExp) {
   await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
-  await userEvent.click(await screen.findByLabelText(label));
+  await userEvent.click(await screen.findByRole('option', { name: label }));
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 }

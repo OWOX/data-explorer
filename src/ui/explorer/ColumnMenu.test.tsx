@@ -326,7 +326,7 @@ describe('the column menu', () => {
     setup();
     await ready();
     await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
-    await userEvent.click(await screen.findByLabelText(/created_at/));
+    await userEvent.click(await screen.findByRole('option', { name: /created_at/ }));
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     const icon = await within(data()).findByLabelText('Column menu created_at');

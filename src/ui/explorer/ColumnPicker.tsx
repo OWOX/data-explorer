@@ -10,7 +10,8 @@ import { describeFilter } from '../../filters/catalogue';
 import { sliceField } from '../../filters/slice';
 import type { ColumnFilter } from '../../filters/build';
 import { Tooltip } from '../Tooltip';
-import { describeColumnFilter } from './ColumnMenu';
+import { ownInSchemaOrder } from '../../state/column-order';
+import { describeColumnFilter, FieldMenuButton } from './ColumnMenu';
 
 /**
  * The green Filter and Slice marks after a data mart's title: they show when any field of the mart (shown or not) carries
@@ -75,19 +76,7 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
     onOpenProp?.(o);
     if (!o && emptied) { setEmptied(false); commit([]); }
   };
-  const ownInOrder = (keep: Set<string>) => {
-    const schema = fields.map((f) => f.name);
-    const own = visible.filter((c) => mine.has(c) && keep.has(c));
-    for (const n of schema.filter((x) => keep.has(x) && !set.has(x))) {
-      let at = 0;
-      for (let j = schema.indexOf(n) - 1; j >= 0; j--) {
-        const k = own.indexOf(schema[j]!);
-        if (k >= 0) { at = k + 1; break; }
-      }
-      own.splice(at, 0, n);
-    }
-    return own;
-  };
+  const ownInOrder = (keep: Set<string>) => ownInSchemaOrder(visible, fields.map((f) => f.name), keep);
   const commit = (picked: string[]) => {
     const keep = new Set(picked);
     const others = visible.filter((c) => !mine.has(c));
@@ -124,6 +113,7 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
     value: f.name,
     text: fieldLabel(f),
     label: <FieldLabel field={f} hint={false} />,
+    action: <FieldMenuButton field={f} />,
     extra: <FieldHint field={f} decorative />,
     description: f.description?.trim() || undefined,
     disabled: set.has(f.name) && (visible.length === 1 || locked(f.name)),

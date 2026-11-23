@@ -226,7 +226,7 @@ test('filter, reset, columns, a row fills the Row band, Back returns', async ({ 
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(data.getByRole('row')).toHaveCount(202);
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel(/amount/i).click();
+  await page.getByRole('option', { name: /amount/i }).click();
   await expect(data.getByRole('columnheader')).toHaveCount(7);
   await page.keyboard.press('Escape');
   await data.getByRole('row').nth(2).click();
@@ -285,7 +285,7 @@ test('rows open newest date first, and Reset returns to it', async ({ page }) =>
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'none');
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel(/created_at/).click();
+  await page.getByRole('option', { name: /created_at/ }).click();
   await page.keyboard.press('Escape');
   await expect(data.getByRole('columnheader', { name: /created_at/ })).toHaveAttribute('aria-sort', 'descending');
 });
@@ -293,7 +293,7 @@ test('rows open newest date first, and Reset returns to it', async ({ page }) =>
 test('a date column filter opens on presets; a preset applies at once and names the filter', async ({ page }) => {
   const data = await ordersGrid(page);
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel(/created_at/).click();
+  await page.getByRole('option', { name: /created_at/ }).click();
   await page.keyboard.press('Escape');
   await openColumnSub(data, 'created_at', 'Filter');
   await expect(page.getByRole('menu', { name: 'Filter created_at', exact: true }).locator('[role^="menuitem"]')).toHaveCount(9);
@@ -857,7 +857,7 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
 test('a numeric filter applied through the popover (> 400) leaves fewer rows', async ({ page }) => {
   const data = await ordersGrid(page);
   await data.getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel(/Amount/).click();
+  await page.getByRole('option', { name: /Amount/ }).click();
   await page.keyboard.press('Escape');
   await expect(data.getByLabel('Column menu Amount')).toBeVisible();
   await openColumnSub(data, 'Amount', 'Filter');

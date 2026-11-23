@@ -347,10 +347,12 @@ export function planMakeMain(env: PlanEnv, id: string): Plan {
   }
   columns = orderColumns(columns, nextSources, env.ownColumns(id));
   const { aggregation, ...rules } = refitRules(nextGrid, columns);
+  const onGrid = inUsePaths(columns, nextSources);
   const next: GridState = {
     ...nextGrid,
     columns,
-    filters: dropOrphanHaving(Object.fromEntries(Object.entries(nextGrid.filters).filter(([k]) => columns.includes(k))), aggregation.aggregations),
+    // A filter does not need its column on screen either: it stays on any field of a mart that is on the new grid (the main mart's own, or a joined mart with a shown column), shown or hidden.
+    filters: dropOrphanHaving(Object.fromEntries(Object.entries(nextGrid.filters).filter(([k]) => columns.includes(k) || offered.has(k) || onGrid.has(sourceOfField(nextSources).get(k)?.aliasPath ?? '\0'))), aggregation.aggregations),
     // A slice does not need its column on screen: it stays while its field is still a joined field of the new main.
     slices: keepSlices(nextGrid.slices, (k) => nextSources.some((x) => x.fields.some((fl) => fl.name === k))),
     ...rules,
