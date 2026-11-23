@@ -238,10 +238,13 @@ describe('the data mart title row', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
-  test('the (i) description hint of the data mart sits in a revealed slot, so it shows with hover or focus only', async () => {
+  test('the (i) description hint of the data mart sits right after its title, before the rule marks, and shows with hover or focus only', async () => {
     setup(hidden);
     const group = await waitFor(() => { const g = document.querySelector<HTMLElement>('th[data-group-path=""]'); if (!g) throw new Error('no group'); return g; });
     const hint = within(group).getByRole('note', { name: /^About / });
     expect(hint.parentElement).toHaveClass('dm-reveal');
+    // It sits right after the title, before the rule marks.
+    const mark = await within(group).findByRole('button', { name: /^Filter rules in / });
+    expect(hint.compareDocumentPosition(mark) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
