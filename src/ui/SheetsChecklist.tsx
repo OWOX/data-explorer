@@ -138,7 +138,7 @@ export function SheetsChecklist({ items, selected, onChange, label, displaying, 
                 aria-disabled={item.disabled || undefined}
                 aria-label={item.text}
                 aria-description={item.description}
-                aria-keyshortcuts={item.only ? 'Shift+Enter' : undefined}
+                aria-keyshortcuts={[item.only && 'Shift+Enter', item.action && 'ArrowRight'].filter(Boolean).join(' ') || undefined}
                 tabIndex={item.value === stop ? 0 : -1}
                 className="dm-checklist-opt"
                 onClick={() => toggle(item)}

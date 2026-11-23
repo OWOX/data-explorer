@@ -96,3 +96,14 @@ test('a change in the grid is saved with the view', async () => {
   expect(doc.columns).toEqual(['id', 'status', 'amount']);
   expect(doc.gridView).toEqual(expect.objectContaining({ s: [['amount', 1]] }));
 });
+
+test('a saved rule on a field that is not a column survives a reload: it is sent without the column', async () => {
+  const t = setup({ columns: ['id', 'amount'], at: 'then', gridView: { fl: [['status', 'eq', 'paid', null, 1]], s: null, l: 200 } });
+  await t.seeded;
+  t.view();
+  await waitFor(() => expect(t.queries.length).toBeGreaterThan(0));
+  for (const q of t.queries) {
+    expect(q.filter).toEqual([expect.objectContaining({ column: 'status', operator: 'eq' })]);
+    expect(q.column).not.toContain('status');
+  }
+});

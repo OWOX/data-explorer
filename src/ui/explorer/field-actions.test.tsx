@@ -30,9 +30,9 @@ const base: GridState = { columns: ['id', 'net_revenue'], filters: {}, sorts: nu
 const g = (extra: Partial<GridState> = {}): GridState => ({ ...base, ...extra });
 
 /** Opens the Fields list of the main mart and returns the menu icon of a field's row. */
-async function rowIcon(field: string) {
+async function rowIcon(field: string, mart?: string) {
   await waitFor(() => expect(grid()).not.toBeNull());
-  await userEvent.click((await within(data()).findAllByRole('button', { name: /^Fields of / }))[0]!);
+  await userEvent.click(mart ? await within(data()).findByRole('button', { name: `Fields of ${mart}` }) : (await within(data()).findAllByRole('button', { name: /^Fields of / }))[0]!);
   const list = await screen.findByRole('listbox', { name: /^Fields of / });
   return { list, icon: (await waitFor(() => { const el = list.closest('[data-popover-body]')!.querySelector<HTMLElement>(`[data-row-action][data-field="${field}"]`); if (!el) throw new Error('no icon'); return el; })) };
 }
@@ -165,5 +165,122 @@ describe('field actions from the Fields list', () => {
     const reads = t.queries.filter((q) => q.limit !== 501 && !(q.uniqueCount?.length === 1 && q.uniqueCount[0] === '' && !q.column));
     expect(reads.length).toBeGreaterThan(0);
     expect(reads.every((q) => q.filter?.some((f) => f.column === 'created_at'))).toBe(true);
+  });
+
+  test('a slice on a hidden joined field goes to the query pre-join, and the field stays hidden', async () => {
+    const t = setup(g({ columns: ['id', 'customers__city'] }));
+    const { icon } = await rowIcon('customers__country_code', 'Customers');
+    await userEvent.click(icon);
+    const menu = await screen.findByRole('menu', { name: /^Menu of / });
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Slice' }));
+    const dialog = await screen.findByRole('dialog', { name: /^Slice of / });
+    await userEvent.selectOptions(within(dialog).getByLabelText('Operator'), 'eq');
+    await userEvent.type(within(dialog).getByLabelText('Value'), 'PL');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(t.state.current!.grids.orders!.slices).toEqual({ customers__country_code: expect.objectContaining({ value: 'PL' }) }));
+    expect(t.state.current!.grids.orders!.columns).toEqual(['id', 'customers__city']);
+    await waitFor(() => expect(t.queries.some((q) => q.filter?.some((f) => f.column === 'customers__country_code' && f.placement === 'pre-join'))).toBe(true));
+  });
+
+  test('Format on a hidden field shows it as a column first', async () => {
+    const t = setup(g());
+    const { icon } = await rowIcon('amount');
+    await userEvent.click(icon);
+    const menu = await screen.findByRole('menu', { name: /^Menu of Amount$/i });
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Format' }));
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Plain number' }));
+    await waitFor(() => expect(t.state.current!.grids.orders!.columns).toContain('amount'));
+  });
+
+  const grouped: GridState = g({ columns: ['status', 'net_revenue'], aggregations: [{ column: 'net_revenue', function: 'SUM' }] });
+
+  test('Sort on a hidden number field in a grouped grid shows it with a function, not as a group key, in one Undo step', async () => {
+    const t = setup(grouped);
+    const { icon } = await rowIcon('amount');
+    await userEvent.click(icon);
+    const menu = await screen.findByRole('menu', { name: /^Menu of Amount$/i });
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Sort' }));
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Sort A → Z' }));
+    await waitFor(() => expect(t.state.current!.grids.orders!.columns).toContain('amount'));
+    expect(t.state.current!.grids.orders!.aggregations?.some((a) => a.column === 'amount')).toBe(true);
+    expect(t.state.current!.grids.orders!.sorts).toEqual([{ field: 'amount', direction: 'asc' }]);
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['status', 'net_revenue']));
+    expect(t.state.current!.grids.orders!.aggregations).toEqual([{ column: 'net_revenue', function: 'SUM' }]);
+  });
+
+  test('Aggregate on a hidden field in a grouped grid adds the column and its function in one Undo step', async () => {
+    const t = setup(grouped);
+    const { icon } = await rowIcon('amount');
+    await userEvent.click(icon);
+    const menu = await screen.findByRole('menu', { name: /^Menu of Amount$/i });
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Aggregate' }));
+    const dialog = await screen.findByRole('dialog', { name: /^Aggregation of Amount$/i });
+    await userEvent.click(within(dialog).getByLabelText('Max'));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(t.state.current!.grids.orders!.aggregations).toEqual([{ column: 'net_revenue', function: 'SUM' }, { column: 'amount', function: 'MAX' }]));
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(t.state.current!.grids.orders!.aggregations).toEqual([{ column: 'net_revenue', function: 'SUM' }]));
+    expect(t.state.current!.grids.orders!.columns).toEqual(['status', 'net_revenue']);
+  });
+
+  test('a press outside closes the column menu and the Fields list together', async () => {
+    setup(g());
+    const { list, icon } = await rowIcon('status');
+    await userEvent.click(icon);
+    await screen.findByRole('menu', { name: /^Menu of status$/i });
+    await userEvent.click(document.body);
+    await waitFor(() => expect(screen.queryByRole('menu', { name: /^Menu of status$/i })).toBeNull());
+    await waitFor(() => expect(list).not.toBeInTheDocument());
+  });
+
+  test('a press inside the column menu leaves the Fields list open', async () => {
+    setup(g());
+    const { list, icon } = await rowIcon('status');
+    await userEvent.click(icon);
+    const menu = await screen.findByRole('menu', { name: /^Menu of status$/i });
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Filter' }));
+    await screen.findByRole('dialog', { name: /^Filter of status$/i });
+    expect(list).toBeVisible();
+  });
+
+  describe('a joined mart whose last shown column goes takes its rules with it', () => {
+    const rules: GridState = g({
+      columns: ['id', 'customers__city'],
+      filters: { customers__email: { field: 'customers__email', op: 'eq', value: 'a@b' }, status: { field: 'status', op: 'eq', value: 'paid' } },
+      slices: { customers__country_code: { field: 'customers__country_code', op: 'eq', value: 'PL' } },
+    });
+    const keptMain = { status: expect.objectContaining({ value: 'paid' }) };
+
+    test('unticking it in the Fields list, and Undo brings them back', async () => {
+      const t = setup(rules);
+      await waitFor(() => expect(t.state.current!.grids.orders).toBeDefined());
+      await userEvent.click(await within(data()).findByRole('button', { name: 'Fields of Customers' }));
+      await userEvent.click(await screen.findByRole('option', { name: /city/i }));
+      // The list keeps the mart while open; closing it with nothing ticked removes the mart.
+      await userEvent.keyboard('{Escape}');
+      await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['id']));
+      expect(t.state.current!.grids.orders!.filters).toEqual(keptMain);
+      expect(t.state.current!.grids.orders!.slices).toBeUndefined();
+      await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+      await waitFor(() => expect(Object.keys(t.state.current!.grids.orders!.slices ?? {})).toEqual(['customers__country_code']));
+      expect(Object.keys(t.state.current!.grids.orders!.filters).sort()).toEqual(['customers__email', 'status']);
+      expect(t.state.current!.grids.orders!.columns).toEqual(['id', 'customers__city']);
+    });
+
+    test('Hide column in its header menu, and Undo brings them back', async () => {
+      const t = setup(rules);
+      await waitFor(() => expect(t.state.current!.grids.orders).toBeDefined());
+      await userEvent.click(await within(data()).findByLabelText('Column menu Customers · city'));
+      await userEvent.click(within(await screen.findByRole('menu', { name: /^Menu of / })).getByRole('menuitem', { name: 'Hide column' }));
+      await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['id']));
+      expect(t.state.current!.grids.orders!.filters).toEqual(keptMain);
+      expect(t.state.current!.grids.orders!.slices).toBeUndefined();
+      await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+      await waitFor(() => expect(Object.keys(t.state.current!.grids.orders!.slices ?? {})).toEqual(['customers__country_code']));
+      expect(Object.keys(t.state.current!.grids.orders!.filters).sort()).toEqual(['customers__email', 'status']);
+    });
   });
 });

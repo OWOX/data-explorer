@@ -21,7 +21,7 @@ import { dropPicksOf } from '../../charts/listMenu';
 import { useWidth } from '../../charts/useWidth';
 import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKey } from '../../model/sort';
 import { groupMap, moveColumn, moveColumnBy, orderColumns, ownInSchemaOrder } from '../../state/column-order';
-import { joinedMartIds, joinedPaths, ownNamesIn, pathTitle } from '../../state/join-plan';
+import { inUsePaths, joinedMartIds, joinedPaths, ownNamesIn, pathTitle } from '../../state/join-plan';
 import type { Field, Model, Schema } from '../../model/types';
 import { hasPrimaryKey, primaryKeys } from '../../records/relationships';
 import type { Row } from '../../sdk/types';
@@ -362,8 +362,9 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const openedBy = useRef<HTMLElement | null>(null);
   const [allSlices, setAllSlices] = useState<Record<string, ColumnFilter>>(() => seed.saved?.slices ?? {});
   const filters = useMemo(() => pickOffered(allFilters, schema), [allFilters, schema]);
-  // A rule does not need its field on the grid: a filter or slice on a hidden field of a data mart that is on the grid (or a hidden field of the main mart) applies,
-  // because the schema offers every field of the joined marts. Only a field this visit does not offer is parked: that includes a joined mart's field when the joined marts could not be read, so a slice on a mart with no shown column cannot reach the query then.
+  // A rule does not need its field on the grid: a filter or slice on a hidden field of the main mart, or of a joined mart that has a shown column, applies,
+  // because the schema offers every field of the joined marts. A joined mart whose last shown column goes leaves the grid and takes its rules with it (changeColumns).
+  // Only a field this visit does not offer is parked (the joined marts could not be read, or a Refresh removed the field).
   const slices = useMemo(() => pickOffered(allSlices, schema), [allSlices, schema]);
   const offeredKey = schema.map((f) => f.name).join('\u0000');
   const [seenOffered, setSeenOffered] = useState({ key: offeredKey, schema });
@@ -620,6 +621,13 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     setOwn((cur) => { const kept = cur && sortsOnColumns(cur, cols); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
     // A joined mart whose last field was unticked is remembered as empty: it comes back with its first text field.
     const left = joinedMartIds(visible, sources).filter((m) => !joinedMartIds(cols, sources).includes(m));
+    // A joined mart that leaves the grid takes its filters and slices with it, as the x on its group does (the mart is no longer joined, so they could not apply), in the same Undo step.
+    const stays = inUsePaths(cols, sources);
+    const goneFields = new Set(sources.filter((x) => inUsePaths(visible, sources).has(x.aliasPath) && !stays.has(x.aliasPath)).flatMap((x) => x.fields.map((f) => f.name)));
+    if (goneFields.size > 0) {
+      setAllFilters((cur) => dropOrphanHaving(Object.fromEntries(Object.entries(cur).filter(([k]) => !goneFields.has(k))), nextAgg.aggregations));
+      setAllSlices((cur) => Object.fromEntries(Object.entries(cur).filter(([k]) => !goneFields.has(k))));
+    }
     columnStore.save(martId, cols, left.length ? Object.fromEntries(left.map((m) => [m, [] as string[]])) : undefined);
     // A joined mart that has just left remembers what it was showing, as its own field names.
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
@@ -750,7 +758,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       setSort: (field, direction) => {
         const cols = withField(field);
         if (!cols) { setSort(field, direction); return; }
-        edit(() => { changeColumns(cols); setOwn(nextSorts(field, direction)); });
+        edit(() => { changeColumns(cols, (cur) => ruleNewColumns(cur, [byName.get(field)!])); setOwn(nextSorts(field, direction)); });
       },
       isAggregated: (column) => aggNow.aggregations.some((r) => r.column === column) || aggNow.dateTrunc.some((r) => r.column === column),
       draftOf: (column) => draftOf(column, aggNow),
@@ -763,7 +771,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       formatOf, memberFormat,
       setFormat: (column, f) => {
         const cols = withField(column);
-        if (cols) edit(() => changeColumns(cols));
+        if (cols) edit(() => changeColumns(cols, (cur) => ruleNewColumns(cur, [byName.get(column)!])));
         setFormat(column, f);
       },
       isShown: (name) => shown.includes(name),
