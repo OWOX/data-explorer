@@ -21,10 +21,13 @@ export const NEGATIVE_NOTE = 'Sankey needs values of 0 or more; this metric has 
 export const cappedNote = (n: number): string => `Showing the largest ${n.toLocaleString('en-US')} combinations; smaller flows are left out.`;
 
 export const columnCappedNote = (n: number): string => `A column has ${n.toLocaleString('en-US')} or more values; its smallest ones are not counted in Other.`;
-export const NO_MEASURE_NOTE = 'These columns would count a row once per joined row. Pick columns from the metric\'s data mart or from marts joined one-to-one.';
+export const FAN_OUT_NOTE = 'One record can sit in more than one ribbon here, so ribbons can add up to more than their column total.';
 
-/** `measure` is null when no metric fits the columns (see `sankeyMeasures`): the panel then draws nothing but the note. */
-export type SankeyR = { dims: Field[]; measure: Measure | null };
+/**
+ * `exact` is true when the measure passes `sankeyMeasures` for the columns: no join can repeat a record, so the plugin's sums (one all-columns flow read,
+ * Other) are exact. Otherwise it is fan-out mode: flows are read per adjacent pair and the ribbons can overlap (see `foldSankey`).
+ */
+export type SankeyR = { dims: Field[]; measure: Measure; exact: boolean };
 
 /** A column's panel width: 11rem per column, at least 20rem, at most the band. */
 export const sankeyWidth = (columns: number): string => `clamp(20rem, ${columns * 11}rem, 100%)`;
@@ -53,26 +56,37 @@ export const withColumns = (names: string[], count: number, all: Field[]): strin
 };
 
 function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<SankeyR>) {
-  const { dims, measure } = r;
+  const { dims, measure, exact } = r;
   const n = dims.length;
-  const off = idle || !measure;
-  // One flow read and one total read per column: always 1 + 5 hooks, the unused ones get a null query. A sixth, a few rows, only when a metric's flow read is capped (a count is never negative).
-  const flow = useChartQuery(martId, off ? null : sankeyFlowQuery(dims, measure, filter, cf.counter), version);
-  const capped = !!flow.rows && flow.rows.length >= SANKEY_FLOW_LIMIT && measure?.kind === 'metric';
-  const low = useChartQuery(martId, off || !capped ? null : sankeyLowQuery(dims, measure, filter, cf.counter), version);
+  const off = idle;
+  // Fixed hooks, unused ones get a null query. Exact mode: one flow read on all columns (+ a few-row read when it is capped; a count is never negative).
+  // Fan-out mode: one flow read per adjacent pair (up to SANKEY_MAX - 1), each with its own few-row read when capped. Always one total read per column.
+  const capped = (rows: Row[] | null) => !!rows && rows.length >= SANKEY_FLOW_LIMIT && measure.kind === 'metric';
+  const flow = useChartQuery(martId, off || !exact ? null : sankeyFlowQuery(dims, measure, filter, cf.counter), version);
+  const low = useChartQuery(martId, off || !exact || !capped(flow.rows) ? null : sankeyLowQuery(dims, measure, filter, cf.counter), version);
+  const pairQuery = (i: number) => (off || exact || i >= n - 1 ? null : [dims[i]!, dims[i + 1]!] as const);
+  const usePair = (i: number) => { const p = pairQuery(i); return useChartQuery(martId, p ? sankeyFlowQuery([...p], measure, filter, cf.counter) : null, version); };
+  const pairs = [usePair(0), usePair(1), usePair(2), usePair(3)];
+  const usePairLow = (i: number) => { const p = pairQuery(i); return useChartQuery(martId, p && capped(pairs[i]!.rows) ? sankeyLowQuery([...p], measure, filter, cf.counter) : null, version); };
+  const pairLows = [usePairLow(0), usePairLow(1), usePairLow(2), usePairLow(3)];
   const useCol = (i: number) => useChartQuery(martId, off || i >= n ? null : sankeyColumnQuery(dims[i]!, measure, filter, cf.counter), version);
   const all = [useCol(0), useCol(1), useCol(2), useCol(3), useCol(4)];
   const cols = all.slice(0, n);
-  const failed = [flow, low, ...cols].find((q) => q.error);
-  const settled = !off && !!flow.rows && (!capped || !!low.rows) && cols.every((q) => !!q.rows);
+  const usedPairs = pairs.slice(0, n - 1);
+  const usedLows = pairLows.slice(0, n - 1);
+  const failed = [flow, low, ...usedPairs, ...usedLows, ...cols].find((q) => q.error);
+  const flowsIn = exact ? !!flow.rows && (!capped(flow.rows) || !!low.rows) : usedPairs.every((q, i) => !!q.rows && (!capped(q.rows) || !!usedLows[i]!.rows));
+  const settled = !off && flowsIn && cols.every((q) => !!q.rows);
   const data = useMemo(() => {
     const columnRows = all.slice(0, n).map((q) => q.rows);
-    return measure && flow.rows && (!capped || low.rows) && columnRows.every((x) => x !== null) ? foldSankey({ flowRows: flow.rows, lowRows: low.rows ?? undefined, columnRows: columnRows as Row[][], dims, measure }) : null;
-    // `all` is rebuilt each render; its five row sets are the dependencies.
+    if (!flowsIn || !columnRows.every((x) => x !== null)) return null;
+    if (exact) return foldSankey({ flowRows: flow.rows!, lowRows: low.rows ?? undefined, columnRows: columnRows as Row[][], dims, measure });
+    return foldSankey({ pairRows: usedPairs.map((q) => q.rows!), pairLowRows: usedLows.map((q) => q.rows), columnRows: columnRows as Row[][], dims, measure });
+    // `all`, `pairs` and `pairLows` are rebuilt each render; their row sets are the dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flow.rows, low.rows, capped, all[0]!.rows, all[1]!.rows, all[2]!.rows, all[3]!.rows, all[4]!.rows, n, dims, measure]);
+  }, [flowsIn, exact, flow.rows, low.rows, pairs[0]!.rows, pairs[1]!.rows, pairs[2]!.rows, pairs[3]!.rows, pairLows[0]!.rows, pairLows[1]!.rows, pairLows[2]!.rows, pairLows[3]!.rows, all[0]!.rows, all[1]!.rows, all[2]!.rows, all[3]!.rows, all[4]!.rows, n, dims, measure]);
   const empty = settled && !!data && (data.negative || data.empty);
-  const loading = !!measure && !empty && !failed && !data;
+  const loading = !empty && !failed && !data;
   const names = dims.map((d) => d.name);
   const maxColumns = Math.min(SANKEY_MAX, cf.dimensions.length);
   const dimGroups = fieldGroups(menuOf(cf), menuOf(cf).dimensions);
@@ -80,15 +94,15 @@ function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
     { kind: 'radio', label: 'Columns', icon: Columns3, value: String(n), options: Array.from({ length: maxColumns - SANKEY_MIN + 1 }, (_, i) => ({ value: String(SANKEY_MIN + i), label: String(SANKEY_MIN + i) })),
       onPick: (v) => onChange({ dimensions: withColumns(names, Number(v), cf.dimensions) }) },
     ...dims.map((d, i): MenuItem => ({ kind: 'radio', label: `Column ${i + 1}`, icon: Tag, value: d.name, options: [], groups: dimGroups, ...(n > SANKEY_MIN ? { trailing: { label: 'Remove column', icon: Trash2, onPick: () => onChange({ dimensions: removeColumn(names, i) }) } } : {}), onPick: (v) => onChange({ dimensions: setColumn(names, i, v) }) })),
-    ...(measure ? [{ kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(menuOf(cf), sankeyMeasures(menuOf(cf), dims)), onPick: (v: string) => onChange({ measure: v }) } as MenuItem] : []),
+    { kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(menuOf(cf), pieMeasures(menuOf(cf))), onPick: (v: string) => onChange({ measure: v }) },
     ...tail,
   ];
   const title = sankey.title(r, cf);
   return (
     <ChartPanel title={title} name="Sankey" items={ready ? items : null} width={sankeyWidth(n)}
-      loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})} empty={!measure ? NO_MEASURE_NOTE : empty ? (data!.negative ? NEGATIVE_NOTE : emptyText(hasFilters)) : null}
-      note={data && !data.negative ? [data.capped ? cappedNote(SANKEY_FLOW_LIMIT) : '', data.columnCapped ? columnCappedNote(SANKEY_COLUMN_LIMIT) : ''].filter(Boolean).join(' ') || undefined : undefined}>
-      {data && <Sankey titles={dims.map((d) => axisTitle(cf, d))} columns={data.columns} flows={data.flows} ariaLabel={title} text={(v) => measureText(measure!, v, formatOf)}
+      loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})} empty={empty ? (data!.negative ? NEGATIVE_NOTE : emptyText(hasFilters)) : null}
+      note={data && !data.negative ? [data.capped ? cappedNote(SANKEY_FLOW_LIMIT) : '', data.columnCapped ? columnCappedNote(SANKEY_COLUMN_LIMIT) : '', exact ? '' : FAN_OUT_NOTE].filter(Boolean).join(' ') || undefined : undefined}>
+      {data && <Sankey titles={dims.map((d) => axisTitle(cf, d))} columns={data.columns} flows={data.flows} fit={!exact} ariaLabel={title} text={(v) => measureText(measure, v, formatOf)}
         onPickNode={(col, key) => onFilter([dimensionFilter(dims[col]!, key)])}
         onPickLink={(pair, source, target) => onFilter([dimensionFilter(dims[pair]!, source), dimensionFilter(dims[pair + 1]!, target)])} />}
     </ChartPanel>
@@ -115,9 +129,12 @@ export const sankey: ChartKindDef<SankeyR> = {
       const next = saved ?? fresh.find((d) => !dims[0] || pathOf(d) === pathOf(dims[0])) ?? fresh[0];
       if (next) dims.push(next);
     }
-    // A saved Count Unique (or any measure) the columns cannot sum falls back to the first that fits for display; the saved choice is not rewritten.
-    return { dims, measure: pickMeasure(sankeyMeasures(cf, dims), spec.measure) };
+    // Any additive measure is offered. A saved one is kept; with none saved, one that is exact for the columns comes first (see `SankeyR`).
+    const offered = pieMeasures(cf);
+    const exactList = sankeyMeasures(cf, dims);
+    const measure = offered.find((m) => measureId(m) === spec.measure) ?? pickMeasure(exactList.length ? exactList : offered)!;
+    return { dims, measure, exact: exactList.some((m) => measureId(m) === measureId(measure)) };
   },
-  title: (r, cf) => `${r.measure ? measureLabel(cf, r.measure) : 'Sankey'} by ${r.dims.map(fieldLabel).join(' → ')}`,
+  title: (r, cf) => `${measureLabel(cf, r.measure)} by ${r.dims.map(fieldLabel).join(' → ')}`,
   Panel: SankeyPanel,
 };

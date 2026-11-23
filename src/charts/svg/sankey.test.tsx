@@ -23,14 +23,20 @@ test('draws a node per value and a filled ribbon per flow, with the column title
   expect(ribbon.getAttribute('fill')).toMatch(/^var\(--/);
   expect(ribbon.getAttribute('stroke')).toBeNull();
   for (const t of ['One', 'Two', 'Three']) expect(screen.getAllByText(t, { selector: 'text.dm-chart-axis-title' })).toHaveLength(1);
-  // A column title carries its full text in a hover title.
-  expect([...container.querySelectorAll('text.dm-chart-axis-title title')].map((e) => e.textContent)).toEqual(['One', 'Two', 'Three']);
+  // No native hover title: the shared tooltip carries the full text.
+  expect(container.querySelector('title')).toBeNull();
   expect(byAttr('data-node', `0|${BLANK_KEY}`)).not.toBeNull();
 });
 
-test('labels name the node and its value, with a title for the full text', () => {
+test('a column title shows its full text in the shared tooltip', async () => {
+  draw({ titles: ['One', 'Two', 'Three'] });
+  await userEvent.hover(screen.getByText('Two', { selector: 'text.dm-chart-axis-title' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Two');
+});
+
+test('labels name the node and its value', () => {
   const { container } = draw();
-  expect(container.querySelector('text title')).not.toBeNull();
+  expect(container.querySelector('title')).toBeNull();
   expect([...container.querySelectorAll('text')].some((t) => t.textContent?.includes('(blank) $2'))).toBe(true);
 });
 
@@ -139,4 +145,17 @@ test('a blank node is filled with the hatch pattern and has no stroke', () => {
   expect(blank.getAttribute('fill')).toMatch(/^url\(#dm-blank-/);
   expect(blank.getAttribute('stroke')).toBeNull();
   expect(container.querySelector('pattern')).not.toBeNull();
+});
+
+test('fan-out: ribbons that add up to more than their node are scaled to fit it; the tooltip keeps the exact value', async () => {
+  const fan: Flow[][] = [[{ source: 'a', target: 'x', value: 8, origin: 'a' }, { source: 'a', target: 'y', value: 8, origin: 'a' }]];
+  const { container } = draw({ titles: ['One', 'Two'], flows: fan, fit: true, columns: [[{ key: 'a', value: 10 }], [{ key: 'x', value: 8 }, { key: 'y', value: 8 }]] });
+  const node = container.querySelector('rect[data-node="0|a"]')!;
+  const h = Number(node.getAttribute('height'));
+  const links = [...container.querySelectorAll('path[data-link]')];
+  expect(links).toHaveLength(2);
+  const heights = links.map((l) => { const nums = l.getAttribute('d')!.match(/-?\d+\.?\d*/g)!.map(Number); return nums[1]! ; });
+  expect(heights[1]! - heights[0]!).toBeLessThanOrEqual(h / 2 + 0.01);
+  await userEvent.hover(links[0]!);
+  expect(await screen.findAllByText(/8/)).not.toHaveLength(0);
 });

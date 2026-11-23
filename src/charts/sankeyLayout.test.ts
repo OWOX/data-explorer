@@ -139,3 +139,46 @@ test('a lone small ribbon keeps its origin', () => {
   const l = layoutSankey({ flows: [[{ source: 'big', target: 'x', value: 5000 }, { source: 'a', target: 'x', value: 1 }], [{ source: 'x', target: 'z', value: 5000, origin: 'big' }, { source: 'x', target: 'z', value: 1, origin: 'a' }]], width: 600, height: 300 });
   expect(l.links.filter((k) => k.pair === 1).map((k) => k.origin).sort()).toEqual(['a', 'big']);
 });
+
+describe('fit (fan-out): ribbons are scaled to fit their node', () => {
+  const fan: Flow[][] = [[{ source: 'a', target: 'x', value: 8, origin: 'a' }, { source: 'a', target: 'y', value: 8, origin: 'a' }, { source: 'b', target: 'y', value: 2, origin: 'b' }]];
+  const columns = [[{ key: 'a', value: 10 }, { key: 'b', value: 2 }], [{ key: 'x', value: 8 }, { key: 'y', value: 10 }]];
+  const withFit = layoutSankey({ flows: fan, columns, width: 400, height: 200, fit: true });
+  const node = (l: typeof withFit, c: number, k: string) => l.nodes.find((n) => n.col === c && n.key === k)!;
+
+  it('sizes a node by its column total and keeps the outgoing ribbons inside it', () => {
+    const a = node(withFit, 0, 'a');
+    expect(a.value).toBe(10);
+    const out = withFit.links.filter((l) => l.source === 'a');
+    expect(out.reduce((s, l) => s + l.w, 0)).toBeCloseTo(a.h);
+    const y = node(withFit, 1, 'y');
+    expect(withFit.links.filter((l) => l.target === 'y').reduce((s, l) => s + l.w1, 0)).toBeCloseTo(y.h);
+  });
+
+  it('leaves a node whose ribbons already fit alone', () => {
+    const x = node(withFit, 1, 'x');
+    const l = withFit.links.find((k) => k.target === 'x')!;
+    expect(l.w1).toBeCloseTo(x.h);
+    const b = withFit.links.find((k) => k.source === 'b')!;
+    expect(b.w).toBeCloseTo(node(withFit, 0, 'b').h);
+  });
+
+  it('without fit a node grows to hold its ribbons and nothing is scaled', () => {
+    const plain = layoutSankey({ flows: fan, columns, width: 400, height: 200 });
+    expect(node(plain, 0, 'a').value).toBe(16);
+    expect(plain.links.every((l) => l.w === l.w1)).toBe(true);
+  });
+
+  it('colours a ribbon with no origin by its source node, and passes that colour to the node it feeds', () => {
+    const two: Flow[][] = [[{ source: 'a', target: 'x', value: 5, origin: 'a' }, { source: 'b', target: 'y', value: 4, origin: 'b' }], [{ source: 'x', target: 'm', value: 5 }, { source: 'y', target: 'n', value: 4 }]];
+    const l = layoutSankey({ flows: two, width: 400, height: 200, fit: true });
+    const a = l.nodes.find((n) => n.col === 0 && n.key === 'a')!;
+    const b = l.nodes.find((n) => n.col === 0 && n.key === 'b')!;
+    expect(a.tone).not.toEqual(b.tone);
+    expect(l.nodes.find((n) => n.col === 1 && n.key === 'x')!.tone).toEqual(a.tone);
+    expect(l.nodes.find((n) => n.col === 2 && n.key === 'm')!.tone).toEqual(a.tone);
+    const ribbon = l.links.find((k) => k.pair === 1 && k.source === 'y')!;
+    expect(ribbon.tone).toEqual(b.tone);
+    expect(ribbon.origin).toBeUndefined();
+  });
+});

@@ -11,7 +11,7 @@ import { demoFixtures } from '../sdk/mock/fixtures';
 import type { Ctx, Row, TraverseOptions } from '../sdk/types';
 import { AppServices, StoreProvider } from '../state/store';
 import { App } from '../ui/App';
-import { NO_MEASURE_NOTE } from './kinds/sankey';
+import { FAN_OUT_NOTE } from './kinds/sankey';
 import type { ChartSettings } from './settings';
 
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
@@ -69,7 +69,6 @@ test('sankey: Columns adds a column filled with the next dimension, a column pic
   await userEvent.click(await screen.findByRole('menuitemradio', { name: '3' }));
   // The third column is Products' title: a lookup joined by Products' key, so Orders' metric still counts each order once and the flow draws.
   await waitFor(() => expect(titles()).toHaveLength(3));
-  expect(within(data()).queryByText(NO_MEASURE_NOTE)).toBeNull();
   const first = savedDims(t);
   expect(new Set(first).size).toBe(3);
   await userEvent.click(panel('Sankey'));
@@ -105,22 +104,30 @@ test('sankey: each column submenu ends with Remove column unless the Sankey is a
 test('sankey: a column title names its field and its data mart', async () => {
   await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'] }] } });
   await waitFor(() => expect(titles()).toHaveLength(2));
-  const texts = [...titles()].map((el) => el.querySelector('title')?.textContent ?? '');
-  expect(texts[0]).toMatch(/^status \| \S/);
-  expect(texts[1]).toMatch(/ \| \S/);
+  const texts = [...titles()].map((el) => el.textContent ?? '');
+  expect(texts[0]).toMatch(/^status/);
   expect(texts[1]).not.toBe(texts[0]);
+  expect(data().querySelector('svg[aria-label] title')).toBeNull();
 });
 
 test('sankey: a main mart metric by a column of a one-to-one joined mart draws', async () => {
   await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
-  expect(within(data()).queryByText(NO_MEASURE_NOTE)).toBeNull();
+  expect(data().querySelector('section[data-chart-kind="Sankey"] [role="note"]')).toBeNull();
 });
 
-test('sankey: a column of a mart that fans out the main rows shows the note', async () => {
-  await charts({ columns: [...dims, 'shipments__carrier'], charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'shipments__carrier'] }] } });
-  expect(await within(data()).findByText(NO_MEASURE_NOTE)).toBeInTheDocument();
-  expect(data().querySelectorAll('path[data-link]')).toHaveLength(0);
+test('sankey: a column of a mart that fans out the main rows draws per-pair reads and says ribbons can overlap', async () => {
+  const t = await charts({ columns: [...dims, 'shipments__carrier'], charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'shipments__carrier'] }] } });
+  await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
+  const hint = await within(data().querySelector<HTMLElement>('section[data-chart-kind="Sankey"]')!).findByRole('note');
+  await userEvent.hover(hint);
+  expect((await screen.findAllByText(FAN_OUT_NOTE)).length).toBeGreaterThan(0);
+  const reads = t.queries.slice(t.tableQueries());
+  expect(reads.filter((q) => q.limit === 5000 && q.column?.length === 3)).toHaveLength(1);
+  expect(reads.filter((q) => q.limit === 5000 && q.column?.length === 3)[0]!.column).toEqual(expect.arrayContaining(['status', 'shipments__carrier']));
+  // The Metric stays in the menu.
+  await userEvent.click(panel('Sankey'));
+  expect(await screen.findByRole('menuitem', { name: 'Metric' })).toBeInTheDocument();
 });
 
 test('sankey: one flow read grouped on the columns plus one total read per column', async () => {

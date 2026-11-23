@@ -42,7 +42,7 @@ export const measurePath = (m: Measure): string => (m.kind === 'records' ? m.ali
 const keepsMainGrain = (cf: ChartFields, path: string): boolean => cf.collapse?.[path] === 'none';
 
 /**
- * What a Sankey may sum: the columns' rows are added up in the plugin, which is only right when no join can repeat a record across them.
+ * What a Sankey sums exactly (every additive measure is offered; the others run in fan-out mode, see kinds/sankey): the columns' rows are added up in the plugin, which is only right when no join can repeat a record across them.
  * The backend de-duplicates a SUM or a Count Unique per group of the read's columns, so one record that matches several joined rows (an order with 3 products)
  * is whole in each group and counted once per group when the groups are added. A column is safe when it is on the measure's own mart (same alias path),
  * or when the measure is on the main mart and the column's mart is reached by lookups only (every hop keyed by its target's primary key, `mainGrainCollapse` 'none'),

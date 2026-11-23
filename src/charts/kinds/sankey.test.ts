@@ -65,16 +65,23 @@ const two = (hasPk: boolean): ChartFields => ({
   ], dates: [], dimensions: [a, b, j('c__x'), j('c__y')], counter: null,
 });
 
-test('sankey resolve: a saved Count Unique is kept on its own mart and falls back to a metric when a column comes from another mart (never written back)', () => {
+test('sankey resolve: any additive measure is offered; exact only when no join can repeat a record; a saved choice is kept (never written back)', () => {
   const cf = two(true);
   const spec = { id: 's', kind: 'sankey' as const, measure: 'records', dimensions: ['a', 'b'] };
-  expect(sankey.resolve(spec, cf)!.measure).toMatchObject({ kind: 'records', aliasPath: '' });
+  const own = sankey.resolve(spec, cf)!;
+  expect(own.measure).toMatchObject({ kind: 'records', aliasPath: '' });
+  expect(own.exact).toBe(true);
+  // A column of another mart: the saved main-mart measure stays, in fan-out mode.
   const mixed = sankey.resolve({ ...spec, dimensions: ['a', 'c__x'] }, cf)!;
-  expect(mixed.measure).toBeNull();
+  expect(mixed.measure).toMatchObject({ kind: 'records', aliasPath: '' });
+  expect(mixed.exact).toBe(false);
   expect(spec.measure).toBe('records');
-  // Columns of the joined mart: its own measures only, the saved main-mart one is replaced for display.
-  const own = sankey.resolve({ ...spec, dimensions: ['c__x', 'c__y'] }, cf)!;
-  expect(own.measure).toMatchObject({ kind: 'metric', metric: { field: { name: 'c__ltv' } } });
+  // Nothing saved: a measure that is exact for the columns comes first (the joined mart's own), else the first metric.
+  expect(sankey.resolve({ ...spec, measure: undefined, dimensions: ['c__x', 'c__y'] }, cf)!).toMatchObject({ exact: true, measure: { kind: 'metric', metric: { field: { name: 'c__ltv' } } } });
+  const none = sankey.resolve({ ...spec, measure: undefined, dimensions: ['a', 'c__x'] }, cf)!;
+  expect(none.exact).toBe(false);
+  expect(none.measure).toMatchObject({ kind: 'metric', metric: { field: { name: 'amount' } } });
+  expect(sankey.eligible(cf)).toBe(true);
 });
 
 test('sankey: a new or filled column prefers the first column\'s mart', () => {

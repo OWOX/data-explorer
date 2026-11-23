@@ -52,14 +52,36 @@ export function foldColumn(rows: Row[], dim: Field, measure: Measure): { nodes: 
 /** The node a value belongs to in a column: blank, one of the listed values, or Other. */
 const nodeOf = (v: unknown, listed: Set<string>): string => { const k = keyOf(v); return k === BLANK_KEY ? k : listed.has(k) ? k : OTHER_KEY; };
 
-/** Flow rows and column rows to nodes and flows: each flow row is mapped column by column, then summed per adjacent pair (and per first-column origin). */
-export function foldSankey({ flowRows, lowRows, columnRows, dims, measure }: { flowRows: Row[]; lowRows?: Row[]; columnRows: Row[][]; dims: Field[]; measure: Measure }): SankeyData {
+/**
+ * Flow rows and column rows to nodes and flows. Exact mode (`flowRows`, one read grouped on all columns): each row is mapped column by column,
+ * then summed per adjacent pair (and per first-column origin).
+ * Fan-out mode (`pairRows`, one read per adjacent pair, `pairLowRows` their few-row ascending reads): a pair's rows are mapped on its two columns and summed
+ * per (source, target). A ribbon between two listed values is the backend's exact number; one that takes in Other or the blank value sums rows and can overcount.
+ * Flows have no origin past the first pair: there is no single first-column node a joined row belongs to.
+ */
+export function foldSankey({ flowRows, lowRows, pairRows, pairLowRows, columnRows, dims, measure }: { flowRows?: Row[]; lowRows?: Row[]; pairRows?: Row[][]; pairLowRows?: (Row[] | null | undefined)[]; columnRows: Row[][]; dims: Field[]; measure: Measure }): SankeyData {
   const cols = dims.map((d, i) => foldColumn(columnRows[i] ?? [], d, measure));
   const key = measureKey(measure);
   const sums: Map<string, Flow>[] = dims.slice(1).map(() => new Map());
   // A capped flow read is sorted largest first, so a negative would be among the left-out flows: the few-row ascending read shows it (it filters out NULL sums with a HAVING, so they do not fill it).
-  let negative = cols.some((c) => c.negative) || (lowRows ?? []).some((r) => (numberOf(r[key]) ?? 0) < 0);
-  for (const row of flowRows) {
+  const lows = [...(lowRows ?? []), ...(pairLowRows ?? []).flatMap((r) => r ?? [])];
+  let negative = cols.some((c) => c.negative) || lows.some((r) => (numberOf(r[key]) ?? 0) < 0);
+  if (pairRows) {
+    pairRows.slice(0, sums.length).forEach((rows, i) => {
+      for (const row of rows) {
+        const v = numberOf(row[key]);
+        if (v === null || v === 0) continue;
+        if (v < 0) { negative = true; continue; }
+        const source = nodeOf(row[dims[i]!.name], cols[i]!.listed);
+        const target = nodeOf(row[dims[i + 1]!.name], cols[i + 1]!.listed);
+        const id = `${source}\u0001${target}`;
+        const prev = sums[i]!.get(id);
+        // The first pair keeps its source as origin (as in exact mode); later pairs have none.
+        sums[i]!.set(id, { source, target, ...(i === 0 ? { origin: source } : {}), value: (prev?.value ?? 0) + v });
+      }
+    });
+  }
+  for (const row of flowRows ?? []) {
     const v = numberOf(row[key]);
     if (v === null || v === 0) continue;
     if (v < 0) { negative = true; continue; }
@@ -75,7 +97,7 @@ export function foldSankey({ flowRows, lowRows, columnRows, dims, measure }: { f
     columns: cols.map((c) => c.nodes),
     flows,
     negative,
-    capped: flowRows.length >= SANKEY_FLOW_LIMIT,
+    capped: pairRows ? pairRows.some((r) => r.length >= SANKEY_FLOW_LIMIT) : (flowRows?.length ?? 0) >= SANKEY_FLOW_LIMIT,
     columnCapped: cols.some((c) => c.capped),
     empty: columnRows.slice(0, dims.length).some((r) => r.length === 0) || flows.every((p) => p.length === 0),
   };
