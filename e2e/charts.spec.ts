@@ -197,5 +197,7 @@ test('the selected Chart type is marked with the green check, on the left of its
   // The check is the row's first mark, left of the label.
   const [c, l] = [(await check.boundingBox())!, (await row.locator('.dm-menu-label').boundingBox())!];
   expect(c.x + c.width).toBeLessThan(l.x);
-  await page.screenshot({ path: 'tmp/chart-type-check.png', clip: { x: 480, y: 640, width: 400, height: 230 } });
+  const panels = [(await page.getByRole('menu', { name: 'Pie menu' }).boundingBox())!, (await page.getByRole('menu', { name: 'Chart type' }).boundingBox())!];
+  const x = Math.min(...panels.map((b) => b.x)); const y = Math.min(...panels.map((b) => b.y));
+  await page.screenshot({ path: 'tmp/chart-type-check.png', clip: { x, y, width: Math.max(...panels.map((b) => b.x + b.width)) - x, height: Math.max(...panels.map((b) => b.y + b.height)) - y } });
 });

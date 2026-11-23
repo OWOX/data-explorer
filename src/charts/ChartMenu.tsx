@@ -79,7 +79,7 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
       {anchor && (
         <Panel anchor={anchor} mode="below" role="menu" label={`${name} menu`} onEscape={() => (sub ? closeSub() : close())} onTab={() => close()} onPlaced={() => setPlaced(true)} focusSeq={1} className="dm-menu-root">
           {items.map((it, i) => it.kind === 'check' ? (
-            <Row key={i} check checkbox tickEnd checked={it.checked} label={it.label} glyph={<it.icon className="size-4" />} onActivate={it.onToggle} onHover={hoverOther} onLeaveRow={leaveRow} />
+            <Row key={i} check checkbox checked={it.checked} label={it.label} glyph={<it.icon className="size-4" />} onActivate={it.onToggle} onHover={hoverOther} onLeaveRow={leaveRow} />
           ) : it.kind === 'action' ? (
             <Row key={i} label={it.label} glyph={<it.icon className="size-4" />} onActivate={() => { close(); it.onPick(); }} onHover={hoverOther} onLeaveRow={leaveRow} />
           ) : (

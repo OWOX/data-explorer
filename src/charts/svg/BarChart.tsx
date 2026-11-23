@@ -5,7 +5,7 @@ import { BlankDefs, blankFill } from './BlankPattern';
 import { useWidth } from '../useWidth';
 import type { Point } from './Sparkline';
 import { niceTicks } from './ticks';
-import { Y_TITLE_W, YTitle } from './YTitle';
+import { XTitle, Y_TITLE_W, YTitle } from './YTitle';
 
 export type Series = { /** The category's key (blank sentinel, a real value, or the Other sentinel), so a real value named "(blank)" or "Other" keeps its own element. */ key?: string; name: string; color: string; points: Point[]; /** The catch-all series: not a value of the stack dimension, so it cannot be filtered to. */ other?: boolean; /** The blank value of the stack dimension: its filter is "is blank", whatever its name. */ blank?: boolean };
 
@@ -133,13 +133,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
             : <text key={p.x} className="dm-chart-text" x={left - 6} y={TOP + i * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle">{p.label}</text>
         ) : null))}
         {sideTitle && <YTitle x={8} mid={TOP + (vertical ? PLOT_H : xs.length * ROW_H) / 2} length={vertical ? PLOT_H : xs.length * ROW_H} text={sideTitle} />}
-        {bottomTitle && (() => {
-          // The title sits in the reserved strip under the tick row, centred under the plot.
-          const room = Math.max(4, Math.floor(plotW / CHAR_W));
-          const text = bottomTitle.length > room ? `${bottomTitle.slice(0, room - 1)}…` : bottomTitle;
-          const y = (vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H) + 10 + TITLE_GAP;
-          return <text className="dm-chart-axis-title" x={left + plotW / 2} y={y} textAnchor="middle"><title>{bottomTitle}</title>{text}</text>;
-        })()}
+        {bottomTitle && <XTitle x={left + plotW / 2} y={(vertical ? TOP + PLOT_H + AXIS_H : TOP + xs.length * ROW_H + AXIS_H) + 10 + TITLE_GAP} width={plotW} text={bottomTitle} />}
         {bands}
         {marks}
       </svg>
