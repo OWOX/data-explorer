@@ -8,9 +8,15 @@ export function BlankDefs({ id }: { id: string }) {
         <rect width="4" height="4" fill={BLANK_COLOR} />
         <rect width="1" height="4" fill="var(--dm-blank-hatch)" />
       </pattern>
+      <pattern id={`${id}-lines`} width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width="1" height="4" fill="var(--dm-blank-hatch)" />
+      </pattern>
     </defs>
   );
 }
+
+/** The hatch stripes alone, on a clear ground: laid over a mark that must keep its own colour (a heatmap cell's intensity). */
+export const blankLines = (id: string): string => `url(#${id}-lines)`;
 
 /** A mark's fill: the hatch for the blank colour, any other colour as is. */
 export const blankFill = (color: string, id: string): string => (color === BLANK_COLOR ? `url(#${id})` : color);

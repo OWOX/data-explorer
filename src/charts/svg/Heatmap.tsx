@@ -1,5 +1,7 @@
-import type { KeyboardEvent } from 'react';
+import { useId, type KeyboardEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
+import { BLANK_KEY } from '../blank';
+import { BlankDefs, blankLines } from './BlankPattern';
 import { useWidth } from '../useWidth';
 import { XTitle, Y_TITLE_W, YTitle } from './YTitle';
 
@@ -18,6 +20,7 @@ export function Heatmap({ xs, ys, cell, ariaLabel, onPick, canPickX, xTitle, yTi
   onPick?: (x: string, y: string) => void; canPickX?: (x: string) => boolean; xTitle?: string; yTitle?: string;
 }) {
   const { ref, width } = useWidth<HTMLDivElement>();
+  const blankId = `dm-blank-${useId().replace(/:/g, '')}`;
   const left = Math.min(160, Math.max(...ys.map((y) => y.label.length), 0) * CHAR_W + 12) + (yTitle ? Y_TITLE_W : 0);
   const colW = (width - left - 4) / Math.max(1, xs.length);
   const height = TOP + ys.length * ROW_H + AXIS_H + (xTitle ? 18 + TITLE_GAP : 0);
@@ -27,6 +30,7 @@ export function Heatmap({ xs, ys, cell, ariaLabel, onPick, canPickX, xTitle, yTi
   return (
     <div ref={ref} className="dm-heatmap">
       <svg role={onPick ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+        <BlankDefs id={blankId} />
         {yTitle && <YTitle x={8} mid={TOP + (ys.length * ROW_H) / 2} length={ys.length * ROW_H} text={yTitle} />}
         {ys.map((y, j) => <text key={y.key} className="dm-chart-text" x={left - 6} y={TOP + j * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle">{y.label}</text>)}
         {xs.map((x, i) => (i % labelStep === 0 ? <text key={x.key} className="dm-chart-text" x={left + i * colW + colW / 2} y={TOP + ys.length * ROW_H + 16} textAnchor="middle">{x.label}</text> : null))}
@@ -38,8 +42,11 @@ export function Heatmap({ xs, ys, cell, ariaLabel, onPick, canPickX, xTitle, yTi
           const pick = pickable(x.key) ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${name}`, style: { cursor: 'pointer' }, onClick: () => onPick!(x.key, y.key), onKeyDown: press(() => onPick!(x.key, y.key)) } : {};
           return (
             <Tooltip key={`${x.key}|${y.key}`} content={`${name}: ${c.text}`}>
-              <rect data-cell={`${x.key}|${y.key}`} x={left + i * colW + 1} y={TOP + j * ROW_H + 1} width={Math.max(1, colW - 2)} height={ROW_H - 2}
-                fill="var(--dm-series-1)" fillOpacity={(0.12 + 0.88 * (max > 0 ? Math.max(0, c.value) / max : 0)).toFixed(3)} {...pick} />
+              <g>
+                <rect data-cell={`${x.key}|${y.key}`} x={left + i * colW + 1} y={TOP + j * ROW_H + 1} width={Math.max(1, colW - 2)} height={ROW_H - 2}
+                  fill="var(--dm-series-1)" fillOpacity={(0.12 + 0.88 * (max > 0 ? Math.max(0, c.value) / max : 0)).toFixed(3)} {...pick} />
+                {(x.key === BLANK_KEY || y.key === BLANK_KEY) && <rect data-blank-hatch={`${x.key}|${y.key}`} x={left + i * colW + 1} y={TOP + j * ROW_H + 1} width={Math.max(1, colW - 2)} height={ROW_H - 2} fill={blankLines(blankId)} style={{ pointerEvents: 'none' }} />}
+              </g>
             </Tooltip>
           );
         }))}

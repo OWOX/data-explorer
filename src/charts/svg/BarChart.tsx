@@ -1,6 +1,6 @@
 import { useId, type KeyboardEvent, type MouseEvent } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
-import { swatchStyle } from '../blank';
+import { BLANK_COLOR, BLANK_KEY, swatchStyle } from '../blank';
 import { BlankDefs, blankFill } from './BlankPattern';
 import { useWidth } from '../useWidth';
 import type { Point } from './Sparkline';
@@ -79,6 +79,8 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
     return undefined;
   };
 
+  /** A series' colour in bucket `i`: the blank colour for the blank bucket of an unstacked chart (a stack keeps its series colours, they tell the segments apart). */
+  const colorAt = (s: Series, i: number) => (!isStacked && xs[i]?.x === BLANK_KEY ? BLANK_COLOR : s.color);
   const marks = xs.flatMap((_, i) => {
     let offset = 0;
     const live = liveAt(i);
@@ -89,7 +91,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
       const at = offset;
       offset += size;
       const round = k === live.length - 1; // only the data end is rounded
-      const common = { 'data-series': s.name, fill: blankFill(s.color, blankId), style: { pointerEvents: 'none' as const, ...(round ? { clipPath: `inset(0 round ${vertical ? `${RADIUS}px ${RADIUS}px 0 0` : `0 ${RADIUS}px ${RADIUS}px 0`})` } : {}) } };
+      const common = { 'data-series': s.name, fill: blankFill(colorAt(s, i), blankId), style: { pointerEvents: 'none' as const, ...(round ? { clipPath: `inset(0 round ${vertical ? `${RADIUS}px ${RADIUS}px 0 0` : `0 ${RADIUS}px ${RADIUS}px 0`})` } : {}) } };
       const rect = vertical
         ? <rect {...common} x={left + i * band + GAP / 2} y={TOP + PLOT_H - at - seg} width={Math.max(1, band - GAP)} height={seg} />
         : <rect {...common} x={left + at} y={TOP + i * ROW_H + GAP / 2} width={seg} height={ROW_H - GAP} />;
@@ -104,7 +106,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
     const sum = totals[i] ?? 0;
     const content = (
       <TipLines lines={[p.label, ...rows.map((s) => (
-        <span key={s.key ?? s.name}><span className="dm-chart-swatch" style={swatchStyle(s.color)} /> {s.name}: {s.points[i]!.valueText}{sum > 0 && s.points[i]!.y! > 0 ? ` (${Math.round((s.points[i]!.y! / sum) * 100)}%)` : ''}</span>
+        <span key={s.key ?? s.name}><span className="dm-chart-swatch" style={swatchStyle(colorAt(s, i))} /> {s.name}: {s.points[i]!.valueText}{sum > 0 && s.points[i]!.y! > 0 ? ` (${Math.round((s.points[i]!.y! / sum) * 100)}%)` : ''}</span>
       ))]} />
     );
     const geom = vertical ? { x: left + i * band, y: TOP, width: band, height: PLOT_H } : { x: left, y: TOP + i * ROW_H, width: plotW, height: ROW_H };

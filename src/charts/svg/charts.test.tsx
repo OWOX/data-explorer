@@ -376,3 +376,53 @@ test('the line, heatmap and scatter X titles are cut to the plot with the full t
     expect(shownOf(title).length).toBeLessThan(long.length);
   }
 });
+
+const BLANK = '\u0000blank';
+const patternOf = (el: Element | null) => el!.getAttribute('fill')!.slice(5, -1);
+
+test.each(['vertical', 'horizontal'] as const)('an unstacked %s bar chart hatches the blank bucket and keeps the others in the series colour', (orientation) => {
+  const s: Series[] = [{ name: 'Count', color: 'var(--dm-series-1)', points: [px(BLANK, 2), px('A', 3)] }];
+  const { container } = wrap(<BarChart series={s} orientation={orientation} stacked={false} ariaLabel="b" formatTick={String} />);
+  const rects = container.querySelectorAll('rect[data-series="Count"]');
+  expect(rects[0]!.getAttribute('fill')).toMatch(/^url\(#dm-blank-/);
+  expect(container.querySelector('pattern')!.id).toBe(patternOf(rects[0]!));
+  expect(rects[1]).toHaveAttribute('fill', 'var(--dm-series-1)');
+});
+
+test('a stacked chart keeps its series colours in a blank bucket (they tell the segments apart)', () => {
+  const s: Series[] = [{ name: 'A', color: 'red', points: [px(BLANK, 2)] }, { name: 'B', color: 'blue', points: [px(BLANK, 1)] }];
+  const { container } = wrap(<BarChart series={s} orientation="vertical" stacked ariaLabel="b" formatTick={String} />);
+  expect(container.querySelector('rect[data-series="A"]')).toHaveAttribute('fill', 'red');
+});
+
+test('the blank bucket tooltip swatch is hatched too', async () => {
+  const s: Series[] = [{ name: 'Count', color: 'red', points: [px(BLANK, 2)] }];
+  const { container } = wrap(<BarChart series={s} orientation="horizontal" stacked={false} ariaLabel="b" formatTick={String} />);
+  await userEvent.hover(container.querySelector('rect[data-bucket]')!);
+  const sw = (await screen.findAllByRole('tooltip'))[0]!.querySelector('.dm-chart-swatch') as HTMLElement;
+  expect(sw.style.background).toContain('repeating-linear-gradient');
+});
+
+test('Heatmap overlays hatch stripes on the blank row and column cells and not on the others, keeping the cell intensity', () => {
+  const { container } = wrap(<Heatmap xs={[{ key: BLANK, label: '(blank)' }, { key: 'x1', label: 'X1' }]} ys={[{ key: BLANK, label: '(blank)' }, { key: 'y1', label: 'Y1' }]} ariaLabel="H" cell={() => ({ value: 1, text: '1' })} />);
+  expect(container.querySelectorAll('rect[data-blank-hatch]')).toHaveLength(3);
+  expect(container.querySelector('rect[data-blank-hatch$="x1|y1"]')).toBeNull();
+  const over = container.querySelector('rect[data-blank-hatch]')!;
+  expect(over.getAttribute('fill')).toMatch(/^url\(#dm-blank-.*-lines\)$/);
+  expect(container.querySelector(`pattern[id="${over.getAttribute('fill')!.slice(5, -1)}"]`)).not.toBeNull();
+  expect(container.querySelectorAll('rect[data-cell]')[1]).toHaveAttribute('fill', 'var(--dm-series-1)');
+});
+
+test('SpreadChart hatches the blank row box and keeps the others tinted', () => {
+  const row = (key: string) => ({ key, label: key, p25: 1, p50: 2, p75: 3, min: null, max: null, text: 't' });
+  const { container } = wrap(<SpreadChart ariaLabel="Sp" formatTick={String} rows={[row(BLANK), row('A')]} />);
+  expect(container.querySelectorAll('rect[data-box]')[0]!.getAttribute('fill')).toMatch(/^url\(#dm-blank-/);
+  expect(container.querySelector('rect[data-box="A"]')).toHaveAttribute('fill', 'var(--dm-series-1)');
+});
+
+test('Scatter hatches the blank dot and keeps the others in the series colour', () => {
+  const dot = (key: string) => ({ key, label: key, x: 1, y: 2, xText: '1', yText: '2' });
+  const { container } = wrap(<Scatter ariaLabel="S" xTitle="X" yTitle="Y" formatX={String} formatY={String} points={[dot(BLANK), dot('A')]} />);
+  expect(container.querySelectorAll('circle[data-dot]')[0]!.getAttribute('fill')).toMatch(/^url\(#dm-blank-/);
+  expect(container.querySelector('circle[data-dot="A"]')).toHaveAttribute('fill', 'var(--dm-series-1)');
+});
