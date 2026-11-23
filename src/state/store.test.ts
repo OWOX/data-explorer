@@ -19,6 +19,13 @@ test('init selects the focus mart only when none is selected, and leaves no hist
   expect(reducer(st, { type: 'init', focusId: 'b' })).toBe(st);
 });
 
+test('init can open a remembered mart with its source', () => {
+  const st = reducer(s(), { type: 'init', focusId: 'a', sourceKey: 'Shopify' });
+  expect(st.selection).toEqual(sel({ martId: 'a', sourceKey: 'Shopify' }));
+  expect(st.history).toEqual([]);
+  expect(reducer(s(), { type: 'init', focusId: 'a', sourceKey: null }).selection.sourceKey).toBeNull();
+});
+
 test('selectSource toggles, clears the mart and the record, and pushes history', () => {
   const start = s({ selection: sel({ martId: 'a', record: { martId: 'a', pk: { id: 1 } } }) });
   const on = reducer(start, { type: 'selectSource', key: 'Shopify' });
