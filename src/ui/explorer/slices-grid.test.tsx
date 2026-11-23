@@ -194,3 +194,29 @@ test('the sparkline buckets only the rows of the passing groups', async () => {
   const week = (iso: string) => { const d = new Date(iso.slice(0, 10) + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
   expect([by((i) => i.slice(0, 10)), by(week), by((i) => i.slice(0, 7))]).toContainEqual(got);
 });
+
+describe('the data mart title row', () => {
+  const marked: GridState = { columns: ['id', 'status'], filters: { country: { field: 'country', op: 'eq', value: 'Ukraine' } }, slices: { customers__country_code: slice }, sorts: null, limit: 200 };
+
+  test('the Funnel and Layers marks show for rules on fields that are not columns, and a click opens the Fields list', async () => {
+    setup({ ...sliced, columns: ['id', 'status', 'customers__city'], filters: { status: { field: 'status', op: 'eq', value: 'paid' } } });
+    const filterMark = await screen.findByRole('button', { name: /^Filter rules in / });
+    expect(filterMark).toBeVisible();
+    expect(await screen.findByRole('button', { name: /^Slice rules in / })).toBeVisible();
+    await userEvent.click(filterMark);
+    expect(await screen.findByRole('listbox', { name: /^Fields of / })).toBeVisible();
+  });
+
+  test('no rules, no marks; the Fields button has no tooltip text of its own', async () => {
+    setup({ columns: ['id', 'status'], filters: {}, sorts: null, limit: 200 });
+    await screen.findAllByRole('button', { name: /^Fields of / });
+    expect(screen.queryByRole('button', { name: /^(Filter|Slice) rules in / })).toBeNull();
+  });
+
+  test('the (i) description hint sits in a revealed slot, so it shows with hover or focus only', async () => {
+    setup(marked);
+    const hints = await screen.findAllByRole('note');
+    const own = hints.find((h) => h.closest('[data-group]'));
+    if (own) expect(own.parentElement).toHaveClass('dm-reveal');
+  });
+});

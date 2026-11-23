@@ -1,11 +1,38 @@
-import { Columns3 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { Columns3, Funnel, Layers } from 'lucide-react';
+import { useRef, useState, type ReactNode } from 'react';
 import { AGG_LABELS, applyDraft, draftOf, type Aggregation } from '../../model/aggregation';
 import type { Field } from '../../model/types';
 import { Popover } from '../Popover';
 import { fieldLabel } from '../../model/fieldLabel';
 import { SheetsChecklist, type ChecklistItem } from '../SheetsChecklist';
 import { FieldHint, FieldLabel } from './FieldLabel';
+import { describeFilter } from '../../filters/catalogue';
+import { sliceField } from '../../filters/slice';
+import type { ColumnFilter } from '../../filters/build';
+import { Tooltip, TipLines } from '../Tooltip';
+import { describeColumnFilter } from './ColumnMenu';
+
+/**
+ * The green Filter and Slice marks after a data mart's title: they show when any field of the mart (shown or not) carries
+ * such a rule, and their tooltip lists the rules one per line. A click opens the mart's Fields list.
+ * A slice only counts on a joined mart's field, as in the column header.
+ */
+export function MartRuleMarks({ title, fields, filters, slices, onOpen }: {
+  title: string;
+  fields: Field[];
+  filters: Record<string, ColumnFilter>;
+  slices: Record<string, ColumnFilter>;
+  onOpen: () => void;
+}) {
+  const filterLines = fields.filter((f) => filters[f.name]).map((f) => `Filter: ${describeColumnFilter(f, filters[f.name]!)}`);
+  const sliceLines = fields.filter((f) => slices[f.name] && f.joined).map((f) => `Slice: ${describeFilter(sliceField(f), slices[f.name]!)}`);
+  const mark = (lines: string[], label: string, icon: ReactNode) => lines.length > 0 && (
+    <Tooltip content={<TipLines lines={lines} />}>
+      <button type="button" data-mart-mark={label.toLowerCase()} aria-label={`${label} rules in ${title}`} className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={onOpen}>{icon}</button>
+    </Tooltip>
+  );
+  return <>{mark(filterLines, 'Filter', <Funnel className="dm-icon" aria-hidden />)}{mark(sliceLines, 'Slice', <Layers className="dm-icon" aria-hidden />)}</>;
+}
 
 /**
  * The columns of one data mart's tab: only that mart's fields (the main mart's own, or a joined mart's blended ones).
@@ -15,7 +42,7 @@ import { FieldHint, FieldLabel } from './FieldLabel';
  * that was never reordered stays in schema order. `locked` names the ticked fields that cannot be unticked.
  * `unique` is the mart's primary key column, when Count Unique can count by it: a first row ticks it with that function (shown, and counted), unticking removes the function, and the key too when the tick was what showed it (never a locked or last column).
  */
-export function ColumnPicker({ title, fields, main, visible, locked, onChange, unique, agg }: {
+export function ColumnPicker({ title, fields, main, visible, locked, onChange, unique, agg, open: openProp, onOpenChange: onOpenProp }: {
   title: string;
   fields: Field[];
   main: boolean;
@@ -24,11 +51,15 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
   onChange: (cols: string[], more?: (cur: Aggregation) => Aggregation) => void;
   unique?: string;
   agg?: Aggregation;
+  /** Lets the grid open the list from outside (a click on a rule mark). */
+  open?: boolean;
+  onOpenChange?: (o: boolean) => void;
 }) {
   const set = new Set(visible);
   const mine = new Set(fields.map((f) => f.name));
   // A joined mart whose last field is unticked stays on the grid while the popup is open (Clear, then a new tick, keeps it); it leaves when the popup closes with nothing ticked.
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = openProp ?? ownOpen;
   const [emptied, setEmptied] = useState(false);
   const apply = (picked: string[]) => {
     if (!main && picked.length === 0) { setEmptied(true); return; }
@@ -36,7 +67,8 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
     commit(picked);
   };
   const onOpenChange = (o: boolean) => {
-    setOpen(o);
+    setOwnOpen(o);
+    onOpenProp?.(o);
     if (!o && emptied) { setEmptied(false); commit([]); }
   };
   const ownInOrder = (keep: Set<string>) => {
@@ -93,7 +125,7 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
     disabled: set.has(f.name) && (visible.length === 1 || locked(f.name)),
   }));
   return (
-    <Popover align="start" tip="Fields" open={open} onOpenChange={onOpenChange} trigger={
+    <Popover align="start" open={open} onOpenChange={onOpenChange} trigger={
       <button type="button" aria-label={`Fields of ${title}`} className="dm-ctl dm-ctl-lg dm-reveal"><Columns3 className="dm-icon" aria-hidden /></button>
     }>
       <div className="flex flex-col gap-2">

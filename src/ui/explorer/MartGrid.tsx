@@ -41,7 +41,7 @@ import { CellValue } from './CellValue';
 import { blockOf, selectionTsv, type GridSelection } from './copySelection';
 import { ColumnDragLayer } from './ColumnDrag';
 import { ColumnControls, ColumnMenuEnvContext, type ColumnMenuEnv } from './ColumnMenu';
-import { ColumnPicker } from './ColumnPicker';
+import { ColumnPicker, MartRuleMarks } from './ColumnPicker';
 import { ExportMenu } from './ExportMenu';
 import { defaultColumns } from '../../model/columns';
 import { buildRowQuery, useMartRows } from './useMartRows';
@@ -350,6 +350,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   // parked filters on fields now offered are applied after all, and filters on fields no longer offered are parked. Slices (the pre-join rules on joined fields) work the same way.
   const offeredNow = (name: string) => schema.some((f) => f.name === name);
   const [allFilters, setAllFilters] = useState<Record<string, ColumnFilter>>(() => seed.saved?.filters ?? {});
+  // The data mart (by group path) whose Fields list is open.
+  const [fieldsOpen, setFieldsOpen] = useState<string | null>(null);
   const [allSlices, setAllSlices] = useState<Record<string, ColumnFilter>>(() => seed.saved?.slices ?? {});
   const filters = useMemo(() => pickOffered(allFilters, schema), [allFilters, schema]);
   const slices = useMemo(() => pickOffered(allSlices, schema), [allSlices, schema]);
@@ -932,8 +934,9 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
                     <div className="flex min-w-0 items-center gap-1">
                       <span className="inline-flex shrink-0 text-muted-foreground"><PickedIcon icon={g.icon} fallback={Box} size={14} /></span>
                       <span className="truncate">{g.title}</span>
-                      {g.description?.trim() && <Hint text={g.description} label={`About ${g.title}`} />}
-                      <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} unique={g.main ? uniqueKey : undefined} agg={agg} />
+                      <MartRuleMarks title={g.title} fields={fieldsOf(g)} filters={filters} slices={slices} onOpen={() => setFieldsOpen(g.path)} />
+                      {g.description?.trim() && <span className="dm-reveal"><Hint text={g.description} label={`About ${g.title}`} /></span>}
+                      <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} unique={g.main ? uniqueKey : undefined} agg={agg} open={fieldsOpen === g.path} onOpenChange={(o) => setFieldsOpen((cur) => (o ? g.path : cur === g.path ? null : cur))} />
                       {(several || !g.main) && (
                         <Tooltip content={`Remove ${g.title} from the grid`}>
                           <button type="button" aria-label={`Remove ${g.title} from the grid`} data-remove disabled={removing} onClick={() => remove(g, i)} className="dm-reveal dm-gx"><X className="size-3.5" aria-hidden /></button>
