@@ -44,7 +44,7 @@ export function MartRuleMarks({ title, fields, filters, slices, expanded, onOpen
  * that was never reordered stays in schema order. `locked` names the ticked fields that cannot be unticked.
  * `unique` is the mart's primary key column, when Count Unique can count by it: a first row ticks it with that function (shown, and counted), unticking removes the function, and the key too when the tick was what showed it (never a locked or last column).
  */
-export function ColumnPicker({ title, fields, main, visible, locked, onChange, unique, agg, open: openProp, onOpenChange: onOpenProp }: {
+export function ColumnPicker({ title, fields, main, visible, locked, onChange, unique, agg, open: openProp, onOpenChange: onOpenProp, onCloseAutoFocus }: {
   title: string;
   fields: Field[];
   main: boolean;
@@ -56,6 +56,8 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
   /** Lets the grid open the list from outside (a click on a rule mark). */
   open?: boolean;
   onOpenChange?: (o: boolean) => void;
+  /** Lets the grid take over where focus goes when the list closes. */
+  onCloseAutoFocus?: (e: Event) => void;
 }) {
   const set = new Set(visible);
   const mine = new Set(fields.map((f) => f.name));
@@ -127,7 +129,7 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
     disabled: set.has(f.name) && (visible.length === 1 || locked(f.name)),
   }));
   return (
-    <Popover align="start" open={open} onOpenChange={onOpenChange} trigger={
+    <Popover align="start" onCloseAutoFocus={onCloseAutoFocus} open={open} onOpenChange={onOpenChange} trigger={
       <button type="button" aria-label={`Fields of ${title}`} className="dm-ctl dm-ctl-lg dm-reveal"><Columns3 className="dm-icon" aria-hidden /></button>
     }>
       <div className="flex flex-col gap-2">

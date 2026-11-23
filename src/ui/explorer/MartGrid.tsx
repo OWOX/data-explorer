@@ -939,8 +939,11 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
                       {g.description?.trim() && <span className="dm-reveal"><Hint text={g.description} label={`About ${g.title}`} /></span>}
                       <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} unique={g.main ? uniqueKey : undefined} agg={agg} open={fieldsOpen === g.path} onOpenChange={(o) => {
                         setFieldsOpen((cur) => (o ? g.path : cur === g.path ? null : cur));
-                        // A list opened from a rule mark gives focus back to that mark (after the popover's own return to the Fields button).
-                        if (!o && openedBy.current) { const m = openedBy.current; openedBy.current = null; window.setTimeout(() => { if (m.isConnected) m.focus(); }, 30); }
+                      }} onCloseAutoFocus={(e) => {
+                        // A list opened from a rule mark gives focus back to that mark, not to the Fields button.
+                        const m = openedBy.current;
+                        openedBy.current = null;
+                        if (m?.isConnected) { e.preventDefault(); m.focus(); }
                       }} />
                       {(several || !g.main) && (
                         <Tooltip content={`Remove ${g.title} from the grid`}>
