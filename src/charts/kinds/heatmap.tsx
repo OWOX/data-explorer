@@ -1,10 +1,10 @@
 import { CalendarRange, Columns3, Grid3x3, Rows3, Gauge } from 'lucide-react';
 import { BUCKET_LABELS, DATE_BUCKETS, formatBucket, type DateBucket } from '../../model/aggregation';
-import { columnTitle, fieldLabel } from '../../model/fieldLabel';
+import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
-import { fieldGroups, groupByMart, measureGroups } from '../menuGroups';
+import { axisTitle, fieldGroups, groupByMart, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { BLANK_KEY, BLANK_LABEL, blankFirst, keyOf, labelOf } from '../blank';
 import { bucketFilter, dimensionFilter } from '../clickFilters';
@@ -69,7 +69,7 @@ function HeatmapPanel({ martId, cf, r, filter, version, idle, hasFilters, format
   return (
     <ChartPanel title={title} name="Heatmap" items={ready ? items : null} width={seriesWidth(xs.length || null)}
       loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})} empty={empty ? emptyText(hasFilters) : null}>
-      {settled && <Heatmap xs={xs} ys={ys} ariaLabel={title} xTitle={cols.kind === 'date' ? columnTitle(cols.date) : columnTitle(cols.dim)} yTitle={columnTitle(y)}
+      {settled && <Heatmap xs={xs} ys={ys} ariaLabel={title} xTitle={axisTitle(cf, cols.kind === 'date' ? cols.date : cols.dim)} yTitle={axisTitle(cf, y)}
         cell={(xk, yk) => { const row = at.get(`${xk}|${yk}`); return row ? { value: numberOf(row[key]), text: measureText(measure, row[key], formatOf) } : undefined; }}
         onPick={(xk, yk) => onFilter([dimensionFilter(y, yk), cols.kind === 'date' ? bucketFilter(cols.date, xk, bucket!, bucketZone(cols.date)) : dimensionFilter(cols.dim, xk)])} />}
     </ChartPanel>

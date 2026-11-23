@@ -3,7 +3,7 @@ import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
-import { fieldGroups, measureGroups } from '../menuGroups';
+import { fieldGroups, measureAxisTitle, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { keyOf, labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
@@ -43,7 +43,7 @@ function ScatterPanel({ martId, cf, r, filter, version, idle, hasFilters, format
     <ChartPanel title={title} name="Scatter" items={ready ? items : null} width={BOX_WIDTH}
       loading={!read.rows && !read.error} error={read.error} onRetry={read.retry} empty={read.rows?.length === 0 ? emptyText(hasFilters) : null}
       note={full ? `Only the ${SCATTER_LIMIT} values with the largest ${measureLabel(cf, x, [x, y])} are drawn.` : undefined}>
-      {read.rows && <Scatter points={points} ariaLabel={title} xTitle={measureLabel(cf, x, [x, y])} yTitle={measureLabel(cf, y, [x, y])}
+      {read.rows && <Scatter points={points} ariaLabel={title} xTitle={measureAxisTitle(cf, x, [x, y])} yTitle={measureAxisTitle(cf, y, [x, y])}
         formatX={(n) => tickText(n, xt, xf)} formatY={(n) => tickText(n, yt, yf)} integerX={isIntegerMeasure(x)} integerY={isIntegerMeasure(y)} onPick={(k) => onFilter([dimensionFilter(dim, k)])} />}
     </ChartPanel>
   );

@@ -1,9 +1,9 @@
-import { fieldLabel } from '../model/fieldLabel';
+import { columnTitle, fieldLabel } from '../model/fieldLabel';
 import type { Field } from '../model/types';
 import type { MenuGroup, MenuOption } from './ChartMenu';
-import type { ChartFields } from './fields';
+import { menuOf, type ChartFields } from './fields';
 import type { Measure } from './queries';
-import { metricLabel } from './Scorecards';
+import { measureLabel, metricLabel } from './Scorecards';
 import { measureId } from './settings';
 
 const pathOfField = (f: Field): string => f.joined?.aliasPath ?? '';
@@ -25,3 +25,14 @@ export const measureGroups = (cf: ChartFields, list: Measure[]): MenuGroup[] => 
   value: measureId(m),
   label: m.kind === 'records' ? 'Count Unique' : metricLabel(m.metric),
 }));
+
+/** The title the chart menus give a data mart's group (the grid tab's title); the main mart's has `aliasPath` ''. */
+export const martTitleOf = (cf: ChartFields, aliasPath: string): string => menuOf(cf).marts.find((m) => m.aliasPath === aliasPath)?.title || '';
+
+const withMart = (name: string, title: string): string => (title ? `${name} | ${title}` : name);
+
+/** A chart axis or Sankey column title for a field: "{Field Name} | {Data Mart Name}". */
+export const axisTitle = (cf: ChartFields, f: Field): string => withMart(columnTitle(f), martTitleOf(cf, pathOfField(f)));
+
+/** A chart axis title for a measure: its label and the data mart it counts or sums over (a row count's is its counter's). */
+export const measureAxisTitle = (cf: ChartFields, m: Measure, scope?: Measure[]): string => withMart(measureLabel(cf, m, scope), martTitleOf(cf, pathOfMeasure(m)));

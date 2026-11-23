@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChartPie, ChartLine, Calendar, Hash, Trash2 } from 'lucide-react';
 import { ChartMenu, type MenuItem } from './ChartMenu';
@@ -144,4 +144,30 @@ describe('a field menu over several data marts', () => {
     await screen.findByRole('menuitemradio', { name: 'Amount' });
     expect(screen.queryByRole('menuitem', { name: 'Orders' })).toBeNull();
   });
+});
+
+test('a radio submenu can end with an action row below a divider: it closes the menu and runs', async () => {
+  const onPick = vi.fn();
+  const pick = vi.fn();
+  render(<ChartMenu name="Sales" items={[{ kind: 'radio', label: 'Column 1', icon: Calendar, value: 'a', options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }], trailing: { label: 'Remove column', icon: Trash2, onPick }, onPick: pick }]} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Column 1' }));
+  const sub = await screen.findByRole('menu', { name: 'Column 1' });
+  const rows = within(sub).getAllByRole('menuitem');
+  expect(within(sub).getAllByRole('menuitemradio')).toHaveLength(2);
+  expect(rows[rows.length - 1]).toHaveTextContent('Remove column');
+  expect(sub.querySelector('[role="separator"]')).not.toBeNull();
+  await userEvent.click(rows[rows.length - 1]!);
+  expect(onPick).toHaveBeenCalledOnce();
+  expect(pick).not.toHaveBeenCalled();
+  expect(screen.queryByRole('menu')).toBeNull();
+});
+
+test('a radio without a trailing action has no divider or extra row', async () => {
+  render(<ChartMenu name="Sales" items={items} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Bucket' }));
+  const sub = await screen.findByRole('menu', { name: 'Bucket' });
+  expect(sub.querySelector('[role="separator"]')).toBeNull();
+  expect(within(sub).queryAllByRole('menuitem')).toHaveLength(0);
 });

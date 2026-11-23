@@ -360,3 +360,12 @@ test('a blank bar is filled with the hatch pattern and has no stroke', () => {
   expect(container.querySelector('pattern')!.id).toBe(rect.getAttribute('fill')!.slice(5, -1));
   expect(container.querySelector('rect[data-series="A"]')).toHaveAttribute('fill', 'red');
 });
+
+test('the line, heatmap and scatter X titles are cut to the plot with the full text in a hover title', () => {
+  const long = 'Created at | A long data mart title '.repeat(6).trim();
+  const line = wrap(<LineChart left={two} area={false} ariaLabel="l" formatLeft={(n) => `${n}`} xTitle={long} />);
+  const lineTitle = line.container.querySelector('.dm-chart-axis-title:not([data-y-title])')!;
+  expect(lineTitle.querySelector('title')).toHaveTextContent(long);
+  expect(lineTitle.textContent!.length).toBeLessThan(long.length * 2);
+  expect([...lineTitle.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('')).toMatch(/…$/);
+});

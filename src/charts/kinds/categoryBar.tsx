@@ -1,9 +1,9 @@
 import { Gauge, Shapes, type LucideIcon } from 'lucide-react';
-import { columnTitle, fieldLabel } from '../../model/fieldLabel';
+import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
-import { fieldGroups, measureGroups } from '../menuGroups';
+import { axisTitle, fieldGroups, measureAxisTitle, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
@@ -39,7 +39,7 @@ function categoryPanel(orientation: 'vertical' | 'horizontal', name: string) {
     return (
       <ChartPanel title={title} name={name} items={ready ? items : null} width={BOX_WIDTH}
         loading={top.loading} error={top.failed?.error} onRetry={top.failed?.retry ?? (() => {})} empty={top.empty ? emptyText(hasFilters) : null}>
-        {top.categories && !top.loading && <BarChart series={series()} orientation={orientation} categorical ariaLabel={title} stacked={false} xTitle={columnTitle(dim)} yTitle={measureLabel(cf, measure)} integer={isIntegerMeasure(measure)}
+        {top.categories && !top.loading && <BarChart series={series()} orientation={orientation} categorical ariaLabel={title} stacked={false} xTitle={axisTitle(cf, dim)} yTitle={measureAxisTitle(cf, measure)} integer={isIntegerMeasure(measure)}
           formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={(x) => onFilter([dimensionFilter(dim, x)])} canPick={(x) => x !== OTHER_X} />}
       </ChartPanel>
     );

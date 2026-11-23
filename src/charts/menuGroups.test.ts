@@ -1,5 +1,5 @@
 import { chartFields, measuresOf } from './fields';
-import { fieldGroups, measureGroups } from './menuGroups';
+import { axisTitle, fieldGroups, martTitleOf, measureAxisTitle, measureGroups } from './menuGroups';
 import { NO_AGGREGATION } from '../model/aggregation';
 import type { Field } from '../model/types';
 
@@ -29,4 +29,23 @@ test('a field shows its own label and a Count Unique sits in its mart group', ()
 
 test('a mart with none of the fields has no group', () => {
   expect(fieldGroups(cf, [schema[2]!]).map((g) => g.title)).toEqual(['Contacts']);
+});
+
+test('an axis title names the field and the data mart the menus group it under', () => {
+  expect(martTitleOf(cf, '')).toBe('Contacts');
+  expect(martTitleOf(cf, 'org')).toBe('Contact Organization');
+  expect(axisTitle(cf, schema[2]!)).toBe('channel | Contacts');
+  expect(axisTitle(cf, schema[3]!)).toBe('Contact Organization · org__name | Contact Organization');
+});
+
+test('a measure axis title carries the mart of its field, a Count Unique the mart it counts', () => {
+  const [records, amount, , orgSize] = [measuresOf(cf)[0]!, measuresOf(cf)[1]!, measuresOf(cf)[2]!, measuresOf(cf)[3]!];
+  expect(measureAxisTitle(cf, amount)).toBe('amount · Sum | Contacts');
+  expect(measureAxisTitle(cf, orgSize)).toBe('org__size · Sum | Contact Organization');
+  expect(measureAxisTitle(cf, records)).toBe('Count Unique | Contacts');
+});
+
+test('a mart without a title adds no suffix', () => {
+  const bare = chartFields(schema, ['id', 'channel'], NO_AGGREGATION, 'M', ['']);
+  expect(axisTitle(bare, schema[2]!)).toBe('channel');
 });

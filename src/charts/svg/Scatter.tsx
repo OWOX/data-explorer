@@ -2,7 +2,7 @@ import type { KeyboardEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
 import { useWidth } from '../useWidth';
 import { niceTicks } from './ticks';
-import { Y_TITLE_W, YTitle } from './YTitle';
+import { XTitle, Y_TITLE_W, YTitle } from './YTitle';
 
 export type Dot = { key: string; label: string; x: number; y: number; xText: string; yText: string };
 const PLOT_H = 220;
@@ -40,7 +40,7 @@ export function Scatter({ points, ariaLabel, xTitle, yTitle, formatX, formatY, o
           </g>
         ))}
         {tx.ticks.map((t, k) => <text key={`x${t}`} className="dm-chart-text" x={px(t)} y={TOP + PLOT_H + 14} textAnchor={k === 0 ? 'start' : k === tx.ticks.length - 1 ? 'end' : 'middle'}>{formatX(t)}</text>)}
-        <text className="dm-chart-axis-title" x={left + plotW / 2} y={TOP + PLOT_H + 32 + TITLE_GAP} textAnchor="middle">{xTitle}</text>
+        <XTitle x={left + plotW / 2} y={TOP + PLOT_H + 32 + TITLE_GAP} width={plotW} text={xTitle} />
         <YTitle x={8} mid={TOP + PLOT_H / 2} length={PLOT_H} text={yTitle} />
         {points.map((p) => {
           const pick = onPick ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${p.label}`, style: { cursor: 'pointer' }, onClick: () => onPick(p.key), onKeyDown: press(() => onPick(p.key)) } : {};

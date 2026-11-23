@@ -180,3 +180,22 @@ test('choosing a metric that is not a shown column adds it to the table', async 
   await data(page).getByRole('radio', { name: 'Table' }).click();
   await expect(data(page).getByRole('columnheader', { name: /Net Revenue/ })).toBeVisible();
 });
+
+test('the selected Chart type is marked with the green check, on the left of its row', async ({ page }) => {
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  const pie = data(page).locator('section[data-chart-kind="Pie"]');
+  await pie.scrollIntoViewIfNeeded();
+  await pie.getByRole('button', { name: 'Pie options' }).click();
+  const type = page.getByRole('menuitem', { name: 'Chart type' });
+  await type.focus();
+  await page.keyboard.press('ArrowRight');
+  const row = page.getByRole('menuitemradio', { name: 'Pie' });
+  const check = row.locator('.dm-menu-check svg');
+  await expect(check).toBeVisible();
+  await expect(check).toHaveCSS('color', 'rgb(24, 128, 56)');
+  await expect(check).toHaveCSS('stroke', 'rgb(24, 128, 56)');
+  // The check is the row's first mark, left of the label.
+  const [c, l] = [(await check.boundingBox())!, (await row.locator('.dm-menu-label').boundingBox())!];
+  expect(c.x + c.width).toBeLessThan(l.x);
+  await page.screenshot({ path: 'tmp/chart-type-check.png', clip: { x: 480, y: 640, width: 400, height: 230 } });
+});
