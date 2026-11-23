@@ -19,7 +19,7 @@ export function RowBand({ model, folded, onFold, loading = null }: { model: Mode
   const shown = held ? shownRecord : record;
 
   // A grid with a function or a bucket shows groups, which are no single record.
-  const grouped = !!selection.martId && isGrouped({ aggregations: grids[selection.martId]?.aggregations ?? [], dateTrunc: grids[selection.martId]?.dateTrunc ?? [] });
+  const grouped = !!selection.martId && isGrouped({ aggregations: grids[selection.martId]?.aggregations ?? [], dateTrunc: grids[selection.martId]?.dateTrunc ?? [], uniqueCount: grids[selection.martId]?.uniqueCount });
   const mart = record ? model.marts.get(record.martId) : undefined;
   const title = record ? `${mart?.title ?? record.martId} · ${Object.values(record.pk).map(String).join(', ')}` : 'Row';
 

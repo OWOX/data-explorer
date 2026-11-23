@@ -38,14 +38,14 @@ async function rowIcon(field: string, mart?: string) {
 }
 
 describe('field actions from the Fields list', () => {
-  test('every field row has the menu icon, the Count Unique row has none, and an idle icon is grey until the row is hovered', async () => {
+  test('every field row has the menu icon, the Unique Count row has none, and an idle icon is grey until the row is hovered', async () => {
     setup(g());
     const { list, icon } = await rowIcon('status');
     const options = within(list).getAllByRole('option');
     const rows = options.map((o) => o.parentElement as HTMLElement);
     for (const [i, row] of rows.entries()) {
       const has = row.querySelector('[data-row-action]') !== null;
-      expect(has, options[i]!.getAttribute('aria-label') ?? '').toBe(options[i]!.getAttribute('aria-label') !== 'Count Unique');
+      expect(has, options[i]!.getAttribute('aria-label') ?? '').toBe(options[i]!.getAttribute('aria-label') !== 'Unique Count');
     }
     expect(icon).toHaveClass('dm-row-ctl');
     expect(icon).not.toHaveClass('dm-ctl-on');

@@ -505,7 +505,6 @@ describe('the record', () => {
 });
 
 const NO_PK = 'Preview only: this data mart has no primary key.';
-const HIDDEN_PK = "Preview only: this data mart's primary key is hidden for reporting.";
 
 describe('search, contexts and refresh', () => {
   test('the page header is the title and the actions (the search first) with no Refresh button', async () => {
@@ -1320,7 +1319,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(named).not.toContain('internal_flag');
   });
 
-  test('a mart whose primary key is hidden for reporting is preview only (and says so), with no 400, a record count, and no key in the picker', async () => {
+  test('a mart whose primary key is hidden for reporting has no warning, no 400, a record count, and no key in the picker; a row does not open', async () => {
     const f = demoFixtures();
     const stores = f.marts.find((m) => m.id === 'stores')!;
     stores.fields = stores.fields.map((x) => (x.name === 'id' ? { ...x, isHiddenForReporting: true } : x));
@@ -1330,9 +1329,9 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     await search('stores');
     await within(marts()).findByText('Stores');
     await goTo('Stores');
-    expect(await within(data()).findByRole('note', { name: HIDDEN_PK })).toBeInTheDocument();
-    expect(within(data()).queryByRole('note', { name: NO_PK })).toBeNull();
     await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
+    expect(within(data()).queryByRole('note', { name: NO_PK })).toBeNull();
+    expect(within(data()).queryByRole('note', { name: /Preview only/ })).toBeNull();
     expect(within(data()).queryByText(/Unknown column/)).toBeNull();
     await userEvent.click(within(data()).getAllByRole('row')[2]!);
     expect(within(row()).getByText('Select a row.')).toBeInTheDocument();

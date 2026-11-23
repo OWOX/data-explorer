@@ -32,12 +32,14 @@ export type ReportPayload = {
   /** Present only for a grouped grid, as the report carries them: the same rules the grid sent. */
   aggregationConfig?: AggregationRule[];
   dateTruncConfig?: DateTruncRule[];
+  /** The alias paths whose data mart's Unique Count the report carries ('' is the main mart); null when none. */
+  uniqueCountConfig: string[] | null;
 };
 
 export type PayloadResult = { payload: ReportPayload; notes: string[] };
 
 /** The report that reproduces what the grid shows: shown columns, complete filters (HAVING ones with their aggregation) and slices, the reader's own sorts. */
-export function buildReportPayload(schema: Schema, visible: string[], filters: ColumnFilter[], sorts: SortKey[], agg?: Aggregation, slices: ColumnFilter[] = []): PayloadResult {
+export function buildReportPayload(schema: Schema, visible: string[], filters: ColumnFilter[], sorts: SortKey[], agg?: Aggregation, slices: ColumnFilter[] = [], uniqueCount: readonly string[] = []): PayloadResult {
   const notes: string[] = [];
   const known = new Set(schema.map((f) => f.name));
   // In the grid's order (the main mart's columns, then each joined mart's), keeping the names the schema has.
@@ -56,6 +58,7 @@ export function buildReportPayload(schema: Schema, visible: string[], filters: C
       autoAggregationOptOut: columnConfig.filter((c) => !aggregations.some((r) => r.column === c)),
       ...(aggregations.length ? { aggregationConfig: aggregations } : {}),
       ...(dateTrunc.length ? { dateTruncConfig: dateTrunc } : {}),
+      uniqueCountConfig: uniqueCount.length ? [...uniqueCount] : null,
     },
     notes,
   };
@@ -400,8 +403,8 @@ export function createExporter(ctx: Ctx): Exporter {
             dataDestinationId: sent.destinationId,
             destinationConfig: destinationConfig(sent),
             // PUT replaces the report: what an earlier edit in OWOX left behind must not change the sheet, so these reset
-            // unless the payload carries them (a grouped grid's aggregation and date rules).
-            limitConfig: null, aggregationConfig: null, dateTruncConfig: null, uniqueCountConfig: null,
+            // unless the payload carries them (a grouped grid's aggregation and date rules; its Unique Count is always carried, null when none).
+            limitConfig: null, aggregationConfig: null, dateTruncConfig: null,
             ...payload,
           });
         } catch (e) {

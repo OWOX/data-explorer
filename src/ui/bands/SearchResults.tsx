@@ -1,4 +1,4 @@
-import { Box, FileSpreadsheet, Funnel, Loader2, Sparkles } from 'lucide-react';
+import { Box, FileSpreadsheet, Loader2, Sparkles } from 'lucide-react';
 import { useEffect, type ReactNode } from 'react';
 import type { Context, Model } from '../../model/types';
 import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
@@ -29,14 +29,10 @@ function RowBody({ row, model }: { row: Row; model: Model }): ReactNode {
       {row.reason && !row.martId ? (
         <span className="dm-sr-muted">{row.reason}</span>
       ) : (
+        // The pick opens the mart the search found, with the view the AI sets up; the row does not name them.
         <>
-          <span className="dm-sr-title-fixed">Ad-hoc report for</span>
-          {row.pending || !row.martId
-            ? <Loader2 size={14} className="animate-spin" aria-label="Finding the data mart" />
-            : <MartName martId={row.martId} model={model} />}
-          <span className="dm-sr-muted">with</span>
-          <Funnel size={14} aria-hidden="true" />
-          <span className="dm-sr-muted">filters</span>
+          <span className="dm-sr-title-fixed">Ad-hoc report</span>
+          {(row.pending || !row.martId) && <Loader2 size={14} className="animate-spin" aria-label="Finding the data mart" />}
         </>
       )}
     </>

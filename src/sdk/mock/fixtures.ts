@@ -347,7 +347,8 @@ export function demoReports(f: Fixtures): MockReportFixture[] {
       // The pre-join rule is on a field of the joined customers mart, named as the blended schema names it.
       filterConfig: [{ column: 'customers__country_code', operator: 'eq', value: 'PL', placement: 'pre-join' }, { column: 'net_revenue', operator: 'gt', value: 100, function: 'SUM' }],
       aggregationConfig: [{ column: 'net_revenue', function: 'SUM' }],
-      uniqueCountConfig: [''],
+      // A joined mart the Orders grid does not offer, so this one is the part the explorer leaves out.
+      uniqueCountConfig: ['campaigns'],
     },
     { ...base, ...martOf('campaigns'), id: 'mock-report-campaigns', title: 'Campaign spend', columnConfig: ['id', 'name'] },
   ];

@@ -72,6 +72,13 @@ test('a changed limit, filter or version re-queries even with fewer columns', as
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
 });
 
+test('a Unique Count alone makes the query grouped: the shown columns are the keys, no primary key is added, the paths are sent, and its sort is kept', () => {
+  const q = buildRowQuery(schema, ['b', 'a'], [], 200, [{ field: 'Unique Count', direction: 'desc' }, { field: 'gone', direction: 'asc' }], { aggregations: [], dateTrunc: [], uniqueCount: ['', 'customers'] });
+  expect(q).toEqual({ column: ['a', 'b'], uniqueCount: ['', 'customers'], sort: [{ column: 'Unique Count', direction: 'desc' }], limit: 201 });
+  // Without it the same columns read plain rows, with the key.
+  expect(buildRowQuery(schema, ['b', 'a'], [], 200, [], { aggregations: [], dateTrunc: [], uniqueCount: [] }).column).toEqual(['id', 'a', 'b']);
+});
+
 test('buildRowQuery sends the reader sorts first, then the primary keys not already sorted; no sorts leaves the query as it was', () => {
   const plain = buildRowQuery(schema, ['a'], [], 200);
   expect(plain.sort).toEqual([{ column: 'id', direction: 'asc' }]);

@@ -276,3 +276,32 @@ describe('resolveView with slices and HAVING filters', () => {
     expect(lost.skipped.filters).toBe(1);
   });
 });
+
+describe('resolveView with Unique Counts', () => {
+  const keyed = (joinedUnique: string[] = []): Schema => Object.assign([...schema.filter((x) => x.name !== 'customer__name'), { ...field('customers__name'), joined: { martId: 'c', label: 'Customers', aliasPath: 'customers', originalName: 'name' } } as Schema[number]], { primaryKey: ['id'], joinedUniqueCount: joinedUnique });
+  const grid = (patch: Partial<NonNullable<DecodedView['grid']>>): DecodedView => view({ grid: { columns: ['id', 'total', 'customers__name'], filters: {}, sorts: null, limit: 400, ...patch } });
+
+  it('keeps the metric of the main mart and of a joined mart that offers it and has a column on the grid, with their sorts', async () => {
+    const sorts = [{ field: 'Unique Count', direction: 'desc' as const }, { field: 'customers__unique_count', direction: 'asc' as const }];
+    const { apply, skipped } = await resolveView(grid({ uniqueCount: ['', 'customers'], sorts }), model, async () => keyed(['customers']));
+    expect(apply.grid!.uniqueCount).toEqual(['', 'customers']);
+    expect(apply.grid!.sorts).toEqual(sorts);
+    expect(skipped).toEqual(none);
+  });
+
+  it('drops a path whose metric is not offered, with its sort, and counts it with the aggregations', async () => {
+    const { apply, skipped } = await resolveView(grid({ uniqueCount: ['', 'customers', 'gone'], sorts: [{ field: 'customers__unique_count', direction: 'asc' }, { field: 'id', direction: 'asc' }] }), model, async () => keyed());
+    expect(apply.grid!.uniqueCount).toEqual(['']);
+    expect(apply.grid!.sorts).toEqual([{ field: 'id', direction: 'asc' }]);
+    expect(skipped.aggregations).toBe(2);
+    expect(skipped.sorts).toBe(1);
+  });
+
+  it('drops the main mart\'s metric when it has no primary key, and a joined one with no column on the grid', async () => {
+    const noKey = Object.assign([...keyed()], { primaryKey: [] as string[] }) as Schema;
+    const unkeyed = await resolveView(grid({ uniqueCount: [''] }), model, async () => noKey);
+    expect('uniqueCount' in unkeyed.apply.grid!).toBe(false);
+    const offGrid = await resolveView(grid({ columns: ['id', 'total'], uniqueCount: ['customers'] }), model, async () => keyed(['customers']));
+    expect('uniqueCount' in offGrid.apply.grid!).toBe(false);
+  });
+});

@@ -8,8 +8,9 @@ import { PAGE_SIZE } from '../../config';
 import { columnLetter } from './columnLetters';
 import { emptyText, isNumericType } from '../format';
 import { withJoined, type JoinedSource } from '../../api/blendable';
-import { AGG_LABELS, allowedFunctions, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type AggregationDraft, type DateBucket, type Output } from '../../model/aggregation';
+import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type Grouping, type AggregationDraft, type DateBucket, type Output } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
+import { dropUniqueSorts, keepUnique, uniqueField, uniqueKey, uniquePathsOf, withUniqueAfter } from '../../model/unique-count';
 import { chartFields, ruleNewColumns } from '../../charts/fields';
 import { keysPlan, useHavingKeys } from '../../charts/havingKeys';
 import { readRows } from '../../api/rows';
@@ -148,7 +149,7 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
           const full = withJoined(schema, known ?? []);
           // Every offered column counts as shown here, so the aggregation (and the HAVING filters on it) is judged by the fields, not by the default column set.
           const out = pruneGrid({ ...raw, columns: full.map((f) => f.name) }, full).grid;
-          return out ? { filters: out.filters, ...(out.slices ? { slices: out.slices } : {}), sorts: out.sorts, limit: v.limit, ...(v.view ? { view: v.view } : {}) } : v;
+          return out ? { filters: out.filters, ...(out.slices ? { slices: out.slices } : {}), sorts: out.sorts, limit: v.limit, ...(v.view ? { view: v.view } : {}), ...(out.uniqueCount ? { uniqueCount: out.uniqueCount } : {}) } : v;
         };
         holdTimer.current = setTimeout(() => settle(null), VIEW_HOLD_MAX_MS);
         columnStore.loadView(martId).then((v) => columnStore.loadAggregation(martId).then(() => v, () => v)).then(settle, () => settle(null));
@@ -303,7 +304,7 @@ const GridRow = memo(function GridRow({ row, ri, columns, marks, acts, clickable
 
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 const byField = (m: Record<string, ColumnFilter> | undefined) => Object.entries(m ?? {}).sort(([a], [b]) => a.localeCompare(b));
-const stable = (g: GridState) => JSON.stringify([g.columns, byField(g.filters), byField(g.slices), g.sorts, g.limit, g.aggregations ?? [], g.dateTrunc ?? [], g.view ?? 'table']);
+const stable = (g: GridState) => JSON.stringify([g.columns, byField(g.filters), byField(g.slices), g.sorts, g.limit, g.aggregations ?? [], g.dateTrunc ?? [], g.uniqueCount ?? [], g.view ?? 'table']);
 const sameGrid = (a: GridState, b: GridState) => stable(a) === stable(b);
 
 /** The rules on fields the schema offers (or, with `offered` false, the parked ones on fields it does not). */
@@ -329,6 +330,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const slot = useContext(BandToolsSlot);
   // The joined marts are read when the mart becomes the main one (the page asks the same loader, so it is one read).
   const [sources, setSources] = useState<JoinedSource[]>(initialSources ?? []);
+  // The joined marts are known to this grid (opened with them, or read since): a joined Unique Count is judged only then, until then it is parked.
+  const [sourcesRead, setSourcesRead] = useState(!!initialSources);
   // Reading the joined marts failed (cleared when a read starts or succeeds).
   const [joinsFailed, setJoinsFailed] = useState(false);
   // Refresh raises the tick: the joined marts are read again (the loader's entry was dropped), even when the grid opened with them.
@@ -336,7 +339,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   useEffect(() => {
     if (initialSources && refreshTick === 0) return;
     let live = true;
-    blendable.get(martId).then((s) => { if (live) setSources(s); }, () => { if (live) setJoinsFailed(true); });
+    blendable.get(martId).then((s) => { if (live) { setSources(s); setSourcesRead(true); } }, () => { if (live) setJoinsFailed(true); });
     return () => { live = false; };
   }, [blendable, martId, initialSources, refreshTick]);
   const schema = useMemo(() => withJoined(native, sources), [native, sources]);
@@ -391,8 +394,16 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     setSeenFailure(refreshError);
     if (refreshError) said.push(`Refresh failed: ${errorMessage(refreshError)}. The grid shows what was read before.`);
   }
+  // The data marts whose Unique Count is a column (alias paths, '' is the main mart), as the member set them: one that is not offered now is parked here and left out below.
+  const [uc, setUc] = useState<string[]>(() => seed.saved?.uniqueCount ?? []);
   // null: the member has set no sort, so rows open newest date first. The default is judged once, from the columns the grid opened with.
-  const [own, setOwn] = useState<SortKey[] | null>(() => (seed.saved?.sorts ? (sortsOnColumns(seed.saved.sorts, visible).length || !seed.saved.sorts.length ? sortsOnColumns(seed.saved.sorts, visible) : null) : null));
+  // A Unique Count column is sorted by its row key, so its key counts as a shown column.
+  const [own, setOwn] = useState<SortKey[] | null>(() => {
+    const sorts = seed.saved?.sorts;
+    if (!sorts) return null;
+    const kept = sortsOnColumns(sorts, [...visible, ...(seed.saved?.uniqueCount ?? []).map(uniqueKey)]);
+    return kept.length || !sorts.length ? kept : null;
+  });
   const [fallback] = useState(() => defaultSort(native, visible));
   const sorts = own ?? fallback;
   const [limit, setLimit] = useState(() => seed.saved?.limit ?? PAGE_SIZE);
@@ -424,8 +435,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   // The grid as the store keeps it: the parked rules are in it, and the empty lists are left out.
   const current = useMemo<GridState>(() => ({
     columns: visible, filters: allFilters, ...(Object.keys(allSlices).length ? { slices: allSlices } : {}), sorts: own, limit,
-    ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}), ...(view ? { view } : {}),
-  }), [visible, allFilters, allSlices, own, limit, agg, view]);
+    ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}), ...(uc.length ? { uniqueCount: uc } : {}), ...(view ? { view } : {}),
+  }), [visible, allFilters, allSlices, own, limit, agg, view, uc]);
 
   // The page changes this grid too (a card click adds or takes out a joined mart's columns, Undo puts them back): what the store
   // holds is adopted when it is not what the grid already shows. The grid's own changes reach the store through the effect below.
@@ -442,6 +453,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       setView(saved.view);
       setVisible(saved.columns);
       setAgg(aggOf(saved));
+      setUc(saved.uniqueCount ?? []);
       if (!sameList(saved.columns, visible)) { setAdopted([...saved.columns]); setSelected(null); }
       else if (JSON.stringify(aggOf(saved)) !== JSON.stringify(agg)) setAdoptedAgg({ ...aggOf(saved) });
       setAllFilters(saved.filters);
@@ -462,7 +474,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const heldView = useRef<SavedView | null>(null);
   const viewKey = useRef<string | null>(null);
   // The parts of the view as the grid opened with them: a part still equal to this is one the member has not changed.
-  const [opened] = useState(() => ({ filters: JSON.stringify(allFilters), slices: JSON.stringify(allSlices), sorts: JSON.stringify(own), limit, view: JSON.stringify(view ?? null) }));
+  const [opened] = useState(() => ({ filters: JSON.stringify(allFilters), slices: JSON.stringify(allSlices), sorts: JSON.stringify(own), limit, view: JSON.stringify(view ?? null), uc: JSON.stringify(uc) }));
   // When the late saved view arrives, the parts the member has not touched take its values and their own parts stay (adjusted during render, like the seed above).
   const [mergedLate, setMergedLate] = useState<{ view: SavedView | null; /** The parts that took the saved view's values (the member had not changed them). */ taken?: Partial<GridState> } | null>(null);
   if (!holdView && lateView !== undefined && !mergedLate) {
@@ -471,18 +483,21 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       const f = JSON.stringify(allFilters) !== opened.filters ? allFilters : lateView.filters;
       const sl = JSON.stringify(allSlices) !== opened.slices ? allSlices : (lateView.slices ?? {});
       // The saved sorts are held to the columns shown, as the on-time seed does.
-      const lateSorts = lateView.sorts && (sortsOnColumns(lateView.sorts, visible).length || !lateView.sorts.length ? sortsOnColumns(lateView.sorts, visible) : null);
+      const lateKeys = [...visible, ...(lateView.uniqueCount ?? []).map(uniqueKey)];
+      const lateSorts = lateView.sorts && (sortsOnColumns(lateView.sorts, lateKeys).length || !lateView.sorts.length ? sortsOnColumns(lateView.sorts, lateKeys) : null);
       const so = JSON.stringify(own) !== opened.sorts ? own : lateSorts;
       const lim = limit !== opened.limit ? limit : lateView.limit;
       const vw = JSON.stringify(view ?? null) !== opened.view ? view : lateView.view;
-      setAllFilters(f); setAllSlices(sl); setOwn(so); setLimit(lim); setView(vw);
+      const un = JSON.stringify(uc) !== opened.uc ? uc : (lateView.uniqueCount ?? []);
+      setAllFilters(f); setAllSlices(sl); setOwn(so); setLimit(lim); setView(vw); setUc(un);
       const taken: Partial<GridState> = {};
       if (f !== allFilters) taken.filters = f;
       if (sl !== allSlices) taken.slices = Object.keys(sl).length ? sl : undefined;
       if (JSON.stringify(own) === opened.sorts) taken.sorts = so;
       if (limit === opened.limit) taken.limit = lim;
       if (JSON.stringify(view ?? null) === opened.view) taken.view = vw;
-      setMergedLate({ view: { filters: f, ...(Object.keys(sl).length ? { slices: sl } : {}), sorts: so, limit: lim, ...(vw ? { view: vw } : {}) }, taken });
+      if (JSON.stringify(uc) === opened.uc) taken.uniqueCount = un.length ? un : undefined;
+      setMergedLate({ view: { filters: f, ...(Object.keys(sl).length ? { slices: sl } : {}), sorts: so, limit: lim, ...(vw ? { view: vw } : {}), ...(un.length ? { uniqueCount: un } : {}) }, taken });
     }
   }
   // The held edit is saved once the hold ends: as it stands if the saved view never came, else merged over it. An edit still held when the grid
@@ -501,7 +516,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
 
   // Every change to what the grid shows is saved with the columns (after the same pause); what the grid opened with is not written back.
   useEffect(() => {
-    const v: SavedView = { filters: current.filters, ...(current.slices ? { slices: current.slices } : {}), sorts: current.sorts, limit: current.limit, ...(current.view ? { view: current.view } : {}) };
+    const v: SavedView = { filters: current.filters, ...(current.slices ? { slices: current.slices } : {}), sorts: current.sorts, limit: current.limit, ...(current.view ? { view: current.view } : {}), ...(current.uniqueCount ? { uniqueCount: current.uniqueCount } : {}) };
     const key = JSON.stringify(v);
     const last = viewKey.current;
     viewKey.current = key;
@@ -517,6 +532,16 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   // Rules of a column that is no longer shown go with it; any function or bucket left groups the rows (no default order then: it may name nothing shown).
   const keptAgg = useMemo(() => keepVisible(agg, shown), [agg, shown]);
   const aggNow = useMemo(() => sanitizeAggregation(keptAgg, schema), [keptAgg, schema]);
+  // The Unique Counts that apply: the mart offers the metric and (for a joined mart) a column of it is shown. With the joined marts unread, a joined path is parked, not dropped.
+  const ucNow = useMemo(() => keepUnique(uc, schema, shown), [uc, schema, shown]);
+  if (sourcesRead && !sameList(ucNow, uc)) {
+    setUc(ucNow);
+    // A metric dropped here (a Refresh changed what a mart offers) takes the member's sort on its column with it.
+    const lost = uc.filter((p) => !ucNow.includes(p));
+    if (lost.length) setOwn(dropUniqueSorts(own, lost));
+  }
+  // A Unique Count groups the rows, like a function does.
+  const gridAgg = useMemo<Grouping>(() => (ucNow.length ? { ...aggNow, uniqueCount: ucNow } : aggNow), [aggNow, ucNow]);
   // A rule that was applied and is dropped now (a Refresh narrowed the functions the field allows) is not silent: the toast says it was removed.
   const removed = removedAggregation(keptAgg, aggNow, schema);
   const [seenRemoved, setSeenRemoved] = useState('');
@@ -538,7 +563,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     }
   }
   if (said.length) setNote({ text: said.join(' ') });
-  const grouped = isGrouped(aggNow);
+  const grouped = isGrouped(gridAgg);
   // Grouped with no sort of the member's own: the first group key ascending, so "Load more" pages never reshuffle.
   // From the schema's order, not the grid's: moving a column must not change the query.
   const firstKey = schema.find((f) => shown.includes(f.name) && !aggNow.aggregations.some((r) => r.column === f.name))?.name;
@@ -546,8 +571,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const pks = primaryKeys(native);
   const wanted = useMemo(() => shown.flatMap((name) => schema.find((f) => f.name === name) ?? []), [shown, schema]);
   // A shown array, JSON or struct column with no rule would be a GROUP BY key the warehouse or the backend refuses: no grouped query goes out until it is hidden.
-  const blocked = ungroupableColumn(wanted, aggNow);
-  const query = useMemo(() => buildRowQuery(schema, shown, Object.values(filters), limit, gridSorts, aggNow, Object.values(slices)), [schema, shown, filters, slices, gridSorts, limit, aggNow]);
+  const blocked = ungroupableColumn(wanted, gridAgg);
+  const query = useMemo(() => buildRowQuery(schema, shown, Object.values(filters), limit, gridSorts, gridAgg, Object.values(slices)), [schema, shown, filters, slices, gridSorts, limit, gridAgg]);
   // A folded band reads nothing: the query it last read stays, and a change made meanwhile is read once it opens.
   const [asked, setAsked] = useState(query);
   if (!paused && !blocked && asked !== query) setAsked(query);
@@ -573,7 +598,15 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const loading = reading && !blocked && !charts;
   const byName = useMemo(() => new Map(schema.map((f) => [f.name, f])), [schema]);
   // One output per column, or one per function of an aggregated column.
-  const outputs = useMemo(() => outputsOf(wanted.map((f) => f.name), aggNow), [wanted, aggNow]);
+  // A mart's Unique Count column follows that mart's own columns (they are together, in group order).
+  const outputs = useMemo(() => {
+    const base = outputsOf(wanted.map((f) => f.name), aggNow);
+    if (!ucNow.length) return base;
+    return withUniqueAfter(base, (o) => byName.get(o.column)?.joined?.aliasPath ?? '', ucNow, (path): Output => ({ key: uniqueKey(path), column: uniqueKey(path), unique: path, sortable: true }));
+  }, [wanted, aggNow, ucNow, byName]);
+  // The stand-in fields of the Unique Count columns, by row key.
+  const uniqueFields = useMemo(() => new Map(ucNow.map((p) => { const src = sources.find((x) => x.aliasPath === p); return [uniqueKey(p), uniqueField(p, src && { martId: src.martId, label: src.label })] as const; })), [ucNow, sources]);
+  const fieldOf = useCallback((o: Output) => (o.unique !== undefined ? uniqueFields.get(o.key)! : byName.get(o.column)!), [uniqueFields, byName]);
   // A HAVING filter on a function that was just taken off goes in the same step, and the new rules are remembered.
   const applyAgg = useCallback((next: Aggregation) => {
     setAgg(next);
@@ -585,10 +618,11 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const blockers = useMemo(() => wanted.filter((f) => f.category === 'other').map((f) => ({ name: f.name, title: columnTitle(f) })), [wanted]);
   // What the header and each cell read of a column, resolved once per column: the type after any function, and the format that type allows.
   const columnViews = useMemo<ColumnView[]>(() => outputs.map((o) => {
-    const field = byName.get(o.column)!;
+    const field = fieldOf(o);
+    if (o.unique !== undefined) return { output: o, field, lead: true, type: field.type, format: AUTO, maxWidth: maxWidthOf(field), numeric: true };
     const type = outputType(field, o.fn);
     return { output: o, field, lead: outputs.find((x) => x.column === o.column) === o, type, format: keepsUnit(o.fn) ? formatOf(o.column, type) : AUTO, maxWidth: maxWidthOf(field), numeric: !o.bucket && isNumericType(type) };
-  }), [outputs, byName, formatOf]);
+  }), [outputs, fieldOf, formatOf]);
   const columnByKey = useMemo(() => new Map(columnViews.map((c) => [c.output.key, c])), [columnViews]);
   const columns = useMemo<GridColumn[]>(() => outputs.map((o) => ({ id: o.key })), [outputs]);
 
@@ -602,6 +636,14 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   // The implicit first-key sort is sent and exported but not shown: no arrow, no aria-sort, so the first click is not a no-op.
   const shownSorts = useMemo(() => (grouped ? (own ?? []) : gridSorts), [grouped, own, gridSorts]);
   const env = useMemo(() => ({ sorts: shownSorts, toggleSort, sortable: !charts }), [shownSorts, toggleSort, charts]);
+  // A mart's Unique Count on or off: one Undo step. Off, its sort goes with it, so no ordering is left that the reader cannot see.
+  const setUnique = useCallback((path: string, on: boolean) => edit(() => {
+    // From the member's own list, so a joined path parked until its marts are read stays.
+    setUc(on ? [...uc.filter((p) => p !== path), path] : uc.filter((p) => p !== path));
+    if (!on) setOwn((cur) => { const kept = cur && cur.filter((x) => x.field !== uniqueKey(path)); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
+  }), [edit, uc, setUc, setOwn]);
+  const toggleUnique = useCallback((path: string) => setUnique(path, !ucNow.includes(path)), [setUnique, ucNow]);
+  const removeUnique = useCallback((path: string) => setUnique(path, false), [setUnique]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
   const changeColumns = useCallback((picked: string[], more?: (cur: Aggregation) => Aggregation) => {
     const cols = orderColumns(picked, sources, defaultColumns(native));
@@ -618,7 +660,10 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     const nextAgg = keepVisible(more ? more(agg) : agg, cols);
     // A HAVING filter on a hidden column's function goes with it, in the same step.
     if (nextAgg !== agg) applyAgg(nextAgg);
-    setOwn((cur) => { const kept = cur && sortsOnColumns(cur, cols); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
+    // A joined mart that has no column left takes its Unique Count with it (kept as it is while the joined marts are unread).
+    const ucKept = sourcesRead ? keepUnique(uc, schema, cols) : uc;
+    if (!sameList(ucKept, uc)) setUc(ucKept);
+    setOwn((cur) => { const kept = cur && sortsOnColumns(cur, [...cols, ...ucKept.map(uniqueKey)]); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
     // A joined mart whose last field was unticked is remembered as empty: it comes back with its first text field.
     const left = joinedMartIds(visible, sources).filter((m) => !joinedMartIds(cols, sources).includes(m));
     // A joined mart that leaves the grid takes its filters and slices with it, as the x on its group does (the mart is no longer joined, so they could not apply), in the same Undo step.
@@ -631,10 +676,14 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     columnStore.save(martId, cols, left.length ? Object.fromEntries(left.map((m) => [m, [] as string[]])) : undefined);
     // A joined mart that has just left remembers what it was showing, as its own field names.
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
-  }, [sources, native, markEdit, agg, applyAgg, visible, columnStore, chartSettings, martId, setVisible, setOwn]);
+  }, [sources, native, markEdit, agg, applyAgg, visible, columnStore, chartSettings, martId, setVisible, setOwn, setUc, sourcesRead, uc, schema]);
   // A chart menu's choice of a field that is not shown: the shown columns and the new ones, in one edit.
   // In a grouped grid a new column without a rule would become a group key and multiply the rows: a metric gets the function the chart sums it with, a date the chart's bucket (Month when none is known yet). A dimension is a key, as intended.
-  const showColumns = useCallback((names: string[], buckets?: Readonly<Record<string, DateBucket>>) => changeColumns([...new Set([...shown, ...names])], (cur) => ruleNewColumns(cur, names.flatMap((n) => (shown.includes(n) ? [] : [byName.get(n)!])), buckets)), [changeColumns, shown, byName]);
+  const showColumns = useCallback((names: string[], buckets?: Readonly<Record<string, DateBucket>>) => changeColumns([...new Set([...shown, ...names])], (cur) => {
+    // A grid grouped by a Unique Count alone is grouped too: a new number column gets its function there as well.
+    const r = ruleNewColumns({ ...cur, uniqueCount: ucNow }, names.flatMap((n) => (shown.includes(n) ? [] : [byName.get(n)!])), buckets);
+    return r.aggregations === cur.aggregations && r.dateTrunc === cur.dateTrunc ? cur : { aggregations: r.aggregations, dateTrunc: r.dateTrunc };
+  }), [changeColumns, shown, byName, ucNow]);
   // A moved column keeps its sorts, filters and functions: only the order changes, and it is one Undo step. The cell selection is dropped (its columns moved).
   const reorder = useCallback((cols: string[]) => {
     if (cols === shown) return;
@@ -646,7 +695,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const table = useTable({ features, data: rows ?? [], columns });
   const rowsLabel = rows ? `${rows.length}${hasMore ? '+' : ''}` : null;
   // The Data band's title row shows the no-primary-key warning, so it is told whether this grid is a plain preview.
-  // `hidden`: the mart has a key but it is hidden for reporting, so no row can be opened by it.
+  // `hidden`: the mart has a key but it is hidden for reporting, so no row can be opened by it. Only `missing` is warned about.
   const noKey: NoKey = grouped || pks.length > 0 ? false : hasPrimaryKey(native) ? 'hidden' : 'missing';
   useEffect(() => { onRows?.(rowsLabel, grouped, noKey); }, [rowsLabel, grouped, noKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const cardClick = useContext(CardClickContext);
@@ -656,7 +705,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     const inUse = joinedPaths(shown, sources);
     const out: { id: string; path: string; title: string; icon: string | null | undefined; description: string | null | undefined; span: number; main: boolean }[] = [];
     for (const o of outputs) {
-      const f = byName.get(o.column)!;
+      const f = fieldOf(o);
       const id = f.joined?.martId ?? martId;
       const path = f.joined?.aliasPath ?? '';
       const source = f.joined ? sources.find((x) => x.aliasPath === path) : undefined;
@@ -665,7 +714,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       else out.push({ id, path, title: (f.joined ? (source ? pathTitle(source, inUse, sources) : f.joined.label) : model.marts.get(id)?.title) ?? id, icon: model.marts.get(id)?.icon, description: model.marts.get(id)?.description, span: 1, main: !f.joined });
     }
     return out;
-  }, [outputs, byName, model, martId, shown, sources]);
+  }, [outputs, fieldOf, model, martId, shown, sources]);
   // A remove button is off while its click is being applied, so a second click cannot put the mart back.
   const [removing, setRemoving] = useState(false);
   const head = useRef<HTMLTableSectionElement>(null);
@@ -706,8 +755,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   // The first data mart is the main one: its last own column stays while a joined mart is shown.
   const ownNames = useMemo(() => new Set(native.map((f) => f.name)), [native]);
   const ownOn = shown.filter((n) => ownNames.has(n)).length;
-  // The one primary key column Count Unique can count by, when the mart has exactly one (a composite key has no single column to count).
-  const uniqueKey = useMemo(() => { const ks = native.filter((f) => f.isPrimaryKey); return ks.length === 1 && allowedFunctions(ks[0]!).includes('COUNT_DISTINCT') ? ks[0]!.name : undefined; }, [native]);
+  // The data marts that offer a Unique Count (a hidden or composite key counts): their Fields tab has the row for it.
+  const uniqueOffered = useMemo(() => new Set(uniquePathsOf(schema)), [schema]);
   const fieldsOf = (g: { main: boolean; path: string }) => (g.main ? native : sources.filter((x) => x.aliasPath === g.path).flatMap((x) => x.fields));
   const hasFilters = Object.keys(filters).length > 0;
   const hasSorts = own !== null;
@@ -786,8 +835,9 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       typeOf: (f, o) => outputType(f, o.fn),
       sortable: !charts,
       valuesFor,
+      removeUnique,
     };
-  }, [valuesFor, shownSorts, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, several, ownOn, ownNames, changeColumns, sources, reorder, charts, byName, native, outputs, edit, setOwn]);
+  }, [removeUnique, valuesFor, shownSorts, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, several, ownOn, ownNames, changeColumns, sources, reorder, charts, byName, native, outputs, edit, setOwn]);
   // The selection, as Google Sheets has it: a cell (a frame and a fill handle), a block of cells (shift-click or Shift+Arrow: `to` is
   // the far end, the cell stays active), or whole columns or rows (a tint and a frame around the block); its column letters and row
   // numbers are lit. `from` is where a shift-click on a header extends from.
@@ -900,7 +950,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     const body = e.currentTarget.querySelectorAll<HTMLTableRowElement>('tbody > tr');
     const text = selectionTsv(sel, { rows: rowCount, cols: outputs.length }, {
       cell: (r, c) => body[r]?.querySelectorAll(':scope > td:not([aria-hidden])')[c]?.textContent ?? '',
-      header: (c) => { const o = outputs[c]!; return outputLabel(byName.get(o.column)!, o); },
+      header: (c) => { const o = outputs[c]!; return outputLabel(fieldOf(o), o); },
     });
     if (text === null) return;
     e.clipboardData.setData('text/plain', text);
@@ -953,7 +1003,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts && !hasSlices} onClick={() => edit(() => { setAllFilters({}); setAllSlices({}); setOwn(null); })} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
         <button type="button" onClick={() => { onRefresh(); setJoinsFailed(false); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
-        {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} filters={Object.values(filters)} slices={Object.values(slices)} sorts={gridSorts} ownSorts={own ?? NO_SORTS} rows={rows} hasMore={hasMore} loading={loading} run={run} storage={martStorage} joinsFailed={joinsFailed && !joinsRead} sources={joinsRead ? sources : undefined} edges={model.edges} titles={martTitles} joinedMarts={joinedMarts} />}
+        {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} uniqueCount={ucNow} filters={Object.values(filters)} slices={Object.values(slices)} sorts={gridSorts} ownSorts={own ?? NO_SORTS} rows={rows} hasMore={hasMore} loading={loading} run={run} storage={martStorage} joinsFailed={joinsFailed && !joinsRead} sources={joinsRead ? sources : undefined} edges={model.edges} titles={martTitles} joinedMarts={joinedMarts} />}
       </BandTools>
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
       <div ref={scroller} tabIndex={0} onKeyDown={charts ? undefined : onGridKey} onCopy={charts ? undefined : onCopy} className={`dm-grid-root min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
@@ -961,7 +1011,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
           <thead ref={head} className="dm-head sticky top-0 z-10">
             <tr aria-hidden data-chrome>
               <th data-chrome rowSpan={3} className="dm-chrome dm-corner" />
-              {outputs.map((o, i) => <th key={o.key} data-chrome data-letter-column={o.column} data-selected={colMark(i)} onClick={charts ? undefined : (e) => pickHeader('col', i, e.shiftKey)} className="dm-chrome dm-letter">{columnLetter(i)}</th>)}
+              {outputs.map((o, i) => <th key={o.key} data-chrome {...(o.unique === undefined ? { 'data-letter-column': o.column } : {})} data-selected={colMark(i)} onClick={charts ? undefined : (e) => pickHeader('col', i, e.shiftKey)} className="dm-chrome dm-letter">{columnLetter(i)}</th>)}
               <th data-chrome className="dm-chrome dm-letter w-full" />
             </tr>
             <tr data-group-row>
@@ -977,7 +1027,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
                       <span className="truncate">{g.title}</span>
                       <MartRuleMarks title={g.title} fields={fieldsOf(g)} filters={filters} slices={slices} expanded={fieldsOpen === g.path} onOpen={(mark) => { openedBy.current = mark; setFieldsOpen(g.path); }} />
                       {g.description?.trim() && <span className="dm-reveal"><Hint text={g.description} label={`About ${g.title}`} /></span>}
-                      <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} unique={g.main ? uniqueKey : undefined} agg={agg} open={fieldsOpen === g.path} onOpenChange={(o) => {
+                      <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} unique={uniqueOffered.has(g.path) ? { on: ucNow.includes(g.path), onToggle: () => toggleUnique(g.path) } : undefined} open={fieldsOpen === g.path} onOpenChange={(o) => {
                         setFieldsOpen((cur) => (o ? g.path : cur === g.path ? null : cur));
                       }} onCloseAutoFocus={(e) => {
                         // A list opened from a rule mark gives focus back to that mark, not to the Fields button. Focus the member already moved elsewhere (a Tab out of the list) stays where it went.
@@ -1002,7 +1052,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
               <tr key={hg.id}>
                 {hg.headers.map((h) => {
                   const c = columnByKey.get(h.column.id)!;
-                  return <th key={h.id} data-column={c.output.column} aria-sort={!charts && c.output.sortable ? sortOf(shownSorts, c.output.column) : 'none'} className={`dm-th ${c.maxWidth} overflow-hidden text-left font-medium`}><HeaderCell field={c.field} output={c.output} lead={c.lead} /></th>;
+                  return <th key={h.id} {...(c.output.unique === undefined ? { 'data-column': c.output.column } : {})} aria-sort={!charts && c.output.sortable ? sortOf(shownSorts, c.output.column) : 'none'} className={`dm-th ${c.maxWidth} overflow-hidden text-left font-medium`}><HeaderCell field={c.field} output={c.output} lead={c.lead} /></th>;
                 })}
                 {/* Takes the width the columns leave over, so the line under the header runs the whole card. */}
                 <th aria-hidden className="dm-th dm-th-fill w-full p-0" />

@@ -203,6 +203,21 @@ describe('the saved grid view', () => {
     expect(await b.loadView('m')).toEqual(view);
   });
 
+  test('the Unique Count paths round-trip with the view, and a view without them reads as none', async () => {
+    vi.useFakeTimers();
+    let stored: unknown = null;
+    const put = vi.fn(async (_id: string, doc: unknown) => { stored = doc; return {}; });
+    const get = vi.fn(async () => (stored ? { document: stored } : null));
+    const a = createColumnStore(ctxWith({ get, put }));
+    await a.loadView('m');
+    a.saveView('m', { filters: {}, sorts: [{ field: 'Unique Count', direction: 'desc' }], limit: 200, uniqueCount: ['', 'customers'] });
+    await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
+    const b = createColumnStore(ctxWith({ get, put }));
+    expect(await b.loadView('m')).toEqual({ filters: {}, sorts: [{ field: 'Unique Count', direction: 'desc' }], limit: 200, uniqueCount: ['', 'customers'] });
+    const old = createColumnStore(ctxWith({ get: vi.fn(async () => ({ document: { columns: [], at: 'x', gridView: { fl: [], s: null, l: 200 } } })), put: vi.fn() }));
+    expect(await old.loadView('m')).toEqual({ filters: {}, sorts: null, limit: 200 });
+  });
+
   test('a null sort and the table survive as such', async () => {
     const doc = { columns: [], at: 'x', gridView: { fl: [], s: null, l: 200 } };
     const store = createColumnStore(ctxWith({ get: vi.fn(async () => ({ document: doc })), put: vi.fn() }));

@@ -11,9 +11,9 @@ export const SAVE_DEBOUNCE_MS = 500;
 /** The joined fields last chosen for each joined data mart, per main data mart: `{ customers: ['customers__city'] }`. An empty list means "none, use the default next time". */
 export type Picks = Record<string, string[]>;
 /** What the grid shows besides its columns and aggregations: the rules, the sort, the row limit and the Table/Charts switch. */
-export type SavedView = { filters: Record<string, ColumnFilter>; slices?: Record<string, ColumnFilter>; /** null: the member set no sort. */ sorts: SortKey[] | null; limit: number; view?: 'charts' };
+export type SavedView = { filters: Record<string, ColumnFilter>; slices?: Record<string, ColumnFilter>; /** null: the member set no sort. */ sorts: SortKey[] | null; limit: number; view?: 'charts'; /** The alias paths whose data mart's Unique Count is on. */ uniqueCount?: string[] };
 /** A SavedView as stored: rules as the view link's tuples (`fl`, `sl`), sorts as [field, 1 | -1], `vw` 1 for Charts. */
-type StoredView = { fl: unknown[][]; sl?: unknown[][]; s: [string, 1 | -1][] | null; l: number; vw?: 1 };
+type StoredView = { fl: unknown[][]; sl?: unknown[][]; s: [string, 1 | -1][] | null; l: number; vw?: 1; /** Unique Count alias paths. */ uc?: string[] };
 type ColumnsDoc = { columns: string[]; at: string; picks?: Picks; lastShown?: string[]; aggregations?: unknown; dateTrunc?: unknown; gridView?: unknown };
 
 export interface ColumnStore {
@@ -55,6 +55,7 @@ const encodeView = (v: SavedView): StoredView => ({
   s: v.sorts && v.sorts.map((x): [string, 1 | -1] => [x.field, x.direction === 'asc' ? 1 : -1]),
   l: v.limit,
   ...(v.view === 'charts' ? { vw: 1 as const } : {}),
+  ...(v.uniqueCount?.length ? { uc: v.uniqueCount } : {}),
 });
 
 const plainName = (c: unknown): string | null => (typeof c === 'string' ? c : null);
@@ -66,7 +67,8 @@ const validView = (raw: unknown): SavedView | null => {
     (Array.isArray(list) ? list : []).flatMap((e) => { const r = decodeRule(e, withFn, plainName); return r ? [[r.field, r] as [string, ColumnFilter]] : []; });
   const slices = rules(raw.sl, false);
   const sorts = raw.s === null ? null : (raw.s as unknown[]).flatMap((e): SortKey[] => (Array.isArray(e) && e.length === 2 && typeof e[0] === 'string' && (e[1] === 1 || e[1] === -1) ? [{ field: e[0], direction: e[1] === 1 ? 'asc' : 'desc' }] : []));
-  return { filters: Object.fromEntries(rules(raw.fl, true)), ...(slices.length ? { slices: Object.fromEntries(slices) } : {}), sorts, limit: clampLimit(raw.l), ...(raw.vw === 1 ? { view: 'charts' as const } : {}) };
+  const uniqueCount = Array.isArray(raw.uc) ? [...new Set(raw.uc.filter((p): p is string => typeof p === 'string'))] : [];
+  return { filters: Object.fromEntries(rules(raw.fl, true)), ...(slices.length ? { slices: Object.fromEntries(slices) } : {}), sorts, limit: clampLimit(raw.l), ...(raw.vw === 1 ? { view: 'charts' as const } : {}), ...(uniqueCount.length ? { uniqueCount } : {}) };
 };
 
 const validPicks = (raw: unknown): Picks => {
