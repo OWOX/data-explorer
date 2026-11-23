@@ -6,7 +6,7 @@ const data = (page: Page) => page.locator('#band-data');
 test('Charts mode shows scorecards, a stacked time series and a pie, and Table brings the grid back', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
-  await page.getByLabel(/created_at/i).click();
+  await page.getByRole('option', { name: /created_at/i }).click();
   await page.keyboard.press('Escape');
   const widths = () => data(page).locator('th[data-group]').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
   const tableWidths = await widths();
@@ -64,7 +64,7 @@ test('the time series and the pie sit side by side when the band is wide, and Ch
   // Amount is a default column now: only created_at is ticked.
   for (const name of [/created_at/i]) {
     await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
-    await page.getByLabel(name).click();
+    await page.getByRole('option', { name }).click();
     await page.keyboard.press('Escape');
   }
   await data(page).getByRole('radio', { name: 'Charts' }).click();
@@ -179,4 +179,38 @@ test('choosing a metric that is not a shown column adds it to the table', async 
   await page.getByRole('menuitemradio', { name: /Net Revenue/ }).click();
   await data(page).getByRole('radio', { name: 'Table' }).click();
   await expect(data(page).getByRole('columnheader', { name: /Net Revenue/ })).toBeVisible();
+});
+
+test('the selected Chart type is marked with the green check, on the left of its row', async ({ page }) => {
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  const pie = data(page).locator('section[data-chart-kind="Pie"]');
+  await pie.scrollIntoViewIfNeeded();
+  await pie.getByRole('button', { name: 'Pie options' }).click();
+  const type = page.getByRole('menuitem', { name: 'Chart type' });
+  await type.focus();
+  await page.keyboard.press('ArrowRight');
+  const row = page.getByRole('menuitemradio', { name: 'Pie' });
+  const check = row.locator('.dm-menu-check svg');
+  await expect(check).toBeVisible();
+  await expect(check).toHaveCSS('color', 'rgb(24, 128, 56)');
+  await expect(check).toHaveCSS('stroke', 'rgb(24, 128, 56)');
+  // The check is the row's first mark, left of the label.
+  const [c, l] = [(await check.boundingBox())!, (await row.locator('.dm-menu-label').boundingBox())!];
+  expect(c.x + c.width).toBeLessThan(l.x);
+  const panels = [(await page.getByRole('menu', { name: 'Pie menu' }).boundingBox())!, (await page.getByRole('menu', { name: 'Chart type' }).boundingBox())!];
+  const x = Math.min(...panels.map((b) => b.x)); const y = Math.min(...panels.map((b) => b.y));
+  await page.screenshot({ path: 'tmp/chart-type-check.png', clip: { x, y, width: Math.max(...panels.map((b) => b.x + b.width)) - x, height: Math.max(...panels.map((b) => b.y + b.height)) - y } });
+});
+
+test('a root menu with a check row aligns every row label with the check rows', async ({ page }) => {
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  await data(page).getByRole('button', { name: 'Charts options' }).click();
+  const menu = page.getByRole('menu', { name: 'Charts menu' });
+  const check = menu.getByRole('menuitemcheckbox').first();
+  await expect(check.locator('.dm-menu-check svg')).toHaveCSS('color', 'rgb(24, 128, 56)');
+  const labels = await menu.locator('.dm-menu-row .dm-menu-label').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().x)));
+  expect(labels.length).toBeGreaterThan(1);
+  expect(new Set(labels).size).toBe(1);
+  const b = (await menu.boundingBox())!;
+  await page.screenshot({ path: 'tmp/chart-menu-check-mixed.png', clip: b });
 });

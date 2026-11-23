@@ -84,6 +84,33 @@ test('sankey: Columns adds a column filled with the next dimension, a column pic
   await waitFor(() => expect(titles()).toHaveLength(2));
 });
 
+test('sankey: each column submenu ends with Remove column unless the Sankey is at two columns; removing moves the later columns up', async () => {
+  const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'products__title'] }] } });
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  await userEvent.click(panel('Sankey'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Column 2' }));
+  const sub = await screen.findByRole('menu', { name: 'Column 2' });
+  const remove = within(sub).getAllByRole('menuitem').at(-1)!;
+  expect(remove).toHaveTextContent('Remove column');
+  await userEvent.click(remove);
+  await waitFor(() => expect(savedDims(t)).toEqual(['status', 'products__title']));
+  await waitFor(() => expect(titles()).toHaveLength(2));
+  // At two columns there is nothing to remove.
+  await userEvent.click(panel('Sankey'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Column 1' }));
+  const two = await screen.findByRole('menu', { name: 'Column 1' });
+  expect(within(two).queryByText('Remove column')).toBeNull();
+});
+
+test('sankey: a column title names its field and its data mart', async () => {
+  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'] }] } });
+  await waitFor(() => expect(titles()).toHaveLength(2));
+  const texts = [...titles()].map((el) => el.querySelector('title')?.textContent ?? '');
+  expect(texts[0]).toMatch(/^status \| \S/);
+  expect(texts[1]).toMatch(/ \| \S/);
+  expect(texts[1]).not.toBe(texts[0]);
+});
+
 test('sankey: a main mart metric by a column of a one-to-one joined mart draws', async () => {
   await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));

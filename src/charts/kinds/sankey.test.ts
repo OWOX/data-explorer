@@ -1,7 +1,7 @@
 import type { ChartFields } from '../fields';
 import { KINDS } from './index';
 import { heatmap } from './heatmap';
-import { sankey, sankeyWidth, setColumn, withColumns } from './sankey';
+import { removeColumn, sankey, sankeyWidth, setColumn, withColumns } from './sankey';
 
 const dim = (name: string) => ({ name, category: 'string', type: 'STRING' }) as never;
 const [a, b, c, d, e, g] = ['a', 'b', 'c', 'd', 'e', 'g'].map(dim) as [never, never, never, never, never, never];
@@ -81,4 +81,10 @@ test('sankey: a new or filled column prefers the first column\'s mart', () => {
   const cf = two(false);
   expect(withColumns(['c__x'], 2, cf.dimensions)).toEqual(['c__x', 'c__y']);
   expect(sankey.resolve({ id: 's', kind: 'sankey', dimensions: ['c__y'] }, cf)!.dims.map((d) => d.name)).toEqual(['c__y', 'c__x']);
+});
+
+test('sankey removeColumn: the columns after the removed one move up', () => {
+  expect(removeColumn(['a', 'b', 'c', 'd'], 1)).toEqual(['a', 'c', 'd']);
+  expect(removeColumn(['a', 'b', 'c'], 2)).toEqual(['a', 'b']);
+  expect(removeColumn(['a', 'b'], 0)).toEqual(['b']);
 });

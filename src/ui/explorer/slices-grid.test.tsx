@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Ctx, TraverseOptions } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
@@ -193,4 +193,55 @@ test('the sparkline buckets only the rows of the passing groups', async () => {
   const got = values().map((v) => Math.round(v * 100)).sort((a, b) => a - b);
   const week = (iso: string) => { const d = new Date(iso.slice(0, 10) + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
   expect([by((i) => i.slice(0, 10)), by(week), by((i) => i.slice(0, 7))]).toContainEqual(got);
+});
+
+describe('the data mart title row', () => {
+  // The status filter and the country slice are both on fields that are not columns.
+  const hidden: GridState = { columns: ['id', 'customers__city'], filters: { status: { field: 'status', op: 'eq', value: 'paid' } }, slices: { customers__country_code: slice }, sorts: null, limit: 200 };
+
+  test('the Funnel and Layers marks show for rules on fields that are not columns, list the rules, and open the Fields list', async () => {
+    setup(hidden);
+    const filterMark = await screen.findByRole('button', { name: /^Filter rules in / });
+    const sliceMark = await screen.findByRole('button', { name: /^Slice rules in / });
+    await userEvent.hover(filterMark);
+    expect((await screen.findAllByText(/^Filter: .*paid/)).length).toBeGreaterThan(0);
+    await userEvent.unhover(filterMark);
+    await userEvent.hover(sliceMark);
+    expect((await screen.findAllByText(/^Slice: .*PL/)).length).toBeGreaterThan(0);
+    await userEvent.click(filterMark);
+    expect(await screen.findByRole('listbox', { name: /^Fields of / })).toBeVisible();
+    expect(filterMark).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(filterMark).toHaveFocus());
+  });
+
+  test('focus that leaves a list opened from a mark (a Tab out) stays where it went, not pulled back to the mark', async () => {
+    setup(hidden);
+    const filterMark = await screen.findByRole('button', { name: /^Filter rules in / });
+    await userEvent.click(filterMark);
+    await screen.findByRole('listbox', { name: /^Fields of / });
+    // The list's own Tab order wraps inside it in jsdom, so the move out is made as Tab makes it: focus lands on another control.
+    const elsewhere = within(document.getElementById('band-data')!).getByRole('button', { name: 'Reset' });
+    act(() => elsewhere.focus());
+    await waitFor(() => expect(screen.queryByRole('listbox', { name: /^Fields of / })).toBeNull());
+    await new Promise((r) => setTimeout(r, 50));
+    expect(elsewhere).toHaveFocus();
+    expect(filterMark).not.toHaveFocus();
+  });
+
+  test('no rules, no marks; the Fields button shows no tooltip', async () => {
+    setup({ columns: ['id', 'status'], filters: {}, sorts: null, limit: 200 });
+    const button = (await screen.findAllByRole('button', { name: /^Fields of / }))[0]!;
+    expect(screen.queryByRole('button', { name: /^(Filter|Slice) rules in / })).toBeNull();
+    await userEvent.hover(button);
+    await new Promise((r) => setTimeout(r, 350));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  test('the (i) description hint of the data mart sits in a revealed slot, so it shows with hover or focus only', async () => {
+    setup(hidden);
+    const group = await waitFor(() => { const g = document.querySelector<HTMLElement>('th[data-group-path=""]'); if (!g) throw new Error('no group'); return g; });
+    const hint = within(group).getByRole('note', { name: /^About / });
+    expect(hint.parentElement).toHaveClass('dm-reveal');
+  });
 });

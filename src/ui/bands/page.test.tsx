@@ -314,7 +314,7 @@ describe('the grid', () => {
   test('the column picker adds a column', async () => {
     const grid = await ordersGrid();
     await userEvent.click(within(grid).getByRole('button', { name: 'Fields of Orders' }));
-    await userEvent.click(screen.getByLabelText(/amount/i));
+    await userEvent.click(screen.getByRole('option', { name: /amount/i }));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(6));
   });
 
@@ -786,7 +786,7 @@ describe('column headers and band toolbars', () => {
   test('the column picker shows the alias only, and a (?) with the description when the field has one', async () => {
     const grid = await ordersGrid();
     await userEvent.click(within(grid).getByRole('button', { name: 'Fields of Orders' }));
-    expect(screen.getByLabelText(/Amount/)).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Amount/ })).toBeInTheDocument();
     expect(screen.queryByText('amount')).toBeNull();
     expect(screen.queryByText('customer_id')).toBeNull();
     const picker = within(screen.getByRole('dialog'));
@@ -833,7 +833,7 @@ describe('column headers and band toolbars', () => {
     await settle();
     expect(reads()).toBe(before + 1);
     await userEvent.click(within(grid).getByRole('button', { name: 'Fields of Orders' }));
-    await userEvent.click(screen.getByLabelText(/Amount/));
+    await userEvent.click(screen.getByRole('option', { name: /Amount/ }));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(6));
   });
 

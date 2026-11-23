@@ -7,7 +7,7 @@ async function openCharts(page: Page, columns: (string | RegExp)[]) {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   for (const name of columns) {
     await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
-    await page.getByLabel(name).click();
+    await page.getByRole('option', { name }).click();
     await page.keyboard.press('Escape');
   }
   await data(page).getByRole('radio', { name: 'Charts' }).click();

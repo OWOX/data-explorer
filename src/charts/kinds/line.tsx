@@ -1,10 +1,10 @@
 import { ChartArea, ChartLine, ChartNoAxesCombined, ChartColumnStacked } from 'lucide-react';
 import { BUCKET_LABELS, type DateBucket } from '../../model/aggregation';
-import { columnTitle, fieldLabel } from '../../model/fieldLabel';
+import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
-import { fieldGroups, measureGroups } from '../menuGroups';
+import { axisTitle, fieldGroups, measureAxisTitle, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { BLANK_KEY } from '../blank';
 import { bucketFilter, dimensionFilter } from '../clickFilters';
@@ -49,7 +49,7 @@ function LinePanel({ martId, cf, r, spark, filter, version, idle, hasFilters, fo
       {one.series && !loading && (() => {
         const left = one.series;
         const pick = (x: string, i?: number) => onFilter([bucketFilter(date, x, bucket!, bucketZone(date)), ...(stack && i !== undefined && !left[i]!.other ? [dimensionFilter(stack, left[i]!.blank ? BLANK_KEY : left[i]!.name)] : [])]);
-        return <LineChart left={left} right={rightSeries} area={r.area} ariaLabel={title} formatLeft={(n) => tickText(n, lt, lf)} formatRight={(n) => tickText(n, rt, rf)} onPick={bucket ? pick : undefined} xTitle={columnTitle(date)} yTitle={one.label} yTitleRight={measure2 ? two.label : undefined} integerLeft={isIntegerMeasure(measure)} integerRight={!!measure2 && isIntegerMeasure(measure2)} />;
+        return <LineChart left={left} right={rightSeries} area={r.area} ariaLabel={title} formatLeft={(n) => tickText(n, lt, lf)} formatRight={(n) => tickText(n, rt, rf)} onPick={bucket ? pick : undefined} xTitle={axisTitle(cf, date)} yTitle={measureAxisTitle(cf, measure)} yTitleRight={measure2 ? measureAxisTitle(cf, measure2) : undefined} integerLeft={isIntegerMeasure(measure)} integerRight={!!measure2 && isIntegerMeasure(measure2)} />;
       })()}
     </ChartPanel>
   );

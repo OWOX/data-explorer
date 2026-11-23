@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChartPie, ChartLine, Calendar, Hash, Trash2 } from 'lucide-react';
 import { ChartMenu, type MenuItem } from './ChartMenu';
@@ -56,18 +56,18 @@ test('a row and a submenu option show their icon before the label, hidden from s
   const withIcon = screen.getByRole('menuitemcheckbox', { name: 'Orders by date' });
   const glyph = withIcon.querySelector('.dm-menu-glyph svg.lucide-chart-line');
   expect(glyph).toHaveAttribute('aria-hidden', 'true');
-  // No left tick column: the glyph is the first child, and the tick sits at the right end.
-  expect(withIcon.querySelector('.dm-menu-check')).toBeNull();
-  expect(withIcon.firstElementChild).toBe(glyph!.parentElement);
-  expect(withIcon.lastElementChild).toHaveClass('dm-menu-tick');
-  expect(withIcon.lastElementChild!.querySelector('svg')).not.toBeNull();
+  // The green tick sits in the left check column, then the glyph, then the label; there is no tick at the right end.
+  expect(withIcon.firstElementChild).toHaveClass('dm-menu-check');
+  expect(withIcon.firstElementChild!.querySelector('svg')).not.toBeNull();
+  expect(withIcon.querySelector('.dm-menu-tick')).toBeNull();
+  expect(withIcon.firstElementChild!.nextElementSibling).toBe(glyph!.parentElement);
   expect(withIcon).toHaveAttribute('aria-checked', 'true');
   expect(glyph!.parentElement!.nextElementSibling).toHaveClass('dm-menu-label');
   expect(screen.getByRole('menuitemcheckbox', { name: 'Sparklines' }).querySelector('.dm-menu-glyph svg.lucide-hash')).not.toBeNull();
-  // A submenu row reserves no tick column: its icon is the row's first child.
+  // Beside check rows a submenu row keeps the empty check column, so its icon lines up with theirs.
   const sub = screen.getByRole('menuitem', { name: 'Chart type' });
-  expect(sub.querySelector('.dm-menu-check')).toBeNull();
-  expect(sub.firstElementChild).toHaveClass('dm-menu-glyph');
+  expect(sub.firstElementChild).toHaveClass('dm-menu-check');
+  expect(sub.firstElementChild!.nextElementSibling).toHaveClass('dm-menu-glyph');
   await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
   expect((await screen.findByRole('menuitemradio', { name: 'Pie' })).querySelector('.dm-menu-glyph svg.lucide-chart-pie')).not.toBeNull();
   expect(screen.getByRole('menuitemradio', { name: 'Plain' }).querySelector('.dm-menu-glyph')).toBeNull();
@@ -144,4 +144,47 @@ describe('a field menu over several data marts', () => {
     await screen.findByRole('menuitemradio', { name: 'Amount' });
     expect(screen.queryByRole('menuitem', { name: 'Orders' })).toBeNull();
   });
+});
+
+test('a radio submenu can end with an action row below a divider: it closes the menu and runs', async () => {
+  const onPick = vi.fn();
+  const pick = vi.fn();
+  render(<ChartMenu name="Sales" items={[{ kind: 'radio', label: 'Column 1', icon: Calendar, value: 'a', options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }], trailing: { label: 'Remove column', icon: Trash2, onPick }, onPick: pick }]} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Column 1' }));
+  const sub = await screen.findByRole('menu', { name: 'Column 1' });
+  const rows = within(sub).getAllByRole('menuitem');
+  expect(within(sub).getAllByRole('menuitemradio')).toHaveLength(2);
+  expect(rows[rows.length - 1]).toHaveTextContent('Remove column');
+  expect(sub.querySelector('[role="separator"]')).not.toBeNull();
+  await userEvent.click(rows[rows.length - 1]!);
+  expect(onPick).toHaveBeenCalledOnce();
+  expect(pick).not.toHaveBeenCalled();
+  expect(screen.queryByRole('menu')).toBeNull();
+});
+
+test('a radio without a trailing action has no divider or extra row', async () => {
+  render(<ChartMenu name="Sales" items={items} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Bucket' }));
+  const sub = await screen.findByRole('menu', { name: 'Bucket' });
+  expect(sub.querySelector('[role="separator"]')).toBeNull();
+  expect(within(sub).queryAllByRole('menuitem')).toHaveLength(0);
+});
+
+test('when a root row is a check row every root row has the check column, and none has it otherwise', async () => {
+  const plain: MenuItem[] = [
+    { kind: 'action', label: 'Remove', icon: Trash2, onPick: () => undefined },
+    { kind: 'radio', label: 'Bucket', icon: Calendar, value: 'day', options: [{ value: 'day', label: 'Day' }], onPick: () => undefined },
+  ];
+  const { unmount } = render(<ChartMenu name="Sales" items={plain} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+  const rootOf = () => screen.getByRole('menu', { name: 'Sales menu' });
+  expect(rootOf().querySelectorAll('.dm-menu-check')).toHaveLength(0);
+  unmount();
+  render(<ChartMenu name="Sales" items={[{ kind: 'check', label: 'Area', icon: Hash, checked: true, onToggle: () => undefined }, ...plain]} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+  const rows = [...rootOf().querySelectorAll('.dm-menu-row')];
+  expect(rows).toHaveLength(3);
+  for (const r of rows) expect(r.querySelector('.dm-menu-check')).not.toBeNull();
 });

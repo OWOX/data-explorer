@@ -10,7 +10,7 @@ test('add a Sankey from Add chart, a many-to-one joined column draws, a fan-out 
   await expect(data(page).getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
   for (const name of ['is_gift', /created_at/i]) {
     await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
-    await page.getByLabel(name).click();
+    await page.getByRole('option', { name }).click();
     await page.keyboard.press('Escape');
   }
   await data(page).getByRole('radio', { name: 'Charts' }).click();

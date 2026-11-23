@@ -1,10 +1,10 @@
 import { ChartCandlestick, Gauge, Shapes } from 'lucide-react';
 import { aggregatedKey, AGG_LABELS, type AggFn } from '../../model/aggregation';
-import { columnTitle, fieldLabel } from '../../model/fieldLabel';
+import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
-import { fieldGroups } from '../menuGroups';
+import { axisTitle, fieldGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { isBlankKey, keyOf, labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
@@ -46,7 +46,7 @@ function SpreadPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
     <ChartPanel title={title} name="Spread" items={ready ? items : null} width={BOX_WIDTH}
       loading={!read.rows && !read.error} error={read.error} onRetry={read.retry} empty={read.rows?.length === 0 ? emptyText(hasFilters) : null}
       note={`The ${fns.length > 3 ? 'line spans the minimum to the maximum, the ' : ''}box spans the 25th to the 75th percentile, the bar is the median. The 8 values with the largest median are shown.`}>
-      {read.rows && <SpreadChart rows={rows} ariaLabel={title} yTitle={columnTitle(dim)} formatTick={(n) => tickText(n, tt, tf)} onPick={(k) => onFilter([dimensionFilter(dim, k)])} />}
+      {read.rows && <SpreadChart rows={rows} ariaLabel={title} yTitle={axisTitle(cf, dim)} formatTick={(n) => tickText(n, tt, tf)} onPick={(k) => onFilter([dimensionFilter(dim, k)])} />}
     </ChartPanel>
   );
 }

@@ -303,7 +303,7 @@ test('a column ticked for the main mart after a joined one stays in the main gro
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
   await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
-  await userEvent.click(await screen.findByLabelText(/amount/i));
+  await userEvent.click(await screen.findByRole('option', { name: /amount/i }));
   await waitFor(() => expect(headers()).toHaveLength(7));
   expect(headers().indexOf('Amount')).toBeLessThan(6);
   expect(groupRow().map((h) => h.getAttribute('colspan'))).toEqual(['6', '1']);

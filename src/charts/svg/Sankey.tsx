@@ -73,7 +73,7 @@ export function Sankey({ titles, columns, flows, text, ariaLabel, onPickNode, on
   return (
     <div ref={ref} className="dm-sankey">
       <svg ref={root} role={onPickNode || onPickLink ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${Math.max(120, width)} ${height}`}>
-        {titles.map((t, c) => <text key={c} className="dm-chart-axis-title" x={c * step} y={12} textAnchor="start">{clip(t, roomChars + 6)}</text>)}
+        {titles.map((t, c) => <text key={c} className="dm-chart-axis-title" x={c * step} y={12} textAnchor="start"><title>{t}</title>{clip(t, roomChars + 6)}</text>)}
         <BlankDefs id={blankId} />
         <g transform={`translate(0 ${TOP})`}>
           <g>

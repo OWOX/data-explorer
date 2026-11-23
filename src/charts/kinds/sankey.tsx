@@ -1,11 +1,11 @@
-import { Columns3, Gauge, Tag, Waypoints } from 'lucide-react';
+import { Columns3, Gauge, Tag, Trash2, Waypoints } from 'lucide-react';
 import { useMemo } from 'react';
-import { columnTitle, fieldLabel } from '../../model/fieldLabel';
+import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import type { Row } from '../../sdk/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
-import { fieldGroups, measureGroups } from '../menuGroups';
+import { axisTitle, fieldGroups, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { dimensionFilter } from '../clickFilters';
 import { menuOf, pathOf, pieMeasures, sankeyMeasures } from '../fields';
@@ -37,6 +37,9 @@ export const setColumn = (names: string[], at: number, name: string): string[] =
   next[at] = name;
   return next;
 };
+
+/** The dimensions without column `at`: the columns after it move up. */
+export const removeColumn = (names: string[], at: number): string[] => names.filter((_, i) => i !== at);
 
 /** `count` columns: the first ones kept, a new one filled with the next dimension no column holds. */
 export const withColumns = (names: string[], count: number, all: Field[]): string[] => {
@@ -76,7 +79,7 @@ function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
   const items: MenuItem[] = [
     { kind: 'radio', label: 'Columns', icon: Columns3, value: String(n), options: Array.from({ length: maxColumns - SANKEY_MIN + 1 }, (_, i) => ({ value: String(SANKEY_MIN + i), label: String(SANKEY_MIN + i) })),
       onPick: (v) => onChange({ dimensions: withColumns(names, Number(v), cf.dimensions) }) },
-    ...dims.map((d, i): MenuItem => ({ kind: 'radio', label: `Column ${i + 1}`, icon: Tag, value: d.name, options: [], groups: dimGroups, onPick: (v) => onChange({ dimensions: setColumn(names, i, v) }) })),
+    ...dims.map((d, i): MenuItem => ({ kind: 'radio', label: `Column ${i + 1}`, icon: Tag, value: d.name, options: [], groups: dimGroups, ...(n > SANKEY_MIN ? { trailing: { label: 'Remove column', icon: Trash2, onPick: () => onChange({ dimensions: removeColumn(names, i) }) } } : {}), onPick: (v) => onChange({ dimensions: setColumn(names, i, v) }) })),
     ...(measure ? [{ kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(menuOf(cf), sankeyMeasures(menuOf(cf), dims)), onPick: (v: string) => onChange({ measure: v }) } as MenuItem] : []),
     ...tail,
   ];
@@ -85,7 +88,7 @@ function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
     <ChartPanel title={title} name="Sankey" items={ready ? items : null} width={sankeyWidth(n)}
       loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})} empty={!measure ? NO_MEASURE_NOTE : empty ? (data!.negative ? NEGATIVE_NOTE : emptyText(hasFilters)) : null}
       note={data && !data.negative ? [data.capped ? cappedNote(SANKEY_FLOW_LIMIT) : '', data.columnCapped ? columnCappedNote(SANKEY_COLUMN_LIMIT) : ''].filter(Boolean).join(' ') || undefined : undefined}>
-      {data && <Sankey titles={dims.map(columnTitle)} columns={data.columns} flows={data.flows} ariaLabel={title} text={(v) => measureText(measure!, v, formatOf)}
+      {data && <Sankey titles={dims.map((d) => axisTitle(cf, d))} columns={data.columns} flows={data.flows} ariaLabel={title} text={(v) => measureText(measure!, v, formatOf)}
         onPickNode={(col, key) => onFilter([dimensionFilter(dims[col]!, key)])}
         onPickLink={(pair, source, target) => onFilter([dimensionFilter(dims[pair]!, source), dimensionFilter(dims[pair + 1]!, target)])} />}
     </ChartPanel>

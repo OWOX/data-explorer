@@ -22,7 +22,9 @@ test('draws a node per value and a filled ribbon per flow, with the column title
   const ribbon = container.querySelector('path[data-link]')!;
   expect(ribbon.getAttribute('fill')).toMatch(/^var\(--/);
   expect(ribbon.getAttribute('stroke')).toBeNull();
-  for (const t of ['One', 'Two', 'Three']) expect(screen.getByText(t)).toBeInTheDocument();
+  for (const t of ['One', 'Two', 'Three']) expect(screen.getAllByText(t, { selector: 'text.dm-chart-axis-title' })).toHaveLength(1);
+  // A column title carries its full text in a hover title.
+  expect([...container.querySelectorAll('text.dm-chart-axis-title title')].map((e) => e.textContent)).toEqual(['One', 'Two', 'Three']);
   expect(byAttr('data-node', `0|${BLANK_KEY}`)).not.toBeNull();
 });
 

@@ -1,7 +1,7 @@
 import type { KeyboardEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
 import { useWidth } from '../useWidth';
-import { Y_TITLE_W, YTitle } from './YTitle';
+import { XTitle, Y_TITLE_W, YTitle } from './YTitle';
 
 export type Axis = { key: string; label: string };
 const ROW_H = 24;
@@ -30,7 +30,7 @@ export function Heatmap({ xs, ys, cell, ariaLabel, onPick, canPickX, xTitle, yTi
         {yTitle && <YTitle x={8} mid={TOP + (ys.length * ROW_H) / 2} length={ys.length * ROW_H} text={yTitle} />}
         {ys.map((y, j) => <text key={y.key} className="dm-chart-text" x={left - 6} y={TOP + j * ROW_H + ROW_H / 2} textAnchor="end" dominantBaseline="middle">{y.label}</text>)}
         {xs.map((x, i) => (i % labelStep === 0 ? <text key={x.key} className="dm-chart-text" x={left + i * colW + colW / 2} y={TOP + ys.length * ROW_H + 16} textAnchor="middle">{x.label}</text> : null))}
-        {xTitle && <text className="dm-chart-axis-title" x={left + (xs.length * colW) / 2} y={TOP + ys.length * ROW_H + AXIS_H + 10 + TITLE_GAP} textAnchor="middle">{xTitle}</text>}
+        {xTitle && <XTitle x={left + (xs.length * colW) / 2} y={TOP + ys.length * ROW_H + AXIS_H + 10 + TITLE_GAP} width={xs.length * colW} text={xTitle} />}
         {xs.flatMap((x, i) => ys.map((y, j) => {
           const c = cell(x.key, y.key);
           if (!c || c.value === null) return null;

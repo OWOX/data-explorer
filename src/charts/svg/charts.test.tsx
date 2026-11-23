@@ -360,3 +360,19 @@ test('a blank bar is filled with the hatch pattern and has no stroke', () => {
   expect(container.querySelector('pattern')!.id).toBe(rect.getAttribute('fill')!.slice(5, -1));
   expect(container.querySelector('rect[data-series="A"]')).toHaveAttribute('fill', 'red');
 });
+
+test('the line, heatmap and scatter X titles are cut to the plot with the full text in a hover title', () => {
+  const long = 'Created at | A long data mart title '.repeat(6).trim();
+  const shownOf = (el: Element) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('');
+  const charts = [
+    wrap(<LineChart left={two} area={false} ariaLabel="l" formatLeft={(n) => `${n}`} xTitle={long} />),
+    wrap(<Heatmap xs={[{ key: 'x1', label: 'X1' }]} ys={[{ key: 'y1', label: 'Y1' }]} ariaLabel="H" cell={() => ({ value: 1, text: '1' })} xTitle={long} />),
+    wrap(<Scatter ariaLabel="S" xTitle={long} yTitle="Y" formatX={String} formatY={String} points={[{ key: 'p', label: 'P', x: 1, y: 2, xText: '1', yText: '2' }]} />),
+  ];
+  for (const { container } of charts) {
+    const title = container.querySelector('.dm-chart-axis-title:not([data-y-title])')!;
+    expect(title.querySelector('title')).toHaveTextContent(long);
+    expect(shownOf(title)).toMatch(/…$/);
+    expect(shownOf(title).length).toBeLessThan(long.length);
+  }
+});

@@ -4,7 +4,7 @@ import { swatchStyle, thinColor } from '../blank';
 import { useWidth } from '../useWidth';
 import type { Series } from './BarChart';
 import { niceTicks } from './ticks';
-import { Y_TITLE_W, YTitle } from './YTitle';
+import { XTitle, Y_TITLE_W, YTitle } from './YTitle';
 
 const PLOT_H = 240;
 const TOP = 8;
@@ -77,7 +77,7 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
         {yTitle && <YTitle x={8} mid={TOP + PLOT_H / 2} length={PLOT_H} text={yTitle} />}
         {right && yTitleRight && <YTitle x={leftW + plotW + rightW - 8} mid={TOP + PLOT_H / 2} length={PLOT_H} text={yTitleRight} />}
         {xs.map((p, i) => (i % labelStep === 0 ? <text key={p.x} className="dm-chart-text" x={px(i)} y={TOP + PLOT_H + 16} textAnchor="middle">{p.label}</text> : null))}
-        {xTitle && <text className="dm-chart-axis-title" x={leftW + plotW / 2} y={TOP + PLOT_H + AXIS_H + 10 + TITLE_GAP} textAnchor="middle">{xTitle}</text>}
+        {xTitle && <XTitle x={leftW + plotW / 2} y={TOP + PLOT_H + AXIS_H + 10 + TITLE_GAP} width={plotW} text={xTitle} />}
         {area && all.map(({ s, max }) => <path key={`a-${s.key ?? s.name}`} data-area={s.name} d={areaOf(s, max)} fill={thinColor(s.color)} fillOpacity={0.18} stroke="none" />)}
         {all.map(({ s, max }, k) => <path key={s.key ?? s.name} data-line={s.name} d={pathOf(s, max)} fill="none" stroke={thinColor(s.color)} strokeWidth={2} strokeDasharray={right && k === all.length - 1 ? '5 3' : undefined} strokeLinejoin="round" strokeLinecap="round" />)}
         {xs.map((p, i) => {

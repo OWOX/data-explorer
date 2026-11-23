@@ -92,11 +92,20 @@ test('a promoted mart that already shows the others keeps its own grid as it is'
   expect(plan.grids).toEqual({});
 });
 
+test('a mart made main keeps the filters on fields that are not columns, for marts on its new grid only', () => {
+  // customers is joined by the new main (orders), so its hidden customers__city filter stays; products is not on the new grid (no shown column), so its filter goes.
+  const eq = (field: string) => ({ field, op: 'eq' as const, value: 'x' });
+  const grids = { customers: g(['id']), orders: g(['id'], { filters: { customers__city: eq('customers__city'), products__sku: eq('products__sku'), gone: eq('gone') } }) };
+  const plan = planMakeMain(env(grids, 'customers'), 'orders');
+  expect(Object.keys(plan.grids.orders!.filters)).toEqual(['customers__city']);
+});
+
 test('a mart made main: its own columns, the old main joined with what it showed, marts it cannot reach remembered', () => {
   const grids = { customers: g(['id', 'countries__name']), orders: g(['id', 'customers__city', 'products__sku'], { filters: { customers__city: { field: 'customers__city', op: 'eq', value: 'x' } } }) };
   const plan = planMakeMain(env(grids, 'customers'), 'orders');
   expect(plan.selection).toEqual(sel('orders'));
-  expect(plan.grids.orders).toEqual(g(['id', 'customers__id']));
+  // The filter on a field of customers stays although its column is not shown: customers is on the new grid.
+  expect(plan.grids.orders).toEqual(g(['id', 'customers__id'], { filters: { customers__city: { field: 'customers__city', op: 'eq', value: 'x' } } }));
   expect(plan.saves).toEqual([{ martId: 'orders', columns: ['id', 'customers__id'] }]);
   expect(plan.remember).toEqual([{ martId: 'countries', fields: ['name'] }]);
 });

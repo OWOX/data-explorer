@@ -1,14 +1,14 @@
 import { ArrowRightLeft, Calendar, CalendarRange, ChartColumn, ChartColumnStacked, Gauge } from 'lucide-react';
 import { formatValue, type Format } from '../../format/formats';
 import { BUCKET_LABELS, DATE_BUCKETS, type DateBucket } from '../../model/aggregation';
-import { columnTitle, fieldLabel } from '../../model/fieldLabel';
+import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
 import { BLANK_KEY } from '../blank';
 import { bucketFilter, dimensionFilter } from '../clickFilters';
 import { compactValue } from '../compact';
 import type { MenuItem } from '../ChartMenu';
-import { fieldGroups, measureGroups } from '../menuGroups';
+import { axisTitle, fieldGroups, measureAxisTitle, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { measuresOf, menuOf, type ChartFields } from '../fields';
 import { bucketZone, type Measure } from '../queries';
@@ -57,7 +57,7 @@ function TimeSeriesPanel({ martId, cf, r, spark, filter, version, idle, hasFilte
       {s.series && (() => {
         const shown = s.series;
         const pick = (x: string, i?: number) => onFilter([bucketFilter(date, x, bucket!, bucketZone(date)), ...(stack && i !== undefined && !shown[i]!.other ? [dimensionFilter(stack, shown[i]!.blank ? BLANK_KEY : shown[i]!.name)] : [])]);
-        return <BarChart series={shown} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={bucket ? pick : undefined} stacked={!!stack} xTitle={columnTitle(date)} yTitle={s.label} integer={isIntegerMeasure(measure)} />;
+        return <BarChart series={shown} orientation={r.orientation} ariaLabel={full} formatTick={(n) => tickText(n, tickType, tickFormat)} onPick={bucket ? pick : undefined} stacked={!!stack} xTitle={axisTitle(cf, date)} yTitle={measureAxisTitle(cf, measure)} integer={isIntegerMeasure(measure)} />;
       })()}
     </ChartPanel>
   );

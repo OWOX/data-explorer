@@ -10,6 +10,8 @@ export type ChecklistItem = {
   label?: ReactNode;
   /** A selected disabled row cannot be unticked (Clear skips it); an unselected one cannot be ticked. */
   disabled?: boolean;
+  /** A control beside the row, before `extra`: a menu button, say. Outside the option, so a click on it does not toggle. It carries `data-row-action` and is not a Tab stop: Arrow Right from the option reaches it, Arrow Left returns. */
+  action?: ReactNode;
   /** Beside the row, outside the option (so it is not interactive content inside it): a hint glyph, say. Clicking it does not toggle. It is hidden from assistive tech and not a Tab stop, so put what it says in `description`. */
   extra?: ReactNode;
   /** What a screen reader says after the row's name (the text an `extra` hint shows). */
@@ -79,9 +81,21 @@ export function SheetsChecklist({ items, selected, onChange, label, displaying, 
       search.current?.focus();
       return;
     }
+    if (e.key === 'ArrowRight' && item.action) {
+      const action = e.currentTarget.parentElement?.querySelector<HTMLElement>('[data-row-action]');
+      if (action) { e.preventDefault(); action.focus(); return; }
+    }
     const to = rovingTarget(e.key, at, rows().length, { wrap: false });
     if (to !== null) { e.preventDefault(); move(to); }
     else if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(item); }
+  };
+
+  // Keys on a row's action button: Arrow Left returns to the option, Arrow Up and Down move between the rows' options.
+  const onActionKey = (e: KeyboardEvent<HTMLElement>, at: number) => {
+    if (!(e.target instanceof HTMLElement) || !e.target.hasAttribute('data-row-action') || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); rows()[at]?.focus(); return; }
+    const to = e.key === 'ArrowUp' || e.key === 'ArrowDown' ? rovingTarget(e.key, at, rows().length, { wrap: false }) : null;
+    if (to !== null) { e.preventDefault(); move(to); }
   };
 
   return (
@@ -117,14 +131,14 @@ export function SheetsChecklist({ items, selected, onChange, label, displaying, 
         {rowsShown.map((item) => {
           const sel = lead && item === lead.item ? lead.on : on.has(item.value);
           return (
-            <div key={item.value} role="presentation" className="dm-checklist-row dm-reveal-host">
+            <div key={item.value} role="presentation" className="dm-checklist-row dm-reveal-host" onKeyDown={item.action ? (e) => onActionKey(e, rowsShown.indexOf(item)) : undefined}>
               <div
                 role="option"
                 aria-selected={sel}
                 aria-disabled={item.disabled || undefined}
                 aria-label={item.text}
                 aria-description={item.description}
-                aria-keyshortcuts={item.only ? 'Shift+Enter' : undefined}
+                aria-keyshortcuts={[item.only && 'Shift+Enter', item.action && 'ArrowRight'].filter(Boolean).join(' ') || undefined}
                 tabIndex={item.value === stop ? 0 : -1}
                 className="dm-checklist-opt"
                 onClick={() => toggle(item)}
@@ -134,6 +148,7 @@ export function SheetsChecklist({ items, selected, onChange, label, displaying, 
                 <span className="dm-checklist-check" aria-hidden>{sel && <Check size={14} />}</span>
                 <span className="dm-checklist-label">{item.label ?? item.text}</span>
               </div>
+              {item.action}
               {item.extra}
               {item.only && <button type="button" tabIndex={-1} aria-hidden="true" aria-label={`Only ${item.text}`} className="dm-filter-only" onClick={item.only}>only</button>}
             </div>
