@@ -210,6 +210,17 @@ describe('field actions from the Fields list', () => {
     expect(t.state.current!.grids.orders!.aggregations).toEqual([{ column: 'net_revenue', function: 'SUM' }]);
   });
 
+  test('Sort on a hidden number field in a grid grouped only by a Unique Count shows it with a function, not as a group key', async () => {
+    const t = setup(g({ columns: ['status'], uniqueCount: [''] }));
+    const { icon } = await rowIcon('amount');
+    await userEvent.click(icon);
+    const menu = await screen.findByRole('menu', { name: /^Menu of Amount$/i });
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Sort' }));
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Sort A → Z' }));
+    await waitFor(() => expect(t.state.current!.grids.orders!.columns).toContain('amount'));
+    expect(t.state.current!.grids.orders!.aggregations?.some((a) => a.column === 'amount')).toBe(true);
+  });
+
   test('Aggregate on a hidden field in a grouped grid adds the column and its function in one Undo step', async () => {
     const t = setup(grouped);
     const { icon } = await rowIcon('amount');

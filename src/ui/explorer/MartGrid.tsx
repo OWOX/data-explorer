@@ -809,7 +809,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       setSort: (field, direction) => {
         const cols = withField(field);
         if (!cols) { setSort(field, direction); return; }
-        edit(() => { changeColumns(cols, (cur) => ruleNewColumns(cur, [byName.get(field)!])); setOwn(nextSorts(field, direction)); });
+        edit(() => { changeColumns(cols, (cur) => ruleNewColumns({ ...cur, uniqueCount: ucNow }, [byName.get(field)!])); setOwn(nextSorts(field, direction)); });
       },
       isAggregated: (column) => aggNow.aggregations.some((r) => r.column === column) || aggNow.dateTrunc.some((r) => r.column === column),
       draftOf: (column) => draftOf(column, aggNow),
@@ -822,7 +822,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       formatOf, memberFormat,
       setFormat: (column, f) => {
         const cols = withField(column);
-        if (cols) edit(() => changeColumns(cols, (cur) => ruleNewColumns(cur, [byName.get(column)!])));
+        if (cols) edit(() => changeColumns(cols, (cur) => ruleNewColumns({ ...cur, uniqueCount: ucNow }, [byName.get(column)!])));
         setFormat(column, f);
       },
       isShown: (name) => shown.includes(name),
@@ -837,7 +837,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       valuesFor,
       removeUnique,
     };
-  }, [removeUnique, valuesFor, shownSorts, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, several, ownOn, ownNames, changeColumns, sources, reorder, charts, byName, native, outputs, edit, setOwn]);
+  }, [removeUnique, valuesFor, shownSorts, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, several, ownOn, ownNames, changeColumns, sources, reorder, charts, byName, native, outputs, edit, setOwn, ucNow]);
   // The selection, as Google Sheets has it: a cell (a frame and a fill handle), a block of cells (shift-click or Shift+Arrow: `to` is
   // the far end, the cell stays active), or whole columns or rows (a tint and a frame around the block); its column letters and row
   // numbers are lit. `from` is where a shift-click on a header extends from.
