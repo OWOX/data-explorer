@@ -20,6 +20,7 @@ function host() {
     fills: [],
     open: vi.fn(async (id) => { calls.push(`open:${id}`); return first; }),
     fill: vi.fn((_id, expect, grid) => { calls.push('fill'); h.fills.push(grid); void expect; }),
+    owns: vi.fn(() => true),
     progress: vi.fn((p) => calls.push(`progress:${p}`)),
     alternatives: vi.fn(),
     chartSettings: { load: vi.fn(async () => ({})), save: vi.fn(async () => {}) },
@@ -44,6 +45,29 @@ describe('runPipeline', () => {
     expect(fill.mock.calls[1]![1]).toBe(fill.mock.calls[0]![2]);
     expect(h.chartSettings.save).toHaveBeenCalledOnce();
     expect(h.fills.at(-1)!.view).toBe('charts');
+  });
+  it('stops when the member took the report back: no more questions, no chart saved, nothing more on the host', async () => {
+    const { h, calls } = host();
+    h.owns = vi.fn(() => h.fills.length === 0);
+    const decide = vi.fn(allYes);
+    const r = await runPipeline(input, deps(decide), h);
+    expect(r.status).toBe('aborted');
+    expect(h.fills).toHaveLength(1);
+    expect(h.chartSettings.save).not.toHaveBeenCalled();
+    expect(h.chartSettings.load).not.toHaveBeenCalled();
+    expect(calls.at(-1)).toBe('fill');
+    expect(decide.mock.calls.every(([qs]) => !('primary' in qs))).toBe(true);
+    expect(calls).not.toContain('progress:filters');
+    expect(calls).not.toContain('progress:null');
+  });
+  it('stops before the chart save when the report is taken back during the chart question', async () => {
+    const { h } = host();
+    let late = false;
+    h.owns = vi.fn(() => !late);
+    const decide: StepDeps['decide'] = async (qs, s, sig) => { const a = await allYes(qs, s, sig); if ('primary' in qs) late = true; return a; };
+    const r = await runPipeline(input, deps(decide), h);
+    expect(r.status).toBe('aborted');
+    expect(h.chartSettings.save).not.toHaveBeenCalled();
   });
   it('stops at a failed step and keeps what it built', async () => {
     const { h } = host();

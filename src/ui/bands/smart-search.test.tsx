@@ -543,6 +543,34 @@ describe('the dropdown', () => {
     expect(within(data()).queryByLabelText('Filter status')).toBeNull();
   });
 
+  test('an edit made during a late step keeps the edit: no further questions, no chart saved, no failure notice', async () => {
+    let answer: (() => void) | undefined;
+    const ai = gatedAi((n) => (n === 4 ? new Promise<void>((r) => { answer = r; }) : Promise.resolve()));
+    const puts: string[] = [];
+    const wrap = (c: Mock): Ctx => {
+      const ctx = ai.withAi(c);
+      return { ...ctx, collections: (<T,>(name: string) => {
+        const col = c.collections<T>(name);
+        return { ...col, put: async (id: string, d: T) => { puts.push(`${name}/${id}`); return col.put(id, d); } };
+      }) as Ctx['collections'] };
+    };
+    setup({ wrap }).view();
+    await ready();
+    const u = user();
+    await typeIn(u, 'paid orders last month');
+    await waitFor(() => expect(options()[0]).not.toHaveAttribute('aria-disabled'));
+    await u.keyboard('{Enter}');
+    await waitFor(() => expect(answer).toBeDefined());
+    await u.click(within(data()).getByRole('button', { name: /^Sort by status/ }));
+    const asked = ai.tasks.length;
+    answer!();
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(puts.filter((k) => k.startsWith('charts/'))).toEqual([]);
+    expect(within(data()).getByRole('button', { name: /^Sort by status, currently (ascending|descending)/ })).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Search notice' })).toBeNull();
+    expect(ai.tasks.length).toBe(asked);
+  });
+
   test('a model that fails when the ad-hoc row is picked shows the notice', async () => {
     const ai = gatedAi((n) => (n === 1 ? Promise.reject(new Error('boom')) : Promise.resolve()));
     setup({ wrap: ai.withAi }).view();

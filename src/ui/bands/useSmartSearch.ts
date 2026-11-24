@@ -8,7 +8,7 @@ import type { Intent } from '../../search/intent';
 import { runPipeline, type Progress } from '../../search/pipeline';
 import { MIN_QUERY, queryProblem, searchEndpoint, type SearchHits } from '../../search/endpoint';
 import { reportSkippedMessage, reportToGrid, type ReportDto } from '../../search/report-load';
-import { sourceOfModel, useServices, useStore, type GridState } from '../../state/store';
+import { deepEqual, reducer, sourceOfModel, useServices, useStore, type Action, type GridState, type State } from '../../state/store';
 import { defaultColumns } from '../../model/columns';
 import { useLatest } from '../useLatest';
 
@@ -60,6 +60,10 @@ export function useSmartSearch(model: Model) {
   const [alternatives, setAlternatives] = useState<string[]>([]);
   const lastRun = useRef<{ query: string; hits: SearchHits; intent: Intent } | null>(null);
   const latest = useLatest({ selection: state.selection, model });
+  // The store as the pipeline last saw it. A dispatch lands in `state` a render later, so the pipeline's own dispatches are run through the reducer here as well; each render then takes the real state over.
+  const mirror = useRef<State>(state);
+  mirror.current = state;
+  const send = (action: Action) => { mirror.current = reducer(mirror.current, action); dispatch(action); };
   const entry = useRef<Entry | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const picking = useRef<{ ctl: AbortController; query: string; kind: 'adhoc' | 'other' } | null>(null);
@@ -200,9 +204,9 @@ export function useSmartSearch(model: Model) {
     const native = await schemas.get(martId);
     if (ctl.signal.aborted) return null;
     const first: GridState = { columns: defaultColumns(native), filters: {}, sorts: null, limit: PAGE_SIZE };
-    dispatch({ type: 'smartFound', query, ids: idsWith(hits, martId) });
+    send({ type: 'smartFound', query, ids: idsWith(hits, martId) });
     // Always a history entry, so one Undo takes back the pick and the pipeline's grid together, even when the mart was already open.
-    dispatch({ type: 'setMarts', selection: { sourceKey: keepSource(martId), martId, record: null }, grids: { [martId]: first }, always: true });
+    send({ type: 'setMarts', selection: { sourceKey: keepSource(martId), martId, record: null }, grids: { [martId]: first }, always: true });
     return first;
   };
 
@@ -219,7 +223,8 @@ export function useSmartSearch(model: Model) {
       { ctx, decide, fast: models.fast, signal: ctl.signal, schemas, blendable },
       {
         open: (martId) => openDefault(query, martId, hits, ctl),
-        fill: (martId, expect, grid) => { if (!ctl.signal.aborted) dispatch({ type: 'fillGrid', martId, expect, grid }); },
+        fill: (martId, expect, grid) => { if (!ctl.signal.aborted) send({ type: 'fillGrid', martId, expect, grid }); },
+        owns: (martId, grid) => { const s = mirror.current; return s.future.length === 0 && s.selection.martId === martId && deepEqual(s.grids[martId] ?? null, grid); },
         progress: (p) => { if (!ctl.signal.aborted) setProgress(p); },
         alternatives: (ids, intent) => { if (ctl.signal.aborted) return; lastRun.current = { query, hits, intent }; setAlternatives(ids); },
         chartSettings,

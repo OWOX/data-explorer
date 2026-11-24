@@ -13,6 +13,8 @@ export type Progress = 'main' | 'path' | 'fields' | 'filters' | 'charts';
 export type PipelineHost = {
   open(martId: string): Promise<GridState | null>;
   fill(martId: string, expect: GridState, grid: GridState): void;
+  /** True while the member has not taken the report back: no Undo since the pick, the same main mart, and the grid is the one last filled. */
+  owns(martId: string, grid: GridState): boolean;
   progress(p: Progress | null): void;
   alternatives(ids: string[], intent: Intent): void;
   chartSettings: Pick<ChartSettingsStore, 'load' | 'save'>;
@@ -41,11 +43,13 @@ export async function runPipeline(raw: Omit<StepInput, 'intent'> & { intent?: In
   if (off()) return end('aborted');
   if (!grid) return end('nothing');
 
+  if (!host.owns(mainId, grid)) return end('aborted');
   host.progress('path');
   const path = await runPath(input, deps, mainId);
   if (off()) return end('aborted');
   if (path.failed) return end('failed');
 
+  if (!host.owns(mainId, grid)) return end('aborted');
   host.progress('fields');
   const native = await deps.schemas.get(mainId);
   if (off()) return end('aborted');
@@ -58,6 +62,7 @@ export async function runPipeline(raw: Omit<StepInput, 'intent'> & { intent?: In
   grid = withFields;
   if (fields.failedMain) return end('failed');
 
+  if (!host.owns(mainId, grid)) return end('aborted');
   host.progress('filters');
   const shape = await runShape(input, deps, mainId, { schema, columns: fields.columns, needed: fields.needed, sources });
   if (off()) return end('aborted');
@@ -65,13 +70,14 @@ export async function runPipeline(raw: Omit<StepInput, 'intent'> & { intent?: In
   grid = shape.grid;
   if (shape.failed) return end('failed');
 
+  if (!host.owns(mainId, grid)) return end('aborted');
   host.progress('charts');
   const charts = await runCharts(input, deps, grid, schema);
-  if (off()) return end('aborted');
+  if (off() || !host.owns(mainId, grid)) return end('aborted');
   if (charts.failed) return end('failed');
   if (charts.picked.length) {
     const saved = await host.chartSettings.load(mainId);
-    if (off()) return end('aborted');
+    if (off() || !host.owns(mainId, grid)) return end('aborted');
     await host.chartSettings.save(mainId, mergeCharts(saved, charts.picked));
     if (off()) return end('aborted');
     host.fill(mainId, grid, { ...grid, view: 'charts' });
