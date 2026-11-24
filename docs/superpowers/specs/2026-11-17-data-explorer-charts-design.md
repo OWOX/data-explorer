@@ -32,6 +32,10 @@ query; the plugin does no arithmetic on values.
 1. **Metric:** a shown field with category `number`, not a primary key, not calculated, whose allowed functions are not
    empty. Its function is the first Σ function the grid has on the column; with none, `SUM` when allowed, else the first
    allowed function.
+   A shown calculated field of the main mart whose level is `metric` (the formula aggregates) is a metric with no
+   function. Queries name its column and give it no `aggregation` rule, its row key is the column name, its card is
+   labelled by the field alone, and the pie, Sankey and spread never offer it. Row-level (`column`) calculated fields
+   and calculated fields of a joined mart are not metrics.
 2. **Dimension:** a shown field with category `string` or `boolean`, not a primary key.
 3. **Date field:** a shown field that `canBucket`.
 4. Each field belongs to a data mart: the main one, or the joined one in `field.joined.martId`.

@@ -196,3 +196,33 @@ describe('heatmap, scatter and spread queries', () => {
     });
   });
 });
+
+describe('calculated metrics', () => {
+  const net: Metric = { field: f('net.x', 'number', { isCalculated: true, calculatedLevel: 'metric' }), fn: null };
+  const netM: Measure = { kind: 'metric', metric: net };
+  const both: ChartMart = { ...main, metrics: [amount, net] };
+  const only: ChartMart = { ...main, metrics: [net] };
+  it('metricKey is the column name, dots kept', () => {
+    expect(metricKey(net)).toBe('net.x');
+    expect(metricKey(amount)).toBe('amount | SUM');
+  });
+  it('scorecards: named as a column, left out of aggregation', () => {
+    expect(scorecardsQuery([only], [])).toEqual({ column: ['net.x'], uniqueCount: [''] });
+    expect(scorecardsQuery([both], [])).toEqual({ column: ['amount', 'net.x'], aggregation: [{ column: 'amount', function: 'SUM' }], uniqueCount: [''] });
+    expect(scorecardsQuery([{ ...only, hasPk: false }], [])).toEqual({ column: ['net.x'] });
+  });
+  it('sparkline', () => {
+    expect(sparklineQuery(only, date, 'MONTH', [])).toMatchObject({ column: ['date', 'net.x'], uniqueCount: [''] });
+    expect(sparklineQuery(only, date, 'MONTH', [])).not.toHaveProperty('aggregation');
+    expect(sparklineQuery(both, date, 'MONTH', [])!.aggregation).toEqual([{ column: 'amount', function: 'SUM' }]);
+  });
+  it('series, top values and scatter', () => {
+    expect(seriesQuery(date, 'MONTH', netM, [])).toMatchObject({ column: ['date', 'net.x'], sort: [{ column: 'date', direction: 'asc' }] });
+    expect(seriesQuery(date, 'MONTH', netM, [])).not.toHaveProperty('aggregation');
+    expect(topValuesQuery(channel, netM, [])).toMatchObject({ column: ['channel', 'net.x'], sort: [{ column: 'net.x', direction: 'desc' }] });
+    expect(topValuesQuery(channel, netM, [])).not.toHaveProperty('aggregation');
+    expect(scatterQuery(channel, netM, records, [])).not.toHaveProperty('aggregation');
+    expect(scatterQuery(channel, netM, records, [])).toMatchObject({ column: ['channel', 'net.x'], uniqueCount: [''] });
+    expect(scatterQuery(channel, netM, amt, [])!.aggregation).toEqual([{ column: 'amount', function: 'SUM' }]);
+  });
+});

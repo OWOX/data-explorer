@@ -56,3 +56,11 @@ test('a join kept through a dotted path keeps its ancestors', () => {
   expect(answersQuery(both, deep, nested)).toBe(true);
   expect(answersQuery(both, without, nested)).toBe(false);
 });
+
+test('a read without a calculated metric does not answer an ask with it, nor the reverse; both sides with it answer a dropped ordinary metric', () => {
+  const net = { ...without, column: ['m', 'net'] };
+  expect(answersQuery(without, net)).toBe(false);
+  expect(answersQuery(net, without)).toBe(false);
+  const both: TraverseOptions = { column: ['m', 'n2', 'net'], aggregation: [{ column: 'm', function: 'SUM' }, { column: 'n2', function: 'SUM' }], uniqueCount: [''] };
+  expect(answersQuery(both, net)).toBe(true);
+});

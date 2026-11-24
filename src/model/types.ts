@@ -10,6 +10,8 @@ export interface Field {
   description: string | null;
   isPrimaryKey: boolean;
   isCalculated?: boolean;
+  /** A calculated field of the main mart: `metric` when its formula aggregates, `column` when it is row-level. Unset on any other field. */
+  calculatedLevel?: 'metric' | 'column';
   /** Aggregation governance from the schema: the functions a report may apply to the field (absent: the type's defaults). */
   allowedAggregations?: import('./aggregation').AggFn[];
   /** A joined field only: the functions the join's analyst allows after the join (absent: the type's defaults; [] means none). */
