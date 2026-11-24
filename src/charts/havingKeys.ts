@@ -2,7 +2,7 @@
 // traverseData cannot nest queries, so the passing group keys are read once and sent to every chart query as an `in` rule.
 import { useMemo } from 'react';
 import type { ColumnFilter } from '../filters/build';
-import { isCalculatedMetric, type Aggregation } from '../model/aggregation';
+import { isCalculatedMetric, type Grouping } from '../model/aggregation';
 import type { Field, Schema } from '../model/types';
 import type { Row, TraverseFilter, TraverseOptions } from '../sdk/types';
 import { buildRowQuery } from '../ui/explorer/useMartRows';
@@ -33,7 +33,7 @@ function numberKey(v: unknown): number | null {
 }
 
 /** The keys read for the grid's current query, or why the charts cannot follow its HAVING filters exactly. */
-export function keysPlan(schema: Schema, shown: string[], agg: Aggregation, filters: ColumnFilter[], slices: ColumnFilter[]): KeysPlan {
+export function keysPlan(schema: Schema, shown: string[], agg: Grouping, filters: ColumnFilter[], slices: ColumnFilter[]): KeysPlan {
   // The grid's own rows query decides which filters are sent, so the keys read carries exactly the same list.
   const q = buildRowQuery(schema, shown, filters, 0, [], agg, slices);
   // A calculated metric aggregates by itself: a rule on it has no function, and the column is never a group key.
@@ -42,7 +42,8 @@ export function keysPlan(schema: Schema, shown: string[], agg: Aggregation, filt
   const pairs = (q.filter ?? []).filter((f) => f.function);
   if (!pairs.length && !metricRules.length) return { kind: 'off' };
   const columns = q.column ?? [];
-  // Ungrouped rows with no metric among the columns: the keys read would select the metric and aggregate, which the rows do not.
+  // Ungrouped rows with no metric among the columns: the backend does aggregate for a rule on an aggregate calculated field even when it is not selected,
+  // but the charts do not try to follow that shape. They show the note instead.
   const grouped = !!(q.aggregation?.length || q.dateTrunc?.length || q.uniqueCount?.length || columns.some((c) => metrics.has(c)));
   if (!grouped) return { kind: 'fallback' };
   const keys = columns.filter((c) => !metrics.has(c) && !(q.aggregation ?? []).some((a) => a.column === c));

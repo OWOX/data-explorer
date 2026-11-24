@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ColumnFilter } from '../filters/build';
-import { NO_AGGREGATION, type Aggregation } from '../model/aggregation';
+import { NO_AGGREGATION, type Aggregation, type Grouping } from '../model/aggregation';
 import type { Field, Schema } from '../model/types';
 import { IN_LIST_MAX, keysOutcome, keysPlan } from './havingKeys';
 
@@ -75,6 +75,45 @@ describe('keysPlan with a calculated metric', () => {
   });
   it('a filter on a row-level calculated column is a plain rule: the plan is off', () => {
     expect(run(['status', 'margin'], [{ field: 'margin', op: 'gt', value: 1 }], NO_AGGREGATION)).toEqual({ kind: 'off' });
+  });
+});
+
+describe('keysPlan with Unique Count and a primary key', () => {
+  const withPk: Schema = schema.map((x) => (x.name === 'id' ? ({ ...x, isPrimaryKey: true } as Field) : x));
+  const net: ColumnFilter = { field: 'net', op: 'gt', value: 100 };
+  const netRule = { column: 'net', operator: 'gt', value: 100 };
+  const uc: Grouping = { ...NO_AGGREGATION, uniqueCount: [''] };
+  const ucSum: Grouping = { ...sum, uniqueCount: [''] };
+  const run = (names: string[], filters: ColumnFilter[], agg: Grouping, s: Schema = withPk) => keysPlan(s, names, agg, filters, []);
+  const sumFilter = having.revenue!;
+  it('net alone is one total row: no key', () => {
+    expect(run(['net'], [net], uc)).toEqual({ kind: 'read', key: null, options: { column: ['net'], filter: [netRule], limit: 501 } });
+  });
+  it('status alone is grouped by status', () => {
+    expect(run(['status'], [net], uc)).toEqual({ kind: 'read', key: 'status', options: { column: ['status', 'net'], filter: [netRule], limit: 501 } });
+  });
+  it('status and net are grouped by status', () => {
+    expect(run(['status', 'net'], [net], uc)).toMatchObject({ kind: 'read', key: 'status', options: { column: ['status', 'net'] } });
+  });
+  it('with a HAVING rule beside it the keys read still adds no Unique Count', () => {
+    const p = run(['status', 'net', 'revenue'], [net, sumFilter], ucSum);
+    expect(p).toMatchObject({ kind: 'read', key: 'status' });
+    expect(p.kind === 'read' && 'uniqueCount' in p.options).toBe(false);
+    expect(run(['status', 'revenue'], [sumFilter], ucSum)).toMatchObject({ kind: 'read', key: 'status', options: { column: ['status', 'revenue'] } });
+  });
+  it('a HAVING rule with Unique Count and no metric reads the groups of the table', () => {
+    expect(run(['revenue'], [sumFilter], ucSum)).toMatchObject({ kind: 'read', key: null });
+  });
+  it('a date bucket alone groups: the bucketed key falls back, a metric beside it does not make a key', () => {
+    const trunc: Aggregation = { aggregations: [], dateTrunc: [{ column: 'day', unit: 'MONTH' }] };
+    expect(run(['day', 'net'], [net], trunc)).toEqual({ kind: 'fallback' });
+    expect(run(['net'], [net], trunc)).toMatchObject({ kind: 'read', key: null });
+  });
+  it('no aggregation, a metric and a second key: the rows are per key, so fallback', () => {
+    expect(run(['status', 'country', 'net'], [net], NO_AGGREGATION)).toEqual({ kind: 'fallback' });
+  });
+  it('no aggregation, status and net, with a primary key: the rows are per key, so fallback', () => {
+    expect(run(['status', 'net'], [net], NO_AGGREGATION)).toEqual({ kind: 'fallback' });
   });
 });
 

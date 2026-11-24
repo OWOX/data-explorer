@@ -877,7 +877,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const metricNames = useMemo(() => new Set(schema.filter(isCalculatedMetric).map((f) => f.name)), [schema]);
   const traverseFilters = useMemo(() => toTraverseFilters(schema, Object.values(filters).filter((f) => !f.fn && !metricNames.has(f.field)), Object.values(slices)), [schema, filters, slices, metricNames]);
   // A HAVING filter keeps whole groups, so the charts get the passing group keys as an `in` rule instead of the filter itself.
-  const keysRead = useMemo(() => keysPlan(schema, shown, aggNow, Object.values(filters), Object.values(slices)), [schema, shown, aggNow, filters, slices]);
+  const keysRead = useMemo(() => keysPlan(schema, shown, gridAgg, Object.values(filters), Object.values(slices)), [schema, shown, gridAgg, filters, slices]);
   const keyField = useMemo(() => (keysRead.kind === 'read' && keysRead.key ? schema.find((f) => f.name === keysRead.key) : undefined), [keysRead, schema]);
   // Nothing is read when the charts are not shown, a folded band, a blocked grid, or no number column to chart (ChartsBody shows its hint then).
   const chartable = useMemo(() => !chartFields(schema, shown, aggNow, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), {}).marts.every((m) => m.metrics.length === 0 && !m.hasPk), [schema, shown, aggNow, martId, groups, sources]);

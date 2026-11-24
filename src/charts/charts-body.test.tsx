@@ -15,7 +15,7 @@ import type { ChartSettings } from './settings';
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
 const COLUMNS = ['id', 'status', 'amount', 'created_at', 'products__price'];
 
-function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[]; calc?: boolean } = {}) {
+function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[]; calc?: boolean; uc?: boolean } = {}) {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
@@ -38,7 +38,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
     },
   };
   const seeded = Promise.all([
-    ctx.collections<{ columns: string[]; at: string; aggregations?: unknown }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: opts.columns ?? COLUMNS, at: 'then', ...(opts.aggregations ? { aggregations: opts.aggregations } : {}) }),
+    ctx.collections<{ columns: string[]; at: string; aggregations?: unknown; gridView?: unknown }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: opts.columns ?? COLUMNS, at: 'then', ...(opts.uc ? { gridView: { fl: [], s: null, l: 100, uc: [''] } } : {}), ...(opts.aggregations ? { aggregations: opts.aggregations } : {}) }),
     opts.charts ? ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', opts.charts) : undefined,
   ]);
   return { queries, puts, gridPuts, seeded, view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
@@ -791,4 +791,18 @@ test('a filter on a calculated metric reaches no chart query: the keys read carr
   // Every chart query follows it through an `in` rule on the key instead.
   await waitFor(() => expect(t.queries.slice(before).some((q) => q.uniqueCount && q.filter?.some((r) => r.column === 'status' && r.operator === 'in'))).toBe(true));
   expect(onNet().every((q) => q.limit === 501)).toBe(true);
+});
+
+test('with Unique Count on, the keys read groups as the table does: one total row has no key', async () => {
+  const t = await charts({ calc: true, uc: true, columns: ['net'] });
+  await waitFor(() => expect(data().querySelector('[data-card="net"] [data-card-value]')?.textContent).toBe('42'));
+  const before = t.queries.length;
+  await openSubmenu(within(data()), 'net', 'Filter');
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.type(within(dialog).getByLabelText('Value'), '10');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(t.queries.slice(before).some((q) => q.limit === 501)).toBe(true));
+  const read = t.queries.slice(before).find((q) => q.limit === 501)!;
+  expect(read.column).toEqual(['net']);
+  expect(read.uniqueCount).toBeUndefined();
 });
