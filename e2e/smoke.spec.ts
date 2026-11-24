@@ -418,6 +418,8 @@ test('removing the main group promotes the next joined one; a mart the main one 
   const data = await ordersGrid(page);
   await martCard(page, 'Customers').click();
   await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders', 'Customers']);
+  // The x unfolds with its "N columns" badge.
+  await data.getByRole('button', { name: /^Fields of Orders:/ }).hover();
   await data.getByRole('button', { name: 'Remove Orders from the grid' }).click();
   await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Customers']);
   await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
@@ -624,8 +626,10 @@ test('a group row names each selected mart; the x on a joined group removes it a
   await expect(data.getByRole('button', { name: 'Remove Orders from the grid' })).toHaveCount(0);
   await martCard(page, 'Customers').click();
   await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders', 'Customers']);
-  // The x sits on the joined mart's "N columns" badge, shown at rest.
+  // The x sits on the joined mart's "N columns" badge: folded at rest, shown when the badge is hovered.
   const x = data.getByRole('button', { name: 'Remove Customers from the grid' });
+  await expect(x).toHaveCSS('opacity', '0');
+  await data.getByRole('button', { name: /^Fields of Customers:/ }).hover();
   await expect(x).toHaveCSS('opacity', '1');
   await x.click();
   await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
