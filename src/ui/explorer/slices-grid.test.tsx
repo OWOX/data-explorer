@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Ctx, TraverseOptions } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
@@ -25,14 +25,16 @@ function setup(grid: GridState, opts: { blendFails?: boolean; empty?: boolean } 
     },
   };
   const state: { current: ReturnType<typeof useStore>[0] | null } = { current: null };
+  const send: { current: ReturnType<typeof useStore>[1] | null } = { current: null };
   function Probe() {
     const [s, dispatch] = useStore();
     state.current = s;
+    send.current = dispatch;
     useEffect(() => { dispatch({ type: 'saveGrid', martId: 'orders', grid }); }, [dispatch]);
     return null;
   }
   render(<AppServices ctx={ctx}><StoreProvider><Probe /><App /></StoreProvider></AppServices>);
-  return { queries, state, heal: () => { failing = false; } };
+  return { queries, state, send, heal: () => { failing = false; } };
 }
 
 const data = () => document.getElementById('band-data')!;
@@ -212,9 +214,10 @@ describe('the data mart title row', () => {
       expect(fields.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
     await userEvent.click(filterBadge);
-    const list = await screen.findByRole('dialog', { name: /^Filters in / });
-    expect(within(list).getByText(/paid/)).toBeVisible();
+    const list = await screen.findByRole('menu', { name: /^Filters in / });
+    expect(within(list).getByRole('menuitem', { name: /paid/ })).toBeVisible();
     await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('menu', { name: /^Filters in / })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: /^Remove all filters in / }));
     await waitFor(() => expect(screen.queryByRole('button', { name: /^1 filter in / })).toBeNull());
     expect(screen.getByRole('button', { name: /^1 slice in / })).toBeVisible();
@@ -222,6 +225,72 @@ describe('the data mart title row', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: /^1 slice in / })).toBeNull());
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(await screen.findByRole('button', { name: /^1 slice in / })).toBeVisible();
+  });
+
+  test('a click on a rule badge lists its fields; hovering a row opens the edit form, and Apply saves the rule', async () => {
+    const t = setup(hidden);
+    await userEvent.click(await screen.findByRole('button', { name: /^1 filter in / }));
+    const list = await screen.findByRole('menu', { name: /^Filters in / });
+    await userEvent.hover(within(list).getByRole('menuitem', { name: /paid/ }));
+    const form = await screen.findByRole('dialog', { name: /^Filter of / });
+    const input = within(form).getByDisplayValue('paid');
+    await userEvent.clear(input);
+    await userEvent.type(input, 'refunded');
+    await userEvent.click(within(form).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(t.state.current!.grids['orders']?.filters.status?.value).toBe('refunded'));
+    expect(screen.queryByRole('menu', { name: /^Filters in / })).toBeNull();
+    expect(screen.getByRole('button', { name: /^1 filter in / })).toHaveFocus();
+  });
+
+  test('the slice badge list edits a slice the same way, and Clear in the form removes that one rule', async () => {
+    const t = setup(hidden);
+    await userEvent.click(await screen.findByRole('button', { name: /^1 slice in / }));
+    const list = await screen.findByRole('menu', { name: /^Slices in / });
+    await userEvent.hover(within(list).getByRole('menuitem'));
+    const form = await screen.findByRole('dialog', { name: /^Slice of / });
+    expect(within(form).getByDisplayValue('PL')).toBeVisible();
+    await userEvent.click(within(form).getByRole('button', { name: 'Clear' }));
+    await waitFor(() => expect(t.state.current!.grids['orders']?.slices?.customers__country_code).toBeUndefined());
+    expect(screen.queryByRole('menu', { name: /^Slices in / })).toBeNull();
+    // The filter badge is untouched.
+    expect(screen.getByRole('button', { name: /^1 filter in / })).toBeVisible();
+  });
+
+  test('a list open while its last rule goes (Undo) stays closed when Redo brings the badge back', async () => {
+    const t = setup(hidden);
+    // A click on Undo or Redo is blocked while a list is open, so the step comes from outside it (as a shortcut or another view would).
+    await userEvent.click(await screen.findByRole('button', { name: /^Remove all filters in / }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^1 filter in / })).toBeNull());
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await userEvent.click(await screen.findByRole('button', { name: /^1 filter in / }));
+    await screen.findByRole('menu', { name: /^Filters in / });
+    act(() => t.send.current!({ type: 'redo' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^1 filter in / })).toBeNull());
+    act(() => t.send.current!({ type: 'undo' }));
+    const back = await screen.findByRole('button', { name: /^1 filter in / });
+    expect(back).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('menu', { name: /^Filters in / })).toBeNull();
+  });
+
+  test('Escape closes the edit form first, then the list', async () => {
+    setup(hidden);
+    await userEvent.click(await screen.findByRole('button', { name: /^1 filter in / }));
+    const list = await screen.findByRole('menu', { name: /^Filters in / });
+    await userEvent.hover(within(list).getByRole('menuitem', { name: /paid/ }));
+    await screen.findByRole('dialog', { name: /^Filter of / });
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /^Filter of / })).toBeNull());
+    expect(screen.getByRole('menu', { name: /^Filters in / })).toBeVisible();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('menu', { name: /^Filters in / })).toBeNull();
+  });
+
+  test('after the x on a badge, focus is on the Fields button of its cell', async () => {
+    setup(hidden);
+    const badge = await screen.findByRole('button', { name: /^1 filter in / });
+    const cell = badge.closest('th')!;
+    await userEvent.click(screen.getByRole('button', { name: /^Remove all filters in / }));
+    await waitFor(() => expect(document.activeElement).toBe(within(cell).getByRole('button', { name: /^Fields of / })));
   });
 
   test('no rules, no marks; the Fields button shows no tooltip', async () => {

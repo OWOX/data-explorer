@@ -26,7 +26,7 @@ const cellsOf = (column: string) => { const at = headers().findIndex((h) => h.st
 
 async function showAmount() {
   await ready();
-  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
   await userEvent.click(await screen.findByLabelText('Amount'));
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -251,7 +251,7 @@ describe('the column menu', () => {
     await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
     await waitFor(() => expect(headers().some((h) => h.startsWith('status'))).toBe(false));
     expect(open()).toHaveLength(0);
-    await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+    await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
     expect(await screen.findByLabelText('status')).not.toBeChecked();
     await userEvent.click(screen.getByLabelText('status'));
     await waitFor(() => expect(headers().some((h) => h.startsWith('status'))).toBe(true));
@@ -325,7 +325,7 @@ describe('the column menu', () => {
   test('the Last… panel is a third level: clicks and scrolls inside it keep the menu, Escape closes only it, then the Filter panel, then the menu', async () => {
     setup();
     await ready();
-    await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+    await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
     await userEvent.click(await screen.findByRole('option', { name: /created_at/ }));
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

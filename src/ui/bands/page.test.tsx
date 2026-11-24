@@ -313,7 +313,7 @@ describe('the grid', () => {
 
   test('the column picker adds a column', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByRole('button', { name: 'Fields of Orders' }));
+    await userEvent.click(within(grid).getByRole('button', { name: /^Fields of Orders:/ }));
     await userEvent.click(screen.getByRole('option', { name: /amount/i }));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(6));
   });
@@ -405,7 +405,7 @@ describe('the grid', () => {
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await settle();
     const before = calls.filter((c) => c.id === 'orders').length;
-    await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+    await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
     await userEvent.click(screen.getAllByRole('option').filter((c) => c.getAttribute('aria-selected') === 'true').at(-1)!);
     await waitFor(() => expect(within(data()).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(4));
     await settle();
@@ -785,7 +785,7 @@ describe('column headers and band toolbars', () => {
 
   test('the column picker shows the alias only, and a (?) with the description when the field has one', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByRole('button', { name: 'Fields of Orders' }));
+    await userEvent.click(within(grid).getByRole('button', { name: /^Fields of Orders:/ }));
     expect(screen.getByRole('option', { name: /Amount/ })).toBeInTheDocument();
     expect(screen.queryByText('amount')).toBeNull();
     expect(screen.queryByText('customer_id')).toBeNull();
@@ -832,7 +832,7 @@ describe('column headers and band toolbars', () => {
     await userEvent.click(within(bar).getByRole('button', { name: 'Refresh' }));
     await settle();
     expect(reads()).toBe(before + 1);
-    await userEvent.click(within(grid).getByRole('button', { name: 'Fields of Orders' }));
+    await userEvent.click(within(grid).getByRole('button', { name: /^Fields of Orders:/ }));
     await userEvent.click(screen.getByRole('option', { name: /Amount/ }));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(6));
   });
@@ -1090,7 +1090,7 @@ describe('column sort', () => {
     await userEvent.click(sortBtn(grid, 'status'));
     await userEvent.click(sortBtn(grid, 'Product'));
     await waitFor(() => expect(sortOf(calls)).toEqual([{ column: 'status', direction: 'asc' }, { column: 'product_id', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
-    await userEvent.click(within(grid).getByRole('button', { name: 'Fields of Orders' }));
+    await userEvent.click(within(grid).getByRole('button', { name: /^Fields of Orders:/ }));
     await userEvent.click(screen.getByLabelText('status'));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(4));
     await waitFor(() => expect(sortOf(calls)).toEqual([{ column: 'product_id', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
@@ -1192,7 +1192,7 @@ describe('the default sort', () => {
     expect(orderSorts(calls)).toEqual([{ column: 'created_at', direction: 'desc' }, { column: 'id', direction: 'asc' }]);
     // created_at is not among the five opening columns, so no arrow is drawn; showing it draws one like a member sort
     expect(within(data()).queryByRole('button', { name: /^Sort by created_at,/ })).toBeNull();
-    await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+    await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
     await userEvent.click(screen.getByLabelText('created_at'));
     const head = await within(data()).findByRole('button', { name: /^Sort by created_at, currently descending/ });
     expect(head.closest('th')).toHaveAttribute('aria-sort', 'descending');
@@ -1307,7 +1307,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
     const grid = data();
     expect(within(grid).queryByText('internal_flag')).toBeNull();
-    await userEvent.click(within(grid).getByRole('button', { name: 'Fields of Customers' }));
+    await userEvent.click(within(grid).getByRole('button', { name: /^Fields of Customers:/ }));
     expect(screen.queryByText('internal_flag')).toBeNull();
     // The Export menu has its own separator, so only the picker's are looked at.
     expect(screen.queryAllByRole('separator').filter((x) => !x.closest('.dm-export'))).toEqual([]);
@@ -1386,7 +1386,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
 
   test('the (?) after a field label is revealed by its row, in the picker and in the Row band', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByRole('button', { name: 'Fields of Orders' }));
+    await userEvent.click(within(grid).getByRole('button', { name: /^Fields of Orders:/ }));
     const hint = screen.getAllByLabelText('About Customer').find((el) => el.closest('.dm-checklist-row'))!;
     expect(hint.closest('.dm-checklist-row')).toHaveClass('dm-reveal-host');
     expect(hint.closest('.dm-hint-slot')).not.toBeNull();
@@ -1400,7 +1400,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
 
   test('the Fields button of a tab is an always-shown "N columns" badge; a lone main mart has no x on it', async () => {
     const grid = await ordersGrid();
-    const badge = within(grid).getByRole('button', { name: 'Fields of Orders' });
+    const badge = within(grid).getByRole('button', { name: /^Fields of Orders:/ });
     expect(badge).toHaveTextContent(/^\d+ columns?$/);
     expect(badge).not.toHaveClass('dm-reveal');
     expect(badge.closest('.dm-rule-badge')).toHaveClass('dm-rule-badge-neutral');

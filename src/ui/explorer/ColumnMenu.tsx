@@ -101,6 +101,75 @@ function EditorPanel({ row, seq, label, onEscape, children }: { row: HTMLElement
   );
 }
 
+/** The read behind a text input's suggested values, with the shared cache. */
+const valuesIn = (env: ColumnMenuEnv, f: Field, scope: 'filter' | 'slice') => { const v = env.valuesFor?.(f, scope); return v ? { ...v, cache: valueCache } : undefined; };
+
+/**
+ * The edit form of one field's Filter or Slice rule, beside `row`: the column menu's Filter / Slice submenu and the data mart badges' lists share it.
+ * A HAVING filter (one with `fn`) edits the aggregate and keeps its function. `onDone` runs after Apply or Clear.
+ */
+function RuleEditor({ kind, field, row, seq, onEscape, onDone }: { kind: 'filter' | 'slice'; field: Field; row: HTMLElement; seq: number; onEscape: () => void; onDone: () => void }) {
+  const env = useContext(ColumnMenuEnvContext);
+  const title = columnTitle(field);
+  if (kind === 'slice') {
+    if (!field.joined) return null;
+    return (
+      <EditorPanel row={row} seq={seq} label={`Slice of ${title}`} onEscape={onEscape}>
+        <FilterEditor key={JSON.stringify(env.slices[field.name])} field={sliceField(field)} value={env.slices[field.name]} values={valuesIn(env, field, 'slice')}
+          onApply={(f) => { env.setSlice(field.name, f); onDone(); }} onClear={() => { env.setSlice(field.name, undefined); onDone(); }}
+          note={<p className="mt-2 text-xs text-muted-foreground">{SLICE_NOTE}</p>} />
+      </EditorPanel>
+    );
+  }
+  const having = env.filters[field.name]?.fn;
+  return (
+    <EditorPanel row={row} seq={seq} label={`Filter of ${title}`} onEscape={onEscape}>
+      <FilterEditor key={JSON.stringify(env.filters[field.name])} field={having ? havingField(field, having) : field} value={env.filters[field.name]} values={having ? undefined : valuesIn(env, field, 'filter')}
+        onApply={(f) => { env.setFilter(field.name, having ? { ...f, fn: having } : f); onDone(); }} onClear={() => { env.setFilter(field.name, undefined); onDone(); }}
+        note={<>
+          <p className="mt-2 text-xs text-muted-foreground">{FILTER_NOTE}</p>
+          {having ? <p className="mt-2 text-xs text-muted-foreground">Filters the {fnName(having)} after grouping</p>
+            : env.isAggregated(field.name) ? <p className="mt-2 text-xs text-muted-foreground">Filters rows before they are aggregated</p> : null}
+        </>} />
+    </EditorPanel>
+  );
+}
+
+/** A click inside a dialog panel (Custom range, On, an operator) is an edit, but a click on a row is a choice, not an edit: hover intent leaves the form alone. */
+function useMarkEdits() {
+  useEffect(() => {
+    const mark = (e: MouseEvent) => { const t = e.target as Element | null; if (t?.closest('.dm-menu-row')) return; t?.closest<HTMLElement>('[data-column-menu][role="dialog"], [data-column-menu][data-form]')?.setAttribute('data-edited', ''); };
+    document.addEventListener('click', mark, true);
+    return () => document.removeEventListener('click', mark, true);
+  }, []);
+}
+
+/**
+ * The list under a data mart's "N filters" / "N slices" badge: one row per field that carries the rule. Hovering a row (or Arrow Right, or a click)
+ * opens the same edit form the column menu's Filter / Slice submenu shows. Apply and Clear save the one rule and close the list; `onClose` refocuses the badge.
+ */
+export function RuleListMenu({ kind, title, fields, anchor, onClose, onDismiss }: { kind: 'filter' | 'slice'; title: string; fields: Field[]; anchor: HTMLElement; onClose: () => void; /** A press outside or a scroll: close without moving focus. */ onDismiss: () => void }) {
+  const env = useContext(ColumnMenuEnvContext);
+  const holder = useLatest<HTMLElement | null>(anchor);
+  useMenuDismiss(true, holder, onDismiss);
+  useMarkEdits();
+  const { sub, open, hoverRow, leaveRow, closeSub } = useSubmenu<string>({ isEditing: () => panelBeingEdited(EDITING) });
+  const noun = kind === 'filter' ? 'Filters' : 'Slices';
+  const describe = (f: Field) => (kind === 'filter' ? describeColumnFilter(f, env.filters[f.name]!) : describeFilter(sliceField(f), env.slices[f.name]!));
+  const at = sub ? fields.find((f) => f.name === sub.key) : undefined;
+  return (
+    <>
+      <Panel anchor={anchor} mode="below" role="menu" label={`${noun} in ${title}`} onEscape={() => (sub ? closeSub() : onClose())} onTab={onClose} focusSeq={1} className="dm-menu-root">
+        {fields.map((f) => (
+          <Row key={f.name} label={`${columnTitle(f)}: ${describe(f)}`} sub haspopup="dialog" expanded={sub?.key === f.name}
+            onActivate={(r) => open(f.name, r, true)} onOpen={(r) => open(f.name, r, true)} onHover={(r) => hoverRow(f.name, r)} onLeaveRow={leaveRow} />
+        ))}
+      </Panel>
+      {sub && at && <RuleEditor kind={kind} field={at} row={sub.row} seq={sub.seq} onEscape={closeSub} onDone={onClose} />}
+    </>
+  );
+}
+
 const Divider = () => <div role="separator" className="dm-menu-sep" />;
 
 /** The panels whose fields count as an edit in progress. */
@@ -114,12 +183,10 @@ function MenuPopup({ field, output, anchor, initial, onClose, onHide }: { field:
   const formats = keepsUnit(output.fn) ? formatsFor(type) : [];
   const [money, setMoney] = useState<{ row: HTMLElement; seq: number } | null>(null);
   const [placed, setPlaced] = useState(false);
-  const having = env.filters[field.name]?.fn;
   // A field opened from the Fields list may not be a column: it has no Move rows and nothing to hide.
   const shown = env.isShown(field.name);
   const rootSeq = initial ? 0 : 1;
   const rows = useRef(new Map<string, HTMLElement>());
-  const valuesOf = (f: Field, scope: 'filter' | 'slice') => { const v = env.valuesFor?.(f, scope); return v ? { ...v, cache: valueCache } : undefined; };
   const ref = (k: string) => (el: HTMLElement | null) => { if (el) rows.current.set(k, el); else rows.current.delete(k); };
   // A submenu is measured from its row, so it waits until the menu has its place; a menu opened from an indicator then opens that submenu.
   const placeDone = () => {
@@ -129,12 +196,7 @@ function MenuPopup({ field, output, anchor, initial, onClose, onHide }: { field:
   };
   // Hover intent never replaces a submenu that holds a focused field or an edit.
   const { sub, setSub, open, hoverRow, hoverOther, leaveRow, closeSub } = useSubmenu<SubKey>({ isEditing: () => panelBeingEdited(EDITING), onReset: () => setMoney(null) });
-  // A click inside a dialog panel (Custom range, On, an operator) is an edit as well, but a click on a row is a choice, not an edit, so hover intent leaves the form alone.
-  useEffect(() => {
-    const mark = (e: MouseEvent) => { const t = e.target as Element | null; if (t?.closest('.dm-menu-row')) return; t?.closest<HTMLElement>('[data-column-menu][role="dialog"], [data-column-menu][data-form]')?.setAttribute('data-edited', ''); };
-    document.addEventListener('click', mark, true);
-    return () => document.removeEventListener('click', mark, true);
-  }, []);
+  useMarkEdits();
   const current = env.formatOf(field.name, type);
   // After Hide column the column is gone: focus goes to the next column's menu icon, or the previous one when it was the last.
   const hide = () => {
@@ -182,24 +244,7 @@ function MenuPopup({ field, output, anchor, initial, onClose, onHide }: { field:
         <Row label="Hide column" icon={<EyeOff />} disabled={!shown || !env.canHide(field.name)} onActivate={hide} onHover={hoverOther} onLeaveRow={leaveRow} />
         </>)}
       </Panel>
-      {placed && sub?.key === 'filter' && (
-        <EditorPanel row={sub.row} seq={sub.seq} label={`Filter of ${title}`} onEscape={closeSub}>
-          <FilterEditor key={JSON.stringify(env.filters[field.name])} field={having ? havingField(field, having) : field} value={env.filters[field.name]} values={having ? undefined : valuesOf(field, 'filter')}
-            onApply={(f) => { env.setFilter(field.name, having ? { ...f, fn: having } : f); onClose(); }} onClear={() => { env.setFilter(field.name, undefined); onClose(); }}
-            note={<>
-              <p className="mt-2 text-xs text-muted-foreground">{FILTER_NOTE}</p>
-              {having ? <p className="mt-2 text-xs text-muted-foreground">Filters the {fnName(having)} after grouping</p>
-                : env.isAggregated(field.name) ? <p className="mt-2 text-xs text-muted-foreground">Filters rows before they are aggregated</p> : null}
-            </>} />
-        </EditorPanel>
-      )}
-      {placed && sub?.key === 'slice' && field.joined && (
-        <EditorPanel row={sub.row} seq={sub.seq} label={`Slice of ${title}`} onEscape={closeSub}>
-          <FilterEditor key={JSON.stringify(env.slices[field.name])} field={sliceField(field)} value={env.slices[field.name]} values={valuesOf(field, 'slice')}
-            onApply={(f) => { env.setSlice(field.name, f); onClose(); }} onClear={() => { env.setSlice(field.name, undefined); onClose(); }}
-            note={<p className="mt-2 text-xs text-muted-foreground">{SLICE_NOTE}</p>} />
-        </EditorPanel>
-      )}
+      {placed && (sub?.key === 'filter' || sub?.key === 'slice') && <RuleEditor kind={sub.key} field={field} row={sub.row} seq={sub.seq} onEscape={closeSub} onDone={() => onClose()} />}
       {placed && sub?.key === 'aggregate' && (
         <EditorPanel row={sub.row} seq={sub.seq} label={`Aggregation of ${title}`} onEscape={closeSub}>
           <AggregationEditor key={JSON.stringify(env.draftOf(field.name))} field={field} value={env.draftOf(field.name)} blocker={env.blockerFor(field.name)}

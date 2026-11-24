@@ -1,6 +1,7 @@
 // Narrow view of @owox/plugin-sdk's PluginContext. The real context satisfies it structurally.
 // Traverse types are copied from @owox/api-client (tmp/ref/packages_api-client_src_data-marts.ts).
 
+import type { Experimental_DecisionModel } from 'ai';
 import type { AggFn, AggregationRule, DateTruncRule } from '../model/aggregation';
 
 export type RelativeDatePreset =
@@ -169,8 +170,10 @@ export interface AiModel {
     abortSignal?: AbortSignal;
   }): PromiseLike<{ content: { type: string; text?: string }[] }>;
 }
-/** The logical `ai` credential: the handle itself is the fast model, `reasoning` is there when declared. Absent when no AI is configured. */
-export type AiCredential = AiModel & { readonly fast?: AiModel; readonly reasoning?: AiModel };
+/** A decision model handle: answers typed choice, score and boolean questions about one state. */
+export type DecisionModel = Exclude<Experimental_DecisionModel, string>;
+/** The logical `ai` credential: the handle itself is the fast model, `decision` is there when declared. Absent when no AI is configured. */
+export type AiCredential = AiModel & { readonly fast?: AiModel; readonly decision?: DecisionModel };
 
 export interface CollectionLike<T> {
   get(id: string): Promise<{ document: T } | null>;

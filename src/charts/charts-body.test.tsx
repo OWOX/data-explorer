@@ -618,7 +618,7 @@ test('a chart whose fields are not shown is listed as columns hidden and drawn a
   await userEvent.click(screen.getByRole('button', { name: 'Charts options' }));
   expect(screen.getByRole('menuitemcheckbox', { name: 'Pie (columns hidden)' })).toBeTruthy();
   await userEvent.keyboard('{Escape}');
-  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
   await userEvent.click(await screen.findByLabelText(/^status/i));
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(1));

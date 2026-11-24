@@ -9,7 +9,7 @@ async function click(page: Page, loc: Locator) { const p = await centre(loc); aw
 async function addCustomers(page: Page) {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
-  await expect(data(page).getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
+  await expect(data(page).getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
 }
 async function openSub(page: Page, column: string, row: 'Filter' | 'Aggregate') {
   const icon = data(page).getByLabel(`Column menu ${column}`, { exact: true });
@@ -86,11 +86,11 @@ for (const [w, h] of [[1000, 640], [800, 500]] as const) {
 test('far right: many joined columns ticked, scrolled to the last one, Aggregate Apply and Filter Apply', async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 700 });
   await addCustomers(page);
-  await data(page).getByRole('button', { name: 'Fields of Customers' }).click();
+  await data(page).getByRole('button', { name: /^Fields of Customers:/ }).click();
   const picker = page.getByRole('dialog');
   for (const label of ['email', 'city']) await picker.getByLabel(label, { exact: true }).click();
   await page.keyboard.press('Escape');
-  await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
+  await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
   // The first option is the mart's Unique Count; the seventh field is the eighth option.
   await page.getByRole('dialog').getByRole('option').nth(7).click();
   await page.keyboard.press('Escape');

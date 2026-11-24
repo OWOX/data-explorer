@@ -77,7 +77,7 @@ test('a sort is exactly one step', async () => {
 
 test('an aggregation is exactly one step: Undo takes the Sum off and nothing more', async () => {
   setup(); await ready();
-  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
   await userEvent.click(await screen.findByLabelText('Amount'));
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -154,7 +154,7 @@ test('Cmd+Z does nothing while a column menu or the Fields picker is open', asyn
   await waitFor(() => expect(dialog).not.toBeInTheDocument());
   // The menu behind the form stays open: a press outside only closes it, so close it before the next control is used.
   await userEvent.keyboard('{Escape}');
-  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
   await screen.findByRole('dialog');
   await userEvent.keyboard('{Meta>}z{/Meta}');
   expect(filterButton()).not.toBeNull();

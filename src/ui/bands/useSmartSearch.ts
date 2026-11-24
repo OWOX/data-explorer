@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { withJoined } from '../../api/blendable';
 import { PAGE_SIZE } from '../../config';
 import type { Context, Mart, Model } from '../../model/types';
-import { pickModels } from '../../search/ai';
+import { pickModels, pipelineReady } from '../../search/ai';
+import { createDecide } from '../../search/decide';
+import type { Intent } from '../../search/intent';
+import { runPipeline, type Progress } from '../../search/pipeline';
 import { MIN_QUERY, queryProblem, searchEndpoint, type SearchHits } from '../../search/endpoint';
 import { reportSkippedMessage, reportToGrid, type ReportDto } from '../../search/report-load';
-import { buildAdhocView, findAdhocMart } from '../../search/run';
-import { sourceOfModel, useServices, useStore, type GridState } from '../../state/store';
+import { deepEqual, reducer, sourceOfModel, useServices, useStore, type Action, type GridState, type State } from '../../state/store';
 import { defaultColumns } from '../../model/columns';
 import { useLatest } from '../useLatest';
 
@@ -18,7 +20,7 @@ const NO_MART_REASON = 'No data mart found';
 export type Row =
   | { kind: 'report'; id: string; title: string; martId: string }
   | { kind: 'mart'; martId: string }
-  | { kind: 'adhoc'; martId: string | null; pending: boolean; disabled: boolean; reason?: string };
+  | { kind: 'adhoc'; query: string; pending: boolean; disabled: boolean; reason?: string };
 
 /** The contexts the found marts belong to, in the model's order: the choices of the dropdown's context filter. */
 export function contextsOfFound(martIds: string[], model: Model): Context[] {
@@ -28,19 +30,18 @@ export function contextsOfFound(martIds: string[], model: Model): Context[] {
 
 const inContexts = (mart: Mart | undefined, ids: string[]) => !!mart && mart.contextIds.some((id) => ids.includes(id));
 
-type Found = { query: string; hits: SearchHits; martId: string | null; pending: boolean };
-type Entry = { query: string; ctl: AbortController; done: Promise<{ hits: SearchHits; martId: string | null } | null> };
+type Found = { query: string; hits: SearchHits };
+type Entry = { query: string; ctl: AbortController; done: Promise<SearchHits | null> };
 const NO_HITS: SearchHits = { reports: [], marts: [] };
 
 /**
  * The Data Marts band's search: the box's open and typed state, the dropdown that fills while the member types, and what a pick
- * does. Once typing pauses, OWOX's search runs (and one AI question that names the ad-hoc report's mart, when the project has a
- * model). The list shows the ad-hoc row, then reports, then data marts, and a context filter over the found ones. Nothing is applied before a pick; the AI's view of an
- * ad-hoc report is asked for only after the member picks that row.
+ * does. Once typing pauses, OWOX's search runs (no AI while typing). The list shows the ad-hoc row, then reports, then data marts, and a context filter over the found ones. Nothing is applied before a pick; the AI pipeline of an
+ * ad-hoc report runs only after the member picks that row.
  */
 export function useSmartSearch(model: Model) {
   const [state, dispatch] = useStore();
-  const { ctx, schemas, blendable, preferences, aiTimeoutMs } = useServices();
+  const { ctx, schemas, blendable, preferences, chartSettings } = useServices();
   const applied = state.search.trim();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
@@ -53,8 +54,16 @@ export function useSmartSearch(model: Model) {
   const [notice, setNotice] = useState<string | null>(null);
   // Hidden until the stored choice has been read, so a member who dismissed it never sees it flash.
   const [hintDismissed, setHintDismissed] = useState(true);
-  const aiConfigured = useMemo(() => pickModels(ctx) !== null, [ctx]);
+  const models = useMemo(() => pickModels(ctx), [ctx]);
+  const aiReady = pipelineReady(models);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [alternatives, setAlternatives] = useState<string[]>([]);
+  const lastRun = useRef<{ query: string; hits: SearchHits; intent: Intent } | null>(null);
   const latest = useLatest({ selection: state.selection, model });
+  // The store as the pipeline last saw it. A dispatch lands in `state` a render later, so the pipeline's own dispatches are run through the reducer here as well; each render then takes the real state over.
+  const mirror = useRef<State>(state);
+  useLayoutEffect(() => { mirror.current = state; });
+  const send = (action: Action) => { mirror.current = reducer(mirror.current, action); dispatch(action); };
   const entry = useRef<Entry | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const picking = useRef<{ ctl: AbortController; query: string; kind: 'adhoc' | 'other' } | null>(null);
@@ -68,7 +77,7 @@ export function useSmartSearch(model: Model) {
 
   const stopTimer = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
   const stopSearch = useCallback(() => { entry.current?.ctl.abort(); entry.current = null; setSearching(false); }, []);
-  const stopPick = useCallback(() => { picking.current?.ctl.abort(); picking.current = null; setBuilding(false); }, []);
+  const stopPick = useCallback(() => { picking.current?.ctl.abort(); picking.current = null; setBuilding(false); setProgress(null); setAlternatives([]); }, []);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); entry.current?.ctl.abort(); picking.current?.ctl.abort(); }, []);
 
   /** Starts the search for a query, or joins the one already running for it. The answer is null when a newer query took over. */
@@ -79,19 +88,13 @@ export function useSmartSearch(model: Model) {
     const onHostAbort = () => ctl.abort();
     ctx.signal.addEventListener('abort', onHostAbort, { once: true });
     setSearching(true);
-    const deps = { ctx, model: latest.current.model, signal: ctl.signal, timeoutMs: aiTimeoutMs };
     const done = (async () => {
       try {
-        const hits = await searchEndpoint(ctx, query, deps.model, ctl.signal);
+        const hits = await searchEndpoint(ctx, query, latest.current.model, ctl.signal);
         if (ctl.signal.aborted) return null;
-        const fallback = hits.marts[0] ?? hits.reports[0]?.martId ?? null;
         setHighlighted(null);
-        setFound({ query, hits, martId: aiConfigured ? null : fallback, pending: aiConfigured });
-        if (!aiConfigured) return { hits, martId: fallback };
-        const adhoc = await findAdhocMart(deps, query, hits);
-        if (ctl.signal.aborted) return null;
-        setFound((f) => (f && f.query === query ? { ...f, martId: adhoc.martId, pending: false } : f));
-        return { hits, martId: adhoc.martId };
+        setFound({ query, hits });
+        return hits;
       } finally {
         ctx.signal.removeEventListener('abort', onHostAbort);
         if (entry.current?.ctl === ctl) setSearching(false);
@@ -100,25 +103,27 @@ export function useSmartSearch(model: Model) {
     const next: Entry = { query, ctl, done };
     entry.current = next;
     return next;
-  }, [ctx, aiConfigured, aiTimeoutMs, latest]);
+  }, [ctx, latest]);
 
   const trimmed = draft.trim();
   const allRows = useMemo<Row[]>(() => {
     if (!trimmed) return [];
-    if (trimmed.length < MIN_QUERY) return [{ kind: 'adhoc', martId: null, pending: false, disabled: true, reason: SHORT_REASON }];
-    // The previous query's reports and marts stay while a new one is in flight; only the ad-hoc row waits.
-    if (!found) return [{ kind: 'adhoc', martId: null, pending: true, disabled: true }];
-    const stale = found.query !== trimmed;
+    if (trimmed.length < MIN_QUERY) return [{ kind: 'adhoc', query: trimmed, pending: false, disabled: true, reason: SHORT_REASON }];
+    const stale = !found || found.query !== trimmed;
+    const fallback = found && !stale ? found.hits.marts[0] ?? found.hits.reports[0]?.martId ?? null : null;
+    // Without a pipeline-ready AI the row waits for the search and opens the first mart it found.
+    const adhoc: Row = aiReady
+      ? { kind: 'adhoc', query: trimmed, pending: false, disabled: false }
+      : stale ? { kind: 'adhoc', query: trimmed, pending: true, disabled: true }
+        : fallback ? { kind: 'adhoc', query: trimmed, pending: false, disabled: false }
+          : { kind: 'adhoc', query: trimmed, pending: false, disabled: true, reason: NO_MART_REASON };
+    if (!found) return [adhoc];
     return [
-      found.pending || stale
-        ? { kind: 'adhoc', martId: null, pending: true, disabled: true }
-        : found.martId
-          ? { kind: 'adhoc', martId: found.martId, pending: false, disabled: false }
-          : { kind: 'adhoc', martId: null, pending: false, disabled: true, reason: NO_MART_REASON },
+      adhoc,
       ...found.hits.reports.map((r): Row => ({ kind: 'report', id: r.id, title: r.title, martId: r.martId })),
       ...found.hits.marts.map((martId): Row => ({ kind: 'mart', martId })),
     ];
-  }, [trimmed, found]);
+  }, [trimmed, found, aiReady]);
   /** The filter's choices: the contexts of the marts the rows name. */
   const contexts = useMemo(
     () => contextsOfFound(allRows.flatMap((r) => (r.kind === 'adhoc' ? [] : [r.martId])), model),
@@ -163,6 +168,8 @@ export function useSmartSearch(model: Model) {
     const ctl = new AbortController();
     picking.current = { ctl, query, kind };
     setBuilding(false);
+    setProgress(null);
+    setAlternatives([]);
     setNotice(null);
     return ctl;
   };
@@ -192,23 +199,41 @@ export function useSmartSearch(model: Model) {
     dispatch({ type: 'selectMart', id: martId, sourceOf: sourceOfModel(latest.current.model) });
   };
 
-  const pickAdhoc = async (query: string, martId: string, hits: SearchHits, ctl: AbortController) => {
-    try {
-      const native = await schemas.get(martId);
-      if (ctl.signal.aborted) return;
-      const first: GridState = { columns: defaultColumns(native), filters: {}, sorts: null, limit: PAGE_SIZE };
-      dispatch({ type: 'smartFound', query, ids: idsWith(hits, martId) });
-      const selection = { sourceKey: keepSource(martId), martId, record: null };
-      // Always a history entry, so one Undo takes back the pick and the AI's grid together, even when the mart was already open.
-      dispatch({ type: 'setMarts', selection, grids: { [martId]: first }, always: true });
-      if (!aiConfigured) return;
-      setBuilding(true);
-      const view = await buildAdhocView({ ctx, model: latest.current.model, schemas, signal: ctl.signal, timeoutMs: aiTimeoutMs }, query, martId);
-      if (ctl.signal.aborted) return;
-      // The reducer drops the fill when the member edited the grid or moved to another mart meanwhile.
-      if (view.grid) dispatch({ type: 'fillGrid', martId, expect: first, grid: view.grid });
-      else if (view.ai === 'unavailable') setNotice("AI couldn't set up the view. Showing the default view.");
-    } finally { finishPick(ctl); }
+  /** Opens a mart in its default columns as one Undo step; the pipeline's fills land on this grid. */
+  const openDefault = async (query: string, martId: string, hits: SearchHits, ctl: AbortController): Promise<GridState | null> => {
+    const native = await schemas.get(martId);
+    if (ctl.signal.aborted) return null;
+    const first: GridState = { columns: defaultColumns(native), filters: {}, sorts: null, limit: PAGE_SIZE };
+    send({ type: 'smartFound', query, ids: idsWith(hits, martId) });
+    // Always a history entry, so one Undo takes back the pick and the pipeline's grid together, even when the mart was already open.
+    send({ type: 'setMarts', selection: { sourceKey: keepSource(martId), martId, record: null }, grids: { [martId]: first }, always: true });
+    return first;
+  };
+
+  const runAdhoc = async (query: string, hits: SearchHits, ctl: AbortController, opts: { intent?: Intent; mainId?: string } = {}) => {
+    if (!models || !pipelineReady(models)) {
+      const martId = hits.marts[0] ?? hits.reports[0]?.martId;
+      if (martId) await openDefault(query, martId, hits, ctl); else dispatch({ type: 'search', q: query });
+      return;
+    }
+    setAlternatives([]);
+    const decide = createDecide(models.decision);
+    const result = await runPipeline(
+      { query, hits, model: latest.current.model, ...opts },
+      { ctx, decide, fast: models.fast, signal: ctl.signal, schemas, blendable },
+      {
+        open: (martId) => openDefault(query, martId, hits, ctl),
+        fill: (martId, expect, grid) => { if (!ctl.signal.aborted) send({ type: 'fillGrid', martId, expect, grid }); },
+        owns: (martId, grid) => { const s = mirror.current; return s.future.length === 0 && s.selection.martId === martId && deepEqual(s.grids[martId] ?? null, grid); },
+        progress: (p) => { if (!ctl.signal.aborted) setProgress(p); },
+        alternatives: (ids, intent) => { if (ctl.signal.aborted) return; lastRun.current = { query, hits, intent }; setAlternatives(ids); },
+        chartSettings,
+      },
+    );
+    if (ctl.signal.aborted) return;
+    lastRun.current = { query, hits, intent: result.intent };
+    if (result.status === 'nothing') dispatch({ type: 'search', q: query });
+    if (result.status === 'failed') setNotice("AI couldn't finish the report. Showing what it built so far.");
   };
 
   const pick = (row?: Row) => {
@@ -224,19 +249,26 @@ export function useSmartSearch(model: Model) {
     if (row?.kind === 'mart') { pickMart(row.martId, rowQuery, current); return; }
     if (row?.disabled && row.kind === 'adhoc' && !row.pending) { stopPick(); dispatch({ type: 'search', q: query }); return; }
     if (query.length < MIN_QUERY) { stopPick(); dispatch({ type: 'search', q: query }); return; }
-    // The ad-hoc row: wait for the search for this query, which may still be running.
     if (picking.current?.kind === 'adhoc' && picking.current.query === query) return;
     const ctl = newPick(query, 'adhoc');
     setBuilding(true);
     void (async () => {
       try {
-        const answer = await fetchFor(query).done;
-        if (ctl.signal.aborted || !answer) return;
-        if (!answer.martId) { dispatch({ type: 'search', q: query }); return; }
-        await pickAdhoc(query, answer.martId, answer.hits, ctl);
+        const hits = await fetchFor(query).done;
+        if (ctl.signal.aborted || !hits) return;
+        await runAdhoc(query, hits, ctl);
       } catch { /* A failed search or schema read leaves the page as it was. */ }
-      finally { finishPick(ctl); }
+      finally { finishPick(ctl); if (picking.current === null) setProgress(null); }
     })();
+  };
+
+  const chooseAlternative = (martId: string) => {
+    const last = lastRun.current;
+    if (!last) return;
+    const ctl = newPick(last.query, 'adhoc');
+    setBuilding(true);
+    setAlternatives([]);
+    void runAdhoc(last.query, last.hits, ctl, { intent: last.intent, mainId: martId }).catch(() => undefined).finally(() => { finishPick(ctl); if (picking.current === null) setProgress(null); });
   };
 
   const listOpen = open && listShown && rows.length > 0;
@@ -254,7 +286,7 @@ export function useSmartSearch(model: Model) {
   const clear = () => {
     stopTimer(); stopSearch(); stopPick();
     setDraft(''); draftRef.current = '';
-    setFound(null); setHighlighted(null); setNotice(null); setListShown(false); setContextIds([]);
+    setFound(null); setHighlighted(null); setNotice(null); setListShown(false); setContextIds([]); setAlternatives([]);
     if (state.search || state.found.length) dispatch({ type: 'search', q: '' });
   };
 
@@ -281,9 +313,10 @@ export function useSmartSearch(model: Model) {
     listOpen,
     closeList: () => { setListShown(false); setHighlighted(null); },
     notice,
+    progress, alternatives, chooseAlternative,
     dismissNotice: () => setNotice(null),
     /** The one-line hint that suggests plugging AI in: only while the search is in use, only without a model, until dismissed. */
-    hintVisible: (open || applied !== '') && !aiConfigured && !hintDismissed,
+    hintVisible: (open || applied !== '') && !aiReady && !hintDismissed,
     dismissHint: () => { setHintDismissed(true); preferences.dismissAiHint(); },
   };
 }

@@ -15,7 +15,7 @@ const data = () => document.getElementById('band-data')!;
 const bodyRows = () => within(data()).getAllByRole('row').filter((r) => r.querySelector('td'));
 const ready = () => waitFor(() => expect(bodyRows().some((r) => r.querySelector('td')?.textContent)).toBe(true));
 async function show(label: string) {
-  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
   await userEvent.click(await screen.findByLabelText(label));
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

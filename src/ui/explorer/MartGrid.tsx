@@ -43,6 +43,7 @@ import { blockOf, selectionTsv, type GridSelection } from './copySelection';
 import { ColumnDragLayer } from './ColumnDrag';
 import { ColumnControls, ColumnMenuEnvContext, type ColumnMenuEnv } from './ColumnMenu';
 import { ColumnPicker, MartRuleBadges } from './ColumnPicker';
+import { BadgeRow } from './badgeReserve';
 import { ExportMenu } from './ExportMenu';
 import { defaultColumns } from '../../model/columns';
 import { buildRowQuery, useMartRows } from './useMartRows';
@@ -1020,13 +1021,15 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
                   }} className="dm-gh dm-gh-edge overflow-hidden px-1 py-1 text-left font-semibold">
                     <div className="flex min-w-0 items-center gap-1">
                       <span className="inline-flex shrink-0 text-muted-foreground"><PickedIcon icon={g.icon} fallback={Box} size={14} /></span>
-                      <span className="truncate">{g.title}</span>
+                      <span data-title-text="" className="truncate">{g.title}</span>
                       {g.description?.trim() && <span className="dm-reveal"><Hint text={g.description} label={`About ${g.title}`} /></span>}
+                      <BadgeRow>
                       <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} unique={uniqueOffered.has(g.path) ? { on: ucNow.includes(g.path), onToggle: () => toggleUnique(g.path) } : undefined}
-                        remove={several || !g.main ? { onRemove: () => remove(g, i), disabled: removing } : undefined} />
+                        remove={several || !g.main ? { onRemove: () => remove(g, i), disabled: removing } : undefined} columns={g.span} />
                       <MartRuleBadges title={g.title} fields={fieldsOf(g)} filters={filters} slices={slices}
                         onClearFilters={(names) => edit(() => setAllFilters((cur) => dropKeys(cur, names)))}
                         onClearSlices={(names) => edit(() => setAllSlices((cur) => dropKeys(cur, names)))} />
+                      </BadgeRow>
                     </div>
                   </th>
                 ))}

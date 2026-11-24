@@ -7,7 +7,7 @@ const data = (page: Page) => page.locator('#band-data');
 async function centre(loc: Locator) { const b = (await loc.boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }
 async function click(page: Page, loc: Locator) { const p = await centre(loc); await page.mouse.move(p.x, p.y, { steps: 8 }); await page.mouse.down(); await page.mouse.up(); }
 async function tick(page: Page, label: string) {
-  await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
+  await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
   await page.getByRole('dialog').getByLabel(label, { exact: true }).click();
   await page.keyboard.press('Escape');
 }

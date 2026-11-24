@@ -19,7 +19,7 @@ const bodyRows = () => within(data()).getAllByRole('row').filter((r) => r.queryS
 
 async function showAmount() {
   await waitFor(() => expect(bodyRows().some((r) => r.querySelector('td')?.textContent)).toBe(true));
-  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
   await userEvent.click(await screen.findByLabelText('Amount'));
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

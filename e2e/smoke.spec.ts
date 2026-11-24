@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => { await page.goto('/?mock&keyshown'); });
 
 async function ordersGrid(page: Page) {
   const data = band(page, 'data');
-  await expect(data.locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
   await expect(data.getByRole('row')).toHaveCount(202);
   return data;
 }
@@ -32,9 +32,9 @@ async function openColumnSub(data: Locator, title: string, row: 'Filter' | 'Aggr
 /** Adds the mart to the grid with a click (the new card is selected), then promotes it with the header's "Make it main" button. */
 async function makeMain(page: Page, title: string) {
   await martCard(page, title).click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', title]);
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders', title]);
   await band(page, 'marts').getByRole('button', { name: /^Make it main: / }).click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText([title]);
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText([title]);
 }
 
 /** Makes a mart main through the header search: find it by search, which makes the best match the main mart (a click does it if it has not). */
@@ -44,7 +44,7 @@ async function makeMainViaSearch(page: Page, title: string) {
   if (!(await box.isVisible())) await header.getByRole('button', { name: /^Search data marts/ }).click();
   await box.fill(title);
   await box.press('Enter');
-  const first = band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first();
+  const first = band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first();
   const card = band(page, 'marts').locator('article', { hasText: title }).first();
   await expect(card).toBeVisible();
   if ((await first.textContent()) !== title) await card.click();
@@ -76,7 +76,7 @@ test('a source click narrows the marts; clicking it again returns', async ({ pag
   await expect(band(page, 'marts').getByText('Sessions', { exact: true })).toHaveCount(0);
   await expect(band(page, 'data').getByText('Select a data mart.')).toBeVisible();
   await shopify.click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
 });
 
 test('three Fibery connectors are one source card; selecting it shows all their marts', async ({ page }) => {
@@ -90,7 +90,7 @@ test('three Fibery connectors are one source card; selecting it shows all their 
   await expect(band(page, 'marts').getByText('Orders', { exact: true })).toHaveCount(0);
 });
 
-const heading = (page: Page) => band(page, 'data').locator('thead tr[data-group-row] th[data-group]');
+const heading = (page: Page) => band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate');
 const search = async (page: Page, q: string) => {
   const header = page.locator('header.dm-page-header');
   const box = header.getByRole('combobox', { name: 'Search data marts' });
@@ -124,7 +124,7 @@ test('search dropdown: the ad-hoc row first, then reports, then marts, under a c
   const box = page.locator('header.dm-page-header').getByRole('combobox', { name: 'Search data marts' });
   await box.fill('paid orders');
   const options = page.getByRole('listbox').getByRole('option');
-  await expect(options.first()).toHaveText('Ad-hoc report');
+  await expect(options.first()).toHaveText('Ad-hoc report "paid orders"');
   await expect(options.nth(1)).toContainText('Paid orders by month');
   await expect(page.getByRole('group', { name: 'Filter by context' }).getByRole('button').first()).toBeVisible();
   await expect(box).toHaveAttribute('aria-expanded', 'true');
@@ -148,17 +148,22 @@ test('picking a report from the dropdown opens its mart with the report\'s filte
 test('smart search with AI: finds a mart by meaning, applies the filters it asks for, and Undo takes the whole result back', async ({ page }) => {
   await ordersGrid(page);
   await search(page, 'who are our buyers');
-  await expect(heading(page)).toHaveText(['Customers']);
+  await expect(heading(page).first()).toHaveText('Customers');
   await expect(band(page, 'data').getByRole('cell', { name: /@example\.com$/ }).first()).toBeVisible();
   await search(page, 'paid orders last month');
-  await expect(heading(page)).toHaveText(['Orders']);
+  await expect(heading(page).first()).toHaveText('Orders');
   await expect(band(page, 'data').getByLabel('Filter status')).toHaveClass(/dm-ctl-on/);
   await expect(band(page, 'data').getByLabel('Filter created_at')).toHaveClass(/dm-ctl-on/);
+  // The pipeline ends on the charts view (wait for it, or its last step would undo the switch): the table shows what the filters let through.
+  await expect(band(page, 'data').getByRole('radio', { name: 'Charts' })).toBeChecked();
+  await band(page, 'data').getByRole('radio', { name: 'Table' }).click();
   await expect(band(page, 'data').getByRole('cell', { name: 'paid', exact: true }).first()).toBeVisible();
   await expect(band(page, 'data').getByRole('cell', { name: 'new', exact: true })).toHaveCount(0);
   await expect(band(page, 'marts').getByRole('note', { name: 'AI search hint' })).toHaveCount(0);
+  // The first Undo takes the switch to the table back, the second the whole AI result.
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(heading(page)).toHaveText(['Customers']);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(heading(page).first()).toHaveText('Customers');
 });
 
 test('smart search with no AI configured: no error, the hint shows once and stays dismissed, nothing found says so', async ({ page }) => {
@@ -225,7 +230,7 @@ test('filter, reset, columns, a row fills the Row band, Back returns', async ({ 
   await expect(data.getByRole('row')).toHaveCount(5);
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(data.getByRole('row')).toHaveCount(202);
-  await data.getByRole('button', { name: 'Fields of Orders' }).click();
+  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
   await page.getByRole('option', { name: /amount/i }).click();
   await expect(data.getByRole('columnheader')).toHaveCount(7);
   await page.keyboard.press('Escape');
@@ -244,7 +249,7 @@ test('a mart Orders cannot join is not in the band, not even as a ghost; a searc
   await makeMainViaSearch(page, 'Order Items');
   await expect(martCard(page, 'Order Items')).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
 });
 
 test('a reference column shows the stored value as plain text; Referenced by opens the referencing mart, and Undo restores the record', async ({ page }) => {
@@ -258,24 +263,28 @@ test('a reference column shows the stored value as plain text; Referenced by ope
   // nothing in the record is a link, and nothing says "via"
   await expect(row.locator('dd button')).toHaveCount(0);
   await row.getByRole('region', { name: 'Referenced by' }).getByRole('button', { name: /^Orders/ }).click();
-  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', 'Customers']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders', 'Customers']);
   await expect(row.getByText('Select a row.')).toBeVisible();
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Customers']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Customers']);
   await expect(row.getByRole('heading', { name: /^Customers · \d+$/ })).toBeVisible();
 });
 
 test('the storage filter drops the marts of an unticked storage and leaves the selection alone', async ({ page }) => {
   await ordersGrid(page);
-  await makeMainViaSearch(page, 'Payments');
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Payments');
+  // A mart row of the dropdown keeps the found marts in the band (the ad-hoc pipeline would also join the ones it needs).
+  const header = page.locator('header.dm-page-header');
+  await header.getByRole('button', { name: 'Search data marts' }).click();
+  await header.getByRole('combobox', { name: 'Search data marts' }).fill('orders');
+  await page.getByRole('option').filter({ hasText: /^Payments$/ }).click();
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Payments');
   await expect(band(page, 'marts').getByText('Customers', { exact: true })).toBeVisible();
   const menu = band(page, 'marts').locator('details.dm-filter', { hasText: 'Storage' });
   await menu.locator('summary').click();
   await menu.getByRole('option', { name: /Demo Warehouse/ }).click();
   await expect(band(page, 'marts').getByText('Customers', { exact: true })).toHaveCount(0);
   await expect(martCard(page, 'Payments')).toHaveAttribute('aria-pressed', 'true');
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Payments');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Payments');
 });
 
 test('rows open newest date first, and Reset returns to it', async ({ page }) => {
@@ -284,7 +293,7 @@ test('rows open newest date first, and Reset returns to it', async ({ page }) =>
   await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'none');
-  await data.getByRole('button', { name: 'Fields of Orders' }).click();
+  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
   await page.getByRole('option', { name: /created_at/ }).click();
   await page.keyboard.press('Escape');
   await expect(data.getByRole('columnheader', { name: /created_at/ })).toHaveAttribute('aria-sort', 'descending');
@@ -292,7 +301,7 @@ test('rows open newest date first, and Reset returns to it', async ({ page }) =>
 
 test('a date column filter opens on presets; a preset applies at once and names the filter', async ({ page }) => {
   const data = await ordersGrid(page);
-  await data.getByRole('button', { name: 'Fields of Orders' }).click();
+  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
   await page.getByRole('option', { name: /created_at/ }).click();
   await page.keyboard.press('Escape');
   await openColumnSub(data, 'created_at', 'Filter');
@@ -311,13 +320,13 @@ test('a date column filter opens on presets; a preset applies at once and names 
 test('Undo and Redo step through the selection', async ({ page }) => {
   await ordersGrid(page);
   await makeMainViaSearch(page, 'Order Items');
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Order Items');
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
   await page.getByRole('button', { name: 'Redo' }).click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Order Items');
   await page.keyboard.press('Alt+ArrowLeft');
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
 });
 
 test('sort a column descending, then add a second sort', async ({ page }) => {
@@ -388,7 +397,7 @@ test('Copy to clipboard: the loaded rows are copied as TSV and the status says s
 
 test('selecting a joinable mart adds its first text column; the × removes it; reselecting restores the same field', async ({ page }) => {
   const data = await ordersGrid(page);
-  const title = (t: string) => expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(t.split(' + '));
+  const title = (t: string) => expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(t.split(' + '));
   await martCard(page, 'Customers').click();
   await title('Orders + Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · name/ })).toBeVisible();
@@ -408,12 +417,14 @@ test('selecting a joinable mart adds its first text column; the × removes it; r
 test('removing the main group promotes the next joined one; a mart the main one cannot join becomes the main one through a search', async ({ page }) => {
   const data = await ordersGrid(page);
   await martCard(page, 'Customers').click();
-  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', 'Customers']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders', 'Customers']);
+  // The x unfolds with its "N columns" badge.
+  await data.getByRole('button', { name: /^Fields of Orders:/ }).hover();
   await data.getByRole('button', { name: 'Remove Orders from the grid' }).click();
-  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Customers']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Customers']);
   await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
   await makeMainViaSearch(page, 'Sessions');
-  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Sessions']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Sessions']);
 });
 
 /** Waits for a body cell under "Amount · Sum" with a number in it (the grouped rows have arrived) and returns its text. */
@@ -430,7 +441,7 @@ async function groupedSum(grid: Locator): Promise<string> {
 }
 
 async function tick(page: Page, label: string | RegExp, group?: string) {
-  await band(page, 'data').getByRole('button', { name: `Fields of ${group ?? 'Orders'}` }).click();
+  await band(page, 'data').getByRole('button', { name: new RegExp(`^Fields of ${group ?? 'Orders'}:`) }).click();
   await page.getByRole('dialog').getByLabel(label, { exact: true }).click();
   await page.keyboard.press('Escape');
 }
@@ -479,7 +490,7 @@ test('the (?) after a field label shows only while its row is hovered', async ({
 
 test('opening the Fields picker by mouse leaves every (?) hidden until a row is hovered', async ({ page }) => {
   const data = await ordersGrid(page);
-  await data.getByRole('button', { name: 'Fields of Orders' }).click();
+  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
   const dialog = page.getByRole('dialog');
   await page.mouse.move(2, 2);
   const slots = dialog.locator('.dm-hint-slot');
@@ -568,7 +579,7 @@ for (const width of [320, 360]) {
 test('a joined column: tick Customers · email in the picker, and it filters', async ({ page }) => {
   const data = await ordersGrid(page);
   await martCard(page, 'Customers').click();
-  await expect(data.getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
+  await expect(data.getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
   await tick(page, 'email', 'Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
   await expect(data.getByRole('row').nth(3)).toContainText('@example.com');
@@ -596,7 +607,7 @@ test('a table wider than the page scrolls inside its card and never widens the b
   await page.keyboard.press('Escape');
   await expect(martCard(page, 'Customers')).not.toHaveAttribute('data-focused', /.*/);
   await martCard(page, 'Products').click();
-  await expect(data.getByRole('button', { name: 'Fields of Products' })).toBeVisible();
+  await expect(data.getByRole('button', { name: /^Fields of Products:/ })).toBeVisible();
   await tick(page, 'email', 'Customers');
   await tick(page, 'is_gift');
   await martCard(page, 'Stores').click();
@@ -611,18 +622,18 @@ test('a table wider than the page scrolls inside its card and never widens the b
 test('a group row names each selected mart; the x on a joined group removes it and deselects its card', async ({ page }) => {
   const data = await ordersGrid(page);
   // one tab spanning the columns, no x while it is the only mart
-  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders']);
   await expect(data.getByRole('button', { name: 'Remove Orders from the grid' })).toHaveCount(0);
   await martCard(page, 'Customers').click();
-  const groups = data.locator('thead tr[data-group-row] th[data-group]');
-  await expect(groups).toHaveText(['Orders', 'Customers']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders', 'Customers']);
+  // The x sits on the joined mart's "N columns" badge: folded at rest, shown when the badge is hovered.
   const x = data.getByRole('button', { name: 'Remove Customers from the grid' });
   await expect(x).toHaveCSS('opacity', '0');
-  await groups.nth(1).hover();
+  await data.getByRole('button', { name: /^Fields of Customers:/ }).hover();
   await expect(x).toHaveCSS('opacity', '1');
   await x.click();
-  await expect(data.locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
-  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
+  await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders']);
   await expect(martCard(page, 'Customers')).not.toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -630,7 +641,7 @@ test('the Fields picker is on each tab and lists only that mart; the toolbar has
   const data = await ordersGrid(page);
   await expect(data.getByRole('button', { name: /^Columns \(/ })).toHaveCount(0);
   await martCard(page, 'Customers').click();
-  await data.getByRole('button', { name: 'Fields of Customers' }).click();
+  await data.getByRole('button', { name: /^Fields of Customers:/ }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText(/^Fields · /)).toHaveCount(0);
   await expect(dialog.getByRole('option')).toHaveCount(6);
@@ -641,7 +652,7 @@ test('the Fields picker is on each tab and lists only that mart; the toolbar has
 test('selecting a mart adds a text field and a metric; the filter mark carries no text', async ({ page }) => {
   const data = await ordersGrid(page);
   await martCard(page, 'Products').click();
-  await expect(data.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', 'Products']);
+  await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders', 'Products']);
   await expect(data.locator('thead tr[data-group-row] th[data-group]').nth(1)).toHaveAttribute('colspan', '2');
   await openColumnSub(data, 'id', 'Filter');
   await page.getByLabel('Value').fill('3');
@@ -663,7 +674,7 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   const data = await ordersGrid(page);
   // Two header rows (the mart tabs and the column titles), then the rows.
   await martCard(page, 'Customers').click();
-  await expect(data.getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
+  await expect(data.getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
   await tick(page, 'email', 'Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
   await openColumnSub(data, 'id', 'Filter');
@@ -682,7 +693,7 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   const opened = await context.newPage();
   await opened.goto(`/?mock&route=${encodeURIComponent(link)}`);
   const grid = band(opened, 'data');
-  await expect(grid.locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders', 'Customers']);
+  await expect(grid.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders', 'Customers']);
   await expect(grid.getByRole('row')).toHaveCount(5);
   await expect(grid.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
   await expect(grid.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
@@ -694,9 +705,9 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   await expect.poll(() => new URL(opened.url()).searchParams.has('route')).toBe(false);
   await opened.reload();
   // Wait for the default view to finish loading, then check the link was not reapplied.
-  await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
   await expect(band(opened, 'data').getByRole('row').nth(1)).toBeVisible();
-  await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group]')).toHaveText(['Orders']);
+  await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders']);
   await expect(band(opened, 'data').getByRole('row')).not.toHaveCount(5);
   await expect(opened.getByRole('status').filter({ hasText: /\S/ })).toHaveCount(0);
   expect(new URL(opened.url()).searchParams.has('route')).toBe(false);
@@ -734,11 +745,11 @@ test('a link to a data mart the opener cannot see shows a notice and the page st
   const notice = opened.getByRole('status').filter({ hasText: "Some parts of this link aren't available to you" });
   await expect(notice).toBeVisible();
   await expect(notice).toContainText('the data mart');
-  await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
   await notice.getByRole('button', { name: 'Dismiss' }).click();
   await expect(notice).toHaveCount(0);
   await makeMainViaSearch(opened, 'Order Items');
-  await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Order Items');
+  await expect(band(opened, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Order Items');
 });
 
 test('a Sum on Amount groups the rows by the other columns; the badge counts groups and a group opens no record', async ({ page }) => {
@@ -794,10 +805,10 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
     return pick.map((e) => getComputedStyle(e).borderRadius);
   });
   expect(radii.every((r) => r === '0px')).toBe(true);
-  // the column menu icon and the Fields icon are 15px; the (i) and the active indicators stay 20% under the old 14px
+  // the column menu icon is 15px; the (i) and the active indicators stay 20% under the old 14px. The Fields button is an "N columns" badge.
   const size = (l: Locator) => l.evaluate((e) => Math.round(e.getBoundingClientRect().width * 10) / 10);
   expect(await size(data.locator('[data-menu-icon] .dm-icon').first())).toBe(15);
-  expect(await size(data.getByRole('button', { name: 'Fields of Orders' }).locator('.dm-icon'))).toBe(15);
+  await expect(data.getByRole('button', { name: /^Fields of Orders:/ })).toHaveText(/^\d+ columns?$/);
   expect(await size(data.locator('.dm-th .dm-col-info .dm-icon').first())).toBe(11.2);
   // no row highlight on hover
   const second = data.locator('tbody tr').nth(1).locator('td').first();
@@ -856,7 +867,7 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
 
 test('a numeric filter applied through the popover (> 400) leaves fewer rows', async ({ page }) => {
   const data = await ordersGrid(page);
-  await data.getByRole('button', { name: 'Fields of Orders' }).click();
+  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
   await page.getByRole('option', { name: /Amount/ }).click();
   await page.keyboard.press('Escape');
   await expect(data.getByLabel('Column menu Amount')).toBeVisible();
@@ -903,7 +914,8 @@ test('a no-primary-key mart shows a warning next to the Data (i), not a block ab
   const header = page.locator('header.dm-page-header');
   await header.getByRole('button', { name: 'Search data marts' }).click();
   await header.getByRole('combobox', { name: 'Search data marts' }).fill('daily');
-  await page.keyboard.press('Enter');
+  // The ad-hoc pipeline picks among marts with a key, so the keyless mart is opened from its row.
+  await page.getByRole('option').filter({ hasText: /^Daily KPIs$/ }).click();
   await expect(band(page, 'data').getByRole('note', { name: /no primary key/ })).toBeVisible();
   await expect(band(page, 'data').getByText('Preview only', { exact: false })).toHaveCount(0);
 });
@@ -953,7 +965,7 @@ test('full screen: the Data band alone fills the plugin area, its title stays, E
   await expect(band(page, 'sources')).toBeHidden();
   await expect(band(page, 'row')).toBeHidden();
   await expect(data.getByRole('heading', { name: 'Data' })).toBeVisible();
-  await expect(data.locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
   // The band covers the viewport, and the grid scroller takes what the title row leaves.
   const view = page.viewportSize()!;
   const box = (await data.boundingBox())!;
@@ -996,21 +1008,19 @@ test('full screen: the Data band alone fills the plugin area, its title stays, E
   await expect(cell).toHaveAttribute('data-selected', '');
 });
 
-test('the column menu icon and the Fields icon are invisible at rest, show on header hover and on keyboard focus, and the menu icon stays on for a filtered column', async ({ page }) => {
+test('the column menu icon is invisible at rest, shows on header hover and on keyboard focus, and stays on for a filtered column; the "N columns" badge is always shown', async ({ page }) => {
   const data = await ordersGrid(page);
   const opacity = (l: Locator) => l.evaluate((el) => getComputedStyle(el).opacity);
   const menuIcon = data.getByLabel('Column menu id');
-  const fields = data.getByLabel('Fields of Orders');
+  const fields = data.getByLabel(/^Fields of Orders:/);
   await page.mouse.move(0, 0);
   await expect.poll(() => opacity(menuIcon)).toBe('0');
-  await expect.poll(() => opacity(fields)).toBe('0');
+  await expect.poll(() => opacity(fields)).toBe('1');
   await menuIcon.locator('xpath=ancestor::th').hover();
   await expect.poll(() => opacity(menuIcon)).toBe('1');
-  await fields.locator('xpath=ancestor::th').hover();
-  await expect.poll(() => opacity(fields)).toBe('1');
   // Keyboard: move the pointer away, focus the control before each one with the mouse-free Tab.
   await page.mouse.move(0, 0);
-  for (const icon of [menuIcon, fields]) {
+  for (const icon of [menuIcon]) {
     await expect.poll(() => opacity(icon)).toBe('0');
     await page.keyboard.press('Escape');
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
