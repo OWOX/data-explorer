@@ -2,7 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { vi } from 'vitest';
 import { stubCtx, traversalOf } from '../../api/test-ctx';
-import type { TraverseOptions } from '../../sdk/types';
+import type { Traversal, TraverseOptions } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
 import { buildRowQuery, useMartRows } from './useMartRows';
 import { defaultColumns } from '../../model/columns';
@@ -202,5 +202,127 @@ describe('slices and HAVING filters in the rows query', () => {
 
   test('a HAVING filter of a plain (ungrouped) query is not sent', () => {
     expect(buildRowQuery(s, ['id', 'amount'], [{ field: 'amount', op: 'gt', value: 100, fn: 'SUM' }], 200).filter).toBeUndefined();
+  });
+});
+
+describe('the total row count', () => {
+  const asked = (traverseData: { mock: { calls: [string, TraverseOptions][] } }) => traverseData.mock.calls.map((c) => c[1].includeTotalRowCount === true);
+  function countCtx(total: number | null = 450) {
+    const traverseData = vi.fn<(id: string, o: TraverseOptions) => Promise<Traversal>>(async () => ({ ...traversalOf([{ id: 1, a: 'x' }]), totalRowCount: total ?? undefined }));
+    const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
+    const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
+    return { traverseData, wrapper };
+  }
+  const withSort = (column: string[], dir: 'asc' | 'desc', limit = 201): TraverseOptions => ({ column, limit, sort: [{ column: 'a', direction: dir }] });
+  const run = (initial: { o: TraverseOptions; v: number }, total?: number | null) => {
+    const c = countCtx(total);
+    const hook = renderHook(({ o, v }) => useMartRows('m', o, v), { wrapper: c.wrapper, initialProps: initial });
+    return { ...c, ...hook };
+  };
+
+  test('the first read asks and total is set', async () => {
+    const { traverseData, result } = run({ o: opts(['id', 'a']), v: 0 });
+    await waitFor(() => expect(result.current.total).toBe(450));
+    expect(asked(traverseData)).toEqual([true]);
+  });
+
+  test('Load more does not ask and keeps total, even while the bigger read is in flight', async () => {
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a'], 201), v: 0 });
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'a'], 401), v: 0 });
+    expect(result.current.loading).toBe(true);
+    expect(result.current.total).toBe(450);
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.total).toBe(450);
+    expect(asked(traverseData)).toEqual([true, false]);
+  });
+
+  test('a sort change does not ask', async () => {
+    const { traverseData, result, rerender } = run({ o: withSort(['id', 'a'], 'asc'), v: 0 });
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: withSort(['id', 'a'], 'desc'), v: 0 });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(asked(traverseData)).toEqual([true, false]);
+    expect(result.current.total).toBe(450);
+  });
+
+  test('a filter change asks, and the old total is not shown for another result of the same shape', async () => {
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0 }, 450);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: { ...opts(['id', 'a']), filter: [{ column: 'id', operator: 'eq' as const, value: 1 }] }, v: 0 });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    expect(asked(traverseData)).toEqual([true, true]);
+  });
+
+  test('a version change (Refresh or Retry) asks', async () => {
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0 });
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'a']), v: 1 });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    expect(asked(traverseData)).toEqual([true, true]);
+  });
+
+  test('a never-loaded column asks; a loaded one does not', async () => {
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0 });
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'a', 'b']), v: 0 });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    rerender({ o: opts(['id', 'a']), v: 0 });
+    expect(traverseData).toHaveBeenCalledTimes(2);
+    expect(asked(traverseData)).toEqual([true, true]);
+  });
+
+  test('total is null while the rows on show are of another shape', async () => {
+    const { result, rerender } = run({ o: opts(['id', 'a']), v: 0 });
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: { column: ['a'], limit: 201, aggregation: [{ column: 'a', function: 'COUNT' as const }] }, v: 0 });
+    expect(result.current.rows).toBeNull();
+    expect(result.current.total).toBeNull();
+  });
+
+  test('a read without a count is not asked again on Load more', async () => {
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a'], 201), v: 0 }, null);
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    expect(result.current.total).toBeNull();
+    rerender({ o: opts(['id', 'a'], 401), v: 0 });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    expect(asked(traverseData)).toEqual([true, false]);
+  });
+
+  test('a failed read asks again on retry', async () => {
+    const traverseData = vi.fn<(id: string, o: TraverseOptions) => Promise<Traversal>>(async () => { if (traverseData.mock.calls.length === 1) throw new Error('boom'); return { ...traversalOf([{ id: 1 }]), totalRowCount: 7 }; });
+    const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
+    const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
+    const { result, rerender } = renderHook(({ v }) => useMartRows('m', opts(['id']), v), { wrapper, initialProps: { v: 0 } });
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    rerender({ v: 1 });
+    await waitFor(() => expect(result.current.total).toBe(7));
+    expect(asked(traverseData)).toEqual([true, true]);
+  });
+
+  test('an aborted read does not mark the key as asked', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const traverseData = vi.fn<(id: string, o: TraverseOptions) => Promise<Traversal>>(async () => { if (traverseData.mock.calls.length === 1) await gate; return { ...traversalOf([{ id: 1 }]), totalRowCount: 9 }; });
+    const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
+    const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
+    const { result, rerender } = renderHook(({ o }) => useMartRows('m', o, 0), { wrapper, initialProps: { o: withSort(['id', 'a'], 'asc') } });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
+    // A sort change while the first read is in flight: same count key, so the second read must still ask.
+    rerender({ o: withSort(['id', 'a'], 'desc') });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    release();
+    await waitFor(() => expect(result.current.total).toBe(9));
+    expect(asked(traverseData)).toEqual([true, true]);
+  });
+
+  test('the caller options are not mutated and do not hold the flag', async () => {
+    const o = opts(['id', 'a']);
+    const { result } = run({ o, v: 0 });
+    await waitFor(() => expect(result.current.total).toBe(450));
+    expect(o).toEqual({ column: ['id', 'a'], limit: 201 });
   });
 });

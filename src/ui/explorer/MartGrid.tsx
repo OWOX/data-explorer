@@ -6,7 +6,7 @@ import { AUTO, keepsUnit, type Format } from '../../format/formats';
 import { useColumnFormats } from '../../format/useColumnFormats';
 import { PAGE_SIZE } from '../../config';
 import { columnLetter } from './columnLetters';
-import { emptyText, isNumericType } from '../format';
+import { emptyText, isNumericType, rowsLabel } from '../format';
 import { withJoined, type JoinedSource } from '../../api/blendable';
 import { AGG_LABELS, applyDraft, draftOf, formatBucket, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type Grouping, type AggregationDraft, type DateBucket, type Output } from '../../model/aggregation';
 import { columnTitle, fieldLabel } from '../../model/fieldLabel';
@@ -592,7 +592,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     ro?.observe(el);
     return () => ro?.disconnect();
   }, [charts]);
-  const { rows: read, loading: reading, error, hasMore, run, errorRunId } = useMartRows(martId, asked, version, charts);
+  const { rows: read, loading: reading, error, hasMore, run, errorRunId, total } = useMartRows(martId, asked, version, charts);
   const rows = blocked || charts ? null : read;
   const loading = reading && !blocked && !charts;
   const byName = useMemo(() => new Map(schema.map((f) => [f.name, f])), [schema]);
@@ -692,11 +692,11 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     setSelected(null);
   }, [shown, markEdit, columnStore, martId]);
   const table = useTable({ features, data: rows ?? [], columns });
-  const rowsLabel = rows ? `${rows.length}${hasMore ? '+' : ''}` : null;
+  const rowsAmount = rows ? rowsLabel(rows.length, hasMore, total) : null;
   // The Data band's title row shows the no-primary-key warning, so it is told whether this grid is a plain preview.
   // `hidden`: the mart has a key but it is hidden for reporting, so no row can be opened by it. Only `missing` is warned about.
   const noKey: NoKey = grouped || pks.length > 0 ? false : hasPrimaryKey(native) ? 'hidden' : 'missing';
-  useEffect(() => { onRows?.(rowsLabel, grouped, noKey); }, [rowsLabel, grouped, noKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onRows?.(rowsAmount, grouped, noKey); }, [rowsAmount, grouped, noKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const cardClick = useContext(CardClickContext);
   // One cell per data mart over its columns, main first; only when a joined mart is on screen.
   const groups = useMemo(() => {

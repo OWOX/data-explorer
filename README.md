@@ -36,7 +36,7 @@ A question about one order, one customer or one campaign ends in a row. The fiel
 
 ## What it costs
 
-Every grid, record and record count is a `traverseData` query in your warehouse, and the warehouse bills it. A card asks for its count only when it scrolls into view, and counts are cached per member. Folded bands run no queries. Opening the plugin also reads the connector lists (`GET /api/connectors`, and `GET /api/connectors/custom/summaries` for custom connectors your data marts use), which run nothing in your warehouse. Each chart is a `traverseData` query, run only while Charts is shown and the band is open, and cached for the session.
+Every grid, record and record count is a `traverseData` query in your warehouse, and the warehouse bills it. A card asks for its count only when it scrolls into view, and counts are cached per member. The grid asks for the total row count once per result, which is one more warehouse query: OWOX waits up to 60 s for it before the first row. Load more and a sort reuse it, and a changed filter, Refresh or a column never loaded ask again. Folded bands run no queries. Opening the plugin also reads the connector lists (`GET /api/connectors`, and `GET /api/connectors/custom/summaries` for custom connectors your data marts use), which run nothing in your warehouse. Each chart is a `traverseData` query, run only while Charts is shown and the band is open, and cached for the session.
 
 ## What it writes
 

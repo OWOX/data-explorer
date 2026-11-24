@@ -20,3 +20,15 @@ test('an aborted signal cancels the stream and rejects with AbortError', async (
   await expect(p).rejects.toMatchObject({ name: 'AbortError' });
   expect(t.cancel).toHaveBeenCalled();
 });
+
+test('reports the total row count before the first row, and undefined when OWOX sent none', async () => {
+  const seen: string[] = [];
+  const run = (total?: number) => readRows(
+    stubCtx({ dataMarts: { list: vi.fn(), traverseData: vi.fn(async () => ({ ...traversalOf([{ a: 1 }]), totalRowCount: total })) } }),
+    'm', { includeTotalRowCount: true },
+    { onTotalRowCount: (n) => seen.push(`count:${n}`), onChunk: () => seen.push('rows') },
+  );
+  await run(12345);
+  await run();
+  expect(seen).toEqual(['count:12345', 'rows', 'count:undefined', 'rows']);
+});

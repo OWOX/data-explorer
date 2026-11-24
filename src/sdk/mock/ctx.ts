@@ -240,8 +240,11 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
           const rows = await slow(() => traverse(id, o));
           const runId = `mock-run-${++runSeq}`;
           runs.set(runId, mockSql(id, o));
+          // Only when asked, like the backend; the count is the same read without its limit.
+          const totalRowCount = o.includeTotalRowCount ? traverse(id, { ...o, limit: undefined }).length : undefined;
           return {
             runId,
+            ...(totalRowCount !== undefined ? { totalRowCount } : {}),
             async *rowChunks() { for (let i = 0; i < rows.length; i += 100) { if (latency) await sleep(latency / 4); yield rows.slice(i, i + 100); } },
             cancel: async () => {},
           };

@@ -132,7 +132,7 @@ describe('the four bands', () => {
     const grid = await ordersGrid();
     expect(within(band('band-data')).getByText('Orders')).toBeInTheDocument();
     expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(5);
-    expect(await within(data()).findByText('200+ records')).toBeInTheDocument();
+    expect(await within(data()).findByText('200 of 450 records')).toBeInTheDocument();
     expect(martCard('Orders')).toHaveAttribute('aria-pressed', 'true');
     expect(within(marts()).getByText('Customers')).toBeInTheDocument();
     expect(within(data()).queryByText('Select a data mart.')).toBeNull();

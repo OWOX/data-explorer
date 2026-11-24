@@ -32,6 +32,8 @@ export type TraverseOptions = {
   dateTrunc?: DateTruncRule[];
   uniqueCount?: string[];
   limit?: number;
+  /** Ask OWOX for the row count of the read without its limit; it costs one more warehouse query. */
+  includeTotalRowCount?: boolean;
 };
 
 export type Row = Record<string, unknown>;
@@ -41,6 +43,8 @@ export interface Traversal {
   cancel(): Promise<void>;
   /** The run OWOX recorded for this read (`x-owox-run-id`); absent on a host that does not send it. */
   readonly runId?: string;
+  /** The row count without the limit; present only when the read asked for it and OWOX could count it. */
+  readonly totalRowCount?: number;
 }
 
 export type StorageDto = { id: string; title: string; type: string };
