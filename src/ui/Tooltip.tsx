@@ -14,11 +14,13 @@ export function Tooltip({ content, children }: { content: ReactNode; children: R
   return (
     <T.Root>
       <T.Trigger asChild>{children}</T.Trigger>
-      <T.Portal>
-        <T.Content side="top" sideOffset={6} collisionPadding={8} className="dm-hint-body">
-          {content}
-        </T.Content>
-      </T.Portal>
+      {content != null && content !== '' && (
+        <T.Portal>
+          <T.Content side="top" sideOffset={6} collisionPadding={8} className="dm-hint-body">
+            {content}
+          </T.Content>
+        </T.Portal>
+      )}
     </T.Root>
   );
 }

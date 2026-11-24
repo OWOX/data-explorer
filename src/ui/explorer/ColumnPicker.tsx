@@ -20,7 +20,8 @@ function focusBadge(from: HTMLElement | null, kind: string) {
 /** A badge's text button: the label, or in the compact layout the icon, with the label as its tooltip. The accessible name is the same in both. */
 const BadgeText = forwardRef<HTMLButtonElement, { compact: boolean; icon: LucideIcon; label: string; aria: string } & ButtonHTMLAttributes<HTMLButtonElement>>(function BadgeText({ compact, icon: Icon, label, aria, ...rest }, ref) {
   const button = <button ref={ref} type="button" aria-label={aria} className="dm-rule-badge-text" {...rest}>{compact ? <Icon className="size-3.5" aria-hidden /> : label}</button>;
-  return compact ? <Tooltip content={label}>{button}</Tooltip> : button;
+  // Same tree in both layouts (no tip when full), so a switch keeps the button mounted: an open list stays anchored to it.
+  return <Tooltip content={compact ? label : undefined}>{button}</Tooltip>;
 });
 
 /**
@@ -43,11 +44,13 @@ export function MartRuleBadges({ title, fields, filters, slices, onClearFilters,
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const filtered = fields.filter((f) => filters[f.name]);
   const sliced = fields.filter((f) => slices[f.name] && f.joined);
+  // A list whose rules are all gone (Undo) closes: Redo must not bring the badge back with it open on a detached anchor.
+  if (menu && (menu === 'filter' ? filtered : sliced).length === 0) setMenu(null);
   const badge = (kind: 'filter' | 'slice', on: Field[], clear: (names: string[]) => void) => {
     if (on.length === 0) return null;
     const noun = kind;
     const label = `${on.length} ${noun}${on.length === 1 ? '' : 's'}`;
-    const open = menu === kind && !!anchor;
+    const open = menu === kind && !!anchor?.isConnected;
     return (
       <span className="dm-rule-badge" data-mart-badge={noun}>
         <BadgeText compact={compact} icon={kind === 'filter' ? Funnel : Layers} label={label} aria={`${label} in ${title}`} aria-haspopup="menu" aria-expanded={open}
@@ -114,7 +117,7 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
     onChange(next);
   };
   const shownNow = emptied ? [] : visible.filter((c) => mine.has(c));
-  const n = columns ?? shownNow.length;
+  const n = emptied ? 0 : columns ?? shownNow.length;
   const count = `${n} column${n === 1 ? '' : 's'}`;
   const items: ChecklistItem[] = fields.map((f) => ({
     value: f.name,

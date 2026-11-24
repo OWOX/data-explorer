@@ -16,11 +16,13 @@ export function badgesCompact(available: number, needed: number, wasCompact: boo
   return available < (wasCompact ? needed + HYSTERESIS : needed);
 }
 
-/** The width the full layout needs: every child of the row but the title at its own width, the gaps, and the title's minimum. */
+/** The width the full layout needs: every child of the row but the title at its own width, the gaps, and the title's room (its minimum, or less for a short title: scrollWidth is the full text width even when clipped, so this stays stable). */
 function neededWidth(row: HTMLElement): number {
   const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
   const kids = [...row.children] as HTMLElement[];
-  return kids.filter((k) => !k.hasAttribute('data-title-text')).reduce((sum, k) => sum + k.offsetWidth, 0) + gap * Math.max(0, kids.length - 1) + TITLE_MIN;
+  const title = kids.find((k) => k.hasAttribute('data-title-text'));
+  const titleRoom = Math.min(TITLE_MIN, title?.scrollWidth ?? TITLE_MIN);
+  return kids.filter((k) => k !== title).reduce((sum, k) => sum + k.offsetWidth, 0) + gap * Math.max(0, kids.length - 1) + titleRoom;
 }
 
 /**

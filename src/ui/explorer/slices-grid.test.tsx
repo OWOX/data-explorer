@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Ctx, TraverseOptions } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
@@ -25,14 +25,16 @@ function setup(grid: GridState, opts: { blendFails?: boolean; empty?: boolean } 
     },
   };
   const state: { current: ReturnType<typeof useStore>[0] | null } = { current: null };
+  const send: { current: ReturnType<typeof useStore>[1] | null } = { current: null };
   function Probe() {
     const [s, dispatch] = useStore();
     state.current = s;
+    send.current = dispatch;
     useEffect(() => { dispatch({ type: 'saveGrid', martId: 'orders', grid }); }, [dispatch]);
     return null;
   }
   render(<AppServices ctx={ctx}><StoreProvider><Probe /><App /></StoreProvider></AppServices>);
-  return { queries, state, heal: () => { failing = false; } };
+  return { queries, state, send, heal: () => { failing = false; } };
 }
 
 const data = () => document.getElementById('band-data')!;
@@ -252,6 +254,21 @@ describe('the data mart title row', () => {
     expect(screen.queryByRole('menu', { name: /^Slices in / })).toBeNull();
     // The filter badge is untouched.
     expect(screen.getByRole('button', { name: /^1 filter in / })).toBeVisible();
+  });
+
+  test('a list open while its last rule goes (Undo) stays closed when Redo brings the badge back', async () => {
+    const t = setup(hidden);
+    // A click on Undo or Redo is blocked while a list is open, so the step comes from outside it (as a shortcut or another view would).
+    await userEvent.click(await screen.findByRole('button', { name: /^Remove all filters in / }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^1 filter in / })).toBeNull());
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await userEvent.click(await screen.findByRole('button', { name: /^1 filter in / }));
+    await screen.findByRole('menu', { name: /^Filters in / });
+    act(() => t.send.current!({ type: 'redo' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^1 filter in / })).toBeNull());
+    act(() => t.send.current!({ type: 'undo' }));
+    expect(await screen.findByRole('button', { name: /^1 filter in / })).toBeVisible();
+    expect(screen.queryByRole('menu', { name: /^Filters in / })).toBeNull();
   });
 
   test('Escape closes the edit form first, then the list', async () => {

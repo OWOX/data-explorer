@@ -22,3 +22,14 @@ test('a title row with no layout shows the full labels', () => {
   render(<TitleRow>{(compact) => <span data-title-text>{compact ? 'icons' : 'text'}</span>}</TitleRow>);
   expect(screen.getByText('text')).toBeVisible();
 });
+
+test('a short title asks for its own width, not the minimum, so a narrow cell stays in the full layout', () => {
+  const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(90);
+  const offset = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(60);
+  const scroll = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (this: HTMLElement) { return this.hasAttribute('data-title-text') ? 20 : 0; });
+  try {
+    render(<TitleRow>{(compact) => <><span data-title-text>Ads</span><span>{compact ? 'icons' : 'text'}</span></>}</TitleRow>);
+    // Needed: badge 60 + title 20 (not 40) = 80, which the 90px row has.
+    expect(screen.getByText('text')).toBeVisible();
+  } finally { clientWidth.mockRestore(); offset.mockRestore(); scroll.mockRestore(); }
+});
