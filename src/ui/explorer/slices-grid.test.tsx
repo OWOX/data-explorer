@@ -267,7 +267,8 @@ describe('the data mart title row', () => {
     act(() => t.send.current!({ type: 'redo' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: /^1 filter in / })).toBeNull());
     act(() => t.send.current!({ type: 'undo' }));
-    expect(await screen.findByRole('button', { name: /^1 filter in / })).toBeVisible();
+    const back = await screen.findByRole('button', { name: /^1 filter in / });
+    expect(back).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('menu', { name: /^Filters in / })).toBeNull();
   });
 
