@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Ctx, TraverseOptions } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
@@ -199,52 +199,47 @@ describe('the data mart title row', () => {
   // The status filter and the country slice are both on fields that are not columns.
   const hidden: GridState = { columns: ['id', 'customers__city'], filters: { status: { field: 'status', op: 'eq', value: 'paid' } }, slices: { customers__country_code: slice }, sorts: null, limit: 200 };
 
-  test('the Funnel and Layers marks show for rules on fields that are not columns, list the rules, and open the Fields list', async () => {
+  test('the slice and filter badges follow the Fields button, list the rules on click, and their x removes them in one Undo step', async () => {
     setup(hidden);
-    const filterMark = await screen.findByRole('button', { name: /^Filter rules in / });
-    const sliceMark = await screen.findByRole('button', { name: /^Slice rules in / });
-    await userEvent.hover(filterMark);
-    expect((await screen.findAllByText(/^Filter: .*paid/)).length).toBeGreaterThan(0);
-    await userEvent.unhover(filterMark);
-    await userEvent.hover(sliceMark);
-    expect((await screen.findAllByText(/^Slice: .*PL/)).length).toBeGreaterThan(0);
-    await userEvent.click(filterMark);
-    expect(await screen.findByRole('listbox', { name: /^Fields of / })).toBeVisible();
-    expect(filterMark).toHaveAttribute('aria-expanded', 'true');
+    const groupOf = (el: HTMLElement) => el.closest<HTMLElement>('th[data-group-path]')!;
+    // The filter is on the main mart's field, the slice on the joined mart's: each badge sits in its own mart's title cell, after the Fields button.
+    const filterBadge = await screen.findByRole('button', { name: /^1 filter in / });
+    const sliceBadge = await screen.findByRole('button', { name: /^1 slice in / });
+    expect(filterBadge).toHaveTextContent('1 filter');
+    expect(sliceBadge).toHaveTextContent('1 slice');
+    for (const badge of [filterBadge, sliceBadge]) {
+      const fields = within(groupOf(badge)).getByRole('button', { name: /^Fields of / });
+      expect(fields.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    await userEvent.click(filterBadge);
+    const list = await screen.findByRole('dialog', { name: /^Filters in / });
+    expect(within(list).getByText(/paid/)).toBeVisible();
     await userEvent.keyboard('{Escape}');
-    await waitFor(() => expect(filterMark).toHaveFocus());
-  });
-
-  test('focus that leaves a list opened from a mark (a Tab out) stays where it went, not pulled back to the mark', async () => {
-    setup(hidden);
-    const filterMark = await screen.findByRole('button', { name: /^Filter rules in / });
-    await userEvent.click(filterMark);
-    await screen.findByRole('listbox', { name: /^Fields of / });
-    // The list's own Tab order wraps inside it in jsdom, so the move out is made as Tab makes it: focus lands on another control.
-    const elsewhere = within(document.getElementById('band-data')!).getByRole('button', { name: 'Reset' });
-    act(() => elsewhere.focus());
-    await waitFor(() => expect(screen.queryByRole('listbox', { name: /^Fields of / })).toBeNull());
-    await new Promise((r) => setTimeout(r, 50));
-    expect(elsewhere).toHaveFocus();
-    expect(filterMark).not.toHaveFocus();
+    await userEvent.click(screen.getByRole('button', { name: /^Remove all filters in / }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^1 filter in / })).toBeNull());
+    expect(screen.getByRole('button', { name: /^1 slice in / })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: /^Remove all slices in / }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^1 slice in / })).toBeNull());
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(await screen.findByRole('button', { name: /^1 slice in / })).toBeVisible();
   });
 
   test('no rules, no marks; the Fields button shows no tooltip', async () => {
     setup({ columns: ['id', 'status'], filters: {}, sorts: null, limit: 200 });
     const button = (await screen.findAllByRole('button', { name: /^Fields of / }))[0]!;
-    expect(screen.queryByRole('button', { name: /^(Filter|Slice) rules in / })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^\d+ (filter|slice)s? in / })).toBeNull();
     await userEvent.hover(button);
     await new Promise((r) => setTimeout(r, 350));
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
-  test('the (i) description hint of the data mart sits right after its title, before the rule marks, and shows with hover or focus only', async () => {
+  test('the (i) description hint of the data mart sits right after its title, before the rule badges, and shows with hover or focus only', async () => {
     setup(hidden);
     const group = await waitFor(() => { const g = document.querySelector<HTMLElement>('th[data-group-path=""]'); if (!g) throw new Error('no group'); return g; });
     const hint = within(group).getByRole('note', { name: /^About / });
     expect(hint.parentElement).toHaveClass('dm-reveal');
-    // It sits right after the title, before the rule marks.
-    const mark = await within(group).findByRole('button', { name: /^Filter rules in / });
+    // It sits right after the title, before the rule badges.
+    const mark = await within(group).findByRole('button', { name: /^1 filter in / });
     expect(hint.compareDocumentPosition(mark) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

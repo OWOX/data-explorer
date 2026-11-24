@@ -728,7 +728,7 @@ test('a failure after the report exists closes the dialog and reports in a toast
   expect(t.calls.filter((c) => c === 'POST /api/reports')).toHaveLength(1);
 });
 
-const headingText = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!).join(' + ');
+const headingText = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.querySelector('.truncate')!.textContent!).join(' + ');
 /** A mart is made main the way a restored view would: a click on a card in the band only joins it or focuses it. */
 const toMart = async (title: string) => {
   act(() => selectMartById(title.toLowerCase().replace(/[^a-z0-9]+/g, '_')));

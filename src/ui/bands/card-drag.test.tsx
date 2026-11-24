@@ -25,7 +25,7 @@ const paths = () => [...document.querySelectorAll<SVGPathElement>('svg#drag-line
 const joinedLines = () => paths().filter((p) => p.classList.contains('joined')).map((p) => p.dataset.target);
 const dashedLines = () => paths().filter((p) => p.classList.contains('ghost')).map((p) => p.dataset.target).sort();
 const closestLine = () => paths().filter((p) => p.classList.contains('closest')).map((p) => p.dataset.target);
-const groupTitles = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!);
+const groupTitles = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.querySelector('.truncate')!.textContent!);
 
 // jsdom has no layout: each card gets a box of its own, so the drag can tell which one is closest.
 const BOXES: Record<string, [number, number]> = { 'dm-orders': [0, 0], 'dm-customers@customers': [400, 0], 'dm-stores@stores': [800, 0], 'dm-countries@customers.countries': [400, 300] };

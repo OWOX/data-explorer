@@ -59,7 +59,7 @@ const marts = () => band('band-marts');
 const sources = () => band('band-sources');
 const martCard = (title: string) => within(marts()).getByText(title).closest('article')!;
 
-const headingText = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!).join(' + ');
+const headingText = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.querySelector('.truncate')!.textContent!).join(' + ');
 /** Makes a mart the main one the way a search does: the probe selects it. */
 function makeMain(title: string) {
   act(() => selectMartById(title.toLowerCase().replace(/[^a-z0-9]+/g, '_')));
@@ -673,7 +673,7 @@ describe('folding and lines', () => {
     await settle();
     expect(rowQueries()).toHaveLength(before);
     await userEvent.click(within(data()).getByRole('button', { name: /^Show / }));
-    await waitFor(() => expect(within(data()).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent)).toEqual(['Orders', 'Customers', 'Stores']));
+    await waitFor(() => expect(within(data()).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.querySelector('.truncate')!.textContent)).toEqual(['Orders', 'Customers', 'Stores']));
     await settle();
     const fresh = rowQueries().slice(before);
     // The grid's own rows query: one, with the joined columns in it.
@@ -1398,14 +1398,14 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(within(row()).getByLabelText('About Customer').closest('dt')).toHaveClass('dm-reveal-host');
   });
 
-  test('the Fields icon of a tab shows on hover of its cell, in the same green and size as the column menu icons', async () => {
+  test('the Fields button of a tab is an always-shown "N columns" badge; a lone main mart has no x on it', async () => {
     const grid = await ordersGrid();
-    const icon = within(grid).getByRole('button', { name: 'Fields of Orders' });
-    expect(icon).toHaveClass('dm-reveal');
-    expect(icon).not.toHaveClass('dm-reveal-on');
-    expect(icon).toHaveClass('dm-ctl', 'dm-ctl-lg');
-    expect(within(grid).getByLabelText('Column menu id')).toHaveClass('dm-ctl', 'dm-ctl-lg', 'dm-reveal');
-    expect(icon.closest('th')).toHaveClass('dm-gh');
+    const badge = within(grid).getByRole('button', { name: 'Fields of Orders' });
+    expect(badge).toHaveTextContent(/^\d+ columns?$/);
+    expect(badge).not.toHaveClass('dm-reveal');
+    expect(badge.closest('.dm-rule-badge')).toHaveClass('dm-rule-badge-neutral');
+    expect(within(grid).queryByRole('button', { name: 'Remove Orders from the grid' })).toBeNull();
+    expect(badge.closest('th')).toHaveClass('dm-gh');
   });
 
   test('the main data mart is the first card, whatever the search says', async () => {
