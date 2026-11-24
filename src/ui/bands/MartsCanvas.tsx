@@ -148,13 +148,18 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
       if (node.parent === null) continue;
       const parent = tree.nodes.get(node.parent)!;
       // Each joined copy is its own node, keyed by its alias path: the line belongs to the one relationship that path names.
-      const edge = edgeOf(model.edges, parent.martId, node.martId, node.path, sources?.find((x) => x.aliasPath === node.path)?.relationshipId);
-      const note = relationshipNote(edge, title(node.martId));
+      const source = sources?.find((x) => x.aliasPath === node.path);
+      const edge = edgeOf(model.edges, parent.martId, node.martId, node.path, source?.relationshipId);
+      const note = relationshipNote(edge, title(node.martId), source?.outputAlias);
       out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}`, ...(note ? { note } : {}), sideways: true, joined: true, ...(node.path === strongPath ? { strong: true } : {}) });
     }
     for (const level of levels) {
       const fromPath = level.from;
-      for (const g of level.ghosts) out.push({ id: `ghost:${g.aliasPath}`, from: martElementId(level.fromMartId, fromPath), to: martElementId(g.martId, g.aliasPath), kind: 'relationship', title: `${title(level.fromMartId)} → ${title(g.martId)}`, dashed: true, sideways: true });
+      for (const g of level.ghosts) {
+        // A dashed line names its join like a solid one: the Output Alias when set, else the relationship's own name.
+        const note = relationshipNote(edgeOf(model.edges, level.fromMartId, g.martId, g.aliasPath, g.relationshipId), title(g.martId), g.outputAlias);
+        out.push({ id: `ghost:${g.aliasPath}`, from: martElementId(level.fromMartId, fromPath), to: martElementId(g.martId, g.aliasPath), kind: 'relationship', title: `${title(level.fromMartId)} → ${title(g.martId)}`, dashed: true, sideways: true, ...(note ? { note } : {}) });
+      }
     }
     return out;
     // `key` stands for tree and the ghost levels: the memo must not rebuild on every hover.

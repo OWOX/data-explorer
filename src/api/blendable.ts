@@ -14,6 +14,8 @@ export type JoinedSource = {
   label: string;
   /** What the mart is called without anything that tells two joins to it apart; absent when that is the label. */
   name?: string;
+  /** The join's Output Alias as the member typed it (trimmed); absent when the backend sends none. It equals the mart's title when never set. */
+  outputAlias?: string;
   depth: number;
   fields: Field[];
   /** A uniqueCount on this alias path works (the backend says `available`): the joined mart has a usable primary key. */
@@ -90,7 +92,7 @@ export function joinedSources(dto: BlendableSchemaDto, keyAlias?: KeyAlias): Joi
   }
   for (const s of offered) {
     const label = labels.get(s.aliasPath)!;
-    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label, ...(label !== nameOf(s) ? { name: nameOf(s) } : {}), depth: s.depth, fields: [], uniqueCount: s.uniqueCountAvailability === 'available', mainGrainCollapse: collapseOf(s.mainGrainCollapse), mainGrainMultiplication: s.mainGrainMultiplication ?? 'unknown', ...(s.relationshipId ? { relationshipId: s.relationshipId } : {}) });
+    byPath.set(s.aliasPath, { aliasPath: s.aliasPath, martId: s.dataMartId, label, ...(label !== nameOf(s) ? { name: nameOf(s) } : {}), ...(s.defaultAlias?.trim() ? { outputAlias: s.defaultAlias.trim() } : {}), depth: s.depth, fields: [], uniqueCount: s.uniqueCountAvailability === 'available', mainGrainCollapse: collapseOf(s.mainGrainCollapse), mainGrainMultiplication: s.mainGrainMultiplication ?? 'unknown', ...(s.relationshipId ? { relationshipId: s.relationshipId } : {}) });
   }
   for (const b of dto.blendedFields ?? []) {
     const source = byPath.get(b.aliasPath);
