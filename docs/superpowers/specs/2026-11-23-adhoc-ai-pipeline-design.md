@@ -205,7 +205,7 @@ Every `ChartKind` whose needs the view meets, with its fields filled in:
 | Kind | Needs |
 |---|---|
 | `timeSeries`, `line` | a date breakdown and a measure |
-| `bar`, `rankedBar`, `pie` | a text breakdown and a measure (`pie`: the breakdown shows 12 or fewer values) |
+| `bar`, `rankedBar`, `pie` | a text breakdown and a measure (the pie folds values past its top list into "Other") |
 | `heatmap` | two breakdowns and a measure |
 | `sankey` | 2 to 5 text breakdowns and an additive measure |
 | `scatter` | two measures and a breakdown |
