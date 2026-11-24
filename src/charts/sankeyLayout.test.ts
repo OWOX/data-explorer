@@ -180,7 +180,8 @@ describe('fit (fan-out): ribbons are scaled to fit their node', () => {
     // The old rule handed a column-0 colour down; now a later node is not tied to the node that feeds it.
     for (const k of ['a', 'b']) expect(tone(0, k)).toEqual({ kind: 'series', color: labelColors(['a', 'b']).get(k) });
     expect(l.nodes.filter((n) => n.col > 0).map((n) => n.tone)).toHaveLength(4);
-    expect(new Set(l.nodes.map((n) => (n.tone as { color: string }).color)).size).toBe(6);
+    // Each column settles its own clashes, like a chart of that column alone: no value of another column moves a node off its colour.
+    for (const [c, keys] of [[1, ['x', 'y']], [2, ['m', 'n']]] as const) for (const k of keys) expect(tone(c, k)).toEqual({ kind: 'series', color: labelColors([...keys]).get(k) });
     const ribbon = l.links.find((k) => k.pair === 1 && k.source === 'y')!;
     expect(ribbon.tone).toEqual(tone(1, 'y'));
     expect(ribbon.origin).toBeUndefined();

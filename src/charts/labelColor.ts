@@ -5,9 +5,15 @@ export const LABEL_COLORS = 12;
 /** The CSS colour of a slot (0-based). */
 export const slotColor = (slot: number): string => `var(--dm-series-${slot + 1})`;
 
+/**
+ * Turns the palette's rotation: added to FNV-1a's offset basis. 37 gives the product names of the usage data (OWOX Data Marts, OWOX BI, Extension,
+ * Extension v2, ChatGPT, Claude, Excel Add-in) seven different slots, with OWOX Data Marts on the first, the blue.
+ */
+const ROTATION = 37;
+
 /** The slot a label hashes to: FNV-1a over its UTF-16 code units, mod the palette size. The same text gives the same slot on every chart. */
 export function labelSlot(text: string): number {
-  let h = 0x811c9dc5;
+  let h = (0x811c9dc5 + ROTATION) >>> 0;
   for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0;
   return h % LABEL_COLORS;
 }

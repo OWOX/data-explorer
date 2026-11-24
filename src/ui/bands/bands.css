@@ -802,8 +802,9 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-rule-badge { display: inline-flex; flex-shrink: 0; align-items: center; height: 18px; box-sizing: border-box; border: 1px solid color-mix(in srgb, var(--sheet-green) 55%, transparent); border-radius: 9px; background: transparent; color: var(--sheet-green); font-size: 11px; font-weight: 500; line-height: 1; transition: background-color 120ms; }
 /* Never narrower than at rest (4 + 12 + 4): unfolding swaps the icon for a label that grows in, and a badge that shrank first would slip from under the pointer and fold again. */
 .dm-rule-badge-text { display: inline-flex; align-items: center; height: 100%; min-width: 20px; padding: 0 4px; border-radius: 8px; white-space: nowrap; }
-.dm-badge-label { display: inline-block; max-width: 0; overflow: hidden; opacity: 0; transition: max-width 150ms, opacity 150ms; }
-.dm-rule-badge-x { display: inline-flex; align-items: center; justify-content: center; width: 0; height: 14px; overflow: hidden; border-radius: 50%; opacity: 0; transition: width 150ms, opacity 150ms; }
+/* 300ms: a slower unfold that does not jitter while the pointer rests on the badge. */
+.dm-badge-label { display: inline-block; max-width: 0; overflow: hidden; opacity: 0; transition: max-width 300ms, opacity 300ms; }
+.dm-rule-badge-x { display: inline-flex; align-items: center; justify-content: center; width: 0; height: 14px; overflow: hidden; border-radius: 50%; opacity: 0; transition: width 300ms, opacity 300ms; }
 .dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) { background: color-mix(in srgb, var(--sheet-green) 12%, transparent); }
 .dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .dm-badge-icon { display: none; }
 .dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .dm-rule-badge-text { padding: 0 2px 0 6px; }

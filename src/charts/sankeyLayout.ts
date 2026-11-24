@@ -76,10 +76,12 @@ export function layoutSankey({ flows, columns, width, padRight = 0, height, fit 
   const k = Number.isFinite(scale) ? Math.max(0, scale) : 0;
   const step = cols > 1 ? Math.max(0, (width - padRight - NODE_W) / (cols - 1)) : 0;
 
-  // Tones: every node takes the colour its own label hashes to, so a value looks the same in every column and in every other chart.
-  // Keys are ranked by column, then by rank within it; a value that appears in two columns is one label with one colour.
-  const colors = labelColors(order.flatMap((keys) => keys.filter((k) => !isBlankKey(k) && k !== OTHER_KEY)));
-  const tones: Map<string, Tone>[] = order.map((keys) => new Map(keys.map((key): [string, Tone] => [key, isBlankKey(key) ? { kind: 'blank' } : key === OTHER_KEY ? { kind: 'other' } : { kind: 'series', color: colors.get(key)! }])));
+  // Tones: every node takes the colour its own label hashes to. Each column settles its clashes on its own, as a chart of that column alone would,
+  // so a value has the colour it has in every other chart of the same dimension; values of the other columns never push it off its slot.
+  const tones: Map<string, Tone>[] = order.map((keys) => {
+    const colors = labelColors(keys.filter((k) => !isBlankKey(k) && k !== OTHER_KEY));
+    return new Map(keys.map((key): [string, Tone] => [key, isBlankKey(key) ? { kind: 'blank' } : key === OTHER_KEY ? { kind: 'other' } : { kind: 'series', color: colors.get(key)! }]));
+  });
 
   const nodes: SankeyNode[] = [];
   const at = new Map<string, SankeyNode>();

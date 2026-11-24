@@ -7,7 +7,13 @@ test('a label hashes to the same slot every time, inside the palette', () => {
     expect(labelSlot(t)).toBeGreaterThanOrEqual(0);
     expect(labelSlot(t)).toBeLessThan(LABEL_COLORS);
   }
-  expect(labelSlot('')).toBe(0x811c9dc5 % LABEL_COLORS);
+  expect(labelSlot('')).toBe(((0x811c9dc5 + 37) >>> 0) % LABEL_COLORS);
+});
+
+test('the rotation puts OWOX Data Marts on the blue and keeps the seven product names apart', () => {
+  expect(labelSlot('OWOX Data Marts')).toBe(0);
+  const products = ['OWOX Data Marts', 'OWOX BI', 'Extension', 'Extension v2', 'ChatGPT', 'Claude', 'Excel Add-in'];
+  expect(new Set(products.map(labelSlot)).size).toBe(products.length);
 });
 
 test('the same label gets the same colour whatever else is in the chart', () => {
