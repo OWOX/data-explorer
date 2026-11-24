@@ -1,7 +1,7 @@
 {
   "name": "Data Explorer",
   "description": "Explore data you know exists somewhere in your organization. Pick what you need in a few clicks, and it's joined automatically. Get it as a spreadsheet, as charts, or as a data set for your AI assistant.",
-  "delivery": { "type": "remote", "url": "https://owox.github.io/data-explorer/" },
+  "delivery": { "type": "remote", "url": "https://data-explorer.owox.app/" },
   "credentials": [{ "id": "ai", "models": ["fast", "decision"], "optional": true }],
   "collections": [
     { "name": "row-counts", "scope": "member" },

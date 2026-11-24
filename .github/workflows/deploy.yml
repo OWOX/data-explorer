@@ -1,0 +1,52 @@
+name: Deploy to owox.app
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-owox-app
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.2'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+  # A job of its own: a failed deploy is re-run without the tests.
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Holds VOID_TOKEN and accepts only main and v* tags, so a pushed branch cannot deploy to production.
+    environment:
+      name: owox-app
+      url: https://data-explorer.owox.app/
+    env:
+      VOID_API_URL: https://owox.app
+      VOID_PROJECT: data-explorer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.2'
+          cache: npm
+      - run: npm ci
+      - name: Connect to Void
+        run: npx --no -- void connect "$VOID_API_URL" --no-login
+      - name: Deploy the plugin
+        run: npx --no -- void deploy --platform void --project "$VOID_PROJECT"
+        env:
+          VOID_TOKEN: ${{ secrets.VOID_TOKEN }}
+          APP_VERSION: ${{ github.event.release.tag_name || github.sha }}

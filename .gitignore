@@ -6,3 +6,6 @@ playwright-report/
 *.tsbuildinfo
 .superpowers/
 .worktrees/
+.void/
+.cloudflare/
+.void-wrangler.jsonc

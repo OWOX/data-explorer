@@ -1,5 +1,4 @@
 // The test runner drops CSS files from the module graph, so the stylesheet is read from disk; the project has no Node types.
-// @ts-expect-error TS2591: no @types/node
 import { readFileSync } from 'node:fs';
 
 const read = readFileSync as (path: string, enc: 'utf8') => string;
