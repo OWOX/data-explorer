@@ -52,7 +52,7 @@ const nodeIdOf = (target: EventTarget | null) => (target instanceof Element ? ta
  * so the pointer can reach its "More" link.
  */
 export function WireTipLayer({ canvas }: { canvas: RefObject<HTMLElement | null> }) {
-  const [tip, setTip] = useState<{ el: Element; text: string; more?: string; x: number; y: number } | null>(null);
+  const [tip, setTip] = useState<{ line: string; text: string; more?: string; x: number; y: number } | null>(null);
   // The tip as the handlers last set it: they run outside render, so they read it here and not from a stale closure.
   const tipRef = useRef(tip);
   const put = (next: typeof tip) => { tipRef.current = next; setTip(next); };
@@ -71,10 +71,12 @@ export function WireTipLayer({ canvas }: { canvas: RefObject<HTMLElement | null>
       const text = el?.dataset.tip;
       if (!el || !text) { off(); return; }
       keep();
+      // A line is its two cards, not its element: the path and its dot are one line, and a redrawn path is the same line.
+      const line = el.dataset.line ?? text;
       const cur = tipRef.current;
-      if (cur?.el === el && cur.more) return;
+      if (cur?.line === line && cur.more) return;
       const more = el.dataset.more;
-      put({ el, text, ...(more ? { more } : {}), x: e.clientX, y: e.clientY });
+      put({ line, text, ...(more ? { more } : {}), x: e.clientX, y: e.clientY });
     };
     document.addEventListener('pointermove', move);
     root.addEventListener('pointerleave', off);
@@ -83,7 +85,7 @@ export function WireTipLayer({ canvas }: { canvas: RefObject<HTMLElement | null>
   // `put`, `keep` and `hideSoon` touch only refs and the state setter: the listeners need not be swapped when they are made again.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvas]);
-  return tip && <PointerTip key={`${tip.text}\n${tip.more ?? ''}`} text={tip.text} more={tip.more} x={tip.x} y={tip.y} />;
+  return tip && <PointerTip key={tip.line} text={tip.text} more={tip.more} x={tip.x} y={tip.y} />;
 }
 
 export function CardBands({
@@ -151,13 +153,8 @@ export function CardBands({
   const mainFor = selection.martId;
   const canvasTree = useMemo(() => (mainFor ? buildJoinTree(mainFor, mainColumns, joinSources ?? []) : null), [mainFor, mainColumns, joinSources]);
   const { focus, toggle: toggleFocus, clear: clearFocus, show: showFocus } = useGridFocus(mainFor, canvasTree, view === 'grid');
-  // Marts joined below the main one name their own joins: the lines under them read those names. Only a joined mart with a line under it is read:
-  // a parent in the report, the focused card, the Graph's pinned card.
-  const own = useOwnAliases(canvasTree ? [
-    ...[...canvasTree.nodes.values()].filter((n) => n.parent !== null && n.parent !== '').map((n) => canvasTree.nodes.get(n.parent!)!.martId),
-    ...(focus ? [canvasTree.nodes.get(focus)?.martId ?? ''] : []),
-    ...(view === 'canvas' && graphSelected ? [graphSelected] : []),
-  ].filter(Boolean) : []);
+  // Marts joined below the main one name their own joins: the lines under them read those names.
+  const own = useOwnAliases();
   // Only joined cards are dragged: dropped near another mart they are rejoined under it. Making a mart main is the header's button.
   const drag = useCardDrag(
     canvas,
@@ -282,7 +279,7 @@ export function CardBands({
       if (n.parent === null || !shown.has(n.martId)) continue;
       const parent = canvasTree!.nodes.get(n.parent)!;
       if (!shown.has(parent.martId)) continue;
-            const src = joinSources?.find((x) => x.aliasPath === n.path);
+      const src = joinSources?.find((x) => x.aliasPath === n.path);
       const edge = edgeOf(model.edges, parent.martId, n.martId, n.path, src?.relationshipId);
       const note = relationshipNote(edge, model.marts.get(n.martId)?.title ?? '', joinAlias(src?.outputAlias, model.marts.get(n.martId)?.title ?? '', parent.martId, parent.path, n.path, own));
       out.push({ id: `tree:${n.path}`, from: martElementId(parent.martId, parent.path || undefined), to: martElementId(n.martId, n.path), kind: 'relationship', ...noteFields(note), joined: true });
@@ -320,7 +317,8 @@ export function CardBands({
         if (!source) continue;
         const parent = parentPath(source.aliasPath);
         const parentMart = canvasTree!.nodes.get(parent)?.martId ?? joinSources.find((x) => x.aliasPath === parent)?.martId;
-        const note = relationshipNote(parentMart ? edgeOf(model.edges, parentMart, id, source.aliasPath, source.relationshipId) : undefined, name(id), parentMart ? joinAlias(source.outputAlias, name(id), parentMart, parent, source.aliasPath, own) : source.outputAlias);
+        // These lines are drawn for every band card at once, so they say the main mart's alias (or the title) and read no other mart's settings.
+        const note = relationshipNote(parentMart ? edgeOf(model.edges, parentMart, id, source.aliasPath, source.relationshipId) : undefined, name(id), source.outputAlias);
         out.push({ id: `ghost:${source.aliasPath}@band`, from: hopCard(parent), to: martElementId(id), kind: 'relationship', ...noteFields(note), dashed: true });
       }
     }

@@ -4,7 +4,8 @@ import { PointerTip } from './Tooltip';
 
 test('a line tip says its name only, and "More" on the next line opens the description below it', () => {
   render(<PointerTip text="Landing Page" more="The landing page as it lives now" x={100} y={100} />);
-  const tip = screen.getByRole('tooltip');
+  // It holds a link, so it is a small dialog named by the alias, not a tooltip.
+  const tip = screen.getByRole('dialog', { name: 'Landing Page' });
   expect(tip).toHaveTextContent(/^Landing PageMore$/);
   expect(tip).not.toHaveTextContent('The landing page as it lives now');
   fireEvent.click(screen.getByRole('button', { name: 'More' }));

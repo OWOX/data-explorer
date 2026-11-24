@@ -86,11 +86,11 @@ export function PointerTip({ text, more, x, y }: { text: string; more?: string; 
     const top = open
       ? Math.max(margin, Math.min(at.top, window.innerHeight - box.height - margin))
       : y - box.height - 14 >= margin ? y - box.height - 14 : y + 18;
-    setAt({ left: open ? at.left : left, top });
+    setAt({ left: open ? Math.max(margin, Math.min(at.left, window.innerWidth - box.width - margin)) : left, top });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, more, x, y, open]);
   return createPortal(
-    <div ref={el} role="tooltip" className={`dm-hint-body dm-tip-fixed${more ? ' dm-tip-interactive' : ''}`} style={at}>
+    <div ref={el} role={more ? 'dialog' : 'tooltip'} aria-label={more ? text : undefined} className={`dm-hint-body dm-tip-fixed${more ? ' dm-tip-interactive' : ''}`} style={at}>
       {text}
       {more && !open && <button type="button" className="dm-tip-more" onClick={() => setOpen(true)}>More</button>}
       {more && open && <span className="dm-tip-about">{more}</span>}

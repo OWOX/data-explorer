@@ -89,14 +89,14 @@ describe('WireTipLayer', () => {
       }
       render(<TooltipProvider><Bands /></TooltipProvider>);
       act(() => { fireEvent.pointerMove(screen.getByTestId('line'), { clientX: 10, clientY: 20 }); });
-      expect(screen.getByRole('tooltip')).toHaveTextContent(/^Last SessionMore$/);
+      expect(screen.getByRole('dialog')).toHaveTextContent(/^Last SessionMore$/);
       // Off the line on the way to the bubble: it waits.
       act(() => { fireEvent.pointerMove(screen.getByTestId('outside')); vi.advanceTimersByTime(100); });
       act(() => { fireEvent.pointerMove(screen.getByRole('button', { name: 'More' })); vi.advanceTimersByTime(1000); });
       fireEvent.click(screen.getByRole('button', { name: 'More' }));
-      expect(screen.getByRole('tooltip')).toHaveTextContent('The visit before the lead converted');
+      expect(screen.getByRole('dialog')).toHaveTextContent('The visit before the lead converted');
       act(() => { fireEvent.pointerMove(screen.getByTestId('outside')); vi.advanceTimersByTime(400); });
-      expect(screen.queryByRole('tooltip')).toBeNull();
+      expect(screen.queryByRole('dialog')).toBeNull();
     } finally {
       vi.useRealTimers();
     }
