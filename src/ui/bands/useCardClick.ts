@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { withJoined, type JoinedSource } from '../../api/blendable';
 import type { Picks } from '../../api/grid-columns';
 import { PAGE_SIZE } from '../../config';
@@ -26,22 +26,31 @@ export type ClickOptions = {
   removePaths?: string[];
 };
 
+const NOTHING_TO_DRAW_MS = 50;
+const DRAW_MS = 2000;
+
 export function useCardClick(model: Model): (id: string, options?: ClickOptions) => Promise<void> {
   const [state, dispatch] = useStore();
   const { blendable, columnStore, schemas } = useServices();
   const latest = useRef<State>(state);
   // Whoever waits for the store to show what was just dispatched; the clicks run one at a time, each planned on what the one before left.
-  const waiters = useRef<(() => void)[]>([]);
+  // `from` is the state on screen when the wait began: only a render of another state ends it. Any other re-render of the bands must not,
+  // not even one whose effects run late, after the dispatch.
+  const waiters = useRef<{ from: State; done: () => void }[]>([]);
   const chain = useRef<Promise<void>>(Promise.resolve());
+  // Set at commit, so it is never behind what is on screen.
+  useLayoutEffect(() => { latest.current = state; });
   useEffect(() => {
-    latest.current = state;
-    const now = waiters.current.splice(0);
-    for (const w of now) w();
+    const ready = waiters.current.filter((w) => w.from !== latest.current);
+    if (ready.length === 0) return;
+    waiters.current = waiters.current.filter((w) => w.from === latest.current);
+    for (const w of ready) w.done();
   });
-  const rendered = () => new Promise<void>((resolve) => {
-    // A step that changed nothing never renders: the pause is the fallback.
-    const t = setTimeout(resolve, 50);
-    waiters.current.push(() => { clearTimeout(t); resolve(); });
+  // A step that changed nothing never renders: the pause is the fallback. One that dispatched gets longer, for a slow machine to draw it.
+  const rendered = (fallback: number) => new Promise<void>((resolve) => {
+    const waiter = { from: latest.current, done: () => { clearTimeout(t); resolve(); } };
+    const t = setTimeout(() => { waiters.current = waiters.current.filter((w) => w !== waiter); resolve(); }, fallback);
+    waiters.current.push(waiter);
   });
 
   const run = useCallback(async (id: string, options?: ClickOptions) => {
@@ -101,7 +110,7 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
       const g = fresh(main) ?? { columns: [], filters: {}, sorts: null, limit: PAGE_SIZE };
       const own = defaultColumns(schemas.peek(main) ?? []);
       const next = withoutPaths(g, sourcesNow, options.removePaths, own);
-      if (next === g) { await rendered(); return; }
+      if (next === g) { await rendered(NOTHING_TO_DRAW_MS); return; }
       // Each removed mart is remembered with the own fields it showed, as a click that takes one out does.
       const martIds = new Set(sourcesNow.filter((s) => options.removePaths!.includes(s.aliasPath)).map((s) => s.martId));
       dispatch({ type: 'setMarts', selection: now.selection, grids: { [main]: next } });
@@ -111,7 +120,7 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
         const fields = ownNamesIn(g.columns, sourcesNow.filter((s) => options.removePaths!.includes(s.aliasPath)), martId);
         if (fields.length > 0) columnStore.saveLastShown(martId, fields);
       }
-      await rendered();
+      await rendered(DRAW_MS);
       return;
     }
     if ((options?.addAt !== undefined || options?.moves) && main) {
@@ -124,10 +133,10 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
         const martId = sourcesNow.find((s) => s.aliasPath === options.addAt)?.martId;
         if (martId !== undefined) next = planAddAt(next, sourcesNow, options.addAt, own, picks.get(main)?.[martId], columnStore.lastShown(martId));
       } else next = planRejoin(g, sourcesNow, options.moves!, own);
-      if (next === g) { await rendered(); return; }
+      if (next === g) { await rendered(NOTHING_TO_DRAW_MS); return; }
       dispatch({ type: 'setMarts', selection: now.selection, grids: { [main]: next } });
       columnStore.save(main, next.columns);
-      await rendered();
+      await rendered(DRAW_MS);
       return;
     }
     const plan = (makeMain ? planMakeMain : planClick)({
@@ -140,12 +149,12 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
       lastShownOf: (martId) => columnStore.lastShown(martId),
       ownNames: (martId) => (schemas.peek(martId) ?? []).map((f) => f.name),
     }, id);
-    if (plan.noop) { await rendered(); return; }
+    if (plan.noop) { await rendered(NOTHING_TO_DRAW_MS); return; }
     if (Object.keys(plan.grids).length === 0 && plan.selection.martId && !plan.selection.cleared) dispatch({ type: 'selectMart', id: plan.selection.martId, sourceOf });
     else dispatch({ type: 'setMarts', selection: plan.selection, grids: plan.grids });
     for (const save of plan.saves) columnStore.save(save.martId, save.columns, save.picks);
     for (const r of plan.remember) columnStore.saveLastShown(r.martId, r.fields);
-    await rendered();
+    await rendered(DRAW_MS);
   }, [blendable, columnStore, schemas, dispatch, model]);
 
   return useCallback((id: string, options?: ClickOptions) => {

@@ -1,5 +1,5 @@
 import { render, waitFor } from '@testing-library/react';
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { Model } from '../../model/types';
@@ -51,4 +51,48 @@ test('a failed joined-fields read keeps the saved joined-field rules instead of 
   await waitFor(() => expect(state.selection.martId).toBe('customers'));
   expect(state.grids.customers!.columns).toContain('orders__status');
   expect(state.grids.customers!.filters.orders__status).toBeDefined();
+});
+
+test('a click is not over when another re-render of the bands runs its effects after the dispatch', async () => {
+  const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  let click!: ReturnType<typeof useCardClick>;
+  let state!: State;
+  let shown!: State;
+  let tick!: (n: number) => void;
+  let hold = false;
+  let letGo: (() => void) | null = null;
+  function Probe() {
+    const [s, dispatch] = useStore();
+    const { columnStore } = useServices();
+    const [n, setN] = useState(0);
+    state = s;
+    tick = setN;
+    click = useCardClick(model);
+    useEffect(() => { dispatch({ type: 'init', focusId: 'orders' }); }, [dispatch]);
+    // The state whose effects have run, as the bands' own `useLatest` sees it.
+    useEffect(() => { shown = s; });
+    // The click's last read ends in the commit of an unrelated re-render: it dispatches before that commit's effects have run.
+    useLayoutEffect(() => { if (n > 0) letGo?.(); }, [n]);
+    useEffect(() => {
+      const load = columnStore.loadLastShown.bind(columnStore);
+      columnStore.loadLastShown = (id) => (hold && id === 'customers' ? new Promise((r) => { letGo = () => { r(load(id)); }; }) : load(id));
+    }, [columnStore]);
+    return null;
+  }
+  render(<AppServices ctx={ctx}><StoreProvider><Probe /></StoreProvider></AppServices>);
+  await waitFor(() => expect(state.selection.martId).toBe('orders'));
+  const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+  const was = env.IS_REACT_ACT_ENVIRONMENT;
+  env.IS_REACT_ACT_ENVIRONMENT = false;
+  try {
+    hold = true;
+    const joined = () => shown.grids.orders?.columns.some((c) => c.startsWith('customers__')) ?? false;
+    const done = click('customers').then(joined);
+    for (let i = 0; i < 200 && letGo === null; i++) await new Promise((r) => setTimeout(r, 5));
+    expect(letGo).not.toBeNull();
+    tick(1);
+    expect(await done).toBe(true);
+  } finally {
+    env.IS_REACT_ACT_ENVIRONMENT = was;
+  }
 });
