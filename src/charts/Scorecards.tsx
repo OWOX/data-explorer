@@ -24,7 +24,8 @@ import { useChartQuery, type ChartResult } from './useChartQuery';
 export type Card = { id: string; label: string; key: string; measure: Measure };
 
 /** How a metric is named wherever it shows: on its card, in a chart title and in a menu. */
-export const metricLabel = (m: Metric): string => `${fieldLabel(m.field)} · ${AGG_LABELS[m.fn]}`;
+/** A calculated metric has no function to name, so its label is the field's alone. */
+export const metricLabel = (m: Metric): string => (m.fn ? `${fieldLabel(m.field)} · ${AGG_LABELS[m.fn]}` : fieldLabel(m.field));
 
 const pathOfMeasure = (m: Measure): string => m.kind === 'records' ? m.aliasPath : m.metric.field.joined?.aliasPath ?? '';
 
@@ -179,8 +180,8 @@ function CardValue({ card, row, formatOf, shown, busy = false }: { card: Card; r
   );
 }
 
-/** A metric's value as the grid shows it: the output type's format, with the column's own unit only where the function keeps it. */
-export function metricText(field: Field, fn: AggFn, v: unknown, formatOf: Formatter): string {
+/** A metric's value as the grid shows it: the output type's format, with the column's own unit only where the function keeps it. No function (a calculated metric): the field's own type and format. */
+export function metricText(field: Field, fn: AggFn | null, v: unknown, formatOf: Formatter): string {
   const [type, format] = metricFormat(field, fn, formatOf);
   // A float sum carries binary noise (116739.09999999996); 15 significant digits is float64's own precision (from 1e15 a float has real digits beyond that, so it is left). Strings are exact.
   const shown = typeof v === 'number' && Number.isFinite(v) && !Number.isInteger(v) && Math.abs(v) < 1e15 ? Number(v.toPrecision(15)) : v;
@@ -188,9 +189,9 @@ export function metricText(field: Field, fn: AggFn, v: unknown, formatOf: Format
 }
 
 /** The output type of a metric and the format that keeps its unit: the column's own only where the function keeps it. */
-export function metricFormat(field: Field, fn: AggFn, formatOf: Formatter): [type: string, format: Format] {
-  const type = outputType(field, fn);
-  return [type, keepsUnit(fn) ? formatOf(field.name, type) : AUTO];
+export function metricFormat(field: Field, fn: AggFn | null, formatOf: Formatter): [type: string, format: Format] {
+  const type = outputType(field, fn ?? undefined);
+  return [type, !fn || keepsUnit(fn) ? formatOf(field.name, type) : AUTO];
 }
 
 /** A records count as text: grouped digits, or the value as it came. */
@@ -203,7 +204,7 @@ export const measureText = (m: Measure, v: unknown, formatOf: Formatter): string
 export const measureFormat = (m: Measure, formatOf: Formatter): [type: string, format: Format] => (m.kind === 'metric' ? metricFormat(m.metric.field, m.metric.fn, formatOf) : ['INTEGER', AUTO]);
 
 /** Whether a measure counts whole things (a records count, an integer field's sum or count), so its axis steps are whole numbers. */
-export const isIntegerMeasure = (m: Measure): boolean => m.kind === 'records' || isIntegerType(outputType(m.metric.field, m.metric.fn));
+export const isIntegerMeasure = (m: Measure): boolean => m.kind === 'records' || isIntegerType(outputType(m.metric.field, m.metric.fn ?? undefined));
 
 /** The trend's rows that have a date: a blank date has no place on the time axis (the read stays as it is, so the series shares it). */
 export const datedRows = (rows: Row[], dateName: string): Row[] => rows.filter((s) => s[dateName] !== null && s[dateName] !== undefined && s[dateName] !== '');
