@@ -802,3 +802,5 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-rule-badge-neutral { background: var(--muted); color: var(--muted-foreground); }
 .dm-rule-badge-neutral .dm-rule-badge-text:hover, .dm-rule-badge-neutral .dm-rule-badge-x:hover { background: var(--accent); color: var(--foreground); }
 .dm-rule-badge-x:disabled { opacity: 0.5; pointer-events: none; }
+/* In the compact layout the badge's text button holds an icon. */
+.dm-rule-badge-text { display: inline-flex; align-items: center; }

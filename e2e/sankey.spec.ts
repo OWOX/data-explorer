@@ -7,9 +7,9 @@ test('add a Sankey from Add chart, a many-to-one joined column draws, a fan-out 
   await expect(data(page).getByRole('row')).toHaveCount(202);
   // A third dimension: Customers joins its name; is_gift is Orders' boolean.
   await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
-  await expect(data(page).getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
+  await expect(data(page).getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
   for (const name of ['is_gift', /created_at/i]) {
-    await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
+    await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
     await page.getByRole('option', { name }).click();
     await page.keyboard.press('Escape');
   }
@@ -47,7 +47,7 @@ test('a column of a one-to-many joined mart says why it cannot sum', async ({ pa
   await expect(data(page).getByRole('row')).toHaveCount(202);
   // Shipments hang several rows on one order: Orders' metric would count an order once per shipment.
   await page.locator('#band-marts').getByText('Shipments', { exact: true }).first().click();
-  await expect(data(page).getByRole('button', { name: 'Fields of Shipments' })).toBeVisible();
+  await expect(data(page).getByRole('button', { name: /^Fields of Shipments:/ })).toBeVisible();
   await data(page).getByRole('radio', { name: 'Charts' }).click();
   await data(page).locator('[data-chart-list-slot]').getByRole('button', { name: 'Charts options' }).click();
   await page.getByRole('menuitem', { name: 'Add chart' }).click();

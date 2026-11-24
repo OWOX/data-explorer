@@ -9,7 +9,7 @@ async function click(page: Page, loc: Locator) { const p = await centre(loc); aw
 async function addCustomers(page: Page) {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
-  await expect(data(page).getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
+  await expect(data(page).getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
 }
 async function openSub(page: Page, column: string, row: 'Filter' | 'Slice' | 'Aggregate') {
   const icon = data(page).getByLabel(`Column menu ${column}`, { exact: true });

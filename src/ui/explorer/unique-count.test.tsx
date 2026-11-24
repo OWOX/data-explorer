@@ -47,7 +47,7 @@ const groupRow = () => data().querySelector('tr[data-group-row]')!;
 const picker = async (mart: string) => {
   // The bands are drawn again once the model has loaded: the grid is looked up after that.
   await waitFor(() => expect(data().querySelector('table')).not.toBeNull(), { timeout: 5000 });
-  await userEvent.click(await within(data()).findByRole('button', { name: `Fields of ${mart}` }, { timeout: 5000 }));
+  await userEvent.click(await within(data()).findByRole('button', { name: new RegExp(`^Fields of ${mart}:`) }, { timeout: 5000 }));
   return within(await screen.findByRole('dialog'));
 };
 const undo = () => userEvent.click(screen.getByRole('button', { name: 'Undo' }));
@@ -70,6 +70,8 @@ describe('a mart whose primary key is hidden for reporting', () => {
     expect(fields.queryByRole('option', { name: 'id' })).toBeNull();
     await userEvent.click(fields.getByRole('option', { name: 'Unique Count' }));
     await waitFor(() => expect(headers()).toEqual([...before, 'Unique Count']));
+    // The mart's columns badge counts the Unique Count column too.
+    expect(within(data()).getByRole('button', { name: new RegExp(`^Fields of Stores: ${before.length + 1} columns$`) })).toBeInTheDocument();
     await waitFor(() => expect(t.of('stores').at(-1)!.o.uniqueCount).toEqual(['']));
     const last = t.of('stores').at(-1)!.o;
     // The shown columns become the group keys, and no hidden field is named anywhere.
