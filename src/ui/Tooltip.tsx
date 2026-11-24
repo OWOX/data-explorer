@@ -11,14 +11,14 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
 }
 
 export function Tooltip({ content, children }: { content: ReactNode; children: ReactNode }) {
-  // Nothing to say: the tooltip stays shut, so the trigger gets no dangling aria-describedby and the provider's skip delay is not spent.
+  // Nothing to say: the tooltip stays shut, so the trigger gets no dangling aria-describedby.
   // Always controlled: content that turns empty and back (a badge going compact) must not leave Radix's own open state stale.
   const empty = content == null || content === '' || content === false;
   const [open, setOpen] = useState(false);
   return (
     <T.Root open={!empty && open} onOpenChange={setOpen}>
-      {/* While shut by `empty`, Radix sees no change on leave or blur and would not report one, so they close it here. */}
-      <T.Trigger asChild onPointerLeave={() => setOpen(false)} onBlur={() => setOpen(false)}>{children}</T.Trigger>
+      {/* While shut by `empty`, Radix sees no change on leave, blur or press and would not report one, so they close it here. */}
+      <T.Trigger asChild onPointerLeave={() => setOpen(false)} onBlur={() => setOpen(false)} onPointerDown={() => setOpen(false)}>{children}</T.Trigger>
       {!empty && (
         <T.Portal>
           <T.Content side="top" sideOffset={6} collisionPadding={8} className="dm-hint-body">
