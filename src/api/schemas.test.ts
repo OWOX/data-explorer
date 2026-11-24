@@ -126,3 +126,18 @@ test('a read in flight before clear() is not served after it', async () => {
   expect((await after).map((f) => f.name)).toEqual(['new']);
   expect(loader.peek('a')!.map((f) => f.name)).toEqual(['new']);
 });
+
+test('a calculated field carries its level: column only when stored as column, else metric; an ordinary field has none', async () => {
+  const getJson = vi.fn(async () => ({ id: 'a', schema: { fields: [
+    { name: 'm', type: 'NUMERIC', calculated: { level: 'metric' } },
+    { name: 'c', type: 'NUMERIC', calculated: { level: 'column' } },
+    { name: 'none', type: 'NUMERIC', calculated: {} },
+    { name: 'odd', type: 'NUMERIC', calculated: { level: 'weird' } },
+    { name: 'plain', type: 'NUMERIC' },
+  ] } }));
+  const schema = await createSchemaLoader(stubCtx({ getJson })).get('a');
+  const by = (n: string) => schema.find((x) => x.name === n)!;
+  expect(['m', 'c', 'none', 'odd'].map((n) => [by(n).isCalculated, by(n).calculatedLevel])).toEqual([[true, 'metric'], [true, 'column'], [true, 'metric'], [true, 'metric']]);
+  expect('calculatedLevel' in by('plain')).toBe(false);
+  expect(by('plain').isCalculated).toBeUndefined();
+});

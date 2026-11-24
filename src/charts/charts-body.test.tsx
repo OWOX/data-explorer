@@ -15,15 +15,22 @@ import type { ChartSettings } from './settings';
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
 const COLUMNS = ['id', 'status', 'amount', 'created_at', 'products__price'];
 
-function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[] } = {}) {
+function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[]; calc?: boolean; uc?: boolean } = {}) {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const puts = vi.fn();
   const gridPuts = vi.fn();
+  // The demo fixtures have no calculated field: with `calc`, the schema gains a metric-level `net` and every row of an orders read carries net = 42 (the mock backend rejects the unknown column, so it and any rule on it are cut from the request; it knows no HAVING on a calculated column, so every group passes).
+  const calcOf = (o: TraverseOptions): TraverseOptions => ({ ...o, column: o.column?.filter((c) => c !== 'net'), sort: o.sort?.filter((x) => x.column !== 'net'), filter: o.filter?.filter((r) => r.column !== 'net') });
   const ctx: Ctx = {
     ...base,
-    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('range failed')); const tr = real(id, o); const map = opts.mapRow; return map ? tr.then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map(map); } })) : tr; } } },
+    owox: { ...base.owox,
+      getJson: opts.calc ? (async (path: string, ...rest: unknown[]) => {
+        const d = await (base.owox.getJson as (p: string, ...r: unknown[]) => Promise<{ schema?: { fields?: unknown[] } }>)(path, ...rest);
+        return path === '/api/data-marts/orders' ? { ...d, schema: { ...d.schema, fields: [...(d.schema?.fields ?? []), { name: 'net', type: 'NUMERIC', calculated: { level: 'metric' } }] } } : d;
+      }) as Ctx['owox']['getJson'] : base.owox.getJson,
+      dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('range failed')); const tr = id === 'orders' && opts.calc ? real(id, calcOf(o)).then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map((r) => ({ ...r, net: 42 })); } })) : real(id, o); const map = opts.mapRow; return map ? tr.then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map(map); } })) : tr; } } },
     collections: <T,>(name: string) => {
       const c = base.collections<T>(name);
       if (name === GRID_COLUMNS_COLLECTION) return { get: (id: string) => c.get(id), put: (id: string, d: T) => { gridPuts(id, d); return c.put(id, d); } };
@@ -31,7 +38,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
     },
   };
   const seeded = Promise.all([
-    ctx.collections<{ columns: string[]; at: string; aggregations?: unknown }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: opts.columns ?? COLUMNS, at: 'then', ...(opts.aggregations ? { aggregations: opts.aggregations } : {}) }),
+    ctx.collections<{ columns: string[]; at: string; aggregations?: unknown; gridView?: unknown }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: opts.columns ?? COLUMNS, at: 'then', ...(opts.uc ? { gridView: { fl: [], s: null, l: 100, uc: [''] } } : {}), ...(opts.aggregations ? { aggregations: opts.aggregations } : {}) }),
     opts.charts ? ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', opts.charts) : undefined,
   ]);
   return { queries, puts, gridPuts, seeded, view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
@@ -742,4 +749,60 @@ test('a hidden field of a joined mart is shown when a chart picks it', async () 
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Name' }));
   await waitFor(() => expect(lastGrid(t).columns).toContain('products__title'));
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', dimension: 'products__title' }] });
+});
+
+test('a shown calculated metric has a card by its plain label, read by name with no function', async () => {
+  const t = await charts({ calc: true, columns: [...COLUMNS, 'net'] });
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Amount · Sum', 'net']));
+  await waitFor(() => expect(group('orders')!.querySelector('[data-card="net"] [data-card-value]')?.textContent).toBe('42'));
+  const read = t.queries.find((q) => q.column?.includes('net') && q.uniqueCount && !q.dateTrunc)!;
+  expect(read.aggregation!.map((r) => r.column)).toEqual(['amount', 'products__price']);
+  expect(read.uniqueCount).toEqual(['', 'products']);
+});
+
+test('the menu of the Count Unique card lists the calculated metric; picking it while hidden shows the column', async () => {
+  const t = await charts({ calc: true });
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Amount · Sum']));
+  await userEvent.click(within(group('orders')!).getByRole('button', { name: 'Count Unique options' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  const menu = await screen.findByRole('menu', { name: 'Metric' });
+  expect(within(menu).getAllByRole('menuitemradio').map((o) => o.textContent)).toEqual(expect.arrayContaining(['Count Unique', 'Amount · Sum', 'net']));
+  await userEvent.click(within(menu).getByRole('menuitemradio', { name: 'net' }));
+  await waitFor(() => expect(lastGrid(t).columns).toContain('net'));
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['net', 'Amount · Sum']));
+});
+
+test('a filter on a calculated metric reaches no chart query: the keys read carries it and the charts follow its groups', async () => {
+  const t = await charts({ calc: true, columns: ['status', 'amount', 'net'], aggregations: [{ column: 'amount', function: 'SUM' }] });
+  await waitFor(() => expect(group('orders')!.querySelector('[data-card="net"] [data-card-value]')?.textContent).toBe('42'));
+  const before = t.queries.length;
+  await openSubmenu(within(data()), 'net', 'Filter');
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.type(within(dialog).getByLabelText('Value'), '10');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  const onNet = () => t.queries.slice(before).filter((q) => q.filter?.some((r) => r.column === 'net'));
+  await waitFor(() => expect(onNet().length).toBeGreaterThan(0));
+  // The keys read: the key and the metric by name, no aggregation, the rule with no function.
+  const read = onNet().find((q) => q.limit === 501)!;
+  expect(read.column).toEqual(['status', 'net']);
+  expect(read.aggregation).toBeUndefined();
+  expect(read.filter).toEqual([expect.objectContaining({ column: 'net', operator: 'eq', value: 10 })]);
+  expect(read.filter![0]).not.toHaveProperty('function');
+  // Every chart query follows it through an `in` rule on the key instead.
+  await waitFor(() => expect(t.queries.slice(before).some((q) => q.uniqueCount && q.filter?.some((r) => r.column === 'status' && r.operator === 'in'))).toBe(true));
+  expect(onNet().every((q) => q.limit === 501)).toBe(true);
+});
+
+test('with Unique Count on, the keys read groups as the table does: one total row has no key', async () => {
+  const t = await charts({ calc: true, uc: true, columns: ['net'] });
+  await waitFor(() => expect(data().querySelector('[data-card="net"] [data-card-value]')?.textContent).toBe('42'));
+  const before = t.queries.length;
+  await openSubmenu(within(data()), 'net', 'Filter');
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.type(within(dialog).getByLabelText('Value'), '10');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(t.queries.slice(before).some((q) => q.limit === 501)).toBe(true));
+  const read = t.queries.slice(before).find((q) => q.limit === 501)!;
+  expect(read.column).toEqual(['net']);
+  expect(read.uniqueCount).toBeUndefined();
 });

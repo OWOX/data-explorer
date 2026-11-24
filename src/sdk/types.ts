@@ -84,7 +84,8 @@ export type SchemaFieldDto = {
   isHiddenForReporting?: boolean;
   status?: string;
   mode?: string;
-  calculated?: unknown;
+  /** Present on a calculated field. `level` is `metric` (the formula aggregates) or `column` (row-level); a missing or unknown one counts as `metric`, as the backend does. */
+  calculated?: { level?: string } | null;
   allowedAggregations?: string[];
   /** The nested fields of a struct field. */
   fields?: SchemaFieldDto[];

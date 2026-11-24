@@ -86,6 +86,37 @@ describe('measures', () => {
   });
 });
 
+describe('calculated metrics', () => {
+  const net = f('net', 'number', { isCalculated: true, calculatedLevel: 'metric' });
+  const margin = f('margin', 'number', { isCalculated: true, calculatedLevel: 'column' });
+  const bare = f('bare', 'number', { isCalculated: true });
+  const text = f('label', 'string', { isCalculated: true, calculatedLevel: 'metric' });
+  const s = [f('id', 'string', { isPrimaryKey: true }), f('amount', 'number'), net, margin, bare, text];
+  const all = ['id', 'amount', 'net', 'margin', 'bare', 'label'];
+  it('a shown metric-level calculated number is a metric with no function; column level, no level and text are not', () => {
+    const r = chartFields(s, all, NO_AGGREGATION, 'M', ['']);
+    expect(r.marts[0]!.metrics.map((m) => [m.field.name, m.fn])).toEqual([['amount', 'SUM'], ['net', null]]);
+  });
+  it('is a measure, but never a pie or sankey one', () => {
+    const r = chartFields(s, all, NO_AGGREGATION, 'M', ['']);
+    expect(measuresOf(r).flatMap((m) => (m.kind === 'metric' ? [m.metric.field.name] : []))).toEqual(['amount', 'net']);
+    expect(pieMeasures(r).flatMap((m) => (m.kind === 'metric' ? [m.metric.field.name] : []))).toEqual(['amount']);
+    expect(sankeyMeasures(r, []).flatMap((m) => (m.kind === 'metric' ? [m.metric.field.name] : []))).toEqual(['amount']);
+  });
+  it('a joined calculated field is no metric', () => {
+    const j = f('c__net', 'number', { isCalculated: true, calculatedLevel: 'metric', joined: { martId: 'C', label: 'Customers', aliasPath: 'c' } });
+    expect(chartFields([j], ['c__net'], NO_AGGREGATION, 'M', ['', 'c']).marts[1]!.metrics).toEqual([]);
+  });
+  it('the Unique Count pseudo-field is no metric', () => {
+    const u = f('Unique Count', 'number', { isCalculated: true });
+    expect(chartFields([u], ['Unique Count'], NO_AGGREGATION, 'M', ['']).marts[0]!.metrics).toEqual([]);
+  });
+  it('ruleNewColumns adds no rule for one', () => {
+    const cur = { aggregations: [{ column: 'amount', function: 'SUM' as const }], dateTrunc: [] };
+    expect(ruleNewColumns(cur, [net])).toEqual(cur);
+  });
+});
+
 describe('id fields', () => {
   it('are neither metrics nor dimensions', () => {
     const s = [f('amount', 'number'), f('customer_id', 'number'), f('Id', 'number'), f('order_id', 'string'), f('pk', 'number', { isPrimaryKey: true }), f('channel', 'string'), f('ref', 'string', { alias: 'Order ID' })];

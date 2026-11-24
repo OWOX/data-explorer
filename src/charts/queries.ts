@@ -12,7 +12,8 @@ export const TOP_N = 8;
 /** What a time series or top list counts: a metric, or a mart's records (its unique count on the mart's alias path, '' for the main one). */
 export type Measure = { kind: 'metric'; metric: Metric } | { kind: 'records'; aliasPath: string; recordsId: string };
 
-export const metricKey = (m: Metric): string => aggregatedKey(m.field.name, m.fn);
+/** A calculated metric has no function, so its row key is its column name as it is. */
+export const metricKey = (m: Metric): string => (m.fn ? aggregatedKey(m.field.name, m.fn) : m.field.name);
 /** The row key of a mart's unique count (the backend's contract: each dot of the alias path becomes `_`). */
 export { uniqueKey };
 export const measureKey = (m: Measure): string => (m.kind === 'metric' ? metricKey(m.metric) : uniqueKey(m.aliasPath));
@@ -32,8 +33,10 @@ const withCounter = (o: TraverseOptions, filter: TraverseFilter[], counter?: Fie
 const withFilter = (o: TraverseOptions, filter: TraverseFilter[]): TraverseOptions => { const kept = fit(o, filter); return kept.length ? { ...o, filter: kept } : o; };
 // A metric reads its column with an aggregation; records read the unique count and name no column.
 const measureColumns = (m: Measure): string[] => (m.kind === 'metric' ? [m.metric.field.name] : []);
-const measureParts = (m: Measure): Pick<TraverseOptions, 'aggregation' | 'uniqueCount'> => (m.kind === 'metric' ? { aggregation: aggs([m.metric]) } : { uniqueCount: [m.aliasPath] });
-const aggs = (metrics: Metric[]) => metrics.map((m) => ({ column: m.field.name, function: m.fn }));
+const measureParts = (m: Measure): Pick<TraverseOptions, 'aggregation' | 'uniqueCount'> => (m.kind === 'metric' ? aggsOf([m.metric]) : { uniqueCount: [m.aliasPath] });
+/** The rules of the metrics that have a function. A calculated metric has none (the backend refuses one), so it is named in `column` only; no rule left, no `aggregation` key. */
+const aggs = (metrics: Metric[]) => metrics.flatMap((m) => (m.fn ? [{ column: m.field.name, function: m.fn }] : []));
+const aggsOf = (metrics: Metric[]): Pick<TraverseOptions, 'aggregation'> => { const rules = aggs(metrics); return rules.length ? { aggregation: rules } : {}; };
 
 // The browser's zone, read once: resolving it builds an Intl formatter, and every query builder asks on every render.
 let browserZoneName: string | undefined;
@@ -54,7 +57,7 @@ export function scorecardsQuery(marts: ChartMart[], filter: TraverseFilter[], co
   const uniqueCount = marts.filter((m) => m.hasPk).map((m) => m.aliasPath);
   if (!metrics.length && !uniqueCount.length) return null;
   const o: TraverseOptions = {
-    ...(metrics.length ? { column: metrics.map((m) => m.field.name), aggregation: aggs(metrics) } : {}),
+    ...(metrics.length ? { column: metrics.map((m) => m.field.name), ...aggsOf(metrics) } : {}),
     ...(uniqueCount.length ? { uniqueCount } : {}),
   };
   return withFilter(withCounter(o, filter, counter), filter);
@@ -73,7 +76,7 @@ export function sparklineQuery(mart: ChartMart, date: Field, bucket: DateBucket,
   if (!mart.metrics.length && !mart.hasPk) return null;
   const o: TraverseOptions = {
     column: [date.name, ...mart.metrics.map((m) => m.field.name)],
-    ...(mart.metrics.length ? { aggregation: aggs(mart.metrics) } : {}),
+    ...aggsOf(mart.metrics),
     dateTrunc: [truncRule(date, bucket)],
     ...(mart.hasPk ? { uniqueCount: [mart.aliasPath] } : {}),
     sort: [{ column: date.name, direction: 'asc' }],
@@ -151,7 +154,7 @@ export function scatterQuery(dim: Field, x: Measure, y: Measure, filter: Travers
   const paths = [...new Set([x, y].flatMap((m) => (m.kind === 'records' ? [m.aliasPath] : [])))];
   const o: TraverseOptions = {
     column: [dim.name, ...columnsOf([x, y])],
-    ...(metrics.length ? { aggregation: aggs(metrics) } : {}),
+    ...aggsOf(metrics),
     ...(paths.length ? { uniqueCount: paths } : {}),
     sort: [{ column: x.kind === 'metric' ? x.metric.field.name : measureKey(x), direction: 'desc' }],
     limit: SCATTER_LIMIT,
@@ -185,7 +188,7 @@ export function sankeyFlowQuery(dims: Field[], measure: Measure, filter: Travers
  */
 export function sankeyLowQuery(dims: Field[], measure: Measure, filter: TraverseFilter[], counter?: Field | null): TraverseOptions {
   const o = sankeyFlowQuery(dims, measure, filter, counter);
-  const notBlank: TraverseFilter[] = measure.kind === 'metric' ? [{ column: measure.metric.field.name, operator: 'is_not_blank', function: measure.metric.fn }] : [];
+  const notBlank: TraverseFilter[] = measure.kind === 'metric' && measure.metric.fn ? [{ column: measure.metric.field.name, operator: 'is_not_blank', function: measure.metric.fn }] : [];
   const rules = [...(o.filter ?? []), ...notBlank];
   return { ...o, ...(rules.length ? { filter: rules } : {}), sort: bySize(measure, 'asc'), limit: SANKEY_LOW_LIMIT };
 }
