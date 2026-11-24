@@ -200,7 +200,7 @@ On a main-mart field, or a lookup join, it is a filter and nothing is asked.
 
 ### Candidates (code, `src/search/chartCandidates.ts`)
 
-Every `ChartKind` whose needs the view meets, with its fields filled in:
+Every `ChartKind` whose needs the view meets, with its fields filled in. Fields are classified as the charts do: ID fields and calculated numbers are not measures or breakdowns, and dates are those that can be bucketed. The main mart's record count (`records`) is a measure too, used when no number is shown and the mart has a key. A distinct count is not additive, so it gets no pie or Sankey:
 
 | Kind | Needs |
 |---|---|
@@ -208,14 +208,15 @@ Every `ChartKind` whose needs the view meets, with its fields filled in:
 | `bar`, `rankedBar`, `pie` | a text breakdown and a measure (the pie folds values past its top list into "Other") |
 | `heatmap` | two breakdowns and a measure |
 | `sankey` | 2 to 5 text breakdowns and an additive measure |
-| `scatter` | two measures and a breakdown |
+| `scatter` | two number measures and a text breakdown |
 | `spread` | a measure and a breakdown |
 
 ### Question
 
 1. One `choice`, `primary`, over the candidates.
-2. One `score` per remaining candidate, `extra.<kind>`, levels `0` no, `1` maybe, `2` yes.
-3. State: the query, the intent's `chartHint`, and each candidate's kind and fields.
+2. One `score` per candidate, `x<i>` (its index in the list), levels `0` no, `1` maybe, `2` yes.
+3. With a single candidate nothing is asked and it is taken.
+4. State: the query, the intent's `chartHint`, and each candidate's kind and fields.
 
 ### Applying it
 

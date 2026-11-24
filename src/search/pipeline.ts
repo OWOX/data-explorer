@@ -35,7 +35,7 @@ export async function runPipeline(raw: Omit<StepInput, 'intent'> & { intent?: In
     if (!main.martId) return end('nothing');
     mainId = main.martId;
     host.alternatives(main.alternatives);
-    if (main.failed) { const g = await host.open(mainId); return end(g ? 'failed' : 'nothing'); }
+    if (main.failed) { const g = await host.open(mainId); if (off()) return end('aborted'); return end(g ? 'failed' : 'nothing'); }
   }
   let grid = await host.open(mainId);
   if (off()) return end('aborted');

@@ -82,4 +82,22 @@ describe('runPipeline', () => {
     expect((await runPipeline({ ...input, model: empty }, deps(allYes), h)).status).toBe('nothing');
     expect(h.open).not.toHaveBeenCalled();
   });
+  it('opens the main mart and stops when step 1 fails', async () => {
+    const { h } = host();
+    const down: StepDeps['decide'] = async () => { throw new Error('down'); };
+    const r = await runPipeline(input, deps(down), h);
+    expect(r.status).toBe('failed');
+    expect(h.open).toHaveBeenCalledOnce();
+    expect(h.fill).not.toHaveBeenCalled();
+  });
+  it('does nothing after an abort that lands right after open on a failed step 1', async () => {
+    const { h, calls } = host();
+    const ctl = new AbortController();
+    h.open = vi.fn(async () => { calls.push('open'); ctl.abort(); return { columns: ['id'], filters: {}, sorts: null, limit: 200 }; });
+    const down: StepDeps['decide'] = async () => { throw new Error('down'); };
+    const r = await runPipeline(input, deps(down, ctl.signal), h);
+    expect(r.status).toBe('aborted');
+    expect(calls.slice(calls.indexOf('open') + 1)).toEqual([]);
+    expect(h.fill).not.toHaveBeenCalled();
+  });
 });

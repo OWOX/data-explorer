@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { applyCharts, mergeCharts, type ChartCandidate } from './charts';
+import { applyCharts, buildChartQuestions, mergeCharts, type ChartCandidate } from './charts';
 
 const c = (key: string, kind: ChartCandidate['spec']['kind']): ChartCandidate => ({ key, spec: { kind, measure: 'spend', dimension: 'country' } });
 const cands = [c('bar', 'bar'), c('pie', 'pie'), c('rankedBar', 'rankedBar'), c('spread', 'spread')];
@@ -19,4 +19,17 @@ it('puts new charts first, keeps saved ones and skips duplicates', () => {
 it('keeps the default charts when the member saved none', () => {
   const merged = mergeCharts({}, [c('pie', 'pie')], 1);
   expect(merged.charts!.map((s) => s.id)).toEqual(['ai-pie-1-0', 'time-series', 'pie']);
+});
+it('saves version 2 settings so the charts survive a reload', () => {
+  expect(mergeCharts({}, [c('pie', 'pie')], 1).version).toBe(2);
+});
+it('does not treat charts with different second measures as equal', () => {
+  const sc = { key: 'scatter', spec: { kind: 'scatter' as const, dimension: 'country', measure: 'spend', measure2: 'clicks' } };
+  const merged = mergeCharts({ charts: [{ id: 'm', kind: 'scatter', dimension: 'country', measure: 'spend', measure2: 'cost' }] }, [sc], 1);
+  expect(merged.charts!.map((s) => s.id)).toEqual(['ai-scatter-1-0', 'm']);
+});
+it('asks nothing for a single candidate', () => {
+  const input = { query: 'q', intent: { chartHint: null } } as never;
+  expect(buildChartQuestions(input, [c('bar', 'bar')])).toBeNull();
+  expect(buildChartQuestions(input, cands)!.questions.primary).toBeDefined();
 });
