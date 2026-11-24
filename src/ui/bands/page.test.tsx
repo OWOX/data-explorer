@@ -8,6 +8,7 @@ import { keyShown } from '../../sdk/mock/key-shown';
 import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
 import { openSubmenu } from '../explorer/menu-test-utils';
+import { num } from '../format';
 
 type Mock = ReturnType<typeof createMockCtx>;
 
@@ -132,7 +133,7 @@ describe('the four bands', () => {
     const grid = await ordersGrid();
     expect(within(band('band-data')).getByText('Orders')).toBeInTheDocument();
     expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(5);
-    expect(await within(data()).findByText('200+ records')).toBeInTheDocument();
+    expect(await within(data()).findByText(`${num(200)} of ${num(450)} records`)).toBeInTheDocument();
     expect(martCard('Orders')).toHaveAttribute('aria-pressed', 'true');
     expect(within(marts()).getByText('Customers')).toBeInTheDocument();
     expect(within(data()).queryByText('Select a data mart.')).toBeNull();

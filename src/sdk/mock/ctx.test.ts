@@ -23,6 +23,16 @@ test('traverseData applies column, filter, limit and count options', async () =>
   expect(await readRows(ctx, 'daily_kpis', { column: ['day'], aggregation: [{ column: 'day', function: 'MIN' }] })).toEqual([expect.objectContaining({ 'day | MIN': expect.anything() })]);
 });
 
+test('traverseData reports the count of the same read without its limit, only when asked', async () => {
+  const ctx = createMockCtx(demoFixtures());
+  const ask = async (o: Parameters<typeof ctx.owox.dataMarts.traverseData>[1]) => (await ctx.owox.dataMarts.traverseData('orders', o)).totalRowCount;
+  expect(await ask({ column: ['id'], limit: 201, includeTotalRowCount: true })).toBe(450);
+  expect(await ask({ column: ['id'], filter: [{ column: 'id', operator: 'lte', value: 3 }], limit: 201, includeTotalRowCount: true })).toBe(3);
+  expect(await ask({ column: ['id'], limit: 201 })).toBeUndefined();
+  const rows = await readRows(ctx, 'orders', { column: ['id'], limit: 5, includeTotalRowCount: true });
+  expect(rows).toHaveLength(5);
+});
+
 test('reading an inaccessible mart rejects', async () => {
   await expect(readRows(createMockCtx(demoFixtures()), 'secret_ledger', {})).rejects.toThrow(/access/i);
 });

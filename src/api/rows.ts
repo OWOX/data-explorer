@@ -4,6 +4,8 @@ export interface ReadRowsHooks {
   signal?: AbortSignal;
   onChunk?: (rowsSoFar: Row[]) => void;
   onRunId?: (runId: string | undefined) => void;
+  /** The total row count, called once before the first row; undefined when none came. */
+  onTotalRowCount?: (count: number | undefined) => void;
 }
 
 function abortError() {
@@ -14,6 +16,7 @@ export async function readRows(ctx: Ctx, martId: string, options: TraverseOption
   if (hooks.signal?.aborted) throw abortError();
   const traversal = await ctx.owox.dataMarts.traverseData(martId, options);
   hooks.onRunId?.(traversal.runId);
+  hooks.onTotalRowCount?.(traversal.totalRowCount);
   const rows: Row[] = [];
   try {
     for await (const chunk of traversal.rowChunks()) {
