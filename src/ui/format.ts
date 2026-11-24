@@ -31,6 +31,10 @@ export const count = (n: number, noun: string): string => `${num(n)} ${noun}${n 
 /** "11.1K records", "1 record": the badge text for a row count already shortened by the caller. */
 export const recordsLabel = (amount: string): string => `${amount} ${amount === '1' ? 'record' : 'records'}`;
 
+/** The badge amount: "200 of 12,345" when more rows exist and the total is known, else "200+" (more rows) or the plain count. */
+export const rowsLabel = (loaded: number, hasMore: boolean, total: number | null): string =>
+  hasMore && total !== null && total > loaded ? `${num(loaded)} of ${num(total)}` : `${loaded}${hasMore ? '+' : ''}`;
+
 /** "3 groups", "1 group": the badge text of a grouped grid, whose rows are groups. */
 export const groupsLabel = (amount: string): string => `${amount} ${amount === '1' ? 'group' : 'groups'}`;
 

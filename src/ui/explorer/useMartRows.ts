@@ -43,15 +43,18 @@ export function buildRowQuery(schema: Schema, visible: string[], filters: Column
 /** `paused`: Charts holds the grid's query back, and a key it has not read yet will not run until Table is back. */
 export type GridRun = { state: 'none' } | { state: 'paused' } | { state: 'running' } | { state: 'failed' } | { state: 'done'; runId: string | null };
 
-type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null; shape: string; runId: string | null; errorRunId: string | null };
+type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null; shape: string; runId: string | null; errorRunId: string | null; total: number | null };
 /** What the rows are rows of: plain rows, or groups over these columns and rules. Rows of one shape never stand in for another's. */
 const shapeOf = (o: TraverseOptions | null): string => (o?.aggregation?.length || o?.dateTrunc?.length || o?.uniqueCount?.length ? JSON.stringify([o.column, o.aggregation, o.dateTrunc, o.uniqueCount]) : 'plain');
 type Query = { dataKey: string; columns: string[]; key: string };
 
-/** `paused` keeps the key (and the rows) but reads nothing; what was read for a key is not read again when the pause ends. */
-export function useMartRows(martId: string, options: TraverseOptions | null, version: number, paused = false) {
+/**
+ * `paused` keeps the key (and the rows) but reads nothing; what was read for a key is not read again when the pause ends.
+ * `exact`: this read names a calculated field. OWOX may group such a read (it does when the formula aggregates), so its count is reused only by a read of the same columns (it is not part of any key).
+ */
+export function useMartRows(martId: string, options: TraverseOptions | null, version: number, paused = false, exact = false) {
   const { ctx } = useServices();
-  const [state, setState] = useState<RowsState>({ rows: null, error: null, hasMore: false, doneFor: null, shape: 'plain', runId: null, errorRunId: null });
+  const [state, setState] = useState<RowsState>({ rows: null, error: null, hasMore: false, doneFor: null, shape: 'plain', runId: null, errorRunId: null, total: null });
   // Each traverseData call is a billed warehouse run. Everything but the column list (filters, sort, limit,
   // version) is the data key: when it changes the rows are re-read. When columns only shrink, the loaded rows
   // already hold them, so the query identity stays and nothing is fetched; a column that was never loaded re-reads.
@@ -65,14 +68,32 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
   }
   const key = query.key;
   const readKey = useRef<string | null>(null);
+  // The count is asked once per result. `base` is the data key without limit and sort (Load more and a sort keep the result), and without
+  // the columns of a plain read (a hidden column does not make another result; a never-loaded one is checked against `columns`).
+  const base = `${martId}:${version}:${JSON.stringify({ ...options, column: grouped ? options?.column : undefined, limit: undefined, sort: undefined })}`;
+  // The last read that asked: what it was and what it counted (undefined: it came without a count). A covered read leaves it as it is.
+  const counted = useRef<{ base: string; columns: string[]; exact: boolean; total: number | undefined } | null>(null);
   useEffect(() => {
     if (!options || paused || readKey.current === key) return;
     const ac = new AbortController();
     const pageLimit = (options.limit ?? 1) - 1;
     let runId: string | null = null;
-    readRows(ctx, martId, options, { signal: ac.signal, onRunId: (id) => { runId = id ?? null; } }).then(
-      (rows) => { if (!ac.signal.aborted) { readKey.current = key; setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options), runId, errorRunId: null }); } },
-      (error) => { if (!ac.signal.aborted) setState({ rows: null, error, hasMore: false, doneFor: key, shape: shapeOf(options), runId: null, errorRunId: runId }); },
+    const sent = options.column ?? [];
+    const c = counted.current;
+    // OWOX may group a read that names a calculated field (it does when the formula aggregates) by its other columns, so there fewer columns can be another result: the sets must match.
+    const covered = !!c && c.base === base && sent.every((n) => c.columns.includes(n)) && (!(exact || c.exact) || (sent.length === c.columns.length));
+    const ask = !covered;
+    let total = ask ? undefined : c?.total;
+    // The flag goes on this copy only: it is not part of the caller's options or of any key.
+    const sentOptions = ask ? { ...options, includeTotalRowCount: true } : options;
+    readRows(ctx, martId, sentOptions, { signal: ac.signal, onRunId: (id) => { runId = id ?? null; }, onTotalRowCount: (n) => { if (ask) total = n; } }).then(
+      (rows) => {
+        if (ac.signal.aborted) return;
+        readKey.current = key;
+        if (ask) counted.current = { base, columns: sent, exact, total };
+        setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options), runId, errorRunId: null, total: total ?? null });
+      },
+      (error) => { if (!ac.signal.aborted) setState({ rows: null, error, hasMore: false, doneFor: key, shape: shapeOf(options), runId: null, errorRunId: runId, total: null }); },
     );
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -83,5 +104,5 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
   // with the wrong headers and counted with the wrong label, so nothing is shown until the new rows arrive.
   const stale = loading && state.shape !== shapeOf(options);
   const run: GridRun = !options ? { state: 'none' } : loading && paused ? { state: 'paused' } : loading ? { state: 'running' } : state.error ? { state: 'failed' } : { state: 'done', runId: state.runId };
-  return { rows: stale ? null : state.rows, loading, error: loading ? null : state.error, hasMore: stale ? false : state.hasMore, run, errorRunId: loading ? null : state.errorRunId };
+  return { rows: stale ? null : state.rows, loading, error: loading ? null : state.error, hasMore: stale ? false : state.hasMore, run, errorRunId: loading ? null : state.errorRunId, total: stale ? null : state.total };
 }
