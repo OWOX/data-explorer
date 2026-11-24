@@ -69,17 +69,32 @@ export function Hint({ text, label, kind = 'info', decorative = false }: { text:
   );
 }
 
-/** The same bubble at a point, for things a trigger element cannot wrap (the lines drawn between cards). */
-export function PointerTip({ text, x, y }: { text: string; x: number; y: number }) {
+/**
+ * The same bubble at a point, for things a trigger element cannot wrap (the lines drawn between cards).
+ * With `more`, the bubble takes the pointer: a "More" link on the next line opens the text in its place. Key it by its line, so another line starts closed.
+ */
+export function PointerTip({ text, more, x, y }: { text: string; more?: string; x: number; y: number }) {
   const el = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState({ left: x, top: y });
+  const [open, setOpen] = useState(false);
   useLayoutEffect(() => {
     const box = el.current?.getBoundingClientRect();
     if (!box) return;
     const margin = 8;
     const left = Math.min(Math.max(margin, x - box.width / 2), window.innerWidth - box.width - margin);
-    const top = y - box.height - 14 >= margin ? y - box.height - 14 : y + 18;
-    setAt({ left, top });
-  }, [text, x, y]);
-  return createPortal(<div ref={el} role="tooltip" className="dm-hint-body dm-tip-fixed" style={at}>{text}</div>, document.body);
+    // Opened, the bubble grows downward from where it stood, so the link the pointer is on stays under it; it moves up only to stay on screen.
+    const top = open
+      ? Math.max(margin, Math.min(at.top, window.innerHeight - box.height - margin))
+      : y - box.height - 14 >= margin ? y - box.height - 14 : y + 18;
+    setAt({ left: open ? at.left : left, top });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, more, x, y, open]);
+  return createPortal(
+    <div ref={el} role="tooltip" className={`dm-hint-body dm-tip-fixed${more ? ' dm-tip-interactive' : ''}`} style={at}>
+      {text}
+      {more && !open && <button type="button" className="dm-tip-more" onClick={() => setOpen(true)}>More</button>}
+      {more && open && <span className="dm-tip-about">{more}</span>}
+    </div>,
+    document.body,
+  );
 }

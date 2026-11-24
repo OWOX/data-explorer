@@ -33,6 +33,8 @@ export type Wire = {
   title: string;
   /** What the relationship is called and means, when it has a custom name or a description: said first in the tooltip, and a dot on the line's middle says there is something to hover. Wires that share a line (the same two cards) are all said, one after another. */
   note?: string;
+  /** The relationship's description: the tooltip offers it behind "More". */
+  about?: string;
   /** A join that can be made but is not yet: drawn dashed, always, at full strength. Solid is a join in the report. */
   dashed?: boolean;
   /** A join in the report (the path): drawn solid, always, at full strength. */
@@ -195,9 +197,15 @@ export function useWires(
     const { svg, made } = ensureLayer(canvas, layerId);
 
     // Wires between the same two cards share one line (invariant 1): what its relationships are called is told by that line, all of them together.
-    const notesOf = new Map<string, string[]>();
-    for (const wire of wires) if (wire.note) { const k = `${wire.from}>${wire.to}`; const list = notesOf.get(k) ?? []; if (!list.includes(wire.note)) list.push(wire.note); notesOf.set(k, list); }
-    const tipOf = (wire: Wire) => { const notes = notesOf.get(`${wire.from}>${wire.to}`); return notes ? `${notes.join('; ')} · ${wire.title}` : wire.title; };
+    const notesOf = new Map<string, { name: string; about?: string }[]>();
+    for (const wire of wires) if (wire.note) { const k = `${wire.from}>${wire.to}`; const list = notesOf.get(k) ?? []; if (!list.some((n) => n.name === wire.note && n.about === wire.about)) list.push({ name: wire.note, ...(wire.about ? { about: wire.about } : {}) }); notesOf.set(k, list); }
+    const tipOf = (wire: Wire) => { const notes = notesOf.get(`${wire.from}>${wire.to}`); return notes ? notes.map((n) => n.name).join('; ') : wire.title; };
+    // The descriptions behind "More": each led by its name when the line carries several relationships.
+    const moreOf = (wire: Wire) => {
+      const notes = (notesOf.get(`${wire.from}>${wire.to}`) ?? []).filter((n) => n.about);
+      return notes.length === 1 && notesOf.get(`${wire.from}>${wire.to}`)!.length === 1 ? notes[0]!.about! : notes.map((n) => `${n.name}: ${n.about}`).join('\n');
+    };
+    const tag = (el: SVGElement, wire: Wire) => { el.dataset.tip = tipOf(wire); const more = moreOf(wire); if (more) el.dataset.more = more; };
     const firstOf = new Set<number>();
     const seen = new Set<string>();
     wires.forEach((wire, i) => { const k = `${wire.from}>${wire.to}`; if (!seen.has(k)) { seen.add(k); firstOf.add(i); } });
@@ -208,7 +216,7 @@ export function useWires(
       path.dataset.from = wire.from;
       path.dataset.to = wire.to;
       // Read by the canvas, which says it in the shared bubble: a native <title> would be a second tooltip style.
-      path.dataset.tip = tipOf(wire);
+      tag(path, wire);
       svg.append(path);
       return path;
     }));
@@ -219,7 +227,7 @@ export function useWires(
       dot.setAttribute('class', 'dm-wire-dot');
       dot.setAttribute('r', '4');
       dot.setAttribute('display', 'none');
-      dot.dataset.tip = tipOf(wire);
+      tag(dot, wire);
       paths[i]!.after(dot);
       return dot;
     }));

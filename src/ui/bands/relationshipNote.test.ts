@@ -1,30 +1,13 @@
 import { expect, test } from 'vitest';
 import type { Edge } from '../../model/types';
 import type { JoinedSource } from '../../api/blendable';
-import { aliasWords, customOutputAlias, edgeOutputAlias, edgeOf, isCustomAlias, relationshipNote } from './relationshipNote';
+import { customOutputAlias, edgeOutputAlias, edgeOf, relationshipNote } from './relationshipNote';
 
-test('an alias is said in words, keeping known acronyms upper-case', () => {
-  expect(aliasWords('first_session')).toBe('First session');
-  expect(aliasWords('last_session_before_mql')).toBe('Last session before MQL');
-  expect(aliasWords('billing_org_id')).toBe('Billing org ID');
-  expect(aliasWords('__x__')).toBe('X');
-  expect(aliasWords('')).toBe('');
-});
-
-test('an alias is custom when it is not the target mart title as an alias', () => {
-  expect(isCustomAlias('customers', 'Customers')).toBe(false);
-  expect(isCustomAlias('sessions_data', 'Sessions Data')).toBe(false);
-  expect(isCustomAlias('first_session', 'Sessions')).toBe(true);
-  expect(isCustomAlias(undefined, 'Sessions')).toBe(false);
-  expect(isCustomAlias('  ', 'Sessions')).toBe(false);
-});
-
-test('a note exists for a custom name or a description, and says the name in words', () => {
-  expect(relationshipNote({ alias: 'customers' }, 'Customers')).toBeNull();
-  expect(relationshipNote(undefined, 'Customers')).toBeNull();
-  expect(relationshipNote({ alias: 'first_session' }, 'Sessions')).toBe('First session');
-  expect(relationshipNote({ alias: 'customers', description: 'Who bought' }, 'Customers')).toBe('Who bought');
-  expect(relationshipNote({ alias: 'first_session', description: 'How a visit starts' }, 'Sessions')).toBe('First session: How a visit starts');
+test('a line is named by its Output Alias, else the target title, and is marked only for a set alias or a description', () => {
+  expect(relationshipNote(undefined, 'Customers')).toEqual({ name: 'Customers', marked: false });
+  expect(relationshipNote({ description: 'Who bought' }, 'Customers')).toEqual({ name: 'Customers', about: 'Who bought', marked: true });
+  expect(relationshipNote({ description: 'How a visit starts' }, 'Session', 'First Session')).toEqual({ name: 'First Session', about: 'How a visit starts', marked: true });
+  expect(relationshipNote(undefined, 'Session', 'Last Session')).toEqual({ name: 'Last Session', marked: true });
 });
 
 test('the relationship of a line: the one the source names, else the one whose alias ends the path, else the only one', () => {
@@ -37,17 +20,10 @@ test('the relationship of a line: the one the source names, else the one whose a
   expect(edgeOf(three, 's', 'c', 'first_session')).toBeUndefined();
 });
 
-test('the Output Alias names the relationship as typed, over the technical alias', () => {
-  expect(relationshipNote({ alias: 'session_entity_new_sql' }, 'Session', 'Last Session')).toBe('Last Session');
-  expect(relationshipNote({ alias: 'first_session', description: 'How a visit starts' }, 'Session', 'First Session')).toBe('First Session: How a visit starts');
-  expect(relationshipNote(undefined, 'Session', 'Last Session')).toBe('Last Session');
-});
-
-test('an Output Alias equal to the target title, or empty, falls back to the technical alias', () => {
-  expect(relationshipNote({ alias: 'first_session' }, 'Session', '  session ')).toBe('First session');
-  expect(relationshipNote({ alias: 'first_session' }, 'Session', '')).toBe('First session');
-  expect(relationshipNote({ alias: 'first_session' }, 'Session', null)).toBe('First session');
-  expect(relationshipNote({ alias: 'session' }, 'Session', 'Session')).toBeNull();
+test('an Output Alias equal to the target title, or empty, is not a set alias: the line says the title', () => {
+  expect(relationshipNote(undefined, 'Session', '  session ')).toEqual({ name: 'Session', marked: false });
+  expect(relationshipNote(undefined, 'Session', '')).toEqual({ name: 'Session', marked: false });
+  expect(relationshipNote(undefined, 'Session', null)).toEqual({ name: 'Session', marked: false });
   expect(customOutputAlias(' Last Session ', 'Session')).toBe('Last Session');
   expect(customOutputAlias('SESSION', ' session')).toBe('');
 });

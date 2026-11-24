@@ -190,12 +190,13 @@ test('Enter on a ghost with a card focused adds it and focus lands on the new re
   await waitFor(() => expect(document.activeElement).toBe(el('countries', 'stores.countries')));
 });
 
-test('the tree line from Orders to Customers carries the join fields', async () => {
+test('the tree line from Orders to Customers is named by its Output Alias, which is the mart title until one is set', async () => {
   setup();
   await joinCustomersAndStores();
   await waitFor(() => expect(document.querySelector('#wires path[data-tip]')).not.toBeNull());
   const tips = [...document.querySelectorAll<SVGPathElement>('#wires path[data-tip]')].map((p) => p.dataset.tip);
-  expect(tips).toContain('customer_id → id');
+  expect(tips).toContain('Customers');
+  expect(tips).not.toContain('customer_id → id');
 });
 
 test('Charts: a mart joined twice is two cells with their own titles and fields', async () => {
@@ -238,7 +239,7 @@ test('a click on a ghost deep in the focus chain adds it and focuses the new car
   await waitFor(() => expect(el('countries', 'stores.countries')).toHaveAttribute('data-focused'));
 });
 
-test('the dashed line to a ghost carries its relationship name, with a dot that says it', async () => {
+test('the dashed line to a ghost is named by its Output Alias and offers its description, with a dot that says so', async () => {
   const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const getJson = ctx.owox.getJson.bind(ctx.owox) as (url: string, ...rest: unknown[]) => Promise<unknown>;
   (ctx.owox as { getJson: unknown }).getJson = (url: string, ...rest: unknown[]) => (url.endsWith('/relationships')
@@ -252,10 +253,12 @@ test('the dashed line to a ghost carries its relationship name, with a dot that 
   fireEvent.click(el('stores', 'stores')!);
   await waitFor(() => expect(ghost('countries', 'stores.countries')).not.toBeNull());
   const line = () => document.querySelector<SVGPathElement>(`path.ghost[data-to="${martElementId('countries', 'stores.countries')}"]`);
-  await waitFor(() => expect(line()?.dataset.tip).toMatch(/^Store country: Where the store is/));
+  await waitFor(() => expect(line()?.dataset.more).toBe('Where the store is'));
+  expect(line()!.dataset.tip).toBe('Countries');
   const dot = line()!.nextElementSibling!;
   expect(dot.classList.contains('dm-wire-dot')).toBe(true);
-  expect((dot as SVGElement).dataset.tip).toMatch(/^Store country: Where the store is/);
+  expect((dot as SVGElement).dataset.tip).toBe('Countries');
+  expect((dot as SVGElement).dataset.more).toBe('Where the store is');
 });
 
 test('the dashed line to a ghost names the join by its Output Alias when the technical alias differs', async () => {
@@ -276,7 +279,7 @@ test('the dashed line to a ghost names the join by its Output Alias when the tec
   fireEvent.click(el('stores', 'stores')!);
   await waitFor(() => expect(ghost('countries', 'stores.countries')).not.toBeNull());
   const line = () => document.querySelector<SVGPathElement>(`path.ghost[data-to="${martElementId('countries', 'stores.countries')}"]`);
-  await waitFor(() => expect(line()?.dataset.tip).toMatch(/^Store Country/));
+  await waitFor(() => expect(line()?.dataset.tip).toBe('Store Country'));
   expect(line()!.dataset.tip).not.toMatch(/sql/i);
   expect((line()!.nextElementSibling as SVGElement).dataset.tip).toMatch(/^Store Country/);
 });

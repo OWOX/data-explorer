@@ -2,21 +2,6 @@ import type { Edge } from '../../model/types';
 import type { JoinedSource } from '../../api/blendable';
 import { parentPath } from '../../state/join-plan';
 
-/** Words that stay upper-case when an alias is said in words. */
-const ACRONYMS = new Set(['id', 'mql', 'sql', 'sal', 'url', 'utm', 'crm', 'ltv', 'cac', 'roi', 'api', 'ip', 'sku', 'uk', 'us', 'eu']);
-
-/** An alias said in words: "last_session_before_mql" -> "Last session before MQL". */
-export function aliasWords(alias: string): string {
-  const words = alias.split(/[_\s-]+/).filter(Boolean).map((w) => w.toLowerCase());
-  return words.map((w, i) => (ACRONYMS.has(w) ? w.toUpperCase() : i === 0 ? w[0]!.toUpperCase() + w.slice(1) : w)).join(' ');
-}
-
-/** A title as an alias looks: lower-case words joined with underscores. The default alias of a relationship is its target mart's title this way. */
-const slugOf = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-
-/** A name the member gave the relationship: an alias that is not just the target mart's title as an alias. */
-export const isCustomAlias = (alias: string | undefined, targetTitle: string): boolean => !!alias?.trim() && slugOf(alias) !== slugOf(targetTitle);
-
 /**
  * The relationship a line stands for: the one the joined source names (`relationshipId`) when it is among the edges from `parent` to `target`,
  * else the one whose alias ends the alias path, else the only one there is. Null when several fit and nothing tells them apart.
@@ -35,15 +20,33 @@ export const customOutputAlias = (outputAlias: string | undefined | null, target
 };
 
 /**
- * What hovering a line says about its relationship, or null when it has neither a name nor a description (then there is nothing to hover for).
- * The name is the join's Output Alias as typed when there is one, else the custom technical alias said in words.
+ * The Output Alias of the join at `path` under the card at `parentPath`: the main mart's own setting when it gives one,
+ * else, under a joined mart, that mart's own setting for the rest of the path (`own`).
  */
-export function relationshipNote(edge: Pick<Edge, 'alias' | 'description'> | undefined, targetTitle: string, outputAlias?: string | null): string | null {
-  const name = customOutputAlias(outputAlias, targetTitle) || (isCustomAlias(edge?.alias, targetTitle) ? aliasWords(edge!.alias!) : '');
-  const about = edge?.description?.trim() ?? '';
-  if (!name && !about) return null;
-  return [name, about].filter(Boolean).join(': ');
+export function joinAlias(outputAlias: string | undefined | null, targetTitle: string, parentMartId: string, parentPath: string, path: string, own: (martId: string, path: string) => string | undefined): string | undefined {
+  const main = customOutputAlias(outputAlias, targetTitle);
+  if (main || parentPath === '' || !path.startsWith(`${parentPath}.`)) return main || undefined;
+  return own(parentMartId, path.slice(parentPath.length + 1));
 }
+
+/** What a relationship line says: its Output Alias, and its description behind "More". */
+export type RelationshipNote = {
+  /** The join's Output Alias: the one the member set, else the target mart's title (the alias a join has until one is set). */
+  name: string;
+  about?: string;
+  /** The member named the join or described it: the line has a dot to hover. */
+  marked: boolean;
+};
+
+/** What hovering a line says about its relationship. The technical alias is never said: the Output Alias is the join's name. */
+export function relationshipNote(edge: Pick<Edge, 'description'> | undefined, targetTitle: string, outputAlias?: string | null): RelationshipNote {
+  const custom = customOutputAlias(outputAlias, targetTitle);
+  const about = edge?.description?.trim() ?? '';
+  return { name: custom || targetTitle, ...(about ? { about } : {}), marked: !!custom || !!about };
+}
+
+/** A line's tooltip fields on a wire: the name always, the note and the description when the member gave them. */
+export const noteFields = (n: RelationshipNote) => ({ title: n.name, ...(n.marked ? { note: n.name } : {}), ...(n.about ? { about: n.about } : {}) });
 
 /**
  * The Output Alias an `edge:` line is named by. It is per path, so: the source of this relationship hanging off the card the line leaves (`fromPath`);
