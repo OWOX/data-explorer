@@ -47,11 +47,12 @@ function fakeDecision(latencyMs: number): DecisionModel {
       const text = state.map((p) => (p.type === 'text' ? p.text : '')).join('');
       let doc: Doc; try { doc = JSON.parse(text) as Doc; } catch { doc = {}; }
       const q = String(doc.query ?? '').toLowerCase();
-      const mentions = (opt: string) => q.includes(opt.toLowerCase()) || (SYNONYMS[opt] ?? []).some((w) => q.includes(w));
+      const word = (w: string) => new RegExp(`\\b${w.toLowerCase().replace(/[_:]/g, ' ')}\\b`).test(q);
+      const mentions = (opt: string) => word(opt) || (SYNONYMS[opt] ?? []).some(word);
       const answers = Object.fromEntries(Object.entries(questions).map(([id, question]) => {
         if (question.type === 'choice') {
           const keys = Object.keys(question.criteria);
-          const pick = keys.find(mentions) ?? keys.find((k) => k !== 'none') ?? keys[0]!;
+          const pick = keys.find((k) => k !== 'none' && mentions(k)) ?? (keys.includes('none') ? 'none' : keys[0]!);
           return [id, { type: 'choice', choice: pick }];
         }
         if (question.type === 'score') return [id, { type: 'score', score: question.criteria.length - 1 }];

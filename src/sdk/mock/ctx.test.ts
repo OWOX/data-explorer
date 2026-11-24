@@ -238,3 +238,16 @@ it('the fake decision model answers choice and score questions deterministically
   expect(r.answers.main).toMatchObject({ type: 'choice', choice: 'orders' });
   expect(r.answers.p0).toMatchObject({ type: 'score' });
 });
+
+test('the fake decision model matches option keys as words and prefers none when nothing matches', async () => {
+  const ai = createFakeAi();
+  const ask = async (query: string, criteria: Record<string, null>) => {
+    const r = await experimental_decide({ model: ai.decision!, state: [{ type: 'text', text: JSON.stringify({ query }) }], questions: { q: { type: 'choice', instructions: 'pick', criteria } } });
+    return (r.answers.q as { choice: string }).choice;
+  };
+  expect(await ask('paid orders last month', { today: null, last_month: null, none: null })).toBe('last_month');
+  expect(await ask('orders by status', { none: null, DAY: null, WEEK: null })).toBe('none');
+  expect(await ask('a grade report', { customers: null, ad_spend: null })).toBe('customers');
+  const r = await experimental_decide({ model: ai.decision!, state: [{ type: 'text', text: '{}' }], questions: { p: { type: 'score', instructions: 'rate', criteria: ['no', 'maybe', 'yes'] } } });
+  expect(r.answers.p).toMatchObject({ type: 'score', score: 2 });
+});
