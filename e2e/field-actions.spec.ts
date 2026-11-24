@@ -11,7 +11,7 @@ test('a filter on a field that is not a column, set from the Fields list, narrow
   await expect(data(page).getByRole('row')).toHaveCount(202);
   const revenueHeader = data(page).getByRole('columnheader', { name: /^Net Revenue/ });
   await expect(revenueHeader).toHaveCount(0);
-  await click(page, data(page).getByRole('button', { name: 'Fields of Orders' }));
+  await click(page, data(page).getByRole('button', { name: /^Fields of Orders:/ }));
   const list = page.getByRole('listbox', { name: 'Fields of Orders' });
   await expect(list).toBeVisible();
   const row = list.getByRole('option', { name: 'Net Revenue', exact: true }).locator('xpath=..');

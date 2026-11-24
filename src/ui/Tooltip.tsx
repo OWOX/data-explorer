@@ -11,14 +11,18 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
 }
 
 export function Tooltip({ content, children }: { content: ReactNode; children: ReactNode }) {
+  // Nothing to say: the tooltip stays shut, so the trigger gets no dangling aria-describedby and the provider's skip delay is not spent.
+  const empty = content == null || content === '' || content === false;
   return (
-    <T.Root>
+    <T.Root {...(empty ? { open: false } : {})}>
       <T.Trigger asChild>{children}</T.Trigger>
-      <T.Portal>
-        <T.Content side="top" sideOffset={6} collisionPadding={8} className="dm-hint-body">
-          {content}
-        </T.Content>
-      </T.Portal>
+      {!empty && (
+        <T.Portal>
+          <T.Content side="top" sideOffset={6} collisionPadding={8} className="dm-hint-body">
+            {content}
+          </T.Content>
+        </T.Portal>
+      )}
     </T.Root>
   );
 }

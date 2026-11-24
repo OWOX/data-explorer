@@ -6,7 +6,7 @@ const data = (page: Page) => page.locator('#band-data');
 async function openCharts(page: Page, columns: (string | RegExp)[]) {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   for (const name of columns) {
-    await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
+    await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
     await page.getByRole('option', { name }).click();
     await page.keyboard.press('Escape');
   }

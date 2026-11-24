@@ -40,7 +40,7 @@ test('checklist rows use the column menu font and row height', async ({ page }) 
   const menuRow = page.getByRole('menuitem').first();
   const m = await menuRow.evaluate((el) => { const c = getComputedStyle(el); return { family: c.fontFamily, size: c.fontSize, height: el.getBoundingClientRect().height }; });
   await page.keyboard.press('Escape');
-  await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
+  await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
   const optRow = page.getByRole('dialog').getByRole('option').first();
   const o = await optRow.evaluate((el) => { const c = getComputedStyle(el); return { family: c.fontFamily, size: c.fontSize, height: el.getBoundingClientRect().height }; });
   expect(o.family).toBe(m.family);
@@ -106,12 +106,12 @@ const scrolledToStart = (page: Page) => settled(page, (el) => el.scrollLeft <= 1
 async function addCustomers(page: Page) {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
-  await expect(data(page).getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
+  await expect(data(page).getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
 }
 
 async function joinedLayout(page: Page) {
   await addCustomers(page);
-  await data(page).getByRole('button', { name: 'Fields of Customers' }).click();
+  await data(page).getByRole('button', { name: /^Fields of Customers:/ }).click();
   await page.getByRole('dialog').getByLabel('city', { exact: true }).click();
   await page.keyboard.press('Escape');
   const order = await titles(page);
@@ -204,7 +204,7 @@ test('ticking a field in the main picker keeps the dragged order', async ({ page
   const order = await dragFirstPastSecond(page);
   const moved = [order[1], order[0], ...order.slice(2)];
   await expect.poll(() => titles(page)).toEqual(moved);
-  await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
+  await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
   await page.getByRole('dialog').getByLabel('created_at', { exact: true }).click();
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await titles(page)).filter((c) => c !== 'created_at')).toEqual(moved);

@@ -5,7 +5,7 @@ const data = (page: Page) => page.locator('#band-data');
 
 test('Charts mode shows scorecards, a stacked time series and a pie, and Table brings the grid back', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
-  await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
+  await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
   await page.getByRole('option', { name: /created_at/i }).click();
   await page.keyboard.press('Escape');
   const widths = () => data(page).locator('th[data-group]').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
@@ -44,7 +44,7 @@ test('a one-column group shows its scorecard value in full', async ({ page }) =>
   await expect(data(page).getByRole('row')).toHaveCount(202);
   // The picker may close after each change: open it again for every column that goes.
   for (const name of ['status', 'Customer', 'Product', 'Store']) {
-    await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
+    await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
     await page.getByLabel(name, { exact: true }).click();
     await page.keyboard.press('Escape');
   }
@@ -63,7 +63,7 @@ test('the time series and the pie sit side by side when the band is wide, and Ch
   const tableHeight = (await frame.boundingBox())!.height;
   // Amount is a default column now: only created_at is ticked.
   for (const name of [/created_at/i]) {
-    await data(page).getByRole('button', { name: 'Fields of Orders' }).click();
+    await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
     await page.getByRole('option', { name }).click();
     await page.keyboard.press('Escape');
   }
@@ -129,7 +129,7 @@ test.describe('grouped submenus', () => {
   test('a Dimension submenu lists its fields under each data mart, and the arrow keys skip the mart headers', async ({ page }) => {
     await expect(data(page).getByRole('row')).toHaveCount(202);
     await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
-    await expect(data(page).getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
+    await expect(data(page).getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
     await data(page).getByRole('radio', { name: 'Charts' }).click();
     const pie = data(page).locator('section[data-chart-kind="Pie"]');
     await pie.hover();
