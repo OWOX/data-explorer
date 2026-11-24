@@ -9,7 +9,9 @@ export type Intent = {
   ranking: { direction: 'asc' | 'desc'; n?: number } | null;
   chartHint: 'trend' | 'share' | 'compare' | 'flow' | 'correlation' | null;
 };
-export const EMPTY_INTENT: Intent = { subjects: [], measures: [], breakdowns: [], time: null, values: [], ranking: null, chartHint: null };
+export const EMPTY_INTENT: Intent = Object.freeze({
+  subjects: Object.freeze([]), measures: Object.freeze([]), breakdowns: Object.freeze([]), time: null, values: Object.freeze([]), ranking: null, chartHint: null,
+}) as unknown as Intent;
 export const INTENT_TIMEOUT_MS = 10_000;
 
 const MAX_LIST = 10;

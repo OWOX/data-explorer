@@ -1,4 +1,4 @@
-import { experimental_decide, type Experimental_DecisionQuestion } from 'ai';
+import { Experimental_DecisionRefusalError, experimental_decide, type Experimental_DecisionQuestion } from 'ai';
 import type { DecisionModel } from '../sdk/types';
 import { AiUnavailable } from './ai';
 
@@ -23,7 +23,7 @@ export const scoreQ = (instructions: string, levels: string[]): Question => ({ t
 function checked(q: Question, raw: unknown): Answer | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const a = raw as { type?: string; choice?: unknown; score?: unknown; probability?: unknown; probabilities?: Record<string, number> };
-  if (q.type === 'choice' && a.type === 'choice' && typeof a.choice === 'string' && a.choice in q.criteria) return { type: 'choice', choice: a.choice, probabilities: a.probabilities };
+  if (q.type === 'choice' && a.type === 'choice' && typeof a.choice === 'string' && Object.hasOwn(q.criteria, a.choice)) return { type: 'choice', choice: a.choice, probabilities: a.probabilities };
   if (q.type === 'score' && a.type === 'score' && typeof a.score === 'number' && Number.isFinite(a.score)) {
     const level = Math.min(q.criteria.length - 1, Math.max(0, Math.round(a.score)));
     return { type: 'score', level, probabilities: a.probabilities };
@@ -44,11 +44,32 @@ export function createDecide(model: DecisionModel, opts: { timeoutMs?: number; d
     const ctl = new AbortController();
     const stop = () => ctl.abort();
     signal.addEventListener('abort', stop, { once: true });
-    const timer = setTimeout(stop, timeoutMs);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Rejects on timeout or abort, so a model that ignores the signal cannot hold the pipeline.
+    const unavailable = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => { ctl.abort(); reject(new AiUnavailable('timeout')); }, timeoutMs);
+      ctl.signal.addEventListener('abort', () => reject(new AiUnavailable('aborted')), { once: true });
+    });
+    unavailable.catch(() => undefined);
+    const ask = async (qs: Record<string, Question>): Promise<Record<string, unknown>> => {
+      const pending = Promise.resolve(decideFn({ model, state: [{ type: 'text', text: JSON.stringify(state) }], questions: qs, abortSignal: ctl.signal, maxRetries: 1 }));
+      pending.catch(() => undefined);
+      const result = await Promise.race([pending, unavailable]);
+      return (result as { answers?: Record<string, unknown> }).answers ?? {};
+    };
     try {
-      const result = await decideFn({ model, state: [{ type: 'text', text: JSON.stringify(state) }], questions, abortSignal: ctl.signal, maxRetries: 1 });
-      const answers = (result as { answers: Record<string, unknown> }).answers ?? {};
-      return Object.fromEntries(ids.map((id) => [id, checked(questions[id]!, answers[id])]));
+      let answers: Record<string, unknown>;
+      let asked = questions;
+      try {
+        answers = await ask(asked);
+      } catch (e) {
+        if (!Experimental_DecisionRefusalError.isInstance(e)) throw e;
+        // The provider refused some questions: answer around them, once.
+        const refused = new Set((e as { questionIds: string[] }).questionIds);
+        asked = Object.fromEntries(ids.filter((id) => !refused.has(id)).map((id) => [id, questions[id]!]));
+        answers = Object.keys(asked).length ? await ask(asked) : {};
+      }
+      return Object.fromEntries(ids.map((id) => [id, id in asked ? checked(questions[id]!, answers[id]) : undefined]));
     } catch (e) {
       throw e instanceof AiUnavailable ? e : new AiUnavailable(e instanceof Error ? e.message : String(e));
     } finally {
