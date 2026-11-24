@@ -274,11 +274,12 @@ describe('the total row count', () => {
   });
 
   test('a never-loaded column asks; a loaded one does not', async () => {
-    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0 });
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0 }, [450, 460]);
     await waitFor(() => expect(result.current.total).toBe(450));
     rerender({ o: opts(['id', 'a', 'b']), v: 0 });
     await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
     await settled(result);
+    expect(result.current.total).toBe(460);
     rerender({ o: opts(['id', 'a']), v: 0 });
     expect(traverseData).toHaveBeenCalledTimes(2);
     expect(asked(traverseData)).toEqual([true, true]);

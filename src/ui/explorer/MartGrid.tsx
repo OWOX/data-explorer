@@ -593,7 +593,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     return () => ro?.disconnect();
   }, [charts]);
   const calculated = useMemo(() => new Set(schema.filter((f) => f.isCalculated).map((f) => f.name)), [schema]);
-  const { rows: read, loading: reading, error, hasMore, run, errorRunId, total } = useMartRows(martId, asked, version, charts, !!asked?.column?.some((c) => calculated.has(c)));
+  const { rows: read, loading: reading, error, hasMore, run, errorRunId, total } = useMartRows(martId, asked, version, charts, !!asked?.column?.some((c) => calculated.has(c)) || !!asked?.filter?.some((r) => calculated.has(r.column)));
   const rows = blocked || charts ? null : read;
   const loading = reading && !blocked && !charts;
   const byName = useMemo(() => new Map(schema.map((f) => [f.name, f])), [schema]);

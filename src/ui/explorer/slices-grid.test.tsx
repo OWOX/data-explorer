@@ -10,9 +10,12 @@ import { openColumnMenu } from './menu-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
 
-function setup(grid: GridState, opts: { blendFails?: boolean; empty?: boolean } = {}) {
+function setup(grid: GridState, opts: { blendFails?: boolean; empty?: boolean; calculated?: boolean } = {}) {
   let failing = !!opts.blendFails;
-  const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  const fixtures = demoFixtures();
+  // A calculated field of Orders (no warehouse column; the mock reads it as null).
+  if (opts.calculated) fixtures.marts.find((m) => m.id === 'orders')!.fields.push({ name: 'margin', type: 'NUMERIC', alias: 'Margin', calculated: { expression: 'amount * 0.2' } });
+  const base = createMockCtx(fixtures, { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const realGet = base.owox.getJson.bind(base.owox);
@@ -310,5 +313,38 @@ describe('the data mart title row', () => {
     // It sits right after the title, before the rule badges.
     const mark = await within(group).findByRole('button', { name: /^1 filter in / });
     expect(hint.compareDocumentPosition(mark) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe('the total row count asks again after a hide only when OWOX would count another result', () => {
+  const grid = (extra: Partial<GridState>): GridState => ({ columns: ['id', 'status', 'amount'], filters: {}, slices: {}, sorts: null, limit: 200, ...extra });
+  /** Hide Status, press Load more, and return the options of the read that followed. */
+  async function hideThenLoadMore(t: ReturnType<typeof setup>) {
+    await waitFor(() => expect(within(data()).getByRole('button', { name: 'Load more' })).toBeEnabled());
+    await waitFor(() => expect(headers().some((h) => h?.startsWith('status'))).toBe(true));
+    const first = t.queries.length;
+    expect(t.queries[first - 1]!.includeTotalRowCount).toBe(true);
+    await userEvent.click(within(await openColumnMenu(within(data()), 'status')).getByRole('menuitem', { name: 'Hide column' }));
+    await waitFor(() => expect(headers().some((h) => h?.startsWith('status'))).toBe(false));
+    expect(t.queries).toHaveLength(first); // hiding alone reads nothing
+    await userEvent.click(within(data()).getByRole('button', { name: 'Load more' }));
+    await waitFor(() => expect(t.queries).toHaveLength(first + 1));
+    return t.queries[first]!;
+  }
+
+  test('with a calculated field among the columns, Load more after a hide asks', async () => {
+    const q = await hideThenLoadMore(setup(grid({ columns: ['id', 'status', 'margin'] }), { calculated: true }));
+    expect(q.includeTotalRowCount).toBe(true);
+  });
+
+  test('with a calculated field only in a filter, Load more after a hide asks', async () => {
+    const q = await hideThenLoadMore(setup(grid({ filters: { margin: { field: 'margin', op: 'is_blank', value: '' } } }), { calculated: true }));
+    expect(q.filter?.some((f) => f.column === 'margin')).toBe(true);
+    expect(q.includeTotalRowCount).toBe(true);
+  });
+
+  test('without a calculated field, Load more after a hide does not ask', async () => {
+    const q = await hideThenLoadMore(setup(grid({}), { calculated: true }));
+    expect(q.includeTotalRowCount).toBeUndefined();
   });
 });
