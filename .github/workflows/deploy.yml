@@ -27,6 +27,10 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Holds VOID_TOKEN and accepts only main and v* tags, so a pushed branch cannot deploy to production.
+    environment:
+      name: owox-app
+      url: https://data-explorer.owox.app/
     env:
       VOID_API_URL: https://owox.app
       VOID_PROJECT: data-explorer
