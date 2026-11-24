@@ -14,14 +14,18 @@ import { useLatest } from '../useLatest';
 import { useCanvasDrag } from './useCanvasDrag';
 import { overOf, useGhostChain } from './useGhostChain';
 import type { ClickOptions } from './useCardClick';
-import { edgeOf, relationshipNote } from './relationshipNote';
+import { edgeOf, joinAlias, noteFields, relationshipNote } from './relationshipNote';
 import { litIds, revisionOf, useWires, type Wire } from './wires';
 
-export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart }: {
+const noOwnAliases = () => undefined;
+
+export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart, own = noOwnAliases }: {
   model: Model;
   mainId: string | null;
   columns: string[];
   sources: JoinedSource[] | null;
+  /** The Output Alias a joined mart's own settings give a path below it (`useOwnAliases`): lines under a joined mart read their names from it. */
+  own?: (martId: string, path: string) => string | undefined;
   counts: Map<string, CountState>;
   dq: Map<string, DqSummary>;
   onOpenApp: (id: string) => void;
@@ -150,21 +154,21 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
       // Each joined copy is its own node, keyed by its alias path: the line belongs to the one relationship that path names.
       const source = sources?.find((x) => x.aliasPath === node.path);
       const edge = edgeOf(model.edges, parent.martId, node.martId, node.path, source?.relationshipId);
-      const note = relationshipNote(edge, title(node.martId), source?.outputAlias);
-      out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', title: `${title(parent.martId)} → ${title(node.martId)}`, ...(note ? { note } : {}), sideways: true, joined: true, ...(node.path === strongPath ? { strong: true } : {}) });
+      const note = relationshipNote(edge, title(node.martId), joinAlias(source?.outputAlias, title(node.martId), parent.martId, parent.path, node.path, own));
+      out.push({ id: `tree:${node.path}`, from: martElementId(parent.martId, parent.path), to: martElementId(node.martId, node.path), kind: 'relationship', ...noteFields(note), sideways: true, joined: true, ...(node.path === strongPath ? { strong: true } : {}) });
     }
     for (const level of levels) {
       const fromPath = level.from;
       for (const g of level.ghosts) {
-        // A dashed line names its join like a solid one: the Output Alias when set, else the relationship's own name.
-        const note = relationshipNote(edgeOf(model.edges, level.fromMartId, g.martId, g.aliasPath, g.relationshipId), title(g.martId), g.outputAlias);
-        out.push({ id: `ghost:${g.aliasPath}`, from: martElementId(level.fromMartId, fromPath), to: martElementId(g.martId, g.aliasPath), kind: 'relationship', title: `${title(level.fromMartId)} → ${title(g.martId)}`, dashed: true, sideways: true, ...(note ? { note } : {}) });
+        // A dashed line names its join like a solid one: the Output Alias when set, else the parent mart's own alias, else the title.
+        const note = relationshipNote(edgeOf(model.edges, level.fromMartId, g.martId, g.aliasPath, g.relationshipId), title(g.martId), joinAlias(g.outputAlias, title(g.martId), level.fromMartId, fromPath, g.aliasPath, own));
+        out.push({ id: `ghost:${g.aliasPath}`, from: martElementId(level.fromMartId, fromPath), to: martElementId(g.martId, g.aliasPath), kind: 'relationship', ...noteFields(note), dashed: true, sideways: true });
       }
     }
     return out;
     // `key` stands for tree and the ghost levels: the memo must not rebuild on every hover.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, model, strongPath, sources]);
+  }, [key, model, strongPath, sources, own]);
   // The hovered card or ghost and what it touches (its path neighbours and the ghosts hanging from it): every other card fades to half.
   const hoverEl = (() => {
     const over = hover.at;

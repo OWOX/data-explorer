@@ -121,7 +121,9 @@ const centre = (id: string, path?: string) => {
   const w = el(id, path)!.parentElement!;
   return { x: parseFloat(w.style.left) + 112, y: parseFloat(w.style.top) + 56 };
 };
-const tips = () => [...marts().querySelectorAll<SVGPathElement>('#tree-wires path[data-tip]:not(.ghost)')].map((p) => p.dataset.tip);
+/** The solid lines as "From → To" by mart id, capitalised as the fixtures title them: a tip names only the join, not the two marts. */
+const martOfEl = (id = '') => { const m = id.replace(/^dm-/, '').split('@')[0]!; return m[0]!.toUpperCase() + m.slice(1); };
+const tips = () => [...marts().querySelectorAll<SVGPathElement>('#tree-wires path[data-tip]:not(.ghost)')].map((p) => `${martOfEl(p.dataset.from)} → ${martOfEl(p.dataset.to)}`);
 const treeEl = () => marts().querySelector<HTMLElement>('.dm-tree')!;
 const joinCountriesUnderCustomers = async () => {
   setup();
@@ -644,7 +646,7 @@ test('Escape in a drag only cancels the drag: the pinned card stays pinned', asy
   await waitFor(() => expect(ghosts().length).toBeGreaterThan(0));
 });
 
-test('Graph: three relationships from one mart to another each name their own line, and the dot sits on each', () => {
+test('Graph: three relationships from one mart to another each name their own line by Output Alias, and a dot sits on the described one', () => {
   const mk = (id: string, title: string): Mart => ({ id, title, description: '', icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
   const edge = (id: string, alias: string, description?: string) => ({ id, source: 'contact', target: 'session', joins: [], alias, ...(description ? { description } : {}) });
   const model = { marts: new Map([['contact', mk('contact', 'Contact')], ['session', mk('session', 'Session | Entity')]]), sources: [], contexts: [], failedStorages: [],
@@ -658,11 +660,14 @@ test('Graph: three relationships from one mart to another each name their own li
     </TooltipProvider>,
   );
   const tip = (path: string) => document.querySelector<SVGPathElement>(`#tree-wires path[data-to="${martElementId('session', path)}"]`)!.dataset.tip!;
-  expect(tip('first_session')).toMatch(/^First session: How the contact first arrived/);
-  expect(tip('last_session_before_mql')).toMatch(/^Last session before MQL ·/);
-  // The default name (the mart's own title) with no description says nothing, so that line has no dot.
-  expect(tip('session_entity')).not.toMatch(/Session entity/);
-  expect(document.querySelectorAll('#tree-wires circle.dm-wire-dot')).toHaveLength(2);
+  const more = (path: string) => document.querySelector<SVGPathElement>(`#tree-wires path[data-to="${martElementId('session', path)}"]`)!.dataset.more;
+  // No Output Alias is set, so each line says the Output Alias a join has by default (the mart's title), never the technical alias.
+  expect(tip('first_session')).toBe('Session | Entity');
+  expect(tip('last_session_before_mql')).toBe('Session | Entity');
+  expect(more('first_session')).toBe('How the contact first arrived');
+  expect(more('last_session_before_mql')).toBeUndefined();
+  // Only the described line has something more to say, so only it has a dot.
+  expect(document.querySelectorAll('#tree-wires circle.dm-wire-dot')).toHaveLength(1);
 });
 
 test('Graph: a line says the join\'s Output Alias, not the relationship\'s technical alias', () => {
@@ -679,6 +684,23 @@ test('Graph: a line says the join\'s Output Alias, not the relationship\'s techn
     </TooltipProvider>,
   );
   const tip = (path: string) => document.querySelector<SVGPathElement>(`#tree-wires path[data-to="${martElementId('session', path)}"]`)!.dataset.tip!;
-  expect(tip('first_session')).toMatch(/^First Session ·/);
-  expect(tip('session_entity_new_sql')).toMatch(/^Last Session ·/);
+  expect(tip('first_session')).toBe('First Session');
+  expect(tip('session_entity_new_sql')).toBe('Last Session');
+});
+
+test('Graph: a join under a joined mart is named by that mart\'s own Output Alias when the main mart names it nothing', () => {
+  const mk = (id: string, title: string): Mart => ({ id, title, description: '', icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
+  const model = { marts: new Map([['contact', mk('contact', 'Contact')], ['visitor', mk('visitor', 'Visitor')], ['session', mk('session', 'Session | Entity')]]), sources: [], contexts: [], failedStorages: [],
+    edges: [{ id: 'r0', source: 'contact', target: 'visitor', joins: [], alias: 'visitor' }, { id: 'r2', source: 'visitor', target: 'session', joins: [], alias: 'session_entity_new_sql' }] } as unknown as Model;
+  const src = (aliasPath: string, martId: string, label: string, rel: string, depth: number) => ({ aliasPath, martId, label, depth, relationshipId: rel, outputAlias: label, uniqueCount: true,
+    fields: [{ name: `${aliasPath.replace('.', '__')}__x`, alias: 'x', type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId, label, aliasPath, originalName: 'x' } }] });
+  const joined = [src('visitor', 'visitor', 'Visitor', 'r0', 1), src('visitor.session_entity_new_sql', 'session', 'Session | Entity', 'r2', 2)] as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
+  const own = (martId: string, path: string) => (martId === 'visitor' && path === 'session_entity_new_sql' ? 'Last Session' : undefined);
+  render(
+    <TooltipProvider>
+      <MartsCanvas model={model} mainId="contact" columns={['id', 'visitor__x', 'visitor__session_entity_new_sql__x']} sources={joined} counts={new Map()} dq={new Map()} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} own={own} />
+    </TooltipProvider>,
+  );
+  const tip = document.querySelector<SVGPathElement>(`#tree-wires path[data-to="${martElementId('session', 'visitor.session_entity_new_sql')}"]`)!.dataset.tip!;
+  expect(tip).toBe('Last Session');
 });
