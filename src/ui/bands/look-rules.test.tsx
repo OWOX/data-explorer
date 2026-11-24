@@ -1,5 +1,4 @@
 // The look rules, the same in Grid and in Graph: solid is in the report, dashed is a join that can be made, only a hover dims.
-// @ts-expect-error TS2591: no @types/node
 import { readFileSync } from 'node:fs';
 import { fireEvent, render, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
