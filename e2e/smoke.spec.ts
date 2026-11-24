@@ -418,6 +418,8 @@ test('removing the main group promotes the next joined one; a mart the main one 
   const data = await ordersGrid(page);
   await martCard(page, 'Customers').click();
   await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders', 'Customers']);
+  // The x unfolds with its "N columns" badge.
+  await data.getByRole('button', { name: /^Fields of Orders:/ }).hover();
   await data.getByRole('button', { name: 'Remove Orders from the grid' }).click();
   await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Customers']);
   await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
