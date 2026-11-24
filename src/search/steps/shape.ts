@@ -11,7 +11,7 @@ import type { GridState } from '../../state/store';
 import { pruneGrid } from '../../state/view-link-resolve';
 import { choiceQ, MAX_QUESTIONS, type Answers, type Question } from '../decide';
 import type { Intent } from '../intent';
-import { matchValue, readValues, VALUE_COLUMNS } from '../valueMatch';
+import { matchTiers, readValues, VALUE_COLUMNS, VALUE_MATCHES } from '../valueMatch';
 import { roleOf } from './fields';
 import type { Asked, StepDeps, StepInput } from './types';
 
@@ -145,9 +145,13 @@ export async function findValueHits(input: StepInput, deps: StepDeps, mainId: st
   if (!literals.length) return input.intent.values.map(() => []);
   const text = shown({ ...facts, hits: [] }).filter((f) => f.category === 'string').slice(0, VALUE_COLUMNS);
   const values = await Promise.all(text.map(async (f) => ({ f, values: await readValues(deps.ctx, mainId, f, deps.signal) })));
-  return input.intent.values.map((v, n) => (literals.some((l) => l.n === n)
-    ? values.flatMap(({ f, values: vs }) => matchValue(v.text, vs).map((value) => ({ literal: n, field: f.name, value, op: v.op as 'eq' | 'neq' })))
-    : []));
+  return input.intent.values.map((v, n) => {
+    if (!literals.some((l) => l.n === n)) return [];
+    const tiers = values.map(({ f, values: vs }) => ({ f, tiers: matchTiers(v.text, vs) }));
+    const best = [0, 1, 2].find((t) => tiers.some((x) => x.tiers[t]!.length));
+    if (best === undefined) return [];
+    return tiers.flatMap(({ f, tiers: ts }) => ts[best]!.map((value) => ({ literal: n, field: f.name, value, op: v.op as 'eq' | 'neq' }))).slice(0, VALUE_MATCHES);
+  });
 }
 
 /** Step 4: value lookups in code, then one decision for grouping, dates, ambiguous values, thresholds, filter-or-slice and sort. */
@@ -158,6 +162,6 @@ export async function runShape(input: StepInput, deps: StepDeps, mainId: string,
   try {
     return { grid: applyShape(await deps.decide(asked.questions, asked.state, deps.signal), plan, facts, input.intent), failed: false };
   } catch {
-    return { grid: applyShape({}, plan, facts, input.intent), failed: true };
+    return { grid: { columns: base.columns, filters: {}, sorts: null, limit: PAGE_SIZE }, failed: true };
   }
 }

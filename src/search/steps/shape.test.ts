@@ -1,6 +1,9 @@
 // src/search/steps/shape.test.ts
-import { describe, expect, it } from 'vitest';
-import { applyShape, buildShapeQuestions, type ShapeFacts } from './shape';
+import { describe, expect, it, vi } from 'vitest';
+import { stubCtx, traversalOf } from '../../api/test-ctx';
+import { PAGE_SIZE } from '../../config';
+import type { StepDeps } from './types';
+import { applyShape, buildShapeQuestions, findValueHits, runShape, type ShapeFacts } from './shape';
 import { EMPTY_INTENT, type Intent } from '../intent';
 import type { Field, Schema } from '../../model/types';
 import type { JoinedSource } from '../../api/blendable';
@@ -82,5 +85,52 @@ describe('applyShape', () => {
     const g = applyShape({}, plan, facts(), i);
     expect(g).toMatchObject({ columns: ['country', 'signup_date', 'spend'], filters: {} });
     expect(g.aggregations).toBeUndefined();
+  });
+});
+
+describe('findValueHits and runShape', () => {
+  const colsFacts = (columns: string[], sch: Schema = schema) => ({ schema: sch, columns, needed: new Set<string>(), sources: [] as JoinedSource[] });
+  const wide = Object.assign(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((n) => f(n, 'string')), { primaryKey: [] }) as Schema;
+  const deps = (rowsByCol: Record<string, string[]>, decide: unknown = async () => ({})) => {
+    const read = vi.fn(async (_id: string, q: { select?: unknown }) => { const col = Object.keys(rowsByCol).find((c) => JSON.stringify(q).includes(`"${c}"`)); return traversalOf((rowsByCol[col ?? ''] ?? []).map((v) => ({ [col!]: v }))); });
+    return { read, d: { ctx: stubCtx({ dataMarts: { traverseData: read } }), decide, signal: new AbortController().signal } as unknown as StepDeps };
+  };
+
+  it('looks up only eq/neq literals and reads at most 6 text columns', async () => {
+    const { read, d } = deps({ a: ['x'] });
+    const hits = await findValueHits(inp(intent({ values: [{ text: '5', op: 'gt' }] })), d, 'm', colsFacts(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], wide));
+    expect(hits).toEqual([[]]);
+    expect(read).not.toHaveBeenCalled();
+    await findValueHits(inp(intent({ values: [{ text: 'x', op: 'eq' }] })), d, 'm', colsFacts(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], wide));
+    expect(read).toHaveBeenCalledTimes(6);
+  });
+
+  it('caps hits at 20 per literal', async () => {
+    const { d } = deps({ a: Array.from({ length: 30 }, (_, i) => `us${i}`) });
+    const hits = await findValueHits(inp(intent({ values: [{ text: 'us', op: 'eq' }] })), d, 'm', colsFacts(['a', 'b'], wide));
+    expect(hits[0]).toHaveLength(20);
+  });
+
+  it('lets an exact match in one column beat prefix matches in another', async () => {
+    const { d } = deps({ a: ['usa', 'usb'], b: ['US'] });
+    const hits = await findValueHits(inp(intent({ values: [{ text: 'us', op: 'eq' }] })), d, 'm', colsFacts(['a', 'b'], wide));
+    expect(hits[0]).toEqual([{ literal: 0, field: 'b', value: 'US', op: 'eq' }]);
+  });
+
+  it('runShape passes the questions to decide and applies the answers', async () => {
+    const decide = vi.fn(async () => ({ a0: choice('SUM') }));
+    const { d } = deps({}, decide);
+    const i = intent({ breakdowns: ['country'] });
+    const r = await runShape(inp(i), d, 'm', colsFacts(['country', 'signup_date', 'spend']));
+    expect(decide).toHaveBeenCalledTimes(1);
+    expect(Object.keys((decide.mock.calls[0] as unknown[])[0] as object)).toContain('a0');
+    expect(r.failed).toBe(false);
+    expect(r.grid.aggregations).toEqual([{ column: 'spend', function: 'SUM' }]);
+  });
+
+  it('runShape on a failed decision keeps only the step 3 columns', async () => {
+    const { d } = deps({}, async () => { throw new Error('x'); });
+    const r = await runShape(inp(intent({ breakdowns: ['country'] })), d, 'm', colsFacts(['country', 'signup_date', 'spend']));
+    expect(r).toEqual({ grid: { columns: ['country', 'signup_date', 'spend'], filters: {}, sorts: null, limit: PAGE_SIZE }, failed: true });
   });
 });
