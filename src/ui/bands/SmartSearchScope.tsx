@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { Model } from '../../model/types';
-import { AiHint, SearchBox, SearchNotice } from './SearchBox';
+import { AiHint, SearchAlternatives, SearchBox, SearchNotice, SearchProgress } from './SearchBox';
 import { useSmartSearch, type SmartSearch } from './useSmartSearch';
 
 const Ctx = createContext<SmartSearch | null>(null);
@@ -24,9 +24,11 @@ export function HeaderSearch() {
 /** The quiet lines under the header: what the last pick left out, and the suggestion to plug AI in. */
 export function HeaderSearchHint() {
   const smart = useSmartSearchScope();
-  if (!smart.hintVisible && !smart.notice) return null;
+  if (!smart.hintVisible && !smart.notice && !smart.progress && !smart.alternatives.length) return null;
   return (
     <div className="w-full">
+      {smart.progress && <SearchProgress step={smart.progress} />}
+      {smart.alternatives.length > 0 && <SearchAlternatives ids={smart.alternatives} model={smart.model} onPick={smart.chooseAlternative} />}
       {smart.notice && <SearchNotice text={smart.notice} onDismiss={smart.dismissNotice} />}
       {smart.hintVisible && <AiHint onDismiss={smart.dismissHint} />}
     </div>

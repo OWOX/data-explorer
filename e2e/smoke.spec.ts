@@ -124,7 +124,7 @@ test('search dropdown: the ad-hoc row first, then reports, then marts, under a c
   const box = page.locator('header.dm-page-header').getByRole('combobox', { name: 'Search data marts' });
   await box.fill('paid orders');
   const options = page.getByRole('listbox').getByRole('option');
-  await expect(options.first()).toHaveText('Ad-hoc report');
+  await expect(options.first()).toHaveText('Ad-hoc report "paid orders"');
   await expect(options.nth(1)).toContainText('Paid orders by month');
   await expect(page.getByRole('group', { name: 'Filter by context' }).getByRole('button').first()).toBeVisible();
   await expect(box).toHaveAttribute('aria-expanded', 'true');
@@ -148,17 +148,22 @@ test('picking a report from the dropdown opens its mart with the report\'s filte
 test('smart search with AI: finds a mart by meaning, applies the filters it asks for, and Undo takes the whole result back', async ({ page }) => {
   await ordersGrid(page);
   await search(page, 'who are our buyers');
-  await expect(heading(page)).toHaveText(['Customers']);
+  await expect(heading(page).first()).toHaveText('Customers');
   await expect(band(page, 'data').getByRole('cell', { name: /@example\.com$/ }).first()).toBeVisible();
   await search(page, 'paid orders last month');
-  await expect(heading(page)).toHaveText(['Orders']);
+  await expect(heading(page).first()).toHaveText('Orders');
   await expect(band(page, 'data').getByLabel('Filter status')).toHaveClass(/dm-ctl-on/);
   await expect(band(page, 'data').getByLabel('Filter created_at')).toHaveClass(/dm-ctl-on/);
+  // The pipeline ends on the charts view (wait for it, or its last step would undo the switch): the table shows what the filters let through.
+  await expect(band(page, 'data').getByRole('radio', { name: 'Charts' })).toBeChecked();
+  await band(page, 'data').getByRole('radio', { name: 'Table' }).click();
   await expect(band(page, 'data').getByRole('cell', { name: 'paid', exact: true }).first()).toBeVisible();
   await expect(band(page, 'data').getByRole('cell', { name: 'new', exact: true })).toHaveCount(0);
   await expect(band(page, 'marts').getByRole('note', { name: 'AI search hint' })).toHaveCount(0);
+  // The first Undo takes the switch to the table back, the second the whole AI result.
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(heading(page)).toHaveText(['Customers']);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(heading(page).first()).toHaveText('Customers');
 });
 
 test('smart search with no AI configured: no error, the hint shows once and stays dismissed, nothing found says so', async ({ page }) => {
@@ -267,7 +272,11 @@ test('a reference column shows the stored value as plain text; Referenced by ope
 
 test('the storage filter drops the marts of an unticked storage and leaves the selection alone', async ({ page }) => {
   await ordersGrid(page);
-  await makeMainViaSearch(page, 'Payments');
+  // A mart row of the dropdown keeps the found marts in the band (the ad-hoc pipeline would also join the ones it needs).
+  const header = page.locator('header.dm-page-header');
+  await header.getByRole('button', { name: 'Search data marts' }).click();
+  await header.getByRole('combobox', { name: 'Search data marts' }).fill('orders');
+  await page.getByRole('option').filter({ hasText: /^Payments$/ }).click();
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Payments');
   await expect(band(page, 'marts').getByText('Customers', { exact: true })).toBeVisible();
   const menu = band(page, 'marts').locator('details.dm-filter', { hasText: 'Storage' });
@@ -901,7 +910,8 @@ test('a no-primary-key mart shows a warning next to the Data (i), not a block ab
   const header = page.locator('header.dm-page-header');
   await header.getByRole('button', { name: 'Search data marts' }).click();
   await header.getByRole('combobox', { name: 'Search data marts' }).fill('daily');
-  await page.keyboard.press('Enter');
+  // The ad-hoc pipeline picks among marts with a key, so the keyless mart is opened from its row.
+  await page.getByRole('option').filter({ hasText: /^Daily KPIs$/ }).click();
   await expect(band(page, 'data').getByRole('note', { name: /no primary key/ })).toBeVisible();
   await expect(band(page, 'data').getByText('Preview only', { exact: false })).toHaveCount(0);
 });

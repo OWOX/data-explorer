@@ -1,3 +1,5 @@
+import { experimental_decide } from 'ai';
+import { createFakeAi } from './ai';
 import { createMockCtx } from './ctx';
 import { demoFixtures } from './fixtures';
 import { loadModel } from '../../api/model';
@@ -125,17 +127,11 @@ test('the mock /api/search ranks a title hit above a description hit, honours li
 
 test('the mock AI answers deterministically from the question document; ai: false leaves no credential', async () => {
   const ai = createMockCtx(demoFixtures()).credentials!.ai!;
-  expect(ai.reasoning).toBeDefined();
+  expect(ai.fast).toBeDefined();
   const ask = async (doc: object) => JSON.parse((await ai.doGenerate({ prompt: [{ role: 'user', content: [{ type: 'text', text: JSON.stringify(doc) }] }] })).content[0]!.text!);
-  expect(await ask({ task: 'discover', query: 'who are our buyers', dataMarts: [{ id: 'orders' }, { id: 'customers' }] })).toEqual({ ids: ['customers'] });
-  expect(await ask({ task: 'discover', query: 'zzz', searchHits: [{ id: 'stores' }], dataMarts: [{ id: 'orders' }, { id: 'stores' }, { id: 'customers' }] })).toEqual({ ids: ['stores'] });
-  expect(await ask({ task: 'discover', query: 'who are our buyers', searchHits: [{ id: 'stores' }], dataMarts: [{ id: 'stores' }, { id: 'customers' }] })).toEqual({ ids: ['stores', 'customers'] });
-  const fields = [{ name: 'id', category: 'number' }, { name: 'status', category: 'string' }, { name: 'amount', category: 'number' }, { name: 'created_at', category: 'date' }];
-  expect(await ask({ task: 'fields', query: 'biggest orders', fields })).toMatchObject({ columns: ['id', 'status', 'amount', 'created_at'] });
-  expect(await ask({ task: 'filters', query: 'paid orders last month', fields })).toMatchObject({
-    filters: [{ field: 'created_at', op: 'relative', value: { kind: 'last_month' } }, { field: 'status', op: 'eq', value: 'paid' }],
-  });
-  expect(await ask({ task: 'filters', query: 'biggest orders', fields })).toMatchObject({ sorts: [{ field: 'amount', direction: 'desc' }] });
+  expect(await ask({ task: 'intent', query: 'paid orders last month' })).toMatchObject({ subjects: ['orders'], time: 'last month', values: [{ text: 'paid', op: 'eq' }] });
+  expect(await ask({ task: 'intent', query: 'biggest buyers by status' })).toMatchObject({ subjects: ['customers'], breakdowns: ['status'], ranking: { direction: 'desc' } });
+  expect(await ask({ task: 'shortlist', fields: [{ name: 'id' }, { name: 'status' }] })).toEqual({ names: ['id', 'status'] });
   expect(createMockCtx(demoFixtures(), { ai: false }).credentials?.ai).toBeUndefined();
 });
 
@@ -230,4 +226,28 @@ test('the hidden-field set and the blended index are built once per mart, not on
   await ask();
   await ask();
   expect(reads).toBe(afterFirst);
+});
+
+it('the fake decision model answers choice and score questions deterministically', async () => {
+  const ai = createFakeAi();
+  const r = await experimental_decide({
+    model: ai.decision!,
+    state: [{ type: 'text', text: JSON.stringify({ query: 'orders by status', marts: [{ id: 'customers', title: 'Customers' }, { id: 'orders', title: 'Orders' }] }) }],
+    questions: { main: { type: 'choice', instructions: 'pick', criteria: { customers: null, orders: null } }, p0: { type: 'score', instructions: 'rate', criteria: ['no', 'maybe', 'yes'] } },
+  });
+  expect(r.answers.main).toMatchObject({ type: 'choice', choice: 'orders' });
+  expect(r.answers.p0).toMatchObject({ type: 'score' });
+});
+
+test('the fake decision model matches option keys as words and prefers none when nothing matches', async () => {
+  const ai = createFakeAi();
+  const ask = async (query: string, criteria: Record<string, null>) => {
+    const r = await experimental_decide({ model: ai.decision!, state: [{ type: 'text', text: JSON.stringify({ query }) }], questions: { q: { type: 'choice', instructions: 'pick', criteria } } });
+    return (r.answers.q as { choice: string }).choice;
+  };
+  expect(await ask('paid orders last month', { today: null, last_month: null, none: null })).toBe('last_month');
+  expect(await ask('orders by status', { none: null, DAY: null, WEEK: null })).toBe('none');
+  expect(await ask('a grade report', { customers: null, ad_spend: null })).toBe('customers');
+  const r = await experimental_decide({ model: ai.decision!, state: [{ type: 'text', text: '{}' }], questions: { p: { type: 'score', instructions: 'rate', criteria: ['no', 'maybe', 'yes'] } } });
+  expect(r.answers.p).toMatchObject({ type: 'score', score: 2 });
 });

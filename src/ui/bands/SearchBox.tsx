@@ -1,6 +1,8 @@
 import { ArrowRight, Loader2, Search, X } from 'lucide-react';
 import { useEffect, useId, useRef } from 'react';
+import type { Model } from '../../model/types';
 import { MAX_QUERY } from '../../search/endpoint';
+import type { Progress } from '../../search/pipeline';
 import { ActionForm } from '../ActionForm';
 import { Tooltip } from '../Tooltip';
 import { optionId, SearchResults } from './SearchResults';
@@ -101,6 +103,32 @@ export function AiHint({ onDismiss }: { onDismiss: () => void }) {
     <p className="dm-search-hint" role="note" aria-label="AI search hint">
       <span>Connect AI in this plugin's settings to also find data marts by meaning and apply filters.</span>
       <button type="button" aria-label="Dismiss the AI hint" onClick={onDismiss}><X size={12} /></button>
+    </p>
+  );
+}
+
+const STEP_LABELS: Record<Progress, string> = { main: 'Choosing data mart', path: 'Joining', fields: 'Picking fields', filters: 'Filters', charts: 'Charts' };
+const STEPS: Progress[] = ['main', 'path', 'fields', 'filters', 'charts'];
+
+/** The ad-hoc report's steps while they run; the current one spins. */
+export function SearchProgress({ step }: { step: Progress }) {
+  return (
+    <p className="dm-search-hint" role="status" aria-label="Ad-hoc report progress">
+      {STEPS.map((s, i) => (
+        <span key={s} aria-current={s === step ? 'step' : undefined} className={STEPS.indexOf(step) > i ? 'dm-step-done' : s === step ? 'dm-step-now' : 'dm-step-next'}>
+          {s === step && <Loader2 size={12} className="animate-spin" aria-hidden="true" />}{STEP_LABELS[s]}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+/** Other marts the AI was nearly as sure of; a click rebuilds the report on that one. */
+export function SearchAlternatives({ ids, model, onPick }: { ids: string[]; model: Model; onPick: (id: string) => void }) {
+  return (
+    <p className="dm-search-hint" aria-label="Also matches">
+      <span>Also matches:</span>
+      {ids.map((id) => <button key={id} type="button" className="dm-search-chip" onClick={() => onPick(id)}>{model.marts.get(id)?.title ?? id}</button>)}
     </p>
   );
 }
