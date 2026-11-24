@@ -71,11 +71,11 @@ test('ribbon width is proportional to value, drawn as a closed filled path', () 
 });
 
 test('colour: every node takes its label colour, blank and Other keep their own, a ribbon takes its origin node colour', () => {
-  // All columns share one palette, so a clash probes forward: colours come from every key in column order.
-  const own = (k: string, keys: string[] = ['a', 'b', 'x', 'y']) => ({ kind: 'series', color: labelColors(keys).get(k) });
+  // Each column settles its own clashes: colours come from that column's keys alone.
+  const own = (k: string, keys: string[] = ['a', 'b']) => ({ kind: 'series', color: labelColors(keys).get(k) });
   expect(col(0).map((n) => n.tone)).toEqual([{ kind: 'blank' }, own('a'), own('b'), { kind: 'other' }]);
-  expect(col(1).find((n) => n.key === 'x')!.tone).toEqual(own('x'));
-  expect(col(1).find((n) => n.key === 'y')!.tone).toEqual(own('y'));
+  expect(col(1).find((n) => n.key === 'x')!.tone).toEqual(own('x', ['x', 'y']));
+  expect(col(1).find((n) => n.key === 'y')!.tone).toEqual(own('y', ['x', 'y']));
   expect(lay.links.find((l) => l.source === 'b' && l.target === 'y')!.tone).toEqual(own('b'));
 });
 
