@@ -14,7 +14,10 @@ function setup(grid: GridState, opts: { blendFails?: boolean; empty?: boolean; c
   let failing = !!opts.blendFails;
   const fixtures = demoFixtures();
   // A calculated field of Orders (no warehouse column; the mock reads it as null).
-  if (opts.calculated) fixtures.marts.find((m) => m.id === 'orders')!.fields.push({ name: 'margin', type: 'NUMERIC', alias: 'Margin', calculated: { expression: 'amount * 0.2' } });
+  if (opts.calculated) {
+    const orders = fixtures.marts.find((m) => m.id === 'orders')!;
+    orders.fields = [...orders.fields, { name: 'margin', type: 'NUMERIC', alias: 'Margin', calculated: { expression: 'amount * 0.2' } }];
+  }
   const base = createMockCtx(fixtures, { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
@@ -347,4 +350,9 @@ describe('the total row count asks again after a hide only when OWOX would count
     const q = await hideThenLoadMore(setup(grid({}), { calculated: true }));
     expect(q.includeTotalRowCount).toBeUndefined();
   });
+});
+
+test('the calculated field of the tests above is not left in the shared fixtures', () => {
+  const names = () => demoFixtures().marts.find((m) => m.id === 'orders')!.fields.map((x) => x.name);
+  expect(names()).not.toContain('margin');
 });
