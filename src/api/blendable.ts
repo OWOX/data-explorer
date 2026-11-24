@@ -154,7 +154,8 @@ export function createBlendableLoader(ctx: Ctx): BlendableLoader {
     peek: (martId) => done.get(martId),
     invalidate(martId) { done.delete(martId); dtos.delete(martId); inflight.delete(martId); listeners.forEach((l) => l()); },
     subscribe(fn) { listeners.add(fn); return () => { listeners.delete(fn); }; },
-    clear() { done.clear(); dtos.clear(); inflight.clear(); },
+    // Told like an invalidation: a read the clear dropped, or a mart read before it, is asked for again by whoever shows it.
+    clear() { done.clear(); dtos.clear(); inflight.clear(); listeners.forEach((l) => l()); },
     useKeys(next) {
       keys = next;
       let changed = false;

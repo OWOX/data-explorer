@@ -51,7 +51,7 @@ export const noteFields = (n: RelationshipNote) => ({ title: n.name, ...(n.marke
 /**
  * The Output Alias an `edge:` line is named by. It is per path, so: the source of this relationship hanging off the card the line leaves (`fromPath`);
  * else, when that card is outside the report, the band ghost's source if it belongs to this relationship (the line then reads like the ghost on the same pair);
- * else one all the sources of the relationship agree on; else none (the technical alias is said).
+ * else one all the sources of the relationship agree on; else none (the target title is said).
  */
 export function edgeOutputAlias(edge: Pick<Edge, 'id'>, targetTitle: string, sources: readonly JoinedSource[], fromPath: string | undefined, bandSource: JoinedSource | undefined): string | undefined {
   const named = sources.filter((x) => x.relationshipId === edge.id);

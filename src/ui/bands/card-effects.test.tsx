@@ -74,6 +74,20 @@ describe('WireTipLayer', () => {
     expect(renders).toBe(1);
   });
 
+  test('a card being dragged over a described line opens no bubble, so the bubble cannot take the drop', () => {
+    function Bands() {
+      const canvas = useRef<HTMLDivElement>(null);
+      return <div ref={canvas}><svg id="wires"><path data-testid="line" data-tip="Last Session" data-more="About" d="M0 0" /></svg><WireTipLayer canvas={canvas} /></div>;
+    }
+    render(<TooltipProvider><Bands /></TooltipProvider>);
+    const line = screen.getByTestId('line');
+    act(() => { fireEvent.pointerMove(line); });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    // jsdom has no PointerEvent with buttons: a mouse event of that type carries them.
+    act(() => { line.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, buttons: 1 })); });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   test('a tip with a description stays where it opened, lets the pointer reach "More", and closes a moment after the pointer leaves it', () => {
     vi.useFakeTimers();
     try {

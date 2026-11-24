@@ -139,7 +139,7 @@
 }
 .dm-hint-body ul { margin: 0; padding: 0; list-style: none; }
 .dm-tip-fixed { position: fixed; }
-.dm-tip-interactive { pointer-events: auto; }
+.dm-tip-interactive { pointer-events: auto; max-height: calc(100vh - 1rem); overflow-y: auto; }
 .dm-tip-more { all: unset; display: block; width: max-content; margin-top: 0.125rem; cursor: pointer; text-decoration: underline dashed; text-underline-offset: 3px; opacity: 0.8; }
 .dm-tip-more:hover, .dm-tip-more:focus-visible { opacity: 1; }
 .dm-tip-about { display: block; margin-top: 0.25rem; white-space: pre-line; opacity: 0.85; }

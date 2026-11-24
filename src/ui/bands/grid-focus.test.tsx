@@ -304,3 +304,20 @@ test('one relationship at two paths with different Output Aliases gives the line
   await waitFor(() => expect(line()?.dataset.tip).toMatch(/^Beta/));
   expect(line()!.dataset.tip).not.toMatch(/Alpha|;/);
 });
+
+test('a focused card\'s line to a band card says the card\'s own Output Alias once, not the plain edge\'s title beside it', async () => {
+  const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  const getJson = ctx.owox.getJson.bind(ctx.owox) as (url: string, ...rest: unknown[]) => Promise<unknown>;
+  (ctx.owox as { getJson: unknown }).getJson = async (url: string, ...rest: unknown[]) => {
+    const dto = await getJson(url, ...rest);
+    if (!url.endsWith('/api/data-marts/stores/blendable-schema')) return dto;
+    const d = dto as { availableSources?: { dataMartId: string; defaultAlias?: string | null }[] };
+    return { ...d, availableSources: d.availableSources?.map((s) => (s.dataMartId === 'countries' ? { ...s, defaultAlias: 'Store Country' } : s)) };
+  };
+  render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
+  await ready();
+  fireEvent.click(await bandCard('Stores'));
+  await waitFor(() => expect(el('stores', 'stores')).toHaveAttribute('data-focused'));
+  const line = () => document.querySelector<SVGPathElement>(`path[data-from="${martElementId('stores', 'stores')}"][data-to="${martElementId('countries')}"]`);
+  await waitFor(() => expect(line()?.dataset.tip).toBe('Store Country'));
+});

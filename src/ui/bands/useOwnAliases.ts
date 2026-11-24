@@ -10,7 +10,7 @@ import { useServices, useStore } from '../../state/store';
 export function useOwnAliases(): (martId: string, path: string) => string | undefined {
   const { blendable } = useServices();
   const [{ modelVersion }] = useStore();
-  // `landed` makes a new lookup when a read lands; `forgot` when the grid's Refresh forgets a mart's joins.
+  // `landed` makes a new lookup when a read lands; `forgot` when the loader forgets joins (the grid's Refresh, or a model read again).
   const [landed, setLanded] = useState(0);
   const [forgot, setForgot] = useState(0);
   useEffect(() => blendable.subscribe(() => setForgot((n) => n + 1)), [blendable]);

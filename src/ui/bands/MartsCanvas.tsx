@@ -160,7 +160,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     for (const level of levels) {
       const fromPath = level.from;
       for (const g of level.ghosts) {
-        // A dashed line names its join like a solid one: the Output Alias when set, else the relationship's own name.
+        // A dashed line names its join like a solid one: the Output Alias when set, else the parent mart's own alias, else the title.
         const note = relationshipNote(edgeOf(model.edges, level.fromMartId, g.martId, g.aliasPath, g.relationshipId), title(g.martId), joinAlias(g.outputAlias, title(g.martId), level.fromMartId, fromPath, g.aliasPath, own));
         out.push({ id: `ghost:${g.aliasPath}`, from: martElementId(level.fromMartId, fromPath), to: martElementId(g.martId, g.aliasPath), kind: 'relationship', ...noteFields(note), dashed: true, sideways: true });
       }
