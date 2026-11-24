@@ -73,7 +73,7 @@ export function useSmartSearch(model: Model) {
 
   const stopTimer = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
   const stopSearch = useCallback(() => { entry.current?.ctl.abort(); entry.current = null; setSearching(false); }, []);
-  const stopPick = useCallback(() => { picking.current?.ctl.abort(); picking.current = null; setBuilding(false); setProgress(null); }, []);
+  const stopPick = useCallback(() => { picking.current?.ctl.abort(); picking.current = null; setBuilding(false); setProgress(null); setAlternatives([]); }, []);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); entry.current?.ctl.abort(); picking.current?.ctl.abort(); }, []);
 
   /** Starts the search for a query, or joins the one already running for it. The answer is null when a newer query took over. */
@@ -164,6 +164,8 @@ export function useSmartSearch(model: Model) {
     const ctl = new AbortController();
     picking.current = { ctl, query, kind };
     setBuilding(false);
+    setProgress(null);
+    setAlternatives([]);
     setNotice(null);
     return ctl;
   };
@@ -219,7 +221,7 @@ export function useSmartSearch(model: Model) {
         open: (martId) => openDefault(query, martId, hits, ctl),
         fill: (martId, expect, grid) => { if (!ctl.signal.aborted) dispatch({ type: 'fillGrid', martId, expect, grid }); },
         progress: (p) => { if (!ctl.signal.aborted) setProgress(p); },
-        alternatives: (ids) => { if (!ctl.signal.aborted) setAlternatives(ids); },
+        alternatives: (ids, intent) => { if (ctl.signal.aborted) return; lastRun.current = { query, hits, intent }; setAlternatives(ids); },
         chartSettings,
       },
     );

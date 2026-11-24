@@ -755,3 +755,105 @@ describe('the dropdown', () => {
     await waitFor(() => expect(box).not.toHaveAttribute('aria-activedescendant'));
   });
 });
+
+/** The mock AI whose main question is unsure (the runner-up is nearly as likely), recording each question set and holding or failing calls by number. */
+function unsureAi(gate?: (call: number) => Promise<void>) {
+  const spy = spyAi();
+  const asked: string[][] = [];
+  let n = 0;
+  return { ...spy, asked, withAi: (c: Mock): Ctx => {
+    const ctx = spy.withAi(c);
+    const ai = ctx.credentials!.ai as unknown as { decision: { doDecide: (o: { questions: Record<string, { criteria: object }> }) => Promise<{ answers: Record<string, { choice: string }> }> } };
+    const real = ai.decision.doDecide.bind(ai.decision);
+    ai.decision = { ...ai.decision, doDecide: async (o) => {
+      n += 1;
+      asked.push(Object.keys(o.questions));
+      await gate?.(n);
+      const res = await real(o);
+      if (o.questions.main) {
+        const pick = res.answers.main!;
+        const alt = Object.keys(o.questions.main.criteria).find((k) => k !== pick.choice)!;
+        // A complete distribution that sums to 1, as the decision API requires.
+        const rest = Object.keys(o.questions.main.criteria).filter((k) => k !== pick.choice && k !== alt);
+        const probabilities = Object.fromEntries([[pick.choice, 0.5], [alt, rest.length ? 0.45 : 0.5], ...rest.map((k) => [k, 0.05 / rest.length])]);
+        res.answers.main = { ...pick, probabilities } as typeof pick;
+      }
+      return res;
+    } };
+    return ctx;
+  } };
+}
+const chips = () => screen.queryByRole('group', { name: 'Also matches' }) ?? screen.queryByLabelText('Also matches');
+const progressLine = () => screen.queryByRole('status', { name: 'Ad-hoc report progress' });
+
+describe('the alternative marts', () => {
+  const run = async (q: string) => { const box = await openSearch(); await userEvent.type(box, `${q}{Enter}`); return box; };
+  const chipButtons = () => within(chips()!).getAllByRole('button');
+
+  test('a chip clicked after the run reruns steps 2 to 5 on that mart as a new Undo step, without steps 0 and 1', async () => {
+    const ai = unsureAi();
+    setup({ wrap: ai.withAi }).view();
+    await ready();
+    await run('who are our buyers');
+    await waitFor(() => expect(chips()).not.toBeNull());
+    await waitFor(() => expect(progressLine()).toBeNull());
+    const first = mainHeading();
+    const intents = ai.tasks.filter((x) => x === 'intent').length;
+    const mains = ai.asked.filter((q) => q.includes('main')).length;
+    const title = chipButtons()[0]!.textContent!;
+    await userEvent.click(chipButtons()[0]!);
+    await waitFor(() => expect(mainHeading()).toBe(title));
+    await waitFor(() => expect(progressLine()).toBeNull());
+    expect(ai.tasks.filter((x) => x === 'intent')).toHaveLength(intents);
+    expect(ai.asked.filter((q) => q.includes('main'))).toHaveLength(mains);
+    await undo();
+    await waitFor(() => expect(mainHeading()).toBe(first));
+  });
+
+  test('a chip clicked mid-run reruns the current query on the chip\'s mart', async () => {
+    let hold: (() => void) | undefined;
+    const ai = unsureAi((n) => (n === 2 ? new Promise<void>((r) => { hold = r; }) : Promise.resolve()));
+    setup({ wrap: ai.withAi }).view();
+    await ready();
+    await run('who are our buyers');
+    await waitFor(() => expect(chips()).not.toBeNull());
+    await waitFor(() => expect(hold).toBeDefined());
+    const title = chipButtons()[0]!.textContent!;
+    await userEvent.click(chipButtons()[0]!);
+    await waitFor(() => expect(mainHeading()).toBe(title));
+    hold!();
+    await waitFor(() => expect(progressLine()).toBeNull());
+    expect(mainHeading()).toBe(title);
+    expect(ai.asked.filter((q) => q.includes('main'))).toHaveLength(1);
+  });
+
+  test('picking a report row during a run clears the progress line', async () => {
+    const ai = unsureAi((n) => (n === 1 ? new Promise<void>(() => {}) : Promise.resolve()));
+    setup({ wrap: ai.withAi }).view();
+    await ready();
+    const box = await run('paid orders');
+    await waitFor(() => expect(progressLine()).not.toBeNull());
+    await userEvent.type(box, '{ArrowDown}{ArrowDown}{ArrowDown}{Enter}');
+    await waitFor(() => expect(progressLine()).toBeNull());
+  });
+
+  test('typing clears the chips', async () => {
+    const ai = unsureAi();
+    setup({ wrap: ai.withAi }).view();
+    await ready();
+    const box = await run('who are our buyers');
+    await waitFor(() => expect(chips()).not.toBeNull());
+    await userEvent.type(box, 'x');
+    await waitFor(() => expect(chips()).toBeNull());
+  });
+
+  test('nothing found, and no mart with a key, applies the title search', async () => {
+    const fx = demoFixtures();
+    for (const m of fx.marts) for (const f of (m as unknown as { fields: { isPrimaryKey?: boolean }[] }).fields ?? []) f.isPrimaryKey = false;
+    const ai = unsureAi();
+    setup({ ctx: ai.withAi(createMockCtx(fx, { latencyMs: 0 })) }).view();
+    await ready();
+    await run('zzzzqq');
+    expect(await within(marts()).findByText('No data marts match.')).toBeInTheDocument();
+  });
+});

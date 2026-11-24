@@ -74,7 +74,7 @@ describe('runPipeline', () => {
     const { h } = host();
     const unsure: StepDeps['decide'] = async (qs, s, sig) => ('main' in qs ? { main: { type: 'choice', choice: 'users', probabilities: { users: 0.5, orders: 0.45 } } } : allYes(qs, s, sig));
     await runPipeline(input, deps(unsure), h);
-    expect(h.alternatives).toHaveBeenCalledWith(['orders']);
+    expect(h.alternatives).toHaveBeenCalledWith(['orders'], expect.anything());
   });
   it('reports nothing when no mart can be found', async () => {
     const { h } = host();

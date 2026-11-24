@@ -14,7 +14,7 @@ export type PipelineHost = {
   open(martId: string): Promise<GridState | null>;
   fill(martId: string, expect: GridState, grid: GridState): void;
   progress(p: Progress | null): void;
-  alternatives(ids: string[]): void;
+  alternatives(ids: string[], intent: Intent): void;
   chartSettings: Pick<ChartSettingsStore, 'load' | 'save'>;
 };
 export type PipelineResult = { status: 'done' | 'failed' | 'aborted' | 'nothing'; intent: Intent };
@@ -34,7 +34,7 @@ export async function runPipeline(raw: Omit<StepInput, 'intent'> & { intent?: In
     if (off()) return end('aborted');
     if (!main.martId) return end('nothing');
     mainId = main.martId;
-    host.alternatives(main.alternatives);
+    host.alternatives(main.alternatives, intent);
     if (main.failed) { const g = await host.open(mainId); if (off()) return end('aborted'); return end(g ? 'failed' : 'nothing'); }
   }
   let grid = await host.open(mainId);
