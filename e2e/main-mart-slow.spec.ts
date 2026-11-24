@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 const band = (page: Page, id: 'marts' | 'data') => page.locator(`#band-${id}`);
-const firstGroup = (page: Page) => band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first();
+const firstGroup = (page: Page) => band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first();
 
 type Sample = { first: string; group: string; top: number; left: number };
 
