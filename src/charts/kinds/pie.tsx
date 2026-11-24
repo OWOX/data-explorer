@@ -12,7 +12,8 @@ import type { Measure } from '../queries';
 import { measureLabel, measureText, numberOf } from '../Scorecards';
 import { measureId, pickField, pickMeasure } from '../settings';
 import { PieChart, type Slice } from '../svg/PieChart';
-import { OTHER_COLOR, seriesColor } from '../useDateSeries';
+import { labelColors } from '../labelColor';
+import { OTHER_COLOR } from '../useDateSeries';
 import { useTopValues } from '../useTopValues';
 import { BOX_WIDTH, carry, type ChartKindDef, type PanelProps } from './types';
 
@@ -27,9 +28,10 @@ function PiePanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, 
   const top = useTopValues({ martId, cf, dim, measure, filter, version, idle });
   const slice = (key: string, name: string, v: unknown, color: string): Slice => ({ key, name, value: numberOf(v) ?? 0, valueText: measureText(measure, v, formatOf), color });
   const slices = (): Slice[] => {
-    let i = 0;
+    // Each slice keeps the colour its label hashes to, the same as the same value in a stack or a Sankey.
+    const colors = labelColors(top.categories!.filter((c) => c.key !== BLANK_KEY).map((c) => c.key));
     return [
-      ...top.categories!.map((c) => (c.key === BLANK_KEY ? { ...slice(BLANK_KEY, BLANK_LABEL, c.value, BLANK_COLOR), blank: true } : slice(c.key, c.key, c.value, seriesColor(i++)))),
+      ...top.categories!.map((c) => (c.key === BLANK_KEY ? { ...slice(BLANK_KEY, BLANK_LABEL, c.value, BLANK_COLOR), blank: true } : slice(c.key, c.key, c.value, colors.get(c.key)!))),
       ...(top.other != null ? [{ ...slice(OTHER_KEY, 'Other', top.other, OTHER_COLOR), other: true }] : []),
     ];
   };

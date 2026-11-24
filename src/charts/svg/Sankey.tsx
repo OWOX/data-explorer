@@ -4,15 +4,14 @@ import { CutLabel } from './CutLabel';
 import { BLANK_COLOR, thinColor, labelOf, OTHER_KEY } from '../blank';
 import { BlankDefs, blankFill } from './BlankPattern';
 import { layoutSankey, REST_ORIGIN, type Flow, type NodeSize, type SankeyLink, type Tone } from '../sankeyLayout';
-import { OTHER_COLOR, seriesColor } from '../useDateSeries';
+import { OTHER_COLOR } from '../useDateSeries';
 import { useWidth } from '../useWidth';
 
 const TOP = 22;
 const LABEL_PAD = 110;
 const CHAR_W = 6;
-const SERIES = 8;
 const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
-const colorOf = (t: Tone): string => (t.kind === 'blank' ? BLANK_COLOR : t.kind === 'other' ? OTHER_COLOR : seriesColor(t.index % SERIES));
+const colorOf = (t: Tone): string => (t.kind === 'blank' ? BLANK_COLOR : t.kind === 'other' ? OTHER_COLOR : t.color);
 const nodeName = (key: string): string => (key === OTHER_KEY ? 'Other' : labelOf(key));
 const clip = (text: string, max: number): string => (text.length <= max ? text : `${text.slice(0, Math.max(1, max - 1))}…`);
 

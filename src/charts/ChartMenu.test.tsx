@@ -188,3 +188,29 @@ test('when a root row is a check row every root row has the check column, and no
   expect(rows).toHaveLength(3);
   for (const r of rows) expect(r.querySelector('.dm-menu-check')).not.toBeNull();
 });
+
+test('a band above changing size (the Data Marts band unfolding) closes the menu; its own band and one below do not', async () => {
+  const Real = globalThis.ResizeObserver;
+  const live: { cb: ResizeObserverCallback; els: Element[] }[] = [];
+  class Manual {
+    els: Element[] = [];
+    constructor(private cb: ResizeObserverCallback) { live.push(this as unknown as { cb: ResizeObserverCallback; els: Element[] }); }
+    observe(el: Element) { this.els.push(el); this.cb([{ target: el } as ResizeObserverEntry], this as unknown as ResizeObserver); }
+    unobserve() {}
+    disconnect() { this.els = []; }
+  }
+  globalThis.ResizeObserver = Manual as unknown as typeof ResizeObserver;
+  const resize = (el: Element) => act(() => { for (const o of live) if (o.els.includes(el)) o.cb([{ target: el } as ResizeObserverEntry], o as unknown as ResizeObserver); });
+  try {
+    render(<><section data-band="" id="marts" /><section data-band="" id="data"><div data-chart-kind="bar"><ChartMenu name="Sales" items={items} /></div></section><section data-band="" id="rows" /></>);
+    await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+    resize(document.getElementById('data')!);
+    // A band below the button can change size without moving it.
+    resize(document.getElementById('rows')!);
+    expect(screen.getByRole('menu', { name: 'Sales menu' })).toBeInTheDocument();
+    resize(document.getElementById('marts')!);
+    expect(screen.queryByRole('menu', { name: 'Sales menu' })).toBeNull();
+  } finally {
+    globalThis.ResizeObserver = Real;
+  }
+});

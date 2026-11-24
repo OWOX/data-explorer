@@ -1,4 +1,5 @@
 import { BLANK_KEY, OTHER_KEY } from './blank';
+import { labelColors } from './labelColor';
 import { layoutSankey, NODE_GAP, REST_ORIGIN, type Flow } from './sankeyLayout';
 
 const flows: Flow[][] = [
@@ -69,11 +70,13 @@ test('ribbon width is proportional to value, drawn as a closed filled path', () 
   expect(p.path.match(/C/g)).toHaveLength(2);
 });
 
-test('colour: the first column takes series slots, blank and Other keep their own, later nodes follow their largest inflow', () => {
-  expect(col(0).map((n) => n.tone)).toEqual([{ kind: 'blank' }, { kind: 'series', index: 0 }, { kind: 'series', index: 1 }, { kind: 'other' }]);
-  expect(col(1).find((n) => n.key === 'x')!.tone).toEqual({ kind: 'series', index: 0 });
-  expect(col(1).find((n) => n.key === 'y')!.tone).toEqual({ kind: 'series', index: 1 });
-  expect(lay.links.find((l) => l.source === 'b' && l.target === 'y')!.tone).toEqual({ kind: 'series', index: 1 });
+test('colour: every node takes its label colour, blank and Other keep their own, a ribbon takes its origin node colour', () => {
+  // All columns share one palette, so a clash probes forward: colours come from every key in column order.
+  const own = (k: string, keys: string[] = ['a', 'b', 'x', 'y']) => ({ kind: 'series', color: labelColors(keys).get(k) });
+  expect(col(0).map((n) => n.tone)).toEqual([{ kind: 'blank' }, own('a'), own('b'), { kind: 'other' }]);
+  expect(col(1).find((n) => n.key === 'x')!.tone).toEqual(own('x'));
+  expect(col(1).find((n) => n.key === 'y')!.tone).toEqual(own('y'));
+  expect(lay.links.find((l) => l.source === 'b' && l.target === 'y')!.tone).toEqual(own('b'));
 });
 
 test('empty flows lay out nothing', () => {
@@ -118,7 +121,8 @@ test('a real value fed only by a blank origin takes a series slot of its own, no
   expect(tone(0, BLANK_KEY)).toEqual({ kind: 'blank' });
   expect(tone(1, 'x')).toMatchObject({ kind: 'series' });
   expect(tone(1, 'x')).not.toEqual(tone(0, 'a'));
-  expect(tone(1, 'y')).toEqual(tone(0, 'a'));
+  expect(tone(1, 'y')).not.toEqual(tone(0, 'a'));
+  expect(tone(1, 'y')).not.toEqual(tone(1, 'x'));
 });
 
 test('small ribbons of one (source, target) merge into one rest ribbon; the total and big ribbons stay', () => {
@@ -169,16 +173,24 @@ describe('fit (fan-out): ribbons are scaled to fit their node', () => {
     expect(plain.links.every((l) => l.w === l.w1)).toBe(true);
   });
 
-  it('colours a ribbon with no origin by its source node, and passes that colour to the node it feeds', () => {
+  it('colours a ribbon with no origin by its source node, and every node by its own label', () => {
     const two: Flow[][] = [[{ source: 'a', target: 'x', value: 5, origin: 'a' }, { source: 'b', target: 'y', value: 4, origin: 'b' }], [{ source: 'x', target: 'm', value: 5 }, { source: 'y', target: 'n', value: 4 }]];
     const l = layoutSankey({ flows: two, width: 400, height: 200, fit: true });
-    const a = l.nodes.find((n) => n.col === 0 && n.key === 'a')!;
-    const b = l.nodes.find((n) => n.col === 0 && n.key === 'b')!;
-    expect(a.tone).not.toEqual(b.tone);
-    expect(l.nodes.find((n) => n.col === 1 && n.key === 'x')!.tone).toEqual(a.tone);
-    expect(l.nodes.find((n) => n.col === 2 && n.key === 'm')!.tone).toEqual(a.tone);
+    const tone = (c: number, k: string) => l.nodes.find((n) => n.col === c && n.key === k)!.tone;
+    // The old rule handed a column-0 colour down; now a later node is not tied to the node that feeds it.
+    for (const k of ['a', 'b']) expect(tone(0, k)).toEqual({ kind: 'series', color: labelColors(['a', 'b']).get(k) });
+    expect(l.nodes.filter((n) => n.col > 0).map((n) => n.tone)).toHaveLength(4);
+    expect(new Set(l.nodes.map((n) => (n.tone as { color: string }).color)).size).toBe(6);
     const ribbon = l.links.find((k) => k.pair === 1 && k.source === 'y')!;
-    expect(ribbon.tone).toEqual(b.tone);
+    expect(ribbon.tone).toEqual(tone(1, 'y'));
     expect(ribbon.origin).toBeUndefined();
   });
+});
+
+test('the same label gets the same colour in a Sankey node as in a pie or a stack (labelColors)', () => {
+  const l = layoutSankey({ flows: [[{ source: 'true', target: 'OWOX BI', value: 3 }]], width: 400, height: 200 });
+  const pie = labelColors(['true']);
+  const stack = labelColors(['OWOX BI']);
+  expect(l.nodes.find((n) => n.key === 'true')!.tone).toEqual({ kind: 'series', color: pie.get('true') });
+  expect(l.nodes.find((n) => n.key === 'OWOX BI')!.tone).toEqual({ kind: 'series', color: stack.get('OWOX BI') });
 });
