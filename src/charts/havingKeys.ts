@@ -2,7 +2,7 @@
 // traverseData cannot nest queries, so the passing group keys are read once and sent to every chart query as an `in` rule.
 import { useMemo } from 'react';
 import type { ColumnFilter } from '../filters/build';
-import type { Aggregation } from '../model/aggregation';
+import { isCalculatedMetric, type Grouping } from '../model/aggregation';
 import type { Field, Schema } from '../model/types';
 import type { Row, TraverseFilter, TraverseOptions } from '../sdk/types';
 import { buildRowQuery } from '../ui/explorer/useMartRows';
@@ -33,13 +33,20 @@ function numberKey(v: unknown): number | null {
 }
 
 /** The keys read for the grid's current query, or why the charts cannot follow its HAVING filters exactly. */
-export function keysPlan(schema: Schema, shown: string[], agg: Aggregation, filters: ColumnFilter[], slices: ColumnFilter[]): KeysPlan {
+export function keysPlan(schema: Schema, shown: string[], agg: Grouping, filters: ColumnFilter[], slices: ColumnFilter[]): KeysPlan {
   // The grid's own rows query decides which filters are sent, so the keys read carries exactly the same list.
   const q = buildRowQuery(schema, shown, filters, 0, [], agg, slices);
+  // A calculated metric aggregates by itself: a rule on it has no function, and the column is never a group key.
+  const metrics = new Set(schema.filter(isCalculatedMetric).map((f) => f.name));
+  const metricRules = (q.filter ?? []).filter((f) => !f.function && metrics.has(f.column));
   const pairs = (q.filter ?? []).filter((f) => f.function);
-  if (!pairs.length) return { kind: 'off' };
+  if (!pairs.length && !metricRules.length) return { kind: 'off' };
   const columns = q.column ?? [];
-  const keys = columns.filter((c) => !(q.aggregation ?? []).some((a) => a.column === c));
+  // Ungrouped rows with no metric among the columns: the backend does aggregate for a rule on an aggregate calculated field even when it is not selected,
+  // but the charts do not try to follow that shape. They show the note instead.
+  const grouped = !!(q.aggregation?.length || q.dateTrunc?.length || q.uniqueCount?.length || columns.some((c) => metrics.has(c)));
+  if (!grouped) return { kind: 'fallback' };
+  const keys = columns.filter((c) => !metrics.has(c) && !(q.aggregation ?? []).some((a) => a.column === c));
   if (keys.length > 1) return { kind: 'fallback' };
   const key = keys[0] ?? null;
   // A boolean key is not an `in` value. A bucketed key is cut at its bucket. Time keys carry sub-second digits and dialect casts that could silently drop rows; a plain DATE key is kept.
@@ -47,8 +54,8 @@ export function keysPlan(schema: Schema, shown: string[], agg: Aggregation, filt
   if (key !== null && ((q.dateTrunc ?? []).some((r) => r.column === key) || (field && isUnsafeKey(field)))) return { kind: 'fallback' };
   const seen = new Set<string>();
   const aggregation = pairs.flatMap((f) => { const id = `${f.column}|${f.function}`; if (seen.has(id)) return []; seen.add(id); return [{ column: f.column, function: f.function! }]; });
-  const column = [...new Set([...(key ? [key] : []), ...aggregation.map((a) => a.column)])];
-  return { kind: 'read', key, options: { column, aggregation, filter: q.filter, limit: IN_LIST_MAX + 1 } };
+  const column = [...new Set([...(key ? [key] : []), ...aggregation.map((a) => a.column), ...metricRules.map((f) => f.column)])];
+  return { kind: 'read', key, options: { column, ...(aggregation.length ? { aggregation } : {}), filter: q.filter, limit: IN_LIST_MAX + 1 } };
 }
 
 /** The rule that keeps the charts to the groups in `rows`, or the reason there is none. */

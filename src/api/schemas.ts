@@ -56,7 +56,7 @@ export function createSchemaLoader(ctx: Ctx): SchemaLoader {
             category: f.mode === 'REPEATED' ? 'other' : categorizeFieldType(f.type),
             description: f.description ?? null,
             isPrimaryKey: f.isPrimaryKey === true,
-            ...(f.calculated !== undefined ? { isCalculated: true } : {}),
+            ...(f.calculated !== undefined ? { isCalculated: true, calculatedLevel: f.calculated?.level === 'column' ? ('column' as const) : ('metric' as const) } : {}),
             ...(Array.isArray(f.allowedAggregations) ? { allowedAggregations: knownFunctions(f.allowedAggregations) } : {}),
           }));
         schema.primaryKey = declaredKey(all);

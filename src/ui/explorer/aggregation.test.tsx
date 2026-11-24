@@ -193,7 +193,7 @@ test('while the grouped rows are in flight there is no groups badge and no empty
   await waitFor(() => expect(within(data()).getByText(/\d+\+? groups?$/)).toBeInTheDocument());
 });
 
-const ARRAY_AND_CALCULATED: SchemaFieldDto[] = [{ name: 'tags', type: 'STRING', mode: 'REPEATED' }, { name: 'margin', type: 'NUMERIC', calculated: { expression: 'amount - 1' } }];
+const ARRAY_AND_CALCULATED: SchemaFieldDto[] = [{ name: 'tags', type: 'STRING', mode: 'REPEATED' }, { name: 'margin', type: 'NUMERIC', calculated: { level: 'column' } }];
 
 test('an array field takes no function; with one shown the grouped query is not sent and the grid says why', async () => {
   const t = setup({ fields: ARRAY_AND_CALCULATED });
@@ -241,7 +241,7 @@ test('a calculated field has no Sigma, and a saved rule on one is dropped', asyn
 });
 
 test('a visible calculated column does not block the grouped query: it is sent and Export stays', async () => {
-  const t = setup({ fields: [{ name: 'zz_gain', type: 'NUMERIC', calculated: { expression: 'amount - 1' } }] });
+  const t = setup({ fields: [{ name: 'zz_gain', type: 'NUMERIC', calculated: { level: 'column' } }] });
   await ready();
   await showColumn('Amount');
   await showColumn('zz_gain');

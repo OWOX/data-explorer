@@ -66,6 +66,9 @@ export function allowedFunctions(field: Pick<Field, 'category' | 'allowedAggrega
   return DEFAULTS[field.category];
 }
 
+/** A calculated field whose formula aggregates: a query selects it with no function. */
+export const isCalculatedMetric = (field: Pick<Field, 'calculatedLevel'>): boolean => field.calculatedLevel === 'metric';
+
 /** A column that can be grouped by a date bucket: DATE, DATETIME and TIMESTAMP (not TIME). */
 export const canBucket = (field: Pick<Field, 'category' | 'isCalculated'>): boolean => field.category === 'date' && !field.isCalculated;
 /** A bucket carries a time zone only on a type with a time of day: a plain DATE cannot be converted. */

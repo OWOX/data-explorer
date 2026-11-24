@@ -1,12 +1,13 @@
 // Which shown columns the charts draw: metrics (numbers), dimensions (text, booleans) and dates, grouped by the data mart they belong to.
-import { AGGREGATE_FUNCTIONS, allowedFunctions, canBucket, isGrouped, type AggFn, type Grouping, type DateBucket, type Aggregation } from '../model/aggregation';
+import { AGGREGATE_FUNCTIONS, allowedFunctions, canBucket, isCalculatedMetric, isGrouped, type AggFn, type Grouping, type DateBucket, type Aggregation } from '../model/aggregation';
 import type { MainGrainCollapse } from '../api/blendable';
 import type { Field, Schema } from '../model/types';
 import { hasPrimaryKey } from '../records/relationships';
 import { isIdField } from '../state/join-plan';
 import type { Measure } from './queries';
 
-export type Metric = { field: Field; fn: AggFn };
+/** `fn` is null for a calculated metric: its formula aggregates, so a query names the column and no function. */
+export type Metric = { field: Field; fn: AggFn | null };
 /** `recordsId` is what the mart's Count Unique is saved and keyed as (see `chartFields`). */
 export type ChartMart = { aliasPath: string; recordsId: string; title: string; /** The mart's own picked icon, as the grid group header shows it. */ icon?: string | null; hasPk: boolean; metrics: Metric[]; dates: Field[]; dimensions: Field[] };
 /** `counter` is a main-mart field the warehouse may COUNT: a query with a slice and no column of its own reads it, so the slice has an explicit column list without a new group key. Null when the mart has none. */
@@ -92,7 +93,9 @@ export function chartFields(schema: Schema, shown: string[], agg: Aggregation, m
     // Blended fields carry no key flag: a joined mart has a key when the backend says a unique count works on its alias path.
     const hasPk = aliasPath === '' ? hasPrimaryKey(schema) : !!uniqueCountPaths?.has(aliasPath);
     const metrics = own.flatMap((f): Metric[] => {
-      if (f.category !== 'number' || isIdField(f) || f.isCalculated) return [];
+      if (f.category !== 'number' || isIdField(f)) return [];
+      // A calculated field of the main mart is a metric only when its formula aggregates; any other calculated field stays out.
+      if (f.isCalculated) return aliasPath === '' && isCalculatedMetric(f) ? [{ field: f, fn: null }] : [];
       const fn = metricFn(f, agg);
       return fn ? [{ field: f, fn }] : [];
     });
