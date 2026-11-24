@@ -1,4 +1,6 @@
 import type { Edge } from '../../model/types';
+import type { JoinedSource } from '../../api/blendable';
+import { parentPath } from '../../state/join-plan';
 
 /** Words that stay upper-case when an alias is said in words. */
 const ACRONYMS = new Set(['id', 'mql', 'sql', 'sal', 'url', 'utm', 'crm', 'ltv', 'cac', 'roi', 'api', 'ip', 'sku', 'uk', 'us', 'eu']);
@@ -26,10 +28,32 @@ export function edgeOf(edges: readonly Edge[], parent: string, target: string, p
   return named ?? between.find((e) => e.alias !== undefined && e.alias === last) ?? (between.length === 1 ? between[0] : undefined);
 }
 
-/** What hovering a line says about its relationship, or null when it has neither a custom name nor a description (then there is nothing to hover for). */
-export function relationshipNote(edge: Pick<Edge, 'alias' | 'description'> | undefined, targetTitle: string): string | null {
-  const name = isCustomAlias(edge?.alias, targetTitle) ? aliasWords(edge!.alias!) : '';
+/** The Output Alias the member set on a join: a non-empty one that is not just the target mart's title (then it was never set). */
+export const customOutputAlias = (outputAlias: string | undefined | null, targetTitle: string): string => {
+  const shown = outputAlias?.trim() ?? '';
+  return shown && shown.toLowerCase() !== targetTitle.trim().toLowerCase() ? shown : '';
+};
+
+/**
+ * What hovering a line says about its relationship, or null when it has neither a name nor a description (then there is nothing to hover for).
+ * The name is the join's Output Alias as typed when there is one, else the custom technical alias said in words.
+ */
+export function relationshipNote(edge: Pick<Edge, 'alias' | 'description'> | undefined, targetTitle: string, outputAlias?: string | null): string | null {
+  const name = customOutputAlias(outputAlias, targetTitle) || (isCustomAlias(edge?.alias, targetTitle) ? aliasWords(edge!.alias!) : '');
   const about = edge?.description?.trim() ?? '';
   if (!name && !about) return null;
   return [name, about].filter(Boolean).join(': ');
+}
+
+/**
+ * The Output Alias an `edge:` line is named by. It is per path, so: the source of this relationship hanging off the card the line leaves (`fromPath`);
+ * else, when that card is outside the report, the band ghost's source if it belongs to this relationship (the line then reads like the ghost on the same pair);
+ * else one all the sources of the relationship agree on; else none (the technical alias is said).
+ */
+export function edgeOutputAlias(edge: Pick<Edge, 'id'>, targetTitle: string, sources: readonly JoinedSource[], fromPath: string | undefined, bandSource: JoinedSource | undefined): string | undefined {
+  const named = sources.filter((x) => x.relationshipId === edge.id);
+  const here = fromPath === undefined ? undefined : named.find((x) => parentPath(x.aliasPath) === fromPath);
+  if (here) return here.outputAlias;
+  if (bandSource?.relationshipId === edge.id) return bandSource.outputAlias;
+  return new Set(named.map((x) => customOutputAlias(x.outputAlias, targetTitle))).size === 1 ? named[0]?.outputAlias : undefined;
 }

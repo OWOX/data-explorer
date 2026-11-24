@@ -13,7 +13,7 @@ function setup() {
 const data = () => document.getElementById('band-data')!;
 const marts = () => document.getElementById('band-marts')!;
 const headers = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden') && h.getAttribute('scope') !== 'colgroup').map((h) => h.textContent!);
-const groupTitles = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!);
+const groupTitles = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.querySelector('.truncate')!.textContent!);
 const ready = async () => { await waitFor(() => expect(headers()).toHaveLength(5)); await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true)); };
 const cards = () => [...marts().querySelectorAll<HTMLElement>('article')];
 const el = (id: string, path?: string) => cards().find((a) => a.id === martElementId(id, path) && !a.hasAttribute('data-ghost')) ?? null;
@@ -256,4 +256,48 @@ test('the dashed line to a ghost carries its relationship name, with a dot that 
   const dot = line()!.nextElementSibling!;
   expect(dot.classList.contains('dm-wire-dot')).toBe(true);
   expect((dot as SVGElement).dataset.tip).toMatch(/^Store country: Where the store is/);
+});
+
+test('the dashed line to a ghost names the join by its Output Alias when the technical alias differs', async () => {
+  const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  const getJson = ctx.owox.getJson.bind(ctx.owox) as (url: string, ...rest: unknown[]) => Promise<unknown>;
+  (ctx.owox as { getJson: unknown }).getJson = async (url: string, ...rest: unknown[]) => {
+    if (url.endsWith('/relationships')) return [{ id: 'e-stores-countries', targetAlias: 'store_country_sql' }];
+    const dto = await getJson(url, ...rest);
+    if (!/\/blendable-schema$/.test(url)) return dto;
+    const d = dto as { availableSources?: { dataMartId: string; relationshipId?: string; defaultAlias?: string | null }[] };
+    return { ...d, availableSources: d.availableSources?.map((s) => (s.relationshipId === 'e-stores-countries' ? { ...s, defaultAlias: 'Store Country' } : s)) };
+  };
+  render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
+  await joinCustomersAndStores();
+  fireEvent.click(el('customers', 'customers')!);
+  fireEvent.click(await bandCard('Countries'));
+  await waitFor(() => expect(el('countries', 'customers.countries')).not.toBeNull());
+  fireEvent.click(el('stores', 'stores')!);
+  await waitFor(() => expect(ghost('countries', 'stores.countries')).not.toBeNull());
+  const line = () => document.querySelector<SVGPathElement>(`path.ghost[data-to="${martElementId('countries', 'stores.countries')}"]`);
+  await waitFor(() => expect(line()?.dataset.tip).toMatch(/^Store Country/));
+  expect(line()!.dataset.tip).not.toMatch(/sql/i);
+  expect((line()!.nextElementSibling as SVGElement).dataset.tip).toMatch(/^Store Country/);
+});
+
+test('one relationship at two paths with different Output Aliases gives the line one name, from the card it leaves', async () => {
+  const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  const getJson = ctx.owox.getJson.bind(ctx.owox) as (url: string, ...rest: unknown[]) => Promise<unknown>;
+  (ctx.owox as { getJson: unknown }).getJson = async (url: string, ...rest: unknown[]) => {
+    if (url.endsWith('/relationships')) return [{ id: 'e-stores-countries', targetAlias: 'store_country_sql' }];
+    const dto = await getJson(url, ...rest);
+    if (!/\/blendable-schema$/.test(url)) return dto;
+    const d = dto as { availableSources?: { aliasPath: string; dataMartId: string; relationshipId?: string; defaultAlias?: string | null }[] };
+    // Both countries paths come from one relationship, each with its own Output Alias.
+    return { ...d, availableSources: d.availableSources?.map((s) => (s.dataMartId === 'countries' ? { ...s, relationshipId: 'e-stores-countries', defaultAlias: s.aliasPath.startsWith('stores') ? 'Beta' : 'Alpha' } : s)) };
+  };
+  render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
+  await ready();
+  fireEvent.click(await bandCard('Stores'));
+  await waitFor(() => expect(el('stores', 'stores')).not.toBeNull());
+  letGo();
+  const line = () => document.querySelector<SVGPathElement>(`path[data-from="${martElementId('stores', 'stores')}"][data-to="${martElementId('countries')}"]`);
+  await waitFor(() => expect(line()?.dataset.tip).toMatch(/^Beta/));
+  expect(line()!.dataset.tip).not.toMatch(/Alpha|;/);
 });

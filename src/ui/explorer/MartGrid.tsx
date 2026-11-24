@@ -1,5 +1,5 @@
 import { columnVisibilityFeature, tableFeatures, useTable, type ColumnDef } from '@tanstack/react-table';
-import { Box, Info, RefreshCw, RotateCcw, X } from 'lucide-react';
+import { Box, Info, RefreshCw, RotateCcw } from 'lucide-react';
 import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pending-focus';
 import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AUTO, keepsUnit, type Format } from '../../format/formats';
@@ -42,7 +42,8 @@ import { CellValue } from './CellValue';
 import { blockOf, selectionTsv, type GridSelection } from './copySelection';
 import { ColumnDragLayer } from './ColumnDrag';
 import { ColumnControls, ColumnMenuEnvContext, type ColumnMenuEnv } from './ColumnMenu';
-import { ColumnPicker, MartRuleMarks } from './ColumnPicker';
+import { ColumnPicker, MartRuleBadges } from './ColumnPicker';
+import { TitleRow } from './compactBadges';
 import { ExportMenu } from './ExportMenu';
 import { defaultColumns } from '../../model/columns';
 import { buildRowQuery, useMartRows } from './useMartRows';
@@ -304,6 +305,7 @@ const GridRow = memo(function GridRow({ row, ri, columns, marks, acts, clickable
 
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 const byField = (m: Record<string, ColumnFilter> | undefined) => Object.entries(m ?? {}).sort(([a], [b]) => a.localeCompare(b));
+const dropKeys = <T,>(rules: Record<string, T>, names: string[]) => Object.fromEntries(Object.entries(rules).filter(([k]) => !names.includes(k)));
 const stable = (g: GridState) => JSON.stringify([g.columns, byField(g.filters), byField(g.slices), g.sorts, g.limit, g.aggregations ?? [], g.dateTrunc ?? [], g.uniqueCount ?? [], g.view ?? 'table']);
 const sameGrid = (a: GridState, b: GridState) => stable(a) === stable(b);
 
@@ -360,9 +362,6 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   // parked filters on fields now offered are applied after all, and filters on fields no longer offered are parked. Slices (the pre-join rules on joined fields) work the same way.
   const offeredNow = (name: string) => schema.some((f) => f.name === name);
   const [allFilters, setAllFilters] = useState<Record<string, ColumnFilter>>(() => seed.saved?.filters ?? {});
-  // The data mart (by group path) whose Fields list is open.
-  const [fieldsOpen, setFieldsOpen] = useState<string | null>(null);
-  const openedBy = useRef<HTMLElement | null>(null);
   const [allSlices, setAllSlices] = useState<Record<string, ColumnFilter>>(() => seed.saved?.slices ?? {});
   const filters = useMemo(() => pickOffered(allFilters, schema), [allFilters, schema]);
   // A rule does not need its field on the grid: a filter or slice on a hidden field of the main mart, or of a joined mart that has a shown column, applies,
@@ -750,8 +749,6 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     if (button && takeFocusFor(martId)) button.focus();
   }, [groups, martId]);
   const several = groups.length > 1;
-  // A mart that leaves the grid (Remove, Undo of an add) takes its open Fields list with it; it must not reopen when the mart comes back.
-  if (fieldsOpen !== null && !groups.some((g) => g.path === fieldsOpen)) setFieldsOpen(null);
   // The first data mart is the main one: its last own column stays while a joined mart is shown.
   const ownNames = useMemo(() => new Set(native.map((f) => f.name)), [native]);
   const ownOn = shown.filter((n) => ownNames.has(n)).length;
@@ -1022,27 +1019,16 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
                     if (!e.currentTarget.contains(t) || t.closest('button')) return;
                     if (selected?.kind === 'col' || selected?.kind === 'row') setSelected(null);
                   }} className="dm-gh dm-gh-edge overflow-hidden px-1 py-1 text-left font-semibold">
-                    <div className="flex min-w-0 items-center gap-1">
+                    <TitleRow>{(compact) => (<>
                       <span className="inline-flex shrink-0 text-muted-foreground"><PickedIcon icon={g.icon} fallback={Box} size={14} /></span>
-                      <span className="truncate">{g.title}</span>
+                      <span data-title-text="" className="truncate">{g.title}</span>
                       {g.description?.trim() && <span className="dm-reveal"><Hint text={g.description} label={`About ${g.title}`} /></span>}
-                      <MartRuleMarks title={g.title} fields={fieldsOf(g)} filters={filters} slices={slices} expanded={fieldsOpen === g.path} onOpen={(mark) => { openedBy.current = mark; setFieldsOpen(g.path); }} />
-                      <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} unique={uniqueOffered.has(g.path) ? { on: ucNow.includes(g.path), onToggle: () => toggleUnique(g.path) } : undefined} open={fieldsOpen === g.path} onOpenChange={(o) => {
-                        setFieldsOpen((cur) => (o ? g.path : cur === g.path ? null : cur));
-                      }} onCloseAutoFocus={(e) => {
-                        // A list opened from a rule mark gives focus back to that mark, not to the Fields button. Focus the member already moved elsewhere (a Tab out of the list) stays where it went.
-                        const m = openedBy.current;
-                        openedBy.current = null;
-                        const a = document.activeElement;
-                        const lost = !a || a === document.body;
-                        if (m?.isConnected && lost) { e.preventDefault(); m.focus(); }
-                      }} />
-                      {(several || !g.main) && (
-                        <Tooltip content={`Remove ${g.title} from the grid`}>
-                          <button type="button" aria-label={`Remove ${g.title} from the grid`} data-remove disabled={removing} onClick={() => remove(g, i)} className="dm-reveal dm-gx"><X className="size-3.5" aria-hidden /></button>
-                        </Tooltip>
-                      )}
-                    </div>
+                      <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} unique={uniqueOffered.has(g.path) ? { on: ucNow.includes(g.path), onToggle: () => toggleUnique(g.path) } : undefined}
+                        remove={several || !g.main ? { onRemove: () => remove(g, i), disabled: removing } : undefined} columns={g.span} compact={compact} />
+                      <MartRuleBadges title={g.title} fields={fieldsOf(g)} filters={filters} slices={slices}
+                        onClearFilters={(names) => edit(() => setAllFilters((cur) => dropKeys(cur, names)))}
+                        onClearSlices={(names) => edit(() => setAllSlices((cur) => dropKeys(cur, names)))} compact={compact} />
+                    </>)}</TitleRow>
                   </th>
                 ))}
                 {/* Carries the line under the tabs to the card's edge. */}

@@ -32,7 +32,7 @@ const g = (extra: Partial<GridState> = {}): GridState => ({ ...base, ...extra })
 /** Opens the Fields list of the main mart and returns the menu icon of a field's row. */
 async function rowIcon(field: string, mart?: string) {
   await waitFor(() => expect(grid()).not.toBeNull());
-  await userEvent.click(mart ? await within(data()).findByRole('button', { name: `Fields of ${mart}` }) : (await within(data()).findAllByRole('button', { name: /^Fields of / }))[0]!);
+  await userEvent.click(mart ? await within(data()).findByRole('button', { name: new RegExp(`^Fields of ${mart}:`) }) : (await within(data()).findAllByRole('button', { name: /^Fields of / }))[0]!);
   const list = await screen.findByRole('listbox', { name: /^Fields of / });
   return { list, icon: (await waitFor(() => { const el = list.closest('[data-popover-body]')!.querySelector<HTMLElement>(`[data-row-action][data-field="${field}"]`); if (!el) throw new Error('no icon'); return el; })) };
 }
@@ -81,7 +81,7 @@ describe('field actions from the Fields list', () => {
     const q = t.queries.find((x) => x.filter?.some((f) => f.column === 'status') && x.column?.includes('id'))!;
     expect(q.column).not.toContain('status');
     // The rule is saved with the view, in the title row marks, and undone in one step.
-    expect(await screen.findByRole('button', { name: /^Filter rules in / })).toBeVisible();
+    expect(await screen.findByRole('button', { name: /^1 filter in / })).toBeVisible();
     await userEvent.keyboard('{Escape}');
     await userEvent.keyboard('{Escape}');
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
@@ -268,7 +268,7 @@ describe('field actions from the Fields list', () => {
     test('unticking it in the Fields list, and Undo brings them back', async () => {
       const t = setup(rules);
       await waitFor(() => expect(t.state.current!.grids.orders).toBeDefined());
-      await userEvent.click(await within(data()).findByRole('button', { name: 'Fields of Customers' }));
+      await userEvent.click(await within(data()).findByRole('button', { name: /^Fields of Customers:/ }));
       await userEvent.click(await screen.findByRole('option', { name: /city/i }));
       // The list keeps the mart while open; closing it with nothing ticked removes the mart.
       await userEvent.keyboard('{Escape}');
@@ -296,7 +296,7 @@ describe('field actions from the Fields list', () => {
       expect(screen.queryByRole('listbox', { name: /^Fields of / })).toBeNull();
       await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
       await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['id', 'customers__city']));
-      await within(data()).findByRole('button', { name: 'Fields of Customers' });
+      await within(data()).findByRole('button', { name: /^Fields of Customers:/ });
       expect(screen.queryByRole('listbox', { name: /^Fields of / })).toBeNull();
     });
 

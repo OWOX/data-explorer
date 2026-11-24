@@ -33,9 +33,9 @@ const data = () => document.getElementById('band-data')!;
 const row = () => document.getElementById('band-row')!;
 const marts = () => document.getElementById('band-marts')!;
 const card = (title: string) => within(marts()).getByText(title).closest('article')!;
-const title = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!).join(' + ');
+const title = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.querySelector('.truncate')!.textContent!).join(' + ');
 const headers = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden') && h.getAttribute('scope') !== 'colgroup').map((h) => h.textContent!);
-const groupTitles = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!);
+const groupTitles = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.querySelector('.truncate')!.textContent!);
 const ready = async () => { await waitFor(() => expect(headers()).toHaveLength(5)); await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true)); };
 // A card just added is focused, so the others are dimmed: the focus is let go before the next click.
 const click = async (name: string) => { await within(marts()).findByText(name); fireEvent.keyDown(document, { key: 'Escape' }); fireEvent.click(card(name)); };
@@ -62,7 +62,7 @@ test('the × on a joined card takes its columns out, and selecting it again brin
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
   // choose another field of Customers in the picker
-  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Customers' }));
+  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Customers:/ }));
   await userEvent.click(await screen.findByLabelText('email'));
   await waitFor(() => expect(headers()).toHaveLength(7));
   await userEvent.keyboard('{Escape}');
@@ -183,7 +183,7 @@ test('unticking the last field of a joined mart in the picker deselects it; tick
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
-  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Customers' }));
+  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Customers:/ }));
   const group = await screen.findByRole('dialog');
   await userEvent.click(within(group).getByRole('option', { selected: true }));
   // The mart stays while the popup is open and goes when it closes with nothing ticked.
@@ -191,7 +191,7 @@ test('unticking the last field of a joined mart in the picker deselects it; tick
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(title()).toBe('Orders'));
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'false');
-  expect(within(data()).queryByRole('button', { name: 'Fields of Customers' })).toBeNull();
+  expect(within(data()).queryByRole('button', { name: /^Fields of Customers:/ })).toBeNull();
   // another mart is added from its card, not from a picker
   await click('Stores');
   await waitFor(() => expect(title()).toBe('Orders + Stores'));
@@ -265,7 +265,7 @@ test('what a removed mart showed is saved exactly: the fields, in the order show
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
-  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Customers' }));
+  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Customers:/ }));
   await userEvent.click(await screen.findByLabelText('email'));
   await waitFor(() => expect(headers()).toHaveLength(7));
   await userEvent.keyboard('{Escape}');
@@ -282,7 +282,7 @@ test('the main mart alone has one tab spanning all its columns, with no x; a joi
   expect(groupTitles()).toEqual(['Orders']);
   expect(groupRow()[0]!.getAttribute('colspan')).toBe('5');
   expect(within(data()).queryByRole('button', { name: 'Remove Orders from the grid' })).toBeNull();
-  expect(within(data()).getByRole('button', { name: 'Fields of Orders' })).toBeInTheDocument();
+  expect(within(data()).getByRole('button', { name: /^Fields of Orders:/ })).toBeInTheDocument();
   await click('Customers');
   await waitFor(() => expect(groupRow()).toHaveLength(2));
   expect(groupTitles()).toEqual(['Orders', 'Customers']);
@@ -302,7 +302,7 @@ test('a column ticked for the main mart after a joined one stays in the main gro
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
-  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
   await userEvent.click(await screen.findByRole('option', { name: /amount/i }));
   await waitFor(() => expect(headers()).toHaveLength(7));
   expect(headers().indexOf('Amount')).toBeLessThan(6);
@@ -341,7 +341,7 @@ test('the last own column of the main mart cannot be unticked while a joined mar
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
-  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Orders' }));
+  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
   for (const label of ['id', 'Customer', 'Product', 'Store']) await userEvent.click(await screen.findByLabelText(label));
   await waitFor(() => expect(headers()).toEqual(['status', 'name']));
   expect(screen.getByRole('option', { name: 'status' })).toHaveAttribute('aria-disabled', 'true');
@@ -368,7 +368,7 @@ test('a mart that leaves the grid remembers its own field names in its own grid-
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
-  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Customers' }));
+  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Customers:/ }));
   await userEvent.click(await screen.findByLabelText('email'));
   await waitFor(() => expect(headers()).toHaveLength(7));
   await userEvent.keyboard('{Escape}');
@@ -433,5 +433,5 @@ test('after the main group is removed, focus moves to the new main tab\'s Column
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
   fireEvent.click(await within(data()).findByRole('button', { name: 'Remove Orders from the grid' }));
   await waitFor(() => expect(title()).toBe('Customers'));
-  await waitFor(() => expect(document.activeElement).toBe(within(data()).getByRole('button', { name: 'Fields of Customers' })));
+  await waitFor(() => expect(document.activeElement).toBe(within(data()).getByRole('button', { name: /^Fields of Customers:/ })));
 });

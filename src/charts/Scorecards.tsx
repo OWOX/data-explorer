@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Calendar, EyeOff, Gauge } from 'lucide-react';
 import { AUTO, formatValue, keepsUnit, type Format } from '../format/formats';
 import { isIntegerType } from '../model/field-category';
@@ -84,9 +85,63 @@ export function sharedSeriesQuery(cf: ChartFields, spark: Spark, measure: Measur
   return has ? sparkQueryOf(owner, spark, bucket, filter) : null;
 }
 
-/** One query for every value card of every data mart. Nothing runs while paused. */
-export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean, joins?: JoinGrain): ChartResult {
-  return useChartQuery(martId, paused ? null : scorecardsQuery(cf.marts, filter, cf.counter), version, joins);
+/** The scorecards' read plus the last row it returned, which the cards keep showing (dimmed) while the next read runs. */
+export type Scores = ChartResult & { previous?: Row | null };
+
+/**
+ * One query for every value card of every data mart: a filter change or an added mart is one billed read, not one per mart.
+ * `previous` is the last row a read returned, kept so the cards do not fall back to skeletons while the next read runs. Nothing runs while paused.
+ */
+export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean, joins?: JoinGrain): Scores {
+  const result = useChartQuery(martId, paused ? null : scorecardsQuery(cf.marts, filter, cf.counter), version, joins);
+  const [previous, setPrevious] = useState<Row | null>(null);
+  // Adjusting state while rendering (not in an effect) so the card never paints a frame without the previous value.
+  const latest = result.rows?.[0] ?? null;
+  if (latest && latest !== previous) setPrevious(latest);
+  // A failed or empty read leaves no stale number behind: the read after it starts from skeletons, not from a value that came before the gap.
+  else if ((result.error || result.rows?.length === 0) && previous) setPrevious(null);
+  return { ...result, previous };
+}
+
+const ROLL_MS = 500;
+const decimalsOf = (n: number): number => (/e/i.test(String(n)) ? 0 : (String(n).split('.')[1] ?? '').length);
+const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
+const reducedMotion = (): boolean => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * The number a card shows while its value rolls from the one it showed to `target`, over `ms` with ease-out.
+ * It only rolls between two finite numbers that differ, with motion allowed, and within one `scope` (the card's measure): a card that had
+ * no value, or whose measure was swapped, jumps instead of counting from an unrelated number. A newer target mid-roll starts from the number on screen.
+ * `whole` rounds every frame, so a count never shows a fraction on its way.
+ */
+export function useRolling(target: number | null, scope: string, whole: boolean, ms = ROLL_MS): number | null {
+  const [state, setState] = useState<{ value: number | null; scope: string }>({ value: target, scope });
+  const from = state.scope === scope ? state.value : null;
+  const rolls = target !== null && from !== null && from !== target && !reducedMotion();
+  useEffect(() => {
+    if (!rolls) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the settled number is remembered as the start of the next roll
+      setState((cur) => (cur.value === target && cur.scope === scope ? cur : { value: target, scope }));
+      return;
+    }
+    // Every frame has the decimals the two ends have (at most two), so the width does not jump through 15-digit floats on the way.
+    const places = whole ? 0 : Math.min(2, Math.max(decimalsOf(from), decimalsOf(target)));
+    const start = performance.now();
+    let frame = 0;
+    const step = (now: number) => {
+      // The first frame's timestamp can precede `start` (taken from performance.now in the effect): time never runs backwards.
+      const t = Math.min(1, Math.max(0, (now - start) / ms));
+      const v = t >= 1 ? target : from + (target - from) * easeOutCubic(t);
+      setState({ value: t >= 1 ? target : Number(v.toFixed(places)), scope });
+      if (t < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+    // `from` is the number on screen when this target arrived; later frames must not restart the roll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, scope]);
+  // Null once settled: the card then formats its exact row value (a big NUMERIC string never passes through a double).
+  return rolls ? from : null;
 }
 
 export type Formatter = (column: string, type: string) => Format;
@@ -101,18 +156,24 @@ function shortOf(card: Card, row: Row, formatOf: Formatter): string | null {
   return compactValue(row[card.key], ...measureFormat(card.measure, formatOf));
 }
 
-/** The value on a card: short when it can be, with the exact text in a tooltip and for screen readers. */
-function CardValue({ card, row, formatOf }: { card: Card; row: Row; formatOf: Formatter }) {
+/**
+ * The value on a card: short when it can be, with the exact text in a tooltip and for screen readers.
+ * `shown` is the number on screen while it rolls (every frame is formatted like the final value); the exact text always comes from `row`.
+ * `busy` dims the value and marks it as being replaced: it is the previous read's, until the new one arrives.
+ */
+function CardValue({ card, row, formatOf, shown, busy = false }: { card: Card; row: Row; formatOf: Formatter; shown?: number | null; busy?: boolean }) {
   const full = textOf(card, row, formatOf);
-  const short = shortOf(card, row, formatOf);
-  const cls = 'text-lg font-semibold tabular-nums';
+  const frame = shown === undefined || shown === null ? row : { ...row, [card.key]: shown };
+  const text = frame === row ? full : textOf(card, frame, formatOf);
+  const short = shortOf(card, frame, formatOf);
+  const cls = `text-lg font-semibold tabular-nums transition-opacity duration-200 ${busy ? 'opacity-40' : ''}`;
   // A short form that is no shorter (1e21 is "1e+21" in full) is not worth a hover.
-  if (short === null || short.length >= full.length) return <div data-card-value className={cls}>{full}</div>;
+  if (short === null || short.length >= text.length) return <div data-card-value aria-busy={busy || undefined} className={cls}>{text}</div>;
   // As Hint does: a focusable note, so the exact value is named for screen readers and opens by keyboard too.
   return (
-    <div className={cls}>
+    <div className="text-lg font-semibold tabular-nums">
       <Tooltip content={full}>
-        <span data-card-value data-exact={full} role="note" tabIndex={0} aria-label={`${card.label}: ${full}`} className="cursor-default">{short}</span>
+        <span data-card-value data-exact={full} aria-busy={busy || undefined} role="note" tabIndex={0} aria-label={`${card.label}: ${full}`} className={`cursor-default transition-opacity duration-200 ${busy ? 'opacity-40' : ''}`}>{short}</span>
       </Tooltip>
     </div>
   );
@@ -154,11 +215,13 @@ export const numberOf = (v: unknown): number | null => {
 };
 
 /** One card: its label and ⋮ menu, its value and its own sparkline (the date picked for it, read once per date and shared by the cards on it). */
-function ScoreCard({ martId, mart, menuMart, card: c, spark, row, bucket, autoBucket, filter, version, paused, joins, formatOf, choices, onMetric, onDate, onHide }: {
-  martId: string; mart: ChartMart; menuMart: ChartMart; card: Card; spark: Spark; row: Row | undefined; bucket: DateBucket | null; /** Whether the charts' bucket is Auto, so a card on its own date picks its own. */ autoBucket: boolean; filter: TraverseFilter[]; version: number; paused: boolean; joins?: JoinGrain; formatOf: Formatter;
+function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, autoBucket, filter, version, paused, joins, formatOf, choices, onMetric, onDate, onHide }: {
+  martId: string; mart: ChartMart; menuMart: ChartMart; card: Card; spark: Spark; row: Row | undefined; /** The row is the previous read's, shown dimmed until the new one arrives. */ busy: boolean; bucket: DateBucket | null; /** Whether the charts' bucket is Auto, so a card on its own date picks its own. */ autoBucket: boolean; filter: TraverseFilter[]; version: number; paused: boolean; joins?: JoinGrain; formatOf: Formatter;
   choices: ReturnType<typeof measureGroups>; onMetric?: (cardId: string, measure: string) => void; onDate?: (cardId: string, date: string) => void; onHide?: (cardId: string) => void;
 }) {
   const date = cardDate(mart, spark, c.id);
+  const raw = row?.[c.key];
+  const rolled = useRolling(numberOf(raw), c.key, isIntegerMeasure(c.measure));
   // A date the member picked for this card, other than the charts', keeps the 60-bucket cap by its own range; a chosen bucket is shared.
   // A joined mart's default date is not a pick: it rides the charts' bucket, so it costs no range read of its own.
   // A saved pick whose date is no longer on the mart falls back to the mart's default, which is no pick either.
@@ -188,7 +251,7 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, bucket, autoBu
           ]} />
         </div>
       )}
-      {row ? <CardValue card={c} row={row} formatOf={formatOf} /> : <Skeleton rows={1} />}
+      {row ? <CardValue card={c} row={row} formatOf={formatOf} shown={rolled} busy={busy} /> : <Skeleton rows={1} />}
       {waiting && <div aria-label="Loading trend" className="mt-1 h-6 animate-pulse rounded bg-muted motion-reduce:animate-none" />}
       {!waiting && dated.length > 0 && <Sparkline points={points} ariaLabel={`${c.label} trend`} />}
     </div>
@@ -197,7 +260,7 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, bucket, autoBu
 
 /** The cards of one data mart, wrapping inside its group's cell. The main mart's cell also shows the strip's error and empty state. `menuMart` is the same mart with every column: its metrics and dates are what a card's menu offers. */
 export function MartCards({ martId, mart, menuMart = mart, main, spark, scores, bucket, autoBucket = true, filter, version, paused, joins, hasFilters, formatOf, onMetric, onDate, onHide }: {
-  martId: string; mart: ChartMart; menuMart?: ChartMart; main: boolean; spark: Spark; scores: ChartResult; bucket: DateBucket | null; /** Whether the charts' bucket is Auto. */ autoBucket?: boolean; filter: TraverseFilter[]; version: number; paused: boolean; /** What lets a sparkline read be reused after a column is dropped. */ joins?: JoinGrain; hasFilters: boolean; formatOf: Formatter;
+  martId: string; mart: ChartMart; menuMart?: ChartMart; main: boolean; spark: Spark; scores: Scores; bucket: DateBucket | null; /** Whether the charts' bucket is Auto. */ autoBucket?: boolean; filter: TraverseFilter[]; version: number; paused: boolean; /** What lets a sparkline read be reused after a column is dropped. */ joins?: JoinGrain; hasFilters: boolean; formatOf: Formatter;
   /** A card's ⋮ menu: pick the measure a card shows, the date its trend is drawn on, and hide it. Without them (the settings are still loading) the cards have no menu. */
   onMetric?: (cardId: string, measure: string) => void; onDate?: (cardId: string, date: string) => void; onHide?: (cardId: string) => void;
 }) {
@@ -205,11 +268,13 @@ export function MartCards({ martId, mart, menuMart = mart, main, spark, scores, 
   const choices = measureGroups({ marts: [menuMart], dimensions: [], dates: [] }, martMeasures(menuMart));
   if (scores.error) return main ? <ErrorBox error={scores.error} onRetry={scores.retry} /> : null;
   if (scores.rows && scores.rows.length === 0) return main ? <p className="dm-muted text-sm">{emptyText(hasFilters)}</p> : null;
-  const row = scores.rows?.[0];
+  const fresh = scores.rows?.[0];
+  // While a read runs, a card whose value the last read had keeps it, dimmed; a card with none (a mart just added) shows a skeleton.
+  const stale = scores.loading ? scores.previous ?? undefined : undefined;
   return (
     <div className="flex min-w-0 flex-1 flex-wrap gap-2">
       {cards.map((c) => (
-        <ScoreCard key={c.id} martId={martId} mart={mart} menuMart={menuMart} card={c} spark={spark} row={row} bucket={bucket} autoBucket={autoBucket} filter={filter} version={version} paused={paused} joins={joins} formatOf={formatOf}
+        <ScoreCard key={c.id} martId={martId} mart={mart} menuMart={menuMart} card={c} spark={spark} row={fresh ?? (stale && c.key in stale ? stale : undefined)} busy={!fresh} bucket={bucket} autoBucket={autoBucket} filter={filter} version={version} paused={paused} joins={joins} formatOf={formatOf}
           choices={choices} onMetric={onMetric} onDate={onDate} onHide={onHide} />
       ))}
     </div>

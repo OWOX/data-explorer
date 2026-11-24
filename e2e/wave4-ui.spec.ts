@@ -26,7 +26,7 @@ test('Grid and Graph cards keep their background when selected; the border goes 
   await page.goto('/?mock');
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await marts(page).getByText('Customers', { exact: true }).first().click();
-  await expect(data(page).getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
+  await expect(data(page).getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
   const cards = marts(page).locator('article[aria-pressed="true"]');
   await expect(cards).toHaveCount(2);
   const plain = await bg(marts(page).locator('article[data-focused]').first()).catch(() => null);
@@ -56,7 +56,7 @@ test('the Filter and Slice notes read in the OWOX wording with one bold word', a
   await page.goto('/?mock');
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await marts(page).getByText('Customers', { exact: true }).first().click();
-  await expect(data(page).getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
+  await expect(data(page).getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
   for (const [col, row, shot, text, word] of [
     ['Customers · name', 'Filter', 'filter', 'Filters narrow the final result — applied after all joins.', 'after'],
     ['Customers · name', 'Slice', 'slice', 'Slices filter the joined data mart before it is joined — reducing the rows pulled in.', 'before'],

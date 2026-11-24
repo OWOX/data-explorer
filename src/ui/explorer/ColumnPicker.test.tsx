@@ -9,7 +9,7 @@ const fields = ['id', 'name', 'city'].map((name) => ({ name, type: 'STRING', cat
 const open = async (visible: string[], locked: (n: string) => boolean = () => false) => {
   const onChange = vi.fn();
   render(<TooltipProvider><ColumnPicker title="Orders" fields={fields} main visible={visible} locked={locked} onChange={onChange} /></TooltipProvider>);
-  await userEvent.click(screen.getByRole('button', { name: 'Fields of Orders' }));
+  await userEvent.click(screen.getByRole('button', { name: /^Fields of Orders:/ }));
   return onChange;
 };
 
@@ -34,7 +34,7 @@ test('Clear keeps a locked field', async () => {
 test('the Fields hint is a pointer shortcut: not in the Tab order, and the option carries the description', async () => {
   const described = [{ name: 'id', type: 'STRING', category: 'string', description: 'The order key' }, { name: 'name', type: 'STRING', category: 'string' }, { name: 'city', type: 'STRING', category: 'string' }] as Field[];
   render(<TooltipProvider><ColumnPicker title="Orders" fields={described} main visible={['id']} locked={() => false} onChange={vi.fn()} /></TooltipProvider>);
-  await userEvent.click(screen.getByRole('button', { name: 'Fields of Orders' }));
+  await userEvent.click(screen.getByRole('button', { name: /^Fields of Orders:/ }));
   const list = await screen.findByRole('listbox', { name: 'Fields of Orders' });
   const option = within(list).getByRole('option', { name: 'id' });
   expect(option).toHaveAttribute('aria-description', 'The order key');
@@ -79,7 +79,7 @@ describe('the Unique Count row', () => {
   const openUnique = async (visible: string[], unique: { on: boolean; onToggle: () => void } | null) => {
     const onChange = vi.fn();
     render(<TooltipProvider><ColumnPicker title="Orders" fields={fields} main visible={visible} locked={() => false} onChange={onChange} unique={unique ?? undefined} /></TooltipProvider>);
-    await userEvent.click(screen.getByRole('button', { name: 'Fields of Orders' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Fields of Orders:/ }));
     return onChange;
   };
 

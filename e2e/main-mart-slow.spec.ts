@@ -22,7 +22,7 @@ test('with slow reads the old main stays first until the new one is main, and th
     w.sampler = window.setInterval(() => {
       const first = document.querySelector('#band-marts article:not([data-ghost]):not(.dm-leaving)');
       const box = first?.getBoundingClientRect();
-      w.samples.push({ first: first?.id ?? '', group: document.querySelector('#band-data thead tr[data-group-row] th[data-group]')?.textContent ?? '', top: Math.round(box?.top ?? 0), left: Math.round(box?.left ?? 0) });
+      w.samples.push({ first: first?.id ?? '', group: document.querySelector('#band-data thead tr[data-group-row] th[data-group] .truncate')?.textContent ?? '', top: Math.round(box?.top ?? 0), left: Math.round(box?.left ?? 0) });
     }, 25);
   });
   const started = Date.now();

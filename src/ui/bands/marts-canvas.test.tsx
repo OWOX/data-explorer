@@ -18,7 +18,7 @@ function setup() {
 const data = () => document.getElementById('band-data')!;
 const marts = () => document.getElementById('band-marts')!;
 const headers = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden') && h.getAttribute('scope') !== 'colgroup').map((h) => h.textContent!);
-const groupTitles = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!);
+const groupTitles = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.querySelector('.truncate')!.textContent!);
 const ready = async () => { await waitFor(() => expect(headers()).toHaveLength(5)); await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true)); };
 const gridCard = (title: string) => within(marts()).getByText(title).closest('article')!;
 const el = (id: string, path?: string) => [...marts().querySelectorAll<HTMLElement>('article')].find((a) => a.id === martElementId(id, path) && !a.hasAttribute('data-ghost')) ?? null;
@@ -663,4 +663,22 @@ test('Graph: three relationships from one mart to another each name their own li
   // The default name (the mart's own title) with no description says nothing, so that line has no dot.
   expect(tip('session_entity')).not.toMatch(/Session entity/);
   expect(document.querySelectorAll('#tree-wires circle.dm-wire-dot')).toHaveLength(2);
+});
+
+test('Graph: a line says the join\'s Output Alias, not the relationship\'s technical alias', () => {
+  const mk = (id: string, title: string): Mart => ({ id, title, description: '', icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
+  const edge = (id: string, alias: string) => ({ id, source: 'visitor', target: 'session', joins: [], alias });
+  const model = { marts: new Map([['visitor', mk('visitor', 'Visitor')], ['session', mk('session', 'Session | Entity')]]), sources: [], contexts: [], failedStorages: [],
+    edges: [edge('r1', 'first_session'), edge('r2', 'session_entity_new_sql')] } as unknown as Model;
+  const path = (alias: string, rel: string, outputAlias: string) => ({ aliasPath: alias, martId: 'session', label: outputAlias, depth: 1, relationshipId: rel, outputAlias, uniqueCount: true,
+    fields: [{ name: `${alias}__x`, alias: 'x', type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: 'session', label: outputAlias, aliasPath: alias, originalName: 'x' } }] });
+  const joined = [path('first_session', 'r1', 'First Session'), path('session_entity_new_sql', 'r2', 'Last Session')] as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
+  render(
+    <TooltipProvider>
+      <MartsCanvas model={model} mainId="visitor" columns={['id', 'first_session__x', 'session_entity_new_sql__x']} sources={joined} counts={new Map()} dq={new Map()} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
+    </TooltipProvider>,
+  );
+  const tip = (path: string) => document.querySelector<SVGPathElement>(`#tree-wires path[data-to="${martElementId('session', path)}"]`)!.dataset.tip!;
+  expect(tip('first_session')).toMatch(/^First Session ·/);
+  expect(tip('session_entity_new_sql')).toMatch(/^Last Session ·/);
 });

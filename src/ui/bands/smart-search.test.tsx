@@ -20,7 +20,7 @@ function setup(opts: { ai?: boolean; wrap?: (ctx: Mock) => Ctx; ctx?: Ctx; aiTim
 const band = (id: string) => document.getElementById(id)!;
 const data = () => band('band-data');
 const marts = () => band('band-marts');
-const headings = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.textContent!).join(' + ');
+const headings = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.querySelector('.truncate')!.textContent!).join(' + ');
 const cardTitles = () => [...marts().querySelectorAll('article .dm-node-title')].map((t) => t.textContent!);
 const ready = async () => {
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());

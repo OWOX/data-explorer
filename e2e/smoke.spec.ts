@@ -230,7 +230,7 @@ test('filter, reset, columns, a row fills the Row band, Back returns', async ({ 
   await expect(data.getByRole('row')).toHaveCount(5);
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(data.getByRole('row')).toHaveCount(202);
-  await data.getByRole('button', { name: 'Fields of Orders' }).click();
+  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
   await page.getByRole('option', { name: /amount/i }).click();
   await expect(data.getByRole('columnheader')).toHaveCount(7);
   await page.keyboard.press('Escape');
@@ -293,7 +293,7 @@ test('rows open newest date first, and Reset returns to it', async ({ page }) =>
   await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'none');
-  await data.getByRole('button', { name: 'Fields of Orders' }).click();
+  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
   await page.getByRole('option', { name: /created_at/ }).click();
   await page.keyboard.press('Escape');
   await expect(data.getByRole('columnheader', { name: /created_at/ })).toHaveAttribute('aria-sort', 'descending');
@@ -301,7 +301,7 @@ test('rows open newest date first, and Reset returns to it', async ({ page }) =>
 
 test('a date column filter opens on presets; a preset applies at once and names the filter', async ({ page }) => {
   const data = await ordersGrid(page);
-  await data.getByRole('button', { name: 'Fields of Orders' }).click();
+  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
   await page.getByRole('option', { name: /created_at/ }).click();
   await page.keyboard.press('Escape');
   await openColumnSub(data, 'created_at', 'Filter');
@@ -439,7 +439,7 @@ async function groupedSum(grid: Locator): Promise<string> {
 }
 
 async function tick(page: Page, label: string | RegExp, group?: string) {
-  await band(page, 'data').getByRole('button', { name: `Fields of ${group ?? 'Orders'}` }).click();
+  await band(page, 'data').getByRole('button', { name: new RegExp(`^Fields of ${group ?? 'Orders'}:`) }).click();
   await page.getByRole('dialog').getByLabel(label, { exact: true }).click();
   await page.keyboard.press('Escape');
 }
@@ -488,7 +488,7 @@ test('the (?) after a field label shows only while its row is hovered', async ({
 
 test('opening the Fields picker by mouse leaves every (?) hidden until a row is hovered', async ({ page }) => {
   const data = await ordersGrid(page);
-  await data.getByRole('button', { name: 'Fields of Orders' }).click();
+  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
   const dialog = page.getByRole('dialog');
   await page.mouse.move(2, 2);
   const slots = dialog.locator('.dm-hint-slot');
@@ -577,7 +577,7 @@ for (const width of [320, 360]) {
 test('a joined column: tick Customers · email in the picker, and it filters', async ({ page }) => {
   const data = await ordersGrid(page);
   await martCard(page, 'Customers').click();
-  await expect(data.getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
+  await expect(data.getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
   await tick(page, 'email', 'Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
   await expect(data.getByRole('row').nth(3)).toContainText('@example.com');
@@ -605,7 +605,7 @@ test('a table wider than the page scrolls inside its card and never widens the b
   await page.keyboard.press('Escape');
   await expect(martCard(page, 'Customers')).not.toHaveAttribute('data-focused', /.*/);
   await martCard(page, 'Products').click();
-  await expect(data.getByRole('button', { name: 'Fields of Products' })).toBeVisible();
+  await expect(data.getByRole('button', { name: /^Fields of Products:/ })).toBeVisible();
   await tick(page, 'email', 'Customers');
   await tick(page, 'is_gift');
   await martCard(page, 'Stores').click();
@@ -639,7 +639,7 @@ test('the Fields picker is on each tab and lists only that mart; the toolbar has
   const data = await ordersGrid(page);
   await expect(data.getByRole('button', { name: /^Columns \(/ })).toHaveCount(0);
   await martCard(page, 'Customers').click();
-  await data.getByRole('button', { name: 'Fields of Customers' }).click();
+  await data.getByRole('button', { name: /^Fields of Customers:/ }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText(/^Fields · /)).toHaveCount(0);
   await expect(dialog.getByRole('option')).toHaveCount(6);
@@ -672,7 +672,7 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   const data = await ordersGrid(page);
   // Two header rows (the mart tabs and the column titles), then the rows.
   await martCard(page, 'Customers').click();
-  await expect(data.getByRole('button', { name: 'Fields of Customers' })).toBeVisible();
+  await expect(data.getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
   await tick(page, 'email', 'Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
   await openColumnSub(data, 'id', 'Filter');
@@ -806,7 +806,7 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
   // the column menu icon and the Fields icon are 15px; the (i) and the active indicators stay 20% under the old 14px
   const size = (l: Locator) => l.evaluate((e) => Math.round(e.getBoundingClientRect().width * 10) / 10);
   expect(await size(data.locator('[data-menu-icon] .dm-icon').first())).toBe(15);
-  expect(await size(data.getByRole('button', { name: 'Fields of Orders' }).locator('.dm-icon'))).toBe(15);
+  expect(await size(data.getByRole('button', { name: /^Fields of Orders:/ }).locator('.dm-icon'))).toBe(15);
   expect(await size(data.locator('.dm-th .dm-col-info .dm-icon').first())).toBe(11.2);
   // no row highlight on hover
   const second = data.locator('tbody tr').nth(1).locator('td').first();
@@ -865,7 +865,7 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
 
 test('a numeric filter applied through the popover (> 400) leaves fewer rows', async ({ page }) => {
   const data = await ordersGrid(page);
-  await data.getByRole('button', { name: 'Fields of Orders' }).click();
+  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
   await page.getByRole('option', { name: /Amount/ }).click();
   await page.keyboard.press('Escape');
   await expect(data.getByLabel('Column menu Amount')).toBeVisible();

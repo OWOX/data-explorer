@@ -6,9 +6,9 @@ const martCard = (page: Page, title: string) => band(page, 'marts').locator('art
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
 
 test('dragging a card onto the main card makes nothing main: Make it main is the way', async ({ page }) => {
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
   await martCard(page, 'Customers').dragTo(martCard(page, 'Orders'));
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
   await expect(band(page, 'marts').locator('article').first()).toContainText('Orders');
 });
 
@@ -36,22 +36,22 @@ async function expectMainTopLeft(page: Page, id: string) {
 
 test('Make it main on a focused joined card puts it first and top-left', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
   await martCard(page, 'Customers').click();
   await expect(band(page, 'marts').locator('[id="dm-customers@customers"]')).toBeVisible();
   await page.getByRole('button', { name: /Make it main: Customers/ }).click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Customers');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Customers');
   await expectMainTopLeft(page, 'dm-customers');
 });
 
 test('Make it main in the Graph, then switching to the Grid, leaves the new main first and top-left', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Orders');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
   await martCard(page, 'Customers').click();
   await band(page, 'marts').getByRole('radio', { name: 'Graph' }).click();
   await band(page, 'marts').locator('[id="dm-customers@customers"]').click();
   await page.getByRole('button', { name: /Make it main: Customers/ }).click();
-  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group]').first()).toHaveText('Customers');
+  await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Customers');
   await band(page, 'marts').getByRole('radio', { name: 'Grid' }).click();
   await expectMainTopLeft(page, 'dm-customers');
 });

@@ -52,7 +52,7 @@ test('the x on Customers takes only its own columns: the Countries behind it kee
 
 test('ticking a field on one Countries group keeps two Countries groups, with the field in its own group', async () => {
   await setup(both);
-  await userEvent.click(within(data()).getByRole('button', { name: 'Fields of Countries (Customers)' }));
+  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Countries \(Customers\):/ }));
   const dialog = await screen.findByRole('dialog');
   // Only this path's fields are listed, after the mart's Unique Count row.
   expect(within(dialog).getAllByRole('option')).toHaveLength(3);
@@ -68,6 +68,6 @@ test('a group header lists the description hint before the Fields button, then t
   await setup(['customers__name']);
   const head = data().querySelector<HTMLElement>('th[data-group-path=""]')!;
   const hint = within(head).getByRole('note', { name: 'About Orders' });
-  const fields = within(head).getByRole('button', { name: 'Fields of Orders' });
+  const fields = within(head).getByRole('button', { name: /^Fields of Orders:/ });
   expect(hint.compareDocumentPosition(fields) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
