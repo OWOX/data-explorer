@@ -50,7 +50,7 @@ type Query = { dataKey: string; columns: string[]; key: string };
 
 /**
  * `paused` keeps the key (and the rows) but reads nothing; what was read for a key is not read again when the pause ends.
- * `exact`: this read names a calculated field, so its count is reused only by a read of the same columns (it is not part of any key).
+ * `exact`: this read names a calculated field. OWOX may group such a read (it does when the formula aggregates), so its count is reused only by a read of the same columns (it is not part of any key).
  */
 export function useMartRows(martId: string, options: TraverseOptions | null, version: number, paused = false, exact = false) {
   const { ctx } = useServices();
@@ -80,7 +80,7 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
     let runId: string | null = null;
     const sent = options.column ?? [];
     const c = counted.current;
-    // OWOX groups a read that names a calculated field by its other columns, so there fewer columns are another result: the sets must match.
+    // OWOX may group a read that names a calculated field (it does when the formula aggregates) by its other columns, so there fewer columns can be another result: the sets must match.
     const covered = !!c && c.base === base && sent.every((n) => c.columns.includes(n)) && (!(exact || c.exact) || (sent.length === c.columns.length));
     const ask = !covered;
     let total = ask ? undefined : c?.total;
