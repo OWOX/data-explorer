@@ -31,6 +31,8 @@ const ready = async () => {
 const openSearch = async () => { await userEvent.click(screen.getByRole('button', { name: 'Search data marts' })); return screen.getByRole('combobox', { name: 'Search data marts' }); };
 const search = async (q: string) => { const box = await openSearch(); await userEvent.type(box, `${q}{Enter}`); };
 const undo = () => userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+/** The first heading: the main mart, before the marts the pipeline joined to it. */
+const mainHeading = () => headings().split(' + ')[0];
 const Z = (title: string) => within(marts()).getByText(title).closest('article')!;
 
 describe('the search box', () => {
@@ -142,6 +144,20 @@ describe('the search box', () => {
   });
 });
 
+/** A decision model that answers every question with its first option or top level; `gate` can hold or fail the nth call. */
+const decisionFake = (gate?: (call: number) => Promise<void>, spy = vi.fn()) => {
+  let n = 0;
+  return {
+    specificationVersion: 'v4', provider: 'test', modelId: 'd', supportedQuestionTypes: ['choice', 'score', 'boolean'],
+    doDecide: async (o: { questions: Record<string, { type: string; criteria: unknown }> }) => {
+      n += 1;
+      spy(o.questions);
+      await gate?.(n);
+      return { warnings: [], answers: Object.fromEntries(Object.entries(o.questions).map(([id, q]) => [id, q.type === 'choice' ? { type: 'choice', choice: Object.keys(q.criteria as object)[0] } : { type: 'score', score: 2 }])) };
+    },
+  };
+};
+
 describe('the pipeline', () => {
   test('the OWOX search ranks the marts: they show first, in rank order, five at most, and the best becomes the main mart', async () => {
     const t = setup({ ai: false });
@@ -163,7 +179,7 @@ describe('the pipeline', () => {
     t.view();
     await ready();
     await search('who are our buyers');
-    await waitFor(() => expect(headings()).toBe('Customers'));
+    await waitFor(() => expect(mainHeading()).toBe('Customers'));
     await waitFor(() => expect(within(marts()).queryByText('Stores')).toBeNull());
     expect(within(marts()).queryByText(/No data marts match/)).toBeNull();
   });
@@ -182,24 +198,12 @@ describe('the pipeline', () => {
     await waitFor(() => expect(rows.some((r) => JSON.stringify(r).includes('relative_date') && JSON.stringify(r).includes('"paid"'))).toBe(true));
   });
 
-  test('a view the AI got wrong in parts keeps the good parts: unknown fields and operators are dropped', async () => {
-    const t = setup({ wrap: (c) => ({ ...c, credentials: { ai: (() => {
-      const m = { doGenerate: async () => ({ content: [{ type: 'text', text: JSON.stringify({ columns: ['id', 'ghost', 'status'], filters: [{ field: 'ghost', op: 'eq', value: 1 }, { field: 'status', op: 'gt', value: 'x' }, { field: 'status', op: 'eq', value: 'paid' }] }) }] }) };
-      return { ...m, fast: m };
-    })() } }) });
-    t.view();
-    await ready();
-    await search('orders please');
-    await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('dm-ctl-on'));
-    expect(within(data()).queryByLabelText('Filter ghost')).toBeNull();
-  });
-
   test('the whole result is one Undo step: the main mart and its filters come back together', async () => {
     const t = setup({});
     t.view();
     await ready();
     await search('who are our buyers');
-    await waitFor(() => expect(headings()).toBe('Customers'));
+    await waitFor(() => expect(mainHeading()).toBe('Customers'));
     await undo();
     await waitFor(() => expect(headings()).toBe('Orders'));
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
@@ -216,41 +220,35 @@ describe('the pipeline', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
   });
 
-  test('nothing found anywhere says so and falls back to the title match', async () => {
-    const t = setup({});
-    t.view();
-    await ready();
-    await search('zzzzqq');
-    expect(await within(marts()).findByText('No data marts match.')).toBeInTheDocument();
-    expect(headings()).toBe('Orders');
-    // the title match found nothing, so only the selected mart stays
-    await waitFor(() => expect(within(marts()).queryByText('Customers')).toBeNull());
-  });
-
-  test('a failing endpoint does not show an error: the AI answers, or the title match does', async () => {
+  test('a failing endpoint does not show an error: the pipeline still answers', async () => {
     const t = setup({ wrap: (c) => ({ ...c, owox: { ...c.owox, getJson: ((path: string, q?: Record<string, string>) => (path === '/api/search' ? Promise.reject(new Error('503')) : c.owox.getJson(path, q))) as Ctx['owox']['getJson'] } }) });
     t.view();
     await ready();
     await search('who are our buyers');
-    await waitFor(() => expect(headings()).toBe('Customers'));
+    await waitFor(() => expect(mainHeading()).toBe('Customers'));
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  test('a model that never answers is treated as no AI for that run: the endpoint result shows, no error, no hint', async () => {
-    const hang = { doGenerate: () => new Promise<never>(() => {}) };
-    const t = setup({ aiTimeoutMs: 300, wrap: (c) => ({ ...c, credentials: { ai: { ...hang, fast: hang } } }) });
+  test('typing again drops a run that waits on the intent', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const slowFast = { doGenerate: async () => { await gate; return { content: [{ type: 'text', text: '{}' }] }; } };
+    const decide = vi.fn();
+    const t = setup({ wrap: (c) => ({ ...c, credentials: { ai: Object.assign({}, slowFast, { fast: slowFast, decision: decisionFake(undefined, decide) }) } }) as Ctx });
     t.view();
     await ready();
-    await search('customers');
-    await waitFor(() => expect(headings()).toBe('Customers'));
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.queryByRole('note', { name: 'AI search hint' })).toBeNull();
+    const box = await openSearch();
+    await userEvent.type(box, 'orders{Enter}');
+    await userEvent.type(box, 'x');
+    release();
+    await new Promise((r) => setTimeout(r, 200));
+    expect(decide).not.toHaveBeenCalled();
   });
 
   test('a new search while one runs cancels the first', async () => {
     let first: AbortSignal | undefined;
     const slow = { doGenerate: (o: { abortSignal?: AbortSignal }) => { first ??= o.abortSignal; return new Promise<never>(() => {}); } };
-    const t = setup({ wrap: (c) => ({ ...c, credentials: { ai: { ...slow, fast: slow } } }) });
+    const t = setup({ wrap: (c) => ({ ...c, credentials: { ai: Object.assign({}, slow, { fast: slow, decision: decisionFake() }) } }) as Ctx });
     t.view();
     await ready();
     const box = await openSearch();
@@ -291,7 +289,7 @@ describe('no AI configured', () => {
     setup({}).view();
     await ready();
     await search('customers');
-    await waitFor(() => expect(headings()).toBe('Customers'));
+    await waitFor(() => expect(mainHeading()).toBe('Customers'));
     expect(screen.queryByRole('note', { name: 'AI search hint' })).toBeNull();
   });
 
@@ -303,7 +301,7 @@ describe('no AI configured', () => {
   });
 });
 
-test('the search itself never reads rows: only the grid load after applying does', async () => {
+test('the search never reads rows while typing, and asks no AI', async () => {
   const t = setup({});
   const reads: string[] = [];
   const real = t.ctx.owox.dataMarts.traverseData.bind(t.ctx.owox.dataMarts);
@@ -312,10 +310,9 @@ test('the search itself never reads rows: only the grid load after applying does
   await ready();
   const before = reads.length;
   fireEvent.click(await openSearch());
-  await userEvent.type(screen.getByRole('combobox', { name: 'Search data marts' }), 'who are our buyers{Enter}');
-  await waitFor(() => expect(headings()).toBe('Customers'));
-  await waitFor(() => expect(reads.slice(before).every((id) => id === 'customers' || id === 'orders')).toBe(true));
-  expect(reads.slice(before).filter((id) => id !== 'customers')).toEqual([]);
+  await userEvent.type(screen.getByRole('combobox', { name: 'Search data marts' }), 'who are our buyers');
+  await new Promise((r) => setTimeout(r, 500));
+  expect(reads.slice(before)).toEqual([]);
 });
 
 test('the copied link carries the found marts, so opening it does not filter titles by the question', async () => {
@@ -334,7 +331,7 @@ test('the copied link carries the found marts, so opening it does not filter tit
 test('submitting the query that is already running changes nothing: no restart, no second AI call', async () => {
   let calls = 0;
   const slow = { doGenerate: () => { calls += 1; return new Promise<never>(() => {}); } };
-  const t = setup({ wrap: (c) => ({ ...c, credentials: { ai: { ...slow, fast: slow } } }) });
+  const t = setup({ wrap: (c) => ({ ...c, credentials: { ai: Object.assign({}, slow, { fast: slow, decision: decisionFake() }) } }) as Ctx });
   const gets = vi.spyOn(t.ctx.owox, 'getJson');
   t.view();
   await ready();
@@ -346,7 +343,6 @@ test('submitting the query that is already running changes nothing: no restart, 
   expect(calls).toBe(1);
   expect(gets.mock.calls.filter(([p]) => p === '/api/search')).toHaveLength(1);
 });
-
 
 type Gen = { doGenerate: (o: { prompt: { role: string; content: unknown }[] }) => Promise<unknown> };
 /** The fake AI, recording which question each call is; `gate` can hold or fail one. */
@@ -361,6 +357,19 @@ function spyAi(gate?: (task: string) => Promise<void>) {
     return m.doGenerate(o);
   } });
   return { tasks, withAi: (c: Mock): Ctx => ({ ...c, credentials: { ai: { ...wrap(base), fast: wrap(base.fast) } } as unknown as Ctx['credentials'] }) };
+}
+
+/** The mock AI with its decision model held or failed per call number (1 is the first question of the run). */
+function gatedAi(gate: (call: number) => Promise<void>) {
+  const spy = spyAi();
+  let n = 0;
+  return { ...spy, withAi: (c: Mock): Ctx => {
+    const ctx = spy.withAi(c);
+    const ai = ctx.credentials!.ai as unknown as { decision: { doDecide: (o: unknown) => Promise<unknown> } };
+    const real = ai.decision.doDecide.bind(ai.decision);
+    ai.decision = { ...ai.decision, doDecide: async (o: unknown) => { n += 1; await gate(n); return real(o); } };
+    return ctx;
+  } };
 }
 
 describe('the dropdown', () => {
@@ -389,7 +398,7 @@ describe('the dropdown', () => {
     await settle();
     await waitFor(() => expect(options().length).toBeGreaterThan(3));
     const rows = rowsText();
-    expect(rows[0]).toBe('Ad-hoc report');
+    expect(rows[0]).toBe('Ad-hoc report "orders"');
     const isReport = (o: HTMLElement) => !!o.querySelector('.lucide-file-spreadsheet');
     const reports = options().filter(isReport);
     expect(options().slice(1, reports.length + 1)).toEqual(reports);
@@ -426,7 +435,7 @@ describe('the dropdown', () => {
     await u.click(chip('Sales'));
     expect(chip('Sales')).toHaveAttribute('aria-pressed', 'true');
     expect(box).toHaveFocus();
-    expect(rowsText()[0]).toBe('Ad-hoc report');
+    expect(rowsText()[0]).toBe('Ad-hoc report "orders"');
     expect(marts()).toEqual(['Orders', 'Payments']);
     await u.click(chip('Catalog'));
     expect(marts()).toEqual(['Order Items', 'Orders', 'Payments']);
@@ -471,57 +480,38 @@ describe('the dropdown', () => {
     expect(rowsText().some((r) => r.startsWith('Customers'))).toBe(false);
   });
 
-  test('without a pick the AI model is asked only to discover: no fields question and no filters question', async () => {
+  test('asks no AI while typing and labels the row with the draft', async () => {
     const ai = spyAi();
-    setup({ wrap: ai.withAi }).view();
+    const decide = vi.fn();
+    setup({ wrap: (c) => { const ctx = ai.withAi(c); const a = ctx.credentials!.ai as unknown as { decision: { doDecide: (o: unknown) => Promise<unknown> } }; const real = a.decision.doDecide.bind(a.decision); a.decision = { ...a.decision, doDecide: (o: unknown) => { decide(); return real(o); } }; return ctx; } }).view();
     await ready();
-    await typeIn(user(), 'paid orders last month');
-    await waitFor(() => expect(ai.tasks).toContain('discover'));
+    await typeIn(user(), 'orders by status');
+    await waitFor(() => expect(options()[0]).toHaveTextContent('Ad-hoc report "orders by status"'));
+    expect(options()[0]).not.toHaveAttribute('aria-disabled');
     await act(async () => { await vi.advanceTimersByTimeAsync(500); });
-    expect(ai.tasks.every((x) => x === 'discover')).toBe(true);
+    expect(ai.tasks.filter((x) => x === 'intent' || x === 'shortlist')).toEqual([]);
+    expect(decide).not.toHaveBeenCalled();
   });
 
-  test('Enter with nothing highlighted runs the ad-hoc row: the mart becomes main, the AI grid is saved, and one Undo goes back', async () => {
+  test('Enter with nothing highlighted runs the pipeline: the mart becomes main, and one Undo takes the whole report back', async () => {
     const ai = spyAi();
     setup({ wrap: ai.withAi }).view();
     await ready();
     const u = user();
-    await typeIn(u, 'daily kpis last month');
+    await typeIn(u, 'who are our buyers');
     await waitFor(() => expect(options()[0]).not.toHaveAttribute('aria-disabled'));
     await u.keyboard('{Enter}');
-    await waitFor(() => expect(headings()).toBe('Daily KPIs'));
-    await waitFor(() => expect(data().querySelector('.dm-ctl-on')).not.toBeNull());
-    expect(ai.tasks).toEqual(['discover', 'fields', 'filters']);
+    await waitFor(() => expect(mainHeading()).toBe('Customers'));
+    expect(ai.tasks).toContain('intent');
     expect(screen.queryByRole('listbox', { name: 'Search results' })).toBeNull();
     await undo();
     await waitFor(() => expect(headings()).toBe('Orders'));
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
   });
 
-  test('a highlighted report row stays highlighted when call 1 lands, and Enter picks the report, not the ad-hoc run', async () => {
-    let release: (() => void) | undefined;
-    const ai = spyAi((task) => (task === 'discover' ? new Promise<void>((r) => { release = r; }) : Promise.resolve()));
-    setup({ wrap: ai.withAi }).view();
-    await ready();
-    const u = user();
-    const box = await typeIn(u, 'paid orders');
-    await waitFor(() => expect(release).toBeDefined());
-    await waitFor(() => expect(rowsText()[1]).toMatch(/Paid orders by month/));
-    // the ad-hoc row is still disabled, so the first press lands on the report
-    await u.keyboard('{ArrowDown}');
-    expect(options()[1]).toHaveAttribute('aria-selected', 'true');
-    release!();
-    await waitFor(() => expect(options()[0]).not.toHaveAttribute('aria-disabled'));
-    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
-    expect(box).toHaveAttribute('aria-activedescendant', options()[1]!.id);
-    await u.keyboard('{Enter}');
-    await waitFor(() => expect(within(data()).getByLabelText('Filter status')).toHaveClass('dm-ctl-on'));
-    expect(ai.tasks).not.toContain('fields');
-  });
-
-  test('a grid edit made before the AI answers keeps the edit', async () => {
+  test('a grid edit made while the pipeline works keeps the edit', async () => {
     let answer: (() => void) | undefined;
-    const ai = spyAi((task) => (task === 'fields' ? new Promise<void>((r) => { answer = r; }) : Promise.resolve()));
+    const ai = gatedAi((n) => (n === 2 ? new Promise<void>((r) => { answer = r; }) : Promise.resolve()));
     setup({ wrap: ai.withAi }).view();
     await ready();
     const u = user();
@@ -532,15 +522,14 @@ describe('the dropdown', () => {
     await u.click(within(data()).getByRole('button', { name: /^Sort by status/ }));
     expect(within(data()).getByRole('button', { name: /^Sort by status, currently (ascending|descending)/ })).toBeInTheDocument();
     answer!();
-    await waitFor(() => expect(ai.tasks).toContain('filters'));
-    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
     expect(within(data()).queryByLabelText('Filter status')).toBeNull();
     expect(within(data()).getByRole('button', { name: /^Sort by status, currently (ascending|descending)/ })).toBeInTheDocument();
   });
 
-  test('an Undo while the AI is still working cancels the late filters', async () => {
+  test('an Undo while the pipeline is still working cancels its late steps', async () => {
     let answer: (() => void) | undefined;
-    const ai = spyAi((task) => (task === 'fields' ? new Promise<void>((r) => { answer = r; }) : Promise.resolve()));
+    const ai = gatedAi((n) => (n === 2 ? new Promise<void>((r) => { answer = r; }) : Promise.resolve()));
     setup({ wrap: ai.withAi }).view();
     await ready();
     const u = user();
@@ -550,21 +539,19 @@ describe('the dropdown', () => {
     await waitFor(() => expect(answer).toBeDefined());
     await undo();
     answer!();
-    await waitFor(() => expect(ai.tasks).toContain('filters'));
-    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
     expect(within(data()).queryByLabelText('Filter status')).toBeNull();
   });
 
-  test('a model that fails when the ad-hoc row is picked leaves the default view and says so', async () => {
-    const ai = spyAi((task) => (task === 'fields' ? Promise.reject(new Error('boom')) : Promise.resolve()));
+  test('a model that fails when the ad-hoc row is picked shows the notice', async () => {
+    const ai = gatedAi((n) => (n === 1 ? Promise.reject(new Error('boom')) : Promise.resolve()));
     setup({ wrap: ai.withAi }).view();
     await ready();
     const u = user();
     await typeIn(u, 'who are our buyers');
     await waitFor(() => expect(options()[0]).not.toHaveAttribute('aria-disabled'));
     await u.keyboard('{Enter}');
-    expect(await screen.findByRole('status', { name: 'Search notice' })).toHaveTextContent("AI couldn't set up the view. Showing the default view.");
-    expect(headings()).toBe('Customers');
+    expect(await screen.findByRole('status', { name: 'Search notice' })).toHaveTextContent("AI couldn't finish the report. Showing what it built so far.");
     await u.click(screen.getByRole('button', { name: 'Dismiss the notice' }));
     expect(screen.queryByRole('status', { name: 'Search notice' })).toBeNull();
   });
@@ -631,19 +618,18 @@ describe('the dropdown', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
   });
 
-  test('picking a mart row selects it and makes no AI call beyond discovery', async () => {
+  test('picking a mart row selects it and makes no AI call', async () => {
     const ai = spyAi();
     setup({ wrap: ai.withAi }).view();
     await ready();
     const u = user();
     await typeIn(u, 'customers');
-    await waitFor(() => expect(ai.tasks).toEqual(['discover']));
     await waitFor(() => expect(options()[0]).not.toHaveAttribute('aria-disabled'));
     await u.click(options().find((o) => o.textContent!.startsWith('Customers'))!);
     await waitFor(() => expect(headings()).toBe('Customers'));
     await act(async () => { await vi.advanceTimersByTimeAsync(500); });
-    // the number-format picker may ask its own question; the view questions never run
-    expect(ai.tasks.filter((x) => x === 'fields' || x === 'filters')).toEqual([]);
+    // the number-format picker may ask its own question; the pipeline's never run
+    expect(ai.tasks.filter((x) => x === 'intent' || x === 'shortlist')).toEqual([]);
   });
 
   test('Escape closes the list first and the box on a second press', async () => {
@@ -692,7 +678,7 @@ describe('the dropdown', () => {
     expect(await screen.findByRole('status', { name: 'Search notice' })).toBeInTheDocument();
   });
 
-  test('after a mart pick, Enter still builds the ad-hoc view for the same query', async () => {
+  test('after a mart pick, Enter still runs the pipeline for the same query', async () => {
     const ai = spyAi();
     setup({ wrap: ai.withAi }).view();
     await ready();
@@ -702,8 +688,7 @@ describe('the dropdown', () => {
     await u.click(options().find((o) => o.textContent!.startsWith('Customers'))!);
     await waitFor(() => expect(headings()).toBe('Customers'));
     await u.keyboard('{Enter}');
-    await waitFor(() => expect(ai.tasks).toContain('fields'));
-    await waitFor(() => expect(ai.tasks).toContain('filters'));
+    await waitFor(() => expect(ai.tasks).toContain('intent'));
   });
 
   test('the previous rows stay while the next query waits out its pause; only the ad-hoc row is pending', async () => {
@@ -735,18 +720,19 @@ describe('the dropdown', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
   });
 
-  test('Escape after Enter while call 1 is pending does not drop a picked ad-hoc run', async () => {
+  test('Escape after Enter while the intent is pending does not drop a picked ad-hoc run', async () => {
     let release: (() => void) | undefined;
-    const ai = spyAi((task) => (task === 'discover' ? new Promise<void>((r) => { release = r; }) : Promise.resolve()));
+    const ai = spyAi((task) => (task === 'intent' ? new Promise<void>((r) => { release = r; }) : Promise.resolve()));
     setup({ wrap: ai.withAi }).view();
     await ready();
     const u = user();
     await typeIn(u, 'who are our buyers');
-    await waitFor(() => expect(release).toBeDefined());
+    await waitFor(() => expect(options()[0]).not.toHaveAttribute('aria-disabled'));
     await u.keyboard('{Enter}');
+    await waitFor(() => expect(release).toBeDefined());
     await u.keyboard('{Escape}');
     release!();
-    await waitFor(() => expect(headings()).toBe('Customers'));
+    await waitFor(() => expect(mainHeading()).toBe('Customers'));
   });
 
   test('a new answer clears the highlight of a stale row', async () => {

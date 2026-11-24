@@ -545,6 +545,10 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 }
 .dm-search-hint button { display: inline-flex; border: 0; background: none; color: inherit; cursor: pointer; border-radius: 0.25rem; padding: 0.125rem; }
 .dm-search-hint button:hover { background: var(--muted); color: var(--foreground); }
+.dm-search-hint .dm-step-done { color: var(--muted-foreground); text-decoration: line-through; }
+.dm-search-hint .dm-step-now { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--foreground); }
+.dm-search-hint .dm-step-next { opacity: 0.6; }
+.dm-search-hint .dm-search-chip { border: 1px solid var(--border); border-radius: 9999px; padding: 0 0.5rem; background: var(--card); color: var(--foreground); }
 
 /* --- the filter menus in a band header, ported from Data Flow ------------------------------------ */
 .dm-filter { position: relative; }

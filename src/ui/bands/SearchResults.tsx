@@ -26,13 +26,12 @@ function RowBody({ row, model }: { row: Row; model: Model }): ReactNode {
   return (
     <>
       <Sparkles size={14} aria-hidden="true" />
-      {row.reason && !row.martId ? (
+      {row.reason ? (
         <span className="dm-sr-muted">{row.reason}</span>
       ) : (
-        // The pick opens the mart the search found, with the view the AI sets up; the row does not name them.
         <>
-          <span className="dm-sr-title-fixed">Ad-hoc report</span>
-          {(row.pending || !row.martId) && <Loader2 size={14} className="animate-spin" aria-label="Finding the data mart" />}
+          <span className="dm-sr-title-fixed">Ad-hoc report "{row.query}"</span>
+          {row.pending && <Loader2 size={14} className="animate-spin" aria-label="Searching" />}
         </>
       )}
     </>

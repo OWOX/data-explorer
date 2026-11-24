@@ -19,10 +19,10 @@ function host() {
   const h: PipelineHost & { fills: GridState[] } = {
     fills: [],
     open: vi.fn(async (id) => { calls.push(`open:${id}`); return first; }),
-    fill: vi.fn((_id, expect, grid) => { calls.push('fill'); h.fills.push(grid); expect; }),
+    fill: vi.fn((_id, expect, grid) => { calls.push('fill'); h.fills.push(grid); void expect; }),
     progress: vi.fn((p) => calls.push(`progress:${p}`)),
     alternatives: vi.fn(),
-    chartSettings: { load: vi.fn(async () => ({})), save: vi.fn() },
+    chartSettings: { load: vi.fn(async () => ({})), save: vi.fn(async () => {}) },
   };
   return { h, calls, first };
 }

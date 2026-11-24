@@ -8,8 +8,8 @@ export const CHARTS_COLLECTION = 'charts';
 export interface ChartSettingsStore {
   /** The member's saved chart choices for a main mart; empty when there are none or the read failed. */
   load(martId: string): Promise<ChartSettings>;
-  /** One write per call; a failure is logged and changes nothing on screen. */
-  save(martId: string, s: ChartSettings): void;
+  /** One write per call; resolves once the write settles. A failure is logged, never rejected, and changes nothing on screen. */
+  save(martId: string, s: ChartSettings): Promise<void>;
 }
 
 const obj = (v: unknown): Record<string, unknown> | null => (isRecord(v) ? v : null);
@@ -67,8 +67,8 @@ export function createChartSettings(ctx: Ctx): ChartSettingsStore {
       }
     },
     save(martId, s) {
-      Promise.resolve()
-        .then(() => col.put(martId, s))
+      return Promise.resolve()
+        .then(async () => { await col.put(martId, s); })
         .catch((e) => console.warn('Saving the chart settings failed', e));
     },
   };

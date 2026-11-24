@@ -72,7 +72,8 @@ export async function runPipeline(raw: Omit<StepInput, 'intent'> & { intent?: In
   if (charts.picked.length) {
     const saved = await host.chartSettings.load(mainId);
     if (off()) return end('aborted');
-    host.chartSettings.save(mainId, mergeCharts(saved, charts.picked));
+    await host.chartSettings.save(mainId, mergeCharts(saved, charts.picked));
+    if (off()) return end('aborted');
     host.fill(mainId, grid, { ...grid, view: 'charts' });
   }
   return end('done');
