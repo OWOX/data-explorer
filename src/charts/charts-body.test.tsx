@@ -21,8 +21,8 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const puts = vi.fn();
   const gridPuts = vi.fn();
-  // The demo fixtures have no calculated field: with `calc`, the schema gains a metric-level `net` and every row of an orders read carries net = 42 (the mock backend rejects the unknown column, so it is cut from the request).
-  const calcOf = (o: TraverseOptions): TraverseOptions => ({ ...o, column: o.column?.filter((c) => c !== 'net'), sort: o.sort?.filter((x) => x.column !== 'net') });
+  // The demo fixtures have no calculated field: with `calc`, the schema gains a metric-level `net` and every row of an orders read carries net = 42 (the mock backend rejects the unknown column, so it and any rule on it are cut from the request; it knows no HAVING on a calculated column, so every group passes).
+  const calcOf = (o: TraverseOptions): TraverseOptions => ({ ...o, column: o.column?.filter((c) => c !== 'net'), sort: o.sort?.filter((x) => x.column !== 'net'), filter: o.filter?.filter((r) => r.column !== 'net') });
   const ctx: Ctx = {
     ...base,
     owox: { ...base.owox,
@@ -770,4 +770,25 @@ test('the menu of the Count Unique card lists the calculated metric; picking it 
   await userEvent.click(within(menu).getByRole('menuitemradio', { name: 'net' }));
   await waitFor(() => expect(lastGrid(t).columns).toContain('net'));
   await waitFor(() => expect(cardNames(group('orders'))).toEqual(['net', 'Amount · Sum']));
+});
+
+test('a filter on a calculated metric reaches no chart query: the keys read carries it and the charts follow its groups', async () => {
+  const t = await charts({ calc: true, columns: ['status', 'amount', 'net'], aggregations: [{ column: 'amount', function: 'SUM' }] });
+  await waitFor(() => expect(group('orders')!.querySelector('[data-card="net"] [data-card-value]')?.textContent).toBe('42'));
+  const before = t.queries.length;
+  await openSubmenu(within(data()), 'net', 'Filter');
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.type(within(dialog).getByLabelText('Value'), '10');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  const onNet = () => t.queries.slice(before).filter((q) => q.filter?.some((r) => r.column === 'net'));
+  await waitFor(() => expect(onNet().length).toBeGreaterThan(0));
+  // The keys read: the key and the metric by name, no aggregation, the rule with no function.
+  const read = onNet().find((q) => q.limit === 501)!;
+  expect(read.column).toEqual(['status', 'net']);
+  expect(read.aggregation).toBeUndefined();
+  expect(read.filter).toEqual([expect.objectContaining({ column: 'net', operator: 'eq', value: 10 })]);
+  expect(read.filter![0]).not.toHaveProperty('function');
+  // Every chart query follows it through an `in` rule on the key instead.
+  await waitFor(() => expect(t.queries.slice(before).some((q) => q.uniqueCount && q.filter?.some((r) => r.column === 'status' && r.operator === 'in'))).toBe(true));
+  expect(onNet().every((q) => q.limit === 501)).toBe(true);
 });
