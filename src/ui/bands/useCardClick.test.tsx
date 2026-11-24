@@ -71,6 +71,8 @@ test('a click is not over when another re-render of the bands runs its effects a
     useEffect(() => { dispatch({ type: 'init', focusId: 'orders' }); }, [dispatch]);
     // The state on screen, as the bands' own `useLatest` sees it.
     useLayoutEffect(() => { shown = s; });
+    // Slow effects: React yields between them and the render of the click's step, as on a slow machine.
+    useEffect(() => { if (n > 0) { const end = performance.now() + 20; while (performance.now() < end); } }, [n]);
     // The click's last read ends in the commit of an unrelated re-render: it dispatches before that commit's effects have run.
     useLayoutEffect(() => { if (n > 0) letGo?.(); }, [n]);
     useEffect(() => {
