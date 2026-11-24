@@ -185,7 +185,7 @@ describe('the pipeline', () => {
   test('a view the AI got wrong in parts keeps the good parts: unknown fields and operators are dropped', async () => {
     const t = setup({ wrap: (c) => ({ ...c, credentials: { ai: (() => {
       const m = { doGenerate: async () => ({ content: [{ type: 'text', text: JSON.stringify({ columns: ['id', 'ghost', 'status'], filters: [{ field: 'ghost', op: 'eq', value: 1 }, { field: 'status', op: 'gt', value: 'x' }, { field: 'status', op: 'eq', value: 'paid' }] }) }] }) };
-      return { ...m, fast: m, reasoning: m };
+      return { ...m, fast: m };
     })() } }) });
     t.view();
     await ready();
@@ -238,7 +238,7 @@ describe('the pipeline', () => {
 
   test('a model that never answers is treated as no AI for that run: the endpoint result shows, no error, no hint', async () => {
     const hang = { doGenerate: () => new Promise<never>(() => {}) };
-    const t = setup({ aiTimeoutMs: 300, wrap: (c) => ({ ...c, credentials: { ai: { ...hang, fast: hang, reasoning: hang } } }) });
+    const t = setup({ aiTimeoutMs: 300, wrap: (c) => ({ ...c, credentials: { ai: { ...hang, fast: hang } } }) });
     t.view();
     await ready();
     await search('customers');
@@ -250,7 +250,7 @@ describe('the pipeline', () => {
   test('a new search while one runs cancels the first', async () => {
     let first: AbortSignal | undefined;
     const slow = { doGenerate: (o: { abortSignal?: AbortSignal }) => { first ??= o.abortSignal; return new Promise<never>(() => {}); } };
-    const t = setup({ wrap: (c) => ({ ...c, credentials: { ai: { ...slow, fast: slow, reasoning: slow } } }) });
+    const t = setup({ wrap: (c) => ({ ...c, credentials: { ai: { ...slow, fast: slow } } }) });
     t.view();
     await ready();
     const box = await openSearch();
@@ -334,7 +334,7 @@ test('the copied link carries the found marts, so opening it does not filter tit
 test('submitting the query that is already running changes nothing: no restart, no second AI call', async () => {
   let calls = 0;
   const slow = { doGenerate: () => { calls += 1; return new Promise<never>(() => {}); } };
-  const t = setup({ wrap: (c) => ({ ...c, credentials: { ai: { ...slow, fast: slow, reasoning: slow } } }) });
+  const t = setup({ wrap: (c) => ({ ...c, credentials: { ai: { ...slow, fast: slow } } }) });
   const gets = vi.spyOn(t.ctx.owox, 'getJson');
   t.view();
   await ready();
@@ -351,7 +351,7 @@ test('submitting the query that is already running changes nothing: no restart, 
 type Gen = { doGenerate: (o: { prompt: { role: string; content: unknown }[] }) => Promise<unknown> };
 /** The fake AI, recording which question each call is; `gate` can hold or fail one. */
 function spyAi(gate?: (task: string) => Promise<void>) {
-  const base = createFakeAi() as unknown as Gen & { fast: Gen; reasoning: Gen };
+  const base = createFakeAi() as unknown as Gen & { fast: Gen };
   const tasks: string[] = [];
   const wrap = (m: Gen): Gen => ({ ...m, doGenerate: async (o) => {
     const user = o.prompt.find((p) => p.role === 'user')!.content as { text: string }[];
@@ -360,7 +360,7 @@ function spyAi(gate?: (task: string) => Promise<void>) {
     await gate?.(task);
     return m.doGenerate(o);
   } });
-  return { tasks, withAi: (c: Mock): Ctx => ({ ...c, credentials: { ai: { ...wrap(base), fast: wrap(base.fast), reasoning: wrap(base.reasoning) } } as unknown as Ctx['credentials'] }) };
+  return { tasks, withAi: (c: Mock): Ctx => ({ ...c, credentials: { ai: { ...wrap(base), fast: wrap(base.fast) } } as unknown as Ctx['credentials'] }) };
 }
 
 describe('the dropdown', () => {

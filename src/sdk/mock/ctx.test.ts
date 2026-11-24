@@ -125,7 +125,7 @@ test('the mock /api/search ranks a title hit above a description hit, honours li
 
 test('the mock AI answers deterministically from the question document; ai: false leaves no credential', async () => {
   const ai = createMockCtx(demoFixtures()).credentials!.ai!;
-  expect(ai.reasoning).toBeDefined();
+  expect(ai.fast).toBeDefined();
   const ask = async (doc: object) => JSON.parse((await ai.doGenerate({ prompt: [{ role: 'user', content: [{ type: 'text', text: JSON.stringify(doc) }] }] })).content[0]!.text!);
   expect(await ask({ task: 'discover', query: 'who are our buyers', dataMarts: [{ id: 'orders' }, { id: 'customers' }] })).toEqual({ ids: ['customers'] });
   expect(await ask({ task: 'discover', query: 'zzz', searchHits: [{ id: 'stores' }], dataMarts: [{ id: 'orders' }, { id: 'stores' }, { id: 'customers' }] })).toEqual({ ids: ['stores'] });

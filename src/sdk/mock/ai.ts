@@ -74,7 +74,7 @@ function filtersAnswer(doc: Doc): unknown {
   return { filters, sorts };
 }
 
-/** `fast` and `reasoning` are the same fake model; `ai.fast` is the handle itself, as in the SDK. */
+/** `ai.fast` is the handle itself, as in the SDK. */
 export function createFakeAi(latencyMs = 0): AiCredential {
   const model: AiModel = {
     async doGenerate(options) {
@@ -88,5 +88,5 @@ export function createFakeAi(latencyMs = 0): AiCredential {
       return { content: [{ type: 'text', text: JSON.stringify(answer) }] };
     },
   };
-  return Object.assign({}, model, { fast: model, reasoning: model });
+  return Object.assign({}, model, { fast: model });
 }

@@ -23,7 +23,7 @@ function setup(opts: { answers?: (task: string, doc: Record<string, unknown>) =>
   });
   const ai: AiModel = { doGenerate };
   const base = stubCtx({});
-  const ctx: Ctx = { ...base, ...(opts.ai === false ? {} : { credentials: { ai: { ...ai, fast: ai, reasoning: ai } } }) };
+  const ctx: Ctx = { ...base, ...(opts.ai === false ? {} : { credentials: { ai: { ...ai, fast: ai } } }) };
   return { ctx, calls, doGenerate, deps: { ctx, model, schemas, signal: new AbortController().signal } };
 }
 const tasks = (t: { calls: Record<string, unknown>[] }) => t.calls.map((c) => c.task);

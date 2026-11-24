@@ -40,7 +40,7 @@ export async function findAdhocMart(deps: { ctx: Ctx; model: Model; signal: Abor
   try {
     const hints = hintsFrom(hits, model);
     const q = discoveryQuestion(query, [...model.marts.values()], hints.length ? hints : undefined);
-    const answer = await createAiRun(ai, signal, deps.timeoutMs).ask('discover', q.system, q.user);
+    const answer = await createAiRun(ai, signal, deps.timeoutMs).ask('intent', q.system, q.user);
     return { martId: firstValidId(answer, model) ?? fallback, ai: 'used' };
   } catch (e) {
     // A model that cannot help is not an error for the member; the search result stands.
@@ -67,10 +67,10 @@ export async function buildAdhocView(deps: { ctx: Ctx; model: Model; schemas: Pi
     if (!mart || !schema.length) return { grid: null, ai: 'used' };
     const run = createAiRun(ai, signal, deps.timeoutMs);
     const f = fieldsQuestion(query, mart, schema);
-    fields = parseAiFields(await run.ask('fields', f.system, f.user), schema);
+    fields = parseAiFields(await run.ask('intent', f.system, f.user), schema);
     const shown = fields?.columns.length ? fields.columns : defaultColumns(schema);
     const q = filtersQuestion(query, mart, schema, shown);
-    filters = parseAiFilters(await run.ask('filters', q.system, q.user), schema, shown);
+    filters = parseAiFilters(await run.ask('intent', q.system, q.user), schema, shown);
   } catch (e) {
     // A model that cannot help is not an error for the member; a schema that cannot be read leaves the mart as it is.
     if (e instanceof AiUnavailable) return { grid: null, ai: 'unavailable' };
