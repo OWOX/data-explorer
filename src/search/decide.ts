@@ -1,4 +1,4 @@
-import { Experimental_DecisionRefusalError, experimental_decide, type Experimental_DecisionQuestion } from 'ai';
+import type { Experimental_DecisionQuestion, experimental_decide } from 'ai';
 import type { DecisionModel } from '../sdk/types';
 import { AiUnavailable } from './ai';
 
@@ -19,22 +19,36 @@ const GAP = 0.15;
 export const choiceQ = (instructions: string, options: Record<string, string | null>): Question => ({ type: 'choice', instructions, criteria: options });
 export const scoreQ = (instructions: string, levels: string[]): Question => ({ type: 'score', instructions, criteria: levels });
 
-/** One answer checked against its question: a choice must name an offered option, a score is rounded into its levels. */
+/** The most probable level of a score's distribution (keyed by level index); a tie goes to the lower level. undefined without a usable distribution. */
+function argmaxLevel(probs: Record<string, number> | undefined, top: number): number | undefined {
+  if (!probs || typeof probs !== 'object') return undefined;
+  let best: number | undefined;
+  let bestP = -Infinity;
+  for (let l = 0; l <= top; l++) {
+    const p = probs[String(l)];
+    if (typeof p === 'number' && Number.isFinite(p) && p > bestP) { best = l; bestP = p; }
+  }
+  return best;
+}
+
+/** One answer checked against its question: a choice must name an offered option, a score takes its most probable level, or is rounded into its levels. */
 function checked(q: Question, raw: unknown): Answer | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const a = raw as { type?: string; choice?: unknown; score?: unknown; probability?: unknown; probabilities?: Record<string, number> };
   if (q.type === 'choice' && a.type === 'choice' && typeof a.choice === 'string' && Object.hasOwn(q.criteria, a.choice)) return { type: 'choice', choice: a.choice, probabilities: a.probabilities };
   if (q.type === 'score' && a.type === 'score' && typeof a.score === 'number' && Number.isFinite(a.score)) {
-    const level = Math.min(q.criteria.length - 1, Math.max(0, Math.round(a.score)));
+    const top = q.criteria.length - 1;
+    const level = argmaxLevel(a.probabilities, top) ?? Math.min(top, Math.max(0, Math.round(a.score)));
     return { type: 'score', level, probabilities: a.probabilities };
   }
   if (q.type === 'boolean' && a.type === 'boolean' && typeof a.probability === 'number') return { type: 'boolean', probability: a.probability };
   return undefined;
 }
 
+const sdk = () => import('ai');
+
 /** The decision model behind one function: one JSON state, typed questions, checked answers; AiUnavailable for anything that is not an answer. */
 export function createDecide(model: DecisionModel, opts: { timeoutMs?: number; decideFn?: typeof experimental_decide } = {}): Decide {
-  const decideFn = opts.decideFn ?? experimental_decide;
   const timeoutMs = opts.timeoutMs ?? DECIDE_TIMEOUT_MS;
   return async (questions, state, signal) => {
     const ids = Object.keys(questions);
@@ -52,6 +66,8 @@ export function createDecide(model: DecisionModel, opts: { timeoutMs?: number; d
     });
     unavailable.catch(() => undefined);
     const ask = async (qs: Record<string, Question>): Promise<Record<string, unknown>> => {
+      // The SDK loads on the first question, so a member who never searches with AI does not download it.
+      const decideFn = opts.decideFn ?? (await sdk()).experimental_decide;
       const pending = Promise.resolve(decideFn({ model, state: [{ type: 'text', text: JSON.stringify(state) }], questions: qs, abortSignal: ctl.signal, maxRetries: 1 }));
       pending.catch(() => undefined);
       const result = await Promise.race([pending, unavailable]);
@@ -63,7 +79,7 @@ export function createDecide(model: DecisionModel, opts: { timeoutMs?: number; d
       try {
         answers = await ask(asked);
       } catch (e) {
-        if (!Experimental_DecisionRefusalError.isInstance(e)) throw e;
+        if (!(await sdk()).Experimental_DecisionRefusalError.isInstance(e)) throw e;
         // The provider refused some questions: answer around them, once.
         const refused = new Set((e as { questionIds: string[] }).questionIds);
         asked = Object.fromEntries(ids.filter((id) => !refused.has(id)).map((id) => [id, questions[id]!]));

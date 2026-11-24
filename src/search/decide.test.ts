@@ -1,4 +1,4 @@
-import { Experimental_DecisionRefusalError } from 'ai';
+import { Experimental_DecisionRefusalError, InvalidResponseDataError } from 'ai';
 import { describe, expect, it, vi } from 'vitest';
 import { AiUnavailable } from './ai';
 import { choiceQ, createDecide, isUnsure, ranked, scoreQ } from './decide';
@@ -18,11 +18,21 @@ describe('createDecide', () => {
     const call = (fn as unknown as { mock: { calls: [{ state: unknown }][] } }).mock.calls[0]![0];
     expect(call.state).toEqual([{ type: 'text', text: '{"query":"x"}' }]);
   });
-  it('leaves an option that was not offered unanswered', async () => {
+  it('leaves an option that an injected decide function returned but the question did not offer unanswered', async () => {
     const decide = createDecide(model, { decideFn: fakeDecide({ c: { type: 'choice', choice: 'zzz' }, s: { type: 'score', score: 1 } }) });
     const out = await decide(qs, {}, new AbortController().signal);
     expect(out.c).toBeUndefined();
     expect(out.s).toEqual({ type: 'score', level: 1, probabilities: undefined });
+  });
+  it('turns the SDK error for an unoffered option (it fails the whole call) into AiUnavailable', async () => {
+    const fn = vi.fn(async () => { throw new InvalidResponseDataError({ data: { c: 'zzz' }, message: 'choice is not an offered option' }); });
+    await expect(createDecide(model, { decideFn: fn as never })(qs, {}, new AbortController().signal)).rejects.toBeInstanceOf(AiUnavailable);
+  });
+  it('takes the most probable level of a score distribution, ties to the lower level', async () => {
+    const decide = createDecide(model, { decideFn: fakeDecide({ s: { type: 'score', score: 1.4, probabilities: { '0': 0.4, '1': 0.1, '2': 0.5 } }, t: { type: 'score', score: 1, probabilities: { '0': 0.45, '1': 0.1, '2': 0.45 } } }) });
+    const out = await decide({ s: qs.s, t: qs.s }, {}, new AbortController().signal);
+    expect(out.s).toEqual({ type: 'score', level: 2, probabilities: { '0': 0.4, '1': 0.1, '2': 0.5 } });
+    expect(out.t).toMatchObject({ type: 'score', level: 0 });
   });
   it('treats an inherited property name as not offered', async () => {
     const decide = createDecide(model, { decideFn: fakeDecide({ c: { type: 'choice', choice: 'constructor' } }) });
