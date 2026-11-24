@@ -10,6 +10,12 @@ export type { ChartCandidate };
 export const CHARTS_MAX = 3;
 const LEVELS = ['Does not help show the answer.', 'Might help.', 'Clearly helps show the answer.'];
 
+/** A spec as the model sees it: every string cleaned and capped, since field names come from OWOX. */
+function cleanSpec(spec: Omit<ChartSpec, 'id'>): Record<string, unknown> {
+  const clean = (v: unknown): unknown => (typeof v === 'string' ? cleanText(v, 120) : Array.isArray(v) ? v.map(clean) : v);
+  return Object.fromEntries(Object.entries(spec).map(([k, v]) => [k, clean(v)]));
+}
+
 export function buildChartQuestions(input: StepInput, cands: ChartCandidate[]): Asked {
   if (cands.length < 2) return null;
   const questions: Record<string, Question> = {};
@@ -17,7 +23,7 @@ export function buildChartQuestions(input: StepInput, cands: ChartCandidate[]): 
   cands.forEach((c, i) => { questions[`x${i}`] = scoreQ(`Would a ${c.spec.kind} chart also help show the answer?`, LEVELS); });
   return {
     questions,
-    state: { query: cleanText(input.query, 256), chartHint: input.intent.chartHint, charts: cands.map((c) => ({ id: c.key, ...c.spec })) },
+    state: { query: cleanText(input.query, 256), chartHint: input.intent.chartHint, charts: cands.map((c) => ({ id: c.key, ...cleanSpec(c.spec) })) },
   };
 }
 

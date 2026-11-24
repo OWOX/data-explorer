@@ -41,3 +41,10 @@ it('reads the intent, and gives the empty intent when the model fails', async ()
 it('joins the query and the intent into one text for word matching', () => {
   expect(intentTerms({ ...EMPTY_INTENT, subjects: ['users'], values: [{ text: 'Germany', op: 'eq' }] }, 'q')).toBe('q users Germany');
 });
+
+it('strips control characters from intent strings and keeps the 80 character cap', () => {
+  const i = parseIntent({ subjects: ['us\u0000ers'], time: 'x'.repeat(200), values: [{ text: 'a\u0007b' }] });
+  expect(i.subjects).toEqual(['us ers']);
+  expect(i.time).toHaveLength(80);
+  expect(i.values[0]!.text).toBe('a b');
+});

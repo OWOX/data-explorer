@@ -33,3 +33,10 @@ it('asks nothing for a single candidate', () => {
   expect(buildChartQuestions(input, [c('bar', 'bar')])).toBeNull();
   expect(buildChartQuestions(input, cands)!.questions.primary).toBeDefined();
 });
+it('cleans the strings of a chart spec before the model sees them', () => {
+  const dirty = { key: 'bar', spec: { kind: 'bar' as const, measure: `sp\u0000end${'x'.repeat(200)}`, dimension: 'country' } };
+  const asked = buildChartQuestions({ query: 'q', intent: { chartHint: null } } as never, [dirty, c('pie', 'pie')])!;
+  const charts = (asked.state as { charts: { measure: string }[] }).charts;
+  expect(charts[0]!.measure).toHaveLength(120);
+  expect(charts[0]!.measure).not.toContain('\u0000');
+});

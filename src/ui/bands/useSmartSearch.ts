@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { withJoined } from '../../api/blendable';
 import { PAGE_SIZE } from '../../config';
 import type { Context, Mart, Model } from '../../model/types';
@@ -62,7 +62,7 @@ export function useSmartSearch(model: Model) {
   const latest = useLatest({ selection: state.selection, model });
   // The store as the pipeline last saw it. A dispatch lands in `state` a render later, so the pipeline's own dispatches are run through the reducer here as well; each render then takes the real state over.
   const mirror = useRef<State>(state);
-  mirror.current = state;
+  useLayoutEffect(() => { mirror.current = state; });
   const send = (action: Action) => { mirror.current = reducer(mirror.current, action); dispatch(action); };
   const entry = useRef<Entry | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

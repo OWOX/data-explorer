@@ -17,8 +17,13 @@ export function pickModels(ctx: Ctx): Models | null {
   return fast || decision ? { ...(fast ? { fast } : {}), ...(decision ? { decision } : {}) } : null;
 }
 
-/** The ad-hoc pipeline needs both models; the manifest declares them together, so a project has both or neither. */
-export const pipelineReady = (m: Models | null): m is Required<Models> => !!m?.fast && !!m.decision;
+/** The ad-hoc pipeline needs both models, the decision one able to answer choice and score questions; the manifest declares them together, so a project has both or neither. */
+export const pipelineReady = (m: Models | null): m is Required<Models> => {
+  if (!m?.fast || !m.decision) return false;
+  // The pipeline asks choice and score questions; a model that lists its question types must list both. One that lists none is taken at its word.
+  const types: unknown = (m.decision as { supportedQuestionTypes?: unknown }).supportedQuestionTypes;
+  return !Array.isArray(types) || (types.includes('choice') && types.includes('score'));
+};
 
 /** The first JSON object in a model's answer: bare, in a code fence, or with words around it. undefined when there is none. */
 export function extractJson(text: string): unknown {

@@ -19,7 +19,10 @@ const MAX_STR = 80;
 const OPS: ValueOp[] = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'];
 const HINTS = ['trend', 'share', 'compare', 'flow', 'correlation'] as const;
 
-const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim().slice(0, MAX_STR) : null);
+const str = (v: unknown): string | null => {
+  const t = typeof v === 'string' ? cleanText(v.trim(), MAX_STR).trim() : '';
+  return t || null;
+};
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.flatMap((x) => (str(x) ? [str(x)!] : [])).slice(0, MAX_LIST) : []);
 
 export function parseIntent(raw: unknown): Intent {

@@ -20,6 +20,14 @@ describe('pickModels', () => {
     expect(m?.fast).toBe(fast);
     expect(pipelineReady(m)).toBe(false);
   });
+  test('is not ready when the decision model cannot answer choice and score questions', () => {
+    const fast = textModel('{}');
+    const ai = (types: unknown) => pickModels(ctxWith(Object.assign({}, fast, { fast, decision: { ...decision, supportedQuestionTypes: types } })));
+    expect(pipelineReady(ai(['choice', 'boolean']))).toBe(false);
+    expect(pipelineReady(ai(['score']))).toBe(false);
+    expect(pipelineReady(ai(['choice', 'score']))).toBe(true);
+    expect(pipelineReady(ai(undefined))).toBe(true);
+  });
   test('is null without AI', () => {
     expect(pickModels(ctxWith(undefined))).toBeNull();
     expect(pickModels({} as Ctx)).toBeNull();

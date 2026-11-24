@@ -154,7 +154,14 @@ test('smart search with AI: finds a mart by meaning, applies the filters it asks
   await expect(heading(page).first()).toHaveText('Orders');
   await expect(band(page, 'data').getByLabel('Filter status')).toHaveClass(/dm-ctl-on/);
   await expect(band(page, 'data').getByLabel('Filter created_at')).toHaveClass(/dm-ctl-on/);
+  // The pipeline ends on the charts view (wait for it, or its last step would undo the switch): the table shows what the filters let through.
+  await expect(band(page, 'data').getByRole('radio', { name: 'Charts' })).toBeChecked();
+  await band(page, 'data').getByRole('radio', { name: 'Table' }).click();
+  await expect(band(page, 'data').getByRole('cell', { name: 'paid', exact: true }).first()).toBeVisible();
+  await expect(band(page, 'data').getByRole('cell', { name: 'new', exact: true })).toHaveCount(0);
   await expect(band(page, 'marts').getByRole('note', { name: 'AI search hint' })).toHaveCount(0);
+  // The first Undo takes the switch to the table back, the second the whole AI result.
+  await page.getByRole('button', { name: 'Undo' }).click();
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(heading(page).first()).toHaveText('Customers');
 });
