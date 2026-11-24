@@ -69,8 +69,8 @@ test('a click is not over when another re-render of the bands runs its effects a
     tick = setN;
     click = useCardClick(model);
     useEffect(() => { dispatch({ type: 'init', focusId: 'orders' }); }, [dispatch]);
-    // The state whose effects have run, as the bands' own `useLatest` sees it.
-    useEffect(() => { shown = s; });
+    // The state on screen, as the bands' own `useLatest` sees it.
+    useLayoutEffect(() => { shown = s; });
     // The click's last read ends in the commit of an unrelated re-render: it dispatches before that commit's effects have run.
     useLayoutEffect(() => { if (n > 0) letGo?.(); }, [n]);
     useEffect(() => {
@@ -95,4 +95,23 @@ test('a click is not over when another re-render of the bands runs its effects a
   } finally {
     env.IS_REACT_ACT_ENVIRONMENT = was;
   }
+});
+
+test('a second click that adds what the first already added does not hold up the clicks behind it', async () => {
+  let click!: ReturnType<typeof useCardClick>;
+  let state!: State;
+  function Probe() {
+    const [s, dispatch] = useStore();
+    state = s;
+    click = useCardClick(model);
+    useEffect(() => { dispatch({ type: 'init', focusId: 'orders' }); }, [dispatch]);
+    return null;
+  }
+  render(<AppServices ctx={createMockCtx(demoFixtures(), { latencyMs: 0 })}><StoreProvider><Probe /></StoreProvider></AppServices>);
+  await waitFor(() => expect(state.selection.martId).toBe('orders'));
+  await click('customers', { addAt: 'customers' });
+  const start = performance.now();
+  await click('customers', { addAt: 'customers' });
+  // It renders nothing, so it must end on the short pause, not on the wait for a render.
+  expect(performance.now() - start).toBeLessThan(1000);
 });
