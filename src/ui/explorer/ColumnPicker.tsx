@@ -1,5 +1,5 @@
-import { Columns3, Funnel, Layers } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { X } from 'lucide-react';
+import { useState } from 'react';
 import { UNIQUE_COUNT_LABEL } from '../../model/unique-count';
 import type { Field } from '../../model/types';
 import { Popover } from '../Popover';
@@ -14,27 +14,50 @@ import { ownInSchemaOrder } from '../../state/column-order';
 import { describeColumnFilter, FieldMenuButton } from './ColumnMenu';
 
 /**
- * The green Filter and Slice marks after a data mart's title: they show when any field of the mart (shown or not) carries
- * such a rule, and their tooltip lists the rules one per line. A click opens the mart's Fields list.
+ * The "N slices" and "N filters" badges after a data mart's Fields button: they show when any field of the mart (shown or not)
+ * carries such a rule. A click lists the fields with their rules; the x on a badge removes all of them in one step.
  * A slice only counts on a joined mart's field, as in the column header.
  */
-export function MartRuleMarks({ title, fields, filters, slices, expanded, onOpen }: {
+export function MartRuleBadges({ title, fields, filters, slices, onClearFilters, onClearSlices }: {
   title: string;
   fields: Field[];
   filters: Record<string, ColumnFilter>;
   slices: Record<string, ColumnFilter>;
-  /** The mart's Fields list is open. */
-  expanded: boolean;
-  onOpen: (mark: HTMLElement) => void;
+  /** Removes the rules on these fields. */
+  onClearFilters: (names: string[]) => void;
+  onClearSlices: (names: string[]) => void;
 }) {
-  const filterLines = fields.filter((f) => filters[f.name]).map((f) => `Filter: ${describeColumnFilter(f, filters[f.name]!)}`);
-  const sliceLines = fields.filter((f) => slices[f.name] && f.joined).map((f) => `Slice: ${describeFilter(sliceField(f), slices[f.name]!)}`);
-  const mark = (lines: string[], label: string, icon: ReactNode) => lines.length > 0 && (
-    <Tooltip content={<span className="dm-tip-lines dm-tip-plain">{lines.map((l) => <span key={l}>{l}</span>)}</span>}>
-      <button type="button" data-mart-mark={label.toLowerCase()} aria-label={`${label} rules in ${title}`} aria-haspopup="dialog" aria-expanded={expanded} className="dm-ctl dm-ctl-on dm-reveal dm-reveal-on" onClick={(e) => onOpen(e.currentTarget)}>{icon}</button>
-    </Tooltip>
-  );
-  return <>{mark(filterLines, 'Filter', <Funnel className="dm-icon" aria-hidden />)}{mark(sliceLines, 'Slice', <Layers className="dm-icon" aria-hidden />)}</>;
+  const filtered = fields.filter((f) => filters[f.name]);
+  const sliced = fields.filter((f) => slices[f.name] && f.joined);
+  const badge = (on: Field[], noun: string, describe: (f: Field) => string, clear: (names: string[]) => void) => {
+    if (on.length === 0) return null;
+    const label = `${on.length} ${noun}${on.length === 1 ? '' : 's'}`;
+    const Noun = noun[0]!.toUpperCase() + noun.slice(1);
+    return (
+      <span className="dm-rule-badge" data-mart-badge={noun}>
+        <Popover align="start" label={`${Noun}s in ${title}`} trigger={
+          <button type="button" aria-label={`${label} in ${title}`} className="dm-rule-badge-text">{label}</button>
+        }>
+          <div className="dm-popover-title font-medium">{`${Noun}s in ${title}`}</div>
+          <ul className="flex flex-col gap-1.5">
+            {on.map((f) => (
+              <li key={f.name} className="flex flex-col">
+                <span className="font-medium">{fieldLabel(f)}</span>
+                <span className="text-muted-foreground">{describe(f)}</span>
+              </li>
+            ))}
+          </ul>
+        </Popover>
+        <Tooltip content={`Remove all ${noun}s in ${title}`}>
+          <button type="button" aria-label={`Remove all ${noun}s in ${title}`} className="dm-rule-badge-x" onClick={() => clear(on.map((f) => f.name))}><X className="size-3" aria-hidden /></button>
+        </Tooltip>
+      </span>
+    );
+  };
+  return <>
+    {badge(sliced, 'slice', (f) => describeFilter(sliceField(f), slices[f.name]!), onClearSlices)}
+    {badge(filtered, 'filter', (f) => describeColumnFilter(f, filters[f.name]!), onClearFilters)}
+  </>;
 }
 
 /**
@@ -45,7 +68,7 @@ export function MartRuleMarks({ title, fields, filters, slices, expanded, onOpen
  * that was never reordered stays in schema order. `locked` names the ticked fields that cannot be unticked.
  * `unique` is the mart's Unique Count metric, when the mart offers one (a hidden or composite key counts too): a first row toggles its column, which sits after the mart's own columns. It does not show or hide any field.
  */
-export function ColumnPicker({ title, fields, main, visible, locked, onChange, unique, open: openProp, onOpenChange: onOpenProp, onCloseAutoFocus }: {
+export function ColumnPicker({ title, fields, main, visible, locked, onChange, unique, remove }: {
   title: string;
   fields: Field[];
   main: boolean;
@@ -53,17 +76,13 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
   locked: (name: string) => boolean;
   onChange: (cols: string[]) => void;
   unique?: { on: boolean; onToggle: () => void };
-  /** Lets the grid open the list from outside (a click on a rule mark). */
-  open?: boolean;
-  onOpenChange?: (o: boolean) => void;
-  /** Lets the grid take over where focus goes when the list closes. */
-  onCloseAutoFocus?: (e: Event) => void;
+  /** The badge's x: takes the data mart's columns (and the mart) off the grid. Absent when the mart is the only one. */
+  remove?: { onRemove: () => void; disabled?: boolean };
 }) {
   const set = new Set(visible);
   const mine = new Set(fields.map((f) => f.name));
   // A joined mart whose last field is unticked stays on the grid while the popup is open (Clear, then a new tick, keeps it); it leaves when the popup closes with nothing ticked.
-  const [ownOpen, setOwnOpen] = useState(false);
-  const open = openProp ?? ownOpen;
+  const [open, setOpen] = useState(false);
   const [emptied, setEmptied] = useState(false);
   const apply = (picked: string[]) => {
     if (!main && picked.length === 0) { setEmptied(true); return; }
@@ -71,8 +90,7 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
     commit(picked);
   };
   const onOpenChange = (o: boolean) => {
-    setOwnOpen(o);
-    onOpenProp?.(o);
+    setOpen(o);
     if (!o && emptied) { setEmptied(false); commit([]); }
   };
   const ownInOrder = (keep: Set<string>) => ownInSchemaOrder(visible, fields.map((f) => f.name), keep);
@@ -87,6 +105,7 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
     onChange(next);
   };
   const shownNow = emptied ? [] : visible.filter((c) => mine.has(c));
+  const count = `${shownNow.length} column${shownNow.length === 1 ? '' : 's'}`;
   const items: ChecklistItem[] = fields.map((f) => ({
     value: f.name,
     text: fieldLabel(f),
@@ -97,13 +116,20 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
     disabled: set.has(f.name) && (visible.length === 1 || locked(f.name)),
   }));
   return (
-    <Popover align="start" onCloseAutoFocus={onCloseAutoFocus} open={open} onOpenChange={onOpenChange} trigger={
-      <button type="button" aria-label={`Fields of ${title}`} className="dm-ctl dm-ctl-lg dm-reveal"><Columns3 className="dm-icon" aria-hidden /></button>
+    <span className="dm-rule-badge dm-rule-badge-neutral" data-mart-badge="column">
+    <Popover align="start" open={open} onOpenChange={onOpenChange} trigger={
+      <button type="button" aria-label={`Fields of ${title}`} className="dm-rule-badge-text">{count}</button>
     }>
       <div className="flex flex-col gap-2">
         <SheetsChecklist label={`Fields of ${title}`} items={items} selected={shownNow} displaying={shownNow.length} onChange={apply}
           lead={unique ? { item: { value: 'unique-count', text: UNIQUE_COUNT_LABEL }, on: unique.on, onToggle: unique.onToggle } : undefined} />
       </div>
     </Popover>
+    {remove && (
+      <Tooltip content={`Remove ${title} from the grid`}>
+        <button type="button" aria-label={`Remove ${title} from the grid`} data-remove disabled={remove.disabled} onClick={remove.onRemove} className="dm-rule-badge-x"><X className="size-3" aria-hidden /></button>
+      </Tooltip>
+    )}
+    </span>
   );
 }
