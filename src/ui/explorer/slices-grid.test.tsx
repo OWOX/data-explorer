@@ -16,7 +16,7 @@ function setup(grid: GridState, opts: { blendFails?: boolean; empty?: boolean; c
   // A calculated field of Orders (no warehouse column; the mock reads it as null).
   if (opts.calculated) {
     const orders = fixtures.marts.find((m) => m.id === 'orders')!;
-    orders.fields = [...orders.fields, { name: 'margin', type: 'NUMERIC', alias: 'Margin', calculated: { expression: 'SUM(amount) * 0.2' } }];
+    orders.fields = [...orders.fields, { name: 'margin', type: 'NUMERIC', alias: 'Margin', calculated: { level: 'metric' } }];
   }
   const base = createMockCtx(fixtures, { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
