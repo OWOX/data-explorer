@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { compactNumber, count, displayText, formatNumber, formatTemporal, groupsLabel, recordsLabel, rowsLabel, relativeTime, resetFormats } from './format';
+import { compactNumber, count, displayText, formatNumber, formatTemporal, groupsLabel, num, recordsLabel, rowsLabel, relativeTime, resetFormats } from './format';
 
 test.each([[0, '0'], [999, '999'], [1200, '1.2K'], [12400, '12.4K'], [3_400_000, '3.4M'], [2_000_000_000, '2B']])('%d → %s', (n, s) => {
   expect(compactNumber(n)).toBe(s);
@@ -28,8 +28,8 @@ describe('recordsLabel', () => {
 
 describe('rowsLabel', () => {
   test('shows loaded of total only when there are more rows and the total is larger', () => {
-    expect(rowsLabel(200, true, 12345)).toBe('200 of 12,345');
-    expect(rowsLabel(1200, true, 12345)).toBe('1,200 of 12,345');
+    expect(rowsLabel(200, true, 12345)).toBe(`${num(200)} of ${num(12345)}`);
+    expect(rowsLabel(1200, true, 12345)).toBe(`${num(1200)} of ${num(12345)}`);
     expect(rowsLabel(200, true, null)).toBe('200+');
     expect(rowsLabel(200, true, 200)).toBe('200+');
     expect(rowsLabel(200, true, 150)).toBe('200+');
@@ -37,8 +37,8 @@ describe('rowsLabel', () => {
     expect(rowsLabel(57, false, null)).toBe('57');
   });
   test('reads as records and as groups', () => {
-    expect(recordsLabel(rowsLabel(200, true, 12345))).toBe('200 of 12,345 records');
-    expect(groupsLabel(rowsLabel(200, true, 12345))).toBe('200 of 12,345 groups');
+    expect(recordsLabel(rowsLabel(200, true, 12345))).toBe(`${num(200)} of ${num(12345)} records`);
+    expect(groupsLabel(rowsLabel(200, true, 12345))).toBe(`${num(200)} of ${num(12345)} groups`);
     expect(recordsLabel(rowsLabel(1, true, 2))).toBe('1 of 2 records');
     expect(groupsLabel(rowsLabel(1, true, 2))).toBe('1 of 2 groups');
   });
