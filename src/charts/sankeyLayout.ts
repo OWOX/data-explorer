@@ -1,12 +1,13 @@
 // The Sankey's geometry, pure: where each node and ribbon goes. No data is computed here beyond sizes; the values are the reads'.
 import { isBlankKey, OTHER_KEY } from './blank';
+import { labelColors } from './labelColor';
 
 /** One flow between a node of column i (source) and a node of column i+1 (target). `origin` is the node of column 0 it started from (the source itself in the first pair); it colours the ribbon. Without one (fan-out mode, past the first pair) the ribbon takes its source node's colour. */
 export type Flow = { source: string; target: string; value: number; origin?: string };
 /** A column's node and its exact total. */
 export type NodeSize = { key: string; value: number };
-/** What colours a node: a series slot, the blank grey or the muted Other. */
-export type Tone = { kind: 'series'; index: number } | { kind: 'blank' } | { kind: 'other' };
+/** What colours a node: the colour its label hashes to (see labelColor.ts), the blank grey or the muted Other. */
+export type Tone = { kind: 'series'; color: string } | { kind: 'blank' } | { kind: 'other' };
 export type SankeyNode = { col: number; key: string; x: number; y: number; w: number; h: number; value: number; tone: Tone };
 export type SankeyLink = { pair: number; source: string; target: string; origin?: string; value: number; path: string; tone: Tone; x0: number; x1: number; y0: number; y1: number; w: number; w1: number };
 export type SankeyLayout = { nodes: SankeyNode[]; links: SankeyLink[]; height: number };
@@ -75,28 +76,10 @@ export function layoutSankey({ flows, columns, width, padRight = 0, height, fit 
   const k = Number.isFinite(scale) ? Math.max(0, scale) : 0;
   const step = cols > 1 ? Math.max(0, (width - padRight - NODE_W) / (cols - 1)) : 0;
 
-  // Tones: the first column takes series slots by rank; a later node takes the tone of the column-0 node most of its inflow came from.
-  const tones: Map<string, Tone>[] = Array.from({ length: cols }, () => new Map());
-  let slot = 0;
-  for (let c = 0; c < cols; c++) {
-    for (const key of order[c]!) {
-      if (isBlankKey(key)) tones[c]!.set(key, { kind: 'blank' });
-      else if (key === OTHER_KEY) tones[c]!.set(key, { kind: 'other' });
-      else {
-        // Only a series tone is passed on: a real value fed mostly by a blank or Other origin takes a series slot of its own, not the grey.
-        const from = new Map<string, number>();
-        // A ribbon without an origin passes on the tone of its source node.
-        const toneOf = (f: Flow) => (f.origin !== undefined ? tones[0]!.get(f.origin) : fit ? tones[c - 1]!.get(f.source) : tones[0]!.get(f.source));
-        const passed = new Map<string, Tone>();
-        if (c > 0) for (const f of drawn[c - 1]!) {
-          const t = toneOf(f);
-          if (f.target === key && t?.kind === 'series') { const id = f.origin ?? f.source; from.set(id, (from.get(id) ?? 0) + f.value); passed.set(id, t); }
-        }
-        const best = [...from].sort((a, b) => b[1] - a[1])[0]?.[0];
-        tones[c]!.set(key, (best !== undefined && passed.get(best)) || { kind: 'series', index: slot++ });
-      }
-    }
-  }
+  // Tones: every node takes the colour its own label hashes to, so a value looks the same in every column and in every other chart.
+  // Keys are ranked by column, then by rank within it; a value that appears in two columns is one label with one colour.
+  const colors = labelColors(order.flatMap((keys) => keys.filter((k) => !isBlankKey(k) && k !== OTHER_KEY)));
+  const tones: Map<string, Tone>[] = order.map((keys) => new Map(keys.map((key): [string, Tone] => [key, isBlankKey(key) ? { kind: 'blank' } : key === OTHER_KEY ? { kind: 'other' } : { kind: 'series', color: colors.get(key)! }])));
 
   const nodes: SankeyNode[] = [];
   const at = new Map<string, SankeyNode>();

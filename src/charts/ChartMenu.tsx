@@ -61,7 +61,19 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
     let seen = false;
     const ro = panel && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => { if (!seen) { seen = true; return; } lastSize = performance.now(); follow((n) => n + 1); }) : null;
     if (panel) ro?.observe(panel);
-    return () => { window.removeEventListener('scroll', away, true); ro?.disconnect(); };
+    // Another band folding or unfolding (the Data Marts band above) moves the button with no scroll and no change to this panel:
+    // the fixed menu would be left behind, so it closes, as on a scroll. Each band's first callback comes on observe and is skipped.
+    // Only bands before the button's own in the page count: one below it can change size without moving the button.
+    const h = holder.current;
+    const others = h ? [...document.querySelectorAll('[data-band]')].filter((b) => !b.contains(h) && !!(b.compareDocumentPosition(h) & Node.DOCUMENT_POSITION_FOLLOWING)) : [];
+    const observed = new Set<Element>();
+    const bands = others.length > 0 && typeof ResizeObserver !== 'undefined' ? new ResizeObserver((entries) => {
+      let moved = false;
+      for (const e of entries) { if (observed.has(e.target)) moved = true; else observed.add(e.target); }
+      if (moved) close(false);
+    }) : null;
+    for (const b of others) bands?.observe(b);
+    return () => { window.removeEventListener('scroll', away, true); ro?.disconnect(); bands?.disconnect(); };
   }, [anchor, close]);
   // A press outside the menu only closes it, as the column menu does.
   useOutsidePress(!!anchor, (t) => !!t.closest('[data-column-menu]') || !!holder.current?.contains(t), () => close(false));

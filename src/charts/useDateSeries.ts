@@ -7,10 +7,12 @@ import { measureKey, seriesBlankQuery, seriesOtherQuery, seriesQuery, TOP_N, top
 import { measureLabel, measureText, numberOf, sharedSeriesQuery, type Formatter } from './Scorecards';
 import type { Spark } from './settings';
 import type { Series } from './svg/BarChart';
+import { labelColors, slotColor } from './labelColor';
 import { useChartQuery } from './useChartQuery';
 
-export const seriesColor = (i: number): string => `var(--dm-series-${i + 1})`;
-export const OTHER_COLOR = 'var(--dm-series-9)';
+/** The colour of a chart that draws one measure rather than labels: slot `i` of the palette. Labels take theirs from `labelColors`. */
+export const seriesColor = (i: number): string => slotColor(i);
+export const OTHER_COLOR = 'var(--dm-other)';
 
 export type DateSeries = { series: Series[] | null; failed: { error: unknown; retry: () => void } | undefined; empty: boolean; loading: boolean; label: string; names: string[] | undefined };
 
@@ -66,9 +68,11 @@ export function useDateSeries({ martId, cf, spark, date, bucket, measure, stack,
   const xs = blankFirst([...new Set(all.map((x) => keyOf(x[date.name])))].sort());
   if (!stack) return { series: [pivot(label, seriesColor(0), mainRows, xs)], failed, empty: !!empty, loading, label, names };
   const rowsOf = (n: string) => mainRows.filter((x) => keyOf(x[stack.name]) === n);
+  // Each value keeps the colour its text hashes to, so it matches the same value in a pie or a Sankey.
+  const colors = labelColors(names!);
   const out = [
     ...(hasBlank ? [{ ...pivot(BLANK_LABEL, BLANK_COLOR, blank.rows ?? [], xs, BLANK_KEY), blank: true }] : []),
-    ...names!.map((n, i) => pivot(n, seriesColor(i), rowsOf(n), xs, n)),
+    ...names!.map((n) => pivot(n, colors.get(n)!, rowsOf(n), xs, n)),
     ...(hasOther ? [{ ...pivot('Other', OTHER_COLOR, other.rows ?? [], xs, OTHER_KEY), other: true }] : []),
   ];
   return { series: out, failed, empty: !!empty, loading, label, names };
