@@ -1083,6 +1083,149 @@ describe('on fake timers', () => {
     rerender(view(['id']));
     expect(ghostCount()).toBe(2);
   });
+
+  /** A and B are in the report; C can join under A, E under C, and D under B, so both cards and the ghost C have a (+). */
+  const twoPluses = () => small([mk('a'), mk('b'), mk('c'), mk('d'), mk('e')], undefined, { d: 'b.d', e: 'c.e' }, ['id', 'b__x']);
+  const ghost = (id: string) => document.querySelector<HTMLElement>(`article[data-ghost][data-mart-id="${id}"]`);
+  const emptyCanvas = () => document.querySelector<HTMLElement>('.dm-tree')!;
+
+  test('the (+) of a ghost of a pinned card adds the next level on hover, and only that level goes after the grace', () => {
+    twoPluses();
+    fireEvent.pointerOver(plusOf(card('a')));
+    fireEvent.click(plusOf(card('a')));
+    fireEvent.pointerOver(ghost('c')!);
+    expect(ghost('e')).toBeNull();
+    fireEvent.pointerOver(plusOf(ghost('c')!));
+    expect(ghost('e')).not.toBeNull();
+    fireEvent.pointerOver(emptyCanvas());
+    tick(390);
+    expect(ghost('e')).not.toBeNull();
+    tick(20);
+    expect(ghost('e')).toBeNull();
+    expect(ghost('c')).not.toBeNull();
+    // The leave can come before the hover has committed.
+    act(() => { fireEvent.pointerOver(plusOf(ghost('c')!)); fireEvent.pointerLeave(emptyCanvas()); });
+    expect(ghost('e')).not.toBeNull();
+    tick(410);
+    expect(ghost('e')).toBeNull();
+    expect(ghost('c')).not.toBeNull();
+  });
+
+  test('the (+) of a ghost of a pinned card adds the next level on focus, and a blur lets go of that level alone', () => {
+    twoPluses();
+    fireEvent.click(plusOf(card('a')));
+    act(() => plusOf(ghost('c')!).focus());
+    expect(ghost('e')).not.toBeNull();
+    act(() => plusOf(ghost('c')!).blur());
+    tick(410);
+    expect(ghost('e')).toBeNull();
+    expect(ghost('c')).not.toBeNull();
+  });
+
+  test('a pinned chain stays while the (+) of one of its own ghosts is hovered, and after it', () => {
+    small([mk('a'), mk('c'), mk('e'), mk('f')], undefined, { e: 'c.e', f: 'c.e.f' });
+    fireEvent.click(plusOf(card('a')));
+    fireEvent.click(plusOf(ghost('c')!));
+    fireEvent.click(plusOf(ghost('e')!));
+    expect(ghost('f')).not.toBeNull();
+    fireEvent.pointerOver(plusOf(ghost('c')!));
+    expect(ghost('f')).not.toBeNull();
+    fireEvent.pointerLeave(emptyCanvas());
+    tick(410);
+    expect(ghost('f')).not.toBeNull();
+  });
+
+  test('a leave that comes before the (+) hover has committed still lets the ghosts go', () => {
+    twoPluses();
+    act(() => { fireEvent.pointerOver(plusOf(card('a'))); fireEvent.pointerOver(emptyCanvas()); });
+    expect(ghostCount()).toBe(1);
+    tick(410);
+    expect(ghostCount()).toBe(0);
+  });
+
+  test('ghosts closed by a second click stay closed through a focus and blur elsewhere', () => {
+    twoPluses();
+    fireEvent.pointerOver(plusOf(card('a')));
+    fireEvent.click(plusOf(card('a')));
+    fireEvent.click(plusOf(card('a')));
+    expect(ghostCount()).toBe(0);
+    act(() => plusOf(card('b')).focus());
+    expect(ghost('d')).not.toBeNull();
+    act(() => plusOf(card('b')).blur());
+    tick(600);
+    expect(ghostCount()).toBe(0);
+    fireEvent.pointerOver(plusOf(card('a')));
+    expect(ghostCount()).toBe(0);
+    // Focus on the closed (+) itself shows them, and its blur lets them go: the pointer on it does not hold them.
+    act(() => plusOf(card('a')).focus());
+    expect(ghost('c')).not.toBeNull();
+    act(() => plusOf(card('a')).blur());
+    tick(600);
+    expect(ghostCount()).toBe(0);
+    fireEvent.pointerOver(card('a'));
+    fireEvent.pointerOver(plusOf(card('a')));
+    expect(ghost('c')).not.toBeNull();
+  });
+
+  test('Escape and a click on the empty canvas keep the (+) under the pointer closed until the pointer has left it', () => {
+    for (const pinFirst of [false, true]) for (const letGo of [() => fireEvent.keyDown(document, { key: 'Escape' }), () => fireEvent.click(document.querySelector('.dm-tree-sizer')!)]) {
+      cleanup();
+      twoPluses();
+      fireEvent.pointerOver(plusOf(card('a')));
+      if (pinFirst) fireEvent.click(plusOf(card('a')));
+      expect(ghostCount()).toBe(1);
+      letGo();
+      expect(ghostCount()).toBe(0);
+      // Chromium sends the pointerover again when the card shifts.
+      fireEvent.pointerOver(plusOf(card('a')));
+      expect(ghostCount()).toBe(0);
+      act(() => plusOf(card('b')).focus());
+      act(() => plusOf(card('b')).blur());
+      tick(600);
+      expect(ghostCount()).toBe(0);
+      fireEvent.pointerOver(emptyCanvas());
+      fireEvent.pointerOver(plusOf(card('a')));
+      expect(ghostCount()).toBe(1);
+    }
+  });
+
+  test('a (+) closed by the keyboard after focus dimmed the graph leaves nothing dimmed', () => {
+    dimmed();
+    act(() => plusOf(card('b')).focus());
+    fireEvent.click(plusOf(card('b')));
+    expect(fadedCount()).toBeGreaterThan(0);
+    fireEvent.click(plusOf(card('b')));
+    expect(fadedCount()).toBe(0);
+  });
+
+  test('a blur gives back what the pointer holds, also on the card body', () => {
+    twoPluses();
+    fireEvent.pointerOver(plusOf(card('a')));
+    fireEvent.pointerOver(card('a'));
+    act(() => plusOf(card('b')).focus());
+    expect(ghost('d')).not.toBeNull();
+    act(() => plusOf(card('b')).blur());
+    tick(600);
+    expect(ghost('d')).toBeNull();
+    expect(ghost('c')).not.toBeNull();
+  });
+
+  test('an anchor that left the tree does not stop the (+) of a ghost of the pin', () => {
+    const model = { marts: new Map(['a', 'b', 'c', 'd', 'e'].map((id) => [id, mk(id)])), sources: [], edges: [], contexts: [], failedStorages: [] } as unknown as Model;
+    const joined = [src('b'), src('c'), src('d', 'b.d'), src('e', 'c.e')] as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
+    const view = (columns: string[]) => (
+      <TooltipProvider>
+        <MartsCanvas model={model} mainId="a" columns={columns} sources={joined} counts={new Map()} dq={new Map()} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
+      </TooltipProvider>
+    );
+    const { rerender } = render(view(['id', 'b__x']));
+    fireEvent.click(plusOf(card('a')));
+    fireEvent.pointerOver(plusOf(card('b')));
+    expect(ghost('d')).not.toBeNull();
+    rerender(view(['id']));
+    fireEvent.pointerOver(plusOf(ghost('c')!));
+    expect(ghost('e')).not.toBeNull();
+  });
 });
 
 test('while a card is pinned, another card\'s (+) shows its ghosts and the pin\'s come back after it; its body changes nothing; a click moves the pin', async () => {

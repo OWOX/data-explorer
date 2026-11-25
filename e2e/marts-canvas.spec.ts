@@ -211,3 +211,109 @@ test('canvas: the dimming holds on a card the pointer reached across the gap, an
   await page.waitForTimeout(600);
   await expect(customers).toHaveClass(/dm-faded/);
 });
+
+test('canvas: the (+) of a ghost of a pinned card adds its level by hover and by focus; the pin\'s own ghosts stay after it', async ({ page }) => {
+  await page.goto('/?mock');
+  const marts = page.locator('#band-marts');
+  await marts.getByRole('radio', { name: 'Graph' }).click();
+  const ghost = (id: string) => marts.locator(`article[data-ghost][data-mart-id="${id}"]`);
+  await marts.locator('article#dm-orders [data-join-plus]').click();
+  await ghost('customers').hover({ position: { x: 20, y: 20 } });
+  await page.waitForTimeout(100);
+  await expect(ghost('countries')).toHaveCount(0);
+  await ghost('customers').locator('[data-join-plus]').hover();
+  await expect(ghost('countries')).toBeVisible();
+  // It stays while the pointer crosses to it and rests there.
+  await ghost('countries').hover({ position: { x: 20, y: 20 } });
+  await page.waitForTimeout(600);
+  await expect(ghost('countries')).toBeVisible();
+  await page.mouse.move(0, 0);
+  await expect(ghost('countries')).toHaveCount(0);
+  await expect(ghost('customers')).toBeVisible();
+
+  const plus = ghost('customers').locator('[data-join-plus]');
+  await plus.focus();
+  await expect(ghost('countries')).toBeVisible();
+  await plus.evaluate((n) => (n as HTMLElement).blur());
+  await expect(ghost('countries')).toHaveCount(0);
+  await expect(ghost('customers')).toBeVisible();
+});
+
+test('canvas: after Escape or a second click the (+) under a still pointer shows nothing until the pointer has left it', async ({ page }) => {
+  await page.goto('/?mock');
+  const marts = page.locator('#band-marts');
+  await marts.getByRole('radio', { name: 'Graph' }).click();
+  const ghosts = marts.locator('article[data-ghost]');
+  const plus = marts.locator('article#dm-orders [data-join-plus]');
+  // The (+) of a joined card too: the scroll box shrinks as its ghosts go.
+  await plus.hover();
+  await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
+  await expect(marts.locator('[id="dm-customers@customers"]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  for (const target of [plus, marts.locator('[id="dm-customers@customers"] [data-join-plus]')]) {
+    for (const close of ['Escape', 'Escape pinned', 'second click']) {
+      await page.mouse.move(0, 0);
+      await page.waitForTimeout(600);
+      await target.hover();
+      await expect(ghosts.first()).toBeVisible();
+      if (close !== 'Escape') await target.click();
+      if (close === 'second click') await target.click();
+      else await page.keyboard.press('Escape');
+      await expect(ghosts).toHaveCount(0);
+      await page.waitForTimeout(600);
+      await expect(ghosts).toHaveCount(0);
+      const dot = (await target.boundingBox())!;
+      await page.mouse.move(dot.x + dot.width / 2 + 1, dot.y + dot.height / 2 + 1);
+      await page.waitForTimeout(100);
+      await expect(ghosts).toHaveCount(0);
+    }
+  }
+  await page.mouse.move(0, 0);
+  await plus.hover();
+  await expect(ghosts.first()).toBeVisible();
+});
+
+test('canvas: the ghosts go a grace after the pointer left them, at once or wandering over another card', async ({ page }) => {
+  await page.goto('/?mock');
+  const marts = page.locator('#band-marts');
+  await marts.getByRole('radio', { name: 'Graph' }).click();
+  const ghosts = marts.locator('article[data-ghost]');
+  const plus = marts.locator('article#dm-orders [data-join-plus]');
+  await plus.hover();
+  await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
+  const customers = marts.locator('[id="dm-customers@customers"]');
+  await expect(customers).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(600);
+  const dot = (await plus.boundingBox())!;
+  const other = (await customers.boundingBox())!;
+
+  // Over the (+) and off it with nothing in between.
+  for (let i = 0; i < 5; i++) {
+    await Promise.all([page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2), page.mouse.move(0, 0)]);
+    await page.waitForTimeout(700);
+    await expect(ghosts).toHaveCount(0);
+  }
+
+  // Never still on the other card: the ghosts are there well into the grace and gone after it.
+  await page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2);
+  await expect(ghosts.first()).toBeVisible();
+  await page.evaluate(() => {
+    const w = window as unknown as { goneAfter?: number };
+    let left: number | null = null;
+    document.addEventListener('pointerover', (e) => { if (left === null && (e.target as Element).closest('[data-tree-path="customers"]')) left = performance.now(); }, true);
+    const look = () => {
+      if (left !== null && document.querySelector('article[data-ghost]') === null) w.goneAfter = performance.now() - left;
+      else requestAnimationFrame(look);
+    };
+    look();
+  });
+  for (let i = 0; i < 20; i++) {
+    await page.mouse.move(other.x + 30 + (i % 2) * 120, other.y + 20 + (i % 3) * 30);
+    await page.waitForTimeout(45);
+  }
+  const goneAfter = await page.evaluate(() => (window as unknown as { goneAfter?: number }).goneAfter);
+  expect(goneAfter).toBeGreaterThan(350);
+  expect(goneAfter).toBeLessThan(800);
+});
