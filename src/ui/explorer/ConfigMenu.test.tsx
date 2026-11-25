@@ -57,11 +57,12 @@ const openRow = async (name: string, inside: HTMLElement) => {
 const visibleNow = () => screen.getByTestId('visible').textContent;
 
 describe('the button', () => {
-  test('is a Settings button with the config marker, closed until clicked', async () => {
+  test('is a labelled button with the config marker, closed until clicked', async () => {
     setup();
     const b = screen.getByRole('button', { name: 'Configure data' });
     expect(b).toHaveAttribute('data-config-button');
-    expect(b).toHaveClass('dm-menu-dots');
+    expect(b).toHaveTextContent(/^Configure$/);
+    expect(b).toHaveClass('dm-band-btn');
     expect(b).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('menu')).toBeNull();
     await openMenu();
