@@ -135,14 +135,13 @@ export const sankey: ChartKindDef<SankeyR> = {
     if (pieMeasures(cf).length === 0) return null;
     const saved = spec.dimensions;
     // Fewer than two saved columns is the member's choice (None): nothing is filled in, and a saved column that is not shown counts as unused.
-    const chosen = saved && saved.length < SANKEY_MIN;
-    const count = chosen ? saved.length : Math.min(Math.max(saved?.length ?? SANKEY_MIN, SANKEY_MIN), SANKEY_MAX, cf.dimensions.length);
-    if (!chosen && count < SANKEY_MIN) return null;
+    const shownSaved = saved && saved.length < SANKEY_MIN ? [...new Set(saved)].flatMap((n) => cf.dimensions.filter((d) => d.name === n)) : null;
+    const count = Math.min(Math.max(saved?.length ?? SANKEY_MIN, SANKEY_MIN), SANKEY_MAX, cf.dimensions.length);
+    if (!shownSaved && count < SANKEY_MIN) return null;
     // Each column keeps its saved dimension when it is shown and not held by an earlier column, else takes the next unused one.
-    const dims: Field[] = [];
-    for (let i = 0; i < count; i++) {
+    const dims: Field[] = shownSaved ?? [];
+    for (let i = 0; i < (shownSaved ? 0 : count); i++) {
       const held = cf.dimensions.find((d) => d.name === spec.dimensions?.[i] && !dims.includes(d));
-      if (chosen) { if (held) dims.push(held); continue; }
       const fresh = cf.dimensions.filter((d) => !dims.includes(d));
       const next = held ?? fresh.find((d) => !dims[0] || pathOf(d) === pathOf(dims[0])) ?? fresh[0];
       if (next) dims.push(next);
@@ -153,6 +152,6 @@ export const sankey: ChartKindDef<SankeyR> = {
     const measure = offered.find((m) => measureId(m) === spec.measure) ?? pickMeasure(exactList.length ? exactList : offered)!;
     return { dims, measure, exact: exactList.some((m) => measureId(m) === measureId(measure)) };
   },
-  title: (r, cf) => `${measureLabel(cf, r.measure)}${r.dims.length ? ` by ${r.dims.map(fieldLabel).join(' → ')}` : ''}`,
+  title: (r, cf) => `${r.dims.length ? `${measureLabel(cf, r.measure)} by ${r.dims.map(fieldLabel).join(' → ')}` : `Sankey · ${measureLabel(cf, r.measure)}`}`,
   Panel: SankeyPanel,
 };

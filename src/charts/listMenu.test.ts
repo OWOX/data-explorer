@@ -85,16 +85,17 @@ test('Duplicate inserts a copy right after the original: new id, same choices, n
 });
 
 test('a Sankey with one column or none switches to another type and back, and duplicates, as a valid spec', () => {
-  for (const dimensions of [[], ['status']]) {
-    let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'sankey', dimensions }] };
+  const region = { name: 'region', category: 'string', type: 'STRING' } as never;
+  const two: ChartFields = { ...cf, marts: [{ ...cf.marts[0]!, dimensions: [dim, region] }], dimensions: [dim, region] };
+  for (const [dimensions, then] of [[[], ['status', 'region']], [['status'], ['status', 'region']]] as const) {
+    let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'sankey', dimensions: [...dimensions] }] };
     const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
-    const pick = (to: string) => { const [type] = tailItems({ cf, spec: s.charts![0]!, change }); if (type!.kind === 'radio') type!.onPick(to); };
+    const pick = (to: string) => { const [type] = tailItems({ cf: two, spec: s.charts![0]!, change }); if (type!.kind === 'radio') type!.onPick(to); };
     pick('pie');
     expect(s.charts![0]).toEqual({ id: 'a', kind: 'pie', ...(dimensions.length ? { dimension: 'status' } : {}) });
-    expect(Object.values(s.charts![0]!)).not.toContain(undefined);
     pick('sankey');
-    expect(s.charts![0]).toMatchObject({ id: 'a', kind: 'sankey' });
-    expect(KINDS.sankey.resolve(s.charts![0]!, cf)).not.toBeUndefined();
+    // Back on a Sankey the columns the other type held fill it to the two it needs.
+    expect(s.charts![0]).toEqual({ id: 'a', kind: 'sankey', dimensions: then });
   }
   let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'sankey', dimensions: [] }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };

@@ -162,7 +162,7 @@ test('sankey: hovering another Column row replaces the open mart panel, and Tab 
   await userEvent.hover(await screen.findByRole('menuitem', { name: 'Products' }));
   await screen.findByRole('menu', { name: 'Products' });
   await userEvent.hover(screen.getByRole('menuitem', { name: 'Column 1' }));
-  // Column 1 opens its own panel (it holds the first column's data mart rows) and the Products panel of Column 3 is gone.
+  // Column 1 opens its own panel (a Column row opens its own list of marts; Column 3's panel and its Products panel close) and the Products panel of Column 3 is gone.
   await screen.findByRole('menu', { name: 'Column 1' });
   await waitFor(() => expect(screen.queryByRole('menu', { name: 'Products' })).toBeNull());
   expect(screen.queryByRole('menu', { name: 'Column 3' })).toBeNull();
@@ -211,7 +211,7 @@ test('sankey: None on a column under two shows a notice and reads nothing; the m
   await userEvent.click(within(menu).getByRole('menuitemradio', { name: 'None' }));
   await waitFor(() => expect(savedDims(t)).toEqual([]));
   expect(within(section()).getByText(/misconfigured/)).toBeInTheDocument();
-  expect(within(section()).getByRole('heading').textContent).not.toMatch(/ by /);
+  expect(within(section()).getByRole('heading').textContent).toMatch(/^Sankey · /);
   expect(t.queries.slice(before).filter((q) => q.limit === 5000 || q.limit === 10000 || q.limit === 5)).toHaveLength(0);
   // The menu still has its Metric row, and picking two columns draws.
   await userEvent.click(panel('Sankey'));
@@ -226,6 +226,19 @@ test('sankey: None on a column under two shows a notice and reads nothing; the m
   await userEvent.click(within(await screen.findByRole('menu', { name: 'Orders' })).getByRole('menuitemradio', { name: 'is_gift' }));
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   expect(within(section()).queryByText(/misconfigured/)).toBeNull();
+});
+
+test('sankey: with no columns its Charts list label differs from every scorecard label', async () => {
+  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: [] }] } });
+  await waitFor(() => expect(within(data().querySelector<HTMLElement>('section[data-chart-kind="Sankey"]')!).getByText(/misconfigured/)).toBeInTheDocument());
+  await userEvent.click(screen.getByRole('button', { name: 'Configure data' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Charts' }));
+  const list = await screen.findByRole('menu', { name: 'Charts' });
+  const labels = within(list).getAllByRole('menuitemcheckbox').map((el) => el.textContent);
+  const sankeyLabel = labels.find((l) => l?.startsWith('Sankey · '));
+  expect(sankeyLabel).toBeDefined();
+  expect(labels.filter((l) => l === sankeyLabel)).toHaveLength(1);
+  expect(new Set(labels).size).toBe(labels.length);
 });
 
 test('sankey: a column title names its field and its data mart', async () => {

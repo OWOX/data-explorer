@@ -135,7 +135,8 @@ test('sankey title: the measure and the columns it has, one or none', () => {
   const title = (dimensions: string[]) => sankey.title(sankey.resolve({ id: 's', kind: 'sankey', dimensions }, cf)!, cf);
   expect(title(['a', 'b'])).toBe('amount · Sum by a → b');
   expect(title(['b'])).toBe('amount · Sum by b');
-  expect(title([])).toBe('amount · Sum');
+  // With no column it is named apart from the scorecard of the same measure, which has the bare measure label.
+  expect(title([])).toBe('Sankey · amount · Sum');
 });
 
 test('sankey create: a Sankey switched to a Sankey keeps its columns, none included', () => {
