@@ -33,12 +33,14 @@ test.each([
   // A value with its own `?` or `&` is not cut, so the list in it still shows; so does an `&` with no `?` before it.
   'https://a.com/login?next=https://a.com/home,https://a.com/logout?next=https://a.com', 'https://a.com/x&u=https://b.com,https://c.com',
   'https://a.com/x?u=https://b.com&v=1,https://c.com', 'https://a.com/#f?u=https://b.com,https://c.com',
+  // The text before a cut value can hold the joined URL: cutting the name too would hide it. Nor does a cut reach into the fragment.
+  'https://a.com/x?x,https://b.com/y=https://c.com', 'https://a.com/x?k=1&x,https://b.com/y=https://c.com', 'https://a.com/?a=1#x&u=https://b.com,https://c.com',
   // A template or broken host.
   'https://{domain}/x', 'https://*.owox.com/', 'https://...', 'https://.a.com/', 'https://a..com/',
 ])('"%s" is no link', (text) => expect(linkOf(text)).toBeNull());
 
 test('a very long text is checked in linear time', () => {
-  for (const t of ['https://a.com/' + '?'.repeat(200_000), 'https://a.com/' + '&a'.repeat(100_000), 'https://a.com/?' + 'a'.repeat(200_000), 'https://a.com/?u=' + 'https://b.com,'.repeat(15_000)]) {
+  for (const t of ['https://a.com/' + '?'.repeat(200_000), 'https://a.com/?' + '&a'.repeat(100_000), 'https://a.com/?' + 'a'.repeat(200_000), 'https://a.com/?u=' + 'https://b.com,'.repeat(15_000)]) {
     const start = performance.now();
     linkOf(t);
     expect(performance.now() - start).toBeLessThan(500);

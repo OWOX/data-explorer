@@ -137,4 +137,28 @@ test.describe('a URL in the grid', () => {
     const next = (await gridLink(page, 1).textContent()) ?? '';
     await expect.poll(() => page.evaluate(() => (window as unknown as { __copied: string[] }).__copied)).toEqual([next]);
   });
+
+  test('a drag over the data mart title keeps its text, and a click on a cell then clears it so Cmd+C copies the cell', async ({ page }) => {
+    await page.evaluate(() => {
+      const w = window as unknown as { __copied: string[] };
+      w.__copied = [];
+      document.addEventListener('copy', (e) => { w.__copied.push(e.clipboardData?.getData('text/plain') ?? ''); });
+    });
+    await data(page).locator('th.dm-letter').first().click();
+    const title = data(page).locator('th[data-group] .truncate').first();
+    const b = await box(title);
+    const y = b.y + b.height / 2;
+    await page.mouse.move(b.x + 2, y);
+    await page.mouse.down();
+    await page.mouse.move(b.x + Math.min(b.width - 2, 60), y, { steps: 6 });
+    await page.mouse.up();
+    expect(await selectedText(page)).not.toBe('');
+    await expect(data(page).locator('[data-selected]')).toHaveCount(0);
+    const cell = data(page).locator('tbody > tr').first().locator(':scope > td:not([aria-hidden])').first();
+    await cell.click();
+    expect(await selectedText(page)).toBe('');
+    await page.keyboard.press('ControlOrMeta+c');
+    const text = (await cell.textContent()) ?? '';
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __copied: string[] }).__copied)).toEqual([text]);
+  });
 });

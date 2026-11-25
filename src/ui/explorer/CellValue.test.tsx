@@ -175,6 +175,14 @@ describe('a URL in the Row band', () => {
     expect(open).toHaveBeenCalledTimes(1);
   });
 
+  test('a link away from the page corner opens when it is released where it was pressed', () => {
+    const { open, link } = band();
+    vi.spyOn(link, 'getBoundingClientRect').mockReturnValue({ left: 100, top: 100 } as DOMRect);
+    press(link, 110, 105);
+    click(link, 110, 105);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
   test('the page scrolling between the press and the release counts as movement', () => {
     const { open, link } = band();
     const rect = vi.spyOn(link, 'getBoundingClientRect');

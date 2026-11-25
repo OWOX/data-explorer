@@ -211,7 +211,7 @@ test('a range inside the grid is not cleared when the grid mounts or re-renders 
   vi.restoreAllMocks();
 });
 
-test('text in the column header area is left alone, so a drag over the data mart title survives the click that ends it', async () => {
+test('a drag over the data mart title survives the click that deselects, and a later cell selection clears it', async () => {
   await setup();
   fireEvent.click(data().querySelector('th.dm-letter')!);
   const title = data().querySelector<HTMLElement>('th[data-group] .truncate')!;
@@ -219,6 +219,9 @@ test('text in the column header area is left alone, so a drag over the data mart
   fireEvent.click(title);
   expect(data().querySelector('[data-selected]')).toBeNull();
   expect(textRange()).toBe(true);
+  // Cmd+C would otherwise copy the cell; here the title text is the reader's.
+  select(cellOf(links()[0]!));
+  expect(textRange()).toBe(false);
 });
 
 test('text inside a field in the grid is left alone when the selection moves', async () => {

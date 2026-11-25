@@ -21,11 +21,13 @@ export function linkOf(text: string): string | null {
 
 /**
  * The text with each query value that starts with a URL cut out, so a list of URLs inside one value is not taken for two joined URLs. Only a real query
- * counts (a `?` before any `#`), and only a value with no `?` of its own and ending at `&`, `#` or the end. `[^=&#?]` keeps each scan to one parameter, so it is linear.
+ * counts (a `?` before any `#`, and the cut stays before the next `#`), and only a value with no `?` of its own and ending at `&`, `#` or the end. `[^=&#?]` keeps each scan to one parameter, so it is linear.
  */
 function withoutUrlValues(t: string): string {
   const q = t.indexOf('?');
   const hash = t.indexOf('#');
+  // A `#` before the first `?` makes it part of the fragment, not a query.
   if (q < 0 || (hash >= 0 && hash < q)) return t;
-  return t.slice(0, q + 1) + t.slice(q + 1).replace(/(^|&)([^=&#?]*=)https?:\/\/[^&#?]*(?=[&#]|$)/gi, '$1$2');
+  const end = hash < 0 ? t.length : hash;
+  return t.slice(0, q + 1) + t.slice(q + 1, end).replace(/(^|&)([^=&?]*=)https?:\/\/[^&?]*(?=&|$)/gi, '$1$2') + t.slice(end);
 }
