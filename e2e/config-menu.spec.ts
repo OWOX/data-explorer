@@ -272,7 +272,9 @@ test('a filtered card shows its share of matching records, and none without a fi
   await page.getByLabel('Value').fill('paid');
   await page.getByRole('button', { name: 'Apply' }).click();
   await expect.poll(() => data(page).getByRole('row').count()).toBe(110);
-  await expect(card.locator('[data-match]')).toHaveText('54% match');
+  await expect(card.locator('[data-match]')).toHaveText('24% match');
+  await card.locator('[data-match]').hover();
+  await expect(page.getByRole('tooltip')).toContainText('108 of ');
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(card.locator('[data-match]')).toHaveCount(0);
 });
