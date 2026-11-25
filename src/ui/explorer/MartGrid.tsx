@@ -1199,7 +1199,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
           {charts ? <ChartsBody pruneRef={pruneCards} blockedNote={blocked ? blockedText(blocked) : null} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} pathMarts={pathMarts} renderConfig={renderConfig} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} kept={keptUnique} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} onShowColumns={showColumns} />
           : <tbody>
             {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{blockedText(blocked)}</td></tr>
-              : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setRowsRetry((v) => v + 1)} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>
+              : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => { setRowsRetry((v) => v + 1); if (score.error) score.retry(); }} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>
               : !rows ? <tr><Gutter /><td colSpan={outputs.length + 1}><Skeleton rows={8} /></td></tr>
               : rows.length === 0 ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground">{emptyText(hasFilters)}</td></tr>
               : table.getRowModel().rows.map((r, ri) => <GridRow key={r.id} row={r.original} ri={ri} columns={columnViews} marks={marksOf(ri)} acts={rowActs} clickable={clickable} />)}

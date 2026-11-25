@@ -460,6 +460,21 @@ test('a known badge survives a grid failure, and Retry adds no score read', asyn
   expect(t.scoreReads()).toHaveLength(1);
 });
 
+test('the grid and the score both failed: Retry brings rows and sends exactly one more score read, and the badge appears', async () => {
+  let broken = true;
+  const t = setup(withProducts, { fail: (o) => broken && (o.limit === 201 || isScore(o)) });
+  await t.mount();
+  await waitFor(() => expect(alert()).toBeInTheDocument());
+  await calm();
+  const before = t.scoreReads().length;
+  expect(before).toBeLessThanOrEqual(1);
+  broken = false;
+  await retry();
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  await calm();
+  expect(t.scoreReads()).toHaveLength(before + 1);
+});
+
 test('Remove from report: a total counted by a read that joined the removed mart is not the main mart\'s count', async () => {
   const t = setup(withProducts, { total: (o) => (o.column?.some((c) => c.startsWith('products__')) ? 400 : undefined) });
   await t.mount();

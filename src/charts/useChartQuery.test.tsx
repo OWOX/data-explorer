@@ -216,3 +216,28 @@ test('a hold set while the read is under way does not stop it', async () => {
   await waitFor(() => expect(result.current.rows).toEqual([{ a: 1 }]));
   expect(traverseData).toHaveBeenCalledTimes(1);
 });
+
+test('a held key whose read starts another way (options null, then the key again) is read once', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ a: 1 }]));
+  const wrapper = setup(traverseData);
+  const { result, rerender } = renderHook(({ o, hold }: { o: TraverseOptions | null; hold: boolean }) => useChartQuery('m', o, 0, undefined, null, hold), { wrapper, initialProps: { o: opts(10) as TraverseOptions | null, hold: true } });
+  await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+  rerender({ o: null, hold: true });
+  rerender({ o: opts(10), hold: false });
+  await waitFor(() => expect(result.current.rows).toEqual([{ a: 1 }]));
+  await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+  expect(traverseData).toHaveBeenCalledTimes(1);
+});
+
+test('a held key, another key read, then the held key again (Undo) is read once', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ a: 1 }]));
+  const wrapper = setup(traverseData);
+  const { result, rerender } = renderHook(({ l, hold }) => useChartQuery('m', opts(l), 0, undefined, null, hold), { wrapper, initialProps: { l: 10, hold: true } });
+  await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+  rerender({ l: 20, hold: false });
+  await waitFor(() => expect(result.current.rows).toEqual([{ a: 1 }]));
+  rerender({ l: 10, hold: false });
+  await waitFor(() => expect(result.current.rows).toEqual([{ a: 1 }]));
+  await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+  expect(traverseData).toHaveBeenCalledTimes(2);
+});

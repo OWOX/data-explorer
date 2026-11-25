@@ -64,6 +64,8 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
   const [state, setState] = useState<{ key: string | null; rows: Row[] | null; error: unknown }>({ key: null, rows: null, error: null });
 
   useEffect(() => {
+    // A key held earlier is no longer waiting: this run decides for the key it has now.
+    skipped.current = null;
     if (!options || !key) return;
     const cache = cacheOf(ctx);
     const cached = lookup(ctx, key, martId, version, asked, joins, reused);

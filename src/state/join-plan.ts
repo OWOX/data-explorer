@@ -358,7 +358,7 @@ export function planClick(env: PlanEnv, id: string): Plan {
  * A mart dropped onto the main card becomes the main mart. Its own columns come first: what it shows as joined now, else
  * what it showed when it last left a grid, else its grid's own columns, else its defaults. The old main follows as a joined
  * mart with the columns it showed, if the new main can join it, then every joined mart the new main can reach. A mart it
- * cannot reach is dropped and remembered. The new main keeps its own grid's filters and sorts on the new columns, and the marts its own grid kept with no column; the old
+ * cannot reach is dropped and remembered. The new main keeps its own grid's filters and sorts on the new columns, ; the marts the report kept with no column stay in it with none, when the new main can join them. The old
  * main's filters do not carry over, because each main names the same field differently.
  */
 export function planMakeMain(env: PlanEnv, id: string): Plan {
