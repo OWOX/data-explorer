@@ -5,8 +5,6 @@ import { Panel, Row, useSubmenu } from '../ui/explorer/MenuParts';
 
 /** One choice of a submenu. */
 export type MenuOption = { value: string; label: string; icon?: LucideIcon };
-/** A row that ends a radio's submenu, after its options and groups and below a divider: it runs its action and closes the menu, like an action row. */
-export type MenuTrailing = { label: string; icon: LucideIcon; onPick: () => void };
 /** The choices that belong to one data mart: a header with the mart's icon and title, then the options. */
 export type MenuGroup = { title: string; /** The mart's picked icon; the default mart icon when none. */ icon?: string | null; options: MenuOption[] };
 
@@ -17,7 +15,7 @@ export type MenuGroup = { title: string; /** The mart's picked icon; the default
  */
 export type MenuItem =
   | { kind: 'check'; label: string; icon: LucideIcon; checked: boolean; onToggle: () => void }
-  | { kind: 'radio'; label: string; icon: LucideIcon; value: string; options: MenuOption[]; groups?: MenuGroup[]; /** Ends the submenu: a Sankey column's Remove column. */ trailing?: MenuTrailing; onPick: (value: string) => void }
+  | { kind: 'radio'; label: string; icon: LucideIcon; value: string; options: MenuOption[]; groups?: MenuGroup[]; onPick: (value: string) => void }
   | { kind: 'action'; label: string; icon: LucideIcon; /** A row that says why there is nothing to pick: read at full colour, reachable, and it does nothing. */ note?: boolean; onPick: () => void }
   | { kind: 'group'; label: string; icon: LucideIcon; items: MenuItem[] };
 
@@ -67,12 +65,6 @@ function RadioSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<Menu
             glyph={<PickedIcon icon={g.icon} fallback={DEFAULT_MART_ICON} size={16} />}
             onActivate={(r) => marts.open(gi, r, true)} onOpen={(r) => marts.open(gi, r, true)} onHover={(r) => marts.hoverRow(gi, r)} onLeaveRow={marts.leaveRow} />
         ))}
-        {item.trailing && (
-          <>
-            <div className="dm-menu-sep" role="separator" />
-            <Row label={item.trailing.label} glyph={<item.trailing.icon className="size-4" />} onActivate={() => { const t = item.trailing!; close(); t.onPick(); }} onHover={marts.hoverOther} />
-          </>
-        )}
       </Panel>
       {marts.sub && groups.length > 1 && groups[marts.sub.key] && (
         <Panel anchor={marts.sub.row} mode="beside" role="menu" label={groups[marts.sub.key]!.title} onEscape={marts.closeSub} onLeave={marts.closeSub} onTab={close} focusSeq={marts.sub.seq}>

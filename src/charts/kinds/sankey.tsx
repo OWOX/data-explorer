@@ -1,4 +1,4 @@
-import { Columns3, Gauge, Tag, Trash2, Waypoints } from 'lucide-react';
+import { Columns3, Gauge, Tag, Waypoints } from 'lucide-react';
 import { useMemo } from 'react';
 import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
@@ -32,17 +32,21 @@ export type SankeyR = { dims: Field[]; measure: Measure; exact: boolean };
 /** A column's panel width: 11rem per column, at least 20rem, at most the band. */
 export const sankeyWidth = (columns: number): string => `clamp(20rem, ${columns * 11}rem, 100%)`;
 
-/** The dimensions after a change of one column: picking one that another column holds swaps the two. */
+/**
+ * The dimensions after a pick in column `at` (0-based; a column past the end is unused). The saved list never has gaps:
+ * - '' (None) takes a used column out and the later ones move up; it never goes under SANKEY_MIN, and on an unused column it changes nothing.
+ * - A name in a used column replaces it; a name another column holds swaps the two.
+ * - A name in an unused column is appended; one another column holds moves to the end.
+ */
 export const setColumn = (names: string[], at: number, name: string): string[] => {
+  if (name === '') return at < names.length && names.length > SANKEY_MIN ? names.filter((_, i) => i !== at) : names;
+  if (at >= names.length) return [...names.filter((n) => n !== name), name];
   const next = [...names];
   const from = next.indexOf(name);
   if (from >= 0 && from !== at) next[from] = next[at]!;
   next[at] = name;
   return next;
 };
-
-/** The dimensions without column `at`: the columns after it move up. */
-export const removeColumn = (names: string[], at: number): string[] => names.filter((_, i) => i !== at);
 
 /** `count` columns: the first ones kept, a new one filled with the next dimension no column holds. */
 export const withColumns = (names: string[], count: number, all: Field[]): string[] => {
@@ -88,12 +92,16 @@ function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
   const empty = settled && !!data && (data.negative || data.empty);
   const loading = !empty && !failed && !data;
   const names = dims.map((d) => d.name);
-  const maxColumns = Math.min(SANKEY_MAX, cf.dimensions.length);
   const dimGroups = fieldGroups(menuOf(cf), menuOf(cf).dimensions);
+  // Five columns always: a used one lists None unless the Sankey is down to its two; an unused one has None checked and picking a dimension appends it.
+  const columnItems = Array.from({ length: SANKEY_MAX }, (_, i): MenuItem => {
+    const used = i < n;
+    return { kind: 'radio', label: `Column ${i + 1}`, icon: Tag, value: used ? names[i]! : '', groups: dimGroups,
+      options: !used || n > SANKEY_MIN ? [{ value: '', label: 'None' }] : [],
+      onPick: (v) => { const next = setColumn(names, i, v); if (next.join('\n') !== names.join('\n')) onChange({ dimensions: next }); } };
+  });
   const items: MenuItem[] = [
-    { kind: 'radio', label: 'Columns', icon: Columns3, value: String(n), options: Array.from({ length: maxColumns - SANKEY_MIN + 1 }, (_, i) => ({ value: String(SANKEY_MIN + i), label: String(SANKEY_MIN + i) })),
-      onPick: (v) => onChange({ dimensions: withColumns(names, Number(v), cf.dimensions) }) },
-    ...dims.map((d, i): MenuItem => ({ kind: 'radio', label: `Column ${i + 1}`, icon: Tag, value: d.name, options: [], groups: dimGroups, ...(n > SANKEY_MIN ? { trailing: { label: 'Remove column', icon: Trash2, onPick: () => onChange({ dimensions: removeColumn(names, i) }) } } : {}), onPick: (v) => onChange({ dimensions: setColumn(names, i, v) }) })),
+    { kind: 'group', label: 'Columns', icon: Columns3, items: columnItems },
     { kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(menuOf(cf), pieMeasures(menuOf(cf))), onPick: (v: string) => onChange({ measure: v }) },
     ...tail,
   ];

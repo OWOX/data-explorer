@@ -27,13 +27,16 @@ test('add a Sankey from Add chart, a many-to-one joined column draws, a fan-out 
   await sankey.scrollIntoViewIfNeeded();
   await sankey.getByRole('button', { name: 'Sankey options' }).click();
   await page.getByRole('menuitem', { name: 'Columns' }).click();
-  await page.getByRole('menuitemradio', { name: '3' }).click();
+  await page.getByRole('menuitem', { name: 'Column 3' }).click();
+  await page.getByRole('menuitem', { name: 'Customers' }).click();
+  await page.getByRole('menuitemradio', { name: 'Name' }).click();
   // The third column is Customers' name, a many-to-one lookup: Orders' metric still counts each order once, so it draws.
   await expect(sankey.locator('text.dm-chart-axis-title')).toHaveCount(3);
   await expect(sankey.locator('path[data-link]').first()).toBeVisible();
   await sankey.getByRole('button', { name: 'Sankey options' }).click();
   await page.getByRole('menuitem', { name: 'Columns' }).click();
-  await page.getByRole('menuitemradio', { name: '2' }).click();
+  await page.getByRole('menuitem', { name: 'Column 3' }).click();
+  await page.getByRole('menuitemradio', { name: 'None' }).click();
   await expect(sankey.locator('text.dm-chart-axis-title')).toHaveCount(2);
   await expect(sankey.locator('path[data-link]').first()).toBeVisible();
   await sankey.screenshot({ path: 'tmp/sankey-e2e.png' });
@@ -57,3 +60,37 @@ test('a column of a one-to-many joined mart says why it cannot sum', async ({ pa
   await expect(sankey.getByText(/joined one-to-one/)).toBeVisible();
   await expect(sankey.locator('path[data-link]')).toHaveCount(0);
 });
+
+for (const height of [900, 700]) {
+  test(`the four-level Columns menu stays inside a 1440x${height} viewport and every level is reachable by mouse`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height });
+    await expect(data(page).getByRole('row')).toHaveCount(202);
+    await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
+    await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
+    await openFields(page, 'Orders');
+    await page.getByRole('option', { name: 'is_gift' }).click();
+    await closeConfig(page);
+    await data(page).getByRole('radio', { name: 'Charts' }).click();
+    await configButton(page).click();
+    await page.getByRole('menuitem', { name: 'Add chart' }).click();
+    await page.getByRole('menuitemradio', { name: 'Sankey' }).click();
+    const sankey = data(page).locator('section[data-chart-kind="Sankey"]');
+    await expect(sankey.locator('path[data-link]').first()).toBeVisible();
+    await sankey.scrollIntoViewIfNeeded();
+    await sankey.getByRole('button', { name: 'Sankey options' }).click();
+    // Each level opens on a click and sits inside the viewport, with every row of it visible.
+    for (const [role, name] of [['menuitem', 'Columns'], ['menuitem', 'Column 3'], ['menuitem', 'Customers']] as const) {
+      await page.getByRole(role, { name }).click();
+      const panel = page.getByRole('menu', { name });
+      await expect(panel).toBeVisible();
+      const box = (await panel.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(1440);
+      expect(box.y + box.height).toBeLessThanOrEqual(height);
+    }
+    // The last row is hovered and clicked by the mouse: it picks the field and closes the menu.
+    await page.getByRole('menu', { name: 'Customers' }).getByRole('menuitemradio', { name: 'Name' }).click();
+    await expect(sankey.locator('text.dm-chart-axis-title')).toHaveCount(3);
+  });
+}

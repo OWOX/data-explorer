@@ -1,7 +1,7 @@
 import type { ChartFields } from '../fields';
 import { KINDS } from './index';
 import { heatmap } from './heatmap';
-import { removeColumn, sankey, sankeyWidth, setColumn, withColumns } from './sankey';
+import { sankey, sankeyWidth, setColumn, withColumns } from './sankey';
 
 const dim = (name: string) => ({ name, category: 'string', type: 'STRING' }) as never;
 const [a, b, c, d, e, g] = ['a', 'b', 'c', 'd', 'e', 'g'].map(dim) as [never, never, never, never, never, never];
@@ -90,8 +90,19 @@ test('sankey: a new or filled column prefers the first column\'s mart', () => {
   expect(sankey.resolve({ id: 's', kind: 'sankey', dimensions: ['c__y'] }, cf)!.dims.map((d) => d.name)).toEqual(['c__y', 'c__x']);
 });
 
-test('sankey removeColumn: the columns after the removed one move up', () => {
-  expect(removeColumn(['a', 'b', 'c', 'd'], 1)).toEqual(['a', 'c', 'd']);
-  expect(removeColumn(['a', 'b', 'c'], 2)).toEqual(['a', 'b']);
-  expect(removeColumn(['a', 'b'], 0)).toEqual(['b']);
+test('sankey setColumn: an unused column appends, a held name moves to the end, None removes and the rest move up, never under two columns', () => {
+  // Appends: 1, 2, 5 becomes 1, 2, 3 because the saved list has no gaps.
+  expect(setColumn(['a', 'b'], 4, 'd')).toEqual(['a', 'b', 'd']);
+  expect(setColumn(['a', 'b', 'c'], 3, 'd')).toEqual(['a', 'b', 'c', 'd']);
+  // A dimension another column holds moves to the end of an unused column: no duplicate, no gap.
+  expect(setColumn(['a', 'b', 'c'], 4, 'a')).toEqual(['b', 'c', 'a']);
+  // In a used column the two swap, as before.
+  expect(setColumn(['a', 'b', 'c'], 0, 'c')).toEqual(['c', 'b', 'a']);
+  // None on a used column takes it out.
+  expect(setColumn(['a', 'b', 'c', 'd'], 1, '')).toEqual(['a', 'c', 'd']);
+  expect(setColumn(['a', 'b', 'c'], 2, '')).toEqual(['a', 'b']);
+  // A Sankey keeps its two columns; None on an unused column or the column's own dimension changes nothing.
+  expect(setColumn(['a', 'b'], 0, '')).toEqual(['a', 'b']);
+  expect(setColumn(['a', 'b', 'c'], 4, '')).toEqual(['a', 'b', 'c']);
+  expect(setColumn(['a', 'b', 'c'], 1, 'b')).toEqual(['a', 'b', 'c']);
 });

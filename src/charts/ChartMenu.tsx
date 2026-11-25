@@ -4,7 +4,7 @@ import { Panel, useSubmenu } from '../ui/explorer/MenuParts';
 import { useOutsidePress } from '../ui/outsidePress';
 import { hasCheck, ItemRow, ItemSubmenu, type MenuItem } from './MenuItems';
 
-export type { MenuGroup, MenuItem, MenuOption, MenuTrailing } from './MenuItems';
+export type { MenuGroup, MenuItem, MenuOption } from './MenuItems';
 
 /** How long after the panel last changed size a scroll is still taken to come from the resize. */
 const RESIZE_GRACE_MS = 150;
