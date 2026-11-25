@@ -223,10 +223,9 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, 
   const date = cardDate(mart, spark, c.id);
   const raw = row?.[c.key];
   const rolled = useRolling(numberOf(raw), c.key, isIntegerMeasure(c.measure));
-  // A date the member picked for this card, other than the charts', keeps the 60-bucket cap by its own range; a chosen bucket is shared.
-  // A joined mart's default date is not a pick: it rides the charts' bucket, so it costs no range read of its own.
-  // A saved pick whose date is no longer on the mart falls back to the mart's default, which is no pick either.
-  const own = autoBucket && !!date && date.name === spark.dates[c.id] && date.name !== spark.date?.name;
+  // Under Auto a card on another date than the charts' keeps the 60-bucket cap by that date's own range (the charts' bucket fits their date: a month for years of customers leaves two points of two months of orders).
+  // Cards on one date share the range read. A chosen bucket is shared, and with the sparklines off there is nothing to range for.
+  const own = autoBucket && spark.sparklines && !!date && date.name !== spark.date?.name;
   const mine = useBucket(martId, own ? date : null, 'AUTO', filter, version, paused);
   const cardBucket = own ? mine.bucket : bucket;
   const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, cardBucket, filter, date), version, joins);
@@ -245,9 +244,10 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, 
       <div className={`dm-muted truncate text-xs ${onHide ? 'pr-6' : ''}`} title={c.label}>{c.label}</div>
       {onHide && (
         <div className="absolute right-0.5 top-0.5">
+          {/* A single date is listed too: it says which date the sparkline is drawn on, and shows its column when it is hidden. */}
           <ChartMenu name={c.label} items={[
             ...(martMeasures(menuMart).length > 1 ? [{ kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(c.measure), options: [], groups: choices, onPick: (v: string) => onMetric?.(c.id, v) } as MenuItem] : []),
-            ...(menuMart.dates.length > 1 ? [{ kind: 'radio', label: 'Date field', icon: Calendar, value: date?.name ?? '', options: [], groups: fieldGroups({ marts: [menuMart], dimensions: [], dates: [] }, menuMart.dates), onPick: (v: string) => onDate?.(c.id, v) } as MenuItem] : []),
+            ...(menuMart.dates.length > 0 ? [{ kind: 'radio', label: 'Date field', icon: Calendar, value: date?.name ?? '', options: [], groups: fieldGroups({ marts: [menuMart], dimensions: [], dates: [] }, menuMart.dates), onPick: (v: string) => onDate?.(c.id, v) } as MenuItem] : []),
             { kind: 'action', label: 'Hide', icon: EyeOff, onPick: () => onHide(c.id) },
           ]} />
         </div>

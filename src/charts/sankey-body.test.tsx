@@ -177,3 +177,51 @@ test('sankey: negative values draw the empty state with a note, not a chart', as
   expect(await within(data()).findByText('Sankey needs values of 0 or more; this metric has negative values.')).toBeInTheDocument();
   expect(data().querySelectorAll('path[data-link]')).toHaveLength(0);
 });
+
+// Orders joins Countries through Customers, which shows no column: a middle mart of the path.
+const middle = [...dims, 'customers__countries__name'];
+const lastColumns = (t: { gridPuts: { mock: { calls: unknown[][] } } }) => (t.gridPuts.mock.calls.at(-1)![1] as { columns: string[] }).columns;
+const submenu = async (row: string, mart?: string) => {
+  await userEvent.click(panel('Sankey'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: row }));
+  if (mart) await userEvent.click(await screen.findByRole('menuitem', { name: mart }));
+};
+
+test('sankey: a column lists a mart on the path that shows no column; picking its field adds it to the grid and draws it', async () => {
+  const t = await charts({ columns: middle, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  await waitFor(() => expect(titles()).toHaveLength(2));
+  expect(group('customers')).toBeNull();
+  await submenu('Column 1', 'Customers');
+  await userEvent.click(within(await screen.findByRole('menu', { name: 'Customers' })).getByRole('menuitemradio', { name: 'city' }));
+  await waitFor(() => expect(lastColumns(t)).toEqual(['id', 'status', 'amount', 'created_at', 'is_gift', 'products__title', 'customers__countries__name', 'customers__city']));
+  expect(savedDims(t)).toEqual(['customers__city', 'is_gift']);
+  await waitFor(() => expect(group('customers')).not.toBeNull());
+  await waitFor(() => expect(titles()[0]!.textContent).toMatch(/^city/));
+  await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
+  // The pick is ticked under its mart.
+  await submenu('Column 1', 'Customers');
+  expect(within(await screen.findByRole('menu', { name: 'Customers' })).getByRole('menuitemradio', { name: 'city' })).toHaveAttribute('aria-checked', 'true');
+});
+
+test('sankey: a mart that is off the path stays out of the menus, and a mart on it offers no Count Unique until it shows a column', async () => {
+  await charts({ columns: middle, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  await waitFor(() => expect(titles()).toHaveLength(2));
+  await submenu('Column 1');
+  const sub = await screen.findByRole('menu', { name: 'Column 1' });
+  expect(within(sub).getAllByRole('menuitem').map((el) => el.textContent)).toEqual(['Orders', 'Products', 'Countries', 'Customers']);
+  await userEvent.keyboard('{Escape}');
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  // Customers has no metric of its own, and its Count Unique needs a column on the grid.
+  expect(within(await screen.findByRole('menu', { name: 'Metric' })).queryByRole('menuitem', { name: 'Customers' })).toBeNull();
+});
+
+test('a metric of a mart on the path that shows no column is listed, and picking it adds its column', async () => {
+  const t = await charts({ columns: ['status', 'amount', 'created_at', 'is_gift', 'products__categories__label'], charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  await waitFor(() => expect(titles()).toHaveLength(2));
+  await submenu('Metric', 'Products');
+  const products = await screen.findByRole('menu', { name: 'Products' });
+  expect(within(products).queryByRole('menuitemradio', { name: 'Count Unique' })).toBeNull();
+  await userEvent.click(within(products).getByRole('menuitemradio', { name: 'price · Sum' }));
+  await waitFor(() => expect(lastColumns(t)).toContain('products__price'));
+  await waitFor(() => expect(screen.getByRole('heading', { name: /^price · Sum.* by status/ })).toBeInTheDocument());
+});

@@ -22,6 +22,7 @@ import { dropPicksOf } from '../../charts/listMenu';
 import { useWidth } from '../../charts/useWidth';
 import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKey } from '../../model/sort';
 import { groupMap, moveColumn, moveColumnBy, orderColumns, ownInSchemaOrder } from '../../state/column-order';
+import { buildJoinTree } from '../../state/join-tree';
 import { inUsePaths, joinedMartIds, joinedPaths, ownNamesIn, pathTitle } from '../../state/join-plan';
 import type { Field, Model, Schema } from '../../model/types';
 import { hasPrimaryKey, primaryKeys } from '../../records/relationships';
@@ -715,6 +716,14 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     }
     return out;
   }, [outputs, fieldOf, model, martId, shown, sources]);
+  // The marts the report joins through without a column of theirs: the chart menus list their fields too.
+  const pathMarts = useMemo(() => {
+    const inUse = joinedPaths(shown, sources);
+    return [...buildJoinTree(martId, shown, sources).nodes.values()].flatMap((n) => {
+      const source = n.bare && sources.find((x) => x.aliasPath === n.path);
+      return source ? [{ path: n.path, title: pathTitle(source, inUse, sources), icon: model.marts.get(n.martId)?.icon }] : [];
+    });
+  }, [martId, shown, sources, model.marts]);
   // A remove button is off while its click is being applied, so a second click cannot put the mart back.
   const [removing, setRemoving] = useState(false);
   const head = useRef<HTMLTableSectionElement>(null);
@@ -1051,7 +1060,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
             ))}
           </thead>
           {/* ChartsBody renders its own <tbody>: nesting one in another makes the parser pull the headers out of the table. */}
-          {charts && !blocked ? <ChartsBody pruneRef={pruneCards} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} onShowColumns={showColumns} />
+          {charts && !blocked ? <ChartsBody pruneRef={pruneCards} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} pathMarts={pathMarts} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} onShowColumns={showColumns} />
           : <tbody>
             {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`}</td></tr>
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>
