@@ -7,7 +7,7 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore, type GridState } from '../../state/store';
 import { App } from '../App';
-import { openColumnMenu } from './menu-test-utils';
+import { openColumnMenu, openFields, closeConfigMenu } from './menu-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
 
@@ -47,8 +47,7 @@ const groupRow = () => data().querySelector('tr[data-group-row]')!;
 const picker = async (mart: string) => {
   // The bands are drawn again once the model has loaded: the grid is looked up after that.
   await waitFor(() => expect(data().querySelector('table')).not.toBeNull(), { timeout: 5000 });
-  await userEvent.click(await within(data()).findByRole('button', { name: new RegExp(`^Fields of ${mart}:`) }, { timeout: 5000 }));
-  return within(await screen.findByRole('dialog'));
+  return within(await openFields(mart));
 };
 const undo = () => userEvent.click(screen.getByRole('button', { name: 'Undo' }));
 /** The grid's cells of one column, by its header text. */
@@ -70,8 +69,8 @@ describe('a mart whose primary key is hidden for reporting', () => {
     expect(fields.queryByRole('option', { name: 'id' })).toBeNull();
     await userEvent.click(fields.getByRole('option', { name: 'Unique Count' }));
     await waitFor(() => expect(headers()).toEqual([...before, 'Unique Count']));
-    // The mart's columns badge counts the Unique Count column too.
-    expect(within(data()).getByRole('button', { name: new RegExp(`^Fields of Stores: ${before.length + 1} columns$`) })).toBeInTheDocument();
+    // The mart's group spans the Unique Count column too.
+    expect(groupRow().querySelector('th[data-group-path=""]')).toHaveAttribute('colspan', String(before.length + 1));
     await waitFor(() => expect(t.of('stores').at(-1)!.o.uniqueCount).toEqual(['']));
     const last = t.of('stores').at(-1)!.o;
     // The shown columns become the group keys, and no hidden field is named anywhere.
@@ -82,7 +81,7 @@ describe('a mart whose primary key is hidden for reporting', () => {
     for (const c of cellsOf('Unique Count')) expect(Number(c)).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/Unknown column/)).toBeNull();
     expect(t.state.current!.grids.stores!.uniqueCount).toEqual(['']);
-    await userEvent.keyboard('{Escape}');
+    await closeConfigMenu();
     // A column of the metric has no filter and no function.
     const menu = await openColumnMenu(within(data()), 'Unique Count');
     expect(within(menu).queryByRole('menuitem', { name: 'Filter' })).toBeNull();
@@ -165,7 +164,7 @@ describe('the Unique Count column', () => {
     const t = setup({ grid: { ...withCustomers, uniqueCount: ['', 'customers'] } });
     await t.view();
     await waitFor(() => expect(headers()).toEqual(['id', 'status', 'Unique Count', 'name', 'Unique Count']));
-    await userEvent.click(within(data()).getByRole('button', { name: 'Remove Customers from the grid' }));
+    await userEvent.click(within(await openFields('Customers')).getByRole('menuitem', { name: 'Remove from report' }));
     await waitFor(() => expect(headers()).toEqual(['id', 'status', 'Unique Count']));
     await waitFor(() => expect(t.state.current!.grids.orders!.uniqueCount).toEqual(['']));
   });

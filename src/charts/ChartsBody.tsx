@@ -1,5 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ColumnFilter } from '../filters/build';
 import type { JoinedSource } from '../api/blendable';
 import type { Aggregation, DateBucket } from '../model/aggregation';
@@ -11,9 +10,8 @@ import { ErrorBox } from '../ui/ErrorBox';
 import { Skeleton } from '../ui/Skeleton';
 import { chartFields, menuOf } from './fields';
 import type { HavingKeys } from './havingKeys';
-import { ChartMenu } from './ChartMenu';
-import { dropPicksOf, hideCard, listItems, setCardDate, setCardMetric, tailItems } from './listMenu';
-import { ChartsMenuSlot } from './menuSlot';
+import type { MenuItem } from './ChartMenu';
+import { addChartItem, chartListItem, dropPicksOf, hideCard, setCardDate, setCardMetric, tailItems } from './listMenu';
 import { joinGrainOf } from './answers';
 import { MartCards, useScorecards } from './Scorecards';
 import { KINDS } from './kinds';
@@ -35,13 +33,15 @@ const NO_PATH_MARTS: PathMart[] = [];
  * Each panel is as wide as its content needs and the panels wrap onto more rows when the band is narrow.
  * Settings load once per mart; a fallback a kind's `resolve` picks is never written back, only the member's own changes are.
  */
-export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, groups, pathMarts = NO_PATH_MARTS, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter, onShowColumns, pruneRef }: {
+export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, groups, pathMarts = NO_PATH_MARTS, renderConfig, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter, onShowColumns, pruneRef }: {
   martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; /** The grid has a filter on an aggregate that the charts cannot follow for this grouping. */ havingNote?: boolean; /** Stands in for the charts while the passing group keys load, fail to load, or are none. */ gate?: HavingKeys['gate']; groups: { id: string; path: string; span: number; title: string; icon?: string | null }[]; /** The middle marts of the joined paths that show no column: the menus list their fields after the groups', where a first column of theirs would land. */ pathMarts?: PathMart[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
   formatOf: (column: string, type: string) => Format; scrollerWidth: number;
   /** Applies the clicked mark's filters to the grid, as a filter edit (one Undo step). */
   onFilter: (add: ColumnFilter[]) => void;
   /** Shows these columns in the grid (added to the shown ones): a menu choice of a field that is not shown has to put it on screen. */
   onShowColumns: (names: string[], buckets?: Readonly<Record<string, DateBucket>>) => void;
+  /** The config menu: the grid builds it and this body places it, once, on every return path, so an open menu survives a gate or an empty hint coming and going. The Add chart and Charts rows are passed once the saved settings have loaded. */
+  renderConfig: (chartItems?: MenuItem[]) => ReactNode;
   /** The grid hands over the columns the member just hid; the card picks that named them go in one write. Set while this body is mounted. */
   pruneRef?: { current: ((hidden: string[]) => boolean) | null };
 }) {
@@ -114,26 +114,28 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     if (shown.includes(name) || !schemaNames.has(name)) return;
     onShowColumns([name], isDate && leadBucket !== 'AUTO' ? { [name]: leadBucket } : undefined);
   };
-  const slot = useContext(ChartsMenuSlot);
+  // `change` reads the latest-doc ref, but the rows only call it from handlers, never while rendering.
+  // eslint-disable-next-line react-hooks/refs
+  const chartItems = settings ? [addChartItem({ cf, change }), chartListItem({ cf, settings, resolved, change })] : undefined;
   const columns = groups.reduce((n, g) => n + g.span, 0);
 
+  // The menu sits first in every return, so it keeps its place (and its open panels) whichever body is drawn.
+  const place = (tbody: ReactNode) => <>{renderConfig(chartItems)}{tbody}</>;
   if (cf.marts.every((m) => m.metrics.length === 0 && !m.hasPk)) {
-    return <tbody><tr><Gutter /><td colSpan={columns + 1} data-chart-empty className="text-sm text-muted-foreground">Show a number column to chart it.</td></tr></tbody>;
+    return place(<tbody><tr><Gutter /><td colSpan={columns + 1} data-chart-empty className="text-sm text-muted-foreground">Show a number column to chart it.</td></tr></tbody>);
   }
   if (gate) {
-    return (
+    return place(
       <tbody><tr><Gutter /><td colSpan={columns + 1} data-chart-empty className="text-sm text-muted-foreground">
         {gate.kind === 'loading' ? <Skeleton rows={2} /> : gate.kind === 'error' ? <ErrorBox error={gate.error} onRetry={gate.retry} /> : 'No rows match the filters.'}
-      </td></tr></tbody>
+      </td></tr></tbody>,
     );
   }
 
-  return (
+  return place(
     <tbody>
       <tr data-chart-strip>
         <Gutter />
-        {/* `change` reads the latest-doc ref, but the menus only call it from handlers, never while rendering. */}
-        {/* eslint-disable-next-line react-hooks/refs */}
         {groups.map((g, i) => (
           <td key={g.path} colSpan={g.span} data-chart-group={g.id} data-chart-path={g.path}>
             <div className="flex items-start gap-1">
@@ -141,7 +143,6 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
                 menuMart={menuOf(cf).marts[i]}
                 onMetric={settings ? (id, v) => { showCardPick(v, false); change((cur) => setCardMetric(cur, id, v, cf.marts[i]!)); } : undefined}
                 onDate={settings ? (id, v) => { showCardPick(v, true); change((cur) => setCardDate(cur, id, v, cf.marts[i]!, spark)); } : undefined} onHide={settings ? (id) => change((cur) => hideCard(cur, id)) : undefined} />
-              {g.path === '' && slot && settings && createPortal(<ChartMenu name="Charts" items={listItems({ cf, settings, resolved, change })} />, slot)}
             </div>
           </td>
         ))}
@@ -163,6 +164,6 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
           {havingNote && <p data-chart-note className="mt-1 text-xs text-muted-foreground" style={{ position: 'sticky', left: GUTTER_PX }}>Charts can't apply filters on aggregates for this grouping.</p>}
         </td>
       </tr>
-    </tbody>
+    </tbody>,
   );
 }

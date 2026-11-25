@@ -2,9 +2,17 @@ import { ChartSpline, Hash } from 'lucide-react';
 import { vi } from 'vitest';
 import type { ChartFields } from './fields';
 import { KINDS } from './kinds';
-import { dropPicksOf, hideCard, listItems, setCardDate, setCardMetric, tailItems } from './listMenu';
+import { addChartItem, chartListItem, dropPicksOf, hideCard, setCardDate, setCardMetric, tailItems } from './listMenu';
+import type { MenuItem } from './MenuItems';
 import { cardsOf, martMeasures } from './Scorecards';
 import type { ChartSettings } from './settings';
+
+/** The rows of the Charts group: the cards, Sparklines and a tick per chart. */
+const listItems = (args: Parameters<typeof chartListItem>[0]): MenuItem[] => {
+  const group = chartListItem(args);
+  if (group.kind !== 'group') throw new Error('Charts is a group');
+  return group.items;
+};
 
 // A mart with a key, a date, a number and a string: every kind but spread is eligible once registered.
 const date = { name: 'created_at', category: 'date', type: 'TIMESTAMP' } as never;
@@ -12,12 +20,15 @@ const dim = { name: 'status', category: 'string', type: 'STRING' } as never;
 const amount = { name: 'amount', category: 'number', type: 'NUMERIC' } as never;
 const cf: ChartFields = { marts: [{ aliasPath: '', recordsId: 'records:orders', title: '', hasPk: true, metrics: [{ field: amount, fn: 'SUM' }], dates: [date], dimensions: [dim] }], dates: [date], dimensions: [dim], counter: null };
 
-test('the header list has the cards, Sparklines, one tick per chart and Add chart with the eligible kinds', () => {
+test('the Charts group has the cards, Sparklines and one tick per chart; Add chart is a row of its own with the eligible kinds', () => {
   const change = vi.fn();
   const items = listItems({ cf, settings: {}, resolved: [{ spec: { id: 'time-series', kind: 'timeSeries' }, title: 'amount · Sum by date' }, { spec: { id: 'pie', kind: 'pie' }, title: null }], change });
   // Card labels come from metricLabel: the field label (no alias here) and AGG_LABELS.SUM.
-  expect(items.map((i) => i.label)).toEqual(['Count Unique', 'amount · Sum', 'Sparklines', 'amount · Sum by date', 'Pie (columns hidden)', 'Add chart']);
-  const add = items.at(-1)!;
+  expect(items.map((i) => i.label)).toEqual(['Count Unique', 'amount · Sum', 'Sparklines', 'amount · Sum by date', 'Pie (columns hidden)']);
+  const group = chartListItem({ cf, settings: {}, resolved: [], change });
+  expect(group).toMatchObject({ kind: 'group', label: 'Charts' });
+  const add = addChartItem({ cf, change });
+  expect(add.label).toBe('Add chart');
   // Later tasks register more kinds: only the two that exist now are pinned; spread is never eligible (no percentiles).
   expect(add.kind === 'radio' && add.options.map((o) => o.label)).toEqual(expect.arrayContaining(['Time series', 'Pie']));
   expect(add.kind === 'radio' && add.options.map((o) => o.label)).not.toContain('Spread');
@@ -30,10 +41,17 @@ test('unticking a chart hides it and keeps its setup; Add chart appends a new ch
   const tick = items().find((i) => i.label === 'P')!;
   if (tick.kind === 'check') tick.onToggle();
   expect(s.charts).toEqual([{ id: 'a', kind: 'pie', dimension: 'status', hidden: true }]);
-  const add = items().at(-1)!;
+  const add = addChartItem({ cf, change });
   if (add.kind === 'radio') add.onPick('timeSeries');
   expect(s.charts!.map((c) => c.kind)).toEqual(['pie', 'timeSeries']);
   expect(s.charts![1]!.id).toMatch(/^c-/);
+});
+
+test('the Charts group lists every chart, hidden ones ticked off, so any of them can be shown again', () => {
+  const specs: ChartSettings['charts'] = [{ id: 'a', kind: 'pie', dimension: 'status', hidden: true }, { id: 'b', kind: 'timeSeries' }];
+  const items = listItems({ cf, settings: { scorecards: { hidden: ['amount'] } }, resolved: specs!.map((spec) => ({ spec, title: spec.id })), change: vi.fn() });
+  const ticks = Object.fromEntries(items.map((i) => [i.label, i.kind === 'check' && i.checked]));
+  expect(ticks).toEqual({ 'Count Unique': true, 'amount · Sum': false, Sparklines: true, a: false, b: true });
 });
 
 test('Chart type keeps the usable fields and the id', () => {
@@ -92,7 +110,7 @@ test('each chart row, and each Add chart and Chart type option, carries its kind
   expect(icon('Pie (columns hidden)')).toBe(KINDS.pie.icon);
   expect(icon('Count Unique')).toBe(Hash);
   expect(icon('Sparklines')).toBe(ChartSpline);
-  const add = items.at(-1)!;
+  const add = addChartItem({ cf, change });
   expect(add.kind === 'radio' && add.options.every((o) => o.icon === KINDS[o.value as keyof typeof KINDS].icon)).toBe(true);
   const type = tailItems({ cf, spec: { id: 'a', kind: 'pie' }, change })[0]!;
   expect(type.kind === 'radio' && type.options.every((o) => !!o.icon)).toBe(true);

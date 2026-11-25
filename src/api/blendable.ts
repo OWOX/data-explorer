@@ -6,7 +6,7 @@ import type { AvailableSourceDto, BlendableSchemaDto, Ctx } from '../sdk/types';
 /** The backend's `isArrayFieldType`: ARRAY, bare or with a parameter (`ARRAY<STRING>`). */
 export const isArrayType = (type: string | undefined) => /^ARRAY(?:\s*[<(]|$)/i.test(type?.trim() ?? '');
 
-/** One joined data mart the Columns picker offers, with the fields of it a report can take. */
+/** One joined data mart the config menu offers, with the fields of it a report can take. */
 export type JoinedSource = {
   aliasPath: string;
   martId: string;

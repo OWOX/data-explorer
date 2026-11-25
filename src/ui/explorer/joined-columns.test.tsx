@@ -8,7 +8,7 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
-import { openSubmenu } from './menu-test-utils';
+import { closeConfigMenu, openFields, openSubmenu } from './menu-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
 const BLEND = '/api/data-marts/orders/blendable-schema';
@@ -49,7 +49,7 @@ const data = () => document.getElementById('band-data')!;
 const titleHeaders = () => within(data()).getAllByRole('columnheader').filter((h) => !h.hasAttribute('aria-hidden') && h.getAttribute('scope') !== 'colgroup');
 const bodyRows = () => within(data()).getAllByRole('row').filter((r) => r.querySelector('td'));
 const headers = () => titleHeaders().map((h) => h.textContent);
-const openPicker = async (mart = 'Orders') => { const name = new RegExp(`^Fields of ${mart}:`); await waitFor(() => expect(within(data()).getByRole('button', { name })).toBeInTheDocument()); await userEvent.click(within(data()).getByRole('button', { name })); };
+const openPicker = (mart = 'Orders') => openFields(mart);
 
 test('the joined data marts are read when a mart becomes main, once per mart, and the picker opening asks nothing more', async () => {
   const t = setup(null);
@@ -199,7 +199,7 @@ test('a filter popover the reader has open stays open when the joined marts arri
   const t = setup(null, { blendGate: new Promise<void>((r) => { release = r; }) });
   t.view();
   await openPicker();
-  await userEvent.keyboard('{Escape}');
+  await closeConfigMenu();
   await openSubmenu(within(data()), 'status', 'Filter');
   expect(await screen.findByLabelText('Operator')).toBeInTheDocument();
   release();

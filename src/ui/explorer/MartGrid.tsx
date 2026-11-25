@@ -1,7 +1,8 @@
 import { columnVisibilityFeature, tableFeatures, useTable, type ColumnDef } from '@tanstack/react-table';
 import { Box, Info, RefreshCw, RotateCcw } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pending-focus';
-import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AUTO, keepsUnit, type Format } from '../../format/formats';
 import { useColumnFormats } from '../../format/useColumnFormats';
 import { PAGE_SIZE } from '../../config';
@@ -18,12 +19,14 @@ import { canSuggest, valuesOf, valuesQuery } from '../../filters/valueSuggest';
 import { dropOrphanHaving, toTraverseFilters, type ColumnFilter } from '../../filters/build';
 import { sliceField } from '../../filters/slice';
 import { ChartsBody } from '../../charts/ChartsBody';
+import type { MenuItem } from '../../charts/ChartMenu';
+import { ConfigMenuSlot } from '../../charts/menuSlot';
 import { dropPicksOf } from '../../charts/listMenu';
 import { useWidth } from '../../charts/useWidth';
 import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKey } from '../../model/sort';
 import { groupMap, moveColumn, moveColumnBy, orderColumns, ownInSchemaOrder } from '../../state/column-order';
-import { buildJoinTree } from '../../state/join-tree';
-import { inUsePaths, joinedMartIds, joinedPaths, ownNamesIn, pathTitle } from '../../state/join-plan';
+import { buildJoinTree, joinableUnder } from '../../state/join-tree';
+import { inUsePaths, joinedMartIds, joinedPaths, ownNamesIn, parentPath, pathTitle } from '../../state/join-plan';
 import type { Field, Model, Schema } from '../../model/types';
 import { hasPrimaryKey, primaryKeys } from '../../records/relationships';
 import type { Row } from '../../sdk/types';
@@ -43,7 +46,8 @@ import { CellValue } from './CellValue';
 import { blockOf, selectionTsv, type GridSelection } from './copySelection';
 import { ColumnDragLayer } from './ColumnDrag';
 import { ColumnControls, ColumnMenuEnvContext, type ColumnMenuEnv } from './ColumnMenu';
-import { ColumnPicker, MartRuleBadges } from './ColumnPicker';
+import { ConfigMenu, type ConfigMart } from './ConfigMenu';
+import { MartRuleBadges } from './MartRuleBadges';
 import { BadgeRow } from './badgeReserve';
 import { ExportMenu } from './ExportMenu';
 import { defaultColumns } from '../../model/columns';
@@ -716,48 +720,47 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     }
     return out;
   }, [outputs, fieldOf, model, martId, shown, sources]);
-  // The marts the report joins through without a column of theirs: the chart menus list their fields too.
+  // The tree of the report, shared by the path marts and what can join under each path.
+  const tree = useMemo(() => buildJoinTree(martId, shown, sources), [martId, shown, sources]);
+  // The marts the report joins through without a column of theirs: the menus list their fields too. Titled against every path of the tree, so two paths to one mart read apart.
   const pathMarts = useMemo(() => {
-    const inUse = joinedPaths(shown, sources);
-    return [...buildJoinTree(martId, shown, sources).nodes.values()].flatMap((n) => {
+    const treePaths = [...tree.nodes.keys()];
+    return [...tree.nodes.values()].flatMap((n) => {
       const source = n.bare && sources.find((x) => x.aliasPath === n.path);
-      return source ? [{ path: n.path, title: pathTitle(source, inUse, sources), icon: model.marts.get(n.martId)?.icon }] : [];
+      return source ? [{ path: n.path, title: pathTitle(source, treePaths, sources), icon: model.marts.get(n.martId)?.icon, description: model.marts.get(n.martId)?.description, fields: source.fields }] : [];
     });
-  }, [martId, shown, sources, model.marts]);
+  }, [tree, sources, model.marts]);
+  // What can join one hop under a path, as config menu rows (only the marts the member can read). Taken once per input: the menu asks again for every parent on every render.
+  const joinable = useMemo(() => {
+    const treePaths = [...tree.nodes.keys()];
+    const rowOf = (x: JoinedSource): ConfigMart => ({
+      path: x.aliasPath, title: pathTitle(x, treePaths, sources), icon: model.marts.get(x.martId)?.icon, description: model.marts.get(x.martId)?.description,
+      main: false, shown: false, fields: x.fields, locked: () => false,
+    });
+    const byPath = new Map([...new Set(['', ...sources.map((x) => parentPath(x.aliasPath))])].map((p) => [p, joinableUnder(tree, sources, p).filter((x) => model.marts.get(x.martId)?.accessible === true).map(rowOf)] as const));
+    return (path: string): ConfigMart[] => byPath.get(path) ?? [];
+  }, [tree, sources, model.marts]);
   // A remove button is off while its click is being applied, so a second click cannot put the mart back.
   const [removing, setRemoving] = useState(false);
   const head = useRef<HTMLTableSectionElement>(null);
-  const remove = (g: (typeof groups)[number], index: number) => {
-    // A joined group takes only its own columns: the marts joined through it keep theirs and stay joined through it. The main group deselects the main mart.
-    const gone = (path: string) => (g.main ? path === '' : path === g.path);
-    // Focus lands on the nearest tab that is still there (its remove button, else its Columns button) once the tab is gone.
-    const next = [...groups.slice(index + 1), ...groups.slice(0, index).reverse()].find((x) => !gone(x.path))?.path;
-    // Taking the main tab away promotes the next one and the grid remounts (DataBand keys it by mart): the new grid focuses its Columns button.
+  const remove = (g: (typeof groups)[number]) => {
+    // Taking the main mart away promotes the next one and the grid remounts (DataBand keys it by mart): the new grid focuses its config button.
     const promoted = g.main && groups[1] ? groups[1].id : null;
     askFocusFor(promoted);
     setRemoving(true);
+    // A joined group takes only its own columns: the marts joined through it keep theirs and stay joined through it. The main group deselects the main mart.
     (g.main ? cardClick(g.id, { only: 'deselect' }) : cardClick(g.id, { removePaths: [g.path] })).catch(() => undefined).finally(() => {
-      // The focus waits for the render that re-enables the buttons: a timer could fire before it and find the target's remove button still disabled.
-      focusAfterRemove.current = next ?? null;
       setRemoving(false);
       // Nothing remounted (the click did nothing): the request must not wait for a later mount.
       if (promoted) setTimeout(() => dropFocusFor(promoted), 1000);
     });
   };
-  /** The path of the tab that takes focus once a removal has been applied; null when there is none. */
-  const focusAfterRemove = useRef<string | null | undefined>(undefined);
-  useEffect(() => {
-    const path = focusAfterRemove.current;
-    if (removing || path === undefined) return;
-    focusAfterRemove.current = undefined;
-    const th = path === null ? null : head.current?.querySelector(`th[data-group-path="${CSS.escape(path)}"]`);
-    (th?.querySelector<HTMLElement>('button[data-remove]:not(:disabled)') ?? th?.querySelector<HTMLElement>('button'))?.focus();
-  }, [removing]);
+  const configSlot = useContext(ConfigMenuSlot);
   useEffect(() => {
     if (!isFocusAskedFor(martId)) return;
-    const button = head.current?.querySelector<HTMLElement>(`th[data-group-path=""] button`);
+    const button = configSlot?.querySelector<HTMLElement>('[data-config-button]');
     if (button && takeFocusFor(martId)) button.focus();
-  }, [groups, martId]);
+  }, [groups, martId, configSlot]);
   const several = groups.length > 1;
   // The first data mart is the main one: its last own column stays while a joined mart is shown.
   const ownNames = useMemo(() => new Set(native.map((f) => f.name)), [native]);
@@ -765,6 +768,20 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   // The data marts that offer a Unique Count (a hidden or composite key counts): their Fields tab has the row for it.
   const uniqueOffered = useMemo(() => new Set(uniquePathsOf(schema)), [schema]);
   const fieldsOf = (g: { main: boolean; path: string }) => (g.main ? native : sources.filter((x) => x.aliasPath === g.path).flatMap((x) => x.fields));
+  // The config menu's data marts: the ones with a column in grid order, then the ones the report joins through with none.
+  const configMarts: ConfigMart[] = [
+    ...groups.map((g): ConfigMart => ({
+      path: g.path, title: g.title, icon: g.icon, description: g.description, main: g.main, shown: true, fields: fieldsOf(g),
+      locked: (n) => g.main && several && ownOn === 1 && ownNames.has(n),
+      unique: uniqueOffered.has(g.path) ? { on: ucNow.includes(g.path), onToggle: () => toggleUnique(g.path) } : undefined,
+      remove: several || !g.main ? { onRemove: () => remove(g), disabled: removing } : undefined,
+    })),
+    ...pathMarts.map((m): ConfigMart => ({ path: m.path, title: m.title, icon: m.icon, description: m.description, main: false, shown: false, fields: m.fields, locked: () => false })),
+  ];
+  // One menu per view, at one place in the tree (here in Table, in the charts body in Charts), so a pending change survives a re-render; a view switch closes it.
+  const renderConfig = (chartItems?: MenuItem[]): ReactNode => configSlot && createPortal(
+    <ConfigMenu marts={configMarts} joinable={joinable} visible={shown} onChange={changeColumns} chartItems={chartItems} />, configSlot,
+  );
   const hasFilters = Object.keys(filters).length > 0;
   const hasSorts = own !== null;
   const hasSlices = Object.keys(allSlices).length > 0;
@@ -1008,6 +1025,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     {/* The table's last measured height is a ref on purpose: a re-render on every resize would reach an open column menu and drop its Apply. */}
     {/* eslint-disable-next-line react-hooks/refs */}
     <div ref={frame} className={`dm-grid-frame flex max-h-[32rem] min-h-0 flex-col${charts ? ' dm-grid-frame-charts' : ''}`} style={charts && tableHeight.current ? { height: tableHeight.current } : undefined}>
+      {!(charts && !blocked) && renderConfig()}
       <Toast onDismiss={() => setNote(null)} stamp={note} returnTo={() => scroller.current}>{note?.text}</Toast>
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts && !hasSlices} onClick={() => edit(() => { setAllFilters({}); setAllSlices({}); setOwn(null); })} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
@@ -1024,9 +1042,9 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
               <th data-chrome className="dm-chrome dm-letter w-full" />
             </tr>
             <tr data-group-row>
-                {groups.map((g, i) => (
+                {groups.map((g) => (
                   <th key={g.path} data-group={g.id} data-group-path={g.path} colSpan={g.span} scope="colgroup" onClick={(e) => {
-                    // Only the title itself: the Fields and Remove buttons, and clicks inside the Fields popover (portalled, but bubbling through React), keep the selection.
+                    // Only the title itself: a badge's button, and clicks inside its list (portalled, but bubbling through React), keep the selection.
                     const t = e.target as HTMLElement;
                     if (!e.currentTarget.contains(t) || t.closest('button')) return;
                     if (selected?.kind === 'col' || selected?.kind === 'row') setSelected(null);
@@ -1036,8 +1054,6 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
                       <span data-title-text="" className="truncate">{g.title}</span>
                       {g.description?.trim() && <span className="dm-reveal"><Hint text={g.description} label={`About ${g.title}`} /></span>}
                       <BadgeRow>
-                      <ColumnPicker title={g.title} fields={fieldsOf(g)} main={g.main} visible={shown} locked={(n) => g.main && several && ownOn === 1 && ownNames.has(n)} onChange={changeColumns} unique={uniqueOffered.has(g.path) ? { on: ucNow.includes(g.path), onToggle: () => toggleUnique(g.path) } : undefined}
-                        remove={several || !g.main ? { onRemove: () => remove(g, i), disabled: removing } : undefined} columns={g.span} />
                       <MartRuleBadges title={g.title} fields={fieldsOf(g)} filters={filters} slices={slices}
                         onClearFilters={(names) => edit(() => setAllFilters((cur) => dropKeys(cur, names)))}
                         onClearSlices={(names) => edit(() => setAllSlices((cur) => dropKeys(cur, names)))} />
@@ -1060,7 +1076,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
             ))}
           </thead>
           {/* ChartsBody renders its own <tbody>: nesting one in another makes the parser pull the headers out of the table. */}
-          {charts && !blocked ? <ChartsBody pruneRef={pruneCards} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} pathMarts={pathMarts} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} onShowColumns={showColumns} />
+          {charts && !blocked ? <ChartsBody pruneRef={pruneCards} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} pathMarts={pathMarts} renderConfig={renderConfig} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} onShowColumns={showColumns} />
           : <tbody>
             {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`}</td></tr>
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>

@@ -1,9 +1,10 @@
-import { fireEvent, render, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
+import { openSubmenu } from './menu-test-utils';
 
 function setup() {
   const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
@@ -69,9 +70,14 @@ test('a click on the data mart title drops a whole column or row selection', asy
   expect(data().querySelector('[data-selected]')).not.toBeNull();
   await userEvent.click(title());
   expect(data().querySelector('[data-selected]')).toBeNull();
-  // The Fields button in the same cell is not the title: the selection stays.
+  // A badge button in the same cell is not the title: the selection stays.
+  await openSubmenu(within(data()), 'status', 'Filter');
+  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'eq');
+  await userEvent.type(screen.getByLabelText('Value'), 'paid');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  const badge = await within(data()).findByRole('button', { name: /^1 filter in / });
   await userEvent.click(within(data()).getAllByText('A')[0]!.closest('th')!);
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of / }));
+  await userEvent.click(badge);
   expect(data().querySelector('thead .dm-letter[data-selected]')).not.toBeNull();
 });
 

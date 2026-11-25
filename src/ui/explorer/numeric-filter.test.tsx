@@ -7,7 +7,7 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { SchemaFieldDto, TraverseOptions } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
-import { openSubmenu } from './menu-test-utils';
+import { closeConfigMenu, openFields, openSubmenu } from './menu-test-utils';
 
 function setup(fields: SchemaFieldDto[] = []) {
   const fixtures = demoFixtures();
@@ -25,10 +25,9 @@ const bodyRows = () => within(data()).getAllByRole('row').filter((r) => r.queryS
 const loaded = () => waitFor(() => expect(bodyRows().some((r) => r.querySelector('td')?.textContent)).toBe(true));
 
 async function show(label: string) {
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
+  await openFields('Orders');
   await userEvent.click(await screen.findByLabelText(label));
-  await userEvent.keyboard('{Escape}');
-  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await closeConfigMenu();
 }
 const lastFilter = (queries: TraverseOptions[]) => queries.at(-1)?.filter;
 

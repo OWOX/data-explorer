@@ -4,19 +4,19 @@ import { vi } from 'vitest';
 import { GRID_COLUMNS_COLLECTION } from '../api/grid-columns';
 import { CHARTS_COLLECTION } from '../api/chart-settings';
 import { createMockCtx } from '../sdk/mock/ctx';
-import { demoFixtures } from '../sdk/mock/fixtures';
+import { demoFixtures, type Fixtures } from '../sdk/mock/fixtures';
 import type { Ctx, Row, TraverseOptions } from '../sdk/types';
 import { AppServices, StoreProvider } from '../state/store';
 import { App } from '../ui/App';
 import { SAVED_COLUMNS_WAIT_MS } from '../ui/explorer/MartGrid';
-import { openColumnMenu, openSubmenu } from '../ui/explorer/menu-test-utils';
+import { openColumnMenu, openConfigMenu, closeConfigMenu, openFields, openSubmenu } from '../ui/explorer/menu-test-utils';
 import type { ChartSettings } from './settings';
 
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
 const COLUMNS = ['id', 'status', 'amount', 'created_at', 'products__price'];
 
-function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[]; calc?: boolean; uc?: boolean } = {}) {
-  const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
+function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[]; calc?: boolean; uc?: boolean; /** Holds the keys read (a HAVING rule's, limit 501) until it resolves. */ hold?: Promise<void>; fixtures?: Fixtures } = {}) {
+  const base = createMockCtx(opts.fixtures ?? demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const puts = vi.fn();
@@ -30,7 +30,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
         const d = await (base.owox.getJson as (p: string, ...r: unknown[]) => Promise<{ schema?: { fields?: unknown[] } }>)(path, ...rest);
         return path === '/api/data-marts/orders' ? { ...d, schema: { ...d.schema, fields: [...(d.schema?.fields ?? []), { name: 'net', type: 'NUMERIC', calculated: { level: 'metric' } }] } } : d;
       }) as Ctx['owox']['getJson'] : base.owox.getJson,
-      dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('range failed')); const tr = id === 'orders' && opts.calc ? real(id, calcOf(o)).then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map((r) => ({ ...r, net: 42 })); } })) : real(id, o); const map = opts.mapRow; return map ? tr.then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map(map); } })) : tr; } } },
+      dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('range failed')); const held = id === 'orders' && opts.hold && o.limit === 501 ? opts.hold : Promise.resolve(); const tr = held.then(() => (id === 'orders' && opts.calc ? real(id, calcOf(o)).then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map((r) => ({ ...r, net: 42 })); } })) : real(id, o))); const map = opts.mapRow; return map ? tr.then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map(map); } })) : tr; } } },
     collections: <T,>(name: string) => {
       const c = base.collections<T>(name);
       if (name === GRID_COLUMNS_COLLECTION) return { get: (id: string) => c.get(id), put: (id: string, d: T) => { gridPuts(id, d); return c.put(id, d); } };
@@ -47,6 +47,12 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
 const lastGrid = (t: { gridPuts: { mock: { calls: unknown[][] } } }) => t.gridPuts.mock.calls.at(-1)![1] as { columns: string[]; aggregations?: { column: string; function: string }[] };
 const data = () => document.getElementById('band-data')!;
 const radio = (name: string) => within(data()).getByRole('radio', { name });
+/** Opens the config menu's Charts group and returns its submenu: the scorecard ticks, Sparklines and a tick per chart. */
+async function openChartList() {
+  const menu = await openConfigMenu();
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Charts' }));
+  return screen.findByRole('menu', { name: 'Charts' });
+}
 const group = (id: string) => data().querySelector<HTMLElement>(`td[data-chart-group="${id}"]`);
 async function charts(opts?: Parameters<typeof setup>[0]) {
   const t = setup(opts);
@@ -213,7 +219,7 @@ test('a saved pick of a column the grid does not open with (columns read late or
 test('hiding a card from the Charts menu removes it and saves', async () => {
   const t = await charts();
   await waitFor(() => expect(cardNames(group('orders'))).toContain('Amount · Sum'));
-  await userEvent.click(screen.getByRole('button', { name: 'Charts options' }));
+  await openChartList();
   await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Amount · Sum' }));
   await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique']));
   expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, scorecards: { hidden: ['amount'] } });
@@ -247,9 +253,12 @@ test('a change cannot be made before the saved settings load, and one made after
   await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
   await userEvent.click(radio('Charts'));
   await waitFor(() => expect(group('orders')).not.toBeNull());
-  expect(screen.queryByRole('button', { name: 'Charts options' })).toBeNull();
+  // The config menu is there, with no chart rows until the saved settings are known.
+  const early = await openConfigMenu();
+  expect(within(early).queryByRole('menuitem', { name: 'Charts' })).toBeNull();
+  expect(within(early).queryByRole('menuitem', { name: 'Add chart' })).toBeNull();
   release();
-  await userEvent.click(await screen.findByRole('button', { name: 'Charts options' }));
+  await userEvent.click(await within(early).findByRole('menuitem', { name: 'Charts' }));
   await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Amount · Sum' }));
   await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { ...saved, scorecards: { hidden: ['amount'] } }));
 });
@@ -350,23 +359,23 @@ test('with only a pie, the sparklines still draw under the cards', async () => {
 
 test('a chart menu closes on a real scroll', async () => {
   await charts();
-  await userEvent.click(panel('Charts'));
-  expect(await screen.findByRole('menu', { name: 'Charts menu' })).toBeInTheDocument();
+  await userEvent.click(panel('Pie'));
+  expect(await screen.findByRole('menu', { name: 'Pie menu' })).toBeInTheDocument();
   const was = window.scrollY;
   Object.defineProperty(window, 'scrollY', { value: was + 40, configurable: true });
   try {
     fireEvent.scroll(document);
-    await waitFor(() => expect(screen.queryByRole('menu', { name: 'Charts menu' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('menu', { name: 'Pie menu' })).toBeNull());
   } finally { Object.defineProperty(window, 'scrollY', { value: was, configurable: true }); }
 });
 
 test('a chart menu stays open for a scroll event that moved nothing (the echo of a resize)', async () => {
   await charts();
-  await userEvent.click(panel('Charts'));
-  expect(await screen.findByRole('menu', { name: 'Charts menu' })).toBeInTheDocument();
+  await userEvent.click(panel('Pie'));
+  expect(await screen.findByRole('menu', { name: 'Pie menu' })).toBeInTheDocument();
   fireEvent.scroll(document);
   await new Promise((r) => setTimeout(r, 50));
-  expect(screen.getByRole('menu', { name: 'Charts menu' })).toBeInTheDocument();
+  expect(screen.getByRole('menu', { name: 'Pie menu' })).toBeInTheDocument();
 });
 
 test('a chart menu stays open while its panel is resizing, even when a scroll box moved', async () => {
@@ -399,7 +408,7 @@ test('a chart menu stays open while its panel is resizing, even when a scroll bo
 
 test('the card checklist rows are checkboxes', async () => {
   await charts();
-  await userEvent.click(panel('Charts'));
+  await openChartList();
   expect(await screen.findByRole('menuitemcheckbox', { name: 'Sparklines' })).toHaveAttribute('aria-checked', 'true');
   expect(screen.queryAllByRole('menuitemradio')).toHaveLength(0);
 });
@@ -594,18 +603,18 @@ test('when the shared sparkline read fails, the bar chart draws from its own rea
 test('the Charts menu sits in the band header and adds and hides charts', async () => {
   const t = await charts();
   const header = data().querySelector('[data-chart-list-slot]')!;
-  await userEvent.click(within(header as HTMLElement).getByRole('button', { name: 'Charts options' }));
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Add chart' }));
+  await userEvent.click(within(header as HTMLElement).getByRole('button', { name: 'Configure data' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Add chart' }));
   await userEvent.click(screen.getByRole('menuitemradio', { name: 'Pie' }));
   await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(3));
   const added = (t.puts.mock.lastCall![1] as ChartSettings).charts!;
   expect(added.map((c) => c.kind)).toEqual(['timeSeries', 'pie', 'pie']);
 
-  await userEvent.click(within(header as HTMLElement).getByRole('button', { name: 'Charts options' }));
+  await openChartList();
   await userEvent.click(screen.getAllByRole('menuitemcheckbox', { name: /^Amount · Sum by / })[0]!);
   await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(2));
   // A tick keeps the menu open: close it before opening a chart's own.
-  await userEvent.keyboard('{Escape}');
+  await closeConfigMenu();
 
   const pies = screen.getAllByRole('button', { name: 'Pie options' });
   await userEvent.click(pies[1]!);
@@ -619,8 +628,7 @@ test('Hide keeps the chart in the Charts list, and ticking it brings it back wit
   await userEvent.click(await screen.findByRole('button', { name: 'Pie options' }));
   await userEvent.click(screen.getByRole('menuitem', { name: 'Hide' }));
   await waitFor(() => expect(data().querySelector('section[data-chart-kind="Pie"]')).toBeNull());
-  const header = data().querySelector('[data-chart-list-slot]') as HTMLElement;
-  await userEvent.click(within(header).getByRole('button', { name: 'Charts options' }));
+  await openChartList();
   const row = screen.getByRole('menuitemcheckbox', { name: /by status$/ });
   expect(row).toHaveAttribute('aria-checked', 'false');
   await userEvent.click(row);
@@ -646,12 +654,12 @@ test('a hidden chart sends no query', async () => {
 test('a chart whose fields are not shown is listed as columns hidden and drawn again when they return', async () => {
   const t = await charts({ columns: ['id', 'amount', 'created_at'], charts: { version: 2, charts: [{ id: 'p', kind: 'pie', dimension: 'status' }] } });
   expect(data().querySelectorAll('section.dm-chart')).toHaveLength(0);
-  await userEvent.click(screen.getByRole('button', { name: 'Charts options' }));
+  await openChartList();
   expect(screen.getByRole('menuitemcheckbox', { name: 'Pie (columns hidden)' })).toBeTruthy();
-  await userEvent.keyboard('{Escape}');
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
+  await closeConfigMenu();
+  await openFields('Orders');
   await userEvent.click(await screen.findByLabelText(/^status/i));
-  await userEvent.keyboard('{Escape}');
+  await closeConfigMenu();
   await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(1));
   expect(data().querySelector('section[data-chart-kind="Pie"]')).not.toBeNull();
   expect(t.puts).not.toHaveBeenCalled();
@@ -830,4 +838,39 @@ test('with Unique Count on, the keys read groups as the table does: one total ro
   const read = t.queries.slice(before).find((q) => q.limit === 501)!;
   expect(read.column).toEqual(['net']);
   expect(read.uniqueCount).toBeUndefined();
+});
+
+describe('the config button in Charts', () => {
+  const configButton = () => within(data().querySelector<HTMLElement>('[data-chart-list-slot]')!).getByRole('button', { name: 'Configure data' });
+
+  test('shows with "Nothing to chart" too, its menu listing the chart rows and the data mart', async () => {
+    // Orders with no primary key and only a text column shown: no number, nothing to count.
+    const fx = demoFixtures();
+    const keyless = { ...fx, marts: fx.marts.map((m) => (m.id === 'orders' ? { ...m, fields: m.fields.map((f) => ({ ...f, isPrimaryKey: false })) } : m)) };
+    const t = setup({ columns: ['status'], fixtures: keyless });
+    await t.seeded;
+    t.view();
+    await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
+    await userEvent.click(radio('Charts'));
+    await waitFor(() => expect(data().querySelector('[data-chart-empty]')).not.toBeNull());
+    expect(configButton()).toBeInTheDocument();
+    const menu = await openConfigMenu();
+    expect(within(menu).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Add chart', 'Charts', 'Orders']);
+  });
+
+  test('stays open while the HAVING gate loads and the charts come in behind it', async () => {
+    let release!: () => void;
+    const hold = new Promise<void>((r) => { release = r; });
+    await charts({ calc: true, columns: ['status', 'amount', 'net'], aggregations: [{ column: 'amount', function: 'SUM' }], hold });
+    await openSubmenu(within(data()), 'net', 'Filter');
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Value'), '10');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(group('orders')).toBeNull());
+    const menu = await openConfigMenu();
+    release();
+    await waitFor(() => expect(group('orders')).not.toBeNull());
+    expect(menu).toBeInTheDocument();
+    expect(configButton()).toHaveAttribute('aria-expanded', 'true');
+  });
 });

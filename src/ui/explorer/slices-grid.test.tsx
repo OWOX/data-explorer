@@ -207,18 +207,16 @@ describe('the data mart title row', () => {
   // The status filter and the country slice are both on fields that are not columns.
   const hidden: GridState = { columns: ['id', 'customers__city'], filters: { status: { field: 'status', op: 'eq', value: 'paid' } }, slices: { customers__country_code: slice }, sorts: null, limit: 200 };
 
-  test('the slice and filter badges follow the Fields button, list the rules on click, and their x removes them in one Undo step', async () => {
+  test('the slice and filter badges sit in their mart\'s title cell, list the rules on click, and their x removes them in one Undo step', async () => {
     setup(hidden);
     const groupOf = (el: HTMLElement) => el.closest<HTMLElement>('th[data-group-path]')!;
-    // The filter is on the main mart's field, the slice on the joined mart's: each badge sits in its own mart's title cell, after the Fields button.
+    // The filter is on the main mart's field, the slice on the joined mart's: each badge sits in its own mart's title cell.
     const filterBadge = await screen.findByRole('button', { name: /^1 filter in / });
     const sliceBadge = await screen.findByRole('button', { name: /^1 slice in / });
     expect(filterBadge).toHaveTextContent('1 filter');
     expect(sliceBadge).toHaveTextContent('1 slice');
-    for (const badge of [filterBadge, sliceBadge]) {
-      const fields = within(groupOf(badge)).getByRole('button', { name: /^Fields of / });
-      expect(fields.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    }
+    expect(groupOf(filterBadge).dataset.groupPath).toBe('');
+    expect(groupOf(sliceBadge).dataset.groupPath).toBe('customers');
     await userEvent.click(filterBadge);
     const list = await screen.findByRole('menu', { name: /^Filters in / });
     expect(within(list).getByRole('menuitem', { name: /paid/ })).toBeVisible();
@@ -291,17 +289,16 @@ describe('the data mart title row', () => {
     expect(screen.queryByRole('menu', { name: /^Filters in / })).toBeNull();
   });
 
-  test('after the x on a badge, focus is on the Fields button of its cell', async () => {
+  test('after the x on a badge, focus is on the config button', async () => {
     setup(hidden);
-    const badge = await screen.findByRole('button', { name: /^1 filter in / });
-    const cell = badge.closest('th')!;
+    await screen.findByRole('button', { name: /^1 filter in / });
     await userEvent.click(screen.getByRole('button', { name: /^Remove all filters in / }));
-    await waitFor(() => expect(document.activeElement).toBe(within(cell).getByRole('button', { name: /^Fields of / })));
+    await waitFor(() => expect(document.activeElement).toBe(within(data()).getByRole('button', { name: 'Configure data' })));
   });
 
-  test('no rules, no marks; the Fields button shows no tooltip', async () => {
+  test('no rules, no marks; the config button shows no tooltip', async () => {
     setup({ columns: ['id', 'status'], filters: {}, sorts: null, limit: 200 });
-    const button = (await screen.findAllByRole('button', { name: /^Fields of / }))[0]!;
+    const button = await screen.findByRole('button', { name: 'Configure data' });
     expect(screen.queryByRole('button', { name: /^\d+ (filter|slice)s? in / })).toBeNull();
     await userEvent.hover(button);
     await new Promise((r) => setTimeout(r, 350));
