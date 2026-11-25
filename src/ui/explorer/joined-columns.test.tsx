@@ -13,7 +13,7 @@ import { closeConfigMenu, openConfigMenu, openFields, openSubmenu } from './menu
 type Mock = ReturnType<typeof createMockCtx>;
 const BLEND = '/api/data-marts/orders/blendable-schema';
 
-function setup(saved: string[] | null, opts: { blendFails?: boolean; blendGate?: Promise<void>; repeats?: string } = {}) {
+function setup(saved: string[] | null, opts: { blendFails?: boolean; blendGate?: Promise<void>; repeats?: string; empty?: string[] } = {}) {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const queries: { id: string; o: TraverseOptions }[] = [];
   const reads: string[] = [];
@@ -39,7 +39,7 @@ function setup(saved: string[] | null, opts: { blendFails?: boolean; blendGate?:
     const c = spied.collections<T>(name);
     return name === GRID_COLUMNS_COLLECTION ? { get: c.get, put: (id: string, d: T) => { put(id, d); return c.put(id, d); } } : c;
   } };
-  const seeded = saved ? spied.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: saved, at: 'then' }) : Promise.resolve();
+  const seeded = saved ? spied.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: saved, at: 'then', ...(opts.empty ? { gridView: { fl: [], s: null, l: 50, ep: opts.empty } } : {}) }) : Promise.resolve();
   const view = () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
   const orderQueries = () => queries.filter((q) => q.id === 'orders' && q.o.column && q.o.column.length > 1);
   return { ctx, view, queries, reads, put, seeded, orderQueries };
@@ -263,4 +263,44 @@ test('Hide column focuses the neighbour by field, even when two columns share a 
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Hide column' }));
   await waitFor(() => expect(document.activeElement).toBe(icons().find((i) => i.dataset.field === 'customers__id')));
   expect(document.activeElement).not.toBe(icons().find((i) => i.dataset.field === 'id'));
+});
+
+describe('a saved empty mart is read back whenever the joined marts arrive', () => {
+  const savedWithEp = (t: ReturnType<typeof setup>) => t.put.mock.calls.some(([id, d]) => id === 'orders' && JSON.stringify(d).includes('"ep":["customers"]'));
+  const toCharts = () => userEvent.click(within(data()).getByRole('radio', { name: 'Charts' }));
+  const lists = async () => { const menu = await openConfigMenu(); const names = within(menu).getAllByRole('menuitem').map((r) => r.textContent); await closeConfigMenu(); return names; };
+
+  test('joins slower than the saved columns: the mart is listed and a later edit still saves it', async () => {
+    let release: () => void = () => undefined;
+    const t = setup(['id'], { empty: ['customers'], blendGate: new Promise<void>((r) => { release = r; }) });
+    await t.seeded;
+    t.view();
+    await new Promise((r) => setTimeout(r, 400));
+    release();
+    await waitFor(async () => expect(await lists()).toContain('Customers'));
+    await toCharts();
+    await waitFor(() => expect(savedWithEp(t)).toBe(true), { timeout: SAVE_DEBOUNCE_MS + 3000 });
+  });
+
+  test('joins that cannot be read: the path is parked and an edit still saves it', async () => {
+    const t = setup(['id'], { empty: ['customers'], blendFails: true });
+    await t.seeded;
+    t.view();
+    await waitFor(() => expect(headers()).toEqual(['id']));
+    await toCharts();
+    await waitFor(() => expect(savedWithEp(t)).toBe(true), { timeout: SAVE_DEBOUNCE_MS + 3000 });
+  });
+
+  test('joins slower than the wait for the saved columns: the late saved view keeps it', async () => {
+    let release: () => void = () => undefined;
+    const t = setup(['id'], { empty: ['customers'], blendGate: new Promise<void>((r) => { release = r; }) });
+    await t.seeded;
+    t.view();
+    // Past the wait for the saved columns the grid opens with the defaults, and the saved view comes late.
+    await waitFor(() => expect(headers()).toHaveLength(5), { timeout: 5000 });
+    release();
+    await waitFor(async () => expect(await lists()).toContain('Customers'), { timeout: 5000 });
+    await toCharts();
+    await waitFor(() => expect(savedWithEp(t)).toBe(true), { timeout: SAVE_DEBOUNCE_MS + 3000 });
+  }, 20000);
 });

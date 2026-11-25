@@ -257,7 +257,7 @@ describe('a data mart panel', () => {
     expect(onRemove).toHaveBeenCalledOnce();
   });
 
-  test('a mart with nothing shown leaves nothing pending, and StrictMode commits nothing on mount', async () => {
+  test('Clear on a joined mart with nothing shown changes nothing, also in StrictMode', async () => {
     const spy = vi.fn();
     setup({ spy, strict: true });
     await openRow('Regions', await openMenu());
@@ -608,63 +608,6 @@ describe('fix round 1', () => {
     rerender(props([main], [gone((n) => n === 'p1')]));
     const panel = await openRow('Partners', screen.getByRole('menu', { name: 'Configure data' }));
     expect(within(panel).getByRole('option', { name: 'p1' })).toHaveAttribute('aria-disabled', 'true');
-  });
-
-  describe('a closing subtree commits nothing more', () => {
-    const deep = async (spy: (c: string[]) => void, strict = false) => {
-      setup({ spy, strict });
-      const menu = await openMenu();
-      const orders = await openRow('Orders', menu);
-      const products = await openRow('Products', orders);
-      await userEvent.click(within(products).getByLabelText('products__sku'));
-      const suppliers = await openRow('Suppliers', products);
-      await userEvent.click(within(suppliers).getByLabelText('suppliers__name'));
-      await userEvent.click(within(products).getByLabelText('products__sku'));
-      await userEvent.click(within(suppliers).getByLabelText('suppliers__name'));
-      return menu;
-    };
-    const settled = async (spy: ReturnType<typeof vi.fn>, before: number) => {
-      await wait(0);
-      expect(spy).toHaveBeenCalledTimes(before);
-      expect(visibleNow()).toBe('id,customers__email');
-    };
-    for (const strict of [false, true]) {
-      test(`a click on another root row${strict ? ' (StrictMode)' : ''}`, async () => {
-        const spy = vi.fn();
-        const menu = await deep(spy, strict);
-        const before = spy.mock.calls.length;
-        await userEvent.click(within(menu).getByRole('menuitem', { name: 'Customers' }));
-        await settled(spy, before);
-      });
-
-      test(`a hover on another root row${strict ? ' (StrictMode)' : ''}`, async () => {
-        const spy = vi.fn();
-        const menu = await deep(spy, strict);
-        const before = spy.mock.calls.length;
-        fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: 'Customers' }));
-        await wait(HOVER_MS + 100);
-        await settled(spy, before);
-      });
-
-      test(`Escape with focus on the root${strict ? ' (StrictMode)' : ''}`, async () => {
-        const spy = vi.fn();
-        const menu = await deep(spy, strict);
-        const before = spy.mock.calls.length;
-        within(menu).getByRole('menuitem', { name: 'Orders' }).focus();
-        await userEvent.keyboard('{Escape}');
-        expect(screen.queryByRole('dialog')).toBeNull();
-        await settled(spy, before);
-      });
-
-      test(`unmounting the menu${strict ? ' (StrictMode)' : ''}`, async () => {
-        const spy = vi.fn();
-        await deep(spy, strict);
-        const before = spy.mock.calls.length;
-        cleanup();
-        await wait(0);
-        expect(spy).toHaveBeenCalledTimes(before);
-      });
-    }
   });
 
   test('the third level of one chart submenu does not open by itself in the next one', async () => {

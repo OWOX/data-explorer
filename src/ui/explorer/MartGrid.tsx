@@ -112,9 +112,9 @@ export const VIEW_HOLD_MAX_MS = 10000;
 /** The names in `saved` the mart still offers, in the saved order. */
 const offered = (schema: Schema, saved: string[]) => saved.filter((c) => schema.some((f) => f.name === c));
 
-/** Whether a saved grid names something the mart's own schema does not have: a joined field, so the joined marts must be read first. */
+/** Whether a saved grid names something the mart's own schema does not have: a joined field, or a joined mart kept with no column, so the joined marts must be read first. */
 const namesJoined = (schema: Schema, saved: GridState | undefined) =>
-  !!saved && [...saved.columns, ...Object.keys(saved.filters), ...Object.keys(saved.slices ?? {}), ...(saved.sorts ?? []).map((x) => x.field)].some((n) => !schema.some((f) => f.name === n));
+  !!saved && (!!saved.emptyPaths?.length || [...saved.columns, ...Object.keys(saved.filters), ...Object.keys(saved.slices ?? {}), ...(saved.sorts ?? []).map((x) => x.field)].some((n) => !schema.some((f) => f.name === n)));
 
 type Initial = { columns: string[]; cleaned: string[] | null; sources: JoinedSource[] | null; agg: Aggregation; /** The member's saved view (filters, slices, sort, limit, Table/Charts), pruned to the fields on offer; only when the page holds no grid for the mart. */ saved?: GridState };
 
@@ -182,7 +182,7 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
       const saved = own ?? await columnStore.load(martId) ?? [];
       // A grid the page already holds (a view link, this session) wins over what is saved.
       const stored = seed.saved ? null : await columnStore.loadView(martId);
-      const needs = namesJoined(schema, own ? seed.saved : { columns: saved, filters: stored?.filters ?? {}, slices: stored?.slices, sorts: stored?.sorts ?? null, limit: 0 });
+      const needs = namesJoined(schema, own ? seed.saved : { columns: saved, filters: stored?.filters ?? {}, slices: stored?.slices, sorts: stored?.sorts ?? null, limit: 0, ...(stored?.emptyPaths ? { emptyPaths: stored.emptyPaths } : {}) });
       const agg = seed.saved ? aggOf(seed.saved) : await columnStore.loadAggregation(martId);
       let sources: JoinedSource[] | null = blendable.peek(martId) ?? null;
       let failed = false;
@@ -385,7 +385,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const [allSlices, setAllSlices] = useState<Record<string, ColumnFilter>>(() => seed.saved?.slices ?? {});
   const filters = useMemo(() => pickOffered(allFilters, schema), [allFilters, schema]);
   // A rule does not need its field on the grid: a filter or slice on a hidden field of the main mart, or of a joined mart that has a shown column, applies,
-  // because the schema offers every field of the joined marts. A joined mart whose last shown column goes leaves the grid and takes its rules with it (changeColumns).
+  // because the schema offers every field of the joined marts. A joined mart whose last shown column goes stays in the report with its rules (changeColumns); only Remove from report takes them.
   // Only a field this visit does not offer is parked (the joined marts could not be read, or a Refresh removed the field).
   const slices = useMemo(() => pickOffered(allSlices, schema), [allSlices, schema]);
   const offeredKey = schema.map((f) => f.name).join('\u0000');
@@ -415,7 +415,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   }
   // The data marts whose Unique Count is a column (alias paths, '' is the main mart), as the member set them: one that is not offered now is parked here and left out below.
   const [uc, setUc] = useState<string[]>(() => seed.saved?.uniqueCount ?? []);
-  // The joined marts kept in the report with no column (alias paths), as the member left them: one the joined marts do not offer (not read yet, or gone) is parked here and left out below.
+  // The joined marts kept in the report with no column (alias paths), as the member left them: while the joined marts are unread every path is parked here; once they are read, a path they do not offer (or that has a column) is dropped from this list.
   const [ep, setEp] = useState<string[]>(() => seed.saved?.emptyPaths ?? []);
   // null: the member has set no sort, so rows open newest date first. The default is judged once, from the columns the grid opened with.
   // A Unique Count column is sorted by its row key, so its key counts as a shown column.
@@ -772,7 +772,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const head = useRef<HTMLTableSectionElement>(null);
   const remove = (g: { id: string; path: string; main: boolean }) => {
     // Taking the main mart away promotes the next one and the grid remounts (DataBand keys it by mart): the new grid focuses its config button.
-    // The columns as they are now: a change may have gone out just before (the menu sends a pending one as it closes), and the render's groups know nothing of it.
+    // The columns as they are now: a change may have gone out just before (a Clear or an untick), and the render's groups know nothing of it.
     const promoted = g.main ? joinedMartIds(shownNow.current, sources, emptyNow.current)[0] ?? null : null;
     askFocusFor(promoted);
     setRemoving(true);
@@ -816,7 +816,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     })),
     ...pathMarts.filter((m) => !m.empty).map((m): ConfigMart => ({ path: m.path, title: m.title, icon: m.icon, description: m.description, main: false, shown: false, fields: m.fields, locked: () => false })),
   ];
-  // One menu per view, at one place in the tree (here in Table, in the charts body in Charts), so a pending change survives a re-render; a view switch closes it.
+  // One menu per view, at one place in the tree (here in Table, in the charts body in Charts), so an open menu survives a re-render; a view switch closes it.
   const renderConfig = (chartItems?: MenuItem[]): ReactNode => configSlot && createPortal(
     <ConfigMenu marts={configMarts} joinable={joinable} visible={shown} onChange={changeColumns} chartItems={chartItems} />, configSlot,
   );
