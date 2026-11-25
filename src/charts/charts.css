@@ -1,5 +1,5 @@
 /* Chart colours: the OWOX palette, 12 label colours in two rows of six hues (base, light), ordered so neighbouring slots differ in hue.
-   A label's colour is chosen by a hash of its text (see labelColor.ts), so the same value looks the same in every chart.
+   A label's colour is chosen by a hash of its text in any letter case (see labelColor.ts), so the same value looks the same across charts unless it clashes with a larger one in its own list.
    --dm-series-1 is also the colour of a chart that draws one measure, not labels. "Other" is a neutral grey, outside the 12.
    The palette has no dark variant, so only "Other" changes there. */
 :root {
