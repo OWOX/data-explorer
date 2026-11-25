@@ -94,6 +94,8 @@ function AppBody() {
   const done = progress.done + (prefsReady ? 1 : 0) + (hasLink && !link.pending ? 1 : 0);
   const total = progress.total + 1 + (hasLink ? 1 : 0);
   const full = !!model && prefsReady && !link.pending && done >= total;
+  // True once the first load found no main mart to return to and no view link: the search box opens for the member.
+  const [firstVisit, setFirstVisit] = useState(false);
   const [held, setHeld] = useState(false);
   useEffect(() => {
     if (!full || held) return;
@@ -150,7 +152,8 @@ function AppBody() {
       const openable = !!last && !!model.marts.get(last.martId)?.accessible && (storageIds === null || storageIds.includes(model.marts.get(last.martId)!.storageId));
       // The remembered mart serves this pick only; later empty selections (a source toggled off and on) get the focus mart.
       remembered.current = null;
-      if (!last || !openable) { applied.current = mainKey(focusId, null); dispatch({ type: 'init', focusId }); return; }
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the first load is a one-time event of this effect; the header opens its search box on it
+      if (!last || !openable) { if (!hasLink) setFirstVisit(true); applied.current = mainKey(focusId, null); dispatch({ type: 'init', focusId }); return; }
       const keep = last.sourceKey && model.sources.some((x) => x.key === last.sourceKey) && sourceOfModel(model)(last.martId) === last.sourceKey ? last.sourceKey : null;
       applied.current = mainKey(last.martId, keep);
       dispatch({ type: 'init', focusId: last.martId, sourceKey: keep });
@@ -169,7 +172,7 @@ function AppBody() {
         ? { sourceKey: keep && sourceOfModel(model)(focusId) === keep ? keep : null, martId: focusId, record: null }
         : { ...state.selection, sourceKey: null },
     });
-  }, [model, link.pending, prefsReady, storageIds, focusId, martId, sourceKey, state.selection, dispatch]);
+  }, [model, link.pending, prefsReady, storageIds, focusId, martId, sourceKey, state.selection, hasLink, dispatch]);
   // The member's own selection changes are remembered. The mart the page opened on (remembered, focus fallback or view link) is not: a shared link
   // or a temporary fallback must not replace the saved one. Nothing is written before the saved value is read.
   useEffect(() => {
@@ -207,7 +210,7 @@ function AppBody() {
     <SmartSearchScope model={model}>
     <div className={`dm-page${fs ? ' dm-full' : ''}`}>
       <Header
-        search={<HeaderSearch />}
+        search={<HeaderSearch autoOpen={firstVisit} />}
         hint={<HeaderSearchHint />}
         failedStorages={model.failedStorages}
         error={error}

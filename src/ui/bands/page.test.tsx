@@ -46,7 +46,11 @@ const clearSearch = () => userEvent.click(screen.getByRole('button', { name: 'Cl
 // The orders grid used to open on its key; the key is no longer a default column, so these tests start from a grid that was saved with it.
 const withKeyShown = (c: Mock): Mock => keyShown(c);
 async function mountWith(wrap: (ctx: Mock) => Ctx = (c) => c, fixtures = demoFixtures(), seedKey = true) {
-  const view = render(<AppServices ctx={titleSearchOnly(wrap((seedKey ? withKeyShown : (c: Mock) => c)(createMockCtx(fixtures, { latencyMs: 0 }))))}><StoreProvider><App /><ModelReload /><SelectSecretLedger /></StoreProvider></AppServices>);
+  const base = createMockCtx(fixtures, { latencyMs: 0 });
+  // A remembered main mart, so the page opens on it with the search as a button, not as an open box.
+  void base.collections('preferences').put('main-mart', { martId: 'orders', sourceKey: null });
+  const ctx = titleSearchOnly(wrap((seedKey ? withKeyShown : (c: Mock) => c)(base)));
+  const view = render(<AppServices ctx={ctx}><StoreProvider><App /><ModelReload /><SelectSecretLedger /></StoreProvider></AppServices>);
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
   await waitFor(() => expect(document.querySelector('.dm-loadbar')).toBeNull());
   return view;

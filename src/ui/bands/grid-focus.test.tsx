@@ -8,6 +8,8 @@ import { martElementId } from './cards';
 
 function setup() {
   const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  // A remembered main mart: with none, the first visit opens the search box, which would take the Escape and the focus.
+  void ctx.collections('preferences').put('main-mart', { martId: 'orders', sourceKey: null });
   render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
 }
 const data = () => document.getElementById('band-data')!;

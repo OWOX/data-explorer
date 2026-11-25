@@ -12,9 +12,13 @@ import { App } from '../App';
 type Mock = ReturnType<typeof createMockCtx>;
 
 // A loaded CI runner must not turn a slow model into a timeout, so the AI budget is large unless a test is about the timeout.
-function setup(opts: { ai?: boolean; wrap?: (ctx: Mock) => Ctx; ctx?: Ctx; aiTimeoutMs?: number } = {}) {
+function setup(opts: { ai?: boolean; wrap?: (ctx: Mock) => Ctx; ctx?: Ctx; aiTimeoutMs?: number; fresh?: boolean } = {}) {
   const ctx = opts.ctx ?? (opts.wrap ?? ((c: Mock): Ctx => c))(createMockCtx(demoFixtures(), { latencyMs: 0, ai: opts.ai }));
-  const view = () => render(<AppServices ctx={ctx} aiTimeoutMs={opts.aiTimeoutMs ?? 60_000}><StoreProvider><App /></StoreProvider></AppServices>);
+  // A remembered main mart, so the page opens on it with the search as a button. `fresh` leaves nothing remembered: a first visit.
+  const view = () => {
+    if (!opts.fresh) void ctx.collections('preferences').put('main-mart', { martId: 'orders', sourceKey: null });
+    return render(<AppServices ctx={ctx} aiTimeoutMs={opts.aiTimeoutMs ?? 60_000}><StoreProvider><App /></StoreProvider></AppServices>);
+  };
   return { ctx, view };
 }
 const band = (id: string) => document.getElementById(id)!;
@@ -885,3 +889,56 @@ describe('the alternative marts', () => {
     expect(await within(marts()).findByText('No data marts match.')).toBeInTheDocument();
   });
 });
+
+describe('the focus and the icon of the search', () => {
+  const input = () => screen.getByRole('combobox', { name: 'Search data marts' });
+
+  test('a click on the search button leaves the focus in the input at once, with no wait', async () => {
+    setup().view();
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: 'Search data marts' }));
+    expect(document.activeElement).toBe(input());
+  });
+
+  test('a click on an applied query puts the focus in the input at once', async () => {
+    setup().view();
+    await ready();
+    await search('customers');
+    await userEvent.keyboard('{Escape}{Escape}');
+    fireEvent.click(await screen.findByRole('button', { name: 'Search data marts: customers' }));
+    expect(document.activeElement).toBe(input());
+  });
+
+  test('a press on the open box icon or padding puts the focus in the input', async () => {
+    setup().view();
+    await ready();
+    await openSearch();
+    (document.activeElement as HTMLElement).blur();
+    const form = document.querySelector('.dm-search-open') as HTMLElement;
+    fireEvent.mouseDown(form.querySelector('svg')!);
+    expect(input()).toHaveFocus();
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.mouseDown(form);
+    expect(input()).toHaveFocus();
+  });
+
+  test('the ad-hoc row and its reason row have the search icon without AI and the sparkles with AI', async () => {
+    for (const ai of [false, true]) {
+      const t = setup({ ai });
+      const view = t.view();
+      await ready();
+      const box = await openSearch();
+      await userEvent.type(box, 'c');
+      const reason = await screen.findByText('Type at least 2 characters');
+      const row = reason.closest('[role="option"]')!;
+      expect(!!row.querySelector('.lucide-search')).toBe(!ai);
+      expect(!!row.querySelector('.lucide-sparkles')).toBe(ai);
+      await userEvent.type(box, 'ust');
+      const adhoc = (await screen.findByText(/Ad-hoc report "cust"/)).closest('[role="option"]')!;
+      expect(!!adhoc.querySelector('.lucide-search')).toBe(!ai);
+      expect(!!adhoc.querySelector('.lucide-sparkles')).toBe(ai);
+      view.unmount();
+    }
+  });
+});
+

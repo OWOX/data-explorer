@@ -90,6 +90,14 @@ test('three Fibery connectors are one source card; selecting it shows all their 
   await expect(band(page, 'marts').getByText('Orders', { exact: true })).toHaveCount(0);
 });
 
+/** The search box of the header, opened: a fresh page already shows it open, a page with a remembered mart shows the button. */
+const openedSearch = async (page: Page) => {
+  const header = page.locator('header.dm-page-header');
+  const button = header.getByRole('button', { name: 'Search data marts', exact: true });
+  if (await button.isVisible()) await button.click();
+  return header.getByRole('combobox', { name: 'Search data marts' });
+};
+
 const heading = (page: Page) => band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate');
 const search = async (page: Page, q: string) => {
   const header = page.locator('header.dm-page-header');
@@ -101,7 +109,7 @@ const search = async (page: Page, q: string) => {
 
 test('search finds the marts through OWOX search and makes the best one the main mart', async ({ page }) => {
   await ordersGrid(page);
-  await page.locator('header.dm-page-header').getByRole('button', { name: 'Search data marts' }).click();
+  await openedSearch(page);
   await expect(page.locator('header.dm-page-header').getByRole('combobox', { name: 'Search data marts' })).toBeFocused();
   await search(page, 'campaign');
   await expect(heading(page)).toHaveText(['Campaigns']);
@@ -120,7 +128,7 @@ test('search finds the marts through OWOX search and makes the best one the main
 
 test('search dropdown: the ad-hoc row first, then reports, then marts, under a context filter', async ({ page }) => {
   await ordersGrid(page);
-  await page.locator('header.dm-page-header').getByRole('button', { name: 'Search data marts' }).click();
+  await openedSearch(page);
   const box = page.locator('header.dm-page-header').getByRole('combobox', { name: 'Search data marts' });
   await box.fill('paid orders');
   const options = page.getByRole('listbox').getByRole('option');
@@ -188,6 +196,9 @@ test('the page header is the title with Undo and Redo and no Refresh; the filter
   await expect(header.getByRole('button', { name: 'Undo' })).toBeDisabled();
   await expect(header.getByRole('button', { name: 'Redo' })).toBeDisabled();
   await expect(header.getByRole('button', { name: /Refresh/ })).toHaveCount(0);
+  // A fresh page opens the search box; Escape closes it back to the button.
+  await expect(header.getByRole('combobox', { name: 'Search data marts' })).toBeFocused();
+  await page.keyboard.press('Escape');
   await expect(header.getByRole('button', { name: 'Search data marts' })).toBeVisible();
   await expect(band(page, 'marts').locator('button.dm-search-btn')).toHaveCount(0);
   // Data Sources starts folded
@@ -273,9 +284,7 @@ test('a reference column shows the stored value as plain text; Referenced by ope
 test('the storage filter drops the marts of an unticked storage and leaves the selection alone', async ({ page }) => {
   await ordersGrid(page);
   // A mart row of the dropdown keeps the found marts in the band (the ad-hoc pipeline would also join the ones it needs).
-  const header = page.locator('header.dm-page-header');
-  await header.getByRole('button', { name: 'Search data marts' }).click();
-  await header.getByRole('combobox', { name: 'Search data marts' }).fill('orders');
+  await (await openedSearch(page)).fill('orders');
   await page.getByRole('option').filter({ hasText: /^Payments$/ }).click();
   await expect(band(page, 'data').locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Payments');
   await expect(band(page, 'marts').getByText('Customers', { exact: true })).toBeVisible();
@@ -888,8 +897,7 @@ test('a numeric filter applied through the popover (> 400) leaves fewer rows', a
 test('the opened search grows leftwards in the header: the title stays, the actions stay on screen', async ({ page }) => {
   await ordersGrid(page);
   const header = page.locator('header.dm-page-header');
-  await header.getByRole('button', { name: 'Search data marts' }).click();
-  const box = await header.getByRole('combobox', { name: 'Search data marts' }).boundingBox();
+  const box = await (await openedSearch(page)).boundingBox();
   const title = await header.getByRole('heading', { name: 'Data Explorer' }).boundingBox();
   const copy = await header.getByRole('button', { name: 'Copy link to this view' }).count();
   expect(title!.x).toBeGreaterThanOrEqual(0);
@@ -911,9 +919,7 @@ test('shift-click on another cell makes a block of cells, with the first cell ac
 
 test('a no-primary-key mart shows a warning next to the Data (i), not a block above the grid', async ({ page }) => {
   await ordersGrid(page);
-  const header = page.locator('header.dm-page-header');
-  await header.getByRole('button', { name: 'Search data marts' }).click();
-  await header.getByRole('combobox', { name: 'Search data marts' }).fill('daily');
+  await (await openedSearch(page)).fill('daily');
   // The ad-hoc pipeline picks among marts with a key, so the keyless mart is opened from its row.
   await page.getByRole('option').filter({ hasText: /^Daily KPIs$/ }).click();
   await expect(band(page, 'data').getByRole('note', { name: /no primary key/ })).toBeVisible();

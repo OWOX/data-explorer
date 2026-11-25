@@ -1,5 +1,5 @@
 import { ArrowRight, Loader2, Search, X } from 'lucide-react';
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef } from 'react';
 import type { Model } from '../../model/types';
 import { MAX_QUERY } from '../../search/endpoint';
 import type { Progress } from '../../search/pipeline';
@@ -18,7 +18,8 @@ export function SearchBox({ smart, label }: { smart: SmartSearch; label: string 
   const input = useRef<HTMLInputElement>(null);
   const listId = useId();
   const { open, applied, busy, draft, listOpen, rows, highlighted } = smart;
-  useEffect(() => { if (open) input.current?.focus(); }, [open]);
+  // A layout effect, so the input has focus in the same commit as the click that opened it.
+  useLayoutEffect(() => { if (open) input.current?.focus(); }, [open]);
   const { closeList } = smart;
   useEffect(() => {
     if (!listOpen) return;
@@ -52,7 +53,17 @@ export function SearchBox({ smart, label }: { smart: SmartSearch; label: string 
     );
   }
   return (
-    <ActionForm className="dm-search dm-search-open" role="search" aria-busy={busy} onAction={() => { if (!smart.problem) smart.pick(highlighted === null ? undefined : rows[highlighted]); }}>
+    <ActionForm
+      className="dm-search dm-search-open"
+      role="search"
+      aria-busy={busy}
+      // A press on the box's own icon or padding would blur the input; it puts the focus back instead.
+      onMouseDown={(e) => {
+        if ((e.target as HTMLElement).closest('input, button, .dm-search-results')) return;
+        e.preventDefault();
+        input.current?.focus();
+      }}
+      onAction={() => { if (!smart.problem) smart.pick(highlighted === null ? undefined : rows[highlighted]); }}>
       <Search size={14} />
       <input
         ref={input}

@@ -26,6 +26,8 @@ function setup(saved: string[] | null, tweak: (ctx: Mock) => Ctx = (c) => c) {
     return name === SAVED ? { get: c.get, put: (id: string, d: T) => { put(id, d); return c.put(id, d); } } : c;
   } };
   const col = inner.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION);
+  // A remembered main mart keeps the first visit's open search box out of these tests.
+  void inner.collections('preferences').put('main-mart', { martId: 'orders', sourceKey: null });
   const seeded = saved ? col.put('orders', { columns: saved, at: 'then' }) : Promise.resolve();
   const services: { current: ReturnType<typeof useServices> | null } = { current: null };
   const Probe = () => { services.current = useServices(); return null; };
