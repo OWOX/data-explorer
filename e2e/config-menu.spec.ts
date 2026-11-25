@@ -132,7 +132,7 @@ test('the filter badge lists the filtered fields under Remove filters, and Remov
   };
   await filter('status', 'paid', 'contains');
   await expect(data(page).getByRole('button', { name: '1 filter', exact: true })).toBeVisible();
-  // Each count is waited for, never read from the rows still on screen: 110 rows after one filter, 5 after two, 202 after Clear.
+  // Each count is waited for, never read from the rows still on screen: 110 rows after one filter, 5 after two, 202 after Remove filters.
   const rows = () => data(page).getByRole('row').count();
   await expect.poll(rows).toBe(110);
   await filter('Store', '1');
@@ -213,10 +213,15 @@ test('Graph view: a panel opened from the root menu keeps its row through a wind
 });
 
 declare global { interface Window { __copiedLink?: string } }
+// Two header rows and 11 customers' orders for the email filter below.
+const ROWS = 13;
+const TIP = '108 of 450 records match the filters and slices';
 
 test('Clear on a joined data mart keeps it with its filter, the view link carries it, and Remove from report drops it', async ({ page, context }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
-  const customers = await openFields(page, 'Orders').then((orders) => orders.getByRole('menuitem', { name: 'Customers', exact: true }).click()).then(() => page.getByRole('dialog', { name: 'Customers', exact: true }));
+  const orders = await openFields(page, 'Orders');
+  await orders.getByRole('menuitem', { name: 'Customers', exact: true }).click();
+  const customers = page.getByRole('dialog', { name: 'Customers', exact: true });
   await customers.getByLabel('email', { exact: true }).click();
   await joinedRowsArrived(page);
   await closeConfig(page);
@@ -228,15 +233,19 @@ test('Clear on a joined data mart keeps it with its filter, the view link carrie
   await icon.click();
   await page.getByRole('menuitem', { name: 'Filter', exact: true }).click();
   await page.getByLabel('Operator').selectOption('contains');
-  await page.getByLabel('Value').fill('@example.com');
+  await page.getByLabel('Value').fill('10@example.com');
   await page.getByRole('button', { name: 'Apply' }).click();
   await expect(data(page).getByRole('button', { name: '1 filter', exact: true })).toBeVisible();
+  // The badge also counts a parked rule, so the rows prove the filter is sent: few rows, the same after Clear and on the opened link.
+  const rows = () => data(page).getByRole('row').count();
+  await expect.poll(rows).toBe(ROWS);
   // Clear in the data mart's panel: no column, but the mart and its filter stay.
   const fields = await openFields(page, 'Customers');
   await fields.getByRole('button', { name: 'Clear', exact: true }).click();
   await closeConfig(page);
   await expect(groupTitles(page)).toHaveText(['Orders']);
   await expect(data(page).getByRole('button', { name: '1 filter', exact: true })).toBeVisible();
+  await expect.poll(rows).toBe(ROWS);
   const menu = await openConfig(page);
   await expect(menu.getByRole('menuitem', { name: 'Customers', exact: true })).toBeVisible();
   await closeConfig(page);
@@ -247,6 +256,7 @@ test('Clear on a joined data mart keeps it with its filter, the view link carrie
   const opened = await context.newPage();
   await opened.goto(`/?mock&route=${encodeURIComponent(link)}`);
   await expect(data(opened).getByRole('button', { name: '1 filter', exact: true })).toBeVisible();
+  await expect.poll(() => data(opened).getByRole('row').count()).toBe(ROWS);
   const openedMenu = await openConfig(opened);
   await expect(openedMenu.getByRole('menuitem', { name: 'Customers', exact: true })).toBeVisible();
   await closeConfig(opened);
@@ -255,6 +265,7 @@ test('Clear on a joined data mart keeps it with its filter, the view link carrie
   const empty = await openFields(page, 'Customers');
   await empty.getByRole('menuitem', { name: 'Remove from report' }).click();
   await expect(data(page).getByRole('button', { name: /^\d+ filters?$/ })).toHaveCount(0);
+  await expect.poll(rows).toBe(202);
   const after = await openConfig(page);
   await expect(after.getByRole('menuitem', { name: 'Customers', exact: true })).toHaveCount(0);
   await closeConfig(page);
@@ -274,7 +285,7 @@ test('a filtered card shows its share of matching records, and none without a fi
   await expect.poll(() => data(page).getByRole('row').count()).toBe(110);
   await expect(card.locator('[data-match]')).toHaveText('24% match');
   await card.locator('[data-match]').hover();
-  await expect(page.getByRole('tooltip')).toContainText('108 of ');
+  await expect(page.getByRole('tooltip')).toHaveText(TIP);
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(card.locator('[data-match]')).toHaveCount(0);
 });
