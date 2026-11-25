@@ -96,6 +96,8 @@ function AppBody() {
   const full = !!model && prefsReady && !link.pending && done >= total;
   // True once the first load found no main mart to return to and no view link: the search box opens for the member.
   const [firstVisit, setFirstVisit] = useState(false);
+  // Settled by the first pick of the page only: a later empty selection (a source toggled off) is not a first visit.
+  const firstPick = useRef(true);
   const [held, setHeld] = useState(false);
   useEffect(() => {
     if (!full || held) return;
@@ -152,8 +154,10 @@ function AppBody() {
       const openable = !!last && !!model.marts.get(last.martId)?.accessible && (storageIds === null || storageIds.includes(model.marts.get(last.martId)!.storageId));
       // The remembered mart serves this pick only; later empty selections (a source toggled off and on) get the focus mart.
       remembered.current = null;
+      const first = firstPick.current;
+      firstPick.current = false;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- the first load is a one-time event of this effect; the header opens its search box on it
-      if (!last || !openable) { if (!hasLink) setFirstVisit(true); applied.current = mainKey(focusId, null); dispatch({ type: 'init', focusId }); return; }
+      if (!last || !openable) { if (first && !hasLink) setFirstVisit(true); applied.current = mainKey(focusId, null); dispatch({ type: 'init', focusId }); return; }
       const keep = last.sourceKey && model.sources.some((x) => x.key === last.sourceKey) && sourceOfModel(model)(last.martId) === last.sourceKey ? last.sourceKey : null;
       applied.current = mainKey(last.martId, keep);
       dispatch({ type: 'init', focusId: last.martId, sourceKey: keep });

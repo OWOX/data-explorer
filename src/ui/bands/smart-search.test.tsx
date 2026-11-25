@@ -913,13 +913,16 @@ describe('the focus and the icon of the search', () => {
     setup().view();
     await ready();
     await openSearch();
-    (document.activeElement as HTMLElement).blur();
     const form = document.querySelector('.dm-search-open') as HTMLElement;
-    fireEvent.mouseDown(form.querySelector('svg')!);
+    // The press is cancelled (fireEvent returns false), so the browser does not move the focus away from the input.
+    expect(fireEvent.mouseDown(form.querySelector('svg')!)).toBe(false);
     expect(input()).toHaveFocus();
     (document.activeElement as HTMLElement).blur();
-    fireEvent.mouseDown(form);
+    expect(fireEvent.mouseDown(form)).toBe(false);
     expect(input()).toHaveFocus();
+    // A press on the input or a button keeps its own behaviour.
+    expect(fireEvent.mouseDown(input())).toBe(true);
+    expect(fireEvent.mouseDown(screen.getByRole('button', { name: 'Search' }))).toBe(true);
   });
 
   test('the ad-hoc row and its reason row have the search icon without AI and the sparkles with AI', async () => {

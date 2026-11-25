@@ -241,10 +241,38 @@ describe('the search box on a first visit', () => {
     await waitFor(() => expect(combobox()).toHaveFocus());
   });
 
-  test('a remembered mart that cannot be read: the box', async () => {
+  test('a remembered mart the member cannot access: the box', async () => {
+    await setup({ martId: 'secret_ledger', sourceKey: null });
+    await settled();
+    await waitFor(() => expect(combobox()).toHaveFocus());
+  });
+
+  test('a preferences read that failed: the box', async () => {
     await setup({ martId: 'returns', sourceKey: null }, { fail: true });
     await settled();
     await waitFor(() => expect(combobox()).toHaveFocus());
+  });
+
+  test('the source toggled off after a remembered first load does not open the box mid-session', async () => {
+    await setup({ martId: 'returns', sourceKey: SHOPIFY });
+    await settled();
+    await waitFor(() => expect(box.latest.selection.martId).toBe('returns'));
+    await act(async () => box.dispatch({ type: 'selectSource', key: SHOPIFY }));
+    await waitFor(() => expect(box.latest.selection.martId).not.toBe('returns'));
+    await quiet();
+    expect(combobox()).toBeNull();
+    expect(button()).not.toBeNull();
+  });
+
+  test('a source-only view link: the button, and it stays so when the source is toggled off', async () => {
+    await setup(undefined, { route: await encodeViewLink({ ...linkView, martId: null, sourceKey: SHOPIFY }) });
+    await settled();
+    await quiet();
+    expect(combobox()).toBeNull();
+    await act(async () => box.dispatch({ type: 'selectSource', key: SHOPIFY }));
+    await quiet();
+    expect(combobox()).toBeNull();
+    expect(button()).not.toBeNull();
   });
 
   test('a view link: the button', async () => {

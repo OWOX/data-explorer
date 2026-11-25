@@ -109,7 +109,10 @@ const search = async (page: Page, q: string) => {
 
 test('search finds the marts through OWOX search and makes the best one the main mart', async ({ page }) => {
   await ordersGrid(page);
+  // A fresh page opens the box; close it, then a click on the button puts the focus in the input.
   await openedSearch(page);
+  await page.keyboard.press('Escape');
+  await page.locator('header.dm-page-header').getByRole('button', { name: 'Search data marts', exact: true }).click();
   await expect(page.locator('header.dm-page-header').getByRole('combobox', { name: 'Search data marts' })).toBeFocused();
   await search(page, 'campaign');
   await expect(heading(page)).toHaveText(['Campaigns']);
