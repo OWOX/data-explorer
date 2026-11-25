@@ -61,10 +61,18 @@ Tests: replace the ones that assert the old pending behaviour. Clear keeps the m
 
 ## Task 4: "12% match" on the cards
 
-1. `matchQuery(paths, filter, counter)` next to `scorecardsQuery`: one query, `uniqueCount` of every report mart with a usable key (`''` when `hasPrimaryKey(native)`, a joined path when `source.uniqueCount`), the grid's filters and slices without HAVING, the `counter` column when a blended filter needs an explicit list. With HAVING filters or filters on calculated metrics only, no badge.
-2. The read is made only while a filter or a slice is complete and applies; it is debounced with the grid's own change, aborted on a newer one, and cached by its query in memory. A failure shows no badge.
-3. The card's badge is after the count badge: `floor(100 * matched / total)` + "% match". Nothing at `matched >= total`, when the total is unknown, or when the total is 0. Above 0 and below 1: "<1% match". 0: "0% match". Tooltip: "1,480 of 12,300 records match the filters and slices".
-4. Both views (Grid cards and Graph). A mart joined at two paths shows its own path's number on the Graph, and no badge on the Grid card.
+The badge has no query of its own. It shares the scorecard query and its cache (`scorecardsQuery`, `useScorecards`, `useChartQuery`), which Charts sends on every filter or slice change anyway.
+
+1. One source of the scorecard query for both views. Move what builds it out of `ChartsBody` (the `cf.marts`, metrics, `counter` and `filter` that `useScorecards` gets) to a place `MartGrid` can call in Table too, so both views ask with an identical key. Do not write a second builder.
+2. Empty marts with a usable key (`source.uniqueCount`) join that query's `uniqueCount` list in both views. They get no scorecard: the cards drawn stay the ones of marts with columns.
+3. Table, ungrouped, only the main mart in the report, and the grid's `total` (`useMartRows`) is known and not `exact` (no calculated column or filter): the main mart's matched count is `total`. No scorecard query runs.
+4. Table in any other case (a joined or empty mart in the report, a grouped grid, no known total), while a filter or a slice is complete and applies: the scorecard query runs in Table, through `useChartQuery`. With no filter and no slice, nothing runs in Table. It respects `paused`, `blocked` and the HAVING `gate` as Charts does, and waits for the grid's filters to settle like the grid's own read.
+5. Charts: the badge reads the `useScorecards` result that is already there. No read is added.
+6. The matched count of a path is the row's `uniqueKey(path)`. A mart without a usable key has no badge, except the main mart in case 3. HAVING filters are not part of the count (`fit` drops them). With only HAVING filters or filters on calculated metrics there is no badge. A failed read shows no badge.
+7. The card's badge comes after the count badge: `floor(100 * matched / total)` + "% match", where total is the card's own record count. Nothing when `matched >= total`, when the total is unknown, or when the total is 0. Above 0 and below 1: "<1% match". 0: "0% match". Tooltip: "1,480 of 12,300 records match the filters and slices". While a new count is being read, no badge.
+8. Both views of the band (Grid cards and Graph). A mart joined at two paths shows its own path's number on the Graph, and no badge on the Grid card.
+
+Tests: switching Table to Charts with the same filters makes no second scorecard read, and the reverse; Table with only the main mart makes none; Table with no filter makes none; an empty mart is in the one query and draws no scorecard; every text rule of point 7.
 
 ## Task 5: README and e2e
 
