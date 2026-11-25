@@ -333,3 +333,122 @@ test('an ordinary label is copied unchanged', async () => {
   await userEvent.click(copyButton());
   expect(writeText).toHaveBeenCalledWith('Paid: $9,299 (23%)');
 });
+
+test('the bubble held open by the pointer is closed when another trigger of the group settles', async () => {
+  render(pair());
+  await userEvent.hover(screen.getByRole('button', { name: 'A' }));
+  await screen.findByRole('tooltip');
+  await userEvent.unhover(screen.getByRole('button', { name: 'A' }));
+  fireEvent.pointerEnter(bubble()!);
+  fireEvent.pointerEnter(screen.getByRole('button', { name: 'B' }));
+  await new Promise((r) => setTimeout(r, 500));
+  expect(screen.getByRole('tooltip')).toHaveTextContent('Second: 2');
+  expect(document.querySelectorAll('.dm-hint-body')).toHaveLength(1);
+});
+
+// Fallback copy while ANOTHER trigger has focus: the textarea round trip hands focus back to it, and its tooltip must not open and close the bubble being copied from.
+const twoNodes = () => (
+  <HoverableTooltipProvider><svg>
+    <Tooltip content="First: 1" copyText="First: 1" side="right"><rect data-testid="a" tabIndex={0} width={5} height={5} /></Tooltip>
+    <Tooltip content="Second: 2" copyText="Second: 2" side="right"><rect data-testid="b" tabIndex={0} width={5} height={5} /></Tooltip>
+  </svg></HoverableTooltipProvider>
+);
+const noApi = (result: boolean) => {
+  Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+  Object.defineProperty(document, 'execCommand', { value: vi.fn().mockReturnValue(result), configurable: true });
+};
+
+test.each([true, false])('fallback copy (works: %s) from one node while another has focus keeps the bubble and shows the answer', async (works) => {
+  noApi(works);
+  render(twoNodes());
+  const [a, b] = [screen.getByTestId('a'), screen.getByTestId('b')];
+  b.focus();
+  await waitFor(() => expect(bubble()).not.toBeNull());
+  await userEvent.hover(a);
+  await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('First: 1'));
+  await userEvent.click(copyButton());
+  if (works) await waitFor(() => expect(copyButton()).toHaveAttribute('data-copied'));
+  else expect(await screen.findByText('Copy failed')).toBeInTheDocument();
+  expect(screen.getByRole('tooltip')).toHaveTextContent('First: 1');
+});
+
+test('fallback copy from a hoverable bubble while a plain tooltip button has focus keeps the bubble and shows the answer', async () => {
+  noApi(true);
+  render(<HoverableTooltipProvider><Tooltip content="Plain"><button type="button">Plain</button></Tooltip><Tooltip content="First: 1" copyText="First: 1" side="right"><rect data-testid="a" tabIndex={0} /></Tooltip></HoverableTooltipProvider>);
+  screen.getByRole('button', { name: 'Plain' }).focus();
+  await userEvent.hover(screen.getByTestId('a'));
+  await waitFor(() => expect(document.querySelector('.dm-hint-hoverable')).not.toBeNull());
+  console.log('DBG1', document.querySelectorAll('.dm-hint-body').length, document.querySelector('.dm-hint-hoverable') != null);
+  await userEvent.click(copyButton());
+  await waitFor(() => expect(copyButton()).toHaveAttribute('data-copied'));
+  expect(document.querySelector('.dm-hint-hoverable')).not.toBeNull();
+});
+
+test.each(['ok', 'failed', 'rejected'])('after a copy (%s) focusing a trigger opens its tooltip again', async (how) => {
+  if (how === 'rejected') Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn().mockRejectedValue(new Error('blocked')) }, configurable: true });
+  else noApi(how === 'ok');
+  Object.defineProperty(document, 'execCommand', { value: vi.fn().mockReturnValue(how === 'ok'), configurable: true });
+  render(twoNodes());
+  await userEvent.hover(screen.getByTestId('a'));
+  await screen.findByRole('tooltip');
+  await userEvent.click(copyButton());
+  await waitFor(() => expect(screen.queryByText('Copy failed') ?? copyButton().hasAttribute('data-copied') ? true : null).toBeTruthy());
+  await userEvent.unhover(screen.getByTestId('a'));
+  await waitFor(() => expect(bubble()).toBeNull(), { timeout: 1000 });
+  screen.getByTestId('b').focus();
+  await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('Second: 2'));
+});
+
+test("a consumer's own onFocus still runs", async () => {
+  const onFocus = vi.fn();
+  render(<HoverableTooltipProvider><Tooltip content="x" copyText="x"><button type="button" onFocus={onFocus}>F</button></Tooltip></HoverableTooltipProvider>);
+  screen.getByRole('button', { name: 'F' }).focus();
+  expect(onFocus).toHaveBeenCalled();
+});
+
+test('a touch pointer on a trigger of a group does not open a bubble after a hold', async () => {
+  render(pair());
+  const a = screen.getByRole('button', { name: 'A' });
+  fireEvent.pointerEnter(a, { pointerType: 'touch' });
+  fireEvent.pointerMove(a, { pointerType: 'touch' });
+  await new Promise((r) => setTimeout(r, 500));
+  expect(bubble()).toBeNull();
+  fireEvent.pointerEnter(a, { pointerType: 'mouse' });
+  await waitFor(() => expect(bubble()).not.toBeNull());
+});
+
+// A press inside the bubble holds the trigger's blur off until the pointer is released or cancelled.
+const pressed = async (release: 'pointerup' | 'pointercancel' | null) => {
+  render(svgTip());
+  const node = screen.getByTestId('node');
+  node.focus();
+  await screen.findByRole('tooltip');
+  fireEvent.pointerDown(bubble()!);
+  if (release) fireEvent(document, new Event(release));
+  return node;
+};
+test.each(['pointerup', 'pointercancel'] as const)('after %s the trigger\'s blur closes the bubble again', async (release) => {
+  const node = await pressed(release);
+  node.blur();
+  await waitFor(() => expect(bubble()).toBeNull());
+});
+test('during the press the trigger\'s blur does not close the bubble', async () => {
+  const node = await pressed(null);
+  node.blur();
+  await new Promise((r) => setTimeout(r, 100));
+  expect(bubble()).not.toBeNull();
+  fireEvent(document, new Event('pointerup'));
+});
+test('one release removes both press listeners', async () => {
+  render(svgTip());
+  screen.getByTestId('node').focus();
+  await screen.findByRole('tooltip');
+  const add = vi.spyOn(document, 'addEventListener'), remove = vi.spyOn(document, 'removeEventListener');
+  fireEvent.pointerDown(bubble()!);
+  fireEvent(document, new Event('pointercancel'));
+  const press = (spy: typeof add) => spy.mock.calls.filter(([t]) => t === 'pointerup' || t === 'pointercancel');
+  expect(press(add).map(([t]) => t).sort()).toEqual(['pointercancel', 'pointerup']);
+  expect(press(remove).map(([t]) => t).sort()).toEqual(['pointercancel', 'pointerup']);
+  expect(press(remove).map(([, f]) => f)).toEqual(expect.arrayContaining(press(add).map(([, f]) => f)));
+  add.mockRestore(); remove.mockRestore();
+});

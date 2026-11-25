@@ -305,11 +305,21 @@ test('a node bubble lets go within a second; slow and diagonal moves to it keep 
   await expect(bubble).toHaveCount(0, { timeout: 1000 });
 });
 
-test('a long node bubble stays inside a 500px wide viewport with its Copy button', async ({ page }) => {
+test('with a node bubble open, one move away to a blank spot closes it with no further move', async ({ page }) => {
+  const sankey = await openSankey(page);
+  const bubble = page.locator('.dm-hint-body');
+  await sankey.locator('rect[data-node^="0|"]').first().hover();
+  await expect(bubble).toBeVisible();
+  await page.mouse.move(5, 5);
+  await expect(bubble).toHaveCount(0, { timeout: 1500 });
+});
+
+test('a long bubble of a node in the last column stays inside a 500px wide viewport with its Copy button', async ({ page }) => {
   await page.setViewportSize({ width: 500, height: 900 });
   const sankey = await openSankey(page);
-  const node = sankey.locator('rect[data-node^="0|"]').first();
-  await node.hover();
+  // A node of the last column: the mock's labels are never cut, so this is the trigger furthest right, with the least room.
+  const label = sankey.locator('rect[data-node^="1|"]').first();
+  await label.hover();
   const bubble = page.locator('.dm-hint-body');
   await expect(bubble).toBeVisible();
   // The mock has no long names: lengthen the shown text in place.

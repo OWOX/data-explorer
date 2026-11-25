@@ -2,7 +2,7 @@
 // card, line or band can paint over it, and it keeps 8px from the viewport edge.
 import * as T from '@radix-ui/react-tooltip';
 import { Check, CircleHelp, Copy, Info } from 'lucide-react';
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type SyntheticEvent } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type PointerEvent, type SyntheticEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { copySafe } from '../export/tsv';
 import { copyText as writeClipboard } from './explorer/clipboard';
@@ -83,17 +83,25 @@ export function Tooltip({ content, children, side = 'top', copyText }: { content
       setOpen(true);
     }, REST_MS);
   };
-  const enter = () => {
+  // A finger has no hover: a touch that rests on a trigger must not open a bubble.
+  const enter = (e: PointerEvent<Element>) => {
     if (hoverable) cancel();
-    if (group && !empty) rest();
+    if (group && !empty && e.pointerType !== 'touch') rest();
   };
   // A pointer still moving over the trigger (slowly crossing a ribbon on its way to the bubble) has not arrived.
-  const moved = () => { if (settling.current) rest(); };
+  const moved = (e: PointerEvent<Element>) => { if (settling.current && e.pointerType !== 'touch') rest(); };
   const leave = () => { clearTimeout(settle.current); settling.current = false; };
   const press = (e: SyntheticEvent) => {
     e.stopPropagation();
     setHold(true);
-    document.addEventListener('pointerup', () => setHold(false), { once: true });
+    // The press ends with a release or a cancel (a scroll takes the touch): either lets the hold go, and both listeners go together.
+    const release = () => {
+      setHold(false);
+      document.removeEventListener('pointerup', release);
+      document.removeEventListener('pointercancel', release);
+    };
+    document.addEventListener('pointerup', release);
+    document.addEventListener('pointercancel', release);
   };
   return (
     // Radix keeps a hoverable bubble open while the pointer crosses the gap to it; the wait above closes it when the pointer stops.
@@ -107,6 +115,8 @@ export function Tooltip({ content, children, side = 'top', copyText }: { content
         // Radix closes on blur too: preventDefault keeps its handler out while a copy has moved focus away for a moment.
         onBlur={(e) => { if (hold.current) { e.preventDefault(); return; } setOpen(false); }}
         onPointerDown={() => setOpen(false)}
+        // A copy that hands focus back to another trigger must not open that trigger's tooltip: Radix's own handler would close the bubble being copied from.
+        onFocus={(e) => { if (copying > 0) e.preventDefault(); }}
       >{children}</T.Trigger>
       {!empty && (
         <T.Portal>
@@ -128,6 +138,8 @@ export function Tooltip({ content, children, side = 'top', copyText }: { content
 }
 
 const COPIED_MS = 1500;
+/** How many copies are running: the textarea round trip of the fallback returns focus to whatever had it, which is not the user focusing it. */
+let copying = 0;
 
 /** The corner button of a hoverable bubble: copies `text` (the clipboard API, then the textarea fallback), shows a check for a moment, or says the copy failed. */
 function CopyButton({ text, onHold }: { text: string; onHold: (on: boolean) => void }) {
@@ -137,7 +149,8 @@ function CopyButton({ text, onHold }: { text: string; onHold: (on: boolean) => v
   const copy = async () => {
     // The fallback moves focus to a hidden textarea and back: the node's blur on the way is not a reason to close.
     onHold(true);
-    const ok = await writeClipboard(copySafe(text)).finally(() => onHold(false));
+    copying++;
+    const ok = await writeClipboard(copySafe(text)).finally(() => { copying--; onHold(false); });
     setState(ok ? 'ok' : 'failed');
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setState(null), COPIED_MS);

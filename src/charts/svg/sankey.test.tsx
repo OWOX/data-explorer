@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, vi } from 'vitest';
 import { TooltipProvider } from '../../ui/Tooltip';
@@ -364,4 +364,19 @@ test('no copy button is mounted while no tooltip is open', () => {
   draw();
   expect(screen.queryByRole('button', { name: 'Copy to clipboard' })).toBeNull();
   expect(document.querySelector('.dm-hint-body')).toBeNull();
+});
+
+test('a node bubble held open by the pointer is closed when another node settles: the nodes share one group', async () => {
+  const { container } = draw();
+  const [a, b] = [container.querySelector('rect[data-node^="0|"]')!, container.querySelector('rect[data-node^="1|"]')!];
+  await userEvent.hover(a);
+  const first = (await screen.findByRole('tooltip')).textContent;
+  await userEvent.unhover(a);
+  // The pointer is in the bubble (its wait is off), then lands on the other node.
+  fireEvent.pointerEnter(document.querySelector('.dm-hint-body')!);
+  fireEvent.pointerEnter(b);
+  await new Promise((r) => setTimeout(r, 500));
+  expect(document.querySelectorAll('.dm-hint-body')).toHaveLength(1);
+  // The group's settle opened this node's own tooltip (a bare pointerenter opens nothing else).
+  expect(screen.getByRole('tooltip').textContent).not.toBe(first);
 });
