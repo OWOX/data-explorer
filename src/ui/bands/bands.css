@@ -36,8 +36,8 @@
   gap: 0.5rem 1rem; padding: 1rem; cursor: pointer;
 }
 .dm-band-titlegroup { display: flex; align-items: center; gap: 0.5rem; align-self: center; min-width: 0; flex: 1 1 auto; }
-/* On a narrow page the switch and the button beside it drop under the title. Not at every width: a wrapping row measures the title uncut, so a long one would push its count down instead of ending in an ellipsis. */
-@media (max-width: 640px) { .dm-band-titlegroup { flex-wrap: wrap; } }
+/* In a header with a view switch the switch and the button beside it drop under the title when they do not fit. Only there: those titles are short and fixed, while a long Row title must end in an ellipsis, not drop under its icon. */
+.dm-band-titlegroup:has(.dm-seg) { flex-wrap: wrap; row-gap: 0.25rem; }
 /* The marts band has the badges in its toolbar. The title group keeps its own width on the left, and the toolbar takes the rest with a fixed basis: the badges' width must not decide whether the header wraps, or the two would chase each other. */
 .dm-band-head:has(.dm-context-filter) .dm-band-titlegroup { flex: 0 1 auto; }
 .dm-band-head:has(.dm-context-filter) .dm-band-actions { flex: 1 1 24rem; }
