@@ -520,6 +520,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-check svg, .dm-menu-tick svg { color: inherit; stroke: currentColor; }
 .dm-menu-arrow { flex-shrink: 0; margin-right: -6px; color: var(--menu-muted); }
 .dm-menu-sep { height: 0; margin: 8px 0; border-top: 1px solid var(--menu-line); }
+.dm-menu-heading { padding: 0 16px 4px; color: var(--menu-muted); font-size: 12px; line-height: 16px; }
 .dm-menu-row[role='menuitemradio'], .dm-menu-row[aria-checked] { padding-left: 16px; }
 /* No hover on touch: the actions stay on screen there. */
 @media (hover: none) { .dm-reveal { opacity: 1; } }

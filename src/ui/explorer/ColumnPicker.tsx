@@ -1,15 +1,11 @@
 import { Columns3, Funnel, Layers, X, type LucideIcon } from 'lucide-react';
 import { forwardRef, useState, type ButtonHTMLAttributes } from 'react';
-import { UNIQUE_COUNT_LABEL } from '../../model/unique-count';
 import type { Field } from '../../model/types';
 import { Popover } from '../Popover';
-import { fieldLabel } from '../../model/fieldLabel';
-import { SheetsChecklist, type ChecklistItem } from '../SheetsChecklist';
-import { FieldHint, FieldLabel } from './FieldLabel';
+import { MartFields } from './MartFields';
 import type { ColumnFilter } from '../../filters/build';
 import { Tooltip } from '../Tooltip';
-import { ownInSchemaOrder } from '../../state/column-order';
-import { FieldMenuButton, RuleListMenu } from './ColumnMenu';
+import { RuleListMenu } from './ColumnMenu';
 
 /** Focuses a badge's button of this title cell once the cell has been rebuilt: the named kind when it is still there, else the "N columns" button (a cleared badge is gone). */
 function focusBadge(from: HTMLElement | null, kind: string) {
@@ -85,52 +81,15 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
   /** The outputs under the mart's header (its group's span: the Unique Count and every function column count). Absent, the shown fields are counted. */
   columns?: number;
 }) {
-  const set = new Set(visible);
   const mine = new Set(fields.map((f) => f.name));
-  // A joined mart whose last field is unticked stays on the grid while the popup is open (Clear, then a new tick, keeps it); it leaves when the popup closes with nothing ticked.
-  const [open, setOpen] = useState(false);
-  const [emptied, setEmptied] = useState(false);
-  const apply = (picked: string[]) => {
-    if (!main && picked.length === 0) { setEmptied(true); return; }
-    setEmptied(false);
-    commit(picked);
-  };
-  const onOpenChange = (o: boolean) => {
-    setOpen(o);
-    if (!o && emptied) { setEmptied(false); commit([]); }
-  };
-  const ownInOrder = (keep: Set<string>) => ownInSchemaOrder(visible, fields.map((f) => f.name), keep);
-  const commit = (picked: string[]) => {
-    const keep = new Set(picked);
-    const others = visible.filter((c) => !mine.has(c));
-    let next = main
-      ? [...ownInOrder(keep), ...others]
-      : [...visible.filter((c) => !mine.has(c) || keep.has(c)), ...picked.filter((n) => !set.has(n))];
-    // Clear never leaves the grid without a column.
-    if (next.length === 0) next = visible.slice(0, 1);
-    onChange(next);
-  };
-  const shownNow = emptied ? [] : visible.filter((c) => mine.has(c));
-  const n = emptied ? 0 : columns ?? shownNow.length;
+  const n = columns ?? visible.filter((c) => mine.has(c)).length;
   const count = `${n} column${n === 1 ? '' : 's'}`;
-  const items: ChecklistItem[] = fields.map((f) => ({
-    value: f.name,
-    text: fieldLabel(f),
-    label: <FieldLabel field={f} hint={false} />,
-    action: <FieldMenuButton field={f} onHide={() => apply(shownNow.filter((n) => n !== f.name))} />,
-    extra: <FieldHint field={f} decorative />,
-    description: f.description?.trim() || undefined,
-    disabled: set.has(f.name) && (visible.length === 1 || locked(f.name)),
-  }));
   return (
     <span className="dm-rule-badge dm-rule-badge-neutral" data-mart-badge="column">
-    <Popover align="start" open={open} onOpenChange={onOpenChange} trigger={
+    <Popover align="start" trigger={
       <BadgeText icon={Columns3} label={count} aria={`Fields of ${title}: ${count}`} />
     }>
-      <div className="flex flex-col gap-2">
-        <SheetsChecklist label={`Fields of ${title}`} items={items} selected={shownNow} displaying={shownNow.length} onChange={apply}
-          lead={unique ? { item: { value: 'unique-count', text: UNIQUE_COUNT_LABEL }, on: unique.on, onToggle: unique.onToggle } : undefined} />
-      </div>
+      <MartFields mart={{ path: '', title, main, fields, locked, unique }} visible={visible} onChange={onChange} />
     </Popover>
     {remove && (
       <Tooltip content={`Remove ${title} from the grid`}>

@@ -85,7 +85,7 @@ describe('the Unique Count row', () => {
 
   test('is the first row, left out of Select all and the counts, and absent when the mart offers no metric', async () => {
     await openUnique(['name'], { on: false, onToggle: () => undefined });
-    expect(screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))).toEqual(['Unique Count', 'id', 'name', 'city']);
+    expect(screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))).toEqual(['Unique Count', 'name', 'id', 'city']);
     expect(screen.getByRole('button', { name: 'Select all 3' })).toBeInTheDocument();
     expect(screen.getByText('Displaying 1')).toBeInTheDocument();
     cleanup();

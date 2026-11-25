@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Keyboar
 import { createPortal } from 'react-dom';
 import { useLatest } from '../useLatest';
 import { rovingTarget } from '../roving';
+import { Hint } from '../Tooltip';
 import { placeBeside, placeBelow, type Place } from './menuPlacement';
 
 /** How long the pointer rests on another row before its submenu replaces the open one. */
@@ -126,14 +127,14 @@ export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onP
   );
 }
 
-export function Row({ label, icon, glyph, active, check, checkbox, slot, tickEnd, tick, checked, sub, expanded, haspopup, disabled, tabbable, onLeaveRow, rowRef, onActivate, onOpen, onHover }: {
-  label: string; /** A muted glyph between the tick column and the label (a chart's type). */ glyph?: ReactNode; /** A first-level glyph in its own slot: outlined, or filled when the member has set this on the column. */ icon?: ReactNode; active?: boolean; check?: boolean; /** A check row that is its own choice, not one of a radio group: announced as a checkbox. */ checkbox?: boolean; /** Keeps the check column's room without being a choice row. */ slot?: boolean; /** A check row shows its tick at the row's right end (where a submenu row has its chevron) and has no left tick column. */ tickEnd?: boolean; /** A submenu row that holds the current choice: the tick sits before its chevron, and the row stays a plain menu item. */ tick?: boolean; checked?: boolean; sub?: boolean; expanded?: boolean; haspopup?: 'menu' | 'dialog'; disabled?: boolean; /** In the date filter's dialog the rows are reached with Tab; in a menu they are reached with the arrow keys. */ tabbable?: boolean;
+export function Row({ label, hint, icon, glyph, active, check, checkbox, slot, tickEnd, tick, checked, sub, expanded, haspopup, disabled, tabbable, onLeaveRow, rowRef, onActivate, onOpen, onHover }: {
+  label: string; /** A description shown as a (?) while the row is hovered or focused. It is decorative for assistive tech: the row carries it as its description. */ hint?: string; /** A muted glyph between the tick column and the label (a chart's type). */ glyph?: ReactNode; /** A first-level glyph in its own slot: outlined, or filled when the member has set this on the column. */ icon?: ReactNode; active?: boolean; check?: boolean; /** A check row that is its own choice, not one of a radio group: announced as a checkbox. */ checkbox?: boolean; /** Keeps the check column's room without being a choice row. */ slot?: boolean; /** A check row shows its tick at the row's right end (where a submenu row has its chevron) and has no left tick column. */ tickEnd?: boolean; /** A submenu row that holds the current choice: the tick sits before its chevron, and the row stays a plain menu item. */ tick?: boolean; checked?: boolean; sub?: boolean; expanded?: boolean; haspopup?: 'menu' | 'dialog'; disabled?: boolean; /** In the date filter's dialog the rows are reached with Tab; in a menu they are reached with the arrow keys. */ tabbable?: boolean;
   onLeaveRow?: () => void; rowRef?: (el: HTMLElement | null) => void; onActivate: (row: HTMLElement) => void; onOpen?: (row: HTMLElement) => void; onHover?: (row: HTMLElement) => void;
 }) {
   return (
     <button type="button" role={check ? (checkbox ? 'menuitemcheckbox' : 'menuitemradio') : 'menuitem'} aria-checked={check ? !!checked : undefined} aria-haspopup={sub ? haspopup ?? 'menu' : undefined} aria-expanded={sub ? !!expanded : undefined}
-      aria-description={icon && active ? 'Active' : undefined} data-active={icon && active ? '' : undefined}
-      disabled={disabled} tabIndex={tabbable ? 0 : -1} ref={rowRef} className="dm-menu-row"
+      aria-description={hint ?? (icon && active ? 'Active' : undefined)} data-active={icon && active ? '' : undefined}
+      disabled={disabled} tabIndex={tabbable ? 0 : -1} ref={rowRef} className={hint ? 'dm-menu-row dm-reveal-host' : 'dm-menu-row'}
       onClick={(e) => onActivate(e.currentTarget)}
       onMouseEnter={(e) => onHover?.(e.currentTarget)} onMouseLeave={onLeaveRow}
       onKeyDown={(e) => { if (sub && e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); onOpen?.(e.currentTarget); } }}>
@@ -141,6 +142,7 @@ export function Row({ label, icon, glyph, active, check, checkbox, slot, tickEnd
       {((check && !tickEnd) || slot) && <span className="dm-menu-check" aria-hidden>{checked && <Check className="size-4" />}</span>}
       {glyph && <span className="dm-menu-glyph" aria-hidden>{glyph}</span>}
       <span className="dm-menu-label">{label}</span>
+      {hint && <span className="dm-hint-slot"><Hint kind="help" text={hint} label={`About ${label}`} decorative /></span>}
       {((tickEnd && check) || tick) && <span className="dm-menu-tick" aria-hidden>{checked && <Check className="size-4" />}</span>}
       {sub && <ChevronRight aria-hidden className="dm-menu-arrow size-4" />}
     </button>
