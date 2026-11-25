@@ -13,13 +13,14 @@ import { App } from '../App';
 // A scorecard-shaped read: counts and sums with no group key, row limit, sort or date bucket (the sparklines and the charts have them).
 // The plain card counts ({ uniqueCount: [''] }, or one COUNT of a text column, with no rule) and the grid's reads are not it.
 const isScore = (q: TraverseOptions) => !!(q.uniqueCount?.length || q.aggregation?.some((a) => a.function === 'SUM' || a.function === 'AVG')) && q.limit === undefined && !q.sort && !q.dateTrunc
-  && (q.column ?? []).every((c) => q.aggregation?.some((a) => a.column === c)) && !(Object.keys(q).length === 1 && q.uniqueCount?.length === 1 && q.uniqueCount[0] === '')
+  && (q.column ?? []).every((c) => c === 'margin' || q.aggregation?.some((a) => a.column === c)) && !(Object.keys(q).length === 1 && q.uniqueCount?.length === 1 && q.uniqueCount[0] === '')
   && !(!q.filter && !q.uniqueCount && q.aggregation?.length === 1 && q.aggregation[0]!.function === 'COUNT');
 
 // Every traverseData call is a billed warehouse run: the match badge on the cards has no query of its own, it rides on the scorecard read.
-function setup(grid: GridState, opts: { charts?: ChartSettings; fail?: (o: TraverseOptions) => boolean; /** Marts that lose their primary key. */ noKey?: string[]; /** Adds a JSON field to Orders, which cannot be grouped. */ json?: boolean } = {}) {
+function setup(grid: GridState, opts: { charts?: ChartSettings; fail?: (o: TraverseOptions) => boolean; /** Marts that lose their primary key. */ noKey?: string[]; /** Adds a JSON field to Orders, which cannot be grouped. */ json?: boolean; /** Adds a calculated metric `margin` to Orders. */ calc?: boolean } = {}) {
   const fixtures = structuredClone(demoFixtures());
   for (const m of fixtures.marts) if (opts.noKey?.includes(m.id)) for (const f of m.fields) f.isPrimaryKey = false;
+  if (opts.calc) fixtures.marts.find((m) => m.id === 'orders')!.fields.push({ name: 'margin', type: 'NUMERIC', alias: 'Margin', calculated: { level: 'metric' } } as never);
   if (opts.json) fixtures.marts.find((m) => m.id === 'orders')!.fields.push({ name: 'tags', type: 'JSON', alias: 'Tags' } as never);
   const base = createMockCtx(fixtures, { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
@@ -360,4 +361,57 @@ test('after the grid\'s own read failed, Table sends no scorecard read', async (
   await calm();
   await calm();
   expect(t.scoreReads()).toHaveLength(0);
+});
+
+test('showing another number column or hiding a calculated metric reads no count again', async () => {
+  const t = setup({ ...withProducts, columns: ['id', 'status', 'amount', 'margin', 'products__price'] }, { calc: true });
+  await t.mount();
+  await waitFor(() => expect(t.scoreReads()).toHaveLength(1));
+  await openFields('Orders');
+  await userEvent.click((await screen.findAllByLabelText(/^net revenue$/i))[0]!);
+  await waitFor(() => expect(within(data()).getAllByRole('columnheader').some((h) => /net revenue/i.test(h.textContent ?? ''))).toBe(true));
+  await userEvent.click(await screen.findByLabelText('Margin'));
+  await closeConfigMenu();
+  await waitFor(() => expect(within(data()).getAllByRole('columnheader').some((h) => /margin/i.test(h.textContent ?? ''))).toBe(false));
+  await calm();
+  expect(t.scoreReads()).toHaveLength(1);
+});
+
+test('a keyed main mart alone with a calculated metric: hiding the metric reads the known count again no more', async () => {
+  const t = setup({ ...mainOnly, columns: ['id', 'status', 'amount', 'margin'] }, { calc: true });
+  await t.mount();
+  await waitFor(() => expect(t.scoreReads()).toHaveLength(1));
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  await openFields('Orders');
+  await userEvent.click(await screen.findByLabelText('Margin'));
+  await closeConfigMenu();
+  await waitFor(() => expect(within(data()).getAllByRole('columnheader').some((h) => /margin/i.test(h.textContent ?? ''))).toBe(false));
+  await calm();
+  expect(t.scoreReads()).toHaveLength(1);
+  expect(badge('orders')).toMatch(/% match$/);
+});
+
+test('Charts with a filter, a HAVING filter and a mart kept with no column: the kept mart adds nothing to the read', async () => {
+  const t = setup({ ...havingGrid, emptyPaths: ['products'], view: 'charts' });
+  await t.mount();
+  await waitFor(() => expect(data().querySelector('td[data-chart-group="orders"]')).not.toBeNull());
+  await waitFor(() => expect(t.scoreReads().length).toBeGreaterThan(0));
+  await calm();
+  expect(t.scoreReads().every((q) => !q.uniqueCount?.includes('products'))).toBe(true);
+});
+
+test('with a joined mart and the grid\'s own read failed: no scorecard read once it has failed, also after a mart is removed', async () => {
+  const t = setup(withProducts, { fail: (o) => o.limit === 201 });
+  await t.mount();
+  await calm();
+  await calm();
+  // With a joined mart the scorecard read goes out beside the grid's, so it may already be on its way when the grid's read fails; none follows.
+  const before = t.scoreReads().length;
+  expect(before).toBeLessThanOrEqual(1);
+  await openFields('Products');
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove from report' }));
+  await closeConfigMenu();
+  await calm();
+  await calm();
+  expect(t.scoreReads()).toHaveLength(before);
 });

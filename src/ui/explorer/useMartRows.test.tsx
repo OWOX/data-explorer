@@ -319,6 +319,10 @@ describe('the total row count', () => {
       expect(result.current.loading).toBe(true);
       expect(result.current.counted.total).toBe(450);
       await settled(result);
+      rerender({ o: withSort(['id', 'a'], 'desc', 401), v: 0 });
+      expect(result.current.loading).toBe(true);
+      expect(result.current.counted).toEqual({ total: 450, exact: false });
+      await settled(result);
       rerender({ o: { ...filtered, limit: 401 }, v: 0 });
       expect(result.current.counted.total).toBeNull();
       await waitFor(() => expect(result.current.counted).toEqual({ total: 3, exact: false }));

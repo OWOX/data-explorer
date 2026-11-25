@@ -9,17 +9,17 @@ const same = (a: Set<string>, b: Set<string>): boolean => a.size === b.size && [
 const within = (a: Set<string>, b: Set<string>): boolean => [...a].every((x) => b.has(x));
 
 /** What the subset rule needs to know about the joins: which alias path a column is read through, and whether dropping that join leaves the main mart's grain whole. */
-export type JoinGrain = { pathOf(column: string): string | undefined; keepsGrain(path: string): boolean };
+export type JoinGrain = { pathOf(column: string): string | undefined; keepsGrain(path: string): boolean; /** A calculated metric: a column with no function that aggregates by itself, so it is no group key. Absent: no column is one. */ isMetric?(column: string): boolean };
 
-/** The join grain of a grid's sources: a join is safe to drop when it neither collapses nor multiplies the main rows ('none' on both; a backend that does not say counts as unsafe). */
-export function joinGrainOf(sources: JoinedSource[]): JoinGrain {
+/** The join grain of a grid's sources: a join is safe to drop when it neither collapses nor multiplies the main rows ('none' on both; a backend that does not say counts as unsafe). `metrics` names the calculated metric columns. */
+export function joinGrainOf(sources: JoinedSource[], metrics?: ReadonlySet<string>): JoinGrain {
   const owner = new Map<string, string>();
   const safe = new Map<string, boolean>();
   for (const s of sources) {
     safe.set(s.aliasPath, s.mainGrainCollapse === 'none' && s.mainGrainMultiplication === 'none');
     for (const f of s.fields) if (!owner.has(f.name)) owner.set(f.name, s.aliasPath);
   }
-  return { pathOf: (c) => owner.get(c), keepsGrain: (p) => safe.get(p) === true };
+  return { pathOf: (c) => owner.get(c), keepsGrain: (p) => safe.get(p) === true, ...(metrics ? { isMetric: (c: string) => metrics.has(c) } : {}) };
 }
 
 /** A query split into the parts the subset rule compares; computed once per read and per ask. */
@@ -58,7 +58,11 @@ function joinPaths(p: QueryParts, joins: JoinGrain): Set<string> {
  */
 export function answers(read: QueryParts, asked: QueryParts, joins: JoinGrain): boolean {
   if (read.rest !== asked.rest || read.grouped !== asked.grouped) return false;
-  if (!same(read.keys, asked.keys) || !within(asked.aggs, read.aggs) || !within(asked.unique, read.unique)) return false;
+  // A calculated metric column is no group key: what `asked` names must be among the metrics of `read`, as with the aggregations.
+  const isMetric = joins.isMetric ?? (() => false);
+  const keysOf = (p: QueryParts) => new Set([...p.keys].filter((c) => !isMetric(c)));
+  const metricsOf = (p: QueryParts) => new Set([...p.keys].filter(isMetric));
+  if (!same(keysOf(read), keysOf(asked)) || !within(metricsOf(asked), metricsOf(read)) || !within(asked.aggs, read.aggs) || !within(asked.unique, read.unique)) return false;
   // A query that keeps 'customers.countries' still joins through 'customers', though no column or count sits on it.
   const kept = new Set<string>();
   for (const path of joinPaths(asked, joins)) { const parts = path.split('.'); for (let i = 1; i <= parts.length; i++) kept.add(parts.slice(0, i).join('.')); }

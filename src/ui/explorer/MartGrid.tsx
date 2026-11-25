@@ -993,7 +993,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   // While any HAVING filter is set the count would be of groups the charts cannot follow the same way: no badge in either view and no read for it here.
   const havingSet = keysRead.kind !== 'off';
   // The marts the report keeps with no column that have a usable key: their count rides on the scorecard read, while a rule applies, in Table and in Charts alike.
-  const keptUnique = useMemo(() => (applies ? pathMarts.filter((m) => m.empty && sources.some((x) => x.aliasPath === m.path && x.uniqueCount)).map((m) => m.path) : []), [applies, pathMarts, sources]);
+  const keptUnique = useMemo(() => (applies && !havingSet ? pathMarts.filter((m) => m.empty && sources.some((x) => x.aliasPath === m.path && x.uniqueCount)).map((m) => m.path) : []), [applies, havingSet, pathMarts, sources]);
   // The same query as the scorecards of Charts (one builder, one key): a read that Charts asks is shared, and Table's read is served to Charts from the cache.
   const full = useMemo(() => (applies && !havingSet ? scoreQuery(scoreFields, traverseFilters, keptUnique) : null), [applies, havingSet, scoreFields, traverseFilters, keptUnique]);
   // A query that counts nothing shows no badge, and one built without a slice (no metric and no countable field to carry it) would not be the member's: no read, no badge.
@@ -1003,8 +1003,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const ownTotal = !charts && !grouped && !counted.exact && tree.nodes.size === 1 && traverseFilters.every((f) => !byName.get(f.column)?.joined);
   const settled = !paused && asked === query && !reading;
   // Table asks the scorecard query only when the grid's count cannot answer: not while its read is under way, not after it failed, and not when it came with a count.
-  const needsRead = counts && (charts ? chartable : !(ownTotal && (!settled || !!error || counted.total !== null)));
-  const joinGrain = useMemo(() => joinGrainOf(sources), [sources]);
+  const needsRead = counts && (charts ? chartable : !error && !(ownTotal && (!settled || counted.total !== null)));
+  const joinGrain = useMemo(() => joinGrainOf(sources, metricNames), [sources, metricNames]);
   const scoreOptions = !paused && !blocked && sourcesRead && needsRead ? full : null;
   // Table first looks for the counts alone in a read it already has (another number column or function does not change them); Charts need their own cards.
   const score = useChartQuery(martId, scoreOptions, version, joinGrain, !charts && scoreOptions ? countsOf(scoreOptions) : null);
