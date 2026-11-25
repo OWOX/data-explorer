@@ -100,3 +100,34 @@ for (const height of [900, 700]) {
     await expect(sankey.locator('text.dm-chart-axis-title')).toHaveCount(3);
   });
 }
+
+test('None on Column 2 of a two-column Sankey shows a notice instead of the drawing, and picking a column draws it again', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
+  await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
+  await openFields(page, 'Orders');
+  await page.getByRole('option', { name: 'is_gift' }).click();
+  await closeConfig(page);
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  await configButton(page).click();
+  await page.getByRole('menuitem', { name: 'Add chart' }).click();
+  await page.getByRole('menuitemradio', { name: 'Sankey' }).click();
+  const sankey = data(page).locator('section[data-chart-kind="Sankey"]');
+  await expect(sankey.locator('path[data-link]').first()).toBeVisible();
+  const options = sankey.getByRole('button', { name: 'Sankey options' });
+  await sankey.scrollIntoViewIfNeeded();
+  await options.click();
+  await page.getByRole('menuitem', { name: 'Columns' }).click();
+  await page.getByRole('menuitem', { name: 'Column 2' }).click();
+  await page.getByRole('menuitemradio', { name: 'None' }).click();
+  await expect(sankey.getByText('This Sankey is misconfigured: pick at least 2 columns in its menu.')).toBeVisible();
+  await expect(sankey.locator('path[data-link]')).toHaveCount(0);
+  // The menu is still on the panel: Column 2 picks a dimension again and the chart draws.
+  await options.click();
+  await page.getByRole('menuitem', { name: 'Columns' }).click();
+  await page.getByRole('menuitem', { name: 'Column 2' }).click();
+  await page.getByRole('menuitem', { name: 'Customers' }).click();
+  await page.getByRole('menu', { name: 'Customers' }).getByRole('menuitemradio', { name: 'Name' }).click();
+  await expect(sankey.locator('path[data-link]').first()).toBeVisible();
+  await expect(sankey.getByText(/misconfigured/)).toHaveCount(0);
+});

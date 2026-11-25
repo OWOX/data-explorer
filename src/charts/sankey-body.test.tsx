@@ -82,9 +82,10 @@ test('sankey: one Columns row holds five Column rows; a used column picks, an un
   expect(within(list).getAllByRole('menuitem').map((el) => el.textContent)).toEqual(['Column 1', 'Column 2', 'Column 3', 'Column 4', 'Column 5']);
   await userEvent.keyboard('{Escape}');
   await userEvent.keyboard('{Escape}');
-  // Two columns used: their lists have no None; an unused one has None, checked.
+  // Every column lists None first: a used one with its dimension checked, an unused one with None checked.
   let menu = await columnRow(2);
-  expect(within(menu).queryByRole('menuitemradio', { name: 'None' })).toBeNull();
+  expect(within(menu).getAllByRole('menuitemradio')[0]).toHaveTextContent('None');
+  expect(checked(menu)).not.toContain('None');
   await userEvent.keyboard('{Escape}{Escape}{Escape}');
   menu = await columnRow(5);
   expect(checked(menu)).toEqual(['None']);
@@ -191,6 +192,40 @@ test('sankey: a dimension picked in an unused column that is not shown adds its 
   expect(sankeyReads.length).toBeGreaterThan(0);
   // Every read after the pick names only the columns of the Sankey, and no flow read has three columns other than the new set.
   for (const q of sankeyReads) for (const c of q.column ?? []) expect(known.has(c) || c.includes(' | ') || /^(amount|records)/.test(c)).toBe(true);
+});
+
+test('sankey: None on a column under two shows a notice and reads nothing; the menu still works and a second column draws at once', async () => {
+  const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
+  const section = () => data().querySelector<HTMLElement>('section[data-chart-kind="Sankey"]')!;
+  let menu = await columnRow(2);
+  const before = t.queries.length;
+  await userEvent.click(within(menu).getByRole('menuitemradio', { name: 'None' }));
+  await waitFor(() => expect(savedDims(t)).toEqual(['status']));
+  await waitFor(() => expect(within(section()).getByText('This Sankey is misconfigured: pick at least 2 columns in its menu.')).toBeInTheDocument());
+  expect(data().querySelectorAll('path[data-link]')).toHaveLength(0);
+  expect(section().querySelector('.dm-skeleton, [role="alert"]')).toBeNull();
+  expect(t.queries.slice(before).filter((q) => q.limit === 5000 || q.limit === 10000 || q.limit === 5)).toHaveLength(0);
+  // With no column at all the same notice stays, and the title reads on without "by".
+  menu = await columnRow(1);
+  await userEvent.click(within(menu).getByRole('menuitemradio', { name: 'None' }));
+  await waitFor(() => expect(savedDims(t)).toEqual([]));
+  expect(within(section()).getByText(/misconfigured/)).toBeInTheDocument();
+  expect(within(section()).getByRole('heading').textContent).not.toMatch(/ by /);
+  expect(t.queries.slice(before).filter((q) => q.limit === 5000 || q.limit === 10000 || q.limit === 5)).toHaveLength(0);
+  // The menu still has its Metric row, and picking two columns draws.
+  await userEvent.click(panel('Sankey'));
+  expect(await screen.findByRole('menuitem', { name: 'Metric' })).toBeInTheDocument();
+  await userEvent.keyboard('{Escape}');
+  menu = await columnRow(1);
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Orders' }));
+  await userEvent.click(within(await screen.findByRole('menu', { name: 'Orders' })).getByRole('menuitemradio', { name: 'status' }));
+  await waitFor(() => expect(savedDims(t)).toEqual(['status']));
+  menu = await columnRow(2);
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Orders' }));
+  await userEvent.click(within(await screen.findByRole('menu', { name: 'Orders' })).getByRole('menuitemradio', { name: 'is_gift' }));
+  await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
+  expect(within(section()).queryByText(/misconfigured/)).toBeNull();
 });
 
 test('sankey: a column title names its field and its data mart', async () => {
