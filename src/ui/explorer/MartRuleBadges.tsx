@@ -1,8 +1,7 @@
-import { Funnel, Layers, X, type LucideIcon } from 'lucide-react';
+import { Funnel, Layers, type LucideIcon } from 'lucide-react';
 import { forwardRef, useState, type ButtonHTMLAttributes } from 'react';
 import type { Field } from '../../model/types';
 import type { ColumnFilter } from '../../filters/build';
-import { Tooltip } from '../Tooltip';
 import { RuleListMenu } from './ColumnMenu';
 
 /** Focuses a badge's button of this title cell once the cell has been rebuilt: the named kind when it is still there, else the config button (a cleared badge is gone). */
@@ -18,7 +17,7 @@ const BadgeText = forwardRef<HTMLButtonElement, { icon: LucideIcon; label: strin
 
 /**
  * The "N slices" and "N filters" badges after a data mart's title: they show when any field of the mart (shown or not)
- * carries such a rule. A click lists the fields with their rules (hover one to edit it); the x on a badge removes all of them in one step.
+ * carries such a rule. A click lists the fields with their rules (hover one to edit it); the list's Clear removes all of them in one step.
  * A slice only counts on a joined mart's field, as in the column header.
  */
 export function MartRuleBadges({ title, fields, filters, slices, onClearFilters, onClearSlices }: {
@@ -45,10 +44,8 @@ export function MartRuleBadges({ title, fields, filters, slices, onClearFilters,
       <span className="dm-rule-badge" data-mart-badge={noun}>
         <BadgeText icon={kind === 'filter' ? Funnel : Layers} label={label} aria={`${label} in ${title}`} aria-haspopup="menu" aria-expanded={open}
           onClick={(e) => { const a = e.currentTarget; if (open) setMenu(null); else { setAnchor(a); setMenu(kind); } }} />
-        <Tooltip content={`Remove all ${noun}s in ${title}`}>
-          <button type="button" aria-label={`Remove all ${noun}s in ${title}`} className="dm-rule-badge-x" onClick={(e) => { const x = e.currentTarget; setMenu(null); clear(on.map((f) => f.name)); focusBadge(x, null); }}><X className="size-3" aria-hidden /></button>
-        </Tooltip>
-        {open && <RuleListMenu kind={kind} title={title} fields={on} anchor={anchor!} onClose={() => { setMenu(null); focusBadge(anchor, kind); }} onDismiss={() => setMenu(null)} />}
+        {open && <RuleListMenu kind={kind} title={title} fields={on} anchor={anchor!} onClose={() => { setMenu(null); focusBadge(anchor, kind); }} onDismiss={() => setMenu(null)}
+          onClear={() => { const a = anchor; setMenu(null); clear(on.map((f) => f.name)); focusBadge(a, kind === 'filter' ? 'slice' : 'filter'); }} />}
       </span>
     );
   };

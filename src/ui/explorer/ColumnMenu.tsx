@@ -146,14 +146,15 @@ function useMarkEdits() {
 
 /**
  * The list under a data mart's "N filters" / "N slices" badge: one row per field that carries the rule. Hovering a row (or Arrow Right, or a click)
- * opens the same edit form the column menu's Filter / Slice submenu shows. Apply and Clear save the one rule and close the list; `onClose` refocuses the badge.
+ * opens the same edit form the column menu's Filter / Slice submenu shows. Apply and Clear in the form save the one rule and close the list; `onClose` refocuses the badge.
+ * The last row, after a separator, is "Clear": `onClear` removes every rule of the list and the caller closes it and places focus.
  */
-export function RuleListMenu({ kind, title, fields, anchor, onClose, onDismiss }: { kind: 'filter' | 'slice'; title: string; fields: Field[]; anchor: HTMLElement; onClose: () => void; /** A press outside or a scroll: close without moving focus. */ onDismiss: () => void }) {
+export function RuleListMenu({ kind, title, fields, anchor, onClose, onClear, onDismiss }: { kind: 'filter' | 'slice'; title: string; fields: Field[]; anchor: HTMLElement; onClose: () => void; onClear: () => void; /** A press outside or a scroll: close without moving focus. */ onDismiss: () => void }) {
   const env = useContext(ColumnMenuEnvContext);
   const holder = useLatest<HTMLElement | null>(anchor);
   useMenuDismiss(true, holder, onDismiss);
   useMarkEdits();
-  const { sub, open, hoverRow, leaveRow, closeSub } = useSubmenu<string>({ isEditing: () => panelBeingEdited(EDITING) });
+  const { sub, open, hoverRow, hoverOther, leaveRow, closeSub } = useSubmenu<string>({ isEditing: () => panelBeingEdited(EDITING) });
   const noun = kind === 'filter' ? 'Filters' : 'Slices';
   const describe = (f: Field) => (kind === 'filter' ? describeColumnFilter(f, env.filters[f.name]!) : describeFilter(sliceField(f), env.slices[f.name]!));
   const at = sub ? fields.find((f) => f.name === sub.key) : undefined;
@@ -164,6 +165,8 @@ export function RuleListMenu({ kind, title, fields, anchor, onClose, onDismiss }
           <Row key={f.name} label={`${columnTitle(f)}: ${describe(f)}`} sub haspopup="dialog" expanded={sub?.key === f.name}
             onActivate={(r) => open(f.name, r, true)} onOpen={(r) => open(f.name, r, true)} onHover={(r) => hoverRow(f.name, r)} onLeaveRow={leaveRow} />
         ))}
+        <div className="dm-menu-sep" role="separator" />
+        <Row label="Clear" onActivate={onClear} onHover={hoverOther} onLeaveRow={leaveRow} />
       </Panel>
       {sub && at && <RuleEditor kind={kind} field={at} row={sub.row} seq={sub.seq} onEscape={closeSub} onDone={onClose} />}
     </>
