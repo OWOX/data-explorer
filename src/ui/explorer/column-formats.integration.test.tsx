@@ -5,6 +5,7 @@ import { keyShown } from '../../sdk/mock/key-shown';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
+import { closeConfigMenu, openFields } from './menu-test-utils';
 
 function setup() {
   const fixtures = demoFixtures();
@@ -19,10 +20,9 @@ const bodyRows = () => within(data()).getAllByRole('row').filter((r) => r.queryS
 
 async function showAmount() {
   await waitFor(() => expect(bodyRows().some((r) => r.querySelector('td')?.textContent)).toBe(true));
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
+  await openFields('Orders');
   await userEvent.click(await screen.findByLabelText('Amount'));
-  await userEvent.keyboard('{Escape}');
-  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await closeConfigMenu();
 }
 
 test('the Row band shows a column with the format the grid shows it in', async () => {

@@ -47,7 +47,7 @@ export function ChartPanel({ title, name, items, extra, width, loading, error, o
       () => say("The chart couldn't be copied", 'error'),
     );
   } };
-  const at = items ? items.findLastIndex((i) => i.kind === 'action' && i.label === 'Remove') : -1;
+  const at = items ? items.findLastIndex((i) => i.kind === 'action' && i.label === 'Hide') : -1;
   const withCopy = items ? (at >= 0 ? [...items.slice(0, at), copy, ...items.slice(at)] : [...items, copy]) : null;
   return (
     <section ref={setSection} className="dm-chart" data-chart-kind={name} style={{ width }}>

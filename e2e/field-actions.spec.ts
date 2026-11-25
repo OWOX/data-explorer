@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { closeConfig, openFields } from './config-menu';
 
 // The column menu from a row of the Fields list, driven with the real mouse like a member.
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
@@ -11,7 +12,7 @@ test('a filter on a field that is not a column, set from the Fields list, narrow
   await expect(data(page).getByRole('row')).toHaveCount(202);
   const revenueHeader = data(page).getByRole('columnheader', { name: /^Net Revenue/ });
   await expect(revenueHeader).toHaveCount(0);
-  await click(page, data(page).getByRole('button', { name: /^Fields of Orders:/ }));
+  await openFields(page, 'Orders');
   const list = page.getByRole('listbox', { name: 'Fields of Orders' });
   await expect(list).toBeVisible();
   const row = list.getByRole('option', { name: 'Net Revenue', exact: true }).locator('xpath=..');
@@ -36,7 +37,7 @@ test('a filter on a field that is not a column, set from the Fields list, narrow
   await expect(data(page).getByText(/No rows|match/i).first()).toBeVisible({ timeout: 10000 });
   await expect(revenueHeader).toHaveCount(0);
   // The title row says there is a filter, and Undo takes it away in one step.
-  await page.keyboard.press('Escape');
+  await closeConfig(page);
   await expect(data(page).getByRole('button', { name: /^1 filter in / })).toBeVisible();
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(data(page).getByRole('button', { name: /^1 filter in / })).toHaveCount(0);

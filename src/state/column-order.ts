@@ -58,7 +58,7 @@ export function moveColumnBy(columns: string[], name: string, dir: -1 | 1, sourc
 /**
  * The main mart's own columns that stay (`keep`), in the order they have on the grid, with each newly kept one placed right after the
  * nearest field before it in the schema that is shown, or first when none is. So a grid that was never reordered stays in schema order.
- * Ticking a field in the Fields list and picking Aggregate, Sort or Format on a hidden field both place the column this way.
+ * Ticking a field in a fields panel and picking Aggregate, Sort or Format on a hidden field both place the column this way.
  */
 export function ownInSchemaOrder(visible: string[], schema: string[], keep: Set<string>): string[] {
   const mine = new Set(schema);

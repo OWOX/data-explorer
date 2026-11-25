@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openFields, closeConfig, groupTitles, configButton } from './config-menu';
 
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
 const data = (page: Page) => page.locator('#band-data');
@@ -7,16 +8,16 @@ test('add a Sankey from Add chart, a many-to-one joined column draws, a fan-out 
   await expect(data(page).getByRole('row')).toHaveCount(202);
   // A third dimension: Customers joins its name; is_gift is Orders' boolean.
   await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
-  await expect(data(page).getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
+  await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
   for (const name of ['is_gift', /created_at/i]) {
-    await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
+    await openFields(page, 'Orders');
     await page.getByRole('option', { name }).click();
-    await page.keyboard.press('Escape');
+    await closeConfig(page);
   }
   await data(page).getByRole('radio', { name: 'Charts' }).click();
   await expect(data(page).locator('section.dm-chart')).toHaveCount(2);
 
-  await data(page).locator('[data-chart-list-slot]').getByRole('button', { name: 'Charts options' }).click();
+  await configButton(page).click();
   await page.getByRole('menuitem', { name: 'Add chart' }).click();
   await page.getByRole('menuitemradio', { name: 'Sankey' }).click();
   const sankey = data(page).locator('section[data-chart-kind="Sankey"]');
@@ -47,9 +48,9 @@ test('a column of a one-to-many joined mart says why it cannot sum', async ({ pa
   await expect(data(page).getByRole('row')).toHaveCount(202);
   // Shipments hang several rows on one order: Orders' metric would count an order once per shipment.
   await page.locator('#band-marts').getByText('Shipments', { exact: true }).first().click();
-  await expect(data(page).getByRole('button', { name: /^Fields of Shipments:/ })).toBeVisible();
+  await expect(groupTitles(page).filter({ hasText: 'Shipments' })).toHaveCount(1);
   await data(page).getByRole('radio', { name: 'Charts' }).click();
-  await data(page).locator('[data-chart-list-slot]').getByRole('button', { name: 'Charts options' }).click();
+  await configButton(page).click();
   await page.getByRole('menuitem', { name: 'Add chart' }).click();
   await page.getByRole('menuitemradio', { name: 'Sankey' }).click();
   const sankey = data(page).locator('section[data-chart-kind="Sankey"]');

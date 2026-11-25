@@ -6,6 +6,12 @@ import { keyShown } from '../../sdk/mock/key-shown';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
+import { closeConfigMenu, openConfigMenu, openFields } from '../explorer/menu-test-utils';
+
+/** The joined marts' reads wait for this while a test holds them (see `hold`). */
+let held: Promise<void> = Promise.resolve();
+/** Holds every read of the joined marts until the returned function is called. */
+const hold = () => { let release!: () => void; held = new Promise<void>((r) => { release = r; }); return () => { release(); held = Promise.resolve(); }; };
 
 function setup(opts: { gate?: Promise<void> } = {}) {
   const ctx = keyShown(createMockCtx(demoFixtures(), { latencyMs: 0 }));
@@ -20,7 +26,7 @@ function setup(opts: { gate?: Promise<void> } = {}) {
     owox: {
       ...ctx.owox,
       getJson: (<T,>(path: string, q?: Record<string, string>) => {
-        if (path.endsWith('/blendable-schema')) { reads.push(path); if (opts.gate) return opts.gate.then(() => realGet<T>(path, q)); }
+        if (path.endsWith('/blendable-schema')) { reads.push(path); if (opts.gate) return opts.gate.then(() => realGet<T>(path, q)); return held.then(() => realGet<T>(path, q)); }
         return realGet<T>(path, q);
       }) as typeof ctx.owox.getJson,
       dataMarts: { ...ctx.owox.dataMarts, traverseData: (id: string, o: Parameters<typeof realTraverse>[1]) => { if (!(o as { uniqueCount?: unknown }).uniqueCount) rows.push({ id, o }); return realTraverse(id, o); } },
@@ -41,6 +47,9 @@ const ready = async () => { await waitFor(() => expect(headers()).toHaveLength(5
 const click = async (name: string) => { await within(marts()).findByText(name); fireEvent.keyDown(document, { key: 'Escape' }); fireEvent.click(card(name)); };
 /** The × on a joined card: the only way a card takes a mart out. */
 const remove = async (name: string) => { await userEvent.click(within(card(name)).getByRole('button', { name: `Remove ${name} from the report` })); };
+/** Remove from report, in the data mart's panel of the config menu. */
+const removeFromReport = async (name: string) => { const panel = await openFields(name); await userEvent.click(within(panel).getByRole('menuitem', { name: 'Remove from report' })); };
+const configButton = () => within(data()).getByRole('button', { name: 'Configure data' });
 const undo = () => userEvent.click(screen.getByRole('button', { name: 'Undo' }));
 
 test('selecting a joinable data mart adds its first text column, titles the grid "Orders + Customers" and the card looks like the main one', async () => {
@@ -62,10 +71,10 @@ test('the × on a joined card takes its columns out, and selecting it again brin
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
   // choose another field of Customers in the picker
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Customers:/ }));
+  await openFields('Customers');
   await userEvent.click(await screen.findByLabelText('email'));
   await waitFor(() => expect(headers()).toHaveLength(7));
-  await userEvent.keyboard('{Escape}');
+  await closeConfigMenu();
   await remove('Customers');
   await waitFor(() => expect(headers()).toHaveLength(5));
   expect(title()).toBe('Orders');
@@ -95,7 +104,7 @@ test('taking the main group out promotes the next joined mart, which brings the 
   await waitFor(() => expect(title()).toBe('Orders + Customers'));
   await click('Stores');
   await waitFor(() => expect(title()).toBe('Orders + Customers + Stores'));
-  fireEvent.click(await within(data()).findByRole('button', { name: 'Remove Orders from the grid' }));
+  await removeFromReport('Orders');
   // Customers cannot join Stores (it has only Countries), so only Customers is left.
   await waitFor(() => expect(title()).toBe('Customers'));
   expect(headers().some((h) => /Stores/.test(h))).toBe(false);
@@ -183,15 +192,17 @@ test('unticking the last field of a joined mart in the picker deselects it; tick
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Customers:/ }));
+  await openFields('Customers');
   const group = await screen.findByRole('dialog');
   await userEvent.click(within(group).getByRole('option', { selected: true }));
   // The mart stays while the popup is open and goes when it closes with nothing ticked.
   expect(title()).toBe('Orders + Customers');
-  await userEvent.keyboard('{Escape}');
+  await closeConfigMenu();
   await waitFor(() => expect(title()).toBe('Orders'));
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'false');
-  expect(within(data()).queryByRole('button', { name: /^Fields of Customers:/ })).toBeNull();
+  const menu = await openConfigMenu();
+  expect(within(menu).queryByRole('menuitem', { name: 'Customers' })).toBeNull();
+  await closeConfigMenu();
   // another mart is added from its card, not from a picker
   await click('Stores');
   await waitFor(() => expect(title()).toBe('Orders + Stores'));
@@ -211,7 +222,7 @@ test('promoting back to Orders leaves it alone: the joined columns it was left w
   await ready();
   await click('Customers');
   await waitFor(() => expect(title()).toBe('Orders + Customers'));
-  fireEvent.click(await within(data()).findByRole('button', { name: 'Remove Orders from the grid' }));
+  await removeFromReport('Orders');
   await waitFor(() => expect(title()).toBe('Customers'));
   // Customers cannot join Orders, so a click on Orders would do nothing: it is reached through its Data Source, which leaves no main mart to join.
   fireEvent.click(within(document.getElementById('band-sources')!).getByText('Shopify').closest('article')!);
@@ -265,10 +276,10 @@ test('what a removed mart showed is saved exactly: the fields, in the order show
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Customers:/ }));
+  await openFields('Customers');
   await userEvent.click(await screen.findByLabelText('email'));
   await waitFor(() => expect(headers()).toHaveLength(7));
-  await userEvent.keyboard('{Escape}');
+  await closeConfigMenu();
   await remove('Customers');
   await waitFor(() => expect(headers()).toHaveLength(5));
   await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["name","email"]'))).toBe(true), { timeout: 3000 });
@@ -276,13 +287,14 @@ test('what a removed mart showed is saved exactly: the fields, in the order show
 
 const groupRow = () => within(data()).queryAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup');
 
-test('the main mart alone has one tab spanning all its columns, with no x; a joined mart adds one tab per mart, main first', async () => {
+test('the main mart alone has one tab spanning all its columns, with no Remove from report; a joined mart adds one tab per mart, main first', async () => {
   setup();
   await ready();
   expect(groupTitles()).toEqual(['Orders']);
   expect(groupRow()[0]!.getAttribute('colspan')).toBe('5');
-  expect(within(data()).queryByRole('button', { name: 'Remove Orders from the grid' })).toBeNull();
-  expect(within(data()).getByRole('button', { name: /^Fields of Orders:/ })).toBeInTheDocument();
+  expect(within(await openFields('Orders')).queryByRole('menuitem', { name: 'Remove from report' })).toBeNull();
+  expect(configButton()).toBeInTheDocument();
+  await closeConfigMenu();
   await click('Customers');
   await waitFor(() => expect(groupRow()).toHaveLength(2));
   expect(groupTitles()).toEqual(['Orders', 'Customers']);
@@ -302,22 +314,21 @@ test('a column ticked for the main mart after a joined one stays in the main gro
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
+  await openFields('Orders');
   await userEvent.click(await screen.findByRole('option', { name: /amount/i }));
   await waitFor(() => expect(headers()).toHaveLength(7));
   expect(headers().indexOf('Amount')).toBeLessThan(6);
   expect(groupRow().map((h) => h.getAttribute('colspan'))).toEqual(['6', '1']);
 });
 
-test('the x on a joined group takes its path out, and Undo brings it back', async () => {
+test('Remove from report on a joined data mart takes its path out, and Undo brings it back', async () => {
   setup();
   await ready();
   await click('Customers');
   await click('Products');
   await waitFor(() => expect(title()).toBe('Orders + Customers + Products'));
   expect(groupTitles()).toEqual(['Orders', 'Customers', 'Products']);
-  const x = await within(data()).findByRole('button', { name: 'Remove Customers from the grid' });
-  fireEvent.click(x);
+  await removeFromReport('Customers');
   await waitFor(() => expect(title()).toBe('Orders + Products'));
   expect(groupTitles()).toEqual(['Orders', 'Products']);
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'false');
@@ -325,12 +336,12 @@ test('the x on a joined group takes its path out, and Undo brings it back', asyn
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Products']));
 });
 
-test('the x on the main group deselects it and promotes the next selected mart, whose group is first', async () => {
+test('Remove from report on the main mart deselects it and promotes the next selected mart, whose group is first', async () => {
   setup();
   await ready();
   await click('Customers');
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
-  fireEvent.click(await within(data()).findByRole('button', { name: 'Remove Orders from the grid' }));
+  await removeFromReport('Orders');
   await waitFor(() => expect(title()).toBe('Customers'));
   expect(groupTitles()).toEqual(['Customers']);
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'true');
@@ -341,7 +352,7 @@ test('the last own column of the main mart cannot be unticked while a joined mar
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
+  await openFields('Orders');
   for (const label of ['id', 'Customer', 'Product', 'Store']) await userEvent.click(await screen.findByLabelText(label));
   await waitFor(() => expect(headers()).toEqual(['status', 'name']));
   expect(screen.getByRole('option', { name: 'status' })).toHaveAttribute('aria-disabled', 'true');
@@ -368,22 +379,23 @@ test('a mart that leaves the grid remembers its own field names in its own grid-
   await ready();
   await click('Customers');
   await waitFor(() => expect(headers()).toHaveLength(6));
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Customers:/ }));
+  await openFields('Customers');
   await userEvent.click(await screen.findByLabelText('email'));
   await waitFor(() => expect(headers()).toHaveLength(7));
-  await userEvent.keyboard('{Escape}');
+  await closeConfigMenu();
   // Customers leaves the grid
   await remove('Customers');
   await waitFor(() => expect(title()).toBe('Orders'));
   await waitFor(() => expect(t.puts.some((p) => p.id === 'customers' && JSON.stringify(p.doc).includes('"lastShown":["name","email"]'))).toBe(true), { timeout: 3000 });
 });
 
-test('a double click on a group x takes the mart out once and never puts it back', async () => {
+test('a double activation of Remove from report takes the mart out once and never puts it back', async () => {
   setup();
   await ready();
   await click('Customers');
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
-  const x = await within(data()).findByRole('button', { name: 'Remove Customers from the grid' });
+  // The menu closes on the first activation, so a second one has nothing left to hit; both are sent all the same.
+  const x = within(await openFields('Customers')).getByRole('menuitem', { name: 'Remove from report' });
   fireEvent.click(x);
   fireEvent.click(x);
   await waitFor(() => expect(title()).toBe('Orders'));
@@ -392,12 +404,30 @@ test('a double click on a group x takes the mart out once and never puts it back
   expect(groupTitles()).toEqual(['Orders']);
 });
 
-test('a double click on the main group x promotes once; the promoted mart is not removed as well', async () => {
+test('while a removal is being applied, Remove from report is off in the reopened menu', async () => {
   setup();
   await ready();
   await click('Customers');
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
-  const x = await within(data()).findByRole('button', { name: 'Remove Orders from the grid' });
+  // Refresh forgets the joined marts, so the removal has to read them again, and that read is held.
+  const release = hold();
+  try {
+    await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+    await userEvent.click(within(await openFields('Customers')).getByRole('menuitem', { name: 'Remove from report' }));
+    // The removal waits for its reads: the mart is still on the grid, and a second Remove cannot be sent.
+    const again = within(await openFields('Customers')).getByRole('menuitem', { name: 'Remove from report' });
+    expect(again).toBeDisabled();
+  } finally { release(); }
+  await waitFor(() => expect(title()).toBe('Orders'));
+  expect(groupTitles()).toEqual(['Orders']);
+});
+
+test('a double activation of Remove from report on the main mart promotes once; the promoted mart is not removed as well', async () => {
+  setup();
+  await ready();
+  await click('Customers');
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
+  const x = within(await openFields('Orders')).getByRole('menuitem', { name: 'Remove from report' });
   fireEvent.click(x);
   fireEvent.click(x);
   await waitFor(() => expect(title()).toBe('Customers'));
@@ -405,15 +435,15 @@ test('a double click on the main group x promotes once; the promoted mart is not
   expect(title()).toBe('Customers');
 });
 
-test('after a group is removed, focus moves to the next tab\'s remove button', async () => {
+test('after a data mart is removed, focus is on the config button', async () => {
   setup();
   await ready();
   await click('Customers');
   await click('Products');
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers', 'Products']));
-  fireEvent.click(await within(data()).findByRole('button', { name: 'Remove Customers from the grid' }));
+  await removeFromReport('Customers');
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Products']));
-  await waitFor(() => expect(document.activeElement).toBe(within(data()).getByRole('button', { name: 'Remove Products from the grid' })));
+  await waitFor(() => expect(document.activeElement).toBe(configButton()));
 });
 
 test('picking a source saves what the main and its joined marts were showing, like a card click', async () => {
@@ -426,12 +456,12 @@ test('picking a source saves what the main and its joined marts were showing, li
   await waitFor(() => expect(t.puts.some((p) => p.id === 'orders' && JSON.stringify(p.doc).includes('"lastShown"'))).toBe(true), { timeout: 3000 });
 });
 
-test('after the main group is removed, focus moves to the new main tab\'s Columns button', async () => {
+test('after the main data mart is removed, focus is on the config button of the new main grid', async () => {
   setup();
   await ready();
   await click('Customers');
   await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
-  fireEvent.click(await within(data()).findByRole('button', { name: 'Remove Orders from the grid' }));
+  await removeFromReport('Orders');
   await waitFor(() => expect(title()).toBe('Customers'));
-  await waitFor(() => expect(document.activeElement).toBe(within(data()).getByRole('button', { name: /^Fields of Customers:/ })));
+  await waitFor(() => expect(document.activeElement).toBe(configButton()));
 });

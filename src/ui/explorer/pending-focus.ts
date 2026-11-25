@@ -1,4 +1,4 @@
-// The Columns button that takes focus when a grid mounts: asked for when the main tab is removed and the next mart is promoted,
+// The config button that takes focus when a grid mounts: asked for when the main mart is removed and the next mart is promoted,
 // because the grid then remounts (DataBand keys it by mart) and the focused button is gone.
 let pending: string | null = null;
 

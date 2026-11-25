@@ -1,14 +1,13 @@
-import { ChartColumn, ChartSpline, Hash, Plus, Trash2 } from 'lucide-react';
+import { ChartColumn, ChartSpline, CopyPlus, EyeOff, Hash, LayoutGrid, Plus } from 'lucide-react';
 import type { MenuItem } from './ChartMenu';
-import type { ChartFields, ChartMart } from './fields';
+import { measuresOf, type ChartFields, type ChartMart } from './fields';
 import { eligibleKinds, KINDS } from './kinds';
 import { cardsOf, sparkDate } from './Scorecards';
 import { editCharts, measureId, newChartId, patchChart, type ChartKind, type ChartSettings, type ChartSpec, type Spark } from './settings';
 
 type Change = (edit: (cur: ChartSettings) => ChartSettings) => void;
 
-/** The Data band header's Charts menu: scorecard ticks, Sparklines, a tick per chart (hide/show, setup kept) and Add chart. */
-/** Hides a scorecard: the same edit as unticking it in the header list. */
+/** Hides a scorecard: the same edit as unticking it in the Charts group. */
 export const hideCard = (cur: ChartSettings, id: string): ChartSettings => ({ ...cur, scorecards: { ...cur.scorecards, hidden: [...new Set([...(cur.scorecards?.hidden ?? []), id])] } });
 
 /** Saves the measure a card shows. Picking the card's own measure clears the choice instead of saving it. */
@@ -38,36 +37,49 @@ export function dropPicksOf(cur: ChartSettings, hidden: ReadonlySet<string>): Ch
   return { ...cur, scorecards: { ...cur.scorecards, ...(cur.scorecards?.metrics ? { metrics: m } : {}), ...(cur.scorecards?.dates ? { dates: d } : {}) } };
 }
 
-export function listItems({ cf, settings, resolved, change }: { cf: ChartFields; settings: ChartSettings; resolved: { spec: ChartSpec; title: string | null }[]; change: Change }): MenuItem[] {
+/** The config menu's Add chart row: a radio of the chart kinds the shown columns allow. */
+export function addChartItem({ cf, change }: { cf: ChartFields; change: Change }): MenuItem {
+  // The row is always there, so the rows around it keep their places: with no kind to add, its submenu says what is missing.
+  if (eligibleKinds(cf).length === 0) return { kind: 'group', label: 'Add chart', icon: Plus, items: [{ kind: 'action', label: measuresOf(cf).length > 0 ? 'Show a text or date column to chart it.' : 'Show a number column to chart it.', icon: ChartColumn, note: true, onPick: () => undefined }] };
+  return {
+    kind: 'radio', label: 'Add chart', icon: Plus, value: '',
+    options: eligibleKinds(cf).map((k) => ({ value: k.kind, label: k.label, icon: k.icon })),
+    onPick: (v) => change((cur) => editCharts(cur, (list) => [...list, { id: newChartId(), ...KINDS[v as ChartKind]!.create(cf) }])),
+  };
+}
+
+/**
+ * The config menu's Charts row: a submenu of scorecard ticks, Sparklines and a tick per chart (hide/show, setup kept).
+ * A hidden chart or scorecard comes back only from here, so it lists every one.
+ */
+export function chartListItem({ cf, settings, resolved, change }: { cf: ChartFields; settings: ChartSettings; resolved: { spec: ChartSpec; title: string | null }[]; change: Change }): MenuItem {
   const hidden = new Set(settings.scorecards?.hidden ?? []);
   const toggleCard = (id: string) => change((cur) => {
     const h = new Set(cur.scorecards?.hidden ?? []);
     if (!h.delete(id)) h.add(id);
     return { ...cur, scorecards: { ...cur.scorecards, hidden: [...h] } };
   });
-  return [
-    ...cf.marts.flatMap((m, i) => cardsOf(m, settings.scorecards?.metrics).map((c): MenuItem => ({ kind: 'check', icon: Hash, label: i === 0 ? (c.measure.kind === 'records' && cf.marts.length > 1 && m.title ? `${m.title} · ${c.label}` : c.label) : `${m.title} · ${c.label}`, checked: !hidden.has(c.id), onToggle: () => toggleCard(c.id) }))),
-    { kind: 'check', icon: ChartSpline, label: 'Sparklines', checked: settings.scorecards?.sparklines ?? true, onToggle: () => change((cur) => ({ ...cur, scorecards: { ...cur.scorecards, sparklines: !(cur.scorecards?.sparklines ?? true) } })) },
-    ...resolved.map(({ spec, title }): MenuItem => ({
-      kind: 'check',
-      // A chart that cannot draw with the shown columns keeps its place and setup; its title needs fields, so it is named by type.
-      label: title ?? `${KINDS[spec.kind]?.label ?? spec.kind} (columns hidden)`,
-      icon: KINDS[spec.kind]?.icon ?? ChartColumn,
-      checked: !spec.hidden,
-      onToggle: () => change((cur) => patchChart(cur, spec.id, { hidden: !spec.hidden })),
-    })),
-    {
-      kind: 'radio', label: 'Add chart', icon: Plus, value: '',
-      options: eligibleKinds(cf).map((k) => ({ value: k.kind, label: k.label, icon: k.icon })),
-      onPick: (v) => change((cur) => editCharts(cur, (list) => [...list, { id: newChartId(), ...KINDS[v as ChartKind]!.create(cf) }])),
-    },
-  ];
+  return {
+    kind: 'group', label: 'Charts', icon: LayoutGrid,
+    items: [
+      ...cf.marts.flatMap((m, i) => cardsOf(m, settings.scorecards?.metrics).map((c): MenuItem => ({ kind: 'check', icon: Hash, label: i === 0 ? (c.measure.kind === 'records' && cf.marts.length > 1 && m.title ? `${m.title} · ${c.label}` : c.label) : `${m.title} · ${c.label}`, checked: !hidden.has(c.id), onToggle: () => toggleCard(c.id) }))),
+      { kind: 'check', icon: ChartSpline, label: 'Sparklines', checked: settings.scorecards?.sparklines ?? true, onToggle: () => change((cur) => ({ ...cur, scorecards: { ...cur.scorecards, sparklines: !(cur.scorecards?.sparklines ?? true) } })) },
+      ...resolved.map(({ spec, title }): MenuItem => ({
+        kind: 'check',
+        // A chart that cannot draw with the shown columns keeps its place and setup; its title needs fields, so it is named by type.
+        label: title ?? `${KINDS[spec.kind]?.label ?? spec.kind} (columns hidden)`,
+        icon: KINDS[spec.kind]?.icon ?? ChartColumn,
+        checked: !spec.hidden,
+        onToggle: () => change((cur) => patchChart(cur, spec.id, { hidden: !spec.hidden })),
+      })),
+    ],
+  };
 }
 
 /** A Sankey's first two columns stand for the one or two dimensions the other types keep, so a type switch carries them. */
 const fromSankey = (c: ChartSpec): ChartSpec => (c.dimensions && c.kind === 'sankey' ? { ...c, dimension: c.dimensions[0], dimension2: c.dimensions[1] } : c);
 
-/** The rows every chart's own menu ends with: Chart type (the eligible kinds; usable fields, id and hidden kept) and Remove. */
+/** The rows every chart's own menu ends with: Chart type (the eligible kinds; usable fields, id and hidden kept), Duplicate and Hide. */
 export function tailItems({ cf, spec, change }: { cf: ChartFields; spec: ChartSpec; change: Change }): MenuItem[] {
   return [
     {
@@ -75,6 +87,8 @@ export function tailItems({ cf, spec, change }: { cf: ChartFields; spec: ChartSp
       options: eligibleKinds(cf).map((k) => ({ value: k.kind, label: k.label, icon: k.icon })),
       onPick: (v) => change((cur) => editCharts(cur, (list) => list.map((c) => (c.id === spec.id ? { id: c.id, ...(c.hidden !== undefined ? { hidden: c.hidden } : {}), ...KINDS[v as ChartKind]!.create(cf, fromSankey(c)) } : c)))),
     },
-    { kind: 'action', label: 'Remove', icon: Trash2, onPick: () => change((cur) => editCharts(cur, (list) => list.filter((c) => c.id !== spec.id))) },
+    // The copy sits right after its original, with its own id and no hidden flag; structuredClone keeps the two from sharing arrays.
+    { kind: 'action', label: 'Duplicate', icon: CopyPlus, onPick: () => change((cur) => editCharts(cur, (list) => list.flatMap((c) => (c.id === spec.id ? [c, { ...structuredClone(c), id: newChartId(), hidden: undefined }] : [c])))) },
+    { kind: 'action', label: 'Hide', icon: EyeOff, onPick: () => change((cur) => patchChart(cur, spec.id, { hidden: true })) },
   ];
 }

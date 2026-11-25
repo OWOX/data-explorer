@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect } from 'react';
 import { vi } from 'vitest';
@@ -33,6 +33,37 @@ test('clicking the remove button calls onRemove and does not select the card', a
   await userEvent.click(screen.getByRole('button', { name: 'Remove Orders from the report' }));
   expect(p.onRemove).toHaveBeenCalledTimes(1);
   expect(p.onSelect).not.toHaveBeenCalled();
+});
+
+test('the (+) renders only with join, says what it shows, and the × and (+) are the same size, 19.2', async () => {
+  renderCard(props({ onRemove: vi.fn() }));
+  expect(screen.queryByRole('button', { name: /can join/ })).toBeNull();
+  cleanup();
+  const onToggle = vi.fn();
+  const p = props({ onRemove: vi.fn(), join: { open: false, onToggle } });
+  renderCard(p);
+  const plus = screen.getByRole('button', { name: 'Show data marts Orders can join' });
+  expect(plus).toHaveAttribute('aria-expanded', 'false');
+  expect(plus).toHaveAttribute('data-join-plus');
+  await userEvent.click(plus);
+  expect(onToggle).toHaveBeenCalledTimes(1);
+  expect(p.onSelect).not.toHaveBeenCalled();
+  expect(plus.querySelector('svg')).toHaveAttribute('width', '19.2');
+  expect(screen.getByRole('button', { name: 'Remove Orders from the report' }).querySelector('svg')).toHaveAttribute('width', '19.2');
+});
+
+test('a press that started on the × or the (+) and ends on the card body selects nothing', () => {
+  const p = props({ onRemove: vi.fn(), join: { open: false, onToggle: vi.fn() } });
+  const { container } = renderCard(p);
+  const article = container.querySelector('article')!;
+  for (const name of ['Remove Orders from the report', 'Show data marts Orders can join']) {
+    fireEvent.pointerDown(screen.getByRole('button', { name }));
+    // The release lands on the card: the click goes to the common ancestor.
+    fireEvent.click(article);
+  }
+  expect(p.onSelect).not.toHaveBeenCalled();
+  fireEvent.click(article);
+  expect(p.onSelect).toHaveBeenCalledTimes(1);
 });
 
 test('a card with a path has a per-path element id and data-path', () => {

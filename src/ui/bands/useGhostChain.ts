@@ -1,67 +1,52 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { chainAfterHover } from '../../state/join-tree';
+import { useEffect, useMemo, useReducer } from 'react';
+import type { JoinTree } from '../../state/join-tree';
+import { ghostStep, IDLE, shownOf, type GhostEvent, type Over } from './ghost-chain';
 
 /** How long the ghosts stay after the pointer leaves, so it can cross the gap from a card to its ghosts. Showing them has no delay. */
 export const GHOST_GRACE_MS = 400;
 
-type Shown = { anchor: string | null; chain: string[] };
-const NOTHING: Shown = { anchor: null, chain: [] };
-
-/** What the pointer is over: a tree card (its path), a ghost (its alias path), or neither. */
-export type Over = { card: string | null; ghost: string | null };
+const NO_CHAIN: string[] = [];
 
 export function overOf(target: EventTarget | null): Over {
   const el = target instanceof Element ? target : null;
+  const plus = el?.closest('[data-join-plus]') != null;
   const ghost = el?.closest<HTMLElement>('[data-ghost-path]')?.dataset.ghostPath;
-  if (ghost !== undefined) return { card: null, ghost };
-  return { card: el?.closest<HTMLElement>('[data-tree-path]')?.dataset.treePath ?? null, ghost: null };
+  if (ghost !== undefined) return { card: null, ghost, plus };
+  return { card: el?.closest<HTMLElement>('[data-tree-path]')?.dataset.treePath ?? null, ghost: null, plus };
+}
+
+/** Sends `type` once the deadline `due` has run for the grace. */
+function useDeadline(type: 'ghostsDue' | 'atDue', due: number | null, dispatch: (e: GhostEvent) => void) {
+  useEffect(() => {
+    if (due === null) return;
+    const timer = setTimeout(() => dispatch({ type, due }), GHOST_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [type, due, dispatch]);
 }
 
 /**
- * The hover side of the canvas ghosts: the tree card the pointer is on (the anchor) and the chain of ghosts from it to the hovered one.
- * A card shows its ghosts at once, also when the pointer comes from another card. Leaving everything waits `GHOST_GRACE_MS` before the ghosts go.
- * `mute` keeps a card's own hover from showing its ghosts until the pointer goes elsewhere (the second click on a pinned card hides them).
- * While a card is pinned, hovering another card changes nothing; hovered ghosts extend the chain from the pin.
- * `at` is the card or ghost the pointer is on, held for the same grace after it leaves: the other cards fade while it is set.
+ * The ghosts of the canvas: the pin, what shows (`anchor` and `chain`, the pin's when nothing is hovered or focused), and `at`, the card or ghost the other cards fade for.
+ * The rules are in `ghostStep`. This adds the timers, and drops what stands on a path the tree lost.
  */
-export function useGhostChain(pinned: string | null) {
-  const [shown, setShown] = useState<Shown>(NOTHING);
-  const [muted, setMuted] = useState<string | null>(null);
-  const [at, setAt] = useState<Over | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  // The handlers are stable and read the pin through a ref.
-  const pin = useRef(pinned);
-  useEffect(() => { pin.current = pinned; });
-  const cancel = () => { clearTimeout(timer.current); timer.current = undefined; };
-  useEffect(() => cancel, []);
-
-  const onOver = useCallback((over: Over) => {
-    if (over.card === null && over.ghost === null) {
-      setMuted(null);
-      if (timer.current !== undefined) return;
-      timer.current = setTimeout(() => { timer.current = undefined; setShown(NOTHING); setAt(null); }, GHOST_GRACE_MS);
-      return;
-    }
-    cancel();
-    setAt((cur) => (cur !== null && cur.card === over.card && cur.ghost === over.ghost ? cur : over));
-    if (over.card !== null) {
-      setMuted((m) => (m === over.card ? m : null));
-      // A pinned card keeps the ghosts: another card under the pointer shows nothing of its own.
-      if (pin.current !== null) { setShown(NOTHING); return; }
-      setShown((cur) => (cur.anchor === over.card && cur.chain.length === 0 ? cur : { anchor: over.card, chain: [] }));
-      return;
-    }
-    setMuted(null);
-    setShown((cur) => {
-      const chain = chainAfterHover(pin.current ?? cur.anchor, cur.chain, over.ghost!);
-      return chain === cur.chain ? cur : { anchor: cur.anchor, chain };
-    });
-  }, []);
-  const onLeave = useCallback(() => onOver({ card: null, ghost: null }), [onOver]);
-  const clear = useCallback(() => { cancel(); setShown(NOTHING); setMuted(null); setAt(null); }, []);
-  const mute = useCallback((path: string) => { cancel(); setShown(NOTHING); setMuted(path); }, []);
-
-  // A hovered card that was muted shows nothing; the pointer is still on it.
-  const hovered = shown.anchor !== null && shown.anchor === muted ? NOTHING : shown;
-  return { anchor: hovered.anchor, chain: hovered.chain, at, onOver, onLeave, clear, mute };
+export function useGhostChain(mainId: string | null, tree: JoinTree) {
+  const [state, dispatch] = useReducer(ghostStep, IDLE);
+  useDeadline('ghostsDue', state.ghostsDue, dispatch);
+  useDeadline('atDue', state.atDue, dispatch);
+  const lost: GhostEvent = { type: 'tree', main: mainId, has: (path) => tree.nodes.has(path) };
+  if (ghostStep(state, lost) !== state) dispatch(lost);
+  const actions = useMemo(() => ({
+    onOver: (over: Over) => dispatch({ type: 'over', over }),
+    onLeave: () => dispatch({ type: 'over', over: { card: null, ghost: null, plus: false } }),
+    onFocus: (over: Over) => dispatch({ type: 'focus', over }),
+    onBlur: (to: Over | null) => dispatch({ type: 'blur', to }),
+    clear: () => dispatch({ type: 'clear' }),
+    /** A card becomes the pin. */
+    pinCard: (path: string) => dispatch({ type: 'pin', path, main: mainId }),
+    /** A click on a card, on its (+) or on the (+) of a ghost. */
+    toggleCard: (path: string) => dispatch({ type: 'card', path, main: mainId }),
+    togglePlus: (path: string) => dispatch({ type: 'plus', path, main: mainId }),
+    toggleGhostPlus: (path: string) => dispatch({ type: 'ghostPlus', path, main: mainId }),
+  }), [mainId]);
+  const shown = shownOf(state);
+  return { pin: state.pin?.anchor ?? null, pinnedChain: state.pin?.chain ?? NO_CHAIN, anchor: shown?.anchor ?? null, chain: shown?.chain ?? NO_CHAIN, at: state.at, ...actions };
 }

@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { openFields, closeConfig } from './config-menu';
 
 // These drive the menu with the real mouse and wheel (no auto-scrolling), the way a member does.
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
@@ -7,9 +8,9 @@ const data = (page: Page) => page.locator('#band-data');
 async function centre(loc: Locator) { const b = (await loc.boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }
 async function click(page: Page, loc: Locator) { const p = await centre(loc); await page.mouse.move(p.x, p.y, { steps: 8 }); await page.mouse.down(); await page.mouse.up(); }
 async function tick(page: Page, label: string) {
-  await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
+  await openFields(page, 'Orders');
   await page.getByRole('dialog').getByLabel(label, { exact: true }).click();
-  await page.keyboard.press('Escape');
+  await closeConfig(page);
 }
 async function openSub(page: Page, column: string, row: 'Filter' | 'Aggregate') {
   const icon = data(page).getByLabel(`Column menu ${column}`, { exact: true });

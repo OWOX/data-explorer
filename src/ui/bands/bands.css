@@ -230,16 +230,21 @@
 .dm-node:hover .dm-card-reveal, .dm-node:focus-visible .dm-card-reveal, .dm-node:has(:focus-visible) .dm-card-reveal,
 .dm-card-reveal:has([data-state='delayed-open'], [data-state='instant-open']) { opacity: 1; }
 @media (hover: none) and (pointer: coarse) { .dm-card-reveal { opacity: 1; } }
-/* The × that takes a joined mart out sits on the card's top-right corner and shows like the other card controls. */
-.dm-card-remove {
-  position: absolute; top: -0.5rem; right: -0.5rem; z-index: 3;
+/* The × that takes a joined mart out sits on the card's top-right corner, and the (+) that shows what can join under a graph card on the middle of its right edge.
+   Both are 19.2px, centred on the edge they sit on (-0.6rem is 9.6px, half their size), and show like the other card controls: on card hover and focus, always on touch.
+   The (+) is opaque, as a wire leaves from the same spot; an open one (its ghosts are pinned) stays visible. */
+.dm-card-remove, .dm-card-join {
+  position: absolute; z-index: 3;
   display: inline-flex; padding: 0; border: 0; border-radius: 999px;
   background: var(--card); color: var(--muted-foreground); cursor: pointer;
   opacity: 0; transition: opacity 120ms;
 }
-.dm-card-remove:hover { color: var(--foreground); }
-.dm-node:hover .dm-card-remove, .dm-node:focus-visible .dm-card-remove, .dm-node:has(:focus-visible) .dm-card-remove, .dm-card-remove:focus-visible { opacity: 1; }
-@media (hover: none) and (pointer: coarse) { .dm-card-remove { opacity: 1; } }
+.dm-card-remove { top: -0.6rem; right: -0.6rem; }
+.dm-card-join { right: -0.6rem; top: 50%; transform: translateY(-50%); }
+.dm-card-remove:hover, .dm-card-join:hover { color: var(--foreground); }
+.dm-node:hover .dm-card-remove, .dm-node:focus-visible .dm-card-remove, .dm-node:has(:focus-visible) .dm-card-remove, .dm-card-remove:focus-visible,
+.dm-node:hover .dm-card-join, .dm-node:focus-visible .dm-card-join, .dm-node:has(:focus-visible) .dm-card-join, .dm-card-join:focus-visible, .dm-card-join[aria-expanded='true'] { opacity: 1; }
+@media (hover: none) and (pointer: coarse) { .dm-card-remove, .dm-card-join { opacity: 1; } }
 .dm-link { display: inline-flex; color: var(--muted-foreground); }
 .dm-link:hover { color: var(--foreground); }
 
@@ -446,7 +451,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-ctl { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 1px; min-width: 16px; height: 16px; padding: 0 1px; border-radius: 4px; background: transparent; color: var(--sheet-green); }
 .dm-ctl:hover { background: var(--accent); }
 /* An active control (.dm-ctl-on) stays a plain green line icon: no fill, no border, same as idle. */
-/* The column menu icon and the picker icon beside the data mart title: the same green, the same 15px glyph. */
+/* The column menu icon beside a column title: the green, 15px glyph. */
 .dm-ctl-lg .dm-icon { width: 15px; height: 15px; }
 /* The column menu: Google Sheets' look (white panel, 4px radius, soft shadow, 32px rows, 14px Google Sans on #202124, #f1f3f4 hover,
    #dadce0 dividers). A submenu is another panel beside its row. */
@@ -503,6 +508,9 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-row { display: flex; width: 100%; height: 32px; flex-shrink: 0; align-items: center; gap: 8px; padding: 0 16px; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; white-space: nowrap; }
 .dm-menu-row:hover, .dm-menu-row:focus-visible, .dm-menu-row[aria-expanded='true'] { background: var(--menu-hover); outline: none; }
 .dm-menu-row:disabled { color: var(--menu-muted); opacity: .5; cursor: default; background: transparent; }
+/* A note is the panel's only text, not an unavailable action: full muted colour, no hover fill. */
+.dm-menu-note, .dm-menu-note:hover { color: var(--menu-muted); cursor: default; background: transparent; }
+.dm-menu-note:focus-visible { background: var(--menu-hover); color: var(--menu-fg); }
 .dm-menu-icon { display: inline-flex; width: 18px; height: 18px; flex-shrink: 0; align-items: center; justify-content: center; margin-right: 4px; box-sizing: border-box; border: 1px solid var(--sheet-green); border-radius: 3px; background: transparent; color: var(--sheet-green); }
 .dm-menu-icon svg { width: 12px; height: 12px; }
 .dm-menu-icon[data-on] { background: var(--sheet-green); color: var(--sheet-green-fg); }
@@ -515,6 +523,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-check svg, .dm-menu-tick svg { color: inherit; stroke: currentColor; }
 .dm-menu-arrow { flex-shrink: 0; margin-right: -6px; color: var(--menu-muted); }
 .dm-menu-sep { height: 0; margin: 8px 0; border-top: 1px solid var(--menu-line); }
+.dm-menu-heading { padding: 0 16px 4px; color: var(--menu-muted); font-size: 12px; line-height: 16px; }
 .dm-menu-row[role='menuitemradio'], .dm-menu-row[aria-checked] { padding-left: 16px; }
 /* No hover on touch: the actions stay on screen there. */
 @media (hover: none) { .dm-reveal { opacity: 1; } }
@@ -657,7 +666,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
    hovered or holds focus; a touch screen has no hover, so it stays on there. */
 .dm-fieldlabel { display: inline-flex; align-items: flex-start; gap: 0.25rem; min-width: 0; max-width: 100%; line-height: 1.25rem; }
 .dm-hint-slot { display: inline-flex; flex-shrink: 0; align-items: center; height: 1.25rem; opacity: 0; transition: opacity 120ms; }
-.dm-reveal-host:hover .dm-hint-slot, .dm-reveal-host:has(:focus-visible) .dm-hint-slot { opacity: 1; }
+.dm-reveal-host:hover .dm-hint-slot, .dm-reveal-host:has(:focus-visible) .dm-hint-slot, .dm-reveal-host:focus-visible .dm-hint-slot { opacity: 1; }
 @media (hover: none) and (pointer: coarse) { .dm-hint-slot { opacity: 1; } }
 
 /* Inputs in a popover: the focus ring is drawn inside the border, so the popover's own clipping never cuts it. */
@@ -802,23 +811,14 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 @media (max-width: 760px) { .dm-search-results { left: 0; right: 0; width: 100%; } }
 
 /* The badges after a data mart's title: an outlined pill on the header's own grey holding an icon. Hover, keyboard focus (not the focus a click or a closing list leaves) or an open
-   list widens it to its label and the x, on the badge's fill. Green for "N slices" / "N filters", grey for "N columns". */
+   list widens it to its label, on the badge's fill. Green, for "N slices" / "N filters". */
 .dm-rule-badge { display: inline-flex; flex-shrink: 0; align-items: center; height: 18px; box-sizing: border-box; border: 1px solid color-mix(in srgb, var(--sheet-green) 55%, transparent); border-radius: 9px; background: transparent; color: var(--sheet-green); font-size: 11px; font-weight: 500; line-height: 1; transition: background-color 120ms; }
 /* Never narrower than at rest (4 + 12 + 4): unfolding swaps the icon for a label that grows in, and a badge that shrank first would slip from under the pointer and fold again. */
 .dm-rule-badge-text { display: inline-flex; align-items: center; height: 100%; min-width: 20px; padding: 0 4px; border-radius: 8px; white-space: nowrap; }
 .dm-badge-label { display: inline-block; max-width: 0; overflow: hidden; opacity: 0; transition: max-width 150ms, opacity 150ms; }
-.dm-rule-badge-x { display: inline-flex; align-items: center; justify-content: center; width: 0; height: 14px; overflow: hidden; border-radius: 50%; opacity: 0; transition: width 150ms, opacity 150ms; }
 .dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) { background: color-mix(in srgb, var(--sheet-green) 12%, transparent); }
 .dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .dm-badge-icon { display: none; }
-.dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .dm-rule-badge-text { padding: 0 2px 0 6px; }
+.dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .dm-rule-badge-text { padding: 0 6px; }
 .dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .dm-badge-label { max-width: 8rem; opacity: 1; }
-.dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .dm-rule-badge-x { width: 14px; margin-right: 1px; opacity: 1; }
-/* The x under the pointer: a circle in the border's colour, the cross in the badge's fill. */
-.dm-rule-badge-x:hover { background: color-mix(in srgb, var(--sheet-green) 55%, transparent); color: color-mix(in srgb, var(--sheet-green) 12%, var(--background)); }
-.dm-rule-badge-neutral { border-color: color-mix(in srgb, var(--muted-foreground) 40%, transparent); color: var(--muted-foreground); }
-.dm-rule-badge-neutral:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) { background: var(--muted); color: var(--foreground); }
-.dm-rule-badge-neutral .dm-rule-badge-x:hover { background: color-mix(in srgb, var(--muted-foreground) 40%, transparent); color: var(--muted); }
-/* After the unfold rule, at its specificity: a disabled x stays dimmed while shown. */
-.dm-rule-badge .dm-rule-badge-x:disabled { opacity: 0.5; pointer-events: none; }
 /* Room for every badge at rest (22px each, BADGE_REST in badgeReserve.tsx) and the widest one unfolded: hovering one never widens the column. */
 .dm-badges { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; min-width: calc(var(--badge-count, 0) * 22px + max(var(--badge-count, 1) - 1, 0) * 4px + var(--badge-extra, 0px)); }

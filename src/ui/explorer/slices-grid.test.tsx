@@ -203,31 +203,35 @@ test('the sparkline buckets only the rows of the passing groups', async () => {
   expect([by((i) => i.slice(0, 10)), by(week), by((i) => i.slice(0, 7))]).toContainEqual(got);
 });
 
+/** Opens a badge's list and activates its Clear row. */
+async function clearList(badge: RegExp, list: RegExp) {
+  await userEvent.click(await screen.findByRole('button', { name: badge }));
+  await userEvent.click(within(await screen.findByRole('menu', { name: list })).getByRole('menuitem', { name: 'Clear' }));
+}
+
 describe('the data mart title row', () => {
   // The status filter and the country slice are both on fields that are not columns.
   const hidden: GridState = { columns: ['id', 'customers__city'], filters: { status: { field: 'status', op: 'eq', value: 'paid' } }, slices: { customers__country_code: slice }, sorts: null, limit: 200 };
 
-  test('the slice and filter badges follow the Fields button, list the rules on click, and their x removes them in one Undo step', async () => {
+  test('the slice and filter badges sit in their mart\'s title cell, list the rules on click, and the list Clear removes them in one Undo step', async () => {
     setup(hidden);
     const groupOf = (el: HTMLElement) => el.closest<HTMLElement>('th[data-group-path]')!;
-    // The filter is on the main mart's field, the slice on the joined mart's: each badge sits in its own mart's title cell, after the Fields button.
+    // The filter is on the main mart's field, the slice on the joined mart's: each badge sits in its own mart's title cell.
     const filterBadge = await screen.findByRole('button', { name: /^1 filter in / });
     const sliceBadge = await screen.findByRole('button', { name: /^1 slice in / });
     expect(filterBadge).toHaveTextContent('1 filter');
     expect(sliceBadge).toHaveTextContent('1 slice');
-    for (const badge of [filterBadge, sliceBadge]) {
-      const fields = within(groupOf(badge)).getByRole('button', { name: /^Fields of / });
-      expect(fields.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    }
+    expect(groupOf(filterBadge).dataset.groupPath).toBe('');
+    expect(groupOf(sliceBadge).dataset.groupPath).toBe('customers');
     await userEvent.click(filterBadge);
     const list = await screen.findByRole('menu', { name: /^Filters in / });
     expect(within(list).getByRole('menuitem', { name: /paid/ })).toBeVisible();
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('menu', { name: /^Filters in / })).toBeNull();
-    await userEvent.click(screen.getByRole('button', { name: /^Remove all filters in / }));
+    await clearList(/^1 filter in /, /^Filters in /);
     await waitFor(() => expect(screen.queryByRole('button', { name: /^1 filter in / })).toBeNull());
     expect(screen.getByRole('button', { name: /^1 slice in / })).toBeVisible();
-    await userEvent.click(screen.getByRole('button', { name: /^Remove all slices in / }));
+    await clearList(/^1 slice in /, /^Slices in /);
     await waitFor(() => expect(screen.queryByRole('button', { name: /^1 slice in / })).toBeNull());
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(await screen.findByRole('button', { name: /^1 slice in / })).toBeVisible();
@@ -252,7 +256,7 @@ describe('the data mart title row', () => {
     const t = setup(hidden);
     await userEvent.click(await screen.findByRole('button', { name: /^1 slice in / }));
     const list = await screen.findByRole('menu', { name: /^Slices in / });
-    await userEvent.hover(within(list).getByRole('menuitem'));
+    await userEvent.hover(within(list).getAllByRole('menuitem')[0]!);
     const form = await screen.findByRole('dialog', { name: /^Slice of / });
     expect(within(form).getByDisplayValue('PL')).toBeVisible();
     await userEvent.click(within(form).getByRole('button', { name: 'Clear' }));
@@ -265,7 +269,7 @@ describe('the data mart title row', () => {
   test('a list open while its last rule goes (Undo) stays closed when Redo brings the badge back', async () => {
     const t = setup(hidden);
     // A click on Undo or Redo is blocked while a list is open, so the step comes from outside it (as a shortcut or another view would).
-    await userEvent.click(await screen.findByRole('button', { name: /^Remove all filters in / }));
+    await clearList(/^1 filter in /, /^Filters in /);
     await waitFor(() => expect(screen.queryByRole('button', { name: /^1 filter in / })).toBeNull());
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await userEvent.click(await screen.findByRole('button', { name: /^1 filter in / }));
@@ -291,17 +295,91 @@ describe('the data mart title row', () => {
     expect(screen.queryByRole('menu', { name: /^Filters in / })).toBeNull();
   });
 
-  test('after the x on a badge, focus is on the Fields button of its cell', async () => {
-    setup(hidden);
-    const badge = await screen.findByRole('button', { name: /^1 filter in / });
-    const cell = badge.closest('th')!;
-    await userEvent.click(screen.getByRole('button', { name: /^Remove all filters in / }));
-    await waitFor(() => expect(document.activeElement).toBe(within(cell).getByRole('button', { name: /^Fields of / })));
+  test('after Clear on the only badge of a cell, focus is on the config button', async () => {
+    setup({ ...hidden, slices: {} });
+    await clearList(/^1 filter in /, /^Filters in /);
+    await waitFor(() => expect(document.activeElement).toBe(within(data()).getByRole('button', { name: 'Configure data' })));
   });
 
-  test('no rules, no marks; the Fields button shows no tooltip', async () => {
+  test('the badges have no x; the list ends with Clear after a separator', async () => {
+    setup(hidden);
+    await screen.findByRole('button', { name: /^1 filter in / });
+    expect(screen.queryByRole('button', { name: /^Remove all / })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /^1 filter in / }));
+    const list = await screen.findByRole('menu', { name: /^Filters in / });
+    const items = within(list).getAllByRole('menuitem');
+    const clear = items[items.length - 1]!;
+    expect(clear).toHaveTextContent('Clear');
+    expect(clear.previousElementSibling).toHaveAttribute('role', 'separator');
+  });
+
+  test('Clear removes only that mart\'s rules of that kind, in one Undo step, and focus goes to the cell\'s other badge', async () => {
+    const t = setup({ columns: ['id', 'customers__city'], filters: { status: { field: 'status', op: 'eq', value: 'paid' }, customers__city: { field: 'customers__city', op: 'eq', value: 'Kyiv' } }, slices: { customers__country_code: slice }, sorts: null, limit: 200 });
+    // Customers carries a slice and a filter; the filter of Orders must survive its Clear.
+    const cell = (await screen.findByRole('button', { name: /^1 slice in / })).closest('th')!;
+    await userEvent.click(within(cell).getByRole('button', { name: /^1 filter in / }));
+    await userEvent.click(within(await screen.findByRole('menu', { name: /^Filters in / })).getByRole('menuitem', { name: 'Clear' }));
+    await waitFor(() => expect(t.state.current!.grids['orders']?.filters.customers__city).toBeUndefined());
+    expect(t.state.current!.grids['orders']?.filters.status?.value).toBe('paid');
+    expect(t.state.current!.grids['orders']?.slices?.customers__country_code).toBeDefined();
+    expect(screen.queryByRole('menu', { name: /^Filters in / })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(within(cell).getByRole('button', { name: /^1 slice in / })));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(t.state.current!.grids['orders']?.filters.customers__city?.value).toBe('Kyiv'));
+  });
+
+  test('Clear removes every rule of the mart in one Undo step, filters on fields that are not shown included', async () => {
+    const t = setup({ columns: ['id', 'customers__city'], filters: { customers__city: { field: 'customers__city', op: 'eq', value: 'Kyiv' }, customers__country_code: { field: 'customers__country_code', op: 'eq', value: 'UA' } }, sorts: null, limit: 200 });
+    await clearList(/^2 filters in /, /^Filters in /);
+    await waitFor(() => expect(t.state.current!.grids['orders']?.filters).toEqual({}));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(Object.keys(t.state.current!.grids['orders']?.filters ?? {}).sort()).toEqual(['customers__city', 'customers__country_code']));
+  });
+
+  test('Clear on the slice badge removes all its slices in one Undo step and focuses the filter badge', async () => {
+    const t = setup({ columns: ['id', 'customers__city'], filters: { status: { field: 'status', op: 'eq', value: 'paid' }, customers__city: { field: 'customers__city', op: 'eq', value: 'Kyiv' } }, slices: { customers__country_code: slice, customers__city: { field: 'customers__city', op: 'eq', value: 'Kyiv' } }, sorts: null, limit: 200 });
+    const cell = (await screen.findByRole('button', { name: /^2 slices in / })).closest('th')!;
+    await clearList(/^2 slices in /, /^Slices in /);
+    await waitFor(() => expect(Object.keys(t.state.current!.grids['orders']?.slices ?? {})).toEqual([]));
+    await waitFor(() => expect(document.activeElement).toBe(within(cell).getByRole('button', { name: /^1 filter in / })));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(Object.keys(t.state.current!.grids['orders']?.slices ?? {}).sort()).toEqual(['customers__city', 'customers__country_code']));
+  });
+
+  test('the keyboard reaches Clear and Enter clears', async () => {
+    const t = setup(hidden);
+    const badge = await screen.findByRole('button', { name: /^1 filter in / });
+    badge.focus();
+    await userEvent.keyboard('{Enter}');
+    await screen.findByRole('menu', { name: /^Filters in / });
+    await userEvent.keyboard('{ArrowDown}');
+    expect(screen.getByRole('menuitem', { name: 'Clear' })).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(t.state.current!.grids['orders']?.filters.status).toBeUndefined());
+  });
+
+  test('hovering Clear closes an open edit form, and a half-typed edit is not applied by Clear', async () => {
+    const t = setup(hidden);
+    await userEvent.click(await screen.findByRole('button', { name: /^1 filter in / }));
+    const list = await screen.findByRole('menu', { name: /^Filters in / });
+    await userEvent.hover(within(list).getByRole('menuitem', { name: /paid/ }));
+    await screen.findByRole('dialog', { name: /^Filter of / });
+    await userEvent.hover(within(list).getByRole('menuitem', { name: 'Clear' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /^Filter of / })).toBeNull());
+    // Again, with a half-typed value: Clear still ends with no rule.
+    await userEvent.hover(within(list).getByRole('menuitem', { name: /paid/ }));
+    const input = within(await screen.findByRole('dialog', { name: /^Filter of / })).getByDisplayValue('paid');
+    await userEvent.type(input, 'xyz');
+    await userEvent.click(within(list).getByRole('menuitem', { name: 'Clear' }));
+    await waitFor(() => expect(t.state.current!.grids['orders']?.filters.status).toBeUndefined());
+    await new Promise((r) => setTimeout(r, 300));
+    expect(t.state.current!.grids['orders']?.filters.status).toBeUndefined();
+    expect(screen.queryByRole('dialog', { name: /^Filter of / })).toBeNull();
+  });
+
+  test('no rules, no marks; the config button shows no tooltip', async () => {
     setup({ columns: ['id', 'status'], filters: {}, sorts: null, limit: 200 });
-    const button = (await screen.findAllByRole('button', { name: /^Fields of / }))[0]!;
+    const button = await screen.findByRole('button', { name: 'Configure data' });
     expect(screen.queryByRole('button', { name: /^\d+ (filter|slice)s? in / })).toBeNull();
     await userEvent.hover(button);
     await new Promise((r) => setTimeout(r, 350));
