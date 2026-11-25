@@ -76,8 +76,8 @@ test('the time series and the pie sit side by side when the band is wide, and Ch
   // One row of two at 1440px: same top, the pie to the right of the time series, a clear gap between them.
   expect(Math.abs(a.y - b.y)).toBeLessThanOrEqual(1);
   expect(b.x - (a.x + a.width)).toBeGreaterThanOrEqual(16);
-  // The pie takes only the width it needs: at most 26rem (416px).
-  expect(b.width).toBeLessThanOrEqual(417);
+  // The pie takes only the width it needs: at most 26rem (416px), rounded up to whole 24px cells.
+  expect(b.width).toBeLessThanOrEqual(433);
   // The panels' left edge is the scorecards' left edge, and the panels end inside the band.
   const card = (await data(page).locator('[data-card]').first().boundingBox())!;
   expect(Math.abs(a.x - card.x)).toBeLessThanOrEqual(1);

@@ -52,6 +52,13 @@ test('a v2 document keeps known chart keys of the right type and drops bad chart
   ] });
 });
 
+test('a chart size is read back when it is whole cells within the limits; anything else is left out', async () => {
+  const sizes = [{ cols: 20, rows: 12 }, { cols: 20 }, { rows: 12.5, cols: 20 }, { cols: 1, rows: 9999 }, 'big', null];
+  const doc = { version: 2, charts: sizes.map((size, i) => ({ id: `${i}`, kind: 'pie', size })) };
+  const { charts } = await createChartSettings(ctxWith(async () => ({ document: doc }), async () => {})).load('M');
+  expect(charts!.map((c) => c.size)).toEqual([{ cols: 20, rows: 12 }, { cols: 20 }, { cols: 20 }, undefined, undefined, undefined]);
+});
+
 test('a non-object document or part is dropped', async () => {
   expect(await createChartSettings(ctxWith(async () => ({ document: 'x' }), async () => {})).load('M')).toEqual({});
   expect(await createChartSettings(ctxWith(async () => ({ document: { scorecards: [], pie: 3 } }), async () => {})).load('M')).toEqual({});

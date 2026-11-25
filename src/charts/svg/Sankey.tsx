@@ -3,13 +3,20 @@ import { Tooltip } from '../../ui/Tooltip';
 import { CutLabel } from './CutLabel';
 import { BLANK_COLOR, thinColor, labelOf, OTHER_KEY } from '../blank';
 import { BlankDefs, blankFill } from './BlankPattern';
-import { layoutSankey, REST_ORIGIN, type Flow, type NodeSize, type SankeyLink, type Tone } from '../sankeyLayout';
+import { layoutSankey, NODE_GAP, NODE_W, REST_ORIGIN, type Flow, type NodeSize, type SankeyLink, type Tone } from '../sankeyLayout';
 import { OTHER_COLOR } from '../useDateSeries';
 import { useWidth } from '../useWidth';
 
-const TOP = 22;
-const LABEL_PAD = 110;
-const CHAR_W = 6;
+// Sized for the 13px text charts.css gives a Sankey.
+const TOP = 28;
+/** The room right of the last column for its labels: this share of the width, within these bounds, so a narrow chart keeps its ribbons. */
+const LABEL_PAD = { share: 0.3, min: 110, max: 180 };
+const labelPad = (width: number): number => Math.min(LABEL_PAD.max, Math.max(LABEL_PAD.min, width * LABEL_PAD.share));
+const CHAR_W = 7;
+const LINE_H = 15;
+/** Room under the plot: the label of a thin last node reaches below it. */
+const BOTTOM = 8;
+const MIN_PLOT = 80;
 const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 const colorOf = (t: Tone): string => (t.kind === 'blank' ? BLANK_COLOR : t.kind === 'other' ? OTHER_COLOR : t.color);
 const nodeName = (key: string): string => (key === OTHER_KEY ? 'Other' : labelOf(key));
@@ -24,7 +31,7 @@ export function Sankey({ titles, columns, flows, fit, text, ariaLabel, onPickNod
   titles: string[]; columns?: NodeSize[][]; flows: Flow[][]; /** Fan-out mode: ribbons that add up to more than their node are scaled to fit it. */ fit?: boolean; text: (value: number) => string; ariaLabel: string;
   onPickNode?: (col: number, key: string) => void; onPickLink?: (pair: number, source: string, target: string) => void;
 }) {
-  const { ref, width } = useWidth<HTMLDivElement>();
+  const { ref, width, height: room } = useWidth<HTMLDivElement>();
   const root = useRef<SVGSVGElement>(null);
   const blankId = `dm-blank-${useId().replace(/:/g, '')}`;
   // Lights a ribbon (by element) or a node's ribbons (by `col|key`); no argument clears.
@@ -41,12 +48,18 @@ export function Sankey({ titles, columns, flows, fit, text, ariaLabel, onPickNod
     }
   }, []);
   const drawable = width > 0;
-  const layout = useMemo(() => layoutSankey({ flows, columns, width: Math.max(120, width), padRight: LABEL_PAD, fit }), [flows, columns, width, fit]);
+  const pad = labelPad(width);
+  // A set panel height gives the plot what is left of it; a column of many nodes keeps the room its gaps need, and the plot then scrolls.
+  const plot = room === null ? undefined : Math.max(MIN_PLOT, room - TOP - BOTTOM);
+  const layout = useMemo(() => layoutSankey({ flows, columns, width: Math.max(120, width), padRight: pad, fit, height: plot }), [flows, columns, width, pad, fit, plot]);
   // A new layout replaces the elements the lit state was set on, so a ribbon the pointer left with the old layout cannot leave the chart dimmed.
   useEffect(() => { light(); }, [layout, light]);
-  const height = TOP + layout.height + 4;
-  const step = titles.length > 1 ? Math.max(0, (Math.max(120, width) - LABEL_PAD - 12) / (titles.length - 1)) : 0;
-  const roomChars = Math.max(4, Math.floor((titles.length > 1 ? Math.min(step - 12 - 8, LABEL_PAD + 20) : LABEL_PAD) / CHAR_W));
+  const height = TOP + layout.height + BOTTOM;
+  const step = titles.length > 1 ? Math.max(0, (Math.max(120, width) - pad - NODE_W) / (titles.length - 1)) : 0;
+  // A label has the room up to the next column, at most a little over the last column's; the last column has the margin.
+  const roomChars = (c: number): number => Math.max(4, Math.floor((c < titles.length - 1 ? Math.min(step - NODE_W - 8, pad + 20) : pad - 4) / CHAR_W));
+  // A title starts at the column's left edge, so it also has the node's width.
+  const titleChars = (c: number): number => roomChars(c) + 2;
   const originCell = (l: SankeyLink) => (l.origin === undefined ? '' : l.origin === REST_ORIGIN ? 'Other origins' : nodeName(l.origin));
   const colTitle = (c: number) => titles[c] ?? '';
   const linkKey = (l: SankeyLink) => `${l.pair}|${l.source}|${l.target}|${l.origin ?? ''}`;
@@ -69,11 +82,12 @@ export function Sankey({ titles, columns, flows, fit, text, ariaLabel, onPickNod
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the hover handlers are stable (`light` only touches the DOM)
   }, [layout, flows, onPickLink, text]);
   // Before the width is measured there is nothing to draw on.
-  if (!drawable) return <div ref={ref} className="dm-sankey" />;
+  if (!drawable) return <div className="dm-sankey"><div ref={ref} className="dm-chart-plot" /></div>;
   return (
-    <div ref={ref} className="dm-sankey">
+    <div className="dm-sankey">
+      <div ref={ref} className="dm-chart-plot">
       <svg ref={root} role={onPickNode || onPickLink ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${Math.max(120, width)} ${height}`}>
-        {titles.map((t, c) => <CutLabel key={c} full={t} shown={clip(t, roomChars + 6)} className="dm-chart-axis-title" x={c * step} y={12} textAnchor="start" />)}
+        {titles.map((t, c) => <CutLabel key={c} full={t} shown={clip(t, titleChars(c))} className="dm-chart-axis-title" x={c * step} y={14} textAnchor="start" />)}
         <BlankDefs id={blankId} />
         <g transform={`translate(0 ${TOP})`}>
           <g>
@@ -89,15 +103,17 @@ export function Sankey({ titles, columns, flows, fit, text, ariaLabel, onPickNod
                 <Tooltip content={`${name}: ${text(n.value)}`}>
                   <rect className="dm-sankey-node" data-node={`${n.col}|${n.key}`} x={n.x} y={n.y} width={n.w} height={Math.max(1, n.h)} fill={blankFill(colorOf(n.tone), blankId)} {...hoverNode(n.col, n.key)} {...pick} />
                 </Tooltip>
-                {n.h >= 12 && (label.length > roomChars
+                {/* A label is centred on its node, so two neighbours are at least the gap plus half of each node apart. */}
+                {n.h + NODE_GAP >= LINE_H && (label.length > roomChars(n.col)
                   // A cut label shows its full text on hover; an uncut one stays out of the pointer's way so the ribbons under it stay hoverable.
-                  ? <Tooltip content={label}><text className="dm-chart-text" x={n.x + n.w + 4} y={n.y + n.h / 2} dominantBaseline="middle">{clip(label, roomChars)}</text></Tooltip>
+                  ? <Tooltip content={label}><text className="dm-chart-text" x={n.x + n.w + 4} y={n.y + n.h / 2} dominantBaseline="middle">{clip(label, roomChars(n.col))}</text></Tooltip>
                   : <text className="dm-chart-text" x={n.x + n.w + 4} y={n.y + n.h / 2} dominantBaseline="middle" pointerEvents="none">{label}</text>)}
               </g>
             );
           })}
         </g>
       </svg>
+      </div>
       <table className="sr-only">
         <thead><tr><th>Columns</th><th>From (column 1)</th><th>From</th><th>To</th><th>Value</th></tr></thead>
         <tbody>{layout.links.map((l) => <tr key={linkKey(l)}><td>{colTitle(l.pair)} → {colTitle(l.pair + 1)}</td><td>{originCell(l)}</td><td>{nodeName(l.source)}</td><td>{nodeName(l.target)}</td><td>{text(l.value)}</td></tr>)}</tbody>

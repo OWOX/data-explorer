@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { GRID_COLUMNS_COLLECTION } from '../api/grid-columns';
@@ -41,7 +41,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
     ctx.collections<{ columns: string[]; at: string; aggregations?: unknown; gridView?: unknown }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: opts.columns ?? COLUMNS, at: 'then', ...(opts.uc ? { gridView: { fl: [], s: null, l: 100, uc: [''] } } : {}), ...(opts.aggregations ? { aggregations: opts.aggregations } : {}) }),
     opts.charts ? ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', opts.charts) : undefined,
   ]);
-  return { queries, puts, gridPuts, seeded, view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
+  return { queries, puts, gridPuts, seeded, unmount: () => cleanup(), view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
 }
 
 const lastGrid = (t: { gridPuts: { mock: { calls: unknown[][] } } }) => t.gridPuts.mock.calls.at(-1)![1] as { columns: string[]; aggregations?: { column: string; function: string }[] };
@@ -695,11 +695,11 @@ test('a bar chart draws vertical bars per top value; switching it to a ranked ba
   expect((t.puts.mock.lastCall![1] as ChartSettings).charts).toEqual([{ id: 'b', kind: 'rankedBar', measure: 'amount', dimension: 'status' }]);
 });
 
-test('a chart menu ends with Chart type, Duplicate, Copy to clipboard and Hide', async () => {
+test('a chart menu ends with Chart type, Resize, Duplicate, Copy to clipboard and Hide', async () => {
   await charts();
   await userEvent.click(screen.getByRole('button', { name: 'Pie options' }));
   const rows = within(screen.getAllByRole('menu').at(-1)!).getAllByRole('menuitem').map((r) => r.textContent);
-  expect(rows.slice(-4)).toEqual(['Chart type', 'Duplicate', 'Copy to clipboard', 'Hide']);
+  expect(rows.slice(-5)).toEqual(['Chart type', 'Resize', 'Duplicate', 'Copy to clipboard', 'Hide']);
   expect(rows).not.toContain('Remove');
 });
 
@@ -978,3 +978,102 @@ describe('the config button in Charts', () => {
   });
 });
 
+
+const panelOf = (kind: string) => data().querySelector<HTMLElement>(`section[data-chart-kind="${kind}"]`)!;
+/** Turns resize mode on from a chart's menu, once its panel is there and drawn. */
+async function startResize(kind = 'Pie') {
+  await waitFor(() => expect(within(panelOf(kind)).getByRole('button', { name: `${kind} options` })).toBeTruthy());
+  await userEvent.click(within(panelOf(kind)).getByRole('button', { name: `${kind} options` }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Resize' }));
+}
+const handle = (kind: string, edge: string) => panelOf(kind).querySelector<HTMLElement>(`[data-edge="${edge}"]`);
+
+test('Resize on one chart puts handles on every chart; Escape ends it', async () => {
+  await charts();
+  expect(handle('Pie', 'e')).toBeNull();
+  await startResize();
+  for (const kind of ['Pie', 'Time series']) for (const edge of ['e', 's', 'se']) expect(handle(kind, edge)).not.toBeNull();
+  await userEvent.keyboard('{Escape}');
+  expect(handle('Pie', 'e')).toBeNull();
+  expect(handle('Time series', 'e')).toBeNull();
+});
+
+test('a press outside the charts ends resize mode; one on a chart does not', async () => {
+  await charts();
+  await startResize();
+  fireEvent.pointerDown(panelOf('Time series'));
+  expect(handle('Pie', 'e')).not.toBeNull();
+  fireEvent.pointerDown(document.body);
+  expect(handle('Pie', 'e')).toBeNull();
+});
+
+test('a drag moves in whole cells and saves once, on release; Escape mid-drag puts the size back and keeps the mode', async () => {
+  const t = await charts({ charts: { version: 2, charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] } });
+  await startResize();
+  vi.spyOn(panelOf('Pie'), 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 480, height: 288 } as DOMRect);
+  const corner = handle('Pie', 'se')!;
+  fireEvent.pointerDown(corner, { button: 0, pointerId: 1, clientX: 480, clientY: 288 });
+  fireEvent.pointerMove(window, { pointerId: 1, clientX: 480 + 59, clientY: 288 - 50 });
+  expect(panelOf('Pie').style.height).toBe('240px');
+  expect(t.puts).not.toHaveBeenCalled();
+  fireEvent.pointerUp(window, { pointerId: 1 });
+  await waitFor(() => expect(t.puts).toHaveBeenCalledTimes(1));
+  expect((t.puts.mock.calls[0]![1] as ChartSettings).charts![0]!.size).toEqual({ cols: 22, rows: 10 });
+  fireEvent.pointerDown(corner, { button: 0, pointerId: 2, clientX: 0, clientY: 0 });
+  fireEvent.pointerMove(window, { pointerId: 2, clientX: 200, clientY: 200 });
+  await userEvent.keyboard('{Escape}');
+  expect(panelOf('Pie').style.height).toBe('240px');
+  expect(handle('Pie', 'se')).not.toBeNull();
+  fireEvent.pointerUp(window, { pointerId: 2 });
+  expect(t.puts).toHaveBeenCalledTimes(1);
+});
+
+test('the arrow keys move a focused handle one cell; the size is there after a reload, with the rest of the mart view', async () => {
+  const t = await charts({ charts: { version: 2, charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] }, aggregations: [{ column: 'amount', function: 'AVG' }] });
+  await startResize();
+  vi.spyOn(panelOf('Pie'), 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 480, height: 288 } as DOMRect);
+  handle('Pie', 's')!.focus();
+  await userEvent.keyboard('{ArrowDown}');
+  expect((t.puts.mock.calls.at(-1)![1] as ChartSettings).charts![0]!.size).toEqual({ cols: 20, rows: 13 });
+  // Left and right do nothing on the bottom edge.
+  await userEvent.keyboard('{ArrowRight}');
+  expect(t.puts).toHaveBeenCalledTimes(1);
+  t.unmount();
+  t.view();
+  await waitFor(() => expect(radio('Charts')).toBeTruthy());
+  await userEvent.click(radio('Charts'));
+  await waitFor(() => expect(panelOf('Pie').style.height).toBe('312px'));
+});
+
+test('resize mode ends a second after the mouse leaves the charts; coming back or dragging keeps it', async () => {
+  await charts();
+  await startResize();
+  const wait = (ms: number) => act(() => new Promise<void>((r) => { setTimeout(r, ms); }));
+  const over = (el: Element, pointerType = 'mouse') => fireEvent.pointerOver(el, { pointerType });
+  const on = () => handle('Pie', 'e') !== null;
+  over(panelOf('Pie'));
+  // Touch never counts as leaving.
+  over(document.body, 'touch');
+  await wait(1200);
+  expect(on()).toBe(true);
+  over(document.body);
+  await wait(600);
+  over(panelOf('Time series'));
+  await wait(700);
+  expect(on()).toBe(true);
+  fireEvent.pointerDown(handle('Pie', 'se')!, { button: 0, pointerId: 1, clientX: 0, clientY: 0 });
+  over(document.body);
+  await wait(1200);
+  expect(on()).toBe(true);
+  fireEvent.pointerUp(window, { pointerId: 1 });
+  await waitFor(() => expect(on()).toBe(false), { timeout: 1500 });
+});
+
+test('resize mode waits for the mouse to reach a chart first', async () => {
+  await charts();
+  await userEvent.click(within(panelOf('Pie')).getByRole('button', { name: 'Pie options' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Resize' }));
+  fireEvent.pointerOver(document.body, { pointerType: 'mouse' });
+  await act(() => new Promise<void>((r) => { setTimeout(r, 1200); }));
+  expect(handle('Pie', 'e')).not.toBeNull();
+});

@@ -96,7 +96,7 @@ test('Charts: the config menu opens with Add chart and Charts, a chart’s menu 
   await pie.hover();
   await pie.getByRole('button', { name: 'Pie options' }).click();
   const chartMenu = page.getByRole('menu', { name: 'Pie menu' });
-  await expect(chartMenu.getByRole('menuitem')).toHaveText(['Metric', 'Dimension', 'Chart type', 'Duplicate', 'Copy to clipboard', 'Hide']);
+  await expect(chartMenu.getByRole('menuitem')).toHaveText(['Metric', 'Dimension', 'Chart type', 'Resize', 'Duplicate', 'Copy to clipboard', 'Hide']);
   await expect(chartMenu.getByRole('menuitem', { name: 'Remove' })).toHaveCount(0);
   await chartMenu.getByRole('menuitem', { name: 'Duplicate' }).click();
   await expect(data(page).locator('section[data-chart-kind="Pie"]')).toHaveCount(2);

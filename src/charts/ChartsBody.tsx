@@ -16,6 +16,7 @@ import { joinGrainOf } from './answers';
 import { MartCards, useScorecards } from './Scorecards';
 import { KINDS } from './kinds';
 import { chartsOf, patchChart, scorecardsOf, type ChartSettings, type ChartSpec, type Spark } from './settings';
+import { ChartFrameContext, type ChartSize } from './resize';
 import { useBucket } from './useBucket';
 
 /** The gutter cell of a row that is not a data row; the grid has the same one. */
@@ -25,6 +26,9 @@ const GUTTER_PX = 46;
 
 /** A mart a joined path passes through with no column of its own on the grid: it has no group there, only a place in the chart menus. */
 export type PathMart = { path: string; title: string; icon?: string | null };
+const NO_SIZE: ChartSize = {};
+/** How long the mouse is off every chart before resize mode ends. */
+const RESIZE_AWAY_MS = 1000;
 const NO_PATH_MARTS: PathMart[] = [];
 
 /**
@@ -64,6 +68,50 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     setSettings(next);
     chartSettings.save(martId, next);
   };
+
+  // Resize mode: every panel shows its handles. It ends with Escape, a press outside the charts, the menu's Done resizing, or the mouse being off every chart for a second.
+  const [resizing, setResizing] = useState(false);
+  const cancelDrag = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (!resizing) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || document.querySelector('[data-column-menu]')) return;
+      // Escape is spent here: it must not also leave full screen or clear a selection. Mid-drag it only puts the size back.
+      e.stopPropagation();
+      e.preventDefault();
+      if (cancelDrag.current) cancelDrag.current(); else setResizing(false);
+    };
+    const press = (e: PointerEvent) => {
+      const t = e.target;
+      if (!(t instanceof Element) || t.closest('section.dm-chart, [data-column-menu]')) return;
+      // A press on a scrollbar lands on the box it scrolls, past its content.
+      const box = t.getBoundingClientRect();
+      if (t instanceof HTMLElement && (e.clientX - box.left > t.clientLeft + t.clientWidth || e.clientY - box.top > t.clientTop + t.clientHeight) && (t.scrollHeight > t.clientHeight || t.scrollWidth > t.clientWidth)) return;
+      setResizing(false);
+    };
+    // Only after the mouse has been on a chart: the menu's Resize row can lie off it. A drag and a handle focused by keyboard hold the mode open.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let entered = false;
+    const away = () => {
+      if (!entered || timer !== undefined) return;
+      timer = setTimeout(() => { timer = undefined; if (cancelDrag.current) away(); else if (!document.activeElement?.closest('.dm-resize')) setResizing(false); }, RESIZE_AWAY_MS);
+    };
+    const over = (e: PointerEvent) => {
+      // A finger is off the page whenever it is lifted: that is no leaving.
+      if (e.pointerType === 'touch' || !(e.target instanceof Element)) return;
+      if (!e.target.closest('section.dm-chart, [data-column-menu]')) { away(); return; }
+      entered = true;
+      clearTimeout(timer);
+      timer = undefined;
+    };
+    // The mouse left the page (or the plugin's frame).
+    const left = (e: PointerEvent) => { if (e.pointerType !== 'touch') away(); };
+    document.addEventListener('pointerover', over, true);
+    document.documentElement.addEventListener('pointerleave', left);
+    window.addEventListener('keydown', key, true);
+    document.addEventListener('pointerdown', press, true);
+    return () => { clearTimeout(timer); document.removeEventListener('pointerover', over, true); document.documentElement.removeEventListener('pointerleave', left); window.removeEventListener('keydown', key, true); document.removeEventListener('pointerdown', press, true); };
+  }, [resizing]);
 
   // A pick whose column the member hides goes with it, in the same action. Only the member's own edit prunes: a failed or late read of the columns never erases what is saved.
   useEffect(() => {
@@ -158,13 +206,16 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
         <td colSpan={columns + 1} data-chart-panels-cell>
           {/* Pinned just right of the row-number gutter and as wide as the rest of the scroller, so the panels line up with
               the scorecards (the same 0.75rem inset) and stay in view however wide the table is. */}
-          <div data-chart-panels className="dm-chart-panels sticky" style={{ left: GUTTER_PX, width: Math.max(0, scrollerWidth - GUTTER_PX) }}>
+          <div data-chart-panels data-resizing={resizing || undefined} className="dm-chart-panels sticky" style={{ left: GUTTER_PX, width: Math.max(0, scrollerWidth - GUTTER_PX) }}>
             {/* eslint-disable-next-line react-hooks/refs -- `change` is only called from handlers */}
             {drawn.map(({ spec, def, r }) => def && r ? (
-              <def.Panel key={spec.id} martId={martId} cf={cf} spec={spec} r={r} spark={spark} filter={filter} version={version} idle={idle}
-                hasFilters={hasFilters} formatOf={formatOf} ready={!!settings} tail={tailItems({ cf, spec, change })}
+              <ChartFrameContext key={spec.id} value={{ size: spec.size ?? NO_SIZE, resizing, cancelDrag, onResize: (size) => change((cur) => patchChart(cur, spec.id, { size })) }}>
+              <def.Panel martId={martId} cf={cf} spec={spec} r={r} spark={spark} filter={filter} version={version} idle={idle}
+                hasFilters={hasFilters} formatOf={formatOf} ready={!!settings} tail={tailItems({ cf, spec, change, resizing, onResizing: setResizing })}
                 onChange={(p: Partial<ChartSpec>) => { showPicked(spec, p); change((cur) => patchChart(cur, spec.id, p)); }} onFilter={onFilter} />
+              </ChartFrameContext>
             ) : null)}
+            {resizing && <p role="status" className="sr-only">Resizing charts: drag an edge, or focus a handle and use the arrow keys. Escape ends it.</p>}
           </div>
           {havingNote && <p data-chart-note className="mt-1 text-xs text-muted-foreground" style={{ position: 'sticky', left: GUTTER_PX }}>Charts can't apply filters on aggregates for this grouping.</p>}
         </td>
