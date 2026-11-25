@@ -17,7 +17,7 @@ const isScore = (q: TraverseOptions) => !!(q.uniqueCount?.length || q.aggregatio
   && !(!q.filter && !q.uniqueCount && q.aggregation?.length === 1 && q.aggregation[0]!.function === 'COUNT');
 
 // Every traverseData call is a billed warehouse run: the match badge on the cards has no query of its own, it rides on the scorecard read.
-function setup(grid: GridState, opts: { charts?: ChartSettings; fail?: (o: TraverseOptions) => boolean; /** Marts that lose their primary key. */ noKey?: string[]; /** Adds a JSON field to Orders, which cannot be grouped. */ json?: boolean; /** Adds a calculated metric `margin` to Orders. */ calc?: boolean } = {}) {
+function setup(grid: GridState, opts: { charts?: ChartSettings; fail?: (o: TraverseOptions) => boolean; /** Marts that lose their primary key. */ noKey?: string[]; /** Adds a JSON field to Orders, which cannot be grouped. */ json?: boolean; /** Adds a calculated metric `margin` to Orders. */ calc?: boolean; /** Replaces the total row count of a read of Orders. */ total?: (o: TraverseOptions) => number | undefined } = {}) {
   const fixtures = structuredClone(demoFixtures());
   for (const m of fixtures.marts) if (opts.noKey?.includes(m.id)) for (const f of m.fields) f.isPrimaryKey = false;
   if (opts.calc) fixtures.marts.find((m) => m.id === 'orders')!.fields.push({ name: 'margin', type: 'NUMERIC', alias: 'Margin', calculated: { level: 'metric' } } as never);
@@ -27,7 +27,7 @@ function setup(grid: GridState, opts: { charts?: ChartSettings; fail?: (o: Trave
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const ctx: Ctx = {
     ...base,
-    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); return id === 'orders' && opts.fail?.(o) ? Promise.reject(new Error('read failed')) : real(id, o); } } },
+    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('read failed')); const n = id === 'orders' ? opts.total?.(o) : undefined; return n !== undefined && o.includeTotalRowCount ? real(id, o).then((r) => ({ ...r, totalRowCount: n })) : real(id, o); } } },
   };
   function Probe() {
     const [, dispatch] = useStore();
@@ -414,4 +414,20 @@ test('with a joined mart and the grid\'s own read failed: no scorecard read once
   await calm();
   await calm();
   expect(t.scoreReads()).toHaveLength(before);
+});
+
+test('Remove from report: a total counted by a read that joined the removed mart is not the main mart\'s count', async () => {
+  const t = setup(withProducts, { total: (o) => (o.column?.some((c) => c.startsWith('products__')) ? 400 : undefined) });
+  await t.mount();
+  await waitFor(() => expect(badge('orders')).toMatch(/^\d+% match$/));
+  const before = badge('orders');
+  await openFields('Products');
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove from report' }));
+  await closeConfigMenu();
+  await calm();
+  await calm();
+  expect(badge('orders')).toMatch(/^\d+% match$/);
+  expect(badge('orders')).toBe(before);
+  // The joined read's count is not the main mart's: one scorecard read answers it.
+  expect(t.scoreReads()).toHaveLength(2);
 });

@@ -1000,7 +1000,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const counts = !!full?.uniqueCount?.length && !scoreRulesLost(traverseFilters, full);
   // The grid's own count is the main mart's matched count when the grid is plain rows of the main mart alone (a joined mart or a group changes what a row is),
   // every rule is on the main mart's own fields, and the total was not made by a read that named a calculated field. It stays through Load more and a sort.
-  const ownTotal = !charts && !grouped && !counted.exact && tree.nodes.size === 1 && traverseFilters.every((f) => !byName.get(f.column)?.joined);
+  const ownTotal = !charts && !grouped && !counted.exact && tree.nodes.size === 1 && traverseFilters.every((f) => !byName.get(f.column)?.joined)
+    && (counted.total === null || counted.columns.every((c) => !byName.get(c)?.joined));
   const settled = !paused && asked === query && !reading;
   // Table asks the scorecard query only when the grid's count cannot answer: not while its read is under way, not after it failed, and not when it came with a count.
   const needsRead = counts && (charts ? chartable : !error && !(ownTotal && (!settled || counted.total !== null)));

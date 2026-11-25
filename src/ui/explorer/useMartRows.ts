@@ -43,10 +43,10 @@ export function buildRowQuery(schema: Schema, visible: string[], filters: Column
 /** `paused`: Charts holds the grid's query back, and a key it has not read yet will not run until Table is back. */
 export type GridRun = { state: 'none' } | { state: 'paused' } | { state: 'running' } | { state: 'failed' } | { state: 'done'; runId: string | null };
 
-type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null; shape: string; runId: string | null; errorRunId: string | null; total: number | null; /** What `total` counted (the base of the ask) and whether that read named a calculated field. */ totalBase: string | null; totalExact: boolean };
+type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null; shape: string; runId: string | null; errorRunId: string | null; total: number | null; /** What `total` counted (the base of the ask) and whether that read named a calculated field. */ totalBase: string | null; totalExact: boolean; /** The columns that read carried: a plain read joins every mart it names a column of, so its count is of those joins. */ totalColumns: string[] };
 /** What the rows are rows of: plain rows, or groups over these columns and rules. Rows of one shape never stand in for another's. */
 const shapeOf = (o: TraverseOptions | null): string => (o?.aggregation?.length || o?.dateTrunc?.length || o?.uniqueCount?.length ? JSON.stringify([o.column, o.aggregation, o.dateTrunc, o.uniqueCount]) : 'plain');
-const NO_COUNT = { total: null, exact: false } as const;
+const NO_COUNT = { total: null, exact: false, columns: [] as string[] };
 type Query = { dataKey: string; columns: string[]; key: string };
 
 /**
@@ -55,7 +55,7 @@ type Query = { dataKey: string; columns: string[]; key: string };
  */
 export function useMartRows(martId: string, options: TraverseOptions | null, version: number, paused = false, exact = false) {
   const { ctx } = useServices();
-  const [state, setState] = useState<RowsState>({ rows: null, error: null, hasMore: false, doneFor: null, shape: 'plain', runId: null, errorRunId: null, total: null, totalBase: null, totalExact: false });
+  const [state, setState] = useState<RowsState>({ rows: null, error: null, hasMore: false, doneFor: null, shape: 'plain', runId: null, errorRunId: null, total: null, totalBase: null, totalExact: false, totalColumns: [] });
   // Each traverseData call is a billed warehouse run. Everything but the column list (filters, sort, limit,
   // version) is the data key: when it changes the rows are re-read. When columns only shrink, the loaded rows
   // already hold them, so the query identity stays and nothing is fetched; a column that was never loaded re-reads.
@@ -92,9 +92,9 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
         if (ac.signal.aborted) return;
         readKey.current = key;
         if (ask) counted.current = { base, columns: sent, exact, total };
-        setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options), runId, errorRunId: null, total: total ?? null, totalBase: base, totalExact: ask ? exact : !!c?.exact });
+        setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options), runId, errorRunId: null, total: total ?? null, totalBase: base, totalExact: ask ? exact : !!c?.exact, totalColumns: ask ? sent : c?.columns ?? sent });
       },
-      (error) => { if (!ac.signal.aborted) setState({ rows: null, error, hasMore: false, doneFor: key, shape: shapeOf(options), runId: null, errorRunId: runId, total: null, totalBase: null, totalExact: false }); },
+      (error) => { if (!ac.signal.aborted) setState({ rows: null, error, hasMore: false, doneFor: key, shape: shapeOf(options), runId: null, errorRunId: runId, total: null, totalBase: null, totalExact: false, totalColumns: [] }); },
     );
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -107,5 +107,5 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
   const run: GridRun = !options ? { state: 'none' } : loading && paused ? { state: 'paused' } : loading ? { state: 'running' } : state.error ? { state: 'failed' } : { state: 'done', runId: state.runId };
   return { rows: stale ? null : state.rows, loading, error: loading ? null : state.error, hasMore: stale ? false : state.hasMore, run, errorRunId: loading ? null : state.errorRunId, total: stale ? null : state.total,
     // The count a card may use: the one counted for this very result (Load more and a sort keep it), and whether a calculated field made it. Another filter has none until its read answers.
-    counted: !stale && state.totalBase === base && state.total !== null ? { total: state.total, exact: state.totalExact } : NO_COUNT };
+    counted: !stale && state.totalBase === base && state.total !== null ? { total: state.total, exact: state.totalExact, columns: state.totalColumns } : NO_COUNT };
 }
