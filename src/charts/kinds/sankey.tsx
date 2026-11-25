@@ -113,7 +113,7 @@ function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
     <ChartPanel title={title} name="Sankey" items={ready ? items : null} width={sankeyWidth(n)}
       loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})} empty={empty ? (short ? MISCONFIGURED_NOTE : data!.negative ? NEGATIVE_NOTE : emptyText(hasFilters)) : null}
       note={data && !data.negative ? [data.capped ? cappedNote(SANKEY_FLOW_LIMIT) : '', data.columnCapped ? columnCappedNote(SANKEY_COLUMN_LIMIT) : '', exact ? '' : FAN_OUT_NOTE].filter(Boolean).join(' ') || undefined : undefined}>
-      {data && <Sankey titles={dims.map((d) => axisTitle(cf, d))} columns={data.columns} flows={data.flows} fit={!exact} ariaLabel={title} text={(v) => measureText(measure, v, formatOf)}
+      {data && <Sankey titles={dims.map((d) => axisTitle(cf, d))} columns={data.columns} flows={data.flows} fit={!exact} showShare={dims.map((d) => sankeyMeasures(cf, [d]).some((m) => measureId(m) === measureId(measure)))} ariaLabel={title} text={(v) => measureText(measure, v, formatOf)}
         onPickNode={(col, key) => onFilter([dimensionFilter(dims[col]!, key)])}
         onPickLink={(pair, source, target) => onFilter([dimensionFilter(dims[pair]!, source), dimensionFilter(dims[pair + 1]!, target)])} />}
     </ChartPanel>

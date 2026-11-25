@@ -176,7 +176,7 @@ test('fan-out: ribbons that add up to more than their node are scaled to fit it;
 
 const tip = async (el: Element) => { await userEvent.hover(el); return (await screen.findByRole('tooltip')).textContent; };
 
-test('a node tooltip gives its share of the exact column total: a node bigger than its flows, with (blank) and Other in the total', async () => {
+test('a node tooltip gives its share of its drawn column: a node bigger than its flows, with (blank) and Other in the total', async () => {
   // Column 0 totals 10 + 2 + 3 = 15; its flows are smaller than node a.
   draw({ columns: [[{ key: 'a', value: 10 }, { key: BLANK_KEY, value: 2 }, { key: OTHER_KEY, value: 3 }], [{ key: 'x', value: 7 }, { key: OTHER_KEY, value: 3 }], [{ key: 'z', value: 7 }]] });
   expect(await tip(byAttr('data-node', '0|a')!)).toBe('a: $10 (67%)');
@@ -218,4 +218,61 @@ test('a node that grew past its exact total to hold its flows has a share of the
   expect(await tip(byAttr('data-node', '0|a')!)).toBe('a: $16 (100%)');
   await userEvent.unhover(byAttr('data-node', '0|a')!);
   expect(await tip(byAttr('data-node', '1|x')!)).toBe('x: $8 (50%)');
+});
+
+const pairFlows = (name: string): Flow[][] => [[{ source: name, target: 'x', value: 3 }, { source: 'b', target: 'x', value: 1 }]];
+const LONG = 'A rather long node name indeed';
+
+test('showShare is per column: a column set to false has no share on its nodes, the others keep it, in fit mode too', async () => {
+  for (const fit of [false, true]) {
+    const { unmount } = draw({ titles: ['One', 'Two'], flows: pairFlows('a'), columns: [[{ key: 'a', value: 3 }, { key: 'b', value: 1 }], [{ key: 'x', value: 4 }]], fit, showShare: [true, false] });
+    expect(await tip(byAttr('data-node', '0|a')!)).toBe('a: $3 (75%)');
+    await userEvent.unhover(byAttr('data-node', '0|a')!);
+    expect(await tip(byAttr('data-node', '1|x')!)).toBe('x: $4');
+    unmount();
+  }
+});
+
+test('showShare false also leaves the share off the cut label tooltip', async () => {
+  const { container } = draw({ titles: ['One', 'Two'], flows: pairFlows(LONG), showShare: [false, true] });
+  const cut = [...container.querySelectorAll('text.dm-chart-text')].find((t) => t.textContent?.endsWith('…'))!;
+  expect(await tip(cut)).toBe(`${LONG} $3`);
+});
+
+test('a visible label that fits keeps exactly its name and value, and the share stays out of the cut decision', () => {
+  // Room is 21 characters: "abcdefghijklmnopqr $3" is 21 and fits; with its share it would not.
+  const name = 'abcdefghijklmnopqr';
+  const { container } = draw({ titles: ['One', 'Two'], flows: pairFlows(name) });
+  const texts = [...container.querySelectorAll('text.dm-chart-text')].map((t) => t.textContent);
+  expect(texts).toContain(`${name} $3`);
+  // A label that is not cut stays out of the pointer's way: it is not wrapped in a tooltip, so it has pointer-events none.
+  expect([...container.querySelectorAll('text.dm-chart-text')].find((t) => t.textContent === `${name} $3`)!.getAttribute('pointer-events')).toBe('none');
+  expect(texts.some((t) => t?.includes('…'))).toBe(false);
+  expect(texts.some((t) => t?.includes('%'))).toBe(false);
+});
+
+test('a cut label shows its clipped text only, with no share', () => {
+  const { container } = draw({ titles: ['One', 'Two'], flows: pairFlows(LONG) });
+  const cut = [...container.querySelectorAll('text.dm-chart-text')].find((t) => t.textContent?.endsWith('…'))!;
+  expect(cut.textContent).toBe(`${`${LONG} $3`.slice(0, 20)}…`);
+});
+
+test('the shares follow new flows: a rerender with other values prints the new percent', async () => {
+  const props = { titles: ['One', 'Two'], ariaLabel: 'S', text: (v: number) => `$${v}` };
+  const mk = (a: number) => <TooltipProvider><Sankey {...props} flows={[[{ source: 'a', target: 'x', value: a }, { source: 'b', target: 'x', value: 1 }]]} /></TooltipProvider>;
+  const { rerender } = render(mk(3));
+  expect(await tip(byAttr('data-node', '0|a')!)).toBe('a: $3 (75%)');
+  await userEvent.unhover(byAttr('data-node', '0|a')!);
+  rerender(mk(1));
+  expect(await tip(byAttr('data-node', '0|a')!)).toBe('a: $1 (50%)');
+});
+
+test('hovering a node or a ribbon formats no value again: nothing is rebuilt', async () => {
+  const text = vi.fn((v: number) => `$${v}`);
+  draw({ text });
+  const calls = text.mock.calls.length;
+  await userEvent.hover(byAttr('data-node', '0|a')!);
+  await userEvent.unhover(byAttr('data-node', '0|a')!);
+  await userEvent.hover(byAttr('data-link', '0|a|x')!);
+  expect(text.mock.calls.length).toBe(calls);
 });

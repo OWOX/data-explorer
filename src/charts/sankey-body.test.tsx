@@ -366,3 +366,24 @@ test('a metric of a mart on the path that shows no column is listed, and picking
   await waitFor(() => expect(lastColumns(t)).toContain('products__price'));
   await waitFor(() => expect(screen.getByRole('heading', { name: /^price · Sum.* by status/ })).toBeInTheDocument());
 });
+
+test('sankey: in a fan-out Sankey the exact columns keep their node share and the overlapping column has none', async () => {
+  await charts({ columns: [...dims, 'shipments__carrier'], charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'shipments__carrier'] }] } });
+  await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
+  const nodeIn = (col: number) => [...data().querySelectorAll('rect[data-node]')].find((el) => el.getAttribute('data-node')!.startsWith(`${col}|`))!;
+  await userEvent.hover(nodeIn(0));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(/\(\d+%\)$/);
+  await userEvent.unhover(nodeIn(0));
+  await userEvent.hover(nodeIn(2));
+  const tip = await screen.findByRole('tooltip');
+  expect(tip.textContent).toMatch(/: /);
+  expect(tip.textContent).not.toMatch(/%/);
+});
+
+test('sankey: an exact Sankey shows the share on every column', async () => {
+  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
+  const nodeIn = (col: number) => [...data().querySelectorAll('rect[data-node]')].find((el) => el.getAttribute('data-node')!.startsWith(`${col}|`))!;
+  await userEvent.hover(nodeIn(1));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(/\(\d+%\)$/);
+});

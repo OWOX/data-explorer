@@ -20,8 +20,8 @@ const clip = (text: string, max: number): string => (text.length <= max ? text :
  * (a ribbon takes the colour of its first-column node); `text` formats a value. A node click gives its column and key, a ribbon click its pair and both keys;
  * "Other" is never clickable. Hover never re-renders: it sets `data-hot` on the svg and `is-on` / `is-hot` on the lit elements, and charts.css does the dimming. Only nodes are tab stops: ribbons answer the mouse, and the screen-reader table lists them.
  */
-export function Sankey({ titles, columns, flows, fit, text, ariaLabel, onPickNode, onPickLink }: {
-  titles: string[]; columns?: NodeSize[][]; flows: Flow[][]; /** Fan-out mode: ribbons that add up to more than their node are scaled to fit it. */ fit?: boolean; text: (value: number) => string; ariaLabel: string;
+export function Sankey({ titles, columns, flows, fit, showShare, text, ariaLabel, onPickNode, onPickLink }: {
+  titles: string[]; columns?: NodeSize[][]; flows: Flow[][]; /** Fan-out mode: ribbons that add up to more than their node are scaled to fit it. */ fit?: boolean; /** Per column: false where the column's values overlap (a join repeats a record), so a node's share of their sum means nothing. Absent shows it. */ showShare?: boolean[]; text: (value: number) => string; ariaLabel: string;
   onPickNode?: (col: number, key: string) => void; onPickLink?: (pair: number, source: string, target: string) => void;
 }) {
   const { ref, width } = useWidth<HTMLDivElement>();
@@ -58,7 +58,7 @@ export function Sankey({ titles, columns, flows, fit, text, ariaLabel, onPickNod
     for (const n of layout.nodes) sums[n.col] = (sums[n.col] ?? 0) + n.value;
     return sums;
   }, [layout]);
-  const share = (n: { col: number; value: number }) => ` (${Math.round((n.value / colTotals[n.col]!) * 100)}%)`;
+  const share = (n: { col: number; value: number }) => showShare?.[n.col] === false ? '' : ` (${Math.round((n.value / colTotals[n.col]!) * 100)}%)`;
   // The ribbons are built once per layout: hover touches the DOM only (see `light`), so thousands of paths and tooltips are not re-rendered by it.
   const ribbons = useMemo(() => {
     const totals = flows.map((pair) => pair.reduce((sum, f) => (f.value > 0 ? sum + f.value : sum), 0));
