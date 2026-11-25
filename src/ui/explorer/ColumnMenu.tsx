@@ -39,7 +39,7 @@ export type ColumnMenuEnv = {
   setFormat: (column: string, f: Format | null) => void;
   canHide: (field: string) => boolean;
   hide: (field: string) => void;
-  /** Whether the field is a column on the grid. A field of the Fields list that is not has no Move rows, and Aggregate, Sort and Format first show it as a column. */
+  /** Whether the field is a column on the grid. A field of a fields panel that is not has no Move rows, and Aggregate, Sort and Format first show it as a column. */
   isShown: (field: string) => boolean;
   /** The output the grid gives the field: its first one when shown, else the plain column it would be. */
   outputOf: (field: string) => Output;
@@ -178,7 +178,7 @@ const Divider = () => <div role="separator" className="dm-menu-sep" />;
 /** The panels whose fields count as an edit in progress. */
 const EDITING = '[data-column-menu][role="dialog"]:not([data-config-panel]), [data-column-menu][data-form]';
 
-function MenuPopup({ field, output, anchor, initial, onClose, onHide }: { field: Field; output: Output; anchor: HTMLElement; initial: SubKey | null; onClose: (refocus?: boolean) => void; /** Replaces the grid's Hide (the Fields list unticks the field through its own path). */ onHide?: () => void }) {
+function MenuPopup({ field, output, anchor, initial, onClose, onHide }: { field: Field; output: Output; anchor: HTMLElement; initial: SubKey | null; onClose: (refocus?: boolean) => void; /** Replaces the grid's Hide (a fields panel unticks the field through its own path). */ onHide?: () => void }) {
   const env = useContext(ColumnMenuEnvContext);
   const title = columnTitle(field);
   const type = env.typeOf(field, output);
@@ -186,7 +186,7 @@ function MenuPopup({ field, output, anchor, initial, onClose, onHide }: { field:
   const formats = keepsUnit(output.fn) ? formatsFor(type) : [];
   const [money, setMoney] = useState<{ row: HTMLElement; seq: number } | null>(null);
   const [placed, setPlaced] = useState(false);
-  // A field opened from the Fields list may not be a column: it has no Move rows and nothing to hide.
+  // A field opened from a fields panel may not be a column: it has no Move rows and nothing to hide.
   const shown = env.isShown(field.name);
   const rootSeq = initial ? 0 : 1;
   const rows = useRef(new Map<string, HTMLElement>());
@@ -370,7 +370,7 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
 }
 
 /**
- * The column menu icon of a row in a data mart's Fields list: the same menu the header opens, for a field that may not be a column.
+ * The column menu icon of a row in a data mart's fields panel: the same menu the header opens, for a field that may not be a column.
  * It is green whenever the field has a rule set on it, shown or not; otherwise it is grey and appears with the row's hover or focus.
  * Arrow Right from the row's option reaches it (it is not a Tab stop of its own).
  */

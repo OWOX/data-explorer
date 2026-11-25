@@ -69,26 +69,30 @@ const ITEM = '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox
  * One floating panel of the menu, drawn in a portal on the body and kept inside the viewport (flipped left or up when it has no room).
  * Escape, and for a submenu Left, are handled here: the deepest open panel takes the key, so Escape closes the submenu first, then the menu.
  */
-export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onPlaced, returnTo, focusSeq, form, config, matchWidth, className = '', children }: { anchor: HTMLElement; mode: 'below' | 'beside'; /** None for a plain container (a suggestion list holds its own listbox); it then takes no label either. */ role?: 'menu' | 'dialog'; label?: string; onEscape: () => void; onLeave?: () => void; /** Tab in a menu closes it (the editors keep their own Tab order). */ onTab?: () => void; /** Called once the panel has its place, so a submenu can be measured from its rows. */ onPlaced?: () => void; /** A submenu in a dialog keeps Tab inside the dialog's order: Tab past its last control, or Shift+Tab before its first, returns focus to this row. */ returnTo?: HTMLElement; focusSeq: number; /** The panel holds a form: a click or a focus in it counts as an edit, so hover intent leaves it open. */ form?: boolean; /** A panel of the config menu: its controls and edits are its own, not those of a column menu opened from one of its rows. */ config?: boolean; /** The panel is as wide as its anchor (a suggestion list under its input). */ matchWidth?: boolean; className?: string; children: ReactNode }) {
+export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onPlaced, pinned, returnTo, focusSeq, form, config, matchWidth, className = '', children }: { anchor: HTMLElement; mode: 'below' | 'beside'; /** None for a plain container (a suggestion list holds its own listbox); it then takes no label either. */ role?: 'menu' | 'dialog'; label?: string; onEscape: () => void; onLeave?: () => void; /** Tab in a menu closes it (the editors keep their own Tab order). */ onTab?: () => void; /** Called once the panel has its place, so a submenu can be measured from its rows. */ onPlaced?: () => void; /** The panel keeps the place its anchor had when it opened (a band above may grow and push the anchor down); a window resize takes it afresh. */ pinned?: boolean; /** A submenu in a dialog keeps Tab inside the dialog's order: Tab past its last control, or Shift+Tab before its first, returns focus to this row. */ returnTo?: HTMLElement; focusSeq: number; /** The panel holds a form: a click or a focus in it counts as an edit, so hover intent leaves it open. */ form?: boolean; /** A panel of the config menu: its controls and edits are its own, not those of a column menu opened from one of its rows. */ config?: boolean; /** The panel is as wide as its anchor (a suggestion list under its input). */ matchWidth?: boolean; className?: string; children: ReactNode }) {
   const el = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<Place | null>(null);
-  const place = useCallback(() => {
+  const held = useRef<DOMRect | null>(null);
+  const place = useCallback((fresh = false) => {
     const node = el.current;
     if (!node) return;
     const size = { width: node.offsetWidth, height: node.offsetHeight };
-    const next = (mode === 'below' ? placeBelow : placeBeside)(boxOf(anchor), size, viewport());
+    const box = pinned && !fresh && held.current ? held.current : boxOf(anchor);
+    held.current = box;
+    const next = (mode === 'below' ? placeBelow : placeBeside)(box, size, viewport());
     setPos((cur) => (cur && cur.left === next.left && cur.top === next.top && cur.side === next.side ? cur : next));
-  }, [anchor, mode]);
+  }, [anchor, mode, pinned]);
   useLayoutEffect(() => { place(); });
   const placedNow = pos !== null;
   useLayoutEffect(() => { if (placedNow) onPlaced?.(); }, [placedNow]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    window.addEventListener('resize', place);
-    return () => window.removeEventListener('resize', place);
+    const onResize = () => place(true);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, [place]);
   useEffect(() => {
     if (typeof ResizeObserver === 'undefined' || !el.current) return;
-    const ro = new ResizeObserver(place);
+    const ro = new ResizeObserver(() => place());
     ro.observe(el.current);
     return () => ro.disconnect();
   }, [place]);

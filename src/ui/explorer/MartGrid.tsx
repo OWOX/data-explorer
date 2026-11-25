@@ -839,15 +839,23 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     return { key: JSON.stringify([martId, query]), loaded, load: async (signal: AbortSignal) => valuesOf(await readRows(ctx, martId, query, { signal }), field) };
   }, [mainKey, schema, filters, slices, martId, ctx, rows]);
   const menuEnv = useMemo<ColumnMenuEnv>(() => {
-    // The columns with a field that is not shown added where ticking it in the Fields list would put it (a joined field goes last, with its mart); null when it is shown already.
+    // The columns with a field that is not shown added where ticking it in a data mart's fields panel would put it (a joined field goes last, with its mart); null when it is shown already.
     const withField = (name: string): string[] | null => {
       if (shown.includes(name)) return null;
       return byName.get(name)?.joined ? [...shown, name] : [...ownInSchemaOrder(shown, native.map((f) => f.name), new Set([...shown.filter((c) => ownNames.has(c)), name])), ...shown.filter((c) => !ownNames.has(c))];
     };
+    // The columns with the field added when its data mart has no column; null otherwise.
+    const joinColumns = (name: string): string[] | null => {
+      const path = byName.get(name)?.joined?.aliasPath;
+      return path !== undefined && !inUsePaths(shown, sources).has(path) ? withField(name) : null;
+    };
+    const joinWith = (cols: string[], name: string) => edit(() => changeColumns(cols, (cur) => ruleNewColumns({ ...cur, uniqueCount: ucNow }, [byName.get(name)!])));
     return {
       sorts: shownSorts, filters, slices,
-      // Filter and Slice keep the columns as they are: a hidden field stays hidden and its rule still reaches the query.
-      setSlice, setFilter,
+      // Filter and Slice keep the columns as they are: a hidden field of a data mart in the grid stays hidden and its rule still reaches the query.
+      // A rule on a field of a data mart that has no column first joins it, in the same edit, so its badge shows and Undo takes both back. Clearing a rule adds nothing.
+      setSlice: (name, f) => { const cols = f ? joinColumns(name) : null; if (cols) joinWith(cols, name); setSlice(name, f); },
+      setFilter: (name, f) => { const cols = f ? joinColumns(name) : null; if (cols) joinWith(cols, name); setFilter(name, f); },
       // Aggregate, Sort and Format on a field that is not a column first show it, in the same edit, so Undo takes both back.
       setSort: (field, direction) => {
         const cols = withField(field);
@@ -870,7 +878,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       },
       isShown: (name) => shown.includes(name),
       outputOf: (name) => outputs.find((o) => o.column === name) ?? { key: name, column: name, sortable: true },
-      // The same rule as the Fields picker: the last column, and the last of the main mart's while a joined mart is shown, stay.
+      // The same rule as the config menu: the last column, and the last of the main mart's while a joined mart is shown, stay.
       canHide: (name) => shown.length > 1 && !(several && ownOn === 1 && ownNames.has(name)),
       hide: (name) => changeColumns(shown.filter((n) => n !== name)),
       canMove: (name, dir) => moveColumnBy(shown, name, dir, sources) !== shown,

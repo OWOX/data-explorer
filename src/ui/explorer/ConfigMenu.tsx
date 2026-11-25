@@ -41,12 +41,14 @@ type Shared = {
 
 /**
  * The panel of one data mart: its fields, then the data marts that can join under it (each opening this same panel), then Remove from report.
- * What can join is taken when the panel opens, so a data mart that joins stays in the list it was in until the menu closes.
+ * What can join is taken when the panel opens, so a data mart that joins stays in the list it was in until the menu closes. So are its rows: a Remove it did not have does not appear, and one it had stays, disabled while the data mart cannot be removed.
  */
 function MartPanel({ entry, anchor, seq, onBack, shared }: { entry: ConfigMart; anchor: HTMLElement; seq: number; onBack: () => void; shared: Shared }) {
   const { joinable, live, release, visible, onChange, close } = shared;
   const mart = live(entry);
   const [listed] = useState(() => joinable(entry.path));
+  // The rows are decided when the panel opens: ticking a field brings a Remove row to a data mart that had none, and nothing below the pointer may move.
+  const [hasRemove] = useState(() => !!mart.remove);
   const { sub, open, hoverRow, hoverOther, leaveRow, closeSub } = useSubmenu<string>({ isEditing: typing });
   const [placed, setPlaced] = useState(false);
   const body = useRef<HTMLDivElement>(null);
@@ -66,7 +68,7 @@ function MartPanel({ entry, anchor, seq, onBack, shared }: { entry: ConfigMart; 
       <Panel anchor={anchor} mode="beside" role="dialog" config label={mart.title} onEscape={() => (sub ? closeSub() : onBack())} returnTo={anchor} onPlaced={() => setPlaced(true)} focusSeq={seq} className="dm-menu-sub">
         <div ref={body} onKeyDown={onKeyDown}>
           <div className="px-3"><MartFields mart={mart} visible={visible} onChange={onChange} /></div>
-          {(listed.length > 0 || mart.remove) && (
+          {(listed.length > 0 || hasRemove) && (
             <div role="menu" aria-labelledby={listed.length > 0 ? heading : undefined} aria-label={listed.length > 0 ? undefined : 'Data mart'}>
               {listed.length > 0 && (
                 <>
@@ -78,11 +80,11 @@ function MartPanel({ entry, anchor, seq, onBack, shared }: { entry: ConfigMart; 
                   ))}
                 </>
               )}
-              {mart.remove && (
+              {hasRemove && (
                 <>
                   <div className="dm-menu-sep" role="separator" />
-                  <Row tabbable label="Remove from report" glyph={<Trash2 className="size-4" />} disabled={mart.remove.disabled}
-                    onHover={hoverOther} onLeaveRow={leaveRow} onActivate={() => { const r = mart.remove!; release(entry.path); close(); r.onRemove(); }} />
+                  <Row tabbable label="Remove from report" glyph={<Trash2 className="size-4" />} disabled={!mart.remove || mart.remove.disabled}
+                    onHover={hoverOther} onLeaveRow={leaveRow} onActivate={() => { const r = mart.remove; if (!r) return; release(entry.path); close(); r.onRemove(); }} />
                 </>
               )}
             </div>
@@ -191,7 +193,7 @@ export function ConfigMenu({ marts, joinable, visible, onChange, chartItems = []
         <Settings2 className="size-4" aria-hidden />
       </button>
       {anchor && frozen && (
-        <Panel anchor={anchor} mode="below" role="menu" config label="Configure data" onEscape={() => (sub ? closeSub() : close())} onTab={() => close()} onPlaced={() => setPlaced(true)} focusSeq={1} className="dm-menu-root">
+        <Panel anchor={anchor} mode="below" role="menu" config pinned label="Configure data" onEscape={() => (sub ? closeSub() : close())} onTab={() => close()} onPlaced={() => setPlaced(true)} focusSeq={1} className="dm-menu-root">
           {chartItems.map((it) => (
             <ItemRow key={it.label} item={it} slot={slot} expanded={sub?.key === `i:${it.label}`} close={close} onOpen={(r) => open(`i:${it.label}`, r, true)} onHover={(r) => hoverRow(`i:${it.label}`, r)} hoverOther={hoverOther} leaveRow={leaveRow} />
           ))}

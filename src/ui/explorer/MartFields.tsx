@@ -46,6 +46,8 @@ export function MartFields({ mart, visible, onChange }: { mart: ConfigMart; visi
     const shown = visible.filter((c) => mine.has(c));
     return [...shown, ...fields.map((f) => f.name).filter((n) => !shown.includes(n))];
   });
+  // The Unique Count row is decided when the panel opens, like the rest of its rows: it does not appear later, and stays (disabled) while the mart offers none.
+  const [hadUnique] = useState(() => !!unique);
   const byName = new Map(fields.map((f) => [f.name, f]));
   const listed = [...order.map((n) => byName.get(n)).filter((f): f is Field => !!f), ...fields.filter((f) => !order.includes(f.name))];
   // A joined mart whose last field is unticked stays on the grid while its panel is open (Clear, then a new tick, keeps it); it leaves when the panel closes with nothing ticked.
@@ -88,7 +90,7 @@ export function MartFields({ mart, visible, onChange }: { mart: ConfigMart; visi
   return (
     <div className="flex flex-col gap-2">
       <SheetsChecklist label={`Fields of ${title}`} items={items} selected={shownNow} displaying={shownNow.length} onChange={apply}
-        lead={unique ? { item: { value: 'unique-count', text: UNIQUE_COUNT_LABEL }, on: unique.on, onToggle: unique.onToggle } : undefined} />
+        lead={hadUnique ? { item: { value: 'unique-count', text: UNIQUE_COUNT_LABEL, disabled: !unique }, on: unique?.on ?? false, onToggle: () => unique?.onToggle() } : undefined} />
     </div>
   );
 }

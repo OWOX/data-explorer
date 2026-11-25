@@ -581,7 +581,6 @@ describe('fix round 1', () => {
   });
 
   test('a root mart that left gets a fresh locked from the data marts that can join', async () => {
-    const field = (name: string) => f(name);
     const gone = (locked: (n: string) => boolean): ConfigMart => ({ ...mart('p', 'Partners', ['p1', 'p2']), locked });
     const props = (marts: ConfigMart[], joinable: ConfigMart[]) => <TooltipProvider><ConfigMenu marts={marts} joinable={(p) => (p === '' ? joinable : [])} visible={['id', 'p1']} onChange={() => undefined} /></TooltipProvider>;
     const main = { ...mart('', 'Orders', ORDERS), shown: true };
@@ -591,7 +590,6 @@ describe('fix round 1', () => {
     await screen.findByRole('menu', { name: 'Configure data' });
     rerender(props([main], [gone((n) => n === 'p1')]));
     const panel = await openRow('Partners', screen.getByRole('menu', { name: 'Configure data' }));
-    expect(field('p1').name).toBe('p1');
     expect(within(panel).getByRole('option', { name: 'p1' })).toHaveAttribute('aria-disabled', 'true');
   });
 
@@ -715,3 +713,44 @@ describe('the chart rows', () => {
   });
 });
 
+
+describe('a panel keeps the rows it had when it opened', () => {
+  const REMOVE = 'Remove from report';
+  /** Orders and Customers, with Customers in the report or joinable under Orders. Orders and Customers offer Unique Count and Remove only while `live` is true: what ticking a joinable data mart brings. */
+  const view = (live: boolean) => {
+    const offer = { unique: { on: false, onToggle: () => undefined }, remove: { onRemove: () => undefined } };
+    const orders: ConfigMart = { ...mart('', 'Orders', ORDERS), shown: true, ...(live ? offer : {}) };
+    const customers: ConfigMart = { ...mart('customers', 'Customers', CUSTOMERS), shown: live, ...(live ? offer : {}) };
+    return (
+      <TooltipProvider>
+        <ConfigMenu marts={live ? [orders, customers] : [orders]} joinable={(p) => (p === '' && !live ? [customers] : [])} visible={['id']} onChange={() => undefined} />
+      </TooltipProvider>
+    );
+  };
+  const unique = (panel: HTMLElement) => within(panel).queryByRole('option', { name: 'Unique Count' });
+  const remove = (panel: HTMLElement) => within(panel).queryByRole('menuitem', { name: REMOVE });
+  const openOrders = async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Configure data' }));
+    return openRow('Orders', await screen.findByRole('menu', { name: 'Configure data' }));
+  };
+
+  test('a row it did not have does not appear, in the ticked data mart and in its parent', async () => {
+    const { rerender } = render(view(false));
+    const orders = await openOrders();
+    const customers = await openRow('Customers', orders);
+    for (const panel of [orders, customers]) { expect(unique(panel)).toBeNull(); expect(remove(panel)).toBeNull(); }
+    rerender(view(true));
+    for (const panel of [orders, customers]) { expect(unique(panel)).toBeNull(); expect(remove(panel)).toBeNull(); }
+  });
+
+  test.each(['Orders', 'Customers'])('a row it had stays and goes disabled while its action is not available, in %s', async (title) => {
+    const { rerender } = render(view(true));
+    await userEvent.click(screen.getByRole('button', { name: 'Configure data' }));
+    const panel = await openRow(title, await screen.findByRole('menu', { name: 'Configure data' }));
+    expect(unique(panel)).not.toHaveAttribute('aria-disabled');
+    expect(remove(panel)).toBeEnabled();
+    rerender(view(false));
+    expect(unique(panel)).toHaveAttribute('aria-disabled', 'true');
+    expect(remove(panel)).toBeDisabled();
+  });
+});

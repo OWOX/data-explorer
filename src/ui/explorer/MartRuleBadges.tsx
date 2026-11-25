@@ -1,5 +1,5 @@
 import { Funnel, Layers, type LucideIcon } from 'lucide-react';
-import { forwardRef, useState, type ButtonHTMLAttributes } from 'react';
+import { useState, type ButtonHTMLAttributes } from 'react';
 import type { Field } from '../../model/types';
 import type { ColumnFilter } from '../../filters/build';
 import { RuleListMenu } from './ColumnMenu';
@@ -11,9 +11,9 @@ function focusBadge(from: HTMLElement | null, kind: string | null) {
 }
 
 /** A badge's text button: its icon at rest; hover, focus or an open list widens the badge to the label (CSS). The accessible name is the label either way. */
-const BadgeText = forwardRef<HTMLButtonElement, { icon: LucideIcon; label: string; aria: string } & ButtonHTMLAttributes<HTMLButtonElement>>(function BadgeText({ icon: Icon, label, aria, ...rest }, ref) {
-  return <button ref={ref} type="button" aria-label={aria} className="dm-rule-badge-text" {...rest}><Icon className="dm-badge-icon size-3" aria-hidden /><span className="dm-badge-label">{label}</span></button>;
-});
+function BadgeText({ icon: Icon, label, aria, ...rest }: { icon: LucideIcon; label: string; aria: string } & ButtonHTMLAttributes<HTMLButtonElement>) {
+  return <button type="button" aria-label={aria} className="dm-rule-badge-text" {...rest}><Icon className="dm-badge-icon size-3" aria-hidden /><span className="dm-badge-label">{label}</span></button>;
+}
 
 /**
  * The "N slices" and "N filters" badges after a data mart's title: they show when any field of the mart (shown or not)

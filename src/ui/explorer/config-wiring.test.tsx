@@ -5,12 +5,16 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { Ctx } from '../../sdk/types';
 import { AppServices, StoreProvider, useStore, type State } from '../../state/store';
 import { App } from '../App';
-import { openConfigMenu, openFields } from './menu-test-utils';
+import { closeConfigMenu, openConfigMenu, openFields } from './menu-test-utils';
 
 const data = () => document.getElementById('band-data')!;
 const probe = {} as { state: State; dispatch: ReturnType<typeof useStore>[1] };
 function Probe() { const [state, dispatch] = useStore(); Object.assign(probe, { state, dispatch }); return null; }
 const columns = () => probe.state.grids.orders!.columns;
+const openRow = async (menu: HTMLElement, name: string) => {
+  await userEvent.click(within(menu).getByRole('menuitem', { name }));
+  return screen.findByRole('dialog', { name });
+};
 const rowNames = (menu: HTMLElement) => within(menu).getAllByRole('menuitem').map((r) => r.textContent);
 
 /** The demo marts with Customers reachable a second way, through Stores (the fixtures' edge list is shared, so the list is copied). */
@@ -89,8 +93,13 @@ test('untick an ancestor\'s last field, then Remove from report on the nested ma
   await userEvent.click(within(countries).getByRole('option', { name: /^name/i }));
   await waitFor(() => expect(columns()).toContain('customers__countries__name'));
   const both = [...columns()];
-  await userEvent.click(within(customers).getByRole('option', { name: /^name/i }));
-  await userEvent.click(within(countries).getByRole('menuitem', { name: 'Remove from report' }));
+  // A panel's rows are taken when it opens: Countries had no column then, so the menu is opened again for it to have Remove.
+  await closeConfigMenu();
+  const menu = await openConfigMenu();
+  const again = await openRow(menu, 'Customers');
+  await userEvent.click(within(again).getByRole('option', { name: /^name/i }));
+  const last = await openRow(menu, 'Countries');
+  await userEvent.click(within(last).getByRole('menuitem', { name: 'Remove from report' }));
   await waitFor(() => expect(columns().some((c) => c.startsWith('customers__'))).toBe(false));
   expect(data().querySelectorAll('th[data-group-path]')).toHaveLength(1);
   const undo = screen.getByRole('button', { name: 'Undo' });
@@ -142,21 +151,85 @@ test('a pending change survives a Table to Charts switch: the column leaves, the
 });
 
 test('removing the main mart promotes the next one by the state as it is, after a change that went out just before', async () => {
-  await setup([]);
+  // Stores is joined from the start, so Orders has Remove from report when its panel opens (a panel's rows are taken then).
+  await setup(['stores__city']);
   const orders = await openFields('Orders');
-  const join = async (mart: string, field: RegExp) => {
-    await userEvent.click(within(orders).getByRole('menuitem', { name: mart }));
-    const panel = await screen.findByRole('dialog', { name: mart });
-    await userEvent.click(within(panel).getByRole('option', { name: field }));
-    return panel;
-  };
-  await join('Customers', /^name/i);
-  await join('Stores', /city/i);
-  // Customers is the second group; unticking its last field is held until its panel goes, and Remove sends it out in the same tick.
   await userEvent.click(within(orders).getByRole('menuitem', { name: 'Customers' }));
   const customers = await screen.findByRole('dialog', { name: 'Customers' });
+  await userEvent.click(within(customers).getByRole('option', { name: /^name/i }));
+  await waitFor(() => expect(columns()).toContain('customers__name'));
+  // Customers is a second group; unticking its last field is held until its panel goes, and Remove sends it out in the same tick.
   await userEvent.click(within(customers).getByRole('option', { name: /^name/i }));
   await userEvent.click(within(orders).getByRole('menuitem', { name: 'Remove from report' }));
   await waitFor(() => expect(Array.from(data().querySelectorAll('th[data-group-path]')).map((h) => h.querySelector('.truncate')!.textContent)).toEqual(['Stores']));
   await waitFor(() => expect(document.activeElement).toBe(within(data()).getByRole('button', { name: 'Configure data' })));
+});
+
+describe('a filter or slice from a data mart with no column joins it', () => {
+  const filters = () => probe.state.grids.orders!.filters;
+  const slices = () => probe.state.grids.orders!.slices ?? {};
+  const undo = () => userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  /** Opens the column menu of a field in an open fields panel, then one of its first-level rows, then types a text and applies. */
+  async function rule(panel: HTMLElement, field: string, row: 'Filter' | 'Slice', value: string) {
+    await userEvent.click(within(panel).getByRole('button', { name: new RegExp(`^Column menu .*${field}$`) }));
+    const menu = await screen.findByRole('menu', { name: /^Menu of / });
+    await userEvent.click(within(menu).getByRole('menuitem', { name: row }));
+    const dialog = await screen.findByRole('dialog', { name: new RegExp(`^${row} of `) });
+    await userEvent.selectOptions(within(dialog).getByLabelText('Operator'), 'contains');
+    await userEvent.type(within(dialog).getByLabelText('Value'), value);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  }
+  const joinable = async () => {
+    const orders = await openFields('Orders');
+    await userEvent.click(within(orders).getByRole('menuitem', { name: 'Customers' }));
+    return screen.findByRole('dialog', { name: 'Customers' });
+  };
+
+  test.each([['Filter', filters], ['Slice', slices]] as const)('a %s from a joinable data mart adds its column, and one Undo takes both back', async (row, rules) => {
+    await setup([]);
+    const before = [...columns()];
+    await rule(await joinable(), 'city', row, 'K');
+    await waitFor(() => expect(columns()).toContain('customers__city'));
+    expect(Object.keys(rules())).toEqual(['customers__city']);
+    await userEvent.keyboard('{Escape}{Escape}{Escape}');
+    await undo();
+    await waitFor(() => expect(columns()).toEqual(before));
+    expect(rules()).toEqual({});
+  });
+
+  test.each([['Filter', filters], ['Slice', slices]] as const)('a %s from a path data mart adds its column too', async (row, rules) => {
+    await setup(['customers__countries__name']);
+    const menu = await openConfigMenu();
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Customers' }));
+    const customers = await screen.findByRole('dialog', { name: 'Customers' });
+    await rule(customers, 'city', row, 'K');
+    await waitFor(() => expect(columns()).toContain('customers__city'));
+    expect(Object.keys(rules())).toEqual(['customers__city']);
+    await userEvent.keyboard('{Escape}{Escape}');
+    await undo();
+    await waitFor(() => expect(columns()).not.toContain('customers__city'));
+    expect(rules()).toEqual({});
+  });
+
+  test('a filter on a hidden field of a data mart that is in the grid adds no column', async () => {
+    await setup(['customers__name']);
+    const before = [...columns()];
+    const customers = await openFields('Customers');
+    await rule(customers, 'city', 'Filter', 'K');
+    await waitFor(() => expect(Object.keys(filters())).toEqual(['customers__city']));
+    expect(columns()).toEqual(before);
+  });
+
+  test('clearing a filter on a field of a data mart that left the grid adds no column', async () => {
+    await setup(['customers__name']);
+    const customers = await openFields('Customers');
+    await rule(customers, 'name', 'Filter', 'K');
+    await waitFor(() => expect(Object.keys(filters())).toEqual(['customers__name']));
+    const before = [...columns()];
+    await userEvent.click(within(customers).getByRole('button', { name: /^Column menu .*name$/ }));
+    await userEvent.click(within(await screen.findByRole('menu', { name: /^Menu of / })).getByRole('menuitem', { name: 'Filter' }));
+    await userEvent.click(within(await screen.findByRole('dialog', { name: /^Filter of / })).getByRole('button', { name: 'Clear' }));
+    await waitFor(() => expect(filters()).toEqual({}));
+    expect(columns()).toEqual(before);
+  });
 });
