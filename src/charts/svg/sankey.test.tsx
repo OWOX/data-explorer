@@ -212,8 +212,10 @@ test('a cut label carries the same share as its node', async () => {
   expect(await tip(cut)).toBe(`${name} $3 (75%)`);
 });
 
-test('a column that totals 0 never prints NaN or Infinity', async () => {
-  draw({ titles: ['One', 'Two'], flows: [[{ source: 'a', target: 'x', value: 0 }]], columns: [[{ key: 'a', value: 0 }], [{ key: 'x', value: 0 }]] });
-  const node = byAttr('data-node', '0|a');
-  if (node) expect(await tip(node)).not.toMatch(/NaN|Infinity/);
+test('a node that grew past its exact total to hold its flows has a share of the drawn column, never above 100%', async () => {
+  // Without fit, a (exact 10) grows to its 16 of ribbons: the tooltip prints $16, so 16 of the column's 16.
+  draw({ titles: ['One', 'Two'], flows: [[{ source: 'a', target: 'x', value: 8 }, { source: 'a', target: 'y', value: 8 }]], columns: [[{ key: 'a', value: 10 }], [{ key: 'x', value: 8 }, { key: 'y', value: 8 }]] });
+  expect(await tip(byAttr('data-node', '0|a')!)).toBe('a: $16 (100%)');
+  await userEvent.unhover(byAttr('data-node', '0|a')!);
+  expect(await tip(byAttr('data-node', '1|x')!)).toBe('x: $8 (50%)');
 });

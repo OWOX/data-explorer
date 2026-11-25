@@ -52,14 +52,13 @@ export function Sankey({ titles, columns, flows, fit, text, ariaLabel, onPickNod
   const linkKey = (l: SankeyLink) => `${l.pair}|${l.source}|${l.target}|${l.origin ?? ''}`;
   const hoverLink = { onMouseEnter: (e: SyntheticEvent) => light(e.currentTarget), onMouseLeave: () => light(), onFocus: (e: SyntheticEvent) => light(e.currentTarget), onBlur: () => light() };
   const hoverNode = (col: number, key: string) => ({ onMouseEnter: () => light(null, `${col}|${key}`), onMouseLeave: () => light(), onFocus: () => light(null, `${col}|${key}`), onBlur: () => light() });
-  // Each column's total, once per layout: the exact total where `columns` gives the node, else what the layout holds. A node's share is of this.
+  // Each column's total, once per layout: the sum of the node values drawn (the ones the tooltips print), so a column's shares add up. A drawn node has a value above 0, so the total is never 0.
   const colTotals = useMemo(() => {
-    const exact = new Map((columns ?? []).flatMap((col, c) => col.filter((n) => n.value > 0).map((n): [string, number] => [`${c}|${n.key}`, n.value])));
     const sums: number[] = [];
-    for (const n of layout.nodes) sums[n.col] = (sums[n.col] ?? 0) + (exact.get(`${n.col}|${n.key}`) ?? n.value);
+    for (const n of layout.nodes) sums[n.col] = (sums[n.col] ?? 0) + n.value;
     return sums;
-  }, [layout, columns]);
-  const share = (n: { col: number; value: number }) => { const t = colTotals[n.col] ?? 0; return t > 0 ? ` (${Math.round((n.value / t) * 100)}%)` : ''; };
+  }, [layout]);
+  const share = (n: { col: number; value: number }) => ` (${Math.round((n.value / colTotals[n.col]!) * 100)}%)`;
   // The ribbons are built once per layout: hover touches the DOM only (see `light`), so thousands of paths and tooltips are not re-rendered by it.
   const ribbons = useMemo(() => {
     const totals = flows.map((pair) => pair.reduce((sum, f) => (f.value > 0 ? sum + f.value : sum), 0));
