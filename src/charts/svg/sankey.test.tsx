@@ -271,7 +271,7 @@ test('a visible label that fits keeps exactly its name and value, and the share 
 test('a cut label shows its clipped text only, with no share', () => {
   const { container } = draw({ titles: ['One', 'Two'], flows: pairFlows(LONG) });
   const cut = [...container.querySelectorAll('text.dm-chart-text')].find((t) => t.textContent?.endsWith('…'))!;
-  expect(cut.textContent).toBe(`${`${LONG} $3`.slice(0, 20)}…`);
+  expect(cut.textContent).toBe(`${`${LONG} $3`.slice(0, 27)}…`);
 });
 
 test('the shares follow new flows: a rerender with other values prints the new percent', async () => {
