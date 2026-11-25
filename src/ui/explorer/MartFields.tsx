@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { UNIQUE_COUNT_LABEL } from '../../model/unique-count';
@@ -12,12 +12,22 @@ import { FieldHint, FieldLabel } from './FieldLabel';
 export type ConfigMart = {
   path: string; title: string; icon?: string | null; description?: string | null;
   main: boolean;
+  /** Listed with the data marts of the report: it has a column, or its Unique Count is on, or it is the main mart. The caller says; the menu does not guess. */
+  shown: boolean;
   fields: Field[];
   locked: (name: string) => boolean;
   unique?: { on: boolean; onToggle: () => void };
   /** Takes the data mart out of the report. Absent when it has no column, or is the only one. */
   remove?: { onRemove: () => void; disabled?: boolean };
 };
+
+/**
+ * Where a menu takes over a panel's pending empty commit: a joined mart whose last field was unticked waits for its panel to go.
+ * With a holder, the panel registers the fields that wait (`hold`), withdraws them on a new tick (`release`) and, when it goes, hands them over (`settle`);
+ * the menu leaves every pending mart as one change when it closes. Without one, the panel commits on its own.
+ */
+export type PendingEmpties = { hold: (path: string, names: string[]) => void; release: (path: string) => void; settle: (path: string) => void };
+export const PendingEmptiesContext = createContext<PendingEmpties | null>(null);
 
 /**
  * The fields of one data mart: a checklist of only that mart's fields (the main mart's own, or a joined mart's blended ones).
@@ -39,6 +49,7 @@ export function MartFields({ mart, visible, onChange }: { mart: ConfigMart; visi
   const byName = new Map(fields.map((f) => [f.name, f]));
   const listed = [...order.map((n) => byName.get(n)).filter((f): f is Field => !!f), ...fields.filter((f) => !order.includes(f.name))];
   // A joined mart whose last field is unticked stays on the grid while its panel is open (Clear, then a new tick, keeps it); it leaves when the panel closes with nothing ticked.
+  const holder = useContext(PendingEmptiesContext);
   const [emptied, setEmptied] = useState(false);
   const pending = useLatest(emptied);
   const commit = (picked: string[]) => {
@@ -55,14 +66,15 @@ export function MartFields({ mart, visible, onChange }: { mart: ConfigMart; visi
   const apply = (picked: string[]) => {
     if (!main && picked.length === 0) {
       // Only a mart that has a column can leave the grid.
-      if (visible.some((c) => mine.has(c))) setEmptied(true);
+      if (visible.some((c) => mine.has(c))) { setEmptied(true); holder?.hold(mart.path, [...mine]); }
       return;
     }
     setEmptied(false);
+    holder?.release(mart.path);
     commit(picked);
   };
   // The empty commit waits for the panel to go. A remount that React does on its own finds nothing pending.
-  useEffect(() => () => { if (pending.current) commitNow.current([]); }, [pending, commitNow]);
+  useEffect(() => () => { if (!pending.current) return; if (holder) holder.settle(mart.path); else commitNow.current([]); }, [pending, commitNow, holder, mart.path]);
   const shownNow = emptied ? [] : visible.filter((c) => mine.has(c));
   const items: ChecklistItem[] = listed.map((f) => ({
     value: f.name,

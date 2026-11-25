@@ -89,7 +89,7 @@ export function ColumnPicker({ title, fields, main, visible, locked, onChange, u
     <Popover align="start" trigger={
       <BadgeText icon={Columns3} label={count} aria={`Fields of ${title}: ${count}`} />
     }>
-      <MartFields mart={{ path: '', title, main, fields, locked, unique }} visible={visible} onChange={onChange} />
+      <MartFields mart={{ path: '', title, main, shown: true, fields, locked, unique }} visible={visible} onChange={onChange} />
     </Popover>
     {remove && (
       <Tooltip content={`Remove ${title} from the grid`}>

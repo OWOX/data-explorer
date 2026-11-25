@@ -95,7 +95,7 @@ function GroupSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<Menu
           <ItemRow key={i} item={it} slot={slot} expanded={sub?.key === i} close={close} onOpen={(r) => open(i, r, true)} onHover={(r) => hoverRow(i, r)} hoverOther={hoverOther} leaveRow={leaveRow} />
         ))}
       </Panel>
-      {placed && sub && picked && <ItemSubmenu item={picked} anchor={sub.row} seq={sub.seq} close={close} onBack={closeSub} />}
+      {placed && sub && picked && <ItemSubmenu key={sub.key} item={picked} anchor={sub.row} seq={sub.seq} close={close} onBack={closeSub} />}
     </>
   );
 }

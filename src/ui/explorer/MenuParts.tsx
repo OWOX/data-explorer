@@ -69,7 +69,7 @@ const ITEM = '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox
  * One floating panel of the menu, drawn in a portal on the body and kept inside the viewport (flipped left or up when it has no room).
  * Escape, and for a submenu Left, are handled here: the deepest open panel takes the key, so Escape closes the submenu first, then the menu.
  */
-export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onPlaced, returnTo, focusSeq, form, matchWidth, className = '', children }: { anchor: HTMLElement; mode: 'below' | 'beside'; /** None for a plain container (a suggestion list holds its own listbox); it then takes no label either. */ role?: 'menu' | 'dialog'; label?: string; onEscape: () => void; onLeave?: () => void; /** Tab in a menu closes it (the editors keep their own Tab order). */ onTab?: () => void; /** Called once the panel has its place, so a submenu can be measured from its rows. */ onPlaced?: () => void; /** A submenu in a dialog keeps Tab inside the dialog's order: Tab past its last control, or Shift+Tab before its first, returns focus to this row. */ returnTo?: HTMLElement; focusSeq: number; /** The panel holds a form: a click or a focus in it counts as an edit, so hover intent leaves it open. */ form?: boolean; /** The panel is as wide as its anchor (a suggestion list under its input). */ matchWidth?: boolean; className?: string; children: ReactNode }) {
+export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onPlaced, returnTo, focusSeq, form, config, matchWidth, className = '', children }: { anchor: HTMLElement; mode: 'below' | 'beside'; /** None for a plain container (a suggestion list holds its own listbox); it then takes no label either. */ role?: 'menu' | 'dialog'; label?: string; onEscape: () => void; onLeave?: () => void; /** Tab in a menu closes it (the editors keep their own Tab order). */ onTab?: () => void; /** Called once the panel has its place, so a submenu can be measured from its rows. */ onPlaced?: () => void; /** A submenu in a dialog keeps Tab inside the dialog's order: Tab past its last control, or Shift+Tab before its first, returns focus to this row. */ returnTo?: HTMLElement; focusSeq: number; /** The panel holds a form: a click or a focus in it counts as an edit, so hover intent leaves it open. */ form?: boolean; /** A panel of the config menu: its controls and edits are its own, not those of a column menu opened from one of its rows. */ config?: boolean; /** The panel is as wide as its anchor (a suggestion list under its input). */ matchWidth?: boolean; className?: string; children: ReactNode }) {
   const el = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<Place | null>(null);
   const place = useCallback(() => {
@@ -100,7 +100,7 @@ export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onP
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onEscape(); return; }
     if (e.key === 'Tab' && returnTo && (e.target as HTMLElement).closest('[data-column-menu]') === e.currentTarget) {
-      const tabbable = [...e.currentTarget.querySelectorAll<HTMLElement>('input, select, textarea, button')].filter((n) => !(n as HTMLButtonElement).disabled && n.tabIndex >= 0);
+      const tabbable = [...e.currentTarget.querySelectorAll<HTMLElement>('input, select, textarea, button, [tabindex="0"]')].filter((n) => !(n as HTMLButtonElement).disabled && n.tabIndex >= 0);
       const at = tabbable.indexOf(e.target as HTMLElement);
       if (e.shiftKey ? at <= 0 : at === -1 ? tabbable.length === 0 : at === tabbable.length - 1) { e.preventDefault(); e.stopPropagation(); returnTo.focus(); }
       return;
@@ -118,7 +118,7 @@ export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onP
     else if (e.key === 'ArrowLeft' && onLeave && role === 'menu') { e.preventDefault(); e.stopPropagation(); onLeave(); }
   };
   return createPortal(
-    <div ref={el} role={role} aria-label={role ? label : undefined} tabIndex={-1} data-column-menu="" data-form={form ? '' : undefined} data-side={pos?.side} onKeyDown={onKeyDown} onInput={() => { if (el.current) el.current.dataset.edited = ''; }} onChange={() => { if (el.current) el.current.dataset.edited = ''; }}
+    <div ref={el} role={role} aria-label={role ? label : undefined} tabIndex={-1} data-column-menu="" data-form={form ? '' : undefined} data-config-panel={config ? '' : undefined} data-side={pos?.side} onKeyDown={onKeyDown} onInput={() => { if (el.current) el.current.dataset.edited = ''; }} onChange={() => { if (el.current) el.current.dataset.edited = ''; }}
       style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? 'visible' : 'hidden', ...(matchWidth ? { width: boxOf(anchor).width } : {}) }}
       className={`dm-menu ${className}`}>
       {children}
@@ -133,7 +133,7 @@ export function Row({ label, hint, icon, glyph, active, check, checkbox, slot, t
 }) {
   return (
     <button type="button" role={check ? (checkbox ? 'menuitemcheckbox' : 'menuitemradio') : 'menuitem'} aria-checked={check ? !!checked : undefined} aria-haspopup={sub ? haspopup ?? 'menu' : undefined} aria-expanded={sub ? !!expanded : undefined}
-      aria-description={hint ?? (icon && active ? 'Active' : undefined)} data-active={icon && active ? '' : undefined}
+      aria-description={[icon && active ? 'Active' : '', hint ?? ''].filter(Boolean).join('. ') || undefined} data-active={icon && active ? '' : undefined}
       disabled={disabled} tabIndex={tabbable ? 0 : -1} ref={rowRef} className={hint ? 'dm-menu-row dm-reveal-host' : 'dm-menu-row'}
       onClick={(e) => onActivate(e.currentTarget)}
       onMouseEnter={(e) => onHover?.(e.currentTarget)} onMouseLeave={onLeaveRow}

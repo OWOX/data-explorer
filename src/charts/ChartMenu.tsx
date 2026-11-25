@@ -75,7 +75,7 @@ export function ChartMenu({ name, items }: { name: string; items: MenuItem[] }) 
           ))}
         </Panel>
       )}
-      {anchor && placed && sub && picked && <ItemSubmenu item={picked} anchor={sub.row} seq={sub.seq} close={close} onBack={closeSub} />}
+      {anchor && placed && sub && picked && <ItemSubmenu key={sub.key} item={picked} anchor={sub.row} seq={sub.seq} close={close} onBack={closeSub} />}
     </span>
   );
 }

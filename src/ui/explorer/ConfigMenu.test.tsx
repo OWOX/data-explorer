@@ -7,32 +7,35 @@ import { vi } from 'vitest';
 import type { Field } from '../../model/types';
 import type { MenuItem } from '../../charts/ChartMenu';
 import { ConfigMenu, type ConfigMart } from './ConfigMenu';
+import { HOVER_MS } from './MenuParts';
 
 afterEach(cleanup);
 
 const f = (name: string, description?: string) => ({ name, type: 'STRING', category: 'string', description }) as Field;
 const mart = (path: string, title: string, names: string[], extra: Partial<ConfigMart> = {}): ConfigMart => ({
-  path, title, main: path === '', fields: names.map((n) => f(n)), locked: () => false, ...extra,
+  path, title, main: path === '', shown: false, fields: names.map((n) => f(n)), locked: () => false, ...extra,
 });
 const ORDERS = ['id', 'name', 'city'];
 const CUSTOMERS = ['customers__email', 'customers__tier'];
 const REGIONS = ['regions__code', 'regions__zone'];
-const PRODUCTS = ['products__sku', 'products__price'];
+const PRODUCTS = ['products__sku', 'products__price', 'products__a', 'products__b', 'products__c', 'products__d', 'products__e', 'products__f'];
 const SUPPLIERS = ['suppliers__name', 'suppliers__country'];
 
 type Setup = { visible?: string[]; chartItems?: MenuItem[]; onRemove?: () => void; spy?: (cols: string[]) => void; strict?: boolean };
 /** The menu with a grid behind it: `onChange` feeds `visible`, and the data marts with a column are the ones in `marts`. */
 function Harness({ visible: start = ['id', 'customers__email'], chartItems, onRemove, spy }: Setup) {
   const [visible, setVisible] = useState(start);
-  const all: ConfigMart[] = [
+  const has = (m: ConfigMart) => m.fields.some((x) => visible.includes(x.name));
+  const remove = { onRemove: onRemove ?? (() => undefined) };
+  const base: ConfigMart[] = [
     mart('', 'Orders', ORDERS),
-    mart('customers', 'Customers', CUSTOMERS, { description: 'Who bought', remove: { onRemove: onRemove ?? (() => undefined) }, unique: { on: false, onToggle: () => undefined } }),
+    mart('customers', 'Customers', CUSTOMERS, { description: 'Who bought', unique: { on: false, onToggle: () => undefined } }),
     mart('regions', 'Regions', REGIONS),
     mart('products', 'Products', PRODUCTS),
     mart('products.suppliers', 'Suppliers', SUPPLIERS),
   ];
-  const has = (m: ConfigMart) => m.fields.some((x) => visible.includes(x.name));
-  const shown = all.filter((m) => m.main || has(m));
+  const all = base.map((m) => ({ ...m, shown: m.main || has(m) || !!m.unique?.on, remove: has(m) && (m.path === 'customers' || m.path === 'products') ? remove : undefined }));
+  const shown = all.filter((m) => m.shown);
   const marts = [...shown, ...all.filter((m) => m.path === 'regions' && !shown.includes(m))];
   const under: Record<string, string[]> = { '': ['products'], products: ['products.suppliers'] };
   const joinable = (path: string) => (under[path] ?? []).map((p) => all.find((m) => m.path === p)!).filter((m) => !marts.includes(m));
@@ -363,27 +366,203 @@ describe('the keyboard', () => {
   });
 });
 
-const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+const wait = (ms: number) => act(() => new Promise<void>((r) => setTimeout(r, ms)));
 
-test('a hover on another mart waits while the search box of the open panel holds focus', async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  try {
+test('a hover on another mart waits while the real search box of the open panel holds focus', async () => {
+  setup({ visible: ['id', 'products__sku'] });
+  const menu = await openMenu();
+  fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: 'Products' }));
+  await wait(0);
+  const panel = await screen.findByRole('dialog', { name: 'Products' });
+  const box = within(panel).getByRole('searchbox');
+  await userEvent.click(box);
+  expect(box).toHaveFocus();
+  fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: 'Regions' }));
+  await wait(HOVER_MS + 100);
+  expect(screen.getByRole('dialog', { name: 'Products' })).toBeInTheDocument();
+  box.blur();
+  fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: 'Orders' }));
+  await wait(HOVER_MS + 100);
+  expect(screen.queryByRole('dialog', { name: 'Products' })).toBeNull();
+  expect(screen.getByRole('dialog', { name: 'Orders' })).toBeInTheDocument();
+});
+
+describe('fix round 1', () => {
+  test('Tab walks a fields panel through the controls, the list stop, the joinable rows and Remove, and back with Shift+Tab', async () => {
+    setup({ visible: ['id', 'products__sku'] });
+    const panel = await openRow('Products', await openMenu());
+    const row = screen.getByRole('menuitem', { name: 'Products' });
+    const at = () => document.activeElement;
+    expect(at()).toBe(within(panel).getByRole('button', { name: /^Select all/ }));
+    await userEvent.tab();
+    expect(at()).toBe(within(panel).getByRole('button', { name: 'Clear' }));
+    await userEvent.tab();
+    expect(at()).toBe(within(panel).getByRole('searchbox'));
+    await userEvent.tab();
+    expect(at()?.getAttribute('role')).toBe('option');
+    await userEvent.tab();
+    expect(at()).toBe(within(panel).getByRole('menuitem', { name: 'Suppliers' }));
+    await userEvent.tab();
+    expect(at()).toBe(within(panel).getByRole('menuitem', { name: 'Remove from report' }));
+    await userEvent.tab();
+    expect(at()).toBe(row);
+    // And back.
+    await userEvent.click(row);
+    within(panel).getByRole('menuitem', { name: 'Remove from report' }).focus();
+    await userEvent.tab({ shift: true });
+    expect(at()).toBe(within(panel).getByRole('menuitem', { name: 'Suppliers' }));
+    await userEvent.tab({ shift: true });
+    expect(at()?.getAttribute('role')).toBe('option');
+    await userEvent.tab({ shift: true });
+    expect(at()).toBe(within(panel).getByRole('searchbox'));
+    await userEvent.tab({ shift: true });
+    expect(at()).toBe(within(panel).getByRole('button', { name: 'Clear' }));
+    await userEvent.tab({ shift: true });
+    expect(at()).toBe(within(panel).getByRole('button', { name: /^Select all/ }));
+    await userEvent.tab({ shift: true });
+    expect(at()).toBe(row);
+  });
+
+  test('Tab from Clear reaches the list of a short panel', async () => {
+    setup();
+    const panel = await openRow('Regions', await openMenu());
+    await userEvent.tab();
+    expect(document.activeElement).toBe(within(panel).getByRole('button', { name: 'Clear' }));
+    await userEvent.tab();
+    expect(document.activeElement?.getAttribute('role')).toBe('option');
+  });
+
+  test('a joinable list taken when the menu opened survives opening another panel and coming back', async () => {
     setup();
     const menu = await openMenu();
-    const customers = within(menu).getByRole('menuitem', { name: 'Customers' });
-    fireEvent.mouseEnter(customers);
-    await advance(10);
-    const panel = screen.getByRole('dialog', { name: 'Customers' });
-    const box = document.createElement('input');
-    panel.appendChild(box);
-    box.focus();
+    const orders = await openRow('Orders', menu);
+    const products = await openRow('Products', orders);
+    await userEvent.click(within(products).getByLabelText('products__price'));
+    await openRow('Customers', menu);
+    const again = await openRow('Orders', menu);
+    expect(within(again).getByRole('menuitem', { name: 'Products' })).toBeInTheDocument();
+  });
+
+  test('a mart emptied from the root is not listed again as joinable', async () => {
+    setup({ visible: ['id', 'products__sku'] });
+    const menu = await openMenu();
+    const products = await openRow('Products', menu);
+    await userEvent.click(within(products).getByLabelText('products__sku'));
+    await userEvent.keyboard('{Escape}');
+    const orders = await openRow('Orders', menu);
+    expect(within(orders).queryByRole('menuitem', { name: 'Products' })).toBeNull();
+  });
+
+  test('a mart that left the report offers no Remove from a stale closure', async () => {
+    const onRemove = vi.fn();
+    setup({ onRemove });
+    const menu = await openMenu();
+    const customers = await openRow('Customers', menu);
+    await userEvent.click(within(customers).getByLabelText('customers__email'));
+    await openRow('Orders', menu);
+    expect(visibleNow()).toBe('id');
+    const again = await openRow('Customers', menu);
+    expect(within(again).queryByRole('menuitem', { name: 'Remove from report' })).toBeNull();
+    expect(onRemove).not.toHaveBeenCalled();
+  });
+
+  test('two panels emptied together leave as one change when the menu closes', async () => {
+    const spy = vi.fn();
+    setup({ spy });
+    const menu = await openMenu();
+    const orders = await openRow('Orders', menu);
+    const products = await openRow('Products', orders);
+    await userEvent.click(within(products).getByLabelText('products__sku'));
+    const suppliers = await openRow('Suppliers', products);
+    await userEvent.click(within(suppliers).getByLabelText('suppliers__name'));
+    expect(visibleNow()).toBe('id,customers__email,products__sku,suppliers__name');
+    spy.mockClear();
+    await userEvent.click(within(products).getByLabelText('products__sku'));
+    await userEvent.click(within(suppliers).getByLabelText('suppliers__name'));
+    expect(spy).not.toHaveBeenCalled();
+    fireEvent.pointerDown(document.body);
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy).toHaveBeenCalledWith(['id', 'customers__email']);
+    expect(visibleNow()).toBe('id,customers__email');
+  });
+
+  test('a panel emptied and then replaced by a hover commits its own change when it goes', async () => {
+    const spy = vi.fn();
+    setup({ spy });
+    const menu = await openMenu();
+    const customers = await openRow('Customers', menu);
+    await userEvent.click(within(customers).getByLabelText('customers__email'));
+    expect(spy).not.toHaveBeenCalled();
     fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: 'Regions' }));
-    await advance(400);
-    expect(screen.getByRole('dialog', { name: 'Customers' })).toBeInTheDocument();
-    box.blur();
-    fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: 'Orders' }));
-    await advance(400);
+    await wait(HOVER_MS + 100);
     expect(screen.queryByRole('dialog', { name: 'Customers' })).toBeNull();
+    expect(spy).toHaveBeenCalledOnce();
+    expect(visibleNow()).toBe('id');
+  });
+
+  test('a panel emptied and the menu then closed commits once', async () => {
+    const spy = vi.fn();
+    setup({ spy });
+    const menu = await openMenu();
+    const customers = await openRow('Customers', menu);
+    await userEvent.click(within(customers).getByLabelText('customers__email'));
+    await userEvent.click(screen.getByRole('button', { name: 'Configure data' }));
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(spy).toHaveBeenCalledOnce();
+    expect(visibleNow()).toBe('id');
+  });
+
+  test('Remove from report after emptying is one edit: the pending change is dropped', async () => {
+    const spy = vi.fn();
+    const onRemove = vi.fn();
+    setup({ spy, onRemove });
+    const customers = await openRow('Customers', await openMenu());
+    await userEvent.click(within(customers).getByLabelText('customers__email'));
+    await userEvent.click(within(customers).getByRole('menuitem', { name: 'Remove from report' }));
+    expect(onRemove).toHaveBeenCalledOnce();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  test('a press on another control of the config panel closes an open field menu and leaves the config menu', async () => {
+    setup();
+    const orders = await openRow('Orders', await openMenu());
+    await userEvent.click(within(orders).getAllByRole('button', { name: 'Column menu id' })[0]!);
+    await screen.findByRole('menu', { name: 'Menu of id' });
+    fireEvent.pointerDown(within(orders).getByRole('option', { name: 'city' }));
+    expect(screen.queryByRole('menu', { name: 'Menu of id' })).toBeNull();
     expect(screen.getByRole('dialog', { name: 'Orders' })).toBeInTheDocument();
-  } finally { vi.useRealTimers(); }
+    expect(screen.getByRole('menu', { name: 'Configure data' })).toBeInTheDocument();
+  });
+
+  test('an edit in the config panel does not stop the field menu from switching submenus on hover', async () => {
+    setup({ visible: ['id', 'products__sku'] });
+    const panel = await openRow('Products', await openMenu());
+    fireEvent.change(within(panel).getByRole('searchbox'), { target: { value: 'sku' } });
+    await userEvent.click(within(panel).getAllByRole('button', { name: 'Column menu products__sku' })[0]!);
+    const column = await screen.findByRole('menu', { name: 'Menu of products__sku' });
+    fireEvent.mouseEnter(within(column).getByRole('menuitem', { name: 'Filter' }));
+    await wait(0);
+    await screen.findByRole('dialog', { name: 'Filter of products__sku' });
+    fireEvent.mouseEnter(within(column).getByRole('menuitem', { name: 'Sort' }));
+    await wait(HOVER_MS + 100);
+    expect(screen.queryByRole('dialog', { name: 'Filter of products__sku' })).toBeNull();
+    expect(screen.getByRole('menu', { name: 'Sort products__sku' })).toBeInTheDocument();
+  });
+
+  test('hovering Remove closes the open joinable panel', async () => {
+    setup({ visible: ['id', 'products__sku'] });
+    const panel = await openRow('Products', await openMenu());
+    await openRow('Suppliers', panel);
+    fireEvent.mouseEnter(within(panel).getByRole('menuitem', { name: 'Remove from report' }));
+    await wait(HOVER_MS + 100);
+    expect(screen.queryByRole('dialog', { name: 'Suppliers' })).toBeNull();
+  });
+
+  test('the separator follows the shown flag, not the columns', async () => {
+    const marts = [{ ...mart('', 'Orders', ORDERS), shown: true }, { ...mart('a', 'Counted', ['a1']), shown: true }, mart('b', 'Waiting', ['b1'])];
+    render(<TooltipProvider><ConfigMenu marts={marts} joinable={() => []} visible={['id']} onChange={() => undefined} /></TooltipProvider>);
+    const menu = await openMenu();
+    expect(within(menu).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Orders', 'Counted', 'Waiting']);
+    expect(menu.querySelector('[role="separator"]')!.previousElementSibling).toBe(within(menu).getByRole('menuitem', { name: 'Counted' }));
+  });
 });

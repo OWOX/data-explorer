@@ -663,7 +663,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
    hovered or holds focus; a touch screen has no hover, so it stays on there. */
 .dm-fieldlabel { display: inline-flex; align-items: flex-start; gap: 0.25rem; min-width: 0; max-width: 100%; line-height: 1.25rem; }
 .dm-hint-slot { display: inline-flex; flex-shrink: 0; align-items: center; height: 1.25rem; opacity: 0; transition: opacity 120ms; }
-.dm-reveal-host:hover .dm-hint-slot, .dm-reveal-host:has(:focus-visible) .dm-hint-slot { opacity: 1; }
+.dm-reveal-host:hover .dm-hint-slot, .dm-reveal-host:has(:focus-visible) .dm-hint-slot, .dm-reveal-host:focus-visible .dm-hint-slot { opacity: 1; }
 @media (hover: none) and (pointer: coarse) { .dm-hint-slot { opacity: 1; } }
 
 /* Inputs in a popover: the focus ring is drawn inside the border, so the popover's own clipping never cuts it. */

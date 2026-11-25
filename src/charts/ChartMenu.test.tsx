@@ -214,3 +214,19 @@ test('a band above changing size (the Data Marts band unfolding) closes the menu
     globalThis.ResizeObserver = Real;
   }
 });
+
+test('the third level of one submenu does not open by itself in the next one', async () => {
+  const axis = (label: string, prefix: string): MenuItem => ({
+    kind: 'radio', label, icon: Hash, value: '', onPick: () => undefined, options: [],
+    groups: [{ title: `${prefix} Orders`, options: [{ value: 'a', label: 'A' }] }, { title: `${prefix} Customers`, options: [{ value: 'b', label: 'B' }] }],
+  });
+  render(<ChartMenu name="Sales" items={[axis('X axis', 'X'), axis('Y axis', 'Y')]} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'X axis' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'X Orders' }));
+  await screen.findByRole('menu', { name: 'X Orders' });
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Y axis' }));
+  await screen.findByRole('menu', { name: 'Y axis' });
+  expect(screen.queryByRole('menu', { name: 'Y Orders' })).toBeNull();
+  expect(screen.queryByRole('menu', { name: 'X Orders' })).toBeNull();
+});
