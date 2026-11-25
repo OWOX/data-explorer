@@ -310,6 +310,28 @@ describe('the total row count', () => {
     expect(asked(traverseData)).toEqual([true, false]);
   });
 
+  describe('the count the cards may use (`counted`)', () => {
+    test('it stays through Load more and a sort, and is none for another filter until that read answers', async () => {
+      const filtered = { ...opts(['id', 'a']), filter: [{ column: 'id', operator: 'eq' as const, value: 1 }] };
+      const { result, rerender } = run({ o: opts(['id', 'a'], 201), v: 0 }, [450, 3]);
+      await waitFor(() => expect(result.current.counted).toEqual({ total: 450, exact: false }));
+      rerender({ o: opts(['id', 'a'], 401), v: 0 });
+      expect(result.current.loading).toBe(true);
+      expect(result.current.counted.total).toBe(450);
+      await settled(result);
+      rerender({ o: { ...filtered, limit: 401 }, v: 0 });
+      expect(result.current.counted.total).toBeNull();
+      await waitFor(() => expect(result.current.counted).toEqual({ total: 3, exact: false }));
+    });
+    test('a total counted by a read that named a calculated field stays exact when the field is hidden with no new read', async () => {
+      const { traverseData, result, rerender } = run({ o: opts(['id', 'a', 'margin']), v: 0, exact: true }, [5]);
+      await waitFor(() => expect(result.current.counted).toEqual({ total: 5, exact: true }));
+      rerender({ o: opts(['id', 'a']), v: 0, exact: false });
+      expect(traverseData).toHaveBeenCalledTimes(1);
+      expect(result.current.counted).toEqual({ total: 5, exact: true });
+    });
+  });
+
   describe('with a calculated field (fewer columns are another result)', () => {
     test('hiding a column, then Load more, asks', async () => {
       const { traverseData, result, rerender } = run({ o: opts(['id', 'a', 'b']), v: 0, exact: true }, [450, 300]);

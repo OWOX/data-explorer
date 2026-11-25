@@ -15,7 +15,7 @@ import { keepEmpty } from '../../model/empty-paths';
 import { dropUniqueSorts, keepUnique, uniqueField, uniqueKey, uniquePathsOf, withUniqueAfter } from '../../model/unique-count';
 import { chartFields, ruleNewColumns } from '../../charts/fields';
 import { joinGrainOf } from '../../charts/answers';
-import { scoreQuery } from '../../charts/queries';
+import { countsOf, scoreQuery, scoreRulesLost } from '../../charts/queries';
 import { useChartQuery } from '../../charts/useChartQuery';
 import { keysPlan, useHavingKeys } from '../../charts/havingKeys';
 import { readRows } from '../../api/rows';
@@ -630,9 +630,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     return () => ro?.disconnect();
   }, [charts]);
   const calculated = useMemo(() => new Set(schema.filter((f) => f.isCalculated).map((f) => f.name)), [schema]);
-  // A read that names a calculated field is counted by its own columns (see useMartRows), so its total is not the plain count of the mart's rows.
-  const exactRead = !!asked?.column?.some((c) => calculated.has(c)) || !!asked?.filter?.some((r) => calculated.has(r.column));
-  const { rows: read, loading: reading, error, hasMore, run, errorRunId, total } = useMartRows(martId, asked, version, charts, exactRead);
+  const { rows: read, loading: reading, error, hasMore, run, errorRunId, total, counted } = useMartRows(martId, asked, version, charts, !!asked?.column?.some((c) => calculated.has(c)) || !!asked?.filter?.some((r) => calculated.has(r.column)));
   const rows = blocked || charts ? null : read;
   const loading = reading && !blocked && !charts;
   const byName = useMemo(() => new Map(schema.map((f) => [f.name, f])), [schema]);
@@ -988,33 +986,39 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   // Nothing is read when the charts are not shown, a folded band, a blocked grid, or no number column to chart (ChartsBody shows its hint then).
   const scoreFields = useMemo(() => chartFields(schema, shown, aggNow, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), {}), [schema, shown, aggNow, martId, groups, sources]);
   const chartable = useMemo(() => !scoreFields.marts.every((m) => m.metrics.length === 0 && !m.hasPk), [scoreFields]);
+  const having = useHavingKeys(martId, keysRead, keyField, version, !charts || paused || !!blocked || !chartable);
+  const chartFilter = useMemo(() => (having.rule ? [...traverseFilters, having.rule] : traverseFilters), [traverseFilters, having.rule]);
   // The match badges of the cards. A filter or a slice applies when it reaches the query; a parked, incomplete or HAVING one does not.
   const applies = traverseFilters.length > 0;
-  // The marts the report keeps with no column that have a usable key: their count rides on the scorecard read, in Table and in Charts alike.
-  const keptUnique = useMemo(() => pathMarts.filter((m) => m.empty && sources.some((x) => x.aliasPath === m.path && x.uniqueCount)).map((m) => m.path), [pathMarts, sources]);
-  // The grid's own total is the main mart's matched count when the grid is plain rows of the main mart alone (a joined mart or a group changes what a row is)
-  // and every rule is on the main mart's own fields. A read that names a calculated field counts differently, and Charts have no rows read.
-  const ownTotal = !charts && !grouped && !exactRead && tree.nodes.size === 1 && traverseFilters.every((f) => !byName.get(f.column)?.joined);
-  const settled = !paused && asked === query && !reading;
-  const totalNow = ownTotal && applies && settled && !error ? total : null;
-  // Table asks the scorecard query only when the total cannot answer: not while the grid's read is under way, and not when it came with a total.
-  const needsRead = applies && (charts ? chartable : !(ownTotal && (!settled || !!error || total !== null)));
-  const having = useHavingKeys(martId, keysRead, keyField, version, paused || !!blocked || (charts ? !chartable : !(sourcesRead && needsRead)));
-  const chartFilter = useMemo(() => (having.rule ? [...traverseFilters, having.rule] : traverseFilters), [traverseFilters, having.rule]);
-  // A HAVING filter alone counts when the charts follow it, so their "No rows match the filters." is true.
+  // While any HAVING filter is set the count would be of groups the charts cannot follow the same way: no badge in either view and no read for it here.
+  const havingSet = keysRead.kind !== 'off';
+  // The marts the report keeps with no column that have a usable key: their count rides on the scorecard read, while a rule applies, in Table and in Charts alike.
+  const keptUnique = useMemo(() => (applies ? pathMarts.filter((m) => m.empty && sources.some((x) => x.aliasPath === m.path && x.uniqueCount)).map((m) => m.path) : []), [applies, pathMarts, sources]);
   // The same query as the scorecards of Charts (one builder, one key): a read that Charts asks is shared, and Table's read is served to Charts from the cache.
+  const full = useMemo(() => (applies && !havingSet ? scoreQuery(scoreFields, traverseFilters, keptUnique) : null), [applies, havingSet, scoreFields, traverseFilters, keptUnique]);
+  // A query that counts nothing shows no badge, and one built without a slice (no metric and no countable field to carry it) would not be the member's: no read, no badge.
+  const counts = !!full?.uniqueCount?.length && !scoreRulesLost(traverseFilters, full);
+  // The grid's own count is the main mart's matched count when the grid is plain rows of the main mart alone (a joined mart or a group changes what a row is),
+  // every rule is on the main mart's own fields, and the total was not made by a read that named a calculated field. It stays through Load more and a sort.
+  const ownTotal = !charts && !grouped && !counted.exact && tree.nodes.size === 1 && traverseFilters.every((f) => !byName.get(f.column)?.joined);
+  const settled = !paused && asked === query && !reading;
+  // Table asks the scorecard query only when the grid's count cannot answer: not while its read is under way, not after it failed, and not when it came with a count.
+  const needsRead = counts && (charts ? chartable : !(ownTotal && (!settled || !!error || counted.total !== null)));
   const joinGrain = useMemo(() => joinGrainOf(sources), [sources]);
-  const scoreOptions = !paused && !blocked && sourcesRead && needsRead && !having.gate ? scoreQuery(scoreFields, chartFilter, keptUnique) : null;
-  const score = useChartQuery(martId, scoreOptions, version, joinGrain);
+  const scoreOptions = !paused && !blocked && sourcesRead && needsRead ? full : null;
+  // Table first looks for the counts alone in a read it already has (another number column or function does not change them); Charts need their own cards.
+  const score = useChartQuery(martId, scoreOptions, version, joinGrain, !charts && scoreOptions ? countsOf(scoreOptions) : null);
   const matched = useMemo(() => {
-    if (!applies || paused || blocked) return NO_MATCH;
-    if (totalNow !== null) return new Map([['', totalNow]]);
+    if (!applies || havingSet || paused || blocked) return NO_MATCH;
+    if (ownTotal && counted.total !== null) return new Map([['', counted.total]]);
+    if (!counts) return NO_MATCH;
     if (score.error || !score.rows) return NO_MATCH;
     return matchedFrom(score.rows[0], [...scoreFields.marts.filter((m) => m.hasPk).map((m) => m.aliasPath), ...keptUnique]);
-  }, [applies, paused, blocked, totalNow, score.rows, score.error, scoreFields, keptUnique]);
+  }, [applies, havingSet, paused, blocked, counts, ownTotal, counted.total, score.rows, score.error, scoreFields, keptUnique]);
   const matchedKey = JSON.stringify([...matched]);
   useEffect(() => { onMatched?.(matched); }, [matchedKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => onMatched?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // A HAVING filter alone counts when the charts follow it, so their "No rows match the filters." is true.
   const hasChartFilters = Object.values(filters).some((f) => !f.fn && !metricNames.has(f.field)) || !!having.rule || having.gate?.kind === 'empty';
   // A click selects the cell; a shift-click stretches a block from the active cell (the one a click or a header selected) to this one,
   // and does not open another record.

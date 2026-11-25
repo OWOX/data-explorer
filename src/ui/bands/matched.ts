@@ -1,8 +1,6 @@
 // How many records of each data mart in the report the grid's filters and slices keep, handed from the grid up to the cards.
-import type { JoinedSource } from '../../api/blendable';
 import { uniqueKey } from '../../model/unique-count';
 import type { Row } from '../../sdk/types';
-import { joinedPaths } from '../../state/join-plan';
 
 /** The matched counts of the main mart's report, by alias path ('' is the main mart). Kept in the page's memory only: never saved, never an Undo step. */
 export type Matched = { martId: string; byPath: ReadonlyMap<string, number> };
@@ -17,17 +15,4 @@ export function matchedFrom(row: Row | undefined, paths: readonly string[]): Map
     if (Number.isFinite(n) && n >= 0) out.set(path, n);
   }
   return out;
-}
-
-/** The ids of the data marts the report reaches at more than one path (columns plus the marts kept with none, and the main mart's own path). */
-export function martsAtTwoPaths(mainId: string, columns: string[], sources: JoinedSource[], emptyPaths?: string[]): Set<string> {
-  const seen = new Set<string>([mainId]);
-  const twice = new Set<string>();
-  for (const path of joinedPaths(columns, sources, emptyPaths)) {
-    const id = sources.find((s) => s.aliasPath === path)?.martId;
-    if (id === undefined) continue;
-    if (seen.has(id)) twice.add(id);
-    seen.add(id);
-  }
-  return twice;
 }

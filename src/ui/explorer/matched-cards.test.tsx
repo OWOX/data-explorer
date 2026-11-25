@@ -1,19 +1,27 @@
 import { useEffect } from 'react';
-import { act, render, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CHARTS_COLLECTION } from '../../api/chart-settings';
 import type { ChartSettings } from '../../charts/settings';
 import type { Ctx, TraverseOptions } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
+import { closeConfigMenu, openFields, openSubmenu } from './menu-test-utils';
 import { AppServices, StoreProvider, useStore, type GridState } from '../../state/store';
 import { App } from '../App';
 
-const isScore = (q: TraverseOptions) => !!q.uniqueCount?.includes('') && !!q.filter?.length && q.limit === undefined && !q.sort && !q.dateTrunc;
+// A scorecard-shaped read: counts and sums with no group key, row limit, sort or date bucket (the sparklines and the charts have them).
+// The plain card counts ({ uniqueCount: [''] }, or one COUNT of a text column, with no rule) and the grid's reads are not it.
+const isScore = (q: TraverseOptions) => !!(q.uniqueCount?.length || q.aggregation?.some((a) => a.function === 'SUM' || a.function === 'AVG')) && q.limit === undefined && !q.sort && !q.dateTrunc
+  && (q.column ?? []).every((c) => q.aggregation?.some((a) => a.column === c)) && !(Object.keys(q).length === 1 && q.uniqueCount?.length === 1 && q.uniqueCount[0] === '')
+  && !(!q.filter && !q.uniqueCount && q.aggregation?.length === 1 && q.aggregation[0]!.function === 'COUNT');
 
 // Every traverseData call is a billed warehouse run: the match badge on the cards has no query of its own, it rides on the scorecard read.
-function setup(grid: GridState, opts: { charts?: ChartSettings; fail?: (o: TraverseOptions) => boolean } = {}) {
-  const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
+function setup(grid: GridState, opts: { charts?: ChartSettings; fail?: (o: TraverseOptions) => boolean; /** Marts that lose their primary key. */ noKey?: string[]; /** Adds a JSON field to Orders, which cannot be grouped. */ json?: boolean } = {}) {
+  const fixtures = structuredClone(demoFixtures());
+  for (const m of fixtures.marts) if (opts.noKey?.includes(m.id)) for (const f of m.fields) f.isPrimaryKey = false;
+  if (opts.json) fixtures.marts.find((m) => m.id === 'orders')!.fields.push({ name: 'tags', type: 'JSON', alias: 'Tags' } as never);
+  const base = createMockCtx(fixtures, { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const ctx: Ctx = {
@@ -27,8 +35,6 @@ function setup(grid: GridState, opts: { charts?: ChartSettings; fail?: (o: Trave
   }
   const seeded = opts.charts ? ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', opts.charts) : Promise.resolve();
   const mount = async () => { await seeded; render(<AppServices ctx={ctx}><StoreProvider><Probe /><App /></StoreProvider></AppServices>); };
-  // The scorecard read: a unique count of the main mart next to a rule, with no sort, limit or date bucket (the sparklines and the charts have them).
-  // The card counts ({ uniqueCount: [''] }, no rule) and the grid's reads are not it.
   const scoreReads = () => queries.filter((q) => isScore(q));
   return { queries, mount, scoreReads };
 }
@@ -126,27 +132,29 @@ test('a hidden scorecard does not change the read', async () => {
   expect(t.scoreReads()).toHaveLength(1);
 });
 
-test('a HAVING filter beside a filter: Table reads the keys and the scorecards once, and Charts adds neither', async () => {
-  const grid: GridState = {
-    columns: ['status', 'amount'], filters: { ...paid, amount: { field: 'amount', op: 'gt', value: 1, fn: 'SUM' } },
-    aggregations: [{ column: 'amount', function: 'SUM' }], sorts: null, limit: 200,
-  };
-  const t = setup(grid);
+const havingGrid: GridState = {
+  columns: ['status', 'amount'], filters: { ...paid, amount: { field: 'amount', op: 'gt', value: 1, fn: 'SUM' } },
+  aggregations: [{ column: 'amount', function: 'SUM' }], sorts: null, limit: 200,
+};
+
+test('a HAVING filter beside a filter: no badge in either view, and Table sends neither the keys read nor a scorecard read', async () => {
+  const t = setup(havingGrid);
   await t.mount();
-  await waitFor(() => expect(t.scoreReads()).toHaveLength(1));
-  const keyReads = () => t.queries.filter((q) => q.limit === 501);
+  await waitFor(rowsShown);
   await calm();
-  const keys = keyReads().length;
-  expect(keys).toBe(1);
-  expect(t.scoreReads()[0]!.filter?.some((f) => f.operator === 'in')).toBe(true);
+  expect(badge('orders')).toBeNull();
+  expect(t.scoreReads()).toHaveLength(0);
+  expect(t.queries.filter((q) => q.limit === 501)).toHaveLength(0);
+  // Charts read what they always read; the badge still has no number.
   await userEvent.click(radio('Charts'));
   await waitFor(() => expect(data().querySelector('td[data-chart-group="orders"]')).not.toBeNull());
   await calm();
+  expect(t.queries.filter((q) => q.limit === 501)).toHaveLength(1);
   expect(t.scoreReads()).toHaveLength(1);
-  expect(keyReads()).toHaveLength(keys);
+  expect(badge('orders')).toBeNull();
 });
 
-test('only HAVING filters: no badge and no scorecard read in Table', async () => {
+test('only HAVING filters: no badge and no scorecard read in Table (nothing to count)', async () => {
   const t = setup({ columns: ['status', 'amount'], filters: { amount: { field: 'amount', op: 'gt', value: 1, fn: 'SUM' } }, aggregations: [{ column: 'amount', function: 'SUM' }], sorts: null, limit: 200 });
   await t.mount();
   await waitFor(rowsShown);
@@ -188,21 +196,20 @@ test('each mart of the report gets its own badge, on the Grid cards and on the G
   expect(t.scoreReads()).toHaveLength(1);
 });
 
-test('a mart reached at two paths: the Graph shows each path its own number, the Grid card none', async () => {
+test('a mart reached at two paths: each path\'s card shows its own number, on the Grid and on the Graph', async () => {
   const t = setup({ columns: ['id', 'status', 'customers__countries__name', 'stores__countries__name'], filters: few, sorts: null, limit: 200 });
   await t.mount();
   await waitFor(() => expect(t.scoreReads()).toHaveLength(1));
   expect(t.scoreReads()[0]!.uniqueCount).toEqual(['', 'customers.countries', 'stores.countries']);
-  await waitFor(() => expect(badge('orders')).toBe('<1% match'));
-  expect(badge('countries', 'customers.countries')).toBeNull();
-  expect(badge('countries', 'stores.countries')).toBeNull();
+  await waitFor(() => expect(badge('countries', 'customers.countries')).toMatch(/^\d+% match$/));
+  expect(badge('countries', 'stores.countries')).toMatch(/^\d+% match$/);
   await toGraph();
   await waitFor(() => expect(badge('countries', 'customers.countries')).toMatch(/^\d+% match$/));
   expect(badge('countries', 'stores.countries')).toMatch(/^\d+% match$/);
   expect(t.scoreReads()).toHaveLength(1);
 });
 
-test('a filter taken off, or another main mart, leaves no badge behind', async () => {
+test('Reset takes the filter off and the badges go with it', async () => {
   const t = setup(withProducts);
   await t.mount();
   await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
@@ -218,4 +225,139 @@ test('a rule on a joined field with the main mart alone in the report is counted
   await calm();
   expect(t.queries.some((q) => q.filter?.some((f) => f.column === 'products__price'))).toBe(true);
   expect(t.scoreReads()).toHaveLength(1);
+});
+
+test('no usable key on any mart: Table sends no scorecard read, since it would count nothing', async () => {
+  const t = setup(withProducts, { noKey: ['orders', 'products'] });
+  await t.mount();
+  await waitFor(rowsShown);
+  await calm();
+  expect(t.scoreReads()).toHaveLength(0);
+  expect(badge('orders')).toBeNull();
+  expect(badge('products', 'products')).toBeNull();
+});
+
+test('a main mart with no key and a joined mart with one: one read, a badge on the joined card only', async () => {
+  const t = setup({ ...withProducts, filters: few }, { noKey: ['orders'] });
+  await t.mount();
+  await waitFor(() => expect(t.scoreReads()).toHaveLength(1));
+  expect(t.scoreReads()[0]!.uniqueCount).toEqual(['products']);
+  await waitFor(() => expect(badge('products', 'products')).toMatch(/^\d+% match$/));
+  expect(badge('orders')).toBeNull();
+});
+
+test('a main mart with no key and nothing joined still has its badge, from the grid total', async () => {
+  const t = setup(mainOnly, { noKey: ['orders'] });
+  await t.mount();
+  await waitFor(() => expect(badge('orders')).toMatch(/^\d+% match$/));
+  await calm();
+  expect(t.scoreReads()).toHaveLength(0);
+});
+
+test('a mart kept with no column joins the read only while a filter or a slice applies', async () => {
+  const t = setup({ ...mainOnly, filters: {}, emptyPaths: ['products'], view: 'charts' });
+  await t.mount();
+  await waitFor(() => expect(data().querySelector('td[data-chart-group="orders"]')).not.toBeNull());
+  await waitFor(() => expect(t.scoreReads().length).toBeGreaterThan(0));
+  await calm();
+  expect(t.scoreReads().every((q) => !q.uniqueCount?.includes('products'))).toBe(true);
+});
+
+test('an incomplete filter and a parked one are no rule: no read, no badge', async () => {
+  const t = setup({ ...withProducts, filters: { status: { field: 'status', op: 'eq' }, gone_field: { field: 'gone_field', op: 'eq', value: 'x' } } });
+  await t.mount();
+  await waitFor(rowsShown);
+  await calm();
+  expect(t.scoreReads()).toHaveLength(0);
+  expect(badge('orders')).toBeNull();
+});
+
+test('a filter edit sends one read and its Undo none (the earlier answer is kept)', async () => {
+  const t = setup(withProducts);
+  await t.mount();
+  await waitFor(() => expect(t.scoreReads()).toHaveLength(1));
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  await openSubmenu(within(data()), 'status', 'Filter');
+  const dialog = await screen.findByRole('dialog');
+  const value = within(dialog).getByLabelText('Value');
+  await userEvent.clear(value);
+  await userEvent.type(value, 'refunded');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(t.scoreReads()).toHaveLength(2));
+  await calm();
+  expect(t.scoreReads()).toHaveLength(2);
+  await userEvent.keyboard('{Meta>}z{/Meta}');
+  await calm();
+  expect(t.scoreReads()).toHaveLength(2);
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+});
+
+test('showing another number column, or changing a function, sends no second scorecard read in Table', async () => {
+  const t = setup(withProducts);
+  await t.mount();
+  await waitFor(() => expect(t.scoreReads()).toHaveLength(1));
+  await openFields('Orders');
+  await userEvent.click((await screen.findAllByLabelText(/^net revenue$/i))[0]!);
+  await closeConfigMenu();
+  await waitFor(() => expect(within(data()).getAllByRole('columnheader').some((h) => /net revenue/i.test(h.textContent ?? ''))).toBe(true));
+  await calm();
+  expect(t.scoreReads()).toHaveLength(1);
+  await openSubmenu(within(data()), 'Amount', 'Aggregate');
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.click(within(dialog).getByLabelText('Average'));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(within(data()).getAllByRole('columnheader').some((h) => /Amount · Average/i.test(h.textContent ?? ''))).toBe(true));
+  await calm();
+  expect(t.scoreReads()).toHaveLength(1);
+});
+
+test('the main-only badge stays through Load more, with no scorecard read', async () => {
+  const t = setup({ ...mainOnly, limit: 5 });
+  await t.mount();
+  await waitFor(() => expect(badge('orders')).toMatch(/^\d+% match$/));
+  const was = badge('orders');
+  await userEvent.click(await within(data()).findByRole('button', { name: 'Load more' }));
+  expect(badge('orders')).toBe(was);
+  await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(6));
+  expect(badge('orders')).toBe(was);
+  expect(t.scoreReads()).toHaveLength(0);
+});
+
+test('a folded Data band reads no more and shows no badge; opening it again reads nothing new', async () => {
+  const t = setup(withProducts);
+  await t.mount();
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  await userEvent.click(screen.getByRole('button', { name: 'Hide Data' }));
+  await calm();
+  expect(badge('orders')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Show Data' }));
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  expect(t.scoreReads()).toHaveLength(1);
+});
+
+test('a blocked grid (a JSON column with a function on another) reads nothing for the badge', async () => {
+  const t = setup({ columns: ['id', 'status', 'amount', 'tags', 'products__price'], filters: paid, aggregations: [{ column: 'amount', function: 'SUM' }], sorts: null, limit: 200 }, { json: true });
+  await t.mount();
+  await waitFor(() => expect(data().textContent).toMatch(/can't be grouped/));
+  await calm();
+  expect(t.scoreReads()).toHaveLength(0);
+  expect(badge('orders')).toBeNull();
+});
+
+test('Refresh sends one new scorecard read', async () => {
+  const t = setup(withProducts);
+  await t.mount();
+  await waitFor(() => expect(t.scoreReads()).toHaveLength(1));
+  await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+  await waitFor(() => expect(t.scoreReads()).toHaveLength(2));
+  await calm();
+  expect(t.scoreReads()).toHaveLength(2);
+});
+
+test('after the grid\'s own read failed, Table sends no scorecard read', async () => {
+  const t = setup(mainOnly, { fail: (o) => o.limit === 201 });
+  await t.mount();
+  await calm();
+  await calm();
+  expect(t.scoreReads()).toHaveLength(0);
 });

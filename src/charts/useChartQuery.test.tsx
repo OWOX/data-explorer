@@ -167,3 +167,26 @@ test('a query for a subset of a read already made reads nothing and shows its ro
   await waitFor(() => expect(other.result.current.rows).not.toBeNull());
   expect(traverseData).toHaveBeenCalledTimes(2);
 });
+
+const JOINS = { pathOf: () => undefined, keepsGrain: () => true };
+describe('reuse: a cached read that already holds what is needed answers before any read is sent', () => {
+  const full = (metric: string): TraverseOptions => ({ column: [metric], aggregation: [{ column: metric, function: 'SUM' }], uniqueCount: [''], filter: [{ column: 's', operator: 'eq', value: 'x' }] });
+  const counts: TraverseOptions = { uniqueCount: [''], filter: [{ column: 's', operator: 'eq', value: 'x' }] };
+  test('a read for other metrics of the same rules answers the counts, so no second read goes out', async () => {
+    const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 3, amount: 9 }]));
+    const wrapper = setup(traverseData);
+    const one = renderHook(() => useChartQuery('m', full('amount'), 0), { wrapper });
+    await waitFor(() => expect(one.result.current.rows).not.toBeNull());
+    const two = renderHook(() => useChartQuery('m', full('tax'), 0, JOINS, counts), { wrapper });
+    await waitFor(() => expect(two.result.current.rows).not.toBeNull());
+    expect(traverseData).toHaveBeenCalledTimes(1);
+  });
+  test('with nothing cached for those rules it sends its own query', async () => {
+    const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 3 }]));
+    const wrapper = setup(traverseData);
+    const { result } = renderHook(() => useChartQuery('m', full('tax'), 0, JOINS, { ...counts, filter: [{ column: 's', operator: 'eq', value: 'y' }] }), { wrapper });
+    await waitFor(() => expect(result.current.rows).not.toBeNull());
+    expect(traverseData).toHaveBeenCalledTimes(1);
+    expect(traverseData).toHaveBeenCalledWith('m', full('tax'));
+  });
+});

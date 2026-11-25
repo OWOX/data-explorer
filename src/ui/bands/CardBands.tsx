@@ -30,7 +30,7 @@ import { DragLines } from './DragLines';
 import { parentPath, pathTitle, shortestSource } from '../../state/join-plan';
 import { useGridFocus } from './useGridFocus';
 import { useLatest } from '../useLatest';
-import { martsAtTwoPaths, type Matched } from './matched';
+import type { Matched } from './matched';
 import type { JoinedSource } from '../../api/blendable';
 
 type MartsView = 'grid' | 'canvas';
@@ -158,9 +158,8 @@ export function CardBands({
   // The Graph's pinned card, when it is a joined one (the Grid's own is `focus`, below).
   const [graphSelected, setGraphSelected] = useState<string | null>(null);
 
-  // The matched counts belong to the main mart that sent them. In Grid a mart reached at two paths has no badge, since its card is one for both; Graph has a card per path.
+  // The matched counts belong to the main mart that sent them; each card, in Grid and in Graph, takes its own path's number.
   const matchedHere = matched && matched.martId === selection.martId ? matched.byPath : undefined;
-  const atTwoPaths = useMemo(() => martsAtTwoPaths(selection.martId ?? '', mainColumns, joinSources ?? [], mainEmptyPaths), [selection.martId, mainColumns, joinSources, mainEmptyPaths]);
   // The report tree: a joined mart is a node per alias path, in Graph and in Grid, and a source line reaches each of them.
   const mainFor = selection.martId;
   const canvasTree = useMemo(() => (mainFor ? buildJoinTree(mainFor, mainColumns, joinSources ?? [], mainEmptyPaths) : null), [mainFor, mainColumns, joinSources, mainEmptyPaths]);
@@ -488,7 +487,7 @@ export function CardBands({
                 transition={martCards.transitionOf(mart)}
                 contexts={contextsOf(model.contexts, mart.contextIds)}
                 count={counts.get(id) ?? { state: 'idle' }}
-                matched={atTwoPaths.has(id) ? undefined : matchedHere?.get(path)}
+                matched={matchedHere?.get(path)}
                 quality={dq.get(id)}
                 selected={isMain}
                 joined={!isMain}
