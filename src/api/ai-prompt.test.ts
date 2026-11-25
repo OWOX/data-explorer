@@ -112,3 +112,12 @@ describe('slices and HAVING filters in the prompt', () => {
     expect(buildAiPrompt({ projectId: 'p1', martId: 'o', martTitle: 'O', schema, visible: ['id'], filters: [], sorts: [] })).not.toContain('Slices');
   });
 });
+
+test('a filter on a field of a joined mart kept with no column is still in the prompt, and the field is not', () => {
+  const prompt = buildAiPrompt({
+    projectId: 'p1', projectTitle: 'Acme', martId: 'orders', martTitle: 'Orders', schema,
+    visible: ['id'], filters: [{ field: 'customers__city', op: 'eq', value: 'Kyiv' }], sorts: [],
+  });
+  expect(prompt).toContain('- "customers__city" equals "Kyiv"');
+  expect(prompt).toContain('Fields: "id".');
+});

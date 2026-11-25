@@ -4,7 +4,7 @@ import { DEFAULT_MART_ICON, PickedIcon } from '../ui/bands/picked';
 import { Panel, Row, useSubmenu } from '../ui/explorer/MenuParts';
 
 /** One choice of a submenu. */
-export type MenuOption = { value: string; label: string; icon?: LucideIcon };
+export type MenuOption = { value: string; label: string; icon?: LucideIcon; /** A column's description, shown as a (?) after the label. */ hint?: string };
 /** The choices that belong to one data mart: a header with the mart's icon and title, then the options. */
 export type MenuGroup = { title: string; /** The mart's picked icon; the default mart icon when none. */ icon?: string | null; options: MenuOption[] };
 
@@ -52,7 +52,7 @@ function RadioSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<Menu
   const marts = useSubmenu<number>();
   const groups = item.groups ?? [];
   const choice = (o: MenuOption, hover?: () => void) => (
-    <Row key={o.value} check checked={o.value === item.value} label={o.label} glyph={o.icon && <o.icon className="size-4" />} onActivate={() => { item.onPick(o.value); close(); }} onHover={hover} onLeaveRow={hover && marts.leaveRow} />
+    <Row key={o.value} check checked={o.value === item.value} label={o.label} hint={o.hint} glyph={o.icon && <o.icon className="size-4" />} onActivate={() => { item.onPick(o.value); close(); }} onHover={hover} onLeaveRow={hover && marts.leaveRow} />
   );
   return (
     <>

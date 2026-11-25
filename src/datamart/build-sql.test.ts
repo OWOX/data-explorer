@@ -256,6 +256,13 @@ describe('sorting', () => {
     expect(sql).toContain('LEFT JOIN customers_owox ON base_owox.customer_id = customers_owox.id');
     expect(sql).toMatch(/\nORDER BY customers_owox\.customers__city DESC$/);
   });
+  test('a filter on a joined field of a mart kept with no column joins it and filters', () => {
+    const sql = run({ filters: [{ field: 'customers__city', op: 'eq', value: 'Kyiv' }] });
+    expect(sql).toContain(CUS_BQ);
+    expect(sql).toContain('LEFT JOIN customers_owox ON base_owox.customer_id = customers_owox.id');
+    expect(sql).toContain("WHERE customers_owox.customers__city = 'Kyiv'");
+    expect(sql).toContain('SELECT\n  base_owox.id\nFROM');
+  });
   test('a sort on an unknown field is skipped', () => {
     expect(run({ sorts: [{ field: 'nope', direction: 'asc' }] })).toBe(`WITH\n${BASE}\nSELECT\n  base_owox.id\nFROM base_owox`);
   });

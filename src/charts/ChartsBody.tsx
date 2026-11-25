@@ -35,8 +35,8 @@ const NO_PATH_MARTS: PathMart[] = [];
  * Each panel is as wide as its content needs and the panels wrap onto more rows when the band is narrow.
  * Settings load once per mart; a fallback a kind's `resolve` picks is never written back, only the member's own changes are.
  */
-export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, blockedNote = null, groups, pathMarts = NO_PATH_MARTS, renderConfig, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter, onShowColumns, pruneRef }: {
-  martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; /** The grid has a filter on an aggregate that the charts cannot follow for this grouping. */ havingNote?: boolean; /** Stands in for the charts while the passing group keys load, fail to load, or are none. */ gate?: HavingKeys['gate']; groups: { id: string; path: string; span: number; title: string; icon?: string | null }[]; /** The middle marts of the joined paths that show no column: the menus list their fields after the groups', where a first column of theirs would land. */ pathMarts?: PathMart[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
+export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, blockedNote = null, groups, pathMarts = NO_PATH_MARTS, renderConfig, version, paused, hasFilters, sources, kept, formatOf, scrollerWidth, onFilter, onShowColumns, pruneRef }: {
+  martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; /** The grid has a filter on an aggregate that the charts cannot follow for this grouping. */ havingNote?: boolean; /** Stands in for the charts while the passing group keys load, fail to load, or are none. */ gate?: HavingKeys['gate']; groups: { id: string; path: string; span: number; title: string; icon?: string | null }[]; /** The middle marts of the joined paths, and the marts kept with no column, that show none: the menus list their fields after the groups', where a first column of theirs would land. */ pathMarts?: PathMart[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[]; /** The alias paths of the marts kept with no column that have a usable key: their count rides on the scorecard read. */ kept?: readonly string[];
   formatOf: (column: string, type: string) => Format; scrollerWidth: number;
   /** Applies the clicked mark's filters to the grid, as a filter edit (one Undo step). */
   onFilter: (add: ColumnFilter[]) => void;
@@ -121,7 +121,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
   const idle = paused || !settings || !!gate || !!blockedNote;
   const { bucket } = useBucket(martId, spark.date, lead?.bucket ?? 'AUTO', filter, version, idle);
-  const scores = useScorecards(martId, cf, filter, version, idle, joins);
+  const scores = useScorecards(martId, cf, filter, version, idle, joins, kept);
   // The Charts group of the config menu names every chart, hidden ones included; memoized so a resize resolves nothing again.
   const resolved = useMemo(() => drawn.map(({ spec, def }) => {
     const r = def?.resolve({ ...spec, hidden: false }, cf) ?? null;

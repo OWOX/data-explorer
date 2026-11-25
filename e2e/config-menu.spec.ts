@@ -118,7 +118,7 @@ test('Charts: the config menu opens with Add chart and Charts, a chart’s menu 
   await expect(data(page).locator('section[data-chart-kind="Pie"]')).toHaveCount(2);
 });
 
-test('the filter badge has no x, its list ends with Clear, and Clear removes both filters in one Undo step', async ({ page }) => {
+test('the filter badge lists the filtered fields under Remove filters, and Remove filters takes both off in one Undo step', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   const filter = async (column: string, value: string, operator?: string) => {
     const icon = data(page).getByLabel(`Column menu ${column}`, { exact: true });
@@ -131,25 +131,25 @@ test('the filter badge has no x, its list ends with Clear, and Clear removes bot
     await page.getByRole('button', { name: 'Apply' }).click();
   };
   await filter('status', 'paid', 'contains');
-  await expect(data(page).getByRole('button', { name: /^1 filter in Orders/ })).toBeVisible();
-  // Each count is waited for, never read from the rows still on screen: 110 rows after one filter, 5 after two, 202 after Clear.
+  await expect(data(page).getByRole('button', { name: '1 filter', exact: true })).toBeVisible();
+  // Each count is waited for, never read from the rows still on screen: 110 rows after one filter, 5 after two, 202 after Remove filters.
   const rows = () => data(page).getByRole('row').count();
   await expect.poll(rows).toBe(110);
   await filter('Store', '1');
-  const badge = data(page).getByRole('button', { name: /^2 filters in Orders/ });
+  const badge = data(page).getByRole('button', { name: '2 filters', exact: true });
   await expect(badge).toBeVisible();
-  await expect(data(page).getByRole('button', { name: /^(Remove|Clear) .*filter/i })).toHaveCount(0);
   await expect.poll(rows).toBe(5);
   await badge.click();
-  const list = page.getByRole('menu').filter({ has: page.getByRole('menuitem', { name: 'Clear' }) });
-  await expect(list.getByRole('menuitem').last()).toHaveText('Clear');
-  await list.getByRole('menuitem', { name: 'Clear' }).click();
-  await expect(data(page).getByRole('button', { name: /filters? in Orders/ })).toHaveCount(0);
+  const list = page.getByRole('menu').filter({ has: page.getByRole('menuitem', { name: 'Remove filters' }) });
+  await expect(list.getByRole('menuitem').first()).toHaveText('Remove filters');
+  await expect(list.getByRole('menuitem', { name: /^Orders · / })).toHaveCount(2);
+  await list.getByRole('menuitem', { name: 'Remove filters' }).click();
+  await expect(data(page).getByRole('button', { name: /^\d+ filters?$/ })).toHaveCount(0);
   await expect.poll(rows).toBe(202);
   await expect(configButton(page)).toBeVisible();
   // One Undo step brings both back.
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(data(page).getByRole('button', { name: /^2 filters in Orders/ })).toBeVisible();
+  await expect(data(page).getByRole('button', { name: '2 filters', exact: true })).toBeVisible();
   await expect.poll(rows).toBe(5);
 });
 
@@ -210,4 +210,82 @@ test('Graph view: a panel opened from the root menu keeps its row through a wind
   // The row moves with the page's new layout; the panel follows it, not the place it measured first.
   await expect.poll(async () => Math.abs((await offset()) - before)).toBeLessThanOrEqual(1);
   await expect(orders).toBeVisible();
+});
+
+declare global { interface Window { __copiedLink?: string } }
+// Two header rows and the 11 orders of one customer, the email filter below.
+const ROWS = 13;
+const TIP = '108 of 450 records match the filters and slices';
+
+test('Clear on a joined data mart keeps it with its filter, the view link carries it, and Remove from report drops it', async ({ page, context }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  const orders = await openFields(page, 'Orders');
+  await orders.getByRole('menuitem', { name: 'Customers', exact: true }).click();
+  const customers = page.getByRole('dialog', { name: 'Customers', exact: true });
+  await customers.getByLabel('email', { exact: true }).click();
+  await joinedRowsArrived(page);
+  await closeConfig(page);
+  await expect(groupTitles(page)).toHaveText(['Orders', 'Customers']);
+  // A filter on the joined column.
+  const icon = data(page).getByLabel('Column menu Customers · email', { exact: true });
+  await icon.scrollIntoViewIfNeeded();
+  await icon.locator('xpath=ancestor::th').hover();
+  await icon.click();
+  await page.getByRole('menuitem', { name: 'Filter', exact: true }).click();
+  await page.getByLabel('Operator').selectOption('contains');
+  await page.getByLabel('Value').fill('10@example.com');
+  await page.getByRole('button', { name: 'Apply' }).click();
+  await expect(data(page).getByRole('button', { name: '1 filter', exact: true })).toBeVisible();
+  // The badge also counts a parked rule, so the rows prove the filter is sent: few rows here and on the opened link.
+  const rows = () => data(page).getByRole('row').count();
+  await expect.poll(rows).toBe(ROWS);
+  // Clear in the data mart's panel: no column, but the mart and its filter stay.
+  const fields = await openFields(page, 'Customers');
+  await fields.getByRole('button', { name: 'Clear', exact: true }).click();
+  await closeConfig(page);
+  await expect(groupTitles(page)).toHaveText(['Orders']);
+  await expect(data(page).getByRole('button', { name: '1 filter', exact: true })).toBeVisible();
+  await expect.poll(rows).toBe(ROWS);
+  const menu = await openConfig(page);
+  await expect(menu.getByRole('menuitem', { name: 'Customers', exact: true })).toBeVisible();
+  await closeConfig(page);
+  // The view link holds the empty data mart: a new page opened from it lists it with the filter.
+  await page.getByRole('button', { name: 'Copy link to this view' }).click();
+  await expect.poll(() => page.evaluate(() => window.__copiedLink)).toMatch(/^\/v\?s=/);
+  const link = (await page.evaluate(() => window.__copiedLink))!;
+  const opened = await context.newPage();
+  await opened.goto(`/?mock&route=${encodeURIComponent(link)}`);
+  await expect(data(opened).getByRole('button', { name: '1 filter', exact: true })).toBeVisible();
+  await expect.poll(() => data(opened).getByRole('row').count()).toBe(ROWS);
+  const openedMenu = await openConfig(opened);
+  await expect(openedMenu.getByRole('menuitem', { name: 'Customers', exact: true })).toBeVisible();
+  await closeConfig(opened);
+  await opened.close();
+  // Remove from report is the way out; it takes the filter too.
+  const empty = await openFields(page, 'Customers');
+  await empty.getByRole('menuitem', { name: 'Remove from report' }).click();
+  await expect(data(page).getByRole('button', { name: /^\d+ filters?$/ })).toHaveCount(0);
+  await expect.poll(rows).toBe(202);
+  const after = await openConfig(page);
+  await expect(after.getByRole('menuitem', { name: 'Customers', exact: true })).toHaveCount(0);
+  await closeConfig(page);
+});
+
+test('a filtered card shows its share of matching records, and none without a filter', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  const card = marts(page).locator('article#dm-orders');
+  await expect(card.locator('[data-match]')).toHaveCount(0);
+  const icon = data(page).getByLabel('Column menu status', { exact: true });
+  await icon.locator('xpath=ancestor::th').hover();
+  await icon.click();
+  await page.getByRole('menuitem', { name: 'Filter', exact: true }).click();
+  await page.getByLabel('Operator').selectOption('contains');
+  await page.getByLabel('Value').fill('paid');
+  await page.getByRole('button', { name: 'Apply' }).click();
+  await expect.poll(() => data(page).getByRole('row').count()).toBe(110);
+  await expect(card.locator('[data-match]')).toHaveText('24% match');
+  await card.locator('[data-match]').hover();
+  await expect(page.getByRole('tooltip')).toHaveText(TIP);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(card.locator('[data-match]')).toHaveCount(0);
 });

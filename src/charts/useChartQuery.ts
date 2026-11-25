@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { readRows } from '../api/rows';
 import { perCtx } from '../sdk/per-ctx';
 import type { Ctx, Row, TraverseOptions } from '../sdk/types';
 import { useServices } from '../state/store';
+import { useLatest } from '../ui/useLatest';
 import { answers, partsOf, stable, type JoinGrain, type QueryParts } from './answers';
 
 export type ChartResult = { rows: Row[] | null; error: unknown; loading: boolean; retry: () => void };
@@ -27,12 +28,16 @@ type Flight = { promise: Promise<Row[]>; readers: number; controller: AbortContr
 const flightsOf = perCtx(() => new Map<string, Flight>());
 
 /** The cached read that answers this query: the exact one, else, when `joins` is given, one for a superset of it (see `answers`). Returns its key and rows. */
-function lookup(ctx: Ctx, key: string, martId: string, version: number, asked: QueryParts | null, joins: JoinGrain | undefined): { key: string; rows: Row[] } | null {
+function lookup(ctx: Ctx, key: string, martId: string, version: number, asked: QueryParts | null, joins: JoinGrain | undefined, reuse: QueryParts | null = null): { key: string; rows: Row[] } | null {
   const cache = cacheOf(ctx);
   const exact = cache.get(key);
   if (exact) return { key, rows: exact.rows };
-  if (!asked || !joins) return null;
-  for (const [k, e] of cache) if (e.martId === martId && e.version === version && answers(e.parts, asked, joins)) return { key: k, rows: e.rows };
+  if (!joins) return null;
+  // `reuse` is a smaller ask the caller can do with: a cached read that answers it spares the read of the full query.
+  for (const want of [asked, reuse]) {
+    if (!want) continue;
+    for (const [k, e] of cache) if (e.martId === martId && e.version === version && answers(e.parts, want, joins)) return { key: k, rows: e.rows };
+  }
   return null;
 }
 
@@ -40,20 +45,30 @@ function lookup(ctx: Ctx, key: string, martId: string, version: number, asked: Q
  * Runs one traversal for a chart. `null` options run nothing. `version` busts the cache (the mart was refreshed).
  * With `joins`, a cached read for a superset of this query answers it with no read (a card whose column was dropped keeps its value);
  * without it only an identical query is served from the cache.
+ * `reuse` (with `joins`) is a smaller ask that is enough: when no read answers `options` but one answers `reuse`, its rows are served and nothing is sent.
+ * `hold` keeps a read that is not under way from starting (a cache hit or a flight is still used); it starts when the hold ends, if the key is still the same.
  */
-export function useChartQuery(martId: string, options: TraverseOptions | null, version: number, joins?: JoinGrain): ChartResult {
+export function useChartQuery(martId: string, options: TraverseOptions | null, version: number, joins?: JoinGrain, reuse?: TraverseOptions | null, hold = false): ChartResult {
   const { ctx } = useServices();
   const [attempt, setAttempt] = useState(0);
+  const held = useLatest(hold);
+  // The key whose read was held back, so the end of the hold can start it.
+  const skipped = useRef<string | null>(null);
   const key = options ? `${martId}:${version}:${stable(options)}` : null;
   // The ask's parts are split once per key, not on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const asked = useMemo(() => (options ? partsOf(options) : null), [key]);
+  const reuseKey = reuse ? stable(reuse) : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const reused = useMemo(() => (reuse ? partsOf(reuse) : null), [reuseKey]);
   const [state, setState] = useState<{ key: string | null; rows: Row[] | null; error: unknown }>({ key: null, rows: null, error: null });
 
   useEffect(() => {
+    // A key held earlier is no longer waiting: this run decides for the key it has now.
+    skipped.current = null;
     if (!options || !key) return;
     const cache = cacheOf(ctx);
-    const cached = lookup(ctx, key, martId, version, asked, joins);
+    const cached = lookup(ctx, key, martId, version, asked, joins, reused);
     if (cached) {
       // Keep the rows in state too, so a later eviction cannot strand this reader; re-insert the key so it counts as recently used.
       const entry = cache.get(cached.key)!;
@@ -65,6 +80,7 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
     }
     const inflight = flightsOf(ctx);
     let flight = inflight.get(key);
+    if (!flight && held.current) { skipped.current = key; return; }
     if (!flight) {
       const controller = new AbortController();
       const promise = readRows(ctx, martId, options, { signal: controller.signal });
@@ -95,6 +111,12 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx, key, attempt]);
 
+  useEffect(() => {
+    if (hold || !key || skipped.current !== key) return;
+    skipped.current = null;
+    setAttempt((n) => n + 1);
+  }, [hold, key]);
+
   const retry = useCallback(() => {
     setState({ key: null, rows: null, error: null });
     setAttempt((n) => n + 1);
@@ -103,7 +125,7 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
   if (!key) return { rows: null, error: null, loading: false, retry };
   const current = state.key === key;
   // A cached read for a superset answers on this very render, so the cards show their values with no skeleton.
-  const rows = current ? state.rows : lookup(ctx, key, martId, version, asked, joins)?.rows ?? null;
+  const rows = current ? state.rows : lookup(ctx, key, martId, version, asked, joins, reused)?.rows ?? null;
   const error = current ? state.error : null;
   return { rows, error, loading: !rows && !error, retry };
 }

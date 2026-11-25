@@ -26,6 +26,8 @@ type Setup = { visible?: string[]; chartItems?: MenuItem[]; onRemove?: () => voi
 function Harness({ visible: start = ['id', 'customers__email'], chartItems, onRemove, spy, unique = false }: Setup) {
   const [visible, setVisible] = useState(start);
   const [uniqueOn, setUniqueOn] = useState(unique);
+  // A joined mart that loses its last column stays in the report, as the grid keeps it.
+  const [kept, setKept] = useState<string[]>([]);
   const has = (m: ConfigMart) => m.fields.some((x) => visible.includes(x.name));
   const remove = { onRemove: onRemove ?? (() => undefined) };
   const base: ConfigMart[] = [
@@ -35,7 +37,7 @@ function Harness({ visible: start = ['id', 'customers__email'], chartItems, onRe
     mart('products', 'Products', PRODUCTS),
     mart('products.suppliers', 'Suppliers', SUPPLIERS),
   ];
-  const all = base.map((m) => ({ ...m, shown: m.main || has(m) || !!m.unique?.on, remove: has(m) && (m.path === 'customers' || m.path === 'products') ? remove : undefined }));
+  const all = base.map((m) => ({ ...m, shown: m.main || has(m) || kept.includes(m.path) || !!m.unique?.on, remove: (has(m) || kept.includes(m.path)) && (m.path === 'customers' || m.path === 'products') ? remove : undefined }));
   const shown = all.filter((m) => m.shown);
   const marts = [...shown, ...all.filter((m) => m.path === 'regions' && !shown.includes(m))];
   const under: Record<string, string[]> = { '': ['products', 'customers'], products: ['products.suppliers'] };
@@ -43,7 +45,7 @@ function Harness({ visible: start = ['id', 'customers__email'], chartItems, onRe
   return (
     <TooltipProvider>
       <ConfigMenu marts={marts} joinable={joinable} visible={visible} chartItems={chartItems}
-        onChange={(cols) => { spy?.(cols); setVisible(cols); }} />
+        onChange={(cols) => { spy?.(cols); setKept((cur) => [...new Set([...cur, ...base.filter((m) => !m.main && has(m) && !m.fields.some((x) => cols.includes(x.name))).map((m) => m.path)])]); setVisible(cols); }} />
       <output data-testid="visible">{visible.join(',')}</output>
     </TooltipProvider>
   );
@@ -94,6 +96,23 @@ describe('the rows', () => {
     expect(customers).toHaveAttribute('aria-description', 'Who bought');
     expect(customers.querySelector('[aria-hidden="true"][aria-label="About Customers"]')).not.toBeNull();
     expect(within(menu).getByRole('menuitem', { name: 'Orders' }).querySelector('.dm-hint-slot')).toBeNull();
+  });
+
+  test('a data mart with a rule on one of its fields shows its marks before the arrow, in the row description, live', async () => {
+    const rules = { filter: true, slice: false, aggregate: true };
+    const on = (r: typeof rules) => (
+      <TooltipProvider><ConfigMenu marts={[mart('', 'Orders', ORDERS, { shown: true, rules: r }), mart('customers', 'Customers', CUSTOMERS, { shown: true, description: 'Who bought', rules: { filter: true, slice: true, aggregate: false } })]} joinable={() => []} visible={['id']} onChange={() => undefined} /></TooltipProvider>
+    );
+    const { rerender } = render(on(rules));
+    const menu = await openMenu();
+    const orders = within(menu).getByRole('menuitem', { name: 'Orders' });
+    expect(orders.querySelectorAll('.dm-menu-marks svg')).toHaveLength(2);
+    expect(orders).toHaveAttribute('aria-description', 'Filtered. Aggregated');
+    expect(within(menu).getByRole('menuitem', { name: 'Customers' })).toHaveAttribute('aria-description', 'Who bought. Filtered. Sliced');
+    // A rule that goes while the menu is open takes its mark with it.
+    rerender(on({ filter: false, slice: false, aggregate: false }));
+    expect(within(menu).getByRole('menuitem', { name: 'Orders' }).querySelector('.dm-menu-marks')).toBeNull();
+    expect(within(menu).getByRole('menuitem', { name: 'Orders' })).not.toHaveAttribute('aria-description');
   });
 
   test('chart items come first, then a separator, and only when they are passed', async () => {
@@ -217,32 +236,46 @@ describe('a data mart panel', () => {
     expect(visibleNow()).toBe('id');
   });
 
-  test('unticking the last field of a joined mart commits when the panel closes, not before', async () => {
+  test('unticking the last field of a joined mart commits at once and keeps the mart listed', async () => {
     const spy = vi.fn();
     setup({ spy });
-    const panel = await openRow('Customers', await openMenu());
+    const menu = await openMenu();
+    const panel = await openRow('Customers', menu);
     await userEvent.click(within(panel).getByLabelText('customers__email'));
-    expect(spy).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy).toHaveBeenLastCalledWith(['id']);
+    expect(visibleNow()).toBe('id');
     expect(within(panel).getByRole('option', { name: 'customers__email' })).toHaveAttribute('aria-selected', 'false');
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('dialog', { name: 'Customers' })).toBeNull();
     expect(spy).toHaveBeenCalledOnce();
-    expect(visibleNow()).toBe('id');
+    expect(within(menu).getByRole('menuitem', { name: 'Customers' })).toBeInTheDocument();
   });
 
-  test('a new tick after the last one went keeps the mart, with no commit on close', async () => {
+  test('Clear in a joined mart unticks at once, and a tick afterwards is a second change', async () => {
     const spy = vi.fn();
     setup({ spy });
     const panel = await openRow('Customers', await openMenu());
-    await userEvent.click(within(panel).getByLabelText('customers__email'));
-    await userEvent.click(within(panel).getByLabelText('customers__tier'));
+    await userEvent.click(within(panel).getByRole('button', { name: 'Clear' }));
     expect(spy).toHaveBeenCalledOnce();
+    expect(visibleNow()).toBe('id');
+    await userEvent.click(within(panel).getByLabelText('customers__tier'));
+    expect(spy).toHaveBeenCalledTimes(2);
     expect(visibleNow()).toBe('id,customers__tier');
     await userEvent.keyboard('{Escape}');
-    expect(spy).toHaveBeenCalledOnce();
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 
-  test('a mart with nothing shown leaves nothing pending, and StrictMode commits nothing on mount', async () => {
+  test('an emptied mart has Remove from report', async () => {
+    const onRemove = vi.fn();
+    setup({ onRemove });
+    const customers = await openRow('Customers', await openMenu());
+    await userEvent.click(within(customers).getByLabelText('customers__email'));
+    await userEvent.click(within(customers).getByRole('menuitem', { name: 'Remove from report' }));
+    expect(onRemove).toHaveBeenCalledOnce();
+  });
+
+  test('Clear on a joined mart with nothing shown changes nothing, also in StrictMode', async () => {
     const spy = vi.fn();
     setup({ spy, strict: true });
     await openRow('Regions', await openMenu());
@@ -455,7 +488,7 @@ describe('fix round 1', () => {
     expect(within(orders).queryByRole('menuitem', { name: 'Products' })).toBeNull();
   });
 
-  test('a mart that left the report offers no Remove from a stale closure', async () => {
+  test('a mart emptied stays listed with its Remove, which acts only when clicked, not on reopening', async () => {
     const onRemove = vi.fn();
     setup({ onRemove });
     const menu = await openMenu();
@@ -464,11 +497,12 @@ describe('fix round 1', () => {
     await openRow('Orders', menu);
     expect(visibleNow()).toBe('id');
     const again = await openRow('Customers', menu);
-    expect(within(again).queryByRole('menuitem', { name: 'Remove from report' })).toBeNull();
     expect(onRemove).not.toHaveBeenCalled();
+    await userEvent.click(within(again).getByRole('menuitem', { name: 'Remove from report' }));
+    expect(onRemove).toHaveBeenCalledOnce();
   });
 
-  test('two panels emptied together leave as one change when the menu closes', async () => {
+  test('two panels emptied one after the other are two changes, and closing the menu adds none', async () => {
     const spy = vi.fn();
     setup({ spy });
     const menu = await openMenu();
@@ -480,21 +514,21 @@ describe('fix round 1', () => {
     expect(visibleNow()).toBe('id,customers__email,products__sku,suppliers__name');
     spy.mockClear();
     await userEvent.click(within(products).getByLabelText('products__sku'));
-    await userEvent.click(within(suppliers).getByLabelText('suppliers__name'));
-    expect(spy).not.toHaveBeenCalled();
-    fireEvent.pointerDown(document.body);
     expect(spy).toHaveBeenCalledOnce();
-    expect(spy).toHaveBeenCalledWith(['id', 'customers__email']);
+    await userEvent.click(within(suppliers).getByLabelText('suppliers__name'));
+    expect(spy).toHaveBeenCalledTimes(2);
     expect(visibleNow()).toBe('id,customers__email');
+    fireEvent.pointerDown(document.body);
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 
-  test('a panel emptied and then replaced by a hover commits its own change when it goes', async () => {
+  test('a panel emptied and then replaced by a hover commits nothing more when it goes', async () => {
     const spy = vi.fn();
     setup({ spy });
     const menu = await openMenu();
     const customers = await openRow('Customers', menu);
     await userEvent.click(within(customers).getByLabelText('customers__email'));
-    expect(spy).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalledOnce();
     fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: 'Regions' }));
     await wait(HOVER_MS + 100);
     expect(screen.queryByRole('dialog', { name: 'Customers' })).toBeNull();
@@ -514,15 +548,16 @@ describe('fix round 1', () => {
     expect(visibleNow()).toBe('id');
   });
 
-  test('Remove from report after emptying is one edit: the pending change is dropped', async () => {
+  test('Remove from report after emptying is a second edit: the Clear went out on its own', async () => {
     const spy = vi.fn();
     const onRemove = vi.fn();
     setup({ spy, onRemove });
     const customers = await openRow('Customers', await openMenu());
     await userEvent.click(within(customers).getByLabelText('customers__email'));
+    expect(spy).toHaveBeenCalledOnce();
     await userEvent.click(within(customers).getByRole('menuitem', { name: 'Remove from report' }));
     expect(onRemove).toHaveBeenCalledOnce();
-    expect(spy).not.toHaveBeenCalled();
+    expect(spy).toHaveBeenCalledOnce();
   });
 
   test('a press on another control of the config panel closes an open field menu and leaves the config menu', async () => {
@@ -592,65 +627,6 @@ describe('fix round 1', () => {
     rerender(props([main], [gone((n) => n === 'p1')]));
     const panel = await openRow('Partners', screen.getByRole('menu', { name: 'Configure data' }));
     expect(within(panel).getByRole('option', { name: 'p1' })).toHaveAttribute('aria-disabled', 'true');
-  });
-
-  describe('a closing subtree settles in one change', () => {
-    const deep = async (spy: (c: string[]) => void, strict = false) => {
-      setup({ spy, strict });
-      const menu = await openMenu();
-      const orders = await openRow('Orders', menu);
-      const products = await openRow('Products', orders);
-      await userEvent.click(within(products).getByLabelText('products__sku'));
-      const suppliers = await openRow('Suppliers', products);
-      await userEvent.click(within(suppliers).getByLabelText('suppliers__name'));
-      await userEvent.click(within(products).getByLabelText('products__sku'));
-      await userEvent.click(within(suppliers).getByLabelText('suppliers__name'));
-      return menu;
-    };
-    const settled = async (spy: ReturnType<typeof vi.fn>, before: number) => {
-      await wait(0);
-      expect(spy).toHaveBeenCalledTimes(before + 1);
-      expect(spy).toHaveBeenLastCalledWith(['id', 'customers__email']);
-      expect(visibleNow()).toBe('id,customers__email');
-    };
-    for (const strict of [false, true]) {
-      test(`a click on another root row${strict ? ' (StrictMode)' : ''}`, async () => {
-        const spy = vi.fn();
-        const menu = await deep(spy, strict);
-        const before = spy.mock.calls.length;
-        await userEvent.click(within(menu).getByRole('menuitem', { name: 'Customers' }));
-        await settled(spy, before);
-      });
-
-      test(`a hover on another root row${strict ? ' (StrictMode)' : ''}`, async () => {
-        const spy = vi.fn();
-        const menu = await deep(spy, strict);
-        const before = spy.mock.calls.length;
-        fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: 'Customers' }));
-        await wait(HOVER_MS + 100);
-        await settled(spy, before);
-      });
-
-      test(`Escape with focus on the root${strict ? ' (StrictMode)' : ''}`, async () => {
-        const spy = vi.fn();
-        const menu = await deep(spy, strict);
-        const before = spy.mock.calls.length;
-        within(menu).getByRole('menuitem', { name: 'Orders' }).focus();
-        await userEvent.keyboard('{Escape}');
-        expect(screen.queryByRole('dialog')).toBeNull();
-        await settled(spy, before);
-      });
-
-      test(`unmounting the menu${strict ? ' (StrictMode)' : ''}`, async () => {
-        const spy = vi.fn();
-        await deep(spy, strict);
-        const before = spy.mock.calls.length;
-        cleanup();
-        await wait(0);
-        expect(spy).toHaveBeenCalledTimes(before + 1);
-        expect(spy).toHaveBeenLastCalledWith(['id', 'customers__email']);
-      });
-    }
   });
 
   test('the third level of one chart submenu does not open by itself in the next one', async () => {

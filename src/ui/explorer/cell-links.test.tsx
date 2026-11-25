@@ -153,3 +153,85 @@ test('Enter does nothing on a cell without a URL, a block, a column or a row', a
   expect(fireEvent.keyDown(root(), { key: 'Enter' })).toBe(true);
   expect(open).not.toHaveBeenCalled();
 });
+
+/** Selects the text of an element, as a right click on a link does on macOS. */
+const selectText = (el: Node) => { const r = document.createRange(); r.selectNodeContents(el); window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(r); };
+const textRange = () => window.getSelection()!.rangeCount > 0 && !window.getSelection()!.isCollapsed;
+afterEach(() => window.getSelection()!.removeAllRanges());
+
+test('text a right click selected in the grid is cleared when an arrow key moves the selection', async () => {
+  await setup();
+  select(cellOf(links()[0]!));
+  selectText(links()[0]!);
+  press(root(), 'ArrowDown');
+  expect(textRange()).toBe(false);
+});
+
+test('text selected in the grid is cleared by a click on another cell and by a header click', async () => {
+  await setup();
+  selectText(links()[0]!);
+  select(cellOf(links()[1]!));
+  expect(textRange()).toBe(false);
+  selectText(links()[0]!);
+  fireEvent.click(data().querySelector('th.dm-letter')!);
+  expect(textRange()).toBe(false);
+});
+
+test('text outside the grid is left alone when its selection moves', async () => {
+  await setup();
+  select(cellOf(links()[0]!));
+  const outside = document.createElement('p');
+  outside.textContent = 'elsewhere';
+  document.body.appendChild(outside);
+  selectText(outside);
+  press(root(), 'ArrowDown');
+  expect(textRange()).toBe(true);
+  outside.remove();
+});
+
+test('a range the reader makes after the last selection change, and a plain re-render, leave the browser copy alone', async () => {
+  await setup();
+  select(cellOf(links()[0]!));
+  selectText(links()[1]!);
+  fireEvent.scroll(root());
+  expect(textRange()).toBe(true);
+  expect(fireEvent.copy(root(), { clipboardData: { setData: vi.fn() } })).toBe(true);
+});
+
+test('a range inside the grid is not cleared when the grid mounts or re-renders with the same selection', async () => {
+  // A selection that always reports a range inside the grid, from the first render on.
+  const removeAllRanges = vi.fn();
+  const fake = { isCollapsed: false, get anchorNode() { return document.querySelector('.dm-grid-root'); }, removeAllRanges };
+  vi.spyOn(window, 'getSelection').mockReturnValue(fake as unknown as Selection);
+  await setup();
+  fireEvent.scroll(root());
+  expect(removeAllRanges).not.toHaveBeenCalled();
+  select(cellOf(links()[0]!));
+  expect(removeAllRanges).toHaveBeenCalled();
+  vi.restoreAllMocks();
+});
+
+test('a drag over the data mart title survives the click that deselects, and a later cell selection clears it', async () => {
+  await setup();
+  fireEvent.click(data().querySelector('th.dm-letter')!);
+  const title = data().querySelector<HTMLElement>('th[data-group] .truncate')!;
+  selectText(title);
+  fireEvent.click(title);
+  expect(data().querySelector('[data-selected]')).toBeNull();
+  expect(textRange()).toBe(true);
+  // Cmd+C would otherwise copy the cell; here the title text is the reader's.
+  select(cellOf(links()[0]!));
+  expect(textRange()).toBe(false);
+});
+
+test('text inside a field in the grid is left alone when the selection moves', async () => {
+  await setup();
+  select(cellOf(links()[0]!));
+  const box = document.createElement('textarea');
+  box.textContent = 'typed';
+  root().appendChild(box);
+  selectText(box.firstChild!);
+  press(root(), 'ArrowDown');
+  expect(textRange()).toBe(true);
+  box.remove();
+});

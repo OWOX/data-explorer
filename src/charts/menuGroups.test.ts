@@ -54,3 +54,11 @@ test('a joined mart\'s Count Unique names its mart once on the axis', () => {
   const orgRecords = measuresOf(cf).find((m) => m.kind === 'records' && m.aliasPath === 'org')!;
   expect(measureAxisTitle(cf, orgRecords)).toBe('Count Unique | Contact Organization');
 });
+
+test('a field with a description carries it as its hint, in the field and the measure lists; a blank one carries none', () => {
+  const described = { ...cf, dimensions: [{ ...schema[2]!, description: ' Where it came from ' }, { ...schema[3]!, description: '  ' }] };
+  expect(fieldGroups(described, described.dimensions).map((g) => g.options)).toEqual([[{ value: 'channel', label: 'channel', hint: 'Where it came from' }], [{ value: 'org__name', label: 'org__name' }]]);
+  const amount = measuresOf(cf)[1]!;
+  const withText = amount.kind === 'metric' ? { ...amount, metric: { ...amount.metric, field: { ...amount.metric.field, description: 'Net' } } } : amount;
+  expect(measureGroups(cf, [measuresOf(cf)[0]!, withText])[0]!.options.map((o) => o.hint)).toEqual([undefined, 'Net']);
+});

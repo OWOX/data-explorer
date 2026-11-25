@@ -41,6 +41,19 @@ describe('view link codec', () => {
     expect((await decodeViewLink(await encodeViewLink(base)))!).not.toHaveProperty('grid.uniqueCount');
   });
 
+  it('round trips the empty paths, and a link without them opens with none', async () => {
+    const withEmpty = { ...base, grid: { ...base.grid!, emptyPaths: ['orders.customers', 'stores'] } };
+    expect(await decodeViewLink(await encodeViewLink(withEmpty))).toEqual({ ...withEmpty, dropped: 0, droppedAggregations: 0 });
+    expect((await decodeViewLink(await encodeViewLink(base)))!).not.toHaveProperty('grid.emptyPaths');
+  });
+
+  it('leaves out a malformed, repeated, empty-named or unsafe empty path and counts it as a column', async () => {
+    const g = { c: ['id'], fl: [], s: null, l: 200, ep: ['a', 'a', 7, '__proto__', '', 'b'] };
+    const out = await decodeViewLink(await route(valid({ g })));
+    expect(out).toMatchObject({ grid: { emptyPaths: ['a', 'b'] }, dropped: 4, droppedAggregations: 0 });
+    expect(await decodeViewLink(await route(valid({ g: { ...g, ep: 'x' } })))).toBe('unreadable');
+  });
+
   it('leaves out and counts a malformed or repeated Unique Count path', async () => {
     const g = { c: ['id'], fl: [], s: null, l: 200, uc: ['', '', 7, '__proto__', 'a'] };
     const out = await decodeViewLink(await route(valid({ g })));

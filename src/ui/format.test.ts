@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { compactNumber, count, displayText, formatNumber, formatTemporal, groupsLabel, num, recordsLabel, rowsLabel, relativeTime, resetFormats } from './format';
+import { compactNumber, count, displayText, formatNumber, formatTemporal, groupsLabel, matchLabel, num, recordsLabel, rowsLabel, relativeTime, resetFormats } from './format';
 
 test.each([[0, '0'], [999, '999'], [1200, '1.2K'], [12400, '12.4K'], [3_400_000, '3.4M'], [2_000_000_000, '2B']])('%d → %s', (n, s) => {
   expect(compactNumber(n)).toBe(s);
@@ -109,5 +109,26 @@ describe('formatNumber', () => {
     expect(displayText('1223', 'NUMERIC')).toBe('1,223');
     expect(displayText(1223, 'STRING')).toBe('1223');
     expect(displayText(1223)).toBe('1223');
+  });
+});
+
+describe('matchLabel', () => {
+  test('the share is rounded down and the tooltip names both counts', () => {
+    expect(matchLabel(1480, 12300)).toEqual({ text: '12% match', tip: '1,480 of 12,300 records match the filters and slices' });
+    expect(matchLabel(99_999, 100_000)?.text).toBe('99% match');
+    expect(matchLabel(1, 2)?.text).toBe('50% match');
+  });
+  test('above 0 and below 1 percent reads "<1%", and none matching reads 0%', () => {
+    expect(matchLabel(5, 10_000)?.text).toBe('<1% match');
+    expect(matchLabel(0, 10_000)?.text).toBe('0% match');
+  });
+  test('nothing when every record matches, the total is unknown or 0, or the count is not a number', () => {
+    expect(matchLabel(100, 100)).toBeNull();
+    expect(matchLabel(101, 100)).toBeNull();
+    expect(matchLabel(5, null)).toBeNull();
+    expect(matchLabel(5, undefined)).toBeNull();
+    expect(matchLabel(0, 0)).toBeNull();
+    expect(matchLabel(undefined, 100)).toBeNull();
+    expect(matchLabel(NaN, 100)).toBeNull();
   });
 });

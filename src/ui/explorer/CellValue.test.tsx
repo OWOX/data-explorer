@@ -117,3 +117,95 @@ test('a host that refuses to open the URL causes no unhandled rejection', async 
   await new Promise((r) => setTimeout(r, 0));
   expect(handled).toHaveBeenCalledTimes(1);
 });
+
+describe('a URL in the Row band', () => {
+  const band = () => { const open = linked(<CellValue row={{ page: URL_TEXT }} field="page" type="STRING" wrap />); return { open, link: screen.getByRole('link') }; };
+  const press = (link: HTMLElement, x: number, y = 5) => fireEvent.mouseDown(link, { button: 0, clientX: x, clientY: y });
+  const click = (link: HTMLElement, x: number, y = 5, init: object = {}) => fireEvent.click(link, { detail: 1, clientX: x, clientY: y, ...init });
+
+  test('can have its text selected: the link is not draggable and its text is selectable', () => {
+    const { link } = band();
+    expect(link).toHaveAttribute('draggable', 'false');
+    expect(link).toHaveClass('dm-cell-link-text');
+  });
+
+  test('a click that ends where the press began opens, a click after a drag opens nothing', () => {
+    const { open, link } = band();
+    press(link, 10); click(link, 12);
+    expect(open).toHaveBeenCalledTimes(1);
+    press(link, 10); expect(click(link, 60)).toBe(false);
+    press(link, 10); click(link, 10, 40);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('a click with no press seen, and a keyboard click, open', () => {
+    const { open, link } = band();
+    click(link, 300);
+    fireEvent.click(link, { detail: 0, clientX: 0, clientY: 0 });
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  test('a drag that leaves and comes back opens nothing, and the next plain click opens', () => {
+    const { open, link } = band();
+    press(link, 10); click(link, 10, 60);
+    expect(open).not.toHaveBeenCalled();
+    press(link, 10); click(link, 10);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('a keyboard click opens even far from an old press', () => {
+    const { open, link } = band();
+    press(link, 10);
+    fireEvent.click(link, { detail: 0, clientX: 300, clientY: 5 });
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('a press is used once: the next click with no press of its own opens', () => {
+    const { open, link } = band();
+    press(link, 10); click(link, 300);
+    expect(open).not.toHaveBeenCalled();
+    click(link, 300);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('only a press with the main button counts', () => {
+    const { open, link } = band();
+    fireEvent.mouseDown(link, { button: 2, clientX: 10, clientY: 5 });
+    click(link, 300);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('a link away from the page corner opens when it is released where it was pressed', () => {
+    const { open, link } = band();
+    vi.spyOn(link, 'getBoundingClientRect').mockReturnValue({ left: 100, top: 100 } as DOMRect);
+    press(link, 110, 105);
+    click(link, 110, 105);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('the page scrolling between the press and the release counts as movement', () => {
+    const { open, link } = band();
+    const rect = vi.spyOn(link, 'getBoundingClientRect');
+    rect.mockReturnValue({ left: 100, top: 100 } as DOMRect);
+    press(link, 110, 105);
+    // Same screen point, but the link moved 20 px up under the pointer.
+    rect.mockReturnValue({ left: 100, top: 80 } as DOMRect);
+    expect(click(link, 110, 105)).toBe(false);
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  test('a shift-click opens nothing', () => {
+    const { open, link } = band();
+    press(link, 10); click(link, 10, 5, { shiftKey: true });
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  test('an old selection overlapping the link does not stop a click', () => {
+    const { open, link } = band();
+    const r = document.createRange(); r.selectNodeContents(link);
+    window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(r);
+    press(link, 10); click(link, 10);
+    expect(open).toHaveBeenCalledTimes(1);
+    window.getSelection()!.removeAllRanges();
+  });
+});

@@ -12,7 +12,7 @@ export type Metric = { field: Field; fn: AggFn | null };
 export type ChartMart = { aliasPath: string; recordsId: string; title: string; /** The mart's own picked icon, as the grid group header shows it. */ icon?: string | null; hasPk: boolean; metrics: Metric[]; dates: Field[]; dimensions: Field[] };
 /** `counter` is a main-mart field the warehouse may COUNT: a query with a slice and no column of its own reads it, so the slice has an explicit column list without a new group key. Null when the mart has none. */
 export type ChartFields = { marts: ChartMart[]; dimensions: Field[]; dates: Field[]; counter?: Field | null;
-  /** The same marts with every one of their columns, shown or not, then the marts the report joins through with no column of their own: what the menus list. A choice of a column that is not shown adds it to the grid. Absent: the menus list `marts`. */
+  /** The same marts with every one of their columns, shown or not, then the marts the report keeps or joins through with no column of their own: what the menus list. A choice of a column that is not shown adds it to the grid. Absent: the menus list `marts`. */
   menu?: ChartFields;
   /** Per alias path of a joined mart: 'none' when every join down to it is a lookup keyed by its target's primary key, so a main row matches at most one joined row. A path not listed collapses. */
   collapse?: Readonly<Record<string, MainGrainCollapse>> };

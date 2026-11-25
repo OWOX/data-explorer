@@ -1,10 +1,9 @@
-import { Settings2, Trash2 } from 'lucide-react';
+import { Funnel, Layers, Settings2, Sigma, Trash2 } from 'lucide-react';
 import { useCallback, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { hasCheck, ItemRow, ItemSubmenu, type MenuItem } from '../../charts/MenuItems';
 import { DEFAULT_MART_ICON, PickedIcon } from '../bands/picked';
-import { useLatest } from '../useLatest';
 import { useMenuDismiss } from './ColumnMenu';
-import { MartFields, PendingEmptiesContext, type ConfigMart, type PendingEmpties } from './MartFields';
+import { MartFields, type ConfigMart } from './MartFields';
 import { Panel, Row, useSubmenu } from './MenuParts';
 
 export type { ConfigMart } from './MartFields';
@@ -15,13 +14,19 @@ const typing = () => {
   return !!el && el.matches('input, textarea, select') && !!el.closest('[data-column-menu]');
 };
 
-/** One data mart as a row that opens its fields panel: its icon, its title and, with a description, a (?). */
+const RULE_MARKS = [
+  { key: 'filter', icon: <Funnel className="size-3.5" />, note: 'Filtered' },
+  { key: 'slice', icon: <Layers className="size-3.5" />, note: 'Sliced' },
+  { key: 'aggregate', icon: <Sigma className="size-3.5" />, note: 'Aggregated' },
+] as const;
+
+/** One data mart as a row that opens its fields panel: its icon, its title, with a description a (?), then a mark for each kind of rule on its fields. */
 function MartRow({ mart, expanded, tabbable, onOpen, onHover, onLeaveRow, slot }: {
   mart: ConfigMart; expanded: boolean; tabbable?: boolean; slot?: boolean;
   onOpen: (row: HTMLElement) => void; onHover: (row: HTMLElement) => void; onLeaveRow: () => void;
 }) {
   return (
-    <Row sub haspopup="dialog" tabbable={tabbable} slot={slot} expanded={expanded} label={mart.title} hint={mart.description?.trim() || undefined}
+    <Row sub haspopup="dialog" tabbable={tabbable} slot={slot} expanded={expanded} label={mart.title} hint={mart.description?.trim() || undefined} marks={RULE_MARKS.filter((m) => mart.rules?.[m.key])}
       glyph={<PickedIcon icon={mart.icon} fallback={DEFAULT_MART_ICON} size={16} />}
       onActivate={onOpen} onOpen={onOpen} onHover={onHover} onLeaveRow={onLeaveRow} />
   );
@@ -31,8 +36,6 @@ type Shared = {
   joinable: (path: string) => ConfigMart[];
   /** The mart as it is now: the one in the report when it has joined it, else a fresh lookup, else the one the menu listed. A mart that is not in the report cannot be removed. */
   live: (m: ConfigMart) => ConfigMart;
-  /** Leaves a pending empty commit of this path out of the menu's closing change (the mart is removed instead). */
-  release: (path: string) => void;
   visible: string[];
   onChange: (cols: string[]) => void;
   /** Closes the whole menu. */
@@ -44,7 +47,7 @@ type Shared = {
  * What can join is taken when the panel opens, so a data mart that joins stays in the list it was in until the menu closes. So are its rows: a Remove it did not have does not appear, and one it had stays, disabled while the data mart cannot be removed.
  */
 function MartPanel({ entry, anchor, seq, onBack, shared }: { entry: ConfigMart; anchor: HTMLElement; seq: number; onBack: () => void; shared: Shared }) {
-  const { joinable, live, release, visible, onChange, close } = shared;
+  const { joinable, live, visible, onChange, close } = shared;
   const mart = live(entry);
   const [listed] = useState(() => joinable(entry.path));
   // The rows are decided when the panel opens: ticking a field brings a Remove row to a data mart that had none, and nothing below the pointer may move.
@@ -84,7 +87,7 @@ function MartPanel({ entry, anchor, seq, onBack, shared }: { entry: ConfigMart; 
                 <>
                   <div className="dm-menu-sep" role="separator" />
                   <Row tabbable label="Remove from report" glyph={<Trash2 className="size-4" />} disabled={!mart.remove || mart.remove.disabled}
-                    onHover={hoverOther} onLeaveRow={leaveRow} onActivate={() => { const r = mart.remove; if (!r) return; release(entry.path); close(); r.onRemove(); }} />
+                    onHover={hoverOther} onLeaveRow={leaveRow} onActivate={() => { const r = mart.remove; if (!r) return; close(); r.onRemove(); }} />
                 </>
               )}
             </div>
@@ -97,7 +100,7 @@ function MartPanel({ entry, anchor, seq, onBack, shared }: { entry: ConfigMart; 
 }
 
 /**
- * The config button and its menu: the data marts of the report (and the ones on a path with no column), each opening its fields.
+ * The config button and its menu: the data marts of the report (and the ones the report joins through with no column), each opening its fields.
  * In Charts mode `chartItems` come first. What the menu lists is taken when it opens and stays until it closes, whatever the grid does meanwhile;
  * each row and panel shows its data mart's live state.
  */
@@ -115,43 +118,11 @@ export function ConfigMenu({ marts, joinable, visible, onChange, chartItems = []
   const [frozen, setFrozen] = useState<{ marts: ConfigMart[]; split: number } | null>(null);
   // What can join under each path, taken the first time a panel asks and kept until the menu closes.
   const [joinCache] = useState(() => new Map<string, ConfigMart[]>());
-  // The empty commits that wait for their panels, and the latest grid they are made against.
-  const [pending] = useState(() => new Map<string, string[]>());
-  // The fields of panels that went without the menu closing: all that go in one commit leave as one change.
-  const queued = useRef({ names: new Set<string>(), scheduled: false });
-  const latest = useLatest({ visible, onChange });
   const [placed, setPlaced] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const holderEl = useRef<HTMLSpanElement>(null);
   const { sub, open, hoverRow, hoverOther, leaveRow, closeSub, dismiss } = useSubmenu<string>({ isEditing: typing });
-  const take = useCallback((paths?: string[]) => {
-    for (const p of paths ?? [...pending.keys()]) { pending.get(p)?.forEach((n) => queued.current.names.add(n)); pending.delete(p); }
-  }, [pending, queued]);
-  // Takes what is queued off the grid in one change.
-  const flush = useCallback(() => {
-    const q = queued.current;
-    q.scheduled = false;
-    if (q.names.size === 0) return;
-    const names = new Set(q.names);
-    q.names.clear();
-    const { visible: now, onChange: change } = latest.current;
-    let next = now.filter((c) => !names.has(c));
-    if (next.length === now.length) return;
-    // Clear never leaves the grid without a column.
-    if (next.length === 0) next = now.slice(0, 1);
-    change(next);
-  }, [queued, latest]);
-  // Panels that go together (a subtree closing) clean up one after the other: the flush waits until they have all queued.
-  const settleSoon = useCallback((path: string) => {
-    take([path]);
-    if (!queued.current.scheduled) { queued.current.scheduled = true; queueMicrotask(flush); }
-  }, [take, queued, flush]);
-  const [holder] = useState<PendingEmpties>(() => ({
-    hold: (path, names) => { pending.set(path, names); },
-    release: (path) => { pending.delete(path); },
-    settle: settleSoon,
-  }));
-  const close = useCallback((refocus = true) => { take(); flush(); joinCache.clear(); dismiss(); setAnchor(null); setFrozen(null); setPlaced(false); if (refocus) button.current?.focus(); }, [dismiss, take, flush, joinCache]);
+  const close = useCallback((refocus = true) => { joinCache.clear(); dismiss(); setAnchor(null); setFrozen(null); setPlaced(false); if (refocus) button.current?.focus(); }, [dismiss, joinCache]);
   const openMenu = (a: HTMLElement) => {
     const unshown = marts.findIndex((m) => !m.shown);
     setFrozen({ marts, split: unshown < 0 ? marts.length : unshown });
@@ -176,7 +147,7 @@ export function ConfigMenu({ marts, joinable, visible, onChange, chartItems = []
     return list;
   };
   const slot = hasCheck(chartItems);
-  const shared: Shared = { joinable: joinableOf, live, release: holder.release, visible, onChange, close };
+  const shared: Shared = { joinable: joinableOf, live, visible, onChange, close };
   // Chart rows are found by their label, not their place: the list may change while a row is open.
   const item = sub?.key.startsWith('i:') ? chartItems.find((it) => `i:${it.label}` === sub.key) : undefined;
   const picked = sub?.key.startsWith('m:') ? frozen?.marts.find((m) => `m:${m.path}` === sub.key) : undefined;
@@ -185,7 +156,6 @@ export function ConfigMenu({ marts, joinable, visible, onChange, chartItems = []
       onOpen={(r) => open(`m:${m.path}`, r, true)} onHover={(r) => hoverRow(`m:${m.path}`, r)} onLeaveRow={leaveRow} />
   );
   return (
-    <PendingEmptiesContext.Provider value={holder}>
     <span ref={holderEl} className="inline-flex">
       <button ref={button} type="button" aria-label="Configure data" aria-haspopup="menu" aria-expanded={!!anchor} data-config-button
         onClick={(e) => (anchor ? close(false) : openMenu(e.currentTarget))}
@@ -206,6 +176,5 @@ export function ConfigMenu({ marts, joinable, visible, onChange, chartItems = []
       {anchor && placed && sub && item && <ItemSubmenu key={sub.key} item={item} anchor={sub.row} seq={sub.seq} close={close} onBack={closeSub} />}
       {anchor && placed && sub && picked && <MartPanel key={picked.path} entry={picked} anchor={sub.row} seq={sub.seq} onBack={closeSub} shared={shared} />}
     </span>
-    </PendingEmptiesContext.Provider>
   );
 }
