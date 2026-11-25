@@ -378,7 +378,6 @@ test('fallback copy from a hoverable bubble while a plain tooltip button has foc
   screen.getByRole('button', { name: 'Plain' }).focus();
   await userEvent.hover(screen.getByTestId('a'));
   await waitFor(() => expect(document.querySelector('.dm-hint-hoverable')).not.toBeNull());
-  console.log('DBG1', document.querySelectorAll('.dm-hint-body').length, document.querySelector('.dm-hint-hoverable') != null);
   await userEvent.click(copyButton());
   await waitFor(() => expect(copyButton()).toHaveAttribute('data-copied'));
   expect(document.querySelector('.dm-hint-hoverable')).not.toBeNull();
@@ -399,11 +398,20 @@ test.each(['ok', 'failed', 'rejected'])('after a copy (%s) focusing a trigger op
   await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('Second: 2'));
 });
 
-test("a consumer's own onFocus still runs", async () => {
+test("a consumer's own onFocus still runs while a copy is running", async () => {
+  // A write that stays pending keeps a copy running, so the trigger's guarded onFocus branch is the one taken.
+  let settle!: () => void;
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(() => new Promise<void>((r) => { settle = r; })) }, configurable: true });
   const onFocus = vi.fn();
   render(<HoverableTooltipProvider><Tooltip content="x" copyText="x"><button type="button" onFocus={onFocus}>F</button></Tooltip></HoverableTooltipProvider>);
-  screen.getByRole('button', { name: 'F' }).focus();
-  expect(onFocus).toHaveBeenCalled();
+  const trigger = screen.getByRole('button', { name: 'F' });
+  await userEvent.hover(trigger);
+  await screen.findByRole('tooltip');
+  await userEvent.click(copyButton());
+  trigger.focus();
+  expect(onFocus).toHaveBeenCalledTimes(1);
+  settle();
+  await waitFor(() => expect(copyButton()).toHaveAttribute('data-copied'));
 });
 
 test('a touch pointer on a trigger of a group does not open a bubble after a hold', async () => {

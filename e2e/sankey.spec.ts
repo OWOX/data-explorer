@@ -318,8 +318,8 @@ test('a long bubble of a node in the last column stays inside a 500px wide viewp
   await page.setViewportSize({ width: 500, height: 900 });
   const sankey = await openSankey(page);
   // A node of the last column: the mock's labels are never cut, so this is the trigger furthest right, with the least room.
-  const label = sankey.locator('rect[data-node^="1|"]').first();
-  await label.hover();
+  const node = sankey.locator('rect[data-node^="1|"]').first();
+  await node.hover();
   const bubble = page.locator('.dm-hint-body');
   await expect(bubble).toBeVisible();
   // The mock has no long names: lengthen the shown text in place.
@@ -331,4 +331,30 @@ test('a long bubble of a node in the last column stays inside a 500px wide viewp
   const c = (await bubble.getByRole('button', { name: 'Copy to clipboard' }).boundingBox())!;
   expect(c.x).toBeGreaterThanOrEqual(0);
   expect(c.x + c.width).toBeLessThanOrEqual(500);
+});
+
+test('a fallback copy with the clipboard API gone keeps the bubble and the scroll position', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 620 });
+  const sankey = await openSankey(page);
+  const node = sankey.locator('rect[data-node^="0|"]').first();
+  const scrolls = () => page.evaluate(() => [...document.querySelectorAll('*')].filter((el) => el.scrollTop).map((el) => `${el.tagName}.${el.className}=${el.scrollTop}`).concat(`window=${window.scrollY}`));
+  // Focus a toolbar button, then scroll back to the chart: the button is off screen but still has focus.
+  const toolbarButton = page.getByRole('button', { name: 'Copy link to this view' });
+  const y = await page.evaluate(() => window.scrollY);
+  await toolbarButton.focus();
+  await page.evaluate((top) => window.scrollTo(0, top), y);
+  await expect(node).toBeInViewport();
+  expect(await toolbarButton.evaluate((el) => { const r = el.getBoundingClientRect(); return r.bottom < 0 || r.top > innerHeight; })).toBe(true);
+  await expect(toolbarButton).toBeFocused();
+  await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true }); });
+  const bubble = page.locator('.dm-hint-body');
+  await node.hover();
+  await expect(bubble).toBeVisible();
+  const before = await scrolls();
+  await bubble.getByRole('button', { name: 'Copy to clipboard' }).click();
+  // The check or "Copy failed" shows (the page may or may not allow execCommand), and the bubble stays.
+  await expect(bubble.locator('[data-copied], [role="alert"]')).toHaveCount(1);
+  await expect(bubble).toBeVisible();
+  expect(await scrolls()).toEqual(before);
+  await expect(toolbarButton).toBeFocused();
 });
