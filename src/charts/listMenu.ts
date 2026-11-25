@@ -1,6 +1,6 @@
 import { ChartColumn, ChartSpline, CopyPlus, EyeOff, Hash, LayoutGrid, Plus } from 'lucide-react';
 import type { MenuItem } from './ChartMenu';
-import type { ChartFields, ChartMart } from './fields';
+import { measuresOf, type ChartFields, type ChartMart } from './fields';
 import { eligibleKinds, KINDS } from './kinds';
 import { cardsOf, sparkDate } from './Scorecards';
 import { editCharts, measureId, newChartId, patchChart, type ChartKind, type ChartSettings, type ChartSpec, type Spark } from './settings';
@@ -39,8 +39,8 @@ export function dropPicksOf(cur: ChartSettings, hidden: ReadonlySet<string>): Ch
 
 /** The config menu's Add chart row: a radio of the chart kinds the shown columns allow. */
 export function addChartItem({ cf, change }: { cf: ChartFields; change: Change }): MenuItem {
-  // The row is always there, so the rows around it keep their places: with no kind to add, its submenu says why.
-  if (eligibleKinds(cf).length === 0) return { kind: 'group', label: 'Add chart', icon: Plus, items: [{ kind: 'action', label: 'Show a number column to chart it.', icon: ChartColumn, disabled: true, onPick: () => undefined }] };
+  // The row is always there, so the rows around it keep their places: with no kind to add, its submenu says what is missing.
+  if (eligibleKinds(cf).length === 0) return { kind: 'group', label: 'Add chart', icon: Plus, items: [{ kind: 'action', label: measuresOf(cf).length > 0 ? 'Show a text or date column to chart it.' : 'Show a number column to chart it.', icon: ChartColumn, disabled: true, onPick: () => undefined }] };
   return {
     kind: 'radio', label: 'Add chart', icon: Plus, value: '',
     options: eligibleKinds(cf).map((k) => ({ value: k.kind, label: k.label, icon: k.icon })),

@@ -858,7 +858,14 @@ describe('the config button in Charts', () => {
     expect(within(menu).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Add chart', 'Charts', 'Orders']);
     await userEvent.click(within(menu).getByRole('menuitem', { name: 'Add chart' }));
     const empty = await screen.findByRole('menu', { name: 'Add chart' });
-    expect(within(empty).getAllByRole('menuitem').map((r) => [r.textContent, (r as HTMLButtonElement).disabled])).toEqual([['Show a number column to chart it.', true]]);
+    expect(within(empty).getAllByRole('menuitem').map((r) => [r.textContent, r.getAttribute('aria-disabled')])).toEqual([['Show a number column to chart it.', 'true']]);
+    // The note is the panel's only text: a screen reader reaches it, so it takes focus, and activating it does nothing.
+    const note = within(empty).getByRole('menuitem');
+    expect(note).toHaveFocus();
+    expect(note).not.toBeDisabled();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByRole('menu', { name: 'Add chart' })).toBeInTheDocument();
+    expect(note).toHaveFocus();
   });
 
   test('stays open while the HAVING gate loads and the charts come in behind it', async () => {
@@ -938,7 +945,7 @@ describe('the config button in Charts', () => {
     await userEvent.click(within(menu).getByRole('menuitem', { name: 'Add chart' }));
     const add = await screen.findByRole('menu', { name: 'Add chart' });
     expect(screen.queryByRole('menu', { name: 'Charts' })).toBeNull();
-    expect(within(add).getByRole('menuitem', { name: 'Show a number column to chart it.' })).toBeDisabled();
+    expect(within(add).getByRole('menuitem', { name: 'Show a number column to chart it.' })).toHaveAttribute('aria-disabled', 'true');
     expect(document.activeElement).not.toBe(document.body);
     await userEvent.keyboard('{ArrowLeft}');
     await waitFor(() => expect(screen.queryByRole('menu', { name: 'Add chart' })).toBeNull());

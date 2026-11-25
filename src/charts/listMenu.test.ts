@@ -165,3 +165,15 @@ test('dropPicksOf drops the metric and date picks that name a hidden column, and
   expect(dropPicksOf(bare, new Set(['amount']))).toBe(bare);
   expect(dropPicksOf({}, new Set(['amount']))).toEqual({});
 });
+
+test('the empty Add chart row names what is missing: a number when no measure is shown, a text or date column when a number is', () => {
+  const change = vi.fn();
+  const noteOf = (c: ChartFields) => {
+    const add = addChartItem({ cf: c, change });
+    return add.kind === 'group' ? add.items.map((i) => [i.label, i.kind === 'action' && i.disabled]) : null;
+  };
+  const bare = { aliasPath: '', recordsId: 'records:orders', title: '', hasPk: false, metrics: [], dates: [], dimensions: [] };
+  expect(noteOf({ marts: [{ ...bare, dimensions: [dim] }], dates: [], dimensions: [dim], counter: null })).toEqual([['Show a number column to chart it.', true]]);
+  expect(noteOf({ marts: [{ ...bare, metrics: [{ field: amount, fn: 'SUM' }] }], dates: [], dimensions: [], counter: null })).toEqual([['Show a text or date column to chart it.', true]]);
+  expect(noteOf({ marts: [{ ...bare, hasPk: true }], dates: [], dimensions: [], counter: null })).toEqual([['Show a text or date column to chart it.', true]]);
+});
