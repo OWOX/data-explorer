@@ -40,3 +40,33 @@ test('the fallback gives focus back to the element that had it', async () => {
   expect(document.activeElement).toBe(button);
   button.remove();
 });
+
+test('the fallback gives focus back to an SVG element too', async () => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  rect.setAttribute('tabindex', '0');
+  svg.appendChild(rect);
+  document.body.appendChild(svg);
+  rect.focus();
+  expect(document.activeElement).toBe(rect);
+  setClipboard(undefined);
+  setExec(vi.fn(() => true));
+  await copyText('x');
+  expect(document.activeElement).toBe(rect);
+  svg.remove();
+});
+
+test('the fallback focuses without scrolling, the textarea and the element it gives focus back to', async () => {
+  const button = document.createElement('button');
+  document.body.appendChild(button);
+  button.focus();
+  const calls: unknown[][] = [];
+  const focus = HTMLElement.prototype.focus;
+  const spy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (this: HTMLElement, ...args: [FocusOptions?]) { calls.push([this.tagName, ...args]); return focus.apply(this, args); });
+  setClipboard(undefined);
+  setExec(vi.fn(() => true));
+  await copyText('x');
+  spy.mockRestore();
+  expect(calls).toEqual([['TEXTAREA', { preventScroll: true }], ['BUTTON', { preventScroll: true }]]);
+  button.remove();
+});
