@@ -3,7 +3,7 @@ import { CirclePlus, CircleX, ExternalLink, History, LoaderCircle, Plug } from '
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Context, DqSummary, Mart, Source } from '../../model/types';
 import { COUNT_CONCURRENCY } from '../../config';
-import { compactNumber, count as plural, num, recordsLabel, relativeTime } from '../format';
+import { compactNumber, count as plural, matchLabel, num, recordsLabel, relativeTime } from '../format';
 import { dqCardTone, dqVisual } from '../icons';
 import { Hint, TipLines, Tooltip } from '../Tooltip';
 import { whenInView } from './inview';
@@ -126,6 +126,12 @@ function CountBadge({ count, countable, onRetry }: { count: CountState; countabl
   return <Tooltip content={recordsLabel(num(count.value))}><span className="dm-badge">{recordsLabel(compactNumber(count.value))}</span></Tooltip>;
 }
 
+/** "12% match" after the record count: how much of the mart the filters and slices keep. Shown only for a known count and a matched number below it. */
+function MatchBadge({ matched, count }: { matched: number | undefined; count: CountState }) {
+  const label = count.state === 'ok' ? matchLabel(matched, count.value) : null;
+  return label && <Tooltip content={label.tip}><span className="dm-badge" data-match>{label.text}</span></Tooltip>;
+}
+
 /** The contexts of a mart, in the project's order. */
 export const contextsOf = (all: Context[], ids: string[]) => all.filter((c) => ids.includes(c.id));
 
@@ -148,6 +154,7 @@ export function MartCard({
   path,
   title,
   focused = false,
+  matched,
   onRemove,
   join,
   onSelect,
@@ -179,6 +186,8 @@ export function MartCard({
   title?: string;
   /** The Grid view's focused card: its joinable marts are shown. */
   focused?: boolean;
+  /** How many of this mart's records the grid's filters and slices keep (at this card's path); the badge compares it with the count. */
+  matched?: number;
   /** Takes this joined mart out of the report; when absent the card has no ×. */
   onRemove?: () => void;
   /** Graph only: the (+) on the right edge that shows the marts that can join under this card. Absent when none can, and in the Grid. */
@@ -245,6 +254,7 @@ export function MartCard({
       </div>
       <div className="dm-badges dm-badges-row">
         {mart.accessible ? <CountBadge count={count} countable={!ghost} onRetry={onRetryCount ?? NOOP} /> : <span className="dm-badge">No access</span>}
+        {mart.accessible && !ghost && <MatchBadge matched={matched} count={count} />}
       </div>
       <div className="dm-node-foot">
         <QualityMark summary={quality} />

@@ -13,7 +13,7 @@ import { Tooltip } from '../ui/Tooltip';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { compactValue } from './compact';
 import type { ChartFields, ChartMart, Metric } from './fields';
-import { metricKey, scorecardsQuery, sparklineQuery, uniqueKey, type Measure } from './queries';
+import { metricKey, scoreQuery, sparklineQuery, uniqueKey, type Measure } from './queries';
 import { measureId, type Spark } from './settings';
 import { fieldGroups, measureGroups } from './menuGroups';
 import { Sparkline, type Point } from './svg/Sparkline';
@@ -91,10 +91,11 @@ export type Scores = ChartResult & { previous?: Row | null };
 
 /**
  * One query for every value card of every data mart: a filter change or an added mart is one billed read, not one per mart.
+ * `kept` are the marts the report keeps with no column: their unique count rides on this read, and the match badges of the cards read it.
  * `previous` is the last row a read returned, kept so the cards do not fall back to skeletons while the next read runs. Nothing runs while paused.
  */
-export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean, joins?: JoinGrain): Scores {
-  const result = useChartQuery(martId, paused ? null : scorecardsQuery(cf.marts, filter, cf.counter), version, joins);
+export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean, joins?: JoinGrain, kept?: readonly string[]): Scores {
+  const result = useChartQuery(martId, paused ? null : scoreQuery(cf, filter, kept), version, joins);
   const [previous, setPrevious] = useState<Row | null>(null);
   // Adjusting state while rendering (not in an effect) so the card never paints a frame without the previous value.
   const latest = result.rows?.[0] ?? null;

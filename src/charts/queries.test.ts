@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { heatmapQuery, pieBlankQuery, seriesBlankQuery, SCATTER_LIMIT, scatterQuery, spreadFns, spreadQuery, monthsQuery, pieOtherQuery, rangeKeys, rangeQuery, scorecardsQuery, seriesOtherQuery, seriesQuery, sparklineQuery, topValuesQuery, uniqueKey, metricKey } from './queries';
+import { heatmapQuery, pieBlankQuery, seriesBlankQuery, SCATTER_LIMIT, scatterQuery, spreadFns, spreadQuery, monthsQuery, pieOtherQuery, rangeKeys, rangeQuery, scoreQuery, scorecardsQuery, seriesOtherQuery, seriesQuery, sparklineQuery, topValuesQuery, uniqueKey, metricKey } from './queries';
 import type { ChartMart, Metric } from './fields';
 import type { Measure } from './queries';
 import type { Field } from '../model/types';
@@ -26,6 +26,16 @@ describe('queries', () => {
   it('scorecards: unique count alone when no metric; null when nothing', () => {
     expect(scorecardsQuery([{ ...main, metrics: [] }], [])).toEqual({ uniqueCount: [''] });
     expect(scorecardsQuery([{ ...main, metrics: [], hasPk: false }], [])).toBeNull();
+  });
+  it('scorecards: a mart kept with no column joins the unique count list and adds no metric; its path is listed once', () => {
+    expect(scorecardsQuery([main], [], null, ['stores'])).toEqual({ column: ['amount'], aggregation: [{ column: 'amount', function: 'SUM' }], uniqueCount: ['', 'stores'] });
+    expect(scorecardsQuery([main, cust], [], null, ['c.x', 'stores'])?.uniqueCount).toEqual(['', 'c.x', 'stores']);
+    expect(scorecardsQuery([{ ...main, metrics: [], hasPk: false }], [], null, ['stores'])).toEqual({ uniqueCount: ['stores'] });
+    expect(scorecardsQuery([{ ...main, metrics: [], hasPk: false }], [], null, [])).toBeNull();
+  });
+  it('scoreQuery is the scorecard query of the fields: one builder for the Table and the Charts', () => {
+    const cf = { marts: [main, cust], dimensions: [], dates: [], counter: null };
+    expect(scoreQuery(cf, flt, ['stores'])).toEqual(scorecardsQuery([main, cust], flt, null, ['stores']));
   });
   it('keys match the aggregated row keys', () => {
     expect(metricKey(amount)).toBe('amount | SUM');
