@@ -112,9 +112,9 @@ export const VIEW_HOLD_MAX_MS = 10000;
 /** The names in `saved` the mart still offers, in the saved order. */
 const offered = (schema: Schema, saved: string[]) => saved.filter((c) => schema.some((f) => f.name === c));
 
-/** Whether a saved grid names something the mart's own schema does not have: a joined field, or a joined mart kept with no column, so the joined marts must be read first. */
+/** Whether a saved grid names something the mart's own schema does not have: a joined field, so the joined marts must be read first. */
 const namesJoined = (schema: Schema, saved: GridState | undefined) =>
-  !!saved && (!!saved.emptyPaths?.length || [...saved.columns, ...Object.keys(saved.filters), ...Object.keys(saved.slices ?? {}), ...(saved.sorts ?? []).map((x) => x.field)].some((n) => !schema.some((f) => f.name === n)));
+  !!saved && [...saved.columns, ...Object.keys(saved.filters), ...Object.keys(saved.slices ?? {}), ...(saved.sorts ?? []).map((x) => x.field)].some((n) => !schema.some((f) => f.name === n));
 
 type Initial = { columns: string[]; cleaned: string[] | null; sources: JoinedSource[] | null; agg: Aggregation; /** The member's saved view (filters, slices, sort, limit, Table/Charts), pruned to the fields on offer; only when the page holds no grid for the mart. */ saved?: GridState };
 
@@ -125,6 +125,7 @@ const aggOf = (g: GridState | undefined): Aggregation => (g && (g.aggregations?.
  * this session's columns, else the member's saved ones (read once, at most 3 s), else the defaults.
  * A column saved from a joined mart waits for the joined marts to be read (inside the same 3 s): a read that
  * fails leaves those columns out of this visit without erasing them from what is saved.
+ * A joined mart saved with no column is not waited for: it is parked in the grid until the joined marts are read.
  */
 function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefresh: () => void; refreshError: unknown }) {
   const { martId, schema, seed } = props;
@@ -168,8 +169,8 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
           const full = withJoined(schema, known ?? []);
           // Every offered column counts as shown here, so the aggregation (and the HAVING filters on it) is judged by the fields, not by the default column set.
           const out = pruneGrid({ ...raw, columns: full.map((f) => f.name) }, full).grid;
-          // Every offered column counts as shown above, so the empty paths are judged by what the mart offers alone (the grid drops one that has a column).
-          const emptyPaths = keepEmpty(v.emptyPaths, full, []);
+          // Every offered column counts as shown above, so the empty paths are judged by what the mart offers alone (the grid drops one that has a column). With the joined marts unread they are parked as saved.
+          const emptyPaths = known ? keepEmpty(v.emptyPaths, full, []) : v.emptyPaths ?? [];
           return out ? { filters: out.filters, ...(out.slices ? { slices: out.slices } : {}), sorts: out.sorts, limit: v.limit, ...(v.view ? { view: v.view } : {}), ...(out.uniqueCount ? { uniqueCount: out.uniqueCount } : {}), ...(emptyPaths.length ? { emptyPaths } : {}) } : v;
         };
         holdTimer.current = setTimeout(() => settle(null), VIEW_HOLD_MAX_MS);
@@ -182,7 +183,7 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
       const saved = own ?? await columnStore.load(martId) ?? [];
       // A grid the page already holds (a view link, this session) wins over what is saved.
       const stored = seed.saved ? null : await columnStore.loadView(martId);
-      const needs = namesJoined(schema, own ? seed.saved : { columns: saved, filters: stored?.filters ?? {}, slices: stored?.slices, sorts: stored?.sorts ?? null, limit: 0, ...(stored?.emptyPaths ? { emptyPaths: stored.emptyPaths } : {}) });
+      const needs = namesJoined(schema, own ? seed.saved : { columns: saved, filters: stored?.filters ?? {}, slices: stored?.slices, sorts: stored?.sorts ?? null, limit: 0 });
       const agg = seed.saved ? aggOf(seed.saved) : await columnStore.loadAggregation(martId);
       let sources: JoinedSource[] | null = blendable.peek(martId) ?? null;
       let failed = false;
@@ -205,7 +206,8 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
       let savedGrid: GridState | undefined;
       if (stored) {
         const g: GridState = { columns, ...stored, ...(cleanAgg.aggregations.length ? { aggregations: cleanAgg.aggregations } : {}), ...(cleanAgg.dateTrunc.length ? { dateTrunc: cleanAgg.dateTrunc } : {}) };
-        savedGrid = failed ? g : (pruneGrid(g, full).grid ?? g);
+        // Saved empty marts are not waited for: with the joined marts unread they are parked in the grid and judged once the joins arrive.
+        savedGrid = failed ? g : { ...(pruneGrid(g, full).grid ?? g), ...(!sources && stored.emptyPaths ? { emptyPaths: stored.emptyPaths } : {}) };
       }
       setInitial({ columns, cleaned: (dropped || regrouped) && !own ? kept : null, sources, agg: cleanAgg, ...(savedGrid ? { saved: savedGrid } : {}) });
     })();

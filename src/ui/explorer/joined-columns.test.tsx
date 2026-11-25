@@ -8,12 +8,13 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
-import { closeConfigMenu, openConfigMenu, openFields, openSubmenu } from './menu-test-utils';
+import { SAVED_COLUMNS_WAIT_MS } from './MartGrid';
+import { closeConfigMenu, openColumnMenu, openConfigMenu, openFields, openSubmenu } from './menu-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
 const BLEND = '/api/data-marts/orders/blendable-schema';
 
-function setup(saved: string[] | null, opts: { blendFails?: boolean; blendGate?: Promise<void>; repeats?: string; empty?: string[] } = {}) {
+function setup(saved: string[] | null, opts: { blendFails?: boolean; blendGate?: Promise<void>; repeats?: string; empty?: string[]; slowStoreMs?: number } = {}) {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const queries: { id: string; o: TraverseOptions }[] = [];
   const reads: string[] = [];
@@ -37,7 +38,7 @@ function setup(saved: string[] | null, opts: { blendFails?: boolean; blendGate?:
   const put = vi.fn();
   const ctx: Ctx = { ...spied, collections: <T,>(name: string) => {
     const c = spied.collections<T>(name);
-    return name === GRID_COLUMNS_COLLECTION ? { get: c.get, put: (id: string, d: T) => { put(id, d); return c.put(id, d); } } : c;
+    return name === GRID_COLUMNS_COLLECTION ? { get: opts.slowStoreMs ? (id: string) => new Promise<Awaited<ReturnType<typeof c.get>>>((res) => setTimeout(() => res(c.get(id)), opts.slowStoreMs)) : c.get, put: (id: string, d: T) => { put(id, d); return c.put(id, d); } } : c;
   } };
   const seeded = saved ? spied.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: saved, at: 'then', ...(opts.empty ? { gridView: { fl: [], s: null, l: 50, ep: opts.empty } } : {}) }) : Promise.resolve();
   const view = () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
@@ -291,16 +292,32 @@ describe('a saved empty mart is read back whenever the joined marts arrive', () 
     await waitFor(() => expect(savedWithEp(t)).toBe(true), { timeout: SAVE_DEBOUNCE_MS + 3000 });
   });
 
-  test('joins slower than the wait for the saved columns: the late saved view keeps it', async () => {
+  test('the saved view is read after the wait and the joins are still unread: the mart is listed once they arrive, and an edit saves it', async () => {
     let release: () => void = () => undefined;
-    const t = setup(['id'], { empty: ['customers'], blendGate: new Promise<void>((r) => { release = r; }) });
+    const t = setup(['id'], { empty: ['customers'], slowStoreMs: SAVED_COLUMNS_WAIT_MS + 400, blendGate: new Promise<void>((r) => { release = r; }) });
     await t.seeded;
     t.view();
-    // Past the wait for the saved columns the grid opens with the defaults, and the saved view comes late.
+    // Past the wait the grid opens with the defaults; the saved view comes late, with the joins still unread.
     await waitFor(() => expect(headers()).toHaveLength(5), { timeout: 5000 });
+    await new Promise((r) => setTimeout(r, 800));
     release();
     await waitFor(async () => expect(await lists()).toContain('Customers'), { timeout: 5000 });
     await toCharts();
     await waitFor(() => expect(savedWithEp(t)).toBe(true), { timeout: SAVE_DEBOUNCE_MS + 3000 });
+  }, 20000);
+
+  test('joins slower than the wait: the saved native columns paint at once, and an edit saves them with the empty mart kept', async () => {
+    let release: () => void = () => undefined;
+    const t = setup(['id', 'status'], { empty: ['customers'], blendGate: new Promise<void>((r) => { release = r; }) });
+    await t.seeded;
+    t.view();
+    await waitFor(() => expect(headers()).toEqual(['id', 'status']));
+    await new Promise((r) => setTimeout(r, SAVED_COLUMNS_WAIT_MS + 500));
+    expect(headers()).toEqual(['id', 'status']);
+    const menu = await openColumnMenu(within(data()), 'id');
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
+    await waitFor(() => expect(headers()).toEqual(['status']));
+    await waitFor(() => expect(t.put.mock.calls.some(([id, d]) => id === 'orders' && JSON.stringify(d.columns) === '["status"]' && JSON.stringify(d).includes('"ep":["customers"]'))).toBe(true), { timeout: SAVE_DEBOUNCE_MS + 3000 });
+    release();
   }, 20000);
 });
