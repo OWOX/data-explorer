@@ -1045,35 +1045,15 @@ test('the arrow keys move a focused handle one cell; the size is there after a r
   await waitFor(() => expect(panelOf('Pie').style.height).toBe('312px'));
 });
 
-test('resize mode ends a second after the mouse leaves the charts; coming back or dragging keeps it', async () => {
+test('resize mode stays on while the mouse is off the charts, and Done resizing in any chart menu ends it', async () => {
   await charts();
   await startResize();
-  const wait = (ms: number) => act(() => new Promise<void>((r) => { setTimeout(r, ms); }));
-  const over = (el: Element, pointerType = 'mouse') => fireEvent.pointerOver(el, { pointerType });
-  const on = () => handle('Pie', 'e') !== null;
-  over(panelOf('Pie'));
-  // Touch never counts as leaving.
-  over(document.body, 'touch');
-  await wait(1200);
-  expect(on()).toBe(true);
-  over(document.body);
-  await wait(600);
-  over(panelOf('Time series'));
-  await wait(700);
-  expect(on()).toBe(true);
-  fireEvent.pointerDown(handle('Pie', 'se')!, { button: 0, pointerId: 1, clientX: 0, clientY: 0 });
-  over(document.body);
-  await wait(1200);
-  expect(on()).toBe(true);
-  fireEvent.pointerUp(window, { pointerId: 1 });
-  await waitFor(() => expect(on()).toBe(false), { timeout: 1500 });
-});
-
-test('resize mode waits for the mouse to reach a chart first', async () => {
-  await charts();
-  await userEvent.click(within(panelOf('Pie')).getByRole('button', { name: 'Pie options' }));
-  fireEvent.click(await screen.findByRole('menuitem', { name: 'Resize' }));
+  fireEvent.pointerOver(panelOf('Pie'), { pointerType: 'mouse' });
   fireEvent.pointerOver(document.body, { pointerType: 'mouse' });
   await act(() => new Promise<void>((r) => { setTimeout(r, 1200); }));
   expect(handle('Pie', 'e')).not.toBeNull();
+  await userEvent.click(within(panelOf('Time series')).getByRole('button', { name: 'Time series options' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Done resizing' }));
+  expect(handle('Pie', 'e')).toBeNull();
+  expect(handle('Time series', 'e')).toBeNull();
 });

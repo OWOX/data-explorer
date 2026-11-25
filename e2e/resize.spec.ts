@@ -60,17 +60,15 @@ test('every panel sits on whole cells, and a drag moves its width and height by 
   expect(await settled(panel(page, 'Pie'))).toEqual(before);
 });
 
-test('resize mode ends a second after the mouse leaves the charts', async ({ page }) => {
+test('resize mode stays on when the mouse leaves the charts; a press outside them ends it', async ({ page }) => {
   await resizeMode(page, 'Pie');
   const handles = data(page).locator('.dm-resize');
-  const b = (await panel(page, 'Pie').locator('[data-edge="se"]').boundingBox())!;
-  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
-  await page.waitForTimeout(1300);
-  await expect(handles.first()).toBeAttached();
+  await panel(page, 'Pie').hover();
   await page.mouse.move(400, 40, { steps: 5 });
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1500);
   await expect(handles.first()).toBeAttached();
-  await expect(handles).toHaveCount(0, { timeout: 1500 });
+  await page.mouse.click(400, 40);
+  await expect(handles).toHaveCount(0);
 });
 
 test('a width stops at the whole cells the band has', async ({ page }) => {

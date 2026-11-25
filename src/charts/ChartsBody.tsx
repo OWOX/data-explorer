@@ -27,8 +27,6 @@ const GUTTER_PX = 46;
 /** A mart a joined path passes through with no column of its own on the grid: it has no group there, only a place in the chart menus. */
 export type PathMart = { path: string; title: string; icon?: string | null };
 const NO_SIZE: ChartSize = {};
-/** How long the mouse is off every chart before resize mode ends. */
-const RESIZE_AWAY_MS = 1000;
 const NO_PATH_MARTS: PathMart[] = [];
 
 /**
@@ -69,7 +67,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     chartSettings.save(martId, next);
   };
 
-  // Resize mode: every panel shows its handles. It ends with Escape, a press outside the charts, the menu's Done resizing, or the mouse being off every chart for a second.
+  // Resize mode: every panel shows its handles. It ends with Escape, a press outside the charts, or the menu's Done resizing.
   const [resizing, setResizing] = useState(false);
   const cancelDrag = useRef<(() => void) | null>(null);
   useEffect(() => {
@@ -89,28 +87,9 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
       if (t instanceof HTMLElement && (e.clientX - box.left > t.clientLeft + t.clientWidth || e.clientY - box.top > t.clientTop + t.clientHeight) && (t.scrollHeight > t.clientHeight || t.scrollWidth > t.clientWidth)) return;
       setResizing(false);
     };
-    // Only after the mouse has been on a chart: the menu's Resize row can lie off it. A drag and a handle focused by keyboard hold the mode open.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let entered = false;
-    const away = () => {
-      if (!entered || timer !== undefined) return;
-      timer = setTimeout(() => { timer = undefined; if (cancelDrag.current) away(); else if (!document.activeElement?.closest('.dm-resize')) setResizing(false); }, RESIZE_AWAY_MS);
-    };
-    const over = (e: PointerEvent) => {
-      // A finger is off the page whenever it is lifted: that is no leaving.
-      if (e.pointerType === 'touch' || !(e.target instanceof Element)) return;
-      if (!e.target.closest('section.dm-chart, [data-column-menu]')) { away(); return; }
-      entered = true;
-      clearTimeout(timer);
-      timer = undefined;
-    };
-    // The mouse left the page (or the plugin's frame).
-    const left = (e: PointerEvent) => { if (e.pointerType !== 'touch') away(); };
-    document.addEventListener('pointerover', over, true);
-    document.documentElement.addEventListener('pointerleave', left);
     window.addEventListener('keydown', key, true);
     document.addEventListener('pointerdown', press, true);
-    return () => { clearTimeout(timer); document.removeEventListener('pointerover', over, true); document.documentElement.removeEventListener('pointerleave', left); window.removeEventListener('keydown', key, true); document.removeEventListener('pointerdown', press, true); };
+    return () => { window.removeEventListener('keydown', key, true); document.removeEventListener('pointerdown', press, true); };
   }, [resizing]);
 
   // A pick whose column the member hides goes with it, in the same action. Only the member's own edit prunes: a failed or late read of the columns never erases what is saved.
