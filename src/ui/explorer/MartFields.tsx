@@ -14,6 +14,8 @@ export type ConfigMart = {
   /** Listed with the data marts of the report: it has a column, or it is kept in the report with none, or it is the main mart. The caller says; the menu does not guess. */
   shown: boolean;
   fields: Field[];
+  /** Which rules some field of the mart carries (shown or not); the config menu marks the row with them. */
+  rules?: { filter: boolean; slice: boolean; aggregate: boolean };
   locked: (name: string) => boolean;
   unique?: { on: boolean; onToggle: () => void };
   /** Takes the data mart out of the report. Absent when it is not in the report, or is the only one. `onRemove` must read the state as it is when called: a change may have gone out just before it. */

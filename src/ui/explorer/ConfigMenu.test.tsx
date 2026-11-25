@@ -97,6 +97,23 @@ describe('the rows', () => {
     expect(within(menu).getByRole('menuitem', { name: 'Orders' }).querySelector('.dm-hint-slot')).toBeNull();
   });
 
+  test('a data mart with a rule on one of its fields shows its marks before the arrow, in the row description, live', async () => {
+    const rules = { filter: true, slice: false, aggregate: true };
+    const on = (r: typeof rules) => (
+      <TooltipProvider><ConfigMenu marts={[mart('', 'Orders', ORDERS, { shown: true, rules: r }), mart('customers', 'Customers', CUSTOMERS, { shown: true, description: 'Who bought', rules: { filter: true, slice: true, aggregate: false } })]} joinable={() => []} visible={['id']} onChange={() => undefined} /></TooltipProvider>
+    );
+    const { rerender } = render(on(rules));
+    const menu = await openMenu();
+    const orders = within(menu).getByRole('menuitem', { name: 'Orders' });
+    expect(orders.querySelectorAll('.dm-menu-marks svg')).toHaveLength(2);
+    expect(orders).toHaveAttribute('aria-description', 'Filtered. Aggregated');
+    expect(within(menu).getByRole('menuitem', { name: 'Customers' })).toHaveAttribute('aria-description', 'Who bought. Filtered. Sliced');
+    // A rule that goes while the menu is open takes its mark with it.
+    rerender(on({ filter: false, slice: false, aggregate: false }));
+    expect(within(menu).getByRole('menuitem', { name: 'Orders' }).querySelector('.dm-menu-marks')).toBeNull();
+    expect(within(menu).getByRole('menuitem', { name: 'Orders' })).not.toHaveAttribute('aria-description');
+  });
+
   test('chart items come first, then a separator, and only when they are passed', async () => {
     const pick = vi.fn();
     const items: MenuItem[] = [{ kind: 'radio', label: 'Add chart', icon: Plus, value: '', options: [{ value: 'bar', label: 'Bar' }], onPick: pick }];

@@ -1,4 +1,4 @@
-import { Settings2, Trash2 } from 'lucide-react';
+import { Funnel, Layers, Settings2, Sigma, Trash2 } from 'lucide-react';
 import { useCallback, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { hasCheck, ItemRow, ItemSubmenu, type MenuItem } from '../../charts/MenuItems';
 import { DEFAULT_MART_ICON, PickedIcon } from '../bands/picked';
@@ -14,13 +14,19 @@ const typing = () => {
   return !!el && el.matches('input, textarea, select') && !!el.closest('[data-column-menu]');
 };
 
-/** One data mart as a row that opens its fields panel: its icon, its title and, with a description, a (?). */
+const RULE_MARKS = [
+  { key: 'filter', icon: <Funnel className="size-3.5" />, note: 'Filtered' },
+  { key: 'slice', icon: <Layers className="size-3.5" />, note: 'Sliced' },
+  { key: 'aggregate', icon: <Sigma className="size-3.5" />, note: 'Aggregated' },
+] as const;
+
+/** One data mart as a row that opens its fields panel: its icon, its title, with a description a (?), then a mark for each kind of rule on its fields. */
 function MartRow({ mart, expanded, tabbable, onOpen, onHover, onLeaveRow, slot }: {
   mart: ConfigMart; expanded: boolean; tabbable?: boolean; slot?: boolean;
   onOpen: (row: HTMLElement) => void; onHover: (row: HTMLElement) => void; onLeaveRow: () => void;
 }) {
   return (
-    <Row sub haspopup="dialog" tabbable={tabbable} slot={slot} expanded={expanded} label={mart.title} hint={mart.description?.trim() || undefined}
+    <Row sub haspopup="dialog" tabbable={tabbable} slot={slot} expanded={expanded} label={mart.title} hint={mart.description?.trim() || undefined} marks={RULE_MARKS.filter((m) => mart.rules?.[m.key])}
       glyph={<PickedIcon icon={mart.icon} fallback={DEFAULT_MART_ICON} size={16} />}
       onActivate={onOpen} onOpen={onOpen} onHover={onHover} onLeaveRow={onLeaveRow} />
   );

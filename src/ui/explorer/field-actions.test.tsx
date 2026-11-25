@@ -82,7 +82,7 @@ describe('field actions from the Fields list', () => {
     const q = t.queries.find((x) => x.filter?.some((f) => f.column === 'status') && x.column?.includes('id'))!;
     expect(q.column).not.toContain('status');
     // The rule is saved with the view, in the title row marks, and undone in one step.
-    expect(await screen.findByRole('button', { name: /^1 filter in / })).toBeVisible();
+    expect(await screen.findByRole('button', { name: '1 filter' })).toBeVisible();
     await userEvent.keyboard('{Escape}');
     await closeConfigMenu();
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));

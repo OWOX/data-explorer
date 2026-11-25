@@ -34,6 +34,21 @@ test('a hint does not replace Active in the row description', () => {
   expect(row.getAttribute('aria-description')).toContain('Totals by day');
 });
 
+test('marks sit after the (?) and before the arrow, are hidden from assistive tech and read in the row description', () => {
+  render(<TooltipProvider><Row sub label="Orders" hint="All sales" marks={[{ icon: <svg data-testid="f" />, note: 'Filtered' }, { icon: <svg />, note: 'Sliced' }]} onActivate={vi.fn()} /></TooltipProvider>);
+  const row = screen.getByRole('menuitem', { name: 'Orders' });
+  expect(row.getAttribute('aria-description')).toBe('All sales. Filtered. Sliced');
+  const marks = row.querySelector('.dm-menu-marks')!;
+  expect(marks).toHaveAttribute('aria-hidden', 'true');
+  const order = [row.querySelector('.dm-menu-label'), row.querySelector('.dm-hint-slot'), marks, row.querySelector('.dm-menu-arrow')];
+  order.slice(1).forEach((el, i) => expect(order[i]!.compareDocumentPosition(el!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy());
+});
+
+test('a row with no marks has no marks slot', () => {
+  render(<TooltipProvider><Row label="Orders" marks={[]} onActivate={vi.fn()} /></TooltipProvider>);
+  expect(screen.getByRole('menuitem', { name: 'Orders' }).querySelector('.dm-menu-marks')).toBeNull();
+});
+
 test('the (?) of a row shows when the row itself holds focus', () => {
   const css = readFileSync(resolve(__dirname, '../bands/bands.css'), 'utf8');
   expect(css).toMatch(/\.dm-reveal-host:focus-visible \.dm-hint-slot/);

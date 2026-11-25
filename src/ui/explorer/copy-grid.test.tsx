@@ -75,7 +75,7 @@ test('a click on the data mart title drops a whole column or row selection', asy
   await userEvent.selectOptions(screen.getByLabelText('Operator'), 'eq');
   await userEvent.type(screen.getByLabelText('Value'), 'paid');
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  const badge = await within(data()).findByRole('button', { name: /^1 filter in / });
+  const badge = await within(data()).findByRole('button', { name: '1 filter' });
   await userEvent.click(within(data()).getAllByText('A')[0]!.closest('th')!);
   await userEvent.click(badge);
   expect(data().querySelector('thead .dm-letter[data-selected]')).not.toBeNull();

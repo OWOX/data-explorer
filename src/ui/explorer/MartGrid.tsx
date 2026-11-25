@@ -46,10 +46,9 @@ import { PickedIcon } from '../bands/picked';
 import { CellValue } from './CellValue';
 import { blockOf, selectionTsv, type GridSelection } from './copySelection';
 import { ColumnDragLayer } from './ColumnDrag';
-import { ColumnControls, ColumnMenuEnvContext, type ColumnMenuEnv } from './ColumnMenu';
+import { ColumnControls, ColumnMenuEnvContext, type ColumnMenuEnv, type RuleKind } from './ColumnMenu';
 import { ConfigMenu, type ConfigMart } from './ConfigMenu';
-import { MartRuleBadges } from './MartRuleBadges';
-import { BadgeRow } from './badgeReserve';
+import { RuleBadges, type RuleMart } from './RuleBadges';
 import { ExportMenu } from './ExportMenu';
 import { defaultColumns } from '../../model/columns';
 import { buildRowQuery, useMartRows } from './useMartRows';
@@ -327,7 +326,6 @@ const GridRow = memo(function GridRow({ row, ri, columns, marks, acts, clickable
 
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 const byField = (m: Record<string, ColumnFilter> | undefined) => Object.entries(m ?? {}).sort(([a], [b]) => a.localeCompare(b));
-const dropKeys = <T,>(rules: Record<string, T>, names: string[]) => Object.fromEntries(Object.entries(rules).filter(([k]) => !names.includes(k)));
 const stable = (g: GridState) => JSON.stringify([g.columns, byField(g.filters), byField(g.slices), g.sorts, g.limit, g.aggregations ?? [], g.dateTrunc ?? [], g.uniqueCount ?? [], g.emptyPaths ?? [], g.view ?? 'table']);
 const sameGrid = (a: GridState, b: GridState) => stable(a) === stable(b);
 
@@ -759,6 +757,12 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       return source ? [{ path: n.path, martId: n.martId, title: pathTitle(source, treePaths, sources), icon: model.marts.get(n.martId)?.icon, description: model.marts.get(n.martId)?.description, fields: source.fields, empty: !!n.empty }] : [];
     });
   }, [tree, sources, model.marts]);
+  // Which rules some field of a data mart carries, for the marks on its row in the config menu. A slice only counts on a joined field, an aggregation only on a shown column.
+  const rulesOf = useCallback((fields: Field[]) => ({
+    filter: fields.some((f) => !!allFilters[f.name]),
+    slice: fields.some((f) => !!allSlices[f.name] && !!f.joined),
+    aggregate: fields.some((f) => aggNow.aggregations.some((r) => r.column === f.name) || aggNow.dateTrunc.some((r) => r.column === f.name)),
+  }), [allFilters, allSlices, aggNow]);
   // What can join one hop under a path, as config menu rows (only the marts the member can read). Each path is worked out once per input, when the menu first asks:
   // it asks again for every parent on every render. A candidate is titled against the tree and its sibling candidates, so two joins to one mart under one parent read apart.
   const joinable = useMemo(() => memoPerPath((path: string): ConfigMart[] => {
@@ -766,9 +770,9 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     const titled = [...tree.nodes.keys(), ...offered.map((x) => x.aliasPath)];
     return offered.map((x) => ({
       path: x.aliasPath, title: pathTitle(x, titled, sources), icon: model.marts.get(x.martId)?.icon, description: model.marts.get(x.martId)?.description,
-      main: false, shown: false, fields: x.fields, locked: () => false,
+      main: false, shown: false, fields: x.fields, rules: rulesOf(x.fields), locked: () => false,
     }));
-  }), [tree, sources, model.marts]);
+  }), [tree, sources, model.marts, rulesOf]);
   // A remove button is off while its click is being applied, so a second click cannot put the mart back.
   const [removing, setRemoving] = useState(false);
   const head = useRef<HTMLTableSectionElement>(null);
@@ -804,7 +808,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   // The config menu's data marts: the ones with a column in grid order, then the ones kept with none (listed with them, and removable), then the ones the report only joins through.
   const configMarts: ConfigMart[] = [
     ...groups.map((g): ConfigMart => ({
-      path: g.path, title: g.title, icon: g.icon, description: g.description, main: g.main, shown: true, fields: fieldsOf(g),
+      path: g.path, title: g.title, icon: g.icon, description: g.description, main: g.main, shown: true, fields: fieldsOf(g), rules: rulesOf(fieldsOf(g)),
       locked: (n) => g.main && othersShown && ownOn === 1 && ownNames.has(n),
       unique: uniqueOffered.has(g.path) ? { on: ucNow.includes(g.path), onToggle: () => toggleUnique(g.path) } : undefined,
       // `remove` reads the latest columns ref, but only when the menu calls it, never while rendering.
@@ -812,15 +816,35 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       remove: several || !g.main ? { onRemove: () => remove(g), disabled: removing } : undefined,
     })),
     ...emptyMarts.map((m): ConfigMart => ({
-      path: m.path, title: m.title, icon: m.icon, description: m.description, main: false, shown: true, fields: m.fields, locked: () => false,
+      path: m.path, title: m.title, icon: m.icon, description: m.description, main: false, shown: true, fields: m.fields, rules: rulesOf(m.fields), locked: () => false,
       // eslint-disable-next-line react-hooks/refs
       remove: { onRemove: () => remove({ id: m.martId, path: m.path, main: false }), disabled: removing },
     })),
-    ...pathMarts.filter((m) => !m.empty).map((m): ConfigMart => ({ path: m.path, title: m.title, icon: m.icon, description: m.description, main: false, shown: false, fields: m.fields, locked: () => false })),
+    ...pathMarts.filter((m) => !m.empty).map((m): ConfigMart => ({ path: m.path, title: m.title, icon: m.icon, description: m.description, main: false, shown: false, fields: m.fields, rules: rulesOf(m.fields), locked: () => false })),
   ];
+  // The marts the rule badges list fields under: the report's marts in grid order, then the joined marts that are not in the report but still hold a rule
+  // (it can be left over after the main mart changed): it is still sent, so the member must be able to see and take it off.
+  const ruleMarts = ((): RuleMart[] => {
+    const reportPaths = new Set(configMarts.filter((m) => m.shown).map((m) => m.path));
+    const holding = sources.filter((x) => !reportPaths.has(x.aliasPath) && x.fields.some((f) => allFilters[f.name] || allSlices[f.name]));
+    const titled = [...tree.nodes.keys(), ...holding.map((x) => x.aliasPath)];
+    return [
+      ...configMarts.filter((m) => m.shown),
+      ...holding.map((x): RuleMart => ({ path: x.aliasPath, title: pathTitle(x, titled, sources), icon: model.marts.get(x.martId)?.icon, fields: x.fields })),
+    ];
+  })();
+  /** Takes every rule of a kind off the grid, as one Undo step. Removing the aggregations takes the HAVING filters on them too; a Unique Count is not an aggregation here and stays. */
+  const removeRules = (kind: RuleKind) => edit(() => {
+    if (kind === 'filter') setAllFilters({});
+    else if (kind === 'slice') setAllSlices({});
+    else applyAgg(NO_AGGREGATION);
+  });
   // One menu per view, at one place in the tree (here in Table, in the charts body in Charts), so an open menu survives a re-render; a view switch closes it.
   const renderConfig = (chartItems?: MenuItem[]): ReactNode => configSlot && createPortal(
-    <ConfigMenu marts={configMarts} joinable={joinable} visible={shown} onChange={changeColumns} chartItems={chartItems} />, configSlot,
+    <>
+      <ConfigMenu marts={configMarts} joinable={joinable} visible={shown} onChange={changeColumns} chartItems={chartItems} />
+      <RuleBadges marts={ruleMarts} filters={allFilters} slices={allSlices} offered={(name) => byName.has(name)} onRemove={removeRules} />
+    </>, configSlot,
   );
   const hasFilters = Object.keys(filters).length > 0;
   const hasSorts = own !== null;
@@ -1092,7 +1116,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
             <tr data-group-row>
                 {groups.map((g) => (
                   <th key={g.path} data-group={g.id} data-group-path={g.path} colSpan={g.span} scope="colgroup" onClick={(e) => {
-                    // Only the title itself: a badge's button, and clicks inside its list (portalled, but bubbling through React), keep the selection.
+                    // Only the title itself: a button in the cell (the description's hint) keeps the selection.
                     const t = e.target as HTMLElement;
                     if (!e.currentTarget.contains(t) || t.closest('button')) return;
                     if (selected?.kind === 'col' || selected?.kind === 'row') setSelected(null);
@@ -1101,11 +1125,6 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
                       <span className="inline-flex shrink-0 text-muted-foreground"><PickedIcon icon={g.icon} fallback={Box} size={14} /></span>
                       <span data-title-text="" className="truncate">{g.title}</span>
                       {g.description?.trim() && <span className="dm-reveal"><Hint text={g.description} label={`About ${g.title}`} /></span>}
-                      <BadgeRow>
-                      <MartRuleBadges title={g.title} fields={fieldsOf(g)} filters={filters} slices={slices}
-                        onClearFilters={(names) => edit(() => setAllFilters((cur) => dropKeys(cur, names)))}
-                        onClearSlices={(names) => edit(() => setAllSlices((cur) => dropKeys(cur, names)))} />
-                      </BadgeRow>
                     </div>
                   </th>
                 ))}

@@ -524,6 +524,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-check { display: inline-flex; width: 16px; flex-shrink: 0; justify-content: center; margin-left: -4px; color: var(--sheet-green, #188038); }
 .dm-menu-tick { display: inline-flex; width: 16px; flex-shrink: 0; justify-content: center; margin-right: -4px; color: var(--sheet-green, #188038); }
 .dm-menu-check svg, .dm-menu-tick svg { color: inherit; stroke: currentColor; }
+.dm-menu-marks { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; color: var(--sheet-green, #188038); }
 .dm-menu-arrow { flex-shrink: 0; margin-right: -6px; color: var(--menu-muted); }
 .dm-menu-sep { height: 0; margin: 8px 0; border-top: 1px solid var(--menu-line); }
 .dm-menu-heading { padding: 0 16px 4px; color: var(--menu-muted); font-size: 12px; line-height: 16px; }
@@ -817,15 +818,8 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-sr-muted { flex-shrink: 0; color: var(--muted-foreground); }
 @media (max-width: 760px) { .dm-search-results { left: 0; right: 0; width: 100%; } }
 
-/* The badges after a data mart's title: an outlined pill on the header's own grey holding an icon. Hover, keyboard focus (not the focus a click or a closing list leaves) or an open
-   list widens it to its label, on the badge's fill. Green, for "N slices" / "N filters". */
-.dm-rule-badge { display: inline-flex; flex-shrink: 0; align-items: center; height: 18px; box-sizing: border-box; border: 1px solid color-mix(in srgb, var(--sheet-green) 55%, transparent); border-radius: 9px; background: transparent; color: var(--sheet-green); font-size: 11px; font-weight: 500; line-height: 1; transition: background-color 120ms; }
-/* Never narrower than at rest (4 + 12 + 4): unfolding swaps the icon for a label that grows in, and a badge that shrank first would slip from under the pointer and fold again. */
-.dm-rule-badge-text { display: inline-flex; align-items: center; height: 100%; min-width: 20px; padding: 0 4px; border-radius: 8px; white-space: nowrap; }
-.dm-badge-label { display: inline-block; max-width: 0; overflow: hidden; opacity: 0; transition: max-width 150ms, opacity 150ms; }
-.dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) { background: color-mix(in srgb, var(--sheet-green) 12%, transparent); }
-.dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .dm-badge-icon { display: none; }
-.dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .dm-rule-badge-text { padding: 0 6px; }
-.dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .dm-badge-label { max-width: 8rem; opacity: 1; }
-/* Room for every badge at rest (22px each, BADGE_REST in badgeReserve.tsx) and the widest one unfolded: hovering one never widens the column. */
-.dm-badges { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; min-width: calc(var(--badge-count, 0) * 22px + max(var(--badge-count, 1) - 1, 0) * 4px + var(--badge-extra, 0px)); }
+/* The rule badges next to the config button: an outlined green pill with an icon and its count, "2 filters". */
+.dm-badges { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; }
+.dm-rule-badges { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; }
+.dm-rule-badge { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 24px; box-sizing: border-box; padding: 0 8px; border: 1px solid color-mix(in srgb, var(--sheet-green) 55%, transparent); border-radius: 12px; background: transparent; color: var(--sheet-green); font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; transition: background-color 120ms; }
+.dm-rule-badge:is(:hover, :focus-visible, [aria-expanded='true']) { background: color-mix(in srgb, var(--sheet-green) 12%, transparent); }
