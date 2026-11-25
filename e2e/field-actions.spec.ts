@@ -38,8 +38,8 @@ test('a filter on a field that is not a column, set from the Fields list, narrow
   await expect(revenueHeader).toHaveCount(0);
   // The title row says there is a filter, and Undo takes it away in one step.
   await closeConfig(page);
-  await expect(data(page).getByRole('button', { name: /^1 filter in / })).toBeVisible();
+  await expect(data(page).getByRole('button', { name: '1 filter', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(data(page).getByRole('button', { name: /^1 filter in / })).toHaveCount(0);
+  await expect(data(page).getByRole('button', { name: '1 filter', exact: true })).toHaveCount(0);
   await expect(data(page).getByRole('row')).toHaveCount(202);
 });
