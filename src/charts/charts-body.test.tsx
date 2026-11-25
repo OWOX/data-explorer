@@ -609,8 +609,14 @@ test('the Charts menu sits in the band header and adds, hides and removes charts
 
   const pies = screen.getAllByRole('button', { name: 'Pie options' });
   await userEvent.click(pies[1]!);
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Hide' }));
   await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(1));
+  // The Charts list still names the hidden chart and shows it again with its setup.
+  await userEvent.keyboard('{Escape}');
+  await userEvent.click(within(header as HTMLElement).getByRole('button', { name: 'Charts options' }));
+  const hiddenRow = screen.getAllByRole('menuitemcheckbox').find((r) => r.getAttribute('aria-checked') === 'false')!;
+  await userEvent.click(hiddenRow);
+  await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(2));
 });
 
 test('a hidden chart sends no query', async () => {
@@ -663,11 +669,12 @@ test('a bar chart draws vertical bars per top value; switching it to a ranked ba
   expect((t.puts.mock.lastCall![1] as ChartSettings).charts).toEqual([{ id: 'b', kind: 'rankedBar', measure: 'amount', dimension: 'status' }]);
 });
 
-test('a chart menu ends with Chart type, Copy to clipboard and Remove', async () => {
+test('a chart menu ends with Chart type, Duplicate, Copy to clipboard and Hide', async () => {
   await charts();
   await userEvent.click(screen.getByRole('button', { name: 'Pie options' }));
   const rows = within(screen.getAllByRole('menu').at(-1)!).getAllByRole('menuitem').map((r) => r.textContent);
-  expect(rows.slice(-3)).toEqual(['Chart type', 'Copy to clipboard', 'Remove']);
+  expect(rows.slice(-4)).toEqual(['Chart type', 'Duplicate', 'Copy to clipboard', 'Hide']);
+  expect(rows).not.toContain('Remove');
 });
 
 test('the grid’s chosen aggregation reaches the charts: Average ranks the bars, and a switch to Pie goes back to Sum', async () => {

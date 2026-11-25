@@ -60,13 +60,13 @@ test('add, switch, configure, hide and remove charts from the header menu', asyn
   await page.getByRole('menuitemradio', { name: 'Pie' }).click();
   await expect(data(page).locator('section[data-chart-kind="Pie"]')).toHaveCount(2);
 
-  // Hide the scatter from the header list, then remove the heatmap.
+  // Hide the scatter from the header list, then hide the heatmap from its own menu.
   await listButton.click();
   await page.getByRole('menuitemcheckbox', { name: /vs .* per / }).click();
   await page.keyboard.press('Escape');
   await expect(data(page).locator('section[data-chart-kind="Scatter"]')).toHaveCount(0);
   await optionsOf('Heatmap');
-  await page.getByRole('menuitem', { name: 'Remove' }).click();
+  await page.getByRole('menuitem', { name: 'Hide' }).click();
   await expect(data(page).locator('section[data-chart-kind="Heatmap"]')).toHaveCount(0);
 
   // The list survives a trip to Table and back (the mock keeps settings in memory, so a reload would reset them).

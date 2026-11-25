@@ -36,15 +36,51 @@ test('unticking a chart hides it and keeps its setup; Add chart appends a new ch
   expect(s.charts![1]!.id).toMatch(/^c-/);
 });
 
-test('Chart type keeps the usable fields and the id; Remove deletes; removing the last chart saves an empty list', () => {
+test('Chart type keeps the usable fields and the id', () => {
   let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie', measure: 'amount', dimension: 'status', hidden: false }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
-  const [type, remove] = tailItems({ cf, spec: s.charts![0]!, change });
+  const [type] = tailItems({ cf, spec: s.charts![0]!, change });
   expect(type!.label).toBe('Chart type');
   if (type!.kind === 'radio') type!.onPick('timeSeries');
   expect(s.charts).toEqual([{ id: 'a', kind: 'timeSeries', measure: 'amount', hidden: false }]);
-  if (remove!.kind === 'action') remove!.onPick();
-  expect(s).toEqual({ version: 2, charts: [] });
+});
+
+test('the tail is Chart type, Duplicate and Hide, with no Remove', () => {
+  const items = tailItems({ cf, spec: { id: 'a', kind: 'pie' }, change: vi.fn() });
+  expect(items.map((i) => i.label)).toEqual(['Chart type', 'Duplicate', 'Hide']);
+});
+
+test('Duplicate inserts a copy right after the original: new id, same choices, not hidden, arrays not shared', () => {
+  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'sankey', dimensions: ['x', 'y'], hidden: true }, { id: 'b', kind: 'pie' }] };
+  const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
+  const dup = tailItems({ cf, spec: s.charts![0]!, change })[1]!;
+  if (dup.kind === 'action') dup.onPick();
+  const [orig, copy, other] = s.charts!;
+  expect(s.charts).toHaveLength(3);
+  expect(other!.id).toBe('b');
+  expect(copy!.id).not.toBe(orig!.id);
+  expect(copy!.id).toMatch(/^c-/);
+  expect(copy).toEqual({ id: copy!.id, kind: 'sankey', dimensions: ['x', 'y'] });
+  expect(copy!.hidden).toBeUndefined();
+  expect(copy!.dimensions).toEqual(['x', 'y']);
+  expect(copy!.dimensions).not.toBe(orig!.dimensions);
+});
+
+test('Duplicate on the default list saves the defaults with the copy after its original', () => {
+  let s: ChartSettings = {};
+  const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
+  const dup = tailItems({ cf, spec: { id: 'time-series', kind: 'timeSeries' }, change })[1]!;
+  if (dup.kind === 'action') dup.onPick();
+  expect(s.charts!.map((c) => c.kind)).toEqual(['timeSeries', 'timeSeries', 'pie']);
+  expect(s.charts![1]!.id).not.toBe('time-series');
+});
+
+test('Hide sets hidden and keeps the chart and its setup', () => {
+  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie', dimension: 'status' }] };
+  const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
+  const hide = tailItems({ cf, spec: s.charts![0]!, change })[2]!;
+  if (hide.kind === 'action') hide.onPick();
+  expect(s.charts).toEqual([{ id: 'a', kind: 'pie', dimension: 'status', hidden: true }]);
 });
 
 test('each chart row, and each Add chart and Chart type option, carries its kind icon; cards and Sparklines carry their own', () => {

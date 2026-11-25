@@ -1,7 +1,7 @@
 import { vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ChartPie, ChartLine, Calendar, Hash, Trash2 } from 'lucide-react';
+import { ChartPie, ChartLine, Calendar, Hash, EyeOff, Trash2 } from 'lucide-react';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { HOVER_MS } from '../ui/explorer/MenuParts';
 
@@ -39,9 +39,9 @@ test('hovering a submenu row opens it only after the pointer has rested, and Esc
 
 test('an action row closes the menu and runs', async () => {
   const onPick = vi.fn();
-  render(<ChartMenu name="Sales" items={[{ kind: 'action', label: 'Remove', icon: Trash2, onPick }]} />);
+  render(<ChartMenu name="Sales" items={[{ kind: 'action', label: 'Hide', icon: EyeOff, onPick }]} />);
   await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Hide' }));
   expect(onPick).toHaveBeenCalledOnce();
   expect(screen.queryByRole('menu')).toBeNull();
 });
@@ -174,7 +174,7 @@ test('a radio without a trailing action has no divider or extra row', async () =
 
 test('when a root row is a check row every root row has the check column, and none has it otherwise', async () => {
   const plain: MenuItem[] = [
-    { kind: 'action', label: 'Remove', icon: Trash2, onPick: () => undefined },
+    { kind: 'action', label: 'Hide', icon: EyeOff, onPick: () => undefined },
     { kind: 'radio', label: 'Bucket', icon: Calendar, value: 'day', options: [{ value: 'day', label: 'Day' }], onPick: () => undefined },
   ];
   const { unmount } = render(<ChartMenu name="Sales" items={plain} />);
