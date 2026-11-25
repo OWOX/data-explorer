@@ -25,6 +25,23 @@ test('Clear never hides the last visible column', async () => {
   expect(onChange).toHaveBeenLastCalledWith(['id']);
 });
 
+test('Clear on a joined mart commits at once and leaves the other marts\' columns', async () => {
+  const onChange = vi.fn();
+  const joined = ['cus_a', 'cus_b'].map((name) => ({ name, type: 'STRING', category: 'string' }) as Field);
+  render(<TooltipProvider><MartFields mart={{ path: 'customers', title: 'Customers', main: false, shown: true, fields: joined, locked: () => false }} visible={['id', 'cus_a', 'cus_b']} onChange={onChange} /></TooltipProvider>);
+  await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+  expect(onChange).toHaveBeenCalledOnce();
+  expect(onChange).toHaveBeenLastCalledWith(['id']);
+});
+
+test('Clear on a joined mart with no column changes nothing', async () => {
+  const onChange = vi.fn();
+  const joined = ['cus_a'].map((name) => ({ name, type: 'STRING', category: 'string' }) as Field);
+  render(<TooltipProvider><MartFields mart={{ path: 'customers', title: 'Customers', main: false, shown: true, fields: joined, locked: () => false }} visible={['id']} onChange={onChange} /></TooltipProvider>);
+  await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+  expect(onChange).not.toHaveBeenCalled();
+});
+
 test('Clear keeps a locked field', async () => {
   const onChange = await open(['id', 'name', 'city'], (n) => n === 'name');
   await userEvent.click(screen.getByRole('button', { name: 'Clear' }));

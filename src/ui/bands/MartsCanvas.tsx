@@ -19,14 +19,18 @@ import { litIds, revisionOf, useWires, type Wire } from './wires';
 
 const noOwnAliases = () => undefined;
 
-export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart, own = noOwnAliases }: {
+export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, counts, matched, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart, own = noOwnAliases }: {
   model: Model;
   mainId: string | null;
   columns: string[];
+  /** The alias paths of joined marts kept with no column. */
+  emptyPaths?: string[];
   sources: JoinedSource[] | null;
   /** The Output Alias a joined mart's own settings give a path below it (`useOwnAliases`): lines under a joined mart read their names from it. */
   own?: (martId: string, path: string) => string | undefined;
   counts: Map<string, CountState>;
+  /** How many records of the mart at each alias path the grid's filters and slices keep. */
+  matched?: ReadonlyMap<string, number>;
   dq: Map<string, DqSummary>;
   onOpenApp: (id: string) => void;
   onRetryCount: (id: string) => void;
@@ -42,7 +46,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   // Zoom lives in memory only. The layout stays in unscaled pixels; the tree is drawn with a CSS scale.
   const [scale, setScale] = useState(1);
   const scaleRef = useLatest(scale);
-  const tree = useMemo(() => buildJoinTree(mainId ?? '', columns, sources ?? []), [mainId, columns, sources]);
+  const tree = useMemo(() => buildJoinTree(mainId ?? '', columns, sources ?? [], emptyPaths), [mainId, columns, emptyPaths, sources]);
   // The card (mart and alias path) that takes focus once it renders: a ghost chosen with Enter vanishes under the keyboard.
   const [focusCard, setFocusCard] = useState<{ martId: string; path: string } | null>(null);
   // The tree and main mart of the latest render: a click that resolves later checks what its step left, not what it was started on.
@@ -230,6 +234,7 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
               mart={mart}
               contexts={contextsOf(model.contexts, mart.contextIds)}
               count={counts.get(mart.id) ?? { state: 'idle' }}
+              matched={matched?.get(node.path)}
               quality={dq.get(mart.id)}
               selected={node.path === ''}
               joined={node.path !== ''}

@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, EyeOff, Funnel, Hash, Layers, Sigma } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, EyeOff, Funnel, Hash, Layers, Sigma, Trash2 } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { formatsFor, keepsUnit, type Format } from '../../format/formats';
 import { describeFilter } from '../../filters/catalogue';
@@ -6,7 +6,8 @@ import { valueCache } from '../../filters/valueSuggest';
 import { havingField, sliceField } from '../../filters/slice';
 import type { ColumnFilter } from '../../filters/build';
 import { BUCKET_LABELS, AGG_LABELS, allowedFunctions, canBucket, type AggFn, type AggregationDraft, type Output } from '../../model/aggregation';
-import { columnTitle } from '../../model/fieldLabel';
+import { columnTitle, fieldLabel } from '../../model/fieldLabel';
+import { DEFAULT_MART_ICON, PickedIcon } from '../bands/picked';
 import type { SortDirection, SortKey } from '../../model/sort';
 import type { Field } from '../../model/types';
 import { AggregationEditor } from './AggregationEditor';
@@ -105,7 +106,7 @@ function EditorPanel({ row, seq, label, onEscape, children }: { row: HTMLElement
 const valuesIn = (env: ColumnMenuEnv, f: Field, scope: 'filter' | 'slice') => { const v = env.valuesFor?.(f, scope); return v ? { ...v, cache: valueCache } : undefined; };
 
 /**
- * The edit form of one field's Filter or Slice rule, beside `row`: the column menu's Filter / Slice submenu and the data mart badges' lists share it.
+ * The edit form of one field's Filter or Slice rule, beside `row`: the column menu's Filter / Slice submenu and the toolbar badges' lists share it.
  * A HAVING filter (one with `fn`) edits the aggregate and keeps its function. `onDone` runs after Apply or Clear.
  */
 function RuleEditor({ kind, field, row, seq, onEscape, onDone }: { kind: 'filter' | 'slice'; field: Field; row: HTMLElement; seq: number; onEscape: () => void; onDone: () => void }) {
@@ -144,31 +145,49 @@ function useMarkEdits() {
   }, []);
 }
 
+/** The kinds of rule the toolbar badges count and list. */
+export type RuleKind = 'filter' | 'slice' | 'aggregate';
+const RULE_NOUNS: Record<RuleKind, { list: string; remove: string }> = {
+  filter: { list: 'Filters', remove: 'Remove filters' },
+  slice: { list: 'Slices', remove: 'Remove slices' },
+  aggregate: { list: 'Aggregations', remove: 'Remove aggregations' },
+};
+/** One field with a rule, as a row of a rule list: the data mart it belongs to and the field. A rule on a field the grid does not offer (parked) has no `field`: it is listed by its name and cannot be opened. */
+export type RuleEntry = { key: string; martTitle: string; icon?: string | null; field: Field | null; label: string };
+
 /**
- * The list under a data mart's "N filters" / "N slices" badge: one row per field that carries the rule. Hovering a row (or Arrow Right, or a click)
- * opens the same edit form the column menu's Filter / Slice submenu shows. Apply and Clear in the form save the one rule and close the list; `onClose` refocuses the badge.
- * The last row, after a separator, is "Clear": `onClear` removes every rule of the list and the caller closes it and places focus.
+ * The list under a toolbar badge ("2 filters", "1 slice", "3 aggregations"). Its first row, "Remove filters" (slices, aggregations), removes every rule of the kind; after a separator
+ * come the fields that carry one, as "data mart · field". Hovering a field row (or Arrow Right, or a click) opens the same edit form the column menu's Filter / Slice / Aggregate submenu shows.
+ * Apply and Clear in a form save the one rule and close the list (`onClose` refocuses the badge); `onRemove` removes the rules and the caller closes the list and places focus.
  */
-export function RuleListMenu({ kind, title, fields, anchor, onClose, onClear, onDismiss }: { kind: 'filter' | 'slice'; title: string; fields: Field[]; anchor: HTMLElement; onClose: () => void; onClear: () => void; /** A press outside or a scroll: close without moving focus. */ onDismiss: () => void }) {
+export function RuleListMenu({ kind, entries, anchor, onClose, onRemove, onDismiss }: { kind: RuleKind; entries: RuleEntry[]; anchor: HTMLElement; onClose: () => void; onRemove: () => void; /** A press outside or a scroll: close without moving focus. */ onDismiss: () => void }) {
   const env = useContext(ColumnMenuEnvContext);
   const holder = useLatest<HTMLElement | null>(anchor);
   useMenuDismiss(true, holder, onDismiss);
   useMarkEdits();
   const { sub, open, hoverRow, hoverOther, leaveRow, closeSub } = useSubmenu<string>({ isEditing: () => panelBeingEdited(EDITING) });
-  const noun = kind === 'filter' ? 'Filters' : 'Slices';
-  const describe = (f: Field) => (kind === 'filter' ? describeColumnFilter(f, env.filters[f.name]!) : describeFilter(sliceField(f), env.slices[f.name]!));
-  const at = sub ? fields.find((f) => f.name === sub.key) : undefined;
+  const at = (sub ? entries.find((e) => e.key === sub.key)?.field : undefined) ?? undefined;
   return (
     <>
-      <Panel anchor={anchor} mode="below" role="menu" label={`${noun} in ${title}`} onEscape={() => (sub ? closeSub() : onClose())} onTab={onClose} focusSeq={1} className="dm-menu-root">
-        {fields.map((f) => (
-          <Row key={f.name} label={`${columnTitle(f)}: ${describe(f)}`} sub haspopup="dialog" expanded={sub?.key === f.name}
-            onActivate={(r) => open(f.name, r, true)} onOpen={(r) => open(f.name, r, true)} onHover={(r) => hoverRow(f.name, r)} onLeaveRow={leaveRow} />
-        ))}
+      <Panel anchor={anchor} mode="below" role="menu" label={RULE_NOUNS[kind].list} onEscape={() => (sub ? closeSub() : onClose())} onTab={onClose} focusSeq={1} className="dm-menu-root">
+        <Row label={RULE_NOUNS[kind].remove} glyph={<Trash2 className="size-4" />} onActivate={onRemove} onHover={hoverOther} onLeaveRow={leaveRow} />
         <div className="dm-menu-sep" role="separator" />
-        <Row label="Clear" onActivate={onClear} onHover={hoverOther} onLeaveRow={leaveRow} />
+        {entries.map((e) => (e.field
+          ? (
+            <Row key={e.key} label={`${e.martTitle} · ${fieldLabel(e.field)}`} hint={e.field.description?.trim() || undefined} sub haspopup="dialog" expanded={sub?.key === e.key}
+              glyph={<PickedIcon icon={e.icon} fallback={DEFAULT_MART_ICON} size={16} />}
+              onActivate={(r) => open(e.key, r, true)} onOpen={(r) => open(e.key, r, true)} onHover={(r) => hoverRow(e.key, r)} onLeaveRow={leaveRow} />
+          )
+          : <Row key={e.key} note label={e.label} glyph={<PickedIcon icon={e.icon} fallback={DEFAULT_MART_ICON} size={16} />} onActivate={NOOP} onHover={hoverOther} onLeaveRow={leaveRow} />
+        ))}
       </Panel>
-      {sub && at && <RuleEditor kind={kind} field={at} row={sub.row} seq={sub.seq} onEscape={closeSub} onDone={onClose} />}
+      {sub && at && kind !== 'aggregate' && <RuleEditor kind={kind} field={at} row={sub.row} seq={sub.seq} onEscape={closeSub} onDone={onClose} />}
+      {sub && at && kind === 'aggregate' && (
+        <EditorPanel row={sub.row} seq={sub.seq} label={`Aggregation of ${columnTitle(at)}`} onEscape={closeSub}>
+          <AggregationEditor key={JSON.stringify(env.draftOf(at.name))} field={at} value={env.draftOf(at.name)} blocker={env.blockerFor(at.name)}
+            onApply={(d) => { env.changeAgg(at.name, d); onClose(); }} onCancel={closeSub} />
+        </EditorPanel>
+      )}
     </>
   );
 }

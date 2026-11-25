@@ -303,3 +303,34 @@ describe('tooltips', () => {
     expect((await screen.findAllByText(/Data updated/)).some((e) => e.closest('.dm-hint-body'))).toBe(true);
   });
 });
+
+describe('the match badge', () => {
+  test('follows the count badge, with the numbers in its tooltip', async () => {
+    const { container } = renderMart({ count: { state: 'ok', value: 12300 }, matched: 1480 });
+    const badges = [...container.querySelectorAll('.dm-badges-row .dm-badge')].map((b) => b.textContent);
+    expect(badges).toEqual(['12.3K records', '12% match']);
+    await userEvent.hover(screen.getByText('12% match'));
+    expect((await screen.findAllByText('1,480 of 12,300 records match the filters and slices')).length).toBeGreaterThan(0);
+  });
+  test('is absent when everything matches, with no matched number, or while the count is not known', () => {
+    renderMart({ count: { state: 'ok', value: 100 }, matched: 100 });
+    expect(screen.queryByText(/match$/)).toBeNull();
+    cleanup();
+    renderMart({ count: { state: 'ok', value: 100 } });
+    expect(screen.queryByText(/match$/)).toBeNull();
+    cleanup();
+    renderMart({ count: { state: 'loading' }, matched: 5 });
+    expect(screen.queryByText(/match$/)).toBeNull();
+    cleanup();
+    renderMart({ count: { state: 'ok', value: null }, matched: 5 });
+    expect(screen.queryByText(/match$/)).toBeNull();
+  });
+  test('a ghost and a mart with no access show none', () => {
+    renderMart({ ghost: true, count: { state: 'ok', value: 100 }, matched: 5 });
+    expect(screen.queryByText(/match$/)).toBeNull();
+    cleanup();
+    renderMart({ mart: { ...mart, accessible: false }, count: { state: 'ok', value: 100 }, matched: 5 });
+    expect(screen.getByText('No access')).toBeInTheDocument();
+    expect(screen.queryByText(/match$/)).toBeNull();
+  });
+});

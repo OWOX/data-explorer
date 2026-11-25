@@ -167,3 +167,77 @@ test('a query for a subset of a read already made reads nothing and shows its ro
   await waitFor(() => expect(other.result.current.rows).not.toBeNull());
   expect(traverseData).toHaveBeenCalledTimes(2);
 });
+
+const JOINS = { pathOf: () => undefined, keepsGrain: () => true };
+describe('reuse: a cached read that already holds what is needed answers before any read is sent', () => {
+  const full = (metric: string): TraverseOptions => ({ column: [metric], aggregation: [{ column: metric, function: 'SUM' }], uniqueCount: [''], filter: [{ column: 's', operator: 'eq', value: 'x' }] });
+  const counts: TraverseOptions = { uniqueCount: [''], filter: [{ column: 's', operator: 'eq', value: 'x' }] };
+  test('a read for other metrics of the same rules answers the counts, so no second read goes out', async () => {
+    const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 3, amount: 9 }]));
+    const wrapper = setup(traverseData);
+    const one = renderHook(() => useChartQuery('m', full('amount'), 0), { wrapper });
+    await waitFor(() => expect(one.result.current.rows).not.toBeNull());
+    const two = renderHook(() => useChartQuery('m', full('tax'), 0, JOINS, counts), { wrapper });
+    await waitFor(() => expect(two.result.current.rows).not.toBeNull());
+    expect(traverseData).toHaveBeenCalledTimes(1);
+  });
+  test('with nothing cached for those rules it sends its own query', async () => {
+    const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 3 }]));
+    const wrapper = setup(traverseData);
+    const { result } = renderHook(() => useChartQuery('m', full('tax'), 0, JOINS, { ...counts, filter: [{ column: 's', operator: 'eq', value: 'y' }] }), { wrapper });
+    await waitFor(() => expect(result.current.rows).not.toBeNull());
+    expect(traverseData).toHaveBeenCalledTimes(1);
+    expect(traverseData).toHaveBeenCalledWith('m', full('tax'));
+  });
+});
+
+test('a held query reads nothing until the hold ends, then reads once; a flight already under way is joined', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ a: 1 }]));
+  const wrapper = setup(traverseData);
+  const { result, rerender } = renderHook(({ hold }) => useChartQuery('m', opts(), 0, undefined, null, hold), { wrapper, initialProps: { hold: true } });
+  await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+  expect(traverseData).not.toHaveBeenCalled();
+  expect(result.current.rows).toBeNull();
+  rerender({ hold: false });
+  await waitFor(() => expect(result.current.rows).toEqual([{ a: 1 }]));
+  expect(traverseData).toHaveBeenCalledTimes(1);
+  rerender({ hold: true });
+  rerender({ hold: false });
+  await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+  expect(traverseData).toHaveBeenCalledTimes(1);
+});
+
+test('a hold set while the read is under way does not stop it', async () => {
+  const traverseData = vi.fn(async () => { await new Promise((r) => setTimeout(r, 40)); return traversalOf([{ a: 1 }]); });
+  const wrapper = setup(traverseData);
+  const { result, rerender } = renderHook(({ hold }) => useChartQuery('m', opts(), 0, undefined, null, hold), { wrapper, initialProps: { hold: false } });
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
+  rerender({ hold: true });
+  await waitFor(() => expect(result.current.rows).toEqual([{ a: 1 }]));
+  expect(traverseData).toHaveBeenCalledTimes(1);
+});
+
+test('a held key whose read starts another way (options null, then the key again) is read once', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ a: 1 }]));
+  const wrapper = setup(traverseData);
+  const { result, rerender } = renderHook(({ o, hold }: { o: TraverseOptions | null; hold: boolean }) => useChartQuery('m', o, 0, undefined, null, hold), { wrapper, initialProps: { o: opts(10) as TraverseOptions | null, hold: true } });
+  await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+  rerender({ o: null, hold: true });
+  rerender({ o: opts(10), hold: false });
+  await waitFor(() => expect(result.current.rows).toEqual([{ a: 1 }]));
+  await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+  expect(traverseData).toHaveBeenCalledTimes(1);
+});
+
+test('a held key, another key read, then the held key again (Undo) is read once', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ a: 1 }]));
+  const wrapper = setup(traverseData);
+  const { result, rerender } = renderHook(({ l, hold }) => useChartQuery('m', opts(l), 0, undefined, null, hold), { wrapper, initialProps: { l: 10, hold: true } });
+  await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+  rerender({ l: 20, hold: false });
+  await waitFor(() => expect(result.current.rows).toEqual([{ a: 1 }]));
+  rerender({ l: 10, hold: false });
+  await waitFor(() => expect(result.current.rows).toEqual([{ a: 1 }]));
+  await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+  expect(traverseData).toHaveBeenCalledTimes(2);
+});

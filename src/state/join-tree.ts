@@ -3,14 +3,15 @@
 import { sourceOfField, type JoinedSource } from '../api/blendable';
 import { parentPath } from './join-plan';
 
-export type TreeNode = { path: string; martId: string; parent: string | null; children: string[]; /** A middle mart on the way to a mart in use: joined, with no column of its own. */ bare?: true };
+export type TreeNode = { path: string; martId: string; parent: string | null; children: string[]; /** A middle mart on the way to a mart in use: joined, with no column of its own. */ bare?: true; /** A mart kept in the report with no column, on purpose: removing it removes only its own path. */ empty?: true };
 export type JoinTree = { nodes: Map<string, TreeNode> };
 
 /**
  * The tree a grid shows. Every path in use is a node, even when another path of the same mart is in use; a path hangs from its deepest ancestor in the tree.
  * A mart a path passes through with no column of its own is a bare node, so the chain stays visible: the report joins through it all the same.
+ * An empty path (a mart kept with no column) is a node too, marked `empty`, after the paths with columns; it is not bare.
  */
-export function buildJoinTree(mainId: string, columns: string[], sources: JoinedSource[]): JoinTree {
+export function buildJoinTree(mainId: string, columns: string[], sources: JoinedSource[], empty: readonly string[] = []): JoinTree {
   const pathOf = sourceOfField(sources);
   // In-use paths in the order their first column appears.
   const used: JoinedSource[] = [];
@@ -18,27 +19,32 @@ export function buildJoinTree(mainId: string, columns: string[], sources: Joined
     const s = pathOf.get(c);
     if (s && !used.includes(s)) used.push(s);
   }
-  const inUse = new Set(used.map((s) => s.aliasPath));
   const byPath = new Map(sources.map((s) => [s.aliasPath, s] as const));
+  const kept: JoinedSource[] = [];
+  for (const p of empty) {
+    const s = byPath.get(p);
+    if (s && p !== '' && !used.includes(s) && !kept.includes(s)) kept.push(s);
+  }
+  const inUse = new Set([...used, ...kept].map((s) => s.aliasPath));
   // Each path after the middle marts above it (shallowest first), in the order the first column below it appears.
-  const ordered: { source: JoinedSource; bare: boolean }[] = [];
+  const ordered: { source: JoinedSource; bare: boolean; empty?: true }[] = [];
   const seen = new Set<string>();
-  for (const s of used) {
+  for (const s of [...used, ...kept]) {
     const missing: JoinedSource[] = [];
     for (let p = parentPath(s.aliasPath); p !== '' && !inUse.has(p) && !seen.has(p); p = parentPath(p)) {
       const via = byPath.get(p);
       if (via) missing.unshift(via);
     }
     for (const via of missing) { seen.add(via.aliasPath); ordered.push({ source: via, bare: true }); }
-    ordered.push({ source: s, bare: false });
+    ordered.push({ source: s, bare: false, ...(kept.includes(s) ? { empty: true as const } : {}) });
   }
   const inTree = new Set(ordered.map((o) => o.source.aliasPath));
   const nodes = new Map<string, TreeNode>([['', { path: '', martId: mainId, parent: null, children: [] }]]);
   // Parents before children: shallow first, order of appearance within a depth.
-  for (const { source: s, bare } of [...ordered].sort((p, q) => p.source.depth - q.source.depth)) {
+  for (const { source: s, bare, empty: isEmpty } of [...ordered].sort((p, q) => p.source.depth - q.source.depth)) {
     let up = parentPath(s.aliasPath);
     while (up !== '' && !inTree.has(up)) up = parentPath(up);
-    nodes.set(s.aliasPath, { path: s.aliasPath, martId: s.martId, parent: up, children: [], ...(bare ? { bare: true as const } : {}) });
+    nodes.set(s.aliasPath, { path: s.aliasPath, martId: s.martId, parent: up, children: [], ...(bare ? { bare: true as const } : {}), ...(isEmpty ? { empty: true as const } : {}) });
   }
   // Children in order of appearance.
   for (const { source: s } of ordered) nodes.get(nodes.get(s.aliasPath)!.parent!)!.children.push(s.aliasPath);

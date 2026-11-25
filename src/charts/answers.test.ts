@@ -64,3 +64,24 @@ test('a read without a calculated metric does not answer an ask with it, nor the
   const both: TraverseOptions = { column: ['m', 'n2', 'net'], aggregation: [{ column: 'm', function: 'SUM' }, { column: 'n2', function: 'SUM' }], uniqueCount: [''] };
   expect(answersQuery(both, net)).toBe(true);
 });
+
+describe('a calculated metric column (no function) is not a group key', () => {
+  const metrics = joinGrainOf([], new Set(['margin']));
+  const full: TraverseOptions = { column: ['amount', 'margin'], aggregation: [{ column: 'amount', function: 'SUM' }], uniqueCount: ['', 'x'], filter: [{ column: 'c', operator: 'is_blank' }] };
+  const counts: TraverseOptions = { uniqueCount: ['', 'x'], filter: full.filter };
+  test('a read with the metric answers an ask without it, or with another count of the same rules; not the other way round', () => {
+    expect(answersQuery(full, counts, metrics)).toBe(true);
+    expect(answersQuery(full, { ...full, column: ['amount'] }, metrics)).toBe(true);
+    expect(answersQuery(counts, full, metrics)).toBe(false);
+    expect(answersQuery({ ...full, column: ['amount'] }, full, metrics)).toBe(false);
+  });
+  test('with no metric told, the column is a key as before', () => {
+    expect(answersQuery(full, counts, joinGrainOf([]))).toBe(false);
+  });
+  test('a dimension column stays a real group key, also when metrics are known', () => {
+    const grouped: TraverseOptions = { column: ['status', 'amount'], aggregation: [{ column: 'amount', function: 'SUM' }], uniqueCount: [''] };
+    expect(answersQuery(grouped, { uniqueCount: [''] }, metrics)).toBe(false);
+    expect(answersQuery({ uniqueCount: [''] }, grouped, metrics)).toBe(false);
+    expect(answersQuery(grouped, { ...grouped, column: ['region', 'amount'] }, metrics)).toBe(false);
+  });
+});

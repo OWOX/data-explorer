@@ -93,7 +93,7 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
     if (main) {
       await load(main);
       if (id === main) {
-        const next = joinedMartIds(grids.get(main)!.columns, sources.get(main)!)[0];
+        const next = joinedMartIds(grids.get(main)!.columns, sources.get(main)!, grids.get(main)!.emptyPaths)[0];
         if (next) await load(next);
       }
     }
@@ -106,7 +106,7 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
     if (now.selection.martId !== main) return;
     if (options?.only === 'deselect') {
       const g = main ? (now.grids[main]?.columns.length ? now.grids[main] : grids.get(main)) : undefined;
-      const member = !!main && (id === main || (!!g && joinedMartIds(g.columns, sources.get(main) ?? []).includes(id)));
+      const member = !!main && (id === main || (!!g && joinedMartIds(g.columns, sources.get(main) ?? [], g.emptyPaths).includes(id)));
       if (!member) return;
     }
     const sourceOf = sourceOfModel(model);
