@@ -510,7 +510,19 @@ test('opening the Fields picker by mouse leaves every (?) hidden until a row is 
   await expect(slots).not.toHaveCount(0);
   for (const slot of await slots.all()) await expect(slot).toHaveCSS('opacity', '0');
   await dialog.getByText('Customer', { exact: true }).hover();
-  await expect(dialog.locator('.dm-checklist-row', { hasText: 'Customer' }).locator('.dm-hint-slot')).toHaveCSS('opacity', '1');
+  const customer = dialog.locator('.dm-checklist-row', { hasText: 'Customer' });
+  await expect(customer.locator('.dm-hint-slot')).toHaveCSS('opacity', '1');
+  // The (?) is right after the label, the column menu icon at the row's right end, level with the icon of a row without a (?).
+  const label = (await customer.getByText('Customer', { exact: true }).boundingBox())!;
+  const glyph = (await customer.locator('.dm-hint').boundingBox())!;
+  const icon = (await customer.locator('[data-row-action]').boundingBox())!;
+  const rowBox = (await customer.boundingBox())!;
+  expect(glyph.x - (label.x + label.width)).toBeGreaterThanOrEqual(3);
+  expect(glyph.x - (label.x + label.width)).toBeLessThanOrEqual(6);
+  expect(rowBox.x + rowBox.width - (icon.x + icon.width)).toBeLessThanOrEqual(8);
+  const plain = dialog.locator('.dm-checklist-row:not(:has(.dm-hint-slot)) [data-row-action]').first();
+  const other = (await plain.boundingBox())!;
+  expect(Math.abs(icon.x + icon.width - (other.x + other.width))).toBeLessThanOrEqual(1);
 });
 
 test('a filter popover is at most 20rem tall, has no title row, and its last row is inside it', async ({ page }) => {

@@ -101,3 +101,10 @@ describe('where a panel sits while its anchor moves', () => {
     await waitFor(() => expect(sub.style.top).toBe(`${parseFloat(root.style.top)}px`));
   });
 });
+
+test('a row with a hint puts the (?) right after its label, before a tick or an arrow', () => {
+  render(<TooltipProvider><Row label="Sales" hint="Totals by day" sub tick checked onActivate={vi.fn()} /></TooltipProvider>);
+  const label = screen.getByRole('menuitem', { name: 'Sales' }).querySelector('.dm-menu-label')!;
+  expect(label.nextElementSibling).toHaveClass('dm-hint-slot');
+  expect(label.nextElementSibling!.nextElementSibling).toHaveClass('dm-menu-tick');
+});

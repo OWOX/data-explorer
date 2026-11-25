@@ -162,7 +162,7 @@ export function RuleListMenu({ kind, title, fields, anchor, onClose, onClear, on
     <>
       <Panel anchor={anchor} mode="below" role="menu" label={`${noun} in ${title}`} onEscape={() => (sub ? closeSub() : onClose())} onTab={onClose} focusSeq={1} className="dm-menu-root">
         {fields.map((f) => (
-          <Row key={f.name} label={`${columnTitle(f)}: ${describe(f)}`} sub haspopup="dialog" expanded={sub?.key === f.name}
+          <Row key={f.name} label={`${columnTitle(f)}: ${describe(f)}`} hint={f.description?.trim() || undefined} sub haspopup="dialog" expanded={sub?.key === f.name}
             onActivate={(r) => open(f.name, r, true)} onOpen={(r) => open(f.name, r, true)} onHover={(r) => hoverRow(f.name, r)} onLeaveRow={leaveRow} />
         ))}
         <div className="dm-menu-sep" role="separator" />

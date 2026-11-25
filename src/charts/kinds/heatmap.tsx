@@ -4,7 +4,7 @@ import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
-import { axisTitle, fieldGroups, groupByMart, measureGroups } from '../menuGroups';
+import { axisTitle, fieldGroups, groupByMart, hintOf, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { BLANK_KEY, BLANK_LABEL, blankFirst, keyOf, labelOf } from '../blank';
 import { bucketFilter, dimensionFilter } from '../clickFilters';
@@ -55,7 +55,7 @@ function HeatmapPanel({ martId, cf, r, filter, version, idle, hasFilters, format
     : (xTop.categories ?? []).map((c) => ({ key: c.key, label: labelOf(c.key) }));
   const ys = (yTop.categories ?? []).map((c) => ({ key: c.key, label: labelOf(c.key) }));
   const mc = menuOf(cf);
-  const colGroups = groupByMart(mc, [...mc.dates.map((f) => ({ f, id: `date:${f.name}` })), ...mc.dimensions.filter((d) => d.name !== y.name).map((f) => ({ f, id: `dim:${f.name}` }))], (c) => c.f.joined?.aliasPath ?? '', (c) => ({ value: c.id, label: fieldLabel(c.f) }));
+  const colGroups = groupByMart(mc, [...mc.dates.map((f) => ({ f, id: `date:${f.name}` })), ...mc.dimensions.filter((d) => d.name !== y.name).map((f) => ({ f, id: `dim:${f.name}` }))], (c) => c.f.joined?.aliasPath ?? '', (c) => ({ value: c.id, label: fieldLabel(c.f), ...hintOf(c.f) }));
   const items: MenuItem[] = [
     { kind: 'radio', label: 'Rows', icon: Rows3, value: y.name, options: [], groups: fieldGroups(mc, mc.dimensions), onPick: (v) => onChange({ dimension: v }) },
     { kind: 'radio', label: 'Columns', icon: Columns3, value: cols.kind === 'date' ? `date:${cols.date.name}` : `dim:${cols.dim.name}`, options: [], groups: colGroups,

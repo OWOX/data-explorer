@@ -164,3 +164,26 @@ test('"only" picks one row by its button or by Shift+Enter, and is not a Tab sto
   await userEvent.keyboard('{Shift>}{Enter}{/Shift}');
   expect(spy).toHaveBeenLastCalledWith('b');
 });
+
+test('the extra follows the label, then the action, and a press on the empty part of the row toggles it', async () => {
+  const spy = vi.fn();
+  const list = [{ value: 'a', text: 'Alpha', extra: <span data-testid="extra">?</span>, action: <button type="button" data-row-action tabIndex={-1}>Menu</button> }, ...items.slice(1)];
+  render(<Harness initial={[]} list={list} spy={spy} />);
+  const option = screen.getByRole('option', { name: 'Alpha' });
+  const row = option.parentElement!;
+  expect(Array.from(row.children)).toEqual([option, screen.getByTestId('extra'), screen.getByRole('button', { name: 'Menu' })]);
+  await userEvent.click(screen.getByTestId('extra'));
+  await userEvent.click(screen.getByRole('button', { name: 'Menu' }));
+  expect(spy).not.toHaveBeenCalled();
+  await userEvent.click(row);
+  expect(spy).toHaveBeenCalledOnce();
+  expect(spy).toHaveBeenCalledWith(['a']);
+  expect(option).toHaveFocus();
+});
+
+test('a press on the empty part of a disabled row does nothing', async () => {
+  const spy = vi.fn();
+  render(<Harness initial={['a']} list={[{ value: 'a', text: 'Alpha', disabled: true, extra: <span>?</span> }, ...items.slice(1)]} spy={spy} />);
+  await userEvent.click(screen.getByRole('option', { name: 'Alpha' }).parentElement!);
+  expect(spy).not.toHaveBeenCalled();
+});
