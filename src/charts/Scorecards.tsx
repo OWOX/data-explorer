@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Calendar, EyeOff, Gauge } from 'lucide-react';
-import { AUTO, formatValue, keepsUnit, type Format } from '../format/formats';
+import { AUTO, formatValue, keepsUnit, type Format, type FormatOptions } from '../format/formats';
 import { isIntegerType } from '../model/field-category';
 import { AGG_LABELS, formatBucket, outputType, type AggFn, type DateBucket } from '../model/aggregation';
 import { fieldLabel } from '../model/fieldLabel';
@@ -181,11 +181,11 @@ function CardValue({ card, row, formatOf, shown, busy = false }: { card: Card; r
 }
 
 /** A metric's value as the grid shows it: the output type's format, with the column's own unit only where the function keeps it. No function (a calculated metric): the field's own type and format. */
-export function metricText(field: Field, fn: AggFn | null, v: unknown, formatOf: Formatter): string {
+export function metricText(field: Field, fn: AggFn | null, v: unknown, formatOf: Formatter, options?: FormatOptions): string {
   const [type, format] = metricFormat(field, fn, formatOf);
   // A float sum carries binary noise (116739.09999999996); 15 significant digits is float64's own precision (from 1e15 a float has real digits beyond that, so it is left). Strings are exact.
   const shown = typeof v === 'number' && Number.isFinite(v) && !Number.isInteger(v) && Math.abs(v) < 1e15 ? Number(v.toPrecision(15)) : v;
-  return formatValue(shown, type, format);
+  return formatValue(shown, type, format, options);
 }
 
 /** The output type of a metric and the format that keeps its unit: the column's own only where the function keeps it. */
@@ -198,7 +198,7 @@ export function metricFormat(field: Field, fn: AggFn | null, formatOf: Formatter
 const recordsText = (v: unknown): string => formatNumber(v) ?? String(v ?? '');
 
 /** A measure's value as text, whichever kind it is. */
-export const measureText = (m: Measure, v: unknown, formatOf: Formatter): string => (m.kind === 'metric' ? metricText(m.metric.field, m.metric.fn, v, formatOf) : recordsText(v));
+export const measureText = (m: Measure, v: unknown, formatOf: Formatter, options?: FormatOptions): string => (m.kind === 'metric' ? metricText(m.metric.field, m.metric.fn, v, formatOf, options) : recordsText(v));
 
 /** A measure's type and format, for an axis or a short value: Records are an integer count. */
 export const measureFormat = (m: Measure, formatOf: Formatter): [type: string, format: Format] => (m.kind === 'metric' ? metricFormat(m.metric.field, m.metric.fn, formatOf) : ['INTEGER', AUTO]);

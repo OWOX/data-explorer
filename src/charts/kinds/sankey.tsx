@@ -22,6 +22,8 @@ export const MISCONFIGURED_NOTE = 'This Sankey is misconfigured: pick at least 2
 export const cappedNote = (n: number): string => `Showing the largest ${n.toLocaleString('en-US')} combinations; smaller flows are left out.`;
 
 export const columnCappedNote = (n: number): string => `A column has ${n.toLocaleString('en-US')} or more values; its smallest ones are not counted in Other.`;
+/** The Sankey's numbers (labels, tooltips, the screen-reader table) drop the fraction above 10: shares and flows are read at a glance, not to the cent. */
+const SANKEY_TEXT = { whole: true } as const;
 export const FAN_OUT_NOTE = 'One record can sit in more than one ribbon here, so ribbons can add up to more than their column total.';
 
 /**
@@ -115,7 +117,7 @@ function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
     <ChartPanel title={title} name="Sankey" items={ready ? items : null} width={sankeyWidth(n)}
       loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})} empty={empty ? (short ? MISCONFIGURED_NOTE : data!.negative ? NEGATIVE_NOTE : emptyText(hasFilters)) : null}
       note={data && !data.negative ? [data.capped ? cappedNote(SANKEY_FLOW_LIMIT) : '', data.columnCapped ? columnCappedNote(SANKEY_COLUMN_LIMIT) : '', exact ? '' : FAN_OUT_NOTE].filter(Boolean).join(' ') || undefined : undefined}>
-      {data && <Sankey titles={dims.map((d) => axisTitle(cf, d))} columns={data.columns} flows={data.flows} fit={!exact} showShare={showShare} ariaLabel={title} text={(v) => measureText(measure, v, formatOf)}
+      {data && <Sankey titles={dims.map((d) => axisTitle(cf, d))} columns={data.columns} flows={data.flows} fit={!exact} showShare={showShare} ariaLabel={title} text={(v) => measureText(measure, v, formatOf, SANKEY_TEXT)}
         onPickNode={(col, key) => onFilter([dimensionFilter(dims[col]!, key)])}
         onPickLink={(pair, source, target) => onFilter([dimensionFilter(dims[pair]!, source), dimensionFilter(dims[pair + 1]!, target)])} />}
     </ChartPanel>

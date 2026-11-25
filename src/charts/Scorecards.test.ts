@@ -1,6 +1,6 @@
 import { AUTO } from '../format/formats';
 import type { Field } from '../model/types';
-import { cardDate, datedRows, isIntegerMeasure, metricText } from './Scorecards';
+import { cardDate, datedRows, isIntegerMeasure, measureText, metricText } from './Scorecards';
 
 const amount: Field = { name: 'amount', alias: null, type: 'FLOAT', category: 'number', description: null, isPrimaryKey: false };
 const text = (v: unknown) => metricText(amount, 'SUM', v, () => AUTO);
@@ -43,4 +43,14 @@ test('a card draws its trend on its own date when the mart shows it, else on the
   expect(cardDate(mart, spark, 'amount')).toBe(d2);
   expect(cardDate(mart, spark, 'gone')).toBe(d1);
   expect(cardDate(mart, spark, 'other')).toBe(d1);
+});
+
+test('whole: a measure text above 10 has no fraction, a records count and a float sum with noise are right', () => {
+  const m = { kind: 'metric', metric: { field: amount, fn: 'SUM' } } as Parameters<typeof measureText>[0];
+  expect(measureText(m, 9298.69, () => AUTO)).toBe('9,298.69');
+  expect(measureText(m, 9298.69, () => AUTO, { whole: true })).toBe('9,299');
+  expect(measureText(m, 116739.09999999996, () => AUTO, { whole: true })).toBe('116,739');
+  expect(measureText(m, 9.99, () => AUTO, { whole: true })).toBe('9.99');
+  expect(metricText(amount, 'SUM', 12.5, () => ({ kind: 'money', currency: 'USD' }), { whole: true })).toMatch(/^(US)?\$13$/);
+  expect(measureText({ kind: 'records', aliasPath: '', recordsId: 'r' }, 1234, () => AUTO, { whole: true })).toBe('1,234');
 });

@@ -430,3 +430,13 @@ test('sankey: a metric on a joined mart has no share on a main-mart column and k
   expect(await nodeTip(0)).not.toMatch(/%/);
   expect(await nodeTip(1)).toMatch(/\(\d+%\)$/);
 });
+
+test('sankey: a sum above 10 shows no fraction in its node tooltip, its ribbon tooltip and its screen-reader table', async () => {
+  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'], measure: 'amount' }] } });
+  await waitFor(() => expect(links().length).toBeGreaterThan(0));
+  expect(await nodeTip(0)).toMatch(/: [\d,]{2,}( \(\d+%\))?$/);
+  expect(await linkTip(0)).toMatch(/: [\d,]{2,}( \(\d+%\))?$/);
+  const cells = [...data().querySelectorAll('section[data-chart-kind="Sankey"] table.sr-only tbody tr td:last-child')].map((c) => c.textContent!);
+  expect(cells.length).toBeGreaterThan(0);
+  for (const c of cells) expect(c).not.toMatch(/\.\d/);
+});
