@@ -818,10 +818,10 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
     return pick.map((e) => getComputedStyle(e).borderRadius);
   });
   expect(radii.every((r) => r === '0px')).toBe(true);
-  // the column menu icon is 15px; the (i) and the active indicators stay 20% under the old 14px. The config button is an icon, and the tabs have no "N columns" badge.
+  // the column menu icon is 15px; the (i) and the active indicators stay 20% under the old 14px. The config button is labelled Configure, and the tabs have no "N columns" badge.
   const size = (l: Locator) => l.evaluate((e) => Math.round(e.getBoundingClientRect().width * 10) / 10);
   expect(await size(data.locator('[data-menu-icon] .dm-icon').first())).toBe(15);
-  await expect(configButton(page)).toBeVisible();
+  await expect(configButton(page)).toHaveText('Configure');
   await expect(data.getByRole('button', { name: /^Fields of / })).toHaveCount(0);
   expect(await size(data.locator('.dm-th .dm-col-info .dm-icon').first())).toBe(11.2);
   // no row highlight on hover
