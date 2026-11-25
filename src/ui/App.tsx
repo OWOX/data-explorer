@@ -141,6 +141,8 @@ function AppBody() {
   const { martId, sourceKey } = state.selection;
   useEffect(() => {
     if (!model || link.pending) return;
+    // Any selection before the first pick (a mart picked while the preferences load) settles the first visit.
+    if (martId || sourceKey) firstPick.current = false;
     // Nothing to fall back to (every ticked storage is empty): a selected mart that is gone leaves an empty selection.
     if (!focusId) {
       if (martId && !model.marts.has(martId)) dispatch({ type: 'replace', selection: { sourceKey: null, martId: null, record: null } });

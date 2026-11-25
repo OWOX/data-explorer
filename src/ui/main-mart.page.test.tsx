@@ -267,9 +267,28 @@ describe('the search box on a first visit', () => {
   test('a source-only view link: the button, and it stays so when the source is toggled off', async () => {
     await setup(undefined, { route: await encodeViewLink({ ...linkView, martId: null, sourceKey: SHOPIFY }) });
     await settled();
+    await waitFor(() => expect(box.latest.selection.sourceKey).toBe(SHOPIFY));
     await quiet();
     expect(combobox()).toBeNull();
     await act(async () => box.dispatch({ type: 'selectSource', key: SHOPIFY }));
+    await waitFor(() => expect(box.latest.selection.martId).not.toBeNull());
+    await quiet();
+    expect(combobox()).toBeNull();
+    expect(button()).not.toBeNull();
+  });
+
+  test('a mart picked while the preferences load settles the first visit: a source toggled on and off later does not open the box', async () => {
+    await setup({ martId: 'returns', sourceKey: SHOPIFY }, { delayMs: 600 });
+    await waitFor(() => expect(box.latest.selection.martId).toBeNull());
+    await pick('customers');
+    await waitFor(() => expect(box.latest.selection.martId).toBe('customers'));
+    await settled();
+    await quiet();
+    await act(async () => box.dispatch({ type: 'selectSource', key: SHOPIFY }));
+    await waitFor(() => expect(box.latest.selection.sourceKey).toBe(SHOPIFY));
+    expect(combobox()).toBeNull();
+    await act(async () => box.dispatch({ type: 'selectSource', key: SHOPIFY }));
+    await waitFor(() => expect(box.latest.selection.sourceKey).toBeNull());
     await quiet();
     expect(combobox()).toBeNull();
     expect(button()).not.toBeNull();
