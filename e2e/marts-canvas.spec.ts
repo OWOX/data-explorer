@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openFields } from './config-menu';
 
 test('canvas: add marts through ghosts, move countries from customers to stores, undo', async ({ page }) => {
   await page.goto('/?mock');
@@ -94,7 +95,7 @@ test('canvas: Countries under both Customers and Stores, × on a middle card kee
   await page.mouse.move(0, 0);
 });
 
-test('grid: the × on a middle mart header takes only its own columns; the Countries behind it keep theirs', async ({ page }) => {
+test('grid: Remove from report on a middle mart takes only its own columns; the Countries behind it keep theirs', async ({ page }) => {
   await page.goto('/?mock');
   const marts = page.locator('#band-marts');
   const data = page.locator('#band-data');
@@ -111,8 +112,9 @@ test('grid: the × on a middle mart header takes only its own columns; the Count
   await expect(data.locator('th[data-group="countries"]')).toHaveCount(1);
   await expect(data.locator('th[data-group="customers"]')).toHaveCount(1);
 
-  await data.locator('th[data-group="customers"]').hover();
-  await data.getByRole('button', { name: 'Remove Customers from the grid' }).click();
+  // Remove from report, in the config menu, takes only the mart's own place and columns.
+  const customers = await openFields(page, 'Customers');
+  await customers.getByRole('menuitem', { name: 'Remove from report' }).click();
   await expect(data.locator('th[data-group="customers"]')).toHaveCount(0);
   await expect(data.locator('th[data-group="countries"]')).toHaveCount(1);
   // Customers stays on the canvas as a bare card, joined, with Countries under it.

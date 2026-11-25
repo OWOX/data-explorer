@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { groupTitles } from './config-menu';
 
 // A slice on a joined column, driven with the real mouse like a member.
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
@@ -9,7 +10,7 @@ async function click(page: Page, loc: Locator) { const p = await centre(loc); aw
 async function addCustomers(page: Page) {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
-  await expect(data(page).getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
+  await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
 }
 async function openSub(page: Page, column: string, row: 'Filter' | 'Slice' | 'Aggregate') {
   const icon = data(page).getByLabel(`Column menu ${column}`, { exact: true });

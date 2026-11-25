@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { closeConfig, configButton, groupTitles, openConfig, openFields } from './config-menu';
 
 const band = (page: Page, id: 'sources' | 'marts' | 'data' | 'row') => page.locator(`#band-${id}`);
 const martCard = (page: Page, title: string) => band(page, 'marts').locator('article', { hasText: title }).first();
@@ -244,10 +245,10 @@ test('filter, reset, columns, a row fills the Row band, Back returns', async ({ 
   await expect(data.getByRole('row')).toHaveCount(5);
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(data.getByRole('row')).toHaveCount(202);
-  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
+  await openFields(page, 'Orders');
   await page.getByRole('option', { name: /amount/i }).click();
   await expect(data.getByRole('columnheader')).toHaveCount(7);
-  await page.keyboard.press('Escape');
+  await closeConfig(page);
   await data.getByRole('row').nth(2).click();
   const row = band(page, 'row');
   await expect(row.getByRole('heading', { name: /^Orders · 1$/ })).toBeVisible();
@@ -305,17 +306,17 @@ test('rows open newest date first, and Reset returns to it', async ({ page }) =>
   await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'ascending');
   await data.getByRole('button', { name: 'Reset' }).click();
   await expect(data.getByRole('columnheader', { name: /status/ })).toHaveAttribute('aria-sort', 'none');
-  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
+  await openFields(page, 'Orders');
   await page.getByRole('option', { name: /created_at/ }).click();
-  await page.keyboard.press('Escape');
+  await closeConfig(page);
   await expect(data.getByRole('columnheader', { name: /created_at/ })).toHaveAttribute('aria-sort', 'descending');
 });
 
 test('a date column filter opens on presets; a preset applies at once and names the filter', async ({ page }) => {
   const data = await ordersGrid(page);
-  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
+  await openFields(page, 'Orders');
   await page.getByRole('option', { name: /created_at/ }).click();
-  await page.keyboard.press('Escape');
+  await closeConfig(page);
   await openColumnSub(data, 'created_at', 'Filter');
   await expect(page.getByRole('menu', { name: 'Filter created_at', exact: true }).locator('[role^="menuitem"]')).toHaveCount(9);
   await page.getByRole('menuitemradio', { name: 'Last…' }).click();
@@ -426,13 +427,13 @@ test('selecting a joinable mart adds its first text column; the × removes it; r
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
 });
 
-test('removing the main group promotes the next joined one; a mart the main one cannot join becomes the main one through a search', async ({ page }) => {
+test('removing the main mart from the config menu promotes the next joined one; a mart the main one cannot join becomes the main one through a search', async ({ page }) => {
   const data = await ordersGrid(page);
   await martCard(page, 'Customers').click();
   await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders', 'Customers']);
-  // The x unfolds with its "N columns" badge.
-  await data.getByRole('button', { name: /^Fields of Orders:/ }).hover();
-  await data.getByRole('button', { name: 'Remove Orders from the grid' }).click();
+  // The group titles carry no x: Remove from report is in the config menu.
+  const orders = await openFields(page, 'Orders');
+  await orders.getByRole('menuitem', { name: 'Remove from report' }).click();
   await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Customers']);
   await expect(martCard(page, 'Customers')).toHaveAttribute('aria-pressed', 'true');
   await makeMainViaSearch(page, 'Sessions');
@@ -453,9 +454,9 @@ async function groupedSum(grid: Locator): Promise<string> {
 }
 
 async function tick(page: Page, label: string | RegExp, group?: string) {
-  await band(page, 'data').getByRole('button', { name: new RegExp(`^Fields of ${group ?? 'Orders'}:`) }).click();
+  await openFields(page, group ?? 'Orders');
   await page.getByRole('dialog').getByLabel(label, { exact: true }).click();
-  await page.keyboard.press('Escape');
+  await closeConfig(page);
 }
 
 test('a long value is clipped inside its column, the header line spans the card, and the full value is in the tooltip', async ({ page }) => {
@@ -501,8 +502,8 @@ test('the (?) after a field label shows only while its row is hovered', async ({
 });
 
 test('opening the Fields picker by mouse leaves every (?) hidden until a row is hovered', async ({ page }) => {
-  const data = await ordersGrid(page);
-  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
+  await ordersGrid(page);
+  await openFields(page, 'Orders');
   const dialog = page.getByRole('dialog');
   await page.mouse.move(2, 2);
   const slots = dialog.locator('.dm-hint-slot');
@@ -591,7 +592,7 @@ for (const width of [320, 360]) {
 test('a joined column: tick Customers · email in the picker, and it filters', async ({ page }) => {
   const data = await ordersGrid(page);
   await martCard(page, 'Customers').click();
-  await expect(data.getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
+  await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
   await tick(page, 'email', 'Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
   await expect(data.getByRole('row').nth(3)).toContainText('@example.com');
@@ -619,7 +620,7 @@ test('a table wider than the page scrolls inside its card and never widens the b
   await page.keyboard.press('Escape');
   await expect(martCard(page, 'Customers')).not.toHaveAttribute('data-focused', /.*/);
   await martCard(page, 'Products').click();
-  await expect(data.getByRole('button', { name: /^Fields of Products:/ })).toBeVisible();
+  await expect(groupTitles(page).filter({ hasText: 'Products' })).toHaveCount(1);
   await tick(page, 'email', 'Customers');
   await tick(page, 'is_gift');
   await martCard(page, 'Stores').click();
@@ -631,29 +632,29 @@ test('a table wider than the page scrolls inside its card and never widens the b
   expect(bd!.x + bd!.width).toBeLessThanOrEqual(1440);
 });
 
-test('a group row names each selected mart; the x on a joined group removes it and deselects its card', async ({ page }) => {
+test('a group row names each selected mart and has no x; Remove from report in the config menu removes a joined mart and deselects its card', async ({ page }) => {
   const data = await ordersGrid(page);
-  // one tab spanning the columns, no x while it is the only mart
+  // one tab spanning the columns
   await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders']);
-  await expect(data.getByRole('button', { name: 'Remove Orders from the grid' })).toHaveCount(0);
   await martCard(page, 'Customers').click();
   await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders', 'Customers']);
-  // The x sits on the joined mart's "N columns" badge: folded at rest, shown when the badge is hovered.
-  const x = data.getByRole('button', { name: 'Remove Customers from the grid' });
-  await expect(x).toHaveCSS('opacity', '0');
-  await data.getByRole('button', { name: /^Fields of Customers:/ }).hover();
-  await expect(x).toHaveCSS('opacity', '1');
-  await x.click();
+  // The tabs have no Fields button and no x, even when hovered.
+  await data.locator('thead tr[data-group-row] th[data-group]').nth(1).hover();
+  await expect(data.getByRole('button', { name: /^Fields of / })).toHaveCount(0);
+  await expect(data.getByRole('button', { name: /^Remove .* from the grid$/ })).toHaveCount(0);
+  const customers = await openFields(page, 'Customers');
+  await customers.getByRole('menuitem', { name: 'Remove from report' }).click();
   await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate').first()).toHaveText('Orders');
   await expect(data.locator('thead tr[data-group-row] th[data-group] .truncate')).toHaveText(['Orders']);
   await expect(martCard(page, 'Customers')).not.toHaveAttribute('aria-pressed', 'true');
 });
 
-test('the Fields picker is on each tab and lists only that mart; the toolbar has none', async ({ page }) => {
+test('the config menu lists each mart\'s own fields only; the tabs and the toolbar have no Fields or Columns button', async ({ page }) => {
   const data = await ordersGrid(page);
   await expect(data.getByRole('button', { name: /^Columns \(/ })).toHaveCount(0);
+  await expect(data.getByRole('button', { name: /^Fields of / })).toHaveCount(0);
   await martCard(page, 'Customers').click();
-  await data.getByRole('button', { name: /^Fields of Customers:/ }).click();
+  await openFields(page, 'Customers');
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText(/^Fields · /)).toHaveCount(0);
   await expect(dialog.getByRole('option')).toHaveCount(6);
@@ -686,7 +687,7 @@ test('a copied view link reopens the same view: mart, joined column, filter and 
   const data = await ordersGrid(page);
   // Two header rows (the mart tabs and the column titles), then the rows.
   await martCard(page, 'Customers').click();
-  await expect(data.getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
+  await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
   await tick(page, 'email', 'Customers');
   await expect(data.getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
   await openColumnSub(data, 'id', 'Filter');
@@ -817,10 +818,11 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
     return pick.map((e) => getComputedStyle(e).borderRadius);
   });
   expect(radii.every((r) => r === '0px')).toBe(true);
-  // the column menu icon is 15px; the (i) and the active indicators stay 20% under the old 14px. The Fields button is an "N columns" badge.
+  // the column menu icon is 15px; the (i) and the active indicators stay 20% under the old 14px. The config button is an icon, and the tabs have no "N columns" badge.
   const size = (l: Locator) => l.evaluate((e) => Math.round(e.getBoundingClientRect().width * 10) / 10);
   expect(await size(data.locator('[data-menu-icon] .dm-icon').first())).toBe(15);
-  await expect(data.getByRole('button', { name: /^Fields of Orders:/ })).toHaveText(/^\d+ columns?$/);
+  await expect(configButton(page)).toBeVisible();
+  await expect(data.getByRole('button', { name: /^Fields of / })).toHaveCount(0);
   expect(await size(data.locator('.dm-th .dm-col-info .dm-icon').first())).toBe(11.2);
   // no row highlight on hover
   const second = data.locator('tbody tr').nth(1).locator('td').first();
@@ -879,9 +881,9 @@ test('the grid looks like a sheet: square corners, small header icons, no hover 
 
 test('a numeric filter applied through the popover (> 400) leaves fewer rows', async ({ page }) => {
   const data = await ordersGrid(page);
-  await data.getByRole('button', { name: /^Fields of Orders:/ }).click();
+  await openFields(page, 'Orders');
   await page.getByRole('option', { name: /Amount/ }).click();
-  await page.keyboard.press('Escape');
+  await closeConfig(page);
   await expect(data.getByLabel('Column menu Amount')).toBeVisible();
   await openColumnSub(data, 'Amount', 'Filter');
   const dialog = page.getByRole('dialog');
@@ -991,11 +993,11 @@ test('full screen: the Data band alone fills the plugin area, its title stays, E
     const hit = document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 20));
     return hit && dlg.contains(hit) ? 'ok' : `blocked by ${hit?.tagName}.${hit?.className}`;
   });
-  await data.getByRole('button', { name: /^Fields of/ }).first().click();
-  const fields = page.getByRole('dialog');
-  await expect(fields).toBeVisible();
+  const menu = await openConfig(page);
+  expect(await onTop(menu)).toBe('ok');
+  const fields = await openFields(page, 'Orders');
   expect(await onTop(fields)).toBe('ok');
-  await page.keyboard.press('Escape');
+  await closeConfig(page);
   await expect(fields).toHaveCount(0);
   await data.getByText('Export', { exact: true }).click();
   const exportMenu = data.locator('details[open] [role=menu]').first();
@@ -1017,11 +1019,11 @@ test('full screen: the Data band alone fills the plugin area, its title stays, E
   await expect(cell).toHaveAttribute('data-selected', '');
 });
 
-test('the column menu icon is invisible at rest, shows on header hover and on keyboard focus, and stays on for a filtered column; the "N columns" badge is always shown', async ({ page }) => {
+test('the column menu icon is invisible at rest, shows on header hover and on keyboard focus, and stays on for a filtered column; the config button is always shown', async ({ page }) => {
   const data = await ordersGrid(page);
   const opacity = (l: Locator) => l.evaluate((el) => getComputedStyle(el).opacity);
   const menuIcon = data.getByLabel('Column menu id');
-  const fields = data.getByLabel(/^Fields of Orders:/);
+  const fields = configButton(page);
   await page.mouse.move(0, 0);
   await expect.poll(() => opacity(menuIcon)).toBe('0');
   await expect.poll(() => opacity(fields)).toBe('1');
