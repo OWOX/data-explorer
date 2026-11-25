@@ -117,3 +117,54 @@ test('a host that refuses to open the URL causes no unhandled rejection', async 
   await new Promise((r) => setTimeout(r, 0));
   expect(handled).toHaveBeenCalledTimes(1);
 });
+
+describe('a URL in the Row band', () => {
+  const band = () => { const open = linked(<CellValue row={{ page: URL_TEXT }} field="page" type="STRING" wrap />); return { open, link: screen.getByRole('link') }; };
+  const press = (link: HTMLElement, x: number, y = 5) => fireEvent.mouseDown(link, { button: 0, clientX: x, clientY: y });
+  const click = (link: HTMLElement, x: number, y = 5, init: object = {}) => fireEvent.click(link, { detail: 1, clientX: x, clientY: y, ...init });
+
+  test('can have its text selected: the link is not draggable and its text is selectable', () => {
+    const { link } = band();
+    expect(link).toHaveAttribute('draggable', 'false');
+    expect(link).toHaveClass('dm-cell-link-text');
+  });
+
+  test('a click that ends where the press began opens, a click after a drag opens nothing', () => {
+    const { open, link } = band();
+    press(link, 10); click(link, 12);
+    expect(open).toHaveBeenCalledTimes(1);
+    press(link, 10); expect(click(link, 60)).toBe(false);
+    press(link, 10); click(link, 10, 40);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('a click with no press seen, and a keyboard click, open', () => {
+    const { open, link } = band();
+    click(link, 300);
+    fireEvent.click(link, { detail: 0, clientX: 0, clientY: 0 });
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  test('a drag that leaves and comes back opens nothing, and the next plain click opens', () => {
+    const { open, link } = band();
+    press(link, 10); click(link, 10, 60);
+    expect(open).not.toHaveBeenCalled();
+    press(link, 10); click(link, 10);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('a shift-click opens nothing', () => {
+    const { open, link } = band();
+    press(link, 10); click(link, 10, 5, { shiftKey: true });
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  test('an old selection overlapping the link does not stop a click', () => {
+    const { open, link } = band();
+    const r = document.createRange(); r.selectNodeContents(link);
+    window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(r);
+    press(link, 10); click(link, 10);
+    expect(open).toHaveBeenCalledTimes(1);
+    window.getSelection()!.removeAllRanges();
+  });
+});

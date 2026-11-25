@@ -8,9 +8,14 @@ export async function bootContext(): Promise<Ctx | 'outside-host'> {
     const sheets = new URLSearchParams(location.search).get('sheets');
     // ?latency=3000 slows every read, as a real API does (default 250 ms).
     const latency = Number(new URLSearchParams(location.search).get('latency') ?? 250);
+    const demo = demoFixtures({ sheets: sheets === '0' || sheets === '1' ? Number(sheets) as 0 | 1 : 2 });
+    // ?urls makes every order's status a URL, and records the URLs the plugin opens in `window.__opened` (the e2e specs about links use it).
+    const urls = new URLSearchParams(location.search).has('urls');
+    const { withUrls, recordOpened } = await import('./mock/urls');
     // ?ai=0 is a project with no AI configured.
-    const ctx = createMockCtx(demoFixtures({ sheets: sheets === '0' || sheets === '1' ? Number(sheets) as 0 | 1 : 2 }), { latencyMs: Number.isFinite(latency) ? Math.max(0, latency) : 250, ai: new URLSearchParams(location.search).get('ai') !== '0' });
+    const base = createMockCtx(urls ? withUrls(demo) : demo, { latencyMs: Number.isFinite(latency) ? Math.max(0, latency) : 250, ai: new URLSearchParams(location.search).get('ai') !== '0' });
     // ?keyshown opens the orders grid with its key column, as it was before the key left the default columns (the e2e specs about that column use it).
+    const ctx = urls ? recordOpened(base) : base;
     if (new URLSearchParams(location.search).has('keyshown')) (await import('./mock/key-shown')).keyShown(ctx);
     return ctx;
   }

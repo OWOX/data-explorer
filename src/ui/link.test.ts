@@ -8,6 +8,9 @@ test.each([
   ['http://owox.com/a', 'https://owox.com/a'],
   // A redirect URL is one link; hosts that are real names, addresses or IDN stay links.
   ['https://a.com/?u=https://b.com', 'https://a.com/?u=https://b.com'],
+  // A list of URLs inside one query value is that parameter's own business.
+  ['https://a.com/x?urls=https://b.com,https://c.com', 'https://a.com/x?urls=https://b.com,https://c.com'],
+  ['https://a.com/x?u=https://b.com;https://c.com&v=1#top', 'https://a.com/x?u=https://b.com;https://c.com&v=1#top'],
   ['https://localhost:3000/a', 'https://localhost:3000/a'],
   ['https://127.0.0.1/a', 'https://127.0.0.1/a'],
   ['https://[::1]/a', 'https://[::1]/a'],
@@ -23,6 +26,16 @@ test.each([
   'http://owox.com:8080/a', 'https://google.com@evil.example/a',
   // Two URLs joined without a space; the `^` keeps a scheme from hiding behind another URL.
   'https://a.com/x,https://b.com/y', 'https://a.com/x;https://b.com/y', 'https://a.com/x|https://b.com/y', 'javascript:alert(1)//https://x', 'javascript://a.com/https://x',
+  // The first URL's own query is no URL, and a URL in a query value does not excuse a joined pair outside it.
+  'https://a.com/x?y=1,https://b.com/z', 'https://a.com/x,https://b.com/y?u=https://c.com',
   // A template or broken host.
   'https://{domain}/x', 'https://*.owox.com/', 'https://...', 'https://.a.com/', 'https://a..com/',
 ])('"%s" is no link', (text) => expect(linkOf(text)).toBeNull());
+
+test('a very long text is checked in linear time', () => {
+  for (const t of ['https://a.com/' + '?'.repeat(200_000), 'https://a.com/' + '&a'.repeat(100_000), 'https://a.com/?' + 'a'.repeat(200_000), 'https://a.com/?u=' + 'https://b.com,'.repeat(15_000)]) {
+    const start = performance.now();
+    linkOf(t);
+    expect(performance.now() - start).toBeLessThan(500);
+  }
+});

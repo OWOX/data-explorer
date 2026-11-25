@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import type { Row } from '../../sdk/types';
 import { formatNumber, formatTemporal, formatValue, isNumericType } from '../format';
 import { formatValue as formatAs, type Format } from '../../format/formats';
@@ -5,15 +6,25 @@ import { useServices } from '../../state/store';
 import { linkOf } from '../link';
 import { Tooltip, OverflowTip } from '../Tooltip';
 
-/** A cell's URL. It opens in a new tab through the host, since the plugin's frame has no popups. A shift-click, the click that ends a drag (the grid cancels it) and the second click of a double click open nothing. */
-function CellLink({ href, text, tabIndex }: { href: string; text: string; tabIndex?: number }) {
+/**
+ * A cell's URL. It opens in a new tab through the host, since the plugin's frame has no popups. A shift-click, the click that ends a drag (the grid cancels it)
+ * and the second click of a double click open nothing. In the Row band (`wrap`) the text can be selected by a drag: a click that ends more than 4 px from
+ * its press is the end of such a drag and opens nothing. That is decided by the pointer, not by the selection, so an old selection never blocks a click.
+ */
+function CellLink({ href, text, tabIndex, wrap }: { href: string; text: string; tabIndex?: number; wrap?: boolean }) {
   const { ctx } = useServices();
+  const pressed = useRef<{ x: number; y: number } | null>(null);
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="dm-cell-link" tabIndex={tabIndex} onClick={(e) => {
-      const cancelled = e.defaultPrevented || e.shiftKey || e.detail > 1;
-      e.preventDefault();
-      if (!cancelled) void ctx.ui.openExternal(href).catch(() => undefined);
-    }}>{text}</a>
+    <a href={href} target="_blank" rel="noopener noreferrer" className={wrap ? 'dm-cell-link dm-cell-link-text' : 'dm-cell-link'} tabIndex={tabIndex} draggable={wrap ? false : undefined}
+      onMouseDown={wrap ? (e) => { pressed.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null; } : undefined}
+      onClick={(e) => {
+        const from = pressed.current;
+        pressed.current = null;
+        const dragged = wrap && e.detail > 0 && !!from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 4;
+        const cancelled = e.defaultPrevented || e.shiftKey || e.detail > 1 || dragged;
+        e.preventDefault();
+        if (!cancelled) void ctx.ui.openExternal(href).catch(() => undefined);
+      }}>{text}</a>
   );
 }
 
@@ -26,7 +37,7 @@ export function CellValue({ row, field, type, wrap = false, format }: { row: Row
   const raw = formatValue(row[field]);
   const href = linkOf(raw);
   if (href) {
-    if (wrap) return <span><CellLink href={href} text={raw} /></span>;
+    if (wrap) return <span><CellLink href={href} text={raw} wrap /></span>;
     // The grid is one Tab stop: its links stay out of the Tab order.
     return <OverflowTip text={raw}><span className="block truncate"><CellLink href={href} text={raw} tabIndex={-1} /></span></OverflowTip>;
   }

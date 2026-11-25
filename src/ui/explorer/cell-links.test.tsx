@@ -153,3 +153,54 @@ test('Enter does nothing on a cell without a URL, a block, a column or a row', a
   expect(fireEvent.keyDown(root(), { key: 'Enter' })).toBe(true);
   expect(open).not.toHaveBeenCalled();
 });
+
+/** Selects the text of an element, as a right click on a link does on macOS. */
+const selectText = (el: Node) => { const r = document.createRange(); r.selectNodeContents(el); window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(r); };
+const textRange = () => window.getSelection()!.rangeCount > 0 && !window.getSelection()!.isCollapsed;
+afterEach(() => window.getSelection()!.removeAllRanges());
+
+test('text a right click selected in the grid is cleared when an arrow key moves the selection', async () => {
+  await setup();
+  select(cellOf(links()[0]!));
+  selectText(links()[0]!);
+  press(root(), 'ArrowDown');
+  expect(textRange()).toBe(false);
+});
+
+test('text selected in the grid is cleared by a click on another cell and by a header click', async () => {
+  await setup();
+  selectText(links()[0]!);
+  select(cellOf(links()[1]!));
+  expect(textRange()).toBe(false);
+  selectText(links()[0]!);
+  fireEvent.click(data().querySelector('th.dm-letter')!);
+  expect(textRange()).toBe(false);
+});
+
+test('text selected before the grid mounted or outside it is left alone, and a plain re-render does not clear a range', async () => {
+  await setup();
+  select(cellOf(links()[0]!));
+  const outside = document.createElement('p');
+  outside.textContent = 'elsewhere';
+  document.body.appendChild(outside);
+  selectText(outside);
+  press(root(), 'ArrowDown');
+  expect(textRange()).toBe(true);
+  outside.remove();
+  // A range the reader makes after the last selection change is theirs: the copy stays the browser's.
+  selectText(links()[1]!);
+  fireEvent.scroll(root());
+  expect(textRange()).toBe(true);
+});
+
+test('text inside a field in the grid is left alone when the selection moves', async () => {
+  await setup();
+  select(cellOf(links()[0]!));
+  const box = document.createElement('textarea');
+  box.textContent = 'typed';
+  root().appendChild(box);
+  selectText(box.firstChild!);
+  press(root(), 'ArrowDown');
+  expect(textRange()).toBe(true);
+  box.remove();
+});
