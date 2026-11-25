@@ -17,7 +17,7 @@ const isScore = (q: TraverseOptions) => !!(q.uniqueCount?.length || q.aggregatio
   && !(!q.filter && !q.uniqueCount && q.aggregation?.length === 1 && q.aggregation[0]!.function === 'COUNT');
 
 // Every traverseData call is a billed warehouse run: the match badge on the cards has no query of its own, it rides on the scorecard read.
-function setup(grid: GridState, opts: { charts?: ChartSettings; fail?: (o: TraverseOptions) => boolean; /** Marts that lose their primary key. */ noKey?: string[]; /** Adds a JSON field to Orders, which cannot be grouped. */ json?: boolean; /** Adds a calculated metric `margin` to Orders. */ calc?: boolean; /** Replaces the total row count of a read of Orders. */ total?: (o: TraverseOptions) => number | undefined } = {}) {
+function setup(grid: GridState, opts: { charts?: ChartSettings; fail?: (o: TraverseOptions) => boolean; /** Marts that lose their primary key. */ noKey?: string[]; /** Adds a JSON field to Orders, which cannot be grouped. */ json?: boolean; /** Adds a calculated metric `margin` to Orders. */ calc?: boolean; /** Replaces the total row count of a read of Orders. */ total?: (o: TraverseOptions) => number | undefined; /** Reads that answer after this many ms. */ slow?: (o: TraverseOptions) => boolean } = {}) {
   const fixtures = structuredClone(demoFixtures());
   for (const m of fixtures.marts) if (opts.noKey?.includes(m.id)) for (const f of m.fields) f.isPrimaryKey = false;
   if (opts.calc) fixtures.marts.find((m) => m.id === 'orders')!.fields.push({ name: 'margin', type: 'NUMERIC', alias: 'Margin', calculated: { level: 'metric' } } as never);
@@ -27,7 +27,7 @@ function setup(grid: GridState, opts: { charts?: ChartSettings; fail?: (o: Trave
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const ctx: Ctx = {
     ...base,
-    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('read failed')); const n = id === 'orders' ? opts.total?.(o) : undefined; return n !== undefined && o.includeTotalRowCount ? real(id, o).then((r) => ({ ...r, totalRowCount: n })) : real(id, o); } } },
+    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('read failed')); const n = id === 'orders' ? opts.total?.(o) : undefined; const done = n !== undefined && o.includeTotalRowCount ? real(id, o).then((r) => ({ ...r, totalRowCount: n })) : real(id, o); return id === 'orders' && opts.slow?.(o) ? new Promise((res) => setTimeout(res, 250)).then(() => done) : done; } } },
   };
   function Probe() {
     const [, dispatch] = useStore();
@@ -358,6 +358,7 @@ test('Refresh sends one new scorecard read', async () => {
 test('after the grid\'s own read failed, Table sends no scorecard read', async () => {
   const t = setup(mainOnly, { fail: (o) => o.limit === 201 });
   await t.mount();
+  await waitFor(() => expect(within(data()).getByRole('alert')).toBeInTheDocument());
   await calm();
   await calm();
   expect(t.scoreReads()).toHaveLength(0);
@@ -400,20 +401,63 @@ test('Charts with a filter, a HAVING filter and a mart kept with no column: the 
   expect(t.scoreReads().every((q) => !q.uniqueCount?.includes('products'))).toBe(true);
 });
 
-test('with a joined mart and the grid\'s own read failed: no scorecard read once it has failed, also after a mart is removed', async () => {
-  const t = setup(withProducts, { fail: (o) => o.limit === 201 });
+const twoJoined: GridState = { ...withProducts, columns: [...withProducts.columns, 'customers__city'] };
+const alert = () => within(data()).getByRole('alert');
+const retry = () => userEvent.click(within(alert()).getByRole('button', { name: 'Retry' }));
+
+test('two joined marts, the grid and the score both fail: removing one sends no new score read, and clearing the error sends exactly one', async () => {
+  let broken = true;
+  const t = setup(twoJoined, { fail: (o) => broken && (o.limit === 201 || isScore(o)) });
   await t.mount();
+  await waitFor(() => expect(alert()).toBeInTheDocument());
   await calm();
-  await calm();
-  // With a joined mart the scorecard read goes out beside the grid's, so it may already be on its way when the grid's read fails; none follows.
   const before = t.scoreReads().length;
   expect(before).toBeLessThanOrEqual(1);
   await openFields('Products');
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove from report' }));
   await closeConfigMenu();
+  await waitFor(() => expect(alert()).toBeInTheDocument());
   await calm();
   await calm();
   expect(t.scoreReads()).toHaveLength(before);
+  broken = false;
+  await retry();
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  await calm();
+  expect(t.scoreReads()).toHaveLength(before + 1);
+});
+
+test('a slow score and a grid that fails first: one score read, the badge appears, and Charts adds none', async () => {
+  const t = setup(withProducts, { fail: (o) => o.limit === 201, slow: isScore });
+  await t.mount();
+  await waitFor(() => expect(alert()).toBeInTheDocument());
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  expect(t.scoreReads()).toHaveLength(1);
+  await userEvent.click(radio('Charts'));
+  await waitFor(() => expect(data().querySelector('td[data-chart-group="orders"]')).not.toBeNull());
+  await calm();
+  expect(t.scoreReads()).toHaveLength(1);
+});
+
+test('a known badge survives a grid failure, and Retry adds no score read', async () => {
+  let broken = false;
+  const t = setup(withProducts, { fail: (o) => broken && o.limit === 201 });
+  await t.mount();
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  const known = badge('orders');
+  expect(t.scoreReads()).toHaveLength(1);
+  broken = true;
+  await userEvent.click(within(data()).getByRole('button', { name: /^Sort by id,/ }));
+  await waitFor(() => expect(alert()).toBeInTheDocument());
+  await calm();
+  expect(badge('orders')).toBe(known);
+  expect(t.scoreReads()).toHaveLength(1);
+  broken = false;
+  await retry();
+  await waitFor(rowsShown);
+  await calm();
+  expect(badge('orders')).toBe(known);
+  expect(t.scoreReads()).toHaveLength(1);
 });
 
 test('Remove from report: a total counted by a read that joined the removed mart is not the main mart\'s count', async () => {

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { readRows } from '../api/rows';
 import { perCtx } from '../sdk/per-ctx';
 import type { Ctx, Row, TraverseOptions } from '../sdk/types';
 import { useServices } from '../state/store';
+import { useLatest } from '../ui/useLatest';
 import { answers, partsOf, stable, type JoinGrain, type QueryParts } from './answers';
 
 export type ChartResult = { rows: Row[] | null; error: unknown; loading: boolean; retry: () => void };
@@ -45,10 +46,14 @@ function lookup(ctx: Ctx, key: string, martId: string, version: number, asked: Q
  * With `joins`, a cached read for a superset of this query answers it with no read (a card whose column was dropped keeps its value);
  * without it only an identical query is served from the cache.
  * `reuse` (with `joins`) is a smaller ask that is enough: when no read answers `options` but one answers `reuse`, its rows are served and nothing is sent.
+ * `hold` keeps a read that is not under way from starting (a cache hit or a flight is still used); it starts when the hold ends, if the key is still the same.
  */
-export function useChartQuery(martId: string, options: TraverseOptions | null, version: number, joins?: JoinGrain, reuse?: TraverseOptions | null): ChartResult {
+export function useChartQuery(martId: string, options: TraverseOptions | null, version: number, joins?: JoinGrain, reuse?: TraverseOptions | null, hold = false): ChartResult {
   const { ctx } = useServices();
   const [attempt, setAttempt] = useState(0);
+  const held = useLatest(hold);
+  // The key whose read was held back, so the end of the hold can start it.
+  const skipped = useRef<string | null>(null);
   const key = options ? `${martId}:${version}:${stable(options)}` : null;
   // The ask's parts are split once per key, not on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -73,6 +78,7 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
     }
     const inflight = flightsOf(ctx);
     let flight = inflight.get(key);
+    if (!flight && held.current) { skipped.current = key; return; }
     if (!flight) {
       const controller = new AbortController();
       const promise = readRows(ctx, martId, options, { signal: controller.signal });
@@ -102,6 +108,13 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
     // `key` stands for martId, version and options.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx, key, attempt]);
+
+  useEffect(() => {
+    if (hold || !key || skipped.current !== key) return;
+    skipped.current = null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the held read starts now
+    setAttempt((n) => n + 1);
+  }, [hold, key]);
 
   const retry = useCallback(() => {
     setState({ key: null, rows: null, error: null });

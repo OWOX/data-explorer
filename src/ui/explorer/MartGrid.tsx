@@ -436,6 +436,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   // Table or charts. The page (the switch, Undo, a view link) changes it; it is saved with the rest of the view.
   const [view, setView] = useState<GridState['view']>(() => seed.saved?.view);
   const [ownVersion, setVersion] = useState(0);
+  // Retry on the grid's error box re-reads the rows only: it must not change the version, which is part of every chart key.
+  const [rowsRetry, setRowsRetry] = useState(0);
   // Set by a change the member makes to what the grid shows (a filter, a sort, an aggregation, columns, Reset): the save that follows is one Undo step.
   // Paging, seeding and what is adopted from the page are not edits. The counter is bumped in the handler that makes the change, so both
   // land in one render; the save effect compares it with the last value it saw (an edit that changed nothing saves an identical grid the store drops).
@@ -630,7 +632,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     return () => ro?.disconnect();
   }, [charts]);
   const calculated = useMemo(() => new Set(schema.filter((f) => f.isCalculated).map((f) => f.name)), [schema]);
-  const { rows: read, loading: reading, error, hasMore, run, errorRunId, total, counted } = useMartRows(martId, asked, version, charts, !!asked?.column?.some((c) => calculated.has(c)) || !!asked?.filter?.some((r) => calculated.has(r.column)));
+  const { rows: read, loading: reading, error, hasMore, run, errorRunId, total, counted } = useMartRows(martId, asked, version + rowsRetry, charts, !!asked?.column?.some((c) => calculated.has(c)) || !!asked?.filter?.some((r) => calculated.has(r.column)));
   const rows = blocked || charts ? null : read;
   const loading = reading && !blocked && !charts;
   const byName = useMemo(() => new Map(schema.map((f) => [f.name, f])), [schema]);
@@ -1004,11 +1006,11 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     && (counted.total === null || counted.columns.every((c) => !byName.get(c)?.joined));
   const settled = !paused && asked === query && !reading;
   // Table asks the scorecard query only when the grid's count cannot answer: not while its read is under way, not after it failed, and not when it came with a count.
-  const needsRead = counts && (charts ? chartable : !error && !(ownTotal && (!settled || counted.total !== null)));
+  const needsRead = counts && (charts ? chartable : !(ownTotal && (!settled || counted.total !== null || error)));
   const joinGrain = useMemo(() => joinGrainOf(sources, metricNames), [sources, metricNames]);
   const scoreOptions = !paused && !blocked && sourcesRead && needsRead ? full : null;
   // Table first looks for the counts alone in a read it already has (another number column or function does not change them); Charts need their own cards.
-  const score = useChartQuery(martId, scoreOptions, version, joinGrain, !charts && scoreOptions ? countsOf(scoreOptions) : null);
+  const score = useChartQuery(martId, scoreOptions, version, joinGrain, !charts && scoreOptions ? countsOf(scoreOptions) : null, !charts && !!error);
   const matched = useMemo(() => {
     if (!applies || havingSet || paused || blocked) return NO_MATCH;
     if (ownTotal && counted.total !== null) return new Map([['', counted.total]]);
@@ -1197,7 +1199,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
           {charts ? <ChartsBody pruneRef={pruneCards} blockedNote={blocked ? blockedText(blocked) : null} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} pathMarts={pathMarts} renderConfig={renderConfig} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} kept={keptUnique} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} onShowColumns={showColumns} />
           : <tbody>
             {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{blockedText(blocked)}</td></tr>
-              : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>
+              : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setRowsRetry((v) => v + 1)} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>
               : !rows ? <tr><Gutter /><td colSpan={outputs.length + 1}><Skeleton rows={8} /></td></tr>
               : rows.length === 0 ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground">{emptyText(hasFilters)}</td></tr>
               : table.getRowModel().rows.map((r, ri) => <GridRow key={r.id} row={r.original} ri={ri} columns={columnViews} marks={marksOf(ri)} acts={rowActs} clickable={clickable} />)}
