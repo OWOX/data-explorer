@@ -170,7 +170,7 @@ test('the empty Add chart row names what is missing: a number when no measure is
   const change = vi.fn();
   const noteOf = (c: ChartFields) => {
     const add = addChartItem({ cf: c, change });
-    return add.kind === 'group' ? add.items.map((i) => [i.label, i.kind === 'action' && i.disabled]) : null;
+    return add.kind === 'group' ? add.items.map((i) => [i.label, i.kind === 'action' && i.note]) : null;
   };
   const bare = { aliasPath: '', recordsId: 'records:orders', title: '', hasPk: false, metrics: [], dates: [], dimensions: [] };
   expect(noteOf({ marts: [{ ...bare, dimensions: [dim] }], dates: [], dimensions: [dim], counter: null })).toEqual([['Show a number column to chart it.', true]]);

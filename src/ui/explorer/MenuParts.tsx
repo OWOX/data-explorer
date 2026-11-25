@@ -94,7 +94,7 @@ export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onP
   }, [place]);
   useEffect(() => {
     if (!focusSeq || !pos) return;
-    // The first row that can take focus; a panel of nothing but a disabled note takes it itself, so it never falls back to the page.
+    // The first row that can take focus; a panel with nothing focusable takes it itself, so focus never falls back to the page.
     const first = [...(el.current?.querySelectorAll<HTMLElement>(`${ITEM}, input, select, button`) ?? [])].find((n) => !(n as HTMLButtonElement).disabled);
     (first ?? el.current)?.focus({ preventScroll: true });
   }, [focusSeq, pos !== null]); // eslint-disable-line react-hooks/exhaustive-deps

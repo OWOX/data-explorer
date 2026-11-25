@@ -2,15 +2,15 @@ import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
 /** A badge at rest: 1px border, 4px padding each side, a 12px icon. Kept in step with `.dm-rule-badge` in bands.css. */
 export const BADGE_REST = 22;
-/** The icon an unfolded badge drops for its label. */
-const ICON = 12;
+/** The border and padding an unfolded badge keeps around its label: 1px border and 6px padding each side. */
+const UNFOLDED_FRAME = 14;
 
 /**
- * How much wider than its rest width the widest badge gets unfolded: its label, less the icon it hides.
+ * How much wider than its rest width the widest badge gets unfolded: its label and frame, less its rest width.
  * The title cell reserves this much, so one unfolded badge never widens the column.
  */
 export function unfoldExtra(labels: number[]): number {
-  return Math.max(0, ...labels.map((label) => label - ICON));
+  return Math.max(0, ...labels.map((label) => UNFOLDED_FRAME + label - BADGE_REST));
 }
 
 /**

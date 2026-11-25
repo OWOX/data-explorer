@@ -328,6 +328,24 @@ describe('the data mart title row', () => {
     await waitFor(() => expect(t.state.current!.grids['orders']?.filters.customers__city?.value).toBe('Kyiv'));
   });
 
+  test('Clear removes every rule of the mart in one Undo step, filters on fields that are not shown included', async () => {
+    const t = setup({ columns: ['id', 'customers__city'], filters: { customers__city: { field: 'customers__city', op: 'eq', value: 'Kyiv' }, customers__country_code: { field: 'customers__country_code', op: 'eq', value: 'UA' } }, sorts: null, limit: 200 });
+    await clearList(/^2 filters in /, /^Filters in /);
+    await waitFor(() => expect(t.state.current!.grids['orders']?.filters).toEqual({}));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(Object.keys(t.state.current!.grids['orders']?.filters ?? {}).sort()).toEqual(['customers__city', 'customers__country_code']));
+  });
+
+  test('Clear on the slice badge removes all its slices in one Undo step and focuses the filter badge', async () => {
+    const t = setup({ columns: ['id', 'customers__city'], filters: { status: { field: 'status', op: 'eq', value: 'paid' }, customers__city: { field: 'customers__city', op: 'eq', value: 'Kyiv' } }, slices: { customers__country_code: slice, customers__city: { field: 'customers__city', op: 'eq', value: 'Kyiv' } }, sorts: null, limit: 200 });
+    const cell = (await screen.findByRole('button', { name: /^2 slices in / })).closest('th')!;
+    await clearList(/^2 slices in /, /^Slices in /);
+    await waitFor(() => expect(Object.keys(t.state.current!.grids['orders']?.slices ?? {})).toEqual([]));
+    await waitFor(() => expect(document.activeElement).toBe(within(cell).getByRole('button', { name: /^1 filter in / })));
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(Object.keys(t.state.current!.grids['orders']?.slices ?? {}).sort()).toEqual(['customers__city', 'customers__country_code']));
+  });
+
   test('the keyboard reaches Clear and Enter clears', async () => {
     const t = setup(hidden);
     const badge = await screen.findByRole('button', { name: /^1 filter in / });

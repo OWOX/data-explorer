@@ -40,7 +40,7 @@ export function dropPicksOf(cur: ChartSettings, hidden: ReadonlySet<string>): Ch
 /** The config menu's Add chart row: a radio of the chart kinds the shown columns allow. */
 export function addChartItem({ cf, change }: { cf: ChartFields; change: Change }): MenuItem {
   // The row is always there, so the rows around it keep their places: with no kind to add, its submenu says what is missing.
-  if (eligibleKinds(cf).length === 0) return { kind: 'group', label: 'Add chart', icon: Plus, items: [{ kind: 'action', label: measuresOf(cf).length > 0 ? 'Show a text or date column to chart it.' : 'Show a number column to chart it.', icon: ChartColumn, disabled: true, onPick: () => undefined }] };
+  if (eligibleKinds(cf).length === 0) return { kind: 'group', label: 'Add chart', icon: Plus, items: [{ kind: 'action', label: measuresOf(cf).length > 0 ? 'Show a text or date column to chart it.' : 'Show a number column to chart it.', icon: ChartColumn, note: true, onPick: () => undefined }] };
   return {
     kind: 'radio', label: 'Add chart', icon: Plus, value: '',
     options: eligibleKinds(cf).map((k) => ({ value: k.kind, label: k.label, icon: k.icon })),

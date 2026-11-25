@@ -510,7 +510,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-row:disabled { color: var(--menu-muted); opacity: .5; cursor: default; background: transparent; }
 /* A note is the panel's only text, not an unavailable action: full muted colour, no hover fill. */
 .dm-menu-note, .dm-menu-note:hover { color: var(--menu-muted); cursor: default; background: transparent; }
-.dm-menu-note:focus-visible { background: var(--menu-hover); }
+.dm-menu-note:focus-visible { background: var(--menu-hover); color: var(--menu-fg); }
 .dm-menu-icon { display: inline-flex; width: 18px; height: 18px; flex-shrink: 0; align-items: center; justify-content: center; margin-right: 4px; box-sizing: border-box; border: 1px solid var(--sheet-green); border-radius: 3px; background: transparent; color: var(--sheet-green); }
 .dm-menu-icon svg { width: 12px; height: 12px; }
 .dm-menu-icon[data-on] { background: var(--sheet-green); color: var(--sheet-green-fg); }
@@ -818,7 +818,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-badge-label { display: inline-block; max-width: 0; overflow: hidden; opacity: 0; transition: max-width 150ms, opacity 150ms; }
 .dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) { background: color-mix(in srgb, var(--sheet-green) 12%, transparent); }
 .dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .dm-badge-icon { display: none; }
-.dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .dm-rule-badge-text { padding: 0 2px 0 6px; }
+.dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .dm-rule-badge-text { padding: 0 6px; }
 .dm-rule-badge:is(:hover, :has(:focus-visible), :has([aria-expanded='true'])) .dm-badge-label { max-width: 8rem; opacity: 1; }
 /* Room for every badge at rest (22px each, BADGE_REST in badgeReserve.tsx) and the widest one unfolded: hovering one never widens the column. */
 .dm-badges { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; min-width: calc(var(--badge-count, 0) * 22px + max(var(--badge-count, 1) - 1, 0) * 4px + var(--badge-extra, 0px)); }
