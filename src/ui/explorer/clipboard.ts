@@ -23,6 +23,7 @@ export async function copyText(text: string): Promise<boolean> {
     return false;
   } finally {
     box.remove();
-    if (before instanceof HTMLElement) before.focus();
+    // An SVG element (a chart node) has `focus` too, so it is not only an HTMLElement that gets focus back.
+    if (before && before !== document.body && typeof (before as { focus?: unknown }).focus === 'function') (before as HTMLElement).focus();
   }
 }

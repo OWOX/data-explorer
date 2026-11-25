@@ -1,5 +1,5 @@
 import { useId, useCallback, useEffect, useMemo, useRef, type KeyboardEvent, type SyntheticEvent } from 'react';
-import { Tooltip } from '../../ui/Tooltip';
+import { HoverableTooltipProvider, Tooltip } from '../../ui/Tooltip';
 import { CutLabel } from './CutLabel';
 import { BLANK_COLOR, thinColor, labelOf, OTHER_KEY } from '../blank';
 import { BlankDefs, blankFill } from './BlankPattern';
@@ -18,7 +18,7 @@ const clip = (text: string, max: number): string => (text.length <= max ? text :
 /**
  * Columns of nodes joined by ribbons. `columns[c]` are column c's nodes with their exact totals; `flows[i]` are the flows from column i to i+1
  * (a ribbon takes the colour of its first-column node); `text` formats a value. A node click gives its column and key, a ribbon click its pair and both keys;
- * "Other" is never clickable. Node, cut-label and ribbon tooltips can be entered with the pointer and copied (a corner button); node and label ones open on the right. Hover never re-renders: it sets `data-hot` on the svg and `is-on` / `is-hot` on the lit elements, and charts.css does the dimming. Only nodes are tab stops: ribbons answer the mouse, and the screen-reader table lists them.
+ * "Other" is never clickable. Node and cut-label tooltips open on the right, can be entered with the pointer and copied (a corner button); ribbon tooltips are plain ones on top. Hover never re-renders: it sets `data-hot` on the svg and `is-on` / `is-hot` on the lit elements, and charts.css does the dimming. Only nodes are tab stops: ribbons answer the mouse, and the screen-reader table lists them.
  */
 export function Sankey({ titles, columns, flows, fit, ribbonShare, text, ariaLabel, onPickNode, onPickLink }: {
   titles: string[]; columns?: NodeSize[][]; flows: Flow[][]; /** Fan-out mode: ribbons that add up to more than their node are scaled to fit it. */ fit?: boolean; /** Per column: false where the column's values overlap (a join repeats a record), so a ribbon that touches it has no percent of its pair's total. Absent shows it. A node's share is of the drawn column's values added up and is always shown. */ ribbonShare?: boolean[]; text: (value: number) => string; ariaLabel: string;
@@ -70,7 +70,7 @@ export function Sankey({ titles, columns, flows, fit, ribbonShare, text, ariaLab
       const pct = ribbonShare?.[l.pair] === false || ribbonShare?.[l.pair + 1] === false ? '' : ` (${Math.round((l.value / (totals[l.pair] || 1)) * 100)}%)`;
       const tip = `${nodeName(l.source)} → ${nodeName(l.target)}${l.pair > 0 && l.origin !== undefined ? ` (from ${originName(l.origin)})` : ''}: ${text(l.value)}${pct}`;
       return (
-        <Tooltip key={linkKey(l)} content={tip} copyText={tip}>
+        <Tooltip key={linkKey(l)} content={tip}>
           <path className="dm-sankey-link" data-link={`${l.pair}|${l.source}|${l.target}${l.pair > 0 && l.origin !== undefined ? `|${l.origin}` : ''}`} data-from={`${l.pair}|${l.source}`} data-to={`${l.pair + 1}|${l.target}`} d={l.path} fill={thinColor(colorOf(l.tone))} {...hoverLink} {...pick} />
         </Tooltip>
       );
@@ -80,6 +80,7 @@ export function Sankey({ titles, columns, flows, fit, ribbonShare, text, ariaLab
   // Before the width is measured there is nothing to draw on.
   if (!drawable) return <div ref={ref} className="dm-sankey" />;
   return (
+    <HoverableTooltipProvider>
     <div ref={ref} className="dm-sankey">
       <svg ref={root} role={onPickNode || onPickLink ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${Math.max(120, width)} ${height}`}>
         {titles.map((t, c) => <CutLabel key={c} full={t} shown={clip(t, roomChars + 6)} className="dm-chart-axis-title" x={c * step} y={12} textAnchor="start" />)}
@@ -114,5 +115,6 @@ export function Sankey({ titles, columns, flows, fit, ribbonShare, text, ariaLab
         <tbody>{layout.links.map((l) => <tr key={linkKey(l)}><td>{colTitle(l.pair)} → {colTitle(l.pair + 1)}</td><td>{originCell(l)}</td><td>{nodeName(l.source)}</td><td>{nodeName(l.target)}</td><td>{text(l.value)}</td></tr>)}</tbody>
       </table>
     </div>
+    </HoverableTooltipProvider>
   );
 }

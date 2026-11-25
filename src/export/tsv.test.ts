@@ -1,6 +1,6 @@
 import type { Field } from '../model/types';
 import { displayText } from '../ui/format';
-import { buildTsv as build, cellText, tsvColumns } from './tsv';
+import { buildTsv as build, cellText, copySafe, tsvColumns } from './tsv';
 
 const buildTsv = (fields: Parameters<typeof tsvColumns>[0], rows: Parameters<typeof build>[1]) => build(tsvColumns(fields), rows);
 
@@ -119,4 +119,16 @@ test('a data mart\'s Unique Count is a column after that mart\'s own columns, he
   const columns = tsvColumns(fields, undefined, ['', 'customers']);
   expect(columns.map((c) => c.key)).toEqual(['status', 'Unique Count', 'customers__city', 'customers__unique_count']);
   expect(build(columns, [{ status: 'paid', 'Unique Count': 1234, customers__city: 'Kyiv', customers__unique_count: 5 }])).toBe('status\tUnique Count\tCustomers · city\tCustomers · Unique Count\npaid\t1234\tKyiv\t5');
+});
+
+test('copySafe: the grid\'s clean and guard on a bare string, no quoting', () => {
+  expect(copySafe('=HYPERLINK("http://x","y")')).toBe('\'=HYPERLINK("http://x","y")');
+  expect(copySafe('+1 a')).toBe("'+1 a");
+  expect(copySafe('-x')).toBe("'-x");
+  expect(copySafe('@x')).toBe("'@x");
+  expect(copySafe("'x")).toBe("''x");
+  expect(copySafe('a\tb\r\nc\nd')).toBe('a b c d');
+  expect(copySafe('\t=1')).toBe(cellText('\t=1'));
+  expect(copySafe('Paid: $9,299 (23%)')).toBe('Paid: $9,299 (23%)');
+  expect(copySafe('-1,223.5')).toBe('-1,223.5');
 });

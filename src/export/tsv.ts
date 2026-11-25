@@ -17,6 +17,9 @@ const guard = (t: string) => (/^[=+\-@']/.test(t) && !PLAIN_NUMBER.test(t) ? `'$
 const quote = (t: string) => (t.includes('"') ? `"${t.replace(/"/g, '""')}"` : t);
 const field = (s: string) => quote(guard(clean(s)));
 
+/** Text for a bare clipboard copy: the grid's `clean` and `guard` (no tab, line break or formula start), without the quoting a pasted tab-separated cell needs. */
+export const copySafe = (s: string): string => guard(clean(s));
+
 /** One cell as the grid shows it (numbers ungrouped), whole, with no tab or line break left in it, no formula start and quotes escaped. */
 // Numbers are copied as plain digits, not grouped as the grid shows them: see displayText.
 export const cellText = (v: unknown, type?: string): string => field(displayText(v, type, { group: false }));

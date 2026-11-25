@@ -306,7 +306,7 @@ test('with ribbonShare absent every ribbon shows its percent', async () => {
 });
 
 
-// The tooltips of nodes, cut labels and ribbons carry a copy button; the bubbles of nodes and cut labels open on the right.
+// The tooltips of nodes and cut labels carry a copy button; the bubbles of nodes and cut labels open on the right.
 const bubble = () => document.querySelector<HTMLElement>('.dm-hint-body')!;
 const writeText = vi.fn<(t: string) => Promise<void>>();
 beforeEach(() => { writeText.mockReset(); writeText.mockResolvedValue(undefined); Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true }); });
@@ -332,13 +332,15 @@ test('a cut label tooltip opens on the right with a copy button that copies name
   expect(writeText).toHaveBeenCalledWith(`${LONG} $3 (75%)`);
 });
 
-test('a ribbon tooltip keeps its place on top and has a copy button copying its text', async () => {
+test('a ribbon tooltip is a plain one: on top, no copy button, not hoverable', async () => {
   draw({ flows: ribbonFlows });
   await userEvent.hover(byAttr('data-link', '0|a|x')!);
-  await screen.findByRole('tooltip');
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('a → x: $3 (75%)');
   expect(bubble()).toHaveAttribute('data-side', 'top');
-  await userEvent.click(screen.getByRole('button', { name: 'Copy to clipboard' }));
-  expect(writeText).toHaveBeenCalledWith('a → x: $3 (75%)');
+  expect(screen.queryByRole('button', { name: 'Copy to clipboard' })).toBeNull();
+  expect(bubble()).not.toHaveClass('dm-hint-hoverable');
+  await userEvent.unhover(byAttr('data-link', '0|a|x')!);
+  await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
 });
 
 test('copying from a node tooltip does not pick the node', async () => {

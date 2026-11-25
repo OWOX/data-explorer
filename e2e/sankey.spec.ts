@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { openFields, closeConfig, groupTitles, configButton } from './config-menu';
 
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
@@ -187,4 +187,138 @@ test('a node tooltip opens on the right, reads name: value (x%) with no fraction
   await expect(bubble).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(bubble).toHaveCount(0);
+});
+
+// The hoverable bubbles let go: what the pointer rests on next gets its own tooltip.
+async function openSankey(page: Page) {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
+  await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
+  await openFields(page, 'Orders');
+  await page.getByRole('option', { name: 'is_gift' }).click();
+  await closeConfig(page);
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  await configButton(page).click();
+  await page.getByRole('menuitem', { name: 'Add chart' }).click();
+  await page.getByRole('menuitemradio', { name: 'Sankey' }).click();
+  const sankey = data(page).locator('section[data-chart-kind="Sankey"]');
+  await expect(sankey.locator('path[data-link]').first()).toBeVisible();
+  await sankey.scrollIntoViewIfNeeded();
+  return sankey;
+}
+/** A point a ribbon really answers at, as far right as the chart goes (clear of the bubble of a node in the first column). */
+const ribbonPoint = (page: Page) => page.evaluate(() => {
+  let best: { x: number; y: number } | null = null;
+  for (const el of document.querySelectorAll('path[data-link]')) {
+    const r = el.getBoundingClientRect();
+    for (let i = 0; i <= 30; i++) for (let j = 0; j <= 12; j++) {
+      const x = r.left + (r.width * i) / 30, y = r.top + (r.height * j) / 12;
+      if (document.elementFromPoint(x, y) === el && (!best || x > best.x)) best = { x, y };
+    }
+  }
+  return best;
+});
+const tipText = (page: Page) => page.getByRole('tooltip').textContent();
+const centre = async (el: Locator) => { const b = (await el.boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+
+test('the tooltip of the next node, then of a ribbon, replaces the last bubble once the pointer rests there', async ({ page }) => {
+  const sankey = await openSankey(page);
+  const bubble = page.locator('.dm-hint-body');
+  const first = sankey.locator('rect[data-node^="0|"]').first();
+  const second = sankey.locator('rect[data-node^="1|"]').first();
+  // What the second node says when nothing else is open.
+  await page.mouse.move(...(Object.values(await centre(second)) as [number, number]));
+  await expect(bubble).toBeVisible();
+  const want = (await tipText(page))!;
+  await page.mouse.move(5, 5, { steps: 5 });
+  await expect(bubble).toHaveCount(0, { timeout: 1500 });
+  const wantFirst = await (async () => { await first.hover(); await expect(bubble).toBeVisible(); return (await tipText(page))!; })();
+  expect(wantFirst).not.toBe(want);
+
+  // Rest on the first, move to the second and rest: the second's text.
+  await page.mouse.move(5, 5, { steps: 5 });
+  await expect(bubble).toHaveCount(0, { timeout: 1500 });
+  await first.hover();
+  await expect(bubble).toBeVisible();
+  expect(await tipText(page)).toBe(wantFirst);
+  const to = await centre(second);
+  await page.mouse.move(to.x, to.y, { steps: 20 });
+  await expect.poll(() => tipText(page).catch(() => null), { timeout: 1500 }).toBe(want);
+  await page.waitForTimeout(400);
+  expect(await tipText(page)).toBe(want);
+  await expect(bubble).toHaveCount(1);
+
+  // Rest on a ribbon: the ribbon's plain tooltip, on top, with no copy button.
+  await page.mouse.move(5, 5, { steps: 5 });
+  await expect(bubble).toHaveCount(0, { timeout: 1500 });
+  const at = (await ribbonPoint(page))!;
+  expect(at).not.toBeNull();
+  await first.hover();
+  await expect(bubble).toBeVisible();
+  await page.mouse.move(at.x, at.y, { steps: 20 });
+  await expect.poll(() => tipText(page).catch(() => ''), { timeout: 1500 }).toMatch(/→/);
+  await page.waitForTimeout(400);
+  expect(await tipText(page)).toMatch(/→/);
+  await expect(bubble).toHaveCount(1);
+  expect(await bubble.getAttribute('data-side')).toBe('top');
+  await expect(bubble.getByRole('button', { name: 'Copy to clipboard' })).toHaveCount(0);
+});
+
+test('a node bubble lets go within a second; slow and diagonal moves to it keep it and Copy works; the bubble takes the pointer', async ({ page }) => {
+  const sankey = await openSankey(page);
+  const bubble = page.locator('.dm-hint-body');
+  const node = sankey.locator('rect[data-node^="0|"]').first();
+  await node.hover();
+  await expect(bubble).toBeVisible();
+  expect(await bubble.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe('auto');
+  const text = (await tipText(page))!;
+  const n = (await node.boundingBox())!;
+  const b = (await bubble.boundingBox())!;
+  expect(await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.dm-hint-body'), { x: b.x + b.width / 2, y: b.y + b.height / 2 })).toBe(true);
+
+  // Slow: 25 steps with a pause between them.
+  await page.mouse.move(n.x + n.width / 2, n.y + n.height / 2);
+  for (let i = 1; i <= 25; i++) {
+    await page.mouse.move(n.x + n.width / 2 + ((b.x + 6 - n.x - n.width / 2) * i) / 25, n.y + n.height / 2 + ((b.y + b.height / 2 - n.y - n.height / 2) * i) / 25);
+    await page.waitForTimeout(40);
+  }
+  await page.waitForTimeout(400);
+  await expect(bubble).toBeVisible();
+  await bubble.getByRole('button', { name: 'Copy to clipboard' }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(text);
+
+  // Diagonal, from the far corner of the node to the far corner of the bubble.
+  await page.mouse.move(5, 5, { steps: 5 });
+  await expect(bubble).toHaveCount(0, { timeout: 1500 });
+  await page.mouse.move(n.x + 1, n.y + n.height - 1);
+  await expect(bubble).toBeVisible();
+  const b2 = (await bubble.boundingBox())!;
+  await page.mouse.move(b2.x + b2.width - 3, b2.y + 3, { steps: 8 });
+  await page.waitForTimeout(500);
+  await expect(bubble).toBeVisible();
+  await bubble.getByRole('button', { name: 'Copy to clipboard' }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(text);
+
+  // Away from both: gone within about a second.
+  await page.mouse.move(5, 5, { steps: 6 });
+  await expect(bubble).toHaveCount(0, { timeout: 1000 });
+});
+
+test('a long node bubble stays inside a 500px wide viewport with its Copy button', async ({ page }) => {
+  await page.setViewportSize({ width: 500, height: 900 });
+  const sankey = await openSankey(page);
+  const node = sankey.locator('rect[data-node^="0|"]').first();
+  await node.hover();
+  const bubble = page.locator('.dm-hint-body');
+  await expect(bubble).toBeVisible();
+  // The mock has no long names: lengthen the shown text in place.
+  await bubble.evaluate((el) => { const t = el.querySelector('.dm-tip-copyrow > span')!; t.textContent = `${'A very long customer segment name '.repeat(8)}: $9,299 (23%)`; });
+  await page.waitForTimeout(200);
+  const b = (await bubble.boundingBox())!;
+  expect(b.x).toBeGreaterThanOrEqual(0);
+  expect(b.x + b.width).toBeLessThanOrEqual(500);
+  const c = (await bubble.getByRole('button', { name: 'Copy to clipboard' }).boundingBox())!;
+  expect(c.x).toBeGreaterThanOrEqual(0);
+  expect(c.x + c.width).toBeLessThanOrEqual(500);
 });

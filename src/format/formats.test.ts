@@ -140,6 +140,12 @@ describe('formatValue with whole: values above 10 show no fraction', () => {
     expect(money0('-9298.69')).not.toMatch(/\./);
     expect(formatValue('9298.5', 'NUMERIC', money('EUR'), whole)).toMatch(/9.?299/);
   });
+  test('the 10 line is judged on the digits the format shows: 10.004 and 10.0049% are not above it', () => {
+    expect(money0('10.004')).toMatch(/10\.00/);
+    expect(money0(10.004, 'FLOAT')).toMatch(/10\.00/);
+    expect(formatValue(0.100049, 'FLOAT', { kind: 'percent' }, whole)).toBe('10%');
+    expect(formatValue(0.10006, 'FLOAT', { kind: 'percent' }, whole)).toBe('10%');
+  });
   test('a format the type does not offer, and a bad currency, fall back as before', () => {
     expect(formatValue('12.5', 'STRING', { kind: 'percent' }, whole)).toBe('12.5');
     expect(formatValue(1223.5, 'FLOAT', money('ZZZZ'), whole)).toBe(displayText(1223.5, 'FLOAT'));

@@ -1,7 +1,9 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, test, vi } from 'vitest';
-import { Tooltip, TooltipProvider } from './Tooltip';
+import { fireEvent } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { HoverableTooltipProvider, Tooltip, TooltipProvider } from './Tooltip';
 
 const tip = (content: string) => <TooltipProvider><Tooltip content={content}><button type="button">Badge</button></Tooltip></TooltipProvider>;
 
@@ -141,4 +143,193 @@ test('when neither way of copying works the bubble says so', async () => {
   await userEvent.click(copyButton());
   expect(await screen.findByText('Copy failed')).toBeInTheDocument();
   expect(exec).toHaveBeenCalledWith('copy');
+});
+
+// The bubble lets go: a hoverable one closes 200 ms after the pointer has stopped outside both it and the trigger.
+const pair = (props: { onClick?: () => void } = {}) => (
+  <HoverableTooltipProvider><div onClick={props.onClick} onPointerDown={props.onClick}>
+    <Tooltip content="First: 1" copyText="First: 1" side="right"><button type="button">A</button></Tooltip>
+    <Tooltip content="Second: 2" copyText="Second: 2" side="right"><button type="button">B</button></Tooltip>
+  </div></HoverableTooltipProvider>
+);
+const bubble = () => document.querySelector<HTMLElement>('.dm-hint-body');
+
+test('a hoverable bubble closes about 200 ms after the pointer left the trigger and stopped', async () => {
+  render(pair());
+  const a = screen.getByRole('button', { name: 'A' });
+  await userEvent.hover(a);
+  await screen.findByRole('tooltip');
+  await userEvent.unhover(a);
+  expect(bubble()).not.toBeNull();
+  await waitFor(() => expect(bubble()).toBeNull(), { timeout: 1000 });
+});
+
+test('each pointermove on the page restarts the timer; entering the bubble cancels it', async () => {
+  render(pair());
+  const a = screen.getByRole('button', { name: 'A' });
+  await userEvent.hover(a);
+  await screen.findByRole('tooltip');
+  await userEvent.unhover(a);
+  for (let i = 0; i < 6; i++) { await new Promise((r) => setTimeout(r, 120)); fireEvent.pointerMove(document.body); }
+  expect(bubble()).not.toBeNull();
+  fireEvent.pointerEnter(bubble()!);
+  await new Promise((r) => setTimeout(r, 500));
+  expect(bubble()).not.toBeNull();
+  fireEvent.pointerLeave(bubble()!);
+  await waitFor(() => expect(bubble()).toBeNull(), { timeout: 1000 });
+});
+
+test('re-entering the trigger cancels the timer', async () => {
+  render(pair());
+  const a = screen.getByRole('button', { name: 'A' });
+  await userEvent.hover(a);
+  await screen.findByRole('tooltip');
+  await userEvent.unhover(a);
+  await userEvent.hover(a);
+  await new Promise((r) => setTimeout(r, 500));
+  expect(bubble()).not.toBeNull();
+});
+
+test('entering another trigger of the group closes the open bubble, and that trigger gets its own', async () => {
+  render(pair());
+  await userEvent.hover(screen.getByRole('button', { name: 'A' }));
+  await screen.findByRole('tooltip');
+  await userEvent.unhover(screen.getByRole('button', { name: 'A' }));
+  await userEvent.hover(screen.getByRole('button', { name: 'B' }));
+  await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('Second: 2'));
+  expect(document.querySelectorAll('.dm-hint-body')).toHaveLength(1);
+});
+
+test('crossing another trigger of the group on the way to the bubble leaves the bubble open', async () => {
+  render(pair());
+  const [a, b] = [screen.getByRole('button', { name: 'A' }), screen.getByRole('button', { name: 'B' })];
+  await userEvent.hover(a);
+  await screen.findByRole('tooltip');
+  await userEvent.unhover(a);
+  await userEvent.hover(b);
+  await userEvent.unhover(b);
+  await userEvent.hover(a);
+  await new Promise((r) => setTimeout(r, 500));
+  expect(screen.getByRole('tooltip')).toHaveTextContent('First: 1');
+});
+
+test('the pointer leaving the page closes the open bubble', async () => {
+  render(pair());
+  await userEvent.hover(screen.getByRole('button', { name: 'A' }));
+  await screen.findByRole('tooltip');
+  fireEvent.mouseLeave(document.documentElement);
+  await waitFor(() => expect(bubble()).toBeNull());
+});
+
+test('a press or click inside the bubble does not reach what holds the tooltip', async () => {
+  const outer = vi.fn();
+  render(pair({ onClick: outer }));
+  await userEvent.hover(screen.getByRole('button', { name: 'A' }));
+  await screen.findByRole('tooltip');
+  outer.mockClear();
+  await userEvent.click(screen.getByText('First: 1', { selector: '.dm-hint-body span span' }));
+  expect(outer).not.toHaveBeenCalled();
+  expect(bubble()).not.toBeNull();
+});
+
+test('a wheel over the bubble closes it in full screen only', async () => {
+  render(pair());
+  await userEvent.hover(screen.getByRole('button', { name: 'A' }));
+  await screen.findByRole('tooltip');
+  fireEvent.wheel(bubble()!);
+  expect(bubble()).not.toBeNull();
+  const page = document.createElement('div');
+  page.className = 'dm-full';
+  document.body.appendChild(page);
+  fireEvent.wheel(bubble()!);
+  await waitFor(() => expect(bubble()).toBeNull());
+  page.remove();
+});
+
+test('a hoverable tooltip is a Radix hoverable one; the plain ones are not', async () => {
+  render(<TooltipProvider><Tooltip content="Hello" copyText="Hello"><button type="button">H</button></Tooltip></TooltipProvider>);
+  await userEvent.hover(screen.getByRole('button', { name: 'H' }));
+  await screen.findByRole('tooltip');
+  // Radix keeps a hoverable bubble open between the trigger and itself: leaving the trigger alone does not close it at once.
+  await userEvent.unhover(screen.getByRole('button', { name: 'H' }));
+  expect(bubble()).not.toBeNull();
+});
+
+test('the hoverable bubble is clickable (CSS), and a long one fits a narrow viewport', () => {
+  const css = readFileSync('src/ui/bands/bands.css', 'utf8');
+  expect(css).toMatch(/\.dm-hint-hoverable \{[^}]*pointer-events: auto/);
+  expect(css).toMatch(/\.dm-hint-hoverable \{[^}]*max-width: min\(22rem, var\(--radix-tooltip-content-available-width\)\)/);
+});
+
+// Copying: the fallback moves focus to a textarea, which must not close the bubble of a focused node.
+const focused = (props: { clipboard: 'fail' | 'ok' }) => {
+  Object.defineProperty(navigator, 'clipboard', { value: props.clipboard === 'fail' ? { writeText: vi.fn().mockRejectedValue(new Error('blocked')) } : { writeText }, configurable: true });
+};
+const svgTip = (copy = 'Paid: $9') => (
+  <HoverableTooltipProvider><svg><Tooltip content={copy} copyText={copy} side="right"><rect data-testid="node" tabIndex={0} width={5} height={5} /></Tooltip></svg></HoverableTooltipProvider>
+);
+
+test('fallback copy with the node focused keeps the bubble, shows the check and gives the node its focus back', async () => {
+  focused({ clipboard: 'fail' });
+  Object.defineProperty(document, 'execCommand', { value: vi.fn().mockReturnValue(true), configurable: true });
+  render(svgTip());
+  const node = screen.getByTestId('node');
+  node.focus();
+  await screen.findByRole('tooltip');
+  await userEvent.click(copyButton());
+  await waitFor(() => expect(copyButton()).toHaveAttribute('data-copied'));
+  expect(bubble()).not.toBeNull();
+  expect(document.activeElement).toBe(node);
+});
+
+test('fallback copy that fails too says so and keeps the bubble', async () => {
+  focused({ clipboard: 'fail' });
+  Object.defineProperty(document, 'execCommand', { value: vi.fn().mockReturnValue(false), configurable: true });
+  render(svgTip());
+  const node = screen.getByTestId('node');
+  node.focus();
+  await screen.findByRole('tooltip');
+  await userEvent.click(copyButton());
+  expect(await screen.findByText('Copy failed')).toBeInTheDocument();
+  expect(bubble()).not.toBeNull();
+  expect(document.activeElement).toBe(node);
+});
+
+test('pressing Copy while the node has focus does not move focus (mousedown is prevented)', async () => {
+  withClipboard();
+  render(svgTip());
+  const node = screen.getByTestId('node');
+  node.focus();
+  await screen.findByRole('tooltip');
+  await userEvent.click(copyButton());
+  expect(document.activeElement).toBe(node);
+  expect(bubble()).not.toBeNull();
+});
+
+test('a real blur still closes the bubble', async () => {
+  render(<>{svgTip()}<button type="button">Elsewhere</button></>);
+  screen.getByTestId('node').focus();
+  await screen.findByRole('tooltip');
+  screen.getByRole('button', { name: 'Elsewhere' }).focus();
+  await waitFor(() => expect(bubble()).toBeNull());
+});
+
+test('the copied text is guarded like a grid cell, the shown text and the label are not', async () => {
+  withClipboard();
+  render(copyTip('=HYPERLINK("http://x","y")\tz\nw: $1'));
+  await userEvent.hover(screen.getByRole('button', { name: 'Node' }));
+  await screen.findByRole('tooltip');
+  expect(screen.getByRole('tooltip').textContent).toBe('=HYPERLINK("http://x","y")\tz\nw: $1');
+  await userEvent.click(copyButton());
+  expect(writeText).toHaveBeenCalledWith('\'=HYPERLINK("http://x","y") z w: $1');
+  expect(bubble()!.textContent).toContain('=HYPERLINK("http://x","y")\tz\nw: $1');
+});
+
+test('an ordinary label is copied unchanged', async () => {
+  withClipboard();
+  render(copyTip('Paid: $9,299 (23%)'));
+  await userEvent.hover(screen.getByRole('button', { name: 'Node' }));
+  await screen.findByRole('tooltip');
+  await userEvent.click(copyButton());
+  expect(writeText).toHaveBeenCalledWith('Paid: $9,299 (23%)');
 });
