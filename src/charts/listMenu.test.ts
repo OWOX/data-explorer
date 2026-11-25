@@ -2,7 +2,7 @@ import { ChartSpline, Hash } from 'lucide-react';
 import { vi } from 'vitest';
 import type { ChartFields } from './fields';
 import { KINDS } from './kinds';
-import { addChartItem, chartListItem, dropPicksOf, hideCard, setCardDate, setCardMetric, tailItems } from './listMenu';
+import { addChartItem, chartListItem, dropPicksOf, hideCard, setCardDate, setCardMetric, tailItems as tail } from './listMenu';
 import type { MenuItem } from './MenuItems';
 import { cardsOf, martMeasures } from './Scorecards';
 import type { ChartSettings } from './settings';
@@ -19,6 +19,10 @@ const date = { name: 'created_at', category: 'date', type: 'TIMESTAMP' } as neve
 const dim = { name: 'status', category: 'string', type: 'STRING' } as never;
 const amount = { name: 'amount', category: 'number', type: 'NUMERIC' } as never;
 const cf: ChartFields = { marts: [{ aliasPath: '', recordsId: 'records:orders', title: '', hasPk: true, metrics: [{ field: amount, fn: 'SUM' }], dates: [date], dimensions: [dim] }], dates: [date], dimensions: [dim], counter: null };
+
+/** The tail with resize mode off, unless a test says otherwise. */
+const tailItems = (p: Omit<Parameters<typeof tail>[0], 'resizing' | 'onResizing'> & Partial<Parameters<typeof tail>[0]>) => tail({ resizing: false, onResizing: () => {}, ...p });
+const row = (items: ReturnType<typeof tail>, label: string) => items.find((i) => i.label === label)!;
 
 test('the Charts group has the cards, Sparklines and one tick per chart; Add chart is a row of its own with the eligible kinds', () => {
   const change = vi.fn();
@@ -63,15 +67,41 @@ test('Chart type keeps the usable fields and the id', () => {
   expect(s.charts).toEqual([{ id: 'a', kind: 'timeSeries', measure: 'amount', hidden: false }]);
 });
 
-test('the tail is Chart type, Duplicate and Hide, with no Remove', () => {
+test('the tail is Chart type, Resize, Duplicate and Hide, with no Remove', () => {
   const items = tailItems({ cf, spec: { id: 'a', kind: 'pie' }, change: vi.fn() });
-  expect(items.map((i) => i.label)).toEqual(['Chart type', 'Duplicate', 'Hide']);
+  expect(items.map((i) => i.label)).toEqual(['Chart type', 'Resize', 'Duplicate', 'Hide']);
+});
+
+test('Resize turns the mode on and off; a resized chart also has Reset size, which drops only its size', () => {
+  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie', measure: 'amount', size: { cols: 20 } }, { id: 'b', kind: 'pie', size: { rows: 12 } }] };
+  const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
+  const onResizing = vi.fn();
+  const items = tailItems({ cf, spec: s.charts![0]!, change, onResizing });
+  expect(items.map((i) => i.label)).toEqual(['Chart type', 'Resize', 'Reset size', 'Duplicate', 'Hide']);
+  const press = (i: MenuItem) => { if (i.kind === 'action') i.onPick(); };
+  press(row(items, 'Resize'));
+  expect(onResizing).toHaveBeenLastCalledWith(true);
+  press(row(tailItems({ cf, spec: s.charts![0]!, change, resizing: true, onResizing }), 'Done resizing'));
+  expect(onResizing).toHaveBeenLastCalledWith(false);
+  press(row(items, 'Reset size'));
+  expect(s.charts).toEqual([{ id: 'a', kind: 'pie', measure: 'amount' }, { id: 'b', kind: 'pie', size: { rows: 12 } }]);
+});
+
+test('a chart keeps its size through a type switch and a duplicate', () => {
+  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie', size: { cols: 20, rows: 12 } }] };
+  const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
+  const type = row(tailItems({ cf, spec: s.charts![0]!, change }), 'Chart type');
+  if (type.kind === 'radio') type.onPick('bar');
+  expect(s.charts![0]).toMatchObject({ id: 'a', kind: 'bar', size: { cols: 20, rows: 12 } });
+  const dup = row(tailItems({ cf, spec: s.charts![0]!, change }), 'Duplicate');
+  if (dup.kind === 'action') dup.onPick();
+  expect(s.charts![1]!.size).toEqual({ cols: 20, rows: 12 });
 });
 
 test('Duplicate inserts a copy right after the original: new id, same choices, not hidden, arrays not shared', () => {
   let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'sankey', dimensions: ['x', 'y'], hidden: true }, { id: 'b', kind: 'pie' }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
-  const dup = tailItems({ cf, spec: s.charts![0]!, change })[1]!;
+  const dup = row(tailItems({ cf, spec: s.charts![0]!, change }), 'Duplicate');
   if (dup.kind === 'action') dup.onPick();
   const [orig, copy, other] = s.charts!;
   expect(s.charts).toHaveLength(3);
@@ -99,7 +129,7 @@ test('a Sankey with one column or none switches to another type and back, and du
   }
   let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'sankey', dimensions: [] }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
-  const dup = tailItems({ cf, spec: s.charts![0]!, change })[1]!;
+  const dup = row(tailItems({ cf, spec: s.charts![0]!, change }), 'Duplicate');
   if (dup.kind === 'action') dup.onPick();
   expect(s.charts![1]).toEqual({ id: s.charts![1]!.id, kind: 'sankey', dimensions: [] });
 });
@@ -107,7 +137,7 @@ test('a Sankey with one column or none switches to another type and back, and du
 test('Duplicate on the default list saves the defaults with the copy after its original', () => {
   let s: ChartSettings = {};
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
-  const dup = tailItems({ cf, spec: { id: 'time-series', kind: 'timeSeries' }, change })[1]!;
+  const dup = row(tailItems({ cf, spec: { id: 'time-series', kind: 'timeSeries' }, change }), 'Duplicate');
   if (dup.kind === 'action') dup.onPick();
   expect(s.charts!.map((c) => c.kind)).toEqual(['timeSeries', 'timeSeries', 'pie']);
   expect(s.charts![0]!.id).toBe('time-series');
@@ -117,7 +147,7 @@ test('Duplicate on the default list saves the defaults with the copy after its o
 test('Hide sets hidden and keeps the chart and its setup', () => {
   let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie', dimension: 'status' }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
-  const hide = tailItems({ cf, spec: s.charts![0]!, change })[2]!;
+  const hide = row(tailItems({ cf, spec: s.charts![0]!, change }), 'Hide');
   if (hide.kind === 'action') hide.onPick();
   expect(s.charts).toEqual([{ id: 'a', kind: 'pie', dimension: 'status', hidden: true }]);
 });

@@ -5,12 +5,12 @@ import { useServices } from '../../state/store';
 import { linkOf } from '../link';
 import { Tooltip, OverflowTip } from '../Tooltip';
 
-/** A cell's URL. It opens in a new tab through the host, since the plugin's frame has no popups. A shift-click, and the click that ends a drag (the grid cancels it), open nothing: they select cells. */
+/** A cell's URL. It opens in a new tab through the host, since the plugin's frame has no popups. A shift-click, the click that ends a drag (the grid cancels it) and the second click of a double click open nothing. */
 function CellLink({ href, text, tabIndex }: { href: string; text: string; tabIndex?: number }) {
   const { ctx } = useServices();
   return (
     <a href={href} target="_blank" rel="noopener noreferrer" className="dm-cell-link" tabIndex={tabIndex} onClick={(e) => {
-      const cancelled = e.defaultPrevented || e.shiftKey;
+      const cancelled = e.defaultPrevented || e.shiftKey || e.detail > 1;
       e.preventDefault();
       if (!cancelled) void ctx.ui.openExternal(href).catch(() => undefined);
     }}>{text}</a>

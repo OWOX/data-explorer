@@ -30,8 +30,8 @@ export const FAN_OUT_NOTE = 'One record can sit in more than one ribbon here, so
  */
 export type SankeyR = { dims: Field[]; measure: Measure; exact: boolean };
 
-/** A column's panel width: 11rem per column, at least 20rem, at most the band. */
-export const sankeyWidth = (columns: number): string => `clamp(20rem, ${columns * 11}rem, 100%)`;
+/** The panel's width: 20rem per column, at least 20rem, at most the band. */
+export const sankeyWidth = (columns: number): string => `clamp(20rem, ${columns * 20}rem, 100%)`;
 
 /**
  * The dimensions after a pick in column `at` (0-based; a column past the end is unused). The saved list never has gaps:
