@@ -156,7 +156,6 @@ function AppBody() {
       remembered.current = null;
       const first = firstPick.current;
       firstPick.current = false;
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- the first load is a one-time event of this effect; the header opens its search box on it
       if (!last || !openable) { if (first && !hasLink) setFirstVisit(true); applied.current = mainKey(focusId, null); dispatch({ type: 'init', focusId }); return; }
       const keep = last.sourceKey && model.sources.some((x) => x.key === last.sourceKey) && sourceOfModel(model)(last.martId) === last.sourceKey ? last.sourceKey : null;
       applied.current = mainKey(last.martId, keep);
