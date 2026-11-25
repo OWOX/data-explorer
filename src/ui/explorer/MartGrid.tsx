@@ -898,7 +898,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     return {
       sorts: shownSorts, filters, slices,
       // Filter and Slice keep the columns as they are: a hidden field of a data mart in the grid stays hidden and its rule still reaches the query.
-      // A rule on a field of a data mart that has no column first joins it, in the same edit, so its badge shows and Undo takes both back. Clearing a rule adds nothing.
+      // A rule on a field of a data mart that has no column first joins it, in the same edit, so the mart is in the report and Undo takes both back. Clearing a rule adds nothing.
       setSlice: (name, f) => { const cols = f ? joinColumns(name) : null; if (cols) joinWith(cols, name); setSlice(name, f); },
       setFilter: (name, f) => { const cols = f ? joinColumns(name) : null; if (cols) joinWith(cols, name); setFilter(name, f); },
       // Aggregate, Sort and Format on a field that is not a column first show it, in the same edit, so Undo takes both back.
@@ -1116,9 +1116,9 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
             <tr data-group-row>
                 {groups.map((g) => (
                   <th key={g.path} data-group={g.id} data-group-path={g.path} colSpan={g.span} scope="colgroup" onClick={(e) => {
-                    // Only the title itself: a button in the cell (the description's hint) keeps the selection.
+                    // Only a click on the cell itself (its title, not something portalled out of it) drops a column or row selection.
                     const t = e.target as HTMLElement;
-                    if (!e.currentTarget.contains(t) || t.closest('button')) return;
+                    if (!e.currentTarget.contains(t)) return;
                     if (selected?.kind === 'col' || selected?.kind === 'row') setSelected(null);
                   }} className="dm-gh dm-gh-edge overflow-hidden px-1 py-1 text-left font-semibold">
                     <div className="flex min-w-0 items-center gap-1">

@@ -34,7 +34,6 @@ test('the config button sits in the band header in Table, and the title cell has
   await setup(['customers__name']);
   const slot = data().querySelector<HTMLElement>('[data-chart-list-slot]')!;
   expect(within(slot).getByRole('button', { name: 'Configure data' })).toHaveAttribute('data-config-button');
-  expect(data().querySelector('[data-mart-badge="column"]')).toBeNull();
   expect(within(data()).queryByRole('button', { name: /^Fields of / })).toBeNull();
   expect(within(data()).queryByRole('button', { name: /from the grid$/ })).toBeNull();
 });

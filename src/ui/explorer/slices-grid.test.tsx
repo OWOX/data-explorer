@@ -333,6 +333,35 @@ describe('the rule badges next to the config button', () => {
     await screen.findByRole('dialog', { name: /^Filter of / });
   });
 
+  test('Enter on the Remove row removes the rules', async () => {
+    const t = setup(hidden);
+    (await badge('1 filter')).focus();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Remove filters' })).toHaveFocus());
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(t.state.current!.grids['orders']?.filters).toEqual({}));
+    expect(screen.queryByRole('menu', { name: 'Filters' })).toBeNull();
+  });
+
+  test('Remove slices is one Undo step, and Redo takes the slices off again', async () => {
+    const two: GridState = { columns: ['id', 'customers__city'], filters: {}, slices: { customers__country_code: slice, customers__city: { field: 'customers__city', op: 'eq', value: 'Kyiv' } }, sorts: null, limit: 200 };
+    const t = setup(two);
+    const list = await openList('2 slices', 'Slices');
+    await userEvent.click(within(list).getByRole('menuitem', { name: 'Remove slices' }));
+    await waitFor(() => expect(t.state.current!.grids['orders']?.slices).toBeUndefined());
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(Object.keys(t.state.current!.grids['orders']?.slices ?? {}).sort()).toEqual(['customers__city', 'customers__country_code']));
+    await userEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    await waitFor(() => expect(t.state.current!.grids['orders']?.slices).toBeUndefined());
+  });
+
+  test('Remove aggregations leaves a Unique Count alone', async () => {
+    const t = setup({ ...having, uniqueCount: [''] });
+    await userEvent.click(within(await openList('1 aggregation', 'Aggregations')).getByRole('menuitem', { name: 'Remove aggregations' }));
+    await waitFor(() => expect(t.state.current!.grids['orders']?.aggregations).toBeUndefined());
+    expect(t.state.current!.grids['orders']?.uniqueCount).toEqual(['']);
+  });
+
   test('hovering Remove closes an open edit form, and a half-typed edit is not applied by Remove', async () => {
     const t = setup(hidden);
     const list = await openList('1 filter', 'Filters');
@@ -410,6 +439,26 @@ describe('the rule badges next to the config button', () => {
     const menu = await screen.findByRole('menu', { name: 'Configure data' });
     expect(within(menu).getByRole('menuitem', { name: 'Orders' }).getAttribute('aria-description')).toContain('Filtered');
     expect(within(menu).getByRole('menuitem', { name: 'Customers' }).getAttribute('aria-description')).toContain('Sliced');
+  });
+
+  test('the config menu marks a mart kept with no column, and a joinable mart that holds a rule', async () => {
+    setup({ columns: ['id', 'status'], filters: { customers__city: { field: 'customers__city', op: 'eq', value: 'Kyiv' } }, slices: { customers__country_code: slice }, sorts: null, limit: 200, emptyPaths: ['customers'] });
+    await badge('1 slice');
+    await userEvent.click(screen.getByRole('button', { name: 'Configure data' }));
+    const menu = await screen.findByRole('menu', { name: 'Configure data' });
+    const kept = within(menu).getByRole('menuitem', { name: 'Customers' });
+    expect(kept.getAttribute('aria-description')).toContain('Filtered. Sliced');
+    expect(within(menu).getByRole('menuitem', { name: 'Orders' }).getAttribute('aria-description') ?? '').not.toMatch(/Filtered|Sliced/);
+  });
+
+  test('a joinable mart (not in the report) with a leftover rule is marked in its parent\'s panel', async () => {
+    setup({ columns: ['id', 'status'], filters: { customers__city: { field: 'customers__city', op: 'eq', value: 'Kyiv' } }, sorts: null, limit: 200 });
+    await badge('1 filter');
+    await userEvent.click(screen.getByRole('button', { name: 'Configure data' }));
+    const menu = await screen.findByRole('menu', { name: 'Configure data' });
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Orders' }));
+    const panel = await screen.findByRole('dialog', { name: 'Orders' });
+    expect(within(panel).getByRole('menuitem', { name: 'Customers' }).getAttribute('aria-description')).toContain('Filtered');
   });
 
   test('no rules, no badges; the config button shows no tooltip', async () => {

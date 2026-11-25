@@ -35,7 +35,7 @@
   display: flex; flex-wrap: wrap; align-items: center; align-content: center; justify-content: space-between;
   gap: 0.5rem 1rem; padding: 1rem; cursor: pointer;
 }
-.dm-band-titlegroup { display: flex; align-items: center; gap: 0.5rem; align-self: center; min-width: 0; flex: 1 1 auto; }
+.dm-band-titlegroup { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; align-self: center; min-width: 0; flex: 1 1 auto; }
 /* The marts band has the badges in its toolbar. The title group keeps its own width on the left, and the toolbar takes the rest with a fixed basis: the badges' width must not decide whether the header wraps, or the two would chase each other. */
 .dm-band-head:has(.dm-context-filter) .dm-band-titlegroup { flex: 0 1 auto; }
 .dm-band-head:has(.dm-context-filter) .dm-band-actions { flex: 1 1 24rem; }
@@ -819,7 +819,6 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 @media (max-width: 760px) { .dm-search-results { left: 0; right: 0; width: 100%; } }
 
 /* The rule badges next to the config button: an outlined green pill with an icon and its count, "2 filters". */
-.dm-badges { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; }
-.dm-rule-badges { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; }
+.dm-rule-badges { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: 4px; }
 .dm-rule-badge { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 24px; box-sizing: border-box; padding: 0 8px; border: 1px solid color-mix(in srgb, var(--sheet-green) 55%, transparent); border-radius: 12px; background: transparent; color: var(--sheet-green); font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; transition: background-color 120ms; }
 .dm-rule-badge:is(:hover, :focus-visible, [aria-expanded='true']) { background: color-mix(in srgb, var(--sheet-green) 12%, transparent); }
