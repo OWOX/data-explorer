@@ -86,9 +86,11 @@ export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onP
   const placedNow = pos !== null;
   useLayoutEffect(() => { if (placedNow) onPlaced?.(); }, [placedNow]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const onResize = () => place(true);
+    // A submenu measures its row, which moves when the panel it hangs from takes its place afresh: it places again on the next frame.
+    let frame = 0;
+    const onResize = () => { place(true); cancelAnimationFrame(frame); frame = requestAnimationFrame(() => place(true)); };
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    return () => { window.removeEventListener('resize', onResize); cancelAnimationFrame(frame); };
   }, [place]);
   useEffect(() => {
     if (typeof ResizeObserver === 'undefined' || !el.current) return;

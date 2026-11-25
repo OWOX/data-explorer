@@ -5,7 +5,7 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { Ctx } from '../../sdk/types';
 import { AppServices, StoreProvider, useStore, type State } from '../../state/store';
 import { App } from '../App';
-import { closeConfigMenu, openConfigMenu, openFields } from './menu-test-utils';
+import { openConfigMenu, openFields } from './menu-test-utils';
 
 const data = () => document.getElementById('band-data')!;
 const probe = {} as { state: State; dispatch: ReturnType<typeof useStore>[1] };
@@ -93,13 +93,12 @@ test('untick an ancestor\'s last field, then Remove from report on the nested ma
   await userEvent.click(within(countries).getByRole('option', { name: /^name/i }));
   await waitFor(() => expect(columns()).toContain('customers__countries__name'));
   const both = [...columns()];
-  // A panel's rows are taken when it opens: Countries had no column then, so the menu is opened again for it to have Remove.
-  await closeConfigMenu();
-  const menu = await openConfigMenu();
-  const again = await openRow(menu, 'Customers');
-  await userEvent.click(within(again).getByRole('option', { name: /^name/i }));
-  const last = await openRow(menu, 'Countries');
-  await userEvent.click(within(last).getByRole('menuitem', { name: 'Remove from report' }));
+  // A panel's rows are taken when it opens: Countries had no column then, so it is opened again, in the same menu, to have Remove.
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Countries' })).toBeNull());
+  const again = await openRow(customers, 'Countries');
+  await userEvent.click(within(customers).getByRole('option', { name: /^name/i }));
+  await userEvent.click(within(again).getByRole('menuitem', { name: 'Remove from report' }));
   await waitFor(() => expect(columns().some((c) => c.startsWith('customers__'))).toBe(false));
   expect(data().querySelectorAll('th[data-group-path]')).toHaveLength(1);
   const undo = screen.getByRole('button', { name: 'Undo' });
@@ -151,16 +150,25 @@ test('a pending change survives a Table to Charts switch: the column leaves, the
 });
 
 test('removing the main mart promotes the next one by the state as it is, after a change that went out just before', async () => {
-  // Stores is joined from the start, so Orders has Remove from report when its panel opens (a panel's rows are taken then).
-  await setup(['stores__city']);
+  await setup([]);
   const orders = await openFields('Orders');
-  await userEvent.click(within(orders).getByRole('menuitem', { name: 'Customers' }));
-  const customers = await screen.findByRole('dialog', { name: 'Customers' });
+  const join = async (mart: string, field: RegExp) => {
+    await userEvent.click(within(orders).getByRole('menuitem', { name: mart }));
+    const panel = await screen.findByRole('dialog', { name: mart });
+    await userEvent.click(within(panel).getByRole('option', { name: field }));
+    await waitFor(() => expect(Array.from(data().querySelectorAll('th[data-group-path]')).map((h) => h.querySelector('.truncate')!.textContent)).toContain(mart));
+  };
+  await join('Customers', /^name/i);
+  await join('Stores', /city/i);
+  // A panel's rows are taken when it opens: Orders had no Remove then, so it is opened again, in the same menu, to have it.
+  await userEvent.keyboard('{Escape}{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Orders' })).toBeNull());
+  const menu = screen.getByRole('menu', { name: 'Configure data' });
+  const again = await openRow(menu, 'Orders');
+  const customers = await openRow(again, 'Customers');
+  // Customers is the second group; unticking its last field is held until its panel goes, and Remove sends it out in the same tick.
   await userEvent.click(within(customers).getByRole('option', { name: /^name/i }));
-  await waitFor(() => expect(columns()).toContain('customers__name'));
-  // Customers is a second group; unticking its last field is held until its panel goes, and Remove sends it out in the same tick.
-  await userEvent.click(within(customers).getByRole('option', { name: /^name/i }));
-  await userEvent.click(within(orders).getByRole('menuitem', { name: 'Remove from report' }));
+  await userEvent.click(within(again).getByRole('menuitem', { name: 'Remove from report' }));
   await waitFor(() => expect(Array.from(data().querySelectorAll('th[data-group-path]')).map((h) => h.querySelector('.truncate')!.textContent)).toEqual(['Stores']));
   await waitFor(() => expect(document.activeElement).toBe(within(data()).getByRole('button', { name: 'Configure data' })));
 });
@@ -220,16 +228,16 @@ describe('a filter or slice from a data mart with no column joins it', () => {
     expect(columns()).toEqual(before);
   });
 
-  test('clearing a filter on a field of a data mart that left the grid adds no column', async () => {
-    await setup(['customers__name']);
-    const customers = await openFields('Customers');
-    await rule(customers, 'name', 'Filter', 'K');
-    await waitFor(() => expect(Object.keys(filters())).toEqual(['customers__name']));
+  test.each(['Filter', 'Slice'] as const)('clearing a %s on a field of a data mart with no column adds no column', async (row) => {
+    await setup([]);
     const before = [...columns()];
-    await userEvent.click(within(customers).getByRole('button', { name: /^Column menu .*name$/ }));
-    await userEvent.click(within(await screen.findByRole('menu', { name: /^Menu of / })).getByRole('menuitem', { name: 'Filter' }));
-    await userEvent.click(within(await screen.findByRole('dialog', { name: /^Filter of / })).getByRole('button', { name: 'Clear' }));
-    await waitFor(() => expect(filters()).toEqual({}));
+    const customers = await joinable();
+    await userEvent.click(within(customers).getByRole('button', { name: /^Column menu .*city$/ }));
+    await userEvent.click(within(await screen.findByRole('menu', { name: /^Menu of / })).getByRole('menuitem', { name: row }));
+    await userEvent.click(within(await screen.findByRole('dialog', { name: new RegExp(`^${row} of `) })).getByRole('button', { name: 'Clear' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: new RegExp(`^${row} of `) })).toBeNull());
     expect(columns()).toEqual(before);
+    expect(filters()).toEqual({});
+    expect(slices()).toEqual({});
   });
 });

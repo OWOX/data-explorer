@@ -1,4 +1,5 @@
-import { act, render, screen } from '@testing-library/react';
+import { useState } from 'react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@radix-ui/react-tooltip';
@@ -67,5 +68,36 @@ describe('where a panel sits while its anchor moves', () => {
     const opened = panel().style.top;
     moveTo(300);
     expect(panel().style.top).not.toBe(opened);
+  });
+
+  test('a submenu of a pinned panel follows it on a window resize', async () => {
+    const anchor = document.createElement('button');
+    document.body.appendChild(anchor);
+    let top = 100;
+    anchor.getBoundingClientRect = () => ({ left: 10, right: 40, top, bottom: top + 28, width: 30, height: 28, x: 10, y: top, toJSON: () => ({}) });
+    const Both = () => {
+      const [row, setRow] = useState<HTMLElement | null>(null);
+      return (
+        <>
+          <Panel anchor={anchor} mode="below" role="menu" label="Root" onEscape={vi.fn()} focusSeq={0} pinned>
+            <Row label="Open" rowRef={(el) => { if (el && el !== row) { setRow(el); } }} onActivate={vi.fn()} />
+          </Panel>
+          {row && <Panel anchor={row} mode="beside" role="menu" label="Sub" onEscape={vi.fn()} focusSeq={0}><Row label="Inner" onActivate={vi.fn()} /></Panel>}
+        </>
+      );
+    };
+    render(<Both />);
+    const root = await screen.findByRole('menu', { name: 'Root' });
+    const sub = await screen.findByRole('menu', { name: 'Sub' });
+    // The row sits where its panel does, as in the page.
+    const open = screen.getByRole('menuitem', { name: 'Open' });
+    open.getBoundingClientRect = () => { const t = parseFloat(root.style.top); return { left: 0, right: 100, top: t + 8, bottom: t + 36, width: 100, height: 28, x: 0, y: t + 8, toJSON: () => ({}) }; };
+    act(() => { window.dispatchEvent(new Event('resize')); });
+    await waitFor(() => expect(sub.style.top).toBe(root.style.top));
+    const opened = sub.style.top;
+    top = 400;
+    act(() => { window.dispatchEvent(new Event('resize')); });
+    await waitFor(() => expect(root.style.top).not.toBe(opened));
+    await waitFor(() => expect(sub.style.top).toBe(`${parseFloat(root.style.top)}px`));
   });
 });

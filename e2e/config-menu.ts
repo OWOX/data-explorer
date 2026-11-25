@@ -39,7 +39,7 @@ export async function closeConfig(page: Page): Promise<void> {
   await expect(page.getByRole('menu', { name: 'Configure data' })).toHaveCount(0);
 }
 
-/** Asserts that the config menu and the given panels are still open after a short wait. The caller waits first for what the edit loads (joined rows arrive well after 250 ms), so this covers a menu that closes by itself once that has landed. */
+/** Asserts that the config menu and the given panels are still open after a short wait. The caller waits first for what the edit shows: in Table the joined rows (they arrive well after 250 ms), in Charts only the new group (the charts redraw later). This covers a menu that closes by itself after that. */
 export async function expectStillOpen(page: Page, ...panels: Locator[]): Promise<void> {
   await page.waitForTimeout(250);
   await expect(page.getByRole('menu', { name: 'Configure data' })).toBeVisible();

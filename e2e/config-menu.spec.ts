@@ -86,7 +86,7 @@ test('Charts: the config menu opens with Add chart and Charts, a chart’s menu 
   await fields.getByRole('menuitem', { name: 'Customers', exact: true }).click();
   const joinable = page.getByRole('dialog', { name: 'Customers', exact: true });
   await joinable.getByLabel('email', { exact: true }).click();
-  // Charts has no cells to wait for: the joined mart's group is what the tick loads.
+  // Charts has no cells to wait for: only the joined mart's group shows at once, the charts redraw a few hundred ms later, so the wait below does not cover that.
   await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
   await expectStillOpen(page, joinable);
   await closeConfig(page);
@@ -172,5 +172,18 @@ for (const view of ['Grid', 'Graph'] as const) {
     expect({ option: await top(email), button: await top(configButton(page)), root: await top(page.getByRole('menu', { name: 'Configure data' })) }).toEqual(before);
     await expect(customers.getByRole('menuitem', { name: 'Remove from report' })).toHaveCount(0);
     await expect(customers.getByRole('option', { name: 'Unique Count' })).toHaveCount(0);
+    if (view !== 'Graph') return;
+    // In Graph view each joinable tick grows the band above the grid: the config button moves down with the page, the root menu keeps its place.
+    await orders.getByRole('menuitem', { name: 'Stores', exact: true }).click();
+    const stores = page.getByRole('dialog', { name: 'Stores', exact: true });
+    const root = page.getByRole('menu', { name: 'Configure data' });
+    const buttonBefore = await top(configButton(page));
+    const rootBefore = await top(root);
+    await stores.getByLabel('city', { exact: true }).click();
+    await expect(groupTitles(page)).toHaveText(['Orders', 'Customers', 'Stores']);
+    await expect.poll(() => top(configButton(page))).not.toBe(buttonBefore);
+    // The joined rows arrive about 800 ms after the tick and the menu is laid out again with them: look after that.
+    await page.waitForTimeout(1500);
+    expect(await top(root)).toBe(rootBefore);
   });
 }
