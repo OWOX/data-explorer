@@ -257,8 +257,8 @@ test('ribbonShare false keeps the share on the cut label tooltip too', async () 
 });
 
 test('a visible label that fits keeps exactly its name and value, and the share stays out of the cut decision', () => {
-  // Room is 21 characters: "abcdefghijklmnopqr $3" is 21 and fits; with its share it would not.
-  const name = 'abcdefghijklmnopqr';
+  // Room is 28 characters: "abcdefghijklmnopqrstuvwxy $3" is 28 and fits; with its share it would not.
+  const name = 'abcdefghijklmnopqrstuvwxy';
   const { container } = draw({ titles: ['One', 'Two'], flows: pairFlows(name) });
   const texts = [...container.querySelectorAll('text.dm-chart-text')].map((t) => t.textContent);
   expect(texts).toContain(`${name} $3`);
