@@ -1,5 +1,8 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
+/** Waits until the rows of a joined Customers column have arrived in the grid: a cell holding an email. */
+export const joinedRowsArrived = (page: Page) => expect(page.locator('#band-data').getByRole('cell').filter({ hasText: '@example.com' }).first()).toBeAttached();
+
 /** The config button of the Data band, next to the Table / Charts switch. */
 export const configButton = (page: Page) => page.locator('#band-data [data-chart-list-slot]').getByRole('button', { name: 'Configure data' });
 
@@ -36,7 +39,7 @@ export async function closeConfig(page: Page): Promise<void> {
   await expect(page.getByRole('menu', { name: 'Configure data' })).toHaveCount(0);
 }
 
-/** Asserts that the config menu and the given panels are still open after a short wait: a menu that closes by itself right after an edit (a late scroll, a re-render) fails here. */
+/** Asserts that the config menu and the given panels are still open after a short wait. The caller waits first for what the edit loads (joined rows arrive well after 250 ms), so this covers a menu that closes by itself once that has landed. */
 export async function expectStillOpen(page: Page, ...panels: Locator[]): Promise<void> {
   await page.waitForTimeout(250);
   await expect(page.getByRole('menu', { name: 'Configure data' })).toBeVisible();

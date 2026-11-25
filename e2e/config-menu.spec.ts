@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { closeConfig, configButton, expectStillOpen, groupTitles, openConfig, openFields } from './config-menu';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+import { closeConfig, configButton, expectStillOpen, groupTitles, joinedRowsArrived, openConfig, openFields } from './config-menu';
 
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
 const data = (page: Page) => page.locator('#band-data');
@@ -27,6 +27,7 @@ test('Table: the config menu lists the data marts, and a field of a joinable mar
   await expect(customers).toBeVisible();
   await customers.getByLabel('email', { exact: true }).click();
   // The tick leaves the menu and the panel open.
+  await joinedRowsArrived(page);
   await expectStillOpen(page, customers);
   await closeConfig(page);
   await expect(groupTitles(page)).toHaveText(['Orders', 'Customers']);
@@ -64,6 +65,7 @@ test('a data mart on a path with no column is listed after the shown ones; ticki
   // It is not in the report, so there is nothing to remove.
   await expect(panel.getByRole('menuitem', { name: 'Remove from report' })).toHaveCount(0);
   await panel.getByLabel('email', { exact: true }).click();
+  await joinedRowsArrived(page);
   await expectStillOpen(page, panel);
   await closeConfig(page);
   // The columns of a data mart sit together, in the order the marts were added: Customers comes back last.
@@ -84,6 +86,8 @@ test('Charts: the config menu opens with Add chart and Charts, a chart’s menu 
   await fields.getByRole('menuitem', { name: 'Customers', exact: true }).click();
   const joinable = page.getByRole('dialog', { name: 'Customers', exact: true });
   await joinable.getByLabel('email', { exact: true }).click();
+  // Charts has no cells to wait for: the joined mart's group is what the tick loads.
+  await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
   await expectStillOpen(page, joinable);
   await closeConfig(page);
   await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
@@ -128,20 +132,45 @@ test('the filter badge has no x, its list ends with Clear, and Clear removes bot
   };
   await filter('status', 'paid', 'contains');
   await expect(data(page).getByRole('button', { name: /^1 filter in Orders/ })).toBeVisible();
+  // Each count is waited for, never read from the rows still on screen: 110 rows after one filter, 5 after two, 202 after Clear.
+  const rows = () => data(page).getByRole('row').count();
+  await expect.poll(rows).toBe(110);
   await filter('Store', '1');
   const badge = data(page).getByRole('button', { name: /^2 filters in Orders/ });
   await expect(badge).toBeVisible();
   await expect(data(page).getByRole('button', { name: /^(Remove|Clear) .*filter/i })).toHaveCount(0);
-  const filtered = await data(page).getByRole('row').count();
+  await expect.poll(rows).toBe(5);
   await badge.click();
   const list = page.getByRole('menu').filter({ has: page.getByRole('menuitem', { name: 'Clear' }) });
   await expect(list.getByRole('menuitem').last()).toHaveText('Clear');
   await list.getByRole('menuitem', { name: 'Clear' }).click();
   await expect(data(page).getByRole('button', { name: /filters? in Orders/ })).toHaveCount(0);
-  await expect.poll(() => data(page).getByRole('row').count()).toBe(202);
+  await expect.poll(rows).toBe(202);
   await expect(configButton(page)).toBeVisible();
   // One Undo step brings both back.
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(data(page).getByRole('button', { name: /^2 filters in Orders/ })).toBeVisible();
-  await expect.poll(() => data(page).getByRole('row').count()).toBe(filtered);
+  await expect.poll(rows).toBe(5);
 });
+
+for (const view of ['Grid', 'Graph'] as const) {
+  test(`${view} view: the first tick of a joinable data mart moves no row under the pointer`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1100 });
+    await expect(data(page).getByRole('row')).toHaveCount(202);
+    if (view === 'Graph') await marts(page).getByRole('radio', { name: 'Graph' }).click();
+    const orders = await openFields(page, 'Orders');
+    await orders.getByRole('menuitem', { name: 'Customers', exact: true }).click();
+    const customers = page.getByRole('dialog', { name: 'Customers', exact: true });
+    const email = customers.getByLabel('email', { exact: true });
+    await expect(email).toBeVisible();
+    const top = async (el: Locator) => (await el.boundingBox())!.y;
+    const before = { option: await top(email), button: await top(configButton(page)), root: await top(page.getByRole('menu', { name: 'Configure data' })) };
+    await email.click();
+    await joinedRowsArrived(page);
+    await expect(groupTitles(page)).toHaveText(['Orders', 'Customers']);
+    // Where the second click would land: the option, the config button's menu and the panel's own rows stay put.
+    expect({ option: await top(email), button: await top(configButton(page)), root: await top(page.getByRole('menu', { name: 'Configure data' })) }).toEqual(before);
+    await expect(customers.getByRole('menuitem', { name: 'Remove from report' })).toHaveCount(0);
+    await expect(customers.getByRole('option', { name: 'Unique Count' })).toHaveCount(0);
+  });
+}
