@@ -237,6 +237,9 @@ const noShown = () => null;
 
 const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((p, i) => p === b[i]);
 
+/** The path a mart kept with no column takes on the new main: the one `sourceOfMart` picks next to the paths in use and those already empty. */
+const carryPath = (nextSources: JoinedSource[], martId: string, columns: string[], empty: readonly string[]): string => sourceOfMart(nextSources, martId, inUsePaths(columns, nextSources, empty))!.aliasPath;
+
 /** The paths that stay empty on a grid: each once, offered by a source, and with no column of the grid's. */
 const emptyAfter = (sources: JoinedSource[], columns: string[], paths: readonly string[]): string[] => {
   const used = inUsePaths(columns, sources);
@@ -295,12 +298,17 @@ export function planClick(env: PlanEnv, id: string): Plan {
     const nextSources = env.sourcesOf(next);
     const nextGrid = env.gridOf(next);
     const nextPicks = env.picksOf(next);
-    const remember: Plan['remember'] = [{ martId: main, fields: ownColumnsIn(grid.columns, sources) }, { martId: next, fields: null }];
+    const remember: Plan['remember'] = [{ martId: main, fields: ownColumnsIn(grid.columns, sources) }];
+    // A mart with no column on the grid showed nothing: forgetting what it last showed would lose it.
+    if (ownNamesIn(grid.columns, sources, next).length > 0) remember.push({ martId: next, fields: null });
     // Its joined fields it was showing become its own columns: that is what it showed last.
     const offered = new Set(env.ownNames?.(next) ?? []);
     const shownNow = ownNamesIn(grid.columns, sources, next).filter((n) => offered.has(n));
     let columns = shownNow.length ? shownNow : nextGrid.columns;
-    const have = new Set(joinedMartIds(columns, nextSources, nextGrid.emptyPaths));
+    // The empty paths of its own grid count only when that grid is what opens; the screen's columns replace it.
+    const own = shownNow.length ? [] : nextGrid.emptyPaths ?? [];
+    const have = new Set(joinedMartIds(columns, nextSources));
+    const ownEmpty = new Set(joinedMartIds([], nextSources, own));
     // The marts the old main showed no column of stay in the report with none.
     const stayEmpty = new Set(joinedMartIds([], sources, grid.emptyPaths).filter((m) => !joinedMartIds(grid.columns, sources).includes(m)));
     const carried: string[] = [];
@@ -311,11 +319,13 @@ export function planClick(env: PlanEnv, id: string): Plan {
         continue;
       }
       if (have.has(r)) continue;
-      if (stayEmpty.has(r)) { carried.push(sourceOfMart(nextSources, r, inUsePaths(columns, nextSources, [...(nextGrid.emptyPaths ?? []), ...carried]))!.aliasPath); continue; }
+      if (stayEmpty.has(r)) { if (!ownEmpty.has(r)) carried.push(carryPath(nextSources, r, columns, [...own, ...carried])); continue; }
       columns = [...columns, ...fieldsFor(nextSources, r, nextPicks[r], ownNamesIn(grid.columns, sources, r), inUsePaths(columns, nextSources)).filter((n) => !columns.includes(n))];
     }
     columns = orderColumns(columns, nextSources, env.ownColumns(next));
-    const emptyPaths = emptyAfter(nextSources, columns, [...(nextGrid.emptyPaths ?? []), ...carried]);
+    // A mart that got columns is not kept empty as well.
+    const shownMarts = joinedMartIds(columns, nextSources);
+    const emptyPaths = emptyAfter(nextSources, columns, [...own.filter((p) => !shownMarts.includes(nextSources.find((x) => x.aliasPath === p)?.martId ?? '')), ...carried]);
     const changed = columns.length !== nextGrid.columns.length || columns.some((c, i) => c !== nextGrid.columns[i]) || !sameList(emptyPaths, nextGrid.emptyPaths ?? []);
     const sorts = changed && nextGrid.sorts ? sortsOnColumns(nextGrid.sorts, columns) : nextGrid.sorts;
     return {
@@ -379,14 +389,15 @@ export function planMakeMain(env: PlanEnv, id: string): Plan {
     if (r === id) continue;
     const shown = ownNamesIn(grid.columns, sources, r);
     // A mart kept with no column stays in the report with none, at the path the new main joins it by.
-    if (!withColumns.includes(r)) { if (isJoinable(nextSources, r)) carried.push(sourceOfMart(nextSources, r, inUsePaths(columns, nextSources, [...(nextGrid.emptyPaths ?? []), ...carried]))!.aliasPath); continue; }
+    if (!withColumns.includes(r)) { if (isJoinable(nextSources, r)) carried.push(carryPath(nextSources, r, columns, carried)); continue; }
     if (isJoinable(nextSources, r)) add(r, shown);
     else remember.push({ martId: r, fields: shown });
   }
   columns = orderColumns(columns, nextSources, env.ownColumns(id));
-  const emptyPaths = emptyAfter(nextSources, columns, [...(nextGrid.emptyPaths ?? []), ...carried]);
+  // Only the marts the report had: the new main's old grid is not on screen.
+  const emptyPaths = emptyAfter(nextSources, columns, carried);
   const { aggregation, ...rules } = refitRules(nextGrid, columns);
-  const onGrid = inUsePaths(columns, nextSources);
+  const onGrid = inUsePaths(columns, nextSources, emptyPaths);
   const next: GridState = {
     ...nextGrid,
     columns,

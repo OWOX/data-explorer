@@ -636,6 +636,8 @@ describe('joined marts kept with no column (empty paths)', () => {
     const plan = planClick(env({ orders: g(['id'], { emptyPaths: ['customers'] }), customers: g(['id', 'name']) }, 'orders'), 'orders');
     expect(plan.selection).toEqual(sel('customers'));
     expect(plan.grids).toEqual({});
+    // It showed no column: nothing to forget about what it last showed.
+    expect(plan.remember).toEqual([{ martId: 'orders', fields: ['id'] }]);
   });
 
   test('deselecting the main carries the other empty marts to the new main as empty, never with columns', () => {
@@ -675,5 +677,34 @@ describe('joined marts kept with no column (empty paths)', () => {
     const plan = planClick(env({ orders: g(['id'], { emptyPaths: ['customers'] }) }, null), 'orders');
     expect(plan.grids.orders!.emptyPaths).toBeUndefined();
     expect(plan.saves).toEqual([{ martId: 'orders', columns: ['id'], picks: {} }]);
+  });
+
+  test('a mart the report shows with columns keeps them when the promoted mart has it as an old empty path', () => {
+    const grids = { orders: g(['id', 'customers__city', 'stores__city']), customers: g(['name'], { emptyPaths: ['stores'] }) };
+    const plan = planClick(env(grids, 'orders'), 'orders');
+    expect(plan.grids.customers!.columns).toEqual(['name', 'stores__city']);
+    expect(plan.grids.customers!.emptyPaths).toBeUndefined();
+  });
+
+  test('the promoted mart\'s old empty paths are dropped when its columns come from the screen, and kept when its own grid is used', () => {
+    const own = { ...env({ orders: g(['id', 'customers__city']), customers: g(['name'], { emptyPaths: ['stores'] }) }, 'orders'), ownNames: () => ['city', 'name'] };
+    expect(planClick(own, 'orders').grids.customers!.emptyPaths).toBeUndefined();
+    const kept = planClick(env({ orders: g(['id', 'customers__city']), customers: g(['name'], { emptyPaths: ['stores'] }) }, 'orders'), 'orders');
+    expect(kept.grids).toEqual({});
+    const twice = planClick(env({ orders: g(['id', 'customers__city'], { emptyPaths: ['stores'] }), customers: g(['name'], { emptyPaths: ['stores'] }) }, 'orders'), 'orders');
+    expect(twice.grids).toEqual({});
+  });
+
+  test('making a mart main brings only the empty marts the report had, not the ones its old grid held', () => {
+    const grids = { orders: g(['id', 'customers__city']), customers: g(['name'], { emptyPaths: ['stores'] }) };
+    expect(planMakeMain(env(grids, 'orders'), 'customers').grids.customers!.emptyPaths).toBeUndefined();
+  });
+
+  test('the new main keeps a filter on a field of a carried empty mart', () => {
+    const eq = { field: 'stores__city', op: 'eq' as const, value: 'x' };
+    const grids = { orders: g(['id', 'customers__city'], { emptyPaths: ['stores'] }), customers: g(['id', 'name'], { filters: { stores__city: eq } }) };
+    const plan = planMakeMain(env(grids, 'orders'), 'customers');
+    expect(plan.grids.customers!.emptyPaths).toEqual(['stores']);
+    expect(plan.grids.customers!.filters).toEqual({ stores__city: eq });
   });
 });
