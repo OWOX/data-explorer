@@ -187,7 +187,7 @@ test('Undo takes back the join, and Redo applies it again', async () => {
   expect(title()).toBe('Orders + Customers');
 });
 
-test('unticking the last field of a joined mart in the picker deselects it; ticking a field of another mart selects it', async () => {
+test('unticking the last field of a joined mart in the picker keeps it selected with no column; Remove from report deselects it; ticking a field of another mart selects it', async () => {
   setup();
   await ready();
   await click('Customers');
@@ -195,14 +195,17 @@ test('unticking the last field of a joined mart in the picker deselects it; tick
   await openFields('Customers');
   const group = await screen.findByRole('dialog');
   await userEvent.click(within(group).getByRole('option', { selected: true }));
-  // The mart stays while the popup is open and goes when it closes with nothing ticked.
-  expect(title()).toBe('Orders + Customers');
-  await closeConfigMenu();
+  // The mart leaves the grid's columns at once and stays in the report: its card stays selected, also after the menu closes.
   await waitFor(() => expect(title()).toBe('Orders'));
-  expect(card('Customers')).toHaveAttribute('aria-pressed', 'false');
-  const menu = await openConfigMenu();
-  expect(within(menu).queryByRole('menuitem', { name: 'Customers' })).toBeNull();
+  expect(headers()).toHaveLength(5);
+  expect(card('Customers')).toHaveAttribute('aria-pressed', 'true');
   await closeConfigMenu();
+  expect(card('Customers')).toHaveAttribute('aria-pressed', 'true');
+  const menu = await openConfigMenu();
+  expect(within(menu).getByRole('menuitem', { name: 'Customers' })).toBeInTheDocument();
+  await closeConfigMenu();
+  await removeFromReport('Customers');
+  await waitFor(() => expect(card('Customers')).toHaveAttribute('aria-pressed', 'false'));
   // another mart is added from its card, not from a picker
   await click('Stores');
   await waitFor(() => expect(title()).toBe('Orders + Stores'));

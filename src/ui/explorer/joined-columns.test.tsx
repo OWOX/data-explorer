@@ -8,7 +8,7 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
-import { closeConfigMenu, openFields, openSubmenu } from './menu-test-utils';
+import { closeConfigMenu, openConfigMenu, openFields, openSubmenu } from './menu-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
 const BLEND = '/api/data-marts/orders/blendable-schema';
@@ -91,7 +91,7 @@ test('a joined tab lists that mart\'s fields with a count, each with its descrip
   await waitFor(() => expect(bodyRows()[0]!.querySelectorAll('td')[at]!.textContent).toBeTruthy());
 });
 
-test('Clear in a joined mart\'s picker only unticks: a tick afterwards keeps the mart', async () => {
+test('Clear in a joined mart\'s picker only unticks: the mart stays in the config menu and a tick afterwards brings its column back', async () => {
   const t = setup(['id', 'customers__email']);
   await t.seeded;
   t.view();
@@ -99,23 +99,35 @@ test('Clear in a joined mart\'s picker only unticks: a tick afterwards keeps the
   const picker = within(await screen.findByRole('dialog'));
   await userEvent.click(picker.getByRole('button', { name: 'Clear' }));
   expect(picker.getAllByRole('option').every((o) => o.getAttribute('aria-selected') === 'false')).toBe(true);
-  // The mart is still on the grid while the popup is open.
-  expect(headers()).toEqual(['id', 'email']);
+  // The column is gone at once, the mart is not.
+  await waitFor(() => expect(headers()).toEqual(['id']));
   await userEvent.click(picker.getByLabelText('city'));
-  await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(headers()).toEqual(['id', 'city']));
 });
 
-test('Clear in a joined mart\'s picker removes the mart only when the popup closes with nothing ticked', async () => {
+test('Clear in a joined mart\'s picker keeps the mart after the menu closes, and a reload finds it: Remove from report is the way out', async () => {
   const t = setup(['id', 'customers__email']);
   await t.seeded;
-  t.view();
+  const first = t.view();
   await openPicker('Customers');
   const picker = within(await screen.findByRole('dialog'));
   await userEvent.click(picker.getByRole('button', { name: 'Clear' }));
-  expect(headers()).toEqual(['id', 'email']);
-  await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(headers()).toEqual(['id']));
+  await closeConfigMenu();
+  expect(headers()).toEqual(['id']);
+  // The empty mart is saved with the view (after the save pause) and read back by a fresh page.
+  await waitFor(() => expect(t.put.mock.calls.some(([id, d]) => id === 'orders' && JSON.stringify(d).includes('"ep":["customers"]'))).toBe(true), { timeout: SAVE_DEBOUNCE_MS + 3000 });
+  first.unmount();
+  t.view();
+  await waitFor(() => expect(headers()).toEqual(['id']));
+  const menu = await openConfigMenu();
+  expect(within(menu).getByRole('menuitem', { name: 'Customers' })).toBeInTheDocument();
+  await closeConfigMenu();
+  const panel = await openPicker('Customers');
+  await userEvent.click(within(panel).getByRole('menuitem', { name: 'Remove from report' }));
+  await waitFor(() => expect(screen.queryByRole('menu', { name: 'Configure data' })).toBeNull());
+  const again = await openConfigMenu();
+  expect(within(again).queryByRole('menuitem', { name: 'Customers' })).toBeNull();
 });
 
 test('Clear in the main mart\'s picker still leaves a column', async () => {
