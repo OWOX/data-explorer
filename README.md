@@ -168,7 +168,7 @@ npm run e2e     # Playwright smoke tests of the bands
 ## Release
 
 1. Tag the commit `vX.Y.Z`.
-2. Publish a GitHub Release. The Pages workflow builds and deploys the site.
+2. Publish a GitHub Release. The `Deploy to owox.app` workflow tests, builds and deploys it to https://data-explorer.owox.app/. Its `VOID_TOKEN` is in the `owox-app` environment and lasts at most 90 days.
 3. In OWOX: Plugins, then Publish Plugin, then `owox/data-explorer`.
 
 ## Smart search
