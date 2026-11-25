@@ -96,6 +96,7 @@ export function CardBands({
   storageIds,
   joinSources,
   mainColumns,
+  mainEmptyPaths,
   counts,
   dq,
   foldedSources,
@@ -116,6 +117,8 @@ export function CardBands({
   joinSources: JoinedSource[] | null;
   /** The main grid's columns. */
   mainColumns: string[];
+  /** The alias paths of joined marts the main grid keeps with no column. */
+  mainEmptyPaths?: string[];
   counts: Map<string, CountState>;
   dq: Map<string, DqSummary>;
   foldedSources: boolean;
@@ -153,7 +156,7 @@ export function CardBands({
 
   // The report tree: a joined mart is a node per alias path, in Graph and in Grid, and a source line reaches each of them.
   const mainFor = selection.martId;
-  const canvasTree = useMemo(() => (mainFor ? buildJoinTree(mainFor, mainColumns, joinSources ?? []) : null), [mainFor, mainColumns, joinSources]);
+  const canvasTree = useMemo(() => (mainFor ? buildJoinTree(mainFor, mainColumns, joinSources ?? [], mainEmptyPaths) : null), [mainFor, mainColumns, joinSources, mainEmptyPaths]);
   const { focus, toggle: toggleFocus, clear: clearFocus, show: showFocus } = useGridFocus(mainFor, canvasTree, view === 'grid');
   // Marts joined below the main one name their own joins: the lines under them read those names.
   const own = useOwnAliases();
@@ -458,7 +461,7 @@ export function CardBands({
             // Scrolling this box moves its cards without resizing anything, so tell the page wires to look again.
             onScroll={(e) => e.currentTarget.dispatchEvent(new Event('animationend', { bubbles: true }))}
           >
-            <MartsCanvas model={model} mainId={selection.martId} columns={mainColumns} sources={joinSources} counts={counts} dq={dq} onOpenApp={onOpenApp} onRetryCount={onRetryCount} onRequestCount={onRequestCount} click={click} onSelectedMart={setGraphSelected} own={own} />
+            <MartsCanvas model={model} mainId={selection.martId} columns={mainColumns} emptyPaths={mainEmptyPaths} sources={joinSources} counts={counts} dq={dq} onOpenApp={onOpenApp} onRetryCount={onRetryCount} onRequestCount={onRequestCount} click={click} onSelectedMart={setGraphSelected} own={own} />
           </div>
         ) : <>
         {(visible.ids.length === 0 || noMatch) && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}

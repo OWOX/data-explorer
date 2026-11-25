@@ -121,7 +121,8 @@ function AppBody() {
   const mainId = state.selection.martId;
   const { sources: joinSources, failed: joinsFailed } = useJoinSources(model && mainId && model.marts.get(mainId)?.accessible ? mainId : null);
   const mainColumns = mainId ? state.grids[mainId]?.columns : undefined;
-  const joined = useMemo(() => (joinSources && mainColumns ? joinedMartIds(mainColumns, joinSources) : []), [joinSources, mainColumns]);
+  const mainEmptyPaths = mainId ? state.grids[mainId]?.emptyPaths : undefined;
+  const joined = useMemo(() => (joinSources && mainColumns ? joinedMartIds(mainColumns, joinSources, mainEmptyPaths) : []), [joinSources, mainColumns, mainEmptyPaths]);
   // Marts whose fields carry a filter or a slice (applied or parked) are shown too, whether or not a column of theirs is on the grid.
   const mainFilters = mainId ? state.grids[mainId]?.filters : undefined;
   const mainSlices = mainId ? state.grids[mainId]?.slices : undefined;
@@ -232,6 +233,7 @@ function AppBody() {
           storageIds={storageIds}
           joinSources={joinSources}
           mainColumns={mainColumns ?? []}
+          mainEmptyPaths={mainEmptyPaths}
           counts={counts}
           dq={dq}
           foldedSources={folded('sources')}

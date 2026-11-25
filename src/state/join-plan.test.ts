@@ -583,3 +583,97 @@ describe('a click on a mart outside the report joins it by the shortest chain', 
     expect(plan.grids.orders!.columns).not.toContain('p__x__a');
   });
 });
+
+describe('joined marts kept with no column (empty paths)', () => {
+  const customers = src('customers', 'customers', [f('customers__city', 'string', 'customers')], 1);
+  const stores = src('stores', 'stores', [f('stores__city', 'string', 'stores')], 1);
+  const ps = [customers, stores, src('customers.stores', 'stores', [f('customers__stores__city', 'string', 'stores')], 2)];
+
+  test('joinedMartIds, joinedPaths and inUsePaths list the empty paths after those with columns, and skip unknown or repeated ones', () => {
+    expect(joinedMartIds(['id', 'stores__city'], ordersSources, ['customers', 'stores', 'nope', 'products'])).toEqual(['stores', 'customers', 'products']);
+    expect(joinedPaths(['id', 'stores__city'], ordersSources, ['customers', 'stores', 'nope'])).toEqual(['stores', 'customers']);
+    expect(inUsePaths(['id', 'stores__city'], ordersSources, ['customers', 'nope'])).toEqual(new Set(['', 'stores', 'customers']));
+    expect(joinedMartIds(['id'], ordersSources)).toEqual([]);
+    expect(joinedPaths(['id'], ordersSources)).toEqual([]);
+  });
+
+  test('withoutPaths drops the removed paths from the empty ones, and a grid that only has the path as empty is touched', () => {
+    const grid = g(['id'], { emptyPaths: ['customers', 'stores'] });
+    const out = withoutPaths(grid, ps, ['customers'], ['id']);
+    expect(out.emptyPaths).toEqual(['stores']);
+    expect(withoutPaths(grid, ps, ['customers', 'stores'], ['id']).emptyPaths).toBeUndefined();
+    expect(withoutPaths(grid, ps, ['zzz'], ['id'])).toBe(grid);
+  });
+
+  test('withoutMart drops every empty path of the mart', () => {
+    const grid = g(['id', 'customers__city'], { emptyPaths: ['customers.stores', 'stores'] });
+    expect(withoutMart(grid, ps, 'stores', ['id']).grid.emptyPaths).toBeUndefined();
+    expect(withoutMart(grid, ps, 'customers', ['id']).grid.emptyPaths).toEqual(['customers.stores', 'stores']);
+  });
+
+  test('planAddAt drops the path it adds from the empty ones', () => {
+    const out = planAddAt(g(['id'], { emptyPaths: ['customers', 'stores'] }), ps, 'customers', ['id']);
+    expect(out.columns).toEqual(['id', 'customers__city']);
+    expect(out.emptyPaths).toEqual(['stores']);
+    expect(planAddAt(g(['id'], { emptyPaths: ['customers'] }), ps, 'customers', ['id']).emptyPaths).toBeUndefined();
+  });
+
+  test('planRejoin maps the empty paths through the moves', () => {
+    const out = planRejoin(g(['id'], { emptyPaths: ['stores', 'customers'] }), ps, new Map([['stores', 'customers.stores']]), ['id']);
+    expect(out.emptyPaths).toEqual(['customers.stores', 'customers']);
+    expect(planRejoin(g(['id'], { emptyPaths: ['customers'] }), ps, new Map([['stores', 'customers.stores']]), ['id']).emptyPaths).toEqual(['customers']);
+  });
+
+  test('clicking a selected empty mart takes it out and remembers nothing about its fields', () => {
+    const plan = planClick(env({ orders: g(['id'], { emptyPaths: ['customers'] }) }, 'orders'), 'customers');
+    expect(plan.grids.orders!.emptyPaths).toBeUndefined();
+    expect(plan.grids.orders!.columns).toEqual(['id']);
+    expect(plan.saves).toEqual([{ martId: 'orders', columns: ['id'] }]);
+    expect(plan.remember).toEqual([]);
+  });
+
+  test('deselecting the main promotes an empty mart, which opens with its own grid columns', () => {
+    const plan = planClick(env({ orders: g(['id'], { emptyPaths: ['customers'] }), customers: g(['id', 'name']) }, 'orders'), 'orders');
+    expect(plan.selection).toEqual(sel('customers'));
+    expect(plan.grids).toEqual({});
+  });
+
+  test('deselecting the main carries the other empty marts to the new main as empty, never with columns', () => {
+    const grids = { orders: g(['id', 'customers__city'], { emptyPaths: ['stores', 'products'] }), customers: g(['id', 'name']) };
+    const plan = planClick(env(grids, 'orders'), 'orders');
+    // customers joins stores (not products): stores stays empty at the path customers joins it by, products is left out.
+    expect(plan.grids.customers!.columns).toEqual(['id', 'name']);
+    expect(plan.grids.customers!.emptyPaths).toEqual(['stores']);
+    expect(plan.saves).toEqual([{ martId: 'customers', columns: ['id', 'name'] }]);
+    expect(plan.remember.some((r) => r.martId === 'products')).toBe(false);
+  });
+
+  test('an empty mart carried to the new main takes the path closest to a path in use', () => {
+    const viaCountries = src('countries.stores', 'stores', [f('countries__stores__city', 'string', 'stores')], 2);
+    const countries = src('countries', 'countries', [f('countries__name', 'string', 'countries')]);
+    const e = {
+      ...env({ orders: g(['id', 'customers__city', 'countries__name'], { emptyPaths: ['stores'] }), customers: g(['id', 'countries__name']) }, 'orders'),
+      sourcesOf: (id: string) => (id === 'orders' ? [...ordersSources, src('countries', 'countries', [f('countries__name', 'string', 'countries')])] : id === 'customers' ? [countries, viaCountries, ...customersSources.filter((s) => s.martId === 'stores')] : []),
+    };
+    const plan = planClick(e, 'orders');
+    expect(plan.grids.customers!.emptyPaths).toEqual(['countries.stores']);
+    expect(plan.grids.customers!.columns).toEqual(['id', 'countries__name']);
+  });
+
+  test('making a mart main carries an empty joined mart as empty, and an empty mart made main opens with its own columns', () => {
+    const grids = { orders: g(['id', 'customers__city'], { emptyPaths: ['stores', 'products'] }), customers: g(['id', 'name']) };
+    const plan = planMakeMain(env(grids, 'orders'), 'customers');
+    expect(plan.grids.customers!.columns.some((c) => c.startsWith('stores__') || c.startsWith('products__'))).toBe(false);
+    expect(plan.grids.customers!.emptyPaths).toEqual(['stores']);
+    expect(plan.remember.some((r) => r.martId === 'stores' || r.martId === 'products')).toBe(false);
+    const made = planMakeMain(env({ orders: g(['id'], { emptyPaths: ['customers'] }), customers: g(['id', 'name']) }, 'orders'), 'customers');
+    expect(made.selection).toEqual(sel('customers'));
+    expect(made.grids.customers!.columns).toEqual(['id', 'name']);
+  });
+
+  test('a mart that becomes main from nothing drops the empty marts its stale grid holds, and wipes no remembered pick', () => {
+    const plan = planClick(env({ orders: g(['id'], { emptyPaths: ['customers'] }) }, null), 'orders');
+    expect(plan.grids.orders!.emptyPaths).toBeUndefined();
+    expect(plan.saves).toEqual([{ martId: 'orders', columns: ['id'], picks: {} }]);
+  });
+});
