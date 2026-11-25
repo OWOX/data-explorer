@@ -1,16 +1,21 @@
 import { useId, type KeyboardEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
 import { swatchStyle } from '../blank';
+import { useWidth } from '../useWidth';
 import { BlankDefs, blankFill } from './BlankPattern';
 
 export type Slice = { /** The category's key (the blank sentinel, a real value, or the Other sentinel): what React keys on, since a real value can read "(blank)" or "Other" too. */ key?: string; name: string; value: number; valueText: string; color: string; /** The catch-all slice: not a value of the dimension, so it cannot be filtered to. */ other?: boolean; /** The blank value's slice: its filter is "is blank", whatever its name. */ blank?: boolean };
 
 const SIZE = 180;
+const MIN_SIZE = 80;
 const R = SIZE / 2 - 2;
 const C = SIZE / 2;
 
 /** Slice angles are ratios of the slices' sum, for drawing only; the shown text is each slice's `valueText`. */
 export function PieChart({ slices, ariaLabel, onPick, showShare = true }: { slices: Slice[]; ariaLabel: string; onPick?: (name: string, blank?: boolean) => void; /** False when slices overlap (per-slice unique counts of another mart), so a share of their sum means nothing. */ showShare?: boolean }) {
+  const { ref, width, height: room } = useWidth<HTMLDivElement>();
+  // In a panel whose height is set the pie takes what its plot has, else its own size.
+  const size = room === null ? SIZE : Math.max(MIN_SIZE, Math.min(room, width));
   const blankId = `dm-blank-${useId().replace(/:/g, '')}`;
   const drawn = slices.filter((s) => s.value > 0);
   const total = drawn.reduce((sum, s) => sum + s.value, 0);
@@ -30,7 +35,9 @@ export function PieChart({ slices, ariaLabel, onPick, showShare = true }: { slic
   });
   return (
     <div className="dm-pie">
-      <svg role={onPick && drawn.some((s) => !s.other) ? 'group' : 'img'} aria-label={ariaLabel} width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}><BlankDefs id={blankId} />{marks}</svg>
+      <div ref={ref} className="dm-chart-plot">
+      <svg role={onPick && drawn.some((s) => !s.other) ? 'group' : 'img'} aria-label={ariaLabel} width={size} height={size} viewBox={`0 0 ${SIZE} ${SIZE}`}><BlankDefs id={blankId} />{marks}</svg>
+      </div>
       <ul className="dm-chart-legend">
         {slices.map((s) => <li key={s.key ?? s.name}><span className="dm-chart-swatch" style={swatchStyle(s.color)} />{s.name}</li>)}
       </ul>

@@ -17,10 +17,12 @@ export const REST_ORIGIN = '\u0000rest';
 /** A ribbon below this share of its pair's total is merged with the other small ones between the same two nodes. */
 export const REST_SHARE = 0.005;
 
-export const NODE_W = 12;
-export const NODE_GAP = 8;
-const MIN_H = 180;
-const PER_NODE = 26;
+export const NODE_W = 16;
+export const NODE_GAP = 14;
+const MIN_H = 360;
+const PER_NODE = 40;
+/** With a set height: the least a node needs, its gap and a bar. */
+const MIN_PER_NODE = NODE_GAP + 4;
 
 const side = (k: string) => (isBlankKey(k) ? 0 : k === OTHER_KEY ? 2 : 1);
 /** Blank first, "Other" last, the rest by size (largest first). */
@@ -67,7 +69,7 @@ export function layoutSankey({ flows, columns, width, padRight = 0, height, fit 
   const order = sizes.map((m) => rankOf([...m.keys()], m));
   const rank = order.map((keys) => new Map(keys.map((k, i) => [k, i])));
   const maxNodes = Math.max(1, ...order.map((o) => o.length));
-  const h = height ?? Math.max(MIN_H, maxNodes * PER_NODE);
+  const h = height === undefined ? Math.max(MIN_H, maxNodes * PER_NODE) : Math.max(height, maxNodes * MIN_PER_NODE);
   // One scale: the column that needs the most room per unit sets it.
   const scale = Math.min(...order.map((keys, c) => {
     const sum = keys.reduce((s, k) => s + sizes[c]!.get(k)!, 0);

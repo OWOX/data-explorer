@@ -87,3 +87,33 @@ test('text that only contains a URL is no link', () => {
   linked(<CellValue row={{ note: `see ${URL_TEXT}` }} field="note" type="STRING" />);
   expect(screen.queryByRole('link')).toBeNull();
 });
+
+test.each([['grid', false], ['Row band', true]])('a double click in the %s opens one tab', (_, wrap) => {
+  const open = linked(<CellValue row={{ page: URL_TEXT }} field="page" type="STRING" wrap={wrap} />);
+  const link = screen.getByRole('link');
+  fireEvent.click(link, { detail: 1 });
+  expect(fireEvent.click(link, { detail: 2 })).toBe(false);
+  expect(open).toHaveBeenCalledTimes(1);
+});
+
+test('the link is safe to open and is a Tab stop in the Row band only', () => {
+  const { unmount } = render(<AppServices ctx={stubCtx()}><TooltipProvider><CellValue row={{ page: URL_TEXT }} field="page" type="STRING" /></TooltipProvider></AppServices>);
+  expect(screen.getByRole('link')).toHaveAttribute('rel', 'noopener noreferrer');
+  // The grid is one Tab stop.
+  expect(screen.getByRole('link')).toHaveAttribute('tabindex', '-1');
+  unmount();
+  linked(<CellValue row={{ page: URL_TEXT }} field="page" type="STRING" wrap />);
+  expect(screen.getByRole('link')).not.toHaveAttribute('tabindex');
+});
+
+test('a host that refuses to open the URL causes no unhandled rejection', async () => {
+  const ctx = stubCtx();
+  // The rejection must be handled by the link itself: the spy sees a `catch` attached to the very promise the host returned.
+  const refused = Promise.reject(new Error('refused'));
+  const handled = vi.spyOn(refused, 'catch');
+  vi.mocked(ctx.ui.openExternal).mockReturnValue(refused);
+  render(<AppServices ctx={ctx}><TooltipProvider><CellValue row={{ page: URL_TEXT }} field="page" type="STRING" /></TooltipProvider></AppServices>);
+  fireEvent.click(screen.getByRole('link'));
+  await new Promise((r) => setTimeout(r, 0));
+  expect(handled).toHaveBeenCalledTimes(1);
+});

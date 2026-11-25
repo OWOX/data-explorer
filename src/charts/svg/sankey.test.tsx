@@ -44,6 +44,21 @@ test('labels name the node and its value', () => {
   expect([...container.querySelectorAll('text')].some((t) => t.textContent?.includes('(blank) $2'))).toBe(true);
 });
 
+test('a thin node keeps its label: the gap between nodes makes room for it', () => {
+  const { container } = draw({ titles: ['One', 'Two'], flows: [[{ source: 'a', target: 'x', value: 990 }, { source: 'a', target: 'thin', value: 10 }]] });
+  const bar = container.querySelector('rect[data-node="1|thin"]')!;
+  expect(Number(bar.getAttribute('height'))).toBeLessThan(12);
+  expect([...container.querySelectorAll('text.dm-chart-text')].some((t) => t.textContent === 'thin $10')).toBe(true);
+});
+
+test('labels of neighbouring nodes are at least a line apart, however thin the nodes', () => {
+  const many: Flow[] = Array.from({ length: 12 }, (_, i) => ({ source: 'a', target: `t${i}`, value: i === 0 ? 1000 : 3 + i }));
+  const { container } = draw({ titles: ['One', 'Two'], flows: [many] });
+  const ys = [...container.querySelectorAll('text.dm-chart-text')].filter((t) => t.textContent!.startsWith('t')).map((t) => Number(t.getAttribute('y'))).sort((p, q) => p - q);
+  expect(ys.length).toBe(12);
+  ys.slice(1).forEach((y, i) => expect(y - ys[i]!).toBeGreaterThanOrEqual(15));
+});
+
 test('a node picks its column and key by keyboard; Other is not pickable', async () => {
   const onPickNode = vi.fn();
   draw({ onPickNode });

@@ -54,7 +54,7 @@ test('sankey columns: a new column takes the next unused dimension; picking a he
 });
 
 test('sankey is wider with more columns', () => {
-  expect(sankeyWidth(3)).toBe('clamp(20rem, 33rem, 100%)');
+  expect(sankeyWidth(3)).toBe('clamp(20rem, 60rem, 100%)');
 });
 
 const j = (name: string) => ({ name, category: 'string', type: 'STRING', joined: { martId: 'C', label: 'Customers', aliasPath: 'c' } }) as never;
