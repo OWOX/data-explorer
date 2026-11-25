@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+import { configButton } from './config-menu';
 
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
 const data = (page: Page) => page.locator('#band-data');
@@ -40,5 +41,30 @@ for (const width of [1440, 800]) {
     const hint = await data(page).locator('.dm-band-titlegroup .dm-hint').boundingBox();
     expect(badge!.x).toBeGreaterThan(title!.x + title!.width);
     expect(hint!.x).toBeGreaterThan(badge!.x + badge!.width);
+  });
+}
+
+// The switch clips what does not fit, so a squeezed switch hides "Charts" without overflowing anything.
+for (const width of [640, 560, 480, 400, 320]) {
+  test(`at ${width}px the Table / Charts switch is whole and Configure fits beside or under it`, async ({ page }) => {
+    const whole = async (group: Locator) => {
+      const [box, inner] = await Promise.all([group.boundingBox(), group.getByRole('radio').last().boundingBox()]);
+      return inner!.x + inner!.width <= box!.x + box!.width + 1 && box!.x + box!.width <= width;
+    };
+    const view = data(page).getByRole('radiogroup', { name: 'Show data as' });
+    await expect(view).toBeVisible();
+    await expect(data(page).locator('.dm-band-count')).toBeVisible();
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => whole(view)).toBe(true);
+    const configure = await configButton(page).boundingBox();
+    expect(configure!.x + configure!.width).toBeLessThanOrEqual(width);
+    expect(configure!.height).toBe(28);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    // A real click at the middle of the Charts option, where a clipped one would not be hit.
+    await data(page).getByRole('radio', { name: 'Charts' }).click();
+    await expect(data(page).getByRole('radio', { name: 'Charts' })).toBeChecked();
+    await expect.poll(() => whole(view)).toBe(true);
+    // The marts band's switch, in its own header.
+    await expect.poll(() => whole(page.locator('#band-marts').getByRole('radiogroup', { name: 'Show data marts as' }))).toBe(true);
   });
 }
