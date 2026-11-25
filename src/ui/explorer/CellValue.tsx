@@ -5,17 +5,12 @@ import { useServices } from '../../state/store';
 import { linkOf } from '../link';
 import { Tooltip, OverflowTip } from '../Tooltip';
 
-/**
- * A cell's URL. It opens in a new tab through the host, since the plugin's frame has no popups. A shift-click, the click that ends a drag
- * (the grid cancels it), the second click of a double click, and in the Row band the click that ends a text selection open nothing.
- */
-function CellLink({ href, text, tabIndex, wrap }: { href: string; text: string; tabIndex?: number; wrap?: boolean }) {
+/** A cell's URL. It opens in a new tab through the host, since the plugin's frame has no popups. A shift-click, the click that ends a drag (the grid cancels it) and the second click of a double click open nothing. */
+function CellLink({ href, text, tabIndex }: { href: string; text: string; tabIndex?: number }) {
   const { ctx } = useServices();
   return (
-    // The Row band's text is selectable: a native link drag would swallow the press that starts selecting it.
-    <a href={href} target="_blank" rel="noopener noreferrer" className="dm-cell-link" tabIndex={tabIndex} draggable={wrap ? false : undefined} onClick={(e) => {
-      const sel = wrap ? window.getSelection() : null;
-      const cancelled = e.defaultPrevented || e.shiftKey || e.detail > 1 || (!!sel && !sel.isCollapsed && sel.getRangeAt(0).intersectsNode(e.currentTarget));
+    <a href={href} target="_blank" rel="noopener noreferrer" className="dm-cell-link" tabIndex={tabIndex} onClick={(e) => {
+      const cancelled = e.defaultPrevented || e.shiftKey || e.detail > 1;
       e.preventDefault();
       if (!cancelled) void ctx.ui.openExternal(href).catch(() => undefined);
     }}>{text}</a>
@@ -31,7 +26,7 @@ export function CellValue({ row, field, type, wrap = false, format }: { row: Row
   const raw = formatValue(row[field]);
   const href = linkOf(raw);
   if (href) {
-    if (wrap) return <span><CellLink href={href} text={raw} wrap /></span>;
+    if (wrap) return <span><CellLink href={href} text={raw} /></span>;
     // The grid is one Tab stop: its links stay out of the Tab order.
     return <OverflowTip text={raw}><span className="block truncate"><CellLink href={href} text={raw} tabIndex={-1} /></span></OverflowTip>;
   }

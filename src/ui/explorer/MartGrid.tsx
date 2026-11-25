@@ -1021,7 +1021,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     if (e.key === 'Escape') { if (sel) { e.preventDefault(); setSelected(null); } return; }
     if (e.key === 'Enter') {
       // A single selected cell opens its URL. A focused link or button (a right click leaves the link focused) keeps its own Enter.
-      if (sel?.kind !== 'cell' || sel.to || target.closest('button, a, [role=button]')) return;
+      if (e.repeat || e.shiftKey || sel?.kind !== 'cell' || sel.to || target.closest('button, a, [role=button]')) return;
       const link = e.currentTarget.querySelector<HTMLElement>('td[data-selected] .dm-cell-link');
       if (link) { e.preventDefault(); link.click(); }
       return;
@@ -1031,6 +1031,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     // Keys on a button or link inside a cell are theirs; the grid itself and a cell move the selection.
     if (target !== e.currentTarget && target.closest('button, a:not(.dm-cell-link), [role=button]')) return;
     e.preventDefault();
+    // The selection moves on, so a link a right click focused must not keep the focus: Enter would open it, not the new cell.
+    if (target.closest('.dm-cell-link')) scroller.current?.focus({ preventScroll: true });
     // From a whole column or row the keys land on a single cell: the first one of the block's last column or row.
     const at: Cell | null = !sel ? null : sel.kind === 'cell' ? { row: sel.row, col: sel.col } : sel.kind === 'col' ? { row: 0, col: sel.to } : { row: sel.to, col: 0 };
     const move = (c: Cell): Cell => ({ row: Math.min(rowCount - 1, Math.max(0, c.row + step[0]!)), col: Math.min(outputs.length - 1, Math.max(0, c.col + step[1]!)) });

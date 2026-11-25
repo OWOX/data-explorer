@@ -12,6 +12,7 @@ test.each([
   ['https://127.0.0.1/a', 'https://127.0.0.1/a'],
   ['https://[::1]/a', 'https://[::1]/a'],
   ['https://münchen.de/a', 'https://xn--mnchen-3ya.de/a'],
+  ['https://owox.com./a', 'https://owox.com./a'],
   ['https://a_b.owox.com/', 'https://a_b.owox.com/'],
   ['https://a.com/{x}?q={y}', 'https://a.com/%7Bx%7D?q={y}'],
 ])('%s is a link to %s', (text, href) => expect(linkOf(text)).toBe(href));

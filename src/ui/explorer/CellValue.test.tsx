@@ -117,37 +117,3 @@ test('a host that refuses to open the URL causes no unhandled rejection', async 
   await new Promise((r) => setTimeout(r, 0));
   expect(handled).toHaveBeenCalledTimes(1);
 });
-
-describe('in the Row band', () => {
-  const band = () => {
-    const open = linked(<div><p>elsewhere</p><CellValue row={{ page: URL_TEXT }} field="page" type="STRING" wrap /></div>);
-    return { open, link: screen.getByRole('link'), other: screen.getByText('elsewhere') };
-  };
-  afterEach(() => window.getSelection()?.removeAllRanges());
-
-  test('the link cannot be dragged away, so a press and drag selects its text', () => {
-    expect(band().link).toHaveAttribute('draggable', 'false');
-  });
-
-  test('the click that ends a text selection over the link opens nothing', () => {
-    const { open, link } = band();
-    window.getSelection()!.selectAllChildren(link);
-    expect(fireEvent.click(link)).toBe(false);
-    expect(open).not.toHaveBeenCalled();
-  });
-
-  test('a plain click opens it, also while text elsewhere is selected', () => {
-    const { open, link, other } = band();
-    window.getSelection()!.selectAllChildren(other);
-    fireEvent.click(link);
-    expect(open).toHaveBeenCalledExactlyOnceWith(URL_TEXT);
-  });
-
-  test('Enter on the focused link opens it, also while text elsewhere is selected', async () => {
-    const { open, link, other } = band();
-    window.getSelection()!.selectAllChildren(other);
-    link.focus();
-    await userEvent.keyboard('{Enter}');
-    expect(open).toHaveBeenCalledExactlyOnceWith(URL_TEXT);
-  });
-});
