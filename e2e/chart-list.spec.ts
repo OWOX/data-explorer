@@ -14,7 +14,7 @@ async function openCharts(page: Page, columns: (string | RegExp)[]) {
   await expect(data(page).locator('section.dm-chart')).toHaveCount(2);
 }
 
-test('add, switch, configure, hide and remove charts from the header menu', async ({ page }) => {
+test('add, switch, configure and hide charts from the header menu', async ({ page }) => {
   await openCharts(page, [/created_at/i, /Net Revenue/i]);
   const listButton = data(page).locator('[data-chart-list-slot]').getByRole('button', { name: 'Charts options' });
 

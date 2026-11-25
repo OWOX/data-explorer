@@ -10,7 +10,7 @@ import type { ChartKind, ChartSpec, Spark } from '../settings';
 export type PanelProps<R> = {
   martId: string; cf: ChartFields; spec: ChartSpec; r: R; spark: Spark; filter: TraverseFilter[]; version: number; idle: boolean;
   hasFilters: boolean; formatOf: Formatter; ready: boolean;
-  /** Rows every panel menu ends with (Chart type, Remove), built by ChartsBody. */
+  /** Rows every panel menu ends with (Chart type, Duplicate, Hide), built by ChartsBody. */
   tail: MenuItem[];
   onChange: (patch: Partial<ChartSpec>) => void; onFilter: (add: ColumnFilter[]) => void;
 };

@@ -1,4 +1,4 @@
-import { ChartColumn, ChartSpline, Copy, EyeOff, Hash, Plus } from 'lucide-react';
+import { ChartColumn, ChartSpline, CopyPlus, EyeOff, Hash, Plus } from 'lucide-react';
 import type { MenuItem } from './ChartMenu';
 import type { ChartFields, ChartMart } from './fields';
 import { eligibleKinds, KINDS } from './kinds';
@@ -76,7 +76,7 @@ export function tailItems({ cf, spec, change }: { cf: ChartFields; spec: ChartSp
       onPick: (v) => change((cur) => editCharts(cur, (list) => list.map((c) => (c.id === spec.id ? { id: c.id, ...(c.hidden !== undefined ? { hidden: c.hidden } : {}), ...KINDS[v as ChartKind]!.create(cf, fromSankey(c)) } : c)))),
     },
     // The copy sits right after its original, with its own id and no hidden flag; structuredClone keeps the two from sharing arrays.
-    { kind: 'action', label: 'Duplicate', icon: Copy, onPick: () => change((cur) => editCharts(cur, (list) => list.flatMap((c) => (c.id === spec.id ? [c, { ...structuredClone(c), id: newChartId(), hidden: undefined }] : [c])))) },
+    { kind: 'action', label: 'Duplicate', icon: CopyPlus, onPick: () => change((cur) => editCharts(cur, (list) => list.flatMap((c) => (c.id === spec.id ? [c, { ...structuredClone(c), id: newChartId(), hidden: undefined }] : [c])))) },
     { kind: 'action', label: 'Hide', icon: EyeOff, onPick: () => change((cur) => patchChart(cur, spec.id, { hidden: true })) },
   ];
 }

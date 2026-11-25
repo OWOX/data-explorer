@@ -591,7 +591,7 @@ test('when the shared sparkline read fails, the bar chart draws from its own rea
   expect(after.filter((q) => q.dateTrunc?.length && !q.uniqueCount && q.column?.[0] === 'created_at')).toHaveLength(1);
 });
 
-test('the Charts menu sits in the band header and adds, hides and removes charts', async () => {
+test('the Charts menu sits in the band header and adds and hides charts', async () => {
   const t = await charts();
   const header = data().querySelector('[data-chart-list-slot]')!;
   await userEvent.click(within(header as HTMLElement).getByRole('button', { name: 'Charts options' }));
@@ -611,12 +611,30 @@ test('the Charts menu sits in the band header and adds, hides and removes charts
   await userEvent.click(pies[1]!);
   await userEvent.click(screen.getByRole('menuitem', { name: 'Hide' }));
   await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(1));
-  // The Charts list still names the hidden chart and shows it again with its setup.
-  await userEvent.keyboard('{Escape}');
-  await userEvent.click(within(header as HTMLElement).getByRole('button', { name: 'Charts options' }));
-  const hiddenRow = screen.getAllByRole('menuitemcheckbox').find((r) => r.getAttribute('aria-checked') === 'false')!;
-  await userEvent.click(hiddenRow);
-  await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(2));
+});
+
+test('Hide keeps the chart in the Charts list, and ticking it brings it back with its setup', async () => {
+  const saved = { id: 'p', kind: 'pie', dimension: 'status' } as const;
+  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, saved] } });
+  await userEvent.click(await screen.findByRole('button', { name: 'Pie options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Hide' }));
+  await waitFor(() => expect(data().querySelector('section[data-chart-kind="Pie"]')).toBeNull());
+  const header = data().querySelector('[data-chart-list-slot]') as HTMLElement;
+  await userEvent.click(within(header).getByRole('button', { name: 'Charts options' }));
+  const row = screen.getByRole('menuitemcheckbox', { name: /by status$/ });
+  expect(row).toHaveAttribute('aria-checked', 'false');
+  await userEvent.click(row);
+  await waitFor(() => expect(data().querySelector('section[data-chart-kind="Pie"]')).not.toBeNull());
+  expect((t.puts.mock.lastCall![1] as ChartSettings).charts).toEqual([{ id: 'time-series', kind: 'timeSeries' }, { ...saved, hidden: false }]);
+});
+
+test('Duplicate adds a chart beside its original', async () => {
+  const t = await charts();
+  await userEvent.click(screen.getByRole('button', { name: 'Pie options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Duplicate' }));
+  await waitFor(() => expect(data().querySelectorAll('section[data-chart-kind="Pie"]')).toHaveLength(2));
+  expect(data().querySelectorAll('section.dm-chart')).toHaveLength(3);
+  expect((t.puts.mock.lastCall![1] as ChartSettings).charts!.map((c) => c.kind)).toEqual(['timeSeries', 'pie', 'pie']);
 });
 
 test('a hidden chart sends no query', async () => {

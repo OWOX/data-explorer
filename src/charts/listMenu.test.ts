@@ -72,7 +72,8 @@ test('Duplicate on the default list saves the defaults with the copy after its o
   const dup = tailItems({ cf, spec: { id: 'time-series', kind: 'timeSeries' }, change })[1]!;
   if (dup.kind === 'action') dup.onPick();
   expect(s.charts!.map((c) => c.kind)).toEqual(['timeSeries', 'timeSeries', 'pie']);
-  expect(s.charts![1]!.id).not.toBe('time-series');
+  expect(s.charts![0]!.id).toBe('time-series');
+  expect(s.charts![1]!.id).toMatch(/^c-/);
 });
 
 test('Hide sets hidden and keeps the chart and its setup', () => {
