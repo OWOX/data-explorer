@@ -76,11 +76,14 @@ for (const width of [641, 520, 480, 400, 320]) {
 for (const width of [1000, 640, 400]) {
   test(`at ${width}px a long Row title stays on one line and ends in an ellipsis`, async ({ page }) => {
     const row = page.locator('#band-row');
+    // The records count is only on the loaded page: before it the header is the loading one, which is replaced.
+    await expect(data(page).locator('.dm-band-count')).toBeVisible();
     await expect(row.locator('.dm-band-title')).toBeVisible();
     await page.setViewportSize({ width, height: 900 });
     await row.locator('.dm-band-title').evaluate((el) => { el.textContent = `Orders · ${'3f2504e0-4f89-11d3-9a0c-0305e82c3301 '.repeat(5)}`; });
     const title = row.locator('.dm-band-title');
     await expect.poll(() => title.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    await expect(title).toHaveCSS('text-overflow', 'ellipsis');
     const mid = async (l: Locator) => { const b = (await l.boundingBox())!; return b.y + b.height / 2; };
     const line = await mid(row.locator('.dm-band-icon'));
     expect(Math.abs((await mid(title)) - line)).toBeLessThanOrEqual(2);
