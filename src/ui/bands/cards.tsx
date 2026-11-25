@@ -198,6 +198,9 @@ export function MartCard({
     return whenInView(el.current, () => need.current?.());
   }, [mart.accessible, ghost, need]);
   const name = title ?? mart.title;
+  // A press that began on a control and ended on the card sends its click to the card: that is not a select.
+  const fromControl = useRef(false);
+  const select = selectable(onSelect);
   return (
     <article
       ref={el}
@@ -211,7 +214,10 @@ export function MartCard({
       className={cardClass(lit, aside, [selected || joined || lit ? 'dm-in-path' : '', mart.accessible ? '' : 'dm-noaccess', offPath ? 'dm-offpath' : '', ghost ? 'dm-ghost' : '', transition?.className ?? ''].filter(Boolean).join(' '), faded)}
       {...(transition?.leaving ? { 'data-leaving': '' } : {})}
       {...(ghost ? { 'data-ghost': '' } : {})}
-      {...selectable(onSelect)}
+      {...select}
+      onPointerDownCapture={(e) => { fromControl.current = e.target instanceof Element && e.target.closest('button, a, input') !== null; }}
+      onClickCapture={(e) => { if (e.target instanceof Element && e.target.closest('button, a, input') !== null) fromControl.current = false; }}
+      onClick={() => { if (fromControl.current) fromControl.current = false; else onSelect(); }}
     >
       {onRemove && (
         <button type="button" aria-label={`Remove ${name} from the report`} className="dm-card-remove" onClick={(e) => { e.stopPropagation(); onRemove(); }}>

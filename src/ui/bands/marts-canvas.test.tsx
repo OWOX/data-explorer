@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { createPreferences } from '../../api/preferences';
@@ -438,9 +438,13 @@ test('hovering the (+) of a ghost shows its own joinable marts to its right, wir
   const left = (a: HTMLElement) => parseFloat(a.parentElement!.style.left);
   expect(left(ghostEl('countries', 'customers.countries')!)).toBeGreaterThan(left(ghostEl('customers', 'customers')!));
   await waitFor(() => expect(document.querySelector('#tree-wires path.ghost[data-from="dm-customers@customers"][data-to="dm-countries@customers.countries"]')).not.toBeNull());
-  // Back to the card's own (+): the chain after the first link goes.
-  await userEvent.hover(plusOf(el('orders')!));
+  // The (+) of a sibling ghost: the chain after the first link goes and the sibling's level shows.
+  await userEvent.hover(plusOf(ghostEl('stores', 'stores')!));
   expect(ghostEl('countries', 'customers.countries')).toBeNull();
+  await waitFor(() => expect(ghostEl('countries', 'stores.countries')).not.toBeNull());
+  // The card's own (+): its ghosts alone.
+  await userEvent.hover(plusOf(el('orders')!));
+  expect(ghostEl('countries', 'stores.countries')).toBeNull();
   expect(ghostEl('customers', 'customers')).not.toBeNull();
 });
 
@@ -872,4 +876,143 @@ test('the Grid cards have no (+)', async () => {
   await ready();
   await within(marts()).findByText('Customers');
   expect(marts().querySelectorAll('[data-join-plus]')).toHaveLength(0);
+});
+
+/** A main mart A with B under it, and C already in the report: the cards are A and C, and B is the ghost of A's (+). */
+const twoCards = () => small([mk('a'), mk('b'), mk('c')], undefined, {}, ['id', 'c__x']);
+/** B and C are both in the report under A, and D can join under B: B's (+) shows D, and C is not near B so it dims. */
+const dimmed = () => small([mk('a'), mk('b'), mk('c'), mk('d')], undefined, { d: 'b.d' }, ['id', 'b__x', 'c__x']);
+const card = (id: string) => document.querySelector<HTMLElement>(`article[data-mart-id="${id}"]:not([data-ghost])`)!;
+const ghostCount = () => document.querySelectorAll('article[data-ghost]').length;
+const fadedCount = () => document.querySelectorAll('article.dm-faded').length;
+const tick = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+
+describe('on fake timers', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); document.querySelectorAll('[data-outside]').forEach((n) => n.remove()); });
+
+  test('the ghosts go GHOST_GRACE_MS after the pointer left them, however much it moves over another card', () => {
+    twoCards();
+    fireEvent.pointerOver(plusOf(card('a')));
+    expect(ghostCount()).toBe(1);
+    fireEvent.pointerOver(card('c'));
+    tick(250);
+    fireEvent.pointerOver(card('c').querySelector('.dm-node-title')!);
+    tick(100);
+    fireEvent.pointerOver(card('c'));
+    tick(40);
+    // 390 ms after the first crossing: still there, 20 ms later gone.
+    expect(ghostCount()).toBe(1);
+    tick(20);
+    expect(ghostCount()).toBe(0);
+  });
+
+  test('focusing a (+) shows and dims, and tabbing out of the graph undoes both; tabbing to a ghost keeps them', () => {
+    dimmed();
+    const outside = document.createElement('button');
+    outside.setAttribute('data-outside', '');
+    document.body.append(outside);
+    act(() => plusOf(card('b')).focus());
+    expect(ghostCount()).toBe(1);
+    expect(fadedCount()).toBeGreaterThan(0);
+    act(() => document.querySelector<HTMLElement>('article[data-ghost]')!.focus());
+    tick(600);
+    expect(ghostCount()).toBe(1);
+    act(() => plusOf(card('b')).focus());
+    act(() => outside.focus());
+    tick(600);
+    expect(ghostCount()).toBe(0);
+    expect(fadedCount()).toBe(0);
+  });
+
+  test('a click on the empty canvas clears the ghosts that focus showed', () => {
+    twoCards();
+    act(() => plusOf(card('a')).focus());
+    expect(ghostCount()).toBe(1);
+    fireEvent.click(document.querySelector('.dm-tree-sizer')!);
+    expect(ghostCount()).toBe(0);
+  });
+
+  test('a (+) closed with Enter shows its ghosts again once focus has left and returned', () => {
+    twoCards();
+    const plus = plusOf(card('a'));
+    act(() => plus.focus());
+    fireEvent.click(plus);
+    fireEvent.click(plus);
+    expect(ghostCount()).toBe(0);
+    act(() => plus.blur());
+    tick(600);
+    act(() => plus.focus());
+    expect(ghostCount()).toBe(1);
+  });
+
+  test('returning to the window does not bring the ghosts or the dimming back while the pointer is elsewhere', () => {
+    dimmed();
+    const plus = plusOf(card('b'));
+    act(() => plus.focus());
+    expect(ghostCount()).toBe(1);
+    const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    act(() => plus.blur());
+    tick(600);
+    expect(ghostCount()).toBe(0);
+    // The window comes back: the browser focuses the element it left on.
+    act(() => plus.focus());
+    hasFocus.mockReturnValue(true);
+    expect(ghostCount()).toBe(0);
+    expect(fadedCount()).toBe(0);
+    // A deliberate focus afterwards works again.
+    act(() => plus.blur());
+    act(() => plus.focus());
+    expect(ghostCount()).toBe(1);
+  });
+
+  test('a press on a (+) released on the card body does not select the card or add the ghost', () => {
+    const click = small([mk('a'), mk('b'), mk('c')], undefined, { c: 'b.c' });
+    fireEvent.click(plusOf(card('a')));
+    const ghost = document.querySelector<HTMLElement>('article[data-ghost][data-mart-id="b"]')!;
+    fireEvent.pointerDown(plusOf(ghost), pointer(10, 10));
+    fireEvent.click(ghost);
+    expect(click).not.toHaveBeenCalled();
+    // The next plain click does add it.
+    fireEvent.click(ghost);
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  test('on a touch screen, the second tap on a (+) leaves nothing dimmed', () => {
+    dimmed();
+    const plus = plusOf(card('b'));
+    fireEvent.pointerOver(plus);
+    fireEvent.click(plus);
+    fireEvent.pointerLeave(document.querySelector('.dm-tree')!);
+    fireEvent.click(plus);
+    tick(600);
+    expect(ghostCount()).toBe(0);
+    expect(fadedCount()).toBe(0);
+  });
+});
+
+test('while a card is pinned, another card\'s (+) shows its ghosts and the pin\'s come back after it; its body changes nothing; a click moves the pin', async () => {
+  setup();
+  await ready();
+  await toCanvas();
+  await waitFor(() => expect(el('orders')).not.toBeNull());
+  await userEvent.hover(plusOf(el('orders')!));
+  await userEvent.click(await waitFor(() => { const g = ghostEl('customers', 'customers'); expect(g).not.toBeNull(); return g!; }));
+  // The added card is pinned and shows its own ghosts.
+  await waitFor(() => expect(ghostEl('countries', 'customers.countries')).not.toBeNull());
+  await userEvent.hover(el('orders')!);
+  await later();
+  expect(ghostEl('countries', 'customers.countries')).not.toBeNull();
+  await userEvent.hover(plusOf(el('orders')!));
+  await waitFor(() => expect(ghostEl('products', 'products')).not.toBeNull());
+  expect(ghostEl('countries', 'customers.countries')).toBeNull();
+  await userEvent.unhover(el('orders')!);
+  await waitFor(() => expect(ghostEl('countries', 'customers.countries')).not.toBeNull());
+  expect(ghostEl('products', 'products')).toBeNull();
+  await userEvent.click(plusOf(el('orders')!));
+  await waitFor(() => expect(el('orders')).toHaveAttribute('data-focused'));
+  await userEvent.unhover(el('orders')!);
+  await later();
+  expect(ghostEl('products', 'products')).not.toBeNull();
+  expect(ghostEl('countries', 'customers.countries')).toBeNull();
 });

@@ -156,3 +156,24 @@ test('canvas: hovering a card shows no ghosts; its (+) sits on the middle of the
   await plus.click();
   await expect(marts.locator('article[data-ghost]')).toHaveCount(0);
 });
+
+test('canvas: focus on a (+) shows its ghosts and blur lets them go; a pinned card yields to another card\'s (+) while it is hovered', async ({ page }) => {
+  await page.goto('/?mock');
+  const marts = page.locator('#band-marts');
+  await marts.getByRole('radio', { name: 'Graph' }).click();
+  const plus = marts.locator('article#dm-orders [data-join-plus]');
+  await plus.focus();
+  await expect(marts.locator('article[data-ghost]').first()).toBeVisible();
+  await plus.evaluate((n) => (n as HTMLElement).blur());
+  await expect(marts.locator('article[data-ghost]')).toHaveCount(0);
+
+  await plus.hover();
+  await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
+  await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toBeVisible();
+  await plus.hover();
+  await expect(marts.locator('article[data-ghost][data-mart-id="products"]')).toBeVisible();
+  await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toBeVisible();
+  await expect(marts.locator('article[data-ghost][data-mart-id="products"]')).toHaveCount(0);
+});

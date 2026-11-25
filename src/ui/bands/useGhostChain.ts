@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { chainAfterHover } from '../../state/join-tree';
+import { useLatest } from '../useLatest';
 
 /** How long the ghosts stay after the pointer leaves, so it can cross the gap from a card to its ghosts. Showing them has no delay. */
 export const GHOST_GRACE_MS = 400;
@@ -38,16 +39,17 @@ export function useGhostChain(pinned: string | null, pinnedChain: string[] = NO_
   const timerLeaves = useRef(false);
   const muted = useRef<string | null>(null);
   // The handlers are stable and read the pin and what is shown through refs.
-  const pin = useRef({ path: pinned, chain: pinnedChain });
-  const current = useRef(shown);
-  useEffect(() => { pin.current = { path: pinned, chain: pinnedChain }; current.current = shown; });
+  const pin = useLatest({ path: pinned, chain: pinnedChain });
+  const current = useLatest(shown);
   const cancel = () => { clearTimeout(timer.current); timer.current = undefined; };
   useEffect(() => cancel, []);
+  // Ends a pending leave for good: the pointer is gone, so the other cards stop fading as well.
+  const stop = useCallback(() => { if (timer.current !== undefined && timerLeaves.current) setAt(null); cancel(); }, []);
+  // The deadline is set when the pointer leaves the ghosts and is not moved by what it does on other cards after that.
   const later = useCallback((leaves: boolean) => {
-    if (timer.current !== undefined && timerLeaves.current === leaves) return;
-    cancel();
+    if (timer.current !== undefined) { timerLeaves.current = leaves; return; }
     timerLeaves.current = leaves;
-    timer.current = setTimeout(() => { timer.current = undefined; setShown(NOTHING); if (leaves) setAt(null); }, GHOST_GRACE_MS);
+    timer.current = setTimeout(() => { timer.current = undefined; setShown(NOTHING); if (timerLeaves.current) setAt(null); }, GHOST_GRACE_MS);
   }, []);
 
   const onOver = useCallback((over: Over) => {
@@ -56,36 +58,40 @@ export function useGhostChain(pinned: string | null, pinnedChain: string[] = NO_
       later(true);
       return;
     }
-    cancel();
     setAt((cur) => (cur !== null && cur.card === over.card && cur.ghost === over.ghost ? cur : over));
     const key = plusKey(over);
     // The (+) that was just closed: the pointer is still on it, and it shows nothing until the pointer has been elsewhere.
-    if (key !== null && key === muted.current) return;
+    if (key !== null && key === muted.current) { cancel(); return; }
     muted.current = null;
     if (over.card !== null) {
-      // A pinned card keeps the ghosts: another card under the pointer shows nothing of its own.
-      if (pin.current.path !== null) { setShown(NOTHING); return; }
       if (over.plus) {
+        // Also on a pinned card's neighbour: its ghosts show instead of the pin's until this hover ends.
+        cancel();
         setShown((cur) => (cur.anchor === over.card && cur.chain.length === 0 ? cur : { anchor: over.card, chain: [] }));
-      } else if (current.current.anchor !== over.card) {
+      } else if (current.current.anchor === over.card) {
+        cancel();
+      } else if (current.current.anchor !== null) {
+        // Another card: what is shown goes at the deadline the pointer set when it left, not at a new one.
         later(false);
       }
       return;
     }
     // On a ghost: its own (+) adds the next level; the ghost itself leaves the chain as it is.
+    cancel();
     if (!over.plus) return;
     setShown((cur) => {
-      const base = cur.chain.length > 0 ? cur.chain : pin.current.chain;
-      const chain = chainAfterHover(pin.current.path ?? cur.anchor, base, over.ghost!);
+      const from = cur.anchor ?? pin.current.path;
+      const base = cur.chain.length > 0 ? cur.chain : cur.anchor === null || cur.anchor === pin.current.path ? pin.current.chain : [];
+      const chain = chainAfterHover(from, base, over.ghost!);
       return chain === base ? cur : { anchor: cur.anchor, chain };
     });
-  }, [later]);
+  }, [later, pin, current]);
   const onLeave = useCallback(() => onOver({ card: null, ghost: null, plus: false }), [onOver]);
   const clear = useCallback(() => { cancel(); setShown(NOTHING); muted.current = null; setAt(null); }, []);
   /** Lets go of what the hover shows, without muting anything: the pointer stays where it is. */
-  const drop = useCallback(() => { cancel(); setShown(NOTHING); }, []);
+  const drop = useCallback(() => { stop(); setShown(NOTHING); }, [stop]);
   const mute = useCallback((target: { card: string } | { ghost: string }) => {
-    cancel();
+    stop();
     if ('card' in target) {
       muted.current = `card:${target.card}`;
       setShown(NOTHING);
@@ -96,7 +102,9 @@ export function useGhostChain(pinned: string | null, pinnedChain: string[] = NO_
         return at < 0 ? cur : { anchor: cur.anchor, chain: cur.chain.slice(0, at) };
       });
     }
-  }, []);
+  }, [stop]);
 
-  return { anchor: shown.anchor, chain: shown.chain.length > 0 ? shown.chain : pinnedChain, at, onOver, onLeave, clear, drop, mute };
+  // The pin's own chain shows when nothing is hovered or the pinned card's own (+) is; another card's (+) shows its ghosts alone.
+  const chain = shown.chain.length > 0 ? shown.chain : shown.anchor === null || shown.anchor === pinned ? pinnedChain : NO_CHAIN;
+  return { anchor: shown.anchor, chain, at, onOver, onLeave, clear, drop, mute };
 }

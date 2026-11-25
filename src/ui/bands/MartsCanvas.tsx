@@ -1,4 +1,4 @@
-// The Data Marts graph: the report as a tree of cards, with ghosts for what can still join under the card whose (+) is hovered or pinned, and a chain of ghosts from a hovered ghost.
+// The Data Marts graph: the report as a tree of cards, with ghosts for what can still join under the card whose (+) is hovered or pinned, and a chain of ghosts from the (+) of a ghost.
 import { flushSync } from 'react-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JoinedSource } from '../../api/blendable';
@@ -37,6 +37,8 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   onSelectedMart?: (martId: string | null) => void;
 }) {
   const treeRef = useRef<HTMLDivElement>(null);
+  // The element focus was on when the window lost it.
+  const returning = useRef<EventTarget | null>(null);
   const sizerRef = useRef<HTMLDivElement>(null);
   // Zoom lives in memory only. The layout stays in unscaled pixels; the tree is drawn with a CSS scale.
   const [scale, setScale] = useState(1);
@@ -115,23 +117,23 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
   useEffect(() => {
     const box = treeRef.current ? scrollBoxOf(treeRef.current) : null;
     if (!box) return;
-    const onClick = (e: MouseEvent) => { if (!(e.target as Element).closest('[data-tree-path], [data-ghost-path]')) setPinned(null); };
+    const onClick = (e: MouseEvent) => { if (!(e.target as Element).closest('[data-tree-path], [data-ghost-path]')) { setPinned(null); clearHover(); } };
     box.addEventListener('click', onClick);
     return () => box.removeEventListener('click', onClick);
-  }, [mainId, setPinned]);
+  }, [mainId, setPinned, clearHover]);
 
   // While a card is in hand no ghosts show and the hover and pin logic sits still.
   // A pin on a path the tree no longer has (a drag moved it, or Undo removed it) is let go.
   const pin = pinned !== null && tree.nodes.has(pinned) ? pinned : null;
   // A pin on a path the tree lost, or one kept for another main mart, is dropped now so it does not come back (main A, B, A).
   if (pinState !== null && pin === null) setPinState(null);
-  // A pinned card keeps its ghosts while another card is hovered, as in the Grid; hovered ghosts still extend the chain from it.
+  // A pinned card keeps its ghosts while another card is hovered, as in the Grid; another card's (+) shows its own ghosts for as long as it is hovered, and the (+) of a ghost extends the chain from it.
   const pinnedMart = pin === null || pin === '' ? null : tree.nodes.get(pin)?.martId ?? null;
   useEffect(() => {
     onSelectedMart?.(pinnedMart);
     return () => onSelectedMart?.(null);
   }, [pinnedMart, onSelectedMart]);
-  const anchor = drag ? null : pin ?? hover.anchor;
+  const anchor = drag ? null : hover.anchor ?? pin;
   // A source counts only when its mart can be read.
   const readable = useCallback((s: JoinedSource) => model.marts.get(s.martId)?.accessible === true, [model]);
   const { levels, chain: shownChain } = useMemo(
@@ -229,7 +231,20 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
       // A portaled title bubble bubbles its events here through React; it is not under the tree in the DOM, so it is not the pointer leaving the cards.
       onPointerOver={(e) => { if (!e.currentTarget.contains(e.target as Node)) return; const over = overOf(e.target); hover.onOver(over); }}
       onPointerLeave={() => hover.onLeave()}
-      onFocus={(e) => { if (!e.currentTarget.contains(e.target as Node)) return; const over = overOf(e.target); if (over.plus || over.ghost !== null) hover.onOver(over); }}
+      onFocus={(e) => {
+        if (!e.currentTarget.contains(e.target as Node)) return;
+        // The browser focuses the element the window left on when it comes back: that is no one asking for the ghosts.
+        if (returning.current === e.target) { returning.current = null; return; }
+        const over = overOf(e.target);
+        if (over.plus || over.ghost !== null) hover.onOver(over);
+      }}
+      onBlur={(e) => {
+        // Focus moving on inside the graph, to the same card or to a ghost, keeps what focus showed; anywhere else lets it go.
+        const next = e.relatedTarget instanceof Element && e.currentTarget.contains(e.relatedTarget) ? overOf(e.relatedTarget) : null;
+        if (next !== null && (next.ghost !== null || (next.card !== null && next.card === hover.anchor))) return;
+        if (!document.hasFocus()) returning.current = e.target;
+        hover.onLeave();
+      }}
     >
       {[...tree.nodes.values()].flatMap((node) => {
         const mart = model.marts.get(node.martId);
