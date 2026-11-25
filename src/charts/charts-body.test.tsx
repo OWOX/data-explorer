@@ -843,7 +843,7 @@ test('with Unique Count on, the keys read groups as the table does: one total ro
 describe('the config button in Charts', () => {
   const configButton = () => within(data().querySelector<HTMLElement>('[data-chart-list-slot]')!).getByRole('button', { name: 'Configure data' });
 
-  test('shows with "Nothing to chart" too, its menu listing the chart rows and the data mart', async () => {
+  test('shows with "Nothing to chart" too, its menu listing the Charts group (no Add chart: no kind fits) and the data mart', async () => {
     // Orders with no primary key and only a text column shown: no number, nothing to count.
     const fx = demoFixtures();
     const keyless = { ...fx, marts: fx.marts.map((m) => (m.id === 'orders' ? { ...m, fields: m.fields.map((f) => ({ ...f, isPrimaryKey: false })) } : m)) };
@@ -855,7 +855,7 @@ describe('the config button in Charts', () => {
     await waitFor(() => expect(data().querySelector('[data-chart-empty]')).not.toBeNull());
     expect(configButton()).toBeInTheDocument();
     const menu = await openConfigMenu();
-    expect(within(menu).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Add chart', 'Charts', 'Orders']);
+    expect(within(menu).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Charts', 'Orders']);
   });
 
   test('stays open while the HAVING gate loads and the charts come in behind it', async () => {
@@ -873,4 +873,43 @@ describe('the config button in Charts', () => {
     expect(menu).toBeInTheDocument();
     expect(configButton()).toHaveAttribute('aria-expanded', 'true');
   });
+
+  /** Orders with an array field: shown next to a function on another column it cannot be grouped. */
+  const withTags = () => { const fx = demoFixtures(); return { ...fx, marts: fx.marts.map((m) => (m.id === 'orders' ? { ...m, fields: [...m.fields, { name: 'tags', type: 'STRING', mode: 'REPEATED' as const }] } : m)) }; };
+  const grouped = { columns: ['status', 'amount'], aggregations: [{ column: 'amount', function: 'SUM' }], fixtures: withTags() };
+  const alert = () => data().querySelector('[role="alert"]');
+
+  test('a tick that blocks the grid, and the one that unblocks it, keep the menu open with the focus in it; nothing is read while blocked', async () => {
+    const t = await charts(grouped);
+    await openFields('Orders');
+    const menu = screen.getByRole('menu', { name: 'Configure data' });
+    await userEvent.click(await screen.findByRole('option', { name: 'tags' }));
+    await waitFor(() => expect(alert()).toHaveTextContent("can't be grouped"));
+    expect(menu).toBeInTheDocument();
+    expect(configButton()).toHaveAttribute('aria-expanded', 'true');
+    expect(document.activeElement).not.toBe(document.body);
+    const sent = t.queries.length;
+    await new Promise((r) => setTimeout(r, 300));
+    expect(t.queries.length).toBe(sent);
+    await userEvent.click(screen.getByRole('option', { name: 'tags' }));
+    await waitFor(() => expect(group('orders')).not.toBeNull());
+    expect(alert()).toBeNull();
+    expect(menu).toBeInTheDocument();
+    expect(configButton()).toHaveAttribute('aria-expanded', 'true');
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  test('the config button is there while the grid is blocked, in Charts and in Table', async () => {
+    const t = setup({ ...grouped, columns: ['status', 'amount', 'tags'] });
+    await t.seeded;
+    t.view();
+    await waitFor(() => expect(alert()).toHaveTextContent("can't be grouped"));
+    expect(configButton()).toBeInTheDocument();
+    await userEvent.click(radio('Charts'));
+    await waitFor(() => expect(data().querySelector('.dm-grid-frame-charts')).not.toBeNull());
+    expect(alert()).toHaveTextContent("can't be grouped");
+    expect(configButton()).toBeInTheDocument();
+    expect(within(await openConfigMenu()).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Add chart', 'Charts', 'Orders']);
+  });
 });
+

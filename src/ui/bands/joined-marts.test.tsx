@@ -8,6 +8,11 @@ import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
 import { closeConfigMenu, openConfigMenu, openFields } from '../explorer/menu-test-utils';
 
+/** The joined marts' reads wait for this while a test holds them (see `hold`). */
+let held: Promise<void> = Promise.resolve();
+/** Holds every read of the joined marts until the returned function is called. */
+const hold = () => { let release!: () => void; held = new Promise<void>((r) => { release = r; }); return () => { release(); held = Promise.resolve(); }; };
+
 function setup(opts: { gate?: Promise<void> } = {}) {
   const ctx = keyShown(createMockCtx(demoFixtures(), { latencyMs: 0 }));
   const puts: { id: string; doc: { columns: string[]; picks?: Record<string, string[]> } }[] = [];
@@ -21,7 +26,7 @@ function setup(opts: { gate?: Promise<void> } = {}) {
     owox: {
       ...ctx.owox,
       getJson: (<T,>(path: string, q?: Record<string, string>) => {
-        if (path.endsWith('/blendable-schema')) { reads.push(path); if (opts.gate) return opts.gate.then(() => realGet<T>(path, q)); }
+        if (path.endsWith('/blendable-schema')) { reads.push(path); if (opts.gate) return opts.gate.then(() => realGet<T>(path, q)); return held.then(() => realGet<T>(path, q)); }
         return realGet<T>(path, q);
       }) as typeof ctx.owox.getJson,
       dataMarts: { ...ctx.owox.dataMarts, traverseData: (id: string, o: Parameters<typeof realTraverse>[1]) => { if (!(o as { uniqueCount?: unknown }).uniqueCount) rows.push({ id, o }); return realTraverse(id, o); } },
@@ -396,6 +401,24 @@ test('a double activation of Remove from report takes the mart out once and neve
   await waitFor(() => expect(title()).toBe('Orders'));
   await new Promise((r) => setTimeout(r, 300));
   expect(title()).toBe('Orders');
+  expect(groupTitles()).toEqual(['Orders']);
+});
+
+test('while a removal is being applied, Remove from report is off in the reopened menu', async () => {
+  setup();
+  await ready();
+  await click('Customers');
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Customers']));
+  // Refresh forgets the joined marts, so the removal has to read them again, and that read is held.
+  const release = hold();
+  try {
+    await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+    await userEvent.click(within(await openFields('Customers')).getByRole('menuitem', { name: 'Remove from report' }));
+    // The removal waits for its reads: the mart is still on the grid, and a second Remove cannot be sent.
+    const again = within(await openFields('Customers')).getByRole('menuitem', { name: 'Remove from report' });
+    expect(again).toBeDisabled();
+  } finally { release(); }
+  await waitFor(() => expect(title()).toBe('Orders'));
   expect(groupTitles()).toEqual(['Orders']);
 });
 

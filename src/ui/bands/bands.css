@@ -451,7 +451,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-ctl { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 1px; min-width: 16px; height: 16px; padding: 0 1px; border-radius: 4px; background: transparent; color: var(--sheet-green); }
 .dm-ctl:hover { background: var(--accent); }
 /* An active control (.dm-ctl-on) stays a plain green line icon: no fill, no border, same as idle. */
-/* The column menu icon and the picker icon beside the data mart title: the same green, the same 15px glyph. */
+/* The column menu icon beside a column title: the green, 15px glyph. */
 .dm-ctl-lg .dm-icon { width: 15px; height: 15px; }
 /* The column menu: Google Sheets' look (white panel, 4px radius, soft shadow, 32px rows, 14px Google Sans on #202124, #f1f3f4 hover,
    #dadce0 dividers). A submenu is another panel beside its row. */

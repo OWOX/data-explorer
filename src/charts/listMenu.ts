@@ -7,7 +7,7 @@ import { editCharts, measureId, newChartId, patchChart, type ChartKind, type Cha
 
 type Change = (edit: (cur: ChartSettings) => ChartSettings) => void;
 
-/** Hides a scorecard: the same edit as unticking it in the header list. */
+/** Hides a scorecard: the same edit as unticking it in the Charts group. */
 export const hideCard = (cur: ChartSettings, id: string): ChartSettings => ({ ...cur, scorecards: { ...cur.scorecards, hidden: [...new Set([...(cur.scorecards?.hidden ?? []), id])] } });
 
 /** Saves the measure a card shows. Picking the card's own measure clears the choice instead of saving it. */

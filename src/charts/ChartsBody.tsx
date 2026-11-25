@@ -14,7 +14,7 @@ import type { MenuItem } from './ChartMenu';
 import { addChartItem, chartListItem, dropPicksOf, hideCard, setCardDate, setCardMetric, tailItems } from './listMenu';
 import { joinGrainOf } from './answers';
 import { MartCards, useScorecards } from './Scorecards';
-import { KINDS } from './kinds';
+import { eligibleKinds, KINDS } from './kinds';
 import { chartsOf, patchChart, scorecardsOf, type ChartSettings, type ChartSpec, type Spark } from './settings';
 import { useBucket } from './useBucket';
 
@@ -33,13 +33,15 @@ const NO_PATH_MARTS: PathMart[] = [];
  * Each panel is as wide as its content needs and the panels wrap onto more rows when the band is narrow.
  * Settings load once per mart; a fallback a kind's `resolve` picks is never written back, only the member's own changes are.
  */
-export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, groups, pathMarts = NO_PATH_MARTS, renderConfig, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter, onShowColumns, pruneRef }: {
+export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, blockedNote = null, groups, pathMarts = NO_PATH_MARTS, renderConfig, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter, onShowColumns, pruneRef }: {
   martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; /** The grid has a filter on an aggregate that the charts cannot follow for this grouping. */ havingNote?: boolean; /** Stands in for the charts while the passing group keys load, fail to load, or are none. */ gate?: HavingKeys['gate']; groups: { id: string; path: string; span: number; title: string; icon?: string | null }[]; /** The middle marts of the joined paths that show no column: the menus list their fields after the groups', where a first column of theirs would land. */ pathMarts?: PathMart[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
   formatOf: (column: string, type: string) => Format; scrollerWidth: number;
   /** Applies the clicked mark's filters to the grid, as a filter edit (one Undo step). */
   onFilter: (add: ColumnFilter[]) => void;
   /** Shows these columns in the grid (added to the shown ones): a menu choice of a field that is not shown has to put it on screen. */
   onShowColumns: (names: string[], buckets?: Readonly<Record<string, DateBucket>>) => void;
+  /** Set while the grid cannot be grouped (a shown array, JSON or struct column with a function on another): the body says why and reads nothing. */
+  blockedNote?: string | null;
   /** The config menu: the grid builds it and this body places it, once, on every return path, so an open menu survives a gate or an empty hint coming and going. The Add chart and Charts rows are passed once the saved settings have loaded. */
   renderConfig: (chartItems?: MenuItem[]) => ReactNode;
   /** The grid hands over the columns the member just hid; the card picks that named them go in one write. Set while this body is mounted. */
@@ -90,10 +92,10 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   const lead = drawn.find((d) => d.r && (d.r as { date?: unknown }).date)?.r as { date: Field; bucket?: DateBucket | 'AUTO' } | undefined;
   const spark: Spark = useMemo(() => ({ ...scorecardsOf(settings ?? {}), date: lead?.date ?? cf.dates[0] ?? null }), [settings, lead?.date, cf]);
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
-  const idle = paused || !settings || !!gate;
+  const idle = paused || !settings || !!gate || !!blockedNote;
   const { bucket } = useBucket(martId, spark.date, lead?.bucket ?? 'AUTO', filter, version, idle);
   const scores = useScorecards(martId, cf, filter, version, idle, joins);
-  // The header list names every chart, hidden ones included; memoized so a resize resolves nothing again.
+  // The Charts group of the config menu names every chart, hidden ones included; memoized so a resize resolves nothing again.
   const resolved = useMemo(() => drawn.map(({ spec, def }) => {
     const r = def?.resolve({ ...spec, hidden: false }, cf) ?? null;
     return { spec, title: def && r ? def.title(r, cf) : null };
@@ -114,13 +116,17 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     if (shown.includes(name) || !schemaNames.has(name)) return;
     onShowColumns([name], isDate && leadBucket !== 'AUTO' ? { [name]: leadBucket } : undefined);
   };
+  // Add chart is left out when no kind fits the shown columns: its panel would be empty.
   // `change` reads the latest-doc ref, but the rows only call it from handlers, never while rendering.
   // eslint-disable-next-line react-hooks/refs
-  const chartItems = settings ? [addChartItem({ cf, change }), chartListItem({ cf, settings, resolved, change })] : undefined;
+  const chartItems = settings ? [...(eligibleKinds(cf).length > 0 ? [addChartItem({ cf, change })] : []), chartListItem({ cf, settings, resolved, change })] : undefined;
   const columns = groups.reduce((n, g) => n + g.span, 0);
 
   // The menu sits first in every return, so it keeps its place (and its open panels) whichever body is drawn.
   const place = (tbody: ReactNode) => <>{renderConfig(chartItems)}{tbody}</>;
+  if (blockedNote) {
+    return place(<tbody><tr><Gutter /><td colSpan={columns + 1} className="p-4 text-sm text-muted-foreground" role="alert">{blockedNote}</td></tr></tbody>);
+  }
   if (cf.marts.every((m) => m.metrics.length === 0 && !m.hasPk)) {
     return place(<tbody><tr><Gutter /><td colSpan={columns + 1} data-chart-empty className="text-sm text-muted-foreground">Show a number column to chart it.</td></tr></tbody>);
   }

@@ -26,7 +26,7 @@ import { useWidth } from '../../charts/useWidth';
 import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKey } from '../../model/sort';
 import { groupMap, moveColumn, moveColumnBy, orderColumns, ownInSchemaOrder } from '../../state/column-order';
 import { buildJoinTree, joinableUnder } from '../../state/join-tree';
-import { inUsePaths, joinedMartIds, joinedPaths, ownNamesIn, parentPath, pathTitle } from '../../state/join-plan';
+import { inUsePaths, joinedMartIds, joinedPaths, ownNamesIn, pathTitle } from '../../state/join-plan';
 import type { Field, Model, Schema } from '../../model/types';
 import { hasPrimaryKey, primaryKeys } from '../../records/relationships';
 import type { Row } from '../../sdk/types';
@@ -52,6 +52,18 @@ import { BadgeRow } from './badgeReserve';
 import { ExportMenu } from './ExportMenu';
 import { defaultColumns } from '../../model/columns';
 import { buildRowQuery, useMartRows } from './useMartRows';
+
+/** `compute` with its answers kept per path. */
+const memoPerPath = <T,>(compute: (path: string) => T) => {
+  const kept = new Map<string, T>();
+  return (path: string): T => {
+    if (!kept.has(path)) kept.set(path, compute(path));
+    return kept.get(path)!;
+  };
+};
+
+/** What the grid says while a shown column cannot be grouped. */
+const blockedText = (field: Field) => `"${columnTitle(field)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`;
 
 /** A stable empty sort list, so a memo on it does not rerun each render. */
 const NO_SORTS: SortKey[] = [];
@@ -533,6 +545,9 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   /** The joined marts the band shows as selected: those with a field among the columns. */
   const joinedMarts = useMemo(() => joinedMartIds(shown, sources).map((id) => ({ id, title: model.marts.get(id)?.title ?? id })), [shown, sources, model.marts]);
   if (!sameList(shown, visible)) setVisible(shown);
+  // The shown columns as the latest edit left them, before the render that shows them.
+  const shownNow = useRef(shown);
+  useLayoutEffect(() => { shownNow.current = shown; });
   // Rules of a column that is no longer shown go with it; any function or bucket left groups the rows (no default order then: it may name nothing shown).
   const keptAgg = useMemo(() => keepVisible(agg, shown), [agg, shown]);
   const aggNow = useMemo(() => sanitizeAggregation(keptAgg, schema), [keptAgg, schema]);
@@ -661,6 +676,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
         pruneChain.current = pruneChain.current.then(() => chartSettings.load(martId)).then((cur) => { const next = dropPicksOf(cur, new Set(hidden)); if (next !== cur) chartSettings.save(martId, { ...next, version: 2 }); }).catch(() => {});
       }
     }
+    shownNow.current = cols;
     setVisible(cols);
     const nextAgg = keepVisible(more ? more(agg) : agg, cols);
     // A HAVING filter on a hidden column's function goes with it, in the same step.
@@ -681,7 +697,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     columnStore.save(martId, cols, left.length ? Object.fromEntries(left.map((m) => [m, [] as string[]])) : undefined);
     // A joined mart that has just left remembers what it was showing, as its own field names.
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
-  }, [sources, native, markEdit, agg, applyAgg, visible, columnStore, chartSettings, martId, setVisible, setOwn, setUc, sourcesRead, uc, schema]);
+  }, [shownNow, sources, native, markEdit, agg, applyAgg, visible, columnStore, chartSettings, martId, setVisible, setOwn, setUc, sourcesRead, uc, schema]);
   // A chart menu's choice of a field that is not shown: the shown columns and the new ones, in one edit.
   // In a grouped grid a new column without a rule would become a group key and multiply the rows: a metric gets the function the chart sums it with, a date the chart's bucket (Month when none is known yet). A dimension is a key, as intended.
   const showColumns = useCallback((names: string[], buckets?: Readonly<Record<string, DateBucket>>) => changeColumns([...new Set([...shown, ...names])], (cur) => {
@@ -730,22 +746,23 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       return source ? [{ path: n.path, title: pathTitle(source, treePaths, sources), icon: model.marts.get(n.martId)?.icon, description: model.marts.get(n.martId)?.description, fields: source.fields }] : [];
     });
   }, [tree, sources, model.marts]);
-  // What can join one hop under a path, as config menu rows (only the marts the member can read). Taken once per input: the menu asks again for every parent on every render.
-  const joinable = useMemo(() => {
-    const treePaths = [...tree.nodes.keys()];
-    const rowOf = (x: JoinedSource): ConfigMart => ({
-      path: x.aliasPath, title: pathTitle(x, treePaths, sources), icon: model.marts.get(x.martId)?.icon, description: model.marts.get(x.martId)?.description,
+  // What can join one hop under a path, as config menu rows (only the marts the member can read). Each path is worked out once per input, when the menu first asks:
+  // it asks again for every parent on every render. A candidate is titled against the tree and its sibling candidates, so two joins to one mart under one parent read apart.
+  const joinable = useMemo(() => memoPerPath((path: string): ConfigMart[] => {
+    const offered = joinableUnder(tree, sources, path).filter((x) => model.marts.get(x.martId)?.accessible === true);
+    const titled = [...tree.nodes.keys(), ...offered.map((x) => x.aliasPath)];
+    return offered.map((x) => ({
+      path: x.aliasPath, title: pathTitle(x, titled, sources), icon: model.marts.get(x.martId)?.icon, description: model.marts.get(x.martId)?.description,
       main: false, shown: false, fields: x.fields, locked: () => false,
-    });
-    const byPath = new Map([...new Set(['', ...sources.map((x) => parentPath(x.aliasPath))])].map((p) => [p, joinableUnder(tree, sources, p).filter((x) => model.marts.get(x.martId)?.accessible === true).map(rowOf)] as const));
-    return (path: string): ConfigMart[] => byPath.get(path) ?? [];
-  }, [tree, sources, model.marts]);
+    }));
+  }), [tree, sources, model.marts]);
   // A remove button is off while its click is being applied, so a second click cannot put the mart back.
   const [removing, setRemoving] = useState(false);
   const head = useRef<HTMLTableSectionElement>(null);
   const remove = (g: (typeof groups)[number]) => {
     // Taking the main mart away promotes the next one and the grid remounts (DataBand keys it by mart): the new grid focuses its config button.
-    const promoted = g.main && groups[1] ? groups[1].id : null;
+    // The columns as they are now: a change may have gone out just before (the menu sends a pending one as it closes), and the render's groups know nothing of it.
+    const promoted = g.main ? joinedMartIds(shownNow.current, sources)[0] ?? null : null;
     askFocusFor(promoted);
     setRemoving(true);
     // A joined group takes only its own columns: the marts joined through it keep theirs and stay joined through it. The main group deselects the main mart.
@@ -765,7 +782,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   // The first data mart is the main one: its last own column stays while a joined mart is shown.
   const ownNames = useMemo(() => new Set(native.map((f) => f.name)), [native]);
   const ownOn = shown.filter((n) => ownNames.has(n)).length;
-  // The data marts that offer a Unique Count (a hidden or composite key counts): their Fields tab has the row for it.
+  // The data marts that offer a Unique Count (a hidden or composite key counts): their panel in the config menu has the row for it.
   const uniqueOffered = useMemo(() => new Set(uniquePathsOf(schema)), [schema]);
   const fieldsOf = (g: { main: boolean; path: string }) => (g.main ? native : sources.filter((x) => x.aliasPath === g.path).flatMap((x) => x.fields));
   // The config menu's data marts: the ones with a column in grid order, then the ones the report joins through with none.
@@ -774,6 +791,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       path: g.path, title: g.title, icon: g.icon, description: g.description, main: g.main, shown: true, fields: fieldsOf(g),
       locked: (n) => g.main && several && ownOn === 1 && ownNames.has(n),
       unique: uniqueOffered.has(g.path) ? { on: ucNow.includes(g.path), onToggle: () => toggleUnique(g.path) } : undefined,
+      // `remove` reads the latest columns ref, but only when the menu calls it, never while rendering.
+      // eslint-disable-next-line react-hooks/refs
       remove: several || !g.main ? { onRemove: () => remove(g), disabled: removing } : undefined,
     })),
     ...pathMarts.map((m): ConfigMart => ({ path: m.path, title: m.title, icon: m.icon, description: m.description, main: false, shown: false, fields: m.fields, locked: () => false })),
@@ -1025,7 +1044,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     {/* The table's last measured height is a ref on purpose: a re-render on every resize would reach an open column menu and drop its Apply. */}
     {/* eslint-disable-next-line react-hooks/refs */}
     <div ref={frame} className={`dm-grid-frame flex max-h-[32rem] min-h-0 flex-col${charts ? ' dm-grid-frame-charts' : ''}`} style={charts && tableHeight.current ? { height: tableHeight.current } : undefined}>
-      {!(charts && !blocked) && renderConfig()}
+      {!charts && renderConfig()}
       <Toast onDismiss={() => setNote(null)} stamp={note} returnTo={() => scroller.current}>{note?.text}</Toast>
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts && !hasSlices} onClick={() => edit(() => { setAllFilters({}); setAllSlices({}); setOwn(null); })} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
@@ -1076,9 +1095,9 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
             ))}
           </thead>
           {/* ChartsBody renders its own <tbody>: nesting one in another makes the parser pull the headers out of the table. */}
-          {charts && !blocked ? <ChartsBody pruneRef={pruneCards} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} pathMarts={pathMarts} renderConfig={renderConfig} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} onShowColumns={showColumns} />
+          {charts ? <ChartsBody pruneRef={pruneCards} blockedNote={blocked ? blockedText(blocked) : null} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} pathMarts={pathMarts} renderConfig={renderConfig} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} onShowColumns={showColumns} />
           : <tbody>
-            {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{`"${columnTitle(blocked)}" can't be grouped: hide it. Array, JSON and struct fields take no aggregation.`}</td></tr>
+            {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{blockedText(blocked)}</td></tr>
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>
               : !rows ? <tr><Gutter /><td colSpan={outputs.length + 1}><Skeleton rows={8} /></td></tr>
               : rows.length === 0 ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground">{emptyText(hasFilters)}</td></tr>
