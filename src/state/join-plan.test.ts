@@ -662,6 +662,19 @@ describe('joined marts kept with no column (empty paths)', () => {
     expect(plan.grids.customers!.columns).toEqual(['id', 'countries__name']);
   });
 
+  test('deselecting the main keeps an own empty path of the new main although its mart has columns at another path', () => {
+    const viaCountries = src('countries.stores', 'stores', [f('countries__stores__city', 'string', 'stores')], 2);
+    const countries = src('countries', 'countries', [f('countries__name', 'string', 'countries')]);
+    const e = {
+      ...env({ orders: g(['id', 'customers__city']), customers: g(['id', 'countries__stores__city'], { emptyPaths: ['stores'] }) }, 'orders'),
+      sourcesOf: (id: string) => (id === 'orders' ? ordersSources : id === 'customers' ? [countries, viaCountries, ...customersSources.filter((s) => s.martId === 'stores')] : []),
+    };
+    const plan = planClick(e, 'orders');
+    expect(plan.selection).toEqual(sel('customers'));
+    // Nothing changes on its own grid: the empty path is not lost.
+    expect(plan.grids).toEqual({});
+  });
+
   test('making a mart main carries an empty joined mart as empty, and an empty mart made main opens with its own columns', () => {
     const grids = { orders: g(['id', 'customers__city'], { emptyPaths: ['stores', 'products'] }), customers: g(['id', 'name']) };
     const plan = planMakeMain(env(grids, 'orders'), 'customers');

@@ -323,9 +323,9 @@ export function planClick(env: PlanEnv, id: string): Plan {
       columns = [...columns, ...fieldsFor(nextSources, r, nextPicks[r], ownNamesIn(grid.columns, sources, r), inUsePaths(columns, nextSources)).filter((n) => !columns.includes(n))];
     }
     columns = orderColumns(columns, nextSources, env.ownColumns(next));
-    // A mart that got columns is not kept empty as well.
+    // A mart the loop gave columns is not kept empty as well; one already on its own grid keeps its empty path.
     const shownMarts = joinedMartIds(columns, nextSources);
-    const emptyPaths = emptyAfter(nextSources, columns, [...own.filter((p) => !shownMarts.includes(nextSources.find((x) => x.aliasPath === p)?.martId ?? '')), ...carried]);
+    const emptyPaths = emptyAfter(nextSources, columns, [...own.filter((p) => { const m = nextSources.find((x) => x.aliasPath === p)?.martId ?? ''; return have.has(m) || !shownMarts.includes(m); }), ...carried]);
     const changed = columns.length !== nextGrid.columns.length || columns.some((c, i) => c !== nextGrid.columns[i]) || !sameList(emptyPaths, nextGrid.emptyPaths ?? []);
     const sorts = changed && nextGrid.sorts ? sortsOnColumns(nextGrid.sorts, columns) : nextGrid.sorts;
     return {
