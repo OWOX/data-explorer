@@ -84,6 +84,26 @@ test('Duplicate inserts a copy right after the original: new id, same choices, n
   expect(copy!.dimensions).not.toBe(orig!.dimensions);
 });
 
+test('a Sankey with one column or none switches to another type and back, and duplicates, as a valid spec', () => {
+  const region = { name: 'region', category: 'string', type: 'STRING' } as never;
+  const two: ChartFields = { ...cf, marts: [{ ...cf.marts[0]!, dimensions: [dim, region] }], dimensions: [dim, region] };
+  for (const [dimensions, then] of [[[], ['status', 'region']], [['status'], ['status', 'region']]] as const) {
+    let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'sankey', dimensions: [...dimensions] }] };
+    const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
+    const pick = (to: string) => { const [type] = tailItems({ cf: two, spec: s.charts![0]!, change }); if (type!.kind === 'radio') type!.onPick(to); };
+    pick('pie');
+    expect(s.charts![0]).toEqual({ id: 'a', kind: 'pie', ...(dimensions.length ? { dimension: 'status' } : {}) });
+    pick('sankey');
+    // Back on a Sankey the columns the other type held fill it to the two it needs.
+    expect(s.charts![0]).toEqual({ id: 'a', kind: 'sankey', dimensions: then });
+  }
+  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'sankey', dimensions: [] }] };
+  const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
+  const dup = tailItems({ cf, spec: s.charts![0]!, change })[1]!;
+  if (dup.kind === 'action') dup.onPick();
+  expect(s.charts![1]).toEqual({ id: s.charts![1]!.id, kind: 'sankey', dimensions: [] });
+});
+
 test('Duplicate on the default list saves the defaults with the copy after its original', () => {
   let s: ChartSettings = {};
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
@@ -176,4 +196,11 @@ test('the empty Add chart row names what is missing: a number when no measure is
   expect(noteOf({ marts: [{ ...bare, dimensions: [dim] }], dates: [], dimensions: [dim], counter: null })).toEqual([['Show a number column to chart it.', true]]);
   expect(noteOf({ marts: [{ ...bare, metrics: [{ field: amount, fn: 'SUM' }] }], dates: [], dimensions: [], counter: null })).toEqual([['Show a text or date column to chart it.', true]]);
   expect(noteOf({ marts: [{ ...bare, hasPk: true }], dates: [], dimensions: [], counter: null })).toEqual([['Show a text or date column to chart it.', true]]);
+});
+
+test('Add chart offers a Sankey only when two dimensions are shown', () => {
+  const two = { ...cf, dimensions: [dim, { name: 'region', category: 'string', type: 'STRING' } as never] };
+  const kinds = (c: ChartFields) => { const add = addChartItem({ cf: c, change: vi.fn() }); return add.kind === 'radio' ? add.options.map((o) => o.value) : []; };
+  expect(kinds(cf)).not.toContain('sankey');
+  expect(kinds(two)).toContain('sankey');
 });

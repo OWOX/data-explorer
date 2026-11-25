@@ -18,7 +18,7 @@ export const isChartKind = (v: unknown): v is ChartKind => (CHART_KINDS as reado
 export type ChartSpec = {
   id: string; kind: ChartKind; hidden?: boolean;
   measure?: string; measure2?: string | null; date?: string; bucket?: DateBucket | 'AUTO';
-  dimension?: string; dimension2?: string; /** A Sankey's columns, left to right (2 to 5 dimensions). */ dimensions?: string[]; stack?: string | null; orientation?: Orientation; area?: boolean;
+  dimension?: string; dimension2?: string; /** A Sankey's columns, left to right (up to 5 dimensions). Fewer than 2 is a choice the member made (None): the chart then shows a notice. Without the key, two are filled in. */ dimensions?: string[]; stack?: string | null; orientation?: Orientation; area?: boolean;
 };
 /** `metrics` is the measure each card shows when it is not the card's own: card id (its default's saved id) to measure id. `dates` is the date field each card's sparkline is drawn on: card id to field name. */
 export type ChartSettings = { version?: 2; scorecards?: { hidden?: string[]; sparklines?: boolean; metrics?: Record<string, string>; dates?: Record<string, string> }; charts?: ChartSpec[] };
