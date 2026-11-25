@@ -102,6 +102,24 @@ describe('a field menu over several data marts', () => {
   ];
   const radio = (g: typeof groups, onPick = vi.fn()): MenuItem[] => [{ kind: 'radio', label: 'Metric', icon: Hash, value: 'c', options: [{ value: '', label: 'Off' }], groups: g, onPick }];
 
+  test('brushing an option row on the way to the open mart panel does not close it', async () => {
+    render(<ChartMenu name="Sales" items={radio(groups)} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Metric' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Orders' }));
+    await screen.findByRole('menu', { name: 'Orders' });
+    // The pointer crosses the Off row on a diagonal: entering it starts the close, leaving it cancels.
+    const off = screen.getByRole('menuitemradio', { name: 'Off' });
+    fireEvent.mouseEnter(off);
+    fireEvent.mouseLeave(off);
+    await wait(HOVER_MS + 60);
+    expect(screen.getByRole('menu', { name: 'Orders' })).toBeInTheDocument();
+    // Resting on it still closes the panel.
+    fireEvent.mouseEnter(off);
+    await wait(HOVER_MS + 60);
+    expect(screen.queryByRole('menu', { name: 'Orders' })).toBeNull();
+  });
+
   test('lists the marts first, ticks the one holding the choice, and opens its options on a third level', async () => {
     const onPick = vi.fn();
     render(<ChartMenu name="Sales" items={radio(groups, onPick)} />);

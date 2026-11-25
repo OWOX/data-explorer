@@ -105,7 +105,7 @@ test('sankey: one Columns row holds five Column rows; a used column picks, an un
   expect(t.puts.mock.calls.length).toBe(puts);
 });
 
-test('sankey: Right opens and Left or Escape goes back one level at every level, with focus on the row; hover opens too', async () => {
+test('sankey: Right opens each of four levels; Left and Escape go back from the field and mart panels, Left from a Column row, Escape from the Columns list, with focus on the row; hover opens each level', async () => {
   await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(titles()).toHaveLength(2));
   await userEvent.click(panel('Sankey'));
@@ -136,7 +136,12 @@ test('sankey: Right opens and Left or Escape goes back one level at every level,
   await userEvent.keyboard('{ArrowLeft}');
   await waitFor(() => expect(screen.queryByRole('menu', { name: 'Column 3' })).toBeNull());
   await waitFor(() => expect(document.activeElement).toHaveTextContent('Column 3'));
+  // Left from a Column row of the Columns list goes back to the Columns row too.
+  await userEvent.keyboard('{ArrowRight}');
+  await screen.findByRole('menu', { name: 'Column 3' });
   await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(document.activeElement).toHaveTextContent('Column 3'));
+  await userEvent.keyboard('{ArrowLeft}');
   await waitFor(() => expect(screen.queryByRole('menu', { name: 'Columns' })).toBeNull());
   await waitFor(() => expect(document.activeElement).toHaveTextContent('Columns'));
   expect(screen.getByRole('menu', { name: 'Sankey menu' })).toBeInTheDocument();
@@ -145,6 +150,29 @@ test('sankey: Right opens and Left or Escape goes back one level at every level,
   await userEvent.hover(await screen.findByRole('menuitem', { name: 'Column 4' }));
   await userEvent.hover(await screen.findByRole('menuitem', { name: 'Products' }));
   await screen.findByRole('menu', { name: 'Products' });
+});
+
+test('sankey: hovering another Column row replaces the open mart panel, and Tab on a Column row closes the menu with focus on the button', async () => {
+  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  await waitFor(() => expect(titles()).toHaveLength(2));
+  await userEvent.click(panel('Sankey'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Columns' }));
+  await userEvent.hover(await screen.findByRole('menuitem', { name: 'Column 3' }));
+  await userEvent.hover(await screen.findByRole('menuitem', { name: 'Products' }));
+  await screen.findByRole('menu', { name: 'Products' });
+  await userEvent.hover(screen.getByRole('menuitem', { name: 'Column 1' }));
+  // Column 1 opens its own panel (it holds the first column's data mart rows) and the Products panel of Column 3 is gone.
+  await screen.findByRole('menu', { name: 'Column 1' });
+  await waitFor(() => expect(screen.queryByRole('menu', { name: 'Products' })).toBeNull());
+  expect(screen.queryByRole('menu', { name: 'Column 3' })).toBeNull();
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Column 2' }));
+  await screen.findByRole('menu', { name: 'Column 2' });
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(document.activeElement).toHaveTextContent('Column 2'));
+  await userEvent.keyboard('{Tab}');
+  await waitFor(() => expect(screen.queryByRole('menu', { name: 'Sankey menu' })).toBeNull());
+  expect(screen.queryByRole('menu', { name: 'Columns' })).toBeNull();
+  expect(document.activeElement).toBe(panel('Sankey'));
 });
 
 test('sankey: a dimension picked in an unused column that is not shown adds its grid column, and no read runs with other dimensions in between', async () => {

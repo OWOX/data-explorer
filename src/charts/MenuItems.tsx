@@ -48,11 +48,11 @@ export function ItemSubmenu({ item, anchor, seq, close, onBack }: { item: MenuIt
 }
 
 function RadioSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<MenuItem, { kind: 'radio' }>; anchor: HTMLElement; seq: number; close: () => void; onBack: () => void }) {
-  // The data marts of the submenu: a third level, one mart's options. It closes with the submenu it hangs off.
+  // The data marts of the submenu: one mart's options on a level of their own (the third, or the fourth under a group). It closes with the submenu it hangs off.
   const marts = useSubmenu<number>();
   const groups = item.groups ?? [];
   const choice = (o: MenuOption, hover?: () => void) => (
-    <Row key={o.value} check checked={o.value === item.value} label={o.label} glyph={o.icon && <o.icon className="size-4" />} onActivate={() => { item.onPick(o.value); close(); }} onHover={hover} />
+    <Row key={o.value} check checked={o.value === item.value} label={o.label} glyph={o.icon && <o.icon className="size-4" />} onActivate={() => { item.onPick(o.value); close(); }} onHover={hover} onLeaveRow={hover && marts.leaveRow} />
   );
   return (
     <>

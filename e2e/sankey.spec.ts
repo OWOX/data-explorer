@@ -78,9 +78,8 @@ for (const height of [900, 700]) {
     await expect(sankey.locator('path[data-link]').first()).toBeVisible();
     await sankey.scrollIntoViewIfNeeded();
     await sankey.getByRole('button', { name: 'Sankey options' }).click();
-    // Each level opens on a click and sits inside the viewport, with every row of it visible.
-    for (const [role, name] of [['menuitem', 'Columns'], ['menuitem', 'Column 3'], ['menuitem', 'Customers']] as const) {
-      await page.getByRole(role, { name }).click();
+    // Each panel, the Sankey menu itself included, sits inside the viewport and shows all its rows (it does not scroll).
+    const inside = async (name: string) => {
       const panel = page.getByRole('menu', { name });
       await expect(panel).toBeVisible();
       const box = (await panel.boundingBox())!;
@@ -88,8 +87,15 @@ for (const height of [900, 700]) {
       expect(box.y).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(1440);
       expect(box.y + box.height).toBeLessThanOrEqual(height);
+      expect(await panel.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+    };
+    await inside('Sankey menu');
+    // Each level opens on a click.
+    for (const name of ['Columns', 'Column 3', 'Customers']) {
+      await page.getByRole('menuitem', { name }).click();
+      await inside(name);
     }
-    // The last row is hovered and clicked by the mouse: it picks the field and closes the menu.
+    // The field is clicked by the mouse: it picks it and closes the menu.
     await page.getByRole('menu', { name: 'Customers' }).getByRole('menuitemradio', { name: 'Name' }).click();
     await expect(sankey.locator('text.dm-chart-axis-title')).toHaveCount(3);
   });
