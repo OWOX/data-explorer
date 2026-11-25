@@ -10,6 +10,8 @@ test.each([
   ['https://a.com/?u=https://b.com', 'https://a.com/?u=https://b.com'],
   // A list of URLs inside one query value is that parameter's own business.
   ['https://a.com/x?urls=https://b.com,https://c.com', 'https://a.com/x?urls=https://b.com,https://c.com'],
+  ['https://a.com/x?v=1&urls=https://b.com,https://c.com', 'https://a.com/x?v=1&urls=https://b.com,https://c.com'],
+  ['https://a.com/x?u=https://b.com/?x=1', 'https://a.com/x?u=https://b.com/?x=1'],
   ['https://a.com/x?u=https://b.com;https://c.com&v=1#top', 'https://a.com/x?u=https://b.com;https://c.com&v=1#top'],
   ['https://localhost:3000/a', 'https://localhost:3000/a'],
   ['https://127.0.0.1/a', 'https://127.0.0.1/a'],
@@ -28,6 +30,9 @@ test.each([
   'https://a.com/x,https://b.com/y', 'https://a.com/x;https://b.com/y', 'https://a.com/x|https://b.com/y', 'javascript:alert(1)//https://x', 'javascript://a.com/https://x',
   // The first URL's own query is no URL, and a URL in a query value does not excuse a joined pair outside it.
   'https://a.com/x?y=1,https://b.com/z', 'https://a.com/x,https://b.com/y?u=https://c.com',
+  // A value with its own `?` or `&` is not cut, so the list in it still shows; so does an `&` with no `?` before it.
+  'https://a.com/login?next=https://a.com/home,https://a.com/logout?next=https://a.com', 'https://a.com/x&u=https://b.com,https://c.com',
+  'https://a.com/x?u=https://b.com&v=1,https://c.com', 'https://a.com/#f?u=https://b.com,https://c.com',
   // A template or broken host.
   'https://{domain}/x', 'https://*.owox.com/', 'https://...', 'https://.a.com/', 'https://a..com/',
 ])('"%s" is no link', (text) => expect(linkOf(text)).toBeNull());

@@ -7,6 +7,13 @@ const opened = (page: Page) => page.evaluate(() => (window as unknown as { __ope
 const selectedText = (page: Page) => page.evaluate(() => window.getSelection()?.toString() ?? '');
 const box = async (loc: Locator) => { await loc.scrollIntoViewIfNeeded(); return (await loc.boundingBox())!; };
 
+/** Scrolls the nearest scrollable ancestor of the link (or the page) by `dy` px (negative: back up). */
+const scrollUnder = (link: Locator, dy: number) => link.evaluate((a, d) => {
+  let el: HTMLElement | null = a.parentElement;
+  while (el && !(el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
+  (el ?? document.scrollingElement!).scrollTop += d;
+}, dy);
+
 /** The Row band with the first record open, and its status link. */
 async function rowLink(page: Page) {
   await expect(gridLink(page)).toBeVisible();
@@ -41,6 +48,21 @@ test.describe('a URL in the Row band', () => {
     await page.mouse.down();
     await page.mouse.move(b.x + 40, y + 60, { steps: 6 });
     await page.mouse.move(b.x + 120, y, { steps: 6 });
+    await page.mouse.up();
+    expect(await opened(page)).toEqual([]);
+  });
+
+  test('a press, a scroll of the page and a release at the same screen point open nothing', async ({ page }) => {
+    // A short window, so the page has room to scroll.
+    await page.setViewportSize({ width: 1440, height: 500 });
+    const link = await rowLink(page);
+    await link.evaluate((a) => a.scrollIntoView({ block: 'start' }));
+    const b = await box(link);
+    const y = b.y + b.height / 2;
+    await page.mouse.move(b.x + 10, y);
+    await page.mouse.down();
+    await scrollUnder(link, -8);
+    expect((await link.boundingBox())!.y).toBeGreaterThan(b.y + 6);
     await page.mouse.up();
     expect(await opened(page)).toEqual([]);
   });

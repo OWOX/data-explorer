@@ -153,6 +153,39 @@ describe('a URL in the Row band', () => {
     expect(open).toHaveBeenCalledTimes(1);
   });
 
+  test('a keyboard click opens even far from an old press', () => {
+    const { open, link } = band();
+    press(link, 10);
+    fireEvent.click(link, { detail: 0, clientX: 300, clientY: 5 });
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('a press is used once: the next click with no press of its own opens', () => {
+    const { open, link } = band();
+    press(link, 10); click(link, 300);
+    expect(open).not.toHaveBeenCalled();
+    click(link, 300);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('only a press with the main button counts', () => {
+    const { open, link } = band();
+    fireEvent.mouseDown(link, { button: 2, clientX: 10, clientY: 5 });
+    click(link, 300);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test('the page scrolling between the press and the release counts as movement', () => {
+    const { open, link } = band();
+    const rect = vi.spyOn(link, 'getBoundingClientRect');
+    rect.mockReturnValue({ left: 100, top: 100 } as DOMRect);
+    press(link, 110, 105);
+    // Same screen point, but the link moved 20 px up under the pointer.
+    rect.mockReturnValue({ left: 100, top: 80 } as DOMRect);
+    expect(click(link, 110, 105)).toBe(false);
+    expect(open).not.toHaveBeenCalled();
+  });
+
   test('a shift-click opens nothing', () => {
     const { open, link } = band();
     press(link, 10); click(link, 10, 5, { shiftKey: true });

@@ -7,8 +7,7 @@
 export function linkOf(text: string): string | null {
   const t = text.trim();
   if (!/^https?:\/\/\S+$/i.test(t) || !URL.canParse(t)) return null;
-  // Query values that start with a URL are cut out first. `[^=&#?]` keeps each scan to one parameter, so the check stays linear.
-  if (/[,;|]https?:\/\//i.test(t.replace(/([?&][^=&#?]*=)https?:\/\/[^&#]*/gi, '$1'))) return null;
+  if (/[,;|]https?:\/\//i.test(withoutUrlValues(t))) return null;
   const url = new URL(t);
   // The parser leaves `{`, `*` and empty labels in a host; it has lowercased it and turned an IDN into punycode.
   if (!/^(\[[0-9a-f:.]+\]|[a-z0-9_-]+(\.[a-z0-9_-]+)*\.?)$/.test(url.hostname)) return null;
@@ -18,4 +17,15 @@ export function linkOf(text: string): string | null {
     url.protocol = 'https:';
   }
   return url.href;
+}
+
+/**
+ * The text with each query value that starts with a URL cut out, so a list of URLs inside one value is not taken for two joined URLs. Only a real query
+ * counts (a `?` before any `#`), and only a value with no `?` of its own and ending at `&`, `#` or the end. `[^=&#?]` keeps each scan to one parameter, so it is linear.
+ */
+function withoutUrlValues(t: string): string {
+  const q = t.indexOf('?');
+  const hash = t.indexOf('#');
+  if (q < 0 || (hash >= 0 && hash < q)) return t;
+  return t.slice(0, q + 1) + t.slice(q + 1).replace(/(^|&)([^=&#?]*=)https?:\/\/[^&#?]*(?=[&#]|$)/gi, '$1$2');
 }

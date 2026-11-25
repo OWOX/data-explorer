@@ -16,11 +16,13 @@ function CellLink({ href, text, tabIndex, wrap }: { href: string; text: string; 
   const pressed = useRef<{ x: number; y: number } | null>(null);
   return (
     <a href={href} target="_blank" rel="noopener noreferrer" className={wrap ? 'dm-cell-link dm-cell-link-text' : 'dm-cell-link'} tabIndex={tabIndex} draggable={wrap ? false : undefined}
-      onMouseDown={wrap ? (e) => { pressed.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null; } : undefined}
+      onMouseDown={wrap ? (e) => { pressed.current = e.button === 0 ? { x: e.clientX - e.currentTarget.getBoundingClientRect().left, y: e.clientY - e.currentTarget.getBoundingClientRect().top } : null; } : undefined}
       onClick={(e) => {
         const from = pressed.current;
         pressed.current = null;
-        const dragged = wrap && e.detail > 0 && !!from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 4;
+        // Relative to the link, so a scroll between press and release counts as movement.
+        const box = e.currentTarget.getBoundingClientRect();
+        const dragged = wrap && e.detail > 0 && !!from && Math.hypot(e.clientX - box.left - from.x, e.clientY - box.top - from.y) > 4;
         const cancelled = e.defaultPrevented || e.shiftKey || e.detail > 1 || dragged;
         e.preventDefault();
         if (!cancelled) void ctx.ui.openExternal(href).catch(() => undefined);

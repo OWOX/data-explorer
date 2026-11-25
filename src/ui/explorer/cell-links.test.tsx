@@ -177,7 +177,7 @@ test('text selected in the grid is cleared by a click on another cell and by a h
   expect(textRange()).toBe(false);
 });
 
-test('text selected before the grid mounted or outside it is left alone, and a plain re-render does not clear a range', async () => {
+test('text outside the grid is left alone when its selection moves', async () => {
   await setup();
   select(cellOf(links()[0]!));
   const outside = document.createElement('p');
@@ -187,9 +187,37 @@ test('text selected before the grid mounted or outside it is left alone, and a p
   press(root(), 'ArrowDown');
   expect(textRange()).toBe(true);
   outside.remove();
-  // A range the reader makes after the last selection change is theirs: the copy stays the browser's.
+});
+
+test('a range the reader makes after the last selection change, and a plain re-render, leave the browser copy alone', async () => {
+  await setup();
+  select(cellOf(links()[0]!));
   selectText(links()[1]!);
   fireEvent.scroll(root());
+  expect(textRange()).toBe(true);
+  expect(fireEvent.copy(root(), { clipboardData: { setData: vi.fn() } })).toBe(true);
+});
+
+test('a range inside the grid is not cleared when the grid mounts or re-renders with the same selection', async () => {
+  // A selection that always reports a range inside the grid, from the first render on.
+  const removeAllRanges = vi.fn();
+  const fake = { isCollapsed: false, get anchorNode() { return document.querySelector('.dm-grid-root'); }, removeAllRanges };
+  vi.spyOn(window, 'getSelection').mockReturnValue(fake as unknown as Selection);
+  await setup();
+  fireEvent.scroll(root());
+  expect(removeAllRanges).not.toHaveBeenCalled();
+  select(cellOf(links()[0]!));
+  expect(removeAllRanges).toHaveBeenCalled();
+  vi.restoreAllMocks();
+});
+
+test('text in the column header area is left alone, so a drag over the data mart title survives the click that ends it', async () => {
+  await setup();
+  fireEvent.click(data().querySelector('th.dm-letter')!);
+  const title = data().querySelector<HTMLElement>('th[data-group] .truncate')!;
+  selectText(title);
+  fireEvent.click(title);
+  expect(data().querySelector('[data-selected]')).toBeNull();
   expect(textRange()).toBe(true);
 });
 

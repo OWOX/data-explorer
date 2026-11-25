@@ -999,7 +999,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     cell.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }, [scroller, cellSel?.row, cellSel?.col, cellSel?.to?.row, cellSel?.to?.col]);
   // A right click on a link selects its text (macOS). When the grid's selection moves on, that range goes: onCopy leaves a range inside the grid to the browser,
-  // so Cmd+C would copy the old text. A range outside the grid, or inside a field, stays.
+  // so Cmd+C would copy the old text. A range outside the grid, in its header (a drag over the title) or inside a field stays.
   const lastSelected = useRef(selected);
   useEffect(() => {
     if (lastSelected.current === selected) return;
@@ -1007,7 +1007,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     const range = window.getSelection();
     const at = range?.anchorNode;
     if (!range || range.isCollapsed || !at || !scroller.current?.contains(at)) return;
-    if (!(at instanceof Element ? at : at.parentElement)?.closest('input, textarea, select, [contenteditable]')) range.removeAllRanges();
+    if (!(at instanceof Element ? at : at.parentElement)?.closest('thead, input, textarea, select, [contenteditable]')) range.removeAllRanges();
   }, [selected, scroller]);
   // Ctrl/Cmd+C: the selection goes to the clipboard as tab-separated text, as it is displayed. The copy event needs no clipboard permission,
   // so it works in the plugin's sandboxed frame. Fields, menus and a text range the reader selected inside a cell keep the browser's own copy.
