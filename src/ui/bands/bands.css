@@ -35,7 +35,9 @@
   display: flex; flex-wrap: wrap; align-items: center; align-content: center; justify-content: space-between;
   gap: 0.5rem 1rem; padding: 1rem; cursor: pointer;
 }
-.dm-band-titlegroup { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; align-self: center; min-width: 0; flex: 1 1 auto; }
+.dm-band-titlegroup { display: flex; align-items: center; gap: 0.5rem; align-self: center; min-width: 0; flex: 1 1 auto; }
+/* In a header with a view switch the switch and the button beside it drop under the title when they do not fit. Only there: those titles are short and fixed, while a long Row title must end in an ellipsis, not drop under its icon. */
+.dm-band-titlegroup:has(.dm-seg) { flex-wrap: wrap; row-gap: 0.25rem; }
 /* The marts band has the badges in its toolbar. The title group keeps its own width on the left, and the toolbar takes the rest with a fixed basis: the badges' width must not decide whether the header wraps, or the two would chase each other. */
 .dm-band-head:has(.dm-context-filter) .dm-band-titlegroup { flex: 0 1 auto; }
 .dm-band-head:has(.dm-context-filter) .dm-band-actions { flex: 1 1 24rem; }
@@ -726,6 +728,8 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-checklist-top { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
 .dm-checklist-links { display: inline-flex; align-items: baseline; gap: 0.375rem; color: var(--muted-foreground); }
 .dm-checklist-link { border: 0; background: none; padding: 0; color: var(--sheet-link); font: inherit; text-decoration: underline; cursor: pointer; }
+.dm-cell-link { color: var(--sheet-link); text-decoration: underline; cursor: pointer; }
+.dm-cell-link:focus-visible { outline: 2px solid var(--sheet-link); outline-offset: 2px; border-radius: 2px; }
 .dm-checklist-link:focus-visible { outline: 2px solid var(--sheet-link); outline-offset: 2px; border-radius: 2px; }
 .dm-checklist-count { color: var(--muted-foreground); white-space: nowrap; }
 .dm-checklist-search { position: relative; display: flex; align-items: center; }
@@ -756,17 +760,18 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-checklist-row:hover .dm-filter-only, .dm-checklist-row:focus-within .dm-filter-only { opacity: 1; }
 @media (hover: none) { .dm-checklist-row .dm-filter-only { opacity: 1; } }
 
-/* "Make it main", beside the Grid / Graph switch: the same height and frame. */
-.dm-make-main {
-  display: inline-flex; align-items: center; gap: 0.25rem; height: 28px; padding: 0 0.625rem;
+/* A button beside a view switch ("Make it main", "Configure"): the same height and frame as the switch. */
+.dm-band-btn {
+  display: inline-flex; flex-shrink: 0; align-items: center; gap: 0.25rem; height: 28px; padding: 0 0.625rem;
   border: 1px solid var(--border); border-radius: 6px; background: var(--card);
-  font-size: 0.8125rem; color: var(--foreground); cursor: pointer;
+  font-size: 0.8125rem; color: var(--foreground); white-space: nowrap; cursor: pointer;
 }
-.dm-make-main:hover { background: var(--accent); color: var(--accent-foreground); }
-.dm-make-main:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.dm-band-btn:is(:hover, [aria-expanded='true']) { background: var(--accent); color: var(--accent-foreground); }
+.dm-band-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 
 /* Table / Charts switch in the Data band header. */
-.dm-seg { display: inline-flex; height: 28px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+/* Never squeezed: it clips what does not fit, which would hide its last option. */
+.dm-seg { display: inline-flex; flex-shrink: 0; height: 28px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .dm-seg button { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0 0.625rem; font-size: 0.8125rem; color: var(--muted-foreground); }
 .dm-seg button + button { border-left: 1px solid var(--border); }
 .dm-seg button[aria-checked='true'] { background: var(--accent); color: var(--accent-foreground); }

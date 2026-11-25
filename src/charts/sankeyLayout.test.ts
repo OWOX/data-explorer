@@ -71,11 +71,11 @@ test('ribbon width is proportional to value, drawn as a closed filled path', () 
 });
 
 test('colour: every node takes its label colour, blank and Other keep their own, a ribbon takes its origin node colour', () => {
-  // All columns share one palette, so a clash probes forward: colours come from every key in column order.
-  const own = (k: string, keys: string[] = ['a', 'b', 'x', 'y']) => ({ kind: 'series', color: labelColors(keys).get(k) });
+  // Each column is coloured on its own: a clash probes forward among the keys of that column only.
+  const own = (k: string, keys: string[] = ['a', 'b']) => ({ kind: 'series', color: labelColors(keys).get(k) });
   expect(col(0).map((n) => n.tone)).toEqual([{ kind: 'blank' }, own('a'), own('b'), { kind: 'other' }]);
-  expect(col(1).find((n) => n.key === 'x')!.tone).toEqual(own('x'));
-  expect(col(1).find((n) => n.key === 'y')!.tone).toEqual(own('y'));
+  expect(col(1).find((n) => n.key === 'x')!.tone).toEqual(own('x', ['x', 'y']));
+  expect(col(1).find((n) => n.key === 'y')!.tone).toEqual(own('y', ['x', 'y']));
   expect(lay.links.find((l) => l.source === 'b' && l.target === 'y')!.tone).toEqual(own('b'));
 });
 
@@ -119,9 +119,9 @@ test('a real value fed only by a blank origin takes a series slot of its own, no
   ], width: 600, height: 200 });
   const tone = (c: number, k: string) => l.nodes.find((n) => n.col === c && n.key === k)!.tone;
   expect(tone(0, BLANK_KEY)).toEqual({ kind: 'blank' });
-  expect(tone(1, 'x')).toMatchObject({ kind: 'series' });
-  expect(tone(1, 'x')).not.toEqual(tone(0, 'a'));
-  expect(tone(1, 'y')).not.toEqual(tone(0, 'a'));
+  const colors = labelColors(['x', 'y']);
+  expect(tone(1, 'x')).toEqual({ kind: 'series', color: colors.get('x') });
+  expect(tone(1, 'y')).toEqual({ kind: 'series', color: colors.get('y') });
   expect(tone(1, 'y')).not.toEqual(tone(1, 'x'));
 });
 
@@ -180,7 +180,7 @@ describe('fit (fan-out): ribbons are scaled to fit their node', () => {
     // The old rule handed a column-0 colour down; now a later node is not tied to the node that feeds it.
     for (const k of ['a', 'b']) expect(tone(0, k)).toEqual({ kind: 'series', color: labelColors(['a', 'b']).get(k) });
     expect(l.nodes.filter((n) => n.col > 0).map((n) => n.tone)).toHaveLength(4);
-    expect(new Set(l.nodes.map((n) => (n.tone as { color: string }).color)).size).toBe(6);
+    for (const [c, keys] of [[1, ['x', 'y']], [2, ['m', 'n']]] as const) for (const k of keys) expect(tone(c, k)).toEqual({ kind: 'series', color: labelColors([...keys]).get(k) });
     const ribbon = l.links.find((k) => k.pair === 1 && k.source === 'y')!;
     expect(ribbon.tone).toEqual(tone(1, 'y'));
     expect(ribbon.origin).toBeUndefined();
@@ -193,4 +193,38 @@ test('the same label gets the same colour in a Sankey node as in a pie or a stac
   const stack = labelColors(['OWOX BI']);
   expect(l.nodes.find((n) => n.key === 'true')!.tone).toEqual({ kind: 'series', color: pie.get('true') });
   expect(l.nodes.find((n) => n.key === 'OWOX BI')!.tone).toEqual({ kind: 'series', color: stack.get('OWOX BI') });
+});
+
+test('a label keeps the colour it has in a pie, whatever different values the other columns hold', () => {
+  const segments = ['Returned', 'New', 'Loyal', 'Wholesale', 'Guest'];
+  // Every source hashes to the slot of a segment, the case that used to push the segment off it.
+  const sources = segments.map((s) => Array.from({ length: 5000 }, (_, i) => `k${i}`).find((k) => labelColors([k]).get(k) === labelColors([s]).get(s))!);
+  const pie = labelColors(segments);
+  const l = layoutSankey({ flows: [sources.flatMap((source) => segments.map((target, i) => ({ source, target, value: 10 - i })))], width: 400, height: 400 });
+  for (const s of segments) expect(l.nodes.find((n) => n.col === 1 && n.key === s)!.tone).toEqual({ kind: 'series', color: pie.get(s) });
+});
+
+test('"New" in one Sankey and "new" in another get one colour', () => {
+  const clash = Array.from({ length: 5000 }, (_, i) => `k${i}`).find((k) => labelColors([k]).get(k) === labelColors(['new']).get('new'))!;
+  const tone = (source: string, target: string) => layoutSankey({ flows: [[{ source, target, value: 9 }, { source, target: 'Other one', value: 1 }]], width: 400, height: 200 }).nodes.find((n) => n.col === 1 && n.key === target)!.tone;
+  // The old rule coloured both columns from one palette, which pushed 'New' off its slot when the source held it.
+  expect(tone(clash, 'New')).toEqual(tone('google', 'new'));
+});
+
+test('two labels that meet in the last column only still differ there', () => {
+  expect(labelColors(['p6']).get('p6')).toBe(labelColors(['q1']).get('q1'));
+  const l = layoutSankey({ flows: [
+    [{ source: 'p6', target: 'q1', value: 5 }],
+    [{ source: 'q1', target: 'p6', value: 3 }, { source: 'q1', target: 'q1', value: 2 }],
+  ], width: 600, height: 200 });
+  const tone = (k: string) => l.nodes.find((n) => n.col === 2 && n.key === k)!.tone;
+  expect(tone('p6')).not.toEqual(tone('q1'));
+});
+
+test('a value in two columns keeps one colour, even where it clashed in the first', () => {
+  const clash = Array.from({ length: 5000 }, (_, i) => `k${i}`).find((k) => labelColors([k]).get(k) === labelColors(['new']).get('new'))!;
+  const l = layoutSankey({ flows: [[{ source: clash, target: 'New', value: 9 }, { source: 'new', target: 'New', value: 3 }]], width: 400, height: 200 });
+  const tone = (c: number, k: string) => l.nodes.find((n) => n.col === c && n.key === k)!.tone;
+  expect(tone(0, 'new')).not.toEqual(tone(0, clash));
+  expect(tone(1, 'New')).toEqual(tone(0, 'new'));
 });

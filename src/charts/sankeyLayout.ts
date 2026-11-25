@@ -1,12 +1,12 @@
 // The Sankey's geometry, pure: where each node and ribbon goes. No data is computed here beyond sizes; the values are the reads'.
 import { isBlankKey, OTHER_KEY } from './blank';
-import { labelColors } from './labelColor';
+import { columnColors } from './labelColor';
 
 /** One flow between a node of column i (source) and a node of column i+1 (target). `origin` is the node of column 0 it started from (the source itself in the first pair); it colours the ribbon. Without one (fan-out mode, past the first pair) the ribbon takes its source node's colour. */
 export type Flow = { source: string; target: string; value: number; origin?: string };
 /** A column's node and its exact total. */
 export type NodeSize = { key: string; value: number };
-/** What colours a node: the colour its label hashes to (see labelColor.ts), the blank grey or the muted Other. */
+/** What colours a node: the colour its label starts from (see labelColor.ts), the blank grey or the muted Other. */
 export type Tone = { kind: 'series'; color: string } | { kind: 'blank' } | { kind: 'other' };
 export type SankeyNode = { col: number; key: string; x: number; y: number; w: number; h: number; value: number; tone: Tone };
 export type SankeyLink = { pair: number; source: string; target: string; origin?: string; value: number; path: string; tone: Tone; x0: number; x1: number; y0: number; y1: number; w: number; w1: number };
@@ -76,9 +76,10 @@ export function layoutSankey({ flows, columns, width, padRight = 0, height, fit 
   const k = Number.isFinite(scale) ? Math.max(0, scale) : 0;
   const step = cols > 1 ? Math.max(0, (width - padRight - NODE_W) / (cols - 1)) : 0;
 
-  // Tones: every node takes the colour its own label hashes to, so a value looks the same in every column and in every other chart.
-  // Keys are ranked by column, then by rank within it; a value that appears in two columns is one label with one colour.
-  const colors = labelColors(order.flatMap((keys) => keys.filter((k) => !isBlankKey(k) && k !== OTHER_KEY)));
+  // Tones: a node takes the colour its label hashes to. Labels that share a column differ while the palette lasts, a value in several columns has
+  // one colour, and another column's values do not push a label off its colour, except a value that appears in both columns. Two labels that
+  // never share a column may share a colour.
+  const colors = columnColors(order.map((keys) => keys.filter((k) => !isBlankKey(k) && k !== OTHER_KEY)));
   const tones: Map<string, Tone>[] = order.map((keys) => new Map(keys.map((key): [string, Tone] => [key, isBlankKey(key) ? { kind: 'blank' } : key === OTHER_KEY ? { kind: 'other' } : { kind: 'series', color: colors.get(key)! }])));
 
   const nodes: SankeyNode[] = [];

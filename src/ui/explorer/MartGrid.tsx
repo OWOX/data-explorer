@@ -1037,7 +1037,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const startDrag = (row: number, col: number, e: React.MouseEvent) => {
     if (e.button !== 0) return;
     if (e.shiftKey) { e.preventDefault(); scroller.current?.focus({ preventScroll: true }); return; }
-    if ((e.target as HTMLElement).closest('a, button, input, textarea, select')) return;
+    // A cell's URL fills its cell, so a press on it starts a drag like any other press on the cell; its click opens it.
+    if ((e.target as HTMLElement).closest('a:not(.dm-cell-link), button, input, textarea, select')) return;
     // No native text selection: the cells are what the drag selects.
     e.preventDefault();
     scroller.current?.focus({ preventScroll: true });
@@ -1053,6 +1054,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     dragMoved.current = true;
     setSelected(from.row === row && from.col === col ? { kind: 'cell', ...from } : { kind: 'cell', ...from, to: { row, col } });
   };
+  // The click that ends a drag is cancelled before it reaches a cell's URL, so it opens nothing.
+  const cancelDragClick = (e: React.MouseEvent) => { if (dragMoved.current) e.preventDefault(); };
   const pickCell = (row: number, col: number, e: React.MouseEvent) => {
     // The click that ends a drag is no click on a cell: the block stays and no record opens.
     if (dragMoved.current) { e.stopPropagation(); dragMoved.current = false; return; }
@@ -1063,6 +1066,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       return;
     }
     setSelected({ kind: 'cell', row, col });
+    // A click on a URL opens the URL only: the row's record stays closed.
+    if ((e.target as HTMLElement).closest('.dm-cell-link')) e.stopPropagation();
   };
   useEffect(() => {
     const box = scroller.current;
@@ -1141,7 +1146,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
         {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} uniqueCount={ucNow} filters={Object.values(filters)} slices={Object.values(slices)} sorts={gridSorts} ownSorts={own ?? NO_SORTS} rows={rows} hasMore={hasMore} loading={loading} run={run} storage={martStorage} joinsFailed={joinsFailed && !joinsRead} sources={joinsRead ? sources : undefined} edges={model.edges} titles={martTitles} joinedMarts={joinedMarts} />}
       </BandTools>
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-progress" />}
-      <div ref={scroller} tabIndex={0} onKeyDown={charts ? undefined : onGridKey} onCopy={charts ? undefined : onCopy} className={`dm-grid-root min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
+      <div ref={scroller} tabIndex={0} onKeyDown={charts ? undefined : onGridKey} onCopy={charts ? undefined : onCopy} onClickCapture={cancelDragClick} className={`dm-grid-root min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
         <table className="dm-grid w-full border-collapse">
           <thead ref={head} className="dm-head sticky top-0 z-10">
             <tr aria-hidden data-chrome>
