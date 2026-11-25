@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { closeConfig, configButton, groupTitles, openConfig, openFields } from './config-menu';
+import { closeConfig, configButton, expectStillOpen, groupTitles, openConfig, openFields } from './config-menu';
 
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
 const data = (page: Page) => page.locator('#band-data');
@@ -7,7 +7,7 @@ const marts = (page: Page) => page.locator('#band-marts');
 
 test('Table: the config menu lists the data marts, and a field of a joinable mart ticked there joins its column', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
-  // One button, next to the Table / Charts switch, in the Data band only.
+  // One button, in the slot next to the Table / Charts switch, and no other.
   await expect(page.locator('[data-config-button]')).toHaveCount(1);
   await expect(data(page).getByRole('button', { name: /^Fields of / })).toHaveCount(0);
   const menu = await openConfig(page);
@@ -26,6 +26,8 @@ test('Table: the config menu lists the data marts, and a field of a joinable mar
   const customers = page.getByRole('dialog', { name: 'Customers', exact: true });
   await expect(customers).toBeVisible();
   await customers.getByLabel('email', { exact: true }).click();
+  // The tick leaves the menu and the panel open.
+  await expectStillOpen(page, customers);
   await closeConfig(page);
   await expect(groupTitles(page)).toHaveText(['Orders', 'Customers']);
   await expect(data(page).getByRole('columnheader', { name: /Customers · email/ })).toBeVisible();
@@ -62,6 +64,7 @@ test('a data mart on a path with no column is listed after the shown ones; ticki
   // It is not in the report, so there is nothing to remove.
   await expect(panel.getByRole('menuitem', { name: 'Remove from report' })).toHaveCount(0);
   await panel.getByLabel('email', { exact: true }).click();
+  await expectStillOpen(page, panel);
   await closeConfig(page);
   // The columns of a data mart sit together, in the order the marts were added: Customers comes back last.
   await expect(groupTitles(page)).toHaveText(['Orders', 'Countries', 'Customers']);
@@ -76,6 +79,14 @@ test('Charts: the config menu opens with Add chart and Charts, a chart’s menu 
   const rows = await menu.getByRole('menuitem').evaluateAll((els) => els.map((e) => e.textContent?.trim() ?? ''));
   expect(rows.slice(0, 3).map((r) => r.replace(/\s+/g, ' '))).toEqual(['Add chart', 'Charts', expect.stringContaining('Orders')]);
   await closeConfig(page);
+  // Charts builds the menu in another place: a field of a joinable mart ticked there joins it too.
+  const fields = await openFields(page, 'Orders');
+  await fields.getByRole('menuitem', { name: 'Customers', exact: true }).click();
+  const joinable = page.getByRole('dialog', { name: 'Customers', exact: true });
+  await joinable.getByLabel('email', { exact: true }).click();
+  await expectStillOpen(page, joinable);
+  await closeConfig(page);
+  await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
 
   const total = await data(page).locator('section.dm-chart').count();
   await pie.hover();
@@ -103,29 +114,34 @@ test('Charts: the config menu opens with Add chart and Charts, a chart’s menu 
   await expect(data(page).locator('section[data-chart-kind="Pie"]')).toHaveCount(2);
 });
 
-test('the filter badge has no x, its list ends with Clear, and Clear removes the filters in one Undo step', async ({ page }) => {
+test('the filter badge has no x, its list ends with Clear, and Clear removes both filters in one Undo step', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
-  const icon = data(page).getByLabel('Column menu status', { exact: true });
-  await icon.scrollIntoViewIfNeeded();
-  await icon.locator('xpath=ancestor::th').hover();
-  await icon.click();
-  await page.getByRole('menuitem', { name: 'Filter', exact: true }).click();
-  await page.getByLabel('Operator').selectOption('contains');
-  await page.getByLabel('Value').fill('paid');
-  await page.getByRole('button', { name: 'Apply' }).click();
-  await expect.poll(() => data(page).getByRole('row').count()).toBeLessThan(202);
-  const rows = await data(page).getByRole('row').count();
-  const badge = data(page).getByRole('button', { name: /^1 filter in Orders/ });
+  const filter = async (column: string, value: string, operator?: string) => {
+    const icon = data(page).getByLabel(`Column menu ${column}`, { exact: true });
+    await icon.scrollIntoViewIfNeeded();
+    await icon.locator('xpath=ancestor::th').hover();
+    await icon.click();
+    await page.getByRole('menuitem', { name: 'Filter', exact: true }).click();
+    if (operator) await page.getByLabel('Operator').selectOption(operator);
+    await page.getByLabel('Value').fill(value);
+    await page.getByRole('button', { name: 'Apply' }).click();
+  };
+  await filter('status', 'paid', 'contains');
+  await expect(data(page).getByRole('button', { name: /^1 filter in Orders/ })).toBeVisible();
+  await filter('Store', '1');
+  const badge = data(page).getByRole('button', { name: /^2 filters in Orders/ });
   await expect(badge).toBeVisible();
   await expect(data(page).getByRole('button', { name: /^(Remove|Clear) .*filter/i })).toHaveCount(0);
+  const filtered = await data(page).getByRole('row').count();
   await badge.click();
   const list = page.getByRole('menu').filter({ has: page.getByRole('menuitem', { name: 'Clear' }) });
   await expect(list.getByRole('menuitem').last()).toHaveText('Clear');
   await list.getByRole('menuitem', { name: 'Clear' }).click();
-  await expect(data(page).getByRole('row')).toHaveCount(202);
-  await expect(badge).toHaveCount(0);
+  await expect(data(page).getByRole('button', { name: /filters? in Orders/ })).toHaveCount(0);
+  await expect.poll(() => data(page).getByRole('row').count()).toBe(202);
   await expect(configButton(page)).toBeVisible();
+  // One Undo step brings both back.
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(data(page).getByRole('row')).toHaveCount(rows);
-  await expect(badge).toBeVisible();
+  await expect(data(page).getByRole('button', { name: /^2 filters in Orders/ })).toBeVisible();
+  await expect.poll(() => data(page).getByRole('row').count()).toBe(filtered);
 });

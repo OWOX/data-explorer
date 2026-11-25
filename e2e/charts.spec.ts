@@ -43,7 +43,7 @@ test('Charts mode shows scorecards, a stacked time series and a pie, and Table b
 
 test('a one-column group shows its scorecard value in full', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
-  // The picker may close after each change: open it again for every column that goes.
+  // Close the config menu after each change and open it again for every column that goes.
   for (const name of ['status', 'Customer', 'Product', 'Store']) {
     await openFields(page, 'Orders');
     await page.getByLabel(name, { exact: true }).click();
