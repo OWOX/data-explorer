@@ -9,10 +9,10 @@ import { Panel, Row, useSubmenu } from './MenuParts';
 
 export type { ConfigMart } from './MartFields';
 
-/** Whether a text box inside one of the menu's own panels holds focus: a hover on another row then leaves the open panel alone. A field menu opened from a row is not one of them. */
+/** Whether a text box inside one of the menu's panels, or in a field menu opened from one, holds focus: a hover on another row then leaves the open panel alone. */
 const typing = () => {
   const el = document.activeElement;
-  return !!el && el.matches('input, textarea, select') && !!el.closest('[data-config-panel]');
+  return !!el && el.matches('input, textarea, select') && !!el.closest('[data-column-menu]');
 };
 
 /** One data mart as a row that opens its fields panel: its icon, its title and, with a description, a (?). */
@@ -115,28 +115,41 @@ export function ConfigMenu({ marts, joinable, visible, onChange, chartItems = []
   const [joinCache] = useState(() => new Map<string, ConfigMart[]>());
   // The empty commits that wait for their panels, and the latest grid they are made against.
   const [pending] = useState(() => new Map<string, string[]>());
+  // The fields of panels that went without the menu closing: all that go in one commit leave as one change.
+  const queued = useRef({ names: new Set<string>(), scheduled: false });
   const latest = useLatest({ visible, onChange });
   const [placed, setPlaced] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const holderEl = useRef<HTMLSpanElement>(null);
   const { sub, open, hoverRow, hoverOther, leaveRow, closeSub, dismiss } = useSubmenu<string>({ isEditing: typing });
-  // Takes the fields of the given pending marts (all of them when none are named) off the grid in one change.
-  const settle = useCallback((paths?: string[]) => {
-    const names = new Set<string>();
-    for (const p of paths ?? [...pending.keys()]) { pending.get(p)?.forEach((n) => names.add(n)); pending.delete(p); }
+  const take = useCallback((paths?: string[]) => {
+    for (const p of paths ?? [...pending.keys()]) { pending.get(p)?.forEach((n) => queued.current.names.add(n)); pending.delete(p); }
+  }, [pending, queued]);
+  // Takes what is queued off the grid in one change.
+  const flush = useCallback(() => {
+    const q = queued.current;
+    q.scheduled = false;
+    if (q.names.size === 0) return;
+    const names = new Set(q.names);
+    q.names.clear();
     const { visible: now, onChange: change } = latest.current;
     let next = now.filter((c) => !names.has(c));
     if (next.length === now.length) return;
     // Clear never leaves the grid without a column.
     if (next.length === 0) next = now.slice(0, 1);
     change(next);
-  }, [pending, latest]);
+  }, [queued, latest]);
+  // Panels that go together (a subtree closing) clean up one after the other: the flush waits until they have all queued.
+  const settleSoon = useCallback((path: string) => {
+    take([path]);
+    if (!queued.current.scheduled) { queued.current.scheduled = true; queueMicrotask(flush); }
+  }, [take, queued, flush]);
   const [holder] = useState<PendingEmpties>(() => ({
     hold: (path, names) => { pending.set(path, names); },
     release: (path) => { pending.delete(path); },
-    settle: (path) => settle([path]),
+    settle: settleSoon,
   }));
-  const close = useCallback((refocus = true) => { settle(); joinCache.clear(); dismiss(); setAnchor(null); setFrozen(null); setPlaced(false); if (refocus) button.current?.focus(); }, [dismiss, settle, joinCache]);
+  const close = useCallback((refocus = true) => { take(); flush(); joinCache.clear(); dismiss(); setAnchor(null); setFrozen(null); setPlaced(false); if (refocus) button.current?.focus(); }, [dismiss, take, flush, joinCache]);
   const openMenu = (a: HTMLElement) => {
     const unshown = marts.findIndex((m) => !m.shown);
     setFrozen({ marts, split: unshown < 0 ? marts.length : unshown });
@@ -149,7 +162,9 @@ export function ConfigMenu({ marts, joinable, visible, onChange, chartItems = []
     const now = marts.find((x) => x.path === m.path);
     if (now) return now;
     // Not in the report: what can join now, when it still can; the listed one otherwise. Its Remove is never offered.
-    const fresh = [...joinCache.keys()].flatMap((p) => joinable(p)).find((x) => x.path === m.path);
+    // It can only join under the main mart or a path before its own, so those are asked, whatever panels were opened.
+    const parents = new Set(['', ...m.path.split('.').slice(0, -1).map((_, i, all) => all.slice(0, i + 1).join('.')), ...rootPaths, ...joinCache.keys()]);
+    const fresh = [...parents].flatMap((p) => joinable(p)).find((x) => x.path === m.path);
     return { ...(fresh ?? m), remove: undefined };
   };
   const rootPaths = new Set(frozen?.marts.map((m) => m.path));
@@ -185,7 +200,7 @@ export function ConfigMenu({ marts, joinable, visible, onChange, chartItems = []
           {frozen.marts.slice(frozen.split).map(row)}
         </Panel>
       )}
-      {anchor && placed && sub && item && <ItemSubmenu item={item} anchor={sub.row} seq={sub.seq} close={close} onBack={closeSub} />}
+      {anchor && placed && sub && item && <ItemSubmenu key={sub.key} item={item} anchor={sub.row} seq={sub.seq} close={close} onBack={closeSub} />}
       {anchor && placed && sub && picked && <MartPanel key={picked.path} entry={picked} anchor={sub.row} seq={sub.seq} onBack={closeSub} shared={shared} />}
     </span>
     </PendingEmptiesContext.Provider>

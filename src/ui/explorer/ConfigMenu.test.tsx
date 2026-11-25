@@ -21,15 +21,16 @@ const REGIONS = ['regions__code', 'regions__zone'];
 const PRODUCTS = ['products__sku', 'products__price', 'products__a', 'products__b', 'products__c', 'products__d', 'products__e', 'products__f'];
 const SUPPLIERS = ['suppliers__name', 'suppliers__country'];
 
-type Setup = { visible?: string[]; chartItems?: MenuItem[]; onRemove?: () => void; spy?: (cols: string[]) => void; strict?: boolean };
+type Setup = { visible?: string[]; chartItems?: MenuItem[]; onRemove?: () => void; spy?: (cols: string[]) => void; strict?: boolean; unique?: boolean };
 /** The menu with a grid behind it: `onChange` feeds `visible`, and the data marts with a column are the ones in `marts`. */
-function Harness({ visible: start = ['id', 'customers__email'], chartItems, onRemove, spy }: Setup) {
+function Harness({ visible: start = ['id', 'customers__email'], chartItems, onRemove, spy, unique = false }: Setup) {
   const [visible, setVisible] = useState(start);
+  const [uniqueOn, setUniqueOn] = useState(unique);
   const has = (m: ConfigMart) => m.fields.some((x) => visible.includes(x.name));
   const remove = { onRemove: onRemove ?? (() => undefined) };
   const base: ConfigMart[] = [
     mart('', 'Orders', ORDERS),
-    mart('customers', 'Customers', CUSTOMERS, { description: 'Who bought', unique: { on: false, onToggle: () => undefined } }),
+    mart('customers', 'Customers', CUSTOMERS, { description: 'Who bought', unique: { on: uniqueOn, onToggle: () => setUniqueOn((v) => !v) } }),
     mart('regions', 'Regions', REGIONS),
     mart('products', 'Products', PRODUCTS),
     mart('products.suppliers', 'Suppliers', SUPPLIERS),
@@ -37,7 +38,7 @@ function Harness({ visible: start = ['id', 'customers__email'], chartItems, onRe
   const all = base.map((m) => ({ ...m, shown: m.main || has(m) || !!m.unique?.on, remove: has(m) && (m.path === 'customers' || m.path === 'products') ? remove : undefined }));
   const shown = all.filter((m) => m.shown);
   const marts = [...shown, ...all.filter((m) => m.path === 'regions' && !shown.includes(m))];
-  const under: Record<string, string[]> = { '': ['products'], products: ['products.suppliers'] };
+  const under: Record<string, string[]> = { '': ['products', 'customers'], products: ['products.suppliers'] };
   const joinable = (path: string) => (under[path] ?? []).map((p) => all.find((m) => m.path === p)!).filter((m) => !marts.includes(m));
   return (
     <TooltipProvider>
@@ -564,5 +565,136 @@ describe('fix round 1', () => {
     const menu = await openMenu();
     expect(within(menu).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Orders', 'Counted', 'Waiting']);
     expect(menu.querySelector('[role="separator"]')!.previousElementSibling).toBe(within(menu).getByRole('menuitem', { name: 'Counted' }));
+  });
+
+  test('a root mart that left gets a fresh Unique Count from the main path, not the one of the render that opened it', async () => {
+    setup({ unique: true });
+    const menu = await openMenu();
+    const panel = await openRow('Customers', menu);
+    expect(within(panel).getByRole('option', { name: 'Unique Count' })).toHaveAttribute('aria-selected', 'true');
+    await userEvent.click(within(panel).getByRole('option', { name: 'Unique Count' }));
+    await userEvent.click(within(panel).getByLabelText('customers__email'));
+    await userEvent.keyboard('{Escape}');
+    expect(visibleNow()).toBe('id');
+    const again = await openRow('Customers', menu);
+    expect(within(again).getByRole('option', { name: 'Unique Count' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  test('a root mart that left gets a fresh locked from the data marts that can join', async () => {
+    const field = (name: string) => f(name);
+    const gone = (locked: (n: string) => boolean): ConfigMart => ({ ...mart('p', 'Partners', ['p1', 'p2']), locked });
+    const props = (marts: ConfigMart[], joinable: ConfigMart[]) => <TooltipProvider><ConfigMenu marts={marts} joinable={(p) => (p === '' ? joinable : [])} visible={['id', 'p1']} onChange={() => undefined} /></TooltipProvider>;
+    const main = { ...mart('', 'Orders', ORDERS), shown: true };
+    const listed = { ...gone(() => false), shown: true };
+    const { rerender } = render(props([main, listed], []));
+    await userEvent.click(screen.getByRole('button', { name: 'Configure data' }));
+    await screen.findByRole('menu', { name: 'Configure data' });
+    rerender(props([main], [gone((n) => n === 'p1')]));
+    const panel = await openRow('Partners', screen.getByRole('menu', { name: 'Configure data' }));
+    expect(field('p1').name).toBe('p1');
+    expect(within(panel).getByRole('option', { name: 'p1' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  describe('a closing subtree settles in one change', () => {
+    const deep = async (spy: (c: string[]) => void, strict = false) => {
+      setup({ spy, strict });
+      const menu = await openMenu();
+      const orders = await openRow('Orders', menu);
+      const products = await openRow('Products', orders);
+      await userEvent.click(within(products).getByLabelText('products__sku'));
+      const suppliers = await openRow('Suppliers', products);
+      await userEvent.click(within(suppliers).getByLabelText('suppliers__name'));
+      await userEvent.click(within(products).getByLabelText('products__sku'));
+      await userEvent.click(within(suppliers).getByLabelText('suppliers__name'));
+      return menu;
+    };
+    const settled = async (spy: ReturnType<typeof vi.fn>, before: number) => {
+      await wait(0);
+      expect(spy).toHaveBeenCalledTimes(before + 1);
+      expect(spy).toHaveBeenLastCalledWith(['id', 'customers__email']);
+      expect(visibleNow()).toBe('id,customers__email');
+    };
+    for (const strict of [false, true]) {
+      test(`a click on another root row${strict ? ' (StrictMode)' : ''}`, async () => {
+        const spy = vi.fn();
+        const menu = await deep(spy, strict);
+        const before = spy.mock.calls.length;
+        await userEvent.click(within(menu).getByRole('menuitem', { name: 'Customers' }));
+        await settled(spy, before);
+      });
+
+      test(`a hover on another root row${strict ? ' (StrictMode)' : ''}`, async () => {
+        const spy = vi.fn();
+        const menu = await deep(spy, strict);
+        const before = spy.mock.calls.length;
+        fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: 'Customers' }));
+        await wait(HOVER_MS + 100);
+        await settled(spy, before);
+      });
+
+      test(`Escape with focus on the root${strict ? ' (StrictMode)' : ''}`, async () => {
+        const spy = vi.fn();
+        const menu = await deep(spy, strict);
+        const before = spy.mock.calls.length;
+        within(menu).getByRole('menuitem', { name: 'Orders' }).focus();
+        await userEvent.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).toBeNull();
+        await settled(spy, before);
+      });
+
+      test(`unmounting the menu${strict ? ' (StrictMode)' : ''}`, async () => {
+        const spy = vi.fn();
+        await deep(spy, strict);
+        const before = spy.mock.calls.length;
+        cleanup();
+        await wait(0);
+        expect(spy).toHaveBeenCalledTimes(before + 1);
+        expect(spy).toHaveBeenLastCalledWith(['id', 'customers__email']);
+      });
+    }
+  });
+
+  test('the third level of one chart submenu does not open by itself in the next one', async () => {
+    const axis = (label: string, prefix: string): MenuItem => ({
+      kind: 'radio', label, icon: Hash, value: '', onPick: () => undefined, options: [],
+      groups: [{ title: `${prefix} Orders`, options: [{ value: 'a', label: 'A' }] }, { title: `${prefix} Customers`, options: [{ value: 'b', label: 'B' }] }],
+    });
+    setup({ chartItems: [axis('X axis', 'X'), axis('Y axis', 'Y')] });
+    const menu = await openMenu();
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'X axis' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'X Orders' }));
+    await screen.findByRole('menu', { name: 'X Orders' });
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Y axis' }));
+    await screen.findByRole('menu', { name: 'Y axis' });
+    expect(screen.queryByRole('menu', { name: 'Y Orders' })).toBeNull();
+  });
+
+  test("a value typed in a field menu's filter keeps the panel it was opened from while the pointer rests on another root row", async () => {
+    setup({ visible: ['id', 'products__sku'] });
+    const menu = await openMenu();
+    const panel = await openRow('Products', menu);
+    await userEvent.click(within(panel).getAllByRole('button', { name: 'Column menu products__sku' })[0]!);
+    const column = await screen.findByRole('menu', { name: 'Menu of products__sku' });
+    await userEvent.click(within(column).getByRole('menuitem', { name: 'Filter' }));
+    const filter = await screen.findByRole('dialog', { name: 'Filter of products__sku' });
+    await userEvent.type(within(filter).getByLabelText('Value'), 'x');
+    fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: 'Regions' }));
+    await wait(HOVER_MS + 100);
+    expect(screen.getByRole('dialog', { name: 'Products' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Regions' })).toBeNull();
+  });
+
+  test('from a field menu icon, Tab goes on in the panel order and Shift+Tab to the list stop', async () => {
+    setup();
+    const panel = await openRow('Regions', await openMenu());
+    const row = screen.getByRole('menuitem', { name: 'Regions' });
+    const icons = within(panel).getAllByRole('button', { name: /^Column menu/ });
+    icons[1]!.focus();
+    await userEvent.tab({ shift: true });
+    expect(document.activeElement?.getAttribute('role')).toBe('option');
+    expect(panel.contains(document.activeElement)).toBe(true);
+    icons[1]!.focus();
+    await userEvent.tab();
+    expect(document.activeElement).toBe(row);
   });
 });

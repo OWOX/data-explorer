@@ -101,8 +101,12 @@ export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onP
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onEscape(); return; }
     if (e.key === 'Tab' && returnTo && (e.target as HTMLElement).closest('[data-column-menu]') === e.currentTarget) {
       const tabbable = [...e.currentTarget.querySelectorAll<HTMLElement>('input, select, textarea, button, [tabindex="0"]')].filter((n) => !(n as HTMLButtonElement).disabled && n.tabIndex >= 0);
-      const at = tabbable.indexOf(e.target as HTMLElement);
-      if (e.shiftKey ? at <= 0 : at === -1 ? tabbable.length === 0 : at === tabbable.length - 1) { e.preventDefault(); e.stopPropagation(); returnTo.focus(); }
+      // A control that is not a Tab stop (a field's menu icon, reached with Arrow Right) sits where it is in the page order.
+      const t = e.target as HTMLElement;
+      const at = tabbable.indexOf(t);
+      const before = at >= 0 ? at : tabbable.filter((n) => t.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_PRECEDING).length;
+      const after = at >= 0 ? tabbable.length - 1 - at : tabbable.filter((n) => t.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING).length;
+      if (e.shiftKey ? before === 0 : after === 0) { e.preventDefault(); e.stopPropagation(); returnTo.focus(); }
       return;
     }
     if (e.key === 'Tab' && role === 'menu' && onTab && (e.target as HTMLElement).closest('[data-column-menu]') === e.currentTarget) { e.preventDefault(); e.stopPropagation(); onTab(); return; }

@@ -17,7 +17,7 @@ export type ConfigMart = {
   fields: Field[];
   locked: (name: string) => boolean;
   unique?: { on: boolean; onToggle: () => void };
-  /** Takes the data mart out of the report. Absent when it has no column, or is the only one. */
+  /** Takes the data mart out of the report. Absent when it has no column, or is the only one. `onRemove` must read the state as it is when called: a change may have gone out just before it. */
   remove?: { onRemove: () => void; disabled?: boolean };
 };
 
