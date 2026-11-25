@@ -387,3 +387,46 @@ test('sankey: an exact Sankey shows the share on every column', async () => {
   await userEvent.hover(nodeIn(1));
   expect(await screen.findByRole('tooltip')).toHaveTextContent(/\(\d+%\)$/);
 });
+
+const links = () => [...data().querySelectorAll('path[data-link]')];
+const linkTip = async (pair: number) => {
+  const el = links().find((l) => l.getAttribute('data-link')!.startsWith(`${pair}|`))!;
+  await userEvent.hover(el);
+  const text = (await screen.findByRole('tooltip')).textContent!;
+  await userEvent.unhover(el);
+  return text;
+};
+const nodeTip = async (col: number, mid: (k: string) => boolean = () => true) => {
+  const el = [...data().querySelectorAll('rect[data-node]')].find((n) => n.getAttribute('data-node')!.startsWith(`${col}|`) && mid(n.getAttribute('data-node')!))!;
+  await userEvent.hover(el);
+  const text = (await screen.findByRole('tooltip')).textContent!;
+  await userEvent.unhover(el);
+  return text;
+};
+
+test('sankey: in a fan-out Sankey a ribbon shows its percent only when both its columns do', async () => {
+  await charts({ columns: [...dims, 'shipments__carrier'], charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'shipments__carrier'] }] } });
+  await waitFor(() => expect(links().length).toBeGreaterThan(0));
+  expect(await linkTip(0)).toMatch(/\(\d+%\)$/);
+  expect(await linkTip(1)).not.toMatch(/%/);
+});
+
+test('sankey: an exact Sankey keeps the percent on its ribbons', async () => {
+  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  await waitFor(() => expect(links().length).toBeGreaterThan(0));
+  expect(await linkTip(0)).toMatch(/\(\d+%\)$/);
+});
+
+test('sankey: a main-mart sum keeps its share on a lookup-joined column', async () => {
+  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'], measure: 'amount' }] } });
+  await waitFor(() => expect(links().length).toBeGreaterThan(0));
+  expect(await nodeTip(0)).toMatch(/\(\d+%\)$/);
+  expect(await nodeTip(1)).toMatch(/\(\d+%\)$/);
+});
+
+test('sankey: a metric on a joined mart has no share on a main-mart column and keeps it on its own mart', async () => {
+  await charts({ columns: dims.concat('products__price'), charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'], measure: 'products__price' }] } });
+  await waitFor(() => expect(links().length).toBeGreaterThan(0));
+  expect(await nodeTip(0)).not.toMatch(/%/);
+  expect(await nodeTip(1)).toMatch(/\(\d+%\)$/);
+});

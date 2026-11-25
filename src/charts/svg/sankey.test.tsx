@@ -276,3 +276,29 @@ test('hovering a node or a ribbon formats no value again: nothing is rebuilt', a
   await userEvent.hover(byAttr('data-link', '0|a|x')!);
   expect(text.mock.calls.length).toBe(calls);
 });
+
+const ribbonFlows: Flow[][] = [[{ source: 'a', target: 'x', value: 3 }, { source: 'b', target: 'x', value: 1 }], [{ source: 'x', target: 'z', value: 4 }]];
+const ribbonTips = async (showShare?: boolean[]) => {
+  const { unmount } = draw({ flows: ribbonFlows, showShare });
+  const first = await tip(byAttr('data-link', '0|a|x')!);
+  await userEvent.unhover(byAttr('data-link', '0|a|x')!);
+  const second = await tip(document.querySelector('[data-link^="1|x|z"]')!);
+  unmount();
+  return [first, second];
+};
+
+test('a ribbon has no percent when its middle column overlaps: neither pair shows one', async () => {
+  expect(await ribbonTips([true, false, true])).toEqual(['a → x: $3', 'x → z (from x): $4']);
+});
+
+test('a ribbon has a percent only when both its columns show shares: last column overlapping leaves the first pair its percent', async () => {
+  expect(await ribbonTips([true, true, false])).toEqual(['a → x: $3 (75%)', 'x → z (from x): $4']);
+});
+
+test('a first column that overlaps takes the percent off its pair only', async () => {
+  expect(await ribbonTips([false, true, true])).toEqual(['a → x: $3', 'x → z (from x): $4 (100%)']);
+});
+
+test('with showShare absent every ribbon shows its percent', async () => {
+  expect(await ribbonTips()).toEqual(['a → x: $3 (75%)', 'x → z (from x): $4 (100%)']);
+});

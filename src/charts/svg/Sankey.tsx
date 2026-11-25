@@ -21,7 +21,7 @@ const clip = (text: string, max: number): string => (text.length <= max ? text :
  * "Other" is never clickable. Hover never re-renders: it sets `data-hot` on the svg and `is-on` / `is-hot` on the lit elements, and charts.css does the dimming. Only nodes are tab stops: ribbons answer the mouse, and the screen-reader table lists them.
  */
 export function Sankey({ titles, columns, flows, fit, showShare, text, ariaLabel, onPickNode, onPickLink }: {
-  titles: string[]; columns?: NodeSize[][]; flows: Flow[][]; /** Fan-out mode: ribbons that add up to more than their node are scaled to fit it. */ fit?: boolean; /** Per column: false where the column's values overlap (a join repeats a record), so a node's share of their sum means nothing. Absent shows it. */ showShare?: boolean[]; text: (value: number) => string; ariaLabel: string;
+  titles: string[]; columns?: NodeSize[][]; flows: Flow[][]; /** Fan-out mode: ribbons that add up to more than their node are scaled to fit it. */ fit?: boolean; /** Per column: false where the column's values overlap (a join repeats a record), so a node's share of their sum means nothing, and neither does the percent on a ribbon that touches it. Absent shows it. */ showShare?: boolean[]; text: (value: number) => string; ariaLabel: string;
   onPickNode?: (col: number, key: string) => void; onPickLink?: (pair: number, source: string, target: string) => void;
 }) {
   const { ref, width } = useWidth<HTMLDivElement>();
@@ -66,7 +66,9 @@ export function Sankey({ titles, columns, flows, fit, showShare, text, ariaLabel
     return layout.links.map((l) => {
       const click = !!onPickLink && l.source !== OTHER_KEY && l.target !== OTHER_KEY;
       const pick = click ? { style: { cursor: 'pointer' }, onClick: () => onPickLink!(l.pair, l.source, l.target) } : {};
-      const tip = `${nodeName(l.source)} → ${nodeName(l.target)}${l.pair > 0 && l.origin !== undefined ? ` (from ${originName(l.origin)})` : ''}: ${text(l.value)} (${Math.round((l.value / (totals[l.pair] || 1)) * 100)}%)`;
+      // A ribbon's percent is of its pair's total, which means something only when neither of its columns overlaps.
+      const pct = showShare?.[l.pair] === false || showShare?.[l.pair + 1] === false ? '' : ` (${Math.round((l.value / (totals[l.pair] || 1)) * 100)}%)`;
+      const tip = `${nodeName(l.source)} → ${nodeName(l.target)}${l.pair > 0 && l.origin !== undefined ? ` (from ${originName(l.origin)})` : ''}: ${text(l.value)}${pct}`;
       return (
         <Tooltip key={linkKey(l)} content={tip}>
           <path className="dm-sankey-link" data-link={`${l.pair}|${l.source}|${l.target}${l.pair > 0 && l.origin !== undefined ? `|${l.origin}` : ''}`} data-from={`${l.pair}|${l.source}`} data-to={`${l.pair + 1}|${l.target}`} d={l.path} fill={thinColor(colorOf(l.tone))} {...hoverLink} {...pick} />
@@ -74,7 +76,7 @@ export function Sankey({ titles, columns, flows, fit, showShare, text, ariaLabel
       );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the hover handlers are stable (`light` only touches the DOM)
-  }, [layout, flows, onPickLink, text]);
+  }, [layout, flows, onPickLink, text, showShare]);
   // Before the width is measured there is nothing to draw on.
   if (!drawable) return <div ref={ref} className="dm-sankey" />;
   return (
