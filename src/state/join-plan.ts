@@ -358,8 +358,8 @@ export function planClick(env: PlanEnv, id: string): Plan {
  * A mart dropped onto the main card becomes the main mart. Its own columns come first: what it shows as joined now, else
  * what it showed when it last left a grid, else its grid's own columns, else its defaults. The old main follows as a joined
  * mart with the columns it showed, if the new main can join it, then every joined mart the new main can reach. A mart it
- * cannot reach is dropped and remembered. The new main keeps its own grid's filters and sorts on the new columns; the old
- * main's do not carry over, because each main names the same field differently.
+ * cannot reach is dropped and remembered. The new main keeps its own grid's filters and sorts on the new columns, and the marts its own grid kept with no column; the old
+ * main's filters do not carry over, because each main names the same field differently.
  */
 export function planMakeMain(env: PlanEnv, id: string): Plan {
   const main = env.selection.martId;
@@ -401,7 +401,7 @@ export function planMakeMain(env: PlanEnv, id: string): Plan {
   const next: GridState = {
     ...nextGrid,
     columns,
-    // A filter does not need its column on screen either: it stays on any field of a mart that is on the new grid (the main mart's own, or a joined mart with a shown column), shown or hidden.
+    // A filter does not need its column on screen either: it stays on any field of a mart that is on the new grid (the main mart's own, or a joined mart in the report, with a shown column or none), shown or hidden.
     filters: dropOrphanHaving(Object.fromEntries(Object.entries(nextGrid.filters).filter(([k]) => columns.includes(k) || offered.has(k) || onGrid.has(sourceOfField(nextSources).get(k)?.aliasPath ?? '\0'))), aggregation.aggregations),
     // A slice does not need its column on screen: it stays while its field is still a joined field of the new main.
     slices: keepSlices(nextGrid.slices, (k) => nextSources.some((x) => x.fields.some((fl) => fl.name === k))),

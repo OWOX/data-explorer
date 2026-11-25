@@ -36,7 +36,7 @@ test('a filter on a field that is not a column, set from the Fields list, narrow
   await expect(icon).toHaveClass(/dm-ctl-on/);
   await expect(data(page).getByText(/No rows|match/i).first()).toBeVisible({ timeout: 10000 });
   await expect(revenueHeader).toHaveCount(0);
-  // The title row says there is a filter, and Undo takes it away in one step.
+  // The badge next to Configure says there is a filter, and Undo takes it away in one step.
   await closeConfig(page);
   await expect(data(page).getByRole('button', { name: '1 filter', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Undo' }).click();

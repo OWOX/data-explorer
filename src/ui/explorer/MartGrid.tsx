@@ -389,7 +389,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const [allFilters, setAllFilters] = useState<Record<string, ColumnFilter>>(() => seed.saved?.filters ?? {});
   const [allSlices, setAllSlices] = useState<Record<string, ColumnFilter>>(() => seed.saved?.slices ?? {});
   const filters = useMemo(() => pickOffered(allFilters, schema), [allFilters, schema]);
-  // A rule does not need its field on the grid: a filter or slice on a hidden field of the main mart, or of a joined mart that has a shown column, applies,
+  // A rule does not need its field on the grid: a filter or slice on a hidden field of the main mart, or of a joined mart in the report (with a shown column or none), applies,
   // because the schema offers every field of the joined marts. A joined mart whose last shown column goes stays in the report with its rules (changeColumns); only Remove from report takes them.
   // Only a field this visit does not offer is parked (the joined marts could not be read, or a Refresh removed the field).
   const slices = useMemo(() => pickOffered(allSlices, schema), [allSlices, schema]);

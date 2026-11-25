@@ -328,5 +328,9 @@ describe('the match badge', () => {
   test('a ghost and a mart with no access show none', () => {
     renderMart({ ghost: true, count: { state: 'ok', value: 100 }, matched: 5 });
     expect(screen.queryByText(/match$/)).toBeNull();
+    cleanup();
+    renderMart({ mart: { ...mart, accessible: false }, count: { state: 'ok', value: 100 }, matched: 5 });
+    expect(screen.getByText('No access')).toBeInTheDocument();
+    expect(screen.queryByText(/match$/)).toBeNull();
   });
 });

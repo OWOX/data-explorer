@@ -34,8 +34,8 @@ test('the config button sits in the band header in Table, and the title cell has
   await setup(['customers__name']);
   const slot = data().querySelector<HTMLElement>('[data-chart-list-slot]')!;
   expect(within(slot).getByRole('button', { name: 'Configure data' })).toHaveAttribute('data-config-button');
-  expect(within(data()).queryByRole('button', { name: /^Fields of / })).toBeNull();
-  expect(within(data()).queryByRole('button', { name: /from the grid$/ })).toBeNull();
+  // The title cell holds no button at all: no fields button, no x.
+  expect(data().querySelectorAll('th[data-group-path] button')).toHaveLength(0);
 });
 
 test('a data mart on a path with no column is listed after the shown ones, and ticking its field adds the column', async () => {

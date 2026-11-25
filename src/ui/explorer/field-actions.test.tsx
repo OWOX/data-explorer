@@ -81,7 +81,7 @@ describe('field actions from the Fields list', () => {
     // The rows query carries the filter without asking for the column.
     const q = t.queries.find((x) => x.filter?.some((f) => f.column === 'status') && x.column?.includes('id'))!;
     expect(q.column).not.toContain('status');
-    // The rule is saved with the view, in the title row marks, and undone in one step.
+    // The rule is saved with the view, its badge is next to Configure, and it is undone in one step.
     expect(await screen.findByRole('button', { name: '1 filter' })).toBeVisible();
     await userEvent.keyboard('{Escape}');
     await closeConfigMenu();

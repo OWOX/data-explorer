@@ -38,6 +38,9 @@ describe('queries', () => {
   it('scoreQuery is the scorecard query of the fields: one builder for the Table and the Charts', () => {
     const cf = { marts: [main, cust], dimensions: [], dates: [], counter: null };
     expect(scoreQuery(cf, flt, ['stores'])).toEqual(scorecardsQuery([main, cust], flt, null, ['stores']));
+    // The rules and the kept path are in it, so two different asks are two different queries.
+    expect(scoreQuery(cf, flt, ['stores'])?.uniqueCount).toContain('stores');
+    expect(scoreQuery(cf, [], [])).not.toEqual(scoreQuery(cf, flt, ['stores']));
   });
   it('a slice with no metric and no counter field has nowhere to go: the query would be sent without it', () => {
     const slice = { column: 'c__ltv', operator: 'eq' as const, value: 1, placement: 'pre-join' as const };

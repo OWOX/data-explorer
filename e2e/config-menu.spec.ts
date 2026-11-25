@@ -213,7 +213,7 @@ test('Graph view: a panel opened from the root menu keeps its row through a wind
 });
 
 declare global { interface Window { __copiedLink?: string } }
-// Two header rows and 11 customers' orders for the email filter below.
+// Two header rows and the 11 orders of one customer, the email filter below.
 const ROWS = 13;
 const TIP = '108 of 450 records match the filters and slices';
 
@@ -236,7 +236,7 @@ test('Clear on a joined data mart keeps it with its filter, the view link carrie
   await page.getByLabel('Value').fill('10@example.com');
   await page.getByRole('button', { name: 'Apply' }).click();
   await expect(data(page).getByRole('button', { name: '1 filter', exact: true })).toBeVisible();
-  // The badge also counts a parked rule, so the rows prove the filter is sent: few rows, the same after Clear and on the opened link.
+  // The badge also counts a parked rule, so the rows prove the filter is sent: few rows here and on the opened link.
   const rows = () => data(page).getByRole('row').count();
   await expect.poll(rows).toBe(ROWS);
   // Clear in the data mart's panel: no column, but the mart and its filter stay.

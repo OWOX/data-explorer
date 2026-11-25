@@ -112,7 +112,6 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
   useEffect(() => {
     if (hold || !key || skipped.current !== key) return;
     skipped.current = null;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the held read starts now
     setAttempt((n) => n + 1);
   }, [hold, key]);
 

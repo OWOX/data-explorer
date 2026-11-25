@@ -488,7 +488,7 @@ describe('fix round 1', () => {
     expect(within(orders).queryByRole('menuitem', { name: 'Products' })).toBeNull();
   });
 
-  test('a mart emptied stays listed with its Remove, and nothing is removed by reopening it', async () => {
+  test('a mart emptied stays listed with its Remove, which acts only when clicked, not on reopening', async () => {
     const onRemove = vi.fn();
     setup({ onRemove });
     const menu = await openMenu();
@@ -497,8 +497,9 @@ describe('fix round 1', () => {
     await openRow('Orders', menu);
     expect(visibleNow()).toBe('id');
     const again = await openRow('Customers', menu);
-    expect(within(again).getByRole('menuitem', { name: 'Remove from report' })).toBeInTheDocument();
     expect(onRemove).not.toHaveBeenCalled();
+    await userEvent.click(within(again).getByRole('menuitem', { name: 'Remove from report' }));
+    expect(onRemove).toHaveBeenCalledOnce();
   });
 
   test('two panels emptied one after the other are two changes, and closing the menu adds none', async () => {

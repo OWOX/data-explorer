@@ -441,7 +441,7 @@ describe('the rule badges next to the config button', () => {
     expect(within(menu).getByRole('menuitem', { name: 'Customers' }).getAttribute('aria-description')).toContain('Sliced');
   });
 
-  test('the config menu marks a mart kept with no column, and a joinable mart that holds a rule', async () => {
+  test('the config menu marks a mart kept with no column with its filter and slice', async () => {
     setup({ columns: ['id', 'status'], filters: { customers__city: { field: 'customers__city', op: 'eq', value: 'Kyiv' } }, slices: { customers__country_code: slice }, sorts: null, limit: 200, emptyPaths: ['customers'] });
     await badge('1 slice');
     await userEvent.click(screen.getByRole('button', { name: 'Configure data' }));
