@@ -173,3 +173,47 @@ test('fan-out: ribbons that add up to more than their node are scaled to fit it;
   await userEvent.hover(on.links[0]!);
   expect(await screen.findByRole('tooltip')).toHaveTextContent('a → x: $8 (50%)');
 });
+
+const tip = async (el: Element) => { await userEvent.hover(el); return (await screen.findByRole('tooltip')).textContent; };
+
+test('a node tooltip gives its share of the exact column total: a node bigger than its flows, with (blank) and Other in the total', async () => {
+  // Column 0 totals 10 + 2 + 3 = 15; its flows are smaller than node a.
+  draw({ columns: [[{ key: 'a', value: 10 }, { key: BLANK_KEY, value: 2 }, { key: OTHER_KEY, value: 3 }], [{ key: 'x', value: 7 }, { key: OTHER_KEY, value: 3 }], [{ key: 'z', value: 7 }]] });
+  expect(await tip(byAttr('data-node', '0|a')!)).toBe('a: $10 (67%)');
+  await userEvent.unhover(byAttr('data-node', '0|a')!);
+  expect(await tip(byAttr('data-node', `0|${BLANK_KEY}`)!)).toBe('(blank): $2 (13%)');
+  await userEvent.unhover(byAttr('data-node', `0|${BLANK_KEY}`)!);
+  expect(await tip(byAttr('data-node', `0|${OTHER_KEY}`)!)).toBe('Other: $3 (20%)');
+});
+
+test('with flows only, a node tooltip gives its share of the column its flows make, each column against its own total', async () => {
+  const two: Flow[][] = [[{ source: 'a', target: 'x', value: 6 }, { source: 'b', target: 'x', value: 2 }, { source: 'b', target: 'y', value: 2 }], [{ source: 'x', target: 'z', value: 3 }, { source: 'y', target: 'z', value: 1 }]];
+  draw({ flows: two });
+  // Column 0 totals 10, column 1 totals 10 (x 8, y 2), column 2 totals 4: one node, 100%.
+  expect(await tip(byAttr('data-node', '0|a')!)).toBe('a: $6 (60%)');
+  await userEvent.unhover(byAttr('data-node', '0|a')!);
+  expect(await tip(byAttr('data-node', '1|x')!)).toBe('x: $8 (80%)');
+  await userEvent.unhover(byAttr('data-node', '1|x')!);
+  expect(await tip(byAttr('data-node', '2|z')!)).toBe('z: $4 (100%)');
+});
+
+test('two columns with different totals are each their own denominator', async () => {
+  draw({ titles: ['One', 'Two'], flows: [[{ source: 'a', target: 'x', value: 2 }]], columns: [[{ key: 'a', value: 2 }, { key: 'b', value: 8 }], [{ key: 'x', value: 2 }, { key: 'y', value: 2 }]] });
+  expect(await tip(byAttr('data-node', '0|a')!)).toBe('a: $2 (20%)');
+  await userEvent.unhover(byAttr('data-node', '0|a')!);
+  expect(await tip(byAttr('data-node', '1|x')!)).toBe('x: $2 (50%)');
+});
+
+test('a cut label carries the same share as its node', async () => {
+  const name = 'A rather long node name indeed';
+  const { container } = draw({ titles: ['One', 'Two'], flows: [[{ source: name, target: 'x', value: 3 }, { source: 'b', target: 'x', value: 1 }]] });
+  const cut = [...container.querySelectorAll('text.dm-chart-text')].find((t) => t.textContent?.endsWith('…'))!;
+  expect(cut).toBeTruthy();
+  expect(await tip(cut)).toBe(`${name} $3 (75%)`);
+});
+
+test('a column that totals 0 never prints NaN or Infinity', async () => {
+  draw({ titles: ['One', 'Two'], flows: [[{ source: 'a', target: 'x', value: 0 }]], columns: [[{ key: 'a', value: 0 }], [{ key: 'x', value: 0 }]] });
+  const node = byAttr('data-node', '0|a');
+  if (node) expect(await tip(node)).not.toMatch(/NaN|Infinity/);
+});

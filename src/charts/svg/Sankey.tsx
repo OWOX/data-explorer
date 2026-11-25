@@ -52,6 +52,14 @@ export function Sankey({ titles, columns, flows, fit, text, ariaLabel, onPickNod
   const linkKey = (l: SankeyLink) => `${l.pair}|${l.source}|${l.target}|${l.origin ?? ''}`;
   const hoverLink = { onMouseEnter: (e: SyntheticEvent) => light(e.currentTarget), onMouseLeave: () => light(), onFocus: (e: SyntheticEvent) => light(e.currentTarget), onBlur: () => light() };
   const hoverNode = (col: number, key: string) => ({ onMouseEnter: () => light(null, `${col}|${key}`), onMouseLeave: () => light(), onFocus: () => light(null, `${col}|${key}`), onBlur: () => light() });
+  // Each column's total, once per layout: the exact total where `columns` gives the node, else what the layout holds. A node's share is of this.
+  const colTotals = useMemo(() => {
+    const exact = new Map((columns ?? []).flatMap((col, c) => col.filter((n) => n.value > 0).map((n): [string, number] => [`${c}|${n.key}`, n.value])));
+    const sums: number[] = [];
+    for (const n of layout.nodes) sums[n.col] = (sums[n.col] ?? 0) + (exact.get(`${n.col}|${n.key}`) ?? n.value);
+    return sums;
+  }, [layout, columns]);
+  const share = (n: { col: number; value: number }) => { const t = colTotals[n.col] ?? 0; return t > 0 ? ` (${Math.round((n.value / t) * 100)}%)` : ''; };
   // The ribbons are built once per layout: hover touches the DOM only (see `light`), so thousands of paths and tooltips are not re-rendered by it.
   const ribbons = useMemo(() => {
     const totals = flows.map((pair) => pair.reduce((sum, f) => (f.value > 0 ? sum + f.value : sum), 0));
@@ -86,12 +94,12 @@ export function Sankey({ titles, columns, flows, fit, text, ariaLabel, onPickNod
             const pick = pickable ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${colTitle(n.col)}: ${name}`, style: { cursor: 'pointer' }, onClick: () => onPickNode!(n.col, n.key), onKeyDown: press(() => onPickNode!(n.col, n.key)) } : {};
             return (
               <g key={`${n.col}|${n.key}`}>
-                <Tooltip content={`${name}: ${text(n.value)}`}>
+                <Tooltip content={`${name}: ${text(n.value)}${share(n)}`}>
                   <rect className="dm-sankey-node" data-node={`${n.col}|${n.key}`} x={n.x} y={n.y} width={n.w} height={Math.max(1, n.h)} fill={blankFill(colorOf(n.tone), blankId)} {...hoverNode(n.col, n.key)} {...pick} />
                 </Tooltip>
                 {n.h >= 12 && (label.length > roomChars
                   // A cut label shows its full text on hover; an uncut one stays out of the pointer's way so the ribbons under it stay hoverable.
-                  ? <Tooltip content={label}><text className="dm-chart-text" x={n.x + n.w + 4} y={n.y + n.h / 2} dominantBaseline="middle">{clip(label, roomChars)}</text></Tooltip>
+                  ? <Tooltip content={`${label}${share(n)}`}><text className="dm-chart-text" x={n.x + n.w + 4} y={n.y + n.h / 2} dominantBaseline="middle">{clip(label, roomChars)}</text></Tooltip>
                   : <text className="dm-chart-text" x={n.x + n.w + 4} y={n.y + n.h / 2} dominantBaseline="middle" pointerEvents="none">{label}</text>)}
               </g>
             );
