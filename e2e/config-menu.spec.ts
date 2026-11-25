@@ -182,8 +182,32 @@ for (const view of ['Grid', 'Graph'] as const) {
     await stores.getByLabel('city', { exact: true }).click();
     await expect(groupTitles(page)).toHaveText(['Orders', 'Customers', 'Stores']);
     await expect.poll(() => top(configButton(page))).not.toBe(buttonBefore);
-    // The joined rows arrive about 800 ms after the tick and the menu is laid out again with them: look after that.
-    await page.waitForTimeout(1500);
+    // The menu is laid out again with the joined rows: a Stores city lands in the same frame as the move.
+    await expect(data(page).getByRole('cell').filter({ hasText: 'Denver' }).first()).toBeAttached();
     expect(await top(root)).toBe(rootBefore);
   });
 }
+
+test('Graph view: a panel opened from the root menu keeps its row through a window resize', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1500 });
+  // Tall enough that the panel is never pushed up by the bottom edge: the offset to its row is then the same at both widths.
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await marts(page).getByRole('radio', { name: 'Graph' }).click();
+  const orders = await openFields(page, 'Orders');
+  await orders.getByRole('menuitem', { name: 'Customers', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Customers', exact: true }).getByLabel('email', { exact: true }).click();
+  await orders.getByRole('menuitem', { name: 'Stores', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Stores', exact: true }).getByLabel('city', { exact: true }).click();
+  await expect(groupTitles(page)).toHaveText(['Orders', 'Customers', 'Stores']);
+  await expect(data(page).getByRole('cell').filter({ hasText: 'Denver' }).first()).toBeAttached();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Stores', exact: true })).toHaveCount(0);
+  await expect(orders).toBeVisible();
+  const row = page.getByRole('menu', { name: 'Configure data' }).getByRole('menuitem', { name: 'Orders', exact: true });
+  const offset = async () => (await orders.boundingBox())!.y - (await row.boundingBox())!.y;
+  const before = await offset();
+  await page.setViewportSize({ width: 1000, height: 1500 });
+  // The row moves with the page's new layout; the panel follows it, not the place it measured first.
+  await expect.poll(async () => Math.abs((await offset()) - before)).toBeLessThanOrEqual(1);
+  await expect(orders).toBeVisible();
+});

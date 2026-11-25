@@ -1,6 +1,6 @@
 import { Check, ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { useLatest } from '../useLatest';
 import { rovingTarget } from '../roving';
 import { Hint } from '../Tooltip';
@@ -86,11 +86,10 @@ export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onP
   const placedNow = pos !== null;
   useLayoutEffect(() => { if (placedNow) onPlaced?.(); }, [placedNow]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    // A submenu measures its row, which moves when the panel it hangs from takes its place afresh: it places again on the next frame.
-    let frame = 0;
-    const onResize = () => { place(true); cancelAnimationFrame(frame); frame = requestAnimationFrame(() => place(true)); };
+    // The listeners run root first (a submenu mounts after its parent), and each commits its place at once: a submenu measures its row, which has moved by then.
+    const onResize = () => flushSync(() => place(true));
     window.addEventListener('resize', onResize);
-    return () => { window.removeEventListener('resize', onResize); cancelAnimationFrame(frame); };
+    return () => window.removeEventListener('resize', onResize);
   }, [place]);
   useEffect(() => {
     if (typeof ResizeObserver === 'undefined' || !el.current) return;
