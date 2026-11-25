@@ -60,3 +60,55 @@ test('a URL in the Row band opens', async () => {
   fireEvent.click(await within(row()).findByRole('link', { name: LINK }));
   expect(open).toHaveBeenCalledExactlyOnceWith(LINK);
 });
+
+const selected = () => data().querySelector('td[data-selected]');
+const press = (el: Element, key: string) => fireEvent.keyDown(el, { key });
+const root = () => data().querySelector<HTMLElement>('.dm-grid-root')!;
+const select = (cell: Element) => { fireEvent.mouseDown(cell); fireEvent.mouseUp(cell); fireEvent.click(cell); };
+
+test('arrow keys move the selection from a link a right click focused', async () => {
+  await setup();
+  const link = links()[0]!;
+  select(cellOf(link));
+  link.focus();
+  press(link, 'ArrowDown');
+  expect(selected()).toBe(cellOf(links()[1]!));
+});
+
+test('Enter on a selected cell opens its URL once', async () => {
+  const open = await setup();
+  select(cellOf(links()[0]!));
+  expect(fireEvent.keyDown(root(), { key: 'Enter' })).toBe(false);
+  expect(open).toHaveBeenCalledExactlyOnceWith(LINK);
+});
+
+test('Enter on a link a right click focused is left to the browser, so it opens once', async () => {
+  const open = await setup();
+  const link = links()[0]!;
+  select(cellOf(link));
+  link.focus();
+  expect(fireEvent.keyDown(link, { key: 'Enter' })).toBe(true);
+  expect(open).not.toHaveBeenCalled();
+});
+
+test('Enter on a button in the grid does not open the selected cell URL', async () => {
+  const open = await setup();
+  select(cellOf(links()[0]!));
+  const button = data().querySelector('.dm-grid-root button')!;
+  press(button, 'Enter');
+  expect(open).not.toHaveBeenCalled();
+});
+
+test('Enter does nothing on a cell without a URL, a block, a column or a row', async () => {
+  const open = await setup();
+  const plain = [...data().querySelectorAll('tbody td:not([aria-hidden])')].find((td) => !td.querySelector('.dm-cell-link'))!;
+  select(plain);
+  expect(fireEvent.keyDown(root(), { key: 'Enter' })).toBe(true);
+  const [a, b] = links() as [HTMLElement, HTMLElement];
+  fireEvent.mouseDown(a);
+  fireEvent.mouseEnter(cellOf(b), { buttons: 1 });
+  fireEvent.mouseUp(a);
+  expect(data().querySelector('td[data-range]')).not.toBeNull();
+  expect(fireEvent.keyDown(root(), { key: 'Enter' })).toBe(true);
+  expect(open).not.toHaveBeenCalled();
+});
