@@ -1,5 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { stubCtx } from '../../api/test-ctx';
+import { AppServices } from '../../state/store';
 import { TooltipProvider } from '../Tooltip';
 import { CellValue } from './CellValue';
 
@@ -52,4 +54,36 @@ test('an array value (a one-to-many joined field) shows its values joined with a
   view(<><CellValue row={{ tags: ['red', 'blue', 3] }} field="tags" /><CellValue row={{ city: 'Lisbon' }} field="city" /></>);
   expect(screen.getByText('red, blue, 3')).toBeInTheDocument();
   expect(screen.getByText('Lisbon')).toBeInTheDocument();
+});
+
+const URL_TEXT = 'https://owox.com/pricing?ref=grid';
+const linked = (ui: React.ReactElement) => { const ctx = stubCtx(); render(<AppServices ctx={ctx}><TooltipProvider>{ui}</TooltipProvider></AppServices>); return ctx.ui.openExternal; };
+
+test.each([['grid', false], ['Row band', true]])('a URL is a link in the %s and opens in a new tab through the host', (_, wrap) => {
+  const open = linked(<CellValue row={{ page: URL_TEXT }} field="page" type="STRING" wrap={wrap} />);
+  const link = screen.getByRole('link', { name: URL_TEXT });
+  expect(link).toHaveAttribute('href', URL_TEXT);
+  expect(link).toHaveAttribute('target', '_blank');
+  // Cancelled: the frame's own popup must not open next to the host's tab.
+  expect(fireEvent.click(link)).toBe(false);
+  expect(open).toHaveBeenCalledExactlyOnceWith(URL_TEXT);
+});
+
+test('a shift-click on a URL stretches a selection, so it opens nothing', () => {
+  const open = linked(<CellValue row={{ page: URL_TEXT }} field="page" type="STRING" />);
+  expect(fireEvent.click(screen.getByRole('link'), { shiftKey: true })).toBe(false);
+  expect(open).not.toHaveBeenCalled();
+});
+
+test('a clipped URL shows in full on hover', async () => {
+  linked(<CellValue row={{ page: URL_TEXT }} field="page" type="STRING" />);
+  const link = screen.getByRole('link');
+  truncating(link.closest<HTMLElement>('.truncate')!);
+  await userEvent.hover(link);
+  await waitFor(() => expect(screen.getAllByText(URL_TEXT).length).toBeGreaterThan(1));
+});
+
+test('text that only contains a URL is no link', () => {
+  linked(<CellValue row={{ note: `see ${URL_TEXT}` }} field="note" type="STRING" />);
+  expect(screen.queryByRole('link')).toBeNull();
 });
