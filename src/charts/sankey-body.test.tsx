@@ -262,6 +262,7 @@ test('sankey: a column of a mart that fans out the main rows draws per-pair read
   const hint = await within(data().querySelector<HTMLElement>('section[data-chart-kind="Sankey"]')!).findByRole('note');
   await userEvent.hover(hint);
   expect((await screen.findAllByText(FAN_OUT_NOTE)).length).toBeGreaterThan(0);
+  expect(FAN_OUT_NOTE).toContain("A node's share is of its column's values added up, not of the metric's total.");
   const reads = t.queries.slice(t.tableQueries());
   // One read per pair of neighbouring columns (each with the metric), and none for all three columns at once.
   const pairs = reads.filter((q) => q.limit === cap.n && q.column?.length === 3);
@@ -367,7 +368,7 @@ test('a metric of a mart on the path that shows no column is listed, and picking
   await waitFor(() => expect(screen.getByRole('heading', { name: /^price · Sum.* by status/ })).toBeInTheDocument());
 });
 
-test('sankey: in a fan-out Sankey the exact columns keep their node share and the overlapping column has none', async () => {
+test('sankey: in a fan-out Sankey every column has its node share, the overlapping one included, and the note says what it is of', async () => {
   await charts({ columns: [...dims, 'shipments__carrier'], charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'shipments__carrier'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   const nodeIn = (col: number) => [...data().querySelectorAll('rect[data-node]')].find((el) => el.getAttribute('data-node')!.startsWith(`${col}|`))!;
@@ -376,8 +377,7 @@ test('sankey: in a fan-out Sankey the exact columns keep their node share and th
   await userEvent.unhover(nodeIn(0));
   await userEvent.hover(nodeIn(2));
   const tip = await screen.findByRole('tooltip');
-  expect(tip.textContent).toMatch(/: /);
-  expect(tip.textContent).not.toMatch(/%/);
+  expect(tip.textContent).toMatch(/: .*\(\d+%\)$/);
 });
 
 test('sankey: an exact Sankey shows the share on every column', async () => {
@@ -394,6 +394,9 @@ const linkTip = async (pair: number) => {
   await userEvent.hover(el);
   const text = (await screen.findByRole('tooltip')).textContent!;
   await userEvent.unhover(el);
+  // A tooltip the pointer can enter outlives the unhover in jsdom (no layout for Radix's grace area).
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
   return text;
 };
 const nodeTip = async (col: number, mid: (k: string) => boolean = () => true) => {
@@ -401,6 +404,9 @@ const nodeTip = async (col: number, mid: (k: string) => boolean = () => true) =>
   await userEvent.hover(el);
   const text = (await screen.findByRole('tooltip')).textContent!;
   await userEvent.unhover(el);
+  // A tooltip the pointer can enter outlives the unhover in jsdom (no layout for Radix's grace area).
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
   return text;
 };
 
@@ -424,10 +430,10 @@ test('sankey: a main-mart sum keeps its share on a lookup-joined column', async 
   expect(await nodeTip(1)).toMatch(/\(\d+%\)$/);
 });
 
-test('sankey: a metric on a joined mart has no share on a main-mart column and keeps it on its own mart', async () => {
+test('sankey: a metric on a joined mart has a node share on a main-mart column and on its own mart', async () => {
   await charts({ columns: dims.concat('products__price'), charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'], measure: 'products__price' }] } });
   await waitFor(() => expect(links().length).toBeGreaterThan(0));
-  expect(await nodeTip(0)).not.toMatch(/%/);
+  expect(await nodeTip(0)).toMatch(/\(\d+%\)$/);
   expect(await nodeTip(1)).toMatch(/\(\d+%\)$/);
 });
 

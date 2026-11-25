@@ -131,3 +131,60 @@ test('None on Column 2 of a two-column Sankey shows a notice instead of the draw
   await expect(sankey.locator('path[data-link]').first()).toBeVisible();
   await expect(sankey.getByText(/misconfigured/)).toHaveCount(0);
 });
+
+test('a node tooltip opens on the right, reads name: value (x%) with no fraction above 10, can be entered and copied without filtering the grid', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
+  await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
+  await openFields(page, 'Orders');
+  await page.getByRole('option', { name: 'is_gift' }).click();
+  await closeConfig(page);
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  await configButton(page).click();
+  await page.getByRole('menuitem', { name: 'Add chart' }).click();
+  await page.getByRole('menuitemradio', { name: 'Sankey' }).click();
+  const sankey = data(page).locator('section[data-chart-kind="Sankey"]');
+  await expect(sankey.locator('path[data-link]').first()).toBeVisible();
+  await sankey.scrollIntoViewIfNeeded();
+  const nodes = sankey.locator('rect[data-node]');
+  const nodeCount = await nodes.count();
+  const rowsBefore = await data(page).getByRole('row').count();
+
+  const node = nodes.first();
+  await node.hover();
+  const bubble = page.locator('.dm-hint-body');
+  await expect(bubble).toBeVisible();
+  const [n, b] = [(await node.boundingBox())!, (await bubble.boundingBox())!];
+  // To the right of the node, or flipped to its left when there is no room on the right.
+  const right = b.x >= n.x + n.width - 1;
+  const left = b.x + b.width <= n.x + 1;
+  expect(right || left).toBe(true);
+  expect(await bubble.getAttribute('data-side')).toBe(right ? 'right' : 'left');
+  const text = (await page.getByRole('tooltip').textContent())!;
+  expect(text).toMatch(/^.+: [^(]+ \(\d+%\)$/);
+  // The mock's sums are in the hundreds: no fraction on them.
+  const value = text.replace(/ \(\d+%\)$/, '').split(': ').pop()!;
+  if (Number(value.replace(/,/g, '')) > 10) expect(value).not.toMatch(/[.,]\d{1,2}$|\.\d/);
+
+  // The pointer crosses to the bubble (over other nodes and ribbons on the way) and the bubble stays.
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 });
+  await page.waitForTimeout(500);
+  await expect(bubble).toBeVisible();
+  expect(await page.getByRole('tooltip').textContent()).toBe(text);
+
+  // Copy puts exactly the text on the clipboard, keeps the bubble, and does not filter the grid or the chart.
+  await bubble.getByRole('button', { name: 'Copy to clipboard' }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(text);
+  await expect(bubble).toBeVisible();
+  await expect(sankey.locator('rect[data-node]')).toHaveCount(nodeCount);
+  expect(await data(page).getByRole('row').count()).toBe(rowsBefore);
+
+  // Leaving the bubble closes it; Escape closes a reopened one.
+  await page.mouse.move(5, 5, { steps: 6 });
+  await expect(bubble).toHaveCount(0);
+  await node.hover();
+  await expect(bubble).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(bubble).toHaveCount(0);
+});

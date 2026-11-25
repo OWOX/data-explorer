@@ -1,32 +1,63 @@
 // One tooltip for the whole page: Data Flow's dark bubble. It is drawn in a portal on the body, so no
 // card, line or band can paint over it, and it keeps 8px from the viewport edge.
 import * as T from '@radix-ui/react-tooltip';
-import { CircleHelp, Info } from 'lucide-react';
-import { useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { Check, CircleHelp, Copy, Info } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { copyText as writeClipboard } from './explorer/clipboard';
 
 /** One provider at the app root. */
 export function TooltipProvider({ children }: { children: ReactNode }) {
   return <T.Provider delayDuration={200} disableHoverableContent>{children}</T.Provider>;
 }
 
-export function Tooltip({ content, children }: { content: ReactNode; children: ReactNode }) {
+/**
+ * `side` is where the bubble opens (Radix flips it when there is no room). With `copyText` the bubble can be entered with the pointer and has a copy button
+ * in its corner: the pointer may leave the trigger for the bubble, the text in it can be selected, and the hidden tooltip text for screen readers stays the plain `copyText`.
+ */
+export function Tooltip({ content, children, side = 'top', copyText }: { content: ReactNode; children: ReactNode; side?: 'top' | 'right' | 'bottom' | 'left'; copyText?: string }) {
   // Nothing to say: the tooltip stays shut, so the trigger gets no dangling aria-describedby.
   // Always controlled: content that turns empty and back (a badge's tip) must not leave Radix's own open state stale.
   const empty = content == null || content === '' || content === false;
   const [open, setOpen] = useState(false);
+  const hoverable = copyText !== undefined;
   return (
-    <T.Root open={!empty && open} onOpenChange={setOpen}>
-      {/* While shut by `empty`, Radix sees no change on leave, blur or press and would not report one, so they close it here. */}
-      <T.Trigger asChild onPointerLeave={() => setOpen(false)} onBlur={() => setOpen(false)} onPointerDown={() => setOpen(false)}>{children}</T.Trigger>
+    // Radix keeps a hoverable bubble open while the pointer crosses the gap to it, and ignores the other triggers on the way.
+    <T.Root open={!empty && open} onOpenChange={setOpen} disableHoverableContent={hoverable ? false : undefined}>
+      {/* While shut by `empty`, Radix sees no change on leave, blur or press and would not report one, so they close it here. A hoverable bubble is closed by Radix once the pointer leaves both. */}
+      <T.Trigger asChild onPointerLeave={hoverable ? undefined : () => setOpen(false)} onBlur={() => setOpen(false)} onPointerDown={() => setOpen(false)}>{children}</T.Trigger>
       {!empty && (
         <T.Portal>
-          <T.Content side="top" sideOffset={6} collisionPadding={8} className="dm-hint-body">
-            {content}
+          <T.Content side={side} sideOffset={6} collisionPadding={8} className={hoverable ? 'dm-hint-body dm-hint-hoverable' : 'dm-hint-body'} aria-label={copyText}>
+            {hoverable ? <span className="dm-tip-copyrow"><span>{content}</span><CopyButton text={copyText} /></span> : content}
           </T.Content>
         </T.Portal>
       )}
     </T.Root>
+  );
+}
+
+const COPIED_MS = 1500;
+
+/** The corner button of a hoverable bubble: copies `text` (the clipboard API, then the textarea fallback), shows a check for a moment, or says the copy failed. */
+function CopyButton({ text }: { text: string }) {
+  const [state, setState] = useState<'ok' | 'failed' | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const copy = async () => {
+    const ok = await writeClipboard(text);
+    setState(ok ? 'ok' : 'failed');
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setState(null), COPIED_MS);
+  };
+  return (
+    <span className="dm-tip-copy">
+      {state === 'failed' && <span role="alert" className="dm-tip-copy-failed">Copy failed</span>}
+      {/* A press must not move focus off the trigger (that would close the bubble) nor reach what is under the bubble. */}
+      <button type="button" aria-label="Copy to clipboard" data-copied={state === 'ok' ? '' : undefined} onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); void copy(); }}>
+        {state === 'ok' ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
+      </button>
+    </span>
   );
 }
 

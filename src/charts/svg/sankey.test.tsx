@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { vi } from 'vitest';
+import { afterEach, beforeEach, vi } from 'vitest';
 import { TooltipProvider } from '../../ui/Tooltip';
 import { BLANK_KEY, OTHER_KEY } from '../blank';
 import { REST_ORIGIN, type Flow } from '../sankeyLayout';
@@ -174,7 +174,9 @@ test('fan-out: ribbons that add up to more than their node are scaled to fit it;
   expect(await screen.findByRole('tooltip')).toHaveTextContent('a → x: $8 (50%)');
 });
 
-const tip = async (el: Element) => { await userEvent.hover(el); return (await screen.findByRole('tooltip')).textContent; };
+// A tooltip the pointer can enter outlives its trigger's unhover (jsdom has no layout for Radix's grace area), so Escape closes it before the next one.
+const closeTip = async () => { await userEvent.keyboard('{Escape}'); await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull()); };
+const tip = async (el: Element) => { await userEvent.hover(el); const text = (await screen.findByRole('tooltip')).textContent; await closeTip(); return text; };
 
 test('a node tooltip gives its share of its drawn column: a node bigger than its flows, with (blank) and Other in the total', async () => {
   // Column 0 totals 10 + 2 + 3 = 15; its flows are smaller than node a.
@@ -223,20 +225,20 @@ test('a node that grew past its exact total to hold its flows has a share of the
 const pairFlows = (name: string): Flow[][] => [[{ source: name, target: 'x', value: 3 }, { source: 'b', target: 'x', value: 1 }]];
 const LONG = 'A rather long node name indeed';
 
-test('showShare is per column: a column set to false has no share on its nodes, the others keep it, in fit mode too', async () => {
+test('a node always has its share of the drawn column, a column that overlaps (ribbonShare false) included, in fit mode too', async () => {
   for (const fit of [false, true]) {
-    const { unmount } = draw({ titles: ['One', 'Two'], flows: pairFlows('a'), columns: [[{ key: 'a', value: 3 }, { key: 'b', value: 1 }], [{ key: 'x', value: 4 }]], fit, showShare: [true, false] });
+    const { unmount } = draw({ titles: ['One', 'Two'], flows: pairFlows('a'), columns: [[{ key: 'a', value: 3 }, { key: 'b', value: 1 }], [{ key: 'x', value: 4 }]], fit, ribbonShare: [true, false] });
     expect(await tip(byAttr('data-node', '0|a')!)).toBe('a: $3 (75%)');
     await userEvent.unhover(byAttr('data-node', '0|a')!);
-    expect(await tip(byAttr('data-node', '1|x')!)).toBe('x: $4');
+    expect(await tip(byAttr('data-node', '1|x')!)).toBe('x: $4 (100%)');
     unmount();
   }
 });
 
-test('showShare false also leaves the share off the cut label tooltip', async () => {
-  const { container } = draw({ titles: ['One', 'Two'], flows: pairFlows(LONG), showShare: [false, true] });
+test('ribbonShare false keeps the share on the cut label tooltip too', async () => {
+  const { container } = draw({ titles: ['One', 'Two'], flows: pairFlows(LONG), ribbonShare: [false, true] });
   const cut = [...container.querySelectorAll('text.dm-chart-text')].find((t) => t.textContent?.endsWith('…'))!;
-  expect(await tip(cut)).toBe(`${LONG} $3`);
+  expect(await tip(cut)).toBe(`${LONG} $3 (75%)`);
 });
 
 test('a visible label that fits keeps exactly its name and value, and the share stays out of the cut decision', () => {
@@ -278,8 +280,8 @@ test('hovering a node or a ribbon formats no value again: nothing is rebuilt', a
 });
 
 const ribbonFlows: Flow[][] = [[{ source: 'a', target: 'x', value: 3 }, { source: 'b', target: 'x', value: 1 }], [{ source: 'x', target: 'z', value: 4 }]];
-const ribbonTips = async (showShare?: boolean[]) => {
-  const { unmount } = draw({ flows: ribbonFlows, showShare });
+const ribbonTips = async (ribbonShare?: boolean[]) => {
+  const { unmount } = draw({ flows: ribbonFlows, ribbonShare });
   const first = await tip(byAttr('data-link', '0|a|x')!);
   await userEvent.unhover(byAttr('data-link', '0|a|x')!);
   const second = await tip(document.querySelector('[data-link^="1|x|z"]')!);
@@ -299,6 +301,65 @@ test('a first column that overlaps takes the percent off its pair only', async (
   expect(await ribbonTips([false, true, true])).toEqual(['a → x: $3', 'x → z (from x): $4 (100%)']);
 });
 
-test('with showShare absent every ribbon shows its percent', async () => {
+test('with ribbonShare absent every ribbon shows its percent', async () => {
   expect(await ribbonTips()).toEqual(['a → x: $3 (75%)', 'x → z (from x): $4 (100%)']);
+});
+
+
+// The tooltips of nodes, cut labels and ribbons carry a copy button; the bubbles of nodes and cut labels open on the right.
+const bubble = () => document.querySelector<HTMLElement>('.dm-hint-body')!;
+const writeText = vi.fn<(t: string) => Promise<void>>();
+beforeEach(() => { writeText.mockReset(); writeText.mockResolvedValue(undefined); Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true }); });
+afterEach(() => { Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true }); });
+
+test('a node tooltip opens on the right with a copy button, and its hidden text is the plain text', async () => {
+  draw();
+  await userEvent.hover(byAttr('data-node', '0|a')!);
+  const hidden = await screen.findByRole('tooltip');
+  expect(hidden.textContent).toBe('a: $8 (80%)');
+  expect(hidden.querySelector('button')).toBeNull();
+  expect(bubble()).toHaveAttribute('data-side', 'right');
+  expect(bubble()).toContainElement(screen.getByRole('button', { name: 'Copy to clipboard' }));
+});
+
+test('a cut label tooltip opens on the right with a copy button that copies name, value and share', async () => {
+  const { container } = draw({ titles: ['One', 'Two'], flows: pairFlows(LONG) });
+  const cut = [...container.querySelectorAll('text.dm-chart-text')].find((t) => t.textContent?.endsWith('…'))!;
+  await userEvent.hover(cut);
+  await screen.findByRole('tooltip');
+  expect(bubble()).toHaveAttribute('data-side', 'right');
+  await userEvent.click(screen.getByRole('button', { name: 'Copy to clipboard' }));
+  expect(writeText).toHaveBeenCalledWith(`${LONG} $3 (75%)`);
+});
+
+test('a ribbon tooltip keeps its place on top and has a copy button copying its text', async () => {
+  draw({ flows: ribbonFlows });
+  await userEvent.hover(byAttr('data-link', '0|a|x')!);
+  await screen.findByRole('tooltip');
+  expect(bubble()).toHaveAttribute('data-side', 'top');
+  await userEvent.click(screen.getByRole('button', { name: 'Copy to clipboard' }));
+  expect(writeText).toHaveBeenCalledWith('a → x: $3 (75%)');
+});
+
+test('copying from a node tooltip does not pick the node', async () => {
+  const onPickNode = vi.fn();
+  draw({ onPickNode });
+  await userEvent.hover(byAttr('data-node', '0|a')!);
+  await screen.findByRole('tooltip');
+  await userEvent.click(screen.getByRole('button', { name: 'Copy to clipboard' }));
+  expect(writeText).toHaveBeenCalledWith('a: $8 (80%)');
+  expect(onPickNode).not.toHaveBeenCalled();
+  expect(screen.getByRole('tooltip')).toBeInTheDocument();
+});
+
+test('keyboard focus on a node opens its tooltip with its text', async () => {
+  draw({ onPickNode: vi.fn() });
+  screen.getByRole('button', { name: 'Filter to One: a' }).focus();
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('a: $8 (80%)');
+});
+
+test('no copy button is mounted while no tooltip is open', () => {
+  draw();
+  expect(screen.queryByRole('button', { name: 'Copy to clipboard' })).toBeNull();
+  expect(document.querySelector('.dm-hint-body')).toBeNull();
 });
