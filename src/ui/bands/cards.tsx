@@ -1,5 +1,5 @@
 // The cards themselves, ported from Data Flow: a source card and a data mart card.
-import { CircleX, ExternalLink, History, LoaderCircle, Plug } from 'lucide-react';
+import { CirclePlus, CircleX, ExternalLink, History, LoaderCircle, Plug } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Context, DqSummary, Mart, Source } from '../../model/types';
 import { COUNT_CONCURRENCY } from '../../config';
@@ -15,6 +15,9 @@ import { useLatest } from '../useLatest';
 export const sourceElementId = (key: string) => `src-${key.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
 /** A joined mart is a card per alias path, so the path is part of its id; the main mart and the band cards have none. */
 export const martElementId = (martId: string, path?: string) => (path ? `dm-${martId}@${path}` : `dm-${martId}`);
+
+/** The × and the (+) on a graph card are the same size (px). */
+const CARD_CONTROL = 19.2;
 
 export type CountState =
   | { state: 'idle' }
@@ -146,6 +149,7 @@ export function MartCard({
   title,
   focused = false,
   onRemove,
+  join,
   onSelect,
   onOpenApp,
   onRetryCount,
@@ -177,6 +181,8 @@ export function MartCard({
   focused?: boolean;
   /** Takes this joined mart out of the report; when absent the card has no ×. */
   onRemove?: () => void;
+  /** Graph only: the (+) on the right edge that shows the marts that can join under this card. Absent when none can, and in the Grid. */
+  join?: { open: boolean; onToggle: () => void };
   onSelect: () => void;
   onOpenApp: () => void;
   /** Not needed on a ghost, which shows no count. */
@@ -209,7 +215,12 @@ export function MartCard({
     >
       {onRemove && (
         <button type="button" aria-label={`Remove ${name} from the report`} className="dm-card-remove" onClick={(e) => { e.stopPropagation(); onRemove(); }}>
-          <CircleX size={16} />
+          <CircleX size={CARD_CONTROL} />
+        </button>
+      )}
+      {join && (
+        <button type="button" className="dm-card-join" data-join-plus aria-label={`Show data marts ${name} can join`} aria-expanded={join.open} onClick={(e) => { e.stopPropagation(); join.onToggle(); }}>
+          <CirclePlus size={CARD_CONTROL} />
         </button>
       )}
       <div className="dm-node-head">

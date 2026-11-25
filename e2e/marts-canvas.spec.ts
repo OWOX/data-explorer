@@ -7,17 +7,17 @@ test('canvas: add marts through ghosts, move countries from customers to stores,
   await expect(marts.locator('article#dm-orders')).toBeVisible();
 
   // Add customers and stores through the main card's ghosts, then countries through customers.
-  await marts.locator('article#dm-orders').hover();
+  await marts.locator('article#dm-orders [data-join-plus]').hover();
   await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
   await expect(marts.locator('article[data-ghost][data-mart-id="customers"]')).toHaveCount(0);
   // The added card is pinned and shows its own ghosts: Escape lets the pin go.
   await page.keyboard.press('Escape');
-  await marts.locator('article#dm-orders').hover();
+  await marts.locator('article#dm-orders [data-join-plus]').hover();
   await expect(marts.locator('article[data-ghost][data-mart-id="stores"]')).toBeVisible();
   await marts.locator('article[data-ghost][data-mart-id="stores"]').click();
   await expect(marts.locator('article[data-ghost][data-mart-id="stores"]')).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await marts.locator('[id="dm-customers@customers"]').hover();
+  await marts.locator('[id="dm-customers@customers"] [data-join-plus]').hover();
   await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toBeVisible();
   await marts.locator('article[data-ghost][data-mart-id="countries"]').click();
   await expect(page.locator('#tree-wires path[data-from="dm-customers@customers"][data-to="dm-countries@customers.countries"]')).toHaveCount(1);
@@ -56,14 +56,14 @@ test('canvas: Countries under both Customers and Stores, × on a middle card kee
   const marts = page.locator('#band-marts');
   const data = page.locator('#band-data');
   await marts.getByRole('radio', { name: 'Graph' }).click();
-  await marts.locator('article#dm-orders').hover();
+  await marts.locator('article#dm-orders [data-join-plus]').hover();
   await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
   await page.keyboard.press('Escape');
-  await marts.locator('article#dm-orders').hover();
+  await marts.locator('article#dm-orders [data-join-plus]').hover();
   await marts.locator('article[data-ghost][data-mart-id="stores"]').click();
   await page.keyboard.press('Escape');
   for (const parent of ['customers', 'stores']) {
-    await marts.locator(`[id="dm-${parent}@${parent}"]`).hover();
+    await marts.locator(`[id="dm-${parent}@${parent}"] [data-join-plus]`).hover();
     await marts.locator('article[data-ghost][data-mart-id="countries"]').click();
     await expect(marts.locator(`[id="dm-countries@${parent}.countries"]`)).toBeVisible();
     await page.keyboard.press('Escape');
@@ -99,12 +99,12 @@ test('grid: the × on a middle mart header takes only its own columns; the Count
   const marts = page.locator('#band-marts');
   const data = page.locator('#band-data');
   await marts.getByRole('radio', { name: 'Graph' }).click();
-  await marts.locator('article#dm-orders').hover();
+  await marts.locator('article#dm-orders [data-join-plus]').hover();
   await marts.locator('article[data-ghost][data-mart-id="customers"]').click();
   await page.keyboard.press('Escape');
   await expect(marts.locator('[id="dm-customers@customers"]')).toBeVisible();
   await page.mouse.move(0, 0);
-  await marts.locator('[id="dm-customers@customers"]').hover();
+  await marts.locator('[id="dm-customers@customers"] [data-join-plus]').hover();
   await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toBeVisible();
   await marts.locator('article[data-ghost][data-mart-id="countries"]').click();
   await page.keyboard.press('Escape');
@@ -119,4 +119,40 @@ test('grid: the × on a middle mart header takes only its own columns; the Count
   await expect(marts.locator('[id="dm-customers@customers"]')).toBeVisible();
   await expect(marts.locator('[id="dm-countries@customers.countries"]')).toBeVisible();
   await page.mouse.move(0, 0);
+});
+
+test('canvas: hovering a card shows no ghosts; its (+) sits on the middle of the right edge, opaque and unclipped, and a click keeps the ghosts', async ({ page }) => {
+  await page.goto('/?mock');
+  const marts = page.locator('#band-marts');
+  await marts.getByRole('radio', { name: 'Graph' }).click();
+  const card = marts.locator('article#dm-orders');
+  const plus = card.locator('[data-join-plus]');
+  await expect(card).toBeVisible();
+  await expect(plus).toHaveCSS('opacity', '0');
+  await card.hover({ position: { x: 20, y: 20 } });
+  await page.waitForTimeout(600);
+  await expect(marts.locator('article[data-ghost]')).toHaveCount(0);
+  await expect(plus).toHaveCSS('opacity', '1');
+  await expect(plus).toHaveCSS('background-color', /rgb\(/);
+
+  // Centred on the right edge, middle of its height, 19.2px, and as big as the ×'s corner control.
+  const box = (await card.boundingBox())!;
+  const dot = (await plus.boundingBox())!;
+  expect(dot.width).toBeCloseTo(19.2, 0);
+  expect(dot.height).toBeCloseTo(19.2, 0);
+  expect(Math.abs(dot.x + dot.width / 2 - (box.x + box.width))).toBeLessThanOrEqual(1.5);
+  expect(Math.abs(dot.y + dot.height / 2 - (box.y + box.height / 2))).toBeLessThanOrEqual(1.5);
+  // Nothing clips it: the element at its centre is the (+) itself.
+  const atCentre = await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('[data-join-plus]') !== null, [dot.x + dot.width / 2, dot.y + dot.height / 2]);
+  expect(atCentre).toBe(true);
+
+  await plus.click();
+  await expect(marts.locator('article[data-ghost]').first()).toBeVisible();
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(600);
+  await expect(marts.locator('article[data-ghost]').first()).toBeVisible();
+  await expect(plus).toHaveAttribute('aria-expanded', 'true');
+  await expect(plus).toHaveCSS('opacity', '1');
+  await plus.click();
+  await expect(marts.locator('article[data-ghost]')).toHaveCount(0);
 });

@@ -35,6 +35,23 @@ test('clicking the remove button calls onRemove and does not select the card', a
   expect(p.onSelect).not.toHaveBeenCalled();
 });
 
+test('the (+) renders only with join, says what it shows, and the × and (+) are the same size, 19.2', async () => {
+  renderCard(props({ onRemove: vi.fn() }));
+  expect(screen.queryByRole('button', { name: /can join/ })).toBeNull();
+  cleanup();
+  const onToggle = vi.fn();
+  const p = props({ onRemove: vi.fn(), join: { open: false, onToggle } });
+  renderCard(p);
+  const plus = screen.getByRole('button', { name: 'Show data marts Orders can join' });
+  expect(plus).toHaveAttribute('aria-expanded', 'false');
+  expect(plus).toHaveAttribute('data-join-plus');
+  await userEvent.click(plus);
+  expect(onToggle).toHaveBeenCalledTimes(1);
+  expect(p.onSelect).not.toHaveBeenCalled();
+  expect(plus.querySelector('svg')).toHaveAttribute('width', '19.2');
+  expect(screen.getByRole('button', { name: 'Remove Orders from the report' }).querySelector('svg')).toHaveAttribute('width', '19.2');
+});
+
 test('a card with a path has a per-path element id and data-path', () => {
   const { container } = renderCard(props({ path: 'customers' }));
   const el = container.querySelector('article')!;

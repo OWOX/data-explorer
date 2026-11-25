@@ -6,62 +6,97 @@ export const GHOST_GRACE_MS = 400;
 
 type Shown = { anchor: string | null; chain: string[] };
 const NOTHING: Shown = { anchor: null, chain: [] };
+const NO_CHAIN: string[] = [];
 
-/** What the pointer is over: a tree card (its path), a ghost (its alias path), or neither. */
-export type Over = { card: string | null; ghost: string | null };
+/** What the pointer is over: a tree card (its path), a ghost (its alias path), or neither; `plus` is whether it is on the (+) of that card or ghost. */
+export type Over = { card: string | null; ghost: string | null; plus: boolean };
 
 export function overOf(target: EventTarget | null): Over {
   const el = target instanceof Element ? target : null;
+  const plus = el?.closest('[data-join-plus]') != null;
   const ghost = el?.closest<HTMLElement>('[data-ghost-path]')?.dataset.ghostPath;
-  if (ghost !== undefined) return { card: null, ghost };
-  return { card: el?.closest<HTMLElement>('[data-tree-path]')?.dataset.treePath ?? null, ghost: null };
+  if (ghost !== undefined) return { card: null, ghost, plus };
+  return { card: el?.closest<HTMLElement>('[data-tree-path]')?.dataset.treePath ?? null, ghost: null, plus };
 }
 
+/** The (+) a pointer is on, as the key `mute` takes; null when it is on no (+). */
+const plusKey = (over: Over) => (!over.plus ? null : over.card !== null ? `card:${over.card}` : `ghost:${over.ghost}`);
+
 /**
- * The hover side of the canvas ghosts: the tree card the pointer is on (the anchor) and the chain of ghosts from it to the hovered one.
- * A card shows its ghosts at once, also when the pointer comes from another card. Leaving everything waits `GHOST_GRACE_MS` before the ghosts go.
- * `mute` keeps a card's own hover from showing its ghosts until the pointer goes elsewhere (the second click on a pinned card hides them).
- * While a card is pinned, hovering another card changes nothing; hovered ghosts extend the chain from the pin.
+ * The hover side of the canvas ghosts: the tree card whose (+) the pointer is on (the anchor) and the chain of ghosts from it to the ghost whose (+) it is on.
+ * A (+) shows its ghosts at once, also when the pointer comes from another card. Leaving to another card or to the empty canvas waits `GHOST_GRACE_MS`
+ * before the ghosts go; the pointer on the anchor card itself, or on a ghost, keeps them.
+ * `mute` keeps a (+) it names from showing its ghosts until the pointer goes elsewhere (the second click on a pinned (+) hides them).
+ * While a card is pinned, hovering another card changes nothing; hovered ghost (+)s extend the chain from the pin, whose own chain (`pinnedChain`) shows when none is hovered.
  * `at` is the card or ghost the pointer is on, held for the same grace after it leaves: the other cards fade while it is set.
  */
-export function useGhostChain(pinned: string | null) {
+export function useGhostChain(pinned: string | null, pinnedChain: string[] = NO_CHAIN) {
   const [shown, setShown] = useState<Shown>(NOTHING);
-  const [muted, setMuted] = useState<string | null>(null);
   const [at, setAt] = useState<Over | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  // The handlers are stable and read the pin through a ref.
-  const pin = useRef(pinned);
-  useEffect(() => { pin.current = pinned; });
+  // Whether the pending timer also lets go of `at`: it does when the pointer left the cards, not when it only moved to another card.
+  const timerLeaves = useRef(false);
+  const muted = useRef<string | null>(null);
+  // The handlers are stable and read the pin and what is shown through refs.
+  const pin = useRef({ path: pinned, chain: pinnedChain });
+  const current = useRef(shown);
+  useEffect(() => { pin.current = { path: pinned, chain: pinnedChain }; current.current = shown; });
   const cancel = () => { clearTimeout(timer.current); timer.current = undefined; };
   useEffect(() => cancel, []);
+  const later = useCallback((leaves: boolean) => {
+    if (timer.current !== undefined && timerLeaves.current === leaves) return;
+    cancel();
+    timerLeaves.current = leaves;
+    timer.current = setTimeout(() => { timer.current = undefined; setShown(NOTHING); if (leaves) setAt(null); }, GHOST_GRACE_MS);
+  }, []);
 
   const onOver = useCallback((over: Over) => {
     if (over.card === null && over.ghost === null) {
-      setMuted(null);
-      if (timer.current !== undefined) return;
-      timer.current = setTimeout(() => { timer.current = undefined; setShown(NOTHING); setAt(null); }, GHOST_GRACE_MS);
+      muted.current = null;
+      later(true);
       return;
     }
     cancel();
     setAt((cur) => (cur !== null && cur.card === over.card && cur.ghost === over.ghost ? cur : over));
+    const key = plusKey(over);
+    // The (+) that was just closed: the pointer is still on it, and it shows nothing until the pointer has been elsewhere.
+    if (key !== null && key === muted.current) return;
+    muted.current = null;
     if (over.card !== null) {
-      setMuted((m) => (m === over.card ? m : null));
       // A pinned card keeps the ghosts: another card under the pointer shows nothing of its own.
-      if (pin.current !== null) { setShown(NOTHING); return; }
-      setShown((cur) => (cur.anchor === over.card && cur.chain.length === 0 ? cur : { anchor: over.card, chain: [] }));
+      if (pin.current.path !== null) { setShown(NOTHING); return; }
+      if (over.plus) {
+        setShown((cur) => (cur.anchor === over.card && cur.chain.length === 0 ? cur : { anchor: over.card, chain: [] }));
+      } else if (current.current.anchor !== over.card) {
+        later(false);
+      }
       return;
     }
-    setMuted(null);
+    // On a ghost: its own (+) adds the next level; the ghost itself leaves the chain as it is.
+    if (!over.plus) return;
     setShown((cur) => {
-      const chain = chainAfterHover(pin.current ?? cur.anchor, cur.chain, over.ghost!);
-      return chain === cur.chain ? cur : { anchor: cur.anchor, chain };
+      const base = cur.chain.length > 0 ? cur.chain : pin.current.chain;
+      const chain = chainAfterHover(pin.current.path ?? cur.anchor, base, over.ghost!);
+      return chain === base ? cur : { anchor: cur.anchor, chain };
     });
+  }, [later]);
+  const onLeave = useCallback(() => onOver({ card: null, ghost: null, plus: false }), [onOver]);
+  const clear = useCallback(() => { cancel(); setShown(NOTHING); muted.current = null; setAt(null); }, []);
+  /** Lets go of what the hover shows, without muting anything: the pointer stays where it is. */
+  const drop = useCallback(() => { cancel(); setShown(NOTHING); }, []);
+  const mute = useCallback((target: { card: string } | { ghost: string }) => {
+    cancel();
+    if ('card' in target) {
+      muted.current = `card:${target.card}`;
+      setShown(NOTHING);
+    } else {
+      muted.current = `ghost:${target.ghost}`;
+      setShown((cur) => {
+        const at = cur.chain.indexOf(target.ghost);
+        return at < 0 ? cur : { anchor: cur.anchor, chain: cur.chain.slice(0, at) };
+      });
+    }
   }, []);
-  const onLeave = useCallback(() => onOver({ card: null, ghost: null }), [onOver]);
-  const clear = useCallback(() => { cancel(); setShown(NOTHING); setMuted(null); setAt(null); }, []);
-  const mute = useCallback((path: string) => { cancel(); setShown(NOTHING); setMuted(path); }, []);
 
-  // A hovered card that was muted shows nothing; the pointer is still on it.
-  const hovered = shown.anchor !== null && shown.anchor === muted ? NOTHING : shown;
-  return { anchor: hovered.anchor, chain: hovered.chain, at, onOver, onLeave, clear, mute };
+  return { anchor: shown.anchor, chain: shown.chain.length > 0 ? shown.chain : pinnedChain, at, onOver, onLeave, clear, drop, mute };
 }

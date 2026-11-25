@@ -240,13 +240,16 @@ describe('Graph', () => {
     expect(faded()).toEqual([]); // a pin dims nothing
   });
 
-  test('hovering a card fades the cards it does not touch and shows its ghosts; leaving restores them after the grace', async () => {
+  test('hovering a card fades the cards it does not touch, and its (+) shows its ghosts; leaving restores them after the grace', async () => {
     setup();
     await joinTwo();
     await toCanvas();
     await waitFor(() => expect(el('stores', 'stores')).not.toBeNull());
     expect(faded()).toEqual([]);
     await userEvent.hover(el('customers', 'customers')!);
+    expect(faded()).toEqual(['dm-stores@stores']);
+    expect(ghostOf('countries')).toBeNull();
+    await userEvent.hover(el('customers', 'customers')!.querySelector<HTMLElement>('[data-join-plus]')!);
     await waitFor(() => expect(ghostOf('countries')).not.toBeNull());
     expect(faded()).toEqual(['dm-stores@stores']);
     expect(ghostOf('countries')).not.toHaveClass('dm-faded');
@@ -255,12 +258,12 @@ describe('Graph', () => {
     await waitFor(() => expect(ghostOf('countries')).toBeNull());
   });
 
-  test('moving from a card onto its ghost keeps the ghost and its card, and fades the rest', async () => {
+  test('moving from a (+) onto its ghost keeps the ghost and its card, and fades the rest', async () => {
     setup();
     await joinTwo();
     await toCanvas();
     await waitFor(() => expect(el('stores', 'stores')).not.toBeNull());
-    await userEvent.hover(el('customers', 'customers')!);
+    await userEvent.hover(el('customers', 'customers')!.querySelector<HTMLElement>('[data-join-plus]')!);
     const ghost = await waitFor(() => { const g = ghostOf('countries'); expect(g).not.toBeNull(); return g!; });
     await userEvent.hover(ghost);
     expect(ghost).not.toHaveClass('dm-faded');
