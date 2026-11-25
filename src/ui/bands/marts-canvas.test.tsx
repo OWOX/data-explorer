@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { createPreferences } from '../../api/preferences';
@@ -889,7 +889,7 @@ const tick = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
 
 describe('on fake timers', () => {
   beforeEach(() => { vi.useFakeTimers(); });
-  afterEach(() => { vi.useRealTimers(); document.querySelectorAll('[data-outside]').forEach((n) => n.remove()); });
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); document.querySelectorAll('[data-outside]').forEach((n) => n.remove()); });
 
   test('the ghosts go GHOST_GRACE_MS after the pointer left them, however much it moves over another card', () => {
     twoCards();
@@ -988,6 +988,100 @@ describe('on fake timers', () => {
     tick(600);
     expect(ghostCount()).toBe(0);
     expect(fadedCount()).toBe(0);
+  });
+  test('hovering a card keeps its dimming when the pointer came from another card across the gap, with or without a pin', () => {
+    for (const pinFirst of [false, true]) {
+      cleanup();
+      dimmed();
+      if (pinFirst) fireEvent.click(card('a'));
+      fireEvent.pointerOver(card('b'));
+      fireEvent.pointerOver(document.querySelector('.dm-tree')!);
+      tick(100);
+      fireEvent.pointerOver(card('c'));
+      tick(600);
+      expect(card('b')).toHaveClass('dm-faded');
+    }
+  });
+
+  test('the dimming is held a full grace after the pointer leaves the cards, whatever the ghosts were doing', () => {
+    dimmed();
+    fireEvent.pointerOver(plusOf(card('b')));
+    fireEvent.pointerOver(card('c'));
+    tick(390);
+    expect(ghostCount()).toBe(1);
+    fireEvent.pointerOver(document.querySelector('.dm-tree')!);
+    tick(15);
+    expect(ghostCount()).toBe(0);
+    tick(380);
+    expect(fadedCount()).toBeGreaterThan(0);
+    tick(10);
+    expect(fadedCount()).toBe(0);
+  });
+
+  test('a blur lets go of what focus showed, not of what the pointer holds', () => {
+    dimmed();
+    act(() => plusOf(card('b')).focus());
+    expect(ghostCount()).toBe(1);
+    // The pointer is on C, and a click there moves focus to it.
+    fireEvent.pointerOver(card('c'));
+    act(() => card('c').focus());
+    fireEvent.click(card('c'));
+    tick(600);
+    expect(ghostCount()).toBe(0);
+    expect(card('b')).toHaveClass('dm-faded');
+  });
+
+  test('switching windows with the pointer on the anchor card keeps its ghosts', () => {
+    dimmed();
+    const plus = plusOf(card('b'));
+    fireEvent.pointerOver(card('b'));
+    act(() => plus.focus());
+    expect(ghostCount()).toBe(1);
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    act(() => plus.blur());
+    tick(600);
+    expect(ghostCount()).toBe(1);
+    expect(card('c')).toHaveClass('dm-faded');
+  });
+
+  test('a ghost the pointer is on keeps its ghosts when the window is switched', () => {
+    dimmed();
+    const plus = plusOf(card('b'));
+    fireEvent.pointerOver(plus);
+    act(() => plus.focus());
+    const ghost = document.querySelector<HTMLElement>('article[data-ghost]')!;
+    fireEvent.pointerOver(ghost);
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    act(() => plus.blur());
+    tick(600);
+    expect(ghostCount()).toBe(1);
+  });
+
+  test('letting go of a pin with the pointer gone leaves nothing dimmed', () => {
+    dimmed();
+    fireEvent.pointerOver(card('b'));
+    fireEvent.click(card('b'));
+    fireEvent.pointerOver(document.querySelector('.dm-tree')!);
+    expect(fadedCount()).toBeGreaterThan(0);
+    fireEvent.click(card('b'));
+    expect(fadedCount()).toBe(0);
+  });
+
+  test('an anchor that left the tree does not hide the pin\'s ghosts', () => {
+    const model = { marts: new Map(['a', 'b', 'c', 'd'].map((id) => [id, mk(id)])), sources: [], edges: [], contexts: [], failedStorages: [] } as unknown as Model;
+    const joined = [src('b'), src('c'), src('d', 'b.d')] as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
+    const view = (columns: string[]) => (
+      <TooltipProvider>
+        <MartsCanvas model={model} mainId="a" columns={columns} sources={joined} counts={new Map()} dq={new Map()} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
+      </TooltipProvider>
+    );
+    const { rerender } = render(view(['id', 'b__x']));
+    fireEvent.click(card('a'));
+    act(() => plusOf(card('b')).focus());
+    expect(ghostCount()).toBe(1);
+    // B is taken out of the report while focus holds its ghosts.
+    rerender(view(['id']));
+    expect(ghostCount()).toBe(2);
   });
 });
 

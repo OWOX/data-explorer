@@ -177,3 +177,37 @@ test('canvas: focus on a (+) shows its ghosts and blur lets them go; a pinned ca
   await expect(marts.locator('article[data-ghost][data-mart-id="countries"]')).toBeVisible();
   await expect(marts.locator('article[data-ghost][data-mart-id="products"]')).toHaveCount(0);
 });
+
+test('canvas: the dimming holds on a card the pointer reached across the gap, and a blur does not undo what the pointer holds', async ({ page }) => {
+  await page.goto('/?mock');
+  const marts = page.locator('#band-marts');
+  await marts.getByRole('radio', { name: 'Graph' }).click();
+  for (const id of ['customers', 'stores']) {
+    await marts.locator('article#dm-orders [data-join-plus]').hover();
+    await marts.locator(`article[data-ghost][data-mart-id="${id}"]`).click();
+    await page.keyboard.press('Escape');
+  }
+  const customers = marts.locator('[id="dm-customers@customers"]');
+  const stores = marts.locator('[id="dm-stores@stores"]');
+  await expect(stores).toBeVisible();
+  await page.mouse.move(0, 0);
+
+  // From one card across the gap to another: 600 ms at rest on the second, the first is still dimmed.
+  await customers.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  const a = (await customers.boundingBox())!;
+  const b = (await stores.boundingBox())!;
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.move((a.x + b.x) / 2 + a.width / 2, (a.y + b.y) / 2 + a.height / 2, { steps: 3 });
+  await page.waitForTimeout(100);
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 3 });
+  await page.waitForTimeout(600);
+  await expect(customers).toHaveClass(/dm-faded/);
+
+  // Focus on one card's (+), the pointer on another, a click there: the pointer's dimming holds.
+  await customers.locator('[data-join-plus]').focus();
+  await page.mouse.move(b.x + b.width / 2 + 1, b.y + b.height / 2 + 1);
+  await stores.click({ position: { x: 20, y: 20 } });
+  await page.waitForTimeout(600);
+  await expect(customers).toHaveClass(/dm-faded/);
+});

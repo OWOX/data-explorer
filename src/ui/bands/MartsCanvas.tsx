@@ -133,12 +133,14 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
     onSelectedMart?.(pinnedMart);
     return () => onSelectedMart?.(null);
   }, [pinnedMart, onSelectedMart]);
-  const anchor = drag ? null : hover.anchor ?? pin;
+  // A hovered anchor that left the tree (its card was removed while focus held its ghosts) shows nothing.
+  const hoverAnchor = hover.anchor !== null && tree.nodes.has(hover.anchor) ? hover.anchor : null;
+  const anchor = drag ? null : hoverAnchor ?? pin;
   // A source counts only when its mart can be read.
   const readable = useCallback((s: JoinedSource) => model.marts.get(s.martId)?.accessible === true, [model]);
   const { levels, chain: shownChain } = useMemo(
-    () => (sources ? ghostLevels(tree, sources, anchor, hover.chain, readable) : { levels: [], chain: [] }),
-    [anchor, hover.chain, sources, tree, readable],
+    () => (sources ? ghostLevels(tree, sources, anchor, hoverAnchor === null ? pinnedChain : hover.chain, readable) : { levels: [], chain: [] }),
+    [anchor, hoverAnchor, pinnedChain, hover.chain, sources, tree, readable],
   );
   // The (+) shows when something readable can still join under the path.
   const joinableAt = (path: string) => sources !== null && joinableUnder(tree, sources, path).some(readable);
@@ -236,14 +238,14 @@ export function MartsCanvas({ model, mainId, columns, sources, counts, dq, onOpe
         // The browser focuses the element the window left on when it comes back: that is no one asking for the ghosts.
         if (returning.current === e.target) { returning.current = null; return; }
         const over = overOf(e.target);
-        if (over.plus || over.ghost !== null) hover.onOver(over);
+        if (over.plus || over.ghost !== null) hover.onOver(over, false);
       }}
       onBlur={(e) => {
-        // Focus moving on inside the graph, to the same card or to a ghost, keeps what focus showed; anywhere else lets it go.
+        // Focus moving on inside the graph, to the same card or to a ghost, keeps what focus showed; anywhere else lets it go, but never what the pointer holds.
         const next = e.relatedTarget instanceof Element && e.currentTarget.contains(e.relatedTarget) ? overOf(e.relatedTarget) : null;
         if (next !== null && (next.ghost !== null || (next.card !== null && next.card === hover.anchor))) return;
         if (!document.hasFocus()) returning.current = e.target;
-        hover.onLeave();
+        hover.release();
       }}
     >
       {[...tree.nodes.values()].flatMap((node) => {

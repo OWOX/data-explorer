@@ -171,7 +171,7 @@ export function MartCard({
   faded?: boolean;
   /** The mart is not in the report but can join it: the border is dashed (a hover ghost always is). */
   offPath?: boolean;
-  /** The card is a hover ghost: a neighbour of the hovered card that is not in the band, drawn dashed while that card is hovered. It asks for no count and cannot be dragged. */
+  /** The card is a ghost: a mart that can join under a card whose (+) is hovered or pinned, drawn dashed while it shows. It asks for no count and cannot be dragged. */
   ghost?: boolean;
   /** The alias path this card stands for, when the mart is joined at one. */
   path?: string;
