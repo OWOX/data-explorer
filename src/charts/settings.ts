@@ -2,6 +2,7 @@
 import { isDateBucket, type DateBucket } from '../model/aggregation';
 import type { Field } from '../model/types';
 import type { Measure } from './queries';
+import type { ChartSize } from './resize';
 
 export type Orientation = 'vertical' | 'horizontal';
 /** What a measure is saved as: the field name, `'records'` for the main mart's records (as before joined marts counted) and `records:<martId>` for a joined mart's (`records:<martId>@<aliasPath>` for a later copy of it). */
@@ -19,6 +20,8 @@ export type ChartSpec = {
   id: string; kind: ChartKind; hidden?: boolean;
   measure?: string; measure2?: string | null; date?: string; bucket?: DateBucket | 'AUTO';
   dimension?: string; dimension2?: string; /** A Sankey's columns, left to right (up to 5 dimensions). Fewer than 2 is a choice the member made (None): the chart then shows a notice. Without the key, two are filled in. */ dimensions?: string[]; stack?: string | null; orientation?: Orientation; area?: boolean;
+  /** The size the member dragged it to; absent, it follows the content. */
+  size?: ChartSize;
 };
 /** `metrics` is the measure each card shows when it is not the card's own: card id (its default's saved id) to measure id. `dates` is the date field each card's sparkline is drawn on: card id to field name. */
 export type ChartSettings = { version?: 2; scorecards?: { hidden?: string[]; sparklines?: boolean; metrics?: Record<string, string>; dates?: Record<string, string> }; charts?: ChartSpec[] };
@@ -40,5 +43,8 @@ let seq = 0;
 export const newChartId = (): string => `c-${Date.now().toString(36)}-${(seq++).toString(36)}`;
 /** One edit of the list: the saved list, or the defaults it stands for, with `edit` applied. Always version 2. */
 export const editCharts = (s: ChartSettings, edit: (list: readonly ChartSpec[]) => ChartSpec[]): ChartSettings => ({ ...s, version: 2, charts: edit(chartsOf(s)) });
+/** Puts a chart back to the size its content needs. */
+export const resetSize = (s: ChartSettings, id: string): ChartSettings =>
+  editCharts(s, (list) => list.map((c) => { if (c.id !== id) return c; const next = { ...c }; delete next.size; return next; }));
 export const patchChart = (s: ChartSettings, id: string, patch: Partial<ChartSpec>): ChartSettings =>
   editCharts(s, (list) => list.map((c) => (c.id === id ? { ...c, ...patch } : c)));

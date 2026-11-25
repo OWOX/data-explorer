@@ -1,11 +1,22 @@
 import { Copy } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ErrorBox } from '../ui/ErrorBox';
 import { Skeleton } from '../ui/Skeleton';
 import { Toast } from '../ui/Toast';
 import { Hint } from '../ui/Tooltip';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { copyChart } from './copyImage';
+import { CELL, ChartFrameContext, FillContext, panelWidth, type ChartSize } from './resize';
+import { ResizeHandles } from './ResizeHandles';
+
+/** A body height that makes the whole panel a whole number of cells: the content's height, rounded up. The panel's head and padding count. */
+function snapped(inner: HTMLElement): number {
+  const body = inner.parentElement;
+  const panel = inner.closest<HTMLElement>('section');
+  if (!body || !panel) return inner.offsetHeight;
+  const chrome = panel.offsetHeight - body.offsetHeight;
+  return Math.ceil((inner.offsetHeight + chrome) / CELL) * CELL - chrome;
+}
 
 /** Follows the height of its content, so the frame can animate to it (the content's own height is not a length a transition can run between). Null until measured, and where nothing can be observed. */
 function useMeasuredHeight() {
@@ -18,7 +29,7 @@ function useMeasuredHeight() {
     if (!el || typeof ResizeObserver === 'undefined') return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const ro = new ResizeObserver(() => {
-      setHeight(el.offsetHeight);
+      setHeight(snapped(el));
       setMoving(true);
       clearTimeout(timer);
       timer = setTimeout(() => setMoving(false), 250);
@@ -29,12 +40,17 @@ function useMeasuredHeight() {
   return { inner, height, moving };
 }
 
-/** One chart's frame: title, extra buttons, its ⋮ menu (null before the saved settings load) and the width its content needs. */
+/** One chart's frame: title, extra buttons, its ⋮ menu (null before the saved settings load) and the width its content needs, on whole cells. A size the member dragged it to wins. */
 export function ChartPanel({ title, name, items, extra, width, loading, error, onRetry, empty, note, children }: {
   title: string; name: string; items: MenuItem[] | null; extra?: ReactNode; width: string;
   loading: boolean; error: unknown; onRetry: () => void; empty?: string | null; note?: string; children: ReactNode;
 }) {
   const { inner, height, moving } = useMeasuredHeight();
+  const frame = useContext(ChartFrameContext);
+  // The size under the pointer while a handle is dragged; it is saved on release.
+  const [draft, setDraft] = useState<ChartSize | null>(null);
+  const size = draft ?? frame?.size ?? {};
+  const fill = size.rows !== undefined;
   const [section, setSection] = useState<HTMLElement | null>(null);
   const [toast, setToast] = useState<{ text: string; tone: 'success' | 'info' | 'error'; at: number } | null>(null);
   const say = (text: string, tone: 'success' | 'info' | 'error') => setToast((t) => ({ text, tone, at: (t?.at ?? 0) + 1 }));
@@ -50,7 +66,7 @@ export function ChartPanel({ title, name, items, extra, width, loading, error, o
   const at = items ? items.findLastIndex((i) => i.kind === 'action' && i.label === 'Hide') : -1;
   const withCopy = items ? (at >= 0 ? [...items.slice(0, at), copy, ...items.slice(at)] : [...items, copy]) : null;
   return (
-    <section ref={setSection} className="dm-chart" data-chart-kind={name} style={{ width }}>
+    <section ref={setSection} className="dm-chart" data-chart-kind={name} data-fill={fill || undefined} data-dragging={!!draft || undefined} style={{ width: frame ? panelWidth(size, width) : width, ...(fill ? { height: size.rows! * CELL } : {}) }}>
       <header className="dm-chart-head">
         <div className="dm-chart-titlegroup">
           <h3 className="dm-chart-title">{title}</h3>
@@ -58,14 +74,15 @@ export function ChartPanel({ title, name, items, extra, width, loading, error, o
         </div>
         {items && <div className="dm-chart-actions">{extra}<ChartMenu name={name} items={withCopy ?? items} /></div>}
       </header>
-      <div className="dm-chart-body" data-moving={moving || undefined} style={height === null ? undefined : { height }}>
+      <div className="dm-chart-body" data-moving={moving || undefined} style={height === null || fill ? undefined : { height }}>
         <div ref={inner} className="dm-chart-fit">
           {error ? <ErrorBox error={error} onRetry={onRetry} />
             : loading ? <Skeleton rows={4} />
             : empty ? <p className="dm-muted dm-chart-empty">{empty}</p>
-            : children}
+            : <FillContext value={fill}>{children}</FillContext>}
         </div>
       </div>
+      {frame?.resizing && section && <ResizeHandles title={title} section={section} frame={frame} onDraft={setDraft} />}
       {toast && <Toast tone={toast.tone} stamp={toast.at} onDismiss={() => setToast(null)}>{toast.text}</Toast>}
     </section>
   );
