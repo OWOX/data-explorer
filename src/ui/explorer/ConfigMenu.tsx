@@ -189,8 +189,8 @@ export function ConfigMenu({ marts, joinable, visible, onChange, chartItems = []
     <span ref={holderEl} className="inline-flex">
       <button ref={button} type="button" aria-label="Configure data" aria-haspopup="menu" aria-expanded={!!anchor} data-config-button
         onClick={(e) => (anchor ? close(false) : openMenu(e.currentTarget))}
-        className="dm-menu-dots inline-flex size-7 items-center justify-center rounded-md hover:bg-accent">
-        <Settings2 className="size-4" aria-hidden />
+        className="dm-band-btn">
+        <Settings2 size={14} aria-hidden />Configure
       </button>
       {anchor && frozen && (
         <Panel anchor={anchor} mode="below" role="menu" config pinned label="Configure data" onEscape={() => (sub ? closeSub() : close())} onTab={() => close()} onPlaced={() => setPlaced(true)} focusSeq={1} className="dm-menu-root">

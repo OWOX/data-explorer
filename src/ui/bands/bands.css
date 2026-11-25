@@ -748,14 +748,14 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-checklist-row:hover .dm-filter-only, .dm-checklist-row:focus-within .dm-filter-only { opacity: 1; }
 @media (hover: none) { .dm-checklist-row .dm-filter-only { opacity: 1; } }
 
-/* "Make it main", beside the Grid / Graph switch: the same height and frame. */
-.dm-make-main {
-  display: inline-flex; align-items: center; gap: 0.25rem; height: 28px; padding: 0 0.625rem;
+/* A button beside a view switch ("Make it main", "Configure"): the same height and frame as the switch. */
+.dm-band-btn {
+  display: inline-flex; flex-shrink: 0; align-items: center; gap: 0.25rem; height: 28px; padding: 0 0.625rem;
   border: 1px solid var(--border); border-radius: 6px; background: var(--card);
-  font-size: 0.8125rem; color: var(--foreground); cursor: pointer;
+  font-size: 0.8125rem; color: var(--foreground); white-space: nowrap; cursor: pointer;
 }
-.dm-make-main:hover { background: var(--accent); color: var(--accent-foreground); }
-.dm-make-main:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.dm-band-btn:is(:hover, [aria-expanded='true']) { background: var(--accent); color: var(--accent-foreground); }
+.dm-band-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 
 /* Table / Charts switch in the Data band header. */
 .dm-seg { display: inline-flex; height: 28px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
