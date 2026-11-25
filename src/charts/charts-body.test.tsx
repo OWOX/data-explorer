@@ -843,7 +843,7 @@ test('with Unique Count on, the keys read groups as the table does: one total ro
 describe('the config button in Charts', () => {
   const configButton = () => within(data().querySelector<HTMLElement>('[data-chart-list-slot]')!).getByRole('button', { name: 'Configure data' });
 
-  test('shows with "Nothing to chart" too, its menu listing the Charts group (no Add chart: no kind fits) and the data mart', async () => {
+  test('shows with "Nothing to chart" too, its menu listing Add chart (with nothing to add), the Charts group and the data mart', async () => {
     // Orders with no primary key and only a text column shown: no number, nothing to count.
     const fx = demoFixtures();
     const keyless = { ...fx, marts: fx.marts.map((m) => (m.id === 'orders' ? { ...m, fields: m.fields.map((f) => ({ ...f, isPrimaryKey: false })) } : m)) };
@@ -855,7 +855,10 @@ describe('the config button in Charts', () => {
     await waitFor(() => expect(data().querySelector('[data-chart-empty]')).not.toBeNull());
     expect(configButton()).toBeInTheDocument();
     const menu = await openConfigMenu();
-    expect(within(menu).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Charts', 'Orders']);
+    expect(within(menu).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Add chart', 'Charts', 'Orders']);
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Add chart' }));
+    const empty = await screen.findByRole('menu', { name: 'Add chart' });
+    expect(within(empty).getAllByRole('menuitem').map((r) => [r.textContent, (r as HTMLButtonElement).disabled])).toEqual([['Show a number column to chart it.', true]]);
   });
 
   test('stays open while the HAVING gate loads and the charts come in behind it', async () => {
@@ -879,8 +882,8 @@ describe('the config button in Charts', () => {
   const grouped = { columns: ['status', 'amount'], aggregations: [{ column: 'amount', function: 'SUM' }], fixtures: withTags() };
   const alert = () => data().querySelector('[role="alert"]');
 
-  test('a tick that blocks the grid, and the one that unblocks it, keep the menu open with the focus in it; nothing is read while blocked', async () => {
-    const t = await charts(grouped);
+  test('a tick that blocks the grid, and the one that unblocks it, keep the menu open with the focus in it', async () => {
+    await charts(grouped);
     await openFields('Orders');
     const menu = screen.getByRole('menu', { name: 'Configure data' });
     await userEvent.click(await screen.findByRole('option', { name: 'tags' }));
@@ -888,9 +891,6 @@ describe('the config button in Charts', () => {
     expect(menu).toBeInTheDocument();
     expect(configButton()).toHaveAttribute('aria-expanded', 'true');
     expect(document.activeElement).not.toBe(document.body);
-    const sent = t.queries.length;
-    await new Promise((r) => setTimeout(r, 300));
-    expect(t.queries.length).toBe(sent);
     await userEvent.click(screen.getByRole('option', { name: 'tags' }));
     await waitFor(() => expect(group('orders')).not.toBeNull());
     expect(alert()).toBeNull();
@@ -905,11 +905,69 @@ describe('the config button in Charts', () => {
     t.view();
     await waitFor(() => expect(alert()).toHaveTextContent("can't be grouped"));
     expect(configButton()).toBeInTheDocument();
+    const sent = t.queries.length;
     await userEvent.click(radio('Charts'));
     await waitFor(() => expect(data().querySelector('.dm-grid-frame-charts')).not.toBeNull());
     expect(alert()).toHaveTextContent("can't be grouped");
+    // Charts opened on a blocked grid read nothing.
+    await new Promise((r) => setTimeout(r, 300));
+    expect(t.queries.length).toBe(sent);
     expect(configButton()).toBeInTheDocument();
     expect(within(await openConfigMenu()).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Add chart', 'Charts', 'Orders']);
+  });
+
+  /** Marts with no primary key, so only a number column gives a chart something to count. */
+  const keyless = () => { const fx = demoFixtures(); return { ...fx, marts: fx.marts.map((m) => (['orders', 'products'].includes(m.id) ? { ...m, fields: m.fields.map((f) => ({ ...f, isPrimaryKey: false })) } : m)) }; };
+  const rows = (menu: HTMLElement) => within(menu).getAllByRole('menuitem').map((r) => r.textContent);
+
+  test('a pending change that leaves no kind to add keeps both chart rows working, and the focus in the menu', async () => {
+    const t = setup({ columns: ['status', 'products__price'], fixtures: keyless() });
+    await t.seeded;
+    t.view();
+    await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
+    await userEvent.click(radio('Charts'));
+    const products = await openFields('Products');
+    await userEvent.click(within(products).getByRole('option', { name: /price/i }));
+    // The row of a chart menu item takes the panel away: the pending change goes out and no kind is eligible any more.
+    const menu = screen.getByRole('menu', { name: 'Configure data' });
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Charts' }));
+    await waitFor(() => expect(data().querySelector('[data-chart-empty]')).not.toBeNull());
+    expect(rows(menu)).toEqual(['Add chart', 'Charts', 'Orders', 'Products']);
+    expect(await screen.findByRole('menu', { name: 'Charts' })).toBeInTheDocument();
+    expect(document.activeElement).not.toBe(document.body);
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Add chart' }));
+    const add = await screen.findByRole('menu', { name: 'Add chart' });
+    expect(screen.queryByRole('menu', { name: 'Charts' })).toBeNull();
+    expect(within(add).getByRole('menuitem', { name: 'Show a number column to chart it.' })).toBeDisabled();
+    expect(document.activeElement).not.toBe(document.body);
+    await userEvent.keyboard('{ArrowLeft}');
+    await waitFor(() => expect(screen.queryByRole('menu', { name: 'Add chart' })).toBeNull());
+    expect(within(menu).getByRole('menuitem', { name: 'Add chart' })).toHaveFocus();
+    await userEvent.keyboard('{ArrowRight}');
+    await screen.findByRole('menu', { name: 'Add chart' });
+    expect(document.activeElement).not.toBe(document.body);
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('menu', { name: 'Add chart' })).toBeNull());
+    expect(within(menu).getByRole('menuitem', { name: 'Add chart' })).toHaveFocus();
+  });
+
+  test('the rows keep their order while a kind to add comes and goes with a data mart panel open', async () => {
+    const t = setup({ columns: ['status', 'amount'], fixtures: keyless() });
+    await t.seeded;
+    t.view();
+    await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
+    await userEvent.click(radio('Charts'));
+    const panel = await openFields('Orders');
+    const menu = screen.getByRole('menu', { name: 'Configure data' });
+    expect(rows(menu)).toEqual(['Add chart', 'Charts', 'Orders']);
+    await userEvent.click(within(panel).getByRole('option', { name: /amount/i }));
+    await waitFor(() => expect(data().querySelector('[data-chart-empty]')).not.toBeNull());
+    expect(rows(menu)).toEqual(['Add chart', 'Charts', 'Orders']);
+    expect(screen.getByRole('dialog', { name: 'Orders' })).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole('option', { name: /amount/i }));
+    await waitFor(() => expect(data().querySelector('[data-chart-empty]')).toBeNull());
+    expect(rows(menu)).toEqual(['Add chart', 'Charts', 'Orders']);
+    expect(screen.getByRole('dialog', { name: 'Orders' })).toBeInTheDocument();
   });
 });
 

@@ -94,7 +94,8 @@ export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onP
   }, [place]);
   useEffect(() => {
     if (!focusSeq || !pos) return;
-    const first = el.current?.querySelector<HTMLElement>(`${ITEM}, input, select, button:not(:disabled)`);
+    // The first row that can take focus; a panel of nothing but a disabled note takes it itself, so it never falls back to the page.
+    const first = [...(el.current?.querySelectorAll<HTMLElement>(`${ITEM}, input, select, button`) ?? [])].find((n) => !(n as HTMLButtonElement).disabled);
     (first ?? el.current)?.focus({ preventScroll: true });
   }, [focusSeq, pos !== null]); // eslint-disable-line react-hooks/exhaustive-deps
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -111,6 +112,8 @@ export function Panel({ anchor, mode, role, label, onEscape, onLeave, onTab, onP
     }
     if (e.key === 'Tab' && role === 'menu' && onTab && (e.target as HTMLElement).closest('[data-column-menu]') === e.currentTarget) { e.preventDefault(); e.stopPropagation(); onTab(); return; }
     const item = (e.target as HTMLElement).closest<HTMLElement>(ITEM);
+    // A submenu with no row to focus has the focus itself: Left still goes back.
+    if (!item && e.key === 'ArrowLeft' && onLeave && role === 'menu' && e.target === e.currentTarget) { e.preventDefault(); e.stopPropagation(); onLeave(); return; }
     // Arrow keys move through this panel's own rows; a field inside a form keeps its keys.
     // A dialog panel may hold a role="menu" list of rows (the date filter's presets): its arrows work the same.
     const list = item?.closest<HTMLElement>('[role="menu"]');

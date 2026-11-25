@@ -18,7 +18,7 @@ export type MenuGroup = { title: string; /** The mart's picked icon; the default
 export type MenuItem =
   | { kind: 'check'; label: string; icon: LucideIcon; checked: boolean; onToggle: () => void }
   | { kind: 'radio'; label: string; icon: LucideIcon; value: string; options: MenuOption[]; groups?: MenuGroup[]; /** Ends the submenu: a Sankey column's Remove column. */ trailing?: MenuTrailing; onPick: (value: string) => void }
-  | { kind: 'action'; label: string; icon: LucideIcon; onPick: () => void }
+  | { kind: 'action'; label: string; icon: LucideIcon; /** A row that says why there is nothing to pick: it does nothing. */ disabled?: boolean; onPick: () => void }
   | { kind: 'group'; label: string; icon: LucideIcon; items: MenuItem[] };
 
 /** A menu with a check row gives every row the check column, so labels line up. */
@@ -38,7 +38,7 @@ export function ItemRow({ item, slot, expanded, close, onOpen, onHover, hoverOth
 }) {
   const glyph = <item.icon className="size-4" />;
   if (item.kind === 'check') return <Row check checkbox checked={item.checked} label={item.label} glyph={glyph} onActivate={item.onToggle} onHover={hoverOther} onLeaveRow={leaveRow} />;
-  if (item.kind === 'action') return <Row slot={slot} label={item.label} glyph={glyph} onActivate={() => { close(); item.onPick(); }} onHover={hoverOther} onLeaveRow={leaveRow} />;
+  if (item.kind === 'action') return <Row slot={slot} label={item.label} glyph={glyph} disabled={item.disabled} onActivate={() => { if (item.disabled) return; close(); item.onPick(); }} onHover={hoverOther} onLeaveRow={leaveRow} />;
   return <Row sub slot={slot} expanded={expanded} label={item.label} glyph={glyph} onActivate={onOpen} onOpen={onOpen} onHover={onHover} onLeaveRow={leaveRow} />;
 }
 

@@ -14,7 +14,7 @@ import type { MenuItem } from './ChartMenu';
 import { addChartItem, chartListItem, dropPicksOf, hideCard, setCardDate, setCardMetric, tailItems } from './listMenu';
 import { joinGrainOf } from './answers';
 import { MartCards, useScorecards } from './Scorecards';
-import { eligibleKinds, KINDS } from './kinds';
+import { KINDS } from './kinds';
 import { chartsOf, patchChart, scorecardsOf, type ChartSettings, type ChartSpec, type Spark } from './settings';
 import { useBucket } from './useBucket';
 
@@ -116,10 +116,9 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     if (shown.includes(name) || !schemaNames.has(name)) return;
     onShowColumns([name], isDate && leadBucket !== 'AUTO' ? { [name]: leadBucket } : undefined);
   };
-  // Add chart is left out when no kind fits the shown columns: its panel would be empty.
   // `change` reads the latest-doc ref, but the rows only call it from handlers, never while rendering.
   // eslint-disable-next-line react-hooks/refs
-  const chartItems = settings ? [...(eligibleKinds(cf).length > 0 ? [addChartItem({ cf, change })] : []), chartListItem({ cf, settings, resolved, change })] : undefined;
+  const chartItems = settings ? [addChartItem({ cf, change }), chartListItem({ cf, settings, resolved, change })] : undefined;
   const columns = groups.reduce((n, g) => n + g.span, 0);
 
   // The menu sits first in every return, so it keeps its place (and its open panels) whichever body is drawn.

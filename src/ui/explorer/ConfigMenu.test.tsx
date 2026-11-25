@@ -698,3 +698,20 @@ describe('fix round 1', () => {
     expect(document.activeElement).toBe(row);
   });
 });
+
+describe('the chart rows', () => {
+  const add = (options: string[]): MenuItem => ({ kind: 'radio', label: 'Add chart', icon: Plus, value: '', options: options.map((o) => ({ value: o, label: o })), onPick: () => undefined });
+  const charts: MenuItem = { kind: 'group', label: 'Charts', icon: Hash, items: [{ kind: 'check', label: 'Sparklines', icon: Hash, checked: true, onToggle: () => undefined }] };
+  const ui = (chartItems: MenuItem[]) => <TooltipProvider><ConfigMenu marts={[mart('', 'Orders', ORDERS, { shown: true })]} joinable={() => []} visible={['id']} onChange={() => undefined} chartItems={chartItems} /></TooltipProvider>;
+
+  test('are found by their label: an open one stays when the row before it goes', async () => {
+    const { rerender } = render(ui([add(['Pie']), charts]));
+    const menu = await openMenu();
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Charts' }));
+    await screen.findByRole('menu', { name: 'Charts' });
+    rerender(ui([charts]));
+    expect(screen.getByRole('menu', { name: 'Charts' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Charts', expanded: true })).toBeInTheDocument();
+  });
+});
+

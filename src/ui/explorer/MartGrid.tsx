@@ -108,7 +108,7 @@ export const SAVED_COLUMNS_WAIT_MS = 3000;
 /** The longest a saved view's read holds the grid's saves; past it the edit is saved as it stands. */
 export const VIEW_HOLD_MAX_MS = 10000;
 
-/** The names in `saved` the column picker still offers, in the saved order. */
+/** The names in `saved` the mart still offers, in the saved order. */
 const offered = (schema: Schema, saved: string[]) => saved.filter((c) => schema.some((f) => f.name === c));
 
 /** Whether a saved grid names something the mart's own schema does not have: a joined field, so the joined marts must be read first. */

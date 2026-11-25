@@ -175,7 +175,8 @@ export function ConfigMenu({ marts, joinable, visible, onChange, chartItems = []
   };
   const slot = hasCheck(chartItems);
   const shared: Shared = { joinable: joinableOf, live, release: holder.release, visible, onChange, close };
-  const item = sub?.key.startsWith('i:') ? chartItems[Number(sub.key.slice(2))] : undefined;
+  // Chart rows are found by their label, not their place: the list may change while a row is open.
+  const item = sub?.key.startsWith('i:') ? chartItems.find((it) => `i:${it.label}` === sub.key) : undefined;
   const picked = sub?.key.startsWith('m:') ? frozen?.marts.find((m) => `m:${m.path}` === sub.key) : undefined;
   const row = (m: ConfigMart) => (
     <MartRow key={m.path} mart={live(m)} slot={slot} expanded={sub?.key === `m:${m.path}`}
@@ -191,8 +192,8 @@ export function ConfigMenu({ marts, joinable, visible, onChange, chartItems = []
       </button>
       {anchor && frozen && (
         <Panel anchor={anchor} mode="below" role="menu" config label="Configure data" onEscape={() => (sub ? closeSub() : close())} onTab={() => close()} onPlaced={() => setPlaced(true)} focusSeq={1} className="dm-menu-root">
-          {chartItems.map((it, i) => (
-            <ItemRow key={i} item={it} slot={slot} expanded={sub?.key === `i:${i}`} close={close} onOpen={(r) => open(`i:${i}`, r, true)} onHover={(r) => hoverRow(`i:${i}`, r)} hoverOther={hoverOther} leaveRow={leaveRow} />
+          {chartItems.map((it) => (
+            <ItemRow key={it.label} item={it} slot={slot} expanded={sub?.key === `i:${it.label}`} close={close} onOpen={(r) => open(`i:${it.label}`, r, true)} onHover={(r) => hoverRow(`i:${it.label}`, r)} hoverOther={hoverOther} leaveRow={leaveRow} />
           ))}
           {chartItems.length > 0 && frozen.marts.length > 0 && <div className="dm-menu-sep" role="separator" />}
           {frozen.marts.slice(0, frozen.split).map(row)}
