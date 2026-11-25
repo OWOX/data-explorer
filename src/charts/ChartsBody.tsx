@@ -25,14 +25,18 @@ const Gutter = () => <th aria-hidden data-chrome className="dm-chrome" />;
 /** The gutter's width (`.dm-grid tbody .dm-chrome` in bands.css). */
 const GUTTER_PX = 46;
 
+/** A mart a joined path passes through with no column of its own on the grid: it has no group there, only a place in the chart menus. */
+export type PathMart = { path: string; title: string; icon?: string | null };
+const NO_PATH_MARTS: PathMart[] = [];
+
 /**
  * The Charts mode's `<tbody>`: a strip of scorecards, one cell per data mart under that mart's header, then the panels
  * on a row of their own, as wide as the visible grid and pinned left so a wide table does not push them out of view.
  * Each panel is as wide as its content needs and the panels wrap onto more rows when the band is narrow.
  * Settings load once per mart; a fallback a kind's `resolve` picks is never written back, only the member's own changes are.
  */
-export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, groups, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter, onShowColumns, pruneRef }: {
-  martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; /** The grid has a filter on an aggregate that the charts cannot follow for this grouping. */ havingNote?: boolean; /** Stands in for the charts while the passing group keys load, fail to load, or are none. */ gate?: HavingKeys['gate']; groups: { id: string; path: string; span: number; title: string; icon?: string | null }[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
+export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = false, gate = null, groups, pathMarts = NO_PATH_MARTS, version, paused, hasFilters, sources, formatOf, scrollerWidth, onFilter, onShowColumns, pruneRef }: {
+  martId: string; schema: Schema; shown: string[]; agg: Aggregation; filter: TraverseFilter[]; /** The grid has a filter on an aggregate that the charts cannot follow for this grouping. */ havingNote?: boolean; /** Stands in for the charts while the passing group keys load, fail to load, or are none. */ gate?: HavingKeys['gate']; groups: { id: string; path: string; span: number; title: string; icon?: string | null }[]; /** The middle marts of the joined paths that show no column: the menus list their fields after the groups', where a first column of theirs would land. */ pathMarts?: PathMart[]; version: number; paused: boolean; hasFilters: boolean; sources: JoinedSource[];
   formatOf: (column: string, type: string) => Format; scrollerWidth: number;
   /** Applies the clicked mark's filters to the grid, as a filter edit (one Undo step). */
   onFilter: (add: ColumnFilter[]) => void;
@@ -67,11 +71,13 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     return () => { pruneRef.current = null; };
   });
   // A resize re-renders this body on every step: the fields and the resolved choices only change with their inputs, so a resize rebuilds neither.
-  // Charts draw from the shown columns (`cf`); the menus list every column of the same marts (`cf.menu`), and picking a hidden one shows it (see `showPicked`).
+  // Charts draw from the shown columns (`cf`); the menus list every column of the same marts and of the marts on their paths (`cf.menu`), and picking a hidden one shows it (see `showPicked`).
   const cf = useMemo(() => {
-    const build = (on: string[]) => chartFields(schema, on, agg, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), Object.fromEntries(groups.map((g) => [g.path, g.title])), Object.fromEntries(sources.map((x) => [x.aliasPath, x.mainGrainCollapse ?? 'collapses'])), Object.fromEntries(groups.map((g) => [g.path, g.icon])));
-    return { ...build(shown), menu: build(schema.map((f) => f.name)) };
-  }, [schema, shown, agg, martId, groups, sources]);
+    const build = (on: string[], marts: PathMart[], counted: JoinedSource[]) => chartFields(schema, on, agg, martId, marts.map((g) => g.path), new Set(counted.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), Object.fromEntries(marts.map((g) => [g.path, g.title])), Object.fromEntries(sources.map((x) => [x.aliasPath, x.mainGrainCollapse ?? 'collapses'])), Object.fromEntries(marts.map((g) => [g.path, g.icon])));
+    // The groups come first, so a menu mart keeps its group's index and its Count Unique id. A path mart offers no Count Unique: that names no column to show, and a mart needs one for it.
+    const onPath = new Set(pathMarts.map((m) => m.path));
+    return { ...build(shown, groups, sources), menu: build(schema.map((f) => f.name), [...groups, ...pathMarts], sources.filter((x) => !onPath.has(x.aliasPath))) };
+  }, [schema, shown, agg, martId, groups, pathMarts, sources]);
   const schemaNames = useMemo(() => new Set(schema.map((f) => f.name)), [schema]);
   const joins = useMemo(() => joinGrainOf(sources), [sources]);
   const specs = chartsOf(settings ?? {});
