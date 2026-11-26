@@ -27,6 +27,9 @@ describe('queries', () => {
     expect(scorecardsQuery([{ ...main, metrics: [] }], [])).toEqual({ uniqueCount: [''] });
     expect(scorecardsQuery([{ ...main, metrics: [], hasPk: false }], [])).toBeNull();
   });
+  it("scorecards: the main mart with no column ('' kept) is a read of its own", () => {
+    expect(scorecardsQuery([{ ...main, metrics: [], hasPk: false }], [], null, [''])).toEqual({ uniqueCount: [''] });
+  });
   it('scorecards: a range date adds its column and its MIN and MAX', () => {
     expect(scorecardsQuery([main], [], null, [], [date])).toEqual({
       column: ['amount', 'date'],
@@ -45,7 +48,7 @@ describe('queries', () => {
   it('scorecards: a mart kept with no column joins the unique count list and adds no metric; its path is listed once', () => {
     expect(scorecardsQuery([main], [], null, ['stores'])).toEqual({ column: ['amount'], aggregation: [{ column: 'amount', function: 'SUM' }], uniqueCount: ['', 'stores'] });
     expect(scorecardsQuery([main, cust], [], null, ['c.x', 'stores'])?.uniqueCount).toEqual(['', 'c.x', 'stores']);
-    // Kept paths alone are no query: with no metric and no key on a mart with a column, Charts shows its "Show a number column" hint and reads nothing.
+    // Kept paths alone are no query: with no metric and no key on a mart with a column, Charts shows its "no number field" hint and reads nothing.
     expect(scorecardsQuery([{ ...main, metrics: [], hasPk: false }], [], null, ['stores'])).toBeNull();
     expect(scorecardsQuery([{ ...main, hasPk: false }], [], null, ['stores'])?.uniqueCount).toEqual(['stores']);
     expect(scorecardsQuery([{ ...main, metrics: [], hasPk: false }], [], null, [])).toBeNull();

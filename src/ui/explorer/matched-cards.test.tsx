@@ -255,6 +255,22 @@ test('a main mart with no key and nothing joined still has its badge, from the g
   expect(t.scoreReads()).toHaveLength(0);
 });
 
+test('the main mart with no column: a filter counts it in the one score read and its card gets the badge', async () => {
+  const t = setup({ ...mainOnly, columns: ['products__price'] });
+  await t.mount();
+  await waitFor(() => expect(t.scoreReads()).toHaveLength(1));
+  expect(t.scoreReads()[0]!.uniqueCount).toEqual(['products', '']);
+  await waitFor(() => expect(badge('orders')).toMatch(/match/));
+});
+
+test('the main mart with no column and a joined mart with no key: the main count alone is still read, and its card gets the badge', async () => {
+  const t = setup({ ...mainOnly, columns: ['products__price'] }, { noKey: ['products'] });
+  await t.mount();
+  await waitFor(() => expect(t.scoreReads().length).toBeGreaterThan(0));
+  expect(t.scoreReads()[0]!.uniqueCount).toEqual(['']);
+  await waitFor(() => expect(badge('orders')).toMatch(/match/));
+});
+
 test('a mart kept with no column joins the read only while a filter or a slice applies', async () => {
   const t = setup({ ...mainOnly, filters: {}, emptyPaths: ['products'], view: 'charts' });
   await t.mount();

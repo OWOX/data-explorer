@@ -262,6 +262,14 @@ test('a saved pick of a column the grid does not open with (columns read late or
   expect(t.puts).not.toHaveBeenCalled();
 });
 
+test('the Charts submenu ticks only the scorecards that exist: a hidden number field has no tick', async () => {
+  await charts({ columns: ['id', 'status'] });
+  await openChartList();
+  const names = within(screen.getByRole('menu', { name: 'Charts' })).getAllByRole('menuitemcheckbox').map((r) => r.textContent);
+  expect(names).not.toContain('Amount · Sum');
+  expect(names).toContain('Sparklines');
+});
+
 test('hiding a card from the Charts menu removes it and saves', async () => {
   const t = await charts();
   await waitFor(() => expect(cardNames(group('orders'))).toContain('Amount · Sum'));
@@ -966,7 +974,7 @@ describe('the config button in Charts', () => {
     expect(within(menu).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Add chart', 'Charts', 'Orders']);
     await userEvent.click(within(menu).getByRole('menuitem', { name: 'Add chart' }));
     const empty = await screen.findByRole('menu', { name: 'Add chart' });
-    expect(within(empty).getAllByRole('menuitem').map((r) => [r.textContent, r.getAttribute('aria-disabled')])).toEqual([['Show a number column to chart it.', 'true']]);
+    expect(within(empty).getAllByRole('menuitem').map((r) => [r.textContent, r.getAttribute('aria-disabled')])).toEqual([['The data marts have no number field to chart.', 'true']]);
     // The note is the panel's only text: a screen reader reaches it, so it takes focus, and activating it does nothing.
     const note = within(empty).getByRole('menuitem');
     expect(note).toHaveFocus();

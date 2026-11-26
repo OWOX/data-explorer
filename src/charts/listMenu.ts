@@ -56,10 +56,10 @@ function withFreshDimension<S extends Omit<ChartSpec, 'id' | 'hidden'>>(spec: S,
   return { ...spec, dimension: fresh.name };
 }
 
-/** The config menu's Add chart row: a radio of the chart kinds the shown columns allow. */
+/** The config menu's Add chart row: a radio of the chart kinds the report's fields allow. */
 export function addChartItem({ cf, change }: { cf: ChartFields; change: Change }): MenuItem {
   // The row is always there, so the rows around it keep their places: with no kind to add, its submenu says what is missing.
-  if (eligibleKinds(cf).length === 0) return { kind: 'group', label: 'Add chart', icon: Plus, items: [{ kind: 'action', label: measuresOf(cf).length > 0 ? 'Show a text or date column to chart it.' : 'Show a number column to chart it.', icon: ChartColumn, note: true, onPick: () => undefined }] };
+  if (eligibleKinds(cf).length === 0) return { kind: 'group', label: 'Add chart', icon: Plus, items: [{ kind: 'action', label: measuresOf(cf).length > 0 ? 'The data marts have no text or date field to chart.' : 'The data marts have no number field to chart.', icon: ChartColumn, note: true, onPick: () => undefined }] };
   return {
     kind: 'radio', label: 'Add chart', icon: Plus, value: '',
     options: eligibleKinds(cf).map((k) => ({ value: k.kind, label: k.label, icon: k.icon })),
@@ -85,8 +85,8 @@ export function chartListItem({ cf, settings, resolved, change }: { cf: ChartFie
       { kind: 'check', icon: ChartSpline, label: 'Sparklines', checked: settings.scorecards?.sparklines ?? true, onToggle: () => change((cur) => ({ ...cur, scorecards: { ...cur.scorecards, sparklines: !(cur.scorecards?.sparklines ?? true) } })) },
       ...resolved.map(({ spec, title }): MenuItem => ({
         kind: 'check',
-        // A chart that cannot draw with the shown columns keeps its place and setup; its title needs fields, so it is named by type.
-        label: title ?? `${KINDS[spec.kind].label} (columns hidden)`,
+        // A chart that cannot draw with the report's fields keeps its place and setup; its title needs fields, so it is named by type.
+        label: title ?? `${KINDS[spec.kind].label} (field left the report)`,
         icon: KINDS[spec.kind].icon,
         checked: !spec.hidden,
         onToggle: () => change((cur) => patchChart(cur, spec.id, { hidden: !spec.hidden })),

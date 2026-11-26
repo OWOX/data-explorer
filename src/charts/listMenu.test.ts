@@ -28,7 +28,7 @@ test('the Charts group has the cards, Sparklines and one tick per chart; Add cha
   const change = vi.fn();
   const items = listItems({ cf, settings: {}, resolved: [{ spec: { id: 'time-series', kind: 'timeSeries' }, title: 'amount · Sum by date' }, { spec: { id: 'pie', kind: 'pie' }, title: null }], change });
   // Card labels come from metricLabel: the field label (no alias here) and AGG_LABELS.SUM.
-  expect(items.map((i) => i.label)).toEqual(['Count Unique', 'amount · Sum', 'Sparklines', 'amount · Sum by date', 'Pie (columns hidden)']);
+  expect(items.map((i) => i.label)).toEqual(['Count Unique', 'amount · Sum', 'Sparklines', 'amount · Sum by date', 'Pie (field left the report)']);
   const group = chartListItem({ cf, settings: {}, resolved: [], change });
   expect(group).toMatchObject({ kind: 'group', label: 'Charts' });
   const add = addChartItem({ cf, change });
@@ -157,7 +157,7 @@ test('each chart row, and each Add chart and Chart type option, carries its kind
   const items = listItems({ cf, settings: {}, resolved: [{ spec: { id: 'a', kind: 'timeSeries' }, title: 'T' }, { spec: { id: 'b', kind: 'pie' }, title: null }], change });
   const icon = (label: string) => (items.find((i) => i.label === label) as { icon?: unknown }).icon;
   expect(icon('T')).toBe(KINDS.timeSeries.icon);
-  expect(icon('Pie (columns hidden)')).toBe(KINDS.pie.icon);
+  expect(icon('Pie (field left the report)')).toBe(KINDS.pie.icon);
   expect(icon('Count Unique')).toBe(Hash);
   expect(icon('Sparklines')).toBe(ChartSpline);
   const add = addChartItem({ cf, change });
@@ -223,9 +223,9 @@ test('the empty Add chart row names what is missing: a number when no measure is
     return add.kind === 'group' ? add.items.map((i) => [i.label, i.kind === 'action' && i.note]) : null;
   };
   const bare = { aliasPath: '', recordsId: 'records:orders', title: '', hasPk: false, metrics: [], dates: [], dimensions: [] };
-  expect(noteOf({ marts: [{ ...bare, dimensions: [dim] }], dates: [], dimensions: [dim], counter: null })).toEqual([['Show a number column to chart it.', true]]);
-  expect(noteOf({ marts: [{ ...bare, metrics: [{ field: amount, fn: 'SUM' }] }], dates: [], dimensions: [], counter: null })).toEqual([['Show a text or date column to chart it.', true]]);
-  expect(noteOf({ marts: [{ ...bare, hasPk: true }], dates: [], dimensions: [], counter: null })).toEqual([['Show a text or date column to chart it.', true]]);
+  expect(noteOf({ marts: [{ ...bare, dimensions: [dim] }], dates: [], dimensions: [dim], counter: null })).toEqual([['The data marts have no number field to chart.', true]]);
+  expect(noteOf({ marts: [{ ...bare, metrics: [{ field: amount, fn: 'SUM' }] }], dates: [], dimensions: [], counter: null })).toEqual([['The data marts have no text or date field to chart.', true]]);
+  expect(noteOf({ marts: [{ ...bare, hasPk: true }], dates: [], dimensions: [], counter: null })).toEqual([['The data marts have no text or date field to chart.', true]]);
 });
 
 test('Add chart offers a Sankey only when two dimensions are shown', () => {

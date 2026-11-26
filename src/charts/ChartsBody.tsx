@@ -74,7 +74,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     setSettings(held);
   }, [held]);
   // Only called once the doc has loaded (the menu is not shown before), so a change never replaces what was saved.
-  // A member's edit is one Undo step. `stage` is a write that goes with a grid edit recorded next (a field shown by a pick, the prune of a hidden column): it is part of that step. `fold` joins consecutive edits into one step.
+  // A member's edit is one Undo step. `stage` is a write that goes with a grid edit recorded next (the prune of a hidden column): it is part of that step. `fold` joins consecutive edits into one step.
   const change = (edit: (cur: ChartSettings) => ChartSettings, how: { stage?: boolean; fold?: string } = {}) => {
     if (!latest.current) return;
     const next: ChartSettings = edit(latest.current);
@@ -119,7 +119,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   // A resize re-renders this body on every step: the fields and the resolved choices only change with their inputs, so a resize rebuilds neither.
   // `cf` (the shown columns) feeds the scorecards, `chart` (every field of the report's marts) the charts: see `chartSetsOf`.
   const { cf, chart } = useMemo(() => chartSetsOf(schema, shown, agg, martId, groups, reportGroups, pathMarts, sources), [schema, shown, agg, martId, groups, reportGroups, pathMarts, sources]);
-    // A calculated metric is read as a metric, not as a group key, as the grid's own count ask reads it.
+  // A calculated metric is read as a metric, not as a group key, as the grid's own count ask reads it.
   const joins = useMemo(() => joinGrainOf(sources, new Set(cf.marts.flatMap((m) => m.metrics.filter((x) => !x.fn).map((x) => x.field.name)))), [sources, cf]);
   const specs = chartsOf(settings ?? {});
   // Hidden charts resolve to nothing, so they mount no panel and read nothing.
@@ -154,7 +154,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   const leadBucket = lead?.bucket ?? 'AUTO';
   // `change` reads the latest-doc ref, but the rows only call it from handlers, never while rendering.
   // eslint-disable-next-line react-hooks/refs
-  const chartItems = settings ? [addChartItem({ cf: chart, change }), chartListItem({ cf: chart, settings, resolved, change })] : undefined;
+  const chartItems = settings ? [addChartItem({ cf: chart, change }), chartListItem({ cf, settings, resolved, change })] : undefined;
   const columns = groups.reduce((n, g) => n + g.span, 0);
 
   // The menu sits first in every return, so it keeps its place (and its open panels) whichever body is drawn.
@@ -163,7 +163,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     return place(<tbody><tr><Gutter /><td colSpan={columns + 1} className="p-4 text-sm text-muted-foreground" role="alert">{blockedNote}</td></tr></tbody>);
   }
   if (chart.marts.every((m) => m.metrics.length === 0 && !m.hasPk)) {
-    return place(<tbody><tr><Gutter /><td colSpan={columns + 1} data-chart-empty className="text-sm text-muted-foreground">Show a number column to chart it.</td></tr></tbody>);
+    return place(<tbody><tr><Gutter /><td colSpan={columns + 1} data-chart-empty className="text-sm text-muted-foreground">The data marts have no number field to chart.</td></tr></tbody>);
   }
   if (gate) {
     return place(

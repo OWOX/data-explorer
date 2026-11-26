@@ -290,7 +290,7 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, 
   );
 }
 
-/** The cards of one data mart, wrapping inside its group's cell. The main mart's cell also shows the strip's error and empty state. `menuMart` is the same mart with every column: its metrics and dates are what a card's menu offers. */
+/** The cards of one data mart, wrapping inside its group's cell. The main mart's cell also shows the strip's error and empty state. `menuMart` is the same mart with every field of it: its metrics and dates are what a card's menu offers. */
 export function MartCards({ martId, mart, menuMart = mart, main, spark, scores, bucket, bucketPending = false, autoBucket = true, filter, version, paused, joins, hasFilters, formatOf, onMetric, onDate, onHide }: {
   martId: string; mart: ChartMart; menuMart?: ChartMart; main: boolean; spark: Spark; scores: Scores; bucket: DateBucket | null; /** The charts' bucket is still being resolved by its range or scorecard read. */ bucketPending?: boolean; /** Whether the charts' bucket is Auto. */ autoBucket?: boolean; filter: TraverseFilter[]; version: number; paused: boolean; /** What lets a sparkline read be reused after a column is dropped. */ joins?: JoinGrain; hasFilters: boolean; formatOf: Formatter;
   /** A card's ⋮ menu: pick the measure a card shows, the date its trend is drawn on, and hide it. Without them (the settings are still loading) the cards have no menu. */
