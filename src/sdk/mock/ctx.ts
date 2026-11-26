@@ -1,6 +1,7 @@
 import type { AvailableSourceDto, BlendableSchemaDto, BlendedFieldDto, Ctx, EdgeDto, Row, TraverseOptions } from '../types';
 import { aggregatedKey, allowedFunctions, knownFunctions } from '../../model/aggregation';
 import { categorizeFieldType } from '../../model/field-category';
+import { uniqueKey } from '../../model/unique-count';
 import { aggregateRows, distinctKeys, sortRows, type UniqueSource } from './aggregate';
 import { matchesFilter } from './evaluate';
 import { createFakeAi } from './ai';
@@ -171,7 +172,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     for (const h of having) if (!(o.aggregation ?? []).some((a) => a.column === h.column && a.function === h.function)) throw badRequest(`No aggregation matches the filter on ${h.function}(${h.column})`);
     // A unique count per source: the main mart (`''`) by its primary key, a joined one by its alias path, its key read off the joined row.
     const uniq: UniqueSource[] = (o.uniqueCount ?? []).map((path) => {
-      if (!path) return { key: 'Unique Count', pk: m.fields.filter((x) => x.isPrimaryKey).map((x) => x.name) };
+      if (!path) return { key: uniqueKey(''), pk: m.fields.filter((x) => x.isPrimaryKey).map((x) => x.name) };
       const hop = joinTree(id).find((h) => h.aliasPath === path);
       if (!hop) throw badRequest(`Unknown source: ${path}`);
       return { key: `${path.replaceAll('.', '_')}__unique_count`, pk: byId.get(hop.martId)!.fields.filter((x) => x.isPrimaryKey).map((x) => blendedName(path, x.name)) };

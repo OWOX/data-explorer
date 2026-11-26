@@ -47,11 +47,6 @@ export function isValidFormat(f: unknown, type: string): f is Format {
   return isFormat(f) && formatsFor(type).includes(f.kind);
 }
 
-/** The member's own choice, then the project pick, then `auto`. */
-export function resolveFormat(member?: Format, project?: Format): Format {
-  return member ?? project ?? AUTO;
-}
-
 const currencies = new Map<string, Intl.NumberFormat | null>();
 function moneyFormat(currency: string): Intl.NumberFormat | null {
   if (!currencies.has(currency)) {

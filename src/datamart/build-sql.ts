@@ -263,7 +263,7 @@ function prepare(input: MartSqlInput): Plan | Reason {
   const cols = schema.filter((f) => shownNames.has(f.name));
   const fns = new Map<string, AggFn[]>();
   for (const r of agg?.aggregations ?? []) {
-    if (!shownNames.has(r.column) || !byName.has(r.column)) continue;
+    if (!byName.has(r.column)) continue;
     const list = fns.get(r.column) ?? [];
     if (!list.includes(r.function)) list.push(r.function);
     fns.set(r.column, list);
@@ -340,7 +340,7 @@ function assembleGrouped(p: Plan & { agg: Aggregation }): string | Reason {
   const rawOf = (path: string) => { if (!raws.has(path)) raws.set(path, p.alloc(`${pathBase(path)}_raw`)); return raws.get(path)!; };
   const parentRef = (path: string) => { const parent = parentPath(path); return parent ? rawOf(parent) : 'base_owox'; };
   /** The paths from the depth-1 join down to `path`, ancestors first. */
-  const chain = (path: string): string[] => (path ? [...chain(parentPath(path) ?? ''), path] : []);
+  const chain = (path: string): string[] => (path ? [...chain(parentPath(path)), path] : []);
   /**
    * A raw join of a path with slices reads a filtered derived table, so it stays a LEFT JOIN: where a slice fails, the path's columns and its descendants' are empty and the row stays.
    * The same predicates filter the path's dedup CTE, so every read of the path agrees.
@@ -388,7 +388,7 @@ function assembleGrouped(p: Plan & { agg: Aggregation }): string | Reason {
       const tgt = p.edgeOf.get(owner)!.joins.map((j) => `${ownerCte}.${fieldRef(d, j.targetField)}`);
       const oid = tgt.map((x, i) => `${x} AS ${ident(d, tgt.length === 1 ? '_oid' : `_oid_${i}`)}`);
       const inner = [...dimItems, ...oid, `${ownerCte}.${ident(d, f.name)} AS ${ident(d, '_val')}`];
-      const joins = [...chain(parentPath(owner) ?? '').map(rawJoin), ...p.order.filter((q) => q === owner || roots.has(q)).map(dedupJoin)];
+      const joins = [...chain(parentPath(owner)).map(rawJoin), ...p.order.filter((q) => q === owner || roots.has(q)).map(dedupJoin)];
       const dimCols = keys.map((_, i) => dimAlias(i));
       const outerItems = [...dimCols, ...fns.map((fn) => `${aggregate(d, fn, ident(d, '_val'))} AS ${ident(d, outName(f, fn))}`)];
     sleeves.push({ name, sql: `  ${name} AS (\n    SELECT\n${lines(outerItems, 6)}\n    FROM (\n      SELECT DISTINCT\n${lines(inner, 8)}\n      FROM base_owox\n${joins.map((x) => `      ${x}`).join('\n')}${wherePart(6)}\n    ) _dedup${dimCols.length ? `\n    GROUP BY ${dimCols.join(', ')}` : ''}\n  )` });

@@ -1,10 +1,9 @@
 // Suggested values for a text filter input: the query that reads them and the pure text edits that pick one.
 import type { Field } from '../model/types';
+import { uniqueKey } from '../model/unique-count';
 import type { TraverseFilter, TraverseOptions } from '../sdk/types';
 
 export const SUGGEST_LIMIT = 50;
-/** The row key of the mart's unique count: the order the values come in. */
-const COUNT_KEY = 'Unique Count';
 
 /**
  * The server's values per read key (mart, field and the other rules), kept for the browser session: a read is made once per key
@@ -27,7 +26,7 @@ export const canSuggest = (field: Field): boolean => field.category === 'string'
  */
 export function valuesQuery(field: Field, filter: TraverseFilter[]): TraverseOptions {
   const kept: TraverseFilter[] = [...filter.filter((f) => !f.function), { column: field.name, operator: 'is_not_blank' }];
-  return { column: [field.name], uniqueCount: [''], sort: [{ column: COUNT_KEY, direction: 'desc' }], filter: kept, limit: SUGGEST_LIMIT };
+  return { column: [field.name], uniqueCount: [''], sort: [{ column: uniqueKey(''), direction: 'desc' }], filter: kept, limit: SUGGEST_LIMIT };
 }
 
 /** The values of a values read, in row order: text, no blanks, none twice. */

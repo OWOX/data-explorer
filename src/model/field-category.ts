@@ -1,11 +1,12 @@
 import type { FieldCategory } from './types';
 
 const STRING = new Set(['STRING', 'VARCHAR', 'CHAR', 'CHARACTER', 'CHARACTER VARYING', 'NCHAR', 'NVARCHAR', 'NVARCHAR2', 'VARCHAR2', 'TEXT', 'BPCHAR', 'CITEXT', 'CLOB', 'UUID']);
-const NUMBER = new Set([
-  'INTEGER', 'INT', 'INT2', 'INT4', 'INT8', 'INT64', 'BIGINT', 'SMALLINT', 'TINYINT', 'BYTEINT', 'HUGEINT', 'LONG', 'SHORT', 'BYTE',
+const INTEGER = new Set(['INTEGER', 'INT', 'INT2', 'INT4', 'INT8', 'INT64', 'BIGINT', 'SMALLINT', 'TINYINT', 'BYTEINT', 'HUGEINT', 'LONG', 'SHORT', 'BYTE', 'SERIAL', 'BIGSERIAL', 'SMALLSERIAL']);
+const DECIMAL = new Set([
   'FLOAT', 'FLOAT4', 'FLOAT8', 'FLOAT64', 'REAL', 'DOUBLE', 'DOUBLE PRECISION',
-  'NUMERIC', 'BIGNUMERIC', 'DECIMAL', 'DEC', 'NUMBER', 'BIGDECIMAL', 'SERIAL', 'BIGSERIAL', 'SMALLSERIAL', 'MONEY',
+  'NUMERIC', 'BIGNUMERIC', 'DECIMAL', 'DEC', 'NUMBER', 'BIGDECIMAL', 'MONEY',
 ]);
+const NUMBER = new Set([...INTEGER, ...DECIMAL]);
 const DATE = new Set([
   'DATE', 'DATETIME', 'TIMESTAMP', 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMP WITHOUT TIME ZONE', 'TIMESTAMP WITH LOCAL TIME ZONE',
   'TIMESTAMPTZ', 'TIMESTAMP_NTZ', 'TIMESTAMP_LTZ', 'TIMESTAMP_TZ',
@@ -44,6 +45,5 @@ export function categorizeFieldType(type: string): FieldCategory {
   return 'other';
 }
 
-const INTEGER = new Set(['INTEGER', 'INT', 'INT2', 'INT4', 'INT8', 'INT64', 'BIGINT', 'SMALLINT', 'TINYINT', 'BYTEINT', 'HUGEINT', 'LONG', 'SHORT', 'BYTE', 'SERIAL', 'BIGSERIAL', 'SMALLSERIAL']);
 /** Whether a warehouse type holds whole numbers only. */
 export const isIntegerType = (type: string): boolean => INTEGER.has(normalizeType(type));

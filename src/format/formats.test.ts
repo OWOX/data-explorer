@@ -1,5 +1,5 @@
 import { displayText } from '../ui/format';
-import { formatsFor, formatValue, isValidFormat, resolveFormat, type Format, keepsUnit } from './formats';
+import { formatsFor, formatValue, isValidFormat, type Format, keepsUnit } from './formats';
 
 const auto: Format = { kind: 'auto' };
 const money = (currency: string): Format => ({ kind: 'money', currency });
@@ -23,12 +23,6 @@ test('isValidFormat checks shape and type', () => {
   expect(isValidFormat({ kind: 'bogus' }, 'INT64')).toBe(false);
   expect(isValidFormat(null, 'INT64')).toBe(false);
   expect(isValidFormat('plain', 'INT64')).toBe(false);
-});
-
-test('resolveFormat: member, then project, then auto', () => {
-  expect(resolveFormat({ kind: 'plain' }, { kind: 'percent' })).toEqual({ kind: 'plain' });
-  expect(resolveFormat(undefined, { kind: 'percent' })).toEqual({ kind: 'percent' });
-  expect(resolveFormat()).toEqual(auto);
 });
 
 describe('formatValue', () => {

@@ -95,7 +95,7 @@ export function formatTemporal(value: unknown, type: string, style: 'auto' | 'da
   return (style === 'date' ? f.day : style === 'time' ? f.time : f.moment).format(date);
 }
 
-export function formatValue(v: unknown): string {
+export function rawText(v: unknown): string {
   if (v === null || v === undefined) return '';
   // A one-to-many joined field arrives as an array of its values: one cell, the values side by side.
   if (Array.isArray(v)) return v.map((x) => (x === null || x === undefined ? '' : typeof x === 'object' ? JSON.stringify(x) : String(x))).join(', ');
@@ -123,4 +123,4 @@ export function formatNumber(v: unknown): string | null {
  * because a pasted "1,223" reads as 1.223 in a spreadsheet set to a comma-decimal locale (uk-UA, de-DE).
  */
 export const displayText = (v: unknown, type?: string, { group = true }: { group?: boolean } = {}): string =>
-  (type ? formatTemporal(v, type) ?? (group && isNumericType(type) ? formatNumber(v) : null) : null) ?? formatValue(v);
+  (type ? formatTemporal(v, type) ?? (group && isNumericType(type) ? formatNumber(v) : null) : null) ?? rawText(v);

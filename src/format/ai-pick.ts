@@ -69,7 +69,7 @@ export async function pickFormats(ctx: Ctx, store: FormatStore, martId: string, 
     for (const [column, f] of Object.entries(validPicks(answer, types))) if (!(column in fresh)) picks[column] = f as Format;
     if (signal.aborted) throw new AiUnavailable('aborted');
     if (!Object.keys(picks).length) return {};
-    await store.setProject(martId, picks, { keep: true });
+    await store.setProject(martId, picks);
     return picks;
   } catch (e) {
     if (signal.aborted) for (const f of eligible) done.delete(f.name);
