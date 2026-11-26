@@ -732,10 +732,10 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   // A HAVING filter keeps whole groups, so the charts get the passing group keys as an `in` rule instead of the filter itself.
   const keysRead = useMemo(() => keysPlan(schema, shown, gridAgg, Object.values(filters), Object.values(slices)), [schema, shown, gridAgg, filters, slices]);
   const keyField = useMemo(() => (keysRead.kind === 'read' && keysRead.key ? schema.find((f) => f.name === keysRead.key) : undefined), [keysRead, schema]);
-  // The scorecard read and the keys read wait while the charts are not shown, the band is folded, the grid is blocked, or no number column is shown (the scorecards have nothing to read; the charts read for themselves).
+  // The scorecard read waits while the charts are not shown, the band is folded, the grid is blocked, or no number column is shown (the scorecards have nothing to read). The keys read does not wait for a shown number: the charts draw hidden fields too and must follow a HAVING filter.
   const scoreFields = useMemo(() => chartFields(schema, shown, aggNow, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), {}), [schema, shown, aggNow, martId, groups, sources]);
   const chartable = useMemo(() => !scoreFields.marts.every((m) => m.metrics.length === 0 && !m.hasPk), [scoreFields]);
-  const having = useHavingKeys(martId, keysRead, keyField, version, !charts || paused || !!blocked || !chartable);
+  const having = useHavingKeys(martId, keysRead, keyField, version, !charts || paused || !!blocked);
   const chartFilter = useMemo(() => (having.rule ? [...traverseFilters, having.rule] : traverseFilters), [traverseFilters, having.rule]);
   // The match badges of the cards. A filter or a slice applies when it reaches the query; a parked, incomplete or HAVING one does not.
   const applies = traverseFilters.length > 0;

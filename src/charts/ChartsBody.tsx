@@ -206,7 +206,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
               <ChartFrameContext key={spec.id} value={{ size: spec.size ?? NO_SIZE, resizing, cancelDrag, onResize: (size, keys) => change((cur) => patchChart(cur, spec.id, { size }), keys ? { fold: `size:${spec.id}` } : {}) }}>
               <SeenOnce>{(seen) => (
               <def.Panel martId={martId} cf={chart} title={resolved[i]!.title!} r={r} spark={spark} filter={filter} version={version} idle={idle} hold={!seen}
-                hasFilters={hasFilters} formatOf={formatOf} ready={!!settings} tail={tailItems({ cf, spec, change, resizing, onResizing: setResizing })}
+                hasFilters={hasFilters} formatOf={formatOf} ready={!!settings} tail={tailItems({ cf: chart, spec, change, resizing, onResizing: setResizing })}
                 onChange={(p: Partial<ChartSpec>) => change((cur) => patchChart(cur, spec.id, p))} onFilter={onFilter} />
               )}</SeenOnce>
               </ChartFrameContext>

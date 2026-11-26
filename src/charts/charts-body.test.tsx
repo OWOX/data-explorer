@@ -10,13 +10,14 @@ import { AppServices, StoreProvider } from '../state/store';
 import { App } from '../ui/App';
 import { SAVED_COLUMNS_WAIT_MS } from '../ui/explorer/SeededGrid';
 import { openColumnMenu, openConfigMenu, closeConfigMenu, openFields, openSubmenu } from '../ui/explorer/menu-test-utils';
+import { ruleTuple } from '../state/view-link';
 import { TOP_N } from './queries';
 import type { ChartSettings } from './settings';
 
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
 const COLUMNS = ['id', 'status', 'amount', 'created_at', 'products__price'];
 
-function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[]; calc?: boolean; uc?: boolean; /** Holds the keys read (a HAVING rule's, limit 501) until it resolves. */ hold?: Promise<void>; /** While its `current` is set, every read of orders waits for it. */ block?: { current: Promise<void> | null }; fixtures?: Fixtures } = {}) {
+function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[]; calc?: boolean; uc?: boolean; /** Saved filters (a `fn` makes one a HAVING rule). */ fl?: unknown[]; /** Holds the keys read (a HAVING rule's, limit 501) until it resolves. */ hold?: Promise<void>; /** While its `current` is set, every read of orders waits for it. */ block?: { current: Promise<void> | null }; fixtures?: Fixtures } = {}) {
   const base = createMockCtx(opts.fixtures ?? demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
@@ -39,7 +40,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
     },
   };
   const seeded = Promise.all([
-    ctx.collections<{ columns: string[]; at: string; aggregations?: unknown; gridView?: unknown }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: opts.columns ?? COLUMNS, at: 'then', ...(opts.uc ? { gridView: { fl: [], s: null, l: 100, uc: [''] } } : {}), ...(opts.aggregations ? { aggregations: opts.aggregations } : {}) }),
+    ctx.collections<{ columns: string[]; at: string; aggregations?: unknown; gridView?: unknown }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: opts.columns ?? COLUMNS, at: 'then', ...(opts.uc || opts.fl ? { gridView: { fl: opts.fl ?? [], s: null, l: 100, ...(opts.uc ? { uc: [''] } : {}) } } : {}), ...(opts.aggregations ? { aggregations: opts.aggregations } : {}) }),
     opts.charts ? ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', opts.charts) : undefined,
   ]);
   return { ctx, queries, puts, gridPuts, seeded, unmount: () => cleanup(), view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
@@ -704,6 +705,31 @@ test('a chart on a field that is not a column is drawn, and the grid keeps its c
   expect(screen.getByRole('menuitemcheckbox', { name: /by status$/ })).toBeTruthy();
   expect(t.puts).not.toHaveBeenCalled();
   expect(t.gridPuts).not.toHaveBeenCalled();
+});
+
+test('a Bar chart’s Chart type lists Time series and Line when no date column is shown', async () => {
+  await charts({ columns: ['id', 'status', 'amount'], charts: { charts: [{ id: 'b', kind: 'bar' }] } });
+  await userEvent.click(screen.getByRole('button', { name: 'Bar chart options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
+  const kinds = within(await screen.findByRole('menu', { name: 'Chart type' })).getAllByRole('menuitemradio').map((r) => r.textContent);
+  expect(kinds).toEqual(expect.arrayContaining(['Time series', 'Line']));
+});
+
+test('a time series on a hidden date lists its own kind in Chart type', async () => {
+  await charts({ columns: ['id', 'status', 'amount'], charts: { charts: [{ id: 't', kind: 'timeSeries' }] } });
+  await userEvent.click(screen.getByRole('button', { name: 'Time series options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
+  const menu = await screen.findByRole('menu', { name: 'Chart type' });
+  expect(within(menu).getByRole('menuitemradio', { name: 'Time series' })).toHaveAttribute('aria-checked', 'true');
+});
+
+test('the charts follow a HAVING filter through the keys read when no number column is shown', async () => {
+  const fx = demoFixtures();
+  const keyless = { ...fx, marts: fx.marts.map((m) => (m.id === 'orders' ? { ...m, fields: m.fields.map((f) => ({ ...f, isPrimaryKey: false })) } : m)) };
+  const t = await charts({ columns: ['status', 'acquisition_session_id'], aggregations: [{ column: 'acquisition_session_id', function: 'COUNT_DISTINCT' }], fl: [ruleTuple('acquisition_session_id', { field: 'acquisition_session_id', op: 'gt', value: 5, fn: 'COUNT_DISTINCT' }, true)], fixtures: keyless });
+  // The keys read goes out (limit 501) although no number is shown, and the charts follow its groups with an `in` rule.
+  await waitFor(() => expect(t.queries.some((q) => q.limit === 501)).toBe(true));
+  await waitFor(() => expect(t.queries.some((q) => q.filter?.some((r) => r.column === 'status' && r.operator === 'in'))).toBe(true));
 });
 
 test('Chart type switches a chart in place and keeps its usable saved fields', async () => {
