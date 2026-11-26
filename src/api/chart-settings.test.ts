@@ -76,3 +76,22 @@ test('scorecard dates keep string values only, as metrics do', async () => {
   expect(await load({ scorecards: { dates: { amount: 'created_at', bad: 3 } } })).toEqual({ scorecards: { dates: { amount: 'created_at' } } });
   expect(await load({ scorecards: { dates: 'x' } })).toEqual({ scorecards: {} });
 });
+
+test('a load waits for the same mart\'s pending save, and not for another mart\'s', async () => {
+  const store = new Map<string, unknown>();
+  let release!: () => void;
+  const slow = new Promise<void>((r) => { release = r; });
+  const cs = createChartSettings(ctxWith(async (id) => (store.has(id) ? { document: store.get(id) } : null), async (id, d) => { if (id === 'M') await slow; store.set(id, d); }));
+  const s = { version: 2 as const, charts: [{ id: 'a', kind: 'pie' as const }] };
+  cs.save('M', s);
+  cs.save('N', s);
+  const loadN = cs.load('N');
+  const loadM = cs.load('M');
+  expect(await loadN).toEqual(s);
+  let done = false;
+  void loadM.then(() => { done = true; });
+  await new Promise((r) => setTimeout(r, 20));
+  expect(done).toBe(false);
+  release();
+  expect(await loadM).toEqual(s);
+});

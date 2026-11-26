@@ -41,7 +41,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
     ctx.collections<{ columns: string[]; at: string; aggregations?: unknown; gridView?: unknown }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: opts.columns ?? COLUMNS, at: 'then', ...(opts.uc ? { gridView: { fl: [], s: null, l: 100, uc: [''] } } : {}), ...(opts.aggregations ? { aggregations: opts.aggregations } : {}) }),
     opts.charts ? ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', opts.charts) : undefined,
   ]);
-  return { queries, puts, gridPuts, seeded, unmount: () => cleanup(), view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
+  return { ctx, queries, puts, gridPuts, seeded, unmount: () => cleanup(), view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
 }
 
 const lastGrid = (t: { gridPuts: { mock: { calls: unknown[][] } } }) => t.gridPuts.mock.calls.at(-1)![1] as { columns: string[]; aggregations?: { column: string; function: string }[] };
@@ -1158,4 +1158,17 @@ test('hiding a column that drops a card pick is one Undo step: Undo shows the co
   await userEvent.click(undoBtn());
   await waitFor(() => expect(lastGrid(t).columns).toContain('created_at'));
   await waitFor(() => expect(lastSaved(t).scorecards?.dates).toEqual({ amount: 'created_at' }));
+});
+
+test('hiding a column with Charts closed prunes the server doc, not an older copy this tab kept (another tab saved since)', async () => {
+  const t = await charts({ charts: { version: 2, scorecards: { dates: { amount: 'created_at' } } } });
+  await waitFor(() => expect(group('orders')).not.toBeNull());
+  await userEvent.click(radio('Table'));
+  await waitFor(() => expect(group('orders')).toBeNull());
+  // Another tab saved a newer doc.
+  await t.ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', { version: 2, scorecards: { dates: { amount: 'created_at' }, hidden: ['from-tab-2'] } });
+  t.puts.mockClear();
+  const menu = await openColumnMenu(within(data()), 'created_at');
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
+  await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, scorecards: { dates: {}, hidden: ['from-tab-2'] } }));
 });

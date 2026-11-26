@@ -140,7 +140,13 @@ const applyGrids = <T,>(grids: Record<string, T>, put: Record<string, T | null>)
 };
 const valuesOf = <T,>(grids: Record<string, T>, keys: string[]): Record<string, T | null> => Object.fromEntries(keys.map((k) => [k, grids[k] ?? null]));
 
+/** A staged chart "before" lives only until the grid edit it goes with: any other action drops it. */
 export function reducer(state: State, a: Action): State {
+  const next = reduce(state, a);
+  return a.type === 'stageCharts' || a.type === 'editGrid' || Object.keys(next.staged).length === 0 ? next : { ...next, staged: {} };
+}
+
+function reduce(state: State, a: Action): State {
   const cur = state.selection;
   switch (a.type) {
     case 'init': return cur.martId ? state : { ...state, selection: { ...cur, martId: a.focusId, ...(a.sourceKey !== undefined ? { sourceKey: a.sourceKey } : {}) } };
@@ -202,7 +208,12 @@ export function reducer(state: State, a: Action): State {
       if (a.fold && last?.fold === a.fold && last.seq === state.seq - 1 && last.charts && a.martId in last.charts && !last.grids && state.future.length === 0) return { ...state, restored: undefined, charts: { ...state.charts, [a.martId]: a.settings } };
       return { ...state, restored: undefined, charts: { ...state.charts, [a.martId]: a.settings }, seq: state.seq + 1, history: [...state.history, { ...cur, charts: { [a.martId]: before }, ...(a.fold ? { fold: a.fold } : {}), seq: state.seq }].slice(-HISTORY_LIMIT), future: [] };
     }
-    case 'saveCharts': return { ...state, restored: undefined, charts: { ...state.charts, [a.martId]: a.settings } };
+    case 'saveCharts': {
+      // A save ends a run of folded edits: the next one starts a new step.
+      const last = state.history.at(-1);
+      const history = last?.fold ? [...state.history.slice(0, -1), { ...last, fold: undefined }] : state.history;
+      return { ...state, history, restored: undefined, charts: { ...state.charts, [a.martId]: a.settings } };
+    }
     case 'stageCharts': {
       const before = state.charts[a.martId] ?? null;
       if (deepEqual(before, a.settings)) return state;

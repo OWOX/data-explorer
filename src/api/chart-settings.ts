@@ -60,8 +60,11 @@ function clean(doc: unknown): ChartSettings {
 
 export function createChartSettings(ctx: Ctx): ChartSettingsStore {
   const col = ctx.collections<ChartSettings>(CHARTS_COLLECTION);
+  // Per mart, the saves in flight: a load waits for them, so it never reads a doc older than a save this tab already made.
+  const pending = new Map<string, Promise<void>>();
   return {
     async load(martId) {
+      await pending.get(martId);
       try {
         return clean((await col.get(martId))?.document);
       } catch (e) {
@@ -70,9 +73,12 @@ export function createChartSettings(ctx: Ctx): ChartSettingsStore {
       }
     },
     save(martId, s) {
-      return Promise.resolve()
+      const run = (pending.get(martId) ?? Promise.resolve())
         .then(async () => { await col.put(martId, s); })
-        .catch((e) => console.warn('Saving the chart settings failed', e));
+        .catch((e) => console.warn('Saving the chart settings failed', e))
+        .finally(() => { if (pending.get(martId) === run) pending.delete(martId); });
+      pending.set(martId, run);
+      return run;
     },
   };
 }

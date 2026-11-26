@@ -41,7 +41,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   /** Applies the clicked mark's filters to the grid, as a filter edit (one Undo step). */
   onFilter: (add: ColumnFilter[]) => void;
   /** Shows these columns in the grid (added to the shown ones): a menu choice of a field that is not shown has to put it on screen. */
-  onShowColumns: (names: string[], buckets?: Readonly<Record<string, DateBucket>>) => void;
+  onShowColumns: (names: string[], buckets?: Readonly<Record<string, DateBucket>>) => boolean | void;
   /** Set while the grid cannot be grouped (a shown array, JSON or struct column with a function on another): the body says why and reads nothing. */
   blockedNote?: string | null;
   /** The config menu: the grid builds it and this body places it, once, on every return path, so an open menu survives a gate or an empty hint coming and going. The Add chart and Charts rows are passed once the saved settings have loaded. */
@@ -151,15 +151,13 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     if (missing.length === 0) return false;
     const chosen = p.bucket ?? spec.bucket;
     const unit = chosen && chosen !== 'AUTO' ? chosen : bucket;
-    onShowColumns(missing, p.date && unit ? { [p.date]: unit } : undefined);
-    return true;
+    return onShowColumns(missing, p.date && unit ? { [p.date]: unit } : undefined) !== false;
   };
   // A card's metric or date that is not a shown column is shown with the pick (a date by the charts' bucket when it is a concrete one; Auto is the grid's Month default, as the card resolves its own).
   const leadBucket = lead?.bucket ?? 'AUTO';
   const showCardPick = (name: string, isDate: boolean) => {
     if (shown.includes(name) || !schemaNames.has(name)) return false;
-    onShowColumns([name], isDate && leadBucket !== 'AUTO' ? { [name]: leadBucket } : undefined);
-    return true;
+    return onShowColumns([name], isDate && leadBucket !== 'AUTO' ? { [name]: leadBucket } : undefined) !== false;
   };
   // `change` reads the latest-doc ref, but the rows only call it from handlers, never while rendering.
   // eslint-disable-next-line react-hooks/refs

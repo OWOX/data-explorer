@@ -1,4 +1,5 @@
-import { act, render, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { useEffect } from 'react';
 import { vi } from 'vitest';
 import { CHARTS_COLLECTION } from '../api/chart-settings';
@@ -57,4 +58,40 @@ test('an Undo made while Charts is not mounted is saved', async () => {
   act(() => dispatch({ type: 'redo' }));
   await waitFor(() => expect(puts).toHaveBeenLastCalledWith('orders', undone));
   expect(puts).toHaveBeenCalledTimes(2);
+});
+
+// An Undo that brings the mart back and mounts Charts in the same flush: the mount's read must not pass the restored save.
+test('an Undo that mounts Charts ends with the restored doc on screen, in the store and on the server', async () => {
+  const { ctx } = await recording();
+  const grab: { dispatch?: ReturnType<typeof useStore>[1]; state?: ReturnType<typeof useStore>[0] } = {};
+  function Grab() { const [s, d] = useStore(); useEffect(() => { grab.dispatch = d; grab.state = s; }); return null; }
+  function Host() { const [s] = useStore(); return s.selection.martId === 'orders' ? <table><ChartsBody {...props} paused /></table> : null; }
+  const col = ctx.collections<ChartSettings>(CHARTS_COLLECTION);
+  render(<AppServices ctx={ctx}><StoreProvider><Grab /><Host /></StoreProvider></AppServices>);
+  act(() => grab.dispatch!({ type: 'init', focusId: 'orders' }));
+  await waitFor(() => expect(grab.state!.charts.orders).toEqual(saved));
+  await col.put('orders', undone);
+  act(() => grab.dispatch!({ type: 'editCharts', martId: 'orders', settings: undone }));
+  act(() => grab.dispatch!({ type: 'replace', selection: { sourceKey: null, martId: 'other', record: null } }));
+  act(() => grab.dispatch!({ type: 'undo' }));
+  await waitFor(async () => expect((await col.get('orders'))?.document).toEqual(saved));
+  await new Promise((r) => setTimeout(r, 50));
+  expect(grab.state!.charts.orders).toEqual(saved);
+  expect((await col.get('orders'))?.document).toEqual(saved);
+});
+
+// A pick from a chart menu whose column the grid does not add (nothing changed) is still one Undo step.
+test('a pick that shows no column is one Undo step on its own', async () => {
+  const { ctx } = await recording();
+  const grab: { dispatch?: ReturnType<typeof useStore>[1]; state?: ReturnType<typeof useStore>[0] } = {};
+  function Grab() { const [s, d] = useStore(); useEffect(() => { grab.dispatch = d; grab.state = s; }); return null; }
+  const withPie = { ...props, schema: [f('amount'), { ...f('status'), type: 'STRING', category: 'string' } as Field, { ...f('region'), type: 'STRING', category: 'string' } as Field], shown: ['amount', 'status'], onShowColumns: () => false };
+  await ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', { version: 2, charts: [{ id: 'pie', kind: 'pie' }] });
+  render(<AppServices ctx={ctx}><StoreProvider><Grab /><table><ChartsBody {...withPie} /></table></StoreProvider></AppServices>);
+  await waitFor(() => expect(grab.state!.charts.orders).toBeDefined());
+  await userEvent.click(await screen.findByRole('button', { name: 'Pie options' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'region' }));
+  await waitFor(() => expect(grab.state!.charts.orders!.charts![0]!.dimension).toBe('region'));
+  expect(grab.state!.history).toHaveLength(1);
 });
