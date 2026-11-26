@@ -732,6 +732,36 @@ test('the charts follow a HAVING filter through the keys read when no number col
   await waitFor(() => expect(t.queries.some((q) => q.filter?.some((r) => r.column === 'status' && r.operator === 'in'))).toBe(true));
 });
 
+describe('the HAVING keys read is sent only when something uses its rule', () => {
+  const keyless = (numbers: boolean) => {
+    const fx = demoFixtures();
+    return { ...fx, marts: fx.marts.map((m) => (m.id === 'orders' ? { ...m, fields: m.fields.filter((f) => numbers || f.type !== 'NUMERIC').map((f) => ({ ...f, isPrimaryKey: false })) } : m)) };
+  };
+  const having = [ruleTuple('acquisition_session_id', { field: 'acquisition_session_id', op: 'gt', value: 5, fn: 'COUNT_DISTINCT' }, true)];
+  const open = async (o: Parameters<typeof setup>[0]) => {
+    const t = setup({ columns: ['status', 'acquisition_session_id'], aggregations: [{ column: 'acquisition_session_id', function: 'COUNT_DISTINCT' }], fl: having, fixtures: keyless(false), ...o });
+    await t.seeded;
+    t.view();
+    await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
+    const before = t.queries.length;
+    await userEvent.click(radio('Charts'));
+    return { t, before };
+  };
+  test('the chart set can draw nothing: no keys read', async () => {
+    const { t, before } = await open({});
+    await waitFor(() => expect(data().querySelector('[data-chart-empty]')).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 300));
+    expect(t.queries.slice(before).some((q) => q.limit === 501)).toBe(false);
+  });
+  test('every chart hidden and no scorecard to show: no keys read', async () => {
+    // Keyless orders whose number (amount) is not shown: nothing to score, and no chart to draw it.
+    const { t, before } = await open({ fixtures: keyless(true), charts: { charts: [] } });
+    await waitFor(() => expect(data().querySelector('[data-chart-panels-row]')).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 300));
+    expect(t.queries.slice(before).some((q) => q.limit === 501)).toBe(false);
+  });
+});
+
 test('Chart type switches a chart in place and keeps its usable saved fields', async () => {
   const t = await charts({ charts: { charts: [{ id: 'p', kind: 'pie', measure: 'amount', dimension: 'status' }] } });
   await userEvent.click(screen.getByRole('button', { name: 'Pie options' }));

@@ -8,7 +8,7 @@ import type { TraverseFilter } from '../sdk/types';
 import { useServices, useStore } from '../state/store';
 import { ErrorBox } from '../ui/ErrorBox';
 import { Skeleton } from '../ui/Skeleton';
-import { chartFields } from './fields';
+import { chartSetsOf } from './chartSets';
 import type { HavingKeys } from './havingKeys';
 import type { MenuItem } from './ChartMenu';
 import { addChartItem, chartListItem, dropPicksOf, hideCard, setCardDate, setCardMetric, tailItems } from './listMenu';
@@ -117,15 +117,8 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     return () => { pruneRef.current = null; };
   });
   // A resize re-renders this body on every step: the fields and the resolved choices only change with their inputs, so a resize rebuilds neither.
-  // Two field sets. `cf` is the shown columns: the scorecards (Records and one card per shown metric), their sparklines' date default and the match counts use it.
-  // `chart` is every field of the report's marts (the main mart always, the joined ones with a column or kept with none, and the marts on their paths): the charts (Add chart's kinds, `resolve`, the defaults, the panels and their menus) use it. A chart pick adds no column.
-  const { cf, chart } = useMemo(() => {
-    const build = (on: string[], marts: PathMart[], counted: JoinedSource[]) => chartFields(schema, on, agg, martId, marts.map((g) => g.path), new Set(counted.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), Object.fromEntries(marts.map((g) => [g.path, g.title])), Object.fromEntries(sources.map((x) => [x.aliasPath, x.mainGrainCollapse])), Object.fromEntries(marts.map((g) => [g.path, g.icon])));
-    // The report's groups come first, so a chart mart keeps its group's index and its Count Unique id. A path mart offers no Count Unique: a mart needs a column to count it.
-    const onPath = new Set(pathMarts.map((m) => m.path));
-    const own = build(shown, groups, sources);
-    return { cf: own, chart: { ...build(schema.map((f) => f.name), [...reportGroups, ...pathMarts], sources.filter((x) => !onPath.has(x.aliasPath))), shown: own } };
-  }, [schema, shown, agg, martId, groups, reportGroups, pathMarts, sources]);
+  // `cf` (the shown columns) feeds the scorecards, `chart` (every field of the report's marts) the charts: see `chartSetsOf`.
+  const { cf, chart } = useMemo(() => chartSetsOf(schema, shown, agg, martId, groups, reportGroups, pathMarts, sources), [schema, shown, agg, martId, groups, reportGroups, pathMarts, sources]);
     // A calculated metric is read as a metric, not as a group key, as the grid's own count ask reads it.
   const joins = useMemo(() => joinGrainOf(sources, new Set(cf.marts.flatMap((m) => m.metrics.filter((x) => !x.fn).map((x) => x.field.name)))), [sources, cf]);
   const specs = chartsOf(settings ?? {});

@@ -11,7 +11,8 @@ import { applyDraft, draftOf, isCalculatedMetric, isGrouped, keepVisible, NO_AGG
 import { columnTitle } from '../../model/fieldLabel';
 import { keepEmpty } from '../../model/empty-paths';
 import { dropUniqueSorts, keepUnique, uniqueField, uniqueKey, uniquePathsOf, withUniqueAfter } from '../../model/unique-count';
-import { chartFields, ruleNewColumns } from '../../charts/fields';
+import { ruleNewColumns } from '../../charts/fields';
+import { chartSetsOf, usesKeys } from '../../charts/chartSets';
 import { joinGrainOf } from '../../charts/answers';
 import { countsOf, scoreQuery, scoreRulesLost } from '../../charts/queries';
 import { useChartQuery } from '../../charts/useChartQuery';
@@ -143,7 +144,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const martStorage = useMemo(() => { const sid = model.marts.get(martId)?.storageId; return model.storages.find((x) => x.id === sid); }, [model, martId]);
   const martTitles = useMemo(() => new Map([...model.marts].map(([id, m]) => [id, m.title])), [model.marts]);
   const { formatOf, memberFormat, setMember: setFormat } = useColumnFormats(martId, schema, model.marts.get(martId)?.title);
-  const [{ modelVersion }, dispatch] = useStore();
+  const [{ modelVersion, charts: savedCharts }, dispatch] = useStore();
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
   const [visible, setVisible] = useState(initialColumns);
   // Cell or whole-column selection (see below); a changed column order or set drops it.
@@ -732,10 +733,12 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   // A HAVING filter keeps whole groups, so the charts get the passing group keys as an `in` rule instead of the filter itself.
   const keysRead = useMemo(() => keysPlan(schema, shown, gridAgg, Object.values(filters), Object.values(slices)), [schema, shown, gridAgg, filters, slices]);
   const keyField = useMemo(() => (keysRead.kind === 'read' && keysRead.key ? schema.find((f) => f.name === keysRead.key) : undefined), [keysRead, schema]);
-  // The scorecard read waits while the charts are not shown, the band is folded, the grid is blocked, or no number column is shown (the scorecards have nothing to read). The keys read does not wait for a shown number: the charts draw hidden fields too and must follow a HAVING filter.
-  const scoreFields = useMemo(() => chartFields(schema, shown, aggNow, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), {}), [schema, shown, aggNow, martId, groups, sources]);
+  // The scorecard read waits while the charts are not shown, the band is folded, the grid is blocked, or no number column is shown (the scorecards have nothing to read). The keys read waits for something that uses its rule (a scorecard, or a visible chart that resolves on any field of the report's marts): the charts draw hidden fields too and must follow a HAVING filter, but nothing else is billed.
+  const reportGroups = useMemo(() => (mainEmpty ? [{ path: '', title: model.marts.get(martId)?.title ?? martId, icon: model.marts.get(martId)?.icon }, ...groups] : groups), [mainEmpty, model, martId, groups]);
+  const sets = useMemo(() => chartSetsOf(schema, shown, aggNow, martId, groups, reportGroups, pathMarts, sources), [schema, shown, aggNow, martId, groups, reportGroups, pathMarts, sources]);
+  const scoreFields = sets.cf;
   const chartable = useMemo(() => !scoreFields.marts.every((m) => m.metrics.length === 0 && !m.hasPk), [scoreFields]);
-  const having = useHavingKeys(martId, keysRead, keyField, version, !charts || paused || !!blocked);
+  const having = useHavingKeys(martId, keysRead, keyField, version, !charts || paused || !!blocked || !usesKeys(savedCharts[martId], sets.cf, sets.chart));
   const chartFilter = useMemo(() => (having.rule ? [...traverseFilters, having.rule] : traverseFilters), [traverseFilters, having.rule]);
   // The match badges of the cards. A filter or a slice applies when it reaches the query; a parked, incomplete or HAVING one does not.
   const applies = traverseFilters.length > 0;
@@ -871,7 +874,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
             </tr>
           </thead>
           {/* ChartsBody renders its own <tbody>: nesting one in another makes the parser pull the headers out of the table. */}
-          {charts ? <ChartsBody pruneRef={pruneCards} blockedNote={blocked ? blockedText(blocked) : null} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} reportGroups={mainEmpty ? [mainGroup, ...groups] : groups} pathMarts={pathMarts} renderConfig={renderConfig} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} kept={keptUnique} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
+          {charts ? <ChartsBody pruneRef={pruneCards} blockedNote={blocked ? blockedText(blocked) : null} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} reportGroups={reportGroups} pathMarts={pathMarts} renderConfig={renderConfig} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} kept={keptUnique} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
           : <tbody>
             {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{blockedText(blocked)}</td></tr>
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => { setRowsRetry((v) => v + 1); if (score.error) score.retry(); }} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>
