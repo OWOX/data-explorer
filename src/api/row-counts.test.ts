@@ -68,3 +68,12 @@ test('count() reads the cache first and recount() bypasses it', async () => {
 test('a mart with no readable fields counts as null', async () => {
   expect(await createRowCounter(stubCtx()).count('a', [])).toBeNull();
 });
+
+test('store keeps a count that count() then serves with no read', async () => {
+  const traverseData = vi.fn();
+  const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
+  const counter = createRowCounter(ctx);
+  await counter.store('a', 77);
+  expect(await counter.count('a', withPk)).toBe(77);
+  expect(traverseData).not.toHaveBeenCalled();
+});

@@ -19,10 +19,10 @@ import { BOX_WIDTH, carry, type ChartKindDef, type PanelProps } from './types';
 type SpreadR = { dimension: Field; field: Field };
 const fieldsOf = (cf: ChartFields): Field[] => cf.marts.flatMap((m) => m.metrics.map((x) => x.field)).filter((f) => spreadFns(f).length > 0);
 
-function SpreadPanel({ martId, cf, title, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<SpreadR>) {
+function SpreadPanel({ martId, cf, title, r, filter, version, idle, hold, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<SpreadR>) {
   const { dimension: dim, field } = r;
   const fns = spreadFns(field);
-  const read = useChartQuery(martId, idle ? null : spreadQuery(dim, field, filter), version);
+  const read = useChartQuery(martId, idle ? null : spreadQuery(dim, field, filter), version, undefined, undefined, hold);
   const v = (row: Record<string, unknown>, fn: AggFn) => (fns.includes(fn) ? numberOf(row[aggregatedKey(field.name, fn)]) : null);
   const text = (row: Record<string, unknown>, fn: AggFn) => metricText(field, fn, row[aggregatedKey(field.name, fn)], formatOf);
   const rows: SpreadRow[] = (read.rows ?? []).flatMap((row) => {

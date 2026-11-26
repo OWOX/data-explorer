@@ -4,6 +4,7 @@ import { useColumnFormats } from '../../format/useColumnFormats';
 import { readRows } from '../../api/rows';
 import type { Model, Schema } from '../../model/types';
 import { joinFilters } from '../../records/relationships';
+import { forgetSeenRow, seenRow } from '../../records/seen-rows';
 import { useIncomingLinks } from '../../records/useIncomingLinks';
 import type { Row } from '../../sdk/types';
 import { useRememberLeaving } from '../../state/leaving';
@@ -25,6 +26,8 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
   const [ownVersion, setVersion] = useState(0);
   // A model reload re-reads the record too: its counter joins this view's own, and each only ever goes up.
   const version = ownVersion + modelVersion;
+  // The row the grid opened this record from, if any. It serves the first load only: a Refresh or a model reload moves the version and reads.
+  const [first] = useState(() => ({ version, seen: seenRow(ctx, martId, pk, modelVersion) }));
   const [state, setState] = useState<{ ver: number; schema: Schema | null; row: Row | null | undefined; error: unknown }>({ ver: -1, schema: null, row: undefined, error: null });
   const [relSchemas, setRelSchemas] = useState(new Map<string, Schema>());
   const incoming = useIncomingLinks(martId, model.edges);
@@ -34,11 +37,19 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
     const ac = new AbortController();
     (async () => {
       const schema = await schemas.get(martId);
-      const filter = Object.entries(pk).map(([column, v]) => {
-        const isNum = schema.find((f) => f.name === column)?.category === 'number';
-        return { column, operator: 'eq' as const, value: isNum ? Number(v) : String(v) };
-      });
-      const [row] = await readRows(ctx, martId, { column: schema.map((f) => f.name), filter, limit: 1 }, { signal: ac.signal });
+      const seen = version === first.version ? first.seen : undefined;
+      let row: Row | undefined;
+      if (seen && schema.every((f) => seen.columns.includes(f.name))) {
+        row = seen.row;
+      } else {
+        // Some fields were not loaded: the grid's values show at once, and the read's row replaces them.
+        if (seen) setState((s) => (s.row === undefined ? { ver: -1, schema, row: seen.row, error: null } : s));
+        const filter = Object.entries(pk).map(([column, v]) => {
+          const isNum = schema.find((f) => f.name === column)?.category === 'number';
+          return { column, operator: 'eq' as const, value: isNum ? Number(v) : String(v) };
+        });
+        [row] = await readRows(ctx, martId, { column: schema.map((f) => f.name), filter, limit: 1 }, { signal: ac.signal });
+      }
       if (ac.signal.aborted) return;
       setState({ ver: version, schema, row: row ?? null, error: null });
       for (const link of incoming) {
@@ -49,16 +60,17 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
       }
     })().catch((error) => { if (!ac.signal.aborted) setState((s) => ({ ...s, ver: version, error })); });
     return () => ac.abort();
-  }, [ctx, schemas, martId, pk, incoming, version]);
+  }, [ctx, schemas, martId, pk, incoming, version, first]);
 
+  const refresh = () => { forgetSeenRow(ctx, martId, pk); setVersion((v) => v + 1); };
   const header = (
     <BandTools slot={slot}>
-      <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
+      <button type="button" onClick={refresh} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
     </BandTools>
   );
 
   const loaded = state.ver === version;
-  if (loaded && state.error) return <div className="flex flex-col">{header}<div className="p-4"><ErrorBox error={state.error} onRetry={() => setVersion((v) => v + 1)} /></div></div>;
+  if (loaded && state.error) return <div className="flex flex-col">{header}<div className="p-4"><ErrorBox error={state.error} onRetry={refresh} /></div></div>;
   if (state.row === undefined || !state.schema || (!loaded && state.row === null)) return <div className="flex flex-col">{header}<Skeleton rows={8} /></div>;
   if (state.row === null) return <div className="flex flex-col">{header}<p className="p-4 text-sm text-muted-foreground">Record not found</p></div>;
   const row = state.row;
@@ -70,11 +82,12 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
       {header}
       {!loaded && <div role="progressbar" aria-label="Loading record" className="dm-busybar" />}
       <div className="min-h-0 flex-1 overflow-auto">
-      <dl className="grid grid-cols-[minmax(10rem,16rem)_1fr] content-start gap-x-4 gap-y-2 p-4 text-sm">
+      {/* While it reads, the shown values (not the field names) are the previous read's or the grid's seed: dimmed until the record arrives. */}
+      <dl aria-busy={!loaded || undefined} className="grid grid-cols-[minmax(10rem,16rem)_1fr] content-start gap-x-4 gap-y-2 p-4 text-sm">
         {state.schema.map((f) => (
           <div key={f.name} className="contents">
             <dt className="dm-reveal-host flex min-w-0 items-start text-muted-foreground"><FieldLabel field={f} wrap /></dt>
-            <dd className="min-w-0 break-words"><CellValue row={row} field={f.name} type={f.type} format={formatOf(f.name, f.type)} wrap /></dd>
+            <dd className={`min-w-0 break-words${loaded ? '' : ' dm-stale'}`}><CellValue row={row} field={f.name} type={f.type} format={formatOf(f.name, f.type)} wrap /></dd>
           </div>
         ))}
       </dl>

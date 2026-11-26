@@ -1,10 +1,10 @@
 import { renderHook, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { useLayoutEffect, type ReactNode } from 'react';
 import { vi } from 'vitest';
 import { stubCtx, traversalOf } from '../../api/test-ctx';
 import type { Traversal, TraverseOptions } from '../../sdk/types';
-import { AppServices, StoreProvider } from '../../state/store';
-import { buildRowQuery, useMartRows } from './useMartRows';
+import { AppServices, StoreProvider, useServices } from '../../state/store';
+import { GRID_CACHE_LIMIT, buildRowQuery, forgetGridRows, useMartRows } from './useMartRows';
 import { defaultColumns } from '../../model/columns';
 import type { Schema } from '../../model/types';
 
@@ -38,8 +38,10 @@ test('no primary key means no sort', () => {
   expect(buildRowQuery(noPk, ['x', 'cur'], [], 200)).toEqual({ column: ['x', 'cur'], limit: 201 });
 });
 
-function hookCtx() {
-  const traverseData = vi.fn(async () => traversalOf([{ id: 1, a: 'x', b: 'y' }]));
+/** `full`: a read comes back with its whole limit, so it is not the last of the rows and a bigger limit needs another read. */
+const rowsOf = (full: boolean, o?: TraverseOptions) => (full ? Array.from({ length: o?.limit ?? 1 }, (_, i) => ({ id: i, a: 'x', b: 'y' })) : [{ id: 1, a: 'x', b: 'y' }]);
+function hookCtx(full = false) {
+  const traverseData = vi.fn(async (_id: string, o?: TraverseOptions) => traversalOf(rowsOf(full, o)));
   const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
   const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
   return { traverseData, wrapper };
@@ -61,9 +63,9 @@ test('hiding a column does not query again; showing a never-loaded one does', as
 });
 
 test('a changed limit, filter or version re-queries even with fewer columns', async () => {
-  const { traverseData, wrapper } = hookCtx();
+  const { traverseData, wrapper } = hookCtx(true);
   const { result, rerender } = renderHook(({ o, v }) => useMartRows('m', o, v), { wrapper, initialProps: { o: opts(['id', 'a']), v: 0 } });
-  await waitFor(() => expect(result.current.rows).toHaveLength(1));
+  await waitFor(() => expect(result.current.rows).toHaveLength(200));
   rerender({ o: opts(['id'], 401), v: 0 });
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
   rerender({ o: { ...opts(['id'], 401), filter: [{ column: 'id', operator: 'eq' as const, value: 1 }] }, v: 0 });
@@ -127,20 +129,37 @@ test('grouped: a shrinking column list re-queries, because fewer group keys are 
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
 });
 
+const byFilterOf = (column: string[]): TraverseOptions => ({ column, limit: 201, filter: [{ column: 'id', operator: 'eq' as const, value: 1 }] });
+
 test('rows of another shape are not shown while the new query is in flight; the same shape keeps its rows', async () => {
-  const { wrapper } = hookCtx();
+  const { wrapper } = hookCtx(true);
   const { result, rerender } = renderHook(({ o }) => useMartRows('m', o, 0), { wrapper, initialProps: { o: opts(['id', 'a']) } });
-  await waitFor(() => expect(result.current.rows).toHaveLength(1));
+  await waitFor(() => expect(result.current.rows).toHaveLength(200));
   rerender({ o: { ...opts(['id', 'a']), limit: 401 } });
   expect(result.current.loading).toBe(true);
-  expect(result.current.rows).toHaveLength(1); // a bigger page of the same rows
+  expect(result.current.rows).toHaveLength(200); // a bigger page of the same rows
   rerender({ o: { column: ['a'], aggregation: [{ column: 'a', function: 'COUNT' }], limit: 401 } });
   expect(result.current.loading).toBe(true);
   expect(result.current.rows).toBeNull();
   expect(result.current.hasMore).toBe(false);
-  await waitFor(() => expect(result.current.rows).toHaveLength(1));
+  await waitFor(() => expect(result.current.rows).toHaveLength(400));
+  rerender({ o: byFilterOf(['id', 'a']) });
+  expect(result.current.loading).toBe(true);
+  expect(result.current.rows).toBeNull(); // and back to plain rows the cache cannot answer: the groups are not shown for them
+});
+
+test('plain rows read before are shown again on the very first render after a grouped ask', async () => {
+  const { traverseData, wrapper } = hookCtx(true);
+  // Every committed render is recorded (a layout effect runs before the passive one that commits a hit): `rerender` flushes the effect before it returns, so only the first render of the new key shows the lookup at render.
+  const renders: { loading: boolean; rows: number | null; run: string }[] = [];
+  const { result, rerender } = renderHook(({ o }) => { const r = useMartRows('m', o, 0); useLayoutEffect(() => { renders.push({ loading: r.loading, rows: r.rows?.length ?? null, run: r.run.state }); }); return r; }, { wrapper, initialProps: { o: opts(['id', 'a']) } });
+  await waitFor(() => expect(result.current.rows).toHaveLength(200));
+  rerender({ o: { column: ['a'], aggregation: [{ column: 'a', function: 'COUNT' }], limit: 401 } });
+  await waitFor(() => expect(result.current.rows).toHaveLength(400));
+  renders.length = 0;
   rerender({ o: opts(['id', 'a']) });
-  expect(result.current.rows).toBeNull(); // and back
+  expect(renders[0]).toEqual({ loading: false, rows: 200, run: 'done' });
+  expect(traverseData).toHaveBeenCalledTimes(2);
 });
 
 test('the run of the last query: none, running, done with its run id, failed', async () => {
@@ -208,21 +227,31 @@ describe('slices and HAVING filters in the rows query', () => {
 describe('the total row count', () => {
   const asked = (traverseData: { mock: { calls: [string, TraverseOptions][] } }) => traverseData.mock.calls.map((c) => c[1].includeTotalRowCount === true);
   /** Like OWOX: a count comes only on a read that asked, and each asking read takes the next of `counts` (the last one repeats); `undefined` is a read OWOX could not count. */
-  function countCtx(counts: (number | undefined)[]) {
+  function countCtx(counts: (number | undefined)[], full = true) {
     let asks = 0;
-    const traverseData = vi.fn<(id: string, o: TraverseOptions) => Promise<Traversal>>(async (_id, o) => ({ ...traversalOf([{ id: 1, a: 'x' }]), ...(o.includeTotalRowCount ? { totalRowCount: counts[Math.min(asks++, counts.length - 1)] } : {}) }));
+    const traverseData = vi.fn<(id: string, o: TraverseOptions) => Promise<Traversal>>(async (_id, o) => ({ ...traversalOf(full ? rowsOf(true, o) : [{ id: 1, a: 'x' }]), ...(o.includeTotalRowCount ? { totalRowCount: counts[Math.min(asks++, counts.length - 1)] } : {}) }));
     const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
     const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
     return { traverseData, wrapper };
   }
   const withSort = (column: string[], dir: 'asc' | 'desc', limit = 201): TraverseOptions => ({ column, limit, sort: [{ column: 'a', direction: dir }] });
-  type Props = { o: TraverseOptions; v: number; exact?: boolean };
+  type Props = { o: TraverseOptions; v: number; exact?: boolean; own?: ReadonlySet<string> };
   const run = (initial: Props, counts: (number | undefined)[] = [450]) => {
     const c = countCtx(counts);
-    const hook = renderHook(({ o, v, exact }: Props) => useMartRows('m', o, v, false, exact), { wrapper: c.wrapper, initialProps: initial });
+    const hook = renderHook(({ o, v, exact, own }: Props) => useMartRows('m', o, v, false, exact, 0, own), { wrapper: c.wrapper, initialProps: initial });
     return { ...c, ...hook };
   };
   const settled = (result: { current: { loading: boolean } }) => waitFor(() => expect(result.current.loading).toBe(false));
+
+  test('a total served from a cached result is not fresh: only the read that asked is', async () => {
+    const c = countCtx([450]);
+    const first = renderHook(() => useMartRows('m', opts(['id', 'a']), 0), { wrapper: c.wrapper });
+    await waitFor(() => expect(first.result.current.counted.fresh).toBe(true));
+    const again = renderHook(() => useMartRows('m', opts(['id', 'a']), 0), { wrapper: c.wrapper });
+    await waitFor(() => expect(again.result.current.counted.total).toBe(450));
+    expect(again.result.current.counted.fresh).toBe(false);
+    expect(c.traverseData).toHaveBeenCalledTimes(1);
+  });
 
   test('the first read asks and total is set', async () => {
     const { traverseData, result } = run({ o: opts(['id', 'a']), v: 0 });
@@ -285,6 +314,84 @@ describe('the total row count', () => {
     expect(asked(traverseData)).toEqual([true, true]);
   });
 
+  test('a new column of the main data mart reuses the count', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'a', 'b']), v: 0, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, false]);
+    expect(result.current.total).toBe(450);
+  });
+
+  test('a new column of a joined data mart asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'a', 'j__x']), v: 0, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(460);
+  });
+
+  test('a new calculated field asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'a', 'calc']), v: 0, exact: true, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(460);
+  });
+
+  test('with a calculated field, swapping a main column for another of the same count asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a', 'calc']), v: 0, exact: true, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'b', 'calc']), v: 0, exact: true, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(460);
+  });
+
+  test('with a calculated field only in a filter, swapping a main column asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const f = { filter: [{ column: 'calc', operator: 'eq' as const, value: 1 }] };
+    const { traverseData, result, rerender } = run({ o: { ...opts(['id', 'a']), ...f }, v: 0, exact: true, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: { ...opts(['id', 'b']), ...f }, v: 0, exact: true, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(460);
+  });
+
+  test('a grouped read with another group key asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const g = (column: string[]): TraverseOptions => ({ column, limit: 201, aggregation: [{ column: 'id', function: 'SUM' }] });
+    const { traverseData, result, rerender } = run({ o: g(['a', 'id']), v: 0, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: g(['a', 'b', 'id']), v: 0, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+  });
+
+  test('another filter with a new main column asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0, own }, [450, 3]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: { ...opts(['id', 'a', 'b']), filter: [{ column: 'id', operator: 'eq' as const, value: 1 }] }, v: 0, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(3);
+  });
+
   test('hiding a column, then Load more, a sort or showing it again, never asks', async () => {
     const { traverseData, result, rerender } = run({ o: withSort(['id', 'a', 'b'], 'asc'), v: 0 });
     await waitFor(() => expect(result.current.total).toBe(450));
@@ -314,25 +421,25 @@ describe('the total row count', () => {
     test('it stays through Load more and a sort, and is none for another filter until that read answers', async () => {
       const filtered = { ...opts(['id', 'a']), filter: [{ column: 'id', operator: 'eq' as const, value: 1 }] };
       const { result, rerender } = run({ o: opts(['id', 'a'], 201), v: 0 }, [450, 3]);
-      await waitFor(() => expect(result.current.counted).toEqual({ total: 450, exact: false, columns: ['id', 'a'] }));
+      await waitFor(() => expect(result.current.counted).toEqual({ total: 450, exact: false, columns: ['id', 'a'], fresh: true }));
       rerender({ o: opts(['id', 'a'], 401), v: 0 });
       expect(result.current.loading).toBe(true);
       expect(result.current.counted.total).toBe(450);
       await settled(result);
       rerender({ o: withSort(['id', 'a'], 'desc', 401), v: 0 });
       expect(result.current.loading).toBe(true);
-      expect(result.current.counted).toEqual({ total: 450, exact: false, columns: ['id', 'a'] });
+      expect(result.current.counted).toEqual({ total: 450, exact: false, columns: ['id', 'a'], fresh: true });
       await settled(result);
       rerender({ o: { ...filtered, limit: 401 }, v: 0 });
       expect(result.current.counted.total).toBeNull();
-      await waitFor(() => expect(result.current.counted).toEqual({ total: 3, exact: false, columns: ['id', 'a'] }));
+      await waitFor(() => expect(result.current.counted).toEqual({ total: 3, exact: false, columns: ['id', 'a'], fresh: true }));
     });
     test('a total counted by a read that named a calculated field stays exact when the field is hidden with no new read', async () => {
       const { traverseData, result, rerender } = run({ o: opts(['id', 'a', 'margin']), v: 0, exact: true }, [5]);
-      await waitFor(() => expect(result.current.counted).toEqual({ total: 5, exact: true, columns: ['id', 'a', 'margin'] }));
+      await waitFor(() => expect(result.current.counted).toEqual({ total: 5, exact: true, columns: ['id', 'a', 'margin'], fresh: true }));
       rerender({ o: opts(['id', 'a']), v: 0, exact: false });
       expect(traverseData).toHaveBeenCalledTimes(1);
-      expect(result.current.counted).toEqual({ total: 5, exact: true, columns: ['id', 'a', 'margin'] });
+      expect(result.current.counted).toEqual({ total: 5, exact: true, columns: ['id', 'a', 'margin'], fresh: true });
     });
   });
 
@@ -376,7 +483,7 @@ describe('the total row count', () => {
 
   test('a read without a count is not asked again on Load more or a sort, and stays without a total', async () => {
     const { traverseData, result, rerender } = run({ o: withSort(['id', 'a'], 'asc', 201), v: 0 }, [undefined]);
-    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+    await waitFor(() => expect(result.current.rows).toHaveLength(200));
     expect(result.current.total).toBeNull();
     rerender({ o: withSort(['id', 'a'], 'asc', 401), v: 0 });
     await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
@@ -428,5 +535,205 @@ describe('the total row count', () => {
     const { result } = run({ o, v: 0 });
     await waitFor(() => expect(result.current.total).toBe(450));
     expect(o).toEqual({ column: ['id', 'a'], limit: 201 });
+  });
+});
+
+describe('the grid cache', () => {
+  /** Returns `n` rows for every read, or what `rowsFor` says; a count comes only on a read that asked. */
+  function cacheCtx(rowsFor: (o: TraverseOptions) => number | Error, total = 450) {
+    const traverseData = vi.fn<(id: string, o: TraverseOptions) => Promise<Traversal>>(async (_id, o) => {
+      const n = rowsFor(o);
+      if (n instanceof Error) throw n;
+      return { ...traversalOf(Array.from({ length: n }, (_, i) => ({ id: i, a: 'x' }))), ...(o.includeTotalRowCount ? { totalRowCount: total } : {}) };
+    });
+    const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
+    const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
+    return { traverseData, wrapper };
+  }
+  type P = { m?: string; o: TraverseOptions; v?: number; exact?: boolean };
+  const mount = (rowsFor: (o: TraverseOptions) => number | Error, initial: P, total?: number) => {
+    const c = cacheCtx(rowsFor, total);
+    const hook = renderHook(({ m = 'm', o, v = 0, exact }: P) => useMartRows(m, o, v, false, exact), { wrapper: c.wrapper, initialProps: initial });
+    return { ...c, ...hook };
+  };
+  const done = (result: { current: { loading: boolean } }) => waitFor(() => expect(result.current.loading).toBe(false));
+  const byFilter = (column: string[], value: number, limit = 201): TraverseOptions => ({ column, limit, filter: [{ column: 'id', operator: 'eq' as const, value }] });
+
+  test('going back to an earlier ask shows its rows with no read (Undo)', async () => {
+    const { traverseData, result, rerender } = mount(() => 3, { o: byFilter(['id', 'a'], 1) });
+    await done(result);
+    rerender({ o: byFilter(['id', 'a'], 2) });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await done(result);
+    rerender({ o: byFilter(['id', 'a'], 1) });
+    await waitFor(() => expect(result.current.rows).toHaveLength(3));
+    expect(result.current.loading).toBe(false);
+    expect(traverseData).toHaveBeenCalledTimes(2);
+  });
+
+  test('a smaller page is cut from a bigger read', async () => {
+    const { traverseData, result, rerender } = mount((o) => o.limit!, { o: opts(['id', 'a'], 1001) });
+    await done(result);
+    expect(result.current.rows).toHaveLength(1000);
+    rerender({ o: opts(['id', 'a'], 201) });
+    await waitFor(() => expect(result.current.rows).toHaveLength(200));
+    expect(result.current.hasMore).toBe(true);
+    expect(traverseData).toHaveBeenCalledTimes(1);
+  });
+
+  test('a read that returned fewer rows than it asked for answers a bigger limit', async () => {
+    const { traverseData, result, rerender } = mount(() => 50, { o: opts(['id', 'a'], 201) });
+    await done(result);
+    rerender({ o: opts(['id', 'a'], 401) });
+    await waitFor(() => expect(result.current.rows).toHaveLength(50));
+    expect(result.current.hasMore).toBe(false);
+    expect(traverseData).toHaveBeenCalledTimes(1);
+  });
+
+  test('a full read (one row past its page) does not answer a bigger limit', async () => {
+    const { traverseData, result, rerender } = mount((o) => o.limit!, { o: opts(['id', 'a'], 201) });
+    await done(result);
+    rerender({ o: opts(['id', 'a'], 401) });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+  });
+
+  test('another filter, another sort or another version reads', async () => {
+    const { traverseData, result, rerender } = mount(() => 3, { o: byFilter(['id', 'a'], 1) });
+    await done(result);
+    rerender({ o: byFilter(['id', 'a'], 2) });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    rerender({ o: { ...byFilter(['id', 'a'], 1), sort: [{ column: 'a', direction: 'desc' as const }] } });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(3));
+    rerender({ o: byFilter(['id', 'a'], 1), v: 1 });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
+    rerender({ m: 'other', o: byFilter(['id', 'a'], 1), v: 1 });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(5));
+  });
+
+  test('a plain read answers fewer columns; not when it names a calculated field', async () => {
+    const wide = (limit = 201): TraverseOptions => ({ column: ['a', 'b', 'c'], limit, sort: [{ column: 'a', direction: 'asc' }] });
+    const narrow: TraverseOptions = { ...wide(), column: ['a', 'b'] };
+    const plain = mount(() => 3, { o: wide() });
+    await done(plain.result);
+    plain.rerender({ o: { ...narrow, limit: 401 } });
+    await waitFor(() => expect(plain.result.current.rows).toHaveLength(3));
+    expect(plain.traverseData).toHaveBeenCalledTimes(1);
+    const calc = mount(() => 3, { o: wide(), exact: true });
+    await done(calc.result);
+    calc.rerender({ o: { ...narrow, limit: 401 }, exact: true });
+    await waitFor(() => expect(calc.traverseData).toHaveBeenCalledTimes(2));
+  });
+
+  test('a grouped read answers only the same columns in the same order', async () => {
+    const grouped = (column: string[]): TraverseOptions => ({ column, aggregation: [{ column: 'b', function: 'SUM' }], limit: 201 });
+    const { traverseData, result, rerender } = mount(() => 3, { o: grouped(['a', 'b']) });
+    await done(result);
+    rerender({ o: grouped(['a']) });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await done(result);
+    rerender({ o: grouped(['a', 'b']) });
+    await waitFor(() => expect(result.current.rows).toHaveLength(3));
+    expect(traverseData).toHaveBeenCalledTimes(2);
+  });
+
+  test('a failed read is not cached: the same ask reads again', async () => {
+    let fail = true;
+    const { traverseData, result, rerender, unmount } = mount(() => (fail ? new Error('boom') : 3), { o: byFilter(['id', 'a'], 1) });
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    fail = false;
+    rerender({ o: byFilter(['id', 'a'], 2) });
+    await done(result);
+    rerender({ o: byFilter(['id', 'a'], 1) });
+    await waitFor(() => expect(result.current.rows).toHaveLength(3));
+    expect(traverseData).toHaveBeenCalledTimes(3);
+    unmount();
+  });
+
+  test('the least recently used read is dropped after GRID_CACHE_LIMIT + 1 reads', async () => {
+    const { traverseData, result, rerender } = mount(() => 3, { o: byFilter(['id'], 0) });
+    await done(result);
+    for (let i = 1; i <= GRID_CACHE_LIMIT; i++) {
+      rerender({ o: byFilter(['id'], i) });
+      await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(i + 1));
+      await done(result);
+    }
+    rerender({ o: byFilter(['id'], 0) });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(GRID_CACHE_LIMIT + 2));
+    // The newest one is still cached.
+    rerender({ o: byFilter(['id'], GRID_CACHE_LIMIT) });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(traverseData).toHaveBeenCalledTimes(GRID_CACHE_LIMIT + 2);
+  });
+
+  test('a hit keeps the total, and the next read of the same base does not ask for it again', async () => {
+    const { traverseData, result, rerender } = mount((o) => o.limit!, { o: opts(['id', 'a'], 201) }, 450);
+    await done(result);
+    rerender({ o: byFilter(['id', 'a'], 2) });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await done(result);
+    rerender({ o: opts(['id', 'a'], 201) });
+    await waitFor(() => expect(result.current.counted).toEqual({ total: 450, exact: false, columns: ['id', 'a'], fresh: false }));
+    expect(result.current.total).toBe(450);
+    expect(traverseData).toHaveBeenCalledTimes(2);
+    // Load more is a new read of the same base: the cached count covers it.
+    rerender({ o: opts(['id', 'a'], 401) });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(3));
+    expect(traverseData.mock.calls[2]![1].includeTotalRowCount).toBeUndefined();
+  });
+
+  test('the first render after the key changes to a cached ask already has its rows and is not loading', async () => {
+    const c = cacheCtx(() => 3);
+    const renders: { loading: boolean; rows: number | null; run: string }[] = [];
+    const { traverseData } = c;
+    const { result, rerender } = renderHook(({ o }: P) => { const r = useMartRows('m', o, 0); useLayoutEffect(() => { renders.push({ loading: r.loading, rows: r.rows?.length ?? null, run: r.run.state }); }); return r; }, { wrapper: c.wrapper, initialProps: { o: byFilter(['id', 'a'], 1) } });
+    await done(result);
+    rerender({ o: byFilter(['id', 'a'], 2) });
+    await done(result);
+    renders.length = 0;
+    rerender({ o: byFilter(['id', 'a'], 1) });
+    // The first render of the new key: rerender flushes the effect, so only this entry tells the lookup was made at render.
+    expect(renders[0]).toEqual({ loading: false, rows: 3, run: 'done' });
+    expect(traverseData).toHaveBeenCalledTimes(2);
+  });
+
+  test('Load more after a hit that came from a covered read does not ask for the count again', async () => {
+    const { traverseData, result, rerender } = mount((o) => o.limit!, { o: opts(['id', 'a'], 201) }, 450);
+    await done(result);
+    rerender({ o: opts(['id', 'a'], 401) }); // covered: no count asked, stored with the total
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await done(result);
+    rerender({ o: byFilter(['id', 'a'], 2) });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(3));
+    await done(result);
+    rerender({ o: opts(['id', 'a'], 401) }); // a hit on the covered read
+    expect(result.current.rows).toHaveLength(400);
+    rerender({ o: opts(['id', 'a'], 601) });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
+    expect(traverseData.mock.calls[3]![1].includeTotalRowCount).toBeUndefined();
+  });
+
+  test('Refresh drops the mart\'s results: the same ask after a remount reads again', async () => {
+    const c = cacheCtx(() => 3);
+    const props = { o: byFilter(['id', 'a'], 1) };
+    const first = renderHook(({ o, v }: { o: TraverseOptions; v: number }) => useMartRows('m', o, v), { wrapper: c.wrapper, initialProps: { ...props, v: 0 } });
+    await done(first.result);
+    // Refresh: the grid forgets the mart and reads at the next version.
+    const ctxOf = renderHook(() => useServices(), { wrapper: c.wrapper });
+    forgetGridRows(ctxOf.result.current.ctx, 'm');
+    first.unmount();
+    const again = renderHook(({ o, v }: { o: TraverseOptions; v: number }) => useMartRows('m', o, v), { wrapper: c.wrapper, initialProps: { ...props, v: 0 } });
+    await waitFor(() => expect(c.traverseData).toHaveBeenCalledTimes(2));
+    await done(again.result);
+  });
+
+  test('a mart reload (another model version) is not answered from rows read before it, even when the summed versions match', async () => {
+    const c = cacheCtx(() => 3);
+    const o = byFilter(['id', 'a'], 1);
+    const first = renderHook(({ m }: { m: number }) => useMartRows('m', o, 0, false, false, m), { wrapper: c.wrapper, initialProps: { m: 0 } });
+    await done(first.result);
+    first.unmount();
+    const again = renderHook(({ m }: { m: number }) => useMartRows('m', o, 0, false, false, m), { wrapper: c.wrapper, initialProps: { m: 1 } });
+    await waitFor(() => expect(c.traverseData).toHaveBeenCalledTimes(2));
+    await done(again.result);
   });
 });

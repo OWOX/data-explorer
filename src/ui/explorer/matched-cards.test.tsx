@@ -17,7 +17,7 @@ const isScore = (q: TraverseOptions) => !!(q.uniqueCount?.length || q.aggregatio
   && !(!q.filter && !q.uniqueCount && q.aggregation?.length === 1 && q.aggregation[0]!.function === 'COUNT');
 
 // Every traverseData call is a billed warehouse run: the match badge on the cards has no query of its own, it rides on the scorecard read.
-function setup(grid: GridState, opts: { charts?: ChartSettings; fail?: (o: TraverseOptions) => boolean; /** Marts that lose their primary key. */ noKey?: string[]; /** Adds a JSON field to Orders, which cannot be grouped. */ json?: boolean; /** Adds a calculated metric `margin` to Orders. */ calc?: boolean; /** Replaces the total row count of a read of Orders. */ total?: (o: TraverseOptions) => number | undefined; /** Reads that answer after this many ms. */ slow?: (o: TraverseOptions) => boolean } = {}) {
+function setup(grid: GridState, opts: { /** How long a slow read waits (ms). */ slowMs?: number; charts?: ChartSettings; fail?: (o: TraverseOptions) => boolean; /** Marts that lose their primary key. */ noKey?: string[]; /** Adds a JSON field to Orders, which cannot be grouped. */ json?: boolean; /** Adds a calculated metric `margin` to Orders. */ calc?: boolean; /** Replaces the total row count of a read of Orders. */ total?: (o: TraverseOptions) => number | undefined; /** Reads that answer after this many ms. */ slow?: (o: TraverseOptions) => boolean } = {}) {
   const fixtures = structuredClone(demoFixtures());
   for (const m of fixtures.marts) if (opts.noKey?.includes(m.id)) for (const f of m.fields) f.isPrimaryKey = false;
   if (opts.calc) fixtures.marts.find((m) => m.id === 'orders')!.fields.push({ name: 'margin', type: 'NUMERIC', alias: 'Margin', calculated: { level: 'metric' } } as never);
@@ -27,7 +27,7 @@ function setup(grid: GridState, opts: { charts?: ChartSettings; fail?: (o: Trave
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const ctx: Ctx = {
     ...base,
-    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('read failed')); const n = id === 'orders' ? opts.total?.(o) : undefined; const done = n !== undefined && o.includeTotalRowCount ? real(id, o).then((r) => ({ ...r, totalRowCount: n })) : real(id, o); return id === 'orders' && opts.slow?.(o) ? new Promise((res) => setTimeout(res, 250)).then(() => done) : done; } } },
+    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('read failed')); const n = id === 'orders' ? opts.total?.(o) : undefined; const done = n !== undefined && o.includeTotalRowCount ? real(id, o).then((r) => ({ ...r, totalRowCount: n })) : real(id, o); return id === 'orders' && opts.slow?.(o) ? new Promise((res) => setTimeout(res, opts.slowMs ?? 250)).then(() => done) : done; } } },
   };
   function Probe() {
     const [, dispatch] = useStore();
@@ -490,3 +490,81 @@ test('Remove from report: a total counted by a read that joined the removed mart
   // The joined read's count is not the main mart's: one scorecard read answers it.
   expect(t.scoreReads()).toHaveLength(2);
 });
+
+test('on Refresh the badge keeps its previous number, dimmed and busy, until the new count lands, and adds no read of its own', async () => {
+  const t = setup(withProducts, { slow: isScore });
+  await t.mount();
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  const match = () => card('orders')!.querySelector('[data-match]');
+  expect(match()).not.toHaveClass('dm-stale');
+  expect(match()).not.toHaveAttribute('aria-busy');
+  const before = t.scoreReads().length;
+  await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+  await waitFor(() => expect(t.scoreReads().length).toBe(before + 1));
+  expect(match()).toHaveClass('dm-stale');
+  expect(match()).toHaveAttribute('aria-busy', 'true');
+  await waitFor(() => expect(match()).not.toHaveClass('dm-stale'), { timeout: 2000 });
+  expect(match()).toHaveTextContent(/% match$/);
+  expect(t.scoreReads()).toHaveLength(before + 1);
+});
+
+/** Edits the status filter to another value through the column menu. */
+async function changeStatus(value: string) {
+  await openSubmenu(within(data()), 'status', 'Filter');
+  const dialog = await screen.findByRole('dialog');
+  const input = within(dialog).getByLabelText('Value');
+  await userEvent.clear(input);
+  await userEvent.type(input, value);
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+}
+
+test('a filter change keeps the badge with the previous number, dimmed and busy, until the new count lands (no Refresh)', async () => {
+  const t = setup(withProducts, { slow: isScore });
+  await t.mount();
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  const match = () => card('orders')!.querySelector('[data-match]');
+  expect(match()).not.toHaveClass('dm-stale');
+  const before = t.scoreReads().length;
+  await changeStatus('shipped');
+  await waitFor(() => expect(t.scoreReads().length).toBe(before + 1));
+  expect(match()).toHaveClass('dm-stale');
+  expect(match()).toHaveAttribute('aria-busy', 'true');
+  await waitFor(() => expect(match()).not.toHaveClass('dm-stale'), { timeout: 2000 });
+  expect(match()).not.toHaveAttribute('aria-busy');
+  expect(t.scoreReads()).toHaveLength(before + 1);
+});
+
+const shippedRows = (q: TraverseOptions) => q.limit === 201 && JSON.stringify(q.filter ?? []).includes('shipped');
+
+test('a rows read that fails while the score read still runs keeps the badge dimmed, with no vanish, until the score lands', async () => {
+  const t = setup(withProducts, { fail: shippedRows, slow: isScore });
+  await t.mount();
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  const match = () => card('orders')!.querySelector('[data-match]');
+  await changeStatus('shipped');
+  await waitFor(() => expect(t.queries.some(shippedRows)).toBe(true));
+  await act(async () => { await new Promise((r) => setTimeout(r, 60)); });
+  expect(match()).not.toBeNull();
+  expect(match()).toHaveClass('dm-stale');
+  expect(match()).toHaveAttribute('aria-busy', 'true');
+  await waitFor(() => expect(match()).not.toHaveClass('dm-stale'), { timeout: 2000 });
+  expect(match()).not.toHaveAttribute('aria-busy');
+});
+
+test('a rows read that failed while the score read ran, then a column hidden (new score key held): no dimmed or busy badge is left and no read is added', async () => {
+  const t = setup(withProducts, { fail: shippedRows, slow: isScore, slowMs: 1500 });
+  await t.mount();
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/), { timeout: 4000 });
+  const match = () => card('orders')!.querySelector('[data-match]');
+  await changeStatus('shipped');
+  await waitFor(() => expect(t.queries.some(shippedRows)).toBe(true));
+  await waitFor(() => expect(within(data()).queryByRole('progressbar', { name: 'Loading rows' })).toBeNull());
+  const reads = t.scoreReads().length;
+  await openFields('Orders');
+  await userEvent.click(await screen.findByLabelText('Amount'));
+  await calm();
+  await act(async () => { await new Promise((r) => setTimeout(r, 1800)); });
+  expect(match()?.classList.contains('dm-stale') ?? false).toBe(false);
+  expect(match()?.hasAttribute('aria-busy') ?? false).toBe(false);
+  expect(t.scoreReads().length).toBe(reads);
+}, 20000);

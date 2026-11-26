@@ -5,8 +5,14 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { SchemaFieldDto, TraverseOptions } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
+import { rememberRow } from '../../records/seen-rows';
 import { App } from '../App';
 import { openColumnMenu, closeConfigMenu, openFields, openSubmenu } from './menu-test-utils';
+
+vi.mock('../../records/seen-rows', async (orig) => {
+  const m = await orig<typeof import('../../records/seen-rows')>();
+  return { ...m, rememberRow: vi.fn(m.rememberRow), forgetSeenRows: vi.fn(m.forgetSeenRows) };
+});
 
 function setup(opts: { fields?: SchemaFieldDto[]; saved?: Record<string, unknown>; gate?: Promise<void> } = {}) {
   const fixtures = demoFixtures();
@@ -64,8 +70,10 @@ test('a Sum on Amount groups by the other columns: Amount · Sum, no primary key
   await sumLoaded();
   await waitFor(() => expect(within(data()).getByText(/\d+\+? groups?$/)).toBeInTheDocument());
   expect(within(data()).queryByText(/records$/)).toBeNull();
-  // a grouped row is no single record
+  // a grouped row is no single record, and hands nothing to the Row band
+  vi.mocked(rememberRow).mockClear();
   fireEvent.click(bodyRows()[0]!);
+  expect(rememberRow).not.toHaveBeenCalled();
   expect(await within(row()).findByText('Grouped rows have no single record.')).toBeInTheDocument();
   expect(bodyRows()[0]).not.toHaveClass('cursor-pointer');
   // the values are numbers read from the "<column> | SUM" key
@@ -172,7 +180,11 @@ test('a column no longer shown loses its rules', async () => {
   await openFields('Orders');
   await userEvent.click(await screen.findByLabelText('Amount'));
   await waitFor(() => expect(headers()).not.toContain('Amount · Sum'));
-  await waitFor(() => expect(t.queries.at(-1)!.o.aggregation).toBeUndefined());
+  // The plain rows read before the rule are cached, so no read follows the untick: none is sent, grouped or not.
+  const sent = t.queries.length;
+  await new Promise((r) => setTimeout(r, 200));
+  expect(t.queries.length).toBe(sent);
+  expect(t.queries.at(-1)!.o.aggregation).toBeDefined();
 });
 
 test('while the grouped rows are in flight there is no groups badge and no empty Amount · Sum cells', async () => {
@@ -249,6 +261,19 @@ test('a visible calculated column does not block the grouped query: it is sent a
   expect(within(data()).queryByText(/can't be grouped/)).toBeNull();
   expect(document.querySelector('.dm-export')).not.toBeNull();
   expect(within(data()).queryByRole('button', { name: 'Aggregate zz_gain' })).toBeNull();
+});
+
+test('a calculated column the grid shows is not handed to the Row band with the row', async () => {
+  setup({ fields: [{ name: 'zz_net', type: 'NUMERIC', calculated: { level: 'column' } }] });
+  await ready();
+  await showColumn('zz_net');
+  await waitFor(() => expect(headers()).toContain('zz_net'));
+  vi.mocked(rememberRow).mockClear();
+  fireEvent.click(bodyRows()[0]!);
+  await waitFor(() => expect(rememberRow).toHaveBeenCalled());
+  const seen = vi.mocked(rememberRow).mock.calls.at(-1)![3];
+  expect(seen.columns).toContain('id');
+  expect(seen.columns).not.toContain('zz_net');
 });
 
 test('the implicit first-key sort is sent but shows no arrow and no aria-sort; a click then sorts that column', async () => {

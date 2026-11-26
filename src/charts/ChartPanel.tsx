@@ -1,5 +1,6 @@
 import { Copy } from 'lucide-react';
-import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { whenInView } from '../ui/bands/inview';
 import { ErrorBox } from '../ui/ErrorBox';
 import { emptyText } from '../ui/format';
 import { Skeleton } from '../ui/Skeleton';
@@ -9,6 +10,9 @@ import { ChartMenu, type MenuItem } from './ChartMenu';
 import { copyChart } from './copyImage';
 import { CELL, ChartFrameContext, FillContext, panelWidth, type ChartSize } from './resize';
 import { ResizeHandles } from './ResizeHandles';
+
+/** Set by ChartsBody: a panel calls it once, when its frame first scrolls near the view. Null reads at once. */
+export const ChartSeenContext = createContext<(() => void) | null>(null);
 
 /** A body height that makes the whole panel a whole number of cells: the content's height, rounded up. The panel's head and padding count. */
 function snapped(inner: HTMLElement): number {
@@ -42,11 +46,11 @@ function useMeasuredHeight() {
 }
 
 /** One chart's frame: title, its ⋮ menu (none before the saved settings load, so `ready` gates `items`) and the width its content needs, on whole cells. A size the member dragged it to wins. */
-export function ChartPanel({ title, name, items, ready, width, loading, failed, empty, hasFilters, note, children }: {
+export function ChartPanel({ title, name, items, ready, width, loading, failed, empty, hasFilters, note, memoKey, children }: {
   title: string; name: string; items: MenuItem[]; ready: boolean; width: string;
   loading: boolean; failed?: { error: unknown; retry: () => void } | null;
   /** True shows the standard empty text for `hasFilters`; a string shows that text. */
-  empty?: boolean | string; hasFilters: boolean; note?: string; children: ReactNode;
+  empty?: boolean | string; hasFilters: boolean; note?: string; /** Stands in for `title` in the key of the kept drawing, for a title that changes while its chart does not. */ memoKey?: string; children: ReactNode;
 }) {
   const menu = ready ? items : null;
   const error = failed?.error;
@@ -57,7 +61,16 @@ export function ChartPanel({ title, name, items, ready, width, loading, failed, 
   const [draft, setDraft] = useState<ChartSize | null>(null);
   const size = draft ?? frame?.size ?? {};
   const fill = size.rows !== undefined;
+  // The last drawn body and width, so a new read shows them dimmed instead of a skeleton. An error, an empty result or another kind or title (or `memoKey`) drops them.
+  const [drawn, setDrawn] = useState<{ key: string; body: ReactNode; width: string } | null>(null);
+  const key = `${name}\u0000${memoKey ?? title}`;
+  if (!failed && !loading && !emptyNote) { if (drawn?.key !== key || drawn.body !== children || drawn.width !== width) setDrawn({ key, body: children, width }); }
+  else if ((failed || emptyNote || drawn?.key !== key) && drawn) setDrawn(null);
+  const staleDrawn = loading && !failed && drawn?.key === key ? drawn : null;
+  const stale = staleDrawn !== null;
   const [section, setSection] = useState<HTMLElement | null>(null);
+  const seen = useContext(ChartSeenContext);
+  useEffect(() => (section && seen ? whenInView(section, seen) : undefined), [section, seen]);
   const [toast, setToast] = useState<{ text: string; tone: 'success' | 'info' | 'error'; at: number } | null>(null);
   const say = (text: string, tone: 'success' | 'info' | 'error') => setToast((t) => ({ text, tone, at: (t?.at ?? 0) + 1 }));
   const copy: MenuItem = { kind: 'action', label: 'Copy to clipboard', icon: Copy, onPick: () => {
@@ -72,7 +85,7 @@ export function ChartPanel({ title, name, items, ready, width, loading, failed, 
   const at = menu ? menu.findLastIndex((i) => i.kind === 'action' && i.label === 'Hide') : -1;
   const withCopy = menu ? (at >= 0 ? [...menu.slice(0, at), copy, ...menu.slice(at)] : [...menu, copy]) : null;
   return (
-    <section ref={setSection} className="dm-chart" data-chart-kind={name} data-fill={fill || undefined} data-dragging={!!draft || undefined} style={{ width: frame ? panelWidth(size, width) : width, ...(fill ? { height: size.rows! * CELL } : {}) }}>
+    <section ref={setSection} className="dm-chart" data-chart-kind={name} data-fill={fill || undefined} data-dragging={!!draft || undefined} style={{ width: frame ? panelWidth(size, staleDrawn?.width ?? width) : staleDrawn?.width ?? width, ...(fill ? { height: size.rows! * CELL } : {}) }}>
       <header className="dm-chart-head">
         <div className="dm-chart-titlegroup">
           <h3 className="dm-chart-title">{title}</h3>
@@ -83,9 +96,16 @@ export function ChartPanel({ title, name, items, ready, width, loading, failed, 
       <div className="dm-chart-body" data-moving={moving || undefined} style={height === null || fill ? undefined : { height }}>
         <div ref={inner} className="dm-chart-fit">
           {failed ? <ErrorBox error={error} onRetry={failed.retry} />
-            : loading ? <Skeleton rows={4} />
+            : loading && !stale ? <Skeleton rows={4} />
             : emptyNote ? <p className="dm-muted dm-chart-empty">{emptyNote}</p>
-            : <FillContext value={fill}>{children}</FillContext>}
+            : (
+              <div className="dm-chart-staleframe">
+                {stale ? <div role="progressbar" aria-label="Loading chart" className="dm-busybar" /> : null}
+                <div className={stale ? 'dm-stale' : undefined} aria-busy={stale || undefined} inert={stale || undefined}>
+                  <FillContext value={fill}>{staleDrawn ? staleDrawn.body : children}</FillContext>
+                </div>
+              </div>
+            )}
         </div>
       </div>
       {frame?.resizing && section && <ResizeHandles title={title} section={section} frame={frame} onDraft={setDraft} />}

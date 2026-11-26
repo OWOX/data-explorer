@@ -314,7 +314,8 @@ test('a Refresh that takes a joined field away parks its filter, says so, and ap
   expect(within(data()).getByRole('button', { name: 'Reset' })).toBeDisabled();
   state.gone = false;
   await refresh();
-  await waitFor(() => expect(queries.at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a' }]));
+  // The filter coming back ends a held Refresh without a plain total, so the card is counted once: that read is not the grid's.
+  await waitFor(() => expect(queries.filter((q) => q.column).at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a' }]));
 });
 
 test('a Refresh that cannot read the schema keeps the grid and says so in the toast', async () => {
@@ -345,5 +346,5 @@ test('a Refresh that takes a joined field away pauses its slice, says so, and ap
   await waitFor(() => expect(queries.at(-1)?.filter ?? []).toEqual([]));
   state.gone = false;
   await refresh();
-  await waitFor(() => expect(queries.at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a', placement: 'pre-join' }]));
+  await waitFor(() => expect(queries.filter((q) => q.column).at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a', placement: 'pre-join' }]));
 });

@@ -241,3 +241,72 @@ test('a held key, another key read, then the held key again (Undo) is read once'
   await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
   expect(traverseData).toHaveBeenCalledTimes(2);
 });
+
+test('held is true only for a key whose read was skipped by the hold, and ends when the hold does', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ n: 1 }]));
+  const wrapper = setup(traverseData);
+  const { result, rerender } = renderHook(({ l, hold }) => useChartQuery('m', opts(l), 0, undefined, null, hold), { wrapper, initialProps: { l: 1, hold: true } });
+  await waitFor(() => expect(result.current.held).toBe(true));
+  expect(result.current.loading).toBe(true);
+  expect(traverseData).not.toHaveBeenCalled();
+  rerender({ l: 1, hold: false });
+  await waitFor(() => expect(result.current.rows).toEqual([{ n: 1 }]));
+  expect(result.current.held).toBe(false);
+  // A key that reads (no hold) is loading but not held.
+  rerender({ l: 2, hold: false });
+  expect(result.current.held).toBe(false);
+  expect(result.current.loading).toBe(true);
+  await waitFor(() => expect(result.current.rows).not.toBeNull());
+});
+
+describe('a read under way for a superset', () => {
+  const grain = { pathOf: () => undefined, keepsGrain: () => true };
+  const wide: TraverseOptions = { column: ['a', 'd'], aggregation: [{ column: 'a', function: 'SUM' }, { column: 'd', function: 'MIN' }] };
+  const narrow: TraverseOptions = { column: ['a'], aggregation: [{ column: 'a', function: 'SUM' }] };
+  const slow = () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const tr: Traversal = { async *rowChunks() { await gate; yield [{ 'a | SUM': 1, 'd | MIN': 'x' }] as Row[]; }, cancel: async () => {} };
+    return { tr, release: () => release() };
+  };
+
+  test('is joined by an ask with joins: one read, the rows are the superset ones', async () => {
+    const { tr, release } = slow();
+    const traverseData = vi.fn(async () => tr);
+    const both = renderHook(() => [useChartQuery('m', wide, 0, grain), useChartQuery('m', narrow, 0, grain)] as const, { wrapper: setup(traverseData) });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
+    expect(both.result.current[1].loading).toBe(true);
+    await act(async () => { release(); await Promise.resolve(); });
+    await waitFor(() => expect(both.result.current[1].rows).toEqual([{ 'a | SUM': 1, 'd | MIN': 'x' }]));
+    expect(traverseData).toHaveBeenCalledTimes(1);
+  });
+
+  test('is not joined by an ask with no joins: it reads for itself', async () => {
+    const { tr } = slow();
+    const traverseData = vi.fn(async () => tr);
+    renderHook(() => [useChartQuery('m', wide, 0, grain), useChartQuery('m', narrow, 0)] as const, { wrapper: setup(traverseData) });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+  });
+
+  test('is not joined across versions or marts', async () => {
+    const { tr } = slow();
+    const traverseData = vi.fn(async () => tr);
+    renderHook(() => [useChartQuery('m', wide, 0, grain), useChartQuery('m', narrow, 1, grain), useChartQuery('other', narrow, 0, grain)] as const, { wrapper: setup(traverseData) });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(3));
+  });
+
+  test('leaving the joined read does not cancel it while its owner stays', async () => {
+    const { tr, release } = slow();
+    const cancel = vi.spyOn(tr, 'cancel');
+    const traverseData = vi.fn(async () => tr);
+    const wrapper = setup(traverseData);
+    const owner = renderHook(() => useChartQuery('m', wide, 0, grain), { wrapper });
+    const joiner = renderHook(() => useChartQuery('m', narrow, 0, grain), { wrapper });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
+    joiner.unmount();
+    await act(async () => { await Promise.resolve(); });
+    expect(cancel).not.toHaveBeenCalled();
+    await act(async () => { release(); await Promise.resolve(); });
+    await waitFor(() => expect(owner.result.current.rows).not.toBeNull());
+  });
+});

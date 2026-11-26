@@ -18,15 +18,15 @@ type DateSeries = { series: Series[] | null; failed: { error: unknown; retry: ()
  * A measure over a date, one point per bucket, split by a dimension's top values plus "Other" when `stack` is set.
  * Unstacked, it rides on the sparklines' read when it can (same key, one billed read). Each value is a returned row's value.
  */
-export function useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, version, idle, formatOf, range, scope }: {
+export function useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, version, idle, hold, formatOf, range, scope }: {
   martId: string; cf: ChartFields; spark: Spark; date: Field; bucket: DateBucket | null; measure: Measure; stack: Field | null;
-  filter: TraverseFilter[]; version: number; idle: boolean; formatOf: Formatter; range?: { error: unknown; retry: () => void };
+  filter: TraverseFilter[]; version: number; idle: boolean; hold?: boolean; formatOf: Formatter; range?: { error: unknown; retry: () => void };
   /** The measures shown together with this one, so its label names its mart when they span more than one. */
   scope?: Measure[];
 }): DateSeries {
   const live = !idle && !!bucket;
   // The top values do not depend on the bucket, so they are read while the Auto range is still loading.
-  const top = useChartQuery(martId, !idle && stack ? topValuesQuery(stack, measure, filter) : null, version);
+  const top = useChartQuery(martId, !idle && stack ? topValuesQuery(stack, measure, filter) : null, version, undefined, undefined, hold);
   const keys = top.rows?.map((row) => keyOf(row[stack!.name]));
   // A top list cannot name NULL: `names` are the real values, the blank one is read apart.
   const names = keys?.filter((k) => !isBlankKey(k));
@@ -35,14 +35,14 @@ export function useDateSeries({ martId, cf, spark, date, bucket, measure, stack,
   const needBlank = !!stack && !!keys && (keys.some(isBlankKey) || full);
   // Unstacked, the series asks for the sparklines' read when it can (same key, one billed read for both). If that read fails, the series reads for itself, so the chart is never worse off than with its own read.
   const sharedOptions = live && !stack ? sharedSeriesQuery(cf, spark, measure, bucket, filter, date) : null;
-  const shared = useChartQuery(martId, sharedOptions, version);
+  const shared = useChartQuery(martId, sharedOptions, version, undefined, undefined, hold);
   const viaShared = !!sharedOptions && !shared.error;
   // With a stack the series query waits for the top values.
   const hasNames = !!names && names.length > 0;
-  const own = useChartQuery(martId, live && !viaShared && (!stack || hasNames) ? seriesQuery(date, bucket!, measure, filter, stack ? { dim: stack, top: names! } : undefined) : null, version);
+  const own = useChartQuery(martId, live && !viaShared && (!stack || hasNames) ? seriesQuery(date, bucket!, measure, filter, stack ? { dim: stack, top: names! } : undefined) : null, version, undefined, undefined, hold);
   const series = viaShared ? shared : own;
-  const blank = useChartQuery(martId, live && needBlank ? seriesBlankQuery(date, bucket!, measure, filter, stack!) : null, version);
-  const other = useChartQuery(martId, live && full ? seriesOtherQuery(date, bucket!, measure, filter, stack!, names!) : null, version);
+  const blank = useChartQuery(martId, live && needBlank ? seriesBlankQuery(date, bucket!, measure, filter, stack!) : null, version, undefined, undefined, hold);
+  const other = useChartQuery(martId, live && full ? seriesOtherQuery(date, bucket!, measure, filter, stack!, names!) : null, version, undefined, undefined, hold);
   const key = measureKey(measure);
   // A series only when its read returned a value: an all-null row would be an empty series with a legend entry.
   const hasValue = (rows: Row[] | null) => !!rows?.some((x) => x[key] != null);

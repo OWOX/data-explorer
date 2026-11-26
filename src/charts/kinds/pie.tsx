@@ -20,9 +20,9 @@ import { BOX_WIDTH, type ChartKindDef, type PanelProps } from './types';
 export const sharesWhole = (measure: Measure, dim: Field): boolean => measurePath(measure) === pathOf(dim);
 
 /** The measure's top values of a dimension as slices, the blank value first, with "Other" (a `not_in` query) when the top list was full. */
-function PiePanel({ martId, cf, title, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<MeasureByDimensionR>) {
+function PiePanel({ martId, cf, title, r, filter, version, idle, hold, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<MeasureByDimensionR>) {
   const { measure, dimension: dim } = r;
-  const top = useTopValues({ martId, counter: cf.counter, dim, measure, filter, version, idle });
+  const top = useTopValues({ martId, counter: cf.counter, dim, measure, filter, version, idle, hold });
   const slice = (key: string, name: string, v: unknown, color: string): Slice => ({ key, name, value: numberOf(v) ?? 0, valueText: measureText(measure, v, formatOf), color });
   const slices = (): Slice[] => {
     // Each slice keeps the colour its label hashes to, the same as the same value in a stack or a Sankey.

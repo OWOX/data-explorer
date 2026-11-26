@@ -6,7 +6,7 @@ import { useServices } from '../state/store';
 import { useLatest } from '../ui/useLatest';
 import { answers, partsOf, stable, type JoinGrain, type QueryParts } from './answers';
 
-export type ChartResult = { rows: Row[] | null; error: unknown; loading: boolean; retry: () => void };
+export type ChartResult = { rows: Row[] | null; error: unknown; loading: boolean; /** This key's read was not started because of `hold`: `loading` is then true until the hold ends. */ held: boolean; retry: () => void };
 
 /** How many resolved reads a ctx keeps: about ten views of the charts. The least recently used is dropped first. */
 export const CHART_CACHE_LIMIT = 64;
@@ -24,7 +24,8 @@ function remember(ctx: Ctx, key: string, entry: Entry) {
 
 // A read under way, shared by every hook that asks for the same key while it runs: each traverseData call is billed, so
 // a pie and a stack asking for the same thing at once must cost one read. Dropped when it settles or its last reader leaves.
-type Flight = { promise: Promise<Row[]>; readers: number; controller: AbortController };
+// It keeps its key, mart, version and parts, so a read that asks for less can join it (see `joinable`).
+type Flight = { key: string; promise: Promise<Row[]>; readers: number; controller: AbortController; martId: string; version: number; parts: QueryParts };
 const flightsOf = perCtx(() => new Map<string, Flight>());
 
 /** The cached read that answers this query: the exact one, else, when `joins` is given, one for a superset of it (see `answers`). Returns its key and rows. */
@@ -37,6 +38,18 @@ function lookup(ctx: Ctx, key: string, martId: string, version: number, asked: Q
   for (const want of [asked, reuse]) {
     if (!want) continue;
     for (const [k, e] of cache) if (e.martId === martId && e.version === version && answers(e.parts, want, joins)) return { key: k, rows: e.rows };
+  }
+  return null;
+}
+
+/** The read under way that answers this query: the exact one, else, when `joins` is given, one for a superset of it (or of `reuse`). It sends nothing new. */
+function joinable(ctx: Ctx, key: string, martId: string, version: number, asked: QueryParts | null, joins: JoinGrain | undefined, reuse: QueryParts | null): Flight | null {
+  const inflight = flightsOf(ctx);
+  const exact = inflight.get(key);
+  if (exact || !joins) return exact ?? null;
+  for (const want of [asked, reuse]) {
+    if (!want) continue;
+    for (const f of inflight.values()) if (f.martId === martId && f.version === version && answers(f.parts, want, joins)) return f;
   }
   return null;
 }
@@ -74,17 +87,17 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
       const entry = cache.get(cached.key)!;
       cache.delete(cached.key);
       cache.set(cached.key, entry);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- a hit has no promise to answer through
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the rows are in the render too; state keeps them if the cache drops them
       setState({ key, rows: cached.rows, error: null });
       return;
     }
     const inflight = flightsOf(ctx);
-    let flight = inflight.get(key);
+    let flight = joinable(ctx, key, martId, version, asked, joins, reused) ?? undefined;
     if (!flight && held.current) { skipped.current = key; return; }
     if (!flight) {
       const controller = new AbortController();
       const promise = readRows(ctx, martId, options, { signal: controller.signal });
-      const made: Flight = (flight = { promise, readers: 0, controller });
+      const made: Flight = (flight = { key, promise, readers: 0, controller, martId, version, parts: asked! });
       promise.then(
         (rows) => { if (inflight.get(key) === made) inflight.delete(key); if (!controller.signal.aborted) remember(ctx, key, { rows, martId, version, parts: asked! }); },
         () => { if (inflight.get(key) === made) inflight.delete(key); },
@@ -104,7 +117,7 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
       mine.readers -= 1;
       if (mine.readers === 0) {
         mine.controller.abort();
-        if (inflight.get(key) === mine) inflight.delete(key);
+        if (inflight.get(mine.key) === mine) inflight.delete(mine.key);
       }
     };
     // `key` stands for martId, version and options.
@@ -122,10 +135,12 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
     setAttempt((n) => n + 1);
   }, []);
   // State from an earlier key is stale: show nothing until this key's effect has answered.
-  if (!key) return { rows: null, error: null, loading: false, retry };
+  if (!key) return { rows: null, error: null, loading: false, held: false, retry };
   const current = state.key === key;
   // A cached read for a superset answers on this very render, so the cards show their values with no skeleton.
   const rows = current ? state.rows : lookup(ctx, key, martId, version, asked, joins, reused)?.rows ?? null;
   const error = current ? state.error : null;
-  return { rows, error, loading: !rows && !error, retry };
+  // The effect skips a read for exactly this: held, no rows (a cache hit gives rows), not answered yet, and no read under way to join.
+  const waitingOnHold = hold && !rows && !current && !joinable(ctx, key, martId, version, asked, joins, reused);
+  return { rows, error, loading: !rows && !error, held: waitingOnHold, retry };
 }
