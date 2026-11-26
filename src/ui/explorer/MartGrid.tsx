@@ -142,7 +142,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const martStorage = useMemo(() => { const sid = model.marts.get(martId)?.storageId; return model.storages.find((x) => x.id === sid); }, [model, martId]);
   const martTitles = useMemo(() => new Map([...model.marts].map(([id, m]) => [id, m.title])), [model.marts]);
   const { formatOf, memberFormat, setMember: setFormat } = useColumnFormats(martId, schema, model.marts.get(martId)?.title);
-  const [{ modelVersion }, dispatch] = useStore();
+  const [{ modelVersion, linkCharts, charts: storeCharts }, dispatch] = useStore();
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
   const [visible, setVisible] = useState(initialColumns);
   // Cell or whole-column selection (see below); a changed column order or set drops it.
@@ -469,7 +469,9 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     if (hidden.length > 0) {
       if (!pruneCards.current?.(hidden)) {
         // One load then save at a time per mart, so two quick hides do not both start from the same saved doc. The read is the server's (it waits for this tab's own saves): another tab's newer doc is never written over. The store copy follows, with no Undo step.
-        pruneChain.current = pruneChain.current.then(() => chartSettings.load(martId)).then((cur) => { const next = dropPicksOf(cur, new Set(hidden)); if (next !== cur) { dispatch({ type: 'saveCharts', martId, settings: next }); chartSettings.save(martId, next); } }).catch(() => {});
+        const fromLink = linkCharts[martId] ? storeCharts[martId] : undefined;
+        const read = () => (fromLink ? Promise.resolve(fromLink) : chartSettings.load(martId));
+        pruneChain.current = pruneChain.current.then(read).then((cur) => { const next = dropPicksOf(cur, new Set(hidden)); if (next !== cur) { dispatch({ type: 'saveCharts', martId, settings: next }); chartSettings.save(martId, next); } }).catch(() => {});
       }
     }
     shownNow.current = cols;
@@ -492,7 +494,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     columnStore.save(martId, cols);
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
     return !sameList(cols, visible);
-  }, [shownNow, sources, native, markEdit, agg, applyAgg, visible, columnStore, chartSettings, dispatch, martId, setVisible, setOwn, setUc, setEp, sourcesRead, uc, ep, schema]);
+  }, [shownNow, sources, native, markEdit, agg, applyAgg, visible, columnStore, chartSettings, dispatch, martId, setVisible, setOwn, setUc, setEp, sourcesRead, uc, ep, schema, linkCharts, storeCharts]);
   // A chart menu's choice of a field that is not shown: the shown columns and the new ones, in one edit.
   // In a grouped grid a new column without a rule would become a group key and multiply the rows: a metric gets the function the chart sums it with, a date the chart's bucket (Month when none is known yet). A dimension is a key, as intended.
   const showColumns = useCallback((names: string[], buckets?: Readonly<Record<string, DateBucket>>) => changeColumns([...new Set([...shown, ...names])], (cur) => {

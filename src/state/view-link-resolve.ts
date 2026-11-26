@@ -8,8 +8,11 @@ import { keepUnique, uniqueKey } from '../model/unique-count';
 import { count } from '../ui/format';
 import type { GridState, Selection } from './store';
 import type { DecodedView } from './view-link';
+import type { ChartSettings } from '../charts/settings';
 
 type AppliedView = {
+  /** The link's chart settings, only for a mart this member can open. */
+  charts?: ChartSettings;
   selection: Selection;
   grid: GridState | null;
   search: string;
@@ -130,7 +133,7 @@ export async function resolveView(
   const lostFound = (view.found?.length ?? 0) > 0 && found.length === 0;
   if (lostFound) skipped.found = true;
 
-  return { apply: { selection, grid, search: lostFound ? '' : view.search, found, contextIds, storageIds, folded: view.folded }, skipped };
+  return { apply: { selection, grid, search: lostFound ? '' : view.search, found, contextIds, storageIds, folded: view.folded, ...(selection.martId && selection.martId === view.martId && view.charts ? { charts: view.charts } : {}) }, skipped };
 }
 
 /** The one-line notice for a skipped view, or null when nothing was. */

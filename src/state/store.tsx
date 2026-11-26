@@ -47,6 +47,8 @@ export type State = {
   grids: Record<string, GridState>;
   /** The chart settings the Charts body loaded or saved, per mart. Member edits to them are Undo steps. */
   charts: Record<string, ChartSettings>;
+  /** Marts whose chart settings came from a link this session: the Charts body shows the store copy instead of loading the saved doc. */
+  linkCharts: Record<string, true>;
   /** Chart settings changed by a member action whose grid edit has not been recorded yet: the "before" the grid's step takes along. Valid only while `seq` is the one it was staged at. */
   staged: Record<string, { before: ChartSettings | null; seq: number }>;
   /** The chart settings the last Undo or Redo put back, for saving. Absent after any other action. */
@@ -96,13 +98,13 @@ export type Action =
   | { type: 'releaseGrid'; martId: string }
   | { type: 'rebaseGrid'; martId: string; parts: Partial<GridState> }
   /** A view link opens: everything it carries is set at once. No history entry, so Undo has nothing to undo. */
-  | { type: 'applyView'; selection: Selection; grid: GridState | null; search: string; found?: string[]; contextIds: string[]; storageIds: string[] | null }
+  | { type: 'applyView'; selection: Selection; grid: GridState | null; search: string; found?: string[]; contextIds: string[]; storageIds: string[] | null; charts?: ChartSettings }
   | { type: 'refreshModel' };
 
 export const HISTORY_LIMIT = 20;
 
 const emptySelection: Selection = { sourceKey: null, martId: null, record: null };
-export const initialState: State = { selection: emptySelection, history: [], future: [], search: '', found: [], contextIds: [], storageIds: null, grids: {}, charts: {}, staged: {}, seq: 0, holds: {}, modelVersion: 0 };
+export const initialState: State = { selection: emptySelection, history: [], future: [], search: '', found: [], contextIds: [], storageIds: null, grids: {}, charts: {}, linkCharts: {}, staged: {}, seq: 0, holds: {}, modelVersion: 0 };
 
 /** The source stays selected only when it feeds the mart being selected. */
 const sourceFor = (current: Selection, martId: string, sourceOf: SourceOf): string | null =>
@@ -253,6 +255,7 @@ function reduce(state: State, a: Action): State {
       contextIds: a.contextIds,
       storageIds: a.storageIds,
       grids: a.grid && a.selection.martId ? { ...state.grids, [a.selection.martId]: a.grid } : state.grids,
+      ...(a.charts && a.selection.martId ? { charts: { ...state.charts, [a.selection.martId]: a.charts }, linkCharts: { ...state.linkCharts, [a.selection.martId]: true as const } } : {}),
     };
     case 'refreshModel': return { ...state, modelVersion: state.modelVersion + 1 };
   }
