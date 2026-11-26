@@ -35,6 +35,13 @@ export function swallowPress(press?: Event): void {
   window.addEventListener('pointerdown', next, true);
 }
 
+/** Swallows the click the browser sends after a drag's release, so it does not also act on what is under the pointer. Only the click: mousedown and mouseup pass. */
+export function swallowNextClick(): void {
+  const swallow = (c: MouseEvent) => { c.stopPropagation(); c.preventDefault(); };
+  window.addEventListener('click', swallow, { capture: true, once: true });
+  setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
+}
+
 /**
  * While `active`, a press outside the menu only closes it: `onOutside` runs, and neither the press nor its click reaches the
  * element under the pointer (nothing folds, selects, sorts or starts a drag). `isInside` says which targets belong to the

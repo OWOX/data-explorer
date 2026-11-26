@@ -19,19 +19,22 @@ import { CardClickContext } from './CardClick';
 import { MartCard, SourceCard, contextsOf, martElementId, sourceElementId, type CountState } from './cards';
 import { useCardTransitions } from './transitions';
 import { useCardClick } from './useCardClick';
-import { useCardDrag } from './useCardDrag';
+import { usePressDrag } from './usePressDrag';
+import { closestGridTarget, gridTargets, measureGridDrag, type GridDragView } from './canvas-drag';
 import { edgeOf, edgeOutputAlias, joinAlias, noteFields, relationshipNote } from './relationshipNote';
 import { useOwnAliases } from './useOwnAliases';
 import { litIds, revisionOf, useWires, type Wire } from './wires';
 import { MartsCanvas } from './MartsCanvas';
 import { buildJoinTree, joinableUnder, subtreePaths, type TreeNode } from '../../state/join-tree';
-import { closestGridTarget, gridTargets, measureGridDrag } from './useGridDrag';
 import { DragLines } from './DragLines';
 import { parentPath, pathTitle, shortestSource } from '../../state/join-plan';
 import { useGridFocus } from './useGridFocus';
 import { useLatest } from '../useLatest';
 import type { Matched } from './matched';
 import type { JoinedSource } from '../../api/blendable';
+
+/** A card in hand: the pointer in client coordinates; `inside` is whether it is over the Data Marts band, where a release counts; `view` is what the Grid draws from this move. */
+type CardDrag<V> = { path: string; martId: string; title: string; x: number; y: number; inside: boolean; view: V };
 
 type MartsView = 'grid' | 'canvas';
 export const MARTS_HINT =
@@ -170,17 +173,18 @@ export function CardBands({
   // Marts joined below the main one name their own joins: the lines under them read those names.
   const own = useOwnAliases();
   // Only joined cards are dragged: dropped near another mart they are rejoined under it. Making a mart main is the header's button.
-  const drag = useCardDrag(
-    canvas,
-    (id) => model.marts.get(id)?.title ?? id,
-    (path, x, y) => {
-      const node = canvasTree?.nodes.get(path);
-      const pick = closestGridTarget(gridTargets(canvas.current, canvasTree, joinSources, path), x, y);
+  const drag = usePressDrag<CardDrag<GridDragView>>(canvas, {
+    pick: (t) => { const card = t.closest<HTMLElement>('[data-mart-id][data-path]'); const path = card?.dataset.path; return card && path ? { path, martId: card.dataset.martId! } : null; },
+    canDrag: (path) => view === 'grid' && canvasTree?.nodes.has(path) === true && path !== '',
+    // Only the Data Marts band's body counts, as the Graph's scroll box does: a release over the other bands does nothing.
+    over: (e, root) => e.target instanceof Element && !!e.target.closest('#band-marts .dm-band-body') && root.contains(e.target),
+    view: (p, e, inside) => ({ path: p.path, martId: p.martId!, title: model.marts.get(p.martId!)?.title ?? p.martId!, x: e.clientX, y: e.clientY, inside, view: measureGridDrag(canvas.current, canvasTree, joinSources, p.path, e.clientX, e.clientY, inside) }),
+    drop: (p, e) => {
+      const node = canvasTree?.nodes.get(p.path);
+      const pick = closestGridTarget(gridTargets(canvas.current, canvasTree, joinSources, p.path), e.clientX, e.clientY);
       if (node && pick && pick.moves.size > 0) void click(node.martId, { moves: pick.moves });
     },
-    (path) => view === 'grid' && canvasTree?.nodes.has(path) === true && path !== '',
-    (path, x, y, inside) => measureGridDrag(canvas.current, canvasTree, joinSources, path, x, y, inside),
-  );
+  });
   // The tree and main mart of the latest render: a click that resolves later checks what its step left, not what it was started on.
   const latestTree = useLatest({ main: mainFor, tree: canvasTree });
   // A card added from the band moves from the outside list to the report list, so React remounts it and focus would drop to the page:

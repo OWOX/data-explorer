@@ -109,7 +109,7 @@ test('with joined sources not loaded, the canvas shows the main card alone', asy
   const model = { marts: new Map([['orders', mart]]), sources: [], edges: [], contexts: [], failedStorages: [] } as unknown as Model;
   render(
     <TooltipProvider>
-      <MartsCanvas model={model} mainId="orders" columns={['id']} sources={null} counts={new Map()} dq={new Map()} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
+      <MartsCanvas model={model} mainId="orders" columns={['id']} sources={null} counts={new Map()} dq={new Map()} own={() => undefined} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
     </TooltipProvider>,
   );
   expect(document.querySelectorAll('article')).toHaveLength(1);
@@ -498,7 +498,7 @@ test('a pin does not come back when the main mart goes away and returns', async 
   const joined = [{ aliasPath: 'b', martId: 'b', label: 'B', depth: 1, fields: [{ name: 'b__x', alias: 'x', type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: 'b', label: 'B', aliasPath: 'b', originalName: 'x' } }], uniqueCount: true }] as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
   const view = (mainId: string) => (
     <TooltipProvider>
-      <MartsCanvas model={model} mainId={mainId} columns={['id']} sources={joined} counts={new Map()} dq={new Map()} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
+      <MartsCanvas model={model} mainId={mainId} columns={['id']} sources={joined} counts={new Map()} dq={new Map()} own={() => undefined} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
     </TooltipProvider>
   );
   const { rerender } = render(view('a'));
@@ -661,7 +661,7 @@ test('Graph: three relationships from one mart to another each name their own li
   const joined = [path('first_session', 'r1'), path('last_session_before_mql', 'r2'), path('session_entity', 'r3')] as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
   render(
     <TooltipProvider>
-      <MartsCanvas model={model} mainId="contact" columns={['id', 'first_session__x', 'last_session_before_mql__x', 'session_entity__x']} sources={joined} counts={new Map()} dq={new Map()} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
+      <MartsCanvas model={model} mainId="contact" columns={['id', 'first_session__x', 'last_session_before_mql__x', 'session_entity__x']} sources={joined} counts={new Map()} dq={new Map()} own={() => undefined} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
     </TooltipProvider>,
   );
   const tip = (path: string) => document.querySelector<SVGPathElement>(`#tree-wires path[data-to="${martElementId('session', path)}"]`)!.dataset.tip!;
@@ -685,7 +685,7 @@ test('Graph: a line says the join\'s Output Alias, not the relationship\'s techn
   const joined = [path('first_session', 'r1', 'First Session'), path('session_entity_new_sql', 'r2', 'Last Session')] as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
   render(
     <TooltipProvider>
-      <MartsCanvas model={model} mainId="visitor" columns={['id', 'first_session__x', 'session_entity_new_sql__x']} sources={joined} counts={new Map()} dq={new Map()} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
+      <MartsCanvas model={model} mainId="visitor" columns={['id', 'first_session__x', 'session_entity_new_sql__x']} sources={joined} counts={new Map()} dq={new Map()} own={() => undefined} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
     </TooltipProvider>,
   );
   const tip = (path: string) => document.querySelector<SVGPathElement>(`#tree-wires path[data-to="${martElementId('session', path)}"]`)!.dataset.tip!;
@@ -718,7 +718,7 @@ const small = (marts: Mart[], click = vi.fn().mockResolvedValue(undefined), path
   const joined = marts.slice(1).map((m) => src(m.id, paths[m.id] ?? m.id)) as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
   render(
     <TooltipProvider>
-      <MartsCanvas model={model} mainId={marts[0]!.id} columns={columns} sources={joined} counts={new Map()} dq={new Map()} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={click} />
+      <MartsCanvas model={model} mainId={marts[0]!.id} columns={columns} sources={joined} counts={new Map()} dq={new Map()} own={() => undefined} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={click} />
     </TooltipProvider>,
   );
   return click;
@@ -1072,7 +1072,7 @@ describe('on fake timers', () => {
     const joined = [src('b'), src('c'), src('d', 'b.d')] as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
     const view = (columns: string[]) => (
       <TooltipProvider>
-        <MartsCanvas model={model} mainId="a" columns={columns} sources={joined} counts={new Map()} dq={new Map()} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
+        <MartsCanvas model={model} mainId="a" columns={columns} sources={joined} counts={new Map()} dq={new Map()} own={() => undefined} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
       </TooltipProvider>
     );
     const { rerender } = render(view(['id', 'b__x']));
@@ -1215,7 +1215,7 @@ describe('on fake timers', () => {
     const joined = [src('b'), src('c'), src('d', 'b.d'), src('e', 'c.e')] as unknown as Parameters<typeof MartsCanvas>[0]['sources'];
     const view = (columns: string[]) => (
       <TooltipProvider>
-        <MartsCanvas model={model} mainId="a" columns={columns} sources={joined} counts={new Map()} dq={new Map()} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
+        <MartsCanvas model={model} mainId="a" columns={columns} sources={joined} counts={new Map()} dq={new Map()} own={() => undefined} onOpenApp={vi.fn()} onRetryCount={vi.fn()} onRequestCount={vi.fn()} click={vi.fn().mockResolvedValue(undefined)} />
       </TooltipProvider>
     );
     const { rerender } = render(view(['id', 'b__x']));

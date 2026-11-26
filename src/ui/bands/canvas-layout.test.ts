@@ -27,7 +27,7 @@ test('a lone main mart sits at the origin', () => {
 });
 
 test('ghosts take the next column after their parent, stacked from the parent row', () => {
-  const r = layoutTree(tree([['', null, ['a']], ['a', '', []]]), { path: 'a', ids: ['g1', 'g2'] });
+  const r = layoutTree(tree([['', null, ['a']], ['a', '', []]]), [{ path: 'a', ids: ['g1', 'g2'] }]);
   expect(r.ghosts).toEqual([
     { id: 'g1', x: 2 * (CARD_W + COL_GAP), y: 0 },
     { id: 'g2', x: 2 * (CARD_W + COL_GAP), y: CARD_H + ROW_GAP },
@@ -37,13 +37,13 @@ test('ghosts take the next column after their parent, stacked from the parent ro
 });
 
 test('ghosts of a parent with children go below its real children', () => {
-  const r = layoutTree(tree([['', null, ['a', 'b']], ['a', '', []], ['b', '', []]]), { path: '', ids: ['g1'] });
+  const r = layoutTree(tree([['', null, ['a', 'b']], ['a', '', []], ['b', '', []]]), [{ path: '', ids: ['g1'] }]);
   expect(r.ghosts).toEqual([{ id: 'g1', x: CARD_W + COL_GAP, y: 2 * (CARD_H + ROW_GAP) }]);
   expect(r.height).toBe(3 * CARD_H + 2 * ROW_GAP);
 });
 
 test('ghosts of a leaf go below a cousin in the same column', () => {
-  const r = layoutTree(tree([['', null, ['a', 'b']], ['a', '', []], ['b', '', ['b.x', 'b.y']], ['b.x', 'b', []], ['b.y', 'b', []]]), { path: 'a', ids: ['g'] });
+  const r = layoutTree(tree([['', null, ['a', 'b']], ['a', '', []], ['b', '', ['b.x', 'b.y']], ['b.x', 'b', []], ['b.y', 'b', []]]), [{ path: 'a', ids: ['g'] }]);
   expect(r.ghosts).toEqual([{ id: 'g', x: 2 * (CARD_W + COL_GAP), y: 3 * (CARD_H + ROW_GAP) }]);
   expect(r.ghosts[0]!.y).toBeGreaterThan(at(r, 'b.y').y);
 });
@@ -57,8 +57,8 @@ test('a joined parent whose first child is itself a parent is centred on fractio
 
 test('an unknown extra path or empty ids adds no ghosts', () => {
   const t = tree([['', null, ['a']], ['a', '', []]]);
-  expect(layoutTree(t, { path: 'nope', ids: ['g'] }).ghosts).toEqual([]);
-  const r = layoutTree(t, { path: 'a', ids: [] });
+  expect(layoutTree(t, [{ path: 'nope', ids: ['g'] }]).ghosts).toEqual([]);
+  const r = layoutTree(t, [{ path: 'a', ids: [] }]);
   expect(r.ghosts).toEqual([]);
   expect(r.width).toBe(2 * CARD_W + COL_GAP);
 });
