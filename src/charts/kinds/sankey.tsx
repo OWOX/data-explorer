@@ -1,11 +1,10 @@
-import { Columns3, EllipsisVertical, Gauge, Waypoints } from 'lucide-react';
+import { Columns3, EllipsisVertical, Waypoints } from 'lucide-react';
 import { useMemo } from 'react';
 import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import type { Row } from '../../sdk/types';
-import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
-import { axisTitle, fieldGroups, measureGroups } from '../menuGroups';
+import { axisTitle, fieldGroups, metricItem } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { dimensionFilter } from '../clickFilters';
 import { menuOf, pathOf, pieMeasures, sankeyMeasures } from '../fields';
@@ -71,7 +70,7 @@ export const withColumns = (names: string[], count: number, all: Field[]): strin
   return next;
 };
 
-function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<SankeyR>) {
+function SankeyPanel({ martId, cf, title, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<SankeyR>) {
   const { dims, measure, exact } = r;
   const n = dims.length;
   // Fewer than two columns draws nothing and reads nothing: the notice says what to pick.
@@ -117,15 +116,14 @@ function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
   const items: MenuItem[] = [
     { kind: 'group', label: 'Columns', icon: Columns3, items: columnItems, draggable: n,
       onReorder: (from, to) => { const next = moveColumn(names, from, to); if (next.join('\n') !== names.join('\n')) onChange({ dimensions: next }); } },
-    { kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(menuOf(cf), pieMeasures(menuOf(cf))), onPick: (v: string) => onChange({ measure: v }) },
+    metricItem(cf, measureId(measure), pieMeasures(menuOf(cf)), onChange),
     ...tail,
   ];
   // Memoised on its inputs so a re-render with the same columns and metric keeps the ribbons.
   const ribbonShare = useMemo(() => dims.map((d) => sankeyMeasures(cf, [d]).some((m) => measureId(m) === measureId(measure))), [cf, dims, measure]);
-  const title = sankey.title(r, cf);
   return (
-    <ChartPanel title={title} name="Sankey" items={ready ? items : null} width={sankeyWidth(n)}
-      loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})} empty={empty ? (short ? MISCONFIGURED_NOTE : data!.negative ? NEGATIVE_NOTE : emptyText(hasFilters)) : null}
+    <ChartPanel title={title} name="Sankey" items={items} ready={ready} width={sankeyWidth(n)}
+      loading={loading} failed={failed} empty={empty && (short ? MISCONFIGURED_NOTE : data!.negative ? NEGATIVE_NOTE : true)} hasFilters={hasFilters}
       note={data && !data.negative ? [data.capped ? cappedNote(SANKEY_FLOW_LIMIT) : '', data.columnCapped ? columnCappedNote(SANKEY_COLUMN_LIMIT) : '', exact ? '' : FAN_OUT_NOTE].filter(Boolean).join(' ') || undefined : undefined}>
       {data && <Sankey titles={dims.map((d) => axisTitle(cf, d))} columns={data.columns} flows={data.flows} fit={!exact} ribbonShare={ribbonShare} ariaLabel={title} text={(v) => measureText(measure, v, formatOf, SANKEY_TEXT)}
         onPickNode={(col, key) => onFilter([dimensionFilter(dims[col]!, key)])}

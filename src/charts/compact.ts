@@ -1,5 +1,5 @@
 // Scorecard numbers in short form (1.6M, $117K): the exact value stays one hover away.
-import { formatsFor, type Format } from '../format/formats';
+import { formatsFor, formatValue, type Format } from '../format/formats';
 import { categorizeFieldType } from '../model/field-category';
 import { toNumber } from '../model/number';
 
@@ -27,3 +27,6 @@ export function compactValue(v: unknown, type: string, f: Format): string | null
   if (f.kind === 'auto' || f.kind === 'plain' || !formatsFor(type).includes(f.kind)) return plain.format(n);
   return null;
 }
+
+/** An axis tick in the measure's format: short ($10.2K) when it has a short form, else the value rounded to 2 decimals unless the format scales or rounds it itself. */
+export const tickText = (n: number, type: string, format: Format): string => compactValue(n, type, format) ?? formatValue(format.kind === 'percent' || format.kind === 'money' ? n : Number(n.toFixed(2)), type, format);

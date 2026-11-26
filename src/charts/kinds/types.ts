@@ -8,7 +8,7 @@ import type { Formatter } from '../Scorecards';
 import type { ChartKind, ChartSpec, Spark } from '../settings';
 
 export type PanelProps<R> = {
-  martId: string; cf: ChartFields; spec: ChartSpec; r: R; spark: Spark; filter: TraverseFilter[]; version: number; idle: boolean;
+  martId: string; cf: ChartFields; title: string; r: R; spark: Spark; filter: TraverseFilter[]; version: number; idle: boolean;
   hasFilters: boolean; formatOf: Formatter; ready: boolean;
   /** Rows every panel menu ends with (Chart type, Duplicate, Hide), built by ChartsBody. */
   tail: MenuItem[];

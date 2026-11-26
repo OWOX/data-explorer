@@ -16,7 +16,7 @@ vi.mock('./useChartQuery', () => ({
 }));
 
 const dim = { name: 'city', category: 'string' } as Field;
-const run = (withOther: boolean) => renderHook(() => useTopValues({ martId: 'm', cf: { counter: 'Count' } as never, dim, measure: { kind: 'records', aliasPath: '', recordsId: 'm' }, filter: [], version: 0, idle: false, withOther })).result.current;
+const run = (withOther: boolean) => renderHook(() => useTopValues({ martId: 'm', counter: 'Count' as never, dim, measure: { kind: 'records', aliasPath: '', recordsId: 'm' }, filter: [], version: 0, idle: false, withOther })).result.current;
 
 test('without Other, a full top list still waits for the blank read', () => {
   reads.blank = null;

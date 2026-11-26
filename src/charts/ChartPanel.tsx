@@ -1,6 +1,7 @@
 import { Copy } from 'lucide-react';
 import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ErrorBox } from '../ui/ErrorBox';
+import { emptyText } from '../ui/format';
 import { Skeleton } from '../ui/Skeleton';
 import { Toast } from '../ui/Toast';
 import { Hint } from '../ui/Tooltip';
@@ -40,11 +41,16 @@ function useMeasuredHeight() {
   return { inner, height, moving };
 }
 
-/** One chart's frame: title, extra buttons, its ⋮ menu (null before the saved settings load) and the width its content needs, on whole cells. A size the member dragged it to wins. */
-export function ChartPanel({ title, name, items, extra, width, loading, error, onRetry, empty, note, children }: {
-  title: string; name: string; items: MenuItem[] | null; extra?: ReactNode; width: string;
-  loading: boolean; error: unknown; onRetry: () => void; empty?: string | null; note?: string; children: ReactNode;
+/** One chart's frame: title, its ⋮ menu (none before the saved settings load, so `ready` gates `items`) and the width its content needs, on whole cells. A size the member dragged it to wins. */
+export function ChartPanel({ title, name, items, ready, width, loading, failed, empty, hasFilters, note, children }: {
+  title: string; name: string; items: MenuItem[]; ready: boolean; width: string;
+  loading: boolean; failed?: { error: unknown; retry: () => void } | null;
+  /** True shows the standard empty text for `hasFilters`; a string shows that text. */
+  empty?: boolean | string; hasFilters: boolean; note?: string; children: ReactNode;
 }) {
+  const menu = ready ? items : null;
+  const error = failed?.error;
+  const emptyNote = empty === true ? emptyText(hasFilters) : empty || null;
   const { inner, height, moving } = useMeasuredHeight();
   const frame = useContext(ChartFrameContext);
   // The size under the pointer while a handle is dragged; it is saved on release.
@@ -55,7 +61,7 @@ export function ChartPanel({ title, name, items, extra, width, loading, error, o
   const [toast, setToast] = useState<{ text: string; tone: 'success' | 'info' | 'error'; at: number } | null>(null);
   const say = (text: string, tone: 'success' | 'info' | 'error') => setToast((t) => ({ text, tone, at: (t?.at ?? 0) + 1 }));
   const copy: MenuItem = { kind: 'action', label: 'Copy to clipboard', icon: Copy, onPick: () => {
-    if (!section || loading || error || empty) { say('Nothing to copy yet', 'info'); return; }
+    if (!section || loading || error || emptyNote) { say('Nothing to copy yet', 'info'); return; }
     copyChart(section, title).then(
       (how) => how === 'copied' ? say('Chart copied', 'success')
         : how === 'downloaded' ? say('Clipboard is blocked here, the chart was downloaded as PNG', 'info')
@@ -63,8 +69,8 @@ export function ChartPanel({ title, name, items, extra, width, loading, error, o
       () => say("The chart couldn't be copied", 'error'),
     );
   } };
-  const at = items ? items.findLastIndex((i) => i.kind === 'action' && i.label === 'Hide') : -1;
-  const withCopy = items ? (at >= 0 ? [...items.slice(0, at), copy, ...items.slice(at)] : [...items, copy]) : null;
+  const at = menu ? menu.findLastIndex((i) => i.kind === 'action' && i.label === 'Hide') : -1;
+  const withCopy = menu ? (at >= 0 ? [...menu.slice(0, at), copy, ...menu.slice(at)] : [...menu, copy]) : null;
   return (
     <section ref={setSection} className="dm-chart" data-chart-kind={name} data-fill={fill || undefined} data-dragging={!!draft || undefined} style={{ width: frame ? panelWidth(size, width) : width, ...(fill ? { height: size.rows! * CELL } : {}) }}>
       <header className="dm-chart-head">
@@ -72,13 +78,13 @@ export function ChartPanel({ title, name, items, extra, width, loading, error, o
           <h3 className="dm-chart-title">{title}</h3>
           {note && <Hint text={note} label={`About ${title}`} />}
         </div>
-        {items && <div className="dm-chart-actions">{extra}<ChartMenu name={name} items={withCopy ?? items} /></div>}
+        {menu && <div className="dm-chart-actions"><ChartMenu name={name} items={withCopy ?? menu} /></div>}
       </header>
       <div className="dm-chart-body" data-moving={moving || undefined} style={height === null || fill ? undefined : { height }}>
         <div ref={inner} className="dm-chart-fit">
-          {error ? <ErrorBox error={error} onRetry={onRetry} />
+          {failed ? <ErrorBox error={error} onRetry={failed.retry} />
             : loading ? <Skeleton rows={4} />
-            : empty ? <p className="dm-muted dm-chart-empty">{empty}</p>
+            : emptyNote ? <p className="dm-muted dm-chart-empty">{emptyNote}</p>
             : <FillContext value={fill}>{children}</FillContext>}
         </div>
       </div>

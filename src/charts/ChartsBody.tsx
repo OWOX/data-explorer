@@ -113,7 +113,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   // Hidden charts resolve to nothing, so they mount no panel and read nothing.
   const drawn = useMemo(() => specs.map((spec) => {
     const def = KINDS[spec.kind];
-    return { spec, def, r: def && !spec.hidden ? def.resolve(spec, cf) : null };
+    return { spec, def, r: spec.hidden ? null : def.resolve(spec, cf) };
   }), [specs, cf]);
   // The sparklines draw on the first shown chart's date and bucket; with none, the first date shown, by Auto.
   const lead = drawn.find((d) => d.r && (d.r as { date?: unknown }).date)?.r as { date: Field; bucket?: DateBucket | 'AUTO' } | undefined;
@@ -124,8 +124,8 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   const scores = useScorecards(martId, cf, filter, version, idle, joins, kept);
   // The Charts group of the config menu names every chart, hidden ones included; memoized so a resize resolves nothing again.
   const resolved = useMemo(() => drawn.map(({ spec, def }) => {
-    const r = def?.resolve({ ...spec, hidden: false }, cf) ?? null;
-    return { spec, title: def && r ? def.title(r, cf) : null };
+    const r = def.resolve({ ...spec, hidden: false }, cf);
+    return { spec, title: r ? def.title(r, cf) : null };
   }), [drawn, cf]);
   // A chosen field that is not a shown column is added to the grid with the choice. Records ids and Off ('') name no column.
   // A newly shown date is truncated by the chart's bucket: the one picked with it, else the chart's own when concrete, else the one the charts resolved.
@@ -187,9 +187,9 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
               the scorecards (the same 0.75rem inset) and stay in view however wide the table is. */}
           <div data-chart-panels data-resizing={resizing || undefined} className="dm-chart-panels sticky" style={{ left: GUTTER_PX, width: Math.max(0, scrollerWidth - GUTTER_PX) }}>
             {/* eslint-disable-next-line react-hooks/refs -- `change` is only called from handlers */}
-            {drawn.map(({ spec, def, r }) => def && r ? (
+            {drawn.map(({ spec, def, r }, i) => r ? (
               <ChartFrameContext key={spec.id} value={{ size: spec.size ?? NO_SIZE, resizing, cancelDrag, onResize: (size) => change((cur) => patchChart(cur, spec.id, { size })) }}>
-              <def.Panel martId={martId} cf={cf} spec={spec} r={r} spark={spark} filter={filter} version={version} idle={idle}
+              <def.Panel martId={martId} cf={cf} title={resolved[i]!.title!} r={r} spark={spark} filter={filter} version={version} idle={idle}
                 hasFilters={hasFilters} formatOf={formatOf} ready={!!settings} tail={tailItems({ cf, spec, change, resizing, onResizing: setResizing })}
                 onChange={(p: Partial<ChartSpec>) => { showPicked(spec, p); change((cur) => patchChart(cur, spec.id, p)); }} onFilter={onFilter} />
               </ChartFrameContext>

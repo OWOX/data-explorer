@@ -86,8 +86,8 @@ export function chartListItem({ cf, settings, resolved, change }: { cf: ChartFie
       ...resolved.map(({ spec, title }): MenuItem => ({
         kind: 'check',
         // A chart that cannot draw with the shown columns keeps its place and setup; its title needs fields, so it is named by type.
-        label: title ?? `${KINDS[spec.kind]?.label ?? spec.kind} (columns hidden)`,
-        icon: KINDS[spec.kind]?.icon ?? ChartColumn,
+        label: title ?? `${KINDS[spec.kind].label} (columns hidden)`,
+        icon: KINDS[spec.kind].icon,
         checked: !spec.hidden,
         onToggle: () => change((cur) => patchChart(cur, spec.id, { hidden: !spec.hidden })),
       })),

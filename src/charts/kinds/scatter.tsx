@@ -1,24 +1,23 @@
-import { ChartScatter, Gauge, Shapes } from 'lucide-react';
+import { ChartScatter, Gauge } from 'lucide-react';
 import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
-import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
-import { fieldGroups, measureAxisTitle, measureGroups } from '../menuGroups';
+import { dimensionItem, measureAxisTitle, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { keyOf, labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
+import { tickText } from '../compact';
 import { measuresOf, menuOf } from '../fields';
 import { measureKey, SCATTER_LIMIT, scatterQuery, type Measure } from '../queries';
 import { isIntegerMeasure, measureFormat, measureLabel, measureText, numberOf } from '../Scorecards';
 import { measureId, pickField, pickMeasure } from '../settings';
 import { Scatter, type Dot } from '../svg/Scatter';
 import { useChartQuery } from '../useChartQuery';
-import { tickText } from './timeSeries';
 import { BOX_WIDTH, carry, type ChartKindDef, type PanelProps } from './types';
 
 export type ScatterR = { dimension: Field; x: Measure; y: Measure };
 
-function ScatterPanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<ScatterR>) {
+function ScatterPanel({ martId, cf, title, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<ScatterR>) {
   const { dimension: dim, x, y } = r;
   const read = useChartQuery(martId, idle ? null : scatterQuery(dim, x, y, filter), version);
   const [xk, yk] = [measureKey(x), measureKey(y)];
@@ -32,16 +31,15 @@ function ScatterPanel({ martId, cf, r, filter, version, idle, hasFilters, format
   const [yt, yf] = measureFormat(y, formatOf);
   const all = measuresOf(menuOf(cf));
   const items: MenuItem[] = [
-    { kind: 'radio', label: 'Dimension', icon: Shapes, value: dim.name, options: [], groups: fieldGroups(menuOf(cf), menuOf(cf).dimensions), onPick: (v) => onChange({ dimension: v }) },
+    dimensionItem(cf, dim.name, onChange),
     { kind: 'radio', label: 'X metric', icon: Gauge, value: measureId(x), options: [], groups: measureGroups(menuOf(cf), all), onPick: (v) => onChange({ measure: v }) },
     { kind: 'radio', label: 'Y metric', icon: Gauge, value: measureId(y), options: [], groups: measureGroups(menuOf(cf), all.filter((m) => measureId(m) !== measureId(x))), onPick: (v) => onChange({ measure2: v }) },
     ...tail,
   ];
-  const title = `${measureLabel(cf, y, [x, y])} vs ${measureLabel(cf, x, [x, y])} per ${fieldLabel(dim)}`;
   const full = read.rows?.length === SCATTER_LIMIT;
   return (
-    <ChartPanel title={title} name="Scatter" items={ready ? items : null} width={BOX_WIDTH}
-      loading={!read.rows && !read.error} error={read.error} onRetry={read.retry} empty={read.rows?.length === 0 ? emptyText(hasFilters) : null}
+    <ChartPanel title={title} name="Scatter" items={items} ready={ready} width={BOX_WIDTH}
+      loading={!read.rows && !read.error} failed={read.error ? read : null} empty={read.rows?.length === 0} hasFilters={hasFilters}
       note={full ? `Only the ${SCATTER_LIMIT} values with the largest ${measureLabel(cf, x, [x, y])} are drawn.` : undefined}>
       {read.rows && <Scatter points={points} ariaLabel={title} xTitle={measureAxisTitle(cf, x)} yTitle={measureAxisTitle(cf, y)}
         formatX={(n) => tickText(n, xt, xf)} formatY={(n) => tickText(n, yt, yf)} integerX={isIntegerMeasure(x)} integerY={isIntegerMeasure(y)} onPick={(k) => onFilter([dimensionFilter(dim, k)])} />}
