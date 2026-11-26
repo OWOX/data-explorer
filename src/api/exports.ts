@@ -4,7 +4,7 @@ import type { SortKey } from '../model/sort';
 import type { Schema } from '../model/types';
 import { sleep } from './sleep';
 import type { Ctx, DestinationDto, ReportDto, TraverseFilter } from '../sdk/types';
-import { errorMessage } from '../model/guards';
+import { errorMessage, isNotFound } from '../model/guards';
 
 export const EXPORTS_COLLECTION = 'exports';
 export const MAX_EXPORT_SORTS = 10;
@@ -107,18 +107,16 @@ export class ExportError extends Error {
 export const REPORT_GONE = 'This report no longer exists in OWOX';
 /** The update failed because OWOX no longer has the report. */
 export const isGone = (e: unknown): e is ExportError => e instanceof ExportError && e.gone;
-/** The SDK transport puts its code on `payload`; a plain `code` is kept as a fallback. */
+/** The SDK transport puts its code on `payload`. */
 const codeOf = (e: unknown) => {
-  const x = e as { payload?: { code?: string; status?: number }; code?: string } | null;
+  const x = e as { payload?: { code?: string; status?: number } } | null;
   const status = x?.payload?.status;
   // A gateway error says nothing about whether the request got through.
   if (status === 502 || status === 504) return `HTTP_${status}`;
-  return x?.payload?.code ?? x?.code;
+  return x?.payload?.code;
 };
 /** The answer to a report POST was lost or came from a gateway: the report may exist, so the step must not be retried. */
 export const reportMayExist = (e: unknown) => e instanceof ExportError && e.stage === 'report' && ['TIMEOUT', 'NETWORK_ERROR', 'HTTP_502', 'HTTP_504'].includes(e.code ?? '');
-/** The SDK transport puts the HTTP status on `payload`; a plain `status` is kept as a fallback. */
-export const isNotFound = (e: unknown) => { const x = e as { payload?: { status?: number }; status?: number } | null; return (x?.payload?.status ?? x?.status) === 404; };
 
 export type Outcome = { state: 'success' | 'failed' | 'timeout' | 'busy'; error?: string };
 export type ExportSource =
@@ -161,7 +159,7 @@ export interface Exporter {
   /** One export at a time per mart: a second `run` for a mart that has one in flight is refused. */
   run(a: {
     martId: string; destination: DestinationDto; title: string; source: ExportSource; payload: ReportPayload;
-    notes?: string[]; onStage?: (s: Stage) => void; signal?: AbortSignal;
+    notes?: string[]; signal?: AbortSignal;
   }): Promise<RunResult>;
   /** The export in flight for a mart, or one that finished while nobody followed it, until `acknowledge`. */
   inFlight(martId: string): Flight | undefined;
@@ -185,7 +183,7 @@ export function createExporter(ctx: Ctx): Exporter {
 
   const emit = (martId: string) => listeners.get(martId)?.forEach((l) => l());
 
-  /** The stored document as the slim list; older documents carried more fields, so only the id and a string `usedAt` are kept. */
+  // Only a string id and a string usedAt are kept: anything else in a stored entry is ignored.
   const parseDoc = (found: { document: ExportsDoc } | null | undefined): StoredReport[] =>
     (Array.isArray(found?.document.reports) ? found!.document.reports.filter((r) => r && typeof r.reportId === 'string') : [])
       .map((r) => ({ reportId: r.reportId, ...(typeof r.usedAt === 'string' ? { usedAt: r.usedAt } : {}) }));
@@ -352,7 +350,7 @@ export function createExporter(ctx: Ctx): Exporter {
         promise: undefined as unknown as Promise<RunResult>,
         subscribe(cb) { stageListeners.add(cb); return () => stageListeners.delete(cb); },
       };
-      const onStage = (s: Stage) => { flight.stage = s; a.onStage?.(s); stageListeners.forEach((l) => l(s)); };
+      const onStage = (s: Stage) => { flight.stage = s; stageListeners.forEach((l) => l(s)); };
       const settle = () => { flight.settled = true; };
       flight.promise = execute({ ...a, onStage }).then(
         (result) => {
@@ -381,12 +379,12 @@ export function createExporter(ctx: Ctx): Exporter {
     },
   };
 
-  async function execute({ martId, destination, title, source, payload, onStage, signal }: Parameters<Exporter['run']>[0]): Promise<RunResult> {
+  async function execute({ martId, destination, title, source, payload, onStage, signal }: Parameters<Exporter['run']>[0] & { onStage: (s: Stage) => void }): Promise<RunResult> {
       let report: ExportedReport;
       // The report as the backend returned it: when this export made it, or, for an update, when it was read just before the PUT.
       let knownDto: ReportDto | undefined;
       if (source.kind === 'update') {
-        onStage?.('report');
+        onStage('report');
         const r = source.report;
         // What the PUT sends, which is also what the result reports (its link must open the sheet the data went to).
         let sent: typeof r;
@@ -421,14 +419,14 @@ export function createExporter(ctx: Ctx): Exporter {
           const kept = leftBehind.get(martId);
           if (kept && (kept.target.spreadsheetId !== target.spreadsheetId || kept.target.sheetId !== target.sheetId)) leftBehind.delete(martId);
         } else {
-          onStage?.('sheet');
+          onStage('sheet');
           try {
             const d = await ctx.owox.postJson<DocumentDto>(`/api/data-destinations/${encodeURIComponent(destination.id)}/google-sheets/documents`, { title });
             if (!isSheetTarget(d)) throw new Error('OWOX returned an unrecognised spreadsheet');
             target = { spreadsheetId: d.spreadsheetId, sheetId: d.sheetId };
           } catch (e) { throw new ExportError('sheet', errorMessage(e)); }
         }
-        onStage?.('report');
+        onStage('report');
         try {
           const created = await ctx.owox.postJson<ReportDto>('/api/reports', { title, dataMartId: martId, dataDestinationId: destination.id, destinationConfig: destinationConfig(target), ...payload });
           knownDto = created;
@@ -442,7 +440,7 @@ export function createExporter(ctx: Ctx): Exporter {
         // Remembered before the run: a failed run leaves a report the member can update.
         await touch(martId, report.reportId, report.usedAt!);
       }
-      onStage?.('run');
+      onStage('run');
       try {
         // A report made a moment ago, or an update's report read before its PUT, carries its run status and time already.
         const pre = knownDto ?? await ctx.owox.getJson<ReportDto>(`/api/reports/${encodeURIComponent(report.reportId)}`);

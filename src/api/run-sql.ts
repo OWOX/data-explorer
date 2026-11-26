@@ -1,5 +1,5 @@
 import type { Ctx } from '../sdk/types';
-import { isNotFound } from './exports';
+import { isNotFound } from '../model/guards';
 import { sleep } from './sleep';
 
 /** The SQL a grid query ran, or why it is not available. */

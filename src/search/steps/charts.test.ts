@@ -22,9 +22,6 @@ it('keeps the default charts when the member saved none', () => {
   const merged = mergeCharts({}, [c('pie', 'pie')], 1);
   expect(merged.charts!.map((s) => s.id)).toEqual(['ai-pie-1-0', 'time-series', 'pie']);
 });
-it('saves version 2 settings so the charts survive a reload', () => {
-  expect(mergeCharts({}, [c('pie', 'pie')], 1).version).toBe(2);
-});
 it('does not treat charts with different second measures as equal', () => {
   const sc = { key: 'scatter', spec: { kind: 'scatter' as const, dimension: 'country', measure: 'spend', measure2: 'clicks' } };
   const merged = mergeCharts({ charts: [{ id: 'm', kind: 'scatter', dimension: 'country', measure: 'spend', measure2: 'cost' }] }, [sc], 1);

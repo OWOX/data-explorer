@@ -21,7 +21,7 @@ export type ChartSpec = {
   dimension?: string; dimension2?: string; /** A Sankey's columns, left to right (2 to 5 dimensions). */ dimensions?: string[]; stack?: string | null; orientation?: Orientation; area?: boolean;
 };
 /** `metrics` is the measure each card shows when it is not the card's own: card id (its default's saved id) to measure id. `dates` is the date field each card's sparkline is drawn on: card id to field name. */
-export type ChartSettings = { version?: 2; scorecards?: { hidden?: string[]; sparklines?: boolean; metrics?: Record<string, string>; dates?: Record<string, string> }; charts?: ChartSpec[] };
+export type ChartSettings = { scorecards?: { hidden?: string[]; sparklines?: boolean; metrics?: Record<string, string>; dates?: Record<string, string> }; charts?: ChartSpec[] };
 /** What the scorecards need: hidden cards, the sparklines switch, each card's picked measure, the date each card picked for its trend, and the default date the trends are drawn on. */
 export type Spark = { hidden: Set<string>; sparklines: boolean; metrics: Record<string, string>; dates: Record<string, string>; date: Field | null };
 
@@ -38,7 +38,7 @@ export const pickBucketChoice = (v: unknown): DateBucket | 'AUTO' => (v === 'AUT
 
 let seq = 0;
 export const newChartId = (): string => `c-${Date.now().toString(36)}-${(seq++).toString(36)}`;
-/** One edit of the list: the saved list, or the defaults it stands for, with `edit` applied. Always version 2. */
-export const editCharts = (s: ChartSettings, edit: (list: readonly ChartSpec[]) => ChartSpec[]): ChartSettings => ({ ...s, version: 2, charts: edit(chartsOf(s)) });
+/** One edit of the list: the saved list, or the defaults it stands for, with `edit` applied. */
+export const editCharts = (s: ChartSettings, edit: (list: readonly ChartSpec[]) => ChartSpec[]): ChartSettings => ({ ...s, charts: edit(chartsOf(s)) });
 export const patchChart = (s: ChartSettings, id: string, patch: Partial<ChartSpec>): ChartSettings =>
   editCharts(s, (list) => list.map((c) => (c.id === id ? { ...c, ...patch } : c)));

@@ -641,7 +641,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     if (hidden.length > 0) {
       if (!pruneCards.current?.(hidden)) {
         // One load then save at a time per mart, so two quick hides do not both start from the same saved doc.
-        pruneChain.current = pruneChain.current.then(() => chartSettings.load(martId)).then((cur) => { const next = dropPicksOf(cur, new Set(hidden)); if (next !== cur) chartSettings.save(martId, { ...next, version: 2 }); }).catch(() => {});
+        pruneChain.current = pruneChain.current.then(() => chartSettings.load(martId)).then((cur) => { const next = dropPicksOf(cur, new Set(hidden)); if (next !== cur) chartSettings.save(martId, next); }).catch(() => {});
       }
     }
     setVisible(cols);

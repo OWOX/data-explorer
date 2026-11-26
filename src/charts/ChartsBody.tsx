@@ -50,10 +50,10 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     chartSettings.load(martId).then((s) => { if (live) { latest.current = s; setSettings(s); } });
     return () => { live = false; };
   }, [chartSettings, martId]);
-  // Every save is a version 2 doc. Only called once the doc has loaded (the menu is not shown before), so a change never replaces what was saved.
+  // Only called once the doc has loaded (the menu is not shown before), so a change never replaces what was saved.
   const change = (edit: (cur: ChartSettings) => ChartSettings) => {
     if (!latest.current) return;
-    const next: ChartSettings = { ...edit(latest.current), version: 2 };
+    const next: ChartSettings = edit(latest.current);
     latest.current = next;
     setSettings(next);
     chartSettings.save(martId, next);
@@ -69,7 +69,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   // A resize re-renders this body on every step: the fields and the resolved choices only change with their inputs, so a resize rebuilds neither.
   // Charts draw from the shown columns (`cf`); the menus list every column of the same marts (`cf.menu`), and picking a hidden one shows it (see `showPicked`).
   const cf = useMemo(() => {
-    const build = (on: string[]) => chartFields(schema, on, agg, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), Object.fromEntries(groups.map((g) => [g.path, g.title])), Object.fromEntries(sources.map((x) => [x.aliasPath, x.mainGrainCollapse ?? 'collapses'])), Object.fromEntries(groups.map((g) => [g.path, g.icon])));
+    const build = (on: string[]) => chartFields(schema, on, agg, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), Object.fromEntries(groups.map((g) => [g.path, g.title])), Object.fromEntries(sources.map((x) => [x.aliasPath, x.mainGrainCollapse])), Object.fromEntries(groups.map((g) => [g.path, g.icon])));
     return { ...build(shown), menu: build(schema.map((f) => f.name)) };
   }, [schema, shown, agg, martId, groups, sources]);
   const schemaNames = useMemo(() => new Set(schema.map((f) => f.name)), [schema]);

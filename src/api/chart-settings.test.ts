@@ -11,7 +11,7 @@ test('load is empty on a missing document', async () => {
 
 test('save does one put under the mart id and load reads it back', async () => {
   const store = new Map<string, unknown>();
-  const s = { version: 2 as const, charts: [{ id: 'a', kind: 'pie' as const, measure: 'amount' }] };
+  const s = { charts: [{ id: 'a', kind: 'pie' as const, measure: 'amount' }] };
   const cs = createChartSettings(ctxWith(async (id) => (store.has(id) ? { document: store.get(id) } : null), async (id, d) => { store.set(id, d); }));
   cs.save('M', s);
   await vi.waitFor(() => expect(store.get('M')).toEqual(s));
@@ -46,7 +46,7 @@ test('a v2 document keeps known chart keys of the right type and drops bad chart
     { id: 'a', kind: 'pie' },
     { id: 'c', kind: 'heatmap', hidden: true, dimension: 'x', dimension2: 'y', stack: null, bucket: 'WEEK' },
   ] };
-  expect(await createChartSettings(ctxWith(async () => ({ document: doc }), async () => {})).load('M')).toEqual({ version: 2, charts: [
+  expect(await createChartSettings(ctxWith(async () => ({ document: doc }), async () => {})).load('M')).toEqual({ charts: [
     { id: 'a', kind: 'line', measure: 'm', measure2: null },
     { id: 'c', kind: 'heatmap', hidden: true, dimension: 'x', dimension2: 'y', stack: null, bucket: 'WEEK' },
   ] });
@@ -68,4 +68,15 @@ test('scorecard dates keep string values only, as metrics do', async () => {
   const load = (doc: unknown) => createChartSettings(ctxWith(async () => ({ document: doc }), async () => {})).load('M');
   expect(await load({ scorecards: { dates: { amount: 'created_at', bad: 3 } } })).toEqual({ scorecards: { dates: { amount: 'created_at' } } });
   expect(await load({ scorecards: { dates: 'x' } })).toEqual({ scorecards: {} });
+});
+
+const pieChart = { id: 'a', kind: 'pie' as const, measure: 'amount' };
+const loadChartDoc = (doc: unknown) => createChartSettings(ctxWith(async () => ({ document: doc }), async () => {})).load('M');
+
+test('a document saved with the old version marker keeps its charts and loses the marker', async () => {
+  expect(await loadChartDoc({ version: 2, charts: [pieChart] })).toEqual({ charts: [pieChart] });
+});
+
+test('a document saved without the marker keeps its charts', async () => {
+  expect(await loadChartDoc({ charts: [pieChart] })).toEqual({ charts: [pieChart] });
 });

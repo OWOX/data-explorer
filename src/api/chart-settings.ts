@@ -46,10 +46,9 @@ function clean(doc: unknown): ChartSettings {
       if (picks) out.scorecards[k] = Object.fromEntries(Object.entries(picks).filter((e): e is [string, string] => typeof e[1] === 'string'));
     }
   }
-  // Charts are read from a version 2 doc only: a v1 doc's fixed panels are dropped, the defaults stand in.
-  if (d.version === 2 && Array.isArray(d.charts)) {
+  // A document from before the charts list has no `charts` array: the defaults stand in.
+  if (Array.isArray(d.charts)) {
     const seen = new Set<string>();
-    out.version = 2;
     out.charts = d.charts.map(cleanSpec).filter((c): c is ChartSpec => !!c && !seen.has(c.id) && !!seen.add(c.id));
   }
   return out;

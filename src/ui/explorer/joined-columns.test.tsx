@@ -39,7 +39,7 @@ function setup(saved: string[] | null, opts: { blendFails?: boolean; blendGate?:
     const c = spied.collections<T>(name);
     return name === GRID_COLUMNS_COLLECTION ? { get: c.get, put: (id: string, d: T) => { put(id, d); return c.put(id, d); } } : c;
   } };
-  const seeded = saved ? spied.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: saved, at: 'then' }) : Promise.resolve();
+  const seeded = saved ? spied.collections<{ columns: string[] }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: saved }) : Promise.resolve();
   const view = () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
   const orderQueries = () => queries.filter((q) => q.id === 'orders' && q.o.column && q.o.column.length > 1);
   return { ctx, view, queries, reads, put, seeded, orderQueries };
@@ -167,7 +167,7 @@ test('a saved joined name the schema no longer offers is dropped, and the cleane
   await t.seeded;
   t.view();
   await waitFor(() => expect(headers()).toEqual(['id', 'status', 'email']));
-  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: ['id', 'status', 'customers__email'], at: expect.any(String) }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
+  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: ['id', 'status', 'customers__email'] }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
 });
 
 test('when the joined marts cannot be read, a saved joined column is left out of this visit without erasing it', async () => {
@@ -230,7 +230,7 @@ test('a saved list that interleaves the marts shows grouped and is saved grouped
   await t.seeded;
   t.view();
   await waitFor(() => expect(headers()).toEqual(['id', 'email', 'city', 'SKU']));
-  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: ['id', 'customers__email', 'customers__city', 'products__sku'], at: expect.any(String) }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
+  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: ['id', 'customers__email', 'customers__city', 'products__sku'] }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
 });
 
 test('a saved list with joined columns and none of the main mart\'s own gets the main mart\'s default columns first', async () => {

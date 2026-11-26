@@ -56,7 +56,7 @@ it('asks one decision per mart, in parallel', async () => {
   const decide = vi.fn(async (qs: Record<string, unknown>) => Object.fromEntries(Object.keys(qs).map((k) => [k, score(2)])));
   const schema = Object.assign([f('id'), f('country')], { primaryKey: ['id'] }) as Schema;
   const deps = { ctx: {} as never, fast: {} as never, signal: new AbortController().signal, decide, schemas: { get: vi.fn() }, blendable: { get: vi.fn() } };
-  const r = await runFields(input, deps, { schema, title: 'Users' }, [{ aliasPath: 'orders', martId: 'o', label: 'Orders', depth: 1, fields: [f('orders__amount', 'number')], uniqueCount: true }]);
+  const r = await runFields(input, deps, { schema, title: 'Users' }, [{ aliasPath: 'orders', martId: 'o', label: 'Orders', depth: 1, fields: [f('orders__amount', 'number')], uniqueCount: true, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown' }]);
   expect(decide).toHaveBeenCalledTimes(2);
   expect(r.columns).toEqual(['id', 'country', 'orders__amount']);
 });

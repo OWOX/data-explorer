@@ -5,7 +5,7 @@ import type { Field } from '../model/types';
 import { buildJoinTree, chainAfterHover, ghostLevels, joinableUnder, rejoinTargets, subtreePaths } from './join-tree';
 
 const field = (path: string, own: string): Field => ({ name: `${path.replaceAll('.', '__')}__${own}`, alias: own, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: path.split('.').at(-1)!, label: path, aliasPath: path, originalName: own } });
-const src = (path: string, martId = path.split('.').at(-1)!): JoinedSource => ({ aliasPath: path, martId, label: martId, depth: path.split('.').length, fields: [field(path, 'name'), field(path, 'n')], uniqueCount: true });
+const src = (path: string, martId = path.split('.').at(-1)!): JoinedSource => ({ aliasPath: path, martId, label: martId, depth: path.split('.').length, fields: [field(path, 'name'), field(path, 'n')], uniqueCount: true, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown' });
 const col = (path: string, own = 'name') => `${path.replaceAll('.', '__')}__${own}`;
 
 // main joins a and b; both join c; c joins d (only under a); b also joins x.

@@ -24,7 +24,7 @@ test('the header list has the cards, Sparklines, one tick per chart and Add char
 });
 
 test('unticking a chart hides it and keeps its setup; Add chart appends a new chart', () => {
-  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie', dimension: 'status' }] };
+  let s: ChartSettings = { charts: [{ id: 'a', kind: 'pie', dimension: 'status' }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
   const items = () => listItems({ cf, settings: s, resolved: (s.charts ?? []).map((spec) => ({ spec, title: 'P' })), change });
   const tick = items().find((i) => i.label === 'P')!;
@@ -37,14 +37,14 @@ test('unticking a chart hides it and keeps its setup; Add chart appends a new ch
 });
 
 test('Chart type keeps the usable fields and the id; Remove deletes; removing the last chart saves an empty list', () => {
-  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie', measure: 'amount', dimension: 'status', hidden: false }] };
+  let s: ChartSettings = { charts: [{ id: 'a', kind: 'pie', measure: 'amount', dimension: 'status', hidden: false }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
   const [type, remove] = tailItems({ cf, spec: s.charts![0]!, change });
   expect(type!.label).toBe('Chart type');
   if (type!.kind === 'radio') type!.onPick('timeSeries');
   expect(s.charts).toEqual([{ id: 'a', kind: 'timeSeries', measure: 'amount', hidden: false }]);
   if (remove!.kind === 'action') remove!.onPick();
-  expect(s).toEqual({ version: 2, charts: [] });
+  expect(s).toEqual({ charts: [] });
 });
 
 test('each chart row, and each Add chart and Chart type option, carries its kind icon; cards and Sparklines carry their own', () => {

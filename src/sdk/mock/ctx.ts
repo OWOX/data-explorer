@@ -283,7 +283,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         const detail = /^\/api\/data-marts\/([^/]+)$/.exec(path);
         if (detail) {
           const m = byId.get(decodeURIComponent(detail[1]!));
-          if (!m) throw new Error('Not found');
+          if (!m) throw notFound('Data Mart');
           return { id: m.id, schema: { fields: m.fields } } as T;
         }
         throw new Error(`Mock: unhandled GET ${path}`);

@@ -46,8 +46,8 @@ test('save is debounced per mart and the last write wins', async () => {
   vi.advanceTimersByTime(1);
   await vi.runAllTimersAsync();
   expect(put).toHaveBeenCalledTimes(2);
-  expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'b'], at: expect.any(String) });
-  expect(put).toHaveBeenCalledWith('n', { columns: ['z'], at: expect.any(String) });
+  expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'b'] });
+  expect(put).toHaveBeenCalledWith('n', { columns: ['z'] });
 });
 
 test('a saved list is served from memory without a read', async () => {
@@ -92,7 +92,7 @@ test('picks are read with the doc, merged by a later save, and written back with
   store.save('m', ['a', 'customers__email'], { customers: ['customers__email'] });
   expect(await store.loadPicks('m')).toEqual({ customers: ['customers__email'], stores: ['stores__city'] });
   await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
-  expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'customers__email'], at: expect.any(String), picks: { customers: ['customers__email'], stores: ['stores__city'] } });
+  expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'customers__email'], picks: { customers: ['customers__email'], stores: ['stores__city'] } });
 });
 
 test('a plain column save keeps the picks that were stored and never read', async () => {
@@ -102,7 +102,7 @@ test('a plain column save keeps the picks that were stored and never read', asyn
   const store = createColumnStore(ctxWith({ get, put }));
   store.save('m', ['a', 'b']);
   await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
-  expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'b'], at: expect.any(String), picks: { customers: ['customers__city'] } });
+  expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'b'], picks: { customers: ['customers__city'] } });
 });
 
 test('a failed read gives no picks', async () => {
@@ -120,10 +120,10 @@ test('what a mart showed when it left a grid is read with its doc, saved without
   expect(store.lastShown('m')).toEqual(['city', 'name']);
   store.saveLastShown('m', ['email']);
   await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
-  expect(put).toHaveBeenLastCalledWith('m', { columns: ['a', 'b'], at: expect.any(String), lastShown: ['email'] });
+  expect(put).toHaveBeenLastCalledWith('m', { columns: ['a', 'b'], lastShown: ['email'] });
   store.saveLastShown('m', null);
   await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
-  expect(put).toHaveBeenLastCalledWith('m', { columns: ['a', 'b'], at: expect.any(String) });
+  expect(put).toHaveBeenLastCalledWith('m', { columns: ['a', 'b'] });
 });
 
 test('a plain column save keeps the last shown fields that were stored and never read', async () => {
@@ -133,7 +133,7 @@ test('a plain column save keeps the last shown fields that were stored and never
   const store = createColumnStore(ctxWith({ get, put }));
   store.save('m', ['a', 'b']);
   await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
-  expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'b'], at: expect.any(String), lastShown: ['city'] });
+  expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'b'], lastShown: ['city'] });
 });
 
 test('a mart whose doc could not be read is never written over', async () => {
@@ -157,10 +157,10 @@ test('aggregations and buckets are read with the doc, saved with the columns, an
   expect(await store.loadAggregation('m')).toEqual({ aggregations: [{ column: 'a', function: 'SUM' }], dateTrunc: [{ column: 'd', unit: 'MONTH', timeZone: 'UTC' }] });
   store.saveAggregation('m', { aggregations: [{ column: 'a', function: 'AVG' }], dateTrunc: [] });
   await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
-  expect(put).toHaveBeenLastCalledWith('m', { columns: ['a'], at: expect.any(String), aggregations: [{ column: 'a', function: 'AVG' }] });
+  expect(put).toHaveBeenLastCalledWith('m', { columns: ['a'], aggregations: [{ column: 'a', function: 'AVG' }] });
   store.saveAggregation('m', { aggregations: [], dateTrunc: [] });
   await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
-  expect(put).toHaveBeenLastCalledWith('m', { columns: ['a'], at: expect.any(String) });
+  expect(put).toHaveBeenLastCalledWith('m', { columns: ['a'] });
 });
 
 test('a plain column save keeps the aggregations that were stored and never read', async () => {
@@ -170,7 +170,7 @@ test('a plain column save keeps the aggregations that were stored and never read
   const store = createColumnStore(ctxWith({ get, put }));
   store.save('m', ['a', 'b']);
   await vi.advanceTimersByTimeAsync(SAVE_DEBOUNCE_MS);
-  expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'b'], at: expect.any(String), aggregations: [{ column: 'a', function: 'SUM' }] });
+  expect(put).toHaveBeenCalledWith('m', { columns: ['a', 'b'], aggregations: [{ column: 'a', function: 'SUM' }] });
 });
 
 test('a bucket with a time zone the backend would refuse, or on a column that also has a function, is not loaded', async () => {
@@ -260,4 +260,11 @@ describe('the saved grid view', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(put).toHaveBeenCalledTimes(1);
   });
+});
+
+test('a document saved with the old at field loads the same as one without it', async () => {
+  const withAt = createColumnStore(ctxWith({ get: vi.fn(async () => ({ document: { columns: ['a', 'b'], at: 'x' } })), put: vi.fn() }));
+  const without = createColumnStore(ctxWith({ get: vi.fn(async () => ({ document: { columns: ['a', 'b'] } })), put: vi.fn() }));
+  expect(await withAt.load('m')).toEqual(await without.load('m'));
+  expect(await without.load('m')).toEqual(['a', 'b']);
 });

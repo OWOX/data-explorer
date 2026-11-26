@@ -61,7 +61,7 @@ const dims = ['id', 'status', 'amount', 'created_at', 'products__title', 'is_gif
 const savedDims = (t: { puts: { mock: { lastCall?: unknown[] } } }) => (t.puts.mock.lastCall![1] as ChartSettings).charts![0]!.dimensions!;
 
 test('sankey: Columns adds a column filled with the next dimension, a column pick swaps, fewer columns drop the last', async () => {
-  const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey' }] } });
+  const t = await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey' }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   expect(titles()).toHaveLength(2);
   await userEvent.click(panel('Sankey'));
@@ -84,7 +84,7 @@ test('sankey: Columns adds a column filled with the next dimension, a column pic
 });
 
 test('sankey: each column submenu ends with Remove column unless the Sankey is at two columns; removing moves the later columns up', async () => {
-  const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'products__title'] }] } });
+  const t = await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'products__title'] }] } });
   await waitFor(() => expect(titles()).toHaveLength(3));
   await userEvent.click(panel('Sankey'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Column 2' }));
@@ -102,7 +102,7 @@ test('sankey: each column submenu ends with Remove column unless the Sankey is a
 });
 
 test('sankey: a column title names its field and its data mart', async () => {
-  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'] }] } });
+  await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'] }] } });
   await waitFor(() => expect(titles()).toHaveLength(2));
   const texts = [...titles()].map((el) => el.textContent ?? '');
   expect(texts[0]).toMatch(/^status/);
@@ -111,13 +111,13 @@ test('sankey: a column title names its field and its data mart', async () => {
 });
 
 test('sankey: a main mart metric by a column of a one-to-one joined mart draws', async () => {
-  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'] }] } });
+  await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   expect(data().querySelector('section[data-chart-kind="Sankey"] [role="note"]')).toBeNull();
 });
 
 test('sankey: a column of a mart that fans out the main rows draws per-pair reads and says ribbons can overlap', async () => {
-  const t = await charts({ columns: [...dims, 'shipments__carrier'], charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'shipments__carrier'] }] } });
+  const t = await charts({ columns: [...dims, 'shipments__carrier'], charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'shipments__carrier'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   const hint = await within(data().querySelector<HTMLElement>('section[data-chart-kind="Sankey"]')!).findByRole('note');
   await userEvent.hover(hint);
@@ -135,7 +135,7 @@ test('sankey: a column of a mart that fans out the main rows draws per-pair read
 });
 
 test('sankey: one flow read grouped on the columns plus one total read per column', async () => {
-  const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  const t = await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   const reads = t.queries.slice(t.tableQueries());
   const flows = reads.filter((q) => q.column?.length === 3 && q.column.includes('status') && q.column.includes('is_gift') && q.limit === 5000);
@@ -150,7 +150,7 @@ test('sankey: one flow read grouped on the columns plus one total read per colum
 test('sankey: a flow read at its row cap draws what came back and says so', async () => {
   cap.n = 3;
   try {
-    const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+    const t = await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
     await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
     // Only a capped flow read is followed by the few-row read from the other end, to find a negative among the left-out flows.
     const low = t.queries.slice(t.tableQueries()).filter((q) => q.limit === 5 && q.sort?.[0]?.direction === 'asc');
@@ -165,14 +165,14 @@ test('sankey: a flow read at its row cap draws what came back and says so', asyn
 test('sankey: a capped flow read of a count reads no low rows (a count is never negative)', async () => {
   cap.n = 3;
   try {
-    const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'], measure: 'records' }] } });
+    const t = await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'], measure: 'records' }] } });
     await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
     expect(t.queries.slice(t.tableQueries()).filter((q) => q.limit === 5 && q.sort?.[0]?.direction === 'asc')).toHaveLength(0);
   } finally { cap.n = 5000; }
 });
 
 test('sankey: negative values draw the empty state with a note, not a chart', async () => {
-  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] },
+  await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] },
     mapRow: (r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, k.includes(' | ') && typeof v === 'number' ? -v : v])) });
   expect(await within(data()).findByText('Sankey needs values of 0 or more; this metric has negative values.')).toBeInTheDocument();
   expect(data().querySelectorAll('path[data-link]')).toHaveLength(0);

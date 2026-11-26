@@ -23,9 +23,9 @@ export type JoinedSource = {
   /** The relationship (edge) that exposes this source, when the backend says. */
   relationshipId?: string;
   /** Whether joins down to this source leave the main mart's rows whole: 'none' when every hop is keyed by its target's primary key (a lookup), else 'collapses' (also when the backend does not say). */
-  mainGrainCollapse?: MainGrainCollapse;
+  mainGrainCollapse: MainGrainCollapse;
   /** One-to-many: 'none' when every hop is keyed by its parent's primary key, else 'multiplies' or 'unknown' (also when the backend does not say). */
-  mainGrainMultiplication?: 'none' | 'multiplies' | 'unknown';
+  mainGrainMultiplication: 'none' | 'multiplies' | 'unknown';
 };
 
 export type MainGrainCollapse = 'none' | 'collapses';

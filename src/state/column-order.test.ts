@@ -3,7 +3,7 @@ import type { Field } from '../model/types';
 import { groupMap, moveColumn, moveColumnBy, orderColumns } from './column-order';
 
 const f = (name: string, martId: string): Field => ({ name, alias: null, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId, label: martId, aliasPath: martId } });
-const src = (aliasPath: string, martId: string, names: string[]): JoinedSource => ({ aliasPath, martId, label: martId, depth: 1, fields: names.map((n) => f(n, martId)), uniqueCount: false });
+const src = (aliasPath: string, martId: string, names: string[]): JoinedSource => ({ aliasPath, martId, label: martId, depth: 1, fields: names.map((n) => f(n, martId)), uniqueCount: false, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown' });
 const sources = [src('customers', 'customers', ['customers__id', 'customers__city']), src('products', 'products', ['products__sku', 'products__price']), src('a.customers', 'customers', ['a__customers__id'])];
 
 test('the main mart\'s own columns lead, then each joined mart in the order it first appears, each keeping its fields\' order', () => {
