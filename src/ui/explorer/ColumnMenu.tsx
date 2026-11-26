@@ -55,7 +55,7 @@ export type ColumnMenuEnv = {
   /** False in Charts mode: no sort row and no sort mark. */
   sortable: boolean;
   /** The read behind a text input's suggested values (a Filter or a Slice on this column), or null when none can be made. */
-  valuesFor: (field: Field, scope: 'filter' | 'slice') => { key: string; load?: (signal: AbortSignal) => Promise<string[]>; loaded?: string[] } | null;
+  valuesFor: (field: Field, scope: 'filter' | 'slice') => { key: string; load?: (signal: AbortSignal, fresh: boolean) => Promise<string[]>; loaded?: string[] } | null;
 };
 
 const NOOP = () => undefined;

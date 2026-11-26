@@ -51,6 +51,7 @@ import { ConfigMenu, type ConfigMart } from './ConfigMenu';
 import { RuleBadges, type RuleMart } from './RuleBadges';
 import { ExportMenu } from './ExportMenu';
 import { defaultColumns } from '../../model/columns';
+import { forgetValues, suggestFromSearch } from '../../search/valueMatch';
 import { forgetSeenRows, rememberRow } from '../../records/seen-rows';
 import { buildRowQuery, forgetGridRows, useMartRows } from './useMartRows';
 export { MartGrid } from './SeededGrid';
@@ -669,7 +670,11 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     const without = (all: Record<string, ColumnFilter>, drop: boolean) => Object.values(all).filter((f) => !(drop && f.field === field.name));
     const filter = toTraverseFilters(schema, without(filters, scope === 'filter').filter((f) => !f.fn), without(slices, scope === 'slice'));
     const query = valuesQuery(field, filter);
-    return { key: JSON.stringify([martId, query]), loaded, load: async (signal: AbortSignal) => valuesOf(await readRows(ctx, martId, query, { signal }), field) };
+    return { key: JSON.stringify([martId, query]), loaded, load: async (signal: AbortSignal, fresh: boolean) => {
+      // With no other rule the read is the one a smart search made: its values answer it unless this is a reload.
+      const kept = !fresh && filter.length === 0 ? suggestFromSearch(ctx, martId, field) : null;
+      return kept ?? valuesOf(await readRows(ctx, martId, query, { signal }), field);
+    } };
   }, [mainKey, schema, filters, slices, martId, ctx, rows]);
   const menuEnv = useMemo<ColumnMenuEnv>(() => {
     // The columns with a field that is not shown added where ticking it in a data mart's fields panel would put it (a joined field goes last, with its mart); null when it is shown already.
@@ -831,7 +836,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
       <Toast onDismiss={() => setNote(null)} stamp={note} returnTo={() => scroller.current}>{note?.text}</Toast>
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts && !hasSlices} onClick={() => edit(() => { setAllFilters({}); setAllSlices({}); setOwn(null); })} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
-        <button type="button" onClick={() => { if (plainNext(query)) { holding.current = version + 1; onCardHold?.(); } else { holding.current = null; onRecount?.(); } onRefresh(); forgetGridRows(ctx, martId); forgetSeenRows(ctx, martId); setJoinsFailed(false); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
+        <button type="button" onClick={() => { if (plainNext(query)) { holding.current = version + 1; onCardHold?.(); } else { holding.current = null; onRecount?.(); } onRefresh(); forgetGridRows(ctx, martId); forgetSeenRows(ctx, martId); forgetValues(ctx, martId); setJoinsFailed(false); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} uniqueCount={ucNow} filters={Object.values(filters)} slices={Object.values(slices)} sorts={gridSorts} ownSorts={own ?? NO_SORTS} rows={blocked ? null : read} hasMore={hasMore} loading={reading && !blocked} failed={charts && failed} charts={charts} onOpenChange={onExportOpen} run={run} storage={martStorage} joinsFailed={joinsFailed && !joinsRead} sources={joinsRead ? sources : undefined} edges={model.edges} titles={martTitles} joinedMarts={joinedMarts} />}
       </BandTools>
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-busybar" />}

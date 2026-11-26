@@ -3,6 +3,7 @@ import { loadDqSummaries } from '../api/data-quality';
 import { FIRST_STEPS, loadModel, type LoadProgress } from '../api/model';
 import { COUNT_CONCURRENCY } from '../config';
 import type { DqSummary, Model } from '../model/types';
+import { forgetAllValues } from '../search/valueMatch';
 import { useServices, useStore } from '../state/store';
 import type { CountState } from './bands/cards';
 import { errorMessage } from './ErrorBox';
@@ -20,7 +21,7 @@ export function useModel() {
     let live = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
-    if (modelVersion > 0) { schemas.clear(); blendable.clear(); }
+    if (modelVersion > 0) { schemas.clear(); blendable.clear(); forgetAllValues(ctx); }
     loadModel(ctx, (p) => { if (live) setProgress(p); }).then(
       (m) => { if (live) { blendable.useKeys({ edges: m.edges, schemaOf: schemas.peek }); setModel(m); } },
       (e) => { if (live) setError(e); },
