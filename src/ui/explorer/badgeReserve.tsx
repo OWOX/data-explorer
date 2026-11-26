@@ -33,5 +33,5 @@ export function BadgeRow({ children }: { children: ReactNode }) {
     // A web font that arrives later changes the labels' widths.
     void document.fonts?.ready.then(() => { if (row.current) measure(); });
   });
-  return <span ref={row} className="dm-badges">{children}</span>;
+  return <span ref={row} className="dm-badge-row">{children}</span>;
 }

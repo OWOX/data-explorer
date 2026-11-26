@@ -268,3 +268,21 @@ describe('Graph', () => {
     expect(el('stores', 'stores')).toHaveClass('dm-faded');
   });
 });
+
+describe('bands.css hygiene', () => {
+  it('uses only custom properties the theme defines', () => {
+    const theme = readFileSync('src/styles.css', 'utf8');
+    const used = new Set([...css.matchAll(/var\((--[a-z-]+)/g)].map((m) => m[1]!));
+    const defined = new Set([...`${theme}\n${css}`.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]!));
+    // Set inline from script, each read with a fallback.
+    const fromScript = new Set(['--dm-fill', '--badge-count', '--badge-extra']);
+    const missing = [...used].filter((v) => !defined.has(v) && !fromScript.has(v) && !v.startsWith('--radix-') && !v.startsWith('--tw-'));
+    expect(missing).toEqual([]);
+  });
+
+  it('keeps the loading bar and the progress tone apart', () => {
+    expect(css.match(/^\.dm-progress\s*\{/gm)).toHaveLength(1);
+    expect(css).toMatch(/^\.dm-loadbar\s*\{[^}]*position:\s*absolute/m);
+    expect(css.match(/^\.dm-badges\s*\{/gm)).toHaveLength(1);
+  });
+});
