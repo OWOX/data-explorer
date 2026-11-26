@@ -31,16 +31,22 @@ export const VALUES_CACHE_LIMIT = 64;
 // Resolved reads only, per ctx: a failed or aborted read stores nothing. `complete`: the read returned fewer rows than its limit, so these are all the values.
 type Entry = { values: string[]; complete: boolean };
 const cacheOf = perCtx(() => new Map<string, Entry>());
+// Bumped by a forget: a read that started before it must not store what it read.
+const generationOf = perCtx(() => new Map<string, number>());
+let resets = 0;
+const generation = (ctx: Ctx, martId: string) => `${resets}:${generationOf(ctx).get(martId) ?? 0}`;
 const keyOf = (martId: string, field: Field) => `${martId}\u0000${field.name}`;
 
 /** Drops a mart's kept value reads: the grid's Refresh must not be answered from values read before it. */
 export function forgetValues(ctx: Ctx, martId: string) {
   const cache = cacheOf(ctx);
+  generationOf(ctx).set(martId, (generationOf(ctx).get(martId) ?? 0) + 1);
   for (const k of cache.keys()) if (k.startsWith(`${martId}\u0000`)) cache.delete(k);
 }
 
 /** Drops every kept value read: a model reload. */
 export function forgetAllValues(ctx: Ctx) {
+  resets++;
   cacheOf(ctx).clear();
 }
 
@@ -62,10 +68,11 @@ export async function readValues(ctx: Ctx, martId: string, field: Field, signal:
     cache.set(key, hit);
     return hit.values;
   }
+  const before = generation(ctx, martId);
   try {
     const rows = await readRows(ctx, martId, { ...topValuesQuery(field, RECORDS, []), limit: VALUE_LIMIT }, { signal });
     const values = [...new Set(rows.flatMap((r) => (r[field.name] === null || r[field.name] === undefined ? [] : [String(r[field.name])])))];
-    if (!signal.aborted) {
+    if (!signal.aborted && generation(ctx, martId) === before) {
       cache.set(key, { values, complete: rows.length < VALUE_LIMIT });
       if (cache.size > VALUES_CACHE_LIMIT) cache.delete(cache.keys().next().value!);
     }

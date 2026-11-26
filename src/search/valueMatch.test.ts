@@ -77,12 +77,33 @@ describe('kept value reads', () => {
     expect(suggestFromSearch(small.ctx, 'm', field)).toEqual(Array.from({ length: 10 }, (_, i) => `c${i + 2}`));
     const full = ctxOf(rowsOf(200, 5));
     await readValues(full.ctx, 'm', field, signal());
-    expect(suggestFromSearch(full.ctx, 'm', field)).toEqual(Array.from({ length: SUGGEST_LIMIT }, (_, i) => `c${i + 5}`));
+    const got = suggestFromSearch(full.ctx, 'm', field);
+    expect(got).toEqual(Array.from({ length: SUGGEST_LIMIT }, (_, i) => `c${i + 5}`));
+    expect(got).toHaveLength(SUGGEST_LIMIT);
+    expect(got![SUGGEST_LIMIT - 1]).toBe(`c${SUGGEST_LIMIT + 4}`);
   });
 
   it('suggests nothing from a full read with fewer than 50 non-blank values', async () => {
     const { ctx } = ctxOf(rowsOf(200, 160));
     await readValues(ctx, 'm', field, signal());
     expect(suggestFromSearch(ctx, 'm', field)).toBeNull();
+  });
+
+  it('stores nothing from a read that was in flight when the mart or every mart was forgotten', async () => {
+    for (const forget of [(c: ReturnType<typeof stubCtx>) => forgetValues(c, 'm'), (c: ReturnType<typeof stubCtx>) => forgetAllValues(c)]) {
+      let release!: () => void;
+      const read = vi.fn(async () => { await new Promise<void>((r) => { release = r; }); return traversalOf(rowsOf(3)); });
+      const ctx = stubCtx({ dataMarts: { traverseData: read } });
+      const pending = readValues(ctx, 'm', field, signal());
+      await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+      forget(ctx);
+      release();
+      expect(await pending).toEqual(['c0', 'c1', 'c2']);
+      expect(suggestFromSearch(ctx, 'm', field)).toBeNull();
+      release = () => {};
+      read.mockImplementation(async () => traversalOf(rowsOf(3)));
+      await readValues(ctx, 'm', field, signal());
+      expect(read).toHaveBeenCalledTimes(2);
+    }
   });
 });

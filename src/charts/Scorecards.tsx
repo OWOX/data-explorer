@@ -237,7 +237,7 @@ export const numberOf = (v: unknown): number | null => {
 
 /** One card: its label and ⋮ menu, its value and its own sparkline (the date picked for it, read once per date and shared by the cards on it). */
 function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, bucketPending, autoBucket, filter, version, paused, joins, formatOf, choices, onMetric, onDate, onHide }: {
-  martId: string; mart: ChartMart; menuMart: ChartMart; card: Card; spark: Spark; row: Row | undefined; /** The row is the previous read's, shown dimmed until the new one arrives. */ busy: boolean; bucket: DateBucket | null; /** The charts' bucket is still being resolved by its range read. */ bucketPending: boolean; /** Whether the charts' bucket is Auto, so a card on its own date picks its own. */ autoBucket: boolean; filter: TraverseFilter[]; version: number; paused: boolean; joins?: JoinGrain; formatOf: Formatter;
+  martId: string; mart: ChartMart; menuMart: ChartMart; card: Card; spark: Spark; row: Row | undefined; /** The row is the previous read's, shown dimmed until the new one arrives. */ busy: boolean; bucket: DateBucket | null; /** The charts' bucket is still being resolved by its range or scorecard read. */ bucketPending: boolean; /** Whether the charts' bucket is Auto, so a card on its own date picks its own. */ autoBucket: boolean; filter: TraverseFilter[]; version: number; paused: boolean; joins?: JoinGrain; formatOf: Formatter;
   choices: ReturnType<typeof measureGroups>; onMetric?: (cardId: string, measure: string) => void; onDate?: (cardId: string, date: string) => void; onHide?: (cardId: string) => void;
 }) {
   const date = cardDate(mart, spark, c.id);
@@ -291,7 +291,7 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, 
 
 /** The cards of one data mart, wrapping inside its group's cell. The main mart's cell also shows the strip's error and empty state. `menuMart` is the same mart with every column: its metrics and dates are what a card's menu offers. */
 export function MartCards({ martId, mart, menuMart = mart, main, spark, scores, bucket, bucketPending = false, autoBucket = true, filter, version, paused, joins, hasFilters, formatOf, onMetric, onDate, onHide }: {
-  martId: string; mart: ChartMart; menuMart?: ChartMart; main: boolean; spark: Spark; scores: Scores; bucket: DateBucket | null; /** The charts' bucket is still being resolved by its range read. */ bucketPending?: boolean; /** Whether the charts' bucket is Auto. */ autoBucket?: boolean; filter: TraverseFilter[]; version: number; paused: boolean; /** What lets a sparkline read be reused after a column is dropped. */ joins?: JoinGrain; hasFilters: boolean; formatOf: Formatter;
+  martId: string; mart: ChartMart; menuMart?: ChartMart; main: boolean; spark: Spark; scores: Scores; bucket: DateBucket | null; /** The charts' bucket is still being resolved by its range or scorecard read. */ bucketPending?: boolean; /** Whether the charts' bucket is Auto. */ autoBucket?: boolean; filter: TraverseFilter[]; version: number; paused: boolean; /** What lets a sparkline read be reused after a column is dropped. */ joins?: JoinGrain; hasFilters: boolean; formatOf: Formatter;
   /** A card's ⋮ menu: pick the measure a card shows, the date its trend is drawn on, and hide it. Without them (the settings are still loading) the cards have no menu. */
   onMetric?: (cardId: string, measure: string) => void; onDate?: (cardId: string, date: string) => void; onHide?: (cardId: string) => void;
 }) {

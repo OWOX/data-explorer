@@ -150,7 +150,9 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     const row = scores.rows?.[0];
     if (row && !(rangeKeys(date).min in row && rangeKeys(date).max in row)) return null;
     return scores;
-  }, [version, ranges, carriedFilter, scores]);
+    // scores is a new object each render; only its parts decide the result.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, ranges, carriedFilter, scores.rows, scores.error, scores.loading, scores.retry]);
   const { bucket, pending: bucketPending } = useBucketFrom(carried, martId, spark.date, lead?.bucket ?? 'AUTO', filter, version, idle);
   // The Charts group of the config menu names every chart, hidden ones included; memoized so a resize resolves nothing again.
   const resolved = useMemo(() => drawn.map(({ spec, def }) => {

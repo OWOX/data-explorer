@@ -5,7 +5,9 @@ import { stubCtx, traversalOf } from '../api/test-ctx';
 import type { Mart, Model } from '../model/types';
 import { buildJoinTree, statusIds } from '../state/join-tree';
 import { AppServices, StoreProvider } from '../state/store';
-import { useCardStatus } from './useModelData';
+import { readValues, suggestFromSearch } from '../search/valueMatch';
+import { useServices, useStore } from '../state/store';
+import { useCardStatus, useModel } from './useModelData';
 
 const mart = (id: string): Mart => ({ id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
 const modelOf = (ids: string[]): Model => ({ marts: new Map(ids.map((id) => [id, mart(id)])), sources: [], edges: [], contexts: [], storages: [], failedStorages: [] });
@@ -295,4 +297,18 @@ test('hold dims a card that has a count and adds no read; offer clears it', asyn
   act(() => result.current.offer('a', 9));
   expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 9 });
   expect(traverseData).toHaveBeenCalledTimes(1);
+});
+
+vi.mock('../api/model', async (orig) => ({ ...(await orig<typeof import('../api/model')>()), loadModel: vi.fn(async () => modelOf(['a'])) }));
+
+test('a model reload drops the kept value reads', async () => {
+  const field = { name: 'country', alias: null, type: 'STRING', category: 'string' as const, description: null, isPrimaryKey: false };
+  const wrapper = setup(async () => traversalOf([{ country: 'DE' }]));
+  const { result } = renderHook(() => ({ model: useModel(), services: useServices(), store: useStore() }), { wrapper });
+  await waitFor(() => expect(result.current.model.model).not.toBeNull());
+  const { ctx } = result.current.services;
+  await readValues(ctx, 'a', field, new AbortController().signal);
+  expect(suggestFromSearch(ctx, 'a', field)).toEqual(['DE']);
+  act(() => result.current.store[1]({ type: 'refreshModel' }));
+  await waitFor(() => expect(suggestFromSearch(ctx, 'a', field)).toBeNull());
 });
