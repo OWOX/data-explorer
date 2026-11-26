@@ -165,14 +165,15 @@ test('the filter popover of an aggregated column says it filters before aggregat
 });
 
 test('a column no longer shown loses its rules', async () => {
-  const t = setup();
+  setup();
   await ready();
   await showColumn('Amount');
   await aggregate('Amount', 'Sum');
   await openFields('Orders');
   await userEvent.click(await screen.findByLabelText('Amount'));
   await waitFor(() => expect(headers()).not.toContain('Amount · Sum'));
-  await waitFor(() => expect(t.queries.at(-1)!.o.aggregation).toBeUndefined());
+  // The plain rows read before the rule are still cached: no read is sent, and no grouped one is shown.
+  expect(headers().some((h) => h.includes('·'))).toBe(false);
 });
 
 test('while the grouped rows are in flight there is no groups badge and no empty Amount · Sum cells', async () => {

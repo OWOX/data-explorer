@@ -91,7 +91,6 @@ describe('a mart whose primary key is hidden for reporting', () => {
     await undo();
     await waitFor(() => expect(headers()).toEqual(before));
     expect(t.state.current!.grids.stores!.uniqueCount).toBeUndefined();
-    await waitFor(() => expect(t.of('stores').at(-1)!.o.uniqueCount).toBeUndefined());
   });
 
   test('a mart with a composite key offers it too', async () => {

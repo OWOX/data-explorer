@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { readRows } from '../../api/rows';
+import { stable } from '../../charts/answers';
 import { toTraverseFilters, type ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
 import { isGrouped, type Grouping } from '../../model/aggregation';
 import type { Schema } from '../../model/types';
 import { uniqueKey } from '../../model/unique-count';
-import type { Row, TraverseOptions } from '../../sdk/types';
+import { perCtx } from '../../sdk/per-ctx';
+import type { Ctx, Row, TraverseOptions } from '../../sdk/types';
 import { useServices } from '../../state/store';
 
 /**
@@ -44,8 +46,45 @@ export type GridRun = { state: 'none' } | { state: 'paused' } | { state: 'runnin
 
 type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null; shape: string; runId: string | null; errorRunId: string | null; total: number | null; /** What `total` counted (the base of the ask) and whether that read named a calculated field. */ totalBase: string | null; totalExact: boolean; /** The columns that read carried: a plain read joins every mart it names a column of, so its count is of those joins. */ totalColumns: string[] };
 /** What the rows are rows of: plain rows, or groups over these columns and rules. Rows of one shape never stand in for another's. */
+const isGroupedRead = (o: TraverseOptions): boolean => !!(o.aggregation?.length || o.dateTrunc?.length || o.uniqueCount?.length);
 const shapeOf = (o: TraverseOptions | null): string => (o?.aggregation?.length || o?.dateTrunc?.length || o?.uniqueCount?.length ? JSON.stringify([o.column, o.aggregation, o.dateTrunc, o.uniqueCount]) : 'plain');
 const NO_COUNT = { total: null, exact: false, columns: [] as string[] };
+
+/** How many resolved reads a ctx keeps for the grid. The least recently used is dropped first. */
+export const GRID_CACHE_LIMIT = 16;
+// Resolved reads only, per ctx: a failed or aborted read is never stored, so Retry always reads again.
+// `rows` is everything the read returned (up to its limit + 1), so a smaller page is answered from it with no read.
+type Entry = { martId: string; version: number; options: TraverseOptions; rows: Row[]; columns: string[]; exact: boolean; asked: boolean; total: number | undefined; totalBase: string; totalColumns: string[]; totalExact: boolean; runId: string | null };
+const cacheOf = perCtx(() => new Map<string, Entry>());
+
+function remember(ctx: Ctx, key: string, entry: Entry) {
+  const cache = cacheOf(ctx);
+  cache.delete(key);
+  cache.set(key, entry);
+  // A Map keeps insertion order and a hit re-inserts its key, so the first key is the least recently used.
+  if (cache.size > GRID_CACHE_LIMIT) cache.delete(cache.keys().next().value!);
+}
+
+/** The options that make rows what they are: all but the columns and the page size (and the count flag, which is not part of any result). */
+const restOf = (o: TraverseOptions): string => stable({ ...o, column: undefined, limit: undefined, includeTotalRowCount: undefined });
+
+/** The cached read that answers this ask: the same result (mart, version, filters, sort, grouping) with the columns and enough rows. */
+function lookup(ctx: Ctx, martId: string, version: number, options: TraverseOptions, exact: boolean): { key: string; entry: Entry } | null {
+  if (options.limit === undefined) return null;
+  const pageLimit = options.limit - 1;
+  const rest = restOf(options);
+  const want = options.column ?? [];
+  const grouped = isGroupedRead(options);
+  for (const [key, e] of cacheOf(ctx)) {
+    if (e.martId !== martId || e.version !== version || restOf(e.options) !== rest) continue;
+    // A grouped read: other columns are other group keys. A plain read: the loaded columns may hold more; a calculated field may make OWOX group the read, so then the sets must match.
+    const columnsOk = grouped ? e.columns.length === want.length && e.columns.every((c, i) => c === want[i]) : want.every((c) => e.columns.includes(c)) && (!(exact || e.exact) || want.length === e.columns.length);
+    if (!columnsOk) continue;
+    if (e.rows.length > pageLimit || e.rows.length < (e.options.limit ?? 0)) return { key, entry: e };
+  }
+  return null;
+}
+
 type Query = { dataKey: string; columns: string[]; key: string };
 
 /**
@@ -75,6 +114,20 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
   const counted = useRef<{ base: string; columns: string[]; exact: boolean; total: number | undefined } | null>(null);
   useEffect(() => {
     if (!options || paused || readKey.current === key) return;
+    const hit = lookup(ctx, martId, version, options, exact);
+    if (hit) {
+      const e = hit.entry;
+      const cache = cacheOf(ctx);
+      cache.delete(hit.key);
+      cache.set(hit.key, e);
+      const limit = (options.limit ?? 1) - 1;
+      readKey.current = key;
+      // The count this result was read with covers the next read of the same base, as it did when it was read.
+      if (e.asked) counted.current = { base, columns: e.totalColumns, exact: e.totalExact, total: e.total };
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a hit has no promise to answer through
+      setState({ rows: e.rows.slice(0, limit), error: null, hasMore: e.rows.length > limit, doneFor: key, shape: shapeOf(options), runId: e.runId, errorRunId: null, total: e.total ?? null, totalBase: base, totalExact: e.totalExact, totalColumns: e.totalColumns });
+      return;
+    }
     const ac = new AbortController();
     const pageLimit = (options.limit ?? 1) - 1;
     let runId: string | null = null;
@@ -91,7 +144,10 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
         if (ac.signal.aborted) return;
         readKey.current = key;
         if (ask) counted.current = { base, columns: sent, exact, total };
-        setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options), runId, errorRunId: null, total: total ?? null, totalBase: base, totalExact: ask ? exact : !!c?.exact, totalColumns: ask ? sent : c?.columns ?? sent });
+        const totalExact = ask ? exact : !!c?.exact;
+        const totalColumns = ask ? sent : c?.columns ?? sent;
+        if (options.limit !== undefined) remember(ctx, key, { martId, version, options, rows, columns: sent, exact, asked: ask, total, totalBase: base, totalColumns, totalExact, runId });
+        setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options), runId, errorRunId: null, total: total ?? null, totalBase: base, totalExact, totalColumns });
       },
       (error) => { if (!ac.signal.aborted) setState({ rows: null, error, hasMore: false, doneFor: key, shape: shapeOf(options), runId: null, errorRunId: runId, total: null, totalBase: null, totalExact: false, totalColumns: [] }); },
     );
