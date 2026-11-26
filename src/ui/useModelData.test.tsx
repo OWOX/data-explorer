@@ -272,3 +272,27 @@ test('after an offer, request reads nothing', async () => {
   expect(traverseData).not.toHaveBeenCalled();
   expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 5 });
 });
+
+test('an offered count is stored for 24 h like a measured one', async () => {
+  const ctx = stubCtx({
+    dataMarts: { list: vi.fn(), traverseData: vi.fn() },
+    getJson: async () => ({ id: 'x', schema: { fields: [{ name: 'id', type: 'INT64', isPrimaryKey: true }] } }),
+    postJson: async () => ({ items: [] }),
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
+  const { result } = renderHook(() => useCardStatus(modelOf(['a']), ['a'], 0), { wrapper });
+  act(() => result.current.offer('a', 5));
+  await waitFor(async () => expect((await ctx.collections<{ count: number }>('row-counts').get('a'))?.document.count).toBe(5));
+});
+
+test('hold dims a card that has a count and adds no read; offer clears it', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
+  const { result } = renderHook(() => useCardStatus(modelOf(['a']), ['a'], 0), { wrapper: setup(traverseData) });
+  act(() => result.current.request('a'));
+  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7 }));
+  act(() => result.current.hold('a'));
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7, stale: true });
+  act(() => result.current.offer('a', 9));
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 9 });
+  expect(traverseData).toHaveBeenCalledTimes(1);
+});

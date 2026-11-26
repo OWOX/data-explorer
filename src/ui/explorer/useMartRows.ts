@@ -44,11 +44,11 @@ export function buildRowQuery(schema: Schema, visible: string[], filters: Column
 /** `paused`: Charts holds the grid's query back, and a key it has not read yet will not run until Table is back. */
 export type GridRun = { state: 'none' } | { state: 'paused' } | { state: 'running' } | { state: 'failed' } | { state: 'done'; runId: string | null };
 
-type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null; shape: string; runId: string | null; errorRunId: string | null; total: number | null; /** What `total` counted (the base of the ask) and whether that read named a calculated field. */ totalBase: string | null; totalExact: boolean; /** The columns that read carried: a plain read joins every mart it names a column of, so its count is of those joins. */ totalColumns: string[] };
+type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null; shape: string; runId: string | null; errorRunId: string | null; total: number | null; /** What `total` counted (the base of the ask) and whether that read named a calculated field. */ totalBase: string | null; totalExact: boolean; /** The columns that read carried: a plain read joins every mart it names a column of, so its count is of those joins. */ totalColumns: string[]; /** The total came from a read of this mount that asked for it, not from a cached result. */ totalFresh: boolean };
 /** What the rows are rows of: plain rows, or groups over these columns and rules. Rows of one shape never stand in for another's. */
 const isGroupedRead = (o: TraverseOptions): boolean => !!(o.aggregation?.length || o.dateTrunc?.length || o.uniqueCount?.length);
 const shapeOf = (o: TraverseOptions | null): string => (o && isGroupedRead(o) ? JSON.stringify([o.column, o.aggregation, o.dateTrunc, o.uniqueCount]) : 'plain');
-const NO_COUNT = { total: null, exact: false, columns: [] as string[] };
+const NO_COUNT = { total: null, exact: false, columns: [] as string[], fresh: false };
 
 /** How many resolved reads a ctx keeps for the grid. The least recently used is dropped first. */
 export const GRID_CACHE_LIMIT = 16;
@@ -77,7 +77,7 @@ export function forgetGridRows(ctx: Ctx, martId: string) {
 /** The state a cached read puts on show for this ask. */
 function viewOf(e: Entry, options: TraverseOptions, key: string, base: string): RowsState {
   const limit = (options.limit ?? 1) - 1;
-  return { rows: e.rows.slice(0, limit), error: null, hasMore: e.rows.length > limit, doneFor: key, shape: shapeOf(options), runId: e.runId, errorRunId: null, total: e.total ?? null, totalBase: base, totalExact: e.totalExact, totalColumns: e.totalColumns };
+  return { rows: e.rows.slice(0, limit), error: null, hasMore: e.rows.length > limit, doneFor: key, shape: shapeOf(options), runId: e.runId, errorRunId: null, total: e.total ?? null, totalBase: base, totalExact: e.totalExact, totalColumns: e.totalColumns, totalFresh: false };
 }
 
 /** The cached read that answers this ask: the same result (mart, version, filters, sort, grouping) with the columns and enough rows. */
@@ -109,7 +109,7 @@ type Query = { dataKey: string; columns: string[]; key: string };
  */
 export function useMartRows(martId: string, options: TraverseOptions | null, version: number, paused = false, exact = false, model = 0, own: ReadonlySet<string> = NO_OWN) {
   const { ctx } = useServices();
-  const [state, setState] = useState<RowsState>({ rows: null, error: null, hasMore: false, doneFor: null, shape: 'plain', runId: null, errorRunId: null, total: null, totalBase: null, totalExact: false, totalColumns: [] });
+  const [state, setState] = useState<RowsState>({ rows: null, error: null, hasMore: false, doneFor: null, shape: 'plain', runId: null, errorRunId: null, total: null, totalBase: null, totalExact: false, totalColumns: [], totalFresh: false });
   // Each traverseData call is a billed warehouse run. Everything but the column list (filters, sort, limit,
   // version) is the data key: when it changes the rows are re-read. When columns only shrink, the loaded rows
   // already hold them, so the query identity stays and nothing is fetched; a column that was never loaded re-reads.
@@ -127,7 +127,7 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
   // the columns of a plain read (a hidden column does not make another result; a never-loaded one is checked against `columns`).
   const base = `${martId}:${version}:${JSON.stringify({ ...options, column: grouped ? options?.column : undefined, limit: undefined, sort: undefined })}`;
   // The last read that asked: what it was and what it counted (undefined: it came without a count). A covered read leaves it as it is.
-  const counted = useRef<{ base: string; columns: string[]; exact: boolean; total: number | undefined } | null>(null);
+  const counted = useRef<{ base: string; columns: string[]; exact: boolean; total: number | undefined; fresh: boolean } | null>(null);
   useEffect(() => {
     if (!options || paused || readKey.current === key) return;
     const hit = lookup(ctx, martId, version, model, options, exact);
@@ -139,7 +139,7 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
       readKey.current = key;
       // The count this result carries covers the next read of the same base, as it did when it was read.
       const e = hit.entry;
-      counted.current = { base, columns: e.totalColumns, exact: e.totalExact, total: e.total };
+      counted.current = { base, columns: e.totalColumns, exact: e.totalExact, total: e.total, fresh: false };
       // eslint-disable-next-line react-hooks/set-state-in-effect -- a hit has no promise to answer through
       setState(viewOf(hit.entry, options, key, base));
       return;
@@ -159,13 +159,14 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
       (rows) => {
         if (ac.signal.aborted) return;
         readKey.current = key;
-        if (ask) counted.current = { base, columns: sent, exact, total };
+        if (ask) counted.current = { base, columns: sent, exact, total, fresh: true };
+        const totalFresh = ask || !!c?.fresh;
         const totalExact = ask ? exact : !!c?.exact;
         const totalColumns = ask ? sent : c?.columns ?? sent;
         if (options.limit !== undefined) remember(ctx, key, { martId, version, model, options, rows, columns: sent, exact, rest: restOf(options), total, totalBase: base, totalColumns, totalExact, runId });
-        setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options), runId, errorRunId: null, total: total ?? null, totalBase: base, totalExact, totalColumns });
+        setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options), runId, errorRunId: null, total: total ?? null, totalBase: base, totalExact, totalColumns, totalFresh });
       },
-      (error) => { if (!ac.signal.aborted) setState({ rows: null, error, hasMore: false, doneFor: key, shape: shapeOf(options), runId: null, errorRunId: runId, total: null, totalBase: null, totalExact: false, totalColumns: [] }); },
+      (error) => { if (!ac.signal.aborted) setState({ rows: null, error, hasMore: false, doneFor: key, shape: shapeOf(options), runId: null, errorRunId: runId, total: null, totalBase: null, totalExact: false, totalColumns: [], totalFresh: false }); },
     );
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -184,5 +185,5 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
   const run: GridRun = !options ? { state: 'none' } : loading && paused ? { state: 'paused' } : loading ? { state: 'running' } : view.error ? { state: 'failed' } : { state: 'done', runId: view.runId };
   return { rows: stale ? null : view.rows, loading, error: loading ? null : view.error, hasMore: stale ? false : view.hasMore, run, errorRunId: loading ? null : view.errorRunId, total: stale ? null : view.total,
     // The count a card may use: the one counted for this very result (Load more and a sort keep it), and whether a calculated field made it. Another filter has none until its read answers.
-    counted: !stale && view.totalBase === base && view.total !== null ? { total: view.total, exact: view.totalExact, columns: view.totalColumns } : NO_COUNT };
+    counted: !stale && view.totalBase === base && view.total !== null ? { total: view.total, exact: view.totalExact, columns: view.totalColumns, fresh: view.totalFresh } : NO_COUNT };
 }
