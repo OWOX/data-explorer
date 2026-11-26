@@ -7,7 +7,6 @@ export const PAGE_SIZE = 200;
 export const MAX_FOUND = 5;
 export const COUNT_CONCURRENCY = 4;
 export const IN_LIST_MAX = 500;
-const IN_LIST_MAX_CHARS = 6000;
 
 const martAppPath = (projectId: string, martId: string): string => `/ui/${encodeURIComponent(projectId)}/data-marts/${encodeURIComponent(martId)}/overview`;
 
