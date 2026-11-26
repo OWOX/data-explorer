@@ -55,21 +55,25 @@ function truncRule(date: Field, unit: DateBucket) {
  * `null` when there is nothing to count. `kept` are the alias paths of marts the report keeps with no column that have a usable key:
  * their unique count rides on this read (it counts the records of the report), and they draw no scorecard.
  */
-export function scorecardsQuery(marts: ChartMart[], filter: TraverseFilter[], counter?: Field | null, kept: readonly string[] = []): TraverseOptions | null {
+export function scorecardsQuery(marts: ChartMart[], filter: TraverseFilter[], counter?: Field | null, kept: readonly string[] = [], ranges: Field[] = []): TraverseOptions | null {
   const metrics = marts.flatMap((m) => m.metrics);
   const keyed = marts.filter((m) => m.hasPk).map((m) => m.aliasPath);
   const uniqueCount = [...new Set([...keyed, ...kept])];
   // Kept paths alone are no query: with no metric and no key on a mart with a column the charts show their hint and read nothing.
   if (!metrics.length && !keyed.length) return null;
+  // A range date adds the first and last value of the date to this read: a read that names a column needs no counter for its slice.
+  const names = [...metrics.map((m) => m.field.name), ...ranges.map((d) => d.name)];
+  const aggregation = [...aggs(metrics), ...ranges.flatMap((d) => [{ column: d.name, function: 'MIN' as const }, { column: d.name, function: 'MAX' as const }])];
   const o: TraverseOptions = {
-    ...(metrics.length ? { column: metrics.map((m) => m.field.name), ...aggsOf(metrics) } : {}),
+    ...(names.length ? { column: names } : {}),
+    ...(aggregation.length ? { aggregation } : {}),
     ...(uniqueCount.length ? { uniqueCount } : {}),
   };
   return withFilter(withCounter(o, filter, counter), filter);
 }
 
 /** The one scorecard query of a grid, for Table and for Charts: both ask with this, so one billed read answers both and its cache key is shared. */
-export const scoreQuery = (cf: ChartFields, filter: TraverseFilter[], kept: readonly string[] = []): TraverseOptions | null => scorecardsQuery(cf.marts, filter, cf.counter, kept);
+export const scoreQuery = (cf: ChartFields, filter: TraverseFilter[], kept: readonly string[] = [], ranges: Field[] = []): TraverseOptions | null => scorecardsQuery(cf.marts, filter, cf.counter, kept, ranges);
 
 /** A rule that the scorecard query was built without: a slice needs an explicit column list, which a mart with no metric and no countable field cannot give it. The read would be unfiltered. */
 export const scoreRulesLost = (filter: TraverseFilter[], o: TraverseOptions | null): boolean =>

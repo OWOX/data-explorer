@@ -18,7 +18,7 @@ import { measureId, type Spark } from './settings';
 import { fieldGroups, measureGroups } from './menuGroups';
 import { Sparkline, type Point } from './svg/Sparkline';
 import type { JoinGrain } from './answers';
-import { useBucket } from './useBucket';
+import { rangeable, useBucket } from './useBucket';
 import { useChartQuery, type ChartResult } from './useChartQuery';
 
 export type Card = { id: string; label: string; key: string; measure: Measure };
@@ -91,8 +91,9 @@ type Scores = ChartResult & { previous?: Row | null };
  * `kept` are the marts the report keeps with no column: their unique count rides on this read, and the match badges of the cards read it.
  * `previous` is the last row a read returned, kept so the cards do not fall back to skeletons while the next read runs. Nothing runs while paused.
  */
-export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean, joins?: JoinGrain, kept?: readonly string[]): Scores {
-  const result = useChartQuery(martId, paused ? null : scoreQuery(cf, filter, kept), version, joins);
+export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean, joins?: JoinGrain, kept?: readonly string[], ranges: Field[] = []): Scores {
+  // `ranges` ride on the read. The same ask without them is enough for the cards, so a cached read of it (Table's badge) still serves them with no read.
+  const result = useChartQuery(martId, paused ? null : scoreQuery(cf, filter, kept, ranges), version, joins, ranges.length && !paused ? scoreQuery(cf, filter, kept) : undefined);
   const [previous, setPrevious] = useState<Row | null>(null);
   // Adjusting state while rendering (not in an effect) so the card never paints a frame without the previous value.
   const latest = result.rows?.[0] ?? null;
@@ -100,6 +101,27 @@ export function useScorecards(martId: string, cf: ChartFields, filter: TraverseF
   // A failed or empty read leaves no stale number behind: the read after it starts from skeletons, not from a value that came before the gap.
   else if ((result.error || result.rows?.length === 0) && previous) setPrevious(null);
   return { ...result, previous };
+}
+
+/**
+ * The dates whose Auto range the scorecard read carries: the charts' lead date when its bucket is Auto, and each card's own date when that card ranges it.
+ * Only a date of the main mart that can be ranged, and only when the scorecard read joins no other mart (a joined mart would make the sparklines wait for its sleeves).
+ */
+export function carriedDates(cf: ChartFields, spark: Spark, leadAuto: boolean, kept: readonly string[] = []): Field[] {
+  const read = cf.marts.filter((m) => m.metrics.length > 0 || m.hasPk);
+  const main = read.length > 0 && read.every((m) => m.aliasPath === '') && kept.length === 0;
+  if (!main) return [];
+  const asked: Field[] = [];
+  if (leadAuto && spark.date) asked.push(spark.date);
+  if (leadAuto && spark.sparklines) {
+    for (const m of read) for (const c of cardsOf(m, spark.metrics)) {
+      const d = spark.hidden.has(c.id) ? null : cardDate(m, spark, c.id);
+      if (d && d.name !== spark.date?.name) asked.push(d);
+    }
+  }
+  const mainDates = new Set(cf.marts.filter((m) => m.aliasPath === '').flatMap((m) => m.dates.map((d) => d.name)));
+  const seen = new Set<string>();
+  return asked.filter((d) => !d.joined && !d.isCalculated && rangeable(d) && mainDates.has(d.name) && !seen.has(d.name) && !!seen.add(d.name));
 }
 
 const ROLL_MS = 500;

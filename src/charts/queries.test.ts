@@ -27,6 +27,21 @@ describe('queries', () => {
     expect(scorecardsQuery([{ ...main, metrics: [] }], [])).toEqual({ uniqueCount: [''] });
     expect(scorecardsQuery([{ ...main, metrics: [], hasPk: false }], [])).toBeNull();
   });
+  it('scorecards: a range date adds its column and its MIN and MAX', () => {
+    expect(scorecardsQuery([main], [], null, [], [date])).toEqual({
+      column: ['amount', 'date'],
+      aggregation: [{ column: 'amount', function: 'SUM' }, { column: 'date', function: 'MIN' }, { column: 'date', function: 'MAX' }],
+      uniqueCount: [''],
+    });
+  });
+  it('scorecards: a range date carries a slice with no metric and needs no counter column', () => {
+    const slice = [{ column: 'channel', operator: 'eq' as const, value: 'web', placement: 'pre-join' as const }];
+    const q = scorecardsQuery([{ ...main, metrics: [] }], slice, f('id', 'number'), [], [date]);
+    expect(q).toEqual({ column: ['date'], aggregation: [{ column: 'date', function: 'MIN' }, { column: 'date', function: 'MAX' }], uniqueCount: [''], filter: slice });
+  });
+  it('scorecards: no range date leaves the query as it was', () => {
+    expect(scorecardsQuery([main], [], null, [], [])).toEqual(scorecardsQuery([main], []));
+  });
   it('scorecards: a mart kept with no column joins the unique count list and adds no metric; its path is listed once', () => {
     expect(scorecardsQuery([main], [], null, ['stores'])).toEqual({ column: ['amount'], aggregation: [{ column: 'amount', function: 'SUM' }], uniqueCount: ['', 'stores'] });
     expect(scorecardsQuery([main, cust], [], null, ['c.x', 'stores'])?.uniqueCount).toEqual(['', 'c.x', 'stores']);
