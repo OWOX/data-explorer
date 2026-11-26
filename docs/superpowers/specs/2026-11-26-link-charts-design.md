@@ -35,7 +35,7 @@ The payload stays `v: 1`. A new optional top-level key `ch` holds a `ChartSettin
 3. `src/state/store.tsx`: `applyView` puts the charts in `state.charts[martId]` and marks the mart in a new `linkCharts: Record<string, true>`. No history entry: opening a link is not an Undo step, as today.
 4. `src/charts/ChartsBody.tsx`: on mount, a mart marked in `linkCharts` uses `state.charts[martId]` and skips `chartSettings.load`. Edits and saves are unchanged; the first save makes the doc the reader's own.
 5. `src/ui/explorer/MartGrid.tsx:472`: hiding a column while Charts is closed prunes the picks from `chartSettings.load(martId)`. For a mart marked in `linkCharts` it prunes `state.charts[martId]` instead, so hiding a column does not swap the link's charts for the reader's saved ones.
-6. The mark is cleared when a new link is applied to another mart, and is not kept across reloads (it lives in the store only).
+6. The mark lives in the store for the session and is not cleared, since a page applies at most one link. It is not kept across reloads.
 
 ## Testing
 

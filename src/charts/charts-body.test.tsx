@@ -321,13 +321,17 @@ test('a link-marked mart shows the store charts without loading the saved doc; t
   const t = setup({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries' }] } });
   await t.seeded;
   t.loads.mockClear();
+  t.puts.mockClear();
   t.view(link);
   await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
   await userEvent.click(radio('Charts'));
   await waitFor(() => expect(group('orders')).not.toBeNull());
   await waitFor(() => expect(data().querySelector('section.dm-chart')).not.toBeNull());
   expect(data().querySelectorAll('section.dm-chart')).toHaveLength(1);
+  expect(data().querySelector('section[data-chart-kind="Pie"]')).not.toBeNull();
+  expect(screen.queryByRole('button', { name: 'Time series options' })).toBeNull();
   expect(t.loads).not.toHaveBeenCalled();
+  expect(t.puts).not.toHaveBeenCalled();
   t.puts.mockClear();
   await openChartList();
   await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Amount · Sum' }));

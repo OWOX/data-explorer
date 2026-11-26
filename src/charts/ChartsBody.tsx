@@ -59,7 +59,12 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   const latest = useRef<ChartSettings | null>(null);
   useEffect(() => {
     const fromLink = linkMarked ? heldOnMount : undefined;
-    if (fromLink) { latest.current = fromLink; return; }
+    if (fromLink) {
+      latest.current = fromLink;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- puts the link's copy on screen if the mark turned true while mounted
+      setSettings(fromLink);
+      return;
+    }
     let live = true;
     chartSettings.load(martId).then((loaded) => {
       if (!live) return;
