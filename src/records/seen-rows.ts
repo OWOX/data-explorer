@@ -32,3 +32,8 @@ export function forgetSeenRows(ctx: Ctx, martId: string) {
   const seen = seenOf(ctx);
   for (const k of seen.keys()) if ((JSON.parse(k) as [string])[0] === martId) seen.delete(k);
 }
+
+/** A Refresh in the Row band: a later open of this record (Undo, Redo) must not show the older grid row. */
+export function forgetSeenRow(ctx: Ctx, martId: string, pk: Record<string, unknown>) {
+  seenOf(ctx).delete(keyOf(martId, pk));
+}

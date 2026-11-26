@@ -5,8 +5,14 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { SchemaFieldDto, TraverseOptions } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
+import { rememberRow } from '../../records/seen-rows';
 import { App } from '../App';
 import { openColumnMenu, closeConfigMenu, openFields, openSubmenu } from './menu-test-utils';
+
+vi.mock('../../records/seen-rows', async (orig) => {
+  const m = await orig<typeof import('../../records/seen-rows')>();
+  return { ...m, rememberRow: vi.fn(m.rememberRow), forgetSeenRows: vi.fn(m.forgetSeenRows) };
+});
 
 function setup(opts: { fields?: SchemaFieldDto[]; saved?: Record<string, unknown>; gate?: Promise<void> } = {}) {
   const fixtures = demoFixtures();
@@ -64,8 +70,10 @@ test('a Sum on Amount groups by the other columns: Amount · Sum, no primary key
   await sumLoaded();
   await waitFor(() => expect(within(data()).getByText(/\d+\+? groups?$/)).toBeInTheDocument());
   expect(within(data()).queryByText(/records$/)).toBeNull();
-  // a grouped row is no single record
+  // a grouped row is no single record, and hands nothing to the Row band
+  vi.mocked(rememberRow).mockClear();
   fireEvent.click(bodyRows()[0]!);
+  expect(rememberRow).not.toHaveBeenCalled();
   expect(await within(row()).findByText('Grouped rows have no single record.')).toBeInTheDocument();
   expect(bodyRows()[0]).not.toHaveClass('cursor-pointer');
   // the values are numbers read from the "<column> | SUM" key

@@ -8,6 +8,12 @@ import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
 import { closeConfigMenu, openFields, openSubmenu } from '../explorer/menu-test-utils';
 import { num } from '../format';
+import { forgetSeenRows, rememberRow } from '../../records/seen-rows';
+
+vi.mock('../../records/seen-rows', async (orig) => {
+  const m = await orig<typeof import('../../records/seen-rows')>();
+  return { ...m, rememberRow: vi.fn(m.rememberRow), forgetSeenRows: vi.fn(m.forgetSeenRows) };
+});
 
 type Mock = ReturnType<typeof createMockCtx>;
 
@@ -454,6 +460,50 @@ describe('the record', () => {
     await userEvent.click(within(row()).getByRole('button', { name: 'Refresh' }));
     expect(within(row()).getByRole('progressbar')).toBeInTheDocument();
     await waitFor(() => expect(within(row()).queryByRole('progressbar')).toBeNull());
+  });
+
+  test('a row opened hands the Row band only the main mart\'s columns the grid read', async () => {
+    vi.mocked(rememberRow).mockClear();
+    await mountWith();
+    await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
+    await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
+    const seen = vi.mocked(rememberRow).mock.calls.at(-1)![3];
+    const own = demoFixtures().marts.find((m) => m.id === 'orders')!.fields.map((f) => f.name);
+    expect(seen.columns).toContain('id');
+    expect(seen.columns.every((c) => own.includes(c))).toBe(true);
+    expect(seen.row).toHaveProperty('status');
+  });
+
+  test('the grid\'s Refresh forgets the rows it handed over', async () => {
+    vi.mocked(forgetSeenRows).mockClear();
+    await mountWith();
+    await within(data()).findByRole('table');
+    await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+    expect(forgetSeenRows).toHaveBeenCalledWith(expect.anything(), 'orders');
+  });
+
+  test('a row clicked while a newer read of more columns is in flight is not handed over, so the record reads', async () => {
+    let gate: Promise<void> | null = null;
+    let open!: () => void;
+    const calls: number[] = [];
+    await mountWith(overrideTraverse((real) => async (id, o) => {
+      if (o.limit === 1) calls.push(1);
+      if (o.limit === 201 && gate && o.column?.includes('net_revenue')) await gate;
+      return real(id, o);
+    }));
+    const grid = await within(data()).findByRole('table');
+    await within(grid).findAllByRole('cell', { name: '1' });
+    gate = new Promise<void>((r) => { open = r; });
+    for (const label of ['Amount', 'created_at', 'is_gift', 'Acquisition Session ID', 'Net Revenue']) {
+      await openFields('Orders');
+      await userEvent.click(screen.getByLabelText(label));
+    }
+    await closeConfigMenu();
+    // every field is now asked for, so a seed from these rows would count as full
+    await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
+    await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    open();
   });
 
   test('lists every mart that references it, and a click opens that mart filtered', async () => {

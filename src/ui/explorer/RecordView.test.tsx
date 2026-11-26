@@ -36,6 +36,8 @@ test('a seed with every field shows with no read, and Refresh reads once', async
   fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
   expect(await screen.findByText('Read')).toBeInTheDocument();
   expect(traverseData).toHaveBeenCalledTimes(1);
+  // a later open of this record (Undo, Redo) must not show the older grid row
+  expect(seenRow(ctx, 'm', pk, 0)).toBeUndefined();
 });
 
 test('a seed with some fields shows them before the read resolves, then the read replaces them', async () => {

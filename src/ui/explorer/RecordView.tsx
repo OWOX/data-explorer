@@ -4,7 +4,7 @@ import { useColumnFormats } from '../../format/useColumnFormats';
 import { readRows } from '../../api/rows';
 import type { Model, Schema } from '../../model/types';
 import { joinFilters } from '../../records/relationships';
-import { seenRow } from '../../records/seen-rows';
+import { forgetSeenRow, seenRow } from '../../records/seen-rows';
 import { useIncomingLinks } from '../../records/useIncomingLinks';
 import type { Row } from '../../sdk/types';
 import { useRememberLeaving } from '../../state/leaving';
@@ -62,14 +62,15 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
     return () => ac.abort();
   }, [ctx, schemas, martId, pk, incoming, version, first]);
 
+  const refresh = () => { forgetSeenRow(ctx, martId, pk); setVersion((v) => v + 1); };
   const header = (
     <BandTools slot={slot}>
-      <button type="button" onClick={() => setVersion((v) => v + 1)} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
+      <button type="button" onClick={refresh} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
     </BandTools>
   );
 
   const loaded = state.ver === version;
-  if (loaded && state.error) return <div className="flex flex-col">{header}<div className="p-4"><ErrorBox error={state.error} onRetry={() => setVersion((v) => v + 1)} /></div></div>;
+  if (loaded && state.error) return <div className="flex flex-col">{header}<div className="p-4"><ErrorBox error={state.error} onRetry={refresh} /></div></div>;
   if (state.row === undefined || !state.schema || (!loaded && state.row === null)) return <div className="flex flex-col">{header}<Skeleton rows={8} /></div>;
   if (state.row === null) return <div className="flex flex-col">{header}<p className="p-4 text-sm text-muted-foreground">Record not found</p></div>;
   const row = state.row;

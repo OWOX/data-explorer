@@ -771,8 +771,9 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     if (dragMoved.current) return;
     const pk = Object.fromEntries(pks.map((k) => [k, row[k]]));
     // Hand the row over: the Row band shows it at once. Only the main mart's own fields count (a joined column has another name, a calculated field may be grouped by the grid's other columns).
-    const mine = new Set(schema.filter((f) => !f.isCalculated).map((f) => f.name));
-    if (!grouped && asked) rememberRow(ctx, martId, pk, { row, columns: (asked.column ?? []).filter((c) => mine.has(c)), stamp: modelVersion });
+    // Rows still shown for an older ask (a newer read is in flight) are not what the current columns say they are: no seed then.
+    const mine = new Set(native.filter((f) => !f.isCalculated).map((f) => f.name));
+    if (!grouped && asked && !reading) rememberRow(ctx, martId, pk, { row, columns: (asked.column ?? []).filter((c) => mine.has(c)), stamp: modelVersion });
     dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk });
   };
   // The rows are memoised, so what they call must keep its identity: they reach the latest handlers through this one object.
