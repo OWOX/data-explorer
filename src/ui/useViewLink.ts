@@ -8,6 +8,7 @@ import { resolveView, skippedMessage } from '../state/view-link-resolve';
 
 const MAYBE_LINK = /^\/v(\?|$)/;
 const TOO_LARGE = 'This view is too large to link. Remove some columns or filters and try again.';
+const NO_CHARTS = 'The link was copied without the charts: they make it too long.';
 const COPY_FAILED = "The link couldn't be copied.";
 
 /**
@@ -15,7 +16,7 @@ const COPY_FAILED = "The link couldn't be copied.";
  * `pending` holds the page's first-load pick back until then. Nothing here writes to saved preferences.
  */
 export function useViewLink(model: Model | null, currentFolds: DecodedView['folded']) {
-  const { ctx, schemas, blendable } = useServices();
+  const { ctx, schemas, blendable, chartSettings } = useServices();
   const [state, dispatch] = useStore();
   const route = ctx.route;
   const [decoded, setDecoded] = useState<DecodedView | 'none' | null>(() => (route && MAYBE_LINK.test(route) ? null : 'none'));
@@ -58,7 +59,7 @@ export function useViewLink(model: Model | null, currentFolds: DecodedView['fold
     (async () => {
       try {
         const { apply, skipped } = await resolveView(decoded, model, readGrid);
-        dispatch({ type: 'applyView', selection: apply.selection, grid: apply.grid, search: apply.search, found: apply.found, contextIds: apply.contextIds, storageIds: apply.storageIds });
+        dispatch({ type: 'applyView', selection: apply.selection, grid: apply.grid, search: apply.search, found: apply.found, contextIds: apply.contextIds, storageIds: apply.storageIds, charts: apply.charts });
         setFolded(apply.folded);
         const message = skippedMessage(skipped);
         if (message) setNotice(message);
@@ -73,20 +74,25 @@ export function useViewLink(model: Model | null, currentFolds: DecodedView['fold
   const copy = async () => {
     const { selection, grids } = state;
     try {
-      const path = await encodeViewLink({
+      const martId = selection.martId;
+      const charts = martId ? state.charts[martId] ?? await chartSettings.load(martId) : undefined;
+      const view = {
         sourceKey: selection.sourceKey,
-        martId: selection.martId,
+        martId,
         record: selection.record?.pk ?? null,
         search: state.search,
         found: state.found,
         contextIds: state.contextIds,
         storageIds: state.storageIds,
         folded: currentFolds,
-        grid: selection.martId ? grids[selection.martId] ?? null : null,
-      });
+        grid: martId ? grids[martId] ?? null : null,
+      };
+      let path = await encodeViewLink({ ...view, ...(charts && (charts.charts || charts.scorecards) ? { charts } : {}) });
+      let note: string | null = null;
+      if (path.length > MAX_ROUTE_LENGTH && charts) { path = await encodeViewLink(view); note = NO_CHARTS; }
       if (path.length > MAX_ROUTE_LENGTH) { setNotice(TOO_LARGE); return; }
       await ctx.ui.copyLink(path);
-      setNotice(null);
+      setNotice(note);
     } catch {
       setNotice(COPY_FAILED);
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeViewLink, encodeViewLink, MAX_AGG_RULES, MAX_DECODED_BYTES, MAX_ROUTE_LENGTH, type DecodedView } from './view-link';
+import { decodeViewLink, encodeViewLink, MAX_AGG_RULES, MAX_DECODED_BYTES, MAX_LINK_CHARTS, MAX_ROUTE_LENGTH, type DecodedView } from './view-link';
 
 const folded = { sources: false, marts: true, data: false, row: true };
 const base: Omit<DecodedView, 'dropped' | 'droppedAggregations'> = {
@@ -28,6 +28,64 @@ const route = async (obj: unknown) => `/v?s=${b64u(await raw(new TextEncoder().e
 const valid = (over: Record<string, unknown> = {}) => ({ v: 1, P: ['a'], src: null, m: 'm1', r: null, q: '', ctx: [], st: null, f: folded, g: null, ...over });
 
 describe('view link codec', () => {
+  it('round trips the chart settings: generated ids are left out and come back new, the default ids stay', async () => {
+    const charts = {
+      scorecards: { hidden: ['records'], sparklines: false, metrics: { total: 'orders__total' } },
+      charts: [
+        { id: 'time-series', kind: 'timeSeries' as const },
+        { id: 'c-lx1-0', kind: 'sankey' as const, dimensions: ['status', 'orders__customers__name'], measure: 'records', size: { cols: 20, rows: 12 } },
+      ],
+    };
+    const link = await encodeViewLink({ ...base, charts });
+    const json = new TextDecoder().decode(await raw(Uint8Array.from(atob(link.slice(5).replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)), 'd'));
+    expect(json).not.toContain('c-lx1-0');
+    const out = await decodeViewLink(link);
+    if (typeof out === 'string') throw new Error(out);
+    expect(out.charts!.scorecards).toEqual(charts.scorecards);
+    expect(out.charts!.charts![0]).toEqual({ id: 'time-series', kind: 'timeSeries' });
+    const { id, ...rest } = out.charts!.charts![1]!;
+    expect(id).toMatch(/^c-/);
+    expect(rest).toEqual({ kind: 'sankey', dimensions: ['status', 'orders__customers__name'], measure: 'records', size: { cols: 20, rows: 12 } });
+  });
+
+  it('a link without charts decodes with none', async () => {
+    const out = await decodeViewLink(await encodeViewLink(base));
+    expect(out).not.toHaveProperty('charts');
+  });
+
+  it('a malformed ch is dropped and counted; a bad chart entry is dropped and counted', async () => {
+    const bad = await decodeViewLink(await route(valid({ ch: 'nope' })));
+    expect(bad).toMatchObject({ dropped: 1 });
+    expect(bad).not.toHaveProperty('charts');
+    const one = await decodeViewLink(await route(valid({ ch: { charts: [{ kind: 'pie' }, { kind: 'nope' }, 5] } })));
+    if (typeof one === 'string') throw new Error(one);
+    expect(one.charts!.charts!.map((c) => c.kind)).toEqual(['pie']);
+    expect(one.dropped).toBe(2);
+  });
+
+  it('junk keys in scorecard picks never reach a prototype', async () => {
+    const out = await decodeViewLink(await route(valid({ ch: JSON.parse('{"scorecards":{"metrics":{"__proto__":"x","a":"b"}}}') })));
+    if (typeof out === 'string') throw new Error(out);
+    expect(Object.getPrototypeOf(out.charts!.scorecards!.metrics)).toBe(Object.prototype);
+    expect(({} as Record<string, unknown>).x).toBeUndefined();
+    expect(out.charts!.scorecards!.metrics!.a).toBe('b');
+    expect(Object.keys(out.charts!.scorecards!.metrics!)).toEqual(['a']);
+  });
+
+  it('caps the charts read from a link and counts the overflow', async () => {
+    const out = await decodeViewLink(await route(valid({ ch: { charts: Array.from({ length: 70 }, () => ({ kind: 'pie' })) } })));
+    if (typeof out === 'string') throw new Error(out);
+    expect(out.charts!.charts).toHaveLength(MAX_LINK_CHARTS);
+    expect(out.dropped).toBe(6);
+  });
+
+  it('a ch that cleans to nothing decodes with no charts key', async () => {
+    for (const ch of [{}, { foo: 1 }]) {
+      const out = await decodeViewLink(await route(valid({ ch })));
+      if (typeof out === 'string') throw new Error(out);
+      expect(out).not.toHaveProperty('charts');
+    }
+  });
   it('round trips native and joined columns, filter shapes, sorts and record', async () => {
     const r = await encodeViewLink(base);
     expect(r.startsWith('/v?s=')).toBe(true);

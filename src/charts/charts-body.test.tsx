@@ -1,17 +1,25 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useEffect } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { GRID_COLUMNS_COLLECTION } from '../api/grid-columns';
 import { CHARTS_COLLECTION } from '../api/chart-settings';
 import { createMockCtx } from '../sdk/mock/ctx';
 import { demoFixtures, type Fixtures } from '../sdk/mock/fixtures';
 import type { Ctx, Row, TraverseOptions } from '../sdk/types';
-import { AppServices, StoreProvider } from '../state/store';
+import { AppServices, StoreProvider, useStore } from '../state/store';
 import { App } from '../ui/App';
 import { SAVED_COLUMNS_WAIT_MS } from '../ui/explorer/SeededGrid';
 import { openColumnMenu, openConfigMenu, closeConfigMenu, openFields, openSubmenu } from '../ui/explorer/menu-test-utils';
 import { TOP_N } from './queries';
 import type { ChartSettings } from './settings';
+
+/** Stands in for a followed view link: it puts the link's charts in the store for orders, as `applyView` does. */
+function OpenLink({ charts }: { charts: ChartSettings }) {
+  const [, dispatch] = useStore();
+  useEffect(() => { dispatch({ type: 'applyView', selection: { sourceKey: null, martId: 'orders', record: null }, grid: null, search: '', contextIds: [], storageIds: null, charts }); }, [dispatch, charts]);
+  return null;
+}
 
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
 const COLUMNS = ['id', 'status', 'amount', 'created_at', 'products__price'];
@@ -21,6 +29,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const puts = vi.fn();
+  const loads = vi.fn();
   const gridPuts = vi.fn();
   // The demo fixtures have no calculated field: with `calc`, the schema gains a metric-level `net` and every row of an orders read carries net = 42 (the mock backend rejects the unknown column, so it and any rule on it are cut from the request; it knows no HAVING on a calculated column, so every group passes).
   const calcOf = (o: TraverseOptions): TraverseOptions => ({ ...o, column: o.column?.filter((c) => c !== 'net'), sort: o.sort?.filter((x) => x.column !== 'net'), filter: o.filter?.filter((r) => r.column !== 'net') });
@@ -35,14 +44,14 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
     collections: <T,>(name: string) => {
       const c = base.collections<T>(name);
       if (name === GRID_COLUMNS_COLLECTION) return { get: (id: string) => c.get(id), put: (id: string, d: T) => { gridPuts(id, d); return c.put(id, d); } };
-      return name === CHARTS_COLLECTION ? { get: (id: string) => (opts.gate ? opts.gate.then(() => c.get(id)) : c.get(id)), put: (id: string, d: T) => { puts(id, d); return c.put(id, d); } } : c;
+      return name === CHARTS_COLLECTION ? { get: (id: string) => { loads(id); return opts.gate ? opts.gate.then(() => c.get(id)) : c.get(id); }, put: (id: string, d: T) => { puts(id, d); return c.put(id, d); } } : c;
     },
   };
   const seeded = Promise.all([
     ctx.collections<{ columns: string[]; at: string; aggregations?: unknown; gridView?: unknown }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: opts.columns ?? COLUMNS, at: 'then', ...(opts.uc ? { gridView: { fl: [], s: null, l: 100, uc: [''] } } : {}), ...(opts.aggregations ? { aggregations: opts.aggregations } : {}) }),
     opts.charts ? ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', opts.charts) : undefined,
   ]);
-  return { ctx, queries, puts, gridPuts, seeded, unmount: () => cleanup(), view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
+  return { ctx, queries, puts, loads, gridPuts, seeded, unmount: () => cleanup(), view: (link?: ChartSettings) => render(<AppServices ctx={ctx}><StoreProvider>{link ? <OpenLink charts={link} /> : null}<App /></StoreProvider></AppServices>) };
 }
 
 const lastGrid = (t: { gridPuts: { mock: { calls: unknown[][] } } }) => t.gridPuts.mock.calls.at(-1)![1] as { columns: string[]; aggregations?: { column: string; function: string }[] };
@@ -306,6 +315,41 @@ test('a change cannot be made before the saved settings load, and one made after
   await userEvent.click(await within(early).findByRole('menuitem', { name: 'Charts' }));
   await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Amount · Sum' }));
   await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { ...saved, scorecards: { hidden: ['amount'] } }));
+});
+
+test('a link-marked mart shows the store charts without loading the saved doc; the first edit saves them', async () => {
+  const link: ChartSettings = { charts: [{ id: 'pie', kind: 'pie', dimension: 'status' }] };
+  const t = setup({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries' }] } });
+  await t.seeded;
+  t.loads.mockClear();
+  t.puts.mockClear();
+  t.view(link);
+  await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
+  await userEvent.click(radio('Charts'));
+  await waitFor(() => expect(group('orders')).not.toBeNull());
+  await waitFor(() => expect(data().querySelector('section.dm-chart')).not.toBeNull());
+  expect(data().querySelectorAll('section.dm-chart')).toHaveLength(1);
+  expect(data().querySelector('section[data-chart-kind="Pie"]')).not.toBeNull();
+  expect(screen.queryByRole('button', { name: 'Time series options' })).toBeNull();
+  expect(t.loads).not.toHaveBeenCalled();
+  expect(t.puts).not.toHaveBeenCalled();
+  t.puts.mockClear();
+  await openChartList();
+  await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Amount · Sum' }));
+  await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { ...link, scorecards: { hidden: ['amount'] } }));
+});
+
+test('hiding a column with Charts closed prunes the link\'s picks from the store copy, with no read of the saved doc', async () => {
+  const link: ChartSettings = { scorecards: { dates: { amount: 'created_at' }, hidden: ['x'] } };
+  const t = setup({ charts: { scorecards: { hidden: ['saved'] } } });
+  await t.seeded;
+  t.loads.mockClear();
+  t.view(link);
+  await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
+  const menu = await openColumnMenu(within(data()), 'created_at');
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
+  await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { scorecards: { dates: {}, hidden: ['x'] } }));
+  expect(t.loads).not.toHaveBeenCalled();
 });
 
 const panel = (name: string) => screen.getByRole('button', { name: `${name} options` });

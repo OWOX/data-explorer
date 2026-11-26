@@ -245,6 +245,21 @@ describe('setMarts: the main mart, its joined marts and their grid state change 
   });
 });
 
+test('applyView with charts puts them in the store and marks the mart, with no history entry', () => {
+  const settings = { charts: [{ id: 'pie', kind: 'pie' as const }] };
+  const next = reducer(initialState, { type: 'applyView', selection: sel({ martId: 'b' }), grid: null, search: '', contextIds: [], storageIds: null, charts: settings });
+  expect(next.charts.b).toBe(settings);
+  expect(next.linkCharts).toEqual({ b: true });
+  expect(next.history).toEqual([]);
+});
+
+test('applyView without charts leaves the store charts and marks alone', () => {
+  const start = { ...initialState, charts: { b: { charts: [] } }, linkCharts: {} };
+  const next = reducer(start, { type: 'applyView', selection: sel({ martId: 'b' }), grid: null, search: '', contextIds: [], storageIds: null });
+  expect(next.charts).toBe(start.charts);
+  expect(next.linkCharts).toEqual({});
+});
+
 test('applyView sets everything at once, with no history entry', () => {
   const grid = { columns: ['id'], filters: {}, sorts: null, limit: 200 };
   const other = { columns: ['x'], filters: {}, sorts: null, limit: 200 };

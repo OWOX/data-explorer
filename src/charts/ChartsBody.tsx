@@ -54,10 +54,20 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
 }) {
   const { chartSettings } = useServices();
   const [store, dispatch] = useStore();
-  const [settings, setSettings] = useState<ChartSettings | null>(null);
+  const linkMarked = !!store.linkCharts[martId];
+  const heldOnMount = store.charts[martId];
+  // A link's charts are on screen from the first render: the saved doc is not read until the member's first edit saves them as theirs.
+  const [settings, setSettings] = useState<ChartSettings | null>(() => (linkMarked ? heldOnMount ?? null : null));
   // Changes apply over the latest doc (not a render's copy), so two quick changes both land.
   const latest = useRef<ChartSettings | null>(null);
   useEffect(() => {
+    const fromLink = linkMarked ? heldOnMount : undefined;
+    if (fromLink) {
+      latest.current = fromLink;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- puts the link's copy on screen if the mark turned true while mounted
+      setSettings(fromLink);
+      return;
+    }
     let live = true;
     chartSettings.load(martId).then((loaded) => {
       if (!live) return;
@@ -67,7 +77,8 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
       dispatch({ type: 'saveCharts', martId, settings: loaded });
     });
     return () => { live = false; };
-  }, [chartSettings, martId, dispatch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- heldOnMount is read on mount only: Undo and Redo flow through the held effect.
+  }, [chartSettings, martId, dispatch, linkMarked]);
   // Undo and Redo put other settings in the store: they come on screen (the store saves them). A member edit stores the same object it holds, so it is not seen here.
   const held = store.charts[martId];
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { openFields, closeConfig, groupTitles, configButton } from './config-menu';
 
+declare global { interface Window { __copiedLink?: string } }
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
 const data = (page: Page) => page.locator('#band-data');
 
@@ -425,4 +426,38 @@ test('a fallback copy with the clipboard API gone keeps the bubble and the scrol
   await expect(bubble).toBeVisible();
   expect(await scrolls()).toEqual(before);
   await expect(toolbarButton).toBeFocused();
+});
+
+test('a view link carries a Sankey: a fresh page opened from it shows it, a plain reload shows no Sankey', async ({ page, context }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
+  await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
+  for (const name of ['is_gift', /created_at/i]) {
+    await openFields(page, 'Orders');
+    await page.getByRole('option', { name }).click();
+    await closeConfig(page);
+  }
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  await expect(data(page).locator('section.dm-chart')).toHaveCount(2);
+  await configButton(page).click();
+  await page.getByRole('menuitem', { name: 'Add chart' }).click();
+  await page.getByRole('menuitemradio', { name: 'Sankey' }).click();
+  await expect(data(page).locator('section[data-chart-kind="Sankey"]')).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'Copy link to this view' }).click();
+  await expect.poll(() => page.evaluate(() => window.__copiedLink)).toMatch(/^\/v\?s=/);
+  const link = (await page.evaluate(() => window.__copiedLink))!;
+
+  // A new page starts with an empty mock store: no saved charts, so the Sankey can only come from the link.
+  const opened = await context.newPage();
+  await opened.goto(`/?mock&route=${encodeURIComponent(link)}`);
+  await data(opened).getByRole('radio', { name: 'Charts' }).click();
+  await expect(data(opened).locator('section[data-chart-kind="Sankey"]')).toHaveCount(1);
+  await expect(data(opened).locator('section.dm-chart')).toHaveCount(3);
+
+  // Without the route, the mart has no saved charts: the plain page has the default charts and no Sankey.
+  await opened.goto('/?mock');
+  await data(opened).getByRole('radio', { name: 'Charts' }).click();
+  await expect(data(opened).locator('section.dm-chart')).toHaveCount(1);
+  await expect(data(opened).locator('section[data-chart-kind="Sankey"]')).toHaveCount(0);
 });

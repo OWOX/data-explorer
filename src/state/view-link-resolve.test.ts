@@ -36,6 +36,13 @@ describe('resolveView', () => {
     expect(apply.folded).toEqual(folded);
   });
 
+  it('carries the link charts for an accessible mart only', async () => {
+    const charts = { charts: [{ id: 'pie', kind: 'pie' as const }] };
+    expect((await resolveView(view({ charts }), model, read)).apply.charts).toEqual(charts);
+    expect((await resolveView(view({ charts, martId: 'm2' }), model, read)).apply.charts).toBeUndefined();
+    expect((await resolveView(view({ charts, martId: null, record: null, grid: null }), model, read)).apply.charts).toBeUndefined();
+  });
+
   it('drops a mart that is unknown or not accessible, with its record and grid', async () => {
     for (const id of ['nope', 'm2']) {
       const { apply, skipped } = await resolveView(view({ martId: id }), model, read);
