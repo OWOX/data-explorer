@@ -490,6 +490,8 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-editor .dm-btn { flex-shrink: 0; }
 .dm-menu-editor .dm-menu-flush { margin: -8px -16px; display: flex; flex-direction: column; }
 .dm-menu-fly { max-height: min(28rem, calc(100vh - 16px)); }
+/* The date presets list is taller than a form: it takes the flyout's cap, so its last row (Remove filter, Remove slice) shows without a scroll. */
+.dm-menu-editor:has(.dm-menu-flush) { max-height: min(28rem, calc(100vh - 16px)); }
 .dm-menu-list { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 0; }
 .dm-menu-fly-form { display: flex; flex-shrink: 0; align-items: center; gap: 8px; margin-top: 4px; padding: 8px 16px 8px; border-top: 1px solid var(--menu-line); }
 .dm-menu-fly-form .dm-select { flex: 1 1 auto; }

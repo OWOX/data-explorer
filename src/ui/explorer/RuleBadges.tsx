@@ -80,7 +80,7 @@ export function RuleBadges({ marts, filters, slices, offered, onRemove }: {
         return (
           <span key={kind} className="inline-flex">
             {/* The tooltip lists the rules, one per line; it stays shut while the badge's list is open. */}
-            <Tooltip side="bottom" content={open ? null : <div className="flex flex-col">{list.map((e) => <span key={e.key}>{lineOf(kind, e)}</span>)}</div>}>
+            <Tooltip content={open ? null : <div className="flex flex-col">{list.map((e) => <span key={e.key}>{lineOf(kind, e)}</span>)}</div>}>
               <button type="button" className="dm-rule-badge" data-rule-badge={kind} aria-haspopup="menu" aria-expanded={open} onFocus={(e) => { if (handing.current) e.preventDefault(); }}
                 onClick={(e) => { const a = e.currentTarget; if (open) setMenu(null); else { setAnchor(a); setMenu(kind); } }}>
                 <Icon className="size-3" aria-hidden />{list.length} {list.length === 1 ? one : many}

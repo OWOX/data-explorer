@@ -103,6 +103,23 @@ test('Filter on a date: Last… opens a third panel whose form shows Apply, with
   await expect(page.getByRole('menu', { name: 'Last…' }).getByLabel('N', { exact: true })).toHaveValue('5');
 });
 
+test('Filter on a date with a rule: the presets list fits, and Remove filter shows at its end without a scroll', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await tick(page, 'created_at');
+  const dialog = await openSub(page, 'created_at', 'Filter');
+  await click(page, dialog.getByRole('menuitemradio', { name: 'Today' }));
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await data(page).getByRole('button', { name: /^Filter created_at/ }).click();
+  const reopened = page.getByRole('dialog');
+  const remove = reopened.getByRole('menuitem', { name: 'Remove filter' });
+  await expect(remove).toBeVisible();
+  const body = reopened.locator('[data-popover-body]');
+  expect(await body.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+  const r = (await remove.boundingBox())!;
+  const box = (await reopened.boundingBox())!;
+  expect(r.y + r.height).toBeLessThanOrEqual(box.y + box.height);
+});
+
 test('a column ticked in Fields can have its menu opened right away, and the menu stays open', async ({ page }) => {
   await tick(page, 'Net Revenue');
   const icon = data(page).getByLabel('Column menu Net Revenue', { exact: true });

@@ -118,6 +118,27 @@ test('Charts: the config menu opens with Add chart and Charts, a chart’s menu 
   await expect(data(page).locator('section[data-chart-kind="Pie"]')).toHaveCount(2);
 });
 
+test('a filter badge\'s tooltip opens above the badge, clear of the grid', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  const icon = data(page).getByLabel('Column menu status', { exact: true });
+  await icon.locator('xpath=ancestor::th').hover();
+  await icon.click();
+  await page.getByRole('menuitem', { name: 'Filter', exact: true }).click();
+  await page.getByLabel('Operator').selectOption('contains');
+  await page.getByLabel('Value').fill('paid');
+  await page.getByRole('button', { name: 'Apply' }).click();
+  const badge = data(page).getByRole('button', { name: '1 filter', exact: true });
+  // The rows settle first: a re-render under a resting pointer would close the tooltip.
+  await expect.poll(() => data(page).getByRole('row').count()).toBe(110);
+  await page.mouse.move(0, 0);
+  await badge.hover();
+  const tip = page.locator('.dm-hint-body', { hasText: 'status' });
+  await expect(tip).toHaveAttribute('data-side', 'top');
+  const t = (await tip.boundingBox())!;
+  const b = (await badge.boundingBox())!;
+  expect(t.y + t.height).toBeLessThanOrEqual(b.y);
+});
+
 test('the filter badge lists the filtered fields, then Remove filters, and Remove filters takes both off in one Undo step', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   const filter = async (column: string, value: string, operator?: string) => {
