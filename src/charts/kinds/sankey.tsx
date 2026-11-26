@@ -1,4 +1,4 @@
-import { Columns3, Gauge, Tag, Waypoints } from 'lucide-react';
+import { Columns3, EllipsisVertical, Gauge, Waypoints } from 'lucide-react';
 import { useMemo } from 'react';
 import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
@@ -48,6 +48,15 @@ export const setColumn = (names: string[], at: number, name: string): string[] =
   const from = next.indexOf(name);
   if (from >= 0 && from !== at) next[from] = next[at]!;
   next[at] = name;
+  return next;
+};
+
+/** The columns with the one at `from` moved to place `to`; the same list when either is out of range. */
+export const moveColumn = (names: string[], from: number, to: number): string[] => {
+  if (from < 0 || to < 0 || from >= names.length || to >= names.length || from === to) return names;
+  const next = [...names];
+  const [one] = next.splice(from, 1);
+  next.splice(to, 0, one!);
   return next;
 };
 
@@ -101,12 +110,13 @@ function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
   // Five columns always, each with None first: a used one takes the column out, an unused one has None checked and picking a dimension appends it.
   const columnItems = Array.from({ length: SANKEY_MAX }, (_, i): MenuItem => {
     const used = i < n;
-    return { kind: 'radio', label: `Column ${i + 1}`, icon: Tag, value: used ? names[i]! : '', groups: dimGroups,
+    return { kind: 'radio', label: `Column ${i + 1}`, icon: EllipsisVertical, value: used ? names[i]! : '', groups: dimGroups,
       options: [{ value: '', label: 'None' }],
       onPick: (v) => { const next = setColumn(names, i, v); if (next.join('\n') !== names.join('\n')) onChange({ dimensions: next }); } };
   });
   const items: MenuItem[] = [
-    { kind: 'group', label: 'Columns', icon: Columns3, items: columnItems },
+    { kind: 'group', label: 'Columns', icon: Columns3, items: columnItems, draggable: n,
+      onReorder: (from, to) => { const next = moveColumn(names, from, to); if (next.join('\n') !== names.join('\n')) onChange({ dimensions: next }); } },
     { kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(menuOf(cf), pieMeasures(menuOf(cf))), onPick: (v: string) => onChange({ measure: v }) },
     ...tail,
   ];

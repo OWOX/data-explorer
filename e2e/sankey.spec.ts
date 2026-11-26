@@ -47,6 +47,36 @@ test('add a Sankey from Add chart, a many-to-one joined column draws, a fan-out 
   await expect.poll(() => sankey.locator('rect[data-node]').count()).toBeLessThan(before);
 });
 
+test('dragging Column 1 by its ⋮ below Column 2 swaps the columns, and the titles above the chart follow', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await openFields(page, 'Orders');
+  await page.getByRole('option', { name: 'is_gift' }).click();
+  await closeConfig(page);
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  await configButton(page).click();
+  await page.getByRole('menuitem', { name: 'Add chart' }).click();
+  await page.getByRole('menuitemradio', { name: 'Sankey' }).click();
+  const sankey = data(page).locator('section[data-chart-kind="Sankey"]');
+  const titles = sankey.locator('text.dm-chart-axis-title');
+  await expect(titles).toHaveCount(2);
+  const before = await titles.allTextContents();
+  await sankey.scrollIntoViewIfNeeded();
+  await sankey.getByRole('button', { name: 'Sankey options' }).click();
+  await page.getByRole('menuitem', { name: 'Columns' }).click();
+  const first = await page.getByRole('menuitem', { name: 'Column 1' }).locator('[data-grip]').boundingBox();
+  const second = await page.getByRole('menuitem', { name: 'Column 2' }).boundingBox();
+  const x = first!.x + first!.width / 2;
+  await page.mouse.move(x, first!.y + first!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(x, first!.y + first!.height / 2 + 10, { steps: 3 });
+  await page.mouse.move(x, second!.y + second!.height - 2, { steps: 5 });
+  await expect(page.locator('[data-drop-line]')).toBeVisible();
+  await page.mouse.up();
+  await expect.poll(() => titles.allTextContents()).toEqual([before[1], before[0]]);
+  // The menu stays open.
+  await expect(page.getByRole('menu', { name: 'Columns' })).toBeVisible();
+});
+
 test('a column of a one-to-many joined mart says why it cannot sum', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   // Shipments hang several rows on one order: Orders' metric would count an order once per shipment.
@@ -328,6 +358,8 @@ test('a long bubble of a node in the last column stays inside a 500px wide viewp
   const b = (await bubble.boundingBox())!;
   expect(b.x).toBeGreaterThanOrEqual(0);
   expect(b.x + b.width).toBeLessThanOrEqual(500);
+  // The Copy button shows while the pointer is on the bubble.
+  await bubble.hover();
   const c = (await bubble.getByRole('button', { name: 'Copy to clipboard' }).boundingBox())!;
   expect(c.x).toBeGreaterThanOrEqual(0);
   expect(c.x + c.width).toBeLessThanOrEqual(500);
@@ -351,6 +383,8 @@ test('a fallback copy with the clipboard API gone keeps the bubble and the scrol
   await node.hover();
   await expect(bubble).toBeVisible();
   const before = await scrolls();
+  // The Copy button shows while the pointer is on the bubble (hover, not focus: the toolbar button keeps focus).
+  await bubble.hover();
   await bubble.getByRole('button', { name: 'Copy to clipboard' }).click();
   // The check or "Copy failed" shows (the page may or may not allow execCommand), and the bubble stays.
   await expect(bubble.locator('[data-copied], [role="alert"]')).toHaveCount(1);
