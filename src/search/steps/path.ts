@@ -16,12 +16,13 @@ const parentPaths = (path: string): string[] => { const parts = path.split('.');
 export function pathCandidates(sources: JoinedSource[], input: StepInput): PathCandidate[] {
   const terms = intentTerms(input.intent, input.query);
   const byPath = new Map(sources.map((s) => [s.aliasPath, s]));
+  /** One candidate per mart and final relationship: the same mart through a different relationship means something else. */
   const best = new Map<string, { s: JoinedSource; i: number }>();
   sources.forEach((s, i) => {
     if (s.depth > PATH_DEPTH) return;
-    const cur = best.get(s.martId);
+    const key = `${s.martId}|${s.relationshipId ?? ''}`, cur = best.get(key);
     const safe = s.mainGrainMultiplication === 'none', curSafe = cur?.s.mainGrainMultiplication === 'none';
-    if (!cur || (safe && !curSafe) || (safe === curSafe && s.depth < cur.s.depth)) best.set(s.martId, { s, i });
+    if (!cur || (safe && !curSafe) || (safe === curSafe && s.depth < cur.s.depth)) best.set(key, { s, i });
   });
   return [...best.values()]
     .map(({ s, i }) => {

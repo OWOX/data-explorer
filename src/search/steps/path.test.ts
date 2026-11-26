@@ -16,10 +16,13 @@ describe('pathCandidates', () => {
     expect(c[0]).toMatchObject({ qid: 'p0', relationship: 'Placed orders', relationshipDescription: 'Orders the user placed' });
     expect(c[1]!.via).toEqual(['Orders']);
   });
-  it('keeps one candidate per mart, preferring grain-safe, then shallow, then first', () => {
-    const c = pathCandidates([src('a.b.c', 'users', { mainGrainMultiplication: 'many' as never }), src('a.b.c.d', 'users', { mainGrainMultiplication: 'none' }), src('x', 'users', { mainGrainMultiplication: 'none' }), src('y', 'users', { mainGrainMultiplication: 'none' })], input);
+  it('keeps two relationships to one mart as two candidates', () => {
+    expect(pathCandidates([src('created_by', 'users', { relationshipId: 'r1' }), src('assigned_to', 'users', { relationshipId: 'r2' })], input)).toHaveLength(2);
+  });
+  it('keeps one candidate per mart and relationship, preferring grain-safe, then shallow, then first', () => {
+    const c = pathCandidates([src('a.b.c', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'many' as never }), src('a.b.c.d', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'none' }), src('x', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'none' }), src('y', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'none' })], input);
     expect(c.map((x) => x.source.aliasPath)).toEqual(['x']);
-    const d = pathCandidates([src('a.b.c', 'users', { mainGrainMultiplication: 'many' as never }), src('a.b.c.d', 'users', { mainGrainMultiplication: 'none' })], input);
+    const d = pathCandidates([src('a.b.c', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'many' as never }), src('a.b.c.d', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'none' })], input);
     expect(d.map((x) => x.source.aliasPath)).toEqual(['a.b.c.d']);
   });
   it('sorts a depth-4 source sharing a query word first', () => {
