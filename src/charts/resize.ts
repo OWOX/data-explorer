@@ -42,7 +42,8 @@ export type ChartFrame = {
   size: ChartSize;
   /** Resize mode is on: the panels show their handles. */
   resizing: boolean;
-  onResize: (size: ChartSize) => void;
+  /** `keys`: a keyboard step; a run of them on one chart is one Undo step. */
+  onResize: (size: ChartSize, keys?: boolean) => void;
   /** Set while a drag is out: Escape calls it to put the size back. */
   cancelDrag: { current: (() => void) | null };
 };

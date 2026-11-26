@@ -58,10 +58,38 @@ function clean(doc: unknown): ChartSettings {
   return out;
 }
 
+/** How long a load waits for this tab's saves of the mart before it reads anyway. */
+const SAVE_WAIT_MS = 5000;
+type Slot = { running: Promise<void>; /** At most one more put per mart: later saves replace its doc. */ queued?: { doc: ChartSettings; done: Promise<void>; finish: () => void } };
+
 export function createChartSettings(ctx: Ctx): ChartSettingsStore {
   const col = ctx.collections<ChartSettings>(CHARTS_COLLECTION);
+  // Per mart, the put in flight and the one queued behind it: a load waits for them, so it never reads a doc older than a save this tab already made.
+  const slots = new Map<string, Slot>();
+  const put = (martId: string, s: ChartSettings): Promise<void> => {
+    const run: Promise<void> = Promise.resolve()
+      .then(async () => { await col.put(martId, s); })
+      .catch((e) => console.warn('Saving the chart settings failed', e))
+      .then(() => {
+        const slot = slots.get(martId);
+        const q = slot?.queued;
+        if (!slot || slot.running !== run) return;
+        if (!q) { slots.delete(martId); return; }
+        slot.queued = undefined;
+        slot.running = put(martId, q.doc);
+        void slot.running.then(q.finish);
+      });
+    return run;
+  };
   return {
     async load(martId) {
+      const slot = slots.get(martId);
+      const wait = slot && (slot.queued?.done ?? slot.running);
+      if (wait) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([wait, new Promise<void>((r) => { timer = setTimeout(r, SAVE_WAIT_MS); })]);
+        clearTimeout(timer);
+      }
       try {
         return clean((await col.get(martId))?.document);
       } catch (e) {
@@ -70,9 +98,17 @@ export function createChartSettings(ctx: Ctx): ChartSettingsStore {
       }
     },
     save(martId, s) {
-      return Promise.resolve()
-        .then(async () => { await col.put(martId, s); })
-        .catch((e) => console.warn('Saving the chart settings failed', e));
+      const slot = slots.get(martId);
+      if (!slot) {
+        const running = put(martId, s);
+        slots.set(martId, { running });
+        return running;
+      }
+      if (slot.queued) { slot.queued.doc = s; return slot.queued.done; }
+      let finish!: () => void;
+      const done = new Promise<void>((r) => { finish = r; });
+      slot.queued = { doc: s, done, finish };
+      return done;
     },
   };
 }
