@@ -358,10 +358,10 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
 
 /* Rows loading: an indeterminate bar as wide as the card, on its top border. Only a sliding segment moves,
    so it costs no layout. */
-.dm-loadbar { position: absolute; z-index: 20; top: 0; left: 0; right: 0; height: 2px; overflow: hidden; pointer-events: none; background: color-mix(in oklab, var(--primary) 20%, transparent); }
-.dm-loadbar::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--primary); animation: dm-progress 1.1s ease-in-out infinite; }
+.dm-busybar { position: absolute; z-index: 20; top: 0; left: 0; right: 0; height: 2px; overflow: hidden; pointer-events: none; background: color-mix(in oklab, var(--primary) 20%, transparent); }
+.dm-busybar::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--primary); animation: dm-progress 1.1s ease-in-out infinite; }
 @keyframes dm-progress { from { translate: -100% 0; } to { translate: 250% 0; } }
-@media (prefers-reduced-motion: reduce) { .dm-loadbar::before { animation: none; width: 100%; opacity: 0.6; } }
+@media (prefers-reduced-motion: reduce) { .dm-busybar::before { animation: none; width: 100%; opacity: 0.6; } }
 
 /* The line under the header is a shadow on each header cell, not a border: sticky cells lose collapsed borders as the body
    scrolls under them, a shadow travels with the cell. */

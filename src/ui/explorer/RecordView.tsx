@@ -68,7 +68,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
   return (
     <div className="flex max-h-[32rem] min-h-0 flex-col">
       {header}
-      {!loaded && <div role="progressbar" aria-label="Loading record" className="dm-loadbar" />}
+      {!loaded && <div role="progressbar" aria-label="Loading record" className="dm-busybar" />}
       <div className="min-h-0 flex-1 overflow-auto">
       <dl className="grid grid-cols-[minmax(10rem,16rem)_1fr] content-start gap-x-4 gap-y-2 p-4 text-sm">
         {state.schema.map((f) => (

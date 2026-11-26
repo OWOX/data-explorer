@@ -1154,7 +1154,7 @@ describe('the Data band loading bar', () => {
     const delay = { ms: 1500 };
     await mountWith(slow(delay));
     const first = await within(data()).findByRole('progressbar', { name: 'Loading rows' });
-    expect(first).toHaveClass('dm-loadbar');
+    expect(first).toHaveClass('dm-busybar');
     expect(first.closest('.dm-bigcard')).not.toBeNull();
     await within(data()).findByRole('table');
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));

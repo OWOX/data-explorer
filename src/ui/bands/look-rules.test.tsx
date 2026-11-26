@@ -272,7 +272,7 @@ describe('Graph', () => {
 describe('bands.css hygiene', () => {
   it('uses only custom properties the theme defines', () => {
     const theme = readFileSync('src/styles.css', 'utf8');
-    const used = new Set([...css.matchAll(/var\((--[a-z-]+)/g)].map((m) => m[1]!));
+    const used = new Set([...css.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]!));
     const defined = new Set([...`${theme}\n${css}`.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]!));
     // Set inline from script, each read with a fallback.
     const fromScript = new Set(['--dm-fill', '--badge-count', '--badge-extra']);
@@ -281,8 +281,11 @@ describe('bands.css hygiene', () => {
   });
 
   it('keeps the loading bar and the progress tone apart', () => {
-    expect(css.match(/^\.dm-progress\s*\{/gm)).toHaveLength(1);
-    expect(css).toMatch(/^\.dm-loadbar\s*\{[^}]*position:\s*absolute/m);
-    expect(css.match(/^\.dm-badges\s*\{/gm)).toHaveLength(1);
+    const defs = (cls: string) => css.match(new RegExp(`^\\.${cls}\\s*\\{`, 'gm'));
+    expect(defs('dm-progress')).toHaveLength(1);
+    expect(defs('dm-loadbar')).toHaveLength(1);
+    expect(defs('dm-busybar')).toHaveLength(1);
+    expect(defs('dm-badges')).toHaveLength(1);
+    expect(css).toMatch(/^\.dm-busybar\s*\{[^}]*position:\s*absolute/m);
   });
 });
