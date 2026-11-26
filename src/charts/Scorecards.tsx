@@ -214,8 +214,8 @@ export const numberOf = (v: unknown): number | null => {
 };
 
 /** One card: its label and ⋮ menu, its value and its own sparkline (the date picked for it, read once per date and shared by the cards on it). */
-function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, autoBucket, filter, version, paused, joins, formatOf, choices, onMetric, onDate, onHide }: {
-  martId: string; mart: ChartMart; menuMart: ChartMart; card: Card; spark: Spark; row: Row | undefined; /** The row is the previous read's, shown dimmed until the new one arrives. */ busy: boolean; bucket: DateBucket | null; /** Whether the charts' bucket is Auto, so a card on its own date picks its own. */ autoBucket: boolean; filter: TraverseFilter[]; version: number; paused: boolean; joins?: JoinGrain; formatOf: Formatter;
+function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, bucketPending, autoBucket, filter, version, paused, joins, formatOf, choices, onMetric, onDate, onHide }: {
+  martId: string; mart: ChartMart; menuMart: ChartMart; card: Card; spark: Spark; row: Row | undefined; /** The row is the previous read's, shown dimmed until the new one arrives. */ busy: boolean; bucket: DateBucket | null; /** The charts' bucket is still being resolved by its range read. */ bucketPending: boolean; /** Whether the charts' bucket is Auto, so a card on its own date picks its own. */ autoBucket: boolean; filter: TraverseFilter[]; version: number; paused: boolean; joins?: JoinGrain; formatOf: Formatter;
   choices: ReturnType<typeof measureGroups>; onMetric?: (cardId: string, measure: string) => void; onDate?: (cardId: string, date: string) => void; onHide?: (cardId: string) => void;
 }) {
   const date = cardDate(mart, spark, c.id);
@@ -228,16 +228,20 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, 
   const cardBucket = own ? mine.bucket : bucket;
   const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, cardBucket, filter, date), version, joins);
   // A changed date has no trend yet (its range, then its rows, are still being read): a placeholder holds the sparkline's place instead of a stale or empty box.
-  const waiting = !paused && spark.sparklines && !!date && (trend.loading || (own && !mine.bucket && !mine.error));
+  // A null bucket that is still resolving counts as waiting too: the trend read has no query yet.
+  const resolving = cardBucket === null && (own ? mine.pending : bucketPending);
+  const waiting = !paused && spark.sparklines && !!date && (trend.loading || resolving);
   // A filter change reads the same date and bucket again: the last trend stays, dimmed, until the new one arrives. Another date or bucket has none to keep, so it waits on the placeholder.
   const [lastTrend, setLastTrend] = useState<{ rows: Row[]; date: string | undefined; bucket: DateBucket | null } | null>(null);
   if (trend.rows && lastTrend?.rows !== trend.rows) setLastTrend({ rows: trend.rows, date: date?.name, bucket: cardBucket });
-  const kept = waiting && !trend.rows && lastTrend && lastTrend.date === date?.name && lastTrend.bucket === cardBucket ? lastTrend.rows : null;
-  const dated = date ? datedRows(trend.rows ?? kept ?? [], date.name) : [];
+  // While the bucket is still resolving, the date alone decides: if the resolved bucket then differs, the kept trend drops and the placeholder shows.
+  const kept = waiting && !trend.rows && lastTrend && lastTrend.date === date?.name && (cardBucket === null || lastTrend.bucket === cardBucket) ? lastTrend : null;
+  const shownBucket = trend.rows ? cardBucket : kept?.bucket ?? cardBucket;
+  const dated = date ? datedRows(trend.rows ?? kept?.rows ?? [], date.name) : [];
   const points: Point[] = dated.map((s) => ({
     x: String(s[date!.name]),
     y: numberOf(s[c.key]),
-    label: formatBucket(s[date!.name], cardBucket!) ?? '',
+    label: formatBucket(s[date!.name], shownBucket!) ?? '',
     valueText: textOf(c, s, formatOf),
   }));
   return (
@@ -264,8 +268,8 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, 
 }
 
 /** The cards of one data mart, wrapping inside its group's cell. The main mart's cell also shows the strip's error and empty state. `menuMart` is the same mart with every column: its metrics and dates are what a card's menu offers. */
-export function MartCards({ martId, mart, menuMart = mart, main, spark, scores, bucket, autoBucket = true, filter, version, paused, joins, hasFilters, formatOf, onMetric, onDate, onHide }: {
-  martId: string; mart: ChartMart; menuMart?: ChartMart; main: boolean; spark: Spark; scores: Scores; bucket: DateBucket | null; /** Whether the charts' bucket is Auto. */ autoBucket?: boolean; filter: TraverseFilter[]; version: number; paused: boolean; /** What lets a sparkline read be reused after a column is dropped. */ joins?: JoinGrain; hasFilters: boolean; formatOf: Formatter;
+export function MartCards({ martId, mart, menuMart = mart, main, spark, scores, bucket, bucketPending = false, autoBucket = true, filter, version, paused, joins, hasFilters, formatOf, onMetric, onDate, onHide }: {
+  martId: string; mart: ChartMart; menuMart?: ChartMart; main: boolean; spark: Spark; scores: Scores; bucket: DateBucket | null; /** The charts' bucket is still being resolved by its range read. */ bucketPending?: boolean; /** Whether the charts' bucket is Auto. */ autoBucket?: boolean; filter: TraverseFilter[]; version: number; paused: boolean; /** What lets a sparkline read be reused after a column is dropped. */ joins?: JoinGrain; hasFilters: boolean; formatOf: Formatter;
   /** A card's ⋮ menu: pick the measure a card shows, the date its trend is drawn on, and hide it. Without them (the settings are still loading) the cards have no menu. */
   onMetric?: (cardId: string, measure: string) => void; onDate?: (cardId: string, date: string) => void; onHide?: (cardId: string) => void;
 }) {
@@ -279,7 +283,7 @@ export function MartCards({ martId, mart, menuMart = mart, main, spark, scores, 
   return (
     <div className="flex min-w-0 flex-1 flex-wrap gap-2">
       {cards.map((c) => (
-        <ScoreCard key={c.id} martId={martId} mart={mart} menuMart={menuMart} card={c} spark={spark} row={fresh ?? (stale && c.key in stale ? stale : undefined)} busy={!fresh} bucket={bucket} autoBucket={autoBucket} filter={filter} version={version} paused={paused} joins={joins} formatOf={formatOf}
+        <ScoreCard key={c.id} martId={martId} mart={mart} menuMart={menuMart} card={c} spark={spark} row={fresh ?? (stale && c.key in stale ? stale : undefined)} busy={!fresh} bucket={bucket} bucketPending={bucketPending} autoBucket={autoBucket} filter={filter} version={version} paused={paused} joins={joins} formatOf={formatOf}
           choices={choices} onMetric={onMetric} onDate={onDate} onHide={onHide} />
       ))}
     </div>

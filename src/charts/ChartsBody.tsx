@@ -137,7 +137,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   const spark: Spark = useMemo(() => ({ ...scorecardsOf(settings ?? {}), date: lead?.date ?? cf.dates[0] ?? null }), [settings, lead?.date, cf]);
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
   const idle = paused || !settings || !!gate || !!blockedNote;
-  const { bucket } = useBucket(martId, spark.date, lead?.bucket ?? 'AUTO', filter, version, idle);
+  const { bucket, pending: bucketPending } = useBucket(martId, spark.date, lead?.bucket ?? 'AUTO', filter, version, idle);
   const scores = useScorecards(martId, cf, filter, version, idle, joins, kept);
   // The Charts group of the config menu names every chart, hidden ones included; memoized so a resize resolves nothing again.
   const resolved = useMemo(() => drawn.map(({ spec, def }) => {
@@ -188,7 +188,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
         {groups.map((g, i) => (
           <td key={g.path} colSpan={g.span} data-chart-group={g.id} data-chart-path={g.path}>
             <div className="flex items-start gap-1">
-              <MartCards martId={martId} mart={cf.marts[i]!} main={g.path === ''} spark={spark} scores={scores} bucket={bucket} autoBucket={leadBucket === 'AUTO'} filter={filter} version={version} paused={idle} joins={joins} hasFilters={hasFilters} formatOf={formatOf}
+              <MartCards martId={martId} mart={cf.marts[i]!} main={g.path === ''} spark={spark} scores={scores} bucket={bucket} bucketPending={bucketPending} autoBucket={leadBucket === 'AUTO'} filter={filter} version={version} paused={idle} joins={joins} hasFilters={hasFilters} formatOf={formatOf}
                 menuMart={menuOf(cf).marts[i]}
                 onMetric={settings ? (id, v) => { const stage = showCardPick(v, false); change((cur) => setCardMetric(cur, id, v, cf.marts[i]!), { stage }); } : undefined}
                 onDate={settings ? (id, v) => { const stage = showCardPick(v, true); change((cur) => setCardDate(cur, id, v, cf.marts[i]!, spark), { stage }); } : undefined} onHide={settings ? (id) => change((cur) => hideCard(cur, id)) : undefined} />

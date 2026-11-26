@@ -50,13 +50,15 @@ test('a seed with some fields shows them before the read resolves, then the read
   expect(screen.getByRole('progressbar')).toBeInTheDocument();
   expect(screen.queryByText('Oslo')).toBeNull();
   // The seeded values are shown dimmed and busy until the read lands.
-  const values = screen.getByText('Seeded').closest('dl')!;
+  const list = screen.getByText('Seeded').closest('dl')!;
+  const values = screen.getByText('Seeded').closest('dd')!;
   expect(values).toHaveClass('dm-stale');
-  expect(values).toHaveAttribute('aria-busy', 'true');
+  expect(list).toHaveAttribute('aria-busy', 'true');
+  expect(list.querySelector('dt.dm-stale')).toBeNull();
   open();
   expect(await screen.findByText('Oslo')).toBeInTheDocument();
-  expect(values).not.toHaveClass('dm-stale');
-  expect(values).not.toHaveAttribute('aria-busy');
+  expect(screen.getByText('Oslo').closest('dd')).not.toHaveClass('dm-stale');
+  expect(list).not.toHaveAttribute('aria-busy');
   expect(screen.getByText('Read')).toBeInTheDocument();
   expect(screen.queryByText('Seeded')).toBeNull();
   expect(traverseData).toHaveBeenCalledTimes(1);

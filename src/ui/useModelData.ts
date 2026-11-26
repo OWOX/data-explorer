@@ -48,7 +48,7 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
   // The newest request per card: an older count that finishes late must not overwrite a newer value.
   const seqs = useRef({ next: 0, latest: new Map<string, number>() });
 
-  // A count turns to loading only here, when its request starts. Until then the old value stays.
+  // A first count turns to loading here. A recount keeps its previous value, dimmed from the moment it is queued.
   const runCount = useCallback((id: string, recount: boolean, seq: number): Promise<void> => {
     const current = () => seqs.current.latest.get(id) === seq;
     // A recount keeps the card's previous count on screen, dimmed; a first count has none to show.

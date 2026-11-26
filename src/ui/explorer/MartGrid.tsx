@@ -513,8 +513,8 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   // The Data band's title row shows the no-primary-key warning, so it is told whether this grid is a plain preview.
   // `hidden`: the mart has a key but it is hidden for reporting, so no row can be opened by it. Only `missing` is warned about.
   const noKey: NoKey = grouped || pks.length > 0 ? false : hasPrimaryKey(native) ? 'hidden' : 'missing';
-  // A layout effect, so the label dims and undims in the frame the grid does. Dimmed only while a read runs, not while the band is held.
-  const rowsRunning = loading && run.state === 'running';
+  // A layout effect, so the label dims and undims in the frame the grid does. Dimmed only while a read runs.
+  const rowsRunning = loading;
   useLayoutEffect(() => { onRows?.(rowsAmount, grouped, noKey, rowsRunning); }, [rowsAmount, grouped, noKey, rowsRunning]); // eslint-disable-line react-hooks/exhaustive-deps
   const cardClick = useContext(CardClickContext);
   // One cell per data mart over its columns, main first; only when a joined mart is on screen.

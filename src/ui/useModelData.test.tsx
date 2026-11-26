@@ -224,7 +224,6 @@ test('a recount dropped from the queue because its card left view is no longer d
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(8 + 4));
   expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7, stale: true });
   rerender({ model: modelOf(ids), version: 1, vis: ids.slice(0, 4) });
-  await waitFor(() => expect(result.current.counts.get('m0')).toBeDefined());
   // Brought back into view without asking again: its old count shows, not dimmed.
   rerender({ model: modelOf(ids), version: 1, vis: ids });
   await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));

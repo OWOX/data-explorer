@@ -33,7 +33,7 @@ function held() {
 }
 const ui = (ctx: Ctx, date: Field, filter: TraverseFilter[]) => (
   <AppServices ctx={ctx}><StoreProvider><TooltipProvider>
-    <MartCards martId="orders" mart={orders} main spark={spark(date)} scores={{ rows: [{ [SUM]: 1 }], error: null, loading: false, retry: () => {} }} bucket="MONTH" filter={filter} version={0} paused={false} hasFilters={false} formatOf={() => ({} as never)} />
+    <MartCards martId="orders" mart={orders} main spark={spark(date)} scores={{ rows: [{ [SUM]: 1 }], error: null, loading: false, held: false, retry: () => {} }} bucket="MONTH" filter={filter} version={0} paused={false} hasFilters={false} formatOf={() => ({} as never)} />
   </TooltipProvider></StoreProvider></AppServices>
 );
 const rule = (v: string): TraverseFilter[] => [{ column: 'status', operator: 'in', value: [v], placement: 'pre-join' } as TraverseFilter];

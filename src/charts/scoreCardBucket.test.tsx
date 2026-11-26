@@ -8,7 +8,7 @@ import type { ChartMart } from './fields';
 import { MartCards } from './Scorecards';
 import type { Spark } from './settings';
 
-const useBucket = vi.hoisted(() => vi.fn<(martId: string, date: Field | null) => { bucket: string; error: null; retry: () => void }>().mockReturnValue({ bucket: 'WEEK', error: null, retry: () => {} }));
+const useBucket = vi.hoisted(() => vi.fn<(martId: string, date: Field | null) => { bucket: string | null; error: Error | null; retry: () => void; pending: boolean }>().mockReturnValue({ bucket: 'WEEK', error: null, retry: () => {}, pending: false }));
 vi.mock('./useBucket', () => ({ useBucket }));
 
 const f = (name: string, category: Field['category'], type: string): Field => ({ name, alias: null, type, category, description: null, isPrimaryKey: false });
@@ -20,7 +20,7 @@ const mart = (dates: Field[]): ChartMart => ({ aliasPath: '', recordsId: 'record
 function show(shown: ChartMart, spark: Spark, paused = true, autoBucket = true) {
   render(
     <AppServices ctx={createMockCtx(demoFixtures(), { latencyMs: 0 })}><StoreProvider>
-      <MartCards martId="orders" mart={shown} main spark={spark} scores={{ rows: [{ amount: 1 }], error: null, loading: false, retry: () => {} }} bucket="MONTH" autoBucket={autoBucket}
+      <MartCards martId="orders" mart={shown} main spark={spark} scores={{ rows: [{ amount: 1 }], error: null, loading: false, held: false, retry: () => {} }} bucket="MONTH" autoBucket={autoBucket}
         filter={[]} version={0} paused={paused} hasFilters={false} formatOf={() => ({} as never)} onHide={() => {}} />
     </StoreProvider></AppServices>,
   );
@@ -28,7 +28,7 @@ function show(shown: ChartMart, spark: Spark, paused = true, autoBucket = true) 
 // The date each card asked useBucket to range (null: it asked for none and rides the charts' bucket).
 const asked = () => useBucket.mock.calls.map((c) => c[1]?.name ?? null);
 
-beforeEach(() => { useBucket.mockClear(); useBucket.mockReturnValue({ bucket: 'WEEK', error: null, retry: () => {} }); });
+beforeEach(() => { useBucket.mockClear(); useBucket.mockReturnValue({ bucket: 'WEEK', error: null, retry: () => {}, pending: false }); });
 
 test('an explicit pick of another date under Auto ranges that date for its own bucket', () => {
   show(mart([created, updated]), { hidden: new Set(), sparklines: true, metrics: {}, dates: { amount: 'updated_at' }, date: created });
@@ -62,20 +62,20 @@ test('with the sparklines off no range is read', () => {
 });
 
 test('a card whose trend is still being read shows a placeholder in the sparkline area, and it goes when the rows land', async () => {
-  useBucket.mockReturnValue({ bucket: 'MONTH', error: null, retry: () => {} });
+  useBucket.mockReturnValue({ bucket: 'MONTH', error: null, retry: () => {}, pending: false });
   show(mart([created, updated]), { hidden: new Set(), sparklines: true, metrics: {}, dates: { amount: 'updated_at' }, date: created }, false);
   expect(screen.getByLabelText('Loading trend')).toBeInTheDocument();
   await waitFor(() => expect(screen.queryByLabelText('Loading trend')).toBeNull());
 });
 
 test('a card waiting for its own bucket shows the placeholder too', () => {
-  useBucket.mockReturnValue({ bucket: null as never, error: null, retry: () => {} });
+  useBucket.mockReturnValue({ bucket: null, error: null, retry: () => {}, pending: true });
   show(mart([created, updated]), { hidden: new Set(), sparklines: true, metrics: {}, dates: { amount: 'updated_at' }, date: created }, false);
   expect(screen.getByLabelText('Loading trend')).toBeInTheDocument();
 });
 
 test('a failed own-bucket read ends the placeholder', () => {
-  useBucket.mockReturnValue({ bucket: null as never, error: new Error('range failed') as never, retry: () => {} });
+  useBucket.mockReturnValue({ bucket: null, error: new Error('range failed'), retry: () => {}, pending: false });
   show(mart([created, updated]), { hidden: new Set(), sparklines: true, metrics: {}, dates: { amount: 'updated_at' }, date: created }, false);
   expect(screen.queryByLabelText('Loading trend')).toBeNull();
 });

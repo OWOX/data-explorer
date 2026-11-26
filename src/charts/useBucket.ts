@@ -33,5 +33,6 @@ export function useBucket(martId: string, date: Field | null, chosen: DateBucket
       bucket = seen.length ? pickBucket(seen[0], monthEnd(seen[seen.length - 1])) : 'MONTH';
     }
   }
-  return { bucket, error: read.error, retry: read.retry };
+  // `pending`: Auto is waiting on the range read (not answered, not failed), so `bucket` is null only for now.
+  return { bucket, error: read.error, retry: read.retry, pending: auto && !read.rows && !read.error };
 }

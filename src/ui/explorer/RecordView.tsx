@@ -82,12 +82,12 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
       {header}
       {!loaded && <div role="progressbar" aria-label="Loading record" className="dm-busybar" />}
       <div className="min-h-0 flex-1 overflow-auto">
-      {/* While it reads, the shown values are the previous read's or the grid's seed: dimmed until the record arrives. */}
-      <dl aria-busy={!loaded || undefined} className={`grid grid-cols-[minmax(10rem,16rem)_1fr] content-start gap-x-4 gap-y-2 p-4 text-sm${loaded ? '' : ' dm-stale'}`}>
+      {/* While it reads, the shown values (not the field names) are the previous read's or the grid's seed: dimmed until the record arrives. */}
+      <dl aria-busy={!loaded || undefined} className="grid grid-cols-[minmax(10rem,16rem)_1fr] content-start gap-x-4 gap-y-2 p-4 text-sm">
         {state.schema.map((f) => (
           <div key={f.name} className="contents">
             <dt className="dm-reveal-host flex min-w-0 items-start text-muted-foreground"><FieldLabel field={f} wrap /></dt>
-            <dd className="min-w-0 break-words"><CellValue row={row} field={f.name} type={f.type} format={formatOf(f.name, f.type)} wrap /></dd>
+            <dd className={`min-w-0 break-words${loaded ? '' : ' dm-stale'}`}><CellValue row={row} field={f.name} type={f.type} format={formatOf(f.name, f.type)} wrap /></dd>
           </div>
         ))}
       </dl>

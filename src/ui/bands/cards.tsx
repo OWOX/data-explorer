@@ -128,7 +128,7 @@ function CountBadge({ count, countable, onRetry }: { count: CountState; countabl
 }
 
 /** "12% match" after the record count: how much of the mart the filters and slices keep. Shown only for a known count and a matched number below it. */
-function MatchBadge({ matched, stale, count }: { matched: number | undefined; /** The matched number is the previous filters', or the count it is compared with is being recounted. */ stale: boolean; count: CountState }) {
+function MatchBadge({ matched, stale, count }: { matched: number | undefined; /** The matched number is the previous filters'. */ stale: boolean; count: CountState }) {
   const label = count.state === 'ok' ? matchLabel(matched, count.value) : null;
   const dim = stale || (count.state === 'ok' && !!count.stale);
   return label && <Tooltip content={label.tip}><span className={`dm-badge${dim ? ' dm-stale' : ''}`} aria-busy={dim || undefined} data-match>{label.text}</span></Tooltip>;
