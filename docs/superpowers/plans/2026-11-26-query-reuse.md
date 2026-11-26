@@ -8,7 +8,7 @@ Goal: the grid, the charts and the Row band reuse what was already read. Five ch
 2. A reused result must be the exact answer to the new ask: same mart, same `version`, same filters, same sort, same grouping. Rows of one shape never stand in for another's (see `shapeOf` in `src/ui/explorer/useMartRows.ts`).
 3. `version` busts every cache (Refresh, mart reload). Retry always reads again. A failed or aborted read is never cached.
 4. Caches are per ctx (`perCtx` from `src/sdk/per-ctx.ts`), in memory, LRU by entry count, like `CHART_CACHE_LIMIT` in `src/charts/useChartQuery.ts`.
-5. Tests: Vitest, `npx vitest run <files> --poolOptions.threads.maxThreads=4`. Never run Vitest without the thread cap. `npx tsc -b` and `npx eslint <changed files>` must pass.
+5. Tests: Vitest, `npx vitest run <files> --maxWorkers=4` (this Vitest version rejects `--poolOptions`). Never run Vitest without the worker cap. `npx tsc -b` and `npx eslint <changed files>` must pass.
 6. Comments and README text follow the repo's existing style: plain, short sentences, no marketing words.
 7. Commit per task, message in the repo's style (a plain sentence summary line). End every commit message with the line `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
