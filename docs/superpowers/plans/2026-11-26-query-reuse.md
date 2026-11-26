@@ -94,3 +94,30 @@ Change:
 Tests: a seed with every field → no read, the fields render; a seed with some fields → those values render before the read resolves, then the read's row; no seed → one read as today; Refresh with a full seed → one read.
 
 README: under "Open a record", one sentence: the Row band shows the row the grid already loaded at once, and reads it only for fields the grid did not load or on Refresh. In "What it costs", the record read happens only then.
+
+## Task 5: Everything that shows a previous read's value while a new read runs is dimmed
+
+Files: found by audit; known places below. One shared style for "being replaced".
+
+Today the grid dims its rows (`opacity-60`), charts dim theirs (`.dm-chart-stale`, opacity .5) and scorecard values dim (`opacity-40`). Other numbers show the previous read's value at full strength while a new read runs, so the member can't tell an old number from an updated one.
+
+Change:
+1. One shared class for content being replaced, e.g. `.dm-stale` in a shared CSS file: opacity 0.5 with the existing 200ms opacity transition. Use it for the grid rows, chart bodies and scorecard values in place of the three different opacities. Keep `aria-busy="true"` on each.
+2. Audit every place that shows a number or a drawing from a read and can keep showing the previous one while the next read runs. Dim each while it does. Known places:
+   1. The Data band's rows label ("200 of 1,234 rows", from `rowsLabel` in MartGrid via `onRows`): dim it while the grid reads.
+   2. The card match badge ("12% match", cards.tsx `MatchBadge`, fed by MartGrid `matched`): while a new count is under way, show the previous badge dimmed rather than a full-strength old one, or a badge that vanishes and comes back.
+   3. A card's record count while it is recounted (Refresh): dim the old count if it stays on screen.
+   4. Scorecard sparklines: today a reloading trend becomes a pulsing placeholder. When the date and bucket are unchanged (a filter change), keep the old sparkline dimmed instead; a changed date or bucket keeps the placeholder.
+   5. The Row band (RecordView): while it reads (Refresh, or a partial grid seed), the shown values are dimmed, next to the existing busy bar.
+   6. Anything else the audit finds (value suggestions and the search list are lists, not numbers; include them only if they show a previous result as if current).
+3. A value that is fresh is never dimmed: dimming ends on the same render the new value arrives.
+
+Tests: for each place, a test that the previous value is shown with the stale class and `aria-busy` while the read is pending, and without them after it resolves.
+
+README: one sentence where the Data band or Charts is described: a number or chart that is being updated is shown dimmed until the new value arrives.
+
+## Task 6: Follow-ups from the final review
+
+1. `src/sdk/mock/fixtures.ts:316`: `demoFixtures()` returns the module-level `s.fields` array, so `setup({ fields })` in tests pushes into shared state and fields leak between tests. Return a copy (`fields: [...s.fields]`, and copy any other array a caller mutates). Then make the calculated-seed test in aggregation.test.tsx independent of order (it can use any field name).
+2. A wiring test: a time series and a line chart keep their dimmed drawing across an Auto bucket change (the title passes `def.title` as `memoKey`), at the ChartsBody level, not only ChartPanel.
+3. A test that canvas cards observe against the viewport (no `[data-scroll-root]` ancestor on `.dm-tree-scroll`), so the count read waits until the card is on screen.
