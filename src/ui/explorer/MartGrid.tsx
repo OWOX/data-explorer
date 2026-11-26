@@ -423,7 +423,10 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const outputs = useMemo(() => {
     const base = outputsOf(wanted.map((f) => f.name), aggNow);
     if (!ucNow.length) return base;
-    return withUniqueAfter(base, (o) => byName.get(o.column)?.joined?.aliasPath ?? '', ucNow, (path): Output => ({ key: uniqueKey(path), column: uniqueKey(path), unique: path, sortable: true }));
+    const make = (path: string): Output => ({ key: uniqueKey(path), column: uniqueKey(path), unique: path, sortable: true });
+    const after = withUniqueAfter(base, (o) => byName.get(o.column)?.joined?.aliasPath ?? '', ucNow, make);
+    // The main mart's Unique Count still groups the rows when the mart has no column: it leads, so it is never hidden.
+    return ucNow.includes('') && !base.some((o) => !byName.get(o.column)?.joined) ? [make(''), ...after] : after;
   }, [wanted, aggNow, ucNow, byName]);
   // The stand-in fields of the Unique Count columns, by row key.
   const uniqueFields = useMemo(() => new Map(ucNow.map((p) => { const src = sources.find((x) => x.aliasPath === p); return [uniqueKey(p), uniqueField(p, src && { martId: src.martId, label: src.label })] as const; })), [ucNow, sources]);
