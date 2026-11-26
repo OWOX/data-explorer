@@ -13,7 +13,6 @@ import { count } from '../ui/format';
 import { pruneGrid } from '../state/view-link-resolve';
 import { defaultColumns } from '../model/columns';
 
-export type { ReportDto };
 export type ReportSkipped = { columns: number; filters: number; sorts: number; aggregations: number; slices: number; having: number; uniqueCount: boolean };
 
 const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);

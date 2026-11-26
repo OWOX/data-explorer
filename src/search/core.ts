@@ -1,4 +1,3 @@
-// src/search/core.ts
 import type { Model } from '../model/types';
 import type { SearchHits } from './endpoint';
 import { overlap } from './words';
@@ -38,9 +37,12 @@ export function coreSignals(model: Model): Map<string, CoreSignals> {
   return out;
 }
 
+/** Whether a search hit is this mart, or a report built on it. */
+export const isHit = (hits: SearchHits, martId: string): boolean => hits.marts.includes(martId) || hits.reports.some((r) => r.martId === martId);
+
 /** 3 for a search hit (a mart hit or a report's mart), plus 1 per subject that shares a word with the title or description. */
 export function relevance(martId: string, model: Model, hits: SearchHits, subjects: string[]): number {
-  const hit = hits.marts.includes(martId) || hits.reports.some((r) => r.martId === martId);
+  const hit = isHit(hits, martId);
   const m = model.marts.get(martId);
   const text = `${m?.title ?? ''} ${m?.description ?? ''}`;
   return (hit ? 3 : 0) + subjects.filter((s) => overlap(s, text) > 0).length;

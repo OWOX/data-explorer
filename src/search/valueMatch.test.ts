@@ -1,14 +1,9 @@
 // src/search/valueMatch.test.ts
 import { describe, expect, it } from 'vitest';
-import { matchTiers, matchValue, normalize, readValues } from './valueMatch';
+import { matchTiers, normalize, readValues } from './valueMatch';
 import { stubCtx, traversalOf } from '../api/test-ctx';
 
-describe('matchValue', () => {
-  const values = ['Germany', 'germany', 'DE', 'Côte d’Ivoire', 'New York', 'New Zealand'];
-  it('prefers case-insensitive equality', () => expect(matchValue('GERMANY', values)).toEqual(['Germany', 'germany']));
-  it('then equality without spaces, punctuation or accents', () => expect(matchValue("cote d'ivoire", values)).toEqual(['Côte d’Ivoire']));
-  it('then a whole-word prefix', () => expect(matchValue('new', values)).toEqual(['New York', 'New Zealand']));
-  it('finds nothing for an unrelated word', () => expect(matchValue('france', values)).toEqual([]));
+describe('normalize', () => {
   it('normalizes', () => expect(normalize('Côte d’Ivoire!')).toBe('cotedivoire'));
 });
 

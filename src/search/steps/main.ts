@@ -1,6 +1,5 @@
-// src/search/steps/main.ts
 import { cleanText } from '../../api/ai-prompt';
-import { coreSignals, shortlist } from '../core';
+import { coreSignals, isHit, shortlist } from '../core';
 import { choiceQ, isUnsure, ranked, type Answer } from '../decide';
 import type { Asked, StepDeps, StepInput } from './types';
 
@@ -35,11 +34,10 @@ export async function runMain(input: StepInput, deps: StepDeps): Promise<MainRes
   const keyed = (await Promise.all(ids.map(async (id) => {
     try { const s = await deps.schemas.get(id); return s.primaryKey?.length ? { id, key: [...s.primaryKey] } : null; } catch { return null; }
   }))).filter((x): x is { id: string; key: string[] } => !!x);
-  const hit = (id: string) => hits.marts.includes(id) || hits.reports.some((r) => r.martId === id);
   const cands: MainCandidate[] = keyed.map(({ id, key }) => {
     const m = model.marts.get(id)!;
     const s = signals.get(id)!;
-    return { id, title: m.title, description: m.description ?? '', inbound: s.inbound, outbound: s.outbound, neighbours: s.neighbours, key, searchHit: hit(id) };
+    return { id, title: m.title, description: m.description ?? '', inbound: s.inbound, outbound: s.outbound, neighbours: s.neighbours, key, searchHit: isHit(hits, id) };
   });
   const fallback = hits.marts[0] ?? hits.reports[0]?.martId ?? null;
   if (!cands.length) return { martId: fallback, alternatives: [], failed: false };

@@ -1,6 +1,6 @@
 import { cleanText } from '../api/ai-prompt';
 import type { AiModel } from '../sdk/types';
-import { createAiRun } from './ai';
+import { askFast } from './ai';
 
 export type ValueOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte';
 export type Intent = {
@@ -64,7 +64,7 @@ export function intentQuestion(query: string, today = new Date()): { system: str
 export async function readIntent(fast: AiModel, query: string, signal: AbortSignal, timeoutMs = INTENT_TIMEOUT_MS): Promise<Intent> {
   try {
     const q = intentQuestion(query);
-    return parseIntent(await createAiRun({ fast }, signal, timeoutMs).ask('intent', q.system, q.user));
+    return parseIntent(await askFast(fast, q.system, q.user, signal, timeoutMs));
   } catch {
     return EMPTY_INTENT;
   }

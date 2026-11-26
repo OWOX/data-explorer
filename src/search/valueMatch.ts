@@ -1,4 +1,3 @@
-// src/search/valueMatch.ts
 import { readRows } from '../api/rows';
 import { topValuesQuery, type Measure } from '../charts/queries';
 import type { Field } from '../model/types';
@@ -23,11 +22,6 @@ export function matchTiers(literal: string, values: string[]): [string[], string
     n ? values.filter((v) => normalize(v) === n) : [],
     values.filter((v) => re.test(v)),
   ];
-}
-
-/** The values a literal from the query means, best tier only. */
-export function matchValue(literal: string, values: string[]): string[] {
-  return matchTiers(literal, values).find((t) => t.length) ?? [];
 }
 
 /** A column's most frequent values (by record count), for matching only; they never go to a model unless they match. */

@@ -1,7 +1,8 @@
 import { describe, expect, test, vi } from 'vitest';
 import type { Mart, Model } from '../model/types';
 import type { Ctx } from '../sdk/types';
-import { MAX_QUERY, MIN_QUERY, MAX_FOUND, queryProblem, searchEndpoint } from './endpoint';
+import { MAX_FOUND } from '../config';
+import { MAX_QUERY, MIN_QUERY, queryProblem, searchEndpoint } from './endpoint';
 
 const mart = (id: string, accessible = true): Mart => ({ id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible, sourceKey: null });
 const model = (...marts: Mart[]): Model => ({ marts: new Map(marts.map((m) => [m.id, m])), sources: [], edges: [], contexts: [], storages: [], failedStorages: [] });
@@ -70,8 +71,8 @@ describe('searchEndpoint', () => {
     ]);
   });
 
-  test('other entity types are ignored and an item with no type counts as a mart', async () => {
-    const { ctx } = ctxReturning([hit('s', 9, 'DATA_STORAGE'), { entityId: 'a', finalScore: 3 }, hit('b', 5)]);
+  test('other entity types are ignored', async () => {
+    const { ctx } = ctxReturning([hit('s', 9, 'DATA_STORAGE'), { entityType: 'DATA_MART', entityId: 'a', finalScore: 3 }, hit('b', 5)]);
     expect(await searchEndpoint(ctx, 'ab', model(mart('a'), mart('b'), mart('s')))).toEqual({ reports: [], marts: ['b', 'a'] });
   });
 

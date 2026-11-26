@@ -1,5 +1,5 @@
 import type { Schema } from '../model/types';
-import { AiUnavailable, createAiRun, pickModels } from '../search/ai';
+import { AI_TIMEOUT_MS, AiUnavailable, askFast, pickModels } from '../search/ai';
 import type { Ctx } from '../sdk/types';
 import { formatsFor, isValidFormat, type Format } from './formats';
 import type { FormatDoc, FormatStore } from './store';
@@ -62,7 +62,8 @@ export async function pickFormats(ctx: Ctx, store: FormatStore, martId: string, 
       ...(f.joined ? { dataMart: f.joined.label } : {}),
       kinds: formatsFor(f.type),
     }));
-    const answer = await createAiRun(models, signal).ask('formats', SYSTEM, JSON.stringify({ dataMart: martTitle, columns }));
+    if (!models.fast) throw new AiUnavailable('no model');
+    const answer = await askFast(models.fast, SYSTEM, JSON.stringify({ dataMart: martTitle, columns }), signal, AI_TIMEOUT_MS * 0.7);
     // A pick that arrived while the model was thinking wins over its answer.
     const fresh = (await store.load(martId)).project;
     const picks: FormatDoc = {};

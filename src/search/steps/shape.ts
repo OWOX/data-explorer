@@ -1,4 +1,3 @@
-// src/search/steps/shape.ts
 import { cleanText } from '../../api/ai-prompt';
 import type { JoinedSource } from '../../api/blendable';
 import { sourceOfField } from '../../api/blendable';

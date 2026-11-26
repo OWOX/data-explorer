@@ -41,7 +41,7 @@ function intentAnswer(doc: Doc): unknown {
 
 function fakeDecision(latencyMs: number): DecisionModel {
   return {
-    specificationVersion: 'v4', provider: 'mock', modelId: 'mock-decision', supportedQuestionTypes: ['choice', 'score', 'boolean'],
+    specificationVersion: 'v4', provider: 'mock', modelId: 'mock-decision', supportedQuestionTypes: ['choice', 'score'],
     async doDecide({ state, questions }) {
       if (latencyMs) await new Promise((r) => setTimeout(r, latencyMs));
       const text = state.map((p) => (p.type === 'text' ? p.text : '')).join('');
@@ -56,7 +56,7 @@ function fakeDecision(latencyMs: number): DecisionModel {
           return [id, { type: 'choice', choice: pick }];
         }
         if (question.type === 'score') return [id, { type: 'score', score: question.criteria.length - 1 }];
-        return [id, { type: 'boolean', probability: 0.5 }];
+        return [id, undefined];
       }));
       return { answers, warnings: [] };
     },

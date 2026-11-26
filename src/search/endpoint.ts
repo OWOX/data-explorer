@@ -5,8 +5,6 @@ import type { Ctx } from '../sdk/types';
 /** The backend (search.config.ts) answers 400 outside 2 to 256 characters of the trimmed query. */
 export const MIN_QUERY = 2;
 export const MAX_QUERY = 256;
-/** Marts, and reports, a search shows, each. */
-export { MAX_FOUND };
 /** Asked of the engine: more than are shown, since ids the model does not hold (or the member cannot open) are dropped after, and two kinds share the limit. */
 const REQUEST_LIMIT = 20;
 
@@ -53,7 +51,7 @@ export async function searchEndpoint(ctx: Ctx, query: string, model: Model, sign
     if (typeof item !== 'object' || item === null) continue;
     const { entityType, entityId, title, finalScore, report } = item as Record<string, unknown>;
     if (typeof entityId !== 'string') continue;
-    if (entityType === undefined || entityType === 'DATA_MART') {
+    if (entityType === 'DATA_MART') {
       if (model.marts.get(entityId)?.accessible) keepBest(marts, entityId, score(finalScore), entityId);
     } else if (entityType === 'REPORT') {
       const martId = ((report as { dataMart?: { id?: unknown } } | null | undefined)?.dataMart)?.id;
