@@ -50,7 +50,7 @@ export function Sankey({ titles, columns, flows, fit, text, ariaLabel, onPickNod
   const originCell = (l: SankeyLink) => (l.origin === undefined ? '' : l.origin === REST_ORIGIN ? 'Other origins' : nodeName(l.origin));
   const colTitle = (c: number) => titles[c] ?? '';
   const linkKey = (l: SankeyLink) => `${l.pair}|${l.source}|${l.target}|${l.origin ?? ''}`;
-  const hoverLink = { onMouseEnter: (e: SyntheticEvent) => light(e.currentTarget), onMouseLeave: () => light(), onFocus: (e: SyntheticEvent) => light(e.currentTarget), onBlur: () => light() };
+  const hoverLink = { onMouseEnter: (e: SyntheticEvent) => light(e.currentTarget), onMouseLeave: () => light() };
   const hoverNode = (col: number, key: string) => ({ onMouseEnter: () => light(null, `${col}|${key}`), onMouseLeave: () => light(), onFocus: () => light(null, `${col}|${key}`), onBlur: () => light() });
   // The ribbons are built once per layout: hover touches the DOM only (see `light`), so thousands of paths and tooltips are not re-rendered by it.
   const ribbons = useMemo(() => {

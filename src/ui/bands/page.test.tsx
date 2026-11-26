@@ -537,7 +537,6 @@ describe('search, contexts and refresh', () => {
     await clearSearch();
     await search('customer');
     expect(await within(marts()).findByText('Customers')).toBeInTheDocument();
-    expect(within(marts()).getByText('Customers').closest('article')!.querySelector('.dm-badge-shrink')).toBeNull();
   });
 
   test('the toolbar holds the Contexts badges and then Storage, flush right; the Grid / Graph switch stays in the title row after the hint', async () => {

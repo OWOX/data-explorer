@@ -4,8 +4,6 @@
 /* Three layers, in this order: band panels, the lines over them, the cards over both. */
 .dm-canvas { position: relative; display: flex; flex-direction: column; gap: 1rem; flex: 1 0 auto; }
 
-/* The block chrome OWOX itself uses for Storage / Input Source / Output schema: a light panel with
-   a rounded icon tile beside the title, no shadow, a hairline under it. */
 /*
  * Nothing raises a whole band.
  *
@@ -145,7 +143,6 @@
 .dm-tip-about { display: block; margin-top: 0.25rem; white-space: pre-line; opacity: 0.85; }
 .dm-tip-lines { display: flex; flex-direction: column; gap: 0.125rem; }
 .dm-tip-lines > span:first-child { font-weight: 500; }
-.dm-tip-plain > span:first-child { font-weight: inherit; }
 
 /* The context badges in the Data Marts toolbar, left of the Storage filter: Data Flow's chip, a button that toggles. */
 /* Takes whatever width is left (basis 0), never less than a "+NN more" chip, so what it holds cannot move the toolbar. Wraps onto two lines, each one flush right, so the last badge ends next to the Storage button. */
@@ -248,9 +245,6 @@
 /* The row is as tall as one badge (its line plus its padding) whatever the count is doing, so idle, counting, a value and none move nothing below. */
 .dm-badges-row { flex-wrap: nowrap; overflow: hidden; min-height: calc(0.6875rem * 1.5 + 0.125rem); }
 .dm-badges-row .dm-badge { flex-shrink: 0; white-space: nowrap; }
-/* The one badge allowed to lose its tail — "3 relationships" becomes "3 relat…" before the row
-   spills. Its full text stays in the title. */
-.dm-badges-row .dm-badge-shrink { flex-shrink: 1; min-width: 2.75rem; overflow: hidden; text-overflow: ellipsis; }
 .dm-badges-row .dm-badge svg { flex-shrink: 0; }
 .dm-badge {
   display: inline-flex; align-items: center; gap: 0.25rem;
@@ -273,10 +267,6 @@
 .dm-status { display: inline-flex; }
 /* A status glyph that explains itself, on the block hint's own bubble. */
 .dm-mark { position: relative; cursor: help; outline: none; }
-/* A mark that leads somewhere drops the link's underline; its tone still sets the colour, and
-   `a.dm-mark` must not restate that or it would outrank `.dm-ok` and friends. */
-a.dm-mark { cursor: pointer; text-decoration: none; }
-button.dm-mark { cursor: pointer; }
 /* Loader2 is the host's running glyph, and it spins there. */
 .dm-spin { animation: dm-spin 1s linear infinite; }
 @keyframes dm-spin { to { rotate: 360deg; } }
@@ -377,7 +367,6 @@ img.dm-logo { padding: 0.25rem; object-fit: contain; }
    when the grid scrolls sideways; the letters travel with the header. */
 /* Sheets draws its letters and row numbers smaller than the cells: about 11px against the cells' 10pt. */
 .dm-grid .dm-chrome { font-size: 11px; background: var(--sheet-chrome-bg); color: var(--sheet-chrome-text); text-align: center; font-weight: 400; padding: 0; height: 21px; box-shadow: inset -1px -1px 0 var(--grid-line-strong); }
-.dm-grid thead .dm-chrome { box-shadow: inset -1px -1px 0 var(--grid-line-strong); }
 .dm-grid tbody .dm-chrome { position: sticky; left: 0; z-index: 3; width: 46px; min-width: 46px; max-width: 46px; }
 /* The row numbers sit above a selected cell (z 1-2) scrolling under them sideways; all stay under the sticky header (z 10). */
 .dm-grid .dm-corner { position: sticky; left: 0; z-index: 4; width: 46px; min-width: 46px; max-width: 46px; }
@@ -428,8 +417,6 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-gh-edge { box-shadow: inset -1px 0 0 var(--grid-line-strong), inset 0 -1px 0 var(--grid-line); }
 .dm-gh-fill { box-shadow: inset 0 -1px 0 var(--grid-line); }
 .dm-gh:hover .dm-reveal, .dm-gh:has(:focus-visible) .dm-reveal { opacity: 1; }
-.dm-gx { color: var(--muted-foreground); border-radius: 4px; }
-.dm-gx:hover { color: var(--foreground); background: var(--accent); }
 
 /* Column header actions: hidden until the header is hovered or holds focus, but they keep their
    room, so the title does not jump. A column with a filter keeps its icon on. */
@@ -461,9 +448,8 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 /* The filter and aggregation forms keep the app's own tokens inside the Sheets-style frame. */
 /* Every second-level panel of the column menu has the width the widest editor had: 19.6rem, so a note wraps at the same place in each. */
 .dm-menu-sub { width: min(19.6rem, calc(100vw - 16px)); }
-.dm-menu-editor { max-height: min(20rem, calc(100vh - 16px)); padding: 0; overflow: hidden; }
 /* The filter and aggregation editors inside the menu: Google Sheets' dialog look (Google Sans 14px, 36px controls, green primary, outlined secondary). */
-.dm-menu-editor { --btn-line: #dadce0; --btn-off-bg: #f1f3f4; --btn-off-fg: #80868b; font: 400 14px/20px 'Google Sans', Roboto, Arial, sans-serif; background: var(--menu-bg); color: var(--menu-fg); }
+.dm-menu-editor { max-height: min(20rem, calc(100vh - 16px)); padding: 0; overflow: hidden; --btn-line: #dadce0; --btn-off-bg: #f1f3f4; --btn-off-fg: #80868b; font: 400 14px/20px 'Google Sans', Roboto, Arial, sans-serif; background: var(--menu-bg); color: var(--menu-fg); }
 :root.dark .dm-menu-editor { --btn-line: #5f6368; --btn-off-bg: #3c4043; --btn-off-fg: #9aa0a6; }
 /* A wheel or trackpad flick that runs past the end of a form must not chain to the page: that scroll would close the menu with Apply still unpressed. */
 .dm-menu, .dm-menu-editor [data-popover-body] { overscroll-behavior: contain; }
@@ -507,7 +493,6 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-icon svg { width: 12px; height: 12px; }
 .dm-menu-icon[data-on] { background: var(--sheet-green); color: var(--sheet-green-fg); }
 .dm-menu-label { flex: 1 1 auto; }
-.dm-menu-group + .dm-menu-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--menu-line); }
 .dm-menu-glyph { display: inline-flex; flex-shrink: 0; color: var(--menu-muted); }
 /* The selected mark is the green check, whatever colour or stroke the host page gives an svg: it is painted from the mark's own colour. */
 .dm-menu-check { display: inline-flex; width: 16px; flex-shrink: 0; justify-content: center; margin-left: -4px; color: var(--sheet-green, #188038); }
@@ -515,7 +500,6 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-check svg, .dm-menu-tick svg { color: inherit; stroke: currentColor; }
 .dm-menu-arrow { flex-shrink: 0; margin-right: -6px; color: var(--menu-muted); }
 .dm-menu-sep { height: 0; margin: 8px 0; border-top: 1px solid var(--menu-line); }
-.dm-menu-row[role='menuitemradio'], .dm-menu-row[aria-checked] { padding-left: 16px; }
 /* No hover on touch: the actions stay on screen there. */
 @media (hover: none) { .dm-reveal { opacity: 1; } }
 
@@ -663,10 +647,6 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 /* Inputs in a popover: the focus ring is drawn inside the border, so the popover's own clipping never cuts it. */
 .dm-input:focus-visible { outline: none; border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
 .dm-select > select { text-overflow: ellipsis; }
-
-/* The title row of a popover that scrolls (a filter's column name): it stays at the top while the list moves under it.
-   The body pads 0.75rem; the title takes that padding back so it sits flush with the edge when pinned. */
-.dm-popover-title { position: sticky; top: -0.75rem; z-index: 1; margin: -0.75rem 0 0; padding-top: 0.75rem; padding-bottom: 0.25rem; background: var(--background); }
 
 /* A band that is still reading: one bar where its body will be, so the page keeps its shape. Both fills are pale
    enough to read as a track rather than as a status; it is green for the moment before the bodies open. */
@@ -820,5 +800,4 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-rule-badge-neutral .dm-rule-badge-x:hover { background: color-mix(in srgb, var(--muted-foreground) 40%, transparent); color: var(--muted); }
 /* After the unfold rule, at its specificity: a disabled x stays dimmed while shown. */
 .dm-rule-badge .dm-rule-badge-x:disabled { opacity: 0.5; pointer-events: none; }
-/* Room for every badge at rest (22px each, BADGE_REST in badgeReserve.tsx) and the widest one unfolded: hovering one never widens the column. */
 .dm-badge-row { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; min-width: calc(var(--badge-count, 0) * 22px + max(var(--badge-count, 1) - 1, 0) * 4px + var(--badge-extra, 0px)); }

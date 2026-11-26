@@ -66,6 +66,28 @@ describe('the stylesheet', () => {
     // The Graph restates neither.
     expect(css).not.toMatch(/#tree-wires \.relationship\.ghost \{/);
   });
+  test('a selected card has a 2px border and keeps its size', () => {
+    const sel = rules(/^\.dm-node\[data-focused\],/);
+    expect(sel).toContain('border-width: 2px');
+    expect(sel).toContain('padding: calc(0.75rem - 1px)');
+  });
+  test('a selected card shows its border instead of the keyboard ring', () => {
+    expect(rules(/^\.dm-node\[data-focused\]:focus-visible/)).toContain('box-shadow: none');
+    expect(rules(/^\.dm-node:focus-visible$/)).toContain('box-shadow');
+  });
+  test('full screen has the position of a fixed band', () => {
+    expect(rules(/^\.dm-full #band-data$/)).toContain('position: fixed');
+  });
+  test('the context badges sit at the right end of the card foot', () => {
+    expect(rules(/^\.dm-contexts$/)).toContain('justify-content: flex-end');
+  });
+  test('the filter menu has its frame, a boxed checkbox and a hairline under the header', () => {
+    const menu = rules(/^\.dm-filter-menu$/);
+    expect(menu).toContain('min-width: 12rem');
+    expect(menu).toContain('max-height: 18rem');
+    expect(rules(/^\.dm-filter-menu \.dm-checklist-check$/)).toContain('border-radius: 0.25rem');
+    expect(rules(/^\.dm-filter-menu \.dm-checklist-top$/)).toContain('border-bottom: 1px solid var(--border)');
+  });
 });
 
 describe('Grid', () => {

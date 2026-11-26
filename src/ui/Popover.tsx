@@ -5,7 +5,6 @@ import { useOutsidePress } from './outsidePress';
 
 /**
  * At most 20rem tall, and never taller than the room left on screen: the body scrolls inside.
- * A `.dm-popover-title` at the top of the body stays pinned while the rest scrolls.
  */
 export function Popover({ trigger, children, align = 'start', open, onOpenChange, tip, label, onCloseAutoFocus }: { /** Runs when the popover closes and focus is about to return to the trigger; `preventDefault` takes that over. */ onCloseAutoFocus?: (e: Event) => void; /** The standard tooltip on the trigger. */ tip?: string; /** The dialog's accessible name. */ label?: string; trigger: ReactNode; children: ReactNode; align?: 'start' | 'end'; open?: boolean; onOpenChange?: (o: boolean) => void }) {
   // Held here so a press outside can close it without reaching the page: the press is swallowed before Radix sees it.
