@@ -68,7 +68,7 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
   const [initial, setInitial] = useState<Initial | null>(() => {
     const cached = blendable.peek(martId);
     const full = withJoined(schema, cached ?? []);
-    const kept = orderColumns(offered(full, seed.saved?.columns ?? []), cached ?? [], defaultColumns(schema));
+    const kept = orderColumns(offered(full, seed.saved?.columns ?? []), cached ?? []);
     // A session list that names a joined field waits for the joined marts unless they are already known.
     return kept.length && (cached || !namesJoined(schema, seed.saved)) ? { columns: kept, cleaned: null, sources: cached ?? null, agg: sanitizeAggregation(seed.saved ? aggOf(seed.saved) : columnStore.aggregation(martId), full) } : null;
   });
@@ -128,7 +128,7 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
       if (!live) return;
       clearTimeout(timer);
       const there = offered(withJoined(schema, sources ?? []), saved);
-      const kept = orderColumns(there, sources ?? [], defaultColumns(schema));
+      const kept = orderColumns(there, sources ?? []);
       // Names a failed read could not check are left in what is saved; only names the schema really lacks are cleaned out,
       // and a list that was not grouped by data mart is saved grouped.
       const dropped = !failed && saved.length > there.length;

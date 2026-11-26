@@ -50,7 +50,6 @@ import { ColumnMenuEnvContext, type ColumnMenuEnv, type RuleKind } from './Colum
 import { ConfigMenu, type ConfigMart } from './ConfigMenu';
 import { RuleBadges, type RuleMart } from './RuleBadges';
 import { ExportMenu } from './ExportMenu';
-import { defaultColumns } from '../../model/columns';
 import { forgetValues, suggestFromSearch } from '../../search/valueMatch';
 import { forgetSeenRows, rememberRow } from '../../records/seen-rows';
 import { buildRowQuery, forgetGridRows, useMartRows } from './useMartRows';
@@ -325,7 +324,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   useEffect(() => { const edit = editSeq !== seenSeq.current; seenSeq.current = editSeq; onChange(current, edit); }, [current, editSeq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every data mart's columns sit together: the main mart's own, then each joined mart's in the order it was added.
-  const shown = useMemo(() => orderColumns(visible, sources, defaultColumns(native)), [visible, sources, native]);
+  const shown = useMemo(() => orderColumns(visible, sources), [visible, sources]);
   // The marts kept with no column that apply: some field of the mart is offered by the path and no column of the grid is one of them. With the joined marts unread, a path is parked, not dropped.
   const epNow = useMemo(() => (sourcesRead ? keepEmpty(ep, schema, shown) : ep), [sourcesRead, ep, schema, shown]);
   if (sourcesRead && !sameList(epNow, ep)) setEp(epNow);
@@ -465,7 +464,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const removeUnique = useCallback((path: string) => setUnique(path, false), [setUnique]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
   const changeColumns = useCallback((picked: string[], more?: (cur: Aggregation) => Aggregation) => {
-    const cols = orderColumns(picked, sources, defaultColumns(native));
+    const cols = orderColumns(picked, sources);
     markEdit();
     // A card's saved pick of a column the member hides goes with it: through the open charts body, else straight in the store. Never from a load, so a failed or late read keeps every pick.
     const hidden = visible.filter((n) => !cols.includes(n));
@@ -495,7 +494,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     columnStore.save(martId, cols);
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
     return !sameList(cols, visible);
-  }, [shownNow, sources, native, markEdit, agg, applyAgg, visible, columnStore, chartSettings, dispatch, martId, setVisible, setOwn, setUc, setEp, sourcesRead, uc, ep, schema]);
+  }, [shownNow, sources, markEdit, agg, applyAgg, visible, columnStore, chartSettings, dispatch, martId, setVisible, setOwn, setUc, setEp, sourcesRead, uc, ep, schema]);
   // A chart menu's choice of a field that is not shown: the shown columns and the new ones, in one edit.
   // In a grouped grid a new column without a rule would become a group key and multiply the rows: a metric gets the function the chart sums it with, a date the chart's bucket (Month when none is known yet). A dimension is a key, as intended.
   const showColumns = useCallback((names: string[], buckets?: Readonly<Record<string, DateBucket>>) => changeColumns([...new Set([...shown, ...names])], (cur) => {
@@ -586,19 +585,19 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   }, [groups, martId, configSlot]);
   // The marts kept with no column count too: with one, the main mart can be removed. Its last own column stays only while another mart has columns.
   const emptyMarts = pathMarts.filter((m) => m.empty);
-  const several = groups.length + emptyMarts.length > 1;
-  const othersShown = groups.length > 1;
-  // The first data mart is the main one: its last own column stays while a joined mart is shown.
+  // The main mart is in the report even with no column (Clear, or its last one unticked): it has no group then, but is listed and removable like the rest.
+  const mainEmpty = !groups.some((g) => g.main);
+  const several = groups.length + emptyMarts.length + (mainEmpty ? 1 : 0) > 1;
   const ownNames = useMemo(() => new Set(native.map((f) => f.name)), [native]);
-  const ownOn = shown.filter((n) => ownNames.has(n)).length;
   // The data marts that offer a Unique Count (a hidden or composite key counts): their panel in the config menu has the row for it.
   const uniqueOffered = useMemo(() => new Set(uniquePathsOf(schema)), [schema]);
   const fieldsOf = (g: { main: boolean; path: string }) => (g.main ? native : sources.filter((x) => x.aliasPath === g.path).flatMap((x) => x.fields));
   // The config menu's data marts: the ones with a column in grid order, then the ones kept with none (listed with them, and removable), then the ones the report only joins through.
+  const mainGroup = { id: martId, path: '', title: model.marts.get(martId)?.title ?? martId, icon: model.marts.get(martId)?.icon, description: model.marts.get(martId)?.description, span: 0, main: true };
   const configMarts: ConfigMart[] = [
-    ...groups.map((g): ConfigMart => ({
+    ...(mainEmpty ? [mainGroup, ...groups] : groups).map((g): ConfigMart => ({
       path: g.path, title: g.title, icon: g.icon, description: g.description, main: g.main, shown: true, fields: fieldsOf(g), rules: rulesOf(fieldsOf(g)),
-      locked: (n) => g.main && othersShown && ownOn === 1 && ownNames.has(n),
+      locked: () => false,
       unique: uniqueOffered.has(g.path) ? { on: ucNow.includes(g.path), onToggle: () => toggleUnique(g.path) } : undefined,
       // `remove` reads the latest columns ref, but only when the menu calls it, never while rendering.
       // eslint-disable-next-line react-hooks/refs
@@ -716,8 +715,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
       },
       isShown: (name) => shown.includes(name),
       outputOf: (name) => outputs.find((o) => o.column === name) ?? { key: name, column: name, sortable: true },
-      // The same rule as the config menu: the last column, and the last of the main mart's while a joined mart has columns, stay.
-      canHide: (name) => shown.length > 1 && !(othersShown && ownOn === 1 && ownNames.has(name)),
+      canHide: () => shown.length > 1,
       hide: (name) => changeColumns(shown.filter((n) => n !== name)),
       canMove: (name, dir) => moveColumnBy(shown, name, dir, sources) !== shown,
       move: (name, dir) => reorder(moveColumnBy(shown, name, dir, sources)),
@@ -726,7 +724,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
       valuesFor,
       removeUnique,
     };
-  }, [removeUnique, valuesFor, shownSorts, toggleSort, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, epNow, othersShown, ownOn, ownNames, changeColumns, sources, reorder, charts, byName, native, outputs, edit, setOwn, ucNow]);
+  }, [removeUnique, valuesFor, shownSorts, toggleSort, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, epNow, ownNames, changeColumns, sources, reorder, charts, byName, native, outputs, edit, setOwn, ucNow]);
   // Measured for the charts: their panels are as wide as the visible grid, not the (wider) table.
   const { ref: scroller, width: scrollerWidth } = useWidth<HTMLDivElement>(charts);
   const owner = useMemo(() => groupMap(sources), [sources]);

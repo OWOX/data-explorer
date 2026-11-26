@@ -45,6 +45,18 @@ test('clicking a joinable mart adds its first text field after the visible colum
   expect(plan.saves).toEqual([{ martId: 'orders', columns: ['id', 'status', 'customers__city'] }]);
 });
 
+test('adding a joined mart while the main mart has no column does not bring its defaults back', () => {
+  const plan = planClick(env({ orders: g(['customers__city']) }, 'orders'), 'products');
+  expect(plan.grids.orders!.columns.filter((c) => !c.includes('__'))).toEqual([]);
+  expect(plan.grids.orders!.columns).toContain('products__sku');
+  expect(planAddAt(g(['customers__city']), ordersSources, 'products').columns.filter((c) => !c.includes('__'))).toEqual([]);
+});
+
+test('promoting a joined mart over a main mart with no column remembers nothing for the old main', () => {
+  const plan = planClick(env({ orders: g(['customers__city']), customers: g(['id']) }, 'orders'), 'orders');
+  expect(plan.remember.some((r) => r.martId === 'orders')).toBe(false);
+});
+
 test('an add brings back what was last chosen for the pair', () => {
   const plan = planClick(env({ orders: g(['id']) }, 'orders', { orders: { customers: ['customers__email', 'customers__city'] } }), 'customers');
   expect(plan.grids.orders!.columns).toEqual(['id', 'customers__email', 'customers__city']);
@@ -350,7 +362,7 @@ const rjSources = [js('a'), js('b'), js('a.c', ['name', 'n', 'only_a']), js('b.c
 const base: GridState = { columns: ['id', jc('a'), jc('b'), jc('a.c'), jc('a.c', 'n'), jc('a.c', 'only_a')], filters: { [jc('a.c')]: { field: jc('a.c'), op: 'eq', value: 'x' }, [jc('a.c', 'only_a')]: { field: jc('a.c', 'only_a'), op: 'eq', value: 'y' } }, sorts: [{ field: jc('a.c', 'n'), direction: 'desc' }], limit: 100, aggregations: [{ column: jc('a.c', 'n'), function: 'SUM' }] };
 
 test('planAddAt adds the mart through that exact path, with its default fields', () => {
-  const out = planAddAt({ ...base, columns: ['id', jc('b')], filters: {}, sorts: null, aggregations: undefined }, rjSources, 'b.c', ['id']);
+  const out = planAddAt({ ...base, columns: ['id', jc('b')], filters: {}, sorts: null, aggregations: undefined }, rjSources, 'b.c');
   // Both fields are text, so the default is the first text field alone.
   expect(out.columns).toContain(jc('b.c'));
   expect(out.columns).not.toContain(jc('b.c', 'n'));
@@ -358,7 +370,7 @@ test('planAddAt adds the mart through that exact path, with its default fields',
 });
 
 test('planAddAt keeps remembered fields offered by the path', () => {
-  const out = planAddAt({ ...base, columns: ['id'], filters: {}, sorts: null, aggregations: undefined }, rjSources, 'b.c', ['id'], [jc('b.c', 'n')]);
+  const out = planAddAt({ ...base, columns: ['id'], filters: {}, sorts: null, aggregations: undefined }, rjSources, 'b.c', [jc('b.c', 'n')]);
   expect(out.columns).toEqual(['id', jc('b.c', 'n')]);
 });
 
@@ -611,10 +623,10 @@ describe('joined marts kept with no column (empty paths)', () => {
   });
 
   test('planAddAt drops the path it adds from the empty ones', () => {
-    const out = planAddAt(g(['id'], { emptyPaths: ['customers', 'stores'] }), ps, 'customers', ['id']);
+    const out = planAddAt(g(['id'], { emptyPaths: ['customers', 'stores'] }), ps, 'customers');
     expect(out.columns).toEqual(['id', 'customers__city']);
     expect(out.emptyPaths).toEqual(['stores']);
-    expect(planAddAt(g(['id'], { emptyPaths: ['customers'] }), ps, 'customers', ['id']).emptyPaths).toBeUndefined();
+    expect(planAddAt(g(['id'], { emptyPaths: ['customers'] }), ps, 'customers').emptyPaths).toBeUndefined();
   });
 
   test('planRejoin maps the empty paths through the moves', () => {

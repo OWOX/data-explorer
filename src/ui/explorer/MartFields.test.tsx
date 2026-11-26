@@ -25,6 +25,20 @@ test('Clear never hides the last visible column', async () => {
   expect(onChange).toHaveBeenLastCalledWith(['id']);
 });
 
+test('Clear on the main mart leaves only the other marts\' columns', async () => {
+  const onChange = await open(['id', 'name', 'cus_a']);
+  await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+  expect(onChange).toHaveBeenLastCalledWith(['cus_a']);
+});
+
+test('the last own column of the main mart can be unticked while a joined mart is shown', async () => {
+  const onChange = await open(['name', 'cus_a']);
+  const option = within(await screen.findByRole('listbox', { name: 'Fields of Orders' })).getByRole('option', { name: 'name' });
+  expect(option).not.toHaveAttribute('aria-disabled', 'true');
+  await userEvent.click(option);
+  expect(onChange).toHaveBeenLastCalledWith(['cus_a']);
+});
+
 test('Clear on a joined mart commits at once and leaves the other marts\' columns', async () => {
   const onChange = vi.fn();
   const joined = ['cus_a', 'cus_b'].map((name) => ({ name, type: 'STRING', category: 'string' }) as Field);

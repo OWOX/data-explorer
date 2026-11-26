@@ -137,7 +137,7 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
       if (options.addAt !== undefined) {
         // Only the clicked mart gets columns: the marts on the way stay joined through its alias path.
         const martId = sourcesNow.find((s) => s.aliasPath === options.addAt)?.martId;
-        if (martId !== undefined) next = planAddAt(next, sourcesNow, options.addAt, own, picks.get(main)?.[martId], columnStore.lastShown(martId));
+        if (martId !== undefined) next = planAddAt(next, sourcesNow, options.addAt, picks.get(main)?.[martId], columnStore.lastShown(martId));
       } else next = planRejoin(g, sourcesNow, options.moves!, own);
       if (next === g) { await rendered(NOTHING_TO_DRAW_MS); return; }
       const wait = step({ type: 'setMarts', selection: now.selection, grids: { [main]: next } });

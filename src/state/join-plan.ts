@@ -223,7 +223,9 @@ const emptyAfter = (sources: JoinedSource[], columns: string[], paths: readonly 
 
 /** What the old main mart and its joined marts leave behind when another mart replaces them. */
 export function leaveAll(main: string, sources: JoinedSource[], grid: GridState, except?: string): Plan['remember'] {
-  const out: Plan['remember'] = [{ martId: main, fields: ownColumnsIn(grid.columns, sources) }];
+  const mainShown = ownColumnsIn(grid.columns, sources);
+  // A main mart with no column showed nothing: an empty entry would wipe what it last showed.
+  const out: Plan['remember'] = mainShown.length > 0 ? [{ martId: main, fields: mainShown }] : [];
   // A mart kept with no column showed nothing: an empty entry would wipe what it last showed, so only marts with columns are remembered.
   for (const m of joinedMartIds(grid.columns, sources)) if (m !== except) out.push({ martId: m, fields: ownNamesIn(grid.columns, sources, m) });
   return out;
@@ -272,7 +274,8 @@ export function planClick(env: PlanEnv, id: string): Plan {
     const [next, ...rest] = joined as [string, ...string[]];
     const nextSources = env.sourcesOf(next);
     const nextGrid = env.gridOf(next);
-    const remember: Plan['remember'] = [{ martId: main, fields: ownColumnsIn(grid.columns, sources) }];
+    const mainShown = ownColumnsIn(grid.columns, sources);
+    const remember: Plan['remember'] = mainShown.length > 0 ? [{ martId: main, fields: mainShown }] : [];
     // A mart with no column on the grid showed nothing: forgetting what it last showed would lose it.
     if (ownNamesIn(grid.columns, sources, next).length > 0) remember.push({ martId: next, fields: null });
     // Its joined fields it was showing become its own columns: that is what it showed last.
@@ -320,7 +323,7 @@ export function planClick(env: PlanEnv, id: string): Plan {
   if (isJoinable(sources, id)) {
     // Through the shortest chain to the main mart; the marts on the way join bare (the join tree shows them).
     const via = shortestSource(sources, id, inUsePaths(grid.columns, sources, grid.emptyPaths))!;
-    const next = planAddAt(grid, sources, via.aliasPath, env.ownColumns(main), env.picksOf(main)[id], shownOf(id));
+    const next = planAddAt(grid, sources, via.aliasPath, env.picksOf(main)[id], shownOf(id));
     return { selection: env.selection, grids: { [main]: next }, saves: [{ martId: main, columns: next.columns }], remember: [] };
   }
 
@@ -385,8 +388,8 @@ export function planMakeMain(env: PlanEnv, id: string): Plan {
   return { selection: { sourceKey: env.sourceKeyFor(id), martId: id, record: null }, grids: { [id]: next }, saves: [{ martId: id, columns }], remember };
 }
 
-/** The grid with the mart of `aliasPath` added through that exact path. `remembered` are blended names chosen before, `shown` own names it showed when it last left a grid. */
-export function planAddAt(grid: GridState, sources: JoinedSource[], aliasPath: string, own: string[], remembered?: string[], shown: string[] | null = null): GridState {
+/** The grid with the mart of `aliasPath` added through that exact path. A main mart with no column stays with none: its defaults come only when a mart becomes main. `remembered` are blended names chosen before, `shown` own names it showed when it last left a grid. */
+export function planAddAt(grid: GridState, sources: JoinedSource[], aliasPath: string, remembered?: string[], shown: string[] | null = null): GridState {
   const source = sources.find((s) => s.aliasPath === aliasPath);
   if (!source) return grid;
   const names = new Set(source.fields.map((f) => f.name));
@@ -397,7 +400,7 @@ export function planAddAt(grid: GridState, sources: JoinedSource[], aliasPath: s
   }
   if (!picked.length) picked = (remembered ?? []).filter((n) => names.has(n));
   if (!picked.length) picked = defaultJoinFields(source).map((f) => f.name);
-  const columns = orderColumns([...grid.columns, ...picked.filter((n) => !grid.columns.includes(n))], sources, own);
+  const columns = orderColumns([...grid.columns, ...picked.filter((n) => !grid.columns.includes(n))], sources);
   // The mart has columns now: it is no longer kept empty.
   const emptyPaths = grid.emptyPaths?.filter((p) => p !== aliasPath);
   return { ...grid, columns, ...(emptyPaths ? { emptyPaths: emptyPaths.length ? emptyPaths : undefined } : {}) };
