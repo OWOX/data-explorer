@@ -1254,7 +1254,7 @@ test('while a card is pinned, another card\'s (+) shows its ghosts and the pin\'
   expect(ghostEl('countries', 'customers.countries')).toBeNull();
 });
 
-test('canvas cards watch the viewport, not the scrolling box, so a count read waits until the card is on screen', async () => {
+test('canvas cards watch the viewport, not the scrolling box', async () => {
   const roots = new Map<Element, Element | null>();
   vi.stubGlobal('IntersectionObserver', class {
     root: Element | null;
