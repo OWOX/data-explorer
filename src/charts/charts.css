@@ -93,7 +93,8 @@
 /* A panel whose height the member set: its body takes what the head leaves, the plot takes what the legend leaves, and a plot that needs more scrolls in it. */
 .dm-chart[data-fill] .dm-chart-body { flex: 1 1 0; min-height: 0; overflow: auto; transition: none; }
 .dm-chart[data-fill] .dm-chart-fit { height: 100%; }
-.dm-chart[data-fill] .dm-chart-fit > :is(.dm-bar-chart, .dm-line-chart, .dm-scatter, .dm-heatmap, .dm-spread, .dm-sankey) { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.dm-chart[data-fill] .dm-chart-staleframe, .dm-chart[data-fill] .dm-chart-staleframe > div { height: 100%; }
+.dm-chart[data-fill] .dm-chart-staleframe > div > :is(.dm-bar-chart, .dm-line-chart, .dm-scatter, .dm-heatmap, .dm-spread, .dm-sankey) { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .dm-chart[data-fill] .dm-chart-plot { flex: 1 1 0; min-width: 0; min-height: 0; overflow: hidden auto; }
 .dm-chart[data-fill] .dm-chart-legend { flex: none; max-height: 40%; overflow-y: auto; }
 .dm-chart[data-fill] .dm-pie { flex-wrap: nowrap; height: 100%; }
