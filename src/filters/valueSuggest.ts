@@ -3,7 +3,7 @@ import type { Field } from '../model/types';
 import { uniqueKey } from '../model/unique-count';
 import type { TraverseFilter, TraverseOptions } from '../sdk/types';
 
-export const SUGGEST_LIMIT = 50;
+const SUGGEST_LIMIT = 50;
 
 /**
  * The server's values per read key (mart, field and the other rules), kept for the browser session: a read is made once per key

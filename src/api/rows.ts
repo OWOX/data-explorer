@@ -1,6 +1,6 @@
 import type { Ctx, Row, TraverseOptions } from '../sdk/types';
 
-export interface ReadRowsHooks {
+interface ReadRowsHooks {
   signal?: AbortSignal;
   onRunId?: (runId: string | undefined) => void;
   /** The total row count, called once before the first row; undefined when none came. */

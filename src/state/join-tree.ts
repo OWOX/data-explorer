@@ -72,7 +72,7 @@ export function joinableUnder(tree: JoinTree, sources: JoinedSource[], path: str
 }
 
 /** One column of ghosts: what hangs from `from` (a tree node, or a ghost of the level before). */
-export type GhostLevel = { from: string; fromMartId: string; ghosts: JoinedSource[] };
+type GhostLevel = { from: string; fromMartId: string; ghosts: JoinedSource[] };
 
 /**
  * The columns of ghosts for a hover chain. The first level is what joins under the anchor tree node; each link of the chain is a ghost of the level before it,

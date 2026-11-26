@@ -59,7 +59,7 @@ export type State = {
 };
 
 /** The source that feeds a mart, or null: lets the reducer keep a selected source only when it still applies. */
-export type SourceOf = (martId: string) => string | null;
+type SourceOf = (martId: string) => string | null;
 
 export type Action =
   | { type: 'init'; focusId: string; sourceKey?: string | null }

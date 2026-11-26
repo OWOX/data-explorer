@@ -28,7 +28,7 @@ import { useWidth } from '../../charts/useWidth';
 import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKey } from '../../model/sort';
 import { groupMap, moveColumn, moveColumnBy, orderColumns, ownInSchemaOrder } from '../../state/column-order';
 import { buildJoinTree, joinableUnder } from '../../state/join-tree';
-import { inUsePaths, joinedMartIds, joinedPaths, ownNamesIn, pathTitle } from '../../state/join-plan';
+import { inUsePaths, joinedMartIds, ownNamesIn, pathTitle } from '../../state/join-plan';
 import type { Field, Model, Schema } from '../../model/types';
 import { hasPrimaryKey, primaryKeys } from '../../records/relationships';
 import type { Row } from '../../sdk/types';
@@ -87,7 +87,7 @@ const NO_SORTS: SortKey[] = [];
 const NO_MATCH: ReadonlyMap<string, number> = new Map();
 
 /** `saved` is the grid as the reader left it; `filters` only changes when a followed link asks a mounted grid to re-seed. */
-export type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
+type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
 
 /** Why a grid is a preview: the mart has no primary key, or its key is hidden for reporting. */
 export type NoKey = false | 'missing' | 'hidden';
@@ -470,7 +470,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     setOwn((cur) => { const kept = cur && sortsOnColumns(cur, [...cols, ...ucKept.map(uniqueKey)]); return cur && cur.length > 0 && kept!.length === 0 ? null : kept; });
     // A joined mart that has no column left stays in the report, kept empty (from any way of hiding its last column); one that got a column leaves the empty paths.
     // Its filters and slices stay and are still sent; its Unique Count went above, with its last column.
-    const lost = joinedPaths(visible, sources).filter((p) => !joinedPaths(cols, sources).includes(p));
+    const lost = [...inUsePaths(visible, sources)].filter(Boolean).filter((p) => !inUsePaths(cols, sources).has(p));
     const nextEp = sourcesRead ? keepEmpty([...ep, ...lost], schema, cols) : ep;
     emptyNow.current = nextEp;
     if (!sameList(nextEp, ep)) setEp(nextEp);
@@ -504,7 +504,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   // One cell per data mart over its columns, main first; only when a joined mart is on screen.
   const groups = useMemo(() => {
     // A group is a mart at one alias path ('' for the main mart), so a mart joined under two parents is two groups.
-    const inUse = joinedPaths(shown, sources, epNow);
+    const inUse = [...inUsePaths(shown, sources, epNow)].filter(Boolean);
     const out: { id: string; path: string; title: string; icon: string | null | undefined; description: string | null | undefined; span: number; main: boolean }[] = [];
     for (const o of outputs) {
       const f = fieldOf(o);

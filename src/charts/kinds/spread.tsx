@@ -16,7 +16,7 @@ import { SpreadChart, type SpreadRow } from '../svg/SpreadChart';
 import { useChartQuery } from '../useChartQuery';
 import { BOX_WIDTH, carry, type ChartKindDef, type PanelProps } from './types';
 
-export type SpreadR = { dimension: Field; field: Field };
+type SpreadR = { dimension: Field; field: Field };
 const fieldsOf = (cf: ChartFields): Field[] => cf.marts.flatMap((m) => m.metrics.map((x) => x.field)).filter((f) => spreadFns(f).length > 0);
 
 function SpreadPanel({ martId, cf, title, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<SpreadR>) {

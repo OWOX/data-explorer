@@ -9,7 +9,7 @@ import { count } from '../ui/format';
 import type { GridState, Selection } from './store';
 import type { DecodedView } from './view-link';
 
-export type AppliedView = {
+type AppliedView = {
   selection: Selection;
   grid: GridState | null;
   search: string;

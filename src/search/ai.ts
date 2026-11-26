@@ -7,7 +7,7 @@ export const AI_TIMEOUT_MS = 30_000;
 /** The model could not answer this run (a timeout, an error, an answer that is no JSON, or the run was cancelled). Never shown to the member. */
 export class AiUnavailable extends Error {}
 
-export type Models = { fast?: AiModel; decision?: DecisionModel };
+type Models = { fast?: AiModel; decision?: DecisionModel };
 
 /** The models the project configured. null when there is no AI. */
 export function pickModels(ctx: Ctx): Models | null {

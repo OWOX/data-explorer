@@ -25,18 +25,6 @@ export function joinedMartIds(columns: string[], sources: JoinedSource[], empty:
   return out;
 }
 
-/** The alias paths a grid's columns use, in the order their first column appears; then the paths kept with no column (`empty`) that a source offers. */
-export function joinedPaths(columns: string[], sources: JoinedSource[], empty: readonly string[] = []): string[] {
-  const pathOf = sourceOfField(sources);
-  const out: string[] = [];
-  for (const c of columns) {
-    const p = pathOf.get(c)?.aliasPath;
-    if (p !== undefined && !out.includes(p)) out.push(p);
-  }
-  for (const p of empty) if (!out.includes(p) && sources.some((s) => s.aliasPath === p)) out.push(p);
-  return out;
-}
-
 /**
  * The title of a joined path: the source's label without what tells its joins apart, plus that only when the same mart is reached through more
  * than one of `paths` (the alias paths in use, or in use plus the one about to be added).
@@ -87,7 +75,7 @@ export const shortestSource = (sources: JoinedSource[], martId: string, inUse: S
   return best;
 };
 
-export const isJoinable = (sources: JoinedSource[], martId: string) => sources.some((s) => s.martId === martId);
+const isJoinable = (sources: JoinedSource[], martId: string) => sources.some((s) => s.martId === martId);
 
 /** A key by name or alias: a primary key, `id`, a name ending in `_id` or `Id`, or an alias ending in " ID" (any case). */
 export const isIdField = (f: Field): boolean => f.isPrimaryKey || /^id$/i.test(f.name) || /_id$/i.test(f.name) || /[a-z0-9]Id$/.test(f.name) || /\sid$/i.test(f.alias ?? '');
@@ -108,7 +96,7 @@ export function defaultJoinFields(source: JoinedSource): Field[] {
 }
 
 /** A joined field's name in its own mart. */
-export const ownNameOf = (f: Field): string => f.joined?.originalName ?? f.name.slice(f.name.lastIndexOf('__') + 2);
+const ownNameOf = (f: Field): string => f.joined?.originalName ?? f.name.slice(f.name.lastIndexOf('__') + 2);
 
 /** The own field names of one joined mart's columns, in the order shown. */
 export function ownNamesIn(columns: string[], sources: JoinedSource[], martId: string): string[] {
@@ -118,7 +106,7 @@ export function ownNamesIn(columns: string[], sources: JoinedSource[], martId: s
 }
 
 /** The columns that are not a field of any joined mart: the mart's own. */
-export const ownColumnsIn = (columns: string[], sources: JoinedSource[]): string[] => {
+const ownColumnsIn = (columns: string[], sources: JoinedSource[]): string[] => {
   const joined = new Set(sources.flatMap((s) => s.fields.map((f) => f.name)));
   return columns.filter((c) => !joined.has(c));
 };

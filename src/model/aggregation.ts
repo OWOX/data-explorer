@@ -93,8 +93,8 @@ export function applyDraft(column: string, draft: AggregationDraft, a: Aggregati
 }
 
 /** The backend's shape of an IANA time-zone name (it is inlined into SQL, so this is an injection guard), and its length cap. */
-export const IANA_TIME_ZONE = /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/;
-export const MAX_TIME_ZONE_LENGTH = 64;
+const IANA_TIME_ZONE = /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/;
+const MAX_TIME_ZONE_LENGTH = 64;
 export const isTimeZone = (v: unknown): v is string => typeof v === 'string' && v.length <= MAX_TIME_ZONE_LENGTH && IANA_TIME_ZONE.test(v);
 
 /**

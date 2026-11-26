@@ -17,7 +17,7 @@ import { useBucket } from '../useBucket';
 import { useDateSeries } from '../useDateSeries';
 import { BOX_WIDTH, carry, seriesWidth, type ChartKindDef, type PanelProps } from './types';
 
-export type TimeSeriesR = { date: Field; bucket: DateBucket | 'AUTO'; measure: Measure; stack: Field | null; orientation: Orientation };
+type TimeSeriesR = { date: Field; bucket: DateBucket | 'AUTO'; measure: Measure; stack: Field | null; orientation: Orientation };
 
 /** The shared rows of a date chart's menu: Date field (when there is a choice), Bucket and Metric (when there is a choice). */
 export function dateMenu(cf: ChartFields, r: { date: Field; bucket: DateBucket | 'AUTO'; measure: Measure }, onChange: PanelProps<unknown>['onChange']): MenuItem[] {

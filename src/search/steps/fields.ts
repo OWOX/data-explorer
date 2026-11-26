@@ -10,9 +10,9 @@ import { overlap } from '../words';
 import type { Asked, StepDeps, StepInput } from './types';
 
 export type MartFields = { aliasPath: string; title: string; fields: Field[] };
-export type FieldPick = { columns: string[]; needed: Set<string>; keptPaths: string[]; failedMain: boolean };
-export const PER_MART = 8;
-export const TOTAL = 20;
+type FieldPick = { columns: string[]; needed: Set<string>; keptPaths: string[]; failedMain: boolean };
+const PER_MART = 8;
+const TOTAL = 20;
 const LEVELS = ['Not needed for the query.', 'Useful for the query.', 'Needed to answer the query.'];
 const INSTRUCTIONS = 'Rate how much this field of the data mart is needed as a column to answer the query.';
 
@@ -30,7 +30,7 @@ export function wordShortlist(fields: Field[], terms: string, key: readonly stri
 }
 
 /** A mart's candidate fields: all of them up to 64; past that, the fast model's pick, else the word shortlist. */
-export async function shortlistFields(mart: MartFields, input: StepInput, deps: StepDeps, key: readonly string[]): Promise<Field[]> {
+async function shortlistFields(mart: MartFields, input: StepInput, deps: StepDeps, key: readonly string[]): Promise<Field[]> {
   if (mart.fields.length <= MAX_QUESTIONS) return mart.fields;
   const terms = intentTerms(input.intent, input.query);
   try {

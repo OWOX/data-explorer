@@ -2,8 +2,8 @@ import type { Model } from '../model/types';
 import type { SearchHits } from './endpoint';
 import { overlap } from './words';
 
-export type CoreSignals = { inbound: number; outbound: number; neighbours: number; keyAgreement: number; score: number };
-export const SHORTLIST_MAX = 20;
+type CoreSignals = { inbound: number; outbound: number; neighbours: number; keyAgreement: number; score: number };
+const SHORTLIST_MAX = 20;
 const ZERO: CoreSignals = { inbound: 0, outbound: 0, neighbours: 0, keyAgreement: 0, score: 0 };
 
 /**

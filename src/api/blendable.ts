@@ -57,7 +57,7 @@ export interface BlendableLoader {
 }
 
 /** The alias of the parent mart's key field a join goes by (a field alias only, never the raw name), when it is known. */
-export type KeyAlias = (source: AvailableSourceDto) => string | undefined;
+type KeyAlias = (source: AvailableSourceDto) => string | undefined;
 
 /** Joined fields of a mart as columns: only included, readable sources; no hidden or calculated field. Depth first, then the mart's own title (never the label, which a key alias or ordinal changes), so relabelling never reorders. */
 export function joinedSources(dto: BlendableSchemaDto, keyAlias?: KeyAlias): JoinedSource[] {
@@ -114,7 +114,7 @@ export function joinedSources(dto: BlendableSchemaDto, keyAlias?: KeyAlias): Joi
 }
 
 /** What the loader knows without a read: the model's edges and the schemas already loaded. */
-export type KeyContext = { edges: Edge[]; schemaOf: (martId: string) => Schema | undefined };
+type KeyContext = { edges: Edge[]; schemaOf: (martId: string) => Schema | undefined };
 
 /**
  * The alias of the key a join goes by: the join's relationship -> its first join condition -> that field of the parent mart,

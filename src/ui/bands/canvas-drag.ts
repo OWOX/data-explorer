@@ -4,7 +4,7 @@ import { martElementId } from './cards';
 import { CARD_H, CARD_W, type Placed } from './canvas-layout';
 
 /** The target whose card centre is closest to the point; `centreOf` says where a target's card is, or undefined when it is not on the page. Both views pick the same way. */
-export function closestBy(targets: Rejoin[], centreOf: (target: string) => { x: number; y: number } | undefined, x: number, y: number): Rejoin | null {
+function closestBy(targets: Rejoin[], centreOf: (target: string) => { x: number; y: number } | undefined, x: number, y: number): Rejoin | null {
   let best: Rejoin | null = null;
   let bestD = Infinity;
   for (const t of targets) {
@@ -70,7 +70,7 @@ export function boxLinePath(from: Box, to: Box, arcRise?: number): string {
 }
 
 /** A place a joined card in hand can be dropped, with where its card is on the page (client pixels). */
-export type GridTarget = { target: Rejoin; el: string; box: DOMRect };
+type GridTarget = { target: Rejoin; el: string; box: DOMRect };
 
 /** The drop targets of the card at `path` whose cards are on the page; a card in a folded band or leaving is no target. */
 export function gridTargets(root: HTMLElement | null, tree: JoinTree | null, sources: JoinedSource[] | null, path: string): GridTarget[] {

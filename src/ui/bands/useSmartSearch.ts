@@ -24,7 +24,7 @@ export type Row =
   | { kind: 'adhoc'; query: string; pending: boolean; disabled: boolean; reason?: string };
 
 /** The contexts the found marts belong to, in the model's order: the choices of the dropdown's context filter. */
-export function contextsOfFound(martIds: string[], model: Model): Context[] {
+function contextsOfFound(martIds: string[], model: Model): Context[] {
   const ids = new Set(martIds.flatMap((id) => model.marts.get(id)?.contextIds ?? []));
   return model.contexts.filter((c) => ids.has(c.id));
 }

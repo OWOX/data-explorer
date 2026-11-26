@@ -9,7 +9,7 @@ export type Answer =
 export type Answers = Record<string, Answer | undefined>;
 export type Decide = (questions: Record<string, Question>, state: unknown, signal: AbortSignal) => Promise<Answers>;
 
-export const DECIDE_TIMEOUT_MS = 20_000;
+const DECIDE_TIMEOUT_MS = 20_000;
 export const MAX_QUESTIONS = 64;
 const SURE = 0.6;
 const GAP = 0.15;

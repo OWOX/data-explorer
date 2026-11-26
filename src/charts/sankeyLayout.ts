@@ -8,14 +8,14 @@ export type Flow = { source: string; target: string; value: number; origin?: str
 export type NodeSize = { key: string; value: number };
 /** What colours a node: the colour its label starts from (see labelColor.ts), the blank grey or the muted Other. */
 export type Tone = { kind: 'series'; color: string } | { kind: 'blank' } | { kind: 'other' };
-export type SankeyNode = { col: number; key: string; x: number; y: number; w: number; h: number; value: number; tone: Tone };
+type SankeyNode = { col: number; key: string; x: number; y: number; w: number; h: number; value: number; tone: Tone };
 export type SankeyLink = { pair: number; source: string; target: string; origin?: string; value: number; path: string; tone: Tone; x0: number; x1: number; y0: number; y1: number; w: number; w1: number };
-export type SankeyLayout = { nodes: SankeyNode[]; links: SankeyLink[]; height: number };
+type SankeyLayout = { nodes: SankeyNode[]; links: SankeyLink[]; height: number };
 
 /** The `origin` of a ribbon that stands for several small ribbons of one (source, target): their origins are not told apart. */
 export const REST_ORIGIN = '\u0000rest';
 /** A ribbon below this share of its pair's total is merged with the other small ones between the same two nodes. */
-export const REST_SHARE = 0.005;
+const REST_SHARE = 0.005;
 
 export const NODE_W = 16;
 export const NODE_GAP = 14;

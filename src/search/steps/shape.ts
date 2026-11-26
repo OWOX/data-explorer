@@ -14,9 +14,9 @@ import { matchTiers, readValues, VALUE_COLUMNS, VALUE_MATCHES } from '../valueMa
 import { roleOf } from './fields';
 import type { Asked, StepDeps, StepInput } from './types';
 
-export type ValueHit = { literal: number; field: string; value: string; op: 'eq' | 'neq' };
+type ValueHit = { literal: number; field: string; value: string; op: 'eq' | 'neq' };
 export type ShapeFacts = { schema: Schema; columns: string[]; needed: Set<string>; sources: JoinedSource[]; hits: ValueHit[][] };
-export type ShapePlan = {
+type ShapePlan = {
   grouped: boolean; measures: Field[]; dateBreakdowns: Field[]; dateField: Field | null;
   valueQs: { qid: string; literal: number; options: Record<string, ValueHit> }[];
   thresholds: { qid: string; literal: number; op: 'gt' | 'gte' | 'lt' | 'lte'; value: number; options: Record<string, string> }[];
@@ -24,7 +24,7 @@ export type ShapePlan = {
   sortOptions: Record<string, string> | null;
 };
 
-export const DATE_OPTIONS: Record<string, RelativeDatePreset | null> = {
+const DATE_OPTIONS: Record<string, RelativeDatePreset | null> = {
   none: null, today: { kind: 'today' }, yesterday: { kind: 'yesterday' }, this_week: { kind: 'this_week' }, last_week: { kind: 'last_week' },
   this_month: { kind: 'this_month' }, last_month: { kind: 'last_month' }, this_quarter: { kind: 'this_quarter' }, last_quarter: { kind: 'last_quarter' },
   this_year: { kind: 'this_year' }, 'last_n_days:7': { kind: 'last_n_days', n: 7 }, 'last_n_days:30': { kind: 'last_n_days', n: 30 },

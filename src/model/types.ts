@@ -37,7 +37,7 @@ export interface Mart {
   connectorName?: string;
 }
 
-export interface JoinCondition { sourceField: string; targetField: string }
+interface JoinCondition { sourceField: string; targetField: string }
 /** `alias` is the relationship's name (its target alias) and `description` its business meaning, when the backend sent them. */
 export interface Edge { id: string; source: string; target: string; joins: JoinCondition[]; alias?: string; description?: string }
 

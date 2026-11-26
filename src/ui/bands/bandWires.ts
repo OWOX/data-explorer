@@ -7,7 +7,7 @@ import { edgeOf, edgeOutputAlias, joinAlias, noteFields, relationshipNote } from
 import type { Wire } from './wires';
 
 /** What the lines between the cards are drawn from. */
-export type BandWiresInput = {
+type BandWiresInput = {
   idsKey: string;
   model: Model;
   canvasTree: JoinTree | null;

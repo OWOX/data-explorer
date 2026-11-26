@@ -6,7 +6,7 @@ import { useChartQuery } from './useChartQuery';
 
 /** One category of a top list: its key (BLANK_KEY for the blank value) and the measure's returned value. */
 export type Category = { key: string; value: unknown };
-export type TopValues = {
+type TopValues = {
   /** Blank first, then the top values in the read's order; null while loading. */
   categories: Category[] | null;
   /** The real values in the top list (no blank), for the `in` and `not_in` rules that follow. */

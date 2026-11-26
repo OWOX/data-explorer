@@ -5,9 +5,9 @@ import { intentTerms } from '../intent';
 import { overlap } from '../words';
 import type { Asked, StepDeps, StepInput } from './types';
 
-export type PathCandidate = { qid: string; source: JoinedSource; relationship: string; relationshipDescription: string; via: string[]; words: number };
-export const PATH_DEPTH = 4;
-export const PATH_KEEP = 5;
+type PathCandidate = { qid: string; source: JoinedSource; relationship: string; relationshipDescription: string; via: string[]; words: number };
+const PATH_DEPTH = 4;
+const PATH_KEEP = 5;
 const LEVELS = ['Not related to the query.', 'Useful context for the query.', 'Needed to answer the query.'];
 const INSTRUCTIONS = 'Rate how much joining this data mart, through this relationship, helps answer the query about the main data mart.';
 

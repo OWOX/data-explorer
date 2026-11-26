@@ -16,11 +16,11 @@ import { Sankey } from '../svg/Sankey';
 import { useChartQuery } from '../useChartQuery';
 import { carry, type ChartKindDef, type PanelProps } from './types';
 
-export const NEGATIVE_NOTE = 'Sankey needs values of 0 or more; this metric has negative values.';
-export const MISCONFIGURED_NOTE = 'This Sankey is misconfigured: pick at least 2 columns in its menu.';
-export const cappedNote = (n: number): string => `Showing the largest ${n.toLocaleString('en-US')} combinations; smaller flows are left out.`;
+const NEGATIVE_NOTE = 'Sankey needs values of 0 or more; this metric has negative values.';
+const MISCONFIGURED_NOTE = 'This Sankey is misconfigured: pick at least 2 columns in its menu.';
+const cappedNote = (n: number): string => `Showing the largest ${n.toLocaleString('en-US')} combinations; smaller flows are left out.`;
 
-export const columnCappedNote = (n: number): string => `A column has ${n.toLocaleString('en-US')} or more values; its smallest ones are not counted in Other.`;
+const columnCappedNote = (n: number): string => `A column has ${n.toLocaleString('en-US')} or more values; its smallest ones are not counted in Other.`;
 /** The Sankey's numbers (labels, tooltips, the screen-reader table) drop the fraction above 10: shares and flows are read at a glance, not to the cent. */
 const SANKEY_TEXT = { whole: true } as const;
 export const FAN_OUT_NOTE = "One record can sit in more than one ribbon here, so ribbons can add up to more than their column total. A node's share is of its column's values added up, not of the metric's total.";
@@ -29,7 +29,7 @@ export const FAN_OUT_NOTE = "One record can sit in more than one ribbon here, so
  * `exact` is true when the measure passes `sankeyMeasures` for the columns: no join can repeat a record, so the plugin's sums (one all-columns flow read,
  * Other) are exact. Otherwise it is fan-out mode: flows are read per adjacent pair and the ribbons can overlap (see `foldSankey`).
  */
-export type SankeyR = { dims: Field[]; measure: Measure; exact: boolean };
+type SankeyR = { dims: Field[]; measure: Measure; exact: boolean };
 
 /** The panel's width: 20rem per column, at least 20rem, at most the band. */
 export const sankeyWidth = (columns: number): string => `clamp(20rem, ${columns * 20}rem, 100%)`;

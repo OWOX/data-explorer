@@ -2,7 +2,7 @@ import { cleanText } from '../api/ai-prompt';
 import type { AiModel } from '../sdk/types';
 import { askFast } from './ai';
 
-export type ValueOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte';
+type ValueOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte';
 export type Intent = {
   subjects: string[]; measures: string[]; breakdowns: string[]; time: string | null;
   values: { text: string; op: ValueOp }[];

@@ -4,7 +4,7 @@ import type { Field } from '../model/types';
 import type { Ctx } from '../sdk/types';
 
 export const VALUE_COLUMNS = 6;
-export const VALUE_LIMIT = 200;
+const VALUE_LIMIT = 200;
 const RECORDS: Measure = { kind: 'records', aliasPath: '', recordsId: 'records' };
 
 export const normalize = (s: string): string => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');

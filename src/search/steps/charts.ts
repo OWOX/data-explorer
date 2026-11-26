@@ -44,7 +44,7 @@ export function chartCandidates(grid: GridState, schema: Schema): ChartCandidate
   return out;
 }
 
-export const CHARTS_MAX = 3;
+const CHARTS_MAX = 3;
 const LEVELS = ['Does not help show the answer.', 'Might help.', 'Clearly helps show the answer.'];
 
 /** A spec as the model sees it: every string cleaned and capped, since field names come from OWOX. */

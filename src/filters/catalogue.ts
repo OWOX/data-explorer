@@ -4,11 +4,11 @@ import { zonesBuckets } from '../model/aggregation';
 import { tokensOf } from './valueSuggest';
 import type { RelativeDatePreset } from '../sdk/types';
 
-export const OP_IDS = ['contains', 'not_contains', 'eq', 'neq', 'starts_with', 'ends_with', 'gt', 'gte', 'lt', 'lte', 'between', 'on', 'before', 'after', 'relative', 'is_true', 'is_false', 'is_blank', 'is_not_blank'] as const;
+const OP_IDS = ['contains', 'not_contains', 'eq', 'neq', 'starts_with', 'ends_with', 'gt', 'gte', 'lt', 'lte', 'between', 'on', 'before', 'after', 'relative', 'is_true', 'is_false', 'is_blank', 'is_not_blank'] as const;
 export type OpId = (typeof OP_IDS)[number];
 export const isOpId = (v: unknown): v is OpId => (OP_IDS as readonly unknown[]).includes(v);
-export type ValueKind = 'none' | 'text' | 'number' | 'date' | 'number-range' | 'date-range' | 'relative';
-export type OpDef = { id: OpId; label: string; value: ValueKind };
+type ValueKind = 'none' | 'text' | 'number' | 'date' | 'number-range' | 'date-range' | 'relative';
+type OpDef = { id: OpId; label: string; value: ValueKind };
 
 const blank: OpDef[] = [
   { id: 'is_blank', label: 'is blank', value: 'none' },

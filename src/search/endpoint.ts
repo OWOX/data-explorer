@@ -17,7 +17,7 @@ export function queryProblem(q: string): string | null {
 }
 
 /** A saved report the engine found, with the data mart it reads. */
-export type ReportHit = { id: string; title: string; martId: string };
+type ReportHit = { id: string; title: string; martId: string };
 export type SearchHits = { reports: ReportHit[]; marts: string[] };
 
 const score = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : -Infinity);

@@ -1,6 +1,6 @@
 import type { ConnectorDto, ConnectorSummaryDto, ContextDto, DestinationDto, DqSummaryDto, EdgeDto, Row, SchemaFieldDto, StorageDto } from '../types';
 
-export type MockMart = {
+type MockMart = {
   id: string;
   title: string;
   description: string | null;

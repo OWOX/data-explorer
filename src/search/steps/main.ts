@@ -4,7 +4,7 @@ import { choiceQ, isUnsure, ranked, type Answer } from '../decide';
 import type { Asked, StepDeps, StepInput } from './types';
 
 export type MainCandidate = { id: string; title: string; description: string; inbound: number; outbound: number; neighbours: number; key: string[]; searchHit: boolean };
-export type MainResult = { martId: string | null; alternatives: string[]; failed: boolean };
+type MainResult = { martId: string | null; alternatives: string[]; failed: boolean };
 const ALTERNATIVES = 2;
 
 const INSTRUCTIONS = 'Pick the data mart whose rows are the business entity the query is about (for example users, visitors, orders), so the other data can be joined to it. Prefer an entity with a key and many relationships over a report that summarises it.';

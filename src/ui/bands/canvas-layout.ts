@@ -11,7 +11,7 @@ const colX = (depth: number) => depth * (CARD_W + COL_GAP);
 const rowY = (row: number) => row * (CARD_H + ROW_GAP);
 
 /** One column of ghosts: `ids` hang from `path`, a tree node or a ghost of the level before. */
-export type GhostColumn = { path: string; ids: string[] };
+type GhostColumn = { path: string; ids: string[] };
 
 /**
  * Positions for every node, plus the ghosts: each column of them goes after its parent's column.

@@ -33,7 +33,7 @@ function registeredDomain(input: string): string {
 }
 
 /** The registered domain a set of API hosts agrees on; undefined with no usable host. */
-export function serviceDomain(hosts: string[]): string | undefined {
+function serviceDomain(hosts: string[]): string | undefined {
   const counts = new Map<string, number>();
   for (const raw of hosts) {
     const host = raw.trim().toLowerCase();
@@ -81,7 +81,7 @@ function commonTitle(titles: string[]): string {
 }
 
 /** Finds the custom connector a mart's connector name stands for. A bundled name of the same case wins; otherwise case is ignored. */
-export function customLookup(bundled: ConnectorDto[], custom: ConnectorSummaryDto[]) {
+function customLookup(bundled: ConnectorDto[], custom: ConnectorSummaryDto[]) {
   const bundledNames = new Set(bundled.map((c) => c.name));
   const byLower = new Map(custom.map((c) => [c.name.toLowerCase(), c]));
   return (name: string) => (bundledNames.has(name) ? undefined : byLower.get(name.toLowerCase()));

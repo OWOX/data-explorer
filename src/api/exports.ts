@@ -6,9 +6,9 @@ import { sleep } from './sleep';
 import type { Ctx, DestinationDto, ReportDto, TraverseFilter } from '../sdk/types';
 import { errorMessage, isNotFound } from '../model/guards';
 
-export const EXPORTS_COLLECTION = 'exports';
-export const MAX_EXPORT_SORTS = 10;
-export const MAX_EXPORT_FILTERS = 50;
+const EXPORTS_COLLECTION = 'exports';
+const MAX_EXPORT_SORTS = 10;
+const MAX_EXPORT_FILTERS = 50;
 export const POLL_INTERVAL_MS = 2000;
 export const POLL_TIMEOUT_MS = 3 * 60_000;
 
@@ -17,7 +17,7 @@ export type StoredReport = { reportId: string; /** ISO time of the last export i
 type ExportsDoc = { reports: StoredReport[] };
 
 /** A report as OWOX has it now, plus the stored `usedAt`. An unrecognised spreadsheet target has `spreadsheetId: ''`. */
-export type ExportedReport = { reportId: string; destinationId: string; spreadsheetId: string; sheetId: number; title: string; usedAt?: string };
+type ExportedReport = { reportId: string; destinationId: string; spreadsheetId: string; sheetId: number; title: string; usedAt?: string };
 
 /** One remembered report in the session cache: `report` is set only when `state` is `'ready'`. */
 export type ReportEntry = { reportId: string; usedAt?: string; state: 'loading' | 'ready' | 'failed'; report?: ExportedReport };
@@ -36,7 +36,7 @@ export type ReportPayload = {
   uniqueCountConfig: string[] | null;
 };
 
-export type PayloadResult = { payload: ReportPayload; notes: string[] };
+type PayloadResult = { payload: ReportPayload; notes: string[] };
 
 /** The report that reproduces what the grid shows: shown columns, complete filters (HAVING ones with their aggregation) and slices, the reader's own sorts. */
 export function buildReportPayload(schema: Schema, visible: string[], filters: ColumnFilter[], sorts: SortKey[], agg?: Aggregation, slices: ColumnFilter[] = [], uniqueCount: readonly string[] = []): PayloadResult {
@@ -70,7 +70,7 @@ export function exportTitle(martTitle: string, now = new Date()): string {
   return `${martTitle} · Data Explorer · ${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
 }
 
-export type SheetTarget = { spreadsheetId: string; sheetId: number };
+type SheetTarget = { spreadsheetId: string; sheetId: number };
 
 /** The spreadsheet id and tab (`#gid=`, default 0) in a pasted Google Sheets URL, or null. */
 export function parseSheetUrl(raw: string): SheetTarget | null {
@@ -87,14 +87,14 @@ export function parseSheetUrl(raw: string): SheetTarget | null {
 export const isPublishedSheetUrl = (raw: string) => /\/spreadsheets\/d\/e\//.test(raw);
 
 const SPREADSHEET_ID = /^[A-Za-z0-9_-]+$/;
-export const isSheetTarget = (t: { spreadsheetId: unknown; sheetId: unknown }): t is SheetTarget =>
+const isSheetTarget = (t: { spreadsheetId: unknown; sheetId: unknown }): t is SheetTarget =>
   typeof t.spreadsheetId === 'string' && SPREADSHEET_ID.test(t.spreadsheetId) && typeof t.sheetId === 'number' && Number.isSafeInteger(t.sheetId) && t.sheetId >= 0;
 
 /** The tab's address, or null when the id is not a plain spreadsheet id: an id read from OWOX must not steer the link elsewhere. */
 export const sheetUrl = (t: { spreadsheetId: string; sheetId: number }): string | null =>
   isSheetTarget(t) ? `https://docs.google.com/spreadsheets/d/${encodeURIComponent(t.spreadsheetId)}/edit#gid=${t.sheetId}` : null;
 
-export const isSheetsDestination = (d: DestinationDto) => d.type === 'GOOGLE_SHEETS' && d.availableForUse !== false;
+const isSheetsDestination = (d: DestinationDto) => d.type === 'GOOGLE_SHEETS' && d.availableForUse !== false;
 
 type DocumentDto = { spreadsheetId: string; sheetId: number };
 
@@ -118,13 +118,13 @@ const codeOf = (e: unknown) => {
 /** The answer to a report POST was lost or came from a gateway: the report may exist, so the step must not be retried. */
 export const reportMayExist = (e: unknown) => e instanceof ExportError && e.stage === 'report' && ['TIMEOUT', 'NETWORK_ERROR', 'HTTP_502', 'HTTP_504'].includes(e.code ?? '');
 
-export type Outcome = { state: 'success' | 'failed' | 'timeout' | 'busy'; error?: string };
+type Outcome = { state: 'success' | 'failed' | 'timeout' | 'busy'; error?: string };
 export type ExportSource =
   | { kind: 'new' }
   | { kind: 'existing'; target: SheetTarget }
   | { kind: 'update'; report: ExportedReport };
 
-export type RunResult = { report: ExportedReport; outcome: Outcome };
+type RunResult = { report: ExportedReport; outcome: Outcome };
 
 /** An export that has started for a mart. It outlives the menu that started it, so a remounted menu can pick it up. */
 export interface Flight {

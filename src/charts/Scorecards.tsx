@@ -84,7 +84,7 @@ export function sharedSeriesQuery(cf: ChartFields, spark: Spark, measure: Measur
 }
 
 /** The scorecards' read plus the last row it returned, which the cards keep showing (dimmed) while the next read runs. */
-export type Scores = ChartResult & { previous?: Row | null };
+type Scores = ChartResult & { previous?: Row | null };
 
 /**
  * One query for every value card of every data mart: a filter change or an added mart is one billed read, not one per mart.
@@ -113,7 +113,7 @@ const reducedMotion = (): boolean => typeof window !== 'undefined' && !!window.m
  * no value, or whose measure was swapped, jumps instead of counting from an unrelated number. A newer target mid-roll starts from the number on screen.
  * `whole` rounds every frame, so a count never shows a fraction on its way.
  */
-export function useRolling(target: number | null, scope: string, whole: boolean, ms = ROLL_MS): number | null {
+function useRolling(target: number | null, scope: string, whole: boolean, ms = ROLL_MS): number | null {
   const [state, setState] = useState<{ value: number | null; scope: string }>({ value: target, scope });
   const from = state.scope === scope ? state.value : null;
   const rolls = target !== null && from !== null && from !== target && !reducedMotion();

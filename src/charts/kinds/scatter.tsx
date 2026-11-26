@@ -15,7 +15,7 @@ import { Scatter, type Dot } from '../svg/Scatter';
 import { useChartQuery } from '../useChartQuery';
 import { BOX_WIDTH, carry, type ChartKindDef, type PanelProps } from './types';
 
-export type ScatterR = { dimension: Field; x: Measure; y: Measure };
+type ScatterR = { dimension: Field; x: Measure; y: Measure };
 
 function ScatterPanel({ martId, cf, title, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<ScatterR>) {
   const { dimension: dim, x, y } = r;

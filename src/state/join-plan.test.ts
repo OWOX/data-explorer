@@ -1,6 +1,6 @@
 import type { JoinedSource } from '../api/blendable';
 import type { Field } from '../model/types';
-import { joinedPaths, withoutPaths, planAddAt, planRejoin, defaultJoinFields, fieldsFor, inUsePaths, isIdField, joinedMartIds, planClick, planMakeMain, shortestSource, sourceOfMart, withoutMart, type PlanEnv } from './join-plan';
+import { withoutPaths, planAddAt, planRejoin, defaultJoinFields, fieldsFor, inUsePaths, isIdField, joinedMartIds, planClick, planMakeMain, shortestSource, sourceOfMart, withoutMart, type PlanEnv } from './join-plan';
 import type { GridState } from './store';
 
 const f = (name: string, category: Field['category'], martId: string): Field => ({ name, alias: null, type: 'STRING', category, description: null, isPrimaryKey: false, joined: { martId, label: martId, aliasPath: martId, originalName: name.slice(martId.length + 2) } });
@@ -588,12 +588,12 @@ describe('joined marts kept with no column (empty paths)', () => {
   const stores = src('stores', 'stores', [f('stores__city', 'string', 'stores')], 1);
   const ps = [customers, stores, src('customers.stores', 'stores', [f('customers__stores__city', 'string', 'stores')], 2)];
 
-  test('joinedMartIds, joinedPaths and inUsePaths list the empty paths after those with columns, and skip unknown or repeated ones', () => {
+  test('joinedMartIds and inUsePaths list the empty paths after those with columns, and skip unknown or repeated ones', () => {
     expect(joinedMartIds(['id', 'stores__city'], ordersSources, ['customers', 'stores', 'nope', 'products'])).toEqual(['stores', 'customers', 'products']);
-    expect(joinedPaths(['id', 'stores__city'], ordersSources, ['customers', 'stores', 'nope'])).toEqual(['stores', 'customers']);
+    expect([...inUsePaths(['id', 'stores__city'], ordersSources, ['customers', 'stores', 'nope'])].filter(Boolean)).toEqual(['stores', 'customers']);
     expect(inUsePaths(['id', 'stores__city'], ordersSources, ['customers', 'nope'])).toEqual(new Set(['', 'stores', 'customers']));
     expect(joinedMartIds(['id'], ordersSources)).toEqual([]);
-    expect(joinedPaths(['id'], ordersSources)).toEqual([]);
+    expect([...inUsePaths(['id'], ordersSources)].filter(Boolean)).toEqual([]);
   });
 
   test('withoutPaths drops the removed paths from the empty ones, and a grid that only has the path as empty is touched', () => {

@@ -8,7 +8,7 @@ import { rowHeight } from '../plotSize';
 import { useWidth } from '../useWidth';
 import { XTitle, Y_TITLE_W, YTitle } from './YTitle';
 
-export type Axis = { key: string; label: string };
+type Axis = { key: string; label: string };
 const ROW_H = 24;
 const TOP = 4;
 const AXIS_H = 24;

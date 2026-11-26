@@ -77,7 +77,7 @@ const SLICE_NOTE = <>Slices filter the joined data mart <strong>before</strong> 
 /** The function's label in lower case, as the HAVING note and the Funnel tooltip name it: "sum". */
 const fnName = (f: AggFn) => AGG_LABELS[f].toLowerCase();
 /** What a filter says in a tooltip: a HAVING filter names its function and reads against the aggregate's type. */
-export function describeColumnFilter(field: Field, f: ColumnFilter): string {
+function describeColumnFilter(field: Field, f: ColumnFilter): string {
   return f.fn ? `${fnName(f.fn)} ${describeFilter(havingField(field, f.fn), f)}` : describeFilter(field, f);
 }
 

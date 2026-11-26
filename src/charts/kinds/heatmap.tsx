@@ -18,7 +18,7 @@ import { useTopValues } from '../useTopValues';
 import { carry, seriesWidth, type ChartKindDef, type PanelProps } from './types';
 
 type Cols = { kind: 'date'; date: Field; bucket: DateBucket | 'AUTO' } | { kind: 'dim'; dim: Field };
-export type HeatR = { rows: Field; cols: Cols; measure: Measure };
+type HeatR = { rows: Field; cols: Cols; measure: Measure };
 
 function HeatmapPanel({ martId, cf, title, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<HeatR>) {
   const { rows: y, cols, measure } = r;

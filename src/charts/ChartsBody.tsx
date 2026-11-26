@@ -25,7 +25,7 @@ const Gutter = () => <th aria-hidden data-chrome className="dm-chrome" />;
 const GUTTER_PX = 46;
 
 /** A mart a joined path passes through with no column of its own on the grid: it has no group there, only a place in the chart menus. */
-export type PathMart = { path: string; title: string; icon?: string | null };
+type PathMart = { path: string; title: string; icon?: string | null };
 const NO_SIZE: ChartSize = {};
 const NO_PATH_MARTS: PathMart[] = [];
 

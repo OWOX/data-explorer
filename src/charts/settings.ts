@@ -11,7 +11,7 @@ export const measureId = (m: Measure): string => (m.kind === 'metric' ? m.metric
 export const SANKEY_MIN = 2;
 export const SANKEY_MAX = 5;
 
-export const CHART_KINDS = ['timeSeries', 'bar', 'pie', 'rankedBar', 'line', 'heatmap', 'sankey', 'scatter', 'spread'] as const;
+const CHART_KINDS = ['timeSeries', 'bar', 'pie', 'rankedBar', 'line', 'heatmap', 'sankey', 'scatter', 'spread'] as const;
 export type ChartKind = (typeof CHART_KINDS)[number];
 export const isChartKind = (v: unknown): v is ChartKind => (CHART_KINDS as readonly unknown[]).includes(v);
 

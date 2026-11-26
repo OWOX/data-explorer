@@ -48,7 +48,7 @@ export interface Traversal {
 }
 
 export type StorageDto = { id: string; title: string; type: string };
-export type DataMartListItemDto = {
+type DataMartListItemDto = {
   id: string;
   title: string;
   description: string | null;
@@ -60,7 +60,7 @@ export type DataMartListItemDto = {
 export type ConnectorDto = { name: string; title?: string | null; logo?: unknown };
 /** One custom connector from `/api/connectors/custom/summaries`: its API hosts say which service it is a connector of. */
 export type ConnectorSummaryDto = { id: string; name: string; title: string; logo: string | null; hosts: string[] };
-export type ModelCanvasNodeDto = {
+type ModelCanvasNodeDto = {
   id: string;
   title: string;
   description: string | null;
@@ -180,7 +180,7 @@ export type DecisionModel = Exclude<Experimental_DecisionModel, string>;
 /** The logical `ai` credential: the handle itself is the fast model, `decision` is there when declared. Absent when no AI is configured. */
 export type AiCredential = AiModel & { readonly fast?: AiModel; readonly decision?: DecisionModel };
 
-export interface CollectionLike<T> {
+interface CollectionLike<T> {
   get(id: string): Promise<{ document: T } | null>;
   put(id: string, document: T): Promise<unknown>;
 }

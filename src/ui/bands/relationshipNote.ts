@@ -30,7 +30,7 @@ export function joinAlias(outputAlias: string | undefined | null, targetTitle: s
 }
 
 /** What a relationship line says: its Output Alias, and its description behind "More". */
-export type RelationshipNote = {
+type RelationshipNote = {
   /** The join's Output Alias: the one the member set, else the target mart's title (the alias a join has until one is set). */
   name: string;
   about?: string;

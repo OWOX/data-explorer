@@ -18,7 +18,7 @@ import { slotColor } from '../labelColor';
 import { dateMenu } from './timeSeries';
 import { carry, seriesWidth, type ChartKindDef, type PanelProps } from './types';
 
-export type LineR = { date: Field; bucket: DateBucket | 'AUTO'; measure: Measure; measure2: Measure | null; stack: Field | null; area: boolean };
+type LineR = { date: Field; bucket: DateBucket | 'AUTO'; measure: Measure; measure2: Measure | null; stack: Field | null; area: boolean };
 
 function LinePanel({ martId, cf, r, spark, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<LineR>) {
   const { date, measure, measure2, stack } = r;

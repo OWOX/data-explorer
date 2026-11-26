@@ -7,7 +7,7 @@ import { toNumber } from '../model/number';
 // Money stays in the viewer's locale, as its full text does.
 const plain = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 /** Below this a number is short enough already, and 2026 must not read "2K". */
-export const COMPACT_FROM = 10_000;
+const COMPACT_FROM = 10_000;
 const money = new Map<string, Intl.NumberFormat | null>();
 function moneyCompact(currency: string): Intl.NumberFormat | null {
   if (!money.has(currency)) {

@@ -12,7 +12,7 @@ import { useChartQuery } from './useChartQuery';
 
 export const OTHER_COLOR = 'var(--dm-other)';
 
-export type DateSeries = { series: Series[] | null; failed: { error: unknown; retry: () => void } | undefined; empty: boolean; loading: boolean; label: string; names: string[] | undefined };
+type DateSeries = { series: Series[] | null; failed: { error: unknown; retry: () => void } | undefined; empty: boolean; loading: boolean; label: string; names: string[] | undefined };
 
 /**
  * A measure over a date, one point per bucket, split by a dimension's top values plus "Other" when `stack` is set.

@@ -8,9 +8,9 @@ import type { Flow } from './sankeyLayout';
 import { numberOf } from './Scorecards';
 
 /** One node of a column: its key (a value, BLANK_KEY or OTHER_KEY) and its exact total. */
-export type ColumnNode = { key: string; value: number };
+type ColumnNode = { key: string; value: number };
 
-export type SankeyData = {
+type SankeyData = {
   /** Per column: the blank node first, then the top values by total, Other last. Zero totals are left out. */
   columns: ColumnNode[][];
   /** `flows[i]` runs from column i to i+1, one per (origin, source, target); `origin` is the node in column 0 the flow came from. */

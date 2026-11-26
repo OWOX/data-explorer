@@ -1,8 +1,8 @@
 import type { Ctx } from '../sdk/types';
 import { isFormat, type Format } from './formats';
 
-export const PROJECT_FORMATS_COLLECTION = 'column-formats-project';
-export const MEMBER_FORMATS_COLLECTION = 'column-formats-member';
+const PROJECT_FORMATS_COLLECTION = 'column-formats-project';
+const MEMBER_FORMATS_COLLECTION = 'column-formats-member';
 export type FormatDoc = Record<string, Format>;
 export type Formats = { member: FormatDoc; project: FormatDoc };
 

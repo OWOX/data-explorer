@@ -4,7 +4,7 @@ import type { Ctx, TraverseOptions } from '../sdk/types';
 import { hasPrimaryKey } from '../records/relationships';
 import { readRows } from './rows';
 
-export const ROW_COUNTS_COLLECTION = 'row-counts';
+const ROW_COUNTS_COLLECTION = 'row-counts';
 const COUNT_MAX_AGE_MS = 24 * 3600_000;
 type CountDoc = { dataMartId: string; count: number; at: string };
 

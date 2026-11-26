@@ -31,7 +31,7 @@ export const copySafe = (s: string): string => {
 // Numbers are copied as plain digits, not grouped as the grid shows them: see displayText.
 export const cellText = (v: unknown, type?: string): string => tsvField(displayText(v, type, { group: false }));
 
-export type TsvColumn = { key: string; title: string; type?: string; bucket?: DateBucket };
+type TsvColumn = { key: string; title: string; type?: string; bucket?: DateBucket };
 
 /**
  * The grid's columns as the grid shows them: one per column, or per function of an aggregated column ("Amount · Sum"). The title keeps the data mart prefix.
