@@ -8,12 +8,15 @@ export const slotColor = (slot: number): string => `var(--dm-series-${slot + 1})
 /** Labels that differ only in letter case are one label to the palette. */
 const fold = (text: string): string => text.toLowerCase();
 
-/** The slot a label hashes to: FNV-1a over the UTF-16 code units of its lower-case text, mod the palette size. The same text hashes to the same slot on every chart. */
+/** Turns every hash slot by this much, so 'OWOX Data Marts' lands on blue (slot 0) rather than green. */
+const ROTATION = 11;
+
+/** The slot a label hashes to: FNV-1a over the UTF-16 code units of its lower-case text, turned by ROTATION, mod the palette size. The same text hashes to the same slot on every chart. */
 export function labelSlot(text: string): number {
   const t = fold(text);
   let h = 0x811c9dc5;
   for (let i = 0; i < t.length; i++) h = Math.imul(h ^ t.charCodeAt(i), 0x01000193) >>> 0;
-  return h % LABEL_COLORS;
+  return (h + ROTATION) % LABEL_COLORS;
 }
 
 /**

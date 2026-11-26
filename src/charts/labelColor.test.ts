@@ -7,7 +7,8 @@ test('a label hashes to the same slot every time, inside the palette', () => {
     expect(labelSlot(t)).toBeGreaterThanOrEqual(0);
     expect(labelSlot(t)).toBeLessThan(LABEL_COLORS);
   }
-  expect(labelSlot('')).toBe(0x811c9dc5 % LABEL_COLORS);
+  expect(labelSlot('')).toBe((0x811c9dc5 + 11) % LABEL_COLORS);
+  expect(labelSlot('OWOX Data Marts')).toBe(0);
 });
 
 test('the same label gets the same colour whatever else is in the chart', () => {
