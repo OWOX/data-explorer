@@ -70,9 +70,10 @@ The first group of the Export menu has one item, "Copy to clipboard" (lucide `Co
 
 1. The status reads "Copied N rows"; when the mart has more rows than are loaded it reads "Copied the first N rows. Load more to copy more."
 2. With no rows loaded the item is disabled, with the tooltip "No rows to copy".
-3. When the sandbox blocks both ways of copying, a "Copy the data" dialog opens with the text in a read-only textarea (selected on focus) and a Copy button; "Show data" in the status reopens it.
-4. Nothing is queried, billed or written to OWOX.
-5. Values that would start a spreadsheet formula (a leading `=`, `+`, `-` or `@`, other than a plain number) are copied with a leading apostrophe so they paste as text.
+3. In Charts the grid reads no rows of its own. Opening Export there reads the grid's rows for the current filters (one query, unless Table already read them), and the item turns on once they arrive. With more rows than one page, the status reads "Copied the first N rows. Switch to Table and load more to copy more."
+4. When the sandbox blocks both ways of copying, a "Copy the data" dialog opens with the text in a read-only textarea (selected on focus) and a Copy button; "Show data" in the status reopens it.
+5. In Table nothing is queried or billed, and nothing is ever written to OWOX.
+6. Values that would start a spreadsheet formula (a leading `=`, `+`, `-` or `@`, other than a plain number) are copied with a leading apostrophe so they paste as text.
 
 ### Export to an AI
 

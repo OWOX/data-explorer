@@ -32,7 +32,7 @@ import { FILTER_MENU_GROUP } from '../bands/MultiSelect';
 import { useMenuDismiss } from './ColumnMenu';
 import { Panel, Row } from './MenuParts';
 
-type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; /** The alias paths whose data mart's Unique Count is a column of the grid. */ uniqueCount?: string[]; filters: ColumnFilter[]; /** Pre-join filters on joined fields. */ slices?: ColumnFilter[]; sorts: SortKey[]; /** Only the sorts the member set; Create Data Mart never adds the grid's implicit order. */ ownSorts?: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: DataRow[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun;
+type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; /** The alias paths whose data mart's Unique Count is a column of the grid. */ uniqueCount?: string[]; filters: ColumnFilter[]; /** Pre-join filters on joined fields. */ slices?: ColumnFilter[]; sorts: SortKey[]; /** Only the sorts the member set; Create Data Mart never adds the grid's implicit order. */ ownSorts?: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: DataRow[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The last read of the rows failed. */ failed?: boolean; /** The grid shows Charts, where there is no Load more. */ charts?: boolean; /** The menu opened or closed. */ onOpenChange?: (open: boolean) => void; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun;
   /** The main mart's storage, for Create Data Mart. */ storage?: { id: string; type: string; title?: string };
   /** Reading the main mart's joined sources failed. */ joinsFailed?: boolean;
   /** The joined data marts the grid selects, as the Data Marts band shows them. */ joinedMarts?: { id: string; title: string }[];
@@ -162,6 +162,14 @@ export function ExportMenu(p: Props) {
     document.addEventListener('toggle', toggled, true);
     return () => document.removeEventListener('toggle', toggled, true);
   }, [menuOpen, close]);
+  // The parent hears each opening and each closing once, whichever way it happened; a closed menu on mount is no change.
+  const reported = useRef(false);
+  const onOpenChange = p.onOpenChange;
+  useEffect(() => {
+    if (reported.current === menuOpen) return;
+    reported.current = menuOpen;
+    onOpenChange?.(menuOpen);
+  }, [menuOpen, onOpenChange]);
   const focusTrigger = () => button.current?.focus();
 
   function start(destination: DestinationDto, wanted: ExportSource, title: string, fromDialog = false) {
@@ -205,14 +213,14 @@ export function ExportMenu(p: Props) {
     const tsv = buildTsv(tsvColumns(fields, p.aggregation, p.uniqueCount), p.rows);
     const count = `${p.rows.length} ${p.rows.length === 1 ? 'row' : 'rows'}`;
     return copyOut(tsv, (ok) => ({
-      message: !ok ? 'Could not copy. Copy the data by hand' : p.hasMore ? `Copied the first ${count}. Load more to copy more.` : `Copied ${count}`,
+      message: !ok ? 'Could not copy. Copy the data by hand' : p.hasMore ? `Copied the first ${count}. ${p.charts ? 'Switch to Table and load more' : 'Load more'} to copy more.` : `Copied ${count}`,
       show: 'Show data', showWhenOk: false,
       dialog: { name: 'Copy the data', note: 'Select the text and copy it, then paste it into a sheet. Copying writes nothing to OWOX.', areaLabel: 'Data text' },
     }));
   }
 
   const noRows = !p.rows?.length;
-  const copyOff = noRows ? 'No rows to copy' : p.loading ? 'Rows are loading' : null;
+  const copyOff = p.failed && !p.loading ? 'The rows could not be read. Close and reopen Export to try again' : noRows ? 'No rows to copy' : p.loading ? 'Rows are loading' : null;
   const label = busy ? <><Loader2 className="size-4 animate-spin" />Exporting…</> : <><ArchiveRestore className="size-4" />Export</>;
 
   /** Copies the SQL the grid ran. Nothing is queried and nothing is written. */

@@ -133,6 +133,50 @@ test('Charts runs no rows query of its own: every query after the switch aggrega
   expect(after.every((q) => q.aggregation || q.uniqueCount)).toBe(true);
 });
 
+test('Charts: Copy to clipboard copies the rows the Table read, with no new read', async () => {
+  const t = await charts();
+  await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
+  const before = t.queries.filter((q) => q.limit === 201).length;
+  await userEvent.click(within(data()).getByText('Export'));
+  expect(await screen.findByRole('menuitem', { name: 'Copy to clipboard' })).toBeEnabled();
+  expect(t.queries.filter((q) => q.limit === 201)).toHaveLength(before);
+});
+
+test('Charts: after a slice filter, opening Export reads the grid rows for it and Copy to clipboard turns on', async () => {
+  const t = await charts();
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  const slice = data().querySelector<SVGElement>('[data-slice]')!;
+  const value = slice.getAttribute('data-slice')!;
+  await userEvent.click(slice);
+  const filtered = (q: TraverseOptions) => q.limit === 201 && !!q.filter?.some((f) => f.column === 'status' && f.operator === 'eq' && f.value === value);
+  await new Promise((r) => setTimeout(r, 50));
+  // Closed, the menu reads nothing: the grid's rows query stays paused in Charts.
+  expect(t.queries.some(filtered)).toBe(false);
+  await userEvent.click(within(data()).getByText('Export'));
+  await waitFor(() => expect(t.queries.filter(filtered)).toHaveLength(1));
+  await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Copy to clipboard' })).toBeEnabled());
+});
+
+test('Charts: a failed grid read says so in Export, and reopening Export reads again', async () => {
+  let failing = false;
+  const t = await charts({ fail: (o) => failing && o.limit === 201 });
+  await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  failing = true;
+  await userEvent.click(data().querySelector<SVGElement>('[data-slice]')!);
+  const reads = () => t.queries.filter((q) => q.limit === 201 && !!q.filter?.length).length;
+  const summary = within(data()).getByText('Export');
+  await userEvent.click(summary);
+  await waitFor(() => expect(reads()).toBe(1));
+  const item = () => screen.getByRole('menuitem', { name: 'Copy to clipboard' });
+  await userEvent.hover(item().parentElement!);
+  expect(await screen.findAllByText(/The rows could not be read/)).not.toHaveLength(0);
+  failing = false;
+  await userEvent.click(summary);
+  await userEvent.click(summary);
+  await waitFor(() => expect(reads()).toBe(2));
+  await waitFor(() => expect(item()).toBeEnabled());
+});
+
 test('a filter set from a column header changes the chart queries', async () => {
   const t = await charts();
   await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());

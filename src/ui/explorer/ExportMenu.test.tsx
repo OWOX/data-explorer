@@ -1135,10 +1135,31 @@ describe('Copy to clipboard', () => {
     { name: 'note', type: 'STRING', category: 'string', alias: 'Note' },
     { name: 'customers__city', type: 'STRING', category: 'string', alias: 'City', joined: { martId: 'customers', label: 'Customers' } },
   ] as Schema;
-  const lone = (rows: Row[] | null, hasMore = false, loading = false) => {
+  const lone = (rows: Row[] | null, hasMore = false, loading = false, onOpenChange?: (open: boolean) => void) => {
     const ctx = createMockCtx(demoFixtures({ sheets: 0 }), { latencyMs: 0 });
-    return render(<AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={ORDERS} visible={['id', 'note', 'customers__city']} filters={[]} sorts={[]} rows={rows} hasMore={hasMore} loading={loading} /></StoreProvider></TooltipProvider></AppServices>);
+    return render(<AppServices ctx={ctx}><TooltipProvider><StoreProvider><ExportMenu martId="orders" martTitle="Orders" schema={ORDERS} visible={['id', 'note', 'customers__city']} filters={[]} sorts={[]} rows={rows} hasMore={hasMore} loading={loading} onOpenChange={onOpenChange} /></StoreProvider></TooltipProvider></AppServices>);
   };
+
+  test('onOpenChange hears each opening and each closing once: by Escape, an outside press, and picking Copy', async () => {
+    setClipboard(vi.fn().mockResolvedValue(undefined));
+    const heard = vi.fn();
+    lone([{ id: 1, note: 'a', customers__city: 'x' }], false, false, heard);
+    const trigger = (await screen.findByText('Export')).closest('button')!;
+    expect(heard).not.toHaveBeenCalled();
+    await userEvent.click(trigger);
+    await waitFor(() => expect(heard.mock.calls).toEqual([[true]]));
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(heard.mock.calls).toEqual([[true], [false]]));
+    await userEvent.click(trigger);
+    await waitFor(() => expect(heard.mock.calls).toHaveLength(3));
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(heard.mock.calls).toEqual([[true], [false], [true], [false]]));
+    await userEvent.click(trigger);
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Copy to clipboard' }));
+    await waitFor(() => expect(heard.mock.calls).toEqual([[true], [false], [true], [false], [true], [false]]));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(heard).toHaveBeenCalledTimes(6);
+  });
 
   test('with no rows the keyboard still reaches the next enabled item', async () => {
     lone([]);
