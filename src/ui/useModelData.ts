@@ -72,7 +72,12 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
         ids.forEach((id) => asked.current.delete(id));
         setCounts((c) => {
           const next = new Map(c);
-          ids.forEach((id) => { if (next.get(id)?.state === 'queued') next.delete(id); });
+          ids.forEach((id) => {
+            const was = next.get(id);
+            if (was?.state === 'queued') next.delete(id);
+            // A recount that will not run: its old count is the shown one again, no longer dimmed.
+            else if (was?.state === 'ok' && was.stale) next.set(id, { state: 'ok', value: was.value });
+          });
           return next;
         });
       }

@@ -211,3 +211,24 @@ test('a refresh dims every recounted card at once, also the ones still waiting i
   await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
   expect(traverseData).toHaveBeenCalledTimes(16);
 });
+
+test('a recount dropped from the queue because its card left view is no longer dimmed', async () => {
+  const ids = Array.from({ length: 8 }, (_, i) => `m${i}`);
+  let gate: Promise<void> | null = null;
+  const traverseData = vi.fn(async () => { await gate; return traversalOf([{ 'Unique Count': 7 }]); });
+  const { result, rerender } = renderHook(({ model, version, vis }) => useCardStatus(model, vis, version), { wrapper: setup(traverseData), initialProps: { model: modelOf(ids), version: 0, vis: ids } });
+  act(() => ids.forEach((id) => result.current.request(id)));
+  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
+  gate = new Promise<void>(() => {});
+  rerender({ model: modelOf(ids), version: 1, vis: ids });
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(8 + 4));
+  expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7, stale: true });
+  rerender({ model: modelOf(ids), version: 1, vis: ids.slice(0, 4) });
+  await waitFor(() => expect(result.current.counts.get('m0')).toBeDefined());
+  // Brought back into view without asking again: its old count shows, not dimmed.
+  rerender({ model: modelOf(ids), version: 1, vis: ids });
+  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
+  // The ones still counting stay dimmed.
+  expect(result.current.counts.get('m0')).toEqual({ state: 'ok', value: 7, stale: true });
+  expect(traverseData).toHaveBeenCalledTimes(12);
+});

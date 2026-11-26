@@ -764,7 +764,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     return matchedFrom(score.rows[0], [...scoreFields.marts.filter((m) => m.hasPk).map((m) => m.aliasPath), ...keptUnique]);
   }, [applies, havingSet, paused, blocked, counts, ownTotal, counted.total, score.rows, score.error, scoreFields, keptUnique]);
   // While the count for the new filters is under way the badges keep the last one, dimmed, instead of vanishing and coming back. No read is added: this only remembers a map.
-  const matchPending = !paused && !blocked && applies && !havingSet && counts && (scoreOptions ? score.loading && !(!charts && error) : ownTotal && !settled && !error && counted.total === null);
+  const matchPending = !paused && !blocked && applies && !havingSet && counts && (scoreOptions ? score.loading && !score.held : ownTotal && !settled && !error && counted.total === null);
   const [lastMatched, setLastMatched] = useState(NO_MATCH);
   if (matched.size > 0 && lastMatched !== matched) setLastMatched(matched);
   else if (matched.size === 0 && !matchPending && lastMatched.size > 0) setLastMatched(NO_MATCH);

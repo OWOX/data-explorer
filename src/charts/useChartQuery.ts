@@ -6,7 +6,7 @@ import { useServices } from '../state/store';
 import { useLatest } from '../ui/useLatest';
 import { answers, partsOf, stable, type JoinGrain, type QueryParts } from './answers';
 
-export type ChartResult = { rows: Row[] | null; error: unknown; loading: boolean; retry: () => void };
+export type ChartResult = { rows: Row[] | null; error: unknown; loading: boolean; /** This key's read was not started because of `hold`: `loading` is then true until the hold ends. */ held?: boolean; retry: () => void };
 
 /** How many resolved reads a ctx keeps: about ten views of the charts. The least recently used is dropped first. */
 export const CHART_CACHE_LIMIT = 64;
@@ -54,6 +54,8 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
   const held = useLatest(hold);
   // The key whose read was held back, so the end of the hold can start it.
   const skipped = useRef<string | null>(null);
+  // The same fact as state, so a render can tell a read that is waiting on the hold from one that is running.
+  const [heldKey, setHeldKey] = useState<string | null>(null);
   const key = options ? `${martId}:${version}:${stable(options)}` : null;
   // The ask's parts are split once per key, not on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -66,6 +68,8 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
   useEffect(() => {
     // A key held earlier is no longer waiting: this run decides for the key it has now.
     skipped.current = null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the hold is read in the render
+    setHeldKey(null);
     if (!options || !key) return;
     const cache = cacheOf(ctx);
     const cached = lookup(ctx, key, martId, version, asked, joins, reused);
@@ -74,13 +78,12 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
       const entry = cache.get(cached.key)!;
       cache.delete(cached.key);
       cache.set(cached.key, entry);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- a hit has no promise to answer through
       setState({ key, rows: cached.rows, error: null });
       return;
     }
     const inflight = flightsOf(ctx);
     let flight = inflight.get(key);
-    if (!flight && held.current) { skipped.current = key; return; }
+    if (!flight && held.current) { skipped.current = key; setHeldKey(key); return; }
     if (!flight) {
       const controller = new AbortController();
       const promise = readRows(ctx, martId, options, { signal: controller.signal });
@@ -114,6 +117,7 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
   useEffect(() => {
     if (hold || !key || skipped.current !== key) return;
     skipped.current = null;
+    setHeldKey(null);
     setAttempt((n) => n + 1);
   }, [hold, key]);
 
@@ -122,10 +126,10 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
     setAttempt((n) => n + 1);
   }, []);
   // State from an earlier key is stale: show nothing until this key's effect has answered.
-  if (!key) return { rows: null, error: null, loading: false, retry };
+  if (!key) return { rows: null, error: null, loading: false, held: false, retry };
   const current = state.key === key;
   // A cached read for a superset answers on this very render, so the cards show their values with no skeleton.
   const rows = current ? state.rows : lookup(ctx, key, martId, version, asked, joins, reused)?.rows ?? null;
   const error = current ? state.error : null;
-  return { rows, error, loading: !rows && !error, retry };
+  return { rows, error, loading: !rows && !error, held: !rows && !current && heldKey === key, retry };
 }
