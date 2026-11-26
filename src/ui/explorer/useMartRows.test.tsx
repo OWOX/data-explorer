@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import { vi } from 'vitest';
 import { stubCtx, traversalOf } from '../../api/test-ctx';
 import type { Traversal, TraverseOptions } from '../../sdk/types';
-import { AppServices, StoreProvider } from '../../state/store';
-import { GRID_CACHE_LIMIT, buildRowQuery, useMartRows } from './useMartRows';
+import { AppServices, StoreProvider, useServices } from '../../state/store';
+import { GRID_CACHE_LIMIT, buildRowQuery, forgetGridRows, useMartRows } from './useMartRows';
 import { defaultColumns } from '../../model/columns';
 import type { Schema } from '../../model/types';
 
@@ -129,6 +129,8 @@ test('grouped: a shrinking column list re-queries, because fewer group keys are 
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
 });
 
+const byFilterOf = (column: string[]): TraverseOptions => ({ column, limit: 201, filter: [{ column: 'id', operator: 'eq' as const, value: 1 }] });
+
 test('rows of another shape are not shown while the new query is in flight; the same shape keeps its rows', async () => {
   const { wrapper } = hookCtx(true);
   const { result, rerender } = renderHook(({ o }) => useMartRows('m', o, 0), { wrapper, initialProps: { o: opts(['id', 'a']) } });
@@ -141,9 +143,22 @@ test('rows of another shape are not shown while the new query is in flight; the 
   expect(result.current.rows).toBeNull();
   expect(result.current.hasMore).toBe(false);
   await waitFor(() => expect(result.current.rows).toHaveLength(400));
+  rerender({ o: byFilterOf(['id', 'a']) });
+  expect(result.current.loading).toBe(true);
+  expect(result.current.rows).toBeNull(); // and back to plain rows the cache cannot answer: the groups are not shown for them
+});
+
+test('plain rows read before are shown again on the very first render after a grouped ask', async () => {
+  const { traverseData, wrapper } = hookCtx(true);
+  const { result, rerender } = renderHook(({ o }) => useMartRows('m', o, 0), { wrapper, initialProps: { o: opts(['id', 'a']) } });
+  await waitFor(() => expect(result.current.rows).toHaveLength(200));
+  rerender({ o: { column: ['a'], aggregation: [{ column: 'a', function: 'COUNT' }], limit: 401 } });
+  await waitFor(() => expect(result.current.rows).toHaveLength(400));
   rerender({ o: opts(['id', 'a']) });
-  expect(result.current.rows).toHaveLength(200); // and back: the plain read is still cached, and the groups are not shown for it
+  expect(result.current.rows).toHaveLength(200);
   expect(result.current.loading).toBe(false);
+  expect(result.current.run).toEqual({ state: 'done', runId: null });
+  expect(traverseData).toHaveBeenCalledTimes(2);
 });
 
 test('the run of the last query: none, running, done with its run id, failed', async () => {
@@ -575,5 +590,49 @@ describe('the grid cache', () => {
     rerender({ o: opts(['id', 'a'], 401) });
     await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(3));
     expect(traverseData.mock.calls[2]![1].includeTotalRowCount).toBeUndefined();
+  });
+
+  test('the first render after the key changes to a cached ask already has its rows and is not loading', async () => {
+    const { traverseData, result, rerender } = mount(() => 3, { o: byFilter(['id', 'a'], 1) });
+    await done(result);
+    rerender({ o: byFilter(['id', 'a'], 2) });
+    await done(result);
+    const seen: boolean[] = [];
+    rerender({ o: byFilter(['id', 'a'], 1) });
+    seen.push(result.current.loading);
+    expect(seen).toEqual([false]);
+    expect(result.current.rows).toHaveLength(3);
+    expect(result.current.run.state).toBe('done');
+    expect(traverseData).toHaveBeenCalledTimes(2);
+  });
+
+  test('Load more after a hit that came from a covered read does not ask for the count again', async () => {
+    const { traverseData, result, rerender } = mount((o) => o.limit!, { o: opts(['id', 'a'], 201) }, 450);
+    await done(result);
+    rerender({ o: opts(['id', 'a'], 401) }); // covered: no count asked, stored with the total
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await done(result);
+    rerender({ o: byFilter(['id', 'a'], 2) });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(3));
+    await done(result);
+    rerender({ o: opts(['id', 'a'], 401) }); // a hit on the covered read
+    expect(result.current.rows).toHaveLength(400);
+    rerender({ o: opts(['id', 'a'], 601) });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
+    expect(traverseData.mock.calls[3]![1].includeTotalRowCount).toBeUndefined();
+  });
+
+  test('Refresh drops the mart\'s results: the same ask after a remount reads again', async () => {
+    const c = cacheCtx(() => 3);
+    const props = { o: byFilter(['id', 'a'], 1) };
+    const first = renderHook(({ o, v }: { o: TraverseOptions; v: number }) => useMartRows('m', o, v), { wrapper: c.wrapper, initialProps: { ...props, v: 0 } });
+    await done(first.result);
+    // Refresh: the grid forgets the mart and reads at the next version.
+    const ctxOf = renderHook(() => useServices(), { wrapper: c.wrapper });
+    forgetGridRows(ctxOf.result.current.ctx, 'm');
+    first.unmount();
+    const again = renderHook(({ o, v }: { o: TraverseOptions; v: number }) => useMartRows('m', o, v), { wrapper: c.wrapper, initialProps: { ...props, v: 0 } });
+    await waitFor(() => expect(c.traverseData).toHaveBeenCalledTimes(2));
+    await done(again.result);
   });
 });

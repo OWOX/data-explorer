@@ -54,7 +54,7 @@ const NO_COUNT = { total: null, exact: false, columns: [] as string[] };
 export const GRID_CACHE_LIMIT = 16;
 // Resolved reads only, per ctx: a failed or aborted read is never stored, so Retry always reads again.
 // `rows` is everything the read returned (up to its limit + 1), so a smaller page is answered from it with no read.
-type Entry = { martId: string; version: number; options: TraverseOptions; rows: Row[]; columns: string[]; exact: boolean; asked: boolean; total: number | undefined; totalBase: string; totalColumns: string[]; totalExact: boolean; runId: string | null };
+type Entry = { martId: string; version: number; options: TraverseOptions; rows: Row[]; columns: string[]; exact: boolean; rest: string; total: number | undefined; totalBase: string; totalColumns: string[]; totalExact: boolean; runId: string | null };
 const cacheOf = perCtx(() => new Map<string, Entry>());
 
 function remember(ctx: Ctx, key: string, entry: Entry) {
@@ -68,6 +68,18 @@ function remember(ctx: Ctx, key: string, entry: Entry) {
 /** The options that make rows what they are: all but the columns and the page size (and the count flag, which is not part of any result). */
 const restOf = (o: TraverseOptions): string => stable({ ...o, column: undefined, limit: undefined, includeTotalRowCount: undefined });
 
+/** Drops every cached read of a mart: Refresh must not be answered from rows read before it, also after the grid is opened again. */
+export function forgetGridRows(ctx: Ctx, martId: string) {
+  const cache = cacheOf(ctx);
+  for (const [k, e] of cache) if (e.martId === martId) cache.delete(k);
+}
+
+/** The state a cached read puts on show for this ask. */
+function viewOf(e: Entry, options: TraverseOptions, key: string, base: string): RowsState {
+  const limit = (options.limit ?? 1) - 1;
+  return { rows: e.rows.slice(0, limit), error: null, hasMore: e.rows.length > limit, doneFor: key, shape: shapeOf(options), runId: e.runId, errorRunId: null, total: e.total ?? null, totalBase: base, totalExact: e.totalExact, totalColumns: e.totalColumns };
+}
+
 /** The cached read that answers this ask: the same result (mart, version, filters, sort, grouping) with the columns and enough rows. */
 function lookup(ctx: Ctx, martId: string, version: number, options: TraverseOptions, exact: boolean): { key: string; entry: Entry } | null {
   if (options.limit === undefined) return null;
@@ -76,7 +88,7 @@ function lookup(ctx: Ctx, martId: string, version: number, options: TraverseOpti
   const want = options.column ?? [];
   const grouped = isGroupedRead(options);
   for (const [key, e] of cacheOf(ctx)) {
-    if (e.martId !== martId || e.version !== version || restOf(e.options) !== rest) continue;
+    if (e.martId !== martId || e.version !== version || e.rest !== rest) continue;
     // A grouped read: other columns are other group keys. A plain read: the loaded columns may hold more; a calculated field may make OWOX group the read, so then the sets must match.
     const columnsOk = grouped ? e.columns.length === want.length && e.columns.every((c, i) => c === want[i]) : want.every((c) => e.columns.includes(c)) && (!(exact || e.exact) || want.length === e.columns.length);
     if (!columnsOk) continue;
@@ -116,16 +128,16 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
     if (!options || paused || readKey.current === key) return;
     const hit = lookup(ctx, martId, version, options, exact);
     if (hit) {
-      const e = hit.entry;
+      // The render already shows this hit; this commits it to state and refs and marks the entry recently used.
       const cache = cacheOf(ctx);
       cache.delete(hit.key);
-      cache.set(hit.key, e);
-      const limit = (options.limit ?? 1) - 1;
+      cache.set(hit.key, hit.entry);
       readKey.current = key;
-      // The count this result was read with covers the next read of the same base, as it did when it was read.
-      if (e.asked) counted.current = { base, columns: e.totalColumns, exact: e.totalExact, total: e.total };
+      // The count this result carries covers the next read of the same base, as it did when it was read.
+      const e = hit.entry;
+      counted.current = { base, columns: e.totalColumns, exact: e.totalExact, total: e.total };
       // eslint-disable-next-line react-hooks/set-state-in-effect -- a hit has no promise to answer through
-      setState({ rows: e.rows.slice(0, limit), error: null, hasMore: e.rows.length > limit, doneFor: key, shape: shapeOf(options), runId: e.runId, errorRunId: null, total: e.total ?? null, totalBase: base, totalExact: e.totalExact, totalColumns: e.totalColumns });
+      setState(viewOf(hit.entry, options, key, base));
       return;
     }
     const ac = new AbortController();
@@ -146,7 +158,7 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
         if (ask) counted.current = { base, columns: sent, exact, total };
         const totalExact = ask ? exact : !!c?.exact;
         const totalColumns = ask ? sent : c?.columns ?? sent;
-        if (options.limit !== undefined) remember(ctx, key, { martId, version, options, rows, columns: sent, exact, asked: ask, total, totalBase: base, totalColumns, totalExact, runId });
+        if (options.limit !== undefined) remember(ctx, key, { martId, version, options, rows, columns: sent, exact, rest: restOf(options), total, totalBase: base, totalColumns, totalExact, runId });
         setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options), runId, errorRunId: null, total: total ?? null, totalBase: base, totalExact, totalColumns });
       },
       (error) => { if (!ac.signal.aborted) setState({ rows: null, error, hasMore: false, doneFor: key, shape: shapeOf(options), runId: null, errorRunId: runId, total: null, totalBase: null, totalExact: false, totalColumns: [] }); },
@@ -154,13 +166,16 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx, martId, key, paused]);
+  // A cached read answers on this very render, so Undo or Charts to Table paint with no busy frame (the effect only commits it).
+  const hit = options && !paused && state.doneFor !== key ? lookup(ctx, martId, version, options, exact) : null;
+  const view = hit ? viewOf(hit.entry, options!, key, base) : state;
   // The previous rows stay visible while a newer request is in flight; an old error does not.
-  const loading = state.doneFor !== key;
+  const loading = view.doneFor !== key;
   // Except rows of another shape (ungrouped rows under a grouped query, or the reverse, or other group keys): they would be read
   // with the wrong headers and counted with the wrong label, so nothing is shown until the new rows arrive.
-  const stale = loading && state.shape !== shapeOf(options);
-  const run: GridRun = !options ? { state: 'none' } : loading && paused ? { state: 'paused' } : loading ? { state: 'running' } : state.error ? { state: 'failed' } : { state: 'done', runId: state.runId };
-  return { rows: stale ? null : state.rows, loading, error: loading ? null : state.error, hasMore: stale ? false : state.hasMore, run, errorRunId: loading ? null : state.errorRunId, total: stale ? null : state.total,
+  const stale = loading && view.shape !== shapeOf(options);
+  const run: GridRun = !options ? { state: 'none' } : loading && paused ? { state: 'paused' } : loading ? { state: 'running' } : view.error ? { state: 'failed' } : { state: 'done', runId: view.runId };
+  return { rows: stale ? null : view.rows, loading, error: loading ? null : view.error, hasMore: stale ? false : view.hasMore, run, errorRunId: loading ? null : view.errorRunId, total: stale ? null : view.total,
     // The count a card may use: the one counted for this very result (Load more and a sort keep it), and whether a calculated field made it. Another filter has none until its read answers.
-    counted: !stale && state.totalBase === base && state.total !== null ? { total: state.total, exact: state.totalExact, columns: state.totalColumns } : NO_COUNT };
+    counted: !stale && view.totalBase === base && view.total !== null ? { total: view.total, exact: view.totalExact, columns: view.totalColumns } : NO_COUNT };
 }

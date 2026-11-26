@@ -1217,10 +1217,12 @@ describe('the default sort', () => {
     expect(within(grid).getByRole('button', { name: 'Reset' })).toBeDisabled();
     await userEvent.click(within(grid).getByRole('button', { name: /^Sort by status,/ }));
     await waitFor(() => expect(orderSorts(calls)).toEqual([{ column: 'status', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
+    const sent = calls.length;
     await userEvent.click(within(grid).getByRole('button', { name: 'Reset' }));
     // The default sort's rows are still cached, so no read is sent: the header shows it again.
     await waitFor(() => expect(within(grid).getByRole('button', { name: 'Reset' })).toBeDisabled());
     expect(within(grid).getByRole('button', { name: /^Sort by status, currently not sorted/ })).toBeInTheDocument();
+    expect(calls.length).toBe(sent);
   });
 
   test('with the default on a visible column, a click on another column replaces it, and a click on the default column goes ascending', async () => {
@@ -1237,8 +1239,10 @@ describe('the default sort', () => {
     await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
     await userEvent.click(within(data()).getByRole('button', { name: /^Sort by day,/ }));
     await waitFor(() => expect(sortOf()).toEqual([{ column: 'day', direction: 'asc' }]));
+    const sent = calls.length;
     await userEvent.click(within(data()).getByRole('button', { name: /^Sort by day,/ }));
     await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
+    expect(calls.length).toBe(sent);
   });
 
   test('a mart with no date field has no default sort beyond its key', async () => {

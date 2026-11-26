@@ -51,7 +51,7 @@ import { ConfigMenu, type ConfigMart } from './ConfigMenu';
 import { RuleBadges, type RuleMart } from './RuleBadges';
 import { ExportMenu } from './ExportMenu';
 import { defaultColumns } from '../../model/columns';
-import { buildRowQuery, useMartRows } from './useMartRows';
+import { buildRowQuery, forgetGridRows, useMartRows } from './useMartRows';
 export { MartGrid } from './SeededGrid';
 import { useGridSelection } from './useGridSelection';
 import { Gutter, GridRow, HeaderCell, maxWidthOf, sortOf, type ColumnView, type RowActs } from './GridParts';
@@ -790,7 +790,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
       <Toast onDismiss={() => setNote(null)} stamp={note} returnTo={() => scroller.current}>{note?.text}</Toast>
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts && !hasSlices} onClick={() => edit(() => { setAllFilters({}); setAllSlices({}); setOwn(null); })} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
-        <button type="button" onClick={() => { onRefresh(); setJoinsFailed(false); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
+        <button type="button" onClick={() => { onRefresh(); forgetGridRows(ctx, martId); setJoinsFailed(false); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} uniqueCount={ucNow} filters={Object.values(filters)} slices={Object.values(slices)} sorts={gridSorts} ownSorts={own ?? NO_SORTS} rows={blocked ? null : read} hasMore={hasMore} loading={reading && !blocked} failed={charts && failed} charts={charts} onOpenChange={onExportOpen} run={run} storage={martStorage} joinsFailed={joinsFailed && !joinsRead} sources={joinsRead ? sources : undefined} edges={model.edges} titles={martTitles} joinedMarts={joinedMarts} />}
       </BandTools>
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-busybar" />}
