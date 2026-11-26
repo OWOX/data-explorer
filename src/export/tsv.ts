@@ -15,11 +15,12 @@ const PLAIN_NUMBER = /^[+-]?((\d{1,3}(,\d{3})+|\d+)(\.\d*)?|\.\d+)([eE][+-]?\d+)
 const guard = (t: string) => (/^[=+\-@']/.test(t) && !PLAIN_NUMBER.test(t) ? `'${t}` : t);
 // A field with a quote is written as a quoted field, so the apps keep the quotes and the next tab stays a separator.
 const quote = (t: string) => (t.includes('"') ? `"${t.replace(/"/g, '""')}"` : t);
-const field = (s: string) => quote(guard(clean(s)));
+/** One value as a TSV field: tabs and line breaks become spaces, a formula start gets a leading apostrophe, and a value with a quote is quoted. */
+export const tsvField = (s: string) => quote(guard(clean(s)));
 
 /** One cell as the grid shows it (numbers ungrouped), whole, with no tab or line break left in it, no formula start and quotes escaped. */
 // Numbers are copied as plain digits, not grouped as the grid shows them: see displayText.
-export const cellText = (v: unknown, type?: string): string => field(displayText(v, type, { group: false }));
+export const cellText = (v: unknown, type?: string): string => tsvField(displayText(v, type, { group: false }));
 
 export type TsvColumn = { key: string; title: string; type?: string; bucket?: DateBucket };
 
@@ -42,7 +43,7 @@ export function tsvColumns(fields: Field[], agg?: Aggregation, uniqueCount: read
 
 /** The grid as tab-separated values with a header row of the column titles; lines end with `\n`. A grouped grid is copied as shown. */
 export function buildTsv(columns: TsvColumn[], rows: Row[]): string {
-  const head = columns.map((c) => field(c.title)).join('\t');
-  const cell = (r: Row, c: TsvColumn) => (c.bucket ? field(formatBucket(r[c.key], c.bucket) ?? '') : cellText(r[c.key], c.type));
+  const head = columns.map((c) => tsvField(c.title)).join('\t');
+  const cell = (r: Row, c: TsvColumn) => (c.bucket ? tsvField(formatBucket(r[c.key], c.bucket) ?? '') : cellText(r[c.key], c.type));
   return [head, ...rows.map((r) => columns.map((c) => cell(r, c)).join('\t'))].join('\n');
 }
