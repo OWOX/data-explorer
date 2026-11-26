@@ -61,11 +61,13 @@ export function ChartPanel({ title, name, items, ready, width, loading, failed, 
   const [draft, setDraft] = useState<ChartSize | null>(null);
   const size = draft ?? frame?.size ?? {};
   const fill = size.rows !== undefined;
-  // The last drawn body, so a new read shows it dimmed instead of a skeleton. An error, an empty result or another kind drops it.
-  const [drawn, setDrawn] = useState<{ name: string; body: ReactNode } | null>(null);
-  if (!failed && !loading && !emptyNote) { if (drawn?.name !== name || drawn.body !== children) setDrawn({ name, body: children }); }
-  else if (!loading && drawn) setDrawn(null);
-  const stale = loading && !failed && drawn?.name === name ? drawn.body : null;
+  // The last drawn body and width, so a new read shows them dimmed instead of a skeleton. An error, an empty result or another kind or title drops them.
+  const [drawn, setDrawn] = useState<{ key: string; body: ReactNode; width: string } | null>(null);
+  const key = `${name}\u0000${title}`;
+  if (!failed && !loading && !emptyNote) { if (drawn?.key !== key || drawn.body !== children || drawn.width !== width) setDrawn({ key, body: children, width }); }
+  else if ((failed || emptyNote || drawn?.key !== key) && drawn) setDrawn(null);
+  const staleDrawn = loading && !failed && drawn?.key === key ? drawn : null;
+  const stale = staleDrawn !== null;
   const [section, setSection] = useState<HTMLElement | null>(null);
   const seen = useContext(ChartSeenContext);
   useEffect(() => (section && seen ? whenInView(section, seen) : undefined), [section, seen]);
@@ -83,7 +85,7 @@ export function ChartPanel({ title, name, items, ready, width, loading, failed, 
   const at = menu ? menu.findLastIndex((i) => i.kind === 'action' && i.label === 'Hide') : -1;
   const withCopy = menu ? (at >= 0 ? [...menu.slice(0, at), copy, ...menu.slice(at)] : [...menu, copy]) : null;
   return (
-    <section ref={setSection} className="dm-chart" data-chart-kind={name} data-fill={fill || undefined} data-dragging={!!draft || undefined} style={{ width: frame ? panelWidth(size, width) : width, ...(fill ? { height: size.rows! * CELL } : {}) }}>
+    <section ref={setSection} className="dm-chart" data-chart-kind={name} data-fill={fill || undefined} data-dragging={!!draft || undefined} style={{ width: frame ? panelWidth(size, staleDrawn?.width ?? width) : staleDrawn?.width ?? width, ...(fill ? { height: size.rows! * CELL } : {}) }}>
       <header className="dm-chart-head">
         <div className="dm-chart-titlegroup">
           <h3 className="dm-chart-title">{title}</h3>
@@ -94,14 +96,16 @@ export function ChartPanel({ title, name, items, ready, width, loading, failed, 
       <div className="dm-chart-body" data-moving={moving || undefined} style={height === null || fill ? undefined : { height }}>
         <div ref={inner} className="dm-chart-fit">
           {failed ? <ErrorBox error={error} onRetry={failed.retry} />
-            : loading ? (stale
-              ? <div className="dm-chart-staleframe">
-                <div role="progressbar" aria-label="Loading chart" className="dm-busybar" />
-                <div className="dm-chart-stale" aria-busy="true"><FillContext value={fill}>{stale}</FillContext></div>
-              </div>
-              : <Skeleton rows={4} />)
+            : loading && !stale ? <Skeleton rows={4} />
             : emptyNote ? <p className="dm-muted dm-chart-empty">{emptyNote}</p>
-            : <FillContext value={fill}>{children}</FillContext>}
+            : (
+              <div className="dm-chart-staleframe">
+                {stale ? <div role="progressbar" aria-label="Loading chart" className="dm-busybar" /> : null}
+                <div className={stale ? 'dm-chart-stale' : undefined} aria-busy={stale || undefined} inert={stale || undefined}>
+                  <FillContext value={fill}>{staleDrawn ? staleDrawn.body : children}</FillContext>
+                </div>
+              </div>
+            )}
         </div>
       </div>
       {frame?.resizing && section && <ResizeHandles title={title} section={section} frame={frame} onDraft={setDraft} />}

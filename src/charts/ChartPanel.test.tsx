@@ -56,6 +56,31 @@ describe('a reload keeps the last drawing', () => {
     c.rerender(panel({ loading: true, name: 'Bar' }, 'old'));
     expect(c.queryByLabelText('Loading')).toBeTruthy();
   });
+  test('an error that arrives while loading drops the old drawing', () => {
+    const { rerender } = render(panel({}, 'old'));
+    rerender(panel({ loading: true, failed: { error: new Error('x'), retry: () => {} } }, 'old'));
+    rerender(panel({ loading: true }, 'old'));
+    expect(screen.getByLabelText('Loading')).toBeTruthy();
+    expect(screen.queryByText('old')).toBeNull();
+  });
+  test('a stale panel keeps the width it was drawn with, and its content is inert', () => {
+    const { rerender, container } = render(panel({ width: '40rem' }, 'old'));
+    rerender(panel({ loading: true, width: '20rem' }, 'old'));
+    expect(container.querySelector('section')!.style.width).toBe('40rem');
+    expect(screen.getByText('old').closest('[inert]')).toBeTruthy();
+    rerender(panel({ width: '30rem' }, 'new'));
+    expect(container.querySelector('section')!.style.width).toBe('30rem');
+    expect(container.querySelector('[inert]')).toBeNull();
+  });
+  test('a changed title shows a skeleton, and the body is not remounted on a reload', () => {
+    const { rerender } = render(panel({}, 'old'));
+    rerender(panel({ loading: true, title: 'Other' }, 'old'));
+    expect(screen.getByLabelText('Loading')).toBeTruthy();
+    const b = render(panel({}, 'x'));
+    const el = b.getByText('x');
+    b.rerender(panel({ loading: true }, 'x'));
+    expect(b.getByText('x')).toBe(el);
+  });
   test('Copy to clipboard on the stale drawing says there is nothing to copy', async () => {
     const spy = vi.spyOn(internals, 'render');
     const items = [{ kind: 'action' as const, label: 'Hide', icon: EyeOff, onPick: () => {} }];
