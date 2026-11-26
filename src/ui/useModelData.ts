@@ -51,7 +51,8 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
   // A count turns to loading only here, when its request starts. Until then the old value stays.
   const runCount = useCallback((id: string, recount: boolean, seq: number): Promise<void> => {
     const current = () => seqs.current.latest.get(id) === seq;
-    setCounts((c) => new Map(c).set(id, { state: 'loading' }));
+    // A recount keeps the card's previous count on screen, dimmed; a first count has none to show.
+    setCounts((c) => { const was = c.get(id); return new Map(c).set(id, recount && was?.state === 'ok' && was.value !== null ? { ...was, stale: true } : { state: 'loading' }); });
     return schemas.get(id)
       .then((s) => (recount ? counter.recount(id, s) : counter.count(id, s)))
       .then(

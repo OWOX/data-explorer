@@ -1233,7 +1233,7 @@ describe('a date chart keeps its dimmed drawing while an Auto bucket is read aga
       await userEvent.type(within(dialog).getByLabelText('Value'), 'paid');
       await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
       await waitFor(() => expect(chart()!.querySelector('[aria-busy="true"]')).not.toBeNull());
-      expect(chart()!.querySelector('.dm-chart-stale svg')).not.toBeNull();
+      expect(chart()!.querySelector('.dm-stale svg')).not.toBeNull();
       expect(chart()!.querySelector('[aria-label="Loading"]')).toBeNull();
       release();
       await waitFor(() => expect(chart()!.querySelector('[aria-busy]')).toBeNull());

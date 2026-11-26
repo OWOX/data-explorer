@@ -77,7 +77,8 @@ test('a successful refresh recounts what was shown, keeping the old number until
 
   value = 9;
   rerender({ model: modelOf(ids), version: 1 });
-  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'loading' }));
+  // The old count stays, flagged stale so the card dims it; it is not replaced by a spinner.
+  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7, stale: true }));
   act(() => release());
   await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 9 }));
 });

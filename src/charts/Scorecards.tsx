@@ -165,14 +165,14 @@ function CardValue({ card, row, formatOf, shown, busy = false }: { card: Card; r
   const frame = shown === undefined || shown === null ? row : { ...row, [card.key]: shown };
   const text = frame === row ? full : textOf(card, frame, formatOf);
   const short = shortOf(card, frame, formatOf);
-  const cls = `text-lg font-semibold tabular-nums transition-opacity duration-200 ${busy ? 'opacity-40' : ''}`;
+  const cls = `text-lg font-semibold tabular-nums ${busy ? 'dm-stale' : ''}`;
   // A short form that is no shorter (1e21 is "1e+21" in full) is not worth a hover.
   if (short === null || short.length >= text.length) return <div data-card-value aria-busy={busy || undefined} className={cls}>{text}</div>;
   // As Hint does: a focusable note, so the exact value is named for screen readers and opens by keyboard too.
   return (
     <div className="text-lg font-semibold tabular-nums">
       <Tooltip content={full}>
-        <span data-card-value data-exact={full} aria-busy={busy || undefined} role="note" tabIndex={0} aria-label={`${card.label}: ${full}`} className={`cursor-default transition-opacity duration-200 ${busy ? 'opacity-40' : ''}`}>{short}</span>
+        <span data-card-value data-exact={full} aria-busy={busy || undefined} role="note" tabIndex={0} aria-label={`${card.label}: ${full}`} className={`cursor-default ${busy ? 'dm-stale' : ''}`}>{short}</span>
       </Tooltip>
     </div>
   );
@@ -229,7 +229,11 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, 
   const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, cardBucket, filter, date), version, joins);
   // A changed date has no trend yet (its range, then its rows, are still being read): a placeholder holds the sparkline's place instead of a stale or empty box.
   const waiting = !paused && spark.sparklines && !!date && (trend.loading || (own && !mine.bucket && !mine.error));
-  const dated = date ? datedRows(trend.rows ?? [], date.name) : [];
+  // A filter change reads the same date and bucket again: the last trend stays, dimmed, until the new one arrives. Another date or bucket has none to keep, so it waits on the placeholder.
+  const [lastTrend, setLastTrend] = useState<{ rows: Row[]; date: string | undefined; bucket: DateBucket | null } | null>(null);
+  if (trend.rows && lastTrend?.rows !== trend.rows) setLastTrend({ rows: trend.rows, date: date?.name, bucket: cardBucket });
+  const kept = waiting && !trend.rows && lastTrend && lastTrend.date === date?.name && lastTrend.bucket === cardBucket ? lastTrend.rows : null;
+  const dated = date ? datedRows(trend.rows ?? kept ?? [], date.name) : [];
   const points: Point[] = dated.map((s) => ({
     x: String(s[date!.name]),
     y: numberOf(s[c.key]),
@@ -251,8 +255,9 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, 
         </div>
       )}
       {row ? <CardValue card={c} row={row} formatOf={formatOf} shown={rolled} busy={busy} /> : <Skeleton rows={1} />}
-      {waiting && <div aria-label="Loading trend" className="mt-1 h-6 animate-pulse rounded bg-muted motion-reduce:animate-none" />}
+      {waiting && !kept && <div aria-label="Loading trend" className="mt-1 h-6 animate-pulse rounded bg-muted motion-reduce:animate-none" />}
       {!waiting && dated.length > 0 && <Sparkline points={points} ariaLabel={`${c.label} trend`} />}
+      {waiting && kept && dated.length > 0 && <div className="dm-stale" aria-busy="true"><Sparkline points={points} ariaLabel={`${c.label} trend`} /></div>}
     </div>
   );
 }

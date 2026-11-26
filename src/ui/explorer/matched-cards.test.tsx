@@ -490,3 +490,20 @@ test('Remove from report: a total counted by a read that joined the removed mart
   // The joined read's count is not the main mart's: one scorecard read answers it.
   expect(t.scoreReads()).toHaveLength(2);
 });
+
+test('on Refresh the badge keeps its previous number, dimmed and busy, until the new count lands, and adds no read of its own', async () => {
+  const t = setup(withProducts, { slow: isScore });
+  await t.mount();
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  const match = () => card('orders')!.querySelector('[data-match]');
+  expect(match()).not.toHaveClass('dm-stale');
+  expect(match()).not.toHaveAttribute('aria-busy');
+  const before = t.scoreReads().length;
+  await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+  await waitFor(() => expect(t.scoreReads().length).toBe(before + 1));
+  expect(match()).toHaveClass('dm-stale');
+  expect(match()).toHaveAttribute('aria-busy', 'true');
+  await waitFor(() => expect(match()).not.toHaveClass('dm-stale'), { timeout: 2000 });
+  expect(match()).toHaveTextContent(/% match$/);
+  expect(t.scoreReads()).toHaveLength(before + 1);
+});

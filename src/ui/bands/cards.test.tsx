@@ -334,3 +334,33 @@ describe('the match badge', () => {
     expect(screen.queryByText(/match$/)).toBeNull();
   });
 });
+
+describe('a previous read\'s numbers on a card', () => {
+  const dimmed = (el: Element | null) => !!el?.classList.contains('dm-stale') && el.getAttribute('aria-busy') === 'true';
+  const filtered = { matched: 1240 };
+
+  test('a count that is being recounted is dimmed and busy, a fresh one is not', () => {
+    const { container, rerender } = renderMart({ count: { state: 'ok', value: 12400, stale: true } });
+    const badge = () => container.querySelector('.dm-badge');
+    expect(badge()).toHaveTextContent('12.4K');
+    expect(dimmed(badge())).toBe(true);
+    rerender(<TooltipProvider><MartCard {...martProps({ count: { state: 'ok', value: 9000 } })} /></TooltipProvider>);
+    expect(badge()).not.toHaveClass('dm-stale');
+    expect(badge()).not.toHaveAttribute('aria-busy');
+  });
+
+  test('a match badge kept from the previous filters is dimmed and busy, a fresh one is not', () => {
+    const { container, rerender } = renderMart({ ...filtered, matchedStale: true });
+    const match = () => container.querySelector('[data-match]');
+    expect(match()).toHaveTextContent('% match');
+    expect(dimmed(match())).toBe(true);
+    rerender(<TooltipProvider><MartCard {...martProps({ ...filtered })} /></TooltipProvider>);
+    expect(match()).not.toHaveClass('dm-stale');
+    expect(match()).not.toHaveAttribute('aria-busy');
+  });
+
+  test('a match badge compared with a count being recounted is dimmed', () => {
+    const { container } = renderMart({ ...filtered, count: { state: 'ok', value: 12400, stale: true } });
+    expect(dimmed(container.querySelector('[data-match]'))).toBe(true);
+  });
+});

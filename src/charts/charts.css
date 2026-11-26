@@ -48,7 +48,6 @@
 .dm-chart-actions { display: flex; align-items: center; gap: 0.5rem; }
 .dm-chart-empty { font-size: 0.75rem; }
 .dm-chart-staleframe { position: relative; }
-.dm-chart-stale { opacity: 0.5; pointer-events: none; }
 /* A chart that changes size (bucket, type, second measure...) grows and shrinks instead of snapping. The width is a clamp()/min() expression: a transition runs between its computed lengths. The body follows its content's measured height. */
 .dm-chart-body { transition: height 200ms ease; }
 /* Clipped only while the height moves; the tooltips are portalled to the page, so nothing else needs the clip. */

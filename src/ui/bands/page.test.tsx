@@ -1239,6 +1239,30 @@ describe('the Data band loading bar', () => {
     await waitFor(() => expect(bar()).toBeNull());
   }, 30000);
 
+  test('on Refresh the rows and the rows label stay on screen dimmed and busy, and are fresh again when the read lands', async () => {
+    const delay = { ms: 0 };
+    await mountWith(slow(delay));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
+    await waitFor(() => expect(bar()).toBeNull());
+    const root = () => data().querySelector<HTMLElement>('.dm-grid-root')!;
+    const label = () => data().querySelector<HTMLElement>('.dm-band-count')!;
+    expect(root()).not.toHaveClass('dm-stale');
+    expect(label()).not.toHaveClass('dm-stale');
+    delay.ms = 1500;
+    await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+    await within(data()).findByRole('progressbar', { name: 'Loading rows' });
+    expect(root()).toHaveClass('dm-stale');
+    expect(root()).toHaveAttribute('aria-busy', 'true');
+    expect(label()).toHaveClass('dm-stale');
+    expect(label()).toHaveAttribute('aria-busy', 'true');
+    await waitFor(() => expect(bar()).toBeNull(), { timeout: 5000 });
+    expect(root()).not.toHaveClass('dm-stale');
+    expect(root()).not.toHaveAttribute('aria-busy');
+    // The label rides the grid's onRows effect, so it follows in the next commit.
+    await waitFor(() => expect(label()).not.toHaveClass('dm-stale'));
+    expect(label()).not.toHaveAttribute('aria-busy');
+  }, 30000);
+
   test('the bar sits on the top border of the card, as wide as it', async () => {
     const delay = { ms: 1500 };
     await mountWith(slow(delay));

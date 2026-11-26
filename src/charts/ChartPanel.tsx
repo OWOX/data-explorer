@@ -101,7 +101,7 @@ export function ChartPanel({ title, name, items, ready, width, loading, failed, 
             : (
               <div className="dm-chart-staleframe">
                 {stale ? <div role="progressbar" aria-label="Loading chart" className="dm-busybar" /> : null}
-                <div className={stale ? 'dm-chart-stale' : undefined} aria-busy={stale || undefined} inert={stale || undefined}>
+                <div className={stale ? 'dm-stale' : undefined} aria-busy={stale || undefined} inert={stale || undefined}>
                   <FillContext value={fill}>{staleDrawn ? staleDrawn.body : children}</FillContext>
                 </div>
               </div>

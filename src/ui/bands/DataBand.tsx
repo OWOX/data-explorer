@@ -35,9 +35,9 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen, on
   if (!held && shownId !== martId) setShownId(martId);
   const gridId = held ? shownId : martId;
   const gridMart = gridId ? model.marts.get(gridId) : undefined;
-  const [rows, setRows] = useState<{ id: string; label: string; grouped: boolean; noKey: NoKey } | null>(null);
-  const showRows = useCallback((label: string | null, grouped = false, noKey: NoKey = false) => { if (gridId) setRows(label === null ? null : { id: gridId, label, grouped, noKey }); }, [gridId]);
-  const showMatched = useCallback((byPath: ReadonlyMap<string, number> | null) => { if (gridId) onMatched?.(byPath && { martId: gridId, byPath }); }, [gridId, onMatched]);
+  const [rows, setRows] = useState<{ id: string; label: string; grouped: boolean; noKey: NoKey; stale: boolean } | null>(null);
+  const showRows = useCallback((label: string | null, grouped = false, noKey: NoKey = false, stale = false) => { if (gridId) setRows(label === null ? null : { id: gridId, label, grouped, noKey, stale }); }, [gridId]);
+  const showMatched = useCallback((byPath: ReadonlyMap<string, number> | null, stale = false) => { if (gridId) onMatched?.(byPath && { martId: gridId, byPath, stale }); }, [gridId, onMatched]);
   const save = useCallback((grid: GridState, edit = false) => { if (gridId) dispatch({ type: edit ? 'editGrid' : 'saveGrid', martId: gridId, grid }); }, [dispatch, gridId]);
 
   const hold = useCallback(() => { if (gridId) dispatch({ type: 'holdGrid', martId: gridId }); }, [dispatch, gridId]);
@@ -58,7 +58,7 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen, on
   const note = noKey === 'missing' ? NO_KEY_NOTE : null;
   const hint = noKey === 'hidden' ? HINT_NO_OPEN : fullScreen?.on ? HINT_FULL : HINT;
   return (
-    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={`${hint}${note ? ` ${note}` : ''}`} afterHint={<>{note && <NoKeyWarning note={note} />}{gridMart?.accessible && saved && <><ViewSwitch label="Show data as" options={DATA_VIEWS} value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} /><span ref={setSlot} data-chart-list-slot className="inline-flex flex-wrap items-center gap-y-1" /></>}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
+    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} totalStale={rows?.stale} hint={`${hint}${note ? ` ${note}` : ''}`} afterHint={<>{note && <NoKeyWarning note={note} />}{gridMart?.accessible && saved && <><ViewSwitch label="Show data as" options={DATA_VIEWS} value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} /><span ref={setSlot} data-chart-list-slot className="inline-flex flex-wrap items-center gap-y-1" /></>}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (

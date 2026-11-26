@@ -49,8 +49,14 @@ test('a seed with some fields shows them before the read resolves, then the read
   expect(await screen.findByText('Seeded')).toBeInTheDocument();
   expect(screen.getByRole('progressbar')).toBeInTheDocument();
   expect(screen.queryByText('Oslo')).toBeNull();
+  // The seeded values are shown dimmed and busy until the read lands.
+  const values = screen.getByText('Seeded').closest('dl')!;
+  expect(values).toHaveClass('dm-stale');
+  expect(values).toHaveAttribute('aria-busy', 'true');
   open();
   expect(await screen.findByText('Oslo')).toBeInTheDocument();
+  expect(values).not.toHaveClass('dm-stale');
+  expect(values).not.toHaveAttribute('aria-busy');
   expect(screen.getByText('Read')).toBeInTheDocument();
   expect(screen.queryByText('Seeded')).toBeNull();
   expect(traverseData).toHaveBeenCalledTimes(1);

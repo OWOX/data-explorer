@@ -89,7 +89,7 @@ test('while a read runs the previous value shows dimmed and busy, and a new mart
   const old = valueOf(SUM)!;
   expect(old).toHaveTextContent('450');
   expect(old).toHaveAttribute('aria-busy', 'true');
-  expect(old.className).toContain('opacity-40');
+  expect(old.className).toContain('dm-stale');
   expect(document.querySelector('[data-mart="products"] [aria-label="Loading"]')).not.toBeNull();
   expect(document.querySelector('[data-mart="products"] [data-card-value]')).toBeNull();
 });
@@ -103,7 +103,7 @@ test('a new value rolls from the old one, whole for a count, and ends exactly on
   const sum = valueOf(SUM)!;
   // Undimmed from the first frame, still showing the old number.
   expect(sum).not.toHaveAttribute('aria-busy');
-  expect(sum.className).not.toContain('opacity-40');
+  expect(sum.className).not.toContain('dm-stale');
   expect(sum).toHaveTextContent('450');
   act(() => { vi.advanceTimersByTime(250); });
   const mid = Number(valueOf(SUM)!.textContent!.replace(/,/g, ''));
