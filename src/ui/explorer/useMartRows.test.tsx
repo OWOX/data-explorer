@@ -1,5 +1,5 @@
 import { renderHook, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { useLayoutEffect, type ReactNode } from 'react';
 import { vi } from 'vitest';
 import { stubCtx, traversalOf } from '../../api/test-ctx';
 import type { Traversal, TraverseOptions } from '../../sdk/types';
@@ -150,14 +150,15 @@ test('rows of another shape are not shown while the new query is in flight; the 
 
 test('plain rows read before are shown again on the very first render after a grouped ask', async () => {
   const { traverseData, wrapper } = hookCtx(true);
-  const { result, rerender } = renderHook(({ o }) => useMartRows('m', o, 0), { wrapper, initialProps: { o: opts(['id', 'a']) } });
+  // Every committed render is recorded (a layout effect runs before the passive one that commits a hit): `rerender` flushes the effect before it returns, so only the first render of the new key shows the lookup at render.
+  const renders: { loading: boolean; rows: number | null; run: string }[] = [];
+  const { result, rerender } = renderHook(({ o }) => { const r = useMartRows('m', o, 0); useLayoutEffect(() => { renders.push({ loading: r.loading, rows: r.rows?.length ?? null, run: r.run.state }); }); return r; }, { wrapper, initialProps: { o: opts(['id', 'a']) } });
   await waitFor(() => expect(result.current.rows).toHaveLength(200));
   rerender({ o: { column: ['a'], aggregation: [{ column: 'a', function: 'COUNT' }], limit: 401 } });
   await waitFor(() => expect(result.current.rows).toHaveLength(400));
+  renders.length = 0;
   rerender({ o: opts(['id', 'a']) });
-  expect(result.current.rows).toHaveLength(200);
-  expect(result.current.loading).toBe(false);
-  expect(result.current.run).toEqual({ state: 'done', runId: null });
+  expect(renders[0]).toEqual({ loading: false, rows: 200, run: 'done' });
   expect(traverseData).toHaveBeenCalledTimes(2);
 });
 
@@ -593,16 +594,17 @@ describe('the grid cache', () => {
   });
 
   test('the first render after the key changes to a cached ask already has its rows and is not loading', async () => {
-    const { traverseData, result, rerender } = mount(() => 3, { o: byFilter(['id', 'a'], 1) });
+    const c = cacheCtx(() => 3);
+    const renders: { loading: boolean; rows: number | null; run: string }[] = [];
+    const { traverseData } = c;
+    const { result, rerender } = renderHook(({ o }: P) => { const r = useMartRows('m', o, 0); useLayoutEffect(() => { renders.push({ loading: r.loading, rows: r.rows?.length ?? null, run: r.run.state }); }); return r; }, { wrapper: c.wrapper, initialProps: { o: byFilter(['id', 'a'], 1) } });
     await done(result);
     rerender({ o: byFilter(['id', 'a'], 2) });
     await done(result);
-    const seen: boolean[] = [];
+    renders.length = 0;
     rerender({ o: byFilter(['id', 'a'], 1) });
-    seen.push(result.current.loading);
-    expect(seen).toEqual([false]);
-    expect(result.current.rows).toHaveLength(3);
-    expect(result.current.run.state).toBe('done');
+    // The first render of the new key: rerender flushes the effect, so only this entry tells the lookup was made at render.
+    expect(renders[0]).toEqual({ loading: false, rows: 3, run: 'done' });
     expect(traverseData).toHaveBeenCalledTimes(2);
   });
 

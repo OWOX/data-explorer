@@ -172,8 +172,11 @@ test('a column no longer shown loses its rules', async () => {
   await openFields('Orders');
   await userEvent.click(await screen.findByLabelText('Amount'));
   await waitFor(() => expect(headers()).not.toContain('Amount · Sum'));
-  // The plain rows read before the rule are cached, so no read tells it: the saved grid has no rule on amount.
-  await waitFor(() => expect(JSON.stringify(t.puts.filter((p) => p.id === 'orders').at(-1)!.doc.aggregations ?? [])).not.toContain('amount'), { timeout: 3000 });
+  // The plain rows read before the rule are cached, so no read follows the untick: none is sent, grouped or not.
+  const sent = t.queries.length;
+  await new Promise((r) => setTimeout(r, 200));
+  expect(t.queries.length).toBe(sent);
+  expect(t.queries.at(-1)!.o.aggregation).toBeDefined();
 });
 
 test('while the grouped rows are in flight there is no groups badge and no empty Amount · Sum cells', async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { readRows } from '../../api/rows';
 import { stable } from '../../charts/answers';
 import { toTraverseFilters, type ColumnFilter } from '../../filters/build';
@@ -167,7 +167,10 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx, martId, key, paused]);
   // A cached read answers on this very render, so Undo or Charts to Table paint with no busy frame (the effect only commits it).
-  const hit = options && !paused && state.doneFor !== key ? lookup(ctx, martId, version, options, exact) : null;
+  const pending = state.doneFor !== key;
+  // Looked up once per key (the lookup restringifies the options); `key` stands for the options.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const hit = useMemo(() => (options && !paused && pending ? lookup(ctx, martId, version, options, exact) : null), [ctx, martId, version, key, paused, exact, pending]);
   const view = hit ? viewOf(hit.entry, options!, key, base) : state;
   // The previous rows stay visible while a newer request is in flight; an old error does not.
   const loading = view.doneFor !== key;
