@@ -525,7 +525,7 @@ test('opening the Fields picker by mouse leaves every (?) hidden until a row is 
   expect(Math.abs(icon.x + icon.width - (other.x + other.width))).toBeLessThanOrEqual(1);
 });
 
-test('a filter popover is at most 20rem tall, has no title row, and its last row is inside it', async ({ page }) => {
+test('a date filter popover is at most 28rem tall, has no title row, and its last row is inside it', async ({ page }) => {
   const data = await ordersGrid(page);
   await tick(page, 'created_at');
   await openColumnSub(data, 'created_at', 'Filter');
@@ -534,8 +534,8 @@ test('a filter popover is at most 20rem tall, has no title row, and its last row
   await expect(body.locator('.dm-popover-title')).toHaveCount(0);
   const panel = page.getByRole('dialog', { name: 'Filter of created_at' });
   const box = await panel.evaluate((el) => el.getBoundingClientRect().height);
-  expect(box).toBeLessThanOrEqual(20 * 16 + 1);
-  // The date list is short now (the presets moved to flyouts), so it fits; its last row is still inside the panel.
+  expect(box).toBeLessThanOrEqual(28 * 16 + 1);
+  // The presets list takes the flyout's 28rem cap, so it fits; its last row is inside the panel.
   const last = body.getByRole('menuitemradio', { name: 'Is not blank' });
   await last.scrollIntoViewIfNeeded();
   const p = (await panel.boundingBox())!;

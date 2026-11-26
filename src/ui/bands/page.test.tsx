@@ -1418,7 +1418,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(first()).toContain('Orders');
   });
 
-  test('a filter panel is capped at 20rem (bands.css .dm-menu-editor) with no title row above the scrolling body', async () => {
+  test('a filter panel is height-capped (bands.css .dm-menu-editor: 20rem, 28rem for the date presets) with no title row above the scrolling body', async () => {
     await ordersGrid();
     await search('daily');
     makeMain('Daily KPIs');
