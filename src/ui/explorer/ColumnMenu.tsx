@@ -77,7 +77,7 @@ const SLICE_NOTE = <>Slices filter the joined data mart <strong>before</strong> 
 /** The function's label in lower case, as the HAVING note and the Funnel tooltip name it: "sum". */
 const fnName = (f: AggFn) => AGG_LABELS[f].toLowerCase();
 /** What a filter says in a tooltip: a HAVING filter names its function and reads against the aggregate's type. */
-function describeColumnFilter(field: Field, f: ColumnFilter): string {
+export function describeColumnFilter(field: Field, f: ColumnFilter): string {
   return f.fn ? `${fnName(f.fn)} ${describeFilter(havingField(field, f.fn), f)}` : describeFilter(field, f);
 }
 
@@ -118,7 +118,7 @@ function RuleEditor({ kind, field, row, seq, onEscape, onDone }: { kind: 'filter
     return (
       <EditorPanel row={row} seq={seq} label={`Slice of ${title}`} onEscape={onEscape}>
         <FilterEditor key={JSON.stringify(env.slices[field.name])} field={sliceField(field)} value={env.slices[field.name]} values={valuesIn(env, field, 'slice')}
-          onApply={(f) => { env.setSlice(field.name, f); onDone(); }} onClear={() => { env.setSlice(field.name, undefined); onDone(); }}
+          onApply={(f) => { env.setSlice(field.name, f); onDone(); }} onClear={() => { env.setSlice(field.name, undefined); onDone(); }} removeLabel="Remove slice"
           note={<p className="mt-2 text-xs text-muted-foreground">{SLICE_NOTE}</p>} />
       </EditorPanel>
     );
@@ -157,8 +157,8 @@ const RULE_NOUNS: Record<RuleKind, { list: string; remove: string }> = {
 export type RuleEntry = { key: string; martTitle: string; icon?: string | null; field: Field | null; label: string };
 
 /**
- * The list under a toolbar badge ("2 filters", "1 slice", "3 aggregations"). Its first row, "Remove filters" (slices, aggregations), removes every rule of the kind; after a separator
- * come the fields that carry one, as "data mart · field". Hovering a field row (or Arrow Right, or a click) opens the same edit form the column menu's Filter / Slice / Aggregate submenu shows.
+ * The list under a toolbar badge ("2 filters", "1 slice", "3 aggregations"): the fields that carry a rule, as "data mart · field", then after a separator
+ * "Remove filters" (slices, aggregations), which removes every rule of the kind. Hovering a field row (or Arrow Right, or a click) opens the same edit form the column menu's Filter / Slice / Aggregate submenu shows.
  * Apply and Clear in a form save the one rule and close the list (`onClose` refocuses the badge); `onRemove` removes the rules and the caller closes the list and places focus.
  */
 export function RuleListMenu({ kind, entries, anchor, onClose, onRemove, onDismiss }: { kind: RuleKind; entries: RuleEntry[]; anchor: HTMLElement; onClose: () => void; onRemove: () => void; /** A press outside or a scroll: close without moving focus. */ onDismiss: () => void }) {
@@ -171,8 +171,6 @@ export function RuleListMenu({ kind, entries, anchor, onClose, onRemove, onDismi
   return (
     <>
       <Panel anchor={anchor} mode="below" role="menu" label={RULE_NOUNS[kind].list} onEscape={() => (sub ? closeSub() : onClose())} onTab={onClose} focusSeq={1} className="dm-menu-root">
-        <Row label={RULE_NOUNS[kind].remove} glyph={<Trash2 className="size-4" />} onActivate={onRemove} onHover={hoverOther} onLeaveRow={leaveRow} />
-        <div className="dm-menu-sep" role="separator" />
         {entries.map((e) => (e.field
           ? (
             <Row key={e.key} label={`${e.martTitle} · ${fieldLabel(e.field)}`} hint={e.field.description?.trim() || undefined} sub haspopup="dialog" expanded={sub?.key === e.key}
@@ -181,6 +179,8 @@ export function RuleListMenu({ kind, entries, anchor, onClose, onRemove, onDismi
           )
           : <Row key={e.key} note label={e.label} glyph={<PickedIcon icon={e.icon} fallback={DEFAULT_MART_ICON} size={16} />} onActivate={NOOP} onHover={hoverOther} onLeaveRow={leaveRow} />
         ))}
+        <div className="dm-menu-sep" role="separator" />
+        <Row label={RULE_NOUNS[kind].remove} glyph={<Trash2 className="size-4" />} onActivate={onRemove} onHover={hoverOther} onLeaveRow={leaveRow} />
       </Panel>
       {sub && at && kind !== 'aggregate' && <RuleEditor kind={kind} field={at} row={sub.row} seq={sub.seq} onEscape={closeSub} onDone={onClose} />}
       {sub && at && kind === 'aggregate' && (

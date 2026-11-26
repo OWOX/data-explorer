@@ -1,8 +1,13 @@
 import { Funnel, Layers, Sigma, type LucideIcon } from 'lucide-react';
 import { useContext, useRef, useState } from 'react';
 import type { ColumnFilter } from '../../filters/build';
+import { describeFilter } from '../../filters/catalogue';
+import { sliceField } from '../../filters/slice';
+import { AGG_LABELS, BUCKET_LABELS } from '../../model/aggregation';
+import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
-import { ColumnMenuEnvContext, RuleListMenu, type RuleEntry, type RuleKind } from './ColumnMenu';
+import { Tooltip } from '../Tooltip';
+import { ColumnMenuEnvContext, RuleListMenu, describeColumnFilter, type RuleEntry, type RuleKind } from './ColumnMenu';
 import type { ConfigMart } from './MartFields';
 
 /** The data mart a badge's list names its fields under: the report's marts in grid order, then the ones that only hold a leftover rule. */
@@ -16,7 +21,7 @@ const KINDS: { kind: RuleKind; icon: LucideIcon; one: string; many: string }[] =
 
 /**
  * The "N filters", "N slices" and "N aggregations" badges next to the config button: each shows when any field of the grid carries such a rule (shown or not), and counts fields.
- * A click lists them; the list's first row removes them all, and a field row opens its editor. A filter on a field the grid does not offer (parked) is counted and listed by its name.
+ * Hovering one shows its rules in a tooltip, one per line. A click lists them; a field row opens its editor, and the list's last row removes them all. A filter on a field the grid does not offer (parked) is counted and listed by its name.
  * A slice only counts on a joined field, as in the column header; an aggregation only on a shown column.
  */
 export function RuleBadges({ marts, filters, slices, offered, onRemove }: {
@@ -32,6 +37,9 @@ export function RuleBadges({ marts, filters, slices, offered, onRemove }: {
   const env = useContext(ColumnMenuEnvContext);
   const [menu, setMenu] = useState<RuleKind | null>(null);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  // Focus handed back to a badge when its list closes would open the tooltip under a pointer that is elsewhere, where nothing closes it.
+  // `handing` is on only during focusBack's own focus() of a badge: the badge's onFocus runs before the tooltip's and skips that one open.
+  const handing = useRef(false);
   const holder = useRef<HTMLSpanElement>(null);
   const has = (kind: RuleKind, f: Field) => (kind === 'filter' ? !!filters[f.name] : kind === 'slice' ? !!slices[f.name] && !!f.joined : env.isAggregated(f.name));
   const entriesOf = (kind: RuleKind): RuleEntry[] => {
@@ -39,6 +47,15 @@ export function RuleBadges({ marts, filters, slices, offered, onRemove }: {
     if (kind === 'aggregate') return own;
     const parked = Object.keys(kind === 'filter' ? filters : slices).filter((n) => !offered(n)).map((n): RuleEntry => ({ key: n, martTitle: '', icon: null, field: null, label: n }));
     return [...own, ...parked];
+  };
+  /** One line of a badge's tooltip: "data mart · field: what the rule does". A parked rule is named by its field alone. */
+  const lineOf = (kind: RuleKind, e: RuleEntry): string => {
+    const f = e.field;
+    if (!f) return e.label;
+    const what = kind === 'filter' ? describeColumnFilter(f, filters[f.name]!)
+      : kind === 'slice' ? describeFilter(sliceField(f), slices[f.name]!)
+        : (() => { const d = env.draftOf(f.name); return d.bucket ? `by ${BUCKET_LABELS[d.bucket].toLowerCase()}` : d.functions.map((fn) => AGG_LABELS[fn]).join(', '); })();
+    return `${e.martTitle} · ${fieldLabel(f)}: ${what}`;
   };
   const entries = Object.fromEntries(KINDS.map((k) => [k.kind, entriesOf(k.kind)])) as Record<RuleKind, RuleEntry[]>;
   // A list whose rules are all gone (Undo) closes: Redo must not bring the badge back with it open on a detached anchor.
@@ -50,7 +67,8 @@ export function RuleBadges({ marts, filters, slices, offered, onRemove }: {
       if (!row) return;
       const badges = [...row.querySelectorAll<HTMLElement>('[data-rule-badge]')];
       const next = after ? badges.find((b) => KINDS.findIndex((k) => k.kind === b.dataset.ruleBadge) > KINDS.findIndex((k) => k.kind === after)) ?? badges[0] : from?.isConnected ? from : undefined;
-      (next ?? row.parentElement?.querySelector<HTMLElement>('[data-config-button]') ?? document.querySelector<HTMLElement>('[data-config-button]'))?.focus();
+      if (next) { handing.current = true; next.focus(); handing.current = false; return; }
+      (row.parentElement?.querySelector<HTMLElement>('[data-config-button]') ?? document.querySelector<HTMLElement>('[data-config-button]'))?.focus();
     }, 0);
   };
   return (
@@ -61,10 +79,13 @@ export function RuleBadges({ marts, filters, slices, offered, onRemove }: {
         const open = menu === kind && !!anchor?.isConnected;
         return (
           <span key={kind} className="inline-flex">
-            <button type="button" className="dm-rule-badge" data-rule-badge={kind} aria-haspopup="menu" aria-expanded={open}
-              onClick={(e) => { const a = e.currentTarget; if (open) setMenu(null); else { setAnchor(a); setMenu(kind); } }}>
-              <Icon className="size-3" aria-hidden />{list.length} {list.length === 1 ? one : many}
-            </button>
+            {/* The tooltip lists the rules, one per line; it stays shut while the badge's list is open. */}
+            <Tooltip side="bottom" content={open ? null : <div className="flex flex-col">{list.map((e) => <span key={e.key}>{lineOf(kind, e)}</span>)}</div>}>
+              <button type="button" className="dm-rule-badge" data-rule-badge={kind} aria-haspopup="menu" aria-expanded={open} onFocus={(e) => { if (handing.current) e.preventDefault(); }}
+                onClick={(e) => { const a = e.currentTarget; if (open) setMenu(null); else { setAnchor(a); setMenu(kind); } }}>
+                <Icon className="size-3" aria-hidden />{list.length} {list.length === 1 ? one : many}
+              </button>
+            </Tooltip>
             {open && <RuleListMenu kind={kind} entries={list} anchor={anchor!} onClose={() => { setMenu(null); focusBack(anchor); }} onDismiss={() => setMenu(null)}
               onRemove={() => { const a = anchor; setMenu(null); onRemove(kind); focusBack(a, kind); }} />}
           </span>
