@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { GRID_COLUMNS_COLLECTION } from '../api/grid-columns';
 import { CHARTS_COLLECTION } from '../api/chart-settings';
 import { createMockCtx } from '../sdk/mock/ctx';
@@ -1215,4 +1215,47 @@ test('hiding a column with Charts closed prunes the server doc, not an older cop
   const menu = await openColumnMenu(within(data()), 'created_at');
   await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
   await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { scorecards: { dates: {}, hidden: ['from-tab-2'] } }));
+});
+
+describe('a chart reads once it scrolls near the view', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  /** A stubbed IntersectionObserver: `fire` reports every observed element as intersecting. */
+  function stubObserver() {
+    const seen = new Set<Element>();
+    let cb: (e: Partial<IntersectionObserverEntry>[]) => void = () => {};
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(c: typeof cb) { cb = c; }
+      observe(el: Element) { seen.add(el); }
+      unobserve(el: Element) { seen.delete(el); }
+      disconnect() {}
+    });
+    return { fire: () => act(() => cb([...seen].map((target) => ({ target, isIntersecting: true })))) };
+  }
+  const pie = () => data().querySelector('section[data-chart-kind="Pie"]');
+
+  test('a panel that is not near the view shows its skeleton and sends no read; firing the observer reads once; it stays live after', async () => {
+    const io = stubObserver();
+    const t = await charts();
+    await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
+    await waitFor(() => expect(pie()).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 100));
+    expect(data().querySelector('[data-slice]')).toBeNull();
+    const before = t.queries.length;
+    io.fire();
+    await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+    expect(t.queries.length).toBeGreaterThan(before);
+    // Scrolled away (no further intersection) and a filter changes: the panel still reads.
+    const live = t.queries.length;
+    await openSubmenu(within(data()), 'status', 'Filter');
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Value'), 'paid');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(t.queries.length).toBeGreaterThan(live));
+    await waitFor(() => expect(t.queries.slice(live).some((q) => q.filter?.some((f) => f.column === 'status'))).toBe(true));
+  });
+
+  test('without IntersectionObserver the panel reads at once', async () => {
+    await charts();
+    await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  });
 });

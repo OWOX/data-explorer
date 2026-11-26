@@ -1,5 +1,6 @@
 import { Copy } from 'lucide-react';
-import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { whenInView } from '../ui/bands/inview';
 import { ErrorBox } from '../ui/ErrorBox';
 import { emptyText } from '../ui/format';
 import { Skeleton } from '../ui/Skeleton';
@@ -9,6 +10,9 @@ import { ChartMenu, type MenuItem } from './ChartMenu';
 import { copyChart } from './copyImage';
 import { CELL, ChartFrameContext, FillContext, panelWidth, type ChartSize } from './resize';
 import { ResizeHandles } from './ResizeHandles';
+
+/** Set by ChartsBody: a panel calls it once, when its frame first scrolls near the view. Null reads at once. */
+export const ChartSeenContext = createContext<(() => void) | null>(null);
 
 /** A body height that makes the whole panel a whole number of cells: the content's height, rounded up. The panel's head and padding count. */
 function snapped(inner: HTMLElement): number {
@@ -58,6 +62,8 @@ export function ChartPanel({ title, name, items, ready, width, loading, failed, 
   const size = draft ?? frame?.size ?? {};
   const fill = size.rows !== undefined;
   const [section, setSection] = useState<HTMLElement | null>(null);
+  const seen = useContext(ChartSeenContext);
+  useEffect(() => (section && seen ? whenInView(section, seen) : undefined), [section, seen]);
   const [toast, setToast] = useState<{ text: string; tone: 'success' | 'info' | 'error'; at: number } | null>(null);
   const say = (text: string, tone: 'success' | 'info' | 'error') => setToast((t) => ({ text, tone, at: (t?.at ?? 0) + 1 }));
   const copy: MenuItem = { kind: 'action', label: 'Copy to clipboard', icon: Copy, onPick: () => {
