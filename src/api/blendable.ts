@@ -10,7 +10,7 @@ export const isArrayType = (type: string | undefined) => /^ARRAY(?:\s*[<(]|$)/i.
 export type JoinedSource = {
   aliasPath: string;
   martId: string;
-  /** What the picker and the column headers call it: the join's display prefix, with a business-readable tiebreaker added when two joins reach the same mart: the titles of the marts above it, the alias of the key it joins by, else an ordinal. */
+  /** What the picker and the column headers call it: the join's Output Alias, else the mart's title. When two joins reach the same mart it is led by the marts above it ("Contact > Country"); joins from the same mart are told apart by the alias of the key they join by, else an ordinal. */
   label: string;
   /** What the mart is called without anything that tells two joins to it apart; absent when that is the label. */
   name?: string;
@@ -66,13 +66,14 @@ export function joinedSources(dto: BlendableSchemaDto, keyAlias?: KeyAlias): Joi
   const nameOf = (s: AvailableSourceDto) => (s.defaultAlias?.trim() || s.title);
   const labelUses = new Map<string, number>();
   offered.forEach((s) => labelUses.set(nameOf(s), (labelUses.get(nameOf(s)) ?? 0) + 1));
-  // The titles of the marts along a path, parents only ("Contact › Organization"); a hop whose title is unknown is left out, never shown as its alias.
+  // The titles of the marts along a path, parents only ("Contact > Organization"); a hop whose title is unknown is left out, never shown as its alias.
   const titleAt = new Map((dto.availableSources ?? []).map((s) => [s.aliasPath, nameOf(s)]));
   const humanPath = (path: string) => {
     const parts = path.split('.');
-    return parts.slice(0, -1).map((_, i) => titleAt.get(parts.slice(0, i + 1).join('.'))).filter((t): t is string => !!t).join(' › ');
+    return parts.slice(0, -1).map((_, i) => titleAt.get(parts.slice(0, i + 1).join('.'))).filter((t): t is string => !!t).join(' > ');
   };
-  const withParts = (base: string, ...parts: (string | undefined)[]) => { const p = parts.filter(Boolean); return p.length ? `${base} (${p.join(', ')})` : base; };
+  // The marts above it lead ("Contact > Country"); the key it joins by follows ("Country (by Home org)").
+  const withParts = (base: string, via?: string, key?: string) => `${via ? `${via} > ` : ''}${key ? `${base} (by ${key})` : base}`;
   const labels = new Map<string, string>();
   const vias = new Map<string, string>();
   for (const s of offered) {
@@ -86,7 +87,7 @@ export function joinedSources(dto: BlendableSchemaDto, keyAlias?: KeyAlias): Joi
   for (const s of offered) groups.set(labels.get(s.aliasPath)!, [...(groups.get(labels.get(s.aliasPath)!) ?? []), s]);
   for (const [label, group] of groups) {
     if (group.length < 2) continue;
-    const keyed = group.map((s) => withParts(nameOf(s), vias.get(s.aliasPath), (() => { const k = keyAlias?.(s)?.trim(); return k ? `by ${k}` : undefined; })()));
+    const keyed = group.map((s) => withParts(nameOf(s), vias.get(s.aliasPath), keyAlias?.(s)?.trim() || undefined));
     if (new Set(keyed).size === group.length && keyed.every((l) => l !== label)) group.forEach((s, i) => labels.set(s.aliasPath, keyed[i]!));
     else group.forEach((s, i) => { if (i > 0) labels.set(s.aliasPath, `${label} ${i + 1}`); });
   }
