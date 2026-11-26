@@ -3,10 +3,12 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Ctx } from '../sdk/types';
 import { SAVE_DEBOUNCE_MS } from '../api/grid-columns';
+import { CHARTS_COLLECTION } from '../api/chart-settings';
+import type { ChartSettings } from '../charts/settings';
 import { createMockCtx } from '../sdk/mock/ctx';
 import { demoFixtures } from '../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore, type GridState, type State } from '../state/store';
-import { decodeViewLink, encodeViewLink } from '../state/view-link';
+import { decodeViewLink, encodeViewLink, MAX_ROUTE_LENGTH } from '../state/view-link';
 import { App } from './App';
 
 // Toasts keep their status region mounted, so a notice is the status region with text in it.
@@ -43,8 +45,9 @@ const grid: GridState = {
 };
 const view = { sourceKey: null, martId: 'orders', record: null, search: '', contextIds: [], storageIds: null, folded: { sources: true, marts: false, data: false, row: false }, grid };
 
-function setup(route: string | undefined, copyLink?: (p?: string) => Promise<void>, failFirstBlendable = false, setRoute?: (p: string) => void, strict = false) {
+function setup(route: string | undefined, copyLink?: (p?: string) => Promise<void>, failFirstBlendable = false, setRoute?: (p: string) => void, strict = false, saved?: ChartSettings) {
   const real = createMockCtx(demoFixtures(), { latencyMs: 0 });
+  if (saved) void real.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', saved);
   let blends = 0;
   const base: Ctx = failFirstBlendable ? { ...real, owox: { ...real.owox, getJson: (async (path: string, q?: Record<string, string>) => {
     if (path.endsWith('/blendable-schema')) {
@@ -199,6 +202,40 @@ describe('copying a link', () => {
     const back = await decodeViewLink(copied[0]);
     expect(back).toMatchObject({ martId: 'orders', grid, record: null, dropped: 0 });
     expect(back).toMatchObject({ folded: view.folded });
+  });
+
+  const sankey = (id: string): ChartSettings => ({ charts: [{ id, kind: 'sankey', dimensions: ['status', 'id'] }] });
+  const copyOnce = async (route: string, saved?: ChartSettings) => {
+    const copied: string[] = [];
+    setup(route, async (p) => { copied.push(p!); }, false, undefined, false, saved);
+    await loaded();
+    await waitFor(() => expect(box.latest.grids['orders']).toBeDefined());
+    await userEvent.click(await screen.findByRole('button', { name: 'Copy link to this view' }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    return decodeViewLink(copied[0]);
+  };
+
+  test('carries the saved charts of the main mart when Charts was never opened', async () => {
+    const back = await copyOnce(await encodeViewLink(view), sankey('saved'));
+    expect(back).toMatchObject({ charts: { charts: [{ kind: 'sankey' }] } });
+  });
+
+  test('carries the charts the store holds, not the saved doc', async () => {
+    const back = await copyOnce(await encodeViewLink({ ...view, charts: sankey('from-link') }), { charts: [{ id: 'saved', kind: 'pie' }] });
+    expect(back).toMatchObject({ charts: { charts: [{ kind: 'sankey' }] } });
+  });
+
+  test('leaves the charts out and says so when they make the link too long', async () => {
+    const long: ChartSettings = { charts: Array.from({ length: 40 }, (_, i) => ({ id: `c${i}`, kind: 'bar' as const, dimension: `d${i}_${Array.from({ length: 8 }, () => Math.random().toString(36).slice(2)).join('')}` })) };
+    const copied: string[] = [];
+    setup(await encodeViewLink(view), async (p) => { copied.push(p!); }, false, undefined, false, long);
+    await loaded();
+    await waitFor(() => expect(box.latest.grids['orders']).toBeDefined());
+    await userEvent.click(await screen.findByRole('button', { name: 'Copy link to this view' }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    expect(copied[0].length).toBeLessThanOrEqual(MAX_ROUTE_LENGTH);
+    expect(await decodeViewLink(copied[0])).not.toHaveProperty('charts');
+    expect(await findNotice()).toHaveTextContent('The link was copied without the charts: they make it too long.');
   });
 
   test('a rejected copy shows a notice', async () => {
