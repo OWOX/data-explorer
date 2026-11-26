@@ -2,6 +2,7 @@ import { type LucideIcon } from 'lucide-react';
 import { EllipsisVertical } from 'lucide-react';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { DEFAULT_MART_ICON, PickedIcon } from '../ui/bands/picked';
+import { swallowPress } from '../ui/outsidePress';
 import { Panel, Row, useSubmenu } from '../ui/explorer/MenuParts';
 
 /** One choice of a submenu. */
@@ -84,7 +85,7 @@ function RadioSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<Menu
 const DRAG_PX = 4;
 const ROW_ITEM = '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]';
 const MOVE_HINT = 'Alt+Up or Alt+Down to move';
-type Press = { from: number; startY: number; started: boolean; rects: { top: number; bottom: number }[]; panelTop: number; scroll: number; grip: HTMLElement; pointerId: number };
+type Press = { from: number; startY: number; started: boolean; to: number; rows: HTMLElement[]; menu: HTMLElement; grip: HTMLElement; pointerId: number };
 type Drag = { from: number; dy: number; to: number; line: number };
 
 function GroupSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<MenuItem, { kind: 'group' }>; anchor: HTMLElement; seq: number; close: () => void; onBack: () => void }) {
@@ -92,6 +93,8 @@ function GroupSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<Menu
   const [placed, setPlaced] = useState(false);
   const [drag, setDrag] = useState<Drag | null>(null);
   const press = useRef<Press | null>(null);
+  // The row a drop ended on: its hover opens nothing until the pointer has left it.
+  const held = useRef<number | null>(null);
   const slot = hasCheck(item.items);
   const picked = sub ? item.items[sub.key] : undefined;
   const { onReorder } = item;
@@ -104,9 +107,10 @@ function GroupSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<Menu
     setDrag(null);
   };
   // Escape cancels the drag and keeps the menu open: the menu's own Escape (close) must not see it.
+  // The press is still down: its release and click are swallowed, or they would land on the row under the pointer.
   useEffect(() => {
     if (!dragging) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); stop(); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); swallowPress(); stop(); } };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [dragging]);
@@ -117,11 +121,13 @@ function GroupSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<Menu
     const rows = [...menu.querySelectorAll<HTMLElement>(ROW_ITEM)].filter((r) => r.closest('[role="menu"]') === menu).slice(0, movable);
     const grip = e.currentTarget;
     try { grip.setPointerCapture?.(e.pointerId); } catch { /* a synthetic pointer has nothing to capture */ }
-    press.current = { from: i, startY: e.clientY, started: false, rects: rows.map((r) => { const b = r.getBoundingClientRect(); return { top: b.top, bottom: b.bottom }; }), panelTop: menu.getBoundingClientRect().top, scroll: menu.scrollTop, grip, pointerId: e.pointerId };
+    press.current = { from: i, startY: e.clientY, started: false, to: i, rows, menu, grip, pointerId: e.pointerId };
   };
   const onMove = (e: ReactPointerEvent<HTMLElement>) => {
     const p = press.current;
     if (!p) return;
+    // The button was let go where this grip could not see it.
+    if (e.buttons === 0) { stop(); return; }
     const raw = e.clientY - p.startY;
     if (!p.started) {
       if (Math.abs(raw) < DRAG_PX) return;
@@ -129,20 +135,28 @@ function GroupSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<Menu
       // Hover intent is ignored for the drag, and an open Column submenu closes.
       dismiss();
     }
-    const here = p.rects[p.from]!;
-    const dy = Math.min(Math.max(raw, p.rects[0]!.top - here.top), p.rects[p.rects.length - 1]!.bottom - here.bottom);
+    // Measured on every move: the menu can scroll or move under the pointer.
+    const rects = p.rows.map((r) => r.getBoundingClientRect());
+    const here = rects[p.from]!;
+    const dy = Math.min(Math.max(raw, rects[0]!.top - here.top), rects[rects.length - 1]!.bottom - here.bottom);
     // The slot follows the pointer, not the clamped row: dragging past the last row lands in the last place.
     const centre = (here.top + here.bottom) / 2 + raw;
-    const to = p.rects.filter((r, k) => k !== p.from && (r.top + r.bottom) / 2 < centre).length;
-    const edge = to <= p.from ? p.rects[to]!.top : p.rects[to]!.bottom;
-    setDrag({ from: p.from, dy, to, line: edge - p.panelTop + p.scroll });
+    const to = rects.filter((r, k) => k !== p.from && (r.top + r.bottom) / 2 < centre).length;
+    p.to = to;
+    const edge = to <= p.from ? rects[to]!.top : rects[to]!.bottom;
+    setDrag({ from: p.from, dy, to, line: edge - p.menu.getBoundingClientRect().top + p.menu.scrollTop });
   };
-  const onUp = () => {
+  const onUp = (e: ReactPointerEvent<HTMLElement>) => {
     const p = press.current;
     if (!p) return;
-    const was = p.started ? drag : null;
+    // The slot is read from the press, not from state: a release right after a move has not re-rendered yet.
+    const { from, to, started } = p;
+    if (started) {
+      const at = p.rows.findIndex((r) => { const b = r.getBoundingClientRect(); return e.clientY >= b.top && e.clientY < b.bottom; });
+      held.current = at >= 0 ? at : null;
+    }
     stop();
-    if (was && was.to !== was.from) onReorder?.(was.from, was.to);
+    if (started && to !== from) onReorder?.(from, to);
   };
   const onKeys = (e: ReactKeyboardEvent<HTMLElement>) => {
     if (!onReorder || !e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
@@ -164,7 +178,7 @@ function GroupSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<Menu
     const on = i < movable;
     return (
       <span data-grip="" data-off={on ? undefined : ''} className="dm-menu-grip" onMouseDown={on ? (e) => e.preventDefault() : undefined}
-        onPointerDown={on ? onDown(i) : undefined} onPointerMove={on ? onMove : undefined} onPointerUp={on ? onUp : undefined} onPointerCancel={on ? stop : undefined}
+        onPointerDown={on ? onDown(i) : undefined} onPointerMove={on ? onMove : undefined} onPointerUp={on ? onUp : undefined} onPointerCancel={on ? stop : undefined} onLostPointerCapture={on ? stop : undefined}
         onClick={on ? (e) => e.stopPropagation() : undefined}>
         <EllipsisVertical className="size-4" />
       </span>
@@ -179,7 +193,7 @@ function GroupSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<Menu
             const moving = drag?.from === i;
             return (
               <ItemRow key={i} item={it} slot={slot} expanded={sub?.key === i} close={close} onOpen={(r) => open(i, r, true)}
-                onHover={(r) => { if (!press.current?.started) hoverRow(i, r); }} hoverOther={() => { if (!press.current?.started) hoverOther(); }} leaveRow={leaveRow}
+                onHover={(r) => { if (!press.current?.started && held.current !== i) hoverRow(i, r); }} hoverOther={() => { if (!press.current?.started) hoverOther(); }} leaveRow={() => { if (held.current === i) held.current = null; leaveRow(); }}
                 glyph={onReorder ? grip(it, i) : undefined} description={onReorder && i < movable ? MOVE_HINT : undefined}
                 style={moving ? { transform: `translateY(${drag!.dy}px)`, position: 'relative', zIndex: 1, background: 'var(--menu-hover)', boxShadow: '0 1px 3px rgba(60, 64, 67, .3)' } : undefined} />
             );

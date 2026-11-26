@@ -351,6 +351,10 @@ test('sankey: a mart that is off the path stays out of the menus, and a mart on 
   await submenu('Column 1');
   const sub = await screen.findByRole('menu', { name: 'Column 1' });
   expect(within(sub).getAllByRole('menuitem').map((el) => el.textContent)).toEqual(['Orders', 'Products', 'Countries', 'Customers']);
+  await userEvent.keyboard('{Escape}{Escape}');
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  // Customers has no metric of its own, and its Count Unique needs a column on the grid.
+  expect(within(await screen.findByRole('menu', { name: 'Metric' })).queryByRole('menuitem', { name: 'Customers' })).toBeNull();
 });
 
 test('a metric of a mart on the path that shows no column is listed, and picking it adds its column', async () => {
@@ -464,7 +468,7 @@ const colRow = (menu: HTMLElement, n: number) => within(menu).getByRole('menuite
 const gripOf = (menu: HTMLElement, n: number) => colRow(menu, n).querySelector<HTMLElement>('[data-grip]')!;
 const y = (n: number) => 100 + (n - 1) * ROW_H + ROW_H / 2;
 const press = (grip: HTMLElement, at: number) => fireEvent.pointerDown(grip, { pointerId: 1, button: 0, clientY: at });
-const move = (grip: HTMLElement, at: number) => fireEvent.pointerMove(grip, { pointerId: 1, clientY: at });
+const move = (grip: HTMLElement, at: number) => fireEvent.pointerMove(grip, { pointerId: 1, buttons: 1, clientY: at });
 const release = (grip: HTMLElement, at: number) => fireEvent.pointerUp(grip, { pointerId: 1, clientY: at });
 const orderTitles = () => [...titles()].map((t) => t.textContent);
 
@@ -582,4 +586,71 @@ test('sankey: Alt+ArrowDown moves the focused column down one place, focus stays
   // A plain arrow still moves focus.
   fireEvent.keyDown(colRow(menu, 1), { key: 'ArrowDown' });
   expect(document.activeElement).toBe(colRow(menu, 2));
+});
+
+test('sankey: a flick (move and release with no render in between) saves the slot the last move marked', async () => {
+  layoutRows();
+  const t = await charts(orderSaved);
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  const menu = await columnsMenu();
+  const grip = gripOf(menu, 1);
+  press(grip, y(1));
+  const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+  env.IS_REACT_ACT_ENVIRONMENT = false;
+  try {
+    // Native dispatches outside act: React has not re-rendered between the move and the release.
+    grip.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, buttons: 1, clientY: y(3) + 10 }));
+    grip.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientY: y(3) + 10 }));
+  } finally { env.IS_REACT_ACT_ENVIRONMENT = true; }
+  await waitFor(() => expect(savedDims(t)).toEqual(['is_gift', 'products__title', 'status']));
+});
+
+test('sankey: a move with no button down ends the drag, and a lost pointer capture ends it too', async () => {
+  layoutRows();
+  const t = await charts(orderSaved);
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  const menu = await columnsMenu();
+  const grip = gripOf(menu, 1);
+  press(grip, y(1));
+  move(grip, y(2));
+  expect(menu.querySelector('[data-drop-line]')).not.toBeNull();
+  fireEvent.pointerMove(grip, { pointerId: 1, buttons: 0, clientY: y(3) });
+  expect(menu.querySelector('[data-drop-line]')).toBeNull();
+  press(grip, y(1));
+  move(grip, y(2));
+  fireEvent.lostPointerCapture(grip, { pointerId: 1 });
+  expect(menu.querySelector('[data-drop-line]')).toBeNull();
+  expect(t.puts).not.toHaveBeenCalled();
+});
+
+test('sankey: after Escape cancels a drag, the release and click open no submenu', async () => {
+  layoutRows();
+  await charts(orderSaved);
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  const menu = await columnsMenu();
+  const grip = gripOf(menu, 1);
+  press(grip, y(1));
+  move(grip, y(3));
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+  release(colRow(menu, 3), y(3));
+  // The click of the same press, which the browser sends on the row now under the pointer.
+  fireEvent.click(colRow(menu, 3), { detail: 1 });
+  expect(screen.queryByRole('menu', { name: 'Column 3' })).toBeNull();
+});
+
+test('sankey: after a drop, the row under the pointer opens its submenu only once the pointer has left it', async () => {
+  layoutRows();
+  await charts(orderSaved);
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  const menu = await columnsMenu();
+  const grip = gripOf(menu, 1);
+  press(grip, y(1));
+  move(grip, y(3));
+  release(grip, y(3));
+  fireEvent.mouseEnter(colRow(menu, 3));
+  await new Promise((r) => setTimeout(r, 200));
+  expect(screen.queryByRole('menu', { name: 'Column 3' })).toBeNull();
+  fireEvent.mouseLeave(colRow(menu, 3));
+  fireEvent.mouseEnter(colRow(menu, 3));
+  expect(await screen.findByRole('menu', { name: 'Column 3' })).toBeInTheDocument();
 });
