@@ -118,7 +118,7 @@ test('Charts: the config menu opens with Add chart and Charts, a chart’s menu 
   await expect(data(page).locator('section[data-chart-kind="Pie"]')).toHaveCount(2);
 });
 
-test('the filter badge lists the filtered fields under Remove filters, and Remove filters takes both off in one Undo step', async ({ page }) => {
+test('the filter badge lists the filtered fields, then Remove filters, and Remove filters takes both off in one Undo step', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   const filter = async (column: string, value: string, operator?: string) => {
     const icon = data(page).getByLabel(`Column menu ${column}`, { exact: true });
@@ -141,7 +141,7 @@ test('the filter badge lists the filtered fields under Remove filters, and Remov
   await expect.poll(rows).toBe(5);
   await badge.click();
   const list = page.getByRole('menu').filter({ has: page.getByRole('menuitem', { name: 'Remove filters' }) });
-  await expect(list.getByRole('menuitem').first()).toHaveText('Remove filters');
+  await expect(list.getByRole('menuitem').last()).toHaveText('Remove filters');
   await expect(list.getByRole('menuitem', { name: /^Orders · / })).toHaveCount(2);
   await list.getByRole('menuitem', { name: 'Remove filters' }).click();
   await expect(data(page).getByRole('button', { name: /^\d+ filters?$/ })).toHaveCount(0);
