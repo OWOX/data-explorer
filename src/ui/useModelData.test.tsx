@@ -231,3 +231,44 @@ test('a recount dropped from the queue because its card left view is no longer d
   expect(result.current.counts.get('m0')).toEqual({ state: 'ok', value: 7, stale: true });
   expect(traverseData).toHaveBeenCalledTimes(12);
 });
+
+test('an offered count replaces a queued read: it never runs, and the card shows the value', async () => {
+  const ids = Array.from({ length: 6 }, (_, i) => `m${i}`);
+  const releases: (() => void)[] = [];
+  const called: string[] = [];
+  const traverseData = vi.fn(async (id: string) => { called.push(id); await new Promise<void>((r) => releases.push(r)); return traversalOf([{ 'Unique Count': 7 }]); });
+  const { result } = renderHook(() => useCardStatus(modelOf(ids), ids, 0), { wrapper: setup(traverseData as never) });
+  act(() => ids.forEach((id) => result.current.request(id))); // 4 in flight, m4 and m5 queued
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
+  act(() => result.current.offer('m5', 99));
+  expect(result.current.counts.get('m5')).toEqual({ state: 'ok', value: 99 });
+  for (let i = 0; i < 20; i++) { act(() => releases.splice(0).forEach((r) => r())); await new Promise((r) => setTimeout(r, 5)); }
+  await waitFor(() => expect(result.current.counts.get('m4')).toEqual({ state: 'ok', value: 7 }));
+  expect(called).not.toContain('m5');
+  expect(result.current.counts.get('m5')).toEqual({ state: 'ok', value: 99 });
+});
+
+test('an offered count is not overwritten by a read already running, and a later request reads nothing', async () => {
+  const releases: (() => void)[] = [];
+  const traverseData = vi.fn(async () => { await new Promise<void>((r) => releases.push(r)); return traversalOf([{ 'Unique Count': 7 }]); });
+  const { result } = renderHook(() => useCardStatus(modelOf(['a']), ['a'], 0), { wrapper: setup(traverseData as never) });
+  act(() => result.current.request('a'));
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
+  act(() => result.current.offer('a', 99));
+  act(() => releases.splice(0).forEach((r) => r()));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 99 });
+  act(() => result.current.request('a'));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(traverseData).toHaveBeenCalledTimes(1);
+});
+
+test('after an offer, request reads nothing', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
+  const { result } = renderHook(() => useCardStatus(modelOf(['a']), ['a'], 0), { wrapper: setup(traverseData) });
+  act(() => result.current.offer('a', 5));
+  act(() => result.current.request('a'));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(traverseData).not.toHaveBeenCalled();
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 5 });
+});

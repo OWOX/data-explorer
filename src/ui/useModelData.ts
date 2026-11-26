@@ -113,6 +113,16 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
     enqueue(id, before !== undefined);
   }, [enqueue]);
 
+  // A count the grid already has for this card: no read is needed for it. A queued read is dropped, a running one is
+  // ignored when it ends (it is billed anyway), and the card's own request on scroll-in will not read again this generation.
+  const offer = useCallback((id: string, value: number) => {
+    seqs.current.latest.set(id, ++seqs.current.next);
+    queue.current = queue.current.filter((q) => q.id !== id);
+    asked.current.set(id, generation.current);
+    setCounts((c) => new Map(c).set(id, { state: 'ok', value }));
+    void counter.store(id, value);
+  }, [counter]);
+
   const key = visibleIds.join('|');
   // A layout effect, so a card that just mounted and asks from its own effect sees the new set.
   useLayoutEffect(() => { visible.current = visibleIds; });
@@ -141,5 +151,5 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
 
   const shown = new Map<string, CountState>(visibleIds.map((id) => [id, counts.get(id) ?? { state: 'idle' }]));
 
-  return { dq, counts: shown, request, recount: (id: string) => enqueue(id, true) };
+  return { dq, counts: shown, request, offer, recount: (id: string) => enqueue(id, true) };
 }

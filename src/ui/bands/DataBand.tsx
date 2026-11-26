@@ -23,7 +23,7 @@ const HINT_FULL = 'The rows of the selected data mart. Exit full screen to see a
 /** A key hidden for reporting cannot be filtered on, so a row cannot be opened: the hint does not offer it. */
 const HINT_NO_OPEN = 'The rows of the selected data mart.';
 
-export function DataBand({ model, folded, onFold, loading = null, fullScreen, onMatched }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null; fullScreen?: { on: boolean; onToggle: () => void }; /** Told how many records of each data mart of the report the filters and slices keep, for the cards; null when the grid goes away. */ onMatched?: (matched: Matched | null) => void }) {
+export function DataBand({ model, folded, onFold, loading = null, fullScreen, onMatched, onCount, onRecount }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null; fullScreen?: { on: boolean; onToggle: () => void }; /** Told how many records of each data mart of the report the filters and slices keep, for the cards; null when the grid goes away. */ onMatched?: (matched: Matched | null) => void; /** The grid's total for the plain, unfiltered main mart: the card's record count. */ onCount?: (martId: string, n: number) => void; /** The grid's Refresh when its own total cannot refresh the card: the card is counted again. */ onRecount?: (martId: string) => void }) {
   useFillHeight('band-data');
   const [{ selection, grids }, dispatch] = useStore();
   const { martId } = selection;
@@ -38,6 +38,8 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen, on
   const [rows, setRows] = useState<{ id: string; label: string; grouped: boolean; noKey: NoKey; stale: boolean } | null>(null);
   const showRows = useCallback((label: string | null, grouped = false, noKey: NoKey = false, stale = false) => { if (gridId) setRows(label === null ? null : { id: gridId, label, grouped, noKey, stale }); }, [gridId]);
   const showMatched = useCallback((byPath: ReadonlyMap<string, number> | null, stale = false) => { if (gridId) onMatched?.(byPath && { martId: gridId, byPath, stale }); }, [gridId, onMatched]);
+  const showTotal = useCallback((n: number) => { if (gridId) onCount?.(gridId, n); }, [gridId, onCount]);
+  const recountCard = useCallback(() => { if (gridId) onRecount?.(gridId); }, [gridId, onRecount]);
   const save = useCallback((grid: GridState, edit = false) => { if (gridId) dispatch({ type: edit ? 'editGrid' : 'saveGrid', martId: gridId, grid }); }, [dispatch, gridId]);
 
   const hold = useCallback(() => { if (gridId) dispatch({ type: 'holdGrid', martId: gridId }); }, [dispatch, gridId]);
@@ -65,7 +67,7 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen, on
         <p className="dm-muted p-2 text-sm">You do not have access to this data mart</p>
       ) : (
         <ConfigMenuSlot.Provider value={slot}>
-          <MartGrid key={gridMart.id} martId={gridMart.id} model={model} seed={{ filters: selection.filters, saved: grids[gridMart.id] }} onChange={save} onHold={hold} onRebase={rebase} onRelease={release} onRows={showRows} onMatched={showMatched} paused={held} />
+          <MartGrid key={gridMart.id} martId={gridMart.id} model={model} seed={{ filters: selection.filters, saved: grids[gridMart.id] }} onChange={save} onHold={hold} onRebase={rebase} onRelease={release} onRows={showRows} onMatched={showMatched} onTotal={showTotal} onRecount={recountCard} paused={held} />
         </ConfigMenuSlot.Provider>
       )}
     </Band>
