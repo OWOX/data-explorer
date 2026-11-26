@@ -358,6 +358,8 @@ test('a long bubble of a node in the last column stays inside a 500px wide viewp
   const b = (await bubble.boundingBox())!;
   expect(b.x).toBeGreaterThanOrEqual(0);
   expect(b.x + b.width).toBeLessThanOrEqual(500);
+  // The Copy button shows while the pointer is on the bubble.
+  await bubble.hover();
   const c = (await bubble.getByRole('button', { name: 'Copy to clipboard' }).boundingBox())!;
   expect(c.x).toBeGreaterThanOrEqual(0);
   expect(c.x + c.width).toBeLessThanOrEqual(500);
@@ -381,6 +383,8 @@ test('a fallback copy with the clipboard API gone keeps the bubble and the scrol
   await node.hover();
   await expect(bubble).toBeVisible();
   const before = await scrolls();
+  // The Copy button shows while the pointer is on the bubble (hover, not focus: the toolbar button keeps focus).
+  await bubble.hover();
   await bubble.getByRole('button', { name: 'Copy to clipboard' }).click();
   // The check or "Copy failed" shows (the page may or may not allow execCommand), and the bubble stays.
   await expect(bubble.locator('[data-copied], [role="alert"]')).toHaveCount(1);
