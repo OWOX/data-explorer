@@ -41,7 +41,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
     ctx.collections<{ columns: string[]; at: string; aggregations?: unknown; gridView?: unknown }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: opts.columns ?? COLUMNS, at: 'then', ...(opts.uc ? { gridView: { fl: [], s: null, l: 100, uc: [''] } } : {}), ...(opts.aggregations ? { aggregations: opts.aggregations } : {}) }),
     opts.charts ? ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', opts.charts) : undefined,
   ]);
-  return { queries, puts, gridPuts, seeded, unmount: () => cleanup(), view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
+  return { ctx, queries, puts, gridPuts, seeded, unmount: () => cleanup(), view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
 }
 
 const lastGrid = (t: { gridPuts: { mock: { calls: unknown[][] } } }) => t.gridPuts.mock.calls.at(-1)![1] as { columns: string[]; aggregations?: { column: string; function: string }[] };
@@ -1056,4 +1056,119 @@ test('resize mode stays on while the mouse is off the charts, and Done resizing 
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Done resizing' }));
   expect(handle('Pie', 'e')).toBeNull();
   expect(handle('Time series', 'e')).toBeNull();
+});
+
+// Chart settings are Undo steps: the header's Undo and Redo move them like a grid edit.
+const undoBtn = () => screen.getByRole('button', { name: 'Undo' });
+const redoBtn = () => screen.getByRole('button', { name: 'Redo' });
+const lastSaved = (t: { puts: { mock: { calls: unknown[][] } } }) => t.puts.mock.calls.at(-1)![1] as ChartSettings;
+const pies = () => data().querySelectorAll('section[data-chart-kind="Pie"]').length;
+
+test('Hide is an Undo step: Undo brings the chart back and saves it, Redo hides it again', async () => {
+  const t = await charts({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'p', kind: 'pie' }] } });
+  await userEvent.click(await screen.findByRole('button', { name: 'Pie options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Hide' }));
+  await waitFor(() => expect(pies()).toBe(0));
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(pies()).toBe(1));
+  await waitFor(() => expect(lastSaved(t).charts!.find((c) => c.id === 'p')!.hidden).toBeFalsy());
+  await userEvent.click(redoBtn());
+  await waitFor(() => expect(pies()).toBe(0));
+  await waitFor(() => expect(lastSaved(t).charts!.find((c) => c.id === 'p')!.hidden).toBe(true));
+});
+
+test('a scorecard metric is an Undo step', async () => {
+  const t = await charts();
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Amount · Sum']));
+  await userEvent.click(within(group('orders')!).getByRole('button', { name: 'Amount · Sum options' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Count Unique' }));
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Count Unique']));
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Amount · Sum']));
+  await waitFor(() => expect(lastSaved(t).scorecards?.metrics ?? {}).toEqual({}));
+  await userEvent.click(redoBtn());
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Count Unique']));
+});
+
+test('a chart type change is an Undo step', async () => {
+  await charts({ charts: { charts: [{ id: 'p', kind: 'pie' }] } });
+  await userEvent.click(await screen.findByRole('button', { name: 'Pie options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Ranked bar' }));
+  await waitFor(() => expect(pies()).toBe(0));
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(pies()).toBe(1));
+});
+
+test('a resize drag is one Undo step', async () => {
+  const t = await charts({ charts: { charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] } });
+  await startResize();
+  vi.spyOn(panelOf('Pie'), 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 480, height: 288 } as DOMRect);
+  fireEvent.pointerDown(handle('Pie', 'se')!, { button: 0, pointerId: 1, clientX: 480, clientY: 288 });
+  fireEvent.pointerMove(window, { pointerId: 1, clientX: 480 + 59, clientY: 288 - 50 });
+  fireEvent.pointerUp(window, { pointerId: 1 });
+  await waitFor(() => expect(lastSaved(t).charts![0]!.size).toEqual({ cols: 22, rows: 10 }));
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(lastSaved(t).charts![0]!.size).toEqual({ cols: 20, rows: 12 }));
+  await waitFor(() => expect(panelOf('Pie').style.height).toBe('288px'));
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(lastSaved(t).charts![0]!.size).toEqual({ cols: 20, rows: 12 }));
+  expect(undoBtn()).toBeDisabled();
+});
+
+test('arrow-key resizes of one chart are one Undo step; a drag after them is another', async () => {
+  const t = await charts({ charts: { charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] } });
+  await startResize();
+  vi.spyOn(panelOf('Pie'), 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 480, height: 288 } as DOMRect);
+  handle('Pie', 's')!.focus();
+  await userEvent.keyboard('{ArrowDown}{ArrowUp}{ArrowDown}');
+  handle('Pie', 'e')!.focus();
+  await userEvent.keyboard('{ArrowRight}');
+  expect(lastSaved(t).charts![0]!.size).toEqual({ cols: 21, rows: 13 });
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(lastSaved(t).charts![0]!.size).toEqual({ cols: 20, rows: 12 }));
+  // One step only: the next Undo is the selection's own entry, and the size stays.
+  await userEvent.click(undoBtn());
+  expect(lastSaved(t).charts![0]!.size).toEqual({ cols: 20, rows: 12 });
+  expect(undoBtn()).toBeDisabled();
+});
+
+test('a pick of a hidden field is one Undo step with the column it shows: Undo hides it and takes the pick back, Redo does both again', async () => {
+  const t = await charts({ columns: ['id', 'status', 'amount', 'created_at'] });
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  await userEvent.click(panel('Time series'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Stack by' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'is_gift' }));
+  await waitFor(() => expect(lastGrid(t).columns).toContain('is_gift'));
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(lastGrid(t).columns).not.toContain('is_gift'));
+  await waitFor(() => expect(lastSaved(t).charts?.find((c) => c.id === 'time-series')?.stack).toBeUndefined());
+  await userEvent.click(redoBtn());
+  await waitFor(() => expect(lastGrid(t).columns).toContain('is_gift'));
+  await waitFor(() => expect(lastSaved(t).charts!.find((c) => c.id === 'time-series')!.stack).toBe('is_gift'));
+});
+
+test('hiding a column that drops a card pick is one Undo step: Undo shows the column and the pick again', async () => {
+  const t = await charts({ charts: { scorecards: { metrics: { id: 'amount' }, dates: { amount: 'created_at' } } } });
+  await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
+  const menu = await openColumnMenu(within(data()), 'created_at');
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
+  await waitFor(() => expect(lastSaved(t).scorecards?.dates).toEqual({}));
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(lastGrid(t).columns).toContain('created_at'));
+  await waitFor(() => expect(lastSaved(t).scorecards?.dates).toEqual({ amount: 'created_at' }));
+});
+
+test('hiding a column with Charts closed prunes the server doc, not an older copy this tab kept (another tab saved since)', async () => {
+  const t = await charts({ charts: { scorecards: { dates: { amount: 'created_at' } } } });
+  await waitFor(() => expect(group('orders')).not.toBeNull());
+  await userEvent.click(radio('Table'));
+  await waitFor(() => expect(group('orders')).toBeNull());
+  // Another tab saved a newer doc.
+  await t.ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', { scorecards: { dates: { amount: 'created_at' }, hidden: ['from-tab-2'] } });
+  t.puts.mockClear();
+  const menu = await openColumnMenu(within(data()), 'created_at');
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
+  await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { scorecards: { dates: {}, hidden: ['from-tab-2'] } }));
 });

@@ -6,3 +6,8 @@ it('splits into lower-case words of two or more characters', () => {
 it('counts distinct shared words', () => {
   expect(overlap('users users signups', 'Users who signed up: signups')).toBe(2);
 });
+it('matches a plural with its singular in both directions', () => {
+  expect(overlap('topics', 'Problem Topic')).toBe(1);
+  expect(overlap('problem topic', 'Topics')).toBe(1);
+  expect(overlap('bus', 'bu')).toBe(0);
+});

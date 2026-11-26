@@ -17,6 +17,7 @@ import { HeaderSearch, HeaderSearchHint, SmartSearchScope } from './bands/SmartS
 import { TooltipProvider } from './Tooltip';
 import { useJoinSources } from './useJoinSources';
 import { useViewLink } from './useViewLink';
+import { buildJoinTree, statusIds } from '../state/join-tree';
 import { useCardStatus, useModel } from './useModelData';
 
 export function App() {
@@ -136,7 +137,10 @@ function AppBody() {
     () => (model ? computeVisible({ model, selection: state.selection, search: state.search, contextIds: state.contextIds, storageIds, joined, filtered, found: state.found, joinable }) : null),
     [model, state.selection, state.search, state.found, state.contextIds, storageIds, joined, filtered, joinable],
   );
-  const { dq, counts, request, recount } = useCardStatus(model, visible?.ids ?? [], state.modelVersion);
+  // The join tree's marts are counted too: a bare node on the way to a joined mart is on the canvas but not in the band's list.
+  const reportTree = useMemo(() => (mainId ? buildJoinTree(mainId, mainColumns ?? [], joinSources ?? [], mainEmptyPaths) : null), [mainId, mainColumns, joinSources, mainEmptyPaths]);
+  const statusIdList = useMemo(() => statusIds(visible?.ids ?? [], reportTree), [visible, reportTree]);
+  const { dq, counts, request, recount } = useCardStatus(model, statusIdList, state.modelVersion);
 
   // There is always a selected mart after load: the first load picks the focus mart, and a mart or
   // source a refresh took away is dropped from the selection (no history entry, so Back is not trapped).

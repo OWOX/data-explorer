@@ -5,7 +5,7 @@ import type { Aggregation, DateBucket } from '../model/aggregation';
 import type { Format } from '../format/formats';
 import type { Field, Schema } from '../model/types';
 import type { TraverseFilter } from '../sdk/types';
-import { useServices } from '../state/store';
+import { useServices, useStore } from '../state/store';
 import { ErrorBox } from '../ui/ErrorBox';
 import { Skeleton } from '../ui/Skeleton';
 import { chartFields, menuOf } from './fields';
@@ -41,7 +41,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   /** Applies the clicked mark's filters to the grid, as a filter edit (one Undo step). */
   onFilter: (add: ColumnFilter[]) => void;
   /** Shows these columns in the grid (added to the shown ones): a menu choice of a field that is not shown has to put it on screen. */
-  onShowColumns: (names: string[], buckets?: Readonly<Record<string, DateBucket>>) => void;
+  onShowColumns: (names: string[], buckets?: Readonly<Record<string, DateBucket>>) => boolean | void;
   /** Set while the grid cannot be grouped (a shown array, JSON or struct column with a function on another): the body says why and reads nothing. */
   blockedNote?: string | null;
   /** The config menu: the grid builds it and this body places it, once, on every return path, so an open menu survives a gate or an empty hint coming and going. The Add chart and Charts rows are passed once the saved settings have loaded. */
@@ -50,20 +50,36 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   pruneRef?: { current: ((hidden: string[]) => boolean) | null };
 }) {
   const { chartSettings } = useServices();
+  const [store, dispatch] = useStore();
   const [settings, setSettings] = useState<ChartSettings | null>(null);
   // Changes apply over the latest doc (not a render's copy), so two quick changes both land.
   const latest = useRef<ChartSettings | null>(null);
   useEffect(() => {
     let live = true;
-    chartSettings.load(martId).then((s) => { if (live) { latest.current = s; setSettings(s); } });
+    chartSettings.load(martId).then((loaded) => {
+      if (!live) return;
+      // The saved doc always wins on a mount: an Undo made while this was closed was saved when it happened, and a copy kept since may be older than a save from another tab.
+      latest.current = loaded;
+      setSettings(loaded);
+      dispatch({ type: 'saveCharts', martId, settings: loaded });
+    });
     return () => { live = false; };
-  }, [chartSettings, martId]);
+  }, [chartSettings, martId, dispatch]);
+  // Undo and Redo put other settings in the store: they come on screen (the store saves them). A member edit stores the same object it holds, so it is not seen here.
+  const held = store.charts[martId];
+  useEffect(() => {
+    if (!held || !latest.current || held === latest.current) return;
+    latest.current = held;
+    setSettings(held);
+  }, [held]);
   // Only called once the doc has loaded (the menu is not shown before), so a change never replaces what was saved.
-  const change = (edit: (cur: ChartSettings) => ChartSettings) => {
+  // A member's edit is one Undo step. `stage` is a write that goes with a grid edit recorded next (a field shown by a pick, the prune of a hidden column): it is part of that step. `fold` joins consecutive edits into one step.
+  const change = (edit: (cur: ChartSettings) => ChartSettings, how: { stage?: boolean; fold?: string } = {}) => {
     if (!latest.current) return;
     const next: ChartSettings = edit(latest.current);
     latest.current = next;
     setSettings(next);
+    dispatch(how.stage ? { type: 'stageCharts', martId, settings: next } : { type: 'editCharts', martId, settings: next, ...(how.fold ? { fold: how.fold } : {}) });
     chartSettings.save(martId, next);
   };
 
@@ -96,7 +112,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   useEffect(() => {
     if (!pruneRef) return;
     // False while the saved settings are not loaded: the grid then prunes through the store, as when Charts is closed.
-    pruneRef.current = (hidden) => { const gone = new Set(hidden); if (!latest.current) return false; if (dropPicksOf(latest.current, gone) !== latest.current) change((cur) => dropPicksOf(cur, gone)); return true; };
+    pruneRef.current = (hidden) => { const gone = new Set(hidden); if (!latest.current) return false; if (dropPicksOf(latest.current, gone) !== latest.current) change((cur) => dropPicksOf(cur, gone), { stage: true }); return true; };
     return () => { pruneRef.current = null; };
   });
   // A resize re-renders this body on every step: the fields and the resolved choices only change with their inputs, so a resize rebuilds neither.
@@ -132,16 +148,16 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   const showPicked = (spec: ChartSpec, p: Partial<ChartSpec>) => {
     const named = [p.measure, p.measure2, p.date, p.dimension, p.dimension2, p.stack, ...(p.dimensions ?? [])];
     const missing = [...new Set(named.filter((n): n is string => !!n && !shown.includes(n) && schemaNames.has(n)))];
-    if (missing.length === 0) return;
+    if (missing.length === 0) return false;
     const chosen = p.bucket ?? spec.bucket;
     const unit = chosen && chosen !== 'AUTO' ? chosen : bucket;
-    onShowColumns(missing, p.date && unit ? { [p.date]: unit } : undefined);
+    return onShowColumns(missing, p.date && unit ? { [p.date]: unit } : undefined) !== false;
   };
   // A card's metric or date that is not a shown column is shown with the pick (a date by the charts' bucket when it is a concrete one; Auto is the grid's Month default, as the card resolves its own).
   const leadBucket = lead?.bucket ?? 'AUTO';
   const showCardPick = (name: string, isDate: boolean) => {
-    if (shown.includes(name) || !schemaNames.has(name)) return;
-    onShowColumns([name], isDate && leadBucket !== 'AUTO' ? { [name]: leadBucket } : undefined);
+    if (shown.includes(name) || !schemaNames.has(name)) return false;
+    return onShowColumns([name], isDate && leadBucket !== 'AUTO' ? { [name]: leadBucket } : undefined) !== false;
   };
   // `change` reads the latest-doc ref, but the rows only call it from handlers, never while rendering.
   // eslint-disable-next-line react-hooks/refs
@@ -173,8 +189,8 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
             <div className="flex items-start gap-1">
               <MartCards martId={martId} mart={cf.marts[i]!} main={g.path === ''} spark={spark} scores={scores} bucket={bucket} autoBucket={leadBucket === 'AUTO'} filter={filter} version={version} paused={idle} joins={joins} hasFilters={hasFilters} formatOf={formatOf}
                 menuMart={menuOf(cf).marts[i]}
-                onMetric={settings ? (id, v) => { showCardPick(v, false); change((cur) => setCardMetric(cur, id, v, cf.marts[i]!)); } : undefined}
-                onDate={settings ? (id, v) => { showCardPick(v, true); change((cur) => setCardDate(cur, id, v, cf.marts[i]!, spark)); } : undefined} onHide={settings ? (id) => change((cur) => hideCard(cur, id)) : undefined} />
+                onMetric={settings ? (id, v) => { const stage = showCardPick(v, false); change((cur) => setCardMetric(cur, id, v, cf.marts[i]!), { stage }); } : undefined}
+                onDate={settings ? (id, v) => { const stage = showCardPick(v, true); change((cur) => setCardDate(cur, id, v, cf.marts[i]!, spark), { stage }); } : undefined} onHide={settings ? (id) => change((cur) => hideCard(cur, id)) : undefined} />
             </div>
           </td>
         ))}
@@ -188,10 +204,10 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
           <div data-chart-panels data-resizing={resizing || undefined} className="dm-chart-panels sticky" style={{ left: GUTTER_PX, width: Math.max(0, scrollerWidth - GUTTER_PX) }}>
             {/* eslint-disable-next-line react-hooks/refs -- `change` is only called from handlers */}
             {drawn.map(({ spec, def, r }, i) => r ? (
-              <ChartFrameContext key={spec.id} value={{ size: spec.size ?? NO_SIZE, resizing, cancelDrag, onResize: (size) => change((cur) => patchChart(cur, spec.id, { size })) }}>
+              <ChartFrameContext key={spec.id} value={{ size: spec.size ?? NO_SIZE, resizing, cancelDrag, onResize: (size, keys) => change((cur) => patchChart(cur, spec.id, { size }), keys ? { fold: `size:${spec.id}` } : {}) }}>
               <def.Panel martId={martId} cf={cf} title={resolved[i]!.title!} r={r} spark={spark} filter={filter} version={version} idle={idle}
                 hasFilters={hasFilters} formatOf={formatOf} ready={!!settings} tail={tailItems({ cf, spec, change, resizing, onResizing: setResizing })}
-                onChange={(p: Partial<ChartSpec>) => { showPicked(spec, p); change((cur) => patchChart(cur, spec.id, p)); }} onFilter={onFilter} />
+                onChange={(p: Partial<ChartSpec>) => { const stage = showPicked(spec, p); change((cur) => patchChart(cur, spec.id, p), { stage }); }} onFilter={onFilter} />
               </ChartFrameContext>
             ) : null)}
             {resizing && <p role="status" className="sr-only">Resizing charts: drag an edge, or focus a handle and use the arrow keys. Escape ends it.</p>}
