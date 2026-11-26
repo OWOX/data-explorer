@@ -267,6 +267,17 @@ describe('the rule badges next to the config button', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '1 filter' })).toHaveFocus());
     await new Promise((r) => setTimeout(r, 300));
     expect(screen.queryByRole('tooltip')).toBeNull();
+    // A pointer arriving later waits out the open delay, as on any hover (the click that opened the list left it on the badge).
+    await userEvent.unhover(screen.getByRole('button', { name: '1 filter' }));
+    await userEvent.hover(screen.getByRole('button', { name: '1 filter' }));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Orders · status: equals paid');
+    // Focus that later arrives from Tab opens it as before.
+    await userEvent.unhover(screen.getByRole('button', { name: '1 filter' }));
+    await userEvent.tab();
+    await userEvent.tab({ shift: true });
+    expect(screen.getByRole('button', { name: '1 filter' })).toHaveFocus();
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Orders · status');
   });
 
   test('Remove filters takes every filter in one Undo step, closes the list and focuses the next badge, else the config button', async () => {
