@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { describe, vi } from 'vitest';
 import { stubCtx } from './test-ctx';
 import { createChartSettings } from './chart-settings';
 import type { Ctx } from '../sdk/types';
@@ -94,4 +94,50 @@ test('a load waits for the same mart\'s pending save, and not for another mart\'
   expect(done).toBe(false);
   release();
   expect(await loadM).toEqual(s);
+});
+
+describe('save queue', () => {
+  afterEach(() => vi.useRealTimers());
+  const gated = () => {
+    const puts: { id: string; doc: unknown; release: () => void }[] = [];
+    const store = new Map<string, unknown>();
+    const cs = createChartSettings(ctxWith(async (id) => (store.has(id) ? { document: store.get(id) } : null), (id, doc) => new Promise<void>((res) => { puts.push({ id, doc, release: () => { store.set(id, doc); res(); } }); })));
+    return { cs, puts };
+  };
+
+  test('a load stops waiting for a save that never settles after 5s, then reads anyway', async () => {
+    vi.useFakeTimers();
+    const { cs } = gated();
+    void cs.save('M', {});
+    let got: unknown;
+    void cs.load('M').then((v) => { got = v; });
+    await vi.advanceTimersByTimeAsync(4900);
+    expect(got).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(got).toEqual({});
+  });
+
+  test('saves while one is in flight coalesce into one more put with the newest doc; a load waits for both', async () => {
+    vi.useFakeTimers();
+    const { cs, puts } = gated();
+    const doc = (n: number) => ({ version: 2 as const, charts: [{ id: 'a', kind: 'pie' as const, size: { cols: n } }] });
+    void cs.save('M', doc(11));
+    await vi.advanceTimersByTimeAsync(0);
+    void cs.save('M', doc(12));
+    void cs.save('M', doc(13));
+    const last = cs.save('M', doc(14));
+    let loaded: unknown;
+    void cs.load('M').then((v) => { loaded = v; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(puts.map((p) => p.doc)).toEqual([doc(11)]);
+    puts[0]!.release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(puts.map((p) => p.doc)).toEqual([doc(11), doc(14)]);
+    expect(loaded).toBeUndefined();
+    puts[1]!.release();
+    await last;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(loaded).toEqual(doc(14));
+    expect(puts).toHaveLength(2);
+  });
 });
