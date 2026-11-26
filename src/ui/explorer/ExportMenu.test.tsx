@@ -227,6 +227,88 @@ describe('the menu', () => {
   });
 });
 
+describe('the menu: opening, closing and focus', () => {
+  const trigger = async () => (await within(data()).findByText('Export')).closest('summary') as HTMLElement;
+  const isOpen = () => !!document.querySelector<HTMLDetailsElement>('details.dm-export')?.open;
+
+  test('the trigger opens the menu, and a second press on it closes it', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const button = await trigger();
+    await userEvent.click(button);
+    expect(isOpen()).toBe(true);
+    await userEvent.click(button);
+    expect(isOpen()).toBe(false);
+  });
+
+  test('ArrowDown from the trigger focuses the first row, and ArrowDown from the last row wraps to the first', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    (await trigger()).focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(screen.getByRole('menuitem', { name: 'Claude' })).toHaveFocus();
+    screen.getByRole('menuitem', { name: 'Create Data Mart' }).focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(screen.getByRole('menuitem', { name: 'Claude' })).toHaveFocus();
+  });
+
+  test('Escape on a row closes the menu and returns focus to the trigger', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const button = await trigger();
+    button.focus();
+    await userEvent.keyboard('{ArrowDown}');
+    await userEvent.keyboard('{Escape}');
+    expect(isOpen()).toBe(false);
+    expect(button).toHaveFocus();
+  });
+
+  test('Escape on the provider link closes the menu and returns focus to the trigger', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const button = await trigger();
+    await userEvent.click(button);
+    screen.getByRole('menuitem', { name: 'Claude' }).focus();
+    await userEvent.keyboard('{ArrowRight}{Escape}');
+    expect(isOpen()).toBe(false);
+    expect(button).toHaveFocus();
+  });
+
+  test.each([
+    'Copy to clipboard',
+    'Create Data Mart',
+  ])('picking %s closes the menu', async (name) => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await trigger());
+    await userEvent.click(await screen.findByRole('menuitem', { name }));
+    expect(isOpen()).toBe(false);
+  });
+
+  test('picking Copy SQL closes the menu', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await userEvent.click(await trigger());
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Copy SQL' })).toBeEnabled());
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Copy SQL' }));
+    expect(isOpen()).toBe(false);
+  });
+
+  test('picking a destination closes the menu', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    await openDialog();
+    expect(isOpen()).toBe(false);
+  });
+});
+
 describe('the export dialog', () => {
   const radios = (dialog: HTMLElement) => within(dialog).getAllByRole('radio').filter((r) => r.getAttribute('name') === 'dm-export-target');
   const labelOf = (r: HTMLElement) => r.closest('label')!.textContent;
