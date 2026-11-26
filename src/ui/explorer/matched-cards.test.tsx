@@ -492,9 +492,10 @@ test('Remove from report: a total counted by a read that joined the removed mart
 });
 
 test('on Refresh the badge keeps its previous number, dimmed and busy, until the new count lands, and adds no read of its own', async () => {
-  const t = setup(withProducts, { slow: isScore });
+  // The score read is held long enough that a slow runner still checks the dimmed badge before the count lands.
+  const t = setup(withProducts, { slow: isScore, slowMs: 1500 });
   await t.mount();
-  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/), { timeout: 4000 });
   const match = () => card('orders')!.querySelector('[data-match]');
   expect(match()).not.toHaveClass('dm-stale');
   expect(match()).not.toHaveAttribute('aria-busy');
@@ -503,7 +504,7 @@ test('on Refresh the badge keeps its previous number, dimmed and busy, until the
   await waitFor(() => expect(t.scoreReads().length).toBe(before + 1));
   expect(match()).toHaveClass('dm-stale');
   expect(match()).toHaveAttribute('aria-busy', 'true');
-  await waitFor(() => expect(match()).not.toHaveClass('dm-stale'), { timeout: 2000 });
+  await waitFor(() => expect(match()).not.toHaveClass('dm-stale'), { timeout: 4000 });
   expect(match()).toHaveTextContent(/% match$/);
   expect(t.scoreReads()).toHaveLength(before + 1);
 });
