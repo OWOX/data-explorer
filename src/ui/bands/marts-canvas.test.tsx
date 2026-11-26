@@ -1253,3 +1253,26 @@ test('while a card is pinned, another card\'s (+) shows its ghosts and the pin\'
   expect(ghostEl('products', 'products')).not.toBeNull();
   expect(ghostEl('countries', 'customers.countries')).toBeNull();
 });
+
+test('canvas cards watch the viewport, not the scrolling box, so a count read waits until the card is on screen', async () => {
+  const roots = new Map<Element, Element | null>();
+  vi.stubGlobal('IntersectionObserver', class {
+    root: Element | null;
+    constructor(_cb: unknown, o: { root: Element | null }) { this.root = o.root; }
+    observe(el: Element) { roots.set(el, this.root); }
+    unobserve() {}
+    disconnect() {}
+  });
+  try {
+    setup();
+    await ready();
+    await toCanvas();
+    await waitFor(() => expect(el('orders')).not.toBeNull());
+    const box = marts().querySelector('.dm-tree-scroll')!;
+    expect(box.closest('[data-scroll-root]')).toBeNull();
+    expect(roots.has(el('orders')!)).toBe(true);
+    expect(roots.get(el('orders')!)).toBeNull();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

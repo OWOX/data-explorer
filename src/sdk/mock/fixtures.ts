@@ -313,7 +313,7 @@ export function demoFixtures(opts: { sheets?: 0 | 1 | 2 } = {}): Fixtures {
       definitionType: s.connectorSourceName ? 'CONNECTOR' : 'SQL',
       connectorSourceName: s.connectorSourceName ?? null,
       dataLastUpdatedAt: updatedOf[s.id] ?? null,
-      fields: s.fields,
+      fields: [...s.fields],
       rows: range(s.count).map((i) => s.row(i, r)),
       dq: dqOf[s.id] ?? { state: 'NEVER_RUN' },
     };

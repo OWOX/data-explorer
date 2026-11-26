@@ -16,7 +16,7 @@ import type { ChartSettings } from './settings';
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
 const COLUMNS = ['id', 'status', 'amount', 'created_at', 'products__price'];
 
-function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[]; calc?: boolean; uc?: boolean; /** Holds the keys read (a HAVING rule's, limit 501) until it resolves. */ hold?: Promise<void>; fixtures?: Fixtures } = {}) {
+function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[]; calc?: boolean; uc?: boolean; /** Holds the keys read (a HAVING rule's, limit 501) until it resolves. */ hold?: Promise<void>; /** While its `current` is set, every read of orders waits for it. */ block?: { current: Promise<void> | null }; fixtures?: Fixtures } = {}) {
   const base = createMockCtx(opts.fixtures ?? demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
@@ -31,7 +31,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
         const d = await (base.owox.getJson as (p: string, ...r: unknown[]) => Promise<{ schema?: { fields?: unknown[] } }>)(path, ...rest);
         return path === '/api/data-marts/orders' ? { ...d, schema: { ...d.schema, fields: [...(d.schema?.fields ?? []), { name: 'net', type: 'NUMERIC', calculated: { level: 'metric' } }] } } : d;
       }) as Ctx['owox']['getJson'] : base.owox.getJson,
-      dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('range failed')); const held = id === 'orders' && opts.hold && o.limit === 501 ? opts.hold : Promise.resolve(); const tr = held.then(() => (id === 'orders' && opts.calc ? real(id, calcOf(o)).then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map((r) => ({ ...r, net: 42 })); } })) : real(id, o))); const map = opts.mapRow; return map ? tr.then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map(map); } })) : tr; } } },
+      dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('range failed')); const held = id === 'orders' && opts.block?.current ? opts.block.current : id === 'orders' && opts.hold && o.limit === 501 ? opts.hold : Promise.resolve(); const tr = held.then(() => (id === 'orders' && opts.calc ? real(id, calcOf(o)).then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map((r) => ({ ...r, net: 42 })); } })) : real(id, o))); const map = opts.mapRow; return map ? tr.then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map(map); } })) : tr; } } },
     collections: <T,>(name: string) => {
       const c = base.collections<T>(name);
       if (name === GRID_COLUMNS_COLLECTION) return { get: (id: string) => c.get(id), put: (id: string, d: T) => { gridPuts(id, d); return c.put(id, d); } };
@@ -1216,6 +1216,30 @@ test('hiding a column with Charts closed prunes the server doc, not an older cop
   const menu = await openColumnMenu(within(data()), 'created_at');
   await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
   await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { scorecards: { dates: {}, hidden: ['from-tab-2'] } }));
+});
+
+describe('a date chart keeps its dimmed drawing while an Auto bucket is read again', () => {
+  for (const [kind, name] of [['timeSeries', 'Time series'], ['line', 'Line']] as const) {
+    test(`${name}: a filter change re-reads the range and the old drawing stays, dimmed`, async () => {
+      const block: { current: Promise<void> | null } = { current: null };
+      await charts({ block, charts: { charts: [{ id: 'c', kind }] } });
+      const chart = () => data().querySelector<HTMLElement>(`section[data-chart-kind="${name}"]`);
+      await waitFor(() => expect(chart()!.querySelector('svg')).not.toBeNull());
+      expect(chart()!.querySelector('[aria-busy]')).toBeNull();
+      let release: () => void = () => {};
+      block.current = new Promise<void>((r) => { release = r; });
+      await openSubmenu(within(data()), 'status', 'Filter');
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.type(within(dialog).getByLabelText('Value'), 'paid');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+      await waitFor(() => expect(chart()!.querySelector('[aria-busy="true"]')).not.toBeNull());
+      expect(chart()!.querySelector('.dm-chart-stale svg')).not.toBeNull();
+      expect(chart()!.querySelector('[aria-label="Loading"]')).toBeNull();
+      release();
+      await waitFor(() => expect(chart()!.querySelector('[aria-busy]')).toBeNull());
+      expect(chart()!.querySelector('svg')).not.toBeNull();
+    });
+  }
 });
 
 describe('a chart reads once it scrolls near the view', () => {
