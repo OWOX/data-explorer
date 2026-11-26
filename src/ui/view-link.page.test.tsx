@@ -233,7 +233,7 @@ describe('copying a link', () => {
     await waitFor(() => expect(box.latest.grids['orders']).toBeDefined());
     await userEvent.click(await screen.findByRole('button', { name: 'Copy link to this view' }));
     await waitFor(() => expect(copied).toHaveLength(1));
-    expect(copied[0].length).toBeLessThanOrEqual(MAX_ROUTE_LENGTH);
+    expect(copied[0]!.length).toBeLessThanOrEqual(MAX_ROUTE_LENGTH);
     expect(await decodeViewLink(copied[0])).not.toHaveProperty('charts');
     expect(await findNotice()).toHaveTextContent('The link was copied without the charts: they make it too long.');
   });
