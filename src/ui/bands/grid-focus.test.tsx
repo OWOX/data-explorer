@@ -48,8 +48,8 @@ async function joinCountriesTwice() {
 test('a mart joined twice is a card per path, each titled with its parent mart', async () => {
   setup();
   await joinCountriesTwice();
-  expect(within(el('countries', 'customers.countries')!).getByText('Countries (Customers)')).toBeInTheDocument();
-  expect(within(el('countries', 'stores.countries')!).getByText('Countries (Stores)')).toBeInTheDocument();
+  expect(within(el('countries', 'customers.countries')!).getByText('Customers > Countries')).toBeInTheDocument();
+  expect(within(el('countries', 'stores.countries')!).getByText('Stores > Countries')).toBeInTheDocument();
   expect(cards().filter((a) => a.dataset.martId === 'countries' && !a.hasAttribute('data-ghost'))).toHaveLength(2);
 });
 
@@ -62,7 +62,7 @@ test('a mart joined through one path reads as its title, and a ghost for a secon
   expect(within(el('countries', 'customers.countries')!).getByText('Countries')).toBeInTheDocument();
   fireEvent.click(el('stores', 'stores')!);
   await waitFor(() => expect(ghost('countries', 'stores.countries')).not.toBeNull());
-  expect(within(ghost('countries', 'stores.countries')!).getByText('Countries (Stores)')).toBeInTheDocument();
+  expect(within(ghost('countries', 'stores.countries')!).getByText('Stores > Countries')).toBeInTheDocument();
 });
 
 test('a click on a joined card removes nothing and shows what joins under it', async () => {
@@ -141,7 +141,7 @@ test('the × on a middle card takes only its own columns; on the bare card it ta
   setup();
   await joinCountriesTwice();
   await userEvent.click(within(el('customers', 'customers')!).getByRole('button', { name: 'Remove Customers from the report' }));
-  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Stores', 'Countries (Customers)', 'Countries (Stores)']));
+  await waitFor(() => expect(groupTitles()).toEqual(['Orders', 'Stores', 'Customers > Countries', 'Stores > Countries']));
   expect(el('customers', 'customers')).not.toBeNull();
   expect(el('countries', 'customers.countries')).not.toBeNull();
   expect(el('countries', 'stores.countries')).not.toBeNull();
