@@ -77,7 +77,8 @@ export function sparkQueryOf(mart: ChartMart, spark: Spark, bucket: DateBucket |
  */
 export function sharedSeriesQuery(cf: ChartFields, spark: Spark, measure: Measure, bucket: DateBucket | null, filter: TraverseFilter[], date: Field): TraverseOptions | null {
   const path = measurePath(measure);
-  const owner = cf.marts.find((m) => m.aliasPath === path);
+  // The sparklines read the shown columns: a measure that is only a field of the mart cannot ride on them.
+  const owner = (cf.shown ?? cf).marts.find((m) => m.aliasPath === path);
   if (!owner || !spark.date || date !== spark.date || sparkDate(owner, spark) !== spark.date) return null;
   const has = measure.kind === 'records' ? owner.hasPk : owner.metrics.some((m) => metricKey(m) === metricKey(measure.metric));
   return has ? sparkQueryOf(owner, spark, bucket, filter) : null;

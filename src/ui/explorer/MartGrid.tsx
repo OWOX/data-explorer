@@ -7,7 +7,7 @@ import { PAGE_SIZE } from '../../config';
 import { columnLetter } from './columnLetters';
 import { emptyText, isNumericType, rowsLabel } from '../format';
 import { withJoined, type JoinedSource } from '../../api/blendable';
-import { applyDraft, draftOf, isCalculatedMetric, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type Grouping, type AggregationDraft, type DateBucket, type Output } from '../../model/aggregation';
+import { applyDraft, draftOf, isCalculatedMetric, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type Grouping, type AggregationDraft, type Output } from '../../model/aggregation';
 import { columnTitle } from '../../model/fieldLabel';
 import { keepEmpty } from '../../model/empty-paths';
 import { dropUniqueSorts, keepUnique, uniqueField, uniqueKey, uniquePathsOf, withUniqueAfter } from '../../model/unique-count';
@@ -498,13 +498,6 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
     return !sameList(cols, visible);
   }, [shownNow, sources, markEdit, agg, applyAgg, visible, columnStore, chartSettings, dispatch, martId, setVisible, setOwn, setUc, setEp, sourcesRead, uc, ep, schema]);
-  // A chart menu's choice of a field that is not shown: the shown columns and the new ones, in one edit.
-  // In a grouped grid a new column without a rule would become a group key and multiply the rows: a metric gets the function the chart sums it with, a date the chart's bucket (Month when none is known yet). A dimension is a key, as intended.
-  const showColumns = useCallback((names: string[], buckets?: Readonly<Record<string, DateBucket>>) => changeColumns([...new Set([...shown, ...names])], (cur) => {
-    // A grid grouped by a Unique Count alone is grouped too: a new number column gets its function there as well.
-    const r = ruleNewColumns({ ...cur, uniqueCount: ucNow }, names.flatMap((n) => (shown.includes(n) ? [] : [byName.get(n)!])), buckets);
-    return r.aggregations === cur.aggregations && r.dateTrunc === cur.dateTrunc ? cur : { aggregations: r.aggregations, dateTrunc: r.dateTrunc };
-  }), [changeColumns, shown, byName, ucNow]);
   // A moved column keeps its sorts, filters and functions: only the order changes, and it is one Undo step. The cell selection is dropped (its columns moved).
   const reorder = useCallback((cols: string[]) => {
     if (cols === shown) return;
@@ -739,7 +732,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   // A HAVING filter keeps whole groups, so the charts get the passing group keys as an `in` rule instead of the filter itself.
   const keysRead = useMemo(() => keysPlan(schema, shown, gridAgg, Object.values(filters), Object.values(slices)), [schema, shown, gridAgg, filters, slices]);
   const keyField = useMemo(() => (keysRead.kind === 'read' && keysRead.key ? schema.find((f) => f.name === keysRead.key) : undefined), [keysRead, schema]);
-  // Nothing is read when the charts are not shown, a folded band, a blocked grid, or no number column to chart (ChartsBody shows its hint then).
+  // The scorecard read and the keys read wait while the charts are not shown, the band is folded, the grid is blocked, or no number column is shown (the scorecards have nothing to read; the charts read for themselves).
   const scoreFields = useMemo(() => chartFields(schema, shown, aggNow, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), {}), [schema, shown, aggNow, martId, groups, sources]);
   const chartable = useMemo(() => !scoreFields.marts.every((m) => m.metrics.length === 0 && !m.hasPk), [scoreFields]);
   const having = useHavingKeys(martId, keysRead, keyField, version, !charts || paused || !!blocked || !chartable);
@@ -878,7 +871,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
             </tr>
           </thead>
           {/* ChartsBody renders its own <tbody>: nesting one in another makes the parser pull the headers out of the table. */}
-          {charts ? <ChartsBody pruneRef={pruneCards} blockedNote={blocked ? blockedText(blocked) : null} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} pathMarts={pathMarts} renderConfig={renderConfig} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} kept={keptUnique} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} onShowColumns={showColumns} />
+          {charts ? <ChartsBody pruneRef={pruneCards} blockedNote={blocked ? blockedText(blocked) : null} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} reportGroups={mainEmpty ? [mainGroup, ...groups] : groups} pathMarts={pathMarts} renderConfig={renderConfig} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} kept={keptUnique} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
           : <tbody>
             {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{blockedText(blocked)}</td></tr>
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => { setRowsRetry((v) => v + 1); if (score.error) score.retry(); }} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>

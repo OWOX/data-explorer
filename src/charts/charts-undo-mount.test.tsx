@@ -17,7 +17,7 @@ const undone: ChartSettings = { charts: [{ id: 'p', kind: 'pie' }] };
 
 const props = {
   martId: 'orders', schema: [f('amount')], shown: ['amount'], agg: { aggregations: [], dateTrunc: [] }, filter: [], groups: [{ id: 'orders', path: '', span: 1, title: 'Orders' }],
-  version: 0, paused: true, hasFilters: false, sources: [], formatOf: () => ({ kind: 'auto' }) as never, onFilter: () => {}, onShowColumns: () => {}, renderConfig: () => null, scrollerWidth: 500,
+  version: 0, paused: true, hasFilters: false, sources: [], formatOf: () => ({ kind: 'auto' }) as never, onFilter: () => {}, renderConfig: () => null, scrollerWidth: 500,
 };
 async function recording() {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
@@ -85,7 +85,7 @@ test('a pick that shows no column is one Undo step on its own', async () => {
   const { ctx } = await recording();
   const grab: { dispatch?: ReturnType<typeof useStore>[1]; state?: ReturnType<typeof useStore>[0] } = {};
   function Grab() { const [s, d] = useStore(); useEffect(() => { grab.dispatch = d; grab.state = s; }); return null; }
-  const withPie = { ...props, schema: [f('amount'), { ...f('status'), type: 'STRING', category: 'string' } as Field, { ...f('region'), type: 'STRING', category: 'string' } as Field], shown: ['amount', 'status'], onShowColumns: () => false };
+  const withPie = { ...props, schema: [f('amount'), { ...f('status'), type: 'STRING', category: 'string' } as Field, { ...f('region'), type: 'STRING', category: 'string' } as Field], shown: ['amount', 'status'] };
   await ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', { charts: [{ id: 'pie', kind: 'pie' }] });
   render(<AppServices ctx={ctx}><StoreProvider><Grab /><table><ChartsBody {...withPie} /></table></StoreProvider></AppServices>);
   await waitFor(() => expect(grab.state!.charts.orders).toBeDefined());

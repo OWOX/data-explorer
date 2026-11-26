@@ -176,15 +176,15 @@ test('sankey: hovering another Column row replaces the open mart panel, and Tab 
   expect(document.activeElement).toBe(panel('Sankey'));
 });
 
-test('sankey: a dimension picked in an unused column that is not shown adds its grid column, and no read runs with other dimensions in between', async () => {
+test('sankey: a dimension picked in an unused column that is not shown adds no grid column, and no read runs with other dimensions in between', async () => {
   const t = await charts({ columns: middle, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   const menu = await columnRow(3);
   await userEvent.click(within(menu).getByRole('menuitem', { name: 'Customers' }));
   const from = t.queries.length;
   await userEvent.click(within(await screen.findByRole('menu', { name: 'Customers' })).getByRole('menuitemradio', { name: 'city' }));
-  await waitFor(() => expect(lastColumns(t)).toContain('customers__city'));
-  expect(savedDims(t)).toEqual(['status', 'is_gift', 'customers__city']);
+  await waitFor(() => expect(savedDims(t)).toEqual(['status', 'is_gift', 'customers__city']));
+  expect(t.gridPuts).not.toHaveBeenCalled();
   await waitFor(() => expect(titles()).toHaveLength(3));
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   const known = new Set(['status', 'is_gift', 'customers__city']);
@@ -321,7 +321,6 @@ test('sankey: negative values draw the empty state with a note, not a chart', as
 
 // Orders joins Countries through Customers, which shows no column: a middle mart of the path.
 const middle = [...dims, 'customers__countries__name'];
-const lastColumns = (t: { gridPuts: { mock: { calls: unknown[][] } } }) => (t.gridPuts.mock.calls.at(-1)![1] as { columns: string[] }).columns;
 const submenu = async (row: string, mart?: string) => {
   await userEvent.click(panel('Sankey'));
   if (/^Column \d/.test(row)) await userEvent.click(await screen.findByRole('menuitem', { name: 'Columns' }));
@@ -329,15 +328,15 @@ const submenu = async (row: string, mart?: string) => {
   if (mart) await userEvent.click(await screen.findByRole('menuitem', { name: mart }));
 };
 
-test('sankey: a column lists a mart on the path that shows no column; picking its field adds it to the grid and draws it', async () => {
+test('sankey: a column lists a mart on the path that shows no column; picking its field draws it and adds no column', async () => {
   const t = await charts({ columns: middle, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(titles()).toHaveLength(2));
   expect(group('customers')).toBeNull();
   await submenu('Column 1', 'Customers');
   await userEvent.click(within(await screen.findByRole('menu', { name: 'Customers' })).getByRole('menuitemradio', { name: 'city' }));
-  await waitFor(() => expect(lastColumns(t)).toEqual(['id', 'status', 'amount', 'created_at', 'is_gift', 'products__title', 'customers__countries__name', 'customers__city']));
-  expect(savedDims(t)).toEqual(['customers__city', 'is_gift']);
-  await waitFor(() => expect(group('customers')).not.toBeNull());
+  await waitFor(() => expect(savedDims(t)).toEqual(['customers__city', 'is_gift']));
+  expect(t.gridPuts).not.toHaveBeenCalled();
+  expect(group('customers')).toBeNull();
   await waitFor(() => expect(titles()[0]!.textContent).toMatch(/^city/));
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   // The pick is ticked under its mart.
@@ -357,15 +356,15 @@ test('sankey: a mart that is off the path stays out of the menus, and a mart on 
   expect(within(await screen.findByRole('menu', { name: 'Metric' })).queryByRole('menuitem', { name: 'Customers' })).toBeNull();
 });
 
-test('a metric of a mart on the path that shows no column is listed, and picking it adds its column', async () => {
+test('a metric of a mart on the path that shows no column is listed, and picking it adds no column', async () => {
   const t = await charts({ columns: ['status', 'amount', 'created_at', 'is_gift', 'products__categories__label'], charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(titles()).toHaveLength(2));
   await submenu('Metric', 'Products');
   const products = await screen.findByRole('menu', { name: 'Products' });
   expect(within(products).queryByRole('menuitemradio', { name: 'Count Unique' })).toBeNull();
   await userEvent.click(within(products).getByRole('menuitemradio', { name: 'price · Sum' }));
-  await waitFor(() => expect(lastColumns(t)).toContain('products__price'));
   await waitFor(() => expect(screen.getByRole('heading', { name: /^price · Sum.* by status/ })).toBeInTheDocument());
+  expect(t.gridPuts).not.toHaveBeenCalled();
 });
 
 test('sankey: in a fan-out Sankey every column has its node share, the overlapping one included, and the note says what it is of', async () => {
