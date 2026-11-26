@@ -61,6 +61,11 @@ export function ChartPanel({ title, name, items, ready, width, loading, failed, 
   const [draft, setDraft] = useState<ChartSize | null>(null);
   const size = draft ?? frame?.size ?? {};
   const fill = size.rows !== undefined;
+  // The last drawn body, so a new read shows it dimmed instead of a skeleton. An error, an empty result or another kind drops it.
+  const [drawn, setDrawn] = useState<{ name: string; body: ReactNode } | null>(null);
+  if (!failed && !loading && !emptyNote) { if (drawn?.name !== name || drawn.body !== children) setDrawn({ name, body: children }); }
+  else if (!loading && drawn) setDrawn(null);
+  const stale = loading && !failed && drawn?.name === name ? drawn.body : null;
   const [section, setSection] = useState<HTMLElement | null>(null);
   const seen = useContext(ChartSeenContext);
   useEffect(() => (section && seen ? whenInView(section, seen) : undefined), [section, seen]);
@@ -89,7 +94,12 @@ export function ChartPanel({ title, name, items, ready, width, loading, failed, 
       <div className="dm-chart-body" data-moving={moving || undefined} style={height === null || fill ? undefined : { height }}>
         <div ref={inner} className="dm-chart-fit">
           {failed ? <ErrorBox error={error} onRetry={failed.retry} />
-            : loading ? <Skeleton rows={4} />
+            : loading ? (stale
+              ? <div className="dm-chart-staleframe">
+                <div role="progressbar" aria-label="Loading chart" className="dm-busybar" />
+                <div className="dm-chart-stale" aria-busy="true"><FillContext value={fill}>{stale}</FillContext></div>
+              </div>
+              : <Skeleton rows={4} />)
             : emptyNote ? <p className="dm-muted dm-chart-empty">{emptyNote}</p>
             : <FillContext value={fill}>{children}</FillContext>}
         </div>
