@@ -6,7 +6,7 @@ import { overlap } from '../words';
 import type { Asked, StepDeps, StepInput } from './types';
 
 export type PathCandidate = { qid: string; source: JoinedSource; relationship: string; relationshipDescription: string; via: string[]; words: number };
-export const PATH_DEPTH = 2;
+export const PATH_DEPTH = 4;
 export const PATH_KEEP = 5;
 const LEVELS = ['Not related to the query.', 'Useful context for the query.', 'Needed to answer the query.'];
 const INSTRUCTIONS = 'Rate how much joining this data mart, through this relationship, helps answer the query about the main data mart.';
@@ -16,9 +16,15 @@ const parentPaths = (path: string): string[] => { const parts = path.split('.');
 export function pathCandidates(sources: JoinedSource[], input: StepInput): PathCandidate[] {
   const terms = intentTerms(input.intent, input.query);
   const byPath = new Map(sources.map((s) => [s.aliasPath, s]));
-  return sources
-    .filter((s) => s.depth <= PATH_DEPTH)
-    .map((s, i) => {
+  const best = new Map<string, { s: JoinedSource; i: number }>();
+  sources.forEach((s, i) => {
+    if (s.depth > PATH_DEPTH) return;
+    const cur = best.get(s.martId);
+    const safe = s.mainGrainMultiplication === 'none', curSafe = cur?.s.mainGrainMultiplication === 'none';
+    if (!cur || (safe && !curSafe) || (safe === curSafe && s.depth < cur.s.depth)) best.set(s.martId, { s, i });
+  });
+  return [...best.values()]
+    .map(({ s, i }) => {
       const mart = input.model.marts.get(s.martId);
       const edge = s.relationshipId ? input.model.edges.find((e) => e.id === s.relationshipId) : undefined;
       const via = parentPaths(s.aliasPath).map((p) => { const v = byPath.get(p); return input.model.marts.get(v?.martId ?? '')?.title ?? v?.label ?? p; });
