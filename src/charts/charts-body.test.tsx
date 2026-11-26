@@ -1301,3 +1301,84 @@ describe('a chart reads once it scrolls near the view', () => {
     await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
   });
 });
+
+// The scorecard read carries MIN and MAX of the Auto dates, so the bucket needs no range read of its own.
+const SINGLE = ['id', 'status', 'amount', 'created_at'];
+const isRange = (o: TraverseOptions) => !!o.aggregation?.some((a) => a.function === 'MIN') && !o.dateTrunc;
+const isBareRange = (o: TraverseOptions) => isRange(o) && !o.aggregation?.some((a) => a.function === 'SUM');
+const isScore = (o: TraverseOptions) => isRange(o) && !!o.aggregation?.some((a) => a.function === 'SUM') && !!o.uniqueCount;
+const isSpark = (o: TraverseOptions) => !!o.dateTrunc && !!o.aggregation?.some((a) => a.function === 'SUM');
+
+test('Charts of one mart: one read answers the scorecards and the range, and the sparklines take the bucket from it', async () => {
+  const t = await charts({ columns: SINGLE });
+  await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
+  await waitFor(() => expect(t.queries.slice(t.tableQueries()).some(isSpark)).toBe(true));
+  const sent = t.queries.slice(t.tableQueries());
+  expect(sent.filter(isScore)).toHaveLength(1);
+  expect(sent.filter(isBareRange)).toHaveLength(0);
+});
+
+test('a time series on the lead date under Auto sends no range read of its own', async () => {
+  const t = await charts({ columns: SINGLE, charts: { charts: [{ id: 'time-series', kind: 'timeSeries' }], scorecards: { sparklines: false } } });
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  expect(t.queries.slice(t.tableQueries()).filter(isBareRange)).toHaveLength(0);
+});
+
+test('Charts with a joined mart keep the range read of their own', async () => {
+  const t = await charts();
+  await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
+  await waitFor(() => expect(t.queries.slice(t.tableQueries()).some(isSpark)).toBe(true));
+  expect(t.queries.slice(t.tableQueries()).filter(isBareRange)).toHaveLength(1);
+});
+
+test('a failed scorecard read is the bucket error, and Retry reads the scorecard read again', async () => {
+  let broken = true;
+  const t = await charts({ columns: SINGLE, charts: { charts: [{ id: 'time-series', kind: 'timeSeries' }], scorecards: { sparklines: false } }, fail: (o) => broken && isScore(o) });
+  // The strip's error box and the time series both offer Retry; the chart's is the one under test.
+  const retry = (await screen.findAllByRole('button', { name: 'Retry' })).find((b) => b.closest('section.dm-chart'))!;
+  broken = false;
+  const before = t.queries.filter(isScore).length;
+  await userEvent.click(retry);
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  expect(t.queries.filter(isScore).length).toBe(before + 1);
+  expect(t.queries.filter(isBareRange)).toHaveLength(0);
+});
+
+async function filterStatus() {
+  await openSubmenu(within(data()), 'status', 'Filter');
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.type(within(dialog).getByLabelText('Value'), 'paid');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+}
+const isBadge = (o: TraverseOptions) => !!o.filter?.length && !!o.uniqueCount && !o.limit && !o.dateTrunc && !o.aggregation?.some((a) => a.function === 'MIN');
+
+test('Charts under a filter: the match badge joins the scorecard read and sends no read of its own', async () => {
+  const t = await charts({ columns: SINGLE });
+  await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
+  const before = t.queries.length;
+  await filterStatus();
+  await waitFor(() => expect(t.queries.slice(before).some((o) => isScore(o) && !!o.filter?.length)).toBe(true));
+  await waitFor(() => expect(t.queries.slice(before).some(isSpark)).toBe(true));
+  const sent = t.queries.slice(before);
+  expect(sent.filter((o) => isScore(o) && !!o.filter?.length)).toHaveLength(1);
+  expect(sent.filter(isBadge)).toHaveLength(0);
+  expect(sent.filter(isBareRange)).toHaveLength(0);
+});
+
+test('a filter set in Table, then Charts: the badge read serves the cards and one range read goes out', async () => {
+  // A grouped Table cannot take the card's count from its total, so it sends the badge read.
+  const t = setup({ columns: SINGLE, aggregations: [{ column: 'amount', function: 'SUM' }] });
+  await t.seeded;
+  t.view();
+  await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
+  await filterStatus();
+  await waitFor(() => expect(t.queries.some(isBadge)).toBe(true));
+  const before = t.queries.length;
+  await userEvent.click(radio('Charts'));
+  await waitFor(() => expect(group('orders')).not.toBeNull());
+  await waitFor(() => expect(t.queries.slice(before).some(isSpark)).toBe(true));
+  const sent = t.queries.slice(before);
+  expect(sent.filter(isScore)).toHaveLength(0);
+  expect(sent.filter(isBareRange)).toHaveLength(1);
+  expect(within(group('orders')!).queryByLabelText(/Loading/)).toBeNull();
+});

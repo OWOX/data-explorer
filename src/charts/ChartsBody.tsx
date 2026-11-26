@@ -12,13 +12,15 @@ import { chartFields, menuOf } from './fields';
 import type { HavingKeys } from './havingKeys';
 import type { MenuItem } from './ChartMenu';
 import { addChartItem, chartListItem, dropPicksOf, hideCard, setCardDate, setCardMetric, tailItems } from './listMenu';
-import { joinGrainOf } from './answers';
-import { MartCards, useScorecards } from './Scorecards';
+import { joinGrainOf, stable } from './answers';
+import { carriedDates, MartCards, useScorecards } from './Scorecards';
+import { rangeKeys } from './queries';
 import { KINDS } from './kinds';
 import { chartsOf, patchChart, scorecardsOf, type ChartSettings, type ChartSpec, type Spark } from './settings';
 import { ChartSeenContext } from './ChartPanel';
 import { ChartFrameContext, type ChartSize } from './resize';
-import { useBucket } from './useBucket';
+import { CarriedRanges, useBucketFrom } from './useBucket';
+import type { ChartResult } from './useChartQuery';
 
 /** The gutter cell of a row that is not a data row; the grid has the same one. */
 const Gutter = () => <th aria-hidden data-chrome className="dm-chrome" />;
@@ -125,7 +127,8 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     return { ...build(shown, groups, sources), menu: build(schema.map((f) => f.name), [...groups, ...pathMarts], sources.filter((x) => !onPath.has(x.aliasPath))) };
   }, [schema, shown, agg, martId, groups, pathMarts, sources]);
   const schemaNames = useMemo(() => new Set(schema.map((f) => f.name)), [schema]);
-  const joins = useMemo(() => joinGrainOf(sources), [sources]);
+  // A calculated metric is read as a metric, not as a group key, as the grid's own count ask reads it.
+  const joins = useMemo(() => joinGrainOf(sources, new Set(cf.marts.flatMap((m) => m.metrics.filter((x) => !x.fn).map((x) => x.field.name)))), [sources, cf]);
   const specs = chartsOf(settings ?? {});
   // Hidden charts resolve to nothing, so they mount no panel and read nothing.
   const drawn = useMemo(() => specs.map((spec) => {
@@ -137,8 +140,20 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   const spark: Spark = useMemo(() => ({ ...scorecardsOf(settings ?? {}), date: lead?.date ?? cf.dates[0] ?? null }), [settings, lead?.date, cf]);
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
   const idle = paused || !settings || !!gate || !!blockedNote;
-  const { bucket, pending: bucketPending } = useBucket(martId, spark.date, lead?.bucket ?? 'AUTO', filter, version, idle);
-  const scores = useScorecards(martId, cf, filter, version, idle, joins, kept);
+  // The scorecard read goes first (effects run in call order): it carries the first and last value of the Auto dates, so they need no read of their own.
+  const ranges = useMemo(() => carriedDates(cf, spark, (lead?.bucket ?? 'AUTO') === 'AUTO', kept), [cf, spark, lead?.bucket, kept]);
+  const scores = useScorecards(martId, cf, filter, version, idle, joins, kept, ranges);
+  const carriedFilter = stable(filter);
+  const carried = useCallback((date: Field, f: TraverseFilter[], v: number): ChartResult | null => {
+    if (v !== version || !ranges.some((d) => d.name === date.name) || stable(f) !== carriedFilter) return null;
+    // Rows that came without the keys (a cached read of the same ask without ranges) cannot give the range: the date reads it itself.
+    const row = scores.rows?.[0];
+    if (row && !(rangeKeys(date).min in row && rangeKeys(date).max in row)) return null;
+    return scores;
+    // scores is a new object each render; only its parts decide the result.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, ranges, carriedFilter, scores.rows, scores.error, scores.loading, scores.retry]);
+  const { bucket, pending: bucketPending } = useBucketFrom(carried, martId, spark.date, lead?.bucket ?? 'AUTO', filter, version, idle);
   // The Charts group of the config menu names every chart, hidden ones included; memoized so a resize resolves nothing again.
   const resolved = useMemo(() => drawn.map(({ spec, def }) => {
     const r = def.resolve({ ...spec, hidden: false }, cf);
@@ -182,6 +197,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   }
 
   return place(
+    <CarriedRanges value={carried}>
     <tbody>
       <tr data-chart-strip>
         <Gutter />
@@ -217,7 +233,8 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
           {havingNote && <p data-chart-note className="mt-1 text-xs text-muted-foreground" style={{ position: 'sticky', left: GUTTER_PX }}>Charts can't apply filters on aggregates for this grouping.</p>}
         </td>
       </tr>
-    </tbody>,
+    </tbody>
+    </CarriedRanges>,
   );
 }
 

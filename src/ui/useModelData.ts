@@ -3,6 +3,7 @@ import { loadDqSummaries } from '../api/data-quality';
 import { FIRST_STEPS, loadModel, type LoadProgress } from '../api/model';
 import { COUNT_CONCURRENCY } from '../config';
 import type { DqSummary, Model } from '../model/types';
+import { forgetAllValues } from '../search/valueMatch';
 import { useServices, useStore } from '../state/store';
 import type { CountState } from './bands/cards';
 import { errorMessage } from './ErrorBox';
@@ -20,7 +21,7 @@ export function useModel() {
     let live = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
-    if (modelVersion > 0) { schemas.clear(); blendable.clear(); }
+    if (modelVersion > 0) { schemas.clear(); blendable.clear(); forgetAllValues(ctx); }
     loadModel(ctx, (p) => { if (live) setProgress(p); }).then(
       (m) => { if (live) { blendable.useKeys({ edges: m.edges, schemaOf: schemas.peek }); setModel(m); } },
       (e) => { if (live) setError(e); },
@@ -113,6 +114,21 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
     enqueue(id, before !== undefined);
   }, [enqueue]);
 
+  // A count the grid already has for this card: no read is needed for it. A queued read is dropped, a running one is
+  // ignored when it ends (it is billed anyway), and the card's own request on scroll-in will not read again this generation.
+  const offer = useCallback((id: string, value: number) => {
+    seqs.current.latest.set(id, ++seqs.current.next);
+    queue.current = queue.current.filter((q) => q.id !== id);
+    asked.current.set(id, generation.current);
+    setCounts((c) => new Map(c).set(id, { state: 'ok', value }));
+    void counter.store(id, value);
+  }, [counter]);
+
+  // The card keeps its count, dimmed, while the grid's Refresh reads the total that will replace it. No read.
+  const hold = useCallback((id: string) => {
+    setCounts((c) => { const was = c.get(id); return was?.state === 'ok' && was.value !== null && !was.stale ? new Map(c).set(id, { ...was, stale: true }) : c; });
+  }, []);
+
   const key = visibleIds.join('|');
   // A layout effect, so a card that just mounted and asks from its own effect sees the new set.
   useLayoutEffect(() => { visible.current = visibleIds; });
@@ -141,5 +157,5 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
 
   const shown = new Map<string, CountState>(visibleIds.map((id) => [id, counts.get(id) ?? { state: 'idle' }]));
 
-  return { dq, counts: shown, request, recount: (id: string) => enqueue(id, true) };
+  return { dq, counts: shown, request, offer, hold, recount: (id: string) => enqueue(id, true) };
 }

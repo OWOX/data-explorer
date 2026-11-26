@@ -5,7 +5,9 @@ import { stubCtx, traversalOf } from '../api/test-ctx';
 import type { Mart, Model } from '../model/types';
 import { buildJoinTree, statusIds } from '../state/join-tree';
 import { AppServices, StoreProvider } from '../state/store';
-import { useCardStatus } from './useModelData';
+import { readValues, suggestFromSearch } from '../search/valueMatch';
+import { useServices, useStore } from '../state/store';
+import { useCardStatus, useModel } from './useModelData';
 
 const mart = (id: string): Mart => ({ id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
 const modelOf = (ids: string[]): Model => ({ marts: new Map(ids.map((id) => [id, mart(id)])), sources: [], edges: [], contexts: [], storages: [], failedStorages: [] });
@@ -230,4 +232,83 @@ test('a recount dropped from the queue because its card left view is no longer d
   // The ones still counting stay dimmed.
   expect(result.current.counts.get('m0')).toEqual({ state: 'ok', value: 7, stale: true });
   expect(traverseData).toHaveBeenCalledTimes(12);
+});
+
+test('an offered count replaces a queued read: it never runs, and the card shows the value', async () => {
+  const ids = Array.from({ length: 6 }, (_, i) => `m${i}`);
+  const releases: (() => void)[] = [];
+  const called: string[] = [];
+  const traverseData = vi.fn(async (id: string) => { called.push(id); await new Promise<void>((r) => releases.push(r)); return traversalOf([{ 'Unique Count': 7 }]); });
+  const { result } = renderHook(() => useCardStatus(modelOf(ids), ids, 0), { wrapper: setup(traverseData as never) });
+  act(() => ids.forEach((id) => result.current.request(id))); // 4 in flight, m4 and m5 queued
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
+  act(() => result.current.offer('m5', 99));
+  expect(result.current.counts.get('m5')).toEqual({ state: 'ok', value: 99 });
+  for (let i = 0; i < 20; i++) { act(() => releases.splice(0).forEach((r) => r())); await new Promise((r) => setTimeout(r, 5)); }
+  await waitFor(() => expect(result.current.counts.get('m4')).toEqual({ state: 'ok', value: 7 }));
+  expect(called).not.toContain('m5');
+  expect(result.current.counts.get('m5')).toEqual({ state: 'ok', value: 99 });
+});
+
+test('an offered count is not overwritten by a read already running, and a later request reads nothing', async () => {
+  const releases: (() => void)[] = [];
+  const traverseData = vi.fn(async () => { await new Promise<void>((r) => releases.push(r)); return traversalOf([{ 'Unique Count': 7 }]); });
+  const { result } = renderHook(() => useCardStatus(modelOf(['a']), ['a'], 0), { wrapper: setup(traverseData as never) });
+  act(() => result.current.request('a'));
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
+  act(() => result.current.offer('a', 99));
+  act(() => releases.splice(0).forEach((r) => r()));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 99 });
+  act(() => result.current.request('a'));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(traverseData).toHaveBeenCalledTimes(1);
+});
+
+test('after an offer, request reads nothing', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
+  const { result } = renderHook(() => useCardStatus(modelOf(['a']), ['a'], 0), { wrapper: setup(traverseData) });
+  act(() => result.current.offer('a', 5));
+  act(() => result.current.request('a'));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(traverseData).not.toHaveBeenCalled();
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 5 });
+});
+
+test('an offered count is stored for 24 h like a measured one', async () => {
+  const ctx = stubCtx({
+    dataMarts: { list: vi.fn(), traverseData: vi.fn() },
+    getJson: async () => ({ id: 'x', schema: { fields: [{ name: 'id', type: 'INT64', isPrimaryKey: true }] } }),
+    postJson: async () => ({ items: [] }),
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => <AppServices ctx={ctx}><StoreProvider>{children}</StoreProvider></AppServices>;
+  const { result } = renderHook(() => useCardStatus(modelOf(['a']), ['a'], 0), { wrapper });
+  act(() => result.current.offer('a', 5));
+  await waitFor(async () => expect((await ctx.collections<{ count: number }>('row-counts').get('a'))?.document.count).toBe(5));
+});
+
+test('hold dims a card that has a count and adds no read; offer clears it', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
+  const { result } = renderHook(() => useCardStatus(modelOf(['a']), ['a'], 0), { wrapper: setup(traverseData) });
+  act(() => result.current.request('a'));
+  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7 }));
+  act(() => result.current.hold('a'));
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7, stale: true });
+  act(() => result.current.offer('a', 9));
+  expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 9 });
+  expect(traverseData).toHaveBeenCalledTimes(1);
+});
+
+vi.mock('../api/model', async (orig) => ({ ...(await orig<typeof import('../api/model')>()), loadModel: vi.fn(async () => modelOf(['a'])) }));
+
+test('a model reload drops the kept value reads', async () => {
+  const field = { name: 'country', alias: null, type: 'STRING', category: 'string' as const, description: null, isPrimaryKey: false };
+  const wrapper = setup(async () => traversalOf([{ country: 'DE' }]));
+  const { result } = renderHook(() => ({ model: useModel(), services: useServices(), store: useStore() }), { wrapper });
+  await waitFor(() => expect(result.current.model.model).not.toBeNull());
+  const { ctx } = result.current.services;
+  await readValues(ctx, 'a', field, new AbortController().signal);
+  expect(suggestFromSearch(ctx, 'a', field)).toEqual(['DE']);
+  act(() => result.current.store[1]({ type: 'refreshModel' }));
+  await waitFor(() => expect(suggestFromSearch(ctx, 'a', field)).toBeNull());
 });

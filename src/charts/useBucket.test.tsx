@@ -4,7 +4,8 @@ import { vi } from 'vitest';
 import { stubCtx, traversalOf } from '../api/test-ctx';
 import type { Field } from '../model/types';
 import { AppServices, StoreProvider } from '../state/store';
-import { useBucket } from './useBucket';
+import { CarriedRanges, rangeable, useBucket } from './useBucket';
+import type { ChartResult } from './useChartQuery';
 
 const date = (extra: Partial<Field> = {}): Field => ({ name: 'created_at', alias: null, type: 'TIMESTAMP', category: 'date', description: null, isPrimaryKey: false, ...extra });
 
@@ -75,4 +76,61 @@ test('the last month counts to its end: Jan to Mar picks WEEK, not DAY', async (
   const traverseData = vi.fn(async () => traversalOf([{ created_at: '2026-01-01' }, { created_at: '2026-02-01' }, { created_at: '2026-03-01' }]));
   const { result } = renderHook(() => useBucket('m', ungoverned(), 'AUTO', [], 0, false), { wrapper: wrap(traverseData) });
   await waitFor(() => expect(result.current.bucket).toBe('WEEK'));
+});
+
+const carry = (result: Partial<ChartResult> | null) => {
+  const ask = vi.fn(() => (result ? { rows: null, error: null, loading: false, held: false, retry: () => {}, ...result } : null));
+  const traverseData = vi.fn(async () => traversalOf([{ 'created_at | MIN': '2026-01-01', 'created_at | MAX': '2026-01-30' }]));
+  const base = wrap(traverseData);
+  const wrapper = ({ children }: { children: ReactNode }) => base({ children: <CarriedRanges value={ask}>{children}</CarriedRanges> });
+  return { ask, traverseData, wrapper };
+};
+const rangeRow = { 'created_at | MIN': '2026-01-01', 'created_at | MAX': '2026-01-30' };
+
+test('rangeable is false for a date that forbids MIN or MAX', () => {
+  expect(rangeable(date())).toBe(true);
+  expect(rangeable(ungoverned())).toBe(false);
+  expect(rangeable(null)).toBe(false);
+});
+
+test('a carried range gives the bucket with no read of its own', async () => {
+  const c = carry({ rows: [rangeRow] });
+  const { result } = renderHook(() => useBucket('m', date(), 'AUTO', [], 0, false), { wrapper: c.wrapper });
+  expect(result.current.bucket).toBe('DAY');
+  await new Promise((r) => setTimeout(r, 0));
+  expect(c.traverseData).not.toHaveBeenCalled();
+});
+
+test('while the carrying read loads the bucket is pending and nothing is sent; its error and retry are the bucket\'s', async () => {
+  const retry = vi.fn();
+  const loading = carry({ loading: true });
+  const a = renderHook(() => useBucket('m', date(), 'AUTO', [], 0, false), { wrapper: loading.wrapper });
+  expect(a.result.current).toMatchObject({ bucket: null, pending: true });
+  const failed = carry({ error: new Error('boom'), retry });
+  const b = renderHook(() => useBucket('m', date(), 'AUTO', [], 0, false), { wrapper: failed.wrapper });
+  expect(b.result.current.bucket).toBeNull();
+  expect(b.result.current.pending).toBe(false);
+  expect((b.result.current.error as Error).message).toBe('boom');
+  b.result.current.retry();
+  expect(retry).toHaveBeenCalled();
+  await new Promise((r) => setTimeout(r, 0));
+  expect(loading.traverseData).not.toHaveBeenCalled();
+  expect(failed.traverseData).not.toHaveBeenCalled();
+});
+
+test('a date that is not carried reads its range itself', async () => {
+  const c = carry(null);
+  const { result } = renderHook(() => useBucket('m', date(), 'AUTO', [], 0, false), { wrapper: c.wrapper });
+  await waitFor(() => expect(result.current.bucket).toBe('DAY'));
+  expect(c.traverseData).toHaveBeenCalledTimes(1);
+});
+
+test('a date that forbids MIN reads its months even when the context could answer', async () => {
+  const c = carry({ rows: [rangeRow] });
+  const traverseData = c.traverseData;
+  traverseData.mockImplementation(async () => traversalOf([{ created_at: '2026-01-01' }, { created_at: '2026-02-01' }]));
+  const { result } = renderHook(() => useBucket('m', ungoverned(), 'AUTO', [], 0, false), { wrapper: c.wrapper });
+  await waitFor(() => expect(result.current.bucket).toBe('DAY'));
+  expect(c.ask).not.toHaveBeenCalled();
+  expect(traverseData).toHaveBeenCalledTimes(1);
 });

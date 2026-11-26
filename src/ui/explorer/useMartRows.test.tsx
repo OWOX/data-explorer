@@ -235,13 +235,23 @@ describe('the total row count', () => {
     return { traverseData, wrapper };
   }
   const withSort = (column: string[], dir: 'asc' | 'desc', limit = 201): TraverseOptions => ({ column, limit, sort: [{ column: 'a', direction: dir }] });
-  type Props = { o: TraverseOptions; v: number; exact?: boolean };
+  type Props = { o: TraverseOptions; v: number; exact?: boolean; own?: ReadonlySet<string> };
   const run = (initial: Props, counts: (number | undefined)[] = [450]) => {
     const c = countCtx(counts);
-    const hook = renderHook(({ o, v, exact }: Props) => useMartRows('m', o, v, false, exact), { wrapper: c.wrapper, initialProps: initial });
+    const hook = renderHook(({ o, v, exact, own }: Props) => useMartRows('m', o, v, false, exact, 0, own), { wrapper: c.wrapper, initialProps: initial });
     return { ...c, ...hook };
   };
   const settled = (result: { current: { loading: boolean } }) => waitFor(() => expect(result.current.loading).toBe(false));
+
+  test('a total served from a cached result is not fresh: only the read that asked is', async () => {
+    const c = countCtx([450]);
+    const first = renderHook(() => useMartRows('m', opts(['id', 'a']), 0), { wrapper: c.wrapper });
+    await waitFor(() => expect(first.result.current.counted.fresh).toBe(true));
+    const again = renderHook(() => useMartRows('m', opts(['id', 'a']), 0), { wrapper: c.wrapper });
+    await waitFor(() => expect(again.result.current.counted.total).toBe(450));
+    expect(again.result.current.counted.fresh).toBe(false);
+    expect(c.traverseData).toHaveBeenCalledTimes(1);
+  });
 
   test('the first read asks and total is set', async () => {
     const { traverseData, result } = run({ o: opts(['id', 'a']), v: 0 });
@@ -304,6 +314,84 @@ describe('the total row count', () => {
     expect(asked(traverseData)).toEqual([true, true]);
   });
 
+  test('a new column of the main data mart reuses the count', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'a', 'b']), v: 0, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, false]);
+    expect(result.current.total).toBe(450);
+  });
+
+  test('a new column of a joined data mart asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'a', 'j__x']), v: 0, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(460);
+  });
+
+  test('a new calculated field asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'a', 'calc']), v: 0, exact: true, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(460);
+  });
+
+  test('with a calculated field, swapping a main column for another of the same count asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a', 'calc']), v: 0, exact: true, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'b', 'calc']), v: 0, exact: true, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(460);
+  });
+
+  test('with a calculated field only in a filter, swapping a main column asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const f = { filter: [{ column: 'calc', operator: 'eq' as const, value: 1 }] };
+    const { traverseData, result, rerender } = run({ o: { ...opts(['id', 'a']), ...f }, v: 0, exact: true, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: { ...opts(['id', 'b']), ...f }, v: 0, exact: true, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(460);
+  });
+
+  test('a grouped read with another group key asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const g = (column: string[]): TraverseOptions => ({ column, limit: 201, aggregation: [{ column: 'id', function: 'SUM' }] });
+    const { traverseData, result, rerender } = run({ o: g(['a', 'id']), v: 0, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: g(['a', 'b', 'id']), v: 0, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+  });
+
+  test('another filter with a new main column asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0, own }, [450, 3]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: { ...opts(['id', 'a', 'b']), filter: [{ column: 'id', operator: 'eq' as const, value: 1 }] }, v: 0, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(3);
+  });
+
   test('hiding a column, then Load more, a sort or showing it again, never asks', async () => {
     const { traverseData, result, rerender } = run({ o: withSort(['id', 'a', 'b'], 'asc'), v: 0 });
     await waitFor(() => expect(result.current.total).toBe(450));
@@ -333,25 +421,25 @@ describe('the total row count', () => {
     test('it stays through Load more and a sort, and is none for another filter until that read answers', async () => {
       const filtered = { ...opts(['id', 'a']), filter: [{ column: 'id', operator: 'eq' as const, value: 1 }] };
       const { result, rerender } = run({ o: opts(['id', 'a'], 201), v: 0 }, [450, 3]);
-      await waitFor(() => expect(result.current.counted).toEqual({ total: 450, exact: false, columns: ['id', 'a'] }));
+      await waitFor(() => expect(result.current.counted).toEqual({ total: 450, exact: false, columns: ['id', 'a'], fresh: true }));
       rerender({ o: opts(['id', 'a'], 401), v: 0 });
       expect(result.current.loading).toBe(true);
       expect(result.current.counted.total).toBe(450);
       await settled(result);
       rerender({ o: withSort(['id', 'a'], 'desc', 401), v: 0 });
       expect(result.current.loading).toBe(true);
-      expect(result.current.counted).toEqual({ total: 450, exact: false, columns: ['id', 'a'] });
+      expect(result.current.counted).toEqual({ total: 450, exact: false, columns: ['id', 'a'], fresh: true });
       await settled(result);
       rerender({ o: { ...filtered, limit: 401 }, v: 0 });
       expect(result.current.counted.total).toBeNull();
-      await waitFor(() => expect(result.current.counted).toEqual({ total: 3, exact: false, columns: ['id', 'a'] }));
+      await waitFor(() => expect(result.current.counted).toEqual({ total: 3, exact: false, columns: ['id', 'a'], fresh: true }));
     });
     test('a total counted by a read that named a calculated field stays exact when the field is hidden with no new read', async () => {
       const { traverseData, result, rerender } = run({ o: opts(['id', 'a', 'margin']), v: 0, exact: true }, [5]);
-      await waitFor(() => expect(result.current.counted).toEqual({ total: 5, exact: true, columns: ['id', 'a', 'margin'] }));
+      await waitFor(() => expect(result.current.counted).toEqual({ total: 5, exact: true, columns: ['id', 'a', 'margin'], fresh: true }));
       rerender({ o: opts(['id', 'a']), v: 0, exact: false });
       expect(traverseData).toHaveBeenCalledTimes(1);
-      expect(result.current.counted).toEqual({ total: 5, exact: true, columns: ['id', 'a', 'margin'] });
+      expect(result.current.counted).toEqual({ total: 5, exact: true, columns: ['id', 'a', 'margin'], fresh: true });
     });
   });
 
@@ -584,7 +672,7 @@ describe('the grid cache', () => {
     await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
     await done(result);
     rerender({ o: opts(['id', 'a'], 201) });
-    await waitFor(() => expect(result.current.counted).toEqual({ total: 450, exact: false, columns: ['id', 'a'] }));
+    await waitFor(() => expect(result.current.counted).toEqual({ total: 450, exact: false, columns: ['id', 'a'], fresh: false }));
     expect(result.current.total).toBe(450);
     expect(traverseData).toHaveBeenCalledTimes(2);
     // Load more is a new read of the same base: the cached count covers it.

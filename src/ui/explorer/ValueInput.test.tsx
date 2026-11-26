@@ -533,3 +533,14 @@ test('in a list a typed word that differs only by case still offers the value th
   await userEvent.type(input(), 'Paid');
   expect(options()).toEqual(['paid']);
 });
+
+test('the first read asks for a kept answer, a reload asks for a fresh one', async () => {
+  const load = vi.fn((...args: [AbortSignal, boolean]) => { void args; return Promise.resolve(['US']); });
+  render(<Harness src={source(load)} />);
+  await userEvent.click(input());
+  await waitFor(() => expect(options()).toEqual(['US']));
+  expect(load.mock.calls[0]![1]).toBe(false);
+  await userEvent.click(screen.getByRole('button', { name: /Reload values/ }));
+  await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+  expect(load.mock.calls[1]![1]).toBe(true);
+});
