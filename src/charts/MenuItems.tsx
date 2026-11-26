@@ -85,7 +85,7 @@ function RadioSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<Menu
 const DRAG_PX = 4;
 const ROW_ITEM = '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]';
 const MOVE_HINT = 'Alt+Up or Alt+Down to move';
-type Press = { from: number; startY: number; started: boolean; to: number; rows: HTMLElement[]; menu: HTMLElement; grip: HTMLElement; pointerId: number };
+type Press = { from: number; startY: number; started: boolean; to: number; dy: number; rows: HTMLElement[]; menu: HTMLElement; grip: HTMLElement; pointerId: number };
 type Drag = { from: number; dy: number; to: number; line: number };
 
 function GroupSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<MenuItem, { kind: 'group' }>; anchor: HTMLElement; seq: number; close: () => void; onBack: () => void }) {
@@ -110,7 +110,7 @@ function GroupSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<Menu
   // The press is still down: its release and click are swallowed, or they would land on the row under the pointer.
   useEffect(() => {
     if (!dragging) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); swallowPress(); stop(); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); swallowPress(); if (press.current) held.current = press.current.to; stop(); } };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [dragging]);
@@ -121,7 +121,7 @@ function GroupSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<Menu
     const rows = [...menu.querySelectorAll<HTMLElement>(ROW_ITEM)].filter((r) => r.closest('[role="menu"]') === menu).slice(0, movable);
     const grip = e.currentTarget;
     try { grip.setPointerCapture?.(e.pointerId); } catch { /* a synthetic pointer has nothing to capture */ }
-    press.current = { from: i, startY: e.clientY, started: false, to: i, rows, menu, grip, pointerId: e.pointerId };
+    press.current = { from: i, startY: e.clientY, started: false, to: i, dy: 0, rows, menu, grip, pointerId: e.pointerId };
   };
   const onMove = (e: ReactPointerEvent<HTMLElement>) => {
     const p = press.current;
@@ -136,25 +136,25 @@ function GroupSubmenu({ item, anchor, seq, close, onBack }: { item: Extract<Menu
       dismiss();
     }
     // Measured on every move: the menu can scroll or move under the pointer.
-    const rects = p.rows.map((r) => r.getBoundingClientRect());
+    // The dragged row's box includes the shift it was given last move: take that out, or the offset counts twice.
+    const rects = p.rows.map((r, k) => { const b = r.getBoundingClientRect(); return k === p.from ? { top: b.top - p.dy, bottom: b.bottom - p.dy } : b; });
     const here = rects[p.from]!;
     const dy = Math.min(Math.max(raw, rects[0]!.top - here.top), rects[rects.length - 1]!.bottom - here.bottom);
     // The slot follows the pointer, not the clamped row: dragging past the last row lands in the last place.
     const centre = (here.top + here.bottom) / 2 + raw;
     const to = rects.filter((r, k) => k !== p.from && (r.top + r.bottom) / 2 < centre).length;
     p.to = to;
+    p.dy = dy;
     const edge = to <= p.from ? rects[to]!.top : rects[to]!.bottom;
     setDrag({ from: p.from, dy, to, line: edge - p.menu.getBoundingClientRect().top + p.menu.scrollTop });
   };
-  const onUp = (e: ReactPointerEvent<HTMLElement>) => {
+  const onUp = () => {
     const p = press.current;
     if (!p) return;
     // The slot is read from the press, not from state: a release right after a move has not re-rendered yet.
     const { from, to, started } = p;
-    if (started) {
-      const at = p.rows.findIndex((r) => { const b = r.getBoundingClientRect(); return e.clientY >= b.top && e.clientY < b.bottom; });
-      held.current = at >= 0 ? at : null;
-    }
+    // The dragged column lands at `to`, under the pointer.
+    if (started) held.current = to;
     stop();
     if (started && to !== from) onReorder?.(from, to);
   };

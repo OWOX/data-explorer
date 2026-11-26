@@ -455,7 +455,9 @@ const orderSaved: NonNullable<Parameters<typeof setup>[0]> = { columns: dims, ch
 const layoutRows = () => {
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
     const label = this.getAttribute('role') === 'menuitem' ? /^Column (\d)/.exec(this.textContent ?? '') : null;
-    const top = label ? 100 + (Number(label[1]) - 1) * ROW_H : 0;
+    // A dragged row is shifted by its translateY, as in a browser.
+    const shift = Number(/translateY\((-?[\d.]+)px\)/.exec((this as HTMLElement).style?.transform ?? '')?.[1] ?? 0);
+    const top = label ? 100 + (Number(label[1]) - 1) * ROW_H + shift : 0;
     return { x: 0, y: top, left: 0, top, right: 200, bottom: top + (label ? ROW_H : 0), width: 200, height: label ? ROW_H : 0, toJSON: () => ({}) } as DOMRect;
   });
 };
@@ -645,12 +647,52 @@ test('sankey: after a drop, the row under the pointer opens its submenu only onc
   const menu = await columnsMenu();
   const grip = gripOf(menu, 1);
   press(grip, y(1));
-  move(grip, y(3));
-  release(grip, y(3));
+  move(grip, y(3) + 10);
+  release(grip, y(3) + 10);
   fireEvent.mouseEnter(colRow(menu, 3));
   await new Promise((r) => setTimeout(r, 200));
   expect(screen.queryByRole('menu', { name: 'Column 3' })).toBeNull();
   fireEvent.mouseLeave(colRow(menu, 3));
   fireEvent.mouseEnter(colRow(menu, 3));
   expect(await screen.findByRole('menu', { name: 'Column 3' })).toBeInTheDocument();
+});
+
+test('sankey: a slow drag that stays above the next row\'s centre saves nothing', async () => {
+  layoutRows();
+  const t = await charts(orderSaved);
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  const menu = await columnsMenu();
+  const grip = gripOf(menu, 1);
+  press(grip, y(1));
+  for (let at = y(1) + 2; at <= y(1) + 24; at += 2) move(grip, at);
+  release(grip, y(1) + 24);
+  expect(t.puts).not.toHaveBeenCalled();
+});
+
+test('sankey: after a drag down, the row under the pointer opens no submenu on its first hover', async () => {
+  layoutRows();
+  await charts(orderSaved);
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  const menu = await columnsMenu();
+  const grip = gripOf(menu, 1);
+  press(grip, y(1));
+  move(grip, y(2) + 4);
+  release(grip, y(2) + 4);
+  fireEvent.mouseEnter(colRow(menu, 2));
+  await new Promise((r) => setTimeout(r, 200));
+  expect(screen.queryByRole('menu', { name: 'Column 2' })).toBeNull();
+});
+
+test('sankey: pushing past the last row settles on the last slot and stays there', async () => {
+  layoutRows();
+  const t = await charts(orderSaved);
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  const menu = await columnsMenu();
+  const grip = gripOf(menu, 1);
+  press(grip, y(1));
+  const lines: (string | undefined)[] = [];
+  for (const at of [y(3) + 10, y(3) + 20, y(3) + 40, y(3) + 40, y(3) + 40]) { move(grip, at); lines.push(menu.querySelector<HTMLElement>('[data-drop-line]')?.style.top); }
+  expect(new Set(lines).size).toBe(1);
+  release(grip, y(3) + 40);
+  await waitFor(() => expect(savedDims(t)).toEqual(['is_gift', 'products__title', 'status']));
 });
