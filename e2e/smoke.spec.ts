@@ -1066,3 +1066,14 @@ test('the column menu icon is invisible at rest, shows on header hover and on ke
   await expect.poll(() => opacity(data.getByLabel('Filter id'))).toBe('1');
   await expect.poll(() => opacity(data.getByLabel('Column menu status'))).toBe('0');
 });
+
+test('the page declares the colour scheme of its theme, so a dark host does not paint the frame white', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/?mock');
+  await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('dark');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('/?mock');
+  await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('light');
+});
