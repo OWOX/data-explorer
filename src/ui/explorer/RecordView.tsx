@@ -4,6 +4,7 @@ import { useColumnFormats } from '../../format/useColumnFormats';
 import { readRows } from '../../api/rows';
 import type { Model, Schema } from '../../model/types';
 import { joinFilters } from '../../records/relationships';
+import { seenRow } from '../../records/seen-rows';
 import { useIncomingLinks } from '../../records/useIncomingLinks';
 import type { Row } from '../../sdk/types';
 import { useRememberLeaving } from '../../state/leaving';
@@ -25,6 +26,8 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
   const [ownVersion, setVersion] = useState(0);
   // A model reload re-reads the record too: its counter joins this view's own, and each only ever goes up.
   const version = ownVersion + modelVersion;
+  // The row the grid opened this record from, if any. It serves the first load only: a Refresh or a model reload moves the version and reads.
+  const [first] = useState(() => ({ version, seen: seenRow(ctx, martId, pk, modelVersion) }));
   const [state, setState] = useState<{ ver: number; schema: Schema | null; row: Row | null | undefined; error: unknown }>({ ver: -1, schema: null, row: undefined, error: null });
   const [relSchemas, setRelSchemas] = useState(new Map<string, Schema>());
   const incoming = useIncomingLinks(martId, model.edges);
@@ -34,11 +37,19 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
     const ac = new AbortController();
     (async () => {
       const schema = await schemas.get(martId);
-      const filter = Object.entries(pk).map(([column, v]) => {
-        const isNum = schema.find((f) => f.name === column)?.category === 'number';
-        return { column, operator: 'eq' as const, value: isNum ? Number(v) : String(v) };
-      });
-      const [row] = await readRows(ctx, martId, { column: schema.map((f) => f.name), filter, limit: 1 }, { signal: ac.signal });
+      const seen = version === first.version ? first.seen : undefined;
+      let row: Row | undefined;
+      if (seen && schema.every((f) => seen.columns.includes(f.name))) {
+        row = seen.row;
+      } else {
+        // Some fields were not loaded: the grid's values show at once, and the read's row replaces them.
+        if (seen) setState((s) => (s.row === undefined ? { ver: -1, schema, row: seen.row, error: null } : s));
+        const filter = Object.entries(pk).map(([column, v]) => {
+          const isNum = schema.find((f) => f.name === column)?.category === 'number';
+          return { column, operator: 'eq' as const, value: isNum ? Number(v) : String(v) };
+        });
+        [row] = await readRows(ctx, martId, { column: schema.map((f) => f.name), filter, limit: 1 }, { signal: ac.signal });
+      }
       if (ac.signal.aborted) return;
       setState({ ver: version, schema, row: row ?? null, error: null });
       for (const link of incoming) {
@@ -49,7 +60,7 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
       }
     })().catch((error) => { if (!ac.signal.aborted) setState((s) => ({ ...s, ver: version, error })); });
     return () => ac.abort();
-  }, [ctx, schemas, martId, pk, incoming, version]);
+  }, [ctx, schemas, martId, pk, incoming, version, first]);
 
   const header = (
     <BandTools slot={slot}>

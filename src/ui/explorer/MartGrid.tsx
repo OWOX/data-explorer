@@ -51,6 +51,7 @@ import { ConfigMenu, type ConfigMart } from './ConfigMenu';
 import { RuleBadges, type RuleMart } from './RuleBadges';
 import { ExportMenu } from './ExportMenu';
 import { defaultColumns } from '../../model/columns';
+import { forgetSeenRows, rememberRow } from '../../records/seen-rows';
 import { buildRowQuery, forgetGridRows, useMartRows } from './useMartRows';
 export { MartGrid } from './SeededGrid';
 import { useGridSelection } from './useGridSelection';
@@ -768,7 +769,11 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const { marksOf, colMark, pickHeader, startDrag, dragOver, pickCell, cancelDragClick, onCopy, onGridKey, dragMoved } = useGridSelection(rows, outputs, charts, selected, setSelected, scroller, head, fieldOf);
   const openRow = (row: Row) => {
     if (dragMoved.current) return;
-    dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk: Object.fromEntries(pks.map((k) => [k, row[k]])) });
+    const pk = Object.fromEntries(pks.map((k) => [k, row[k]]));
+    // Hand the row over: the Row band shows it at once. Only the main mart's own fields count (a joined column has another name, a calculated field may be grouped by the grid's other columns).
+    const mine = new Set(schema.filter((f) => !f.isCalculated).map((f) => f.name));
+    if (!grouped && asked) rememberRow(ctx, martId, pk, { row, columns: (asked.column ?? []).filter((c) => mine.has(c)), stamp: modelVersion });
+    dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk });
   };
   // The rows are memoised, so what they call must keep its identity: they reach the latest handlers through this one object.
   const latest = useLatest({ startDrag, dragOver, pickCell, pickHeader, openRow });
@@ -790,7 +795,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
       <Toast onDismiss={() => setNote(null)} stamp={note} returnTo={() => scroller.current}>{note?.text}</Toast>
       <BandTools slot={slot}>
         <button type="button" disabled={!hasFilters && !hasSorts && !hasSlices} onClick={() => edit(() => { setAllFilters({}); setAllSlices({}); setOwn(null); })} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent disabled:opacity-50"><RotateCcw className="size-4" />Reset</button>
-        <button type="button" onClick={() => { onRefresh(); forgetGridRows(ctx, martId); setJoinsFailed(false); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
+        <button type="button" onClick={() => { onRefresh(); forgetGridRows(ctx, martId); forgetSeenRows(ctx, martId); setJoinsFailed(false); setRefreshTick((n) => n + 1); setVersion((v) => v + 1); }} className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent"><RefreshCw className="size-4" />Refresh</button>
         {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} uniqueCount={ucNow} filters={Object.values(filters)} slices={Object.values(slices)} sorts={gridSorts} ownSorts={own ?? NO_SORTS} rows={blocked ? null : read} hasMore={hasMore} loading={reading && !blocked} failed={charts && failed} charts={charts} onOpenChange={onExportOpen} run={run} storage={martStorage} joinsFailed={joinsFailed && !joinsRead} sources={joinsRead ? sources : undefined} edges={model.edges} titles={martTitles} joinedMarts={joinedMarts} />}
       </BandTools>
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-busybar" />}

@@ -449,7 +449,8 @@ describe('the record', () => {
     await within(data()).findByRole('table');
     await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
     await within(row()).findByText('status');
-    expect(within(row()).queryByRole('progressbar')).toBeNull();
+    // The grid's own columns show at once while the record reads the rest.
+    await waitFor(() => expect(within(row()).queryByRole('progressbar')).toBeNull());
     await userEvent.click(within(row()).getByRole('button', { name: 'Refresh' }));
     expect(within(row()).getByRole('progressbar')).toBeInTheDocument();
     await waitFor(() => expect(within(row()).queryByRole('progressbar')).toBeNull());
