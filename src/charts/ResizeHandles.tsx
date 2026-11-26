@@ -59,7 +59,7 @@ export function ResizeHandles({ title, section, frame, onDraft }: { title: strin
     e.stopPropagation();
     const box = section.getBoundingClientRect();
     const moved: Edge = step[0] !== 0 ? 'e' : 's';
-    frame.onResize(dragged(frame.size, moved, { w: box.width, h: box.height }, step[0] * CELL, step[1] * CELL, band().room));
+    frame.onResize(dragged(frame.size, moved, { w: box.width, h: box.height }, step[0] * CELL, step[1] * CELL, band().room), true);
   };
   return EDGES.map(({ edge, what }) => <button key={edge} type="button" className="dm-resize" data-edge={edge} aria-label={`Resize ${title}: ${what}`} onPointerDown={down(edge)} onKeyDown={key(edge)} />);
 }

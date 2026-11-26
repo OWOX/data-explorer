@@ -147,6 +147,8 @@
 .dm-tip-copy button { all: unset; display: inline-flex; padding: 0.125rem; border-radius: 0.25rem; cursor: pointer; opacity: 0.7; }
 .dm-tip-copy button:hover, .dm-tip-copy button:focus-visible { opacity: 1; background: color-mix(in oklab, var(--background) 20%, transparent); }
 .dm-tip-copy-failed { font-size: 0.6875rem; opacity: 0.85; }
+/* The copy button shows only while the pointer is on the bubble or focus is in it; it keeps its room, so the bubble does not jump. A result (the check, Copy failed) stays seen. */
+.dm-hint-hoverable:not(:hover):not(:focus-within) .dm-tip-copy:not(:has([data-copied], [role="alert"])) { visibility: hidden; }
 .dm-tip-fixed { position: fixed; }
 .dm-tip-interactive { pointer-events: auto; max-height: calc(100vh - 1rem); overflow-y: auto; }
 .dm-tip-more { all: unset; display: block; width: max-content; margin-top: 0.125rem; cursor: pointer; text-decoration: underline dashed; text-underline-offset: 3px; opacity: 0.8; }
@@ -528,6 +530,10 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-menu-row:has(> .dm-hint-slot) > .dm-menu-label { flex: 0 1 auto; }
 .dm-menu-row > .dm-hint-slot { margin-left: -4px; margin-right: auto; }
 .dm-menu-group + .dm-menu-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--menu-line); }
+.dm-menu-grip { display: inline-flex; margin: 0 -4px; padding: 0 2px; cursor: grab; touch-action: none; }
+.dm-menu-grip[data-off] { opacity: .4; cursor: default; }
+.dm-menu-dragging, .dm-menu-dragging * { cursor: grabbing !important; }
+.dm-menu-drop { position: absolute; left: 0; right: 0; height: 2px; margin-top: -1px; background: var(--sheet-green); pointer-events: none; z-index: 2; }
 .dm-menu-glyph { display: inline-flex; flex-shrink: 0; color: var(--menu-muted); }
 /* The selected mark is the green check, whatever colour or stroke the host page gives an svg: it is painted from the mark's own colour. */
 .dm-menu-check { display: inline-flex; width: 16px; flex-shrink: 0; justify-content: center; margin-left: -4px; color: var(--sheet-green, #188038); }

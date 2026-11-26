@@ -26,6 +26,7 @@ import { ChartsBody } from '../../charts/ChartsBody';
 import type { MenuItem } from '../../charts/ChartMenu';
 import { ConfigMenuSlot } from '../../charts/menuSlot';
 import { dropPicksOf } from '../../charts/listMenu';
+import type { ChartSettings } from '../../charts/settings';
 import { useWidth } from '../../charts/useWidth';
 import { cycleSort, defaultSort, sortsOnColumns, type SortDirection, type SortKey } from '../../model/sort';
 import { groupMap, moveColumn, moveColumnBy, orderColumns, ownInSchemaOrder } from '../../state/column-order';
@@ -691,8 +692,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     const hidden = visible.filter((n) => !cols.includes(n));
     if (hidden.length > 0) {
       if (!pruneCards.current?.(hidden)) {
-        // One load then save at a time per mart, so two quick hides do not both start from the same saved doc.
-        pruneChain.current = pruneChain.current.then(() => chartSettings.load(martId)).then((cur) => { const next = dropPicksOf(cur, new Set(hidden)); if (next !== cur) chartSettings.save(martId, { ...next, version: 2 }); }).catch(() => {});
+        // One load then save at a time per mart, so two quick hides do not both start from the same saved doc. The read is the server's (it waits for this tab's own saves): another tab's newer doc is never written over. The store copy follows, with no Undo step.
+        pruneChain.current = pruneChain.current.then(() => chartSettings.load(martId)).then((cur) => { const next = dropPicksOf(cur, new Set(hidden)); if (next !== cur) { const doc: ChartSettings = { ...next, version: 2 }; dispatch({ type: 'saveCharts', martId, settings: doc }); chartSettings.save(martId, doc); } }).catch(() => {});
       }
     }
     shownNow.current = cols;
@@ -714,7 +715,8 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     const left = joinedMartIds(visible, sources).filter((m) => !joinedMartIds(cols, sources).includes(m));
     columnStore.save(martId, cols);
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
-  }, [shownNow, sources, native, markEdit, agg, applyAgg, visible, columnStore, chartSettings, martId, setVisible, setOwn, setUc, setEp, sourcesRead, uc, ep, schema]);
+    return !sameList(cols, visible);
+  }, [shownNow, sources, native, markEdit, agg, applyAgg, visible, columnStore, chartSettings, dispatch, martId, setVisible, setOwn, setUc, setEp, sourcesRead, uc, ep, schema]);
   // A chart menu's choice of a field that is not shown: the shown columns and the new ones, in one edit.
   // In a grouped grid a new column without a rule would become a group key and multiply the rows: a metric gets the function the chart sums it with, a date the chart's bucket (Month when none is known yet). A dimension is a key, as intended.
   const showColumns = useCallback((names: string[], buckets?: Readonly<Record<string, DateBucket>>) => changeColumns([...new Set([...shown, ...names])], (cur) => {

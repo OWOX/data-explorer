@@ -557,3 +557,11 @@ test('a cut row label shows the full text in the app tooltip; a short one has no
   await userEvent.hover(bars.querySelector(`text[aria-label="${long}"]`)!);
   expect(await tipText(long)).toBe(true);
 });
+
+test('a bar with its own colour is filled with it; one without keeps the series colour; the blank bucket stays hatched', () => {
+  const { container } = wrap(<BarChart series={[{ name: 'C', color: 'red', points: [{ ...px('a', 2), color: 'green' }, px('b', 1), { ...px(BLANK_KEY, 1), color: 'green' }] }]} orientation="vertical" categorical stacked={false} ariaLabel="b" formatTick={String} />);
+  const fills = [...container.querySelectorAll('rect[data-series="C"]')].map((r) => r.getAttribute('fill'));
+  expect(fills[0]).toBe('green');
+  expect(fills[1]).toBe('red');
+  expect(fills[2]).toMatch(/^url\(#/);
+});
