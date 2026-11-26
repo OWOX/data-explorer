@@ -70,7 +70,7 @@ export const withColumns = (names: string[], count: number, all: Field[]): strin
   return next;
 };
 
-function SankeyPanel({ martId, cf, title, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<SankeyR>) {
+function SankeyPanel({ martId, cf, title, r, filter, version, idle, hold, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<SankeyR>) {
   const { dims, measure, exact } = r;
   const n = dims.length;
   // Fewer than two columns draws nothing and reads nothing: the notice says what to pick.
@@ -79,14 +79,14 @@ function SankeyPanel({ martId, cf, title, r, filter, version, idle, hasFilters, 
   // Fixed hooks, unused ones get a null query. Exact mode: one flow read on all columns (+ a few-row read when it is capped; a count is never negative).
   // Fan-out mode: one flow read per adjacent pair (up to SANKEY_MAX - 1), each with its own few-row read when capped. Always one total read per column.
   const capped = (rows: Row[] | null) => !!rows && rows.length >= SANKEY_FLOW_LIMIT && measure.kind === 'metric';
-  const flow = useChartQuery(martId, off || !exact ? null : sankeyFlowQuery(dims, measure, filter, cf.counter), version);
-  const low = useChartQuery(martId, off || !exact || !capped(flow.rows) ? null : sankeyLowQuery(dims, measure, filter, cf.counter), version);
+  const flow = useChartQuery(martId, off || !exact ? null : sankeyFlowQuery(dims, measure, filter, cf.counter), version, undefined, undefined, hold);
+  const low = useChartQuery(martId, off || !exact || !capped(flow.rows) ? null : sankeyLowQuery(dims, measure, filter, cf.counter), version, undefined, undefined, hold);
   const pairQuery = (i: number) => (off || exact || i >= n - 1 ? null : [dims[i]!, dims[i + 1]!] as const);
-  const usePair = (i: number) => { const p = pairQuery(i); return useChartQuery(martId, p ? sankeyFlowQuery([...p], measure, filter, cf.counter) : null, version); };
+  const usePair = (i: number) => { const p = pairQuery(i); return useChartQuery(martId, p ? sankeyFlowQuery([...p], measure, filter, cf.counter) : null, version, undefined, undefined, hold); };
   const pairs = [usePair(0), usePair(1), usePair(2), usePair(3)];
-  const usePairLow = (i: number) => { const p = pairQuery(i); return useChartQuery(martId, p && capped(pairs[i]!.rows) ? sankeyLowQuery([...p], measure, filter, cf.counter) : null, version); };
+  const usePairLow = (i: number) => { const p = pairQuery(i); return useChartQuery(martId, p && capped(pairs[i]!.rows) ? sankeyLowQuery([...p], measure, filter, cf.counter) : null, version, undefined, undefined, hold); };
   const pairLows = [usePairLow(0), usePairLow(1), usePairLow(2), usePairLow(3)];
-  const useCol = (i: number) => useChartQuery(martId, off || i >= n ? null : sankeyColumnQuery(dims[i]!, measure, filter, cf.counter), version);
+  const useCol = (i: number) => useChartQuery(martId, off || i >= n ? null : sankeyColumnQuery(dims[i]!, measure, filter, cf.counter), version, undefined, undefined, hold);
   const all = [useCol(0), useCol(1), useCol(2), useCol(3), useCol(4)];
   const cols = all.slice(0, n);
   const usedPairs = pairs.slice(0, Math.max(0, n - 1));

@@ -794,7 +794,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
         {!blocked && <ExportMenu martId={martId} martTitle={model.marts.get(martId)?.title ?? martId} schema={schema} visible={shown} aggregation={aggNow} uniqueCount={ucNow} filters={Object.values(filters)} slices={Object.values(slices)} sorts={gridSorts} ownSorts={own ?? NO_SORTS} rows={blocked ? null : read} hasMore={hasMore} loading={reading && !blocked} failed={charts && failed} charts={charts} onOpenChange={onExportOpen} run={run} storage={martStorage} joinsFailed={joinsFailed && !joinsRead} sources={joinsRead ? sources : undefined} edges={model.edges} titles={martTitles} joinedMarts={joinedMarts} />}
       </BandTools>
       {loading && <div role="progressbar" aria-label="Loading rows" className="dm-busybar" />}
-      <div ref={scroller} tabIndex={0} onKeyDown={charts ? undefined : onGridKey} onCopy={charts ? undefined : onCopy} onClickCapture={cancelDragClick} className={`dm-grid-root min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
+      <div ref={scroller} data-scroll-root="" tabIndex={0} onKeyDown={charts ? undefined : onGridKey} onCopy={charts ? undefined : onCopy} onClickCapture={cancelDragClick} className={`dm-grid-root min-h-0 flex-1 overflow-auto ${loading && rows ? 'opacity-60' : ''}`}>
         <table className="dm-grid w-full border-collapse">
           <thead ref={head} className="dm-head sticky top-0 z-10">
             <tr aria-hidden data-chrome>

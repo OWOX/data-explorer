@@ -22,19 +22,19 @@ type TopValues = {
  * The measure's top values of a dimension, the blank value included as its own first category, with the rows outside them.
  * A top list cannot name NULL, so the blank value rides in the top read when it ranks, else is read apart; "Other" never holds blanks.
  */
-export function useTopValues({ martId, counter, dim, measure, filter, version, idle, withOther = true }: {
-  martId: string; counter: Field | null | undefined; dim: Field; measure: Measure; filter: TraverseFilter[]; version: number; idle: boolean;
+export function useTopValues({ martId, counter, dim, measure, filter, version, idle, hold, withOther = true }: {
+  martId: string; counter: Field | null | undefined; dim: Field; measure: Measure; filter: TraverseFilter[]; version: number; idle: boolean; hold?: boolean;
   /** Read the rows outside the top list too (default). An axis that only needs its values leaves it off. */
   withOther?: boolean;
 }): TopValues {
-  const top = useChartQuery(martId, idle ? null : topValuesQuery(dim, measure, filter), version);
+  const top = useChartQuery(martId, idle ? null : topValuesQuery(dim, measure, filter), version, undefined, undefined, hold);
   const keys = top.rows?.map((row) => keyOf(row[dim.name]));
   const names = keys?.filter((k) => k !== BLANK_KEY);
   const topFull = top.rows?.length === TOP_N;
   const full = topFull && withOther;
   const hasBlank = !!keys?.includes(BLANK_KEY);
-  const blank = useChartQuery(martId, !idle && topFull && !hasBlank ? pieBlankQuery(measure, filter, dim, counter) : null, version);
-  const other = useChartQuery(martId, !idle && full ? pieOtherQuery(measure, filter, dim, names!, counter) : null, version);
+  const blank = useChartQuery(martId, !idle && topFull && !hasBlank ? pieBlankQuery(measure, filter, dim, counter) : null, version, undefined, undefined, hold);
+  const other = useChartQuery(martId, !idle && full ? pieOtherQuery(measure, filter, dim, names!, counter) : null, version, undefined, undefined, hold);
   const key = measureKey(measure);
   const failed = [top, blank, other].find((q) => q.error);
   const empty = top.rows?.length === 0;

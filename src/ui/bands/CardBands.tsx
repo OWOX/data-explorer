@@ -353,6 +353,7 @@ export function CardBands({
         {view === 'canvas' ? (
           <div
             className="dm-tree-scroll"
+            data-scroll-root=""
             data-testid="marts-canvas"
             // Scrolling this box moves its cards without resizing anything, so tell the page wires to look again.
             onScroll={(e) => e.currentTarget.dispatchEvent(new Event('animationend', { bubbles: true }))}

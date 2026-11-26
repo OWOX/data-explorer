@@ -10,6 +10,7 @@ import { AppServices, StoreProvider } from '../state/store';
 import { App } from '../ui/App';
 import { SAVED_COLUMNS_WAIT_MS } from '../ui/explorer/SeededGrid';
 import { openColumnMenu, openConfigMenu, closeConfigMenu, openFields, openSubmenu } from '../ui/explorer/menu-test-utils';
+import { TOP_N } from './queries';
 import type { ChartSettings } from './settings';
 
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
@@ -1232,26 +1233,40 @@ describe('a chart reads once it scrolls near the view', () => {
     return { fire: () => act(() => cb([...seen].map((target) => ({ target, isIntersecting: true })))) };
   }
   const pie = () => data().querySelector('section[data-chart-kind="Pie"]');
+  /** The pie's top-values read: grouped by its dimension (status), top N, optionally with a status rule. */
+  const pieRead = (o: TraverseOptions) => o.column?.[0] === 'status' && o.limit === TOP_N;
 
-  test('a panel that is not near the view shows its skeleton and sends no read; firing the observer reads once; it stays live after', async () => {
+  test('an unseen, uncached panel sends no read; firing the observer reads; it stays live after', async () => {
     const io = stubObserver();
     const t = await charts();
     await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
     await waitFor(() => expect(pie()).not.toBeNull());
-    await new Promise((r) => setTimeout(r, 100));
+    expect(t.queries.some(pieRead)).toBe(false);
     expect(data().querySelector('[data-slice]')).toBeNull();
-    const before = t.queries.length;
     io.fire();
     await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
-    expect(t.queries.length).toBeGreaterThan(before);
-    // Scrolled away (no further intersection) and a filter changes: the panel still reads.
+    expect(t.queries.some(pieRead)).toBe(true);
+    // Scrolled away (no further intersection) and a filter changes: the pie still reads, with the rule.
     const live = t.queries.length;
     await openSubmenu(within(data()), 'status', 'Filter');
     const dialog = await screen.findByRole('dialog');
     await userEvent.type(within(dialog).getByLabelText('Value'), 'paid');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
-    await waitFor(() => expect(t.queries.length).toBeGreaterThan(live));
-    await waitFor(() => expect(t.queries.slice(live).some((q) => q.filter?.some((f) => f.column === 'status'))).toBe(true));
+    await waitFor(() => expect(t.queries.slice(live).some((q) => pieRead(q) && q.filter?.some((f) => f.column === 'status'))).toBe(true));
+  });
+
+  test('a cached chart paints on mount with no observer callback', async () => {
+    const io = stubObserver();
+    const t = await charts();
+    await waitFor(() => expect(pie()).not.toBeNull());
+    io.fire();
+    await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+    await userEvent.click(radio('Table'));
+    await waitFor(() => expect(pie()).toBeNull());
+    const reads = t.queries.filter(pieRead).length;
+    await userEvent.click(radio('Charts'));
+    await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+    expect(t.queries.filter(pieRead)).toHaveLength(reads);
   });
 
   test('without IntersectionObserver the panel reads at once', async () => {

@@ -206,7 +206,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
             {drawn.map(({ spec, def, r }, i) => r ? (
               <ChartFrameContext key={spec.id} value={{ size: spec.size ?? NO_SIZE, resizing, cancelDrag, onResize: (size, keys) => change((cur) => patchChart(cur, spec.id, { size }), keys ? { fold: `size:${spec.id}` } : {}) }}>
               <SeenOnce>{(seen) => (
-              <def.Panel martId={martId} cf={cf} title={resolved[i]!.title!} r={r} spark={spark} filter={filter} version={version} idle={idle || !seen}
+              <def.Panel martId={martId} cf={cf} title={resolved[i]!.title!} r={r} spark={spark} filter={filter} version={version} idle={idle} hold={!seen}
                 hasFilters={hasFilters} formatOf={formatOf} ready={!!settings} tail={tailItems({ cf, spec, change, resizing, onResizing: setResizing })}
                 onChange={(p: Partial<ChartSpec>) => { const stage = showPicked(spec, p); change((cur) => patchChart(cur, spec.id, p), { stage }); }} onFilter={onFilter} />
               )}</SeenOnce>
@@ -225,5 +225,5 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
 function SeenOnce({ children }: { children: (seen: boolean) => ReactNode }) {
   const [seen, setSeen] = useState(false);
   const onSeen = useCallback(() => setSeen(true), []);
-  return <ChartSeenContext value={onSeen}>{children(seen)}</ChartSeenContext>;
+  return <ChartSeenContext value={seen ? null : onSeen}>{children(seen)}</ChartSeenContext>;
 }

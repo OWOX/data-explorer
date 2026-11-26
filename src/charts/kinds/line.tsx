@@ -20,14 +20,14 @@ import { carry, seriesWidth, type ChartKindDef, type PanelProps } from './types'
 
 type LineR = { date: Field; bucket: DateBucket | 'AUTO'; measure: Measure; measure2: Measure | null; stack: Field | null; area: boolean };
 
-function LinePanel({ martId, cf, r, spark, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<LineR>) {
+function LinePanel({ martId, cf, r, spark, filter, version, idle, hold, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<LineR>) {
   const { date, measure, measure2, stack } = r;
   const scope = measure2 ? [measure, measure2] : [measure];
-  const { bucket, error, retry } = useBucket(martId, date, r.bucket, filter, version, idle);
+  const { bucket, error, retry } = useBucket(martId, date, r.bucket, filter, version, idle, hold);
   const range = { error, retry };
-  const one = useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, version, idle, formatOf, range, scope });
+  const one = useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, version, idle, hold, formatOf, range, scope });
   // The second measure is its own unstacked series; with none, its hook reads nothing.
-  const two = useDateSeries({ martId, cf, spark, date, bucket, measure: measure2 ?? measure, stack: null, filter, version, idle: idle || !measure2, formatOf, scope });
+  const two = useDateSeries({ martId, cf, spark, date, bucket, measure: measure2 ?? measure, stack: null, filter, version, idle: idle || !measure2, hold, formatOf, scope });
   const failed = one.failed ?? (measure2 ? two.failed : undefined);
   const loading = one.loading || (!!measure2 && two.loading);
   const [lt, lf] = measureFormat(measure, formatOf);

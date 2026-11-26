@@ -30,10 +30,10 @@ export function dateMenu(cf: ChartFields, r: { date: Field; bucket: DateBucket |
   ];
 }
 
-function TimeSeriesPanel({ martId, cf, r, spark, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<TimeSeriesR>) {
+function TimeSeriesPanel({ martId, cf, r, spark, filter, version, idle, hold, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<TimeSeriesR>) {
   const { date, measure, stack } = r;
-  const { bucket, error, retry } = useBucket(martId, date, r.bucket, filter, version, idle);
-  const s = useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, version, idle, formatOf, range: { error, retry } });
+  const { bucket, error, retry } = useBucket(martId, date, r.bucket, filter, version, idle, hold);
+  const s = useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, version, idle, hold, formatOf, range: { error, retry } });
   const [tickType, tickFormat] = measureFormat(measure, formatOf);
   const items: MenuItem[] = [
     ...dateMenu(cf, r, onChange),
