@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeViewLink, encodeViewLink, MAX_AGG_RULES, MAX_DECODED_BYTES, MAX_ROUTE_LENGTH, type DecodedView } from './view-link';
+import { decodeViewLink, encodeViewLink, MAX_AGG_RULES, MAX_DECODED_BYTES, MAX_LINK_CHARTS, MAX_ROUTE_LENGTH, type DecodedView } from './view-link';
 
 const folded = { sources: false, marts: true, data: false, row: true };
 const base: Omit<DecodedView, 'dropped' | 'droppedAggregations'> = {
@@ -69,6 +69,22 @@ describe('view link codec', () => {
     expect(Object.getPrototypeOf(out.charts!.scorecards!.metrics)).toBe(Object.prototype);
     expect(({} as Record<string, unknown>).x).toBeUndefined();
     expect(out.charts!.scorecards!.metrics!.a).toBe('b');
+    expect(Object.keys(out.charts!.scorecards!.metrics!)).toEqual(['a']);
+  });
+
+  it('caps the charts read from a link and counts the overflow', async () => {
+    const out = await decodeViewLink(await route(valid({ ch: { charts: Array.from({ length: 70 }, () => ({ kind: 'pie' })) } })));
+    if (typeof out === 'string') throw new Error(out);
+    expect(out.charts!.charts).toHaveLength(MAX_LINK_CHARTS);
+    expect(out.dropped).toBe(6);
+  });
+
+  it('a ch that cleans to nothing decodes with no charts key', async () => {
+    for (const ch of [{}, { foo: 1 }]) {
+      const out = await decodeViewLink(await route(valid({ ch })));
+      if (typeof out === 'string') throw new Error(out);
+      expect(out).not.toHaveProperty('charts');
+    }
   });
   it('round trips native and joined columns, filter shapes, sorts and record', async () => {
     const r = await encodeViewLink(base);

@@ -56,6 +56,9 @@ type ViewLinkV1 = {
 /** At most this many aggregation rules and this many date buckets are read from a link; the rest count as dropped. */
 export const MAX_AGG_RULES = 64;
 
+/** At most this many charts are read from a link; the rest count as dropped. */
+export const MAX_LINK_CHARTS = 64;
+
 const ROUTE_PATH = '/v';
 const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -302,8 +305,11 @@ function shape(raw: unknown): DecodedView {
     if (!isPlain(ch)) dropped++;
     else {
       const list = Array.isArray(ch.charts) ? ch.charts.map((c) => (isPlain(c) && c.id === undefined ? { ...c, id: newChartId() } : c)) : ch.charts;
-      charts = cleanChartSettings({ ...ch, charts: list });
-      if (Array.isArray(list)) dropped += list.length - (charts.charts?.length ?? 0);
+      const cleaned = cleanChartSettings({ ...ch, charts: list });
+      if (cleaned.charts && cleaned.charts.length > MAX_LINK_CHARTS) cleaned.charts = cleaned.charts.slice(0, MAX_LINK_CHARTS);
+      if (Array.isArray(list)) dropped += list.length - (cleaned.charts?.length ?? 0);
+      // Nothing usable left (no charts list, no scorecards): no charts key, so the reader's own charts stay.
+      if (cleaned.charts || cleaned.scorecards) charts = cleaned;
     }
   }
 
