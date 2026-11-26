@@ -55,11 +55,13 @@ export function buildPathQuestions(input: StepInput, mainTitle: string, cands: P
   };
 }
 
+const unsafe = (s: JoinedSource): boolean => s.mainGrainMultiplication !== 'none';
+
 export function applyPath(answers: Answers, cands: PathCandidate[]): JoinedSource[] {
   return cands
     .flatMap((c, i) => { const a = answers[c.qid]; return a?.type === 'score' && a.level >= 1 ? [{ c, i, level: a.level }] : []; })
-    .sort((a, b) => b.level - a.level || a.c.source.depth - b.c.source.depth
-      || Number(a.c.source.mainGrainMultiplication !== 'none') - Number(b.c.source.mainGrainMultiplication !== 'none') || a.i - b.i)
+    .sort((a, b) => b.level - a.level || Number(unsafe(a.c.source)) - Number(unsafe(b.c.source)) || a.c.source.depth - b.c.source.depth || a.i - b.i)
+    .filter((x, _, all) => !unsafe(x.c.source) || !all.some((y) => y.c.source.martId === x.c.source.martId && !unsafe(y.c.source)))
     .slice(0, PATH_KEEP)
     .map((x) => x.c.source);
 }

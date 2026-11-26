@@ -20,9 +20,9 @@ describe('pathCandidates', () => {
     expect(pathCandidates([src('created_by', 'users', { relationshipId: 'r1' }), src('assigned_to', 'users', { relationshipId: 'r2' })], input)).toHaveLength(2);
   });
   it('keeps one candidate per mart and relationship, preferring grain-safe, then shallow, then first', () => {
-    const c = pathCandidates([src('a.b.c', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'many' as never }), src('a.b.c.d', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'none' }), src('x', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'none' }), src('y', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'none' })], input);
+    const c = pathCandidates([src('a.b.c', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'multiplies' }), src('a.b.c.d', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'none' }), src('x', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'none' }), src('y', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'none' })], input);
     expect(c.map((x) => x.source.aliasPath)).toEqual(['x']);
-    const d = pathCandidates([src('a.b.c', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'many' as never }), src('a.b.c.d', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'none' })], input);
+    const d = pathCandidates([src('a.b.c', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'multiplies' }), src('a.b.c.d', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'none' })], input);
     expect(d.map((x) => x.source.aliasPath)).toEqual(['a.b.c.d']);
   });
   it('sorts a depth-4 source sharing a query word first', () => {
@@ -45,6 +45,18 @@ describe('applyPath', () => {
     // No candidate shares a word with the query, so they sort by depth: p0..p5 are a, b, e, f, g, h and p6 is c.d.
     const kept = applyPath({ p0: s(1), p1: s(1), p2: s(0), p3: s(1), p4: s(1), p5: s(1), p6: s(2) }, cands);
     expect(kept.map((k) => k.aliasPath)).toEqual(['c.d', 'b', 'a', 'f', 'g']);
+  });
+  it('ranks a grain-safe route above a shallower multiplying one at equal level', () => {
+    const c = pathCandidates([src('a.b', 'm1', { mainGrainMultiplication: 'multiplies' }), src('c.d.e', 'm2', { mainGrainMultiplication: 'none' })], input);
+    expect(applyPath({ p0: { type: 'score', level: 1 }, p1: { type: 'score', level: 1 } }, c).map((k) => k.aliasPath)).toEqual(['c.d.e', 'a.b']);
+  });
+  it('drops a multiplying route to a mart that also has a grain-safe one, keeps same-safety duplicates', () => {
+    const c = pathCandidates([
+      src('a.b', 'users', { relationshipId: 'r1', mainGrainMultiplication: 'multiplies' }), src('c.d.e', 'users', { relationshipId: 'r2', mainGrainMultiplication: 'none' }),
+      src('f', 'items', { relationshipId: 'r3', mainGrainMultiplication: 'multiplies' }), src('g', 'items', { relationshipId: 'r4', mainGrainMultiplication: 'multiplies' }),
+    ], input);
+    const s = { type: 'score' as const, level: 1 };
+    expect(applyPath(Object.fromEntries(c.map((x) => [x.qid, s])), c).map((k) => k.aliasPath)).toEqual(['c.d.e', 'f', 'g']);
   });
   it('joins nothing without answers', () => {
     expect(applyPath({}, cands)).toEqual([]);
