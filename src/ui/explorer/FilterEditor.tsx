@@ -1,3 +1,4 @@
+import { Check, Trash2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { DATE_PRESETS, LIST_LABELS, RELATIVE_MAX_N, RELATIVE_PRESETS, RELATIVE_UNITS, fromRule, isDateTimeField, isPreset, operatorsFor, toRule, type OpId, type RelativeUnit } from '../../filters/catalogue';
 import { canSuggest, keepsPicks, tokensOf } from '../../filters/valueSuggest';
@@ -17,7 +18,9 @@ type EditorProps = { field: Field; value: ColumnFilter | undefined; onApply: (f:
   /** A note under the Cancel / Apply row, in the sticky footer with it. */
   note?: ReactNode;
   /** Where the known values of a text column come from; absent, the text input has no suggestions. */
-  values?: ValueSource };
+  values?: ValueSource;
+  /** The date menu's last row, which takes the rule away: "Remove filter" or "Remove slice". */
+  removeLabel?: string };
 
 /** Date and timestamp columns open on the presets; the other operators are a step away. Time-of-day columns have no presets. */
 export function FilterEditor(p: EditorProps) {
@@ -32,7 +35,7 @@ type Group = keyof typeof GROUPS;
 const inGroup = (rule: RelativeDatePreset | undefined, key: Group) => !!rule && (key === 'last' ? rule.kind === 'last_week' || rule.kind === 'last_month' || rule.kind === 'last_quarter' || rule.kind === 'last_n_days' || rule.kind === 'last_n_months' : rule.kind.startsWith('this_'));
 const dash = <div role="separator" className="dm-menu-sep" />;
 
-function DateFilterEditor({ field, value, onApply, onClear, note }: EditorProps) {
+function DateFilterEditor({ field, value, onApply, onClear, note, removeLabel = 'Remove filter' }: EditorProps) {
   // A filter that is not a preset (a range, a day) reopens on its own form, with a way back to the presets.
   const [form, setForm] = useState<OpId | null>(value && value.op !== 'relative' && value.op !== 'is_blank' && value.op !== 'is_not_blank' ? value.op : null);
   const current = value?.op === 'relative' ? (value.value as RelativeDatePreset) : undefined;
@@ -79,13 +82,16 @@ function DateFilterEditor({ field, value, onApply, onClear, note }: EditorProps)
       {(['is_blank', 'is_not_blank'] as const).map((op) => (
         <Row key={op} {...plain} check checked={value?.op === op} label={op === 'is_blank' ? 'Is blank' : 'Is not blank'} onActivate={() => onApply({ field: field.name, op })} />
       ))}
-      {value && <>{dash}<Row {...plain} slot label="Clear" onActivate={onClear} /></>}
+      {/* The trash sits in the check column (as the tick's -4px), so its label lines up with the rows above. */}
+      {value && <>{dash}<Row {...plain} glyph={<Trash2 className="-ml-1 size-4" />} label={removeLabel} onActivate={onClear} /></>}
       {note && <div className="px-4 pb-2 pt-2">{note}</div>}
       {fly && (
         <Panel anchor={fly.row} mode="beside" role="menu" returnTo={fly.row} label={GROUPS[fly.key].title} onEscape={closeFly} onLeave={closeFly} focusSeq={fly.seq} className="dm-menu-editor dm-menu-fly" form={fly.key === 'last'}>
           <div className="dm-menu-list">{GROUPS[fly.key].labels.map((l) => preset(l, true))}</div>
           {fly.key === 'last' && (
             <ActionForm className="dm-menu-fly-form" onAction={() => { if (nOk) apply(rule); }}>
+              {/* The tick column of the rows above: "Last" lines up with their labels, and a count the presets do not cover is ticked here. */}
+              <span className="dm-menu-check" aria-hidden>{custom && <Check className="size-4" />}</span>
               <span>Last</span>
               <input aria-label="N" className="w-16" type="number" min={1} max={Math.floor(RELATIVE_MAX_N / factor)} value={Number.isNaN(n) ? '' : n} onChange={(e) => setN(e.target.valueAsNumber)} />
               <Select aria-label="Unit" value={unit} onChange={(e) => setUnit(e.target.value as RelativeUnit)}>

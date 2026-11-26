@@ -84,8 +84,15 @@ test('the active preset is checked in its panel, and its group row is checked to
   await flyout('Last…');
   expect(screen.getByRole('menuitemradio', { name: 'Last 30 days' })).toBeChecked();
   expect(screen.getByRole('menuitemradio', { name: 'Last 7 days' })).not.toBeChecked();
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Clear' }));
+  expect(document.querySelector('.dm-menu-fly-form .dm-menu-check svg')).toBeNull();
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Remove filter' }));
   expect(onClear).toHaveBeenCalled();
+});
+
+test('a count the presets do not cover ticks the Last [n] [unit] row', async () => {
+  open(ts, { field: 'created_at', op: 'relative', value: { kind: 'last_n_days', n: 45 } });
+  await flyout('Last…');
+  expect(document.querySelector('.dm-menu-fly-form .dm-menu-check svg')).not.toBeNull();
 });
 
 test('Last [n] [unit]: days apply as days, weeks as 7n days, quarters and years as months', async () => {
