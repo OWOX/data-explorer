@@ -421,6 +421,22 @@ export function CardBands({
   const shownMarts = useMemo(() => visible.ids.flatMap((id) => model.marts.get(id) ?? []), [visible.ids, model]);
   const martCards = useCardTransitions(shownMarts, martId);
   const sourceCards = useCardTransitions(model.sources, sourceKey);
+  /** What every card of a mart is given, wherever it is drawn. `el` is its element id. */
+  const anyCard = (mart: Mart, el: string) => ({
+    mart,
+    contexts: contextsOf(model.contexts, mart.contextIds),
+    quality: dq.get(mart.id),
+    lit: lit.has(el),
+    onOpenApp: () => onOpenApp(mart.id),
+  });
+  /** A real card adds its transition and its row count. */
+  const realCard = (mart: Mart, el: string) => ({
+    ...anyCard(mart, el),
+    transition: martCards.transitionOf(mart),
+    count: counts.get(mart.id) ?? { state: 'idle' as const },
+    onRetryCount: () => onRetryCount(mart.id),
+    onNeedCount: () => onRequestCount(mart.id),
+  });
 
   const storages = useMemo(() => storageOptions(model), [model]);
   // Offered from two storages up: with one there is nothing to choose between.
@@ -490,18 +506,13 @@ export function CardBands({
             return [
               <MartCard
                 key={isMain ? id : `${id}@${path}`}
-                mart={mart}
-                transition={martCards.transitionOf(mart)}
-                contexts={contextsOf(model.contexts, mart.contextIds)}
-                count={counts.get(id) ?? { state: 'idle' }}
+                {...realCard(mart, el)}
                 matched={matchedHere?.get(path)}
-                quality={dq.get(id)}
                 selected={isMain}
                 joined={!isMain}
                 path={path || undefined}
                 title={isMain ? undefined : sourceTitle(path)}
                 focused={focus === path}
-                lit={lit.has(el)}
                 aside={aside.has(el)}
                 faded={fadedOf(el)}
                 onRemove={isMain ? undefined : () => {
@@ -509,9 +520,6 @@ export function CardBands({
                   void click(id, { removePaths: node.bare ? subtreePaths(canvasTree!, path) : [path] }).then(() => document.getElementById(martElementId(parent.martId, parent.path || undefined))?.focus(), () => undefined);
                 }}
                 onSelect={() => { toggleFocus(path); }}
-                onOpenApp={() => onOpenApp(id)}
-                onRetryCount={() => onRetryCount(id)}
-                onNeedCount={() => onRequestCount(id)}
               />,
             ];
           };
@@ -525,21 +533,13 @@ export function CardBands({
               return (
                 <MartCard
                   key={id}
-                  mart={mart}
-                  transition={martCards.transitionOf(mart)}
-                  contexts={contextsOf(model.contexts, mart.contextIds)}
-                  count={counts.get(id) ?? { state: 'idle' }}
-                  quality={dq.get(id)}
+                  {...realCard(mart, el)}
                   selected={false}
                   joined={false}
-                  lit={lit.has(el)}
                   aside={aside.has(el)}
                   faded={fadedOf(el, true)}
                   offPath={mainFor !== null}
                   onSelect={() => (at ? addFromBand(id, { addAt: at.aliasPath }) : addFromBand(id))}
-                  onOpenApp={() => onOpenApp(id)}
-                  onRetryCount={() => onRetryCount(id)}
-                  onNeedCount={() => onRequestCount(id)}
                 />
               );
             })}
@@ -550,18 +550,14 @@ export function CardBands({
               return [
                 <MartCard
                   key={`focus-ghost-${s.aliasPath}`}
-                  mart={mart}
+                  {...anyCard(mart, el)}
                   ghost
                   path={s.aliasPath}
                   title={pathTitle(s, [...(canvasTree?.nodes.keys() ?? [])], joinSources ?? [])}
-                  contexts={contextsOf(model.contexts, mart.contextIds)}
-                  quality={dq.get(mart.id)}
                   selected={false}
                   joined={false}
-                  lit={lit.has(el)}
                   faded={fadedOf(el, true)}
                   onSelect={() => addFromBand(mart.id, { addAt: s.aliasPath })}
-                  onOpenApp={() => onOpenApp(mart.id)}
                 />,
               ];
             })}
@@ -574,17 +570,13 @@ export function CardBands({
           return [
             <MartCard
               key={`ghost-${id}`}
-              mart={mart}
+              {...anyCard(mart, el)}
               ghost
-              contexts={contextsOf(model.contexts, mart.contextIds)}
-              quality={dq.get(id)}
               selected={false}
               joined={false}
-              lit={lit.has(el)}
               aside={aside.has(el)}
               faded={fadedOf(el, true)}
               onSelect={() => addFromBand(id)}
-              onOpenApp={() => onOpenApp(id)}
             />,
           ];
         })}

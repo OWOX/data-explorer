@@ -1,6 +1,5 @@
 import { Box, Info, RefreshCw, RotateCcw } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pending-focus';
 import { memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AUTO, keepsUnit, type Format } from '../../format/formats';
 import { useColumnFormats } from '../../format/useColumnFormats';
@@ -56,6 +55,20 @@ import { ExportMenu } from './ExportMenu';
 import { defaultColumns } from '../../model/columns';
 import { buildRowQuery, useMartRows } from './useMartRows';
 
+// The config button that takes focus when a grid mounts: asked for when the main mart is removed and the next mart is promoted,
+// because the grid then remounts (DataBand keys it by mart) and the focused button is gone.
+let pending: string | null = null;
+
+const askFocusFor = (martId: string | null) => { pending = martId; };
+const dropFocusFor = (martId: string) => { if (pending === martId) pending = null; };
+/** True once, for the mart that was asked for. */
+function takeFocusFor(martId: string): boolean {
+  if (pending !== martId) return false;
+  pending = null;
+  return true;
+}
+const isFocusAskedFor = (martId: string) => pending === martId;
+
 /** `compute` with its answers kept per path. */
 const memoPerPath = <T,>(compute: (path: string) => T) => {
   const kept = new Map<string, T>();
@@ -90,9 +103,9 @@ function useSchema(martId: string, version: number) {
 /** `saved` is the grid as the reader left it; `filters` only changes when a followed link asks a mounted grid to re-seed. */
 type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
 
-/** What the page hands the grid: the mart, what it opens with, and where its changes go. */
 /** Why a grid is a preview: the mart has no primary key, or its key is hidden for reporting. */
 export type NoKey = false | 'missing' | 'hidden';
+/** What the page hands the grid: the mart, what it opens with, and where its changes go. */
 type GridProps = { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: NoKey) => void; /** How many records of each data mart (by alias path) the filters and slices keep; null when the grid goes away. Told again only when the counts change. */ onMatched?: (byPath: ReadonlyMap<string, number> | null) => void; /** The grid begins holding its saves for the saved view: edits from now on are recorded on defaults. */ onHold?: () => void; /** The late saved view replaced parts of the grid a held edit was recorded on: Undo's "before" takes them too. */ onRebase?: (parts: Partial<GridState>) => void; /** The hold ends with nothing to rebase (the grid unmounted, or there was no saved view). */ onRelease?: () => void };
 
 /** The grid for one mart: loads the schema, then reads rows. Key it by mart id. */

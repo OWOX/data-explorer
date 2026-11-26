@@ -52,7 +52,7 @@ export function ContextBadges({ contexts, selectedIds, onToggle }: { contexts: C
     <div ref={box} className="dm-context-filter" role="group" aria-label="Contexts">
       {shown.map(badge)}
       {hidden.length > 0 && (
-        <Popover align="start" label="More contexts" trigger={
+        <Popover label="More contexts" trigger={
           <button type="button" data-context-more data-on={hidden.some((c) => selectedIds.includes(c.id)) ? '' : undefined} className="dm-badge dm-badge-toggle" aria-label={`${hidden.length} more contexts${hiddenOn > 0 ? `, ${hiddenOn} selected` : ''}`}>
             {chipBody(hidden.length)}
           </button>

@@ -1,5 +1,5 @@
-// Undo and Redo for the selection, right after the page title. Undo is what Back was: it returns to the previous
-// selection (source, mart, filters, record); Redo re-applies the one undone last.
+// Undo and Redo for the selection, in the page header. Undo returns to the previous selection (source, mart, filters, record);
+// Redo re-applies the one undone last.
 import { Redo2, Undo2 } from 'lucide-react';
 import { useEffect } from 'react';
 import type { Model } from '../../model/types';

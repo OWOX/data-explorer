@@ -10,7 +10,7 @@ import type { SmartSearch } from './useSmartSearch';
 import { useOutsidePress } from '../outsidePress';
 
 /**
- * The search in a band's toolbar: an icon button that opens an input with a go button at its end. Typing fills a dropdown of
+ * The search in the page header: an icon button that opens an input with a go button at its end. Typing fills a dropdown of
  * reports, data marts and an ad-hoc row; the arrows move through it, Enter picks the highlighted row (or runs the ad-hoc row), and
  * Escape closes the dropdown first, then the box. A query that is applied stays on screen with an x that clears it.
  */

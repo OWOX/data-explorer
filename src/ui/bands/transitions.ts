@@ -18,8 +18,8 @@ export type CardTransition = { className?: string; leaving?: boolean };
  * cards grow out of a point; `turning` cards arrived into a cell another card has just vacated and
  * turn over in place, so a replacement reads as one event. The first render animates nothing, and
  * neither does folding a block (its cards unmount and mount, but none of them joined anything).
+ * `idOf` must be a stable function (declared outside the component), or the transitions are recomputed on every render.
  */
-/** `idOf` must be a stable function (declared outside the component), or the transitions are recomputed on every render. */
 export function useCardTransitions<T>(items: T[], idOf: (item: T) => string): { items: T[]; transitionOf: (item: T) => CardTransition } {
   const [leaving, setLeaving] = useState<Array<{ item: T; at: number }>>([]);
   const [entering, setEntering] = useState<Set<string>>(new Set());

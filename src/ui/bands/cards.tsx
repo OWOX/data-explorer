@@ -11,7 +11,7 @@ import type { CardTransition } from './transitions';
 import { DEFAULT_CONTEXT_ICON, DEFAULT_MART_ICON, PickedIcon } from './picked';
 import { useLatest } from '../useLatest';
 
-/** The element id Task 3's lines look cards up by: Data Flow's `src-` prefix and key sanitising. */
+/** The element id the lines look cards up by: Data Flow's `src-` prefix and key sanitising. */
 export const sourceElementId = (key: string) => `src-${key.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
 /** A joined mart is a card per alias path, so the path is part of its id; the main mart and the band cards have none. */
 export const martElementId = (martId: string, path?: string) => (path ? `dm-${martId}@${path}` : `dm-${martId}`);

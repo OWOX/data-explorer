@@ -301,7 +301,6 @@ function MenuPopup({ field, output, anchor, initial, onClose, onHide }: { field:
   );
 }
 
-/** What a column's header shows at its right end: an icon for each active filter, aggregation and sort, then the green menu icon. Each opens the column menu. */
 /** The pending focus after Hide column. The menu that set it is gone by then, so it lives here; a new hide or an unmounted header cancels it. */
 let focusTimer: number | undefined;
 
@@ -339,6 +338,7 @@ export function useMenuDismiss(open: boolean, holder: { current: HTMLElement | n
   useOutsidePress(open, (t) => !!t.closest(inside) || !!holder.current?.contains(t), close);
 }
 
+/** What a column's header shows at its right end: an icon for each active filter, aggregation and sort, then the green menu icon. Each opens the column menu. */
 export function ColumnControls({ field, output }: { field: Field; output: Output }) {
   const env = useContext(ColumnMenuEnvContext);
   const [menu, setMenu] = useState<{ anchor: HTMLElement; sub: SubKey | null } | null>(null);
