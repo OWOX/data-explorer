@@ -150,7 +150,7 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
     const sent = options.column ?? [];
     const c = counted.current;
     // OWOX may group a read that names a calculated field (it does when the formula aggregates) by its other columns, so there fewer columns can be another result: the sets must match.
-    const covered = !!c && c.base === base && sent.every((n) => c.columns.includes(n) || (!grouped && own.has(n))) && (!(exact || c.exact) || (sent.length === c.columns.length));
+    const covered = !!c && c.base === base && sent.every((n) => c.columns.includes(n) || (!grouped && !(exact || c.exact) && own.has(n))) && (!(exact || c.exact) || (sent.length === c.columns.length));
     const ask = !covered;
     let total = ask ? undefined : c?.total;
     // The flag goes on this copy only: it is not part of the caller's options or of any key.

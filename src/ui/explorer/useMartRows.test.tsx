@@ -337,6 +337,29 @@ describe('the total row count', () => {
     expect(result.current.total).toBe(460);
   });
 
+  test('with a calculated field, swapping a main column for another of the same count asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a', 'calc']), v: 0, exact: true, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'b', 'calc']), v: 0, exact: true, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(460);
+  });
+
+  test('with a calculated field only in a filter, swapping a main column asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const f = { filter: [{ column: 'calc', operator: 'eq' as const, value: 1 }] };
+    const { traverseData, result, rerender } = run({ o: { ...opts(['id', 'a']), ...f }, v: 0, exact: true, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: { ...opts(['id', 'b']), ...f }, v: 0, exact: true, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(460);
+  });
+
   test('a grouped read with another group key asks again', async () => {
     const own = new Set(['id', 'a', 'b']);
     const g = (column: string[]): TraverseOptions => ({ column, limit: 201, aggregation: [{ column: 'id', function: 'SUM' }] });
