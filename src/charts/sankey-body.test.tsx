@@ -666,6 +666,8 @@ test('sankey: a slow drag that stays above the next row\'s centre saves nothing'
   press(grip, y(1));
   for (let at = y(1) + 2; at <= y(1) + 24; at += 2) move(grip, at);
   release(grip, y(1) + 24);
+  // A save lands a moment after the release: wait it out before saying nothing was saved.
+  await new Promise((r) => setTimeout(r, 300));
   expect(t.puts).not.toHaveBeenCalled();
 });
 
@@ -691,8 +693,11 @@ test('sankey: pushing past the last row settles on the last slot and stays there
   const grip = gripOf(menu, 1);
   press(grip, y(1));
   const lines: (string | undefined)[] = [];
-  for (const at of [y(3) + 10, y(3) + 20, y(3) + 40, y(3) + 40, y(3) + 40]) { move(grip, at); lines.push(menu.querySelector<HTMLElement>('[data-drop-line]')?.style.top); }
+  const shifts: string[] = [];
+  for (const at of [y(3) + 10, y(3) + 20, y(3) + 40, y(3) + 40, y(3) + 40]) { move(grip, at); lines.push(menu.querySelector<HTMLElement>('[data-drop-line]')?.style.top); shifts.push(colRow(menu, 1).style.transform); }
   expect(new Set(lines).size).toBe(1);
+  // The dragged row rests at the clamp (two rows down) and does not flip-flop.
+  expect(new Set(shifts)).toEqual(new Set(['translateY(64px)']));
   release(grip, y(3) + 40);
   await waitFor(() => expect(savedDims(t)).toEqual(['is_gift', 'products__title', 'status']));
 });
