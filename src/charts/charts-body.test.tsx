@@ -1057,3 +1057,62 @@ test('resize mode stays on while the mouse is off the charts, and Done resizing 
   expect(handle('Pie', 'e')).toBeNull();
   expect(handle('Time series', 'e')).toBeNull();
 });
+
+// Chart settings are Undo steps: the header's Undo and Redo move them like a grid edit.
+const undoBtn = () => screen.getByRole('button', { name: 'Undo' });
+const redoBtn = () => screen.getByRole('button', { name: 'Redo' });
+const lastSaved = (t: { puts: { mock: { calls: unknown[][] } } }) => t.puts.mock.calls.at(-1)![1] as ChartSettings;
+const pies = () => data().querySelectorAll('section[data-chart-kind="Pie"]').length;
+
+test('Hide is an Undo step: Undo brings the chart back and saves it, Redo hides it again', async () => {
+  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'p', kind: 'pie' }] } });
+  await userEvent.click(await screen.findByRole('button', { name: 'Pie options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Hide' }));
+  await waitFor(() => expect(pies()).toBe(0));
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(pies()).toBe(1));
+  await waitFor(() => expect(lastSaved(t).charts!.find((c) => c.id === 'p')!.hidden).toBeFalsy());
+  await userEvent.click(redoBtn());
+  await waitFor(() => expect(pies()).toBe(0));
+  await waitFor(() => expect(lastSaved(t).charts!.find((c) => c.id === 'p')!.hidden).toBe(true));
+});
+
+test('a scorecard metric is an Undo step', async () => {
+  const t = await charts();
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Amount · Sum']));
+  await userEvent.click(within(group('orders')!).getByRole('button', { name: 'Amount · Sum options' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Count Unique' }));
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Count Unique']));
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Amount · Sum']));
+  await waitFor(() => expect(lastSaved(t).scorecards?.metrics ?? {}).toEqual({}));
+  await userEvent.click(redoBtn());
+  await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Count Unique']));
+});
+
+test('a chart type change is an Undo step', async () => {
+  await charts({ charts: { version: 2, charts: [{ id: 'p', kind: 'pie' }] } });
+  await userEvent.click(await screen.findByRole('button', { name: 'Pie options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Ranked bar' }));
+  await waitFor(() => expect(pies()).toBe(0));
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(pies()).toBe(1));
+});
+
+test('a resize drag is one Undo step', async () => {
+  const t = await charts({ charts: { version: 2, charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] } });
+  await startResize();
+  vi.spyOn(panelOf('Pie'), 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 480, height: 288 } as DOMRect);
+  fireEvent.pointerDown(handle('Pie', 'se')!, { button: 0, pointerId: 1, clientX: 480, clientY: 288 });
+  fireEvent.pointerMove(window, { pointerId: 1, clientX: 480 + 59, clientY: 288 - 50 });
+  fireEvent.pointerUp(window, { pointerId: 1 });
+  await waitFor(() => expect(lastSaved(t).charts![0]!.size).toEqual({ cols: 22, rows: 10 }));
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(lastSaved(t).charts![0]!.size).toEqual({ cols: 20, rows: 12 }));
+  await waitFor(() => expect(panelOf('Pie').style.height).toBe('288px'));
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(lastSaved(t).charts![0]!.size).toEqual({ cols: 20, rows: 12 }));
+  expect(undoBtn()).toBeDisabled();
+});

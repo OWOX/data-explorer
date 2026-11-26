@@ -5,7 +5,7 @@ import type { Aggregation, DateBucket } from '../model/aggregation';
 import type { Format } from '../format/formats';
 import type { Field, Schema } from '../model/types';
 import type { TraverseFilter } from '../sdk/types';
-import { useServices } from '../state/store';
+import { deepEqual, useServices, useStore } from '../state/store';
 import { ErrorBox } from '../ui/ErrorBox';
 import { Skeleton } from '../ui/Skeleton';
 import { chartFields, menuOf } from './fields';
@@ -50,20 +50,42 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   pruneRef?: { current: ((hidden: string[]) => boolean) | null };
 }) {
   const { chartSettings } = useServices();
+  const [store, dispatch] = useStore();
+  const storeRef = useRef(store);
+  useEffect(() => { storeRef.current = store; });
   const [settings, setSettings] = useState<ChartSettings | null>(null);
   // Changes apply over the latest doc (not a render's copy), so two quick changes both land.
   const latest = useRef<ChartSettings | null>(null);
   useEffect(() => {
     let live = true;
-    chartSettings.load(martId).then((s) => { if (live) { latest.current = s; setSettings(s); } });
+    chartSettings.load(martId).then((loaded) => {
+      if (!live) return;
+      // The store may hold settings an Undo or Redo set while the charts were not mounted: they win over the saved doc, and are saved.
+      const held = storeRef.current.charts[martId];
+      const s = held ?? loaded;
+      latest.current = s;
+      setSettings(s);
+      if (!held) dispatch({ type: 'saveCharts', martId, settings: s });
+      else if (!deepEqual(held, loaded)) chartSettings.save(martId, held);
+    });
     return () => { live = false; };
-  }, [chartSettings, martId]);
+  }, [chartSettings, martId, dispatch]);
+  // Undo and Redo put other settings in the store: they come on screen and are saved. A member edit stores the same object it holds, so it is not seen here.
+  const held = store.charts[martId];
+  useEffect(() => {
+    if (!held || !latest.current || held === latest.current) return;
+    latest.current = held;
+    setSettings(held);
+    chartSettings.save(martId, held);
+  }, [held, chartSettings, martId]);
   // Every save is a version 2 doc. Only called once the doc has loaded (the menu is not shown before), so a change never replaces what was saved.
-  const change = (edit: (cur: ChartSettings) => ChartSettings) => {
+  // A member's edit is one Undo step; `member: false` is a write that belongs to another action (the prune of a hidden column) and leaves no step.
+  const change = (edit: (cur: ChartSettings) => ChartSettings, member = true) => {
     if (!latest.current) return;
     const next: ChartSettings = { ...edit(latest.current), version: 2 };
     latest.current = next;
     setSettings(next);
+    dispatch({ type: member ? 'editCharts' : 'saveCharts', martId, settings: next });
     chartSettings.save(martId, next);
   };
 
@@ -96,7 +118,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   useEffect(() => {
     if (!pruneRef) return;
     // False while the saved settings are not loaded: the grid then prunes through the store, as when Charts is closed.
-    pruneRef.current = (hidden) => { const gone = new Set(hidden); if (!latest.current) return false; if (dropPicksOf(latest.current, gone) !== latest.current) change((cur) => dropPicksOf(cur, gone)); return true; };
+    pruneRef.current = (hidden) => { const gone = new Set(hidden); if (!latest.current) return false; if (dropPicksOf(latest.current, gone) !== latest.current) change((cur) => dropPicksOf(cur, gone), false); return true; };
     return () => { pruneRef.current = null; };
   });
   // A resize re-renders this body on every step: the fields and the resolved choices only change with their inputs, so a resize rebuilds neither.

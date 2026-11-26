@@ -77,6 +77,40 @@ test('dragging Column 1 by its ⋮ below Column 2 swaps the columns, and the tit
   await expect(page.getByRole('menu', { name: 'Columns' })).toBeVisible();
 });
 
+test('the header Undo puts a dragged Sankey column back, and Redo moves it again', async ({ page }) => {
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await openFields(page, 'Orders');
+  await page.getByRole('option', { name: 'is_gift' }).click();
+  await closeConfig(page);
+  await data(page).getByRole('radio', { name: 'Charts' }).click();
+  await configButton(page).click();
+  await page.getByRole('menuitem', { name: 'Add chart' }).click();
+  await page.getByRole('menuitemradio', { name: 'Sankey' }).click();
+  const sankey = data(page).locator('section[data-chart-kind="Sankey"]');
+  const titles = sankey.locator('text.dm-chart-axis-title');
+  await expect(titles).toHaveCount(2);
+  const before = await titles.allTextContents();
+  await sankey.scrollIntoViewIfNeeded();
+  await sankey.getByRole('button', { name: 'Sankey options' }).click();
+  await page.getByRole('menuitem', { name: 'Columns' }).click();
+  const first = await page.getByRole('menuitem', { name: 'Column 1' }).locator('[data-grip]').boundingBox();
+  const second = await page.getByRole('menuitem', { name: 'Column 2' }).boundingBox();
+  const x = first!.x + first!.width / 2;
+  await page.mouse.move(x, first!.y + first!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(x, first!.y + first!.height / 2 + 10, { steps: 3 });
+  await page.mouse.move(x, second!.y + second!.height - 2, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(() => titles.allTextContents()).toEqual([before[1], before[0]]);
+  // Escape steps out of the menu one level at a time.
+  for (let i = 0; i < 3; i++) await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu', { name: 'Sankey menu' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect.poll(() => titles.allTextContents()).toEqual(before);
+  await page.getByRole('button', { name: 'Redo' }).click();
+  await expect.poll(() => titles.allTextContents()).toEqual([before[1], before[0]]);
+});
+
 test('a column of a one-to-many joined mart says why it cannot sum', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   // Shipments hang several rows on one order: Orders' metric would count an order once per shipment.

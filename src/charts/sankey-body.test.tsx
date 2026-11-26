@@ -701,3 +701,26 @@ test('sankey: pushing past the last row settles on the last slot and stays there
   release(grip, y(3) + 40);
   await waitFor(() => expect(savedDims(t)).toEqual(['is_gift', 'products__title', 'status']));
 });
+
+test('sankey: a column drag is an Undo step: Undo puts the old order back and saves it, Redo moves it again', async () => {
+  layoutRows();
+  const t = await charts(orderSaved);
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  const before = orderTitles();
+  const menu = await columnsMenu();
+  const grip = gripOf(menu, 1);
+  press(grip, y(1));
+  move(grip, y(3) + 10);
+  release(grip, y(3) + 10);
+  await waitFor(() => expect(savedDims(t)).toEqual(['is_gift', 'products__title', 'status']));
+  await waitFor(() => expect(orderTitles()).not.toEqual(before));
+  // Escape steps back one menu level at a time; the Undo button is only reachable once the whole menu is closed.
+  await waitFor(async () => { await userEvent.keyboard('{Escape}'); expect(screen.queryByRole('menu', { name: 'Sankey menu' })).toBeNull(); });
+  await new Promise((r) => setTimeout(r, 300));
+  await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(savedDims(t)).toEqual(ORDER));
+  await waitFor(() => expect(orderTitles()).toEqual(before));
+  await userEvent.click(screen.getByRole('button', { name: 'Redo' }));
+  await waitFor(() => expect(savedDims(t)).toEqual(['is_gift', 'products__title', 'status']));
+  await waitFor(() => expect(orderTitles()).not.toEqual(before));
+});
