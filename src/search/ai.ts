@@ -11,7 +11,7 @@ export type Models = { fast?: AiModel; decision?: DecisionModel };
 
 /** The models the project configured. null when there is no AI. */
 export function pickModels(ctx: Ctx): Models | null {
-  const ai = ctx.credentials?.ai;
+  const ai = ctx.credentials.ai;
   const fast = ai?.fast;
   const decision = ai?.decision;
   return fast || decision ? { ...(fast ? { fast } : {}), ...(decision ? { decision } : {}) } : null;

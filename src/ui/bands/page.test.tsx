@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import type { Ctx } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
-import { keyShown } from '../../sdk/mock/key-shown';
 import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
 import { openSubmenu } from '../explorer/menu-test-utils';
@@ -44,9 +43,8 @@ async function search(q: string) {
 const clearSearch = () => userEvent.click(screen.getByRole('button', { name: 'Clear search' }));
 
 // The orders grid used to open on its key; the key is no longer a default column, so these tests start from a grid that was saved with it.
-const withKeyShown = (c: Mock): Mock => keyShown(c);
 async function mountWith(wrap: (ctx: Mock) => Ctx = (c) => c, fixtures = demoFixtures(), seedKey = true) {
-  const view = render(<AppServices ctx={titleSearchOnly(wrap((seedKey ? withKeyShown : (c: Mock) => c)(createMockCtx(fixtures, { latencyMs: 0 }))))}><StoreProvider><App /><ModelReload /><SelectSecretLedger /></StoreProvider></AppServices>);
+  const view = render(<AppServices ctx={titleSearchOnly(wrap(createMockCtx(fixtures, { latencyMs: 0, keyShown: seedKey })))}><StoreProvider><App /><ModelReload /><SelectSecretLedger /></StoreProvider></AppServices>);
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
   await waitFor(() => expect(document.querySelector('.dm-loadbar')).toBeNull());
   return view;

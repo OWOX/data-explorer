@@ -14,7 +14,8 @@ export function stubCtx(overrides: Partial<{ [K in keyof Ctx['owox']]: unknown }
     projectId: 'p1',
     theme: 'light',
     signal: new AbortController().signal,
-    ui: { openExternal: vi.fn(async () => {}) },
+    ui: { openExternal: vi.fn(async () => {}), copyLink: async () => {}, setRoute: () => {}, link: () => undefined },
+    credentials: {},
     collections: <T,>() => ({
       get: vi.fn(async (id: string) => (store.has(id) ? { document: store.get(id) as T } : null)),
       put: vi.fn(async (id: string, doc: T) => { store.set(id, doc); }),

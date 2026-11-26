@@ -1,5 +1,5 @@
 // Narrow view of @owox/plugin-sdk's PluginContext. The real context satisfies it structurally.
-// Traverse types are copied from @owox/api-client (tmp/ref/packages_api-client_src_data-marts.ts).
+// Traverse types are copied from @owox/api-client (node_modules/@owox/api-client/dist/data-marts.d.ts).
 
 import type { Experimental_DecisionModel } from 'ai';
 import type { AggFn, AggregationRule, DateTruncRule } from '../model/aggregation';
@@ -191,9 +191,9 @@ export interface Ctx {
   readonly signal: AbortSignal;
   /** The route the host opened the plugin with; undefined when the host has no page links. */
   readonly route?: string;
-  readonly ui: { openExternal(url: string): Promise<void>; copyLink?(path?: string): Promise<void>; setRoute?(path: string): void };
-  /** Declared, installation-bound credentials (SDK 0.43); undefined on a host without them. `ai` is absent until the project maintainer configures it. */
-  readonly credentials?: { readonly ai?: AiCredential };
+  readonly ui: { openExternal(url: string): Promise<void>; copyLink(path?: string): Promise<void>; setRoute(path: string): void; link(path: string): { href: string } | undefined };
+  /** Declared, installation-bound credentials. `ai` is absent until the project maintainer configures it. */
+  readonly credentials: { readonly ai?: AiCredential };
   collections<T>(name: string): CollectionLike<T>;
   readonly owox: {
     storages: { list(): Promise<StorageDto[]> };

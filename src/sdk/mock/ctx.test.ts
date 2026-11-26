@@ -44,6 +44,14 @@ test('collections round-trip in memory', async () => {
   expect(await col.get('b')).toBeNull();
 });
 
+test('seeds the orders grid with its key column when asked', async () => {
+  const ctx = createMockCtx(demoFixtures({ sheets: 2 }), { latencyMs: 0, ai: false, keyShown: true });
+  const saved = await ctx.collections<{ columns: string[] }>('grid-columns').get('orders');
+  expect(saved?.document.columns).toContain('id');
+  const plain = await createMockCtx(demoFixtures(), { latencyMs: 0 }).collections('grid-columns').get('orders');
+  expect(plain).toBeNull();
+});
+
 test('fixture facts later tasks rely on', () => {
   const f = demoFixtures();
   const orders = f.marts.find((m) => m.id === 'orders')!;

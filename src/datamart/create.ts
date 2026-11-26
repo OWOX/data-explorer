@@ -99,5 +99,5 @@ export async function createDataMart(ctx: Ctx, req: CreateMartRequest, onStage?:
   }
   if (start <= 3) await step('publish', () => owox.putJson(`${base}/publish`, {}).catch((e) => { if (!alreadyPublished(e)) throw e; }));
   await step('share', () => owox.putJson(`${base}/availability`, { availableForReporting: true, availableForMaintenance: false }));
-  return { id: id!, url: martAppUrl(ctx.projectId, id!) };
+  return { id: id!, url: martAppUrl(ctx, id!) };
 }

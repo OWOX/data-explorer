@@ -48,7 +48,7 @@ describe('createDataMart', () => {
     expect(bodies[`PUT ${b}/publish`]).toEqual({});
     expect(bodies[`PUT ${b}/availability`]).toEqual({ availableForReporting: true, availableForMaintenance: false });
     expect(stages).toEqual(['create', 'define', 'schema', 'publish', 'share']);
-    expect(r).toEqual({ id: 'm1', url: martAppUrl('p1', 'm1') });
+    expect(r).toEqual({ id: 'm1', url: martAppUrl(ctx, 'm1') });
   });
 
   it('fails the schema stage with the server error and the mart id', async () => {

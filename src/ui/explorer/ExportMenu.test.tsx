@@ -35,7 +35,7 @@ function setup(sheets: 0 | 1 | 2, remembered: StoredReport[] = [], runMs?: numbe
   const o = base.owox;
   const ctx: Ctx = {
     ...base,
-    ui: { openExternal: open },
+    ui: { ...base.ui, openExternal: open },
     owox: {
       ...o,
         postJson: ((path: string, body: unknown) => { calls.push(`POST ${path}`); return o.postJson(path, body); }) as Ctx['owox']['postJson'],
@@ -1366,7 +1366,7 @@ describe('Create Data Mart', () => {
     const b = base.owox;
     const ctx: Ctx = {
       ...base,
-      ui: { openExternal: open },
+      ui: { ...base.ui, openExternal: open },
       owox: {
         ...b,
         postJson: (async (p: string, body: unknown) => { calls.push(`POST ${p}`); bodies[`POST ${p}`] = body; if (o.gate && p === '/api/data-marts') await o.gate; return b.postJson(p, body); }) as Ctx['owox']['postJson'],
@@ -1651,11 +1651,11 @@ describe('Create Data Mart', () => {
     await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
     const link = await screen.findByRole('link', { name: /Open/ });
     expect(t.bodies['POST /api/data-marts']).toEqual({ title: exportTitle('Orders'), storageId: 's1' });
-    expect(link).toHaveAttribute('href', martAppUrl(t.ctx.projectId, 'mock-mart-1'));
+    expect(link).toHaveAttribute('href', martAppUrl(t.ctx, 'mock-mart-1'));
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveFocus();
     await userEvent.click(link);
-    expect(t.open).toHaveBeenCalledWith(martAppUrl(t.ctx.projectId, 'mock-mart-1'));
+    expect(t.open).toHaveBeenCalledWith(martAppUrl(t.ctx, 'mock-mart-1'));
   });
 
   test('Escape and a backdrop click do nothing while Create runs; after it, Escape closes the dialog and focus returns to Export', async () => {
@@ -1680,7 +1680,7 @@ describe('Create Data Mart', () => {
     await userEvent.click(within(dlg).getByRole('button', { name: 'Create' }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Bad SQL');
-    expect(screen.getByRole('link', { name: 'Open the draft' })).toHaveAttribute('href', martAppUrl(t.ctx.projectId, 'mock-mart-1'));
+    expect(screen.getByRole('link', { name: 'Open the draft' })).toHaveAttribute('href', martAppUrl(t.ctx, 'mock-mart-1'));
     const before = t.calls.length;
     await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await screen.findByRole('link', { name: /Open/ });
@@ -1731,7 +1731,7 @@ describe('Create Data Mart', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('The data mart is published but not yet available for reporting');
     expect(alert).not.toHaveTextContent('draft');
-    expect(screen.getByRole('link', { name: 'Open the data mart' })).toHaveAttribute('href', martAppUrl(t.ctx.projectId, 'mock-mart-1'));
+    expect(screen.getByRole('link', { name: 'Open the data mart' })).toHaveAttribute('href', martAppUrl(t.ctx, 'mock-mart-1'));
     expect(screen.queryByRole('button', { name: 'Delete the draft' })).toBeNull();
   });
 

@@ -1,7 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMockCtx } from '../../sdk/mock/ctx';
-import { keyShown } from '../../sdk/mock/key-shown';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
@@ -11,7 +10,7 @@ import { openColumnMenu, openSubmenu } from './menu-test-utils';
 import { placeBeside, placeBelow } from './menuPlacement';
 
 function setup(project?: Record<string, unknown>) {
-  const ctx = keyShown(createMockCtx(demoFixtures(), { latencyMs: 0 }));
+  const ctx = createMockCtx(demoFixtures(), { latencyMs: 0, keyShown: true });
   if (project) void ctx.collections<Record<string, unknown>>('column-formats-project').put('orders', project);
   render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>);
   return ctx;

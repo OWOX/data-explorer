@@ -2,13 +2,12 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { GRID_COLUMNS_COLLECTION } from '../../api/grid-columns';
 import { createMockCtx } from '../../sdk/mock/ctx';
-import { keyShown } from '../../sdk/mock/key-shown';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
 
 function setup(opts: { gate?: Promise<void> } = {}) {
-  const ctx = keyShown(createMockCtx(demoFixtures(), { latencyMs: 0 }));
+  const ctx = createMockCtx(demoFixtures(), { latencyMs: 0, keyShown: true });
   const puts: { id: string; doc: { columns: string[]; picks?: Record<string, string[]> } }[] = [];
   const rows: { id: string; o: { sort?: unknown } }[] = [];
   const reads: string[] = [];

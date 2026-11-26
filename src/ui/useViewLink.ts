@@ -28,7 +28,7 @@ export function useViewLink(model: Model | null, currentFolds: DecodedView['fold
   const forget = useCallback(() => {
     if (forgot.current) return;
     forgot.current = true;
-    try { ctx.ui.setRoute?.('/'); } catch { /* a host may refuse; the page works without it */ }
+    try { ctx.ui.setRoute('/'); } catch { /* a host may refuse; the page works without it */ }
   }, [ctx]);
 
   useEffect(() => {
@@ -85,7 +85,7 @@ export function useViewLink(model: Model | null, currentFolds: DecodedView['fold
         grid: selection.martId ? grids[selection.martId] ?? null : null,
       });
       if (path.length > MAX_ROUTE_LENGTH) { setNotice(TOO_LARGE); return; }
-      await ctx.ui.copyLink!(path);
+      await ctx.ui.copyLink(path);
       setNotice(null);
     } catch {
       setNotice(COPY_FAILED);

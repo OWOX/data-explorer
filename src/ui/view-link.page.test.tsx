@@ -58,7 +58,7 @@ function setup(route: string | undefined, copyLink?: (p?: string) => Promise<voi
   const ctx: Ctx = {
     ...base,
     route,
-    ui: { ...base.ui, copyLink, setRoute },
+    ui: { ...base.ui, copyLink: copyLink ?? (async () => {}), setRoute: setRoute ?? (() => {}) },
     collections: <T,>(name: string) => {
       const c = base.collections<T>(name);
       return { get: (id: string) => c.get(id), put: (id: string, d: T) => { if (name === 'grid-columns' || name === 'preferences') puts.push(`${name}/${id}`); return c.put(id, d); } };
@@ -179,13 +179,6 @@ describe('forgetting the route', () => {
     await loaded();
     await waitFor(() => expect(box.latest.selection.martId).not.toBeNull());
     expect(calls).toEqual([]);
-  });
-
-  test('a host without setRoute still opens the link', async () => {
-    setup(await encodeViewLink(view));
-    await loaded();
-    await waitFor(() => expect(box.latest.selection.martId).toBe('orders'));
-    expect(box.latest.grids['orders']).toEqual(grid);
   });
 
   test('a host that refuses setRoute does not break the page', async () => {

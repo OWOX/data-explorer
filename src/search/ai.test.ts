@@ -30,7 +30,6 @@ describe('pickModels', () => {
   });
   test('is null without AI', () => {
     expect(pickModels(ctxWith(undefined))).toBeNull();
-    expect(pickModels({} as Ctx)).toBeNull();
     expect(pickModels(ctxWith({}))).toBeNull();
   });
 });
