@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { vi } from 'vitest';
 import { stubCtx, traversalOf } from '../api/test-ctx';
 import type { Mart, Model } from '../model/types';
+import { buildJoinTree, statusIds } from '../state/join-tree';
 import { AppServices, StoreProvider } from '../state/store';
 import { useCardStatus } from './useModelData';
 
@@ -170,4 +171,24 @@ test('a queued card shows queued, and a request for a card that left the band is
   rerender({ vis: ['m11', 'm5'] });
   act(() => result.current.request('m5'));
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(6));
+});
+
+test('a bare node of the join tree is counted once it is in the ids, and stays idle without', async () => {
+  const tree = buildJoinTree('main', ['id', 'a__c__name'], [
+    { aliasPath: 'a', martId: 'a', label: 'a', depth: 1, fields: [], uniqueCount: true },
+    { aliasPath: 'a.c', martId: 'c', label: 'c', depth: 2, fields: [{ name: 'a__c__name', alias: 'name', type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: 'c', label: 'c', aliasPath: 'a.c', originalName: 'name' } }], uniqueCount: true },
+  ]);
+  const model = modelOf(['main', 'a', 'c']);
+  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 5 }]));
+  const wrapper = setup(traverseData);
+  const without = renderHook(() => useCardStatus(model, ['main', 'c'], 0), { wrapper });
+  act(() => without.result.current.request('a'));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(traverseData).not.toHaveBeenCalled();
+  expect(without.result.current.counts.get('a')?.state ?? 'idle').toBe('idle');
+
+  const ids = statusIds(['main', 'c'], tree);
+  const { result } = renderHook(() => useCardStatus(model, ids, 0), { wrapper });
+  act(() => result.current.request('a'));
+  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 5 }));
 });

@@ -51,6 +51,11 @@ export function buildJoinTree(mainId: string, columns: string[], sources: Joined
   return { nodes };
 }
 
+/** The marts whose count and data quality are loaded: the ones shown, then every mart of the tree (a bare node is shown on the canvas with no column on the grid). */
+export function statusIds(visibleIds: string[], tree: JoinTree | null): string[] {
+  return [...new Set([...visibleIds, ...(tree ? [...tree.nodes.values()].map((n) => n.martId) : [])])];
+}
+
 export function subtreePaths(tree: JoinTree, path: string): string[] {
   const node = tree.nodes.get(path);
   if (!node) return [];

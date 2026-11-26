@@ -2,7 +2,7 @@
 import { expect, test } from 'vitest';
 import type { JoinedSource } from '../api/blendable';
 import type { Field } from '../model/types';
-import { buildJoinTree, chainAfterHover, ghostLevels, ghostSources, rejoinTargets, subtreePaths } from './join-tree';
+import { buildJoinTree, chainAfterHover, ghostLevels, ghostSources, rejoinTargets, statusIds, subtreePaths } from './join-tree';
 
 const field = (path: string, own: string): Field => ({ name: `${path.replaceAll('.', '__')}__${own}`, alias: own, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: path.split('.').at(-1)!, label: path, aliasPath: path, originalName: own } });
 const src = (path: string, martId = path.split('.').at(-1)!): JoinedSource => ({ aliasPath: path, martId, label: martId, depth: path.split('.').length, fields: [field(path, 'name'), field(path, 'n')], uniqueCount: true });
@@ -180,4 +180,10 @@ test('an empty path is a middle mart for the path below it, so that is not bare'
 test('without empty paths the tree is as before', () => {
   const cols = ['id', col('b'), col('a.c')];
   expect(buildJoinTree('main', cols, sources, [])).toEqual(buildJoinTree('main', cols, sources));
+});
+
+test('statusIds lists the shown marts, then every mart of the tree once, bare nodes included', () => {
+  const t = buildJoinTree('main', ['id', col('a.c.d')], sources);
+  expect(statusIds(['x', 'main'], t)).toEqual(['x', 'main', 'a', 'c', 'd']);
+  expect(statusIds(['x'], null)).toEqual(['x']);
 });
