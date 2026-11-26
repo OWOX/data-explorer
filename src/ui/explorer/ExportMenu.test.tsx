@@ -56,7 +56,7 @@ const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString
 /** Export, then the destination: its dialog opens. */
 const openDialog = async (destination: RegExp | string = /Team Sheets/, name = 'Export to Team Sheets') => {
   await userEvent.click(await within(data()).findByText('Export'));
-  await userEvent.click(await within(data()).findByRole('menuitem', { name: destination }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: destination }));
   return screen.findByRole('dialog', { name });
 };
 /** The dialog with its default choice (a new spreadsheet), exported. */
@@ -65,6 +65,8 @@ const exportNew = async () => {
   await userEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
   return dialog;
 };
+/** Whether the Export menu is open. */
+const menuOpen = () => !!screen.queryByRole('menu', { name: 'Export' });
 const rowsLoaded = () => waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
 const REPORT: StoredReport = { reportId: 'mock-report-1' };
 
@@ -73,12 +75,12 @@ test('with no Google Sheets destination Export is still a menu: the assistants, 
   t.view();
   await rowsLoaded();
   await userEvent.click(await within(data()).findByText('Export'));
-  expect(within(data()).getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link')).map((r) => r.textContent)).toEqual(['Claude', 'ChatGPT', 'Copy to clipboard', 'Copy SQL', 'Create Data Mart']);
-  expect(within(data()).getAllByRole('separator')).toHaveLength(2);
+  expect(screen.getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link')).map((r) => r.textContent)).toEqual(['Claude', 'ChatGPT', 'Copy to clipboard', 'Copy SQL', 'Create Data Mart']);
+  expect(screen.getAllByRole('separator')).toHaveLength(2);
   // no "AI" sub-header
   expect(within(data()).queryByText('AI')).toBeNull();
-  expect(within(data()).getByRole('menuitem', { name: 'Claude' }).closest('.dm-export-ai')).not.toBeNull();
-  expect(data().querySelector('[data-action="copy"] svg')).toHaveClass('lucide-copy');
+  expect(screen.getByRole('menuitem', { name: 'Claude' }).closest('.dm-export-ai')).not.toBeNull();
+  expect(document.querySelector('[data-action="copy"] svg')).toHaveClass('lucide-copy');
 });
 
 test('one destination and no report: the destination opens the dialog; Export makes the spreadsheet, the report, runs it and opens the sheet', async () => {
@@ -104,11 +106,11 @@ test('the Export button carries the archive-restore icon, and the Google Sheets 
   const t = setup(2);
   t.view();
   await rowsLoaded();
-  const summary = (await within(data()).findByText('Export')).closest('summary')!;
+  const summary = (await within(data()).findByText('Export')).closest('button')!;
   expect(summary.querySelector('svg.lucide-archive-restore')).not.toBeNull();
   expect(summary.querySelector('svg[viewBox="0 0 48 48"]')).toBeNull();
   await userEvent.click(summary);
-  const item = await within(data()).findByRole('menuitem', { name: /Team Sheets/ });
+  const item = await screen.findByRole('menuitem', { name: /Team Sheets/ });
   expect(item.querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull();
 });
 
@@ -118,19 +120,19 @@ describe('the menu', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    const rows = (await within(data()).findAllByRole('menuitem')).filter((r) => !r.hasAttribute('data-link'));
+    const rows = (await screen.findAllByRole('menuitem')).filter((r) => !r.hasAttribute('data-link'));
     expect(rows.map((r) => r.textContent)).toEqual(['Claude', 'ChatGPT', 'Team Sheets', 'Finance Sheets', 'Copy to clipboard', 'Copy SQL', 'Create Data Mart']);
     for (const r of rows.slice(2, 4)) { expect(r.querySelector('svg[viewBox="0 0 48 48"]')).not.toBeNull(); expect(r.querySelectorAll('svg')).toHaveLength(1); expect(r).not.toHaveAttribute('aria-haspopup'); }
     expect(within(data()).queryByText('Google Sheets')).toBeNull();
     expect(within(data()).queryByText(/Looker/)).toBeNull();
     // The separators sit between the groups.
-    const menu = within(data()).getByRole('menu');
+    const menu = screen.getByRole('menu');
     expect([...menu.children].map((c) => c.getAttribute('role') === 'separator' ? '-' : c.getAttribute('aria-label'))).toEqual(['Assistants', '-', 'Destinations', '-', 'Copy', '-', 'Data mart']);
     // Hovering a destination opens nothing.
     await userEvent.hover(rows[2]!);
-    expect(within(data()).queryByRole('menu', { name: 'Team Sheets' })).toBeNull();
+    expect(screen.queryByRole('menu', { name: 'Team Sheets' })).toBeNull();
     // the Export button itself has no Sheets icon
-    expect((await within(data()).findByText('Export')).closest('summary')!.querySelector('svg[viewBox="0 0 48 48"]')).toBeNull();
+    expect((await within(data()).findByText('Export')).closest('button')!.querySelector('svg[viewBox="0 0 48 48"]')).toBeNull();
   });
 
   test('a destination closes the menu and opens its dialog, titled with the destination', async () => {
@@ -139,7 +141,7 @@ describe('the menu', () => {
     await rowsLoaded();
     const dialog = await openDialog(/Finance Sheets/, 'Export to Finance Sheets');
     expect(within(dialog).getByRole('heading', { name: 'Export to Finance Sheets' })).toBeInTheDocument();
-    expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
+    expect(menuOpen()).toBe(false);
   });
 
   test('keyboard: arrows walk the rows, Enter and Space on a destination open its dialog', async () => {
@@ -147,12 +149,12 @@ describe('the menu', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    const team = await within(data()).findByRole('menuitem', { name: /Team Sheets/ });
+    const team = await screen.findByRole('menuitem', { name: /Team Sheets/ });
     team.focus();
     await userEvent.keyboard('{ArrowDown}');
-    expect(within(data()).getByRole('menuitem', { name: /Finance Sheets/ })).toHaveFocus();
+    expect(screen.getByRole('menuitem', { name: /Finance Sheets/ })).toHaveFocus();
     await userEvent.keyboard('{ArrowUp}{ArrowUp}');
-    expect(within(data()).getByRole('menuitem', { name: 'ChatGPT' })).toHaveFocus();
+    expect(screen.getByRole('menuitem', { name: 'ChatGPT' })).toHaveFocus();
     await userEvent.keyboard('{ArrowDown}');
     expect(team).toHaveFocus();
     await userEvent.keyboard('{Enter}');
@@ -160,7 +162,7 @@ describe('the menu', () => {
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await userEvent.click(await within(data()).findByText('Export'));
-    const finance = await within(data()).findByRole('menuitem', { name: /Finance Sheets/ });
+    const finance = await screen.findByRole('menuitem', { name: /Finance Sheets/ });
     finance.focus();
     await userEvent.keyboard(' ');
     await screen.findByRole('dialog', { name: 'Export to Finance Sheets' });
@@ -170,54 +172,56 @@ describe('the menu', () => {
     const t = setup(2);
     t.view();
     await rowsLoaded();
-    const summary = (await within(data()).findByText('Export')).closest('summary')!;
+    const summary = (await within(data()).findByText('Export')).closest('button')!;
     summary.focus();
     await userEvent.keyboard('{ArrowDown}');
-    expect(document.querySelector('details.dm-export')).toHaveAttribute('open');
-    expect(within(data()).getByRole('menuitem', { name: 'Claude' })).toHaveFocus();
+    expect(menuOpen()).toBe(true);
+    expect(screen.getByRole('menuitem', { name: 'Claude' })).toHaveFocus();
     summary.focus();
     await userEvent.keyboard('{Escape}');
-    expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
+    expect(menuOpen()).toBe(false);
     summary.focus();
     await userEvent.keyboard('{Enter}');
-    expect(within(data()).getByRole('menuitem', { name: 'Claude' })).toHaveFocus();
+    expect(screen.getByRole('menuitem', { name: 'Claude' })).toHaveFocus();
     await userEvent.keyboard('{Escape}');
-    expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
+    expect(menuOpen()).toBe(false);
   });
 
   test('a press outside the menu closes it; a press inside does not', async () => {
     const t = setup(1);
     t.view();
     await rowsLoaded();
-    const details = document.querySelector('details.dm-export')!;
     await userEvent.click(await within(data()).findByText('Export'));
-    expect(details).toHaveAttribute('open');
-    fireEvent.pointerDown(within(data()).getByRole('menuitem', { name: 'Claude' }));
-    expect(details).toHaveAttribute('open');
+    expect(menuOpen()).toBe(true);
+    fireEvent.pointerDown(screen.getByRole('menuitem', { name: 'Claude' }));
+    expect(menuOpen()).toBe(true);
     fireEvent.pointerDown(document.body);
-    await waitFor(() => expect(details).not.toHaveAttribute('open'));
+    await waitFor(() => expect(menuOpen()).toBe(false));
   });
 
   test('the window losing focus (a click in the host page) closes it', async () => {
     const t = setup(1);
     t.view();
     await rowsLoaded();
-    const details = document.querySelector('details.dm-export')!;
     await userEvent.click(await within(data()).findByText('Export'));
-    expect(details).toHaveAttribute('open');
+    expect(menuOpen()).toBe(true);
     fireEvent.blur(window);
-    await waitFor(() => expect(details).not.toHaveAttribute('open'));
+    await waitFor(() => expect(menuOpen()).toBe(false));
   });
 
-  test('the outside-press and blur handlers that were added are removed when the menu unmounts', async () => {
+  test('the outside-press and blur handlers added when the menu opens are removed when it unmounts', async () => {
     const docAdd = vi.spyOn(document, 'addEventListener');
     const winAdd = vi.spyOn(window, 'addEventListener');
     const t = setup(1);
     const view = t.view();
     await rowsLoaded();
-    const press = docAdd.mock.calls.find(([type]) => type === 'pointerdown')!;
+    // Only an open menu listens: the ones that are there before it opens belong to the rest of the page.
+    docAdd.mockClear();
+    winAdd.mockClear();
+    await userEvent.click(await within(data()).findByText('Export'));
+    const press = docAdd.mock.calls.filter(([type, , opt]) => type === 'pointerdown' && opt === true).at(-1)!;
     const blur = winAdd.mock.calls.find(([type]) => type === 'blur')!;
-    expect(press[2]).toBe(true);
+    expect(press).toBeDefined();
     const docRemove = vi.spyOn(document, 'removeEventListener');
     const winRemove = vi.spyOn(window, 'removeEventListener');
     view.unmount();
@@ -228,8 +232,7 @@ describe('the menu', () => {
 });
 
 describe('the menu: opening, closing and focus', () => {
-  const trigger = async () => (await within(data()).findByText('Export')).closest('summary') as HTMLElement;
-  const isOpen = () => !!document.querySelector<HTMLDetailsElement>('details.dm-export')?.open;
+  const trigger = async () => (await within(data()).findByText('Export')).closest('button') as HTMLElement;
 
   test('the trigger opens the menu, and a second press on it closes it', async () => {
     const t = setup(1);
@@ -237,9 +240,9 @@ describe('the menu: opening, closing and focus', () => {
     await rowsLoaded();
     const button = await trigger();
     await userEvent.click(button);
-    expect(isOpen()).toBe(true);
+    expect(menuOpen()).toBe(true);
     await userEvent.click(button);
-    expect(isOpen()).toBe(false);
+    expect(menuOpen()).toBe(false);
   });
 
   test('ArrowDown from the trigger focuses the first row, and ArrowDown from the last row wraps to the first', async () => {
@@ -262,7 +265,7 @@ describe('the menu: opening, closing and focus', () => {
     button.focus();
     await userEvent.keyboard('{ArrowDown}');
     await userEvent.keyboard('{Escape}');
-    expect(isOpen()).toBe(false);
+    expect(menuOpen()).toBe(false);
     expect(button).toHaveFocus();
   });
 
@@ -274,7 +277,7 @@ describe('the menu: opening, closing and focus', () => {
     await userEvent.click(button);
     screen.getByRole('menuitem', { name: 'Claude' }).focus();
     await userEvent.keyboard('{ArrowRight}{Escape}');
-    expect(isOpen()).toBe(false);
+    expect(menuOpen()).toBe(false);
     expect(button).toHaveFocus();
   });
 
@@ -287,7 +290,7 @@ describe('the menu: opening, closing and focus', () => {
     await rowsLoaded();
     await userEvent.click(await trigger());
     await userEvent.click(await screen.findByRole('menuitem', { name }));
-    expect(isOpen()).toBe(false);
+    expect(menuOpen()).toBe(false);
   });
 
   test('picking Copy SQL closes the menu', async () => {
@@ -297,7 +300,7 @@ describe('the menu: opening, closing and focus', () => {
     await userEvent.click(await trigger());
     await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Copy SQL' })).toBeEnabled());
     await userEvent.click(screen.getByRole('menuitem', { name: 'Copy SQL' }));
-    expect(isOpen()).toBe(false);
+    expect(menuOpen()).toBe(false);
   });
 
   test('picking a destination closes the menu', async () => {
@@ -305,7 +308,54 @@ describe('the menu: opening, closing and focus', () => {
     t.view();
     await rowsLoaded();
     await openDialog();
-    expect(isOpen()).toBe(false);
+    expect(menuOpen()).toBe(false);
+  });
+});
+
+describe('the menu and the native filter menus', () => {
+  /** A native filter menu next to the app, as MultiSelect draws one: a `<details name="dm-filter">`. jsdom does not close the other one of a name, and does not always announce the toggle, so the tests do both by hand. */
+  const filterMenu = () => {
+    const d = document.createElement('details');
+    d.setAttribute('name', 'dm-filter');
+    d.innerHTML = '<summary>Storage</summary>';
+    document.body.append(d);
+    const set = (open: boolean) => { d.open = open; d.dispatchEvent(new Event('toggle')); };
+    return { d, set };
+  };
+
+  test('opening the Export menu closes an open filter menu', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const f = filterMenu();
+    f.set(true);
+    await userEvent.click(await within(data()).findByText('Export'));
+    expect(menuOpen()).toBe(true);
+    expect(f.d.open).toBe(false);
+    f.d.remove();
+  });
+
+  test('a filter menu that opens closes the Export menu', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const f = filterMenu();
+    await userEvent.click(await within(data()).findByText('Export'));
+    expect(menuOpen()).toBe(true);
+    act(() => f.set(true));
+    expect(menuOpen()).toBe(false);
+    f.d.remove();
+  });
+
+  test('a filter menu that closes leaves the Export menu alone', async () => {
+    const t = setup(1);
+    t.view();
+    await rowsLoaded();
+    const f = filterMenu();
+    await userEvent.click(await within(data()).findByText('Export'));
+    act(() => f.set(false));
+    expect(menuOpen()).toBe(true);
+    f.d.remove();
   });
 });
 
@@ -435,7 +485,7 @@ describe('the export dialog', () => {
     await userEvent.click(await within(data()).findByText('Export'));
     // The first live read means the document has been read.
     await waitFor(() => expect(t.calls).toContain('GET /api/reports/mock-report-1'));
-    await userEvent.click(within(data()).getByRole('menuitem', { name: /Team Sheets/ }));
+    await userEvent.click(screen.getByRole('menuitem', { name: /Team Sheets/ }));
     const dialog = screen.getByRole('dialog', { name: 'Export to Team Sheets' });
     expect(radios(dialog).map(labelOf)).toEqual(['Update existing report', 'New spreadsheet', 'Existing spreadsheet']);
     expect(radios(dialog)[0]).toBeChecked();
@@ -471,7 +521,7 @@ describe('the export dialog', () => {
     expect(dialog.contains(document.activeElement)).toBe(true);
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(document.querySelector('details.dm-export summary')).toHaveFocus();
+    expect(document.querySelector('.dm-export > button')).toHaveFocus();
   });
 
   test('when an untouched option 3 moves back, the focus goes to the newly checked radio', async () => {
@@ -525,7 +575,7 @@ describe('the export dialog', () => {
     await rowsLoaded();
     const dialog = await openDialog();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-    expect(document.querySelector('details.dm-export summary')).toHaveFocus();
+    expect(document.querySelector('.dm-export > button')).toHaveFocus();
   });
 
   test.each([[59, true], [61, false]])('the 60 day boundary: used %i days ago, recent is %s', async (days, recent) => {
@@ -692,12 +742,12 @@ describe('the export dialog', () => {
     t.view();
     await rowsLoaded();
     expect(t.calls.filter((c) => c === 'GET /api/reports/mock-report-1')).toHaveLength(0);
-    const summary = (await within(data()).findByText('Export')).closest('summary')!;
+    const summary = (await within(data()).findByText('Export')).closest('button')!;
     await userEvent.click(summary);
     await waitFor(() => expect(t.calls.filter((c) => c === 'GET /api/reports/mock-report-1')).toHaveLength(1));
     await userEvent.click(summary);
     await userEvent.click(summary);
-    await userEvent.click(within(data()).getByRole('menuitem', { name: /Team Sheets/ }));
+    await userEvent.click(screen.getByRole('menuitem', { name: /Team Sheets/ }));
     const dialog = await screen.findByRole('dialog', { name: 'Export to Team Sheets' });
     await within(dialog).findByLabelText('Update existing report');
     expect(t.calls.filter((c) => c === 'GET /api/reports/mock-report-1')).toHaveLength(1);
@@ -829,7 +879,7 @@ test('leaving the mart and coming back keeps the export busy: no second export, 
   expect(within(data()).getByText(/…$/, { selector: '[role="status"]' })).toBeInTheDocument();
   // A second click on the busy button opens nothing.
   await userEvent.click(within(data()).getByText('Exporting…'));
-  expect(document.querySelector('details.dm-export')).not.toHaveAttribute('open');
+  expect(menuOpen()).toBe(false);
   await waitFor(() => expect(t.open).toHaveBeenCalledWith('https://docs.google.com/spreadsheets/d/mock-sheet-1/edit#gid=0'), { timeout: 15000 });
   expect(await screen.findByText(/Exported to "Orders · Data Explorer · /)).toBeInTheDocument();
   await waitFor(() => expect(within(data()).queryByText('Exporting…')).toBeNull());
@@ -947,7 +997,7 @@ describe('the AI group', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    const items = (await within(data()).findAllByRole('menuitem')).filter((r) => !r.hasAttribute('data-link'));
+    const items = (await screen.findAllByRole('menuitem')).filter((r) => !r.hasAttribute('data-link'));
     expect(items.map((i) => i.textContent)).toEqual(['Claude', 'ChatGPT', 'Team Sheets', 'Copy to clipboard', 'Copy SQL', 'Create Data Mart']);
     expect(items[0]!.querySelector('svg path[fill="#D97757"]')).not.toBeNull();
     expect(items[1]!.querySelector('svg')).not.toBeNull();
@@ -961,7 +1011,7 @@ describe('the AI group', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    const link = await within(data()).findByRole('menuitem', { name: `Open OWOX in ${name}` });
+    const link = await screen.findByRole('button', { name: `Open OWOX in ${name}` });
     expect(link.closest('.dm-export-ai')).not.toBeNull();
     await userEvent.click(link);
     expect(t.open).toHaveBeenCalledWith(url);
@@ -974,10 +1024,10 @@ describe('the AI group', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    const item = await within(data()).findByRole('menuitem', { name: 'Claude' });
+    const item = await screen.findByRole('menuitem', { name: 'Claude' });
     item.focus();
     await userEvent.keyboard('{ArrowRight}');
-    expect(within(data()).getByRole('menuitem', { name: 'Open OWOX in Claude' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Open OWOX in Claude' })).toHaveFocus();
     await userEvent.keyboard('{Enter}');
     expect(t.open).toHaveBeenCalledWith('https://claude.ai/directory/owox-data-marts');
     await userEvent.keyboard('{ArrowLeft}');
@@ -991,7 +1041,7 @@ describe('the AI group', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Claude' }));
     expect(await screen.findByText('Prompt copied. Paste it into Claude')).toBeInTheDocument();
     // A standard toast, not a note in the Data band's title row.
     const toast = screen.getByText('Prompt copied. Paste it into Claude').closest('#dm-toast-stack > div') as HTMLElement;
@@ -1022,7 +1072,7 @@ describe('the AI group', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Claude' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Show prompt' }));
     const dialog = await screen.findByRole('dialog', { name: 'Prompt' });
     const area = within(dialog).getByRole('textbox');
@@ -1037,7 +1087,7 @@ describe('the AI group', () => {
     expect(within(dialog).getByRole('button', { name: 'Copy' })).toHaveFocus();
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Prompt' })).toBeNull());
-    expect(document.querySelector('details.dm-export summary')).toHaveFocus();
+    expect(document.querySelector('.dm-export > button')).toHaveFocus();
   });
 
   test('ChatGPT names itself in the status', async () => {
@@ -1046,7 +1096,7 @@ describe('the AI group', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'ChatGPT' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'ChatGPT' }));
     expect(await screen.findByText('Prompt copied. Paste it into ChatGPT')).toBeInTheDocument();
   });
 
@@ -1057,7 +1107,7 @@ describe('the AI group', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Claude' }));
     const dialog = await screen.findByRole('dialog', { name: 'Prompt' });
     expect((within(dialog).getByRole('textbox') as HTMLTextAreaElement).value).toMatch(/Using the OWOX Data Marts connector/);
     expect(screen.queryByText(/Prompt copied/)).toBeNull();
@@ -1071,7 +1121,7 @@ describe('the AI group', () => {
     await rowsLoaded();
     await userEvent.click(within(data()).getByRole('button', { name: 'Sort by status, currently not sorted' }));
     await userEvent.click(await within(data()).findByText('Export'));
-    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Claude' }));
     await waitFor(() => expect(writeText).toHaveBeenCalled());
     expect(writeText.mock.calls[0]![0]).toMatch(/Sort: "status" ascending\./);
   });
@@ -1092,7 +1142,7 @@ describe('Copy to clipboard', () => {
 
   test('with no rows the keyboard still reaches the next enabled item', async () => {
     lone([]);
-    const summary = (await screen.findByText('Export')).closest('summary')!;
+    const summary = (await screen.findByText('Export')).closest('button')!;
     summary.focus();
     await userEvent.keyboard('{ArrowDown}');
     const enabled = screen.getAllByRole('menuitem').filter((i) => !(i as HTMLButtonElement).disabled);
@@ -1118,9 +1168,9 @@ describe('Copy to clipboard', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    const item = await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' });
+    const item = await screen.findByRole('menuitem', { name: 'Copy to clipboard' });
     expect(item.querySelector('svg.lucide-copy')).not.toBeNull();
-    const all = within(data()).getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link'));
+    const all = screen.getAllByRole('menuitem').filter((r) => !r.hasAttribute('data-link'));
     expect(all.slice(-3).map((r) => r.textContent)).toEqual(['Copy to clipboard', 'Copy SQL', 'Create Data Mart']);
     expect(item.closest('[role="group"]')!.previousElementSibling).toHaveAttribute('role', 'separator');
   });
@@ -1133,7 +1183,7 @@ describe('Copy to clipboard', () => {
     await rowsLoaded();
     const loaded = within(data()).getAllByRole('row').length - 2;
     await userEvent.click(await within(data()).findByText('Export'));
-    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Copy to clipboard' }));
     expect(await screen.findByText(`Copied the first ${loaded} rows. Load more to copy more.`)).toBeInTheDocument();
     const tsv = writeText.mock.calls[0]![0] as string;
     const lines = tsv.split('\n');
@@ -1191,19 +1241,19 @@ describe('Copy to clipboard', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    const item = await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' });
+    const item = await screen.findByRole('menuitem', { name: 'Copy to clipboard' });
     // Create Data Mart is the last stop once the grid's joins are read; ArrowUp from the first row wraps to it.
-    await waitFor(() => expect(within(data()).getByRole('menuitem', { name: 'Copy SQL' })).toBeEnabled());
-    await waitFor(() => expect(within(data()).getByRole('menuitem', { name: 'Create Data Mart' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Copy SQL' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Create Data Mart' })).toBeEnabled());
     item.focus();
     await userEvent.keyboard('{ArrowDown}');
-    expect(within(data()).getByRole('menuitem', { name: 'Copy SQL' })).toHaveFocus();
+    expect(screen.getByRole('menuitem', { name: 'Copy SQL' })).toHaveFocus();
     await userEvent.keyboard('{ArrowDown}');
-    expect(within(data()).getByRole('menuitem', { name: 'Create Data Mart' })).toHaveFocus();
+    expect(screen.getByRole('menuitem', { name: 'Create Data Mart' })).toHaveFocus();
     await userEvent.keyboard('{ArrowDown}');
-    expect(within(data()).getByRole('menuitem', { name: 'Claude' })).toHaveFocus();
+    expect(screen.getByRole('menuitem', { name: 'Claude' })).toHaveFocus();
     await userEvent.keyboard('{ArrowUp}');
-    expect(within(data()).getByRole('menuitem', { name: 'Create Data Mart' })).toHaveFocus();
+    expect(screen.getByRole('menuitem', { name: 'Create Data Mart' })).toHaveFocus();
   });
 
   describe('the toast timer never closes a dialog', () => {
@@ -1311,7 +1361,7 @@ describe('Copy SQL', () => {
     expect(await sqlItem()).toHaveAttribute('data-reason', "The grid's query is still running");
     rerun({ state: 'done', runId: 'r1' });
     await waitFor(async () => expect(await sqlItem()).toBeEnabled());
-    expect(document.querySelector('details.dm-export')).toHaveAttribute('open');
+    expect(menuOpen()).toBe(true);
   });
 
   test('reads that resolve out of order never hide the newer run', async () => {
@@ -1338,7 +1388,7 @@ describe('Copy SQL', () => {
     let calls = 0;
     const get = async () => { calls += 1; if (calls === 1) throw new Error('boom'); return { additionalParams: { httpData: { executionSqlQuery: 'SELECT 2' } } }; };
     lone({ state: 'done', runId: 'r1' }, get);
-    const summary = (await screen.findByText('Export')).closest('summary')!;
+    const summary = (await screen.findByText('Export')).closest('button')!;
     await userEvent.click(summary);
     await waitFor(async () => expect(await sqlItem()).toHaveAttribute('data-reason', 'The SQL could not be read from OWOX'));
     await userEvent.click(summary);
@@ -1355,7 +1405,7 @@ describe('Copy SQL', () => {
       gates[n++] = (how) => (how === 'ok' ? resolve({ additionalParams: { httpData: { executionSqlQuery: 'SELECT 9' } } }) : reject(new Error('boom')));
     });
     lone({ state: 'done', runId: 'r1' }, get);
-    const summary = (await screen.findByText('Export')).closest('summary')!;
+    const summary = (await screen.findByText('Export')).closest('button')!;
     await userEvent.click(summary);
     await waitFor(() => expect(n).toBe(1));
     await userEvent.click(summary);
@@ -1753,7 +1803,7 @@ describe('Create Data Mart', () => {
     await screen.findByRole('link', { name: /Open/ });
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Create Data Mart' })).toBeNull());
-    expect(document.querySelector('details.dm-export summary')).toHaveFocus();
+    expect(document.querySelector('.dm-export > button')).toHaveFocus();
   });
 
   test('a publish failure shows the draft, and Retry resumes without creating a second mart', async () => {
@@ -1867,7 +1917,7 @@ describe('Tab is trapped in every dialog', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    await userEvent.click(await within(data()).findByRole('menuitem', { name: 'Claude' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Claude' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Show prompt' }));
     await cycle(await screen.findByRole('dialog', { name: 'Prompt' }));
   });
@@ -1879,7 +1929,7 @@ describe('the menu look', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    const item = await within(data()).findByRole('menuitem', { name: 'Create Data Mart' });
+    const item = await screen.findByRole('menuitem', { name: 'Create Data Mart' });
     expect(item.querySelector('svg.lucide-box')).not.toBeNull();
     expect(item.querySelector('svg.lucide-database-zap')).toBeNull();
   });
@@ -1889,7 +1939,7 @@ describe('the menu look', () => {
     t.view();
     await rowsLoaded();
     await userEvent.click(await within(data()).findByText('Export'));
-    const menu = await within(data()).findByRole('menu');
+    const menu = await screen.findByRole('menu');
     const kids = [...menu.children].map((c) => c.getAttribute('role') === 'separator' ? 'sep' : c.getAttribute('aria-label'));
     expect(kids).toEqual(['Assistants', 'sep', 'Destinations', 'sep', 'Copy', 'sep', 'Data mart']);
   });

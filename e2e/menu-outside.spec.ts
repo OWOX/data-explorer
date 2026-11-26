@@ -20,7 +20,7 @@ test('the Export menu and a Storage filter menu are never open together', async 
   await expect(data.getByRole('row')).toHaveCount(202);
   const storage = page.locator('#band-marts details.dm-filter', { hasText: 'Storage' });
   const storageOpen = async () => storage.evaluate((d: HTMLDetailsElement) => d.open);
-  const exportOpen = () => page.getByRole('menu').filter({ has: page.getByRole('menuitem', { name: 'Create Data Mart' }) }).count();
+  const exportOpen = () => page.getByRole('menu', { name: 'Export' }).count();
   // Opening Export from the keyboard closes an open Storage menu (a press would only close the Storage menu).
   await storage.locator('summary').click();
   expect(await storageOpen()).toBe(true);

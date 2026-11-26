@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ContextBadges } from './ContextBadges';
@@ -54,4 +54,33 @@ test('a selected context behind the chip lights it', () => {
   layout(100);
   render(<ContextBadges contexts={contexts} selectedIds={['delta']} onToggle={() => {}} />);
   expect(screen.getByRole('button', { name: '2 more contexts, 1 selected' })).toHaveAttribute('data-on');
+});
+
+test('the list behind the chip is a dialog named "More contexts": a second press on the chip, Escape and a press outside close it, and Escape returns focus to the chip', async () => {
+  layout(100);
+  render(<ContextBadges contexts={contexts} selectedIds={[]} onToggle={() => {}} />);
+  const chip = screen.getByRole('button', { name: '2 more contexts' });
+  await userEvent.click(chip);
+  expect(await screen.findByRole('dialog', { name: 'More contexts' })).toBeInTheDocument();
+  await userEvent.click(chip);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  await userEvent.click(chip);
+  await screen.findByRole('dialog', { name: 'More contexts' });
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(chip).toHaveFocus();
+  await userEvent.click(chip);
+  await screen.findByRole('dialog', { name: 'More contexts' });
+  fireEvent.pointerDown(document.body);
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+});
+
+test('toggling a badge in the list leaves it open, and opening it puts focus on its first badge', async () => {
+  layout(100);
+  render(<ContextBadges contexts={contexts} selectedIds={[]} onToggle={() => {}} />);
+  await userEvent.click(screen.getByRole('button', { name: '2 more contexts' }));
+  const list = await screen.findByRole('group', { name: 'Hidden contexts' });
+  expect(within(list).getByRole('button', { name: 'Charlie' })).toHaveFocus();
+  await userEvent.click(within(list).getByRole('button', { name: 'Delta' }));
+  expect(screen.getByRole('dialog', { name: 'More contexts' })).toBeInTheDocument();
 });

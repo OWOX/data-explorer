@@ -1,7 +1,8 @@
 import { Tag } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { Context } from '../../model/types';
-import { Popover } from '../Popover';
+import { useMenuDismiss } from '../explorer/ColumnMenu';
+import { Panel } from '../explorer/MenuParts';
 import { fitBadges } from './fitBadges';
 import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
 
@@ -41,6 +42,13 @@ export function ContextBadges({ contexts, selectedIds, onToggle }: { contexts: C
 
   const shown = sorted.slice(0, kept);
   const hidden = sorted.slice(kept);
+  // The list of hidden badges opens from the chip. With nothing hidden there is no chip, and so nothing to hold the list open.
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const chip = useRef<HTMLButtonElement>(null);
+  if (anchor && hidden.length === 0) setAnchor(null);
+  const close = (refocus = true) => { setAnchor(null); if (refocus) chip.current?.focus(); };
+  // A press outside only closes the list, and so does a scroll of anything that holds the chip.
+  useMenuDismiss(!!anchor, chip, () => close(false));
   const hiddenOn = hidden.filter((c) => selectedIds.includes(c.id)).length;
   const badge = (c: Context) => (
     <button key={c.id} type="button" aria-pressed={selectedIds.includes(c.id)} className="dm-badge dm-badge-toggle" onClick={() => onToggle(c.id)}>
@@ -52,13 +60,18 @@ export function ContextBadges({ contexts, selectedIds, onToggle }: { contexts: C
     <div ref={box} className="dm-context-filter" role="group" aria-label="Contexts">
       {shown.map(badge)}
       {hidden.length > 0 && (
-        <Popover label="More contexts" trigger={
-          <button type="button" data-context-more data-on={hidden.some((c) => selectedIds.includes(c.id)) ? '' : undefined} className="dm-badge dm-badge-toggle" aria-label={`${hidden.length} more contexts${hiddenOn > 0 ? `, ${hiddenOn} selected` : ''}`}>
+        <>
+          <button ref={chip} type="button" data-context-more data-on={hidden.some((c) => selectedIds.includes(c.id)) ? '' : undefined} className="dm-badge dm-badge-toggle" aria-haspopup="dialog" aria-expanded={!!anchor}
+            aria-label={`${hidden.length} more contexts${hiddenOn > 0 ? `, ${hiddenOn} selected` : ''}`}
+            onClick={(e) => (anchor ? close(false) : setAnchor(e.currentTarget))}>
             {chipBody(hidden.length)}
           </button>
-        }>
-          <div className="flex flex-col items-start gap-1" role="group" aria-label="Hidden contexts">{hidden.map(badge)}</div>
-        </Popover>
+          {anchor && (
+            <Panel anchor={anchor} mode="below" role="dialog" label="More contexts" onEscape={() => close()} focusSeq={1} className="dm-context-more">
+              <div className="flex flex-col items-start gap-1" role="group" aria-label="Hidden contexts">{hidden.map(badge)}</div>
+            </Panel>
+          )}
+        </>
       )}
       {/* Off screen: the same badges at their natural width, and the widest the chip gets. */}
       <div ref={probe} aria-hidden className="dm-context-probe">

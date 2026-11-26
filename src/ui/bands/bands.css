@@ -636,28 +636,20 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-filter-menu .dm-checklist-check svg { width: 0.75rem; height: 0.75rem; stroke-width: 3; }
 .dm-filter-menu .dm-checklist-empty { padding: 0.375rem; font-size: 0.8125rem; }
 
-/* --- export menu: reuses the filter menu's frame; its rows are buttons, not checkboxes --------------- */
-.dm-export > summary { gap: 0.25rem; }
-.dm-export-item {
-  display: flex; align-items: center; gap: 0.375rem; width: 100%;
-  border: 0; border-radius: 0.375rem; padding: 0.25rem 0.375rem; background: none;
-  font: inherit; font-size: 0.8125rem; text-align: left; cursor: pointer;
-}
-.dm-export-item:hover { background: var(--muted); }
-.dm-export-item svg { color: var(--muted-foreground); flex-shrink: 0; }
+/* The list of badges behind the "+N more" chip: 16rem wide, at most 20rem tall, and it scrolls inside. */
+.dm-context-more { box-sizing: border-box; width: 16rem; max-height: min(20rem, calc(100vh - 16px)); padding: 12px; }
+
+/* --- export menu: a column-menu panel (.dm-menu) whose assistant rows carry a link button after the row -------------- */
 .dm-export-menu { min-width: 14rem; }
-/* .dm-menu-sep draws with --menu-line, which only the column menu (.dm-menu) defines. Outside it the var is undefined, so
-   the whole border-top declaration is invalid and the line has no style at all; the full shorthand is restated here. */
-.dm-export-menu .dm-menu-sep { height: 0; flex-shrink: 0; margin: 6px 0; border-top: 1px solid color-mix(in oklab, var(--foreground) 22%, var(--card)); }
-.dm-export-ai-row { display: flex; align-items: center; border-radius: 0.375rem; }
-.dm-export-ai-row:hover { background: var(--muted); }
-.dm-export-ai-row > .dm-export-item { flex: 1; min-width: 0; }
+.dm-export-ai-row { display: flex; align-items: center; }
+.dm-export-ai-row:hover { background: var(--menu-hover); }
+.dm-export-ai-row > .dm-menu-row { flex: 1; width: auto; min-width: 0; }
 .dm-export-link {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
-  width: 1.5rem; height: 1.5rem; margin-right: 0.25rem; border: 0; border-radius: 0.25rem;
-  background: none; color: var(--muted-foreground); cursor: pointer;
+  width: 1.5rem; height: 1.5rem; margin-right: 0.5rem; border: 0; border-radius: 0.25rem;
+  background: none; color: var(--menu-muted); cursor: pointer;
 }
-.dm-export-link:hover, .dm-export-link:focus-visible { background: var(--muted); color: var(--foreground); }
+.dm-export-link:hover, .dm-export-link:focus-visible { color: var(--menu-fg); }
 
 /* --- column sort: the title is a button, its arrow stays on screen while a sort is applied --------- */
 .dm-sort { cursor: pointer; text-align: left; }

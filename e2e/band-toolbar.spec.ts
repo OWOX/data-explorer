@@ -8,7 +8,7 @@ const data = (page: Page) => page.locator('#band-data');
 async function boxes(page: Page) {
   const head = data(page).locator('.dm-band-actions');
   await head.getByRole('button', { name: 'Reset' }).waitFor();
-  const targets = [head.getByRole('button', { name: 'Reset' }), head.getByRole('button', { name: 'Refresh' }), head.locator('.dm-export > summary'), head.getByRole('button', { name: 'Full screen' })];
+  const targets = [head.getByRole('button', { name: 'Reset' }), head.getByRole('button', { name: 'Refresh' }), head.locator('.dm-export > button'), head.getByRole('button', { name: 'Full screen' })];
   const out: { x: number; r: number }[] = [];
   for (const t of targets) {
     const b = await t.boundingBox();

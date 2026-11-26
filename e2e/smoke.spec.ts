@@ -362,14 +362,14 @@ test('Export to Google Sheets: the destination opens the dialog; Export creates 
   const data = await ordersGrid(page);
   const popup = page.waitForEvent('popup');
   await data.getByText('Export', { exact: true }).click();
-  await data.getByRole('menuitem', { name: /Team Sheets/ }).click();
+  await page.getByRole('menuitem', { name: /Team Sheets/ }).click();
   await page.getByRole('dialog', { name: 'Export to Team Sheets' }).getByRole('button', { name: 'Export' }).click();
   await expect(page.locator('#dm-toast-stack').getByRole('link', { name: /Open the sheet/ })).toHaveAttribute('href', /spreadsheets\/d\/mock-sheet-1\/edit#gid=0/, { timeout: 10_000 });
   await expect(data.getByRole('link', { name: /Open the sheet/ })).toHaveCount(0);
   expect((await popup).url()).toContain('mock-sheet-1');
   // The report is remembered and was just used, so the next dialog starts on updating it.
   await data.getByText('Export', { exact: true }).click();
-  await data.getByRole('menuitem', { name: /Team Sheets/ }).click();
+  await page.getByRole('menuitem', { name: /Team Sheets/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Export to Team Sheets' });
   await expect(dialog.getByRole('radio', { name: /Orders · Data Explorer · / })).toBeChecked();
   await expect(dialog.getByText('Recently used')).toBeVisible();
@@ -379,15 +379,15 @@ test('Export: with no Sheets destination the menu is still there, with the AI gr
   await page.goto('/?mock&sheets=0');
   const data = await ordersGrid(page);
   await data.getByText('Export', { exact: true }).click();
-  await expect(data.locator('[role="menuitem"]:not([data-link])')).toHaveText(['Claude', 'ChatGPT', 'Copy to clipboard', 'Copy SQL', 'Create Data Mart']);
-  await expect(data.getByRole('menuitem', { name: 'Open OWOX in Claude' })).toBeVisible();
+  await expect(page.getByRole('menu', { name: 'Export' }).locator('[role="menuitem"]')).toHaveText(['Claude', 'ChatGPT', 'Copy to clipboard', 'Copy SQL', 'Create Data Mart']);
+  await expect(page.getByRole('button', { name: 'Open OWOX in Claude' })).toBeVisible();
 });
 
 test('Export to an AI: the prompt is copied, named in a status, and readable in a dialog', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const data = await ordersGrid(page);
   await data.getByText('Export', { exact: true }).click();
-  await data.getByRole('menuitem', { name: 'Claude', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Claude', exact: true }).click();
   await expect(page.getByRole('status').getByText('Prompt copied. Paste it into Claude')).toBeVisible();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Query the data mart "Orders" (id "orders").');
   await page.locator('#dm-toast-stack').getByRole('button', { name: 'Show prompt' }).click();
@@ -401,7 +401,7 @@ test('Copy to clipboard: the loaded rows are copied as TSV and the status says s
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const data = await ordersGrid(page);
   await data.getByText('Export', { exact: true }).click();
-  await data.getByRole('menuitem', { name: 'Copy to clipboard' }).click();
+  await page.getByRole('menuitem', { name: 'Copy to clipboard' }).click();
   await expect(page.getByRole('status').getByText(/^Copied (the first )?\d+ rows/)).toBeVisible();
   const text = await page.evaluate(() => navigator.clipboard.readText());
   expect(text.split('\n').length).toBeGreaterThan(2);
@@ -1012,7 +1012,7 @@ test('full screen: the Data band alone fills the plugin area, its title stays, E
   await closeConfig(page);
   await expect(fields).toHaveCount(0);
   await data.getByText('Export', { exact: true }).click();
-  const exportMenu = data.locator('details[open] [role=menu]').first();
+  const exportMenu = page.getByRole('menu', { name: 'Export' });
   await expect(exportMenu).toBeVisible();
   expect(await onTop(exportMenu)).toBe('ok');
   await page.keyboard.press('Escape');
