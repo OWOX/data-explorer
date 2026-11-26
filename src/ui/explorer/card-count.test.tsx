@@ -17,7 +17,7 @@ function setup(grid: GridState, opts: { noKey?: boolean; calc?: boolean } = {}) 
   if (opts.calc) fixtures.marts.find((m) => m.id === 'orders')!.fields.push({ name: 'margin', type: 'NUMERIC', alias: 'Margin', calculated: { level: 'metric' } } as never);
   const base = createMockCtx(fixtures, { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
-  const state = { total: 123, delay: 0, fail: false };
+  const state: { total: number; gate: Promise<void> | null; fail: boolean } = { total: 123, gate: null, fail: false };
   const store: { dispatch?: Dispatch<Action>; selection?: unknown } = {};
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const ctx: Ctx = {
@@ -26,7 +26,7 @@ function setup(grid: GridState, opts: { noKey?: boolean; calc?: boolean } = {}) 
       if (id === 'orders') queries.push(o);
       if (id === 'orders' && o.includeTotalRowCount && state.fail) return Promise.reject(new Error('read failed'));
       const done = id === 'orders' && o.includeTotalRowCount ? real(id, o).then((r) => ({ ...r, totalRowCount: state.total })) : real(id, o);
-      return id === 'orders' && o.includeTotalRowCount && state.delay ? new Promise((res) => setTimeout(res, state.delay)).then(() => done) : done;
+      return id === 'orders' && o.includeTotalRowCount && state.gate ? state.gate.then(() => done) : done;
     } } },
   };
   function Probe() {
@@ -39,7 +39,13 @@ function setup(grid: GridState, opts: { noKey?: boolean; calc?: boolean } = {}) 
   const mount = async () => { render(<AppServices ctx={ctx}><StoreProvider><Probe /><App /></StoreProvider></AppServices>); };
   /** A view link opens: the grid takes this state wherever it is, folded or reading. */
   const apply = (g: GridState) => act(async () => { store.dispatch!({ type: 'applyView', selection: store.selection as never, grid: g, search: '', contextIds: [], storageIds: null }); });
-  return { queries, state, mount, apply, countReads: () => queries.filter(isCardCount) };
+  /** Holds every total read that starts from now until the returned release runs. */
+  const hold = () => {
+    let release!: () => void;
+    state.gate = new Promise<void>((res) => { release = () => { state.gate = null; res(); }; });
+    return release;
+  };
+  return { queries, state, hold, mount, apply, countReads: () => queries.filter(isCardCount) };
 }
 
 const data = () => document.getElementById('band-data')!;
@@ -116,11 +122,12 @@ test('Refresh on a plain grid dims the card while the grid reads, then shows the
   await waitFor(() => expect(shown()).toMatch(/123 records/));
   await calm();
   t.state.total = 456;
-  t.state.delay = 300;
+  const release = t.hold();
   await refresh();
   await waitFor(() => expect(dimmed()).toBe(true));
   expect(shown()).toMatch(/123 records/);
-  await waitFor(() => expect(shown()).toMatch(/456 records/), { timeout: 3000 });
+  release();
+  await waitFor(() => expect(shown()).toMatch(/456 records/));
   expect(dimmed()).toBe(false);
 });
 
@@ -142,9 +149,10 @@ test('a filter added while a plain Refresh reads counts the card once', async ()
   await waitFor(() => expect(shown()).toMatch(/123 records/));
   await calm();
   const before = t.countReads().length;
-  t.state.delay = 400;
+  const release = t.hold();
   await refresh();
   await t.apply(filtered);
+  release();
   await calm();
   await waitFor(() => expect(t.countReads()).toHaveLength(before + 1));
 });
