@@ -35,7 +35,7 @@ function cleanSpec(v: unknown): ChartSpec | null {
 }
 
 // Drops what a stale or hand-edited doc could break the charts with: unknown keys and wrong types.
-function clean(doc: unknown): ChartSettings {
+export function cleanChartSettings(doc: unknown): ChartSettings {
   const d = obj(doc);
   if (!d) return {};
   const out: ChartSettings = {};
@@ -46,7 +46,7 @@ function clean(doc: unknown): ChartSettings {
     if (typeof sc.sparklines === 'boolean') out.scorecards.sparklines = sc.sparklines;
     for (const k of ['metrics', 'dates'] as const) {
       const picks = obj(sc[k]);
-      if (picks) out.scorecards[k] = Object.fromEntries(Object.entries(picks).filter((e): e is [string, string] => typeof e[1] === 'string'));
+      if (picks) out.scorecards[k] = Object.fromEntries(Object.entries(picks).filter((e): e is [string, string] => typeof e[1] === 'string' && !(e[0] in Object.prototype)));
     }
   }
   // A document from before the charts list has no `charts` array: the defaults stand in.
@@ -90,7 +90,7 @@ export function createChartSettings(ctx: Ctx): ChartSettingsStore {
         clearTimeout(timer);
       }
       try {
-        return clean((await col.get(martId))?.document);
+        return cleanChartSettings((await col.get(martId))?.document);
       } catch (e) {
         console.warn('Reading the chart settings failed', e);
         return {};

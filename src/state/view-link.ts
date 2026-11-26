@@ -1,10 +1,15 @@
 import { MAX_FOUND } from '../config';
 import type { ColumnFilter, FilterValue } from '../filters/build';
 import { isOpId } from '../filters/catalogue';
+import { cleanChartSettings } from '../api/chart-settings';
+import { newChartId, type ChartSettings } from '../charts/settings';
 import { isRecord } from '../model/guards';
 import { isAggFn, isDateBucket, isTimeZone, type AggFn, type AggregationRule, type DateBucket, type DateTruncRule } from '../model/aggregation';
 import type { GridState } from './store';
 import type { SortKey } from '../model/sort';
+
+/** Chart ids that edits target by name; every other id is random and left out of a link. */
+const FIXED_CHART_IDS = new Set(['time-series', 'pie']);
 
 /** The host refuses a route longer than this, `/v?s=` included. */
 export const MAX_ROUTE_LENGTH = 2048;
@@ -26,6 +31,8 @@ export type DecodedView = {
   dropped: number;
   /** The aggregation functions and date buckets left out (malformed, repeated, past the cap), counted apart from `dropped`. */
   droppedAggregations: number;
+  /** The main mart's chart settings the sharer had; absent for a link made without them. */
+  charts?: ChartSettings;
 };
 
 // A plain name, or [index into P, field suffix].
@@ -42,6 +49,7 @@ type ViewLinkV1 = {
   ctx: string[];
   st: string[] | null;
   f: Folded;
+  ch?: unknown;
   g: null | { c: Col[]; fl: unknown[][]; /** Slices, the same tuple as a filter's but without the function slot. */ sl?: unknown[][]; s: [Col, 1 | -1][] | null; l: number; /** Aggregations: [column, function]. */ ag?: [Col, AggFn][]; /** Date buckets: [column, unit, time zone?]. */ dt?: [Col, DateBucket, string?][]; /** Charts view; absent is the table. */ vw?: 1; /** Alias paths whose Unique Count is on ('' is the main mart). */ uc?: string[]; /** Alias paths of joined marts kept with no column. */ ep?: string[] };
 };
 
@@ -126,6 +134,7 @@ export async function encodeViewLink(view: Omit<DecodedView, 'dropped' | 'droppe
     ctx: view.contextIds,
     st: view.storageIds,
     f: view.folded,
+    ...(view.charts ? { ch: { ...view.charts, ...(view.charts.charts ? { charts: view.charts.charts.map(({ id, ...rest }) => (FIXED_CHART_IDS.has(id) ? { id, ...rest } : rest)) } : {}) } } : {}),
     g: g && {
       c: g.columns.map(col),
       fl: Object.entries(g.filters).map(([field, f]): unknown[] => ruleTuple(col(field), f, true)),
@@ -197,7 +206,7 @@ export async function decodeViewLink(route: string | undefined): Promise<Decoded
 /** Checks the top-level types, then drops malformed entries one by one. Throws on a bad top level. */
 function shape(raw: unknown): DecodedView {
   if (!isRecord(raw) || raw.v !== 1) throw new Error('bad version');
-  const { P, src, m, r, q, ctx, st, f, g, fd } = raw;
+  const { P, src, m, r, q, ctx, st, f, g, fd, ch } = raw;
   if (!isStringList(P)) throw new Error('bad P');
   if (!(src === null || typeof src === 'string') || !(m === null || typeof m === 'string')) throw new Error('bad ids');
   if (!(r === null || isRecord(r)) || typeof q !== 'string') throw new Error('bad record or search');
@@ -287,6 +296,17 @@ function shape(raw: unknown): DecodedView {
     grid = { columns, filters: Object.fromEntries(filterEntries), ...(sliceEntries.length ? { slices: Object.fromEntries(sliceEntries) } : {}), sorts, limit: g.l, ...(aggregations.length ? { aggregations } : {}), ...(dateTrunc.length ? { dateTrunc } : {}), ...(g.vw === 1 ? { view: 'charts' as const } : {}), ...(uniqueCount.length ? { uniqueCount } : {}), ...(emptyPaths.length ? { emptyPaths } : {}) };
   }
 
+  // Chart settings: cleaned as a saved doc is. A chart without an id (the link leaves random ids out) gets a new one first; entries cleaning drops are counted.
+  let charts: ChartSettings | undefined;
+  if (ch !== undefined) {
+    if (!isPlain(ch)) dropped++;
+    else {
+      const list = Array.isArray(ch.charts) ? ch.charts.map((c) => (isPlain(c) && c.id === undefined ? { ...c, id: newChartId() } : c)) : ch.charts;
+      charts = cleanChartSettings({ ...ch, charts: list });
+      if (Array.isArray(list)) dropped += list.length - (charts.charts?.length ?? 0);
+    }
+  }
+
   const found = Array.isArray(fd) ? [...new Set(fd.filter((x): x is string => typeof x === 'string'))].slice(0, MAX_FOUND) : [];
   return {
     sourceKey: src,
@@ -300,5 +320,6 @@ function shape(raw: unknown): DecodedView {
     grid,
     dropped,
     droppedAggregations,
+    ...(charts ? { charts } : {}),
   };
 }
