@@ -31,6 +31,7 @@ export function pathCandidates(sources: JoinedSource[], input: StepInput): PathC
       const via = parentPaths(s.aliasPath).map((p) => { const v = byPath.get(p); return input.model.marts.get(v?.martId ?? '')?.title ?? v?.label ?? p; });
       return { i, s, edge, via, words: overlap(terms, `${mart?.title ?? ''} ${mart?.description ?? ''} ${s.label} ${edge?.alias ?? ''}`) };
     })
+    .filter((x) => x.s.depth <= 2 || x.words > 0)
     .sort((a, b) => b.words - a.words || a.s.depth - b.s.depth || a.i - b.i)
     .slice(0, MAX_QUESTIONS)
     .map((x, n) => ({ qid: `p${n}`, source: x.s, relationship: x.edge?.alias ?? x.s.label, relationshipDescription: x.edge?.description ?? '', via: x.via, words: x.words }));
@@ -61,7 +62,7 @@ export function applyPath(answers: Answers, cands: PathCandidate[]): JoinedSourc
   return cands
     .flatMap((c, i) => { const a = answers[c.qid]; return a?.type === 'score' && a.level >= 1 ? [{ c, i, level: a.level }] : []; })
     .sort((a, b) => b.level - a.level || Number(unsafe(a.c.source)) - Number(unsafe(b.c.source)) || a.c.source.depth - b.c.source.depth || a.i - b.i)
-    .filter((x, _, all) => !unsafe(x.c.source) || !all.some((y) => y.c.source.martId === x.c.source.martId && !unsafe(y.c.source)))
+    .filter((x, _, all) => !unsafe(x.c.source) || !all.some((y) => y.c.source.martId === x.c.source.martId && !unsafe(y.c.source) && y.level >= x.level))
     .slice(0, PATH_KEEP)
     .map((x) => x.c.source);
 }
