@@ -37,6 +37,9 @@ export function RuleBadges({ marts, filters, slices, offered, onRemove }: {
   const env = useContext(ColumnMenuEnvContext);
   const [menu, setMenu] = useState<RuleKind | null>(null);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  // Focus handed back to a badge when its list closes would open the tooltip under a pointer that is elsewhere, where nothing closes it.
+  // It stays shut until the pointer enters a badge or focus leaves it.
+  const [quiet, setQuiet] = useState(false);
   const holder = useRef<HTMLSpanElement>(null);
   const has = (kind: RuleKind, f: Field) => (kind === 'filter' ? !!filters[f.name] : kind === 'slice' ? !!slices[f.name] && !!f.joined : env.isAggregated(f.name));
   const entriesOf = (kind: RuleKind): RuleEntry[] => {
@@ -59,6 +62,7 @@ export function RuleBadges({ marts, filters, slices, offered, onRemove }: {
   if (menu && entries[menu].length === 0) setMenu(null);
   /** Focuses the badge, or the config button when the badge is gone (its rules were all removed). */
   const focusBack = (from: HTMLElement | null, after?: RuleKind) => {
+    setQuiet(true);
     window.setTimeout(() => {
       const row = holder.current;
       if (!row) return;
@@ -76,8 +80,8 @@ export function RuleBadges({ marts, filters, slices, offered, onRemove }: {
         return (
           <span key={kind} className="inline-flex">
             {/* The tooltip lists the rules, one per line; it stays shut while the badge's list is open. */}
-            <Tooltip side="bottom" content={open ? null : <div className="flex flex-col">{list.map((e) => <span key={e.key}>{lineOf(kind, e)}</span>)}</div>}>
-              <button type="button" className="dm-rule-badge" data-rule-badge={kind} aria-haspopup="menu" aria-expanded={open}
+            <Tooltip side="bottom" content={open || quiet ? null : <div className="flex flex-col">{list.map((e) => <span key={e.key}>{lineOf(kind, e)}</span>)}</div>}>
+              <button type="button" className="dm-rule-badge" data-rule-badge={kind} aria-haspopup="menu" aria-expanded={open} onPointerEnter={() => setQuiet(false)} onBlur={() => setQuiet(false)}
                 onClick={(e) => { const a = e.currentTarget; if (open) setMenu(null); else { setAnchor(a); setMenu(kind); } }}>
                 <Icon className="size-3" aria-hidden />{list.length} {list.length === 1 ? one : many}
               </button>

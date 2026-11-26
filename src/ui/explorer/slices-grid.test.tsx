@@ -257,6 +257,18 @@ describe('the rule badges next to the config button', () => {
     await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent(/^Customers · Country: /));
   });
 
+  test('the tooltip stays shut while the list is open, and focus handed back when it closes does not open it', async () => {
+    setup(hidden);
+    const list = await openList('1 filter', 'Filters');
+    await new Promise((r) => setTimeout(r, 300));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(within(list).getByRole('menuitem', { name: /status/ })).toBeVisible();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.getByRole('button', { name: '1 filter' })).toHaveFocus());
+    await new Promise((r) => setTimeout(r, 300));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
   test('Remove filters takes every filter in one Undo step, closes the list and focuses the next badge, else the config button', async () => {
     const t = setup({ ...hidden, filters: { status: hidden.filters.status!, customers__city: { field: 'customers__city', op: 'eq', value: 'Kyiv' } } });
     const list = await openList('2 filters', 'Filters');
