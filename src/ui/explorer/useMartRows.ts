@@ -97,14 +97,17 @@ function lookup(ctx: Ctx, martId: string, version: number, model: number, option
   return null;
 }
 
+const NO_OWN: ReadonlySet<string> = new Set();
+
 type Query = { dataKey: string; columns: string[]; key: string };
 
 /**
  * `paused` keeps the key (and the rows) but reads nothing; what was read for a key is not read again when the pause ends.
  * `model`: the model version the read was made under. The grid's own version counters restart on a remount, so a reloaded mart must not match an entry read before the reload.
+ * `own`: the main data mart's non-calculated field names. In a plain read such a column adds no join and no grouping, so showing a new one keeps the count (a joined or calculated column asks again).
  * `exact`: this read names a calculated field. OWOX may group such a read (it does when the formula aggregates), so its count is reused only by a read of the same columns (it is not part of any key).
  */
-export function useMartRows(martId: string, options: TraverseOptions | null, version: number, paused = false, exact = false, model = 0) {
+export function useMartRows(martId: string, options: TraverseOptions | null, version: number, paused = false, exact = false, model = 0, own: ReadonlySet<string> = NO_OWN) {
   const { ctx } = useServices();
   const [state, setState] = useState<RowsState>({ rows: null, error: null, hasMore: false, doneFor: null, shape: 'plain', runId: null, errorRunId: null, total: null, totalBase: null, totalExact: false, totalColumns: [] });
   // Each traverseData call is a billed warehouse run. Everything but the column list (filters, sort, limit,
@@ -147,7 +150,7 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
     const sent = options.column ?? [];
     const c = counted.current;
     // OWOX may group a read that names a calculated field (it does when the formula aggregates) by its other columns, so there fewer columns can be another result: the sets must match.
-    const covered = !!c && c.base === base && sent.every((n) => c.columns.includes(n)) && (!(exact || c.exact) || (sent.length === c.columns.length));
+    const covered = !!c && c.base === base && sent.every((n) => c.columns.includes(n) || (!grouped && own.has(n))) && (!(exact || c.exact) || (sent.length === c.columns.length));
     const ask = !covered;
     let total = ask ? undefined : c?.total;
     // The flag goes on this copy only: it is not part of the caller's options or of any key.

@@ -406,7 +406,8 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const [exportOpen, setExportOpen] = useState(false);
   // A blocked grid unmounts the menu without a close: it counts as closed.
   if (blocked && exportOpen) setExportOpen(false);
-  const { rows: read, loading: reading, error, hasMore, run, errorRunId, total, counted } = useMartRows(martId, asked, version + rowsRetry, charts && !exportOpen && exportFor !== asked, !!asked?.column?.some((c) => calculated.has(c)) || !!asked?.filter?.some((r) => calculated.has(r.column)), modelVersion);
+  const ownPlain = useMemo(() => new Set(native.filter((f) => !f.isCalculated).map((f) => f.name)), [native]);
+  const { rows: read, loading: reading, error, hasMore, run, errorRunId, total, counted } = useMartRows(martId, asked, version + rowsRetry, charts && !exportOpen && exportFor !== asked, !!asked?.column?.some((c) => calculated.has(c)) || !!asked?.filter?.some((r) => calculated.has(r.column)), modelVersion, ownPlain);
   const failed = !!error;
   const onExportOpen = (open: boolean) => {
     setExportOpen(open);
@@ -781,8 +782,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     const pk = Object.fromEntries(pks.map((k) => [k, row[k]]));
     // Hand the row over: the Row band shows it at once. Only the main mart's own fields count (a joined column has another name, a calculated field may be grouped by the grid's other columns).
     // Rows still shown for an older ask (a newer read is in flight) are not what the current columns say they are: no seed then.
-    const mine = new Set(native.filter((f) => !f.isCalculated).map((f) => f.name));
-    if (!grouped && asked && !reading) rememberRow(ctx, martId, pk, { row, columns: (asked.column ?? []).filter((c) => mine.has(c)), stamp: modelVersion });
+    if (!grouped && asked && !reading) rememberRow(ctx, martId, pk, { row, columns: (asked.column ?? []).filter((c) => ownPlain.has(c)), stamp: modelVersion });
     dispatch({ type: 'openRecord', martId, sourceOf: sourceOfModel(model), pk });
   };
   // The rows are memoised, so what they call must keep its identity: they reach the latest handlers through this one object.

@@ -235,10 +235,10 @@ describe('the total row count', () => {
     return { traverseData, wrapper };
   }
   const withSort = (column: string[], dir: 'asc' | 'desc', limit = 201): TraverseOptions => ({ column, limit, sort: [{ column: 'a', direction: dir }] });
-  type Props = { o: TraverseOptions; v: number; exact?: boolean };
+  type Props = { o: TraverseOptions; v: number; exact?: boolean; own?: ReadonlySet<string> };
   const run = (initial: Props, counts: (number | undefined)[] = [450]) => {
     const c = countCtx(counts);
-    const hook = renderHook(({ o, v, exact }: Props) => useMartRows('m', o, v, false, exact), { wrapper: c.wrapper, initialProps: initial });
+    const hook = renderHook(({ o, v, exact, own }: Props) => useMartRows('m', o, v, false, exact, 0, own), { wrapper: c.wrapper, initialProps: initial });
     return { ...c, ...hook };
   };
   const settled = (result: { current: { loading: boolean } }) => waitFor(() => expect(result.current.loading).toBe(false));
@@ -302,6 +302,61 @@ describe('the total row count', () => {
     rerender({ o: opts(['id', 'a']), v: 0 });
     expect(traverseData).toHaveBeenCalledTimes(2);
     expect(asked(traverseData)).toEqual([true, true]);
+  });
+
+  test('a new column of the main data mart reuses the count', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'a', 'b']), v: 0, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, false]);
+    expect(result.current.total).toBe(450);
+  });
+
+  test('a new column of a joined data mart asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'a', 'j__x']), v: 0, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(460);
+  });
+
+  test('a new calculated field asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: opts(['id', 'a', 'calc']), v: 0, exact: true, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(460);
+  });
+
+  test('a grouped read with another group key asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const g = (column: string[]): TraverseOptions => ({ column, limit: 201, aggregation: [{ column: 'id', function: 'SUM' }] });
+    const { traverseData, result, rerender } = run({ o: g(['a', 'id']), v: 0, own }, [450, 460]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: g(['a', 'b', 'id']), v: 0, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+  });
+
+  test('another filter with a new main column asks again', async () => {
+    const own = new Set(['id', 'a', 'b']);
+    const { traverseData, result, rerender } = run({ o: opts(['id', 'a']), v: 0, own }, [450, 3]);
+    await waitFor(() => expect(result.current.total).toBe(450));
+    rerender({ o: { ...opts(['id', 'a', 'b']), filter: [{ column: 'id', operator: 'eq' as const, value: 1 }] }, v: 0, own });
+    await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+    await settled(result);
+    expect(asked(traverseData)).toEqual([true, true]);
+    expect(result.current.total).toBe(3);
   });
 
   test('hiding a column, then Load more, a sort or showing it again, never asks', async () => {
