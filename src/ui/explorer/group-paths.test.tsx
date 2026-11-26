@@ -26,7 +26,7 @@ const remove = async (title: string) => { const panel = await openFields(title);
 test('two adjacent paths of one mart are two column groups, each titled with its parent mart', async () => {
   await setup(both);
   expect(paths()).toEqual(['', 'customers', 'customers.countries', 'stores.countries']);
-  expect(titles()).toEqual(['Orders', 'Customers', 'Countries (Customers)', 'Countries (Stores)']);
+  expect(titles()).toEqual(['Orders', 'Customers', 'Customers > Countries', 'Stores > Countries']);
 });
 
 test('a mart reached through one path is titled without it', async () => {
@@ -36,7 +36,7 @@ test('a mart reached through one path is titled without it', async () => {
 
 test('the x on one Countries group leaves the other', async () => {
   await setup(both);
-  await remove('Countries (Stores)');
+  await remove('Stores > Countries');
   await waitFor(() => expect(paths()).toEqual(['', 'customers', 'customers.countries']));
   expect(titles()).toEqual(['Orders', 'Customers', 'Countries']);
 });
@@ -45,7 +45,7 @@ test('the x on Customers takes only its own columns: the Countries behind it kee
   await setup(both);
   await remove('Customers');
   await waitFor(() => expect(paths()).toEqual(['', 'customers.countries', 'stores.countries']));
-  expect(titles()).toEqual(['Orders', 'Countries (Customers)', 'Countries (Stores)']);
+  expect(titles()).toEqual(['Orders', 'Customers > Countries', 'Stores > Countries']);
   const cols = probe.state.grids.orders!.columns;
   expect(cols).toContain('customers__countries__name');
   expect(cols).not.toContain('customers__name');
@@ -53,7 +53,7 @@ test('the x on Customers takes only its own columns: the Countries behind it kee
 
 test('ticking a field on one Countries group keeps two Countries groups, with the field in its own group', async () => {
   await setup(both);
-  const dialog = await openFields('Countries (Customers)');
+  const dialog = await openFields('Customers > Countries');
   // Only this path's fields are listed, after the mart's Unique Count row.
   expect(within(dialog).getAllByRole('option')).toHaveLength(3);
   await userEvent.click(within(dialog).getByRole('option', { name: /code/i }));

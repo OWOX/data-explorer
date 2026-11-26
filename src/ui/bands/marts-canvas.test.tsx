@@ -333,7 +333,7 @@ test('x on a middle card takes only its own columns: it stays as a bare card wit
 
 test('the x moves focus to the parent card', async () => {
   await countriesUnderBoth();
-  const remove = within(el('countries', 'customers.countries')!).getByRole('button', { name: /remove countries/i });
+  const remove = within(el('countries', 'customers.countries')!).getByRole('button', { name: /remove customers > countries/i });
   remove.focus();
   await userEvent.keyboard('{Enter}');
   await waitFor(() => expect(el('countries', 'customers.countries')).toBeNull());
@@ -368,8 +368,8 @@ test('two copies of one mart read with their parent marts, and so do their remov
   fireEvent.click(marts().querySelector<HTMLElement>('article[data-ghost][id="dm-countries@stores.countries"]')!);
   await waitFor(() => expect(el('countries', 'stores.countries')).not.toBeNull());
   await toCanvas();
-  await waitFor(() => expect(within(el('countries', 'customers.countries')!).getByText('Countries (Customers)')).toBeInTheDocument());
-  expect(within(el('countries', 'stores.countries')!).getByRole('button', { name: 'Remove Countries (Stores) from the report' })).toBeInTheDocument();
+  await waitFor(() => expect(within(el('countries', 'customers.countries')!).getByText('Customers > Countries')).toBeInTheDocument());
+  expect(within(el('countries', 'stores.countries')!).getByRole('button', { name: 'Remove Stores > Countries from the report' })).toBeInTheDocument();
 });
 
 const ghostEl = (id: string, path: string) => marts().querySelector<HTMLElement>(`article[data-ghost][id="${martElementId(id, path)}"]`);
