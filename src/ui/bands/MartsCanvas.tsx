@@ -17,7 +17,7 @@ import type { ClickOptions } from './useCardClick';
 import { edgeOf, joinAlias, noteFields, relationshipNote } from './relationshipNote';
 import { litIds, revisionOf, useWires, type Wire } from './wires';
 
-export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, counts, matched, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart, own }: {
+export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, counts, matched, matchedStale, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart, own }: {
   model: Model;
   mainId: string | null;
   columns: string[];
@@ -29,6 +29,8 @@ export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, count
   counts: Map<string, CountState>;
   /** How many records of the mart at each alias path the grid's filters and slices keep. */
   matched?: ReadonlyMap<string, number>;
+  /** The matched numbers are the previous filters', shown dimmed. */
+  matchedStale?: boolean;
   dq: Map<string, DqSummary>;
   onOpenApp: (id: string) => void;
   onRetryCount: (id: string) => void;
@@ -236,7 +238,7 @@ export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, count
               mart={mart}
               contexts={contextsOf(model.contexts, mart.contextIds)}
               count={counts.get(mart.id) ?? { state: 'idle' }}
-              matched={matched?.get(node.path)}
+              matched={matched?.get(node.path)} matchedStale={matchedStale}
               quality={dq.get(mart.id)}
               selected={node.path === ''}
               joined={node.path !== ''}

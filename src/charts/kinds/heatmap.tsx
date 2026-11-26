@@ -20,13 +20,13 @@ import { carry, seriesWidth, type ChartKindDef, type PanelProps } from './types'
 type Cols = { kind: 'date'; date: Field; bucket: DateBucket | 'AUTO' } | { kind: 'dim'; dim: Field };
 type HeatR = { rows: Field; cols: Cols; measure: Measure };
 
-function HeatmapPanel({ martId, cf, title, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<HeatR>) {
+function HeatmapPanel({ martId, cf, title, r, filter, version, idle, hold, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<HeatR>) {
   const { rows: y, cols, measure } = r;
   const date = cols.kind === 'date' ? cols.date : null;
-  const { bucket, error, retry } = useBucket(martId, date, cols.kind === 'date' ? cols.bucket : 'AUTO', filter, version, idle || !date);
+  const { bucket, error, retry } = useBucket(martId, date, cols.kind === 'date' ? cols.bucket : 'AUTO', filter, version, idle || !date, hold);
   // Each axis' values: the blank one first when it has rows, the top values after. A list cannot name NULL, so the blank row / column is read apart.
-  const yTop = useTopValues({ martId, counter: cf.counter, dim: y, measure, filter, version, idle, withOther: false });
-  const xTop = useTopValues({ martId, counter: cf.counter, dim: cols.kind === 'dim' ? cols.dim : y, measure, filter, version, idle: idle || cols.kind !== 'dim', withOther: false });
+  const yTop = useTopValues({ martId, counter: cf.counter, dim: y, measure, filter, version, idle, hold, withOther: false });
+  const xTop = useTopValues({ martId, counter: cf.counter, dim: cols.kind === 'dim' ? cols.dim : y, measure, filter, version, idle: idle || cols.kind !== 'dim', hold, withOther: false });
   const yNames = yTop.names;
   const yBlank = !!yTop.categories?.some((c) => c.key === BLANK_KEY);
   const xNames = cols.kind === 'dim' ? xTop.names : undefined;
@@ -36,10 +36,10 @@ function HeatmapPanel({ martId, cf, title, r, filter, version, idle, hasFilters,
   const xWith = (top: string[] | null): HeatX | null => (cols.kind === 'date' ? (bucket ? { kind: 'date', date: cols.date, bucket } : null) : { kind: 'dim', dim: cols.dim, top });
   const on = !idle && xKnown && !!yTop.categories;
   const read = (want: boolean, x: HeatX | null, yList: string[] | null) => (on && want && x ? heatmapQuery(x, y, yList, measure, filter) : null);
-  const main = useChartQuery(martId, read(!!yNames?.length && xReal, xWith(xNames ?? []), yNames ?? []), version);
-  const blankY = useChartQuery(martId, read(yBlank && xReal, xWith(xNames ?? []), null), version);
-  const blankX = useChartQuery(martId, read(xBlank && !!yNames?.length, xWith(null), yNames ?? []), version);
-  const blankXY = useChartQuery(martId, read(xBlank && yBlank, xWith(null), null), version);
+  const main = useChartQuery(martId, read(!!yNames?.length && xReal, xWith(xNames ?? []), yNames ?? []), version, undefined, undefined, hold);
+  const blankY = useChartQuery(martId, read(yBlank && xReal, xWith(xNames ?? []), null), version, undefined, undefined, hold);
+  const blankX = useChartQuery(martId, read(xBlank && !!yNames?.length, xWith(null), yNames ?? []), version, undefined, undefined, hold);
+  const blankXY = useChartQuery(martId, read(xBlank && yBlank, xWith(null), null), version, undefined, undefined, hold);
   const reads = [main, blankY, blankX, blankXY];
   const failed = [{ error, retry }, yTop.failed, xTop.failed, ...reads].find((q) => q && q.error);
   const settled = on && reads.every((q) => q.rows || q.loading === false);

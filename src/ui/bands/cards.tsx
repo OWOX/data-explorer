@@ -23,7 +23,8 @@ export type CountState =
   | { state: 'idle' }
   | { state: 'queued' }
   | { state: 'loading' }
-  | { state: 'ok'; value: number | null }
+  /** `stale`: a recount is under way and the value is the previous one, shown dimmed until the new one arrives. */
+  | { state: 'ok'; value: number | null; stale?: boolean }
   | { state: 'error'; message: string };
 
 /** A card selects on click and on Enter, but not when the key or click came from a control inside it. */
@@ -123,13 +124,14 @@ function CountBadge({ count, countable, onRetry }: { count: CountState; countabl
   if (count.value === null) {
     return <Tooltip content="Can't count records: this data mart has no primary key and no text or boolean field."><span className="dm-badge">—</span></Tooltip>;
   }
-  return <Tooltip content={recordsLabel(num(count.value))}><span className="dm-badge">{recordsLabel(compactNumber(count.value))}</span></Tooltip>;
+  return <Tooltip content={recordsLabel(num(count.value))}><span className={`dm-badge${count.stale ? ' dm-stale' : ''}`} aria-busy={count.stale || undefined}>{recordsLabel(compactNumber(count.value))}</span></Tooltip>;
 }
 
 /** "12% match" after the record count: how much of the mart the filters and slices keep. Shown only for a known count and a matched number below it. */
-function MatchBadge({ matched, count }: { matched: number | undefined; count: CountState }) {
+function MatchBadge({ matched, stale, count }: { matched: number | undefined; /** The matched number is the previous filters'. */ stale: boolean; count: CountState }) {
   const label = count.state === 'ok' ? matchLabel(matched, count.value) : null;
-  return label && <Tooltip content={label.tip}><span className="dm-badge" data-match>{label.text}</span></Tooltip>;
+  const dim = stale || (count.state === 'ok' && !!count.stale);
+  return label && <Tooltip content={label.tip}><span className={`dm-badge${dim ? ' dm-stale' : ''}`} aria-busy={dim || undefined} data-match>{label.text}</span></Tooltip>;
 }
 
 /** The contexts of a mart, in the project's order. */
@@ -155,6 +157,7 @@ export function MartCard({
   title,
   focused = false,
   matched,
+  matchedStale = false,
   onRemove,
   join,
   onSelect,
@@ -188,6 +191,8 @@ export function MartCard({
   focused?: boolean;
   /** How many of this mart's records the grid's filters and slices keep (at this card's path); the badge compares it with the count. */
   matched?: number;
+  /** The matched number is the previous filters' while the new count is under way: dimmed. */
+  matchedStale?: boolean;
   /** Takes this joined mart out of the report; when absent the card has no ×. */
   onRemove?: () => void;
   /** Graph only: the (+) on the right edge that shows the marts that can join under this card. Absent when none can, and in the Grid. */
@@ -254,7 +259,7 @@ export function MartCard({
       </div>
       <div className="dm-badges dm-badges-row">
         {mart.accessible ? <CountBadge count={count} countable={!ghost} onRetry={onRetryCount ?? NOOP} /> : <span className="dm-badge">No access</span>}
-        {mart.accessible && !ghost && <MatchBadge matched={matched} count={count} />}
+        {mart.accessible && !ghost && <MatchBadge matched={matched} stale={matchedStale} count={count} />}
       </div>
       <div className="dm-node-foot">
         <QualityMark summary={quality} />

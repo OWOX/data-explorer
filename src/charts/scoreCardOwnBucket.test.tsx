@@ -28,7 +28,7 @@ function show(min: string, max: string) {
   }) as unknown as Ctx['owox']['dataMarts']['traverseData'] } } };
   render(
     <AppServices ctx={ctx}><StoreProvider>
-      <MartCards martId="customers" mart={orders} main={false} spark={{ hidden: new Set(), sparklines: true, metrics: {}, dates: {}, date: firstOrder }} scores={{ rows: [{}], error: null, loading: false, retry: () => {} }} bucket="MONTH" autoBucket
+      <MartCards martId="customers" mart={orders} main={false} spark={{ hidden: new Set(), sparklines: true, metrics: {}, dates: {}, date: firstOrder }} scores={{ rows: [{}], error: null, loading: false, held: false, retry: () => {} }} bucket="MONTH" autoBucket
         filter={[]} version={0} paused={false} hasFilters={false} formatOf={() => ({} as never)} onHide={() => {}} />
     </StoreProvider></AppServices>,
   );

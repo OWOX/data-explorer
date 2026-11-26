@@ -48,10 +48,11 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
   // The newest request per card: an older count that finishes late must not overwrite a newer value.
   const seqs = useRef({ next: 0, latest: new Map<string, number>() });
 
-  // A count turns to loading only here, when its request starts. Until then the old value stays.
+  // A first count turns to loading here. A recount keeps its previous value, dimmed from the moment it is queued.
   const runCount = useCallback((id: string, recount: boolean, seq: number): Promise<void> => {
     const current = () => seqs.current.latest.get(id) === seq;
-    setCounts((c) => new Map(c).set(id, { state: 'loading' }));
+    // A recount keeps the card's previous count on screen, dimmed; a first count has none to show.
+    setCounts((c) => { const was = c.get(id); return new Map(c).set(id, recount && was?.state === 'ok' && was.value !== null ? { ...was, stale: true } : { state: 'loading' }); });
     return schemas.get(id)
       .then((s) => (recount ? counter.recount(id, s) : counter.count(id, s)))
       .then(
@@ -71,7 +72,12 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
         ids.forEach((id) => asked.current.delete(id));
         setCounts((c) => {
           const next = new Map(c);
-          ids.forEach((id) => { if (next.get(id)?.state === 'queued') next.delete(id); });
+          ids.forEach((id) => {
+            const was = next.get(id);
+            if (was?.state === 'queued') next.delete(id);
+            // A recount that will not run: its old count is the shown one again, no longer dimmed.
+            else if (was?.state === 'ok' && was.stale) next.set(id, { state: 'ok', value: was.value });
+          });
           return next;
         });
       }
@@ -90,8 +96,12 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
     seqs.current.latest.set(id, seq);
     const waiting = queue.current.find((q) => q.id === id);
     if (waiting) { waiting.recount ||= recount; waiting.seq = seq; } else queue.current.push({ id, recount, seq });
-    // Only a card with no count yet shows the wait; a recount keeps its old value until it starts.
-    setCounts((c) => (c.has(id) ? c : new Map(c).set(id, { state: 'queued' })));
+    // Only a card with no count yet shows the wait; a recount keeps its old value, dimmed from now (it may queue behind others), until the new one lands.
+    setCounts((c) => {
+      const was = c.get(id);
+      if (!was) return new Map(c).set(id, { state: 'queued' });
+      return recount && was.state === 'ok' && was.value !== null && !was.stale ? new Map(c).set(id, { ...was, stale: true }) : c;
+    });
     pump();
   }, [pump]);
 

@@ -8,6 +8,17 @@ import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
 import { closeConfigMenu, openFields, openSubmenu } from '../explorer/menu-test-utils';
 import { num } from '../format';
+import { forgetSeenRows, rememberRow } from '../../records/seen-rows';
+import { forgetGridRows } from '../explorer/useMartRows';
+
+vi.mock('../../records/seen-rows', async (orig) => {
+  const m = await orig<typeof import('../../records/seen-rows')>();
+  return { ...m, rememberRow: vi.fn(m.rememberRow), forgetSeenRows: vi.fn(m.forgetSeenRows) };
+});
+vi.mock('../explorer/useMartRows', async (orig) => {
+  const m = await orig<typeof import('../explorer/useMartRows')>();
+  return { ...m, forgetGridRows: vi.fn(m.forgetGridRows) };
+});
 
 type Mock = ReturnType<typeof createMockCtx>;
 
@@ -449,10 +460,63 @@ describe('the record', () => {
     await within(data()).findByRole('table');
     await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
     await within(row()).findByText('status');
-    expect(within(row()).queryByRole('progressbar')).toBeNull();
+    // The grid's own columns show at once while the record reads the rest.
+    await waitFor(() => expect(within(row()).queryByRole('progressbar')).toBeNull());
     await userEvent.click(within(row()).getByRole('button', { name: 'Refresh' }));
     expect(within(row()).getByRole('progressbar')).toBeInTheDocument();
     await waitFor(() => expect(within(row()).queryByRole('progressbar')).toBeNull());
+  });
+
+  test('a row opened hands the Row band only the main mart\'s columns the grid read', async () => {
+    vi.mocked(rememberRow).mockClear();
+    await mountWith();
+    await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
+    await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
+    const seen = vi.mocked(rememberRow).mock.calls.at(-1)![3];
+    const own = demoFixtures().marts.find((m) => m.id === 'orders')!.fields.map((f) => f.name);
+    expect(seen.columns).toContain('id');
+    expect(seen.columns.every((c) => own.includes(c))).toBe(true);
+    expect(seen.row).toHaveProperty('status');
+  });
+
+  test('the grid\'s Refresh forgets the rows it handed over', async () => {
+    vi.mocked(forgetSeenRows).mockClear();
+    await mountWith();
+    await within(data()).findByRole('table');
+    await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+    expect(forgetSeenRows).toHaveBeenCalledWith(expect.anything(), 'orders');
+  });
+
+  test('the grid\'s Refresh drops its cached reads', async () => {
+    vi.mocked(forgetGridRows).mockClear();
+    await mountWith();
+    await within(data()).findByRole('table');
+    await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+    expect(forgetGridRows).toHaveBeenCalledWith(expect.anything(), 'orders');
+  });
+
+  test('a row clicked while a newer read of more columns is in flight is not handed over, so the record reads', async () => {
+    let gate: Promise<void> | null = null;
+    let open!: () => void;
+    const calls: number[] = [];
+    await mountWith(overrideTraverse((real) => async (id, o) => {
+      if (o.limit === 1) calls.push(1);
+      if (o.limit === 201 && gate && o.column?.includes('net_revenue')) await gate;
+      return real(id, o);
+    }));
+    const grid = await within(data()).findByRole('table');
+    await within(grid).findAllByRole('cell', { name: '1' });
+    gate = new Promise<void>((r) => { open = r; });
+    for (const label of ['Amount', 'created_at', 'is_gift', 'Acquisition Session ID', 'Net Revenue']) {
+      await openFields('Orders');
+      await userEvent.click(screen.getByLabelText(label));
+    }
+    await closeConfigMenu();
+    // every field is now asked for, so a seed from these rows would count as full
+    await userEvent.click((await within(data()).findAllByRole('cell', { name: '1' }))[0]!);
+    await within(row()).findByRole('heading', { name: /^Orders · 1$/ });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    open();
   });
 
   test('lists every mart that references it, and a click opens that mart filtered', async () => {
@@ -1175,6 +1239,29 @@ describe('the Data band loading bar', () => {
     await waitFor(() => expect(bar()).toBeNull());
   }, 30000);
 
+  test('on Refresh the rows and the rows label stay on screen dimmed and busy, and are fresh again when the read lands', async () => {
+    const delay = { ms: 0 };
+    await mountWith(slow(delay));
+    await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
+    await waitFor(() => expect(bar()).toBeNull());
+    const root = () => data().querySelector<HTMLElement>('.dm-grid-root')!;
+    const label = () => data().querySelector<HTMLElement>('.dm-band-count')!;
+    expect(root()).not.toHaveClass('dm-stale');
+    expect(label()).not.toHaveClass('dm-stale');
+    delay.ms = 1500;
+    await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+    await within(data()).findByRole('progressbar', { name: 'Loading rows' });
+    expect(root()).toHaveClass('dm-stale');
+    expect(root()).toHaveAttribute('aria-busy', 'true');
+    expect(label()).toHaveClass('dm-stale');
+    expect(label()).toHaveAttribute('aria-busy', 'true');
+    await waitFor(() => expect(bar()).toBeNull(), { timeout: 5000 });
+    expect(root()).not.toHaveClass('dm-stale');
+    expect(root()).not.toHaveAttribute('aria-busy');
+    expect(label()).not.toHaveClass('dm-stale');
+    expect(label()).not.toHaveAttribute('aria-busy');
+  }, 30000);
+
   test('the bar sits on the top border of the card, as wide as it', async () => {
     const delay = { ms: 1500 };
     await mountWith(slow(delay));
@@ -1217,8 +1304,12 @@ describe('the default sort', () => {
     expect(within(grid).getByRole('button', { name: 'Reset' })).toBeDisabled();
     await userEvent.click(within(grid).getByRole('button', { name: /^Sort by status,/ }));
     await waitFor(() => expect(orderSorts(calls)).toEqual([{ column: 'status', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
+    const sent = calls.length;
     await userEvent.click(within(grid).getByRole('button', { name: 'Reset' }));
-    await waitFor(() => expect(orderSorts(calls)).toEqual([{ column: 'created_at', direction: 'desc' }, { column: 'id', direction: 'asc' }]));
+    // The default sort's rows are still cached, so no read is sent: the header shows it again.
+    await waitFor(() => expect(within(grid).getByRole('button', { name: 'Reset' })).toBeDisabled());
+    expect(within(grid).getByRole('button', { name: /^Sort by status, currently not sorted/ })).toBeInTheDocument();
+    expect(calls.length).toBe(sent);
   });
 
   test('with the default on a visible column, a click on another column replaces it, and a click on the default column goes ascending', async () => {
@@ -1235,8 +1326,10 @@ describe('the default sort', () => {
     await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
     await userEvent.click(within(data()).getByRole('button', { name: /^Sort by day,/ }));
     await waitFor(() => expect(sortOf()).toEqual([{ column: 'day', direction: 'asc' }]));
+    const sent = calls.length;
     await userEvent.click(within(data()).getByRole('button', { name: /^Sort by day,/ }));
-    await waitFor(() => expect(sortOf()).toEqual([{ column: 'day', direction: 'desc' }]));
+    await within(data()).findByRole('button', { name: /^Sort by day, currently descending/ });
+    expect(calls.length).toBe(sent);
   });
 
   test('a mart with no date field has no default sort beyond its key', async () => {

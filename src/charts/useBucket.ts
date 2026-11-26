@@ -18,11 +18,11 @@ function monthEnd(v: unknown): unknown {
  * bucket with at most 60 buckets. `null` until it is known (or when there is no date, or the band is paused): the charts that
  * need it wait, so no query goes out with a guessed bucket.
  */
-export function useBucket(martId: string, date: Field | null, chosen: DateBucket | 'AUTO', filter: TraverseFilter[], version: number, paused: boolean) {
+export function useBucket(martId: string, date: Field | null, chosen: DateBucket | 'AUTO', filter: TraverseFilter[], version: number, paused: boolean, hold = false) {
   // A date whose governance forbids MIN or MAX cannot be ranged (OWOX refuses the query): its distinct months give the range instead.
   const rangeable = !!date && ['MIN', 'MAX'].every((fn) => allowedFunctions(date).includes(fn as 'MIN' | 'MAX'));
   const auto = chosen === 'AUTO' && !!date && !paused;
-  const read = useChartQuery(martId, auto ? (rangeable ? rangeQuery : monthsQuery)(date!, filter) : null, version);
+  const read = useChartQuery(martId, auto ? (rangeable ? rangeQuery : monthsQuery)(date!, filter) : null, version, undefined, undefined, hold);
   let bucket: DateBucket | null = null;
   if (chosen !== 'AUTO') bucket = chosen;
   else if (date && read.rows) {
@@ -33,5 +33,6 @@ export function useBucket(martId: string, date: Field | null, chosen: DateBucket
       bucket = seen.length ? pickBucket(seen[0], monthEnd(seen[seen.length - 1])) : 'MONTH';
     }
   }
-  return { bucket, error: read.error, retry: read.retry };
+  // `pending`: Auto is waiting on the range read (not answered, not failed), so `bucket` is null only for now.
+  return { bucket, error: read.error, retry: read.retry, pending: auto && !read.rows && !read.error };
 }

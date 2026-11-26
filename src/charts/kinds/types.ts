@@ -9,6 +9,8 @@ import type { ChartKind, ChartSpec, Spark } from '../settings';
 
 export type PanelProps<R> = {
   martId: string; cf: ChartFields; title: string; r: R; spark: Spark; filter: TraverseFilter[]; version: number; idle: boolean;
+  /** True until the panel first scrolls near the view: a cached read is still used, a new one waits. */
+  hold?: boolean;
   hasFilters: boolean; formatOf: Formatter; ready: boolean;
   /** Rows every panel menu ends with (Chart type, Duplicate, Hide), built by ChartsBody. */
   tail: MenuItem[];

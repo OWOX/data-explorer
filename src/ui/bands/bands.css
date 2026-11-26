@@ -813,3 +813,7 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 .dm-rule-badges { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: 4px; }
 .dm-rule-badge { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 24px; box-sizing: border-box; padding: 0 8px; border: 1px solid color-mix(in srgb, var(--sheet-green) 55%, transparent); border-radius: 12px; background: transparent; color: var(--sheet-green); font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; transition: background-color 120ms; }
 .dm-rule-badge:is(:hover, :focus-visible, [aria-expanded='true']) { background: color-mix(in srgb, var(--sheet-green) 12%, transparent); }
+
+/* Content that shows a previous read's value while the next read runs. The one dimming for every place that does it; it ends on the render the new value arrives. */
+.dm-stale { opacity: 0.5; transition: opacity 200ms; }
+@media (prefers-reduced-motion: reduce) { .dm-stale { transition: none; } }

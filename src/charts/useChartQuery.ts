@@ -6,7 +6,7 @@ import { useServices } from '../state/store';
 import { useLatest } from '../ui/useLatest';
 import { answers, partsOf, stable, type JoinGrain, type QueryParts } from './answers';
 
-export type ChartResult = { rows: Row[] | null; error: unknown; loading: boolean; retry: () => void };
+export type ChartResult = { rows: Row[] | null; error: unknown; loading: boolean; /** This key's read was not started because of `hold`: `loading` is then true until the hold ends. */ held: boolean; retry: () => void };
 
 /** How many resolved reads a ctx keeps: about ten views of the charts. The least recently used is dropped first. */
 export const CHART_CACHE_LIMIT = 64;
@@ -74,7 +74,7 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
       const entry = cache.get(cached.key)!;
       cache.delete(cached.key);
       cache.set(cached.key, entry);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- a hit has no promise to answer through
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the rows are in the render too; state keeps them if the cache drops them
       setState({ key, rows: cached.rows, error: null });
       return;
     }
@@ -122,10 +122,12 @@ export function useChartQuery(martId: string, options: TraverseOptions | null, v
     setAttempt((n) => n + 1);
   }, []);
   // State from an earlier key is stale: show nothing until this key's effect has answered.
-  if (!key) return { rows: null, error: null, loading: false, retry };
+  if (!key) return { rows: null, error: null, loading: false, held: false, retry };
   const current = state.key === key;
   // A cached read for a superset answers on this very render, so the cards show their values with no skeleton.
   const rows = current ? state.rows : lookup(ctx, key, martId, version, asked, joins, reused)?.rows ?? null;
   const error = current ? state.error : null;
-  return { rows, error, loading: !rows && !error, retry };
+  // The effect skips a read for exactly this: held, no rows (a cache hit gives rows), not answered yet, and no read under way to join.
+  const waitingOnHold = hold && !rows && !current && !flightsOf(ctx).has(key);
+  return { rows, error, loading: !rows && !error, held: waitingOnHold, retry };
 }

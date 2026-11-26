@@ -77,7 +77,8 @@ test('a successful refresh recounts what was shown, keeping the old number until
 
   value = 9;
   rerender({ model: modelOf(ids), version: 1 });
-  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'loading' }));
+  // The old count stays, flagged stale so the card dims it; it is not replaced by a spinner.
+  await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7, stale: true }));
   act(() => release());
   await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 9 }));
 });
@@ -191,4 +192,42 @@ test('a bare node of the join tree is counted once it is in the ids, and stays i
   const { result } = renderHook(() => useCardStatus(model, ids, 0), { wrapper });
   act(() => result.current.request('a'));
   await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 5 }));
+});
+
+test('a refresh dims every recounted card at once, also the ones still waiting in the queue behind the first 4', async () => {
+  const ids = Array.from({ length: 8 }, (_, i) => `m${i}`);
+  let gate: Promise<void> | null = null;
+  const traverseData = vi.fn(async () => { await gate; return traversalOf([{ 'Unique Count': 7 }]); });
+  const { result, rerender } = renderHook(({ model, version }) => useCardStatus(model, ids, version), { wrapper: setup(traverseData), initialProps: { model: modelOf(ids), version: 0 } });
+  act(() => ids.forEach((id) => result.current.request(id)));
+  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
+  let open!: () => void;
+  gate = new Promise<void>((r) => { open = r; });
+  rerender({ model: modelOf(ids), version: 1 });
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(8 + 4));
+  for (const id of ids) expect(result.current.counts.get(id)).toEqual({ state: 'ok', value: 7, stale: true });
+  gate = null;
+  act(() => open());
+  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
+  expect(traverseData).toHaveBeenCalledTimes(16);
+});
+
+test('a recount dropped from the queue because its card left view is no longer dimmed', async () => {
+  const ids = Array.from({ length: 8 }, (_, i) => `m${i}`);
+  let gate: Promise<void> | null = null;
+  const traverseData = vi.fn(async () => { await gate; return traversalOf([{ 'Unique Count': 7 }]); });
+  const { result, rerender } = renderHook(({ model, version, vis }) => useCardStatus(model, vis, version), { wrapper: setup(traverseData), initialProps: { model: modelOf(ids), version: 0, vis: ids } });
+  act(() => ids.forEach((id) => result.current.request(id)));
+  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
+  gate = new Promise<void>(() => {});
+  rerender({ model: modelOf(ids), version: 1, vis: ids });
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(8 + 4));
+  expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7, stale: true });
+  rerender({ model: modelOf(ids), version: 1, vis: ids.slice(0, 4) });
+  // Brought back into view without asking again: its old count shows, not dimmed.
+  rerender({ model: modelOf(ids), version: 1, vis: ids });
+  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
+  // The ones still counting stay dimmed.
+  expect(result.current.counts.get('m0')).toEqual({ state: 'ok', value: 7, stale: true });
+  expect(traverseData).toHaveBeenCalledTimes(12);
 });

@@ -20,9 +20,9 @@ import { BOX_WIDTH, carry, type ChartKindDef, type PanelProps } from './types';
 export type MeasureByDimensionR = { measure: Measure; dimension: Field };
 
 function categoryPanel(orientation: 'vertical' | 'horizontal', name: string) {
-  return function CategoryBarPanel({ martId, cf, title, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<MeasureByDimensionR>) {
+  return function CategoryBarPanel({ martId, cf, title, r, filter, version, idle, hold, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<MeasureByDimensionR>) {
     const { measure, dimension: dim } = r;
-    const top = useTopValues({ martId, counter: cf.counter, dim, measure, filter, version, idle });
+    const top = useTopValues({ martId, counter: cf.counter, dim, measure, filter, version, idle, hold });
     const point = (x: string, label: string, v: unknown, color: string) => ({ x, label, y: numberOf(v), valueText: measureText(measure, v, formatOf), color });
     const series = (): Series[] => {
       // Each bar keeps the colour its label hashes to, the same as the same value's pie slice, stack segment or Sankey node.

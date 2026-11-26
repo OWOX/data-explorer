@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { GRID_COLUMNS_COLLECTION } from '../api/grid-columns';
 import { CHARTS_COLLECTION } from '../api/chart-settings';
 import { createMockCtx } from '../sdk/mock/ctx';
@@ -10,12 +10,13 @@ import { AppServices, StoreProvider } from '../state/store';
 import { App } from '../ui/App';
 import { SAVED_COLUMNS_WAIT_MS } from '../ui/explorer/SeededGrid';
 import { openColumnMenu, openConfigMenu, closeConfigMenu, openFields, openSubmenu } from '../ui/explorer/menu-test-utils';
+import { TOP_N } from './queries';
 import type { ChartSettings } from './settings';
 
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
 const COLUMNS = ['id', 'status', 'amount', 'created_at', 'products__price'];
 
-function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[]; calc?: boolean; uc?: boolean; /** Holds the keys read (a HAVING rule's, limit 501) until it resolves. */ hold?: Promise<void>; fixtures?: Fixtures } = {}) {
+function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[]; calc?: boolean; uc?: boolean; /** Holds the keys read (a HAVING rule's, limit 501) until it resolves. */ hold?: Promise<void>; /** While its `current` is set, every read of orders waits for it. */ block?: { current: Promise<void> | null }; fixtures?: Fixtures } = {}) {
   const base = createMockCtx(opts.fixtures ?? demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
@@ -30,7 +31,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
         const d = await (base.owox.getJson as (p: string, ...r: unknown[]) => Promise<{ schema?: { fields?: unknown[] } }>)(path, ...rest);
         return path === '/api/data-marts/orders' ? { ...d, schema: { ...d.schema, fields: [...(d.schema?.fields ?? []), { name: 'net', type: 'NUMERIC', calculated: { level: 'metric' } }] } } : d;
       }) as Ctx['owox']['getJson'] : base.owox.getJson,
-      dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('range failed')); const held = id === 'orders' && opts.hold && o.limit === 501 ? opts.hold : Promise.resolve(); const tr = held.then(() => (id === 'orders' && opts.calc ? real(id, calcOf(o)).then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map((r) => ({ ...r, net: 42 })); } })) : real(id, o))); const map = opts.mapRow; return map ? tr.then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map(map); } })) : tr; } } },
+      dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('range failed')); const held = id === 'orders' && opts.block?.current ? opts.block.current : id === 'orders' && opts.hold && o.limit === 501 ? opts.hold : Promise.resolve(); const tr = held.then(() => (id === 'orders' && opts.calc ? real(id, calcOf(o)).then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map((r) => ({ ...r, net: 42 })); } })) : real(id, o))); const map = opts.mapRow; return map ? tr.then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map(map); } })) : tr; } } },
     collections: <T,>(name: string) => {
       const c = base.collections<T>(name);
       if (name === GRID_COLUMNS_COLLECTION) return { get: (id: string) => c.get(id), put: (id: string, d: T) => { gridPuts(id, d); return c.put(id, d); } };
@@ -1215,4 +1216,88 @@ test('hiding a column with Charts closed prunes the server doc, not an older cop
   const menu = await openColumnMenu(within(data()), 'created_at');
   await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
   await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { scorecards: { dates: {}, hidden: ['from-tab-2'] } }));
+});
+
+describe('a date chart keeps its dimmed drawing while an Auto bucket is read again', () => {
+  for (const [kind, name] of [['timeSeries', 'Time series'], ['line', 'Line']] as const) {
+    test(`${name}: a filter change re-reads the range and the old drawing stays, dimmed`, async () => {
+      const block: { current: Promise<void> | null } = { current: null };
+      await charts({ block, charts: { charts: [{ id: 'c', kind }] } });
+      const chart = () => data().querySelector<HTMLElement>(`section[data-chart-kind="${name}"]`);
+      await waitFor(() => expect(chart()!.querySelector('svg')).not.toBeNull());
+      expect(chart()!.querySelector('[aria-busy]')).toBeNull();
+      let release: () => void = () => {};
+      block.current = new Promise<void>((r) => { release = r; });
+      await openSubmenu(within(data()), 'status', 'Filter');
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.type(within(dialog).getByLabelText('Value'), 'paid');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+      await waitFor(() => expect(chart()!.querySelector('[aria-busy="true"]')).not.toBeNull());
+      expect(chart()!.querySelector('.dm-stale svg')).not.toBeNull();
+      const heading = () => chart()!.querySelector('h3.dm-chart-title')!.textContent!;
+      expect(heading().endsWith('by date')).toBe(true);
+      expect(chart()!.querySelector('[aria-label="Loading"]')).toBeNull();
+      release();
+      await waitFor(() => expect(chart()!.querySelector('[aria-busy]')).toBeNull());
+      expect(chart()!.querySelector('svg')).not.toBeNull();
+      expect(heading().endsWith('by date')).toBe(false);
+    });
+  }
+});
+
+describe('a chart reads once it scrolls near the view', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  /** A stubbed IntersectionObserver: `fire` reports every observed element as intersecting. */
+  function stubObserver() {
+    const seen = new Set<Element>();
+    let cb: (e: Partial<IntersectionObserverEntry>[]) => void = () => {};
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(c: typeof cb) { cb = c; }
+      observe(el: Element) { seen.add(el); }
+      unobserve(el: Element) { seen.delete(el); }
+      disconnect() {}
+    });
+    return { fire: () => act(() => cb([...seen].map((target) => ({ target, isIntersecting: true })))) };
+  }
+  const pie = () => data().querySelector('section[data-chart-kind="Pie"]');
+  /** The pie's top-values read: grouped by its dimension (status), top N, optionally with a status rule. */
+  const pieRead = (o: TraverseOptions) => o.column?.[0] === 'status' && o.limit === TOP_N;
+
+  test('an unseen, uncached panel sends no read; firing the observer reads; it stays live after', async () => {
+    const io = stubObserver();
+    const t = await charts();
+    await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
+    await waitFor(() => expect(pie()).not.toBeNull());
+    expect(t.queries.some(pieRead)).toBe(false);
+    expect(data().querySelector('[data-slice]')).toBeNull();
+    io.fire();
+    await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+    expect(t.queries.some(pieRead)).toBe(true);
+    // Scrolled away (no further intersection) and a filter changes: the pie still reads, with the rule.
+    const live = t.queries.length;
+    await openSubmenu(within(data()), 'status', 'Filter');
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Value'), 'paid');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(t.queries.slice(live).some((q) => pieRead(q) && q.filter?.some((f) => f.column === 'status'))).toBe(true));
+  });
+
+  test('a cached chart paints on mount with no observer callback', async () => {
+    const io = stubObserver();
+    const t = await charts();
+    await waitFor(() => expect(pie()).not.toBeNull());
+    io.fire();
+    await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+    await userEvent.click(radio('Table'));
+    await waitFor(() => expect(pie()).toBeNull());
+    const reads = t.queries.filter(pieRead).length;
+    await userEvent.click(radio('Charts'));
+    await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+    expect(t.queries.filter(pieRead)).toHaveLength(reads);
+  });
+
+  test('without IntersectionObserver the panel reads at once', async () => {
+    await charts();
+    await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
+  });
 });

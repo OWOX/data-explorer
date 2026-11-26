@@ -17,9 +17,9 @@ import { BOX_WIDTH, carry, type ChartKindDef, type PanelProps } from './types';
 
 type ScatterR = { dimension: Field; x: Measure; y: Measure };
 
-function ScatterPanel({ martId, cf, title, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<ScatterR>) {
+function ScatterPanel({ martId, cf, title, r, filter, version, idle, hold, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<ScatterR>) {
   const { dimension: dim, x, y } = r;
-  const read = useChartQuery(martId, idle ? null : scatterQuery(dim, x, y, filter), version);
+  const read = useChartQuery(martId, idle ? null : scatterQuery(dim, x, y, filter), version, undefined, undefined, hold);
   const [xk, yk] = [measureKey(x), measureKey(y)];
   const points: Dot[] = (read.rows ?? []).flatMap((row) => {
     const xv = numberOf(row[xk]); const yv = numberOf(row[yk]);

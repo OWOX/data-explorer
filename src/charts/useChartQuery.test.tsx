@@ -241,3 +241,20 @@ test('a held key, another key read, then the held key again (Undo) is read once'
   await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
   expect(traverseData).toHaveBeenCalledTimes(2);
 });
+
+test('held is true only for a key whose read was skipped by the hold, and ends when the hold does', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ n: 1 }]));
+  const wrapper = setup(traverseData);
+  const { result, rerender } = renderHook(({ l, hold }) => useChartQuery('m', opts(l), 0, undefined, null, hold), { wrapper, initialProps: { l: 1, hold: true } });
+  await waitFor(() => expect(result.current.held).toBe(true));
+  expect(result.current.loading).toBe(true);
+  expect(traverseData).not.toHaveBeenCalled();
+  rerender({ l: 1, hold: false });
+  await waitFor(() => expect(result.current.rows).toEqual([{ n: 1 }]));
+  expect(result.current.held).toBe(false);
+  // A key that reads (no hold) is loading but not held.
+  rerender({ l: 2, hold: false });
+  expect(result.current.held).toBe(false);
+  expect(result.current.loading).toBe(true);
+  await waitFor(() => expect(result.current.rows).not.toBeNull());
+});

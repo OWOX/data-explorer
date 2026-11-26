@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ColumnFilter } from '../filters/build';
 import type { JoinedSource } from '../api/blendable';
 import type { Aggregation, DateBucket } from '../model/aggregation';
@@ -16,6 +16,7 @@ import { joinGrainOf } from './answers';
 import { MartCards, useScorecards } from './Scorecards';
 import { KINDS } from './kinds';
 import { chartsOf, patchChart, scorecardsOf, type ChartSettings, type ChartSpec, type Spark } from './settings';
+import { ChartSeenContext } from './ChartPanel';
 import { ChartFrameContext, type ChartSize } from './resize';
 import { useBucket } from './useBucket';
 
@@ -136,7 +137,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   const spark: Spark = useMemo(() => ({ ...scorecardsOf(settings ?? {}), date: lead?.date ?? cf.dates[0] ?? null }), [settings, lead?.date, cf]);
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
   const idle = paused || !settings || !!gate || !!blockedNote;
-  const { bucket } = useBucket(martId, spark.date, lead?.bucket ?? 'AUTO', filter, version, idle);
+  const { bucket, pending: bucketPending } = useBucket(martId, spark.date, lead?.bucket ?? 'AUTO', filter, version, idle);
   const scores = useScorecards(martId, cf, filter, version, idle, joins, kept);
   // The Charts group of the config menu names every chart, hidden ones included; memoized so a resize resolves nothing again.
   const resolved = useMemo(() => drawn.map(({ spec, def }) => {
@@ -187,7 +188,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
         {groups.map((g, i) => (
           <td key={g.path} colSpan={g.span} data-chart-group={g.id} data-chart-path={g.path}>
             <div className="flex items-start gap-1">
-              <MartCards martId={martId} mart={cf.marts[i]!} main={g.path === ''} spark={spark} scores={scores} bucket={bucket} autoBucket={leadBucket === 'AUTO'} filter={filter} version={version} paused={idle} joins={joins} hasFilters={hasFilters} formatOf={formatOf}
+              <MartCards martId={martId} mart={cf.marts[i]!} main={g.path === ''} spark={spark} scores={scores} bucket={bucket} bucketPending={bucketPending} autoBucket={leadBucket === 'AUTO'} filter={filter} version={version} paused={idle} joins={joins} hasFilters={hasFilters} formatOf={formatOf}
                 menuMart={menuOf(cf).marts[i]}
                 onMetric={settings ? (id, v) => { const stage = showCardPick(v, false); change((cur) => setCardMetric(cur, id, v, cf.marts[i]!), { stage }); } : undefined}
                 onDate={settings ? (id, v) => { const stage = showCardPick(v, true); change((cur) => setCardDate(cur, id, v, cf.marts[i]!, spark), { stage }); } : undefined} onHide={settings ? (id) => change((cur) => hideCard(cur, id)) : undefined} />
@@ -202,12 +203,13 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
           {/* Pinned just right of the row-number gutter and as wide as the rest of the scroller, so the panels line up with
               the scorecards (the same 0.75rem inset) and stay in view however wide the table is. */}
           <div data-chart-panels data-resizing={resizing || undefined} className="dm-chart-panels sticky" style={{ left: GUTTER_PX, width: Math.max(0, scrollerWidth - GUTTER_PX) }}>
-            {/* eslint-disable-next-line react-hooks/refs -- `change` is only called from handlers */}
             {drawn.map(({ spec, def, r }, i) => r ? (
               <ChartFrameContext key={spec.id} value={{ size: spec.size ?? NO_SIZE, resizing, cancelDrag, onResize: (size, keys) => change((cur) => patchChart(cur, spec.id, { size }), keys ? { fold: `size:${spec.id}` } : {}) }}>
-              <def.Panel martId={martId} cf={cf} title={resolved[i]!.title!} r={r} spark={spark} filter={filter} version={version} idle={idle}
+              <SeenOnce>{(seen) => (
+              <def.Panel martId={martId} cf={cf} title={resolved[i]!.title!} r={r} spark={spark} filter={filter} version={version} idle={idle} hold={!seen}
                 hasFilters={hasFilters} formatOf={formatOf} ready={!!settings} tail={tailItems({ cf, spec, change, resizing, onResizing: setResizing })}
                 onChange={(p: Partial<ChartSpec>) => { const stage = showPicked(spec, p); change((cur) => patchChart(cur, spec.id, p), { stage }); }} onFilter={onFilter} />
+              )}</SeenOnce>
               </ChartFrameContext>
             ) : null)}
             {resizing && <p role="status" className="sr-only">Resizing charts: drag an edge, or focus a handle and use the arrow keys. Escape ends it.</p>}
@@ -217,4 +219,11 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
       </tr>
     </tbody>,
   );
+}
+
+/** Holds whether the panel has been near the view yet. It starts false and never goes back, so only the first read waits. */
+function SeenOnce({ children }: { children: (seen: boolean) => ReactNode }) {
+  const [seen, setSeen] = useState(false);
+  const onSeen = useCallback(() => setSeen(true), []);
+  return <ChartSeenContext value={seen ? null : onSeen}>{children(seen)}</ChartSeenContext>;
 }
