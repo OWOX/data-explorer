@@ -1,22 +1,22 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { GRID_COLUMNS_COLLECTION } from '../api/grid-columns';
 import { CHARTS_COLLECTION } from '../api/chart-settings';
 import { createMockCtx } from '../sdk/mock/ctx';
-import { demoFixtures } from '../sdk/mock/fixtures';
+import { demoFixtures, type Fixtures } from '../sdk/mock/fixtures';
 import type { Ctx, Row, TraverseOptions } from '../sdk/types';
 import { AppServices, StoreProvider } from '../state/store';
 import { App } from '../ui/App';
 import { SAVED_COLUMNS_WAIT_MS } from '../ui/explorer/MartGrid';
-import { openColumnMenu, openSubmenu } from '../ui/explorer/menu-test-utils';
+import { openColumnMenu, openConfigMenu, closeConfigMenu, openFields, openSubmenu } from '../ui/explorer/menu-test-utils';
 import type { ChartSettings } from './settings';
 
 // Orders: a primary key, a date, a number and a string; Products joins it with a number of its own (price).
 const COLUMNS = ['id', 'status', 'amount', 'created_at', 'products__price'];
 
-function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[]; calc?: boolean; uc?: boolean } = {}) {
-  const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
+function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promise<void>; fail?: (o: TraverseOptions) => boolean; mapRow?: (row: Row) => Row; aggregations?: { column: string; function: string }[]; calc?: boolean; uc?: boolean; /** Holds the keys read (a HAVING rule's, limit 501) until it resolves. */ hold?: Promise<void>; fixtures?: Fixtures } = {}) {
+  const base = createMockCtx(opts.fixtures ?? demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const puts = vi.fn();
@@ -30,7 +30,7 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
         const d = await (base.owox.getJson as (p: string, ...r: unknown[]) => Promise<{ schema?: { fields?: unknown[] } }>)(path, ...rest);
         return path === '/api/data-marts/orders' ? { ...d, schema: { ...d.schema, fields: [...(d.schema?.fields ?? []), { name: 'net', type: 'NUMERIC', calculated: { level: 'metric' } }] } } : d;
       }) as Ctx['owox']['getJson'] : base.owox.getJson,
-      dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('range failed')); const tr = id === 'orders' && opts.calc ? real(id, calcOf(o)).then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map((r) => ({ ...r, net: 42 })); } })) : real(id, o); const map = opts.mapRow; return map ? tr.then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map(map); } })) : tr; } } },
+      dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('range failed')); const held = id === 'orders' && opts.hold && o.limit === 501 ? opts.hold : Promise.resolve(); const tr = held.then(() => (id === 'orders' && opts.calc ? real(id, calcOf(o)).then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map((r) => ({ ...r, net: 42 })); } })) : real(id, o))); const map = opts.mapRow; return map ? tr.then((x) => ({ ...x, rowChunks: async function* () { for await (const c of x.rowChunks()) yield c.map(map); } })) : tr; } } },
     collections: <T,>(name: string) => {
       const c = base.collections<T>(name);
       if (name === GRID_COLUMNS_COLLECTION) return { get: (id: string) => c.get(id), put: (id: string, d: T) => { gridPuts(id, d); return c.put(id, d); } };
@@ -41,12 +41,18 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
     ctx.collections<{ columns: string[]; at: string; aggregations?: unknown; gridView?: unknown }>(GRID_COLUMNS_COLLECTION).put('orders', { columns: opts.columns ?? COLUMNS, at: 'then', ...(opts.uc ? { gridView: { fl: [], s: null, l: 100, uc: [''] } } : {}), ...(opts.aggregations ? { aggregations: opts.aggregations } : {}) }),
     opts.charts ? ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', opts.charts) : undefined,
   ]);
-  return { queries, puts, gridPuts, seeded, view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
+  return { queries, puts, gridPuts, seeded, unmount: () => cleanup(), view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
 }
 
 const lastGrid = (t: { gridPuts: { mock: { calls: unknown[][] } } }) => t.gridPuts.mock.calls.at(-1)![1] as { columns: string[]; aggregations?: { column: string; function: string }[] };
 const data = () => document.getElementById('band-data')!;
 const radio = (name: string) => within(data()).getByRole('radio', { name });
+/** Opens the config menu's Charts group and returns its submenu: the scorecard ticks, Sparklines and a tick per chart. */
+async function openChartList() {
+  const menu = await openConfigMenu();
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Charts' }));
+  return screen.findByRole('menu', { name: 'Charts' });
+}
 const group = (id: string) => data().querySelector<HTMLElement>(`td[data-chart-group="${id}"]`);
 async function charts(opts?: Parameters<typeof setup>[0]) {
   const t = setup(opts);
@@ -213,7 +219,7 @@ test('a saved pick of a column the grid does not open with (columns read late or
 test('hiding a card from the Charts menu removes it and saves', async () => {
   const t = await charts();
   await waitFor(() => expect(cardNames(group('orders'))).toContain('Amount · Sum'));
-  await userEvent.click(screen.getByRole('button', { name: 'Charts options' }));
+  await openChartList();
   await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Amount · Sum' }));
   await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique']));
   expect(t.puts).toHaveBeenCalledWith('orders', { scorecards: { hidden: ['amount'] } });
@@ -247,9 +253,12 @@ test('a change cannot be made before the saved settings load, and one made after
   await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
   await userEvent.click(radio('Charts'));
   await waitFor(() => expect(group('orders')).not.toBeNull());
-  expect(screen.queryByRole('button', { name: 'Charts options' })).toBeNull();
+  // The config menu is there, with no chart rows until the saved settings are known.
+  const early = await openConfigMenu();
+  expect(within(early).queryByRole('menuitem', { name: 'Charts' })).toBeNull();
+  expect(within(early).queryByRole('menuitem', { name: 'Add chart' })).toBeNull();
   release();
-  await userEvent.click(await screen.findByRole('button', { name: 'Charts options' }));
+  await userEvent.click(await within(early).findByRole('menuitem', { name: 'Charts' }));
   await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Amount · Sum' }));
   await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { ...saved, scorecards: { hidden: ['amount'] } }));
 });
@@ -350,23 +359,23 @@ test('with only a pie, the sparklines still draw under the cards', async () => {
 
 test('a chart menu closes on a real scroll', async () => {
   await charts();
-  await userEvent.click(panel('Charts'));
-  expect(await screen.findByRole('menu', { name: 'Charts menu' })).toBeInTheDocument();
+  await userEvent.click(panel('Pie'));
+  expect(await screen.findByRole('menu', { name: 'Pie menu' })).toBeInTheDocument();
   const was = window.scrollY;
   Object.defineProperty(window, 'scrollY', { value: was + 40, configurable: true });
   try {
     fireEvent.scroll(document);
-    await waitFor(() => expect(screen.queryByRole('menu', { name: 'Charts menu' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('menu', { name: 'Pie menu' })).toBeNull());
   } finally { Object.defineProperty(window, 'scrollY', { value: was, configurable: true }); }
 });
 
 test('a chart menu stays open for a scroll event that moved nothing (the echo of a resize)', async () => {
   await charts();
-  await userEvent.click(panel('Charts'));
-  expect(await screen.findByRole('menu', { name: 'Charts menu' })).toBeInTheDocument();
+  await userEvent.click(panel('Pie'));
+  expect(await screen.findByRole('menu', { name: 'Pie menu' })).toBeInTheDocument();
   fireEvent.scroll(document);
   await new Promise((r) => setTimeout(r, 50));
-  expect(screen.getByRole('menu', { name: 'Charts menu' })).toBeInTheDocument();
+  expect(screen.getByRole('menu', { name: 'Pie menu' })).toBeInTheDocument();
 });
 
 test('a chart menu stays open while its panel is resizing, even when a scroll box moved', async () => {
@@ -399,7 +408,7 @@ test('a chart menu stays open while its panel is resizing, even when a scroll bo
 
 test('the card checklist rows are checkboxes', async () => {
   await charts();
-  await userEvent.click(panel('Charts'));
+  await openChartList();
   expect(await screen.findByRole('menuitemcheckbox', { name: 'Sparklines' })).toHaveAttribute('aria-checked', 'true');
   expect(screen.queryAllByRole('menuitemradio')).toHaveLength(0);
 });
@@ -591,26 +600,49 @@ test('when the shared sparkline read fails, the bar chart draws from its own rea
   expect(after.filter((q) => q.dateTrunc?.length && !q.uniqueCount && q.column?.[0] === 'created_at')).toHaveLength(1);
 });
 
-test('the Charts menu sits in the band header and adds, hides and removes charts', async () => {
+test('the Charts menu sits in the band header and adds and hides charts', async () => {
   const t = await charts();
   const header = data().querySelector('[data-chart-list-slot]')!;
-  await userEvent.click(within(header as HTMLElement).getByRole('button', { name: 'Charts options' }));
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Add chart' }));
+  await userEvent.click(within(header as HTMLElement).getByRole('button', { name: 'Configure data' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Add chart' }));
   await userEvent.click(screen.getByRole('menuitemradio', { name: 'Pie' }));
   await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(3));
   const added = (t.puts.mock.lastCall![1] as ChartSettings).charts!;
   expect(added.map((c) => c.kind)).toEqual(['timeSeries', 'pie', 'pie']);
 
-  await userEvent.click(within(header as HTMLElement).getByRole('button', { name: 'Charts options' }));
+  await openChartList();
   await userEvent.click(screen.getAllByRole('menuitemcheckbox', { name: /^Amount · Sum by / })[0]!);
   await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(2));
   // A tick keeps the menu open: close it before opening a chart's own.
-  await userEvent.keyboard('{Escape}');
+  await closeConfigMenu();
 
   const pies = screen.getAllByRole('button', { name: 'Pie options' });
   await userEvent.click(pies[1]!);
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Hide' }));
   await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(1));
+});
+
+test('Hide keeps the chart in the Charts list, and ticking it brings it back with its setup', async () => {
+  const saved = { id: 'p', kind: 'pie', dimension: 'status' } as const;
+  const t = await charts({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries' }, saved] } });
+  await userEvent.click(await screen.findByRole('button', { name: 'Pie options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Hide' }));
+  await waitFor(() => expect(data().querySelector('section[data-chart-kind="Pie"]')).toBeNull());
+  await openChartList();
+  const row = screen.getByRole('menuitemcheckbox', { name: /by status$/ });
+  expect(row).toHaveAttribute('aria-checked', 'false');
+  await userEvent.click(row);
+  await waitFor(() => expect(data().querySelector('section[data-chart-kind="Pie"]')).not.toBeNull());
+  expect((t.puts.mock.lastCall![1] as ChartSettings).charts).toEqual([{ id: 'time-series', kind: 'timeSeries' }, { ...saved, hidden: false }]);
+});
+
+test('Duplicate adds a chart beside its original', async () => {
+  const t = await charts();
+  await userEvent.click(screen.getByRole('button', { name: 'Pie options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Duplicate' }));
+  await waitFor(() => expect(data().querySelectorAll('section[data-chart-kind="Pie"]')).toHaveLength(2));
+  expect(data().querySelectorAll('section.dm-chart')).toHaveLength(3);
+  expect((t.puts.mock.lastCall![1] as ChartSettings).charts!.map((c) => c.kind)).toEqual(['timeSeries', 'pie', 'pie']);
 });
 
 test('a hidden chart sends no query', async () => {
@@ -622,12 +654,12 @@ test('a hidden chart sends no query', async () => {
 test('a chart whose fields are not shown is listed as columns hidden and drawn again when they return', async () => {
   const t = await charts({ columns: ['id', 'amount', 'created_at'], charts: { charts: [{ id: 'p', kind: 'pie', dimension: 'status' }] } });
   expect(data().querySelectorAll('section.dm-chart')).toHaveLength(0);
-  await userEvent.click(screen.getByRole('button', { name: 'Charts options' }));
+  await openChartList();
   expect(screen.getByRole('menuitemcheckbox', { name: 'Pie (columns hidden)' })).toBeTruthy();
-  await userEvent.keyboard('{Escape}');
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
+  await closeConfigMenu();
+  await openFields('Orders');
   await userEvent.click(await screen.findByLabelText(/^status/i));
-  await userEvent.keyboard('{Escape}');
+  await closeConfigMenu();
   await waitFor(() => expect(data().querySelectorAll('section.dm-chart')).toHaveLength(1));
   expect(data().querySelector('section[data-chart-kind="Pie"]')).not.toBeNull();
   expect(t.puts).not.toHaveBeenCalled();
@@ -663,11 +695,12 @@ test('a bar chart draws vertical bars per top value; switching it to a ranked ba
   expect((t.puts.mock.lastCall![1] as ChartSettings).charts).toEqual([{ id: 'b', kind: 'rankedBar', measure: 'amount', dimension: 'status' }]);
 });
 
-test('a chart menu ends with Chart type, Copy to clipboard and Remove', async () => {
+test('a chart menu ends with Chart type, Resize, Duplicate, Copy to clipboard and Hide', async () => {
   await charts();
   await userEvent.click(screen.getByRole('button', { name: 'Pie options' }));
   const rows = within(screen.getAllByRole('menu').at(-1)!).getAllByRole('menuitem').map((r) => r.textContent);
-  expect(rows.slice(-3)).toEqual(['Chart type', 'Copy to clipboard', 'Remove']);
+  expect(rows.slice(-5)).toEqual(['Chart type', 'Resize', 'Duplicate', 'Copy to clipboard', 'Hide']);
+  expect(rows).not.toContain('Remove');
 });
 
 test('the grid’s chosen aggregation reaches the charts: Average ranks the bars, and a switch to Pie goes back to Sum', async () => {
@@ -805,4 +838,222 @@ test('with Unique Count on, the keys read groups as the table does: one total ro
   const read = t.queries.slice(before).find((q) => q.limit === 501)!;
   expect(read.column).toEqual(['net']);
   expect(read.uniqueCount).toBeUndefined();
+});
+
+describe('the config button in Charts', () => {
+  const configButton = () => within(data().querySelector<HTMLElement>('[data-chart-list-slot]')!).getByRole('button', { name: 'Configure data' });
+
+  test('shows with "Nothing to chart" too, its menu listing Add chart (with nothing to add), the Charts group and the data mart', async () => {
+    // Orders with no primary key and only a text column shown: no number, nothing to count.
+    const fx = demoFixtures();
+    const keyless = { ...fx, marts: fx.marts.map((m) => (m.id === 'orders' ? { ...m, fields: m.fields.map((f) => ({ ...f, isPrimaryKey: false })) } : m)) };
+    const t = setup({ columns: ['status'], fixtures: keyless });
+    await t.seeded;
+    t.view();
+    await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
+    await userEvent.click(radio('Charts'));
+    await waitFor(() => expect(data().querySelector('[data-chart-empty]')).not.toBeNull());
+    expect(configButton()).toBeInTheDocument();
+    const menu = await openConfigMenu();
+    expect(within(menu).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Add chart', 'Charts', 'Orders']);
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Add chart' }));
+    const empty = await screen.findByRole('menu', { name: 'Add chart' });
+    expect(within(empty).getAllByRole('menuitem').map((r) => [r.textContent, r.getAttribute('aria-disabled')])).toEqual([['Show a number column to chart it.', 'true']]);
+    // The note is the panel's only text: a screen reader reaches it, so it takes focus, and activating it does nothing.
+    const note = within(empty).getByRole('menuitem');
+    expect(note).toHaveFocus();
+    expect(note).not.toBeDisabled();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByRole('menu', { name: 'Add chart' })).toBeInTheDocument();
+    expect(note).toHaveFocus();
+  });
+
+  test('stays open while the HAVING gate loads and the charts come in behind it', async () => {
+    let release!: () => void;
+    const hold = new Promise<void>((r) => { release = r; });
+    await charts({ calc: true, columns: ['status', 'amount', 'net'], aggregations: [{ column: 'amount', function: 'SUM' }], hold });
+    await openSubmenu(within(data()), 'net', 'Filter');
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Value'), '10');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(group('orders')).toBeNull());
+    const menu = await openConfigMenu();
+    release();
+    await waitFor(() => expect(group('orders')).not.toBeNull());
+    expect(menu).toBeInTheDocument();
+    expect(configButton()).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  /** Orders with an array field: shown next to a function on another column it cannot be grouped. */
+  const withTags = () => { const fx = demoFixtures(); return { ...fx, marts: fx.marts.map((m) => (m.id === 'orders' ? { ...m, fields: [...m.fields, { name: 'tags', type: 'STRING', mode: 'REPEATED' as const }] } : m)) }; };
+  const grouped = { columns: ['status', 'amount'], aggregations: [{ column: 'amount', function: 'SUM' }], fixtures: withTags() };
+  const alert = () => data().querySelector('[role="alert"]');
+
+  test('a tick that blocks the grid, and the one that unblocks it, keep the menu open with the focus in it', async () => {
+    await charts(grouped);
+    await openFields('Orders');
+    const menu = screen.getByRole('menu', { name: 'Configure data' });
+    await userEvent.click(await screen.findByRole('option', { name: 'tags' }));
+    await waitFor(() => expect(alert()).toHaveTextContent("can't be grouped"));
+    expect(menu).toBeInTheDocument();
+    expect(configButton()).toHaveAttribute('aria-expanded', 'true');
+    expect(document.activeElement).not.toBe(document.body);
+    await userEvent.click(screen.getByRole('option', { name: 'tags' }));
+    await waitFor(() => expect(group('orders')).not.toBeNull());
+    expect(alert()).toBeNull();
+    expect(menu).toBeInTheDocument();
+    expect(configButton()).toHaveAttribute('aria-expanded', 'true');
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  test('the config button is there while the grid is blocked, in Charts and in Table', async () => {
+    const t = setup({ ...grouped, columns: ['status', 'amount', 'tags'] });
+    await t.seeded;
+    t.view();
+    await waitFor(() => expect(alert()).toHaveTextContent("can't be grouped"));
+    expect(configButton()).toBeInTheDocument();
+    const sent = t.queries.length;
+    await userEvent.click(radio('Charts'));
+    await waitFor(() => expect(data().querySelector('.dm-grid-frame-charts')).not.toBeNull());
+    expect(alert()).toHaveTextContent("can't be grouped");
+    // Charts opened on a blocked grid read nothing.
+    await new Promise((r) => setTimeout(r, 300));
+    expect(t.queries.length).toBe(sent);
+    expect(configButton()).toBeInTheDocument();
+    expect(within(await openConfigMenu()).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Add chart', 'Charts', 'Orders']);
+  });
+
+  /** Marts with no primary key, so only a number column gives a chart something to count. */
+  const keyless = () => { const fx = demoFixtures(); return { ...fx, marts: fx.marts.map((m) => (['orders', 'products'].includes(m.id) ? { ...m, fields: m.fields.map((f) => ({ ...f, isPrimaryKey: false })) } : m)) }; };
+  const rows = (menu: HTMLElement) => within(menu).getAllByRole('menuitem').map((r) => r.textContent);
+
+  test('a pending change that leaves no kind to add keeps both chart rows working, and the focus in the menu', async () => {
+    const t = setup({ columns: ['status', 'products__price'], fixtures: keyless() });
+    await t.seeded;
+    t.view();
+    await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
+    await userEvent.click(radio('Charts'));
+    const products = await openFields('Products');
+    await userEvent.click(within(products).getByRole('option', { name: /price/i }));
+    // The row of a chart menu item takes the panel away: the pending change goes out and no kind is eligible any more.
+    const menu = screen.getByRole('menu', { name: 'Configure data' });
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Charts' }));
+    await waitFor(() => expect(data().querySelector('[data-chart-empty]')).not.toBeNull());
+    expect(rows(menu)).toEqual(['Add chart', 'Charts', 'Orders', 'Products']);
+    expect(await screen.findByRole('menu', { name: 'Charts' })).toBeInTheDocument();
+    expect(document.activeElement).not.toBe(document.body);
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Add chart' }));
+    const add = await screen.findByRole('menu', { name: 'Add chart' });
+    expect(screen.queryByRole('menu', { name: 'Charts' })).toBeNull();
+    expect(within(add).getByRole('menuitem', { name: 'Show a number column to chart it.' })).toHaveAttribute('aria-disabled', 'true');
+    expect(document.activeElement).not.toBe(document.body);
+    await userEvent.keyboard('{ArrowLeft}');
+    await waitFor(() => expect(screen.queryByRole('menu', { name: 'Add chart' })).toBeNull());
+    expect(within(menu).getByRole('menuitem', { name: 'Add chart' })).toHaveFocus();
+    await userEvent.keyboard('{ArrowRight}');
+    await screen.findByRole('menu', { name: 'Add chart' });
+    expect(document.activeElement).not.toBe(document.body);
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('menu', { name: 'Add chart' })).toBeNull());
+    expect(within(menu).getByRole('menuitem', { name: 'Add chart' })).toHaveFocus();
+  });
+
+  test('the rows keep their order while a kind to add comes and goes with a data mart panel open', async () => {
+    const t = setup({ columns: ['status', 'amount'], fixtures: keyless() });
+    await t.seeded;
+    t.view();
+    await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
+    await userEvent.click(radio('Charts'));
+    const panel = await openFields('Orders');
+    const menu = screen.getByRole('menu', { name: 'Configure data' });
+    expect(rows(menu)).toEqual(['Add chart', 'Charts', 'Orders']);
+    await userEvent.click(within(panel).getByRole('option', { name: /amount/i }));
+    await waitFor(() => expect(data().querySelector('[data-chart-empty]')).not.toBeNull());
+    expect(rows(menu)).toEqual(['Add chart', 'Charts', 'Orders']);
+    expect(screen.getByRole('dialog', { name: 'Orders' })).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole('option', { name: /amount/i }));
+    await waitFor(() => expect(data().querySelector('[data-chart-empty]')).toBeNull());
+    expect(rows(menu)).toEqual(['Add chart', 'Charts', 'Orders']);
+    expect(screen.getByRole('dialog', { name: 'Orders' })).toBeInTheDocument();
+  });
+});
+
+
+const panelOf = (kind: string) => data().querySelector<HTMLElement>(`section[data-chart-kind="${kind}"]`)!;
+/** Turns resize mode on from a chart's menu, once its panel is there and drawn. */
+async function startResize(kind = 'Pie') {
+  await waitFor(() => expect(within(panelOf(kind)).getByRole('button', { name: `${kind} options` })).toBeTruthy());
+  await userEvent.click(within(panelOf(kind)).getByRole('button', { name: `${kind} options` }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Resize' }));
+}
+const handle = (kind: string, edge: string) => panelOf(kind).querySelector<HTMLElement>(`[data-edge="${edge}"]`);
+
+test('Resize on one chart puts handles on every chart; Escape ends it', async () => {
+  await charts();
+  expect(handle('Pie', 'e')).toBeNull();
+  await startResize();
+  for (const kind of ['Pie', 'Time series']) for (const edge of ['e', 's', 'se']) expect(handle(kind, edge)).not.toBeNull();
+  await userEvent.keyboard('{Escape}');
+  expect(handle('Pie', 'e')).toBeNull();
+  expect(handle('Time series', 'e')).toBeNull();
+});
+
+test('a press outside the charts ends resize mode; one on a chart does not', async () => {
+  await charts();
+  await startResize();
+  fireEvent.pointerDown(panelOf('Time series'));
+  expect(handle('Pie', 'e')).not.toBeNull();
+  fireEvent.pointerDown(document.body);
+  expect(handle('Pie', 'e')).toBeNull();
+});
+
+test('a drag moves in whole cells and saves once, on release; Escape mid-drag puts the size back and keeps the mode', async () => {
+  const t = await charts({ charts: { charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] } });
+  await startResize();
+  vi.spyOn(panelOf('Pie'), 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 480, height: 288 } as DOMRect);
+  const corner = handle('Pie', 'se')!;
+  fireEvent.pointerDown(corner, { button: 0, pointerId: 1, clientX: 480, clientY: 288 });
+  fireEvent.pointerMove(window, { pointerId: 1, clientX: 480 + 59, clientY: 288 - 50 });
+  expect(panelOf('Pie').style.height).toBe('240px');
+  expect(t.puts).not.toHaveBeenCalled();
+  fireEvent.pointerUp(window, { pointerId: 1 });
+  await waitFor(() => expect(t.puts).toHaveBeenCalledTimes(1));
+  expect((t.puts.mock.calls[0]![1] as ChartSettings).charts![0]!.size).toEqual({ cols: 22, rows: 10 });
+  fireEvent.pointerDown(corner, { button: 0, pointerId: 2, clientX: 0, clientY: 0 });
+  fireEvent.pointerMove(window, { pointerId: 2, clientX: 200, clientY: 200 });
+  await userEvent.keyboard('{Escape}');
+  expect(panelOf('Pie').style.height).toBe('240px');
+  expect(handle('Pie', 'se')).not.toBeNull();
+  fireEvent.pointerUp(window, { pointerId: 2 });
+  expect(t.puts).toHaveBeenCalledTimes(1);
+});
+
+test('the arrow keys move a focused handle one cell; the size is there after a reload, with the rest of the mart view', async () => {
+  const t = await charts({ charts: { charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] }, aggregations: [{ column: 'amount', function: 'AVG' }] });
+  await startResize();
+  vi.spyOn(panelOf('Pie'), 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 480, height: 288 } as DOMRect);
+  handle('Pie', 's')!.focus();
+  await userEvent.keyboard('{ArrowDown}');
+  expect((t.puts.mock.calls.at(-1)![1] as ChartSettings).charts![0]!.size).toEqual({ cols: 20, rows: 13 });
+  // Left and right do nothing on the bottom edge.
+  await userEvent.keyboard('{ArrowRight}');
+  expect(t.puts).toHaveBeenCalledTimes(1);
+  t.unmount();
+  t.view();
+  await waitFor(() => expect(radio('Charts')).toBeTruthy());
+  await userEvent.click(radio('Charts'));
+  await waitFor(() => expect(panelOf('Pie').style.height).toBe('312px'));
+});
+
+test('resize mode stays on while the mouse is off the charts, and Done resizing in any chart menu ends it', async () => {
+  await charts();
+  await startResize();
+  fireEvent.pointerOver(panelOf('Pie'), { pointerType: 'mouse' });
+  fireEvent.pointerOver(document.body, { pointerType: 'mouse' });
+  await act(() => new Promise<void>((r) => { setTimeout(r, 1200); }));
+  expect(handle('Pie', 'e')).not.toBeNull();
+  await userEvent.click(within(panelOf('Time series')).getByRole('button', { name: 'Time series options' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Done resizing' }));
+  expect(handle('Pie', 'e')).toBeNull();
+  expect(handle('Time series', 'e')).toBeNull();
 });

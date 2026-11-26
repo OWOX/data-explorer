@@ -1,6 +1,7 @@
 import { isRecord } from '../model/guards';
 import { isDateBucket } from '../model/aggregation';
-import { isChartKind, SANKEY_MAX, SANKEY_MIN,type ChartSettings, type ChartSpec } from '../charts/settings';
+import { isChartKind, SANKEY_MAX, type ChartSettings, type ChartSpec } from '../charts/settings';
+import { cleanSize } from '../charts/resize';
 import type { Ctx } from '../sdk/types';
 
 export const CHARTS_COLLECTION = 'charts';
@@ -23,11 +24,13 @@ function cleanSpec(v: unknown): ChartSpec | null {
   for (const k of ['measure2', 'stack'] as const) if (o[k] === null || typeof o[k] === 'string') out[k] = o[k] as string | null;
   if (Array.isArray(o.dimensions)) {
     const names = [...new Set(o.dimensions.filter((x): x is string => typeof x === 'string'))].slice(0, SANKEY_MAX);
-    if (names.length >= SANKEY_MIN) out.dimensions = names;
+    out.dimensions = names;
   }
   if (o.bucket === 'AUTO' || isDateBucket(o.bucket)) out.bucket = o.bucket as ChartSpec['bucket'];
   if (o.orientation === 'vertical' || o.orientation === 'horizontal') out.orientation = o.orientation;
   if (typeof o.area === 'boolean') out.area = o.area;
+  const size = cleanSize(o.size);
+  if (size) out.size = size;
   return out;
 }
 

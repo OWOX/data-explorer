@@ -1,9 +1,9 @@
 // The cards themselves, ported from Data Flow: a source card and a data mart card.
-import { CircleX, ExternalLink, History, LoaderCircle, Plug } from 'lucide-react';
+import { CirclePlus, CircleX, ExternalLink, History, LoaderCircle, Plug } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { Context, DqSummary, Mart, Source } from '../../model/types';
 import { COUNT_CONCURRENCY } from '../../config';
-import { compactNumber, count as plural, num, recordsLabel, relativeTime } from '../format';
+import { compactNumber, count as plural, matchLabel, num, recordsLabel, relativeTime } from '../format';
 import { dqCardTone, dqVisual } from '../icons';
 import { Hint, TipLines, Tooltip } from '../Tooltip';
 import { whenInView } from './inview';
@@ -15,6 +15,9 @@ import { useLatest } from '../useLatest';
 export const sourceElementId = (key: string) => `src-${key.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
 /** A joined mart is a card per alias path, so the path is part of its id; the main mart and the band cards have none. */
 export const martElementId = (martId: string, path?: string) => (path ? `dm-${martId}@${path}` : `dm-${martId}`);
+
+/** The × and the (+) on a graph card are the same size (px). */
+const CARD_CONTROL = 19.2;
 
 export type CountState =
   | { state: 'idle' }
@@ -123,6 +126,12 @@ function CountBadge({ count, countable, onRetry }: { count: CountState; countabl
   return <Tooltip content={recordsLabel(num(count.value))}><span className="dm-badge">{recordsLabel(compactNumber(count.value))}</span></Tooltip>;
 }
 
+/** "12% match" after the record count: how much of the mart the filters and slices keep. Shown only for a known count and a matched number below it. */
+function MatchBadge({ matched, count }: { matched: number | undefined; count: CountState }) {
+  const label = count.state === 'ok' ? matchLabel(matched, count.value) : null;
+  return label && <Tooltip content={label.tip}><span className="dm-badge" data-match>{label.text}</span></Tooltip>;
+}
+
 /** The contexts of a mart, in the project's order. */
 export const contextsOf = (all: Context[], ids: string[]) => all.filter((c) => ids.includes(c.id));
 
@@ -145,7 +154,9 @@ export function MartCard({
   path,
   title,
   focused = false,
+  matched,
   onRemove,
+  join,
   onSelect,
   onOpenApp,
   onRetryCount,
@@ -167,7 +178,7 @@ export function MartCard({
   faded?: boolean;
   /** The mart is not in the report but can join it: the border is dashed (a hover ghost always is). */
   offPath?: boolean;
-  /** The card is a hover ghost: a neighbour of the hovered card that is not in the band, drawn dashed while that card is hovered. It asks for no count and cannot be dragged. */
+  /** The card is a ghost: a mart that can join under a card whose (+) is hovered or pinned, drawn dashed while it shows. It asks for no count and cannot be dragged. */
   ghost?: boolean;
   /** The alias path this card stands for, when the mart is joined at one. */
   path?: string;
@@ -175,8 +186,12 @@ export function MartCard({
   title?: string;
   /** The Grid view's focused card: its joinable marts are shown. */
   focused?: boolean;
+  /** How many of this mart's records the grid's filters and slices keep (at this card's path); the badge compares it with the count. */
+  matched?: number;
   /** Takes this joined mart out of the report; when absent the card has no ×. */
   onRemove?: () => void;
+  /** Graph only: the (+) on the right edge that shows the marts that can join under this card. Absent when none can, and in the Grid. */
+  join?: { open: boolean; onToggle: () => void };
   onSelect: () => void;
   onOpenApp: () => void;
   /** Not needed on a ghost, which shows no count. */
@@ -192,6 +207,9 @@ export function MartCard({
     return whenInView(el.current, () => need.current?.());
   }, [mart.accessible, ghost, need]);
   const name = title ?? mart.title;
+  // A press that began on a control and ended on the card sends its click to the card: that is not a select.
+  const fromControl = useRef(false);
+  const select = selectable(onSelect);
   return (
     <article
       ref={el}
@@ -205,11 +223,19 @@ export function MartCard({
       className={cardClass(lit, aside, [selected || joined || lit ? 'dm-in-path' : '', mart.accessible ? '' : 'dm-noaccess', offPath ? 'dm-offpath' : '', ghost ? 'dm-ghost' : '', transition?.className ?? ''].filter(Boolean).join(' '), faded)}
       {...(transition?.leaving ? { 'data-leaving': '' } : {})}
       {...(ghost ? { 'data-ghost': '' } : {})}
-      {...selectable(onSelect)}
+      {...select}
+      onPointerDownCapture={(e) => { fromControl.current = e.target instanceof Element && e.target.closest('button, a, input') !== null; }}
+      onClickCapture={(e) => { if (e.target instanceof Element && e.target.closest('button, a, input') !== null) fromControl.current = false; }}
+      onClick={() => { if (fromControl.current) fromControl.current = false; else onSelect(); }}
     >
       {onRemove && (
         <button type="button" aria-label={`Remove ${name} from the report`} className="dm-card-remove" onClick={(e) => { e.stopPropagation(); onRemove(); }}>
-          <CircleX size={16} />
+          <CircleX size={CARD_CONTROL} />
+        </button>
+      )}
+      {join && (
+        <button type="button" className="dm-card-join" data-join-plus aria-label={`Show data marts ${name} can join`} aria-expanded={join.open} onClick={(e) => { e.stopPropagation(); join.onToggle(); }}>
+          <CirclePlus size={CARD_CONTROL} />
         </button>
       )}
       <div className="dm-node-head">
@@ -228,6 +254,7 @@ export function MartCard({
       </div>
       <div className="dm-badges dm-badges-row">
         {mart.accessible ? <CountBadge count={count} countable={!ghost} onRetry={onRetryCount ?? NOOP} /> : <span className="dm-badge">No access</span>}
+        {mart.accessible && !ghost && <MatchBadge matched={matched} count={count} />}
       </div>
       <div className="dm-node-foot">
         <QualityMark summary={quality} />

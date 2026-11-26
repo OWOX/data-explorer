@@ -36,11 +36,27 @@ test('the Metric list offers a column that is not shown', async () => {
   expect(onMetric).toHaveBeenCalledWith('amount', 'net_revenue');
 });
 
-test('the Date field row shows with two dates only', async () => {
+test('the Date field row shows with a single date, ticked', async () => {
   show(mart([amount], [created]), mart([amount], [created]));
   await open();
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Date field' }));
+  expect(await screen.findByRole('menuitemradio', { name: /created_at/ })).toHaveAttribute('aria-checked', 'true');
+});
+
+test('a single date that is not shown can be picked', async () => {
+  const onDate = vi.fn();
+  show(mart([amount], []), mart([amount], [created]), { onDate });
+  await open();
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Date field' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: /created_at/ }));
+  await waitFor(() => expect(onDate).toHaveBeenCalledWith('amount', 'created_at'));
+});
+
+test('a mart with no date has no Date field row', async () => {
+  show(mart([amount], []), mart([amount], []));
+  await open();
+  expect(await screen.findByRole('menuitem', { name: 'Hide' })).toBeInTheDocument();
   expect(screen.queryByRole('menuitem', { name: 'Date field' })).toBeNull();
-  expect(screen.getByRole('menuitem', { name: 'Hide' })).toBeInTheDocument();
 });
 
 test('a Date field pick is passed on', async () => {

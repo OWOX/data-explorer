@@ -1,7 +1,7 @@
 import { vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ChartPie, ChartLine, Calendar, Hash, Trash2 } from 'lucide-react';
+import { ChartPie, ChartLine, Calendar, Hash, EyeOff } from 'lucide-react';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { HOVER_MS } from '../ui/explorer/MenuParts';
 
@@ -39,9 +39,9 @@ test('hovering a submenu row opens it only after the pointer has rested, and Esc
 
 test('an action row closes the menu and runs', async () => {
   const onPick = vi.fn();
-  render(<ChartMenu name="Sales" items={[{ kind: 'action', label: 'Remove', icon: Trash2, onPick }]} />);
+  render(<ChartMenu name="Sales" items={[{ kind: 'action', label: 'Hide', icon: EyeOff, onPick }]} />);
   await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Hide' }));
   expect(onPick).toHaveBeenCalledOnce();
   expect(screen.queryByRole('menu')).toBeNull();
 });
@@ -102,6 +102,24 @@ describe('a field menu over several data marts', () => {
   ];
   const radio = (g: typeof groups, onPick = vi.fn()): MenuItem[] => [{ kind: 'radio', label: 'Metric', icon: Hash, value: 'c', options: [{ value: '', label: 'Off' }], groups: g, onPick }];
 
+  test('brushing an option row on the way to the open mart panel does not close it', async () => {
+    render(<ChartMenu name="Sales" items={radio(groups)} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Metric' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Orders' }));
+    await screen.findByRole('menu', { name: 'Orders' });
+    // The pointer crosses the Off row on a diagonal: entering it starts the close, leaving it cancels.
+    const off = screen.getByRole('menuitemradio', { name: 'Off' });
+    fireEvent.mouseEnter(off);
+    fireEvent.mouseLeave(off);
+    await wait(HOVER_MS + 60);
+    expect(screen.getByRole('menu', { name: 'Orders' })).toBeInTheDocument();
+    // Resting on it still closes the panel.
+    fireEvent.mouseEnter(off);
+    await wait(HOVER_MS + 60);
+    expect(screen.queryByRole('menu', { name: 'Orders' })).toBeNull();
+  });
+
   test('lists the marts first, ticks the one holding the choice, and opens its options on a third level', async () => {
     const onPick = vi.fn();
     render(<ChartMenu name="Sales" items={radio(groups, onPick)} />);
@@ -146,35 +164,9 @@ describe('a field menu over several data marts', () => {
   });
 });
 
-test('a radio submenu can end with an action row below a divider: it closes the menu and runs', async () => {
-  const onPick = vi.fn();
-  const pick = vi.fn();
-  render(<ChartMenu name="Sales" items={[{ kind: 'radio', label: 'Column 1', icon: Calendar, value: 'a', options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }], trailing: { label: 'Remove column', icon: Trash2, onPick }, onPick: pick }]} />);
-  await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Column 1' }));
-  const sub = await screen.findByRole('menu', { name: 'Column 1' });
-  const rows = within(sub).getAllByRole('menuitem');
-  expect(within(sub).getAllByRole('menuitemradio')).toHaveLength(2);
-  expect(rows[rows.length - 1]).toHaveTextContent('Remove column');
-  expect(sub.querySelector('[role="separator"]')).not.toBeNull();
-  await userEvent.click(rows[rows.length - 1]!);
-  expect(onPick).toHaveBeenCalledOnce();
-  expect(pick).not.toHaveBeenCalled();
-  expect(screen.queryByRole('menu')).toBeNull();
-});
-
-test('a radio without a trailing action has no divider or extra row', async () => {
-  render(<ChartMenu name="Sales" items={items} />);
-  await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Bucket' }));
-  const sub = await screen.findByRole('menu', { name: 'Bucket' });
-  expect(sub.querySelector('[role="separator"]')).toBeNull();
-  expect(within(sub).queryAllByRole('menuitem')).toHaveLength(0);
-});
-
 test('when a root row is a check row every root row has the check column, and none has it otherwise', async () => {
   const plain: MenuItem[] = [
-    { kind: 'action', label: 'Remove', icon: Trash2, onPick: () => undefined },
+    { kind: 'action', label: 'Hide', icon: EyeOff, onPick: () => undefined },
     { kind: 'radio', label: 'Bucket', icon: Calendar, value: 'day', options: [{ value: 'day', label: 'Day' }], onPick: () => undefined },
   ];
   const { unmount } = render(<ChartMenu name="Sales" items={plain} />);
@@ -213,4 +205,20 @@ test('a band above changing size (the Data Marts band unfolding) closes the menu
   } finally {
     globalThis.ResizeObserver = Real;
   }
+});
+
+test('the third level of one submenu does not open by itself in the next one', async () => {
+  const axis = (label: string, prefix: string): MenuItem => ({
+    kind: 'radio', label, icon: Hash, value: '', onPick: () => undefined, options: [],
+    groups: [{ title: `${prefix} Orders`, options: [{ value: 'a', label: 'A' }] }, { title: `${prefix} Customers`, options: [{ value: 'b', label: 'B' }] }],
+  });
+  render(<ChartMenu name="Sales" items={[axis('X axis', 'X'), axis('Y axis', 'Y')]} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Sales options' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'X axis' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'X Orders' }));
+  await screen.findByRole('menu', { name: 'X Orders' });
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Y axis' }));
+  await screen.findByRole('menu', { name: 'Y axis' });
+  expect(screen.queryByRole('menu', { name: 'Y Orders' })).toBeNull();
+  expect(screen.queryByRole('menu', { name: 'X Orders' })).toBeNull();
 });

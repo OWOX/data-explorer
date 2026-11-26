@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import type { ChartFields, ChartMart } from './fields';
 import type { Measure } from './queries';
-import { listItems } from './listMenu';
+import { chartListItem } from './listMenu';
 import { measureLabel } from './Scorecards';
 
 const mart = (aliasPath: string, title: string): ChartMart => ({ aliasPath, recordsId: `records:${title}`, title, hasPk: true, metrics: [], dates: [], dimensions: [] });
@@ -23,7 +23,10 @@ test('a joined mart’s Count Unique always names its mart', () => {
   expect(measureLabel(cf, joined)).toBe('Contact · Count Unique');
 });
 
-test('the header list names the main mart’s Count Unique when other marts are listed too', () => {
+/** The rows of the Charts group. */
+const listItems = (args: Parameters<typeof chartListItem>[0]) => { const g = chartListItem(args); return g.kind === 'group' ? g.items : []; };
+
+test('the Charts group names the main mart’s Count Unique when other marts are listed too', () => {
   const items = listItems({ cf, settings: {}, resolved: [], change: () => {} });
   expect(items.slice(0, 2).map((i) => i.label)).toEqual(['User | Entity · Count Unique', 'Contact · Count Unique']);
   const solo = listItems({ cf: { ...cf, marts: [cf.marts[0]!] }, settings: {}, resolved: [], change: () => {} });

@@ -16,13 +16,14 @@ export async function copyText(text: string): Promise<boolean> {
     box.setAttribute('readonly', '');
     box.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
     document.body.appendChild(box);
-    box.focus();
+    box.focus({ preventScroll: true });
     box.select();
     return typeof document.execCommand === 'function' && document.execCommand('copy');
   } catch {
     return false;
   } finally {
     box.remove();
-    if (before instanceof HTMLElement) before.focus();
+    // An SVG element (a chart node) has `focus` too, so it is not only an HTMLElement that gets focus back.
+    if (before && before !== document.body && typeof (before as { focus?: unknown }).focus === 'function') (before as HTMLElement).focus({ preventScroll: true });
   }
 }

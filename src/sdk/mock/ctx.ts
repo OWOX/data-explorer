@@ -12,7 +12,7 @@ import { sleep } from '../../api/sleep';
 
 declare global { interface Window { __copiedLink?: string; __routeSet?: string } }
 
-export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: number; runMs?: number; /** false: no AI credential, as in a project that has not configured one. */ ai?: boolean; /** Opens the orders grid with its key column, as it was before the key left the default columns. */ keyShown?: boolean } = {}): Ctx {
+export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: number; runMs?: number; /** false: no AI credential, as in a project that has not configured one. */ ai?: boolean; /** How many hops a joined mart may be from the main one (2 by default). */ maxJoinDepth?: number; /** Opens the orders grid with its key column, as it was before the key left the default columns. */ keyShown?: boolean } = {}): Ctx {
   const latency = opts.latencyMs ?? 0;
   const byId = new Map(f.marts.map((m) => [m.id, m]));
   const docs = new Map<string, unknown>();
@@ -36,7 +36,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
 
   // The data marts a mart can pull fields from: its outgoing many-to-one links, and theirs, two hops deep. Each is named by the
   // dotted path of the marts it passes through, like OWOX's alias path, and its fields by that path and the field (`customers__email`).
-  const MAX_JOIN_DEPTH = 2;
+  const MAX_JOIN_DEPTH = opts.maxJoinDepth ?? 2;
   type Hop = { aliasPath: string; martId: string; depth: number; edges: EdgeDto[] };
   const joinTrees = new Map<string, Hop[]>();
   function joinTree(martId: string): Hop[] {

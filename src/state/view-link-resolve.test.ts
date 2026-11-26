@@ -273,3 +273,23 @@ describe('resolveView with Unique Counts', () => {
     expect('uniqueCount' in offGrid.apply.grid!).toBe(false);
   });
 });
+
+describe('resolveView with empty paths', () => {
+  const sch = (): Schema => [...schema.filter((x) => x.name !== 'customer__name'), { ...field('customers__name'), joined: { martId: 'c', label: 'Customers', aliasPath: 'customers', originalName: 'name' } } as Schema[number]];
+  const grid = (patch: Partial<NonNullable<DecodedView['grid']>>): DecodedView => view({ grid: { columns: ['id', 'total'], filters: {}, sorts: null, limit: 400, ...patch } });
+
+  it('keeps a path a joined field is joined by and that has no column', async () => {
+    const { apply, skipped } = await resolveView(grid({ emptyPaths: ['customers'] }), model, async () => sch());
+    expect(apply.grid!.emptyPaths).toEqual(['customers']);
+    expect(skipped).toEqual(none);
+  });
+
+  it('drops a path that is no longer offered, or that now has a column, and counts it as a column', async () => {
+    const gone = await resolveView(grid({ emptyPaths: ['customers', 'gone'] }), model, async () => sch());
+    expect(gone.apply.grid!.emptyPaths).toEqual(['customers']);
+    expect(gone.skipped.columns).toBe(1);
+    const shown = await resolveView(grid({ columns: ['id', 'customers__name'], emptyPaths: ['customers'] }), model, async () => sch());
+    expect('emptyPaths' in shown.apply.grid!).toBe(false);
+    expect(shown.skipped.columns).toBe(1);
+  });
+});

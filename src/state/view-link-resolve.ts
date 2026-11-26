@@ -2,6 +2,7 @@ import { PAGE_SIZE } from '../config';
 import { dropOrphanHaving, type ColumnFilter } from '../filters/build';
 import { keepVisible, sanitizeAggregation } from '../model/aggregation';
 import { keptSorts } from '../model/sort';
+import { keepEmpty } from '../model/empty-paths';
 import type { Model, Schema } from '../model/types';
 import { keepUnique, uniqueKey } from '../model/unique-count';
 import { count } from '../ui/format';
@@ -43,6 +44,9 @@ export function pruneGrid(grid: GridState, schema: Schema): { grid: GridState | 
   // A Unique Count whose metric is not offered (no usable key, a joined mart that is gone or not on the grid) is left out and counted.
   const uniqueCount = keepUnique(grid.uniqueCount, schema, columns);
   dropped.uniqueCount += (grid.uniqueCount?.length ?? 0) - uniqueCount.length;
+  // An empty path the mart no longer joins by, or that now has a column, is left out and counted with the columns.
+  const emptyPaths = keepEmpty(grid.emptyPaths, schema, columns);
+  dropped.columns += (grid.emptyPaths?.length ?? 0) - emptyPaths.length;
   // The metric's column can be sorted by its row key.
   const metricKeys = new Set(uniqueCount.map(uniqueKey));
   let sorts = grid.sorts;
@@ -69,6 +73,8 @@ export function pruneGrid(grid: GridState, schema: Schema): { grid: GridState | 
   if (agg.dateTrunc.length) out.dateTrunc = agg.dateTrunc;
   delete out.uniqueCount;
   if (uniqueCount.length) out.uniqueCount = uniqueCount;
+  delete out.emptyPaths;
+  if (emptyPaths.length) out.emptyPaths = emptyPaths;
   return { grid: out, dropped };
 }
 

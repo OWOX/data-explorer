@@ -6,7 +6,7 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { SchemaFieldDto, TraverseOptions } from '../../sdk/types';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
-import { openColumnMenu, openSubmenu } from './menu-test-utils';
+import { openColumnMenu, closeConfigMenu, openFields, openSubmenu } from './menu-test-utils';
 
 function setup(opts: { fields?: SchemaFieldDto[]; saved?: Record<string, unknown>; gate?: Promise<void> } = {}) {
   const fixtures = demoFixtures();
@@ -36,10 +36,9 @@ const sumCell = () => { const at = headers().findIndex((h) => h.startsWith('Amou
 const sumLoaded = () => waitFor(() => expect(sumCell()).toMatch(/\d/));
 
 async function showColumn(label: string | RegExp) {
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
+  await openFields('Orders');
   await userEvent.click(await screen.findByRole('option', { name: label }));
-  await userEvent.keyboard('{Escape}');
-  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await closeConfigMenu();
 }
 
 /** Opens the aggregation popover of a column, ticks the functions and applies. */
@@ -170,7 +169,7 @@ test('a column no longer shown loses its rules', async () => {
   await ready();
   await showColumn('Amount');
   await aggregate('Amount', 'Sum');
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
+  await openFields('Orders');
   await userEvent.click(await screen.findByLabelText('Amount'));
   await waitFor(() => expect(headers()).not.toContain('Amount · Sum'));
   await waitFor(() => expect(t.queries.at(-1)!.o.aggregation).toBeUndefined());
@@ -211,9 +210,9 @@ test('an array field takes no function; with one shown the grouped query is not 
   // The menu behind the form stays open: a press outside only closes it.
   await userEvent.keyboard('{Escape}');
   // hide tags, group, then show tags again: nothing grouped is sent
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
+  await openFields('Orders');
   await userEvent.click(await screen.findByLabelText('tags'));
-  await userEvent.keyboard('{Escape}');
+  await closeConfigMenu();
   await aggregate('Amount', 'Sum');
   await sumLoaded();
   const before = t.queries.length;
@@ -223,9 +222,9 @@ test('an array field takes no function; with one shown the grouped query is not 
   expect(within(data()).queryByText(/groups?$/)).toBeNull();
   expect(document.querySelector('.dm-export')).toBeNull();
   // hiding it brings the groups back
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
+  await openFields('Orders');
   await userEvent.click(await screen.findByLabelText('tags'));
-  await userEvent.keyboard('{Escape}');
+  await closeConfigMenu();
   await sumLoaded();
   expect(within(data()).queryByText(/can't be grouped/)).toBeNull();
 });

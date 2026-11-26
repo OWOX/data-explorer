@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, EyeOff, Funnel, Hash, Layers, Sigma } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, EyeOff, Funnel, Hash, Layers, Sigma, Trash2 } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { formatsFor, keepsUnit, type Format } from '../../format/formats';
 import { describeFilter } from '../../filters/catalogue';
@@ -6,7 +6,8 @@ import { valueCache } from '../../filters/valueSuggest';
 import { havingField, sliceField } from '../../filters/slice';
 import type { ColumnFilter } from '../../filters/build';
 import { BUCKET_LABELS, AGG_LABELS, allowedFunctions, canBucket, type AggFn, type AggregationDraft, type Output } from '../../model/aggregation';
-import { columnTitle } from '../../model/fieldLabel';
+import { columnTitle, fieldLabel } from '../../model/fieldLabel';
+import { DEFAULT_MART_ICON, PickedIcon } from '../bands/picked';
 import type { SortDirection, SortKey } from '../../model/sort';
 import type { Field } from '../../model/types';
 import { AggregationEditor } from './AggregationEditor';
@@ -40,7 +41,7 @@ export type ColumnMenuEnv = {
   setFormat: (column: string, f: Format | null) => void;
   canHide: (field: string) => boolean;
   hide: (field: string) => void;
-  /** Whether the field is a column on the grid. A field of the Fields list that is not has no Move rows, and Aggregate, Sort and Format first show it as a column. */
+  /** Whether the field is a column on the grid. A field of a fields panel that is not has no Move rows, and Aggregate, Sort and Format first show it as a column. */
   isShown: (field: string) => boolean;
   /** The output the grid gives the field: its first one when shown, else the plain column it would be. */
   outputOf: (field: string) => Output;
@@ -106,7 +107,7 @@ function EditorPanel({ row, seq, label, onEscape, children }: { row: HTMLElement
 const valuesIn = (env: ColumnMenuEnv, f: Field, scope: 'filter' | 'slice') => { const v = env.valuesFor(f, scope); return v ? { ...v, cache: valueCache } : undefined; };
 
 /**
- * The edit form of one field's Filter or Slice rule, beside `row`: the column menu's Filter / Slice submenu and the data mart badges' lists share it.
+ * The edit form of one field's Filter or Slice rule, beside `row`: the column menu's Filter / Slice submenu and the toolbar badges' lists share it.
  * A HAVING filter (one with `fn`) edits the aggregate and keeps its function. `onDone` runs after Apply or Clear.
  */
 function RuleEditor({ kind, field, row, seq, onEscape, onDone }: { kind: 'filter' | 'slice'; field: Field; row: HTMLElement; seq: number; onEscape: () => void; onDone: () => void }) {
@@ -139,34 +140,55 @@ function RuleEditor({ kind, field, row, seq, onEscape, onDone }: { kind: 'filter
 /** A click inside a dialog panel (Custom range, On, an operator) is an edit, but a click on a row is a choice, not an edit: hover intent leaves the form alone. */
 function useMarkEdits() {
   useEffect(() => {
-    const mark = (e: MouseEvent) => { const t = e.target as Element | null; if (t?.closest('.dm-menu-row')) return; t?.closest<HTMLElement>('[data-column-menu][role="dialog"], [data-column-menu][data-form]')?.setAttribute('data-edited', ''); };
+    const mark = (e: MouseEvent) => { const t = e.target as Element | null; if (t?.closest('.dm-menu-row')) return; t?.closest<HTMLElement>(EDITING)?.setAttribute('data-edited', ''); };
     document.addEventListener('click', mark, true);
     return () => document.removeEventListener('click', mark, true);
   }, []);
 }
 
+/** The kinds of rule the toolbar badges count and list. */
+export type RuleKind = 'filter' | 'slice' | 'aggregate';
+const RULE_NOUNS: Record<RuleKind, { list: string; remove: string }> = {
+  filter: { list: 'Filters', remove: 'Remove filters' },
+  slice: { list: 'Slices', remove: 'Remove slices' },
+  aggregate: { list: 'Aggregations', remove: 'Remove aggregations' },
+};
+/** One field with a rule, as a row of a rule list: the data mart it belongs to and the field. A rule on a field the grid does not offer (parked) has no `field`: it is listed by its name and cannot be opened. */
+export type RuleEntry = { key: string; martTitle: string; icon?: string | null; field: Field | null; label: string };
+
 /**
- * The list under a data mart's "N filters" / "N slices" badge: one row per field that carries the rule. Hovering a row (or Arrow Right, or a click)
- * opens the same edit form the column menu's Filter / Slice submenu shows. Apply and Clear save the one rule and close the list; `onClose` refocuses the badge.
+ * The list under a toolbar badge ("2 filters", "1 slice", "3 aggregations"). Its first row, "Remove filters" (slices, aggregations), removes every rule of the kind; after a separator
+ * come the fields that carry one, as "data mart · field". Hovering a field row (or Arrow Right, or a click) opens the same edit form the column menu's Filter / Slice / Aggregate submenu shows.
+ * Apply and Clear in a form save the one rule and close the list (`onClose` refocuses the badge); `onRemove` removes the rules and the caller closes the list and places focus.
  */
-export function RuleListMenu({ kind, title, fields, anchor, onClose, onDismiss }: { kind: 'filter' | 'slice'; title: string; fields: Field[]; anchor: HTMLElement; onClose: () => void; /** A press outside or a scroll: close without moving focus. */ onDismiss: () => void }) {
+export function RuleListMenu({ kind, entries, anchor, onClose, onRemove, onDismiss }: { kind: RuleKind; entries: RuleEntry[]; anchor: HTMLElement; onClose: () => void; onRemove: () => void; /** A press outside or a scroll: close without moving focus. */ onDismiss: () => void }) {
   const env = useContext(ColumnMenuEnvContext);
   const holder = useLatest<HTMLElement | null>(anchor);
   useMenuDismiss(true, holder, onDismiss);
   useMarkEdits();
-  const { sub, open, hoverRow, leaveRow, closeSub } = useSubmenu<string>({ isEditing: () => panelBeingEdited(EDITING) });
-  const noun = kind === 'filter' ? 'Filters' : 'Slices';
-  const describe = (f: Field) => (kind === 'filter' ? describeColumnFilter(f, env.filters[f.name]!) : describeFilter(sliceField(f), env.slices[f.name]!));
-  const at = sub ? fields.find((f) => f.name === sub.key) : undefined;
+  const { sub, open, hoverRow, hoverOther, leaveRow, closeSub } = useSubmenu<string>({ isEditing: () => panelBeingEdited(EDITING) });
+  const at = (sub ? entries.find((e) => e.key === sub.key)?.field : undefined) ?? undefined;
   return (
     <>
-      <Panel anchor={anchor} mode="below" role="menu" label={`${noun} in ${title}`} onEscape={() => (sub ? closeSub() : onClose())} onTab={onClose} focusSeq={1} className="dm-menu-root">
-        {fields.map((f) => (
-          <Row key={f.name} label={`${columnTitle(f)}: ${describe(f)}`} sub haspopup="dialog" expanded={sub?.key === f.name}
-            onActivate={(r) => open(f.name, r, true)} onOpen={(r) => open(f.name, r, true)} onHover={(r) => hoverRow(f.name, r)} onLeaveRow={leaveRow} />
+      <Panel anchor={anchor} mode="below" role="menu" label={RULE_NOUNS[kind].list} onEscape={() => (sub ? closeSub() : onClose())} onTab={onClose} focusSeq={1} className="dm-menu-root">
+        <Row label={RULE_NOUNS[kind].remove} glyph={<Trash2 className="size-4" />} onActivate={onRemove} onHover={hoverOther} onLeaveRow={leaveRow} />
+        <div className="dm-menu-sep" role="separator" />
+        {entries.map((e) => (e.field
+          ? (
+            <Row key={e.key} label={`${e.martTitle} · ${fieldLabel(e.field)}`} hint={e.field.description?.trim() || undefined} sub haspopup="dialog" expanded={sub?.key === e.key}
+              glyph={<PickedIcon icon={e.icon} fallback={DEFAULT_MART_ICON} size={16} />}
+              onActivate={(r) => open(e.key, r, true)} onOpen={(r) => open(e.key, r, true)} onHover={(r) => hoverRow(e.key, r)} onLeaveRow={leaveRow} />
+          )
+          : <Row key={e.key} note label={e.label} glyph={<PickedIcon icon={e.icon} fallback={DEFAULT_MART_ICON} size={16} />} onActivate={NOOP} onHover={hoverOther} onLeaveRow={leaveRow} />
         ))}
       </Panel>
-      {sub && at && <RuleEditor kind={kind} field={at} row={sub.row} seq={sub.seq} onEscape={closeSub} onDone={onClose} />}
+      {sub && at && kind !== 'aggregate' && <RuleEditor kind={kind} field={at} row={sub.row} seq={sub.seq} onEscape={closeSub} onDone={onClose} />}
+      {sub && at && kind === 'aggregate' && (
+        <EditorPanel row={sub.row} seq={sub.seq} label={`Aggregation of ${columnTitle(at)}`} onEscape={closeSub}>
+          <AggregationEditor key={JSON.stringify(env.draftOf(at.name))} field={at} value={env.draftOf(at.name)} blocker={env.blockerFor(at.name)}
+            onApply={(d) => { env.changeAgg(at.name, d); onClose(); }} onCancel={closeSub} />
+        </EditorPanel>
+      )}
     </>
   );
 }
@@ -174,9 +196,9 @@ export function RuleListMenu({ kind, title, fields, anchor, onClose, onDismiss }
 const Divider = () => <div role="separator" className="dm-menu-sep" />;
 
 /** The panels whose fields count as an edit in progress. */
-const EDITING = '[data-column-menu][role="dialog"], [data-column-menu][data-form]';
+const EDITING = '[data-column-menu][role="dialog"]:not([data-config-panel]), [data-column-menu][data-form]';
 
-function MenuPopup({ field, output, anchor, initial, onClose, onHide }: { field: Field; output: Output; anchor: HTMLElement; initial: SubKey | null; onClose: (refocus?: boolean) => void; /** Replaces the grid's Hide (the Fields list unticks the field through its own path). */ onHide?: () => void }) {
+function MenuPopup({ field, output, anchor, initial, onClose, onHide }: { field: Field; output: Output; anchor: HTMLElement; initial: SubKey | null; onClose: (refocus?: boolean) => void; /** Replaces the grid's Hide (a fields panel unticks the field through its own path). */ onHide?: () => void }) {
   const env = useContext(ColumnMenuEnvContext);
   const title = columnTitle(field);
   const type = env.typeOf(field, output);
@@ -184,7 +206,7 @@ function MenuPopup({ field, output, anchor, initial, onClose, onHide }: { field:
   const formats = keepsUnit(output.fn) ? formatsFor(type) : [];
   const [money, setMoney] = useState<{ row: HTMLElement; seq: number } | null>(null);
   const [placed, setPlaced] = useState(false);
-  // A field opened from the Fields list may not be a column: it has no Move rows and nothing to hide.
+  // A field opened from a fields panel may not be a column: it has no Move rows and nothing to hide.
   const shown = env.isShown(field.name);
   const rootSeq = initial ? 0 : 1;
   const rows = useRef(new Map<string, HTMLElement>());
@@ -298,21 +320,23 @@ export function menuIconClass(active: boolean): string {
  * Closes an open column menu on a press outside it, and on a scroll of anything that holds its opener (a fixed menu would be left behind it).
  * A press outside only closes it: it does not reach whatever is under the pointer. A resize only repositions the panels (each listens for it):
  * on a touch screen the on-screen keyboard resizes the viewport. `holder` is the element the menu opened from; presses on it are the opener's own.
+ * `inside` matches the panels that belong to the menu: by default every column menu panel except a config panel (a field menu opened from one is a layer above it),
+ * so a press on a row of the config panel closes the field menu. The config menu itself passes every panel.
  */
-function useMenuDismiss(open: boolean, holder: { current: HTMLElement | null }, close: () => void) {
+export function useMenuDismiss(open: boolean, holder: { current: HTMLElement | null }, close: () => void, inside = '[data-column-menu]:not([data-config-panel])') {
   const closeNow = useLatest(close);
   useEffect(() => {
     if (!open) return;
     const away = (e: Event) => {
       const t = e.target;
-      if (t instanceof Node && t !== document && (t as Element).closest?.('[data-column-menu]')) return;
+      if (t instanceof Node && t !== document && (t as Element).closest?.(inside)) return;
       const el = holder.current;
       if (t === document || (t instanceof Node && el && t.contains(el))) closeNow.current();
     };
     window.addEventListener('scroll', away, true);
     return () => window.removeEventListener('scroll', away, true);
-  }, [open, holder, closeNow]);
-  useOutsidePress(open, (t) => !!t.closest('[data-column-menu]') || !!holder.current?.contains(t), close);
+  }, [open, holder, closeNow, inside]);
+  useOutsidePress(open, (t) => !!t.closest(inside) || !!holder.current?.contains(t), close);
 }
 
 export function ColumnControls({ field, output }: { field: Field; output: Output }) {
@@ -366,7 +390,7 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
 }
 
 /**
- * The column menu icon of a row in a data mart's Fields list: the same menu the header opens, for a field that may not be a column.
+ * The column menu icon of a row in a data mart's fields panel: the same menu the header opens, for a field that may not be a column.
  * It is green whenever the field has a rule set on it, shown or not; otherwise it is grey and appears with the row's hover or focus.
  * Arrow Right from the row's option reaches it (it is not a Tab stop of its own).
  */

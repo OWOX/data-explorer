@@ -17,10 +17,10 @@ const created = f('created_at', 'date', 'TIMESTAMP');
 const updated = f('updated_at', 'date', 'TIMESTAMP');
 const mart = (dates: Field[]): ChartMart => ({ aliasPath: '', recordsId: 'records:orders', title: 'Orders', hasPk: false, metrics: [{ field: amount, fn: 'SUM' as const }], dates, dimensions: [] });
 
-function show(shown: ChartMart, spark: Spark, paused = true) {
+function show(shown: ChartMart, spark: Spark, paused = true, autoBucket = true) {
   render(
     <AppServices ctx={createMockCtx(demoFixtures(), { latencyMs: 0 })}><StoreProvider>
-      <MartCards martId="orders" mart={shown} main spark={spark} scores={{ rows: [{ amount: 1 }], error: null, loading: false, retry: () => {} }} bucket="MONTH" autoBucket
+      <MartCards martId="orders" mart={shown} main spark={spark} scores={{ rows: [{ amount: 1 }], error: null, loading: false, retry: () => {} }} bucket="MONTH" autoBucket={autoBucket}
         filter={[]} version={0} paused={paused} hasFilters={false} formatOf={() => ({} as never)} onHide={() => {}} />
     </StoreProvider></AppServices>,
   );
@@ -35,13 +35,29 @@ test('an explicit pick of another date under Auto ranges that date for its own b
   expect(asked()).toContain('updated_at');
 });
 
-test('a joined mart without the chart date uses its default date with no range read of its own', () => {
+test('a mart without the chart date ranges its default date for its own bucket', () => {
   show(mart([updated]), { hidden: new Set(), sparklines: true, metrics: {}, dates: {}, date: created });
+  expect(asked()).toContain('updated_at');
+});
+
+test('a saved date the mart no longer shows falls back to the mart default, ranged for its own bucket', () => {
+  show(mart([created]), { hidden: new Set(), sparklines: true, metrics: {}, dates: { amount: 'updated_at' }, date: updated });
+  expect(asked()).toContain('created_at');
+  expect(asked()).not.toContain('updated_at');
+});
+
+test('a card on the charts’ own date shares their bucket and reads no range of its own', () => {
+  show(mart([created, updated]), { hidden: new Set(), sparklines: true, metrics: {}, dates: {}, date: created });
   expect(asked().every((d) => d === null)).toBe(true);
 });
 
-test('a saved date the mart no longer shows falls back to the mart default and reads no range of its own', () => {
-  show(mart([created]), { hidden: new Set(), sparklines: true, metrics: {}, dates: { amount: 'updated_at' }, date: updated });
+test('a chosen bucket is shared: a mart on its own default date reads no range', () => {
+  show(mart([updated]), { hidden: new Set(), sparklines: true, metrics: {}, dates: {}, date: created }, true, false);
+  expect(asked().every((d) => d === null)).toBe(true);
+});
+
+test('with the sparklines off no range is read', () => {
+  show(mart([updated]), { hidden: new Set(), sparklines: false, metrics: {}, dates: {}, date: created });
   expect(asked().every((d) => d === null)).toBe(true);
 });
 

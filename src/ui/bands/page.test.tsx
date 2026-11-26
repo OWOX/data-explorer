@@ -6,7 +6,7 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
-import { openSubmenu } from '../explorer/menu-test-utils';
+import { closeConfigMenu, openFields, openSubmenu } from '../explorer/menu-test-utils';
 import { num } from '../format';
 
 type Mock = ReturnType<typeof createMockCtx>;
@@ -44,7 +44,10 @@ const clearSearch = () => userEvent.click(screen.getByRole('button', { name: 'Cl
 
 // The orders grid used to open on its key; the key is no longer a default column, so these tests start from a grid that was saved with it.
 async function mountWith(wrap: (ctx: Mock) => Ctx = (c) => c, fixtures = demoFixtures(), seedKey = true) {
-  const view = render(<AppServices ctx={titleSearchOnly(wrap(createMockCtx(fixtures, { latencyMs: 0, keyShown: seedKey })))}><StoreProvider><App /><ModelReload /><SelectSecretLedger /></StoreProvider></AppServices>);
+  const base = createMockCtx(fixtures, { latencyMs: 0, keyShown: seedKey });
+  // A remembered main mart, so the page opens on it with the search as a button, not as an open box.
+  void base.collections('preferences').put('main-mart', { martId: 'orders', sourceKey: null });
+  const view = render(<AppServices ctx={titleSearchOnly(wrap(base))}><StoreProvider><App /><ModelReload /><SelectSecretLedger /></StoreProvider></AppServices>);
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
   await waitFor(() => expect(document.querySelector('.dm-loadbar')).toBeNull());
   return view;
@@ -312,7 +315,7 @@ describe('the grid', () => {
 
   test('the column picker adds a column', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByRole('button', { name: /^Fields of Orders:/ }));
+    await openFields('Orders');
     await userEvent.click(screen.getByRole('option', { name: /amount/i }));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(6));
   });
@@ -404,7 +407,7 @@ describe('the grid', () => {
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));
     await settle();
     const before = calls.filter((c) => c.id === 'orders').length;
-    await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
+    await openFields('Orders');
     await userEvent.click(screen.getAllByRole('option').filter((c) => c.getAttribute('aria-selected') === 'true').at(-1)!);
     await waitFor(() => expect(within(data()).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(4));
     await settle();
@@ -782,8 +785,8 @@ describe('column headers and band toolbars', () => {
   });
 
   test('the column picker shows the alias only, and a (?) with the description when the field has one', async () => {
-    const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByRole('button', { name: /^Fields of Orders:/ }));
+    await ordersGrid();
+    await openFields('Orders');
     expect(screen.getByRole('option', { name: /Amount/ })).toBeInTheDocument();
     expect(screen.queryByText('amount')).toBeNull();
     expect(screen.queryByText('customer_id')).toBeNull();
@@ -830,7 +833,7 @@ describe('column headers and band toolbars', () => {
     await userEvent.click(within(bar).getByRole('button', { name: 'Refresh' }));
     await settle();
     expect(reads()).toBe(before + 1);
-    await userEvent.click(within(grid).getByRole('button', { name: /^Fields of Orders:/ }));
+    await openFields('Orders');
     await userEvent.click(screen.getByRole('option', { name: /Amount/ }));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(6));
   });
@@ -849,7 +852,7 @@ describe('column headers and band toolbars', () => {
     await within(grid).findByRole('table');
     expect(within(grid).getAllByRole('button', { name: 'Reset' })).toHaveLength(1);
     expect(within(grid).getAllByRole('button', { name: 'Refresh' })).toHaveLength(1);
-    expect(within(grid).getAllByRole('button', { name: /^Fields of / })).toHaveLength(1);
+    expect(within(grid).getAllByRole('button', { name: 'Configure data' })).toHaveLength(1);
   });
 
   test('the Row band has Refresh in its header and no Back; Undo and Redo sit after the page title', async () => {
@@ -1088,7 +1091,7 @@ describe('column sort', () => {
     await userEvent.click(sortBtn(grid, 'status'));
     await userEvent.click(sortBtn(grid, 'Product'));
     await waitFor(() => expect(sortOf(calls)).toEqual([{ column: 'status', direction: 'asc' }, { column: 'product_id', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
-    await userEvent.click(within(grid).getByRole('button', { name: /^Fields of Orders:/ }));
+    await openFields('Orders');
     await userEvent.click(screen.getByLabelText('status'));
     await waitFor(() => expect(within(grid).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') !== 'colgroup')).toHaveLength(4));
     await waitFor(() => expect(sortOf(calls)).toEqual([{ column: 'product_id', direction: 'asc' }, { column: 'id', direction: 'asc' }]));
@@ -1190,7 +1193,7 @@ describe('the default sort', () => {
     expect(orderSorts(calls)).toEqual([{ column: 'created_at', direction: 'desc' }, { column: 'id', direction: 'asc' }]);
     // created_at is not among the five opening columns, so no arrow is drawn; showing it draws one like a member sort
     expect(within(data()).queryByRole('button', { name: /^Sort by created_at,/ })).toBeNull();
-    await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
+    await openFields('Orders');
     await userEvent.click(screen.getByLabelText('created_at'));
     const head = await within(data()).findByRole('button', { name: /^Sort by created_at, currently descending/ });
     expect(head.closest('th')).toHaveAttribute('aria-sort', 'descending');
@@ -1305,11 +1308,11 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => !!r.querySelector('td')?.textContent)).toBe(true));
     const grid = data();
     expect(within(grid).queryByText('internal_flag')).toBeNull();
-    await userEvent.click(within(grid).getByRole('button', { name: /^Fields of Customers:/ }));
+    await openFields('Customers');
     expect(screen.queryByText('internal_flag')).toBeNull();
-    // The Export menu has its own separator, so only the picker's are looked at.
-    expect(screen.queryAllByRole('separator').filter((x) => !x.closest('.dm-export'))).toEqual([]);
-    await userEvent.keyboard('{Escape}');
+    // Only the checklist's own are looked at: the mart's panel has separators of its own (before the joinable marts and Remove).
+    expect(within(screen.getByRole('listbox', { name: /^Fields of / }).closest('.dm-checklist') as HTMLElement).queryAllByRole('separator')).toEqual([]);
+    await closeConfigMenu();
     await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByText('email');
     expect(within(row()).queryByText('internal_flag')).toBeNull();
@@ -1384,26 +1387,26 @@ describe('hidden fields, clipped cells and the field (?)', () => {
 
   test('the (?) after a field label is revealed by its row, in the picker and in the Row band', async () => {
     const grid = await ordersGrid();
-    await userEvent.click(within(grid).getByRole('button', { name: /^Fields of Orders:/ }));
+    await openFields('Orders');
     const hint = screen.getAllByLabelText('About Customer').find((el) => el.closest('.dm-checklist-row'))!;
     expect(hint.closest('.dm-checklist-row')).toHaveClass('dm-reveal-host');
     expect(hint.closest('.dm-hint-slot')).not.toBeNull();
     // beside the option, not inside it
     expect(hint.closest('[role="option"]')).toBeNull();
-    await userEvent.keyboard('{Escape}');
+    await closeConfigMenu();
     await userEvent.click(within(grid).getAllByRole('row')[2]!);
     await within(row()).findByText('status');
     expect(within(row()).getByLabelText('About Customer').closest('dt')).toHaveClass('dm-reveal-host');
   });
 
-  test('the Fields button of a tab is an always-shown "N columns" badge; a lone main mart has no x on it', async () => {
+  test('the title cell has no column badge and no x; a lone main mart cannot be removed from the config menu', async () => {
     const grid = await ordersGrid();
-    const badge = within(grid).getByRole('button', { name: /^Fields of Orders:/ });
-    expect(badge).toHaveTextContent(/^\d+ columns?$/);
-    expect(badge).not.toHaveClass('dm-reveal');
-    expect(badge.closest('.dm-rule-badge')).toHaveClass('dm-rule-badge-neutral');
-    expect(within(grid).queryByRole('button', { name: 'Remove Orders from the grid' })).toBeNull();
-    expect(badge.closest('th')).toHaveClass('dm-gh');
+    const cell = grid.querySelector('th[data-group-path=""]')!;
+    expect(cell).toHaveClass('dm-gh');
+    expect(cell.querySelector('.dm-rule-badge')).toBeNull();
+    expect(within(cell as HTMLElement).queryByRole('button')).toBeNull();
+    const dialog = await openFields('Orders');
+    expect(within(dialog).queryByRole('menuitem', { name: 'Remove from report' })).toBeNull();
   });
 
   test('the main data mart is the first card, whatever the search says', async () => {

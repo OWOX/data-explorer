@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { closeConfig, configButton, openFields, openConfig } from './config-menu';
 
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
 const data = (page: Page) => page.locator('#band-data');
@@ -6,21 +7,20 @@ const data = (page: Page) => page.locator('#band-data');
 async function openCharts(page: Page, columns: (string | RegExp)[]) {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   for (const name of columns) {
-    await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
+    await openFields(page, 'Orders');
     await page.getByRole('option', { name }).click();
-    await page.keyboard.press('Escape');
+    await closeConfig(page);
   }
   await data(page).getByRole('radio', { name: 'Charts' }).click();
   await expect(data(page).locator('section.dm-chart')).toHaveCount(2);
 }
 
-test('add, switch, configure, hide and remove charts from the header menu', async ({ page }) => {
+test('add, switch, configure and hide charts from the config menu', async ({ page }) => {
   await openCharts(page, [/created_at/i, /Net Revenue/i]);
-  const listButton = data(page).locator('[data-chart-list-slot]').getByRole('button', { name: 'Charts options' });
 
   // Add every new type; Spread is offered because Net Revenue allows percentiles.
   for (const type of ['Ranked bar', 'Line', 'Heatmap', 'Scatter', 'Spread']) {
-    await listButton.click();
+    await configButton(page).click();
     await page.getByRole('menuitem', { name: 'Add chart' }).click();
     await page.getByRole('menuitemradio', { name: type }).click();
   }
@@ -60,13 +60,14 @@ test('add, switch, configure, hide and remove charts from the header menu', asyn
   await page.getByRole('menuitemradio', { name: 'Pie' }).click();
   await expect(data(page).locator('section[data-chart-kind="Pie"]')).toHaveCount(2);
 
-  // Hide the scatter from the header list, then remove the heatmap.
-  await listButton.click();
+  // Hide the scatter from the config menu's Charts list, then hide the heatmap from its own menu.
+  const menu = await openConfig(page);
+  await menu.getByRole('menuitem', { name: 'Charts', exact: true }).click();
   await page.getByRole('menuitemcheckbox', { name: /vs .* per / }).click();
-  await page.keyboard.press('Escape');
+  await closeConfig(page);
   await expect(data(page).locator('section[data-chart-kind="Scatter"]')).toHaveCount(0);
   await optionsOf('Heatmap');
-  await page.getByRole('menuitem', { name: 'Remove' }).click();
+  await page.getByRole('menuitem', { name: 'Hide' }).click();
   await expect(data(page).locator('section[data-chart-kind="Heatmap"]')).toHaveCount(0);
 
   // The list survives a trip to Table and back (the mock keeps settings in memory, so a reload would reset them).

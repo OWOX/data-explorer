@@ -7,6 +7,7 @@ import { joinedMartIds } from '../state/join-plan';
 import { sourceOfModel, useServices, useStore } from '../state/store';
 import { CardBands } from './bands/CardBands';
 import { DataBand } from './bands/DataBand';
+import type { Matched } from './bands/matched';
 import { RowBand } from './bands/RowBand';
 import { LoadingBands } from './bands/LoadingBands';
 import { ErrorBox } from './ErrorBox';
@@ -69,6 +70,8 @@ function AppBody() {
   // Precedence: a band the member clicked, then the view link's fold, then the saved one, then the default.
   // Full screen shows the Data band alone. It is never saved: a page always opens in the normal layout.
   const [fs, setFs] = useState(false);
+  // How many records of each mart of the report the filters and slices keep, told by the grid for the cards. Memory only: no save, no Undo step.
+  const [matched, setMatched] = useState<Matched | null>(null);
   const [touched, setTouched] = useState<Partial<Record<Fold, boolean>>>({});
   const [linkFolds, setLinkFolds] = useState<Partial<Record<Fold, boolean>>>({});
   const folded = (band: Fold) => touched[band] ?? linkFolds[band] ?? folds[band] ?? DEFAULT_FOLDED[band];
@@ -94,6 +97,10 @@ function AppBody() {
   const done = progress.done + (prefsReady ? 1 : 0) + (hasLink && !link.pending ? 1 : 0);
   const total = progress.total + 1 + (hasLink ? 1 : 0);
   const full = !!model && prefsReady && !link.pending && done >= total;
+  // True once the first load found no main mart to return to and no view link: the search box opens for the member.
+  const [firstVisit, setFirstVisit] = useState(false);
+  // Settled by the first pick of the page only: a later empty selection (a source toggled off) is not a first visit.
+  const firstPick = useRef(true);
   const [held, setHeld] = useState(false);
   useEffect(() => {
     if (!full || held) return;
@@ -117,7 +124,8 @@ function AppBody() {
   const mainId = state.selection.martId;
   const { sources: joinSources, failed: joinsFailed } = useJoinSources(model && mainId && model.marts.get(mainId)?.accessible ? mainId : null);
   const mainColumns = mainId ? state.grids[mainId]?.columns : undefined;
-  const joined = useMemo(() => (joinSources && mainColumns ? joinedMartIds(mainColumns, joinSources) : []), [joinSources, mainColumns]);
+  const mainEmptyPaths = mainId ? state.grids[mainId]?.emptyPaths : undefined;
+  const joined = useMemo(() => (joinSources && mainColumns ? joinedMartIds(mainColumns, joinSources, mainEmptyPaths) : []), [joinSources, mainColumns, mainEmptyPaths]);
   // Marts whose fields carry a filter or a slice (applied or parked) are shown too, whether or not a column of theirs is on the grid.
   const mainFilters = mainId ? state.grids[mainId]?.filters : undefined;
   const mainSlices = mainId ? state.grids[mainId]?.slices : undefined;
@@ -137,6 +145,8 @@ function AppBody() {
   const { martId, sourceKey } = state.selection;
   useEffect(() => {
     if (!model || link.pending) return;
+    // Any selection before the first pick (a mart picked while the preferences load) settles the first visit.
+    if (martId || sourceKey) firstPick.current = false;
     // Nothing to fall back to (every ticked storage is empty): a selected mart that is gone leaves an empty selection.
     if (!focusId) {
       if (martId && !model.marts.has(martId)) dispatch({ type: 'replace', selection: { sourceKey: null, martId: null, record: null } });
@@ -150,7 +160,9 @@ function AppBody() {
       const openable = !!last && !!model.marts.get(last.martId)?.accessible && (storageIds === null || storageIds.includes(model.marts.get(last.martId)!.storageId));
       // The remembered mart serves this pick only; later empty selections (a source toggled off and on) get the focus mart.
       remembered.current = null;
-      if (!last || !openable) { applied.current = mainKey(focusId, null); dispatch({ type: 'init', focusId }); return; }
+      const first = firstPick.current;
+      firstPick.current = false;
+      if (!last || !openable) { if (first && !hasLink) setFirstVisit(true); applied.current = mainKey(focusId, null); dispatch({ type: 'init', focusId }); return; }
       const keep = last.sourceKey && model.sources.some((x) => x.key === last.sourceKey) && sourceOfModel(model)(last.martId) === last.sourceKey ? last.sourceKey : null;
       applied.current = mainKey(last.martId, keep);
       dispatch({ type: 'init', focusId: last.martId, sourceKey: keep });
@@ -169,7 +181,7 @@ function AppBody() {
         ? { sourceKey: keep && sourceOfModel(model)(focusId) === keep ? keep : null, martId: focusId, record: null }
         : { ...state.selection, sourceKey: null },
     });
-  }, [model, link.pending, prefsReady, storageIds, focusId, martId, sourceKey, state.selection, dispatch]);
+  }, [model, link.pending, prefsReady, storageIds, focusId, martId, sourceKey, state.selection, hasLink, dispatch]);
   // The member's own selection changes are remembered. The mart the page opened on (remembered, focus fallback or view link) is not: a shared link
   // or a temporary fallback must not replace the saved one. Nothing is written before the saved value is read.
   useEffect(() => {
@@ -207,7 +219,7 @@ function AppBody() {
     <SmartSearchScope model={model}>
     <div className={`dm-page${fs ? ' dm-full' : ''}`}>
       <Header
-        search={<HeaderSearch />}
+        search={<HeaderSearch autoOpen={firstVisit} />}
         hint={<HeaderSearchHint />}
         failedStorages={model.failedStorages}
         error={error}
@@ -224,7 +236,9 @@ function AppBody() {
           storageIds={storageIds}
           joinSources={joinSources}
           mainColumns={mainColumns ?? []}
+          mainEmptyPaths={mainEmptyPaths}
           counts={counts}
+          matched={matched}
           dq={dq}
           foldedSources={folded('sources')}
           foldedMarts={folded('marts')}
@@ -236,7 +250,7 @@ function AppBody() {
           loading={loading}
         >
           {/* While the bar shows, neither band reads anything: the saved folds are not known yet, and one saved as folded must not read rows first. */}
-          <DataBand model={model} folded={folded('data')} onFold={() => toggle('data')} loading={loading} fullScreen={{ on: fs, onToggle: () => setFs((f) => !f) }} />
+          <DataBand onMatched={setMatched} model={model} folded={folded('data')} onFold={() => toggle('data')} loading={loading} fullScreen={{ on: fs, onToggle: () => setFs((f) => !f) }} />
           <RowBand model={model} folded={folded('row')} onFold={() => toggle('row')} loading={loading} />
         </CardBands>
       </main>

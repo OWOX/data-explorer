@@ -105,8 +105,10 @@ test('after aggregating a joined column, its Filter and a second Aggregate both 
   await userEvent.selectOptions(within(dialog).getByLabelText('Operator'), 'contains');
   await userEvent.type(within(dialog).getByLabelText('Value'), 'a');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
-  await waitFor(() => expect(queries.at(-1)?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a' }]));
-  expect(queries.at(-1)?.aggregation).toHaveLength(1);
+  // The grid's own reads: with a joined mart and a filter, the match badge of the cards also asks one scorecard read (no row limit).
+  const rowsRead = () => queries.filter((q) => q.limit !== undefined).at(-1);
+  await waitFor(() => expect(rowsRead()?.filter).toEqual([{ column: 'customers__email', operator: 'contains', value: 'a' }]));
+  expect(rowsRead()?.aggregation).toHaveLength(1);
 });
 
 test('a joined field whose analyst allows only Count Unique and Combined: Apply sticks and the request carries both', async () => {

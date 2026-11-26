@@ -1,4 +1,4 @@
-import { Box, FileSpreadsheet, Loader2, Sparkles } from 'lucide-react';
+import { Box, FileSpreadsheet, Loader2, Search, Sparkles } from 'lucide-react';
 import { useEffect, type ReactNode } from 'react';
 import type { Context, Model } from '../../model/types';
 import { DEFAULT_CONTEXT_ICON, PickedIcon } from './picked';
@@ -11,7 +11,7 @@ function MartName({ martId, model }: { martId: string; model: Model }) {
   return <span className="dm-sr-chip"><PickedIcon icon={mart?.icon} fallback={Box} size={14} /><span className="dm-sr-name">{mart?.title ?? martId}</span></span>;
 }
 
-function RowBody({ row, model }: { row: Row; model: Model }): ReactNode {
+function RowBody({ row, model, ai }: { row: Row; model: Model; ai: boolean }): ReactNode {
   if (row.kind === 'report') {
     return (
       <>
@@ -25,7 +25,7 @@ function RowBody({ row, model }: { row: Row; model: Model }): ReactNode {
   if (row.kind === 'mart') return <MartName martId={row.martId} model={model} />;
   return (
     <>
-      <Sparkles size={14} aria-hidden="true" />
+      {ai ? <Sparkles size={14} aria-hidden="true" /> : <Search size={14} aria-hidden="true" />}
       {row.reason ? (
         <span className="dm-sr-muted">{row.reason}</span>
       ) : (
@@ -40,7 +40,7 @@ function RowBody({ row, model }: { row: Row; model: Model }): ReactNode {
 
 type Smart = {
   rows: Row[]; highlighted: number | null; model: Model; setHighlighted: (i: number | null) => void; pick: (row?: Row) => void;
-  contexts: Context[]; activeContextIds: string[]; toggleContext: (id: string) => void;
+  contexts: Context[]; activeContextIds: string[]; toggleContext: (id: string) => void; aiReady: boolean;
 };
 
 /**
@@ -89,7 +89,7 @@ export function SearchResults({ smart, id }: { smart: Smart; id: string }) {
               // The mouse down is the pick, and it must not take focus from the input.
               onMouseDown={(e) => { e.preventDefault(); if (!disabled) smart.pick(row); }}
             >
-              <RowBody row={row} model={model} />
+              <RowBody row={row} model={model} ai={smart.aiReady} />
             </li>
           );
         })}

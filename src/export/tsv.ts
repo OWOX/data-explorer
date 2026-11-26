@@ -18,6 +18,15 @@ const quote = (t: string) => (t.includes('"') ? `"${t.replace(/"/g, '""')}"` : t
 /** One value as a TSV field: tabs and line breaks become spaces, a formula start gets a leading apostrophe, and a value with a quote is quoted. */
 export const tsvField = (s: string) => quote(guard(clean(s)));
 
+/**
+ * Text for a bare clipboard copy: the grid's `clean` (no tab or line break) and an apostrophe before a formula start, without the quoting a pasted tab-separated cell needs.
+ * Pasted bare, a spreadsheet drops leading spaces and a leading double quote before it reads the cell, so the start is judged after those: `"=1` and ` =1` are guarded too.
+ */
+export const copySafe = (s: string): string => {
+  const t = clean(s), head = t.replace(/^[\s"]+/, '');
+  return /^[=+\-@']/.test(head) && !PLAIN_NUMBER.test(head) ? `'${t}` : t;
+};
+
 /** One cell as the grid shows it (numbers ungrouped), whole, with no tab or line break left in it, no formula start and quotes escaped. */
 // Numbers are copied as plain digits, not grouped as the grid shows them: see displayText.
 export const cellText = (v: unknown, type?: string): string => tsvField(displayText(v, type, { group: false }));

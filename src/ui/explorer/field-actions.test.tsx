@@ -6,6 +6,7 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore, type GridState } from '../../state/store';
 import { App } from '../App';
+import { closeConfigMenu, openFields } from './menu-test-utils';
 
 function setup(grid: GridState) {
   const base = createMockCtx(demoFixtures(), { latencyMs: 0 });
@@ -29,12 +30,12 @@ const shownTitles = () => within(data()).getAllByRole('columnheader').filter((h)
 const base: GridState = { columns: ['id', 'net_revenue'], filters: {}, sorts: null, limit: 200 };
 const g = (extra: Partial<GridState> = {}): GridState => ({ ...base, ...extra });
 
-/** Opens the Fields list of the main mart and returns the menu icon of a field's row. */
+/** Opens the Fields list of the main mart (or the named one) and returns the menu icon of a field's row. */
 async function rowIcon(field: string, mart?: string) {
   await waitFor(() => expect(grid()).not.toBeNull());
-  await userEvent.click(mart ? await within(data()).findByRole('button', { name: new RegExp(`^Fields of ${mart}:`) }) : (await within(data()).findAllByRole('button', { name: /^Fields of / }))[0]!);
-  const list = await screen.findByRole('listbox', { name: /^Fields of / });
-  return { list, icon: (await waitFor(() => { const el = list.closest('[data-popover-body]')!.querySelector<HTMLElement>(`[data-row-action][data-field="${field}"]`); if (!el) throw new Error('no icon'); return el; })) };
+  const panel = await openFields(mart ?? 'Orders');
+  const list = await within(panel).findByRole('listbox', { name: /^Fields of / });
+  return { list, icon: (await waitFor(() => { const el = panel.querySelector<HTMLElement>(`[data-row-action][data-field="${field}"]`); if (!el) throw new Error('no icon'); return el; })) };
 }
 
 describe('field actions from the Fields list', () => {
@@ -55,7 +56,7 @@ describe('field actions from the Fields list', () => {
     setup(g({ filters: { status: { field: 'status', op: 'eq', value: 'paid' } }, sorts: [{ field: 'net_revenue', direction: 'desc' }] }));
     const hidden = await rowIcon('status');
     expect(hidden.icon).toHaveClass('dm-ctl-on');
-    expect(hidden.list.closest('[data-popover-body]')!.querySelector('[data-row-action][data-field="net_revenue"]')).toHaveClass('dm-ctl-on');
+    expect(hidden.list.closest('[role="dialog"]')!.querySelector('[data-row-action][data-field="net_revenue"]')).toHaveClass('dm-ctl-on');
   });
 
   test('a filter applied from the menu keeps the field hidden, reaches the query, and the Fields list stays open', async () => {
@@ -80,10 +81,10 @@ describe('field actions from the Fields list', () => {
     // The rows query carries the filter without asking for the column.
     const q = t.queries.find((x) => x.filter?.some((f) => f.column === 'status') && x.column?.includes('id'))!;
     expect(q.column).not.toContain('status');
-    // The rule is saved with the view, in the title row marks, and undone in one step.
-    expect(await screen.findByRole('button', { name: /^1 filter in / })).toBeVisible();
+    // The rule is saved with the view, its badge is next to Configure, and it is undone in one step.
+    expect(await screen.findByRole('button', { name: '1 filter' })).toBeVisible();
     await userEvent.keyboard('{Escape}');
-    await userEvent.keyboard('{Escape}');
+    await closeConfigMenu();
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await waitFor(() => expect(t.state.current!.grids.orders!.filters).toEqual({}));
   });
@@ -110,7 +111,7 @@ describe('field actions from the Fields list', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(t.state.current!.grids.orders!.columns).toContain('amount'));
     expect(t.state.current!.grids.orders!.aggregations).toEqual([{ column: 'amount', function: 'SUM' }]);
-    await userEvent.keyboard('{Escape}');
+    await closeConfigMenu();
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['id', 'net_revenue']));
     expect(t.state.current!.grids.orders!.aggregations).toBeUndefined();
@@ -125,7 +126,7 @@ describe('field actions from the Fields list', () => {
     await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Sort A → Z' }));
     await waitFor(() => expect(t.state.current!.grids.orders!.columns).toContain('status'));
     expect(t.state.current!.grids.orders!.sorts).toEqual([{ field: 'status', direction: 'asc' }]);
-    await userEvent.keyboard('{Escape}');
+    await closeConfigMenu();
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['id', 'net_revenue']));
     expect(t.state.current!.grids.orders!.sorts).toBeNull();
@@ -204,7 +205,7 @@ describe('field actions from the Fields list', () => {
     await waitFor(() => expect(t.state.current!.grids.orders!.columns).toContain('amount'));
     expect(t.state.current!.grids.orders!.aggregations?.some((a) => a.column === 'amount')).toBe(true);
     expect(t.state.current!.grids.orders!.sorts).toEqual([{ field: 'amount', direction: 'asc' }]);
-    await userEvent.keyboard('{Escape}');
+    await closeConfigMenu();
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['status', 'net_revenue']));
     expect(t.state.current!.grids.orders!.aggregations).toEqual([{ column: 'net_revenue', function: 'SUM' }]);
@@ -231,7 +232,7 @@ describe('field actions from the Fields list', () => {
     await userEvent.click(within(dialog).getByLabelText('Max'));
     await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(t.state.current!.grids.orders!.aggregations).toEqual([{ column: 'net_revenue', function: 'SUM' }, { column: 'amount', function: 'MAX' }]));
-    await userEvent.keyboard('{Escape}');
+    await closeConfigMenu();
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await waitFor(() => expect(t.state.current!.grids.orders!.aggregations).toEqual([{ column: 'net_revenue', function: 'SUM' }]));
     expect(t.state.current!.grids.orders!.columns).toEqual(['status', 'net_revenue']);
@@ -257,60 +258,63 @@ describe('field actions from the Fields list', () => {
     expect(list).toBeVisible();
   });
 
-  describe('a joined mart whose last shown column goes takes its rules with it', () => {
+  describe('a joined mart whose last shown column goes stays in the report with its rules', () => {
     const rules: GridState = g({
       columns: ['id', 'customers__city'],
       filters: { customers__email: { field: 'customers__email', op: 'eq', value: 'a@b' }, status: { field: 'status', op: 'eq', value: 'paid' } },
       slices: { customers__country_code: { field: 'customers__country_code', op: 'eq', value: 'PL' } },
     });
-    const keptMain = { status: expect.objectContaining({ value: 'paid' }) };
+    // The filters and the slice stay, and are still sent: the mart is kept with no column, not removed.
+    const allRules = (t: ReturnType<typeof setup>) => {
+      expect(Object.keys(t.state.current!.grids.orders!.filters).sort()).toEqual(['customers__email', 'status']);
+      expect(Object.keys(t.state.current!.grids.orders!.slices ?? {})).toEqual(['customers__country_code']);
+      expect(t.state.current!.grids.orders!.emptyPaths).toEqual(['customers']);
+    };
+    const cameBack = async (t: ReturnType<typeof setup>) => {
+      await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
+      await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['id', 'customers__city']));
+      expect(t.state.current!.grids.orders!.emptyPaths).toBeUndefined();
+      expect(Object.keys(t.state.current!.grids.orders!.slices ?? {})).toEqual(['customers__country_code']);
+      expect(Object.keys(t.state.current!.grids.orders!.filters).sort()).toEqual(['customers__email', 'status']);
+    };
 
-    test('unticking it in the Fields list, and Undo brings them back', async () => {
+    test('unticking it in the Fields list, and Undo brings the column back', async () => {
       const t = setup(rules);
       await waitFor(() => expect(t.state.current!.grids.orders).toBeDefined());
-      await userEvent.click(await within(data()).findByRole('button', { name: /^Fields of Customers:/ }));
+      await openFields('Customers');
       await userEvent.click(await screen.findByRole('option', { name: /city/i }));
-      // The list keeps the mart while open; closing it with nothing ticked removes the mart.
-      await userEvent.keyboard('{Escape}');
       await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['id']));
-      expect(t.state.current!.grids.orders!.filters).toEqual(keptMain);
-      expect(t.state.current!.grids.orders!.slices).toBeUndefined();
-      await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
-      await waitFor(() => expect(Object.keys(t.state.current!.grids.orders!.slices ?? {})).toEqual(['customers__country_code']));
-      expect(Object.keys(t.state.current!.grids.orders!.filters).sort()).toEqual(['customers__email', 'status']);
-      expect(t.state.current!.grids.orders!.columns).toEqual(['id', 'customers__city']);
+      allRules(t);
+      await closeConfigMenu();
+      allRules(t);
+      await cameBack(t);
     });
 
-    test('Hide column from its Fields list menu keeps the list open until it closes, and after Undo the list stays closed', async () => {
+    test('Hide column from its Fields list menu leaves the list open, and after Undo the list stays closed', async () => {
       const t = setup(rules);
       await waitFor(() => expect(t.state.current!.grids.orders).toBeDefined());
       const { list, icon } = await rowIcon('customers__city', 'Customers');
       await userEvent.click(icon);
       await userEvent.click(within(await screen.findByRole('menu', { name: /^Menu of / })).getByRole('menuitem', { name: 'Hide column' }));
-      // The mart stays on the grid, with its list, while the list is open.
       await waitFor(() => expect(screen.queryByRole('menu', { name: /^Menu of / })).toBeNull());
       expect(list).toBeVisible();
-      expect(t.state.current!.grids.orders!.columns).toEqual(['id', 'customers__city']);
-      await userEvent.keyboard('{Escape}');
       await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['id']));
+      allRules(t);
+      await closeConfigMenu();
       expect(screen.queryByRole('listbox', { name: /^Fields of / })).toBeNull();
-      await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
-      await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['id', 'customers__city']));
-      await within(data()).findByRole('button', { name: /^Fields of Customers:/ });
+      await cameBack(t);
+      await waitFor(() => expect(data().querySelector('th[data-group-path="customers"]')).not.toBeNull());
       expect(screen.queryByRole('listbox', { name: /^Fields of / })).toBeNull();
     });
 
-    test('Hide column in its header menu, and Undo brings them back', async () => {
+    test('Hide column in its header menu, and Undo brings the column back', async () => {
       const t = setup(rules);
       await waitFor(() => expect(t.state.current!.grids.orders).toBeDefined());
       await userEvent.click(await within(data()).findByLabelText('Column menu Customers · city'));
       await userEvent.click(within(await screen.findByRole('menu', { name: /^Menu of / })).getByRole('menuitem', { name: 'Hide column' }));
       await waitFor(() => expect(t.state.current!.grids.orders!.columns).toEqual(['id']));
-      expect(t.state.current!.grids.orders!.filters).toEqual(keptMain);
-      expect(t.state.current!.grids.orders!.slices).toBeUndefined();
-      await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
-      await waitFor(() => expect(Object.keys(t.state.current!.grids.orders!.slices ?? {})).toEqual(['customers__country_code']));
-      expect(Object.keys(t.state.current!.grids.orders!.filters).sort()).toEqual(['customers__email', 'status']);
+      allRules(t);
+      await cameBack(t);
     });
   });
 });

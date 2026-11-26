@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
 import type { Model } from '../../model/types';
 import { AiHint, SearchAlternatives, SearchBox, SearchNotice, SearchProgress } from './SearchBox';
 import { useSmartSearch, type SmartSearch } from './useSmartSearch';
@@ -17,8 +17,16 @@ export function useSmartSearchScope(): SmartSearch {
 }
 
 /** The search icon (or the box it opens) for the page header's actions. */
-export function HeaderSearch() {
-  return <SearchBox smart={useSmartSearchScope()} label="Search data marts" />;
+export function HeaderSearch({ autoOpen = false }: { autoOpen?: boolean }) {
+  const smart = useSmartSearchScope();
+  // Opens the box once when a first visit starts, so it is not reopened after the member closes it.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (!autoOpen || opened.current) return;
+    opened.current = true;
+    smart.openBox();
+  });
+  return <SearchBox smart={smart} label="Search data marts" />;
 }
 
 /** The quiet lines under the header: what the last pick left out, and the suggestion to plug AI in. */

@@ -1,6 +1,7 @@
 import { useId, useMemo, type KeyboardEvent } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
 import { BLANK_KEY, BLANK_STROKE, swatchStyle, thinColor } from '../blank';
+import { plotHeight } from '../plotSize';
 import { useWidth } from '../useWidth';
 import type { Series } from './BarChart';
 import { BlankDefs, blankLines } from './BlankPattern';
@@ -25,7 +26,8 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
   /** The axis counts whole things: its steps are whole numbers. */
   integerLeft?: boolean; integerRight?: boolean;
 }) {
-  const { ref, width } = useWidth<HTMLDivElement>();
+  const { ref, width, height: room } = useWidth<HTMLDivElement>();
+  const plotH = plotHeight(room, TOP + AXIS_H + (xTitle ? TITLE_H : 0), PLOT_H);
   const blankId = `dm-blank-${useId().replace(/:/g, '')}`;
   // Buckets are the sorted union of every series' x, so a value is always placed under its own bucket (the two reads may differ).
   const seen = new Map<string, string>();
@@ -43,8 +45,8 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
   const plotW = Math.max(20, width - leftW - rightW);
   const step = xs.length > 1 ? plotW / (xs.length - 1) : 0;
   const px = (i: number) => leftW + (xs.length > 1 ? i * step : plotW / 2);
-  const py = (y: number, max: number) => TOP + PLOT_H - (max > 0 ? y / max : 0) * PLOT_H;
-  const height = TOP + PLOT_H + AXIS_H + (xTitle ? TITLE_H : 0);
+  const py = (y: number, max: number) => TOP + plotH - (max > 0 ? y / max : 0) * plotH;
+  const height = TOP + plotH + AXIS_H + (xTitle ? TITLE_H : 0);
   const pathOf = (s: Series, max: number) => {
     let d = ''; let open = false;
     xs.forEach((b, i) => {
@@ -60,14 +62,15 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
     const runs: number[][] = []; let run: number[] = [];
     xs.forEach((b, i) => { if (at(s, b.x)?.y == null || b.x === BLANK_KEY) { if (run.length) runs.push(run); run = []; } else run.push(i); });
     if (run.length) runs.push(run);
-    return runs.map((r) => `M${px(r[0]!).toFixed(1)} ${TOP + PLOT_H} ${r.map((i) => `L${px(i).toFixed(1)} ${py(at(s, xs[i]!.x)!.y!, max).toFixed(1)}`).join(' ')} L${px(r.at(-1)!).toFixed(1)} ${TOP + PLOT_H} Z`).join(' ');
+    return runs.map((r) => `M${px(r[0]!).toFixed(1)} ${TOP + plotH} ${r.map((i) => `L${px(i).toFixed(1)} ${py(at(s, xs[i]!.x)!.y!, max).toFixed(1)}`).join(' ')} L${px(r.at(-1)!).toFixed(1)} ${TOP + plotH} Z`).join(' ');
   };
   const all = right ? [...left.map((s) => ({ s, max: tl.top })), { s: right, max: tr.top }] : left.map((s) => ({ s, max: tl.top }));
   const pickable = (x: string) => !!onPick && (canPick?.(x) ?? true);
   const labelStep = Math.max(1, Math.ceil((Math.max(...xs.map((p) => textWidth(p.label)), 0) + 8) / Math.max(1, step || plotW)));
   const band = xs.length > 1 ? step : plotW;
   return (
-    <div ref={ref} className="dm-line-chart">
+    <div className="dm-line-chart">
+      <div ref={ref} className="dm-chart-plot">
       <svg role={xs.some((p) => pickable(p.x)) ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
         <BlankDefs id={blankId} lines />
         {tl.ticks.map((t) => (
@@ -77,20 +80,21 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
           </g>
         ))}
         {right && tr.ticks.map((t) => <text key={t} data-axis="right" className="dm-chart-text" x={leftW + plotW + 6} y={py(t, tr.top)} dominantBaseline="middle">{formatRight(t)}</text>)}
-        {yTitle && <YTitle x={8} mid={TOP + PLOT_H / 2} length={PLOT_H} text={yTitle} />}
-        {right && yTitleRight && <YTitle x={leftW + plotW + rightW - 8} mid={TOP + PLOT_H / 2} length={PLOT_H} text={yTitleRight} />}
-        {xs.map((p, i) => (i % labelStep === 0 ? <text key={p.x} className="dm-chart-text" x={px(i)} y={TOP + PLOT_H + 16} textAnchor="middle">{p.label}</text> : null))}
-        {xTitle && <XTitle x={leftW + plotW / 2} y={TOP + PLOT_H + AXIS_H + 10 + TITLE_GAP} width={plotW} text={xTitle} />}
-        {xs.map((p, i) => (p.x === BLANK_KEY ? <rect key="blank-band" data-blank-hatch={p.x} x={Math.max(leftW, px(i) - band / 2)} y={TOP} width={Math.min(leftW + plotW, px(i) + band / 2) - Math.max(leftW, px(i) - band / 2)} height={PLOT_H} fill={blankLines(blankId)} style={{ pointerEvents: 'none' }} /> : null))}
+        {yTitle && <YTitle x={8} mid={TOP + plotH / 2} length={plotH} text={yTitle} />}
+        {right && yTitleRight && <YTitle x={leftW + plotW + rightW - 8} mid={TOP + plotH / 2} length={plotH} text={yTitleRight} />}
+        {xs.map((p, i) => (i % labelStep === 0 ? <text key={p.x} className="dm-chart-text" x={px(i)} y={TOP + plotH + 16} textAnchor="middle">{p.label}</text> : null))}
+        {xTitle && <XTitle x={leftW + plotW / 2} y={TOP + plotH + AXIS_H + 10 + TITLE_GAP} width={plotW} text={xTitle} />}
+        {xs.map((p, i) => (p.x === BLANK_KEY ? <rect key="blank-band" data-blank-hatch={p.x} x={Math.max(leftW, px(i) - band / 2)} y={TOP} width={Math.min(leftW + plotW, px(i) + band / 2) - Math.max(leftW, px(i) - band / 2)} height={plotH} fill={blankLines(blankId)} style={{ pointerEvents: 'none' }} /> : null))}
         {area && all.map(({ s, max }) => <path key={`a-${s.key ?? s.name}`} data-area={s.name} d={areaOf(s, max)} fill={thinColor(s.color)} fillOpacity={0.18} stroke="none" />)}
         {xs.flatMap((p, i) => (p.x === BLANK_KEY ? all.filter(({ s }) => at(s, p.x)?.y != null).map(({ s, max }) => <circle key={`blank-dot-${s.key ?? s.name}`} data-blank-dot={s.name} cx={px(i)} cy={py(at(s, p.x)!.y!, max)} r={3} fill={BLANK_STROKE} style={{ pointerEvents: 'none' }} />) : []))}
         {all.map(({ s, max }, k) => <path key={s.key ?? s.name} data-line={s.name} d={pathOf(s, max)} fill="none" stroke={thinColor(s.color)} strokeWidth={2} strokeDasharray={right && k === all.length - 1 ? '5 3' : undefined} strokeLinejoin="round" strokeLinecap="round" />)}
         {xs.map((p, i) => {
           const content = <TipLines lines={[p.label, ...all.filter(({ s }) => at(s, p.x)?.y != null).map(({ s }) => <span key={s.key ?? s.name}><span className="dm-chart-swatch" style={swatchStyle(thinColor(s.color))} /> {s.name}: {at(s, p.x)!.valueText}</span>)]} />;
           const pick = pickable(p.x) ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${p.label}`, style: { cursor: 'pointer' }, onClick: () => onPick!(p.x), onKeyDown: press(() => onPick!(p.x)) } : {};
-          return <Tooltip key={p.x} content={content}><rect data-bucket={p.x} fill="transparent" x={px(i) - band / 2} y={TOP} width={band} height={PLOT_H} {...pick} /></Tooltip>;
+          return <Tooltip key={p.x} content={content}><rect data-bucket={p.x} fill="transparent" x={px(i) - band / 2} y={TOP} width={band} height={plotH} {...pick} /></Tooltip>;
         })}
       </svg>
+      </div>
       {all.length > 1 && (
         <ul className="dm-chart-legend">
           {all.map(({ s }, k) => <li key={s.key ?? s.name}><span className="dm-chart-swatch" style={swatchStyle(thinColor(s.color))} />{s.name}{right && k === all.length - 1 ? ' (right axis)' : ''}</li>)}

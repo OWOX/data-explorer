@@ -1,5 +1,5 @@
 /* Chart colours: the OWOX palette, 12 label colours in two rows of six hues (base, light), ordered so neighbouring slots differ in hue.
-   A label's colour is chosen by a hash of its text (see labelColor.ts), so the same value looks the same in every chart.
+   A label's colour is chosen by a hash of its text in any letter case (see labelColor.ts), so the same value looks the same across charts unless it clashes with a larger one in its own list.
    --dm-series-1 is also the colour of a chart that draws one measure, not labels. "Other" is a neutral grey, outside the 12.
    The palette has no dark variant, so only "Other" changes there. */
 :root {
@@ -79,8 +79,34 @@
 .dm-pie { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
 .dm-pie .dm-chart-legend { flex-direction: column; margin: 0; }
 
+/* Larger than the other charts' text, and in the foreground ink: these labels lie on the ribbons. */
+.dm-sankey .dm-chart-text { fill: var(--foreground); font-size: 13px; }
+.dm-sankey .dm-chart-axis-title { font-size: 13px; font-weight: 600; }
 .dm-sankey-link { fill-opacity: 0.4; }
 .dm-sankey svg[data-hot] .dm-sankey-link { fill-opacity: 0.12; }
 .dm-sankey svg[data-hot] .dm-sankey-link.is-on { fill-opacity: 0.7; }
 .dm-sankey-node.is-hot { stroke: var(--foreground); }
 .dm-sankey-node:focus-visible { outline: none; stroke: var(--foreground); stroke-width: 2; }
+
+/* A panel whose height the member set: its body takes what the head leaves, the plot takes what the legend leaves, and a plot that needs more scrolls in it. */
+.dm-chart[data-fill] .dm-chart-body { flex: 1 1 0; min-height: 0; overflow: auto; transition: none; }
+.dm-chart[data-fill] .dm-chart-fit { height: 100%; }
+.dm-chart[data-fill] .dm-chart-fit > :is(.dm-bar-chart, .dm-line-chart, .dm-scatter, .dm-heatmap, .dm-spread, .dm-sankey) { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.dm-chart[data-fill] .dm-chart-plot { flex: 1 1 0; min-width: 0; min-height: 0; overflow: hidden auto; }
+.dm-chart[data-fill] .dm-chart-legend { flex: none; max-height: 40%; overflow-y: auto; }
+.dm-chart[data-fill] .dm-pie { flex-wrap: nowrap; height: 100%; }
+.dm-chart[data-fill] .dm-pie .dm-chart-plot { align-self: stretch; display: flex; align-items: center; justify-content: center; }
+.dm-chart[data-fill] .dm-pie .dm-chart-legend { flex: 0 1 auto; min-width: 0; max-width: 50%; max-height: 100%; flex-wrap: nowrap; }
+
+/* Resize mode: every chart shows handles on its right edge, bottom edge and corner. The grid they snap to is never drawn.
+   The marks ignore the pointer, so a missed edge filters nothing. */
+.dm-chart-panels[data-resizing] .dm-chart { position: relative; }
+.dm-chart-panels[data-resizing] .dm-chart-body { pointer-events: none; }
+.dm-chart-panels[data-resizing] .dm-chart:hover, .dm-chart[data-dragging] { border-color: var(--primary); }
+.dm-chart[data-dragging] { transition: none; }
+.dm-resize { position: absolute; z-index: 2; padding: 0; border: 0; background: none; touch-action: none; }
+.dm-resize[data-edge='e'] { top: 0; bottom: 0; right: -6px; width: 12px; cursor: ew-resize; }
+.dm-resize[data-edge='s'] { left: 0; right: 0; bottom: -6px; height: 12px; cursor: ns-resize; }
+.dm-resize[data-edge='se'] { z-index: 3; right: -8px; bottom: -8px; width: 16px; height: 16px; cursor: nwse-resize; }
+.dm-resize[data-edge='se']::after { content: ''; position: absolute; inset: 4px; border-radius: 2px; background: var(--primary); }
+.dm-resize:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }

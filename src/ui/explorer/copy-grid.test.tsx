@@ -69,10 +69,6 @@ test('a click on the data mart title drops a whole column or row selection', asy
   expect(data().querySelector('[data-selected]')).not.toBeNull();
   await userEvent.click(title());
   expect(data().querySelector('[data-selected]')).toBeNull();
-  // The Fields button in the same cell is not the title: the selection stays.
-  await userEvent.click(within(data()).getAllByText('A')[0]!.closest('th')!);
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of / }));
-  expect(data().querySelector('thead .dm-letter[data-selected]')).not.toBeNull();
 });
 
 test('nothing is selected: the browser copies as usual', async () => {

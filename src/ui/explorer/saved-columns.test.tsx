@@ -9,7 +9,7 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useServices, useStore, type State } from '../../state/store';
 import { App } from '../App';
 import { SAVED_COLUMNS_WAIT_MS, VIEW_HOLD_MAX_MS } from './MartGrid';
-import { openColumnMenu } from './menu-test-utils';
+import { openColumnMenu, closeConfigMenu, openFields } from './menu-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
 const SAVED = 'grid-columns';
@@ -26,6 +26,8 @@ function setup(saved: string[] | null, tweak: (ctx: Mock) => Ctx = (c) => c) {
     return name === SAVED ? { get: c.get, put: (id: string, d: T) => { put(id, d); return c.put(id, d); } } : c;
   } };
   const col = inner.collections<{ columns: string[] }>(GRID_COLUMNS_COLLECTION);
+  // A remembered main mart keeps the first visit's open search box out of these tests.
+  void inner.collections('preferences').put('main-mart', { martId: 'orders', sourceKey: null });
   const seeded = saved ? col.put('orders', { columns: saved }) : Promise.resolve();
   const services: { current: ReturnType<typeof useServices> | null } = { current: null };
   const Probe = () => { services.current = useServices(); return null; };
@@ -96,7 +98,7 @@ test('a member change in the picker is saved; seeding is not', async () => {
   t.view();
   await waitFor(() => expect(headers()).toHaveLength(2));
   expect(t.put).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByRole('button', { name: /^Fields of Orders:/ }));
+  await openFields('Orders');
   await userEvent.click(screen.getByRole('option', { name: /amount/i }));
   await waitFor(() => expect(headers()).toHaveLength(3));
   await waitFor(() => expect(t.put).toHaveBeenCalledTimes(1), { timeout: SAVE_DEBOUNCE_MS + 1500 });
@@ -108,11 +110,11 @@ test('this session\'s columns win over the saved ones', async () => {
   await t.seeded;
   const { unmount } = t.view();
   await waitFor(() => expect(headers()).toHaveLength(2));
-  await userEvent.click(screen.getByRole('button', { name: /^Fields of Orders:/ }));
+  await openFields('Orders');
   await userEvent.click(screen.getByRole('option', { name: /amount/i }));
   await waitFor(() => expect(headers()).toHaveLength(3));
   // A press outside the open Fields picker only closes it.
-  await userEvent.keyboard('{Escape}');
+  await closeConfigMenu();
   // Going to another mart and back keeps the session's grid without asking the member store again.
   const load = vi.spyOn(t.services.current!.columnStore, 'load');
   // The main mart cannot join Order Items, so a click on its card does nothing; the search selects it as the main one.

@@ -151,3 +151,33 @@ test('hovering a ghost makes it the last link of the chain; going back to an ear
   expect(chainAfterHover('', ['a', 'a.c'], 'a.c.d')).toEqual(['a', 'a.c', 'a.c.d']);
   expect(chainAfterHover('', ['a'], 'zz.q')).toEqual(['a']);
 });
+
+test('an empty path is a node of its own, not bare, after the paths with columns', () => {
+  const t = buildJoinTree('main', ['id', col('b')], sources, ['a', 'b.x']);
+  expect(t.nodes.get('a')).toMatchObject({ martId: 'a', parent: '', children: [], empty: true });
+  expect(t.nodes.get('a')!.bare).toBeUndefined();
+  expect(t.nodes.get('b')!.empty).toBeUndefined();
+  expect(t.nodes.get('b.x')).toMatchObject({ parent: 'b', empty: true });
+  expect(t.nodes.get('')!.children).toEqual(['b', 'a']);
+  expect(t.nodes.get('b')!.children).toEqual(['b.x']);
+});
+
+test('the marts above an empty path are bare, and an empty path with a column or no source is no empty node', () => {
+  const t = buildJoinTree('main', ['id', col('a')], sources, ['b.c', 'a', 'nope', '']);
+  expect(t.nodes.get('b')).toMatchObject({ bare: true });
+  expect(t.nodes.get('b.c')).toMatchObject({ parent: 'b', empty: true });
+  expect(t.nodes.get('a')!.empty).toBeUndefined();
+  expect(t.nodes.has('nope')).toBe(false);
+  expect([...t.nodes.keys()].sort()).toEqual(['', 'a', 'b', 'b.c']);
+});
+
+test('an empty path is a middle mart for the path below it, so that is not bare', () => {
+  const t = buildJoinTree('main', ['id', col('a.c')], sources, ['a']);
+  expect(t.nodes.get('a')).toMatchObject({ empty: true, children: ['a.c'] });
+  expect(t.nodes.get('a')!.bare).toBeUndefined();
+});
+
+test('without empty paths the tree is as before', () => {
+  const cols = ['id', col('b'), col('a.c')];
+  expect(buildJoinTree('main', cols, sources, [])).toEqual(buildJoinTree('main', cols, sources));
+});

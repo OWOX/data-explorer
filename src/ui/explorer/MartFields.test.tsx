@@ -3,13 +3,13 @@ import userEvent from '@testing-library/user-event';
 import { TooltipProvider } from '@radix-ui/react-tooltip';
 import { describe, vi } from 'vitest';
 import type { Field } from '../../model/types';
-import { ColumnPicker } from './ColumnPicker';
+import { MartFields, type ConfigMart } from './MartFields';
 
 const fields = ['id', 'name', 'city'].map((name) => ({ name, type: 'STRING', category: 'string' }) as Field);
+const orders = (extra: Partial<ConfigMart> = {}): ConfigMart => ({ path: '', title: 'Orders', main: true, shown: true, fields, locked: () => false, ...extra });
 const open = async (visible: string[], locked: (n: string) => boolean = () => false) => {
   const onChange = vi.fn();
-  render(<TooltipProvider><ColumnPicker title="Orders" fields={fields} main visible={visible} locked={locked} onChange={onChange} /></TooltipProvider>);
-  await userEvent.click(screen.getByRole('button', { name: /^Fields of Orders:/ }));
+  render(<TooltipProvider><MartFields mart={orders({ locked })} visible={visible} onChange={onChange} /></TooltipProvider>);
   return onChange;
 };
 
@@ -25,6 +25,23 @@ test('Clear never hides the last visible column', async () => {
   expect(onChange).toHaveBeenLastCalledWith(['id']);
 });
 
+test('Clear on a joined mart commits at once and leaves the other marts\' columns', async () => {
+  const onChange = vi.fn();
+  const joined = ['cus_a', 'cus_b'].map((name) => ({ name, type: 'STRING', category: 'string' }) as Field);
+  render(<TooltipProvider><MartFields mart={{ path: 'customers', title: 'Customers', main: false, shown: true, fields: joined, locked: () => false }} visible={['id', 'cus_a', 'cus_b']} onChange={onChange} /></TooltipProvider>);
+  await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+  expect(onChange).toHaveBeenCalledOnce();
+  expect(onChange).toHaveBeenLastCalledWith(['id']);
+});
+
+test('Clear on a joined mart with no column changes nothing', async () => {
+  const onChange = vi.fn();
+  const joined = ['cus_a'].map((name) => ({ name, type: 'STRING', category: 'string' }) as Field);
+  render(<TooltipProvider><MartFields mart={{ path: 'customers', title: 'Customers', main: false, shown: true, fields: joined, locked: () => false }} visible={['id']} onChange={onChange} /></TooltipProvider>);
+  await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+  expect(onChange).not.toHaveBeenCalled();
+});
+
 test('Clear keeps a locked field', async () => {
   const onChange = await open(['id', 'name', 'city'], (n) => n === 'name');
   await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
@@ -33,8 +50,7 @@ test('Clear keeps a locked field', async () => {
 
 test('the Fields hint is a pointer shortcut: not in the Tab order, and the option carries the description', async () => {
   const described = [{ name: 'id', type: 'STRING', category: 'string', description: 'The order key' }, { name: 'name', type: 'STRING', category: 'string' }, { name: 'city', type: 'STRING', category: 'string' }] as Field[];
-  render(<TooltipProvider><ColumnPicker title="Orders" fields={described} main visible={['id']} locked={() => false} onChange={vi.fn()} /></TooltipProvider>);
-  await userEvent.click(screen.getByRole('button', { name: /^Fields of Orders:/ }));
+  render(<TooltipProvider><MartFields mart={orders({ fields: described })} visible={['id']} onChange={vi.fn()} /></TooltipProvider>);
   const list = await screen.findByRole('listbox', { name: 'Fields of Orders' });
   const option = within(list).getByRole('option', { name: 'id' });
   expect(option).toHaveAttribute('aria-description', 'The order key');
@@ -78,14 +94,13 @@ test('Displaying is the number of columns of the mart visible in the grid', asyn
 describe('the Unique Count row', () => {
   const openUnique = async (visible: string[], unique: { on: boolean; onToggle: () => void } | null) => {
     const onChange = vi.fn();
-    render(<TooltipProvider><ColumnPicker title="Orders" fields={fields} main visible={visible} locked={() => false} onChange={onChange} unique={unique ?? undefined} /></TooltipProvider>);
-    await userEvent.click(screen.getByRole('button', { name: /^Fields of Orders:/ }));
+    render(<TooltipProvider><MartFields mart={orders({ unique: unique ?? undefined })} visible={visible} onChange={onChange} /></TooltipProvider>);
     return onChange;
   };
 
   test('is the first row, left out of Select all and the counts, and absent when the mart offers no metric', async () => {
     await openUnique(['name'], { on: false, onToggle: () => undefined });
-    expect(screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))).toEqual(['Unique Count', 'id', 'name', 'city']);
+    expect(screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))).toEqual(['Unique Count', 'name', 'id', 'city']);
     expect(screen.getByRole('button', { name: 'Select all 3' })).toBeInTheDocument();
     expect(screen.getByText('Displaying 1')).toBeInTheDocument();
     cleanup();

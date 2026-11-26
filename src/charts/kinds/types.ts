@@ -10,7 +10,7 @@ import type { ChartKind, ChartSpec, Spark } from '../settings';
 export type PanelProps<R> = {
   martId: string; cf: ChartFields; spec: ChartSpec; r: R; spark: Spark; filter: TraverseFilter[]; version: number; idle: boolean;
   hasFilters: boolean; formatOf: Formatter; ready: boolean;
-  /** Rows every panel menu ends with (Chart type, Remove), built by ChartsBody. */
+  /** Rows every panel menu ends with (Chart type, Duplicate, Hide), built by ChartsBody. */
   tail: MenuItem[];
   onChange: (patch: Partial<ChartSpec>) => void; onFilter: (add: ColumnFilter[]) => void;
 };
@@ -27,7 +27,7 @@ export type ChartKindDef<R> = {
   create(cf: ChartFields, from?: ChartSpec): Omit<ChartSpec, 'id' | 'hidden'>;
   /** Saved names to shown fields, falling back per field; null when it cannot draw with what is shown. */
   resolve(spec: ChartSpec, cf: ChartFields): R | null;
-  /** The chart's name in the header list. */
+  /** The chart's name in the Charts group of the config menu. */
   title(r: R, cf: ChartFields): string;
   Panel: (p: PanelProps<R>) => ReactNode;
 };

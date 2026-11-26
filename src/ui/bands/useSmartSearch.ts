@@ -295,6 +295,8 @@ export function useSmartSearch(model: Model) {
     model,
     /** The query on screen as a result: set while a search is applied, whichever way it was answered. */
     applied,
+    /** Whether an AI model is ready to build ad-hoc reports. */
+    aiReady,
     open,
     busy: building || searching,
     draft,

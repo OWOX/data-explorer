@@ -772,6 +772,16 @@ describe('buildReportPayload with slices and HAVING', () => {
       { column: 'customers__country_code', operator: 'eq', value: 'PL', placement: 'pre-join' },
     ]);
   });
+  test('a filter and a slice on a field of a joined mart kept with no column still go out, and the mart adds no column', () => {
+    const filters: ColumnFilter[] = [{ field: 'customers__country_code', op: 'eq', value: 'PL' }];
+    const slices: ColumnFilter[] = [{ field: 'customers__country_code', op: 'eq', value: 'DE' }];
+    const { payload } = buildReportPayload(joinedSchema, ['status'], filters, [], undefined, slices);
+    expect(payload.columnConfig).toEqual(['status']);
+    expect(payload.filterConfig).toEqual([
+      { column: 'customers__country_code', operator: 'eq', value: 'PL' },
+      { column: 'customers__country_code', operator: 'eq', value: 'DE', placement: 'pre-join' },
+    ]);
+  });
   test('a HAVING filter without its aggregation among the exported columns is left out', () => {
     const { payload } = buildReportPayload(joinedSchema, ['status'], [{ field: 'amount', op: 'gt', value: '100', fn: 'SUM' }], [], { aggregations: [{ column: 'amount', function: 'SUM' }], dateTrunc: [] });
     expect(payload.filterConfig).toBeNull();

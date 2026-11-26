@@ -5,9 +5,10 @@ import type { Model } from '../../model/types';
 import { useStore, type GridState } from '../../state/store';
 import { groupsLabel, recordsLabel } from '../format';
 import { Tooltip } from '../Tooltip';
-import { ChartsMenuSlot } from '../../charts/menuSlot';
+import { ConfigMenuSlot } from '../../charts/menuSlot';
 import { MartGrid, type NoKey } from '../explorer/MartGrid';
 import { Band } from './Band';
+import type { Matched } from './matched';
 import { useFillHeight } from './useFillHeight';
 import { ViewSwitch, type SwitchOption } from './ViewSwitch';
 
@@ -22,7 +23,7 @@ const HINT_FULL = 'The rows of the selected data mart. Exit full screen to see a
 /** A key hidden for reporting cannot be filtered on, so a row cannot be opened: the hint does not offer it. */
 const HINT_NO_OPEN = 'The rows of the selected data mart.';
 
-export function DataBand({ model, folded, onFold, loading = null, fullScreen }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null; fullScreen?: { on: boolean; onToggle: () => void } }) {
+export function DataBand({ model, folded, onFold, loading = null, fullScreen, onMatched }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null; fullScreen?: { on: boolean; onToggle: () => void }; /** Told how many records of each data mart of the report the filters and slices keep, for the cards; null when the grid goes away. */ onMatched?: (matched: Matched | null) => void }) {
   useFillHeight('band-data');
   const [{ selection, grids }, dispatch] = useStore();
   const { martId } = selection;
@@ -37,6 +38,7 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen }: 
   const gridMart = gridId ? model.marts.get(gridId) : undefined;
   const [rows, setRows] = useState<{ id: string; label: string; grouped: boolean; noKey: NoKey } | null>(null);
   const showRows = useCallback((label: string | null, grouped = false, noKey: NoKey = false) => { if (gridId) setRows(label === null ? null : { id: gridId, label, grouped, noKey }); }, [gridId]);
+  const showMatched = useCallback((byPath: ReadonlyMap<string, number> | null) => { if (gridId) onMatched?.(byPath && { martId: gridId, byPath }); }, [gridId, onMatched]);
   const save = useCallback((grid: GridState, edit = false) => { if (gridId) dispatch({ type: edit ? 'editGrid' : 'saveGrid', martId: gridId, grid }); }, [dispatch, gridId]);
 
   const hold = useCallback(() => { if (gridId) dispatch({ type: 'holdGrid', martId: gridId }); }, [dispatch, gridId]);
@@ -57,15 +59,15 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen }: 
   const note = noKey === 'missing' ? NO_KEY_NOTE : null;
   const hint = noKey === 'hidden' ? HINT_NO_OPEN : fullScreen?.on ? HINT_FULL : HINT;
   return (
-    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={`${hint}${note ? ` ${note}` : ''}`} afterHint={<>{note && <NoKeyWarning note={note} />}{gridMart?.accessible && saved && <ViewSwitch label="Show data as" options={DATA_VIEWS} value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} />}{gridMart?.accessible && saved?.view === 'charts' && <span ref={setSlot} data-chart-list-slot className="inline-flex" />}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
+    <Band id="band-data" icon={<Table2 size={18} />} title="Data" total={mart && rows?.id === mart.id ? (rows.grouped ? groupsLabel : recordsLabel)(rows.label) : undefined} hint={`${hint}${note ? ` ${note}` : ''}`} afterHint={<>{note && <NoKeyWarning note={note} />}{gridMart?.accessible && saved && <><ViewSwitch label="Show data as" options={DATA_VIEWS} value={saved.view === 'charts' ? 'charts' : 'table'} onChange={setView} /><span ref={setSlot} data-chart-list-slot className="inline-flex flex-wrap items-center gap-y-1" /></>}</>} folded={folded} onFold={onFold} grid={false} loading={loading} fullScreen={fullScreen}>
       {!gridMart ? (
         <p className="dm-muted p-2 text-sm">Select a data mart.</p>
       ) : !gridMart.accessible ? (
         <p className="dm-muted p-2 text-sm">You do not have access to this data mart</p>
       ) : (
-        <ChartsMenuSlot.Provider value={slot}>
-          <MartGrid key={gridMart.id} martId={gridMart.id} model={model} seed={{ filters: selection.filters, saved: grids[gridMart.id] }} onChange={save} onHold={hold} onRebase={rebase} onRelease={release} onRows={showRows} paused={held} />
-        </ChartsMenuSlot.Provider>
+        <ConfigMenuSlot.Provider value={slot}>
+          <MartGrid key={gridMart.id} martId={gridMart.id} model={model} seed={{ filters: selection.filters, saved: grids[gridMart.id] }} onChange={save} onHold={hold} onRebase={rebase} onRelease={release} onRows={showRows} onMatched={showMatched} paused={held} />
+        </ConfigMenuSlot.Provider>
       )}
     </Band>
   );

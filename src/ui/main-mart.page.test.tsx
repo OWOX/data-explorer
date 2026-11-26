@@ -1,10 +1,11 @@
 import { useEffect, type Dispatch } from 'react';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import type { Ctx } from '../sdk/types';
 import { createMockCtx } from '../sdk/mock/ctx';
 import { demoFixtures } from '../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore, type Action, type State } from '../state/store';
 import { encodeViewLink } from '../state/view-link';
+import userEvent from '@testing-library/user-event';
 import { App } from './App';
 
 const box: { latest: State; dispatch: Dispatch<Action> } = { latest: undefined as never, dispatch: undefined as never };
@@ -206,5 +207,99 @@ describe('the remembered main data mart', () => {
     await waitFor(() => expect(box.latest.selection.martId).toBe('returns'));
     await quiet();
     expect(puts).toEqual([]);
+  });
+});
+
+describe('the search box on a first visit', () => {
+  const combobox = () => screen.queryByRole('combobox', { name: 'Search data marts' });
+  const button = () => screen.queryByRole('button', { name: 'Search data marts' });
+  const linkView = { sourceKey: null, martId: 'orders', record: null, search: '', contextIds: [], storageIds: null, folded: { sources: true, marts: false, data: false, row: false }, grid: null };
+
+  test('nothing remembered and no view link: the box is open with the focus in it, and Escape does not reopen it', async () => {
+    await setup();
+    await settled();
+    await waitFor(() => expect(combobox()).toHaveFocus());
+    expect(button()).toBeNull();
+    await userEvent.keyboard('{Escape}');
+    expect(combobox()).toBeNull();
+    await quiet();
+    expect(combobox()).toBeNull();
+    expect(button()).not.toBeNull();
+  });
+
+  test('a remembered mart that can be opened: the button, not the box', async () => {
+    await setup({ martId: 'returns', sourceKey: null });
+    await settled();
+    await waitFor(() => expect(box.latest.selection.martId).toBe('returns'));
+    expect(combobox()).toBeNull();
+    expect(button()).not.toBeNull();
+  });
+
+  test('a remembered mart that is gone: the box', async () => {
+    await setup({ martId: 'no-such-mart', sourceKey: null });
+    await settled();
+    await waitFor(() => expect(combobox()).toHaveFocus());
+  });
+
+  test('a remembered mart the member cannot access: the box', async () => {
+    await setup({ martId: 'secret_ledger', sourceKey: null });
+    await settled();
+    await waitFor(() => expect(combobox()).toHaveFocus());
+  });
+
+  test('a preferences read that failed: the box', async () => {
+    await setup({ martId: 'returns', sourceKey: null }, { fail: true });
+    await settled();
+    await waitFor(() => expect(combobox()).toHaveFocus());
+  });
+
+  test('the source toggled off after a remembered first load does not open the box mid-session', async () => {
+    await setup({ martId: 'returns', sourceKey: SHOPIFY });
+    await settled();
+    await waitFor(() => expect(box.latest.selection.martId).toBe('returns'));
+    await act(async () => box.dispatch({ type: 'selectSource', key: SHOPIFY }));
+    await waitFor(() => expect(box.latest.selection.martId).not.toBe('returns'));
+    await quiet();
+    expect(combobox()).toBeNull();
+    expect(button()).not.toBeNull();
+  });
+
+  test('a source-only view link: the button, and it stays so when the source is toggled off', async () => {
+    await setup(undefined, { route: await encodeViewLink({ ...linkView, martId: null, sourceKey: SHOPIFY }) });
+    await settled();
+    await waitFor(() => expect(box.latest.selection.sourceKey).toBe(SHOPIFY));
+    await quiet();
+    expect(combobox()).toBeNull();
+    await act(async () => box.dispatch({ type: 'selectSource', key: SHOPIFY }));
+    await waitFor(() => expect(box.latest.selection.martId).not.toBeNull());
+    await quiet();
+    expect(combobox()).toBeNull();
+    expect(button()).not.toBeNull();
+  });
+
+  test('a mart picked while the preferences load settles the first visit: a source toggled on and off later does not open the box', async () => {
+    await setup({ martId: 'returns', sourceKey: SHOPIFY }, { delayMs: 600 });
+    await waitFor(() => expect(box.latest.selection.martId).toBeNull());
+    await pick('customers');
+    await waitFor(() => expect(box.latest.selection.martId).toBe('customers'));
+    await settled();
+    await quiet();
+    await act(async () => box.dispatch({ type: 'selectSource', key: SHOPIFY }));
+    await waitFor(() => expect(box.latest.selection.sourceKey).toBe(SHOPIFY));
+    expect(combobox()).toBeNull();
+    await act(async () => box.dispatch({ type: 'selectSource', key: SHOPIFY }));
+    await waitFor(() => expect(box.latest.selection.sourceKey).toBeNull());
+    await quiet();
+    expect(combobox()).toBeNull();
+    expect(button()).not.toBeNull();
+  });
+
+  test('a view link: the button', async () => {
+    await setup(undefined, { route: await encodeViewLink({ ...linkView, martId: 'returns' }) });
+    await settled();
+    await waitFor(() => expect(box.latest.selection.martId).toBe('returns'));
+    await quiet();
+    expect(combobox()).toBeNull();
+    expect(button()).not.toBeNull();
   });
 });

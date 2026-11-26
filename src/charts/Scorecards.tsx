@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Calendar, EyeOff, Gauge } from 'lucide-react';
-import { AUTO, formatValue, keepsUnit, type Format } from '../format/formats';
+import { AUTO, formatValue, keepsUnit, type Format, type FormatOptions } from '../format/formats';
 import { isIntegerType } from '../model/field-category';
 import { AGG_LABELS, formatBucket, outputType, type AggFn, type DateBucket } from '../model/aggregation';
 import { fieldLabel } from '../model/fieldLabel';
@@ -13,7 +13,7 @@ import { Tooltip } from '../ui/Tooltip';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { compactValue } from './compact';
 import type { ChartFields, ChartMart, Metric } from './fields';
-import { metricKey, scorecardsQuery, sparklineQuery, uniqueKey, type Measure } from './queries';
+import { metricKey, scoreQuery, sparklineQuery, uniqueKey, type Measure } from './queries';
 import { measureId, type Spark } from './settings';
 import { fieldGroups, measureGroups } from './menuGroups';
 import { Sparkline, type Point } from './svg/Sparkline';
@@ -91,10 +91,11 @@ export type Scores = ChartResult & { previous?: Row | null };
 
 /**
  * One query for every value card of every data mart: a filter change or an added mart is one billed read, not one per mart.
+ * `kept` are the marts the report keeps with no column: their unique count rides on this read, and the match badges of the cards read it.
  * `previous` is the last row a read returned, kept so the cards do not fall back to skeletons while the next read runs. Nothing runs while paused.
  */
-export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean, joins?: JoinGrain): Scores {
-  const result = useChartQuery(martId, paused ? null : scorecardsQuery(cf.marts, filter, cf.counter), version, joins);
+export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean, joins?: JoinGrain, kept?: readonly string[]): Scores {
+  const result = useChartQuery(martId, paused ? null : scoreQuery(cf, filter, kept), version, joins);
   const [previous, setPrevious] = useState<Row | null>(null);
   // Adjusting state while rendering (not in an effect) so the card never paints a frame without the previous value.
   const latest = result.rows?.[0] ?? null;
@@ -181,11 +182,11 @@ function CardValue({ card, row, formatOf, shown, busy = false }: { card: Card; r
 }
 
 /** A metric's value as the grid shows it: the output type's format, with the column's own unit only where the function keeps it. No function (a calculated metric): the field's own type and format. */
-export function metricText(field: Field, fn: AggFn | null, v: unknown, formatOf: Formatter): string {
+export function metricText(field: Field, fn: AggFn | null, v: unknown, formatOf: Formatter, options?: FormatOptions): string {
   const [type, format] = metricFormat(field, fn, formatOf);
   // A float sum carries binary noise (116739.09999999996); 15 significant digits is float64's own precision (from 1e15 a float has real digits beyond that, so it is left). Strings are exact.
   const shown = typeof v === 'number' && Number.isFinite(v) && !Number.isInteger(v) && Math.abs(v) < 1e15 ? Number(v.toPrecision(15)) : v;
-  return formatValue(shown, type, format);
+  return formatValue(shown, type, format, options);
 }
 
 /** The output type of a metric and the format that keeps its unit: the column's own only where the function keeps it. */
@@ -198,7 +199,7 @@ export function metricFormat(field: Field, fn: AggFn | null, formatOf: Formatter
 const recordsText = (v: unknown): string => formatNumber(v) ?? String(v ?? '');
 
 /** A measure's value as text, whichever kind it is. */
-export const measureText = (m: Measure, v: unknown, formatOf: Formatter): string => (m.kind === 'metric' ? metricText(m.metric.field, m.metric.fn, v, formatOf) : recordsText(v));
+export const measureText = (m: Measure, v: unknown, formatOf: Formatter, options?: FormatOptions): string => (m.kind === 'metric' ? metricText(m.metric.field, m.metric.fn, v, formatOf, options) : recordsText(v));
 
 /** A measure's type and format, for an axis or a short value: Records are an integer count. */
 export const measureFormat = (m: Measure, formatOf: Formatter): [type: string, format: Format] => (m.kind === 'metric' ? metricFormat(m.metric.field, m.metric.fn, formatOf) : ['INTEGER', AUTO]);
@@ -223,10 +224,9 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, 
   const date = cardDate(mart, spark, c.id);
   const raw = row?.[c.key];
   const rolled = useRolling(numberOf(raw), c.key, isIntegerMeasure(c.measure));
-  // A date the member picked for this card, other than the charts', keeps the 60-bucket cap by its own range; a chosen bucket is shared.
-  // A joined mart's default date is not a pick: it rides the charts' bucket, so it costs no range read of its own.
-  // A saved pick whose date is no longer on the mart falls back to the mart's default, which is no pick either.
-  const own = autoBucket && !!date && date.name === spark.dates[c.id] && date.name !== spark.date?.name;
+  // Under Auto a card on another date than the charts' keeps the 60-bucket cap by that date's own range (the charts' bucket fits their date: a month for years of customers leaves two points of two months of orders).
+  // Cards on one date share the range read. A chosen bucket is shared, and with the sparklines off there is nothing to range for.
+  const own = autoBucket && spark.sparklines && !!date && date.name !== spark.date?.name;
   const mine = useBucket(martId, own ? date : null, 'AUTO', filter, version, paused);
   const cardBucket = own ? mine.bucket : bucket;
   const trend = useChartQuery(martId, paused ? null : sparkQueryOf(mart, spark, cardBucket, filter, date), version, joins);
@@ -245,9 +245,10 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, 
       <div className={`dm-muted truncate text-xs ${onHide ? 'pr-6' : ''}`} title={c.label}>{c.label}</div>
       {onHide && (
         <div className="absolute right-0.5 top-0.5">
+          {/* A single date is listed too: it says which date the sparkline is drawn on, and shows its column when it is hidden. */}
           <ChartMenu name={c.label} items={[
             ...(martMeasures(menuMart).length > 1 ? [{ kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(c.measure), options: [], groups: choices, onPick: (v: string) => onMetric?.(c.id, v) } as MenuItem] : []),
-            ...(menuMart.dates.length > 1 ? [{ kind: 'radio', label: 'Date field', icon: Calendar, value: date?.name ?? '', options: [], groups: fieldGroups({ marts: [menuMart], dimensions: [], dates: [] }, menuMart.dates), onPick: (v: string) => onDate?.(c.id, v) } as MenuItem] : []),
+            ...(menuMart.dates.length > 0 ? [{ kind: 'radio', label: 'Date field', icon: Calendar, value: date?.name ?? '', options: [], groups: fieldGroups({ marts: [menuMart], dimensions: [], dates: [] }, menuMart.dates), onPick: (v: string) => onDate?.(c.id, v) } as MenuItem] : []),
             { kind: 'action', label: 'Hide', icon: EyeOff, onPick: () => onHide(c.id) },
           ]} />
         </div>

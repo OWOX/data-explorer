@@ -4,7 +4,7 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider } from '../../state/store';
 import { App } from '../App';
-import { openSubmenu } from './menu-test-utils';
+import { closeConfigMenu, openFields, openSubmenu } from './menu-test-utils';
 
 // Every Apply in the column menu, pressed through the real menu: the form must apply and the menu must close.
 function setup() {
@@ -15,10 +15,9 @@ const data = () => document.getElementById('band-data')!;
 const bodyRows = () => within(data()).getAllByRole('row').filter((r) => r.querySelector('td'));
 const ready = () => waitFor(() => expect(bodyRows().some((r) => r.querySelector('td')?.textContent)).toBe(true));
 async function show(label: string) {
-  await userEvent.click(within(data()).getByRole('button', { name: /^Fields of Orders:/ }));
+  await openFields('Orders');
   await userEvent.click(await screen.findByLabelText(label));
-  await userEvent.keyboard('{Escape}');
-  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await closeConfigMenu();
 }
 const closed = () => waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 

@@ -37,7 +37,7 @@ test('joinedSources offers included, readable sources only, with no hidden or ca
 
 test('a source is named by its display prefix, and by the titles of the marts it is reached through too when two joins reach the same mart', () => {
   const sources = joinedSources(dto);
-  expect(sources.map((s) => s.label)).toEqual(['Buyers', 'Countries (Buyers)', 'Countries (Stores)']);
+  expect(sources.map((s) => s.label)).toEqual(['Buyers', 'Buyers > Countries', 'Stores > Countries']);
 });
 
 test('a deeper duplicate is told apart by the titles of the marts above it, never by an alias path', () => {
@@ -53,7 +53,7 @@ test('a deeper duplicate is told apart by the titles of the marts above it, neve
     ],
     blendedFields: ['visitor_entity.session_entity_new_sql.country', 'org.country'].map(fld),
   });
-  expect(sources.map((s) => s.label)).toEqual(['Country (Organization)', 'Country (Contact › Organization)']);
+  expect(sources.map((s) => s.label)).toEqual(['Organization > Country', 'Contact > Organization > Country']);
   expect(sources.some((s) => s.label.includes('_'))).toBe(false);
 });
 
@@ -80,10 +80,10 @@ test('a deeper collision under parents with one title is told apart the same way
     { aliasPath: 'b', title: 'Contact', depth: 1, dataMartId: 'k', isIncluded: true, isAccessibleForReporting: true } as never,
   );
   const sources = joinedSources(dto);
-  expect(sources.map((s) => s.label)).toEqual(['Country (Contact)', 'Country (Contact) 2']);
-  expect(joinedSources(dto, (s) => `Key of ${s.aliasPath}`).map((s) => s.label)).toEqual(['Country (Contact, by Key of a.x)', 'Country (Contact, by Key of b.x)']);
+  expect(sources.map((s) => s.label)).toEqual(['Contact > Country', 'Contact > Country 2']);
+  expect(joinedSources(dto, (s) => `Key of ${s.aliasPath}`).map((s) => s.label)).toEqual(['Contact > Country (by Key of a.x)', 'Contact > Country (by Key of b.x)']);
   expect(pathTitle(sources[0]!, ['a.x'], sources)).toBe('Country');
-  expect(pathTitle(sources[1]!, ['a.x', 'b.x'], sources)).toBe('Country (Contact) 2');
+  expect(pathTitle(sources[1]!, ['a.x', 'b.x'], sources)).toBe('Contact > Country 2');
 });
 
 test('a joined field is a column: the blended name, its own type, its label, and where it came from', () => {
@@ -257,7 +257,7 @@ describe('the key alias of a join', () => {
       { name: 'b__org', aliasPath: 'b', sourceDataMartId: 'k', originalFieldName: 'org_id', type: 'STRING', alias: 'Work org' },
     );
     const got = joinedSources(deep, keyAliasOf('m', deep, { edges: [edge('r0', 'org_id'), edge('r1', 'org_id')], schemaOf: () => undefined }));
-    expect(got.filter((x) => x.depth === 2).map((x) => x.label)).toEqual(['Country (Contact, by Home org)', 'Country (Contact, by Work org)']);
+    expect(got.filter((x) => x.depth === 2).map((x) => x.label)).toEqual(['Contact > Country (by Home org)', 'Contact > Country (by Work org)']);
   });
 
   test('relabelling by key never reorders the sources: they are ordered by the mart\'s own title', () => {

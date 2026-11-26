@@ -5,8 +5,8 @@ import { ChartPanel } from './ChartPanel';
 
 
 test('every ⋮ button carries the dots class, so it is Sheets grey and can be revealed by its chart', () => {
-  render(<ChartMenu name="Charts" items={[]} />);
-  expect(screen.getByRole('button', { name: 'Charts options' })).toHaveClass('dm-menu-dots');
+  render(<ChartMenu name="Pie" items={[]} />);
+  expect(screen.getByRole('button', { name: 'Pie options' })).toHaveClass('dm-menu-dots');
 });
 
 test('the panel keeps its content in a body that follows its height', () => {

@@ -1,13 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
+import { closeConfig, configButton, groupTitles, openConfig, openFields } from './config-menu';
 
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
 const data = (page: Page) => page.locator('#band-data');
 
 test('Charts mode shows scorecards, a stacked time series and a pie, and Table brings the grid back', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
-  await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
+  await openFields(page, 'Orders');
   await page.getByRole('option', { name: /created_at/i }).click();
-  await page.keyboard.press('Escape');
+  await closeConfig(page);
   const widths = () => data(page).locator('th[data-group]').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
   const tableWidths = await widths();
   await data(page).getByRole('radio', { name: 'Charts' }).click();
@@ -42,11 +43,11 @@ test('Charts mode shows scorecards, a stacked time series and a pie, and Table b
 
 test('a one-column group shows its scorecard value in full', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
-  // The picker may close after each change: open it again for every column that goes.
+  // Close the config menu after each change and open it again for every column that goes.
   for (const name of ['status', 'Customer', 'Product', 'Store']) {
-    await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
+    await openFields(page, 'Orders');
     await page.getByLabel(name, { exact: true }).click();
-    await page.keyboard.press('Escape');
+    await closeConfig(page);
   }
   await expect(data(page).getByRole('columnheader', { name: /^Sort by/ })).toHaveCount(1); // only id is left
   await data(page).getByRole('radio', { name: 'Charts' }).click();
@@ -63,9 +64,9 @@ test('the time series and the pie sit side by side when the band is wide, and Ch
   const tableHeight = (await frame.boundingBox())!.height;
   // Amount is a default column now: only created_at is ticked.
   for (const name of [/created_at/i]) {
-    await data(page).getByRole('button', { name: /^Fields of Orders:/ }).click();
+    await openFields(page, 'Orders');
     await page.getByRole('option', { name }).click();
-    await page.keyboard.press('Escape');
+    await closeConfig(page);
   }
   await data(page).getByRole('radio', { name: 'Charts' }).click();
   const panels = data(page).locator('section.dm-chart');
@@ -75,8 +76,8 @@ test('the time series and the pie sit side by side when the band is wide, and Ch
   // One row of two at 1440px: same top, the pie to the right of the time series, a clear gap between them.
   expect(Math.abs(a.y - b.y)).toBeLessThanOrEqual(1);
   expect(b.x - (a.x + a.width)).toBeGreaterThanOrEqual(16);
-  // The pie takes only the width it needs: at most 26rem (416px).
-  expect(b.width).toBeLessThanOrEqual(417);
+  // The pie takes only the width it needs: at most 26rem (416px), rounded up to whole 24px cells.
+  expect(b.width).toBeLessThanOrEqual(433);
   // The panels' left edge is the scorecards' left edge, and the panels end inside the band.
   const card = (await data(page).locator('[data-card]').first().boundingBox())!;
   expect(Math.abs(a.x - card.x)).toBeLessThanOrEqual(1);
@@ -95,11 +96,11 @@ test('the time series and the pie sit side by side when the band is wide, and Ch
   await expect.poll(async () => { const [c, d] = [(await panels.nth(0).boundingBox())!, (await panels.nth(1).boundingBox())!]; return d.y >= c.y + c.height - 1; }).toBe(true);
 });
 
-test('a chart’s ⋮ shows on hover, in Sheets grey, and stays while its menu is open; the header ⋮ is always there', async ({ page }) => {
+test('a chart’s ⋮ shows on hover, in Sheets grey, and stays while its menu is open; the config button is always there', async ({ page }) => {
   await data(page).getByRole('radio', { name: 'Charts' }).click();
   const panel = data(page).locator('section[data-chart-kind="Pie"]');
   const dots = panel.getByRole('button', { name: 'Pie options' });
-  const header = data(page).getByRole('button', { name: 'Charts options' });
+  const header = configButton(page);
   await expect(panel).toBeVisible();
   await page.mouse.move(0, 0);
   await expect(dots).toHaveCSS('opacity', '0');
@@ -129,7 +130,7 @@ test.describe('grouped submenus', () => {
   test('a Dimension submenu lists its fields under each data mart, and the arrow keys skip the mart headers', async ({ page }) => {
     await expect(data(page).getByRole('row')).toHaveCount(202);
     await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
-    await expect(data(page).getByRole('button', { name: /^Fields of Customers:/ })).toBeVisible();
+    await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
     await data(page).getByRole('radio', { name: 'Charts' }).click();
     const pie = data(page).locator('section[data-chart-kind="Pie"]');
     await pie.hover();
@@ -202,10 +203,11 @@ test('the selected Chart type is marked with the green check, on the left of its
   await page.screenshot({ path: 'tmp/chart-type-check.png', clip: { x, y, width: Math.max(...panels.map((b) => b.x + b.width)) - x, height: Math.max(...panels.map((b) => b.y + b.height)) - y } });
 });
 
-test('a root menu with a check row aligns every row label with the check rows', async ({ page }) => {
+test('the Charts list of the config menu aligns every row label with the check rows', async ({ page }) => {
   await data(page).getByRole('radio', { name: 'Charts' }).click();
-  await data(page).getByRole('button', { name: 'Charts options' }).click();
-  const menu = page.getByRole('menu', { name: 'Charts menu' });
+  const root = await openConfig(page);
+  await root.getByRole('menuitem', { name: 'Charts', exact: true }).click();
+  const menu = page.getByRole('menu', { name: 'Charts' });
   const check = menu.getByRole('menuitemcheckbox').first();
   await expect(check.locator('.dm-menu-check svg')).toHaveCSS('color', 'rgb(24, 128, 56)');
   const labels = await menu.locator('.dm-menu-row .dm-menu-label').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().x)));

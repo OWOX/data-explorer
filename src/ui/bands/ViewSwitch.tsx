@@ -30,7 +30,7 @@ export function ViewSwitch<T extends string>({ label, options, value, onChange }
 /** Makes the selected card the main data mart. Sits beside the Grid / Graph switch; the caller shows it only when the selected card can be made main. */
 export function MakeMainButton({ title, onClick }: { title: string; onClick: () => void }) {
   return (
-    <button type="button" className="dm-make-main" aria-label={`Make it main: ${title}`} onClick={onClick}>
+    <button type="button" className="dm-band-btn" aria-label={`Make it main: ${title}`} onClick={onClick}>
       <House size={14} aria-hidden />Make it main
     </button>
   );

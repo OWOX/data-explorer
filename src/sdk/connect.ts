@@ -9,8 +9,11 @@ export async function bootContext(): Promise<Ctx | 'outside-host'> {
     const sheets = params.get('sheets');
     // ?latency=3000 slows every read, as a real API does (default 250 ms).
     const latency = Number(params.get('latency') ?? 250);
+    const demo = demoFixtures({ sheets: sheets === '0' || sheets === '1' ? Number(sheets) as 0 | 1 : 2 });
+    // ?urls makes every order's status a URL, and records the URLs the plugin opens in `window.__opened` (the e2e specs about links use it).
+    const { withUrls, recordOpened } = params.has('urls') ? await import('./mock/urls') : { withUrls: (f: typeof demo) => f, recordOpened: <T,>(c: T) => c };
     // ?ai=0 is a project with no AI configured. ?keyshown opens the orders grid with its key column (the e2e specs about that column use it).
-    return createMockCtx(demoFixtures({ sheets: sheets === '0' || sheets === '1' ? Number(sheets) as 0 | 1 : 2 }), { latencyMs: Number.isFinite(latency) ? Math.max(0, latency) : 250, ai: params.get('ai') !== '0', keyShown: params.has('keyshown') });
+    return recordOpened(createMockCtx(withUrls(demo), { latencyMs: Number.isFinite(latency) ? Math.max(0, latency) : 250, ai: params.get('ai') !== '0', keyShown: params.has('keyshown') }));
   }
   try {
     return (await connect()) as unknown as Ctx;
