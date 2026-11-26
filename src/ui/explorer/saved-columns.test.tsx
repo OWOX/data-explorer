@@ -8,7 +8,7 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useServices, useStore, type State } from '../../state/store';
 import { App } from '../App';
-import { SAVED_COLUMNS_WAIT_MS, VIEW_HOLD_MAX_MS } from './MartGrid';
+import { SAVED_COLUMNS_WAIT_MS, VIEW_HOLD_MAX_MS } from './SeededGrid';
 import { openColumnMenu, closeConfigMenu, openFields } from './menu-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;

@@ -8,7 +8,7 @@ import { demoFixtures, type Fixtures } from '../sdk/mock/fixtures';
 import type { Ctx, Row, TraverseOptions } from '../sdk/types';
 import { AppServices, StoreProvider } from '../state/store';
 import { App } from '../ui/App';
-import { SAVED_COLUMNS_WAIT_MS } from '../ui/explorer/MartGrid';
+import { SAVED_COLUMNS_WAIT_MS } from '../ui/explorer/SeededGrid';
 import { openColumnMenu, openConfigMenu, closeConfigMenu, openFields, openSubmenu } from '../ui/explorer/menu-test-utils';
 import type { ChartSettings } from './settings';
 
