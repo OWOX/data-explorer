@@ -1,7 +1,6 @@
-import { columnVisibilityFeature, tableFeatures, useTable, type ColumnDef } from '@tanstack/react-table';
 import { Box, Info, RefreshCw, RotateCcw } from 'lucide-react';
 import { askFocusFor, dropFocusFor, isFocusAskedFor, takeFocusFor } from './pending-focus';
-import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AUTO, keepsUnit, type Format } from '../../format/formats';
 import { useColumnFormats } from '../../format/useColumnFormats';
 import { PAGE_SIZE } from '../../config';
@@ -198,14 +197,6 @@ function SeededGrid(props: GridProps & { schema: Schema; paused: boolean; onRefr
   return <Grid {...props} holdView={holdView} lateView={lateView} seed={seed.saved || !initial.saved ? seed : { ...seed, saved: initial.saved }} initialColumns={initial.columns} initialSources={initial.sources} initialAgg={initial.agg} />;
 }
 
-// TanStack Table v9 builds the header groups and the row model; the headers and cells are drawn by the components above.
-const features = tableFeatures({ columnVisibilityFeature });
-type GridColumn = ColumnDef<typeof features, Row>;
-
-// The sorts reach the header cells through context, so a sort change re-renders the titles without touching their props.
-// `sortable` is off in Charts mode: the titles are plain text there.
-const GridEnv = createContext<{ sorts: SortKey[]; toggleSort: (field: string) => void; sortable: boolean }>({ sorts: [], toggleSort: () => undefined, sortable: true });
-
 /** How wide a column may grow before its text is clipped: free text is allowed the most room. */
 const maxWidthOf = (field: Pick<Schema[number], 'category'>) => (field.category === 'string' || field.category === 'other' ? 'max-w-[24rem]' : field.category === 'number' || field.category === 'boolean' ? 'max-w-[12rem]' : 'max-w-[16rem]');
 
@@ -227,7 +218,7 @@ const outputLabel = (field: Schema[number], o: Output) => (o.fn ? `${columnTitle
 /** The column title as a button: none, ascending, descending, none. The arrow (and its precedence number) stays on screen while a sort is applied.
  * An extra function of an aggregated column has no sort (the backend sorts an aggregated column by its first function). */
 function SortTitle({ field, output }: { field: Schema[number]; output: Output }) {
-  const { sorts, toggleSort, sortable } = useContext(GridEnv);
+  const { sorts, toggleSort, sortable } = useContext(ColumnMenuEnvContext);
   const at = sorts.findIndex((s) => s.field === field.name);
   const current = at < 0 ? null : sorts[at]!.direction;
   const label = outputLabel(field, output);
@@ -623,8 +614,6 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     const type = outputType(field, o.fn);
     return { output: o, field, lead: outputs.find((x) => x.column === o.column) === o, type, format: keepsUnit(o.fn) ? formatOf(o.column, type) : AUTO, maxWidth: maxWidthOf(field), numeric: !o.bucket && isNumericType(type) };
   }), [outputs, fieldOf, formatOf]);
-  const columnByKey = useMemo(() => new Map(columnViews.map((c) => [c.output.key, c])), [columnViews]);
-  const columns = useMemo<GridColumn[]>(() => outputs.map((o) => ({ id: o.key })), [outputs]);
 
   // While the member has no sort of their own, a click replaces the default with that column ascending (the
   // default's own column included), so a default never rides along as a second sort; after that the normal cycle.
@@ -635,7 +624,6 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const setSort = useCallback((field: string, direction: SortDirection | null) => edit(() => setOwn(nextSorts(field, direction))), [edit, setOwn]);
   // The implicit first-key sort is sent and exported but not shown: no arrow, no aria-sort, so the first click is not a no-op.
   const shownSorts = useMemo(() => (grouped ? (own ?? []) : gridSorts), [grouped, own, gridSorts]);
-  const env = useMemo(() => ({ sorts: shownSorts, toggleSort, sortable: !charts }), [shownSorts, toggleSort, charts]);
   // A mart's Unique Count on or off: one Undo step. Off, its sort goes with it, so no ordering is left that the reader cannot see.
   const setUnique = useCallback((path: string, on: boolean) => edit(() => {
     // From the member's own list, so a joined path parked until its marts are read stays.
@@ -692,7 +680,6 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     columnStore.save(martId, cols);
     setSelected(null);
   }, [shown, markEdit, columnStore, martId]);
-  const table = useTable({ features, data: rows ?? [], columns });
   const rowsAmount = rows ? rowsLabel(rows.length, hasMore, total) : null;
   // The Data band's title row shows the no-primary-key warning, so it is told whether this grid is a plain preview.
   // `hidden`: the mart has a key but it is hidden for reporting, so no row can be opened by it. Only `missing` is warned about.
@@ -800,7 +787,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       return byName.get(name)?.joined ? [...shown, name] : [...ownInSchemaOrder(shown, native.map((f) => f.name), new Set([...shown.filter((c) => ownNames.has(c)), name])), ...shown.filter((c) => !ownNames.has(c))];
     };
     return {
-      sorts: shownSorts, filters, slices,
+      sorts: shownSorts, toggleSort, filters, slices,
       // Filter and Slice keep the columns as they are: a hidden field stays hidden and its rule still reaches the query.
       setSlice, setFilter,
       // Aggregate, Sort and Format on a field that is not a column first show it, in the same edit, so Undo takes both back.
@@ -835,7 +822,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       valuesFor,
       removeUnique,
     };
-  }, [removeUnique, valuesFor, shownSorts, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, several, ownOn, ownNames, changeColumns, sources, reorder, charts, byName, native, outputs, edit, setOwn, ucNow]);
+  }, [removeUnique, valuesFor, shownSorts, toggleSort, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, several, ownOn, ownNames, changeColumns, sources, reorder, charts, byName, native, outputs, edit, setOwn, ucNow]);
   // The selection, as Google Sheets has it: a cell (a frame and a fill handle), a block of cells (shift-click or Shift+Arrow: `to` is
   // the far end, the cell stays active), or whole columns or rows (a tint and a frame around the block); its column letters and row
   // numbers are lit. `from` is where a shift-click on a header extends from.
@@ -994,7 +981,6 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const clickable = pks.length > 0 && !grouped;
 
   return (
-    <GridEnv.Provider value={env}>
     <ColumnMenuEnvContext.Provider value={menuEnv}>
     {/* The table's last measured height is a ref on purpose: a re-render on every resize would reach an open column menu and drop its Apply. */}
     {/* eslint-disable-next-line react-hooks/refs */}
@@ -1039,16 +1025,13 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
                 {/* Carries the line under the tabs to the card's edge. */}
                 <th aria-hidden className="dm-gh-fill w-full p-0" />
               </tr>
-            {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id}>
-                {hg.headers.map((h) => {
-                  const c = columnByKey.get(h.column.id)!;
-                  return <th key={h.id} {...(c.output.unique === undefined ? { 'data-column': c.output.column } : {})} aria-sort={!charts && c.output.sortable ? sortOf(shownSorts, c.output.column) : 'none'} className={`dm-th ${c.maxWidth} overflow-hidden text-left font-medium`}><HeaderCell field={c.field} output={c.output} lead={c.lead} /></th>;
-                })}
-                {/* Takes the width the columns leave over, so the line under the header runs the whole card. */}
-                <th aria-hidden className="dm-th dm-th-fill w-full p-0" />
-              </tr>
-            ))}
+            <tr>
+              {columnViews.map((c) => (
+                <th key={c.output.key} {...(c.output.unique === undefined ? { 'data-column': c.output.column } : {})} aria-sort={!charts && c.output.sortable ? sortOf(shownSorts, c.output.column) : 'none'} className={`dm-th ${c.maxWidth} overflow-hidden text-left font-medium`}><HeaderCell field={c.field} output={c.output} lead={c.lead} /></th>
+              ))}
+              {/* Takes the width the columns leave over, so the line under the header runs the whole card. */}
+              <th aria-hidden className="dm-th dm-th-fill w-full p-0" />
+            </tr>
           </thead>
           {/* ChartsBody renders its own <tbody>: nesting one in another makes the parser pull the headers out of the table. */}
           {charts && !blocked ? <ChartsBody pruneRef={pruneCards} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} onShowColumns={showColumns} />
@@ -1057,7 +1040,7 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => setVersion((v) => v + 1)} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>
               : !rows ? <tr><Gutter /><td colSpan={outputs.length + 1}><Skeleton rows={8} /></td></tr>
               : rows.length === 0 ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground">{emptyText(hasFilters)}</td></tr>
-              : table.getRowModel().rows.map((r, ri) => <GridRow key={r.id} row={r.original} ri={ri} columns={columnViews} marks={marksOf(ri)} acts={rowActs} clickable={clickable} />)}
+              : (rows ?? []).map((row, ri) => <GridRow key={ri} row={row} ri={ri} columns={columnViews} marks={marksOf(ri)} acts={rowActs} clickable={clickable} />)}
           </tbody>}
         </table>
         <ColumnDragLayer scroller={scroller} head={head} groupOf={owner} onMove={(name, before) => reorder(moveColumn(shown, name, before, sources))} />
@@ -1065,6 +1048,5 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
       </div>
     </div>
     </ColumnMenuEnvContext.Provider>
-    </GridEnv.Provider>
   );
 }

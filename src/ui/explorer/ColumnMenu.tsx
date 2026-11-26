@@ -22,6 +22,7 @@ type SubKey = 'filter' | 'slice' | 'aggregate' | 'format' | 'sort';
 /** Everything a column's menu reads and changes. The grid provides it through context so a header cell is never rebuilt (and its open menu never lost) when a setting changes. */
 export type ColumnMenuEnv = {
   sorts: SortKey[];
+  toggleSort: (field: string) => void;
   /** `null` takes the column's sort away. A sort added here goes last in the order of precedence, as a title click's first step does. */
   setSort: (field: string, direction: SortDirection | null) => void;
   filters: Record<string, ColumnFilter>;
@@ -49,17 +50,17 @@ export type ColumnMenuEnv = {
   /** The warehouse type the column shows, after any aggregation function. */
   typeOf: (field: Field, output: Output) => string;
   /** Takes a data mart's Unique Count column off the grid (by the mart's alias path). */
-  removeUnique?: (path: string) => void;
-  /** False in Charts mode: no sort row and no sort mark. Absent means true. */
-  sortable?: boolean;
+  removeUnique: (path: string) => void;
+  /** False in Charts mode: no sort row and no sort mark. */
+  sortable: boolean;
   /** The read behind a text input's suggested values (a Filter or a Slice on this column), or null when none can be made. */
-  valuesFor?: (field: Field, scope: 'filter' | 'slice') => { key: string; load?: (signal: AbortSignal) => Promise<string[]>; loaded?: string[] } | null;
+  valuesFor: (field: Field, scope: 'filter' | 'slice') => { key: string; load?: (signal: AbortSignal) => Promise<string[]>; loaded?: string[] } | null;
 };
 
 const NOOP = () => undefined;
 export const ColumnMenuEnvContext = createContext<ColumnMenuEnv>({
-  sorts: [], setSort: NOOP, filters: {}, setFilter: NOOP, slices: {}, setSlice: NOOP, isAggregated: () => false, draftOf: () => ({ functions: [], bucket: null, timeZone: null }), blockerFor: () => undefined,
-  changeAgg: NOOP, formatOf: () => ({ kind: 'auto' }), memberFormat: () => undefined, setFormat: NOOP, isShown: () => true, outputOf: (name) => ({ key: name, column: name, sortable: true }), canHide: () => true, hide: NOOP, canMove: () => false, move: NOOP, typeOf: (f) => f.type,
+  sorts: [], toggleSort: NOOP, setSort: NOOP, filters: {}, setFilter: NOOP, slices: {}, setSlice: NOOP, isAggregated: () => false, draftOf: () => ({ functions: [], bucket: null, timeZone: null }), blockerFor: () => undefined,
+  changeAgg: NOOP, formatOf: () => ({ kind: 'auto' }), memberFormat: () => undefined, setFormat: NOOP, isShown: () => true, outputOf: (name) => ({ key: name, column: name, sortable: true }), canHide: () => true, hide: NOOP, canMove: () => false, move: NOOP, typeOf: (f) => f.type, removeUnique: NOOP, sortable: true, valuesFor: () => null,
 });
 
 const FORMAT_LABELS: Record<Format['kind'], string> = { auto: 'Automatic', plain: 'Plain number', percent: 'Percent', money: 'Money', date: 'Date', datetime: 'Date time', time: 'Time' };
@@ -88,7 +89,7 @@ function formatActive(env: ColumnMenuEnv, field: Field, output: Output, type: st
 
 /** Whether the member set something on the field (a filter, a slice, a function or bucket, a sort, a format), shown or not: it lights the menu icon. */
 function fieldActive(env: ColumnMenuEnv, field: Field, output: Output): boolean {
-  const canSort = output.sortable && env.sortable !== false;
+  const canSort = output.sortable && env.sortable;
   return !!env.filters[field.name] || (!!env.slices[field.name] && !!field.joined) || aggOn(env.draftOf(field.name)) || (canSort && env.sorts.some((s) => s.field === field.name)) || formatActive(env, field, output, env.typeOf(field, output));
 }
 
@@ -102,7 +103,7 @@ function EditorPanel({ row, seq, label, onEscape, children }: { row: HTMLElement
 }
 
 /** The read behind a text input's suggested values, with the shared cache. */
-const valuesIn = (env: ColumnMenuEnv, f: Field, scope: 'filter' | 'slice') => { const v = env.valuesFor?.(f, scope); return v ? { ...v, cache: valueCache } : undefined; };
+const valuesIn = (env: ColumnMenuEnv, f: Field, scope: 'filter' | 'slice') => { const v = env.valuesFor(f, scope); return v ? { ...v, cache: valueCache } : undefined; };
 
 /**
  * The edit form of one field's Filter or Slice rule, beside `row`: the column menu's Filter / Slice submenu and the data mart badges' lists share it.
@@ -220,7 +221,7 @@ function MenuPopup({ field, output, anchor, initial, onClose, onHide }: { field:
   };
   const choose = (f: Format) => { env.setFormat(field.name, f); onClose(); };
   const dir = env.sorts.find((s) => s.field === field.name)?.direction ?? null;
-  const canSort = output.sortable && env.sortable !== false;
+  const canSort = output.sortable && env.sortable;
   const on: Record<SubKey, boolean> = { filter: !!env.filters[field.name], slice: !!env.slices[field.name], aggregate: aggOn(env.draftOf(field.name)), format: formatActive(env, field, output, type), sort: canSort && !!dir };
   const glyph: Record<SubKey, ReactNode> = { filter: <Funnel />, slice: <Layers />, aggregate: <Sigma />, format: <Hash />, sort: <ArrowUpDown /> };
   // A data mart's Unique Count is read-only: it takes no filter, no function and no format, and it is not a field that can move or hide.
@@ -237,7 +238,7 @@ function MenuPopup({ field, output, anchor, initial, onClose, onHide }: { field:
         {!metric && formats.length > 0 && rowFor('format', 'Format', 'menu')}
         {canSort && rowFor('sort', 'Sort', 'menu')}
         {canSort && metric && <Divider />}
-        {metric ? <Row label="Remove Unique Count" icon={<EyeOff />} onActivate={() => { env.removeUnique?.(output.unique!); onClose(false); }} onHover={hoverOther} onLeaveRow={leaveRow} /> : (<>
+        {metric ? <Row label="Remove Unique Count" icon={<EyeOff />} onActivate={() => { env.removeUnique(output.unique!); onClose(false); }} onHover={hoverOther} onLeaveRow={leaveRow} /> : (<>
         <Divider />
         {shown && <Row label="Move left" icon={<ArrowLeft />} disabled={!env.canMove(field.name, -1)} onActivate={() => moveBy(-1)} onHover={hoverOther} onLeaveRow={leaveRow} />}
         {shown && <Row label="Move right" icon={<ArrowRight />} disabled={!env.canMove(field.name, 1)} onActivate={() => moveBy(1)} onHover={hoverOther} onLeaveRow={leaveRow} />}
@@ -326,7 +327,7 @@ export function ColumnControls({ field, output }: { field: Field; output: Output
   const aggregated = aggOn(draft);
   const at = env.sorts.findIndex((s) => s.field === field.name);
   const direction = at < 0 ? null : env.sorts[at]!.direction;
-  const canSort = output.sortable && env.sortable !== false;
+  const canSort = output.sortable && env.sortable;
   const active = fieldActive(env, field, output);
   const close = useCallback((refocus = true) => { setMenu(null); if (refocus) icon.current?.focus(); }, []);
   const toggle = (anchor: HTMLElement, sub: SubKey | null) => setMenu((cur) => (cur && cur.sub === sub ? null : { anchor, sub }));
