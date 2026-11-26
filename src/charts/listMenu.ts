@@ -3,7 +3,7 @@ import type { MenuItem } from './ChartMenu';
 import { measuresOf, type ChartFields, type ChartMart } from './fields';
 import { eligibleKinds, KINDS } from './kinds';
 import { cardsOf, sparkDate } from './Scorecards';
-import { editCharts, measureId, newChartId, patchChart, resetSize, type ChartKind, type ChartSettings, type ChartSpec, type Spark } from './settings';
+import { editCharts, measureId, newChartId, patchChart, pickField, resetSize, type ChartKind, type ChartSettings, type ChartSpec, type Spark } from './settings';
 
 type Change = (edit: (cur: ChartSettings) => ChartSettings) => void;
 
@@ -37,6 +37,25 @@ export function dropPicksOf(cur: ChartSettings, hidden: ReadonlySet<string>): Ch
   return { ...cur, scorecards: { ...cur.scorecards, ...(cur.scorecards?.metrics ? { metrics: m } : {}), ...(cur.scorecards?.dates ? { dates: d } : {}) } };
 }
 
+/** The kinds drawn by one category dimension (`spec.dimension`). */
+const BY_DIMENSION: ReadonlySet<ChartKind> = new Set(['pie', 'bar', 'rankedBar', 'spread', 'scatter', 'heatmap']);
+
+/**
+ * A new chart of a dimension kind starts on the dimension the fewest charts already show (the first of those in column order), so adding a
+ * chart does not repeat one already on the page (hidden charts do not count). A dimension a chart saves but the columns no longer show counts as the one it falls back to.
+ */
+export function withFreshDimension<S extends Omit<ChartSpec, 'id' | 'hidden'>>(spec: S, list: readonly ChartSpec[], cf: ChartFields): S {
+  if (!BY_DIMENSION.has(spec.kind) || spec.dimension !== undefined || cf.dimensions.length === 0) return spec;
+  const uses = new Map<string, number>();
+  for (const c of list) {
+    if (c.hidden || !BY_DIMENSION.has(c.kind)) continue;
+    const name = pickField(cf.dimensions, c.dimension)!.name;
+    uses.set(name, (uses.get(name) ?? 0) + 1);
+  }
+  const fresh = cf.dimensions.reduce((best, d) => ((uses.get(d.name) ?? 0) < (uses.get(best.name) ?? 0) ? d : best));
+  return { ...spec, dimension: fresh.name };
+}
+
 /** The config menu's Add chart row: a radio of the chart kinds the shown columns allow. */
 export function addChartItem({ cf, change }: { cf: ChartFields; change: Change }): MenuItem {
   // The row is always there, so the rows around it keep their places: with no kind to add, its submenu says what is missing.
@@ -44,7 +63,7 @@ export function addChartItem({ cf, change }: { cf: ChartFields; change: Change }
   return {
     kind: 'radio', label: 'Add chart', icon: Plus, value: '',
     options: eligibleKinds(cf).map((k) => ({ value: k.kind, label: k.label, icon: k.icon })),
-    onPick: (v) => change((cur) => editCharts(cur, (list) => [...list, { id: newChartId(), ...KINDS[v as ChartKind]!.create(cf) }])),
+    onPick: (v) => change((cur) => editCharts(cur, (list) => [...list, { id: newChartId(), ...withFreshDimension(KINDS[v as ChartKind]!.create(cf), list, cf) }])),
   };
 }
 

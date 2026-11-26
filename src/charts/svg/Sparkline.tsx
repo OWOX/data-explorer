@@ -1,6 +1,6 @@
 import { useWidth } from '../useWidth';
 
-export type Point = { x: string; y: number | null; label: string; valueText: string };
+export type Point = { x: string; y: number | null; label: string; valueText: string; /** This bucket's own colour over its series' colour: a one-series categorical bar coloured like a pie's slice. */ color?: string };
 
 const H = 28;
 const PAD = 3;

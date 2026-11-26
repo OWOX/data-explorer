@@ -85,8 +85,8 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
     return undefined;
   };
 
-  /** A series' colour in bucket `i`: the blank colour for the blank bucket of an unstacked chart (a stack keeps its series colours, they tell the segments apart). */
-  const colorAt = (s: Series, i: number) => (!isStacked && xs[i]?.x === BLANK_KEY ? BLANK_COLOR : s.color);
+  /** A series' colour in bucket `i`: the blank colour for the blank bucket of an unstacked chart (a stack keeps its series colours, they tell the segments apart), else the point's own colour, else the series'. */
+  const colorAt = (s: Series, i: number) => (!isStacked && xs[i]?.x === BLANK_KEY ? BLANK_COLOR : s.points[i]?.color ?? s.color);
   const marks = xs.flatMap((_, i) => {
     let offset = 0;
     const live = liveAt(i);

@@ -5,7 +5,9 @@ import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
 import { axisTitle, fieldGroups, measureAxisTitle, measureGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
-import { labelOf } from '../blank';
+import { BLANK_COLOR, BLANK_KEY, labelOf } from '../blank';
+import { labelColors } from '../labelColor';
+import { OTHER_COLOR } from '../useDateSeries';
 import { dimensionFilter } from '../clickFilters';
 import { measuresOf, menuOf } from '../fields';
 import type { Measure } from '../queries';
@@ -24,11 +26,15 @@ function categoryPanel(orientation: 'vertical' | 'horizontal', name: string) {
   return function CategoryBarPanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<CategoryBarR>) {
     const { measure, dimension: dim } = r;
     const top = useTopValues({ martId, cf, dim, measure, filter, version, idle });
-    const point = (x: string, label: string, v: unknown) => ({ x, label, y: numberOf(v), valueText: measureText(measure, v, formatOf) });
-    const series = (): Series[] => [{ name: measureLabel(cf, measure), color: seriesColor(0), points: [
-      ...top.categories!.map((c) => point(c.key, labelOf(c.key), c.value)),
-      ...(top.other != null ? [point(OTHER_X, 'Other', top.other)] : []),
-    ] }];
+    const point = (x: string, label: string, v: unknown, color: string) => ({ x, label, y: numberOf(v), valueText: measureText(measure, v, formatOf), color });
+    const series = (): Series[] => {
+      // Each bar keeps the colour its label hashes to, the same as the same value's pie slice, stack segment or Sankey node.
+      const colors = labelColors(top.categories!.filter((c) => c.key !== BLANK_KEY).map((c) => c.key));
+      return [{ name: measureLabel(cf, measure), color: seriesColor(0), points: [
+        ...top.categories!.map((c) => point(c.key, labelOf(c.key), c.value, c.key === BLANK_KEY ? BLANK_COLOR : colors.get(c.key)!)),
+        ...(top.other != null ? [point(OTHER_X, 'Other', top.other, OTHER_COLOR)] : []),
+      ] }];
+    };
     const [tickType, tickFormat] = measureFormat(measure, formatOf);
     const items: MenuItem[] = [
       { kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(menuOf(cf), measuresOf(menuOf(cf))), onPick: (v) => onChange({ measure: v }) },
