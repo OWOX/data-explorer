@@ -1258,8 +1258,7 @@ describe('the Data band loading bar', () => {
     await waitFor(() => expect(bar()).toBeNull(), { timeout: 5000 });
     expect(root()).not.toHaveClass('dm-stale');
     expect(root()).not.toHaveAttribute('aria-busy');
-    // The label rides the grid's onRows effect, so it follows in the next commit.
-    await waitFor(() => expect(label()).not.toHaveClass('dm-stale'));
+    expect(label()).not.toHaveClass('dm-stale');
     expect(label()).not.toHaveAttribute('aria-busy');
   }, 30000);
 

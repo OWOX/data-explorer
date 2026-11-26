@@ -513,7 +513,9 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   // The Data band's title row shows the no-primary-key warning, so it is told whether this grid is a plain preview.
   // `hidden`: the mart has a key but it is hidden for reporting, so no row can be opened by it. Only `missing` is warned about.
   const noKey: NoKey = grouped || pks.length > 0 ? false : hasPrimaryKey(native) ? 'hidden' : 'missing';
-  useEffect(() => { onRows?.(rowsAmount, grouped, noKey, loading); }, [rowsAmount, grouped, noKey, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A layout effect, so the label dims and undims in the frame the grid does. Dimmed only while a read runs, not while the band is held.
+  const rowsRunning = loading && run.state === 'running';
+  useLayoutEffect(() => { onRows?.(rowsAmount, grouped, noKey, rowsRunning); }, [rowsAmount, grouped, noKey, rowsRunning]); // eslint-disable-line react-hooks/exhaustive-deps
   const cardClick = useContext(CardClickContext);
   // One cell per data mart over its columns, main first; only when a joined mart is on screen.
   const groups = useMemo(() => {
@@ -762,15 +764,15 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     return matchedFrom(score.rows[0], [...scoreFields.marts.filter((m) => m.hasPk).map((m) => m.aliasPath), ...keptUnique]);
   }, [applies, havingSet, paused, blocked, counts, ownTotal, counted.total, score.rows, score.error, scoreFields, keptUnique]);
   // While the count for the new filters is under way the badges keep the last one, dimmed, instead of vanishing and coming back. No read is added: this only remembers a map.
-  const matchPending = !paused && !blocked && applies && !havingSet && counts && (scoreOptions ? score.loading : ownTotal && !settled && !error && counted.total === null);
+  const matchPending = !paused && !blocked && applies && !havingSet && counts && (scoreOptions ? score.loading && !(!charts && error) : ownTotal && !settled && !error && counted.total === null);
   const [lastMatched, setLastMatched] = useState(NO_MATCH);
   if (matched.size > 0 && lastMatched !== matched) setLastMatched(matched);
   else if (matched.size === 0 && !matchPending && lastMatched.size > 0) setLastMatched(NO_MATCH);
   const matchStale = matched.size === 0 && matchPending && lastMatched.size > 0;
   const matchShown = matchStale ? lastMatched : matched;
   const matchedKey = JSON.stringify([...matchShown, matchStale]);
-  useEffect(() => { onMatched?.(matchShown, matchStale); }, [matchedKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => onMatched?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => { onMatched?.(matchShown, matchStale); }, [matchedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => () => onMatched?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
   // A HAVING filter alone counts when the charts follow it, so their "No rows match the filters." is true.
   const hasChartFilters = Object.values(filters).some((f) => !f.fn && !metricNames.has(f.field)) || !!having.rule || having.gate?.kind === 'empty';
   const { marksOf, colMark, pickHeader, startDrag, dragOver, pickCell, cancelDragClick, onCopy, onGridKey, dragMoved } = useGridSelection(rows, outputs, charts, selected, setSelected, scroller, head, fieldOf);

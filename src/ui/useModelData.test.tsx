@@ -193,3 +193,21 @@ test('a bare node of the join tree is counted once it is in the ids, and stays i
   act(() => result.current.request('a'));
   await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 5 }));
 });
+
+test('a refresh dims every recounted card at once, also the ones still waiting in the queue behind the first 4', async () => {
+  const ids = Array.from({ length: 8 }, (_, i) => `m${i}`);
+  let gate: Promise<void> | null = null;
+  const traverseData = vi.fn(async () => { await gate; return traversalOf([{ 'Unique Count': 7 }]); });
+  const { result, rerender } = renderHook(({ model, version }) => useCardStatus(model, ids, version), { wrapper: setup(traverseData), initialProps: { model: modelOf(ids), version: 0 } });
+  act(() => ids.forEach((id) => result.current.request(id)));
+  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
+  let open!: () => void;
+  gate = new Promise<void>((r) => { open = r; });
+  rerender({ model: modelOf(ids), version: 1 });
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(8 + 4));
+  for (const id of ids) expect(result.current.counts.get(id)).toEqual({ state: 'ok', value: 7, stale: true });
+  gate = null;
+  act(() => open());
+  await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
+  expect(traverseData).toHaveBeenCalledTimes(16);
+});

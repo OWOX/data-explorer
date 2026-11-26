@@ -91,8 +91,12 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
     seqs.current.latest.set(id, seq);
     const waiting = queue.current.find((q) => q.id === id);
     if (waiting) { waiting.recount ||= recount; waiting.seq = seq; } else queue.current.push({ id, recount, seq });
-    // Only a card with no count yet shows the wait; a recount keeps its old value until it starts.
-    setCounts((c) => (c.has(id) ? c : new Map(c).set(id, { state: 'queued' })));
+    // Only a card with no count yet shows the wait; a recount keeps its old value, dimmed from now (it may queue behind others), until the new one lands.
+    setCounts((c) => {
+      const was = c.get(id);
+      if (!was) return new Map(c).set(id, { state: 'queued' });
+      return recount && was.state === 'ok' && was.value !== null && !was.stale ? new Map(c).set(id, { ...was, stale: true }) : c;
+    });
     pump();
   }, [pump]);
 

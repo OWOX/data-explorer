@@ -507,3 +507,41 @@ test('on Refresh the badge keeps its previous number, dimmed and busy, until the
   expect(match()).toHaveTextContent(/% match$/);
   expect(t.scoreReads()).toHaveLength(before + 1);
 });
+
+/** Edits the status filter to another value through the column menu. */
+async function changeStatus(value: string) {
+  await openSubmenu(within(data()), 'status', 'Filter');
+  const dialog = await screen.findByRole('dialog');
+  const input = within(dialog).getByLabelText('Value');
+  await userEvent.clear(input);
+  await userEvent.type(input, value);
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+}
+
+test('a filter change keeps the badge with the previous number, dimmed and busy, until the new count lands (no Refresh)', async () => {
+  const t = setup(withProducts, { slow: isScore });
+  await t.mount();
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  const match = () => card('orders')!.querySelector('[data-match]');
+  expect(match()).not.toHaveClass('dm-stale');
+  const before = t.scoreReads().length;
+  await changeStatus('shipped');
+  await waitFor(() => expect(t.scoreReads().length).toBe(before + 1));
+  expect(match()).toHaveClass('dm-stale');
+  expect(match()).toHaveAttribute('aria-busy', 'true');
+  await waitFor(() => expect(match()).not.toHaveClass('dm-stale'), { timeout: 2000 });
+  expect(match()).not.toHaveAttribute('aria-busy');
+  expect(t.scoreReads()).toHaveLength(before + 1);
+});
+
+test('a filter change whose rows read fails leaves no dimmed or busy badge behind', async () => {
+  const t = setup(withProducts, { fail: (o) => o.limit === 201, slow: isScore });
+  await t.mount();
+  await waitFor(() => expect(badge('orders')).toMatch(/% match$/));
+  await changeStatus('shipped');
+  await waitFor(() => expect(t.queries.some((q) => q.limit === 201 && JSON.stringify(q.filter ?? []).includes('shipped'))).toBe(true));
+  await calm();
+  await calm();
+  expect(card('orders')!.querySelector('[data-match].dm-stale')).toBeNull();
+  expect(card('orders')!.querySelector('[data-match][aria-busy]')).toBeNull();
+});

@@ -816,4 +816,4 @@ body.dm-col-dragging, body.dm-col-dragging * { cursor: grabbing !important; user
 
 /* Content that shows a previous read's value while the next read runs. The one dimming for every place that does it; it ends on the render the new value arrives. */
 .dm-stale { opacity: 0.5; transition: opacity 200ms; }
-.dm-stale[inert] { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .dm-stale { transition: none; } }

@@ -256,8 +256,9 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, 
       )}
       {row ? <CardValue card={c} row={row} formatOf={formatOf} shown={rolled} busy={busy} /> : <Skeleton rows={1} />}
       {waiting && !kept && <div aria-label="Loading trend" className="mt-1 h-6 animate-pulse rounded bg-muted motion-reduce:animate-none" />}
-      {!waiting && dated.length > 0 && <Sparkline points={points} ariaLabel={`${c.label} trend`} />}
-      {waiting && kept && dated.length > 0 && <div className="dm-stale" aria-busy="true"><Sparkline points={points} ariaLabel={`${c.label} trend`} /></div>}
+      {(!waiting || kept) && dated.length > 0 && (
+        <div className={waiting ? 'dm-stale' : undefined} aria-busy={waiting || undefined}><Sparkline points={points} ariaLabel={`${c.label} trend`} /></div>
+      )}
     </div>
   );
 }
