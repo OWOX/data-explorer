@@ -234,3 +234,21 @@ test('Add chart offers a Sankey only when two dimensions are shown', () => {
   expect(kinds(cf)).not.toContain('sankey');
   expect(kinds(two)).toContain('sankey');
 });
+
+test('a new chart of a dimension kind starts on the dimension the fewest shown charts use', () => {
+  const plan = { name: 'plan', category: 'string', type: 'STRING' } as never;
+  const region = { name: 'region', category: 'string', type: 'STRING' } as never;
+  const cf3: ChartFields = { ...cf, dimensions: [dim, plan, region] };
+  // 'status' is taken twice (a pie with no saved dimension falls back to the first), 'plan' once; a hidden chart does not count.
+  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie' }, { id: 'b', kind: 'bar', dimension: 'status' }, { id: 'c', kind: 'rankedBar', dimension: 'plan' }, { id: 'd', kind: 'bar', dimension: 'region', hidden: true }, { id: 'e', kind: 'timeSeries' }] };
+  const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
+  const add = addChartItem({ cf: cf3, change });
+  if (add.kind === 'radio') add.onPick('bar');
+  expect(s.charts!.at(-1)).toMatchObject({ kind: 'bar', dimension: 'region' });
+  if (add.kind === 'radio') add.onPick('rankedBar');
+  // 'plan' and 'region' are now used once each: the first of them in column order.
+  expect(s.charts!.at(-1)).toMatchObject({ kind: 'rankedBar', dimension: 'plan' });
+  // A kind drawn by a date, not a dimension, gets none.
+  if (add.kind === 'radio') add.onPick('timeSeries');
+  expect(s.charts!.at(-1)!.dimension).toBeUndefined();
+});

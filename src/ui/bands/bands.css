@@ -147,6 +147,8 @@
 .dm-tip-copy button { all: unset; display: inline-flex; padding: 0.125rem; border-radius: 0.25rem; cursor: pointer; opacity: 0.7; }
 .dm-tip-copy button:hover, .dm-tip-copy button:focus-visible { opacity: 1; background: color-mix(in oklab, var(--background) 20%, transparent); }
 .dm-tip-copy-failed { font-size: 0.6875rem; opacity: 0.85; }
+/* The copy button shows only while the pointer is on the bubble or focus is in it; it keeps its room, so the bubble does not jump. A result (the check, Copy failed) stays seen. */
+.dm-hint-hoverable:not(:hover):not(:focus-within) .dm-tip-copy:not(:has([data-copied], [role="alert"])) { visibility: hidden; }
 .dm-tip-fixed { position: fixed; }
 .dm-tip-interactive { pointer-events: auto; max-height: calc(100vh - 1rem); overflow-y: auto; }
 .dm-tip-more { all: unset; display: block; width: max-content; margin-top: 0.125rem; cursor: pointer; text-decoration: underline dashed; text-underline-offset: 3px; opacity: 0.8; }
