@@ -4,7 +4,7 @@ import { vi } from 'vitest';
 import type { Context, Mart } from '../../model/types';
 import { TooltipProvider } from '../Tooltip';
 import { useLatest } from '../useLatest';
-import { WireTipLayer } from './CardBands';
+import { WireTipLayer } from './WireTipLayer';
 import { MartCard } from './cards';
 
 afterEach(cleanup);
