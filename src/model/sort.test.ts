@@ -1,4 +1,4 @@
-import { cycleSort, defaultSort, sortsOnColumns, type SortKey } from './sort';
+import { cycleSort, defaultSort, keptSorts, sortsOnColumns, type SortKey } from './sort';
 import type { Field } from './types';
 
 test('a column cycles none, ascending, descending, none', () => {
@@ -48,4 +48,12 @@ describe('defaultSort', () => {
   test('a calculated date field is not sorted on', () => {
     expect(defaultSort([f('calc', 'DATE', 'date', { isCalculated: true }), f('real', 'DATE', 'date')], [])).toEqual([{ field: 'real', direction: 'desc' }]);
   });
+});
+
+describe('keptSorts', () => {
+  const a: SortKey = { field: 'a', direction: 'asc' };
+  it('keeps null as null', () => expect(keptSorts(null, [])).toBeNull());
+  it('turns a list that pruning emptied into null', () => expect(keptSorts([a], [])).toBeNull());
+  it('keeps what is left', () => expect(keptSorts([a], [a])).toEqual([a]));
+  it('keeps an empty list that was empty', () => expect(keptSorts([], [])).toEqual([]));
 });

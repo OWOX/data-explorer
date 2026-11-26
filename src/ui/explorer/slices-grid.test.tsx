@@ -270,9 +270,9 @@ describe('the data mart title row', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await userEvent.click(await screen.findByRole('button', { name: /^1 filter in / }));
     await screen.findByRole('menu', { name: /^Filters in / });
-    act(() => t.send.current!({ type: 'redo' }));
+    act(() => t.send.current!({ type: 'redo', known: () => true }));
     await waitFor(() => expect(screen.queryByRole('button', { name: /^1 filter in / })).toBeNull());
-    act(() => t.send.current!({ type: 'undo' }));
+    act(() => t.send.current!({ type: 'undo', known: () => true }));
     const back = await screen.findByRole('button', { name: /^1 filter in / });
     expect(back).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('menu', { name: /^Filters in / })).toBeNull();

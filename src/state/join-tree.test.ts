@@ -2,7 +2,7 @@
 import { expect, test } from 'vitest';
 import type { JoinedSource } from '../api/blendable';
 import type { Field } from '../model/types';
-import { buildJoinTree, chainAfterHover, ghostLevels, ghostSources, rejoinTargets, subtreePaths } from './join-tree';
+import { buildJoinTree, chainAfterHover, ghostLevels, joinableUnder, rejoinTargets, subtreePaths } from './join-tree';
 
 const field = (path: string, own: string): Field => ({ name: `${path.replaceAll('.', '__')}__${own}`, alias: own, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: path.split('.').at(-1)!, label: path, aliasPath: path, originalName: own } });
 const src = (path: string, martId = path.split('.').at(-1)!): JoinedSource => ({ aliasPath: path, martId, label: martId, depth: path.split('.').length, fields: [field(path, 'name'), field(path, 'n')], uniqueCount: true });
@@ -54,9 +54,9 @@ test('subtreePaths lists the node and everything under it', () => {
 
 test('ghosts are the sources one hop under a path whose mart is not in the report', () => {
   const t = buildJoinTree('main', ['id', col('a')], sources);
-  expect(ghostSources(t, sources, '').map((s) => s.aliasPath)).toEqual(['b']);
-  expect(ghostSources(t, sources, 'a').map((s) => s.aliasPath)).toEqual(['a.c']);
-  expect(ghostSources(t, sources, 'zzz')).toEqual([]);
+  expect(joinableUnder(t, sources, '').map((s) => s.aliasPath)).toEqual(['b']);
+  expect(joinableUnder(t, sources, 'a').map((s) => s.aliasPath)).toEqual(['a.c']);
+  expect(joinableUnder(t, sources, 'zzz')).toEqual([]);
 });
 
 test('rejoin: c under a can move under b; not onto a (its parent), c itself or main (no depth-1 c)', () => {
@@ -105,16 +105,16 @@ test('rejoin: a target with two relations to the mart takes the one the subtree 
 
 test('ghosts: a mart already in the report on another path is still offered on this path', () => {
   const t = buildJoinTree('main', ['id', col('a'), col('b'), col('b.c')], sources);
-  expect(ghostSources(t, sources, 'a').map((s) => s.aliasPath)).toEqual(['a.c']);
-  expect(ghostSources(t, sources, 'b').map((s) => s.aliasPath)).toEqual(['b.x']);
+  expect(joinableUnder(t, sources, 'a').map((s) => s.aliasPath)).toEqual(['a.c']);
+  expect(joinableUnder(t, sources, 'b').map((s) => s.aliasPath)).toEqual(['b.x']);
 });
 
 test('ghosts: a path that is already a node is not offered, and a path is offered once', () => {
   const dup = [...sources, src('a.c')];
   const t = buildJoinTree('main', ['id', col('a')], dup);
-  expect(ghostSources(t, dup, 'a').map((s) => s.aliasPath)).toEqual(['a.c']);
+  expect(joinableUnder(t, dup, 'a').map((s) => s.aliasPath)).toEqual(['a.c']);
   const t2 = buildJoinTree('main', ['id', col('a'), col('a.c')], dup);
-  expect(ghostSources(t2, dup, 'a')).toEqual([]);
+  expect(joinableUnder(t2, dup, 'a')).toEqual([]);
 });
 
 test('rejoin: no target when the new path is already a node outside the subtree', () => {

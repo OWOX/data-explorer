@@ -84,7 +84,7 @@ test('useCardClick with removePaths is one Undo step, and remembers only the rem
   expect(state.grids.orders!.columns).toContain('stores__countries__code');
   expect(state.selection.martId).toBe('orders');
   expect(columnStore.lastShown('countries')).toEqual(['name']);
-  dispatch({ type: 'undo' });
+  dispatch({ type: 'undo', known: () => true });
   await waitFor(() => expect(state.grids.orders!.columns).toEqual(wide));
 });
 

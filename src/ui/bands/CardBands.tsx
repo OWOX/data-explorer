@@ -24,7 +24,7 @@ import { edgeOf, edgeOutputAlias, joinAlias, noteFields, relationshipNote } from
 import { useOwnAliases } from './useOwnAliases';
 import { litIds, revisionOf, useWires, type Wire } from './wires';
 import { MartsCanvas } from './MartsCanvas';
-import { buildJoinTree, ghostSources, subtreePaths, type TreeNode } from '../../state/join-tree';
+import { buildJoinTree, joinableUnder, subtreePaths, type TreeNode } from '../../state/join-tree';
 import { closestGridTarget, gridTargets, measureGridDrag } from './useGridDrag';
 import { DragLines } from './DragLines';
 import { parentPath, pathTitle, shortestSource } from '../../state/join-plan';
@@ -248,7 +248,7 @@ export function CardBands({
   const focusSources = useMemo(() => {
     if (focus === null || !canvasTree || !joinSources || dragging) return [];
     const ticked = (id: string) => storageTicked(model, storageIds, id);
-    return ghostSources(canvasTree, joinSources, focus).filter((s) => model.marts.get(s.martId)?.accessible && ticked(s.martId));
+    return (canvasTree.nodes.has(focus) ? joinableUnder(canvasTree, joinSources, focus) : []).filter((s) => model.marts.get(s.martId)?.accessible && ticked(s.martId));
   }, [focus, canvasTree, joinSources, model, storageIds, dragging]);
   const inBand = (id: string) => shownIds.has(id) && !reportMarts.has(id);
   const joinableAt = new Map<string, JoinedSource>();

@@ -9,7 +9,8 @@ import type { SortKey } from '../model/sort';
 import type { Field, Schema } from '../model/types';
 import type { RelativeDatePreset, ReportDto } from '../sdk/types';
 import type { GridState } from '../state/store';
-import { plural, pruneGrid } from '../state/view-link-resolve';
+import { count } from '../ui/format';
+import { pruneGrid } from '../state/view-link-resolve';
 import { defaultColumns } from '../model/columns';
 
 export type { ReportDto };
@@ -83,12 +84,12 @@ export function fromTraverseFilter(rule: unknown, field: Field): ColumnFilter | 
 /** The notice for what a report carries that the explorer cannot show, or null when nothing was left out. */
 export function reportSkippedMessage(s: ReportSkipped): string | null {
   const parts = [
-    s.columns && plural(s.columns, 'column', 'columns'),
-    s.filters && plural(s.filters, 'filter', 'filters'),
-    s.sorts && plural(s.sorts, 'sort', 'sorts'),
-    s.aggregations && plural(s.aggregations, 'aggregation', 'aggregations'),
-    s.slices && plural(s.slices, 'slice', 'slices'),
-    s.having && plural(s.having, 'HAVING filter', 'HAVING filters'),
+    s.columns && count(s.columns, 'column'),
+    s.filters && count(s.filters, 'filter'),
+    s.sorts && count(s.sorts, 'sort'),
+    s.aggregations && count(s.aggregations, 'aggregation'),
+    s.slices && count(s.slices, 'slice'),
+    s.having && count(s.having, 'HAVING filter'),
     s.uniqueCount && 'unique count',
   ].filter(Boolean);
   return parts.length ? `Some parts of this report aren't shown: ${parts.join(', ')}.` : null;

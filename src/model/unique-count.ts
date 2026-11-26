@@ -1,6 +1,6 @@
 // A data mart's Unique Count in the Data grid: the number of its distinct records, counted by its primary key. It is a metric of the mart, not of a column.
 import { hasPrimaryKey } from '../records/relationships';
-import type { SortKey } from './sort';
+import { keptSorts, type SortKey } from './sort';
 import type { Field, Schema } from './types';
 
 export const UNIQUE_COUNT_LABEL = 'Unique Count';
@@ -43,5 +43,5 @@ export function dropUniqueSorts(sorts: SortKey[] | null, paths: readonly string[
   const keys = new Set(paths.map(uniqueKey));
   const kept = sorts.filter((s) => !keys.has(s.field));
   if (kept.length === sorts.length) return sorts;
-  return sorts.length > 0 && kept.length === 0 ? null : kept;
+  return keptSorts(sorts, kept);
 }

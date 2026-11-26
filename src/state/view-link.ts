@@ -224,7 +224,6 @@ function shape(raw: unknown): DecodedView {
     const columns: string[] = [];
     for (const c of g.c) { const n = name(c); if (n === null) dropped++; else columns.push(n); }
     // Built as entries: a decoded key like __proto__ must never reach an object's prototype.
-    // A filter is [column, op, value?, fn?, 1?]; a slice is [column, op, value?, 1?]. A null value or function is an empty slot before a later one. The trailing 1 marks a list (`a, b` is any of the two).
     const decodeRules = (list: unknown[], withFn: boolean): [string, ColumnFilter][] => {
       const out: [string, ColumnFilter][] = [];
       for (const e of list) {
