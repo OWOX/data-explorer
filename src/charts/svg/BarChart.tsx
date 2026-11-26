@@ -1,8 +1,9 @@
-import { useId, type KeyboardEvent, type MouseEvent } from 'react';
+import { type MouseEvent } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
 import { CutLabel } from './CutLabel';
 import { BLANK_COLOR, BLANK_KEY, swatchStyle } from '../blank';
-import { BlankDefs, blankFill, blankLines } from './BlankPattern';
+import { BlankDefs, blankFill, blankLines, useBlankId } from './BlankPattern';
+import { pickProps } from './pick';
 import { fitText, textWidth } from './fitText';
 import { plotHeight, rowHeight } from '../plotSize';
 import { useWidth } from '../useWidth';
@@ -12,7 +13,6 @@ import { XTitle, Y_TITLE_W, YTitle } from './YTitle';
 
 export type Series = { /** The category's key (blank sentinel, a real value, or the Other sentinel), so a real value named "(blank)" or "Other" keeps its own element. */ key?: string; name: string; color: string; points: Point[]; /** The catch-all series: not a value of the stack dimension, so it cannot be filtered to. */ other?: boolean; /** The blank value of the stack dimension: its filter is "is blank", whatever its name. */ blank?: boolean };
 
-const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 
 const PLOT_H = 240;
 const ROW_H = 20;
@@ -31,10 +31,10 @@ const CHAR_W = 6;
 export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, canPick, stacked, xTitle, yTitle, integer = false, categorical = false }: { series: Series[]; orientation: 'vertical' | 'horizontal'; ariaLabel: string; formatTick: (n: number) => string;
   /** A click on a bucket (and, when stacked, on one of its segments: `seriesIndex`). */
   onPick?: (x: string, seriesIndex?: number) => void;
-  /** Whether a bucket can be filtered to (a blank bucket has no range); default all. */
+  /** Whether a category can be picked: the Other bucket cannot. */
   canPick?: (x: string) => boolean;
-  /** Whether the series are stacked values of one dimension; default: more than one series. */
-  stacked?: boolean;
+  /** Whether the series are stacked values of one dimension. */
+  stacked: boolean;
   /** The bucket (or category) field's display name: under the bucket labels of a vertical chart, beside them on a horizontal one. */
   xTitle?: string;
   /** The measure's name, on the value axis: beside the ticks of a vertical chart, under them on a horizontal one. */
@@ -44,7 +44,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   /** The buckets are categories, not dates: every label shows, cut with an ellipsis to the width of its column (the whole text is in the label's title), instead of every k-th one. */
   categorical?: boolean }) {
   const { ref, width, height: room } = useWidth<HTMLDivElement>();
-  const blankId = `dm-blank-${useId().replace(/:/g, '')}`;
+  const blankId = useBlankId();
   const xs = series[0]?.points ?? [];
   const totals = xs.map((_, i) => series.reduce((sum, s) => sum + Math.max(0, s.points[i]?.y ?? 0), 0));
   const max = Math.max(0, ...totals);
@@ -68,14 +68,13 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   const rowLabel = (label: string) => fitText(label, labelW - 10);
   const scale = (n: number) => (top > 0 ? n / top : 0) * (vertical ? plotH : plotW);
 
-  const isStacked = stacked ?? series.length > 1;
-  const pickable = (x: string) => !!onPick && (canPick?.(x) ?? true);
+    const pickable = (x: string) => !!onPick && (canPick?.(x) ?? true);
   const anyPick = xs.some((p) => pickable(p.x));
   const liveAt = (i: number) => series.filter((s) => s.points[i]?.y != null && s.points[i].y! > 0);
   /** The series whose segment is under the pointer in bucket `i`, found from where the click landed along the stack. */
   const segmentAt = (i: number, e: MouseEvent<SVGRectElement>): number | undefined => {
     const box = e.currentTarget.ownerSVGElement?.getBoundingClientRect();
-    if (!isStacked || !box || box.width === 0 || box.height === 0) return undefined;
+    if (!stacked || !box || box.width === 0 || box.height === 0) return undefined;
     const pos = vertical ? TOP + plotH - (e.clientY - box.top) * (height / box.height) : (e.clientX - box.left) * (width / box.width) - left;
     let end = 0;
     for (const s of liveAt(i)) {
@@ -86,7 +85,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
   };
 
   /** A series' colour in bucket `i`: the blank colour for the blank bucket of an unstacked chart (a stack keeps its series colours, they tell the segments apart), else the point's own colour, else the series'. */
-  const colorAt = (s: Series, i: number) => (!isStacked && xs[i]?.x === BLANK_KEY ? BLANK_COLOR : s.points[i]?.color ?? s.color);
+  const colorAt = (s: Series, i: number) => (!stacked && xs[i]?.x === BLANK_KEY ? BLANK_COLOR : s.points[i]?.color ?? s.color);
   const marks = xs.flatMap((_, i) => {
     let offset = 0;
     const live = liveAt(i);
@@ -101,7 +100,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
       const rect = vertical
         ? <rect {...common} x={left + i * band + GAP / 2} y={TOP + plotH - at - seg} width={Math.max(1, band - GAP)} height={seg} />
         : <rect {...common} x={left + at} y={TOP + i * rowH + GAP / 2} width={seg} height={rowH - GAP} />;
-      if (!(isStacked && xs[i]?.x === BLANK_KEY)) return rect;
+      if (!(stacked && xs[i]?.x === BLANK_KEY)) return rect;
       // A stacked blank bucket keeps its series colours; stripes over each segment mark it as blank.
       const rest = { style: common.style };
       const over = vertical
@@ -122,7 +121,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
       ))]} />
     );
     const geom = vertical ? { x: left + i * band, y: TOP, width: band, height: plotH } : { x: left, y: TOP + i * rowH, width: plotW, height: rowH };
-    const pick = pickable(p.x) ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${p.label}`, style: { cursor: 'pointer' }, onKeyDown: press(() => onPick!(p.x)) } : {};
+    const pick = pickable(p.x) ? pickProps(`Filter to ${p.label}`, () => onPick!(p.x)) : {};
     return <Tooltip key={p.x} content={content}><rect data-bucket={p.x} fill="transparent" {...geom} {...pick} onClick={pickable(p.x) ? (e) => { const k = segmentAt(i, e); if (k !== undefined && series[k]!.other) onPick!(p.x); else onPick!(p.x, k); } : undefined} /></Tooltip>;
   });
 
@@ -130,7 +129,7 @@ export function BarChart({ series, orientation, ariaLabel, formatTick, onPick, c
     <div className="dm-bar-chart">
       <div ref={ref} className="dm-chart-plot">
       <svg role={anyPick ? 'group' : 'img'} aria-label={ariaLabel} data-orientation={orientation} width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
-        <BlankDefs id={blankId} lines={isStacked} />
+        <BlankDefs id={blankId} lines={stacked} />
         {ticks.map((t, k) => {
           const pos = vertical ? TOP + plotH - scale(t) : left + scale(t);
           return (

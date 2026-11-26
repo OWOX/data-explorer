@@ -1,4 +1,8 @@
+import { useId } from 'react';
 import { BLANK_COLOR } from '../blank';
+
+/** A document-unique id for a chart's blank-value pattern. */
+export const useBlankId = (): string => `dm-blank-${useId().replace(/:/g, '')}`;
 
 /** The hatch a blank mark is filled with: hairline (1px) diagonal stripes in `--dm-blank-hatch` on a solid `--dm-blank` ground, so it reads in both themes. Defined once per chart; `id` must be unique per chart instance (useId). */
 export function BlankDefs({ id, lines = false }: { id: string; /** Also define the stripes-only pattern (`blankLines`), for charts that lay it over a mark. */ lines?: boolean }) {
