@@ -1,11 +1,10 @@
-import { Columns3, EllipsisVertical, Gauge, Waypoints } from 'lucide-react';
+import { Columns3, EllipsisVertical, Waypoints } from 'lucide-react';
 import { useMemo } from 'react';
 import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
 import type { Row } from '../../sdk/types';
-import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
-import { axisTitle, fieldGroups, measureGroups } from '../menuGroups';
+import { axisTitle, fieldGroups, metricItem } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { dimensionFilter } from '../clickFilters';
 import { menuOf, pathOf, pieMeasures, sankeyMeasures } from '../fields';
@@ -17,11 +16,11 @@ import { Sankey } from '../svg/Sankey';
 import { useChartQuery } from '../useChartQuery';
 import { carry, type ChartKindDef, type PanelProps } from './types';
 
-export const NEGATIVE_NOTE = 'Sankey needs values of 0 or more; this metric has negative values.';
-export const MISCONFIGURED_NOTE = 'This Sankey is misconfigured: pick at least 2 columns in its menu.';
-export const cappedNote = (n: number): string => `Showing the largest ${n.toLocaleString('en-US')} combinations; smaller flows are left out.`;
+const NEGATIVE_NOTE = 'Sankey needs values of 0 or more; this metric has negative values.';
+const MISCONFIGURED_NOTE = 'This Sankey is misconfigured: pick at least 2 columns in its menu.';
+const cappedNote = (n: number): string => `Showing the largest ${n.toLocaleString('en-US')} combinations; smaller flows are left out.`;
 
-export const columnCappedNote = (n: number): string => `A column has ${n.toLocaleString('en-US')} or more values; its smallest ones are not counted in Other.`;
+const columnCappedNote = (n: number): string => `A column has ${n.toLocaleString('en-US')} or more values; its smallest ones are not counted in Other.`;
 /** The Sankey's numbers (labels, tooltips, the screen-reader table) drop the fraction above 10: shares and flows are read at a glance, not to the cent. */
 const SANKEY_TEXT = { whole: true } as const;
 export const FAN_OUT_NOTE = "One record can sit in more than one ribbon here, so ribbons can add up to more than their column total. A node's share is of its column's values added up, not of the metric's total.";
@@ -30,7 +29,7 @@ export const FAN_OUT_NOTE = "One record can sit in more than one ribbon here, so
  * `exact` is true when the measure passes `sankeyMeasures` for the columns: no join can repeat a record, so the plugin's sums (one all-columns flow read,
  * Other) are exact. Otherwise it is fan-out mode: flows are read per adjacent pair and the ribbons can overlap (see `foldSankey`).
  */
-export type SankeyR = { dims: Field[]; measure: Measure; exact: boolean };
+type SankeyR = { dims: Field[]; measure: Measure; exact: boolean };
 
 /** The panel's width: 20rem per column, at least 20rem, at most the band. */
 export const sankeyWidth = (columns: number): string => `clamp(20rem, ${columns * 20}rem, 100%)`;
@@ -71,7 +70,7 @@ export const withColumns = (names: string[], count: number, all: Field[]): strin
   return next;
 };
 
-function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<SankeyR>) {
+function SankeyPanel({ martId, cf, title, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<SankeyR>) {
   const { dims, measure, exact } = r;
   const n = dims.length;
   // Fewer than two columns draws nothing and reads nothing: the notice says what to pick.
@@ -117,15 +116,14 @@ function SankeyPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
   const items: MenuItem[] = [
     { kind: 'group', label: 'Columns', icon: Columns3, items: columnItems, draggable: n,
       onReorder: (from, to) => { const next = moveColumn(names, from, to); if (next.join('\n') !== names.join('\n')) onChange({ dimensions: next }); } },
-    { kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(menuOf(cf), pieMeasures(menuOf(cf))), onPick: (v: string) => onChange({ measure: v }) },
+    metricItem(cf, measureId(measure), pieMeasures(menuOf(cf)), onChange),
     ...tail,
   ];
   // Memoised on its inputs so a re-render with the same columns and metric keeps the ribbons.
   const ribbonShare = useMemo(() => dims.map((d) => sankeyMeasures(cf, [d]).some((m) => measureId(m) === measureId(measure))), [cf, dims, measure]);
-  const title = sankey.title(r, cf);
   return (
-    <ChartPanel title={title} name="Sankey" items={ready ? items : null} width={sankeyWidth(n)}
-      loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})} empty={empty ? (short ? MISCONFIGURED_NOTE : data!.negative ? NEGATIVE_NOTE : emptyText(hasFilters)) : null}
+    <ChartPanel title={title} name="Sankey" items={items} ready={ready} width={sankeyWidth(n)}
+      loading={loading} failed={failed} empty={empty && (short ? MISCONFIGURED_NOTE : data!.negative ? NEGATIVE_NOTE : true)} hasFilters={hasFilters}
       note={data && !data.negative ? [data.capped ? cappedNote(SANKEY_FLOW_LIMIT) : '', data.columnCapped ? columnCappedNote(SANKEY_COLUMN_LIMIT) : '', exact ? '' : FAN_OUT_NOTE].filter(Boolean).join(' ') || undefined : undefined}>
       {data && <Sankey titles={dims.map((d) => axisTitle(cf, d))} columns={data.columns} flows={data.flows} fit={!exact} ribbonShare={ribbonShare} ariaLabel={title} text={(v) => measureText(measure, v, formatOf, SANKEY_TEXT)}
         onPickNode={(col, key) => onFilter([dimensionFilter(dims[col]!, key)])}
@@ -146,7 +144,8 @@ export const sankey: ChartKindDef<SankeyR> = {
     return { kind: 'sankey', ...carry(from, ['measure']), dimensions: withColumns([...new Set(saved)].slice(0, SANKEY_MAX), Math.max(SANKEY_MIN, Math.min(saved.length, SANKEY_MAX)), cf.dimensions) };
   },
   resolve(spec, cf) {
-    if (pieMeasures(cf).length === 0) return null;
+    const offered = pieMeasures(cf);
+    if (offered.length === 0) return null;
     const saved = spec.dimensions;
     // Fewer than two saved columns is the member's choice (None): nothing is filled in, and a saved column that is not shown counts as unused.
     const shownSaved = saved && saved.length < SANKEY_MIN ? [...new Set(saved)].flatMap((n) => cf.dimensions.filter((d) => d.name === n)) : null;
@@ -161,7 +160,6 @@ export const sankey: ChartKindDef<SankeyR> = {
       if (next) dims.push(next);
     }
     // Any additive measure is offered. A saved one is kept; with none saved, one that is exact for the columns comes first (see `SankeyR`).
-    const offered = pieMeasures(cf);
     const exactList = sankeyMeasures(cf, dims);
     const measure = offered.find((m) => measureId(m) === spec.measure) ?? pickMeasure(exactList.length ? exactList : offered)!;
     return { dims, measure, exact: exactList.some((m) => measureId(m) === measureId(measure)) };

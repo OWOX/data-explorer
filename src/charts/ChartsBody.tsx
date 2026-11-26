@@ -25,7 +25,7 @@ const Gutter = () => <th aria-hidden data-chrome className="dm-chrome" />;
 const GUTTER_PX = 46;
 
 /** A mart a joined path passes through with no column of its own on the grid: it has no group there, only a place in the chart menus. */
-export type PathMart = { path: string; title: string; icon?: string | null };
+type PathMart = { path: string; title: string; icon?: string | null };
 const NO_SIZE: ChartSize = {};
 const NO_PATH_MARTS: PathMart[] = [];
 
@@ -72,11 +72,11 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     latest.current = held;
     setSettings(held);
   }, [held]);
-  // Every save is a version 2 doc. Only called once the doc has loaded (the menu is not shown before), so a change never replaces what was saved.
+  // Only called once the doc has loaded (the menu is not shown before), so a change never replaces what was saved.
   // A member's edit is one Undo step. `stage` is a write that goes with a grid edit recorded next (a field shown by a pick, the prune of a hidden column): it is part of that step. `fold` joins consecutive edits into one step.
   const change = (edit: (cur: ChartSettings) => ChartSettings, how: { stage?: boolean; fold?: string } = {}) => {
     if (!latest.current) return;
-    const next: ChartSettings = { ...edit(latest.current), version: 2 };
+    const next: ChartSettings = edit(latest.current);
     latest.current = next;
     setSettings(next);
     dispatch(how.stage ? { type: 'stageCharts', martId, settings: next } : { type: 'editCharts', martId, settings: next, ...(how.fold ? { fold: how.fold } : {}) });
@@ -118,7 +118,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   // A resize re-renders this body on every step: the fields and the resolved choices only change with their inputs, so a resize rebuilds neither.
   // Charts draw from the shown columns (`cf`); the menus list every column of the same marts and of the marts on their paths (`cf.menu`), and picking a hidden one shows it (see `showPicked`).
   const cf = useMemo(() => {
-    const build = (on: string[], marts: PathMart[], counted: JoinedSource[]) => chartFields(schema, on, agg, martId, marts.map((g) => g.path), new Set(counted.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), Object.fromEntries(marts.map((g) => [g.path, g.title])), Object.fromEntries(sources.map((x) => [x.aliasPath, x.mainGrainCollapse ?? 'collapses'])), Object.fromEntries(marts.map((g) => [g.path, g.icon])));
+    const build = (on: string[], marts: PathMart[], counted: JoinedSource[]) => chartFields(schema, on, agg, martId, marts.map((g) => g.path), new Set(counted.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), Object.fromEntries(marts.map((g) => [g.path, g.title])), Object.fromEntries(sources.map((x) => [x.aliasPath, x.mainGrainCollapse])), Object.fromEntries(marts.map((g) => [g.path, g.icon])));
     // The groups come first, so a menu mart keeps its group's index and its Count Unique id. A path mart offers no Count Unique: that names no column to show, and a mart needs one for it.
     const onPath = new Set(pathMarts.map((m) => m.path));
     return { ...build(shown, groups, sources), menu: build(schema.map((f) => f.name), [...groups, ...pathMarts], sources.filter((x) => !onPath.has(x.aliasPath))) };
@@ -129,7 +129,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   // Hidden charts resolve to nothing, so they mount no panel and read nothing.
   const drawn = useMemo(() => specs.map((spec) => {
     const def = KINDS[spec.kind];
-    return { spec, def, r: def && !spec.hidden ? def.resolve(spec, cf) : null };
+    return { spec, def, r: spec.hidden ? null : def.resolve(spec, cf) };
   }), [specs, cf]);
   // The sparklines draw on the first shown chart's date and bucket; with none, the first date shown, by Auto.
   const lead = drawn.find((d) => d.r && (d.r as { date?: unknown }).date)?.r as { date: Field; bucket?: DateBucket | 'AUTO' } | undefined;
@@ -140,8 +140,8 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
   const scores = useScorecards(martId, cf, filter, version, idle, joins, kept);
   // The Charts group of the config menu names every chart, hidden ones included; memoized so a resize resolves nothing again.
   const resolved = useMemo(() => drawn.map(({ spec, def }) => {
-    const r = def?.resolve({ ...spec, hidden: false }, cf) ?? null;
-    return { spec, title: def && r ? def.title(r, cf) : null };
+    const r = def.resolve({ ...spec, hidden: false }, cf);
+    return { spec, title: r ? def.title(r, cf) : null };
   }), [drawn, cf]);
   // A chosen field that is not a shown column is added to the grid with the choice. Records ids and Off ('') name no column.
   // A newly shown date is truncated by the chart's bucket: the one picked with it, else the chart's own when concrete, else the one the charts resolved.
@@ -203,9 +203,9 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
               the scorecards (the same 0.75rem inset) and stay in view however wide the table is. */}
           <div data-chart-panels data-resizing={resizing || undefined} className="dm-chart-panels sticky" style={{ left: GUTTER_PX, width: Math.max(0, scrollerWidth - GUTTER_PX) }}>
             {/* eslint-disable-next-line react-hooks/refs -- `change` is only called from handlers */}
-            {drawn.map(({ spec, def, r }) => def && r ? (
+            {drawn.map(({ spec, def, r }, i) => r ? (
               <ChartFrameContext key={spec.id} value={{ size: spec.size ?? NO_SIZE, resizing, cancelDrag, onResize: (size, keys) => change((cur) => patchChart(cur, spec.id, { size }), keys ? { fold: `size:${spec.id}` } : {}) }}>
-              <def.Panel martId={martId} cf={cf} spec={spec} r={r} spark={spark} filter={filter} version={version} idle={idle}
+              <def.Panel martId={martId} cf={cf} title={resolved[i]!.title!} r={r} spark={spark} filter={filter} version={version} idle={idle}
                 hasFilters={hasFilters} formatOf={formatOf} ready={!!settings} tail={tailItems({ cf, spec, change, resizing, onResizing: setResizing })}
                 onChange={(p: Partial<ChartSpec>) => { const stage = showPicked(spec, p); change((cur) => patchChart(cur, spec.id, p), { stage }); }} onFilter={onFilter} />
               </ChartFrameContext>

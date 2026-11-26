@@ -12,10 +12,10 @@ import { useChartQuery } from './useChartQuery';
 export const IN_LIST_MAX = 500;
 
 /** `off`: the grid sends no HAVING filter. `fallback`: the keys cannot be sent exactly. `read`: the keys read to make (`key` is null when the table has no group key). */
-export type KeysPlan = { kind: 'off' } | { kind: 'fallback' } | { kind: 'read'; key: string | null; options: TraverseOptions };
+type KeysPlan = { kind: 'off' } | { kind: 'fallback' } | { kind: 'read'; key: string | null; options: TraverseOptions };
 
 /** What the keys read leaves the charts with: an `in` rule (null when nothing narrows them), no rows at all, or the fallback. */
-export type KeysOutcome = { kind: 'rule'; rule: TraverseFilter | null } | { kind: 'empty' } | { kind: 'fallback' };
+type KeysOutcome = { kind: 'rule'; rule: TraverseFilter | null } | { kind: 'empty' } | { kind: 'fallback' };
 
 const isUnsafeKey = (f: Field): boolean => f.category === 'boolean' || f.category === 'time' || (f.category === 'date' && /TIME|STAMP/i.test(f.type));
 

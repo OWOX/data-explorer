@@ -14,7 +14,7 @@ export type Picks = Record<string, string[]>;
 export type SavedView = { filters: Record<string, ColumnFilter>; slices?: Record<string, ColumnFilter>; /** null: the member set no sort. */ sorts: SortKey[] | null; limit: number; view?: 'charts'; /** The alias paths whose data mart's Unique Count is on. */ uniqueCount?: string[]; /** The alias paths of joined marts kept with no column. */ emptyPaths?: string[] };
 /** A SavedView as stored: rules as the view link's tuples (`fl`, `sl`), sorts as [field, 1 | -1], `vw` 1 for Charts. */
 type StoredView = { fl: unknown[][]; sl?: unknown[][]; s: [string, 1 | -1][] | null; l: number; vw?: 1; /** Unique Count alias paths. */ uc?: string[]; /** Empty alias paths. */ ep?: string[] };
-type ColumnsDoc = { columns: string[]; at: string; picks?: Picks; lastShown?: string[]; aggregations?: unknown; dateTrunc?: unknown; gridView?: unknown };
+type ColumnsDoc = { columns: string[]; picks?: Picks; lastShown?: string[]; aggregations?: unknown; dateTrunc?: unknown; gridView?: unknown };
 
 export interface ColumnStore {
   /** The member's saved column names for a mart, or null when there are none or the read failed. */
@@ -181,7 +181,7 @@ export function createColumnStore(ctx: Ctx): ColumnStore {
           const shown = shownBy.get(martId);
           const agg = aggBy.get(martId) ?? NO_AGGREGATION;
           const view = viewBy.get(martId);
-          await col.put(martId, { columns: cache.get(martId) ?? [], at: new Date().toISOString(), ...(Object.keys(merged).length ? { picks: merged } : {}), ...(shown ? { lastShown: shown } : {}), ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}), ...(view ? { gridView: encodeView(view) } : {}) });
+          await col.put(martId, { columns: cache.get(martId) ?? [], ...(Object.keys(merged).length ? { picks: merged } : {}), ...(shown ? { lastShown: shown } : {}), ...(agg.aggregations.length ? { aggregations: agg.aggregations } : {}), ...(agg.dateTrunc.length ? { dateTrunc: agg.dateTrunc } : {}), ...(view ? { gridView: encodeView(view) } : {}) });
         })
         .catch((e) => console.warn('Saving the column selection failed', e));
     }, SAVE_DEBOUNCE_MS));

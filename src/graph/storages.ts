@@ -1,6 +1,6 @@
 import type { Model } from '../model/types';
 
-export type StorageOption = { id: string; title: string; type: string; count: number };
+type StorageOption = { id: string; title: string; type: string; count: number };
 
 /** The storages the filter offers: those holding at least one mart, with how many. */
 export function storageOptions(model: Model): StorageOption[] {

@@ -19,7 +19,7 @@ export type PipelineHost = {
   alternatives(ids: string[], intent: Intent): void;
   chartSettings: Pick<ChartSettingsStore, 'load' | 'save'>;
 };
-export type PipelineResult = { status: 'done' | 'failed' | 'aborted' | 'nothing'; intent: Intent };
+type PipelineResult = { status: 'done' | 'failed' | 'aborted' | 'nothing'; intent: Intent };
 
 /** Steps 0 to 5 in order. Each fill expects the grid the previous one set, so an edit made meanwhile stops the rest in the reducer. */
 export async function runPipeline(raw: Omit<StepInput, 'intent'> & { intent?: Intent; mainId?: string }, deps: StepDeps, host: PipelineHost): Promise<PipelineResult> {

@@ -11,7 +11,7 @@ const colX = (depth: number) => depth * (CARD_W + COL_GAP);
 const rowY = (row: number) => row * (CARD_H + ROW_GAP);
 
 /** One column of ghosts: `ids` hang from `path`, a tree node or a ghost of the level before. */
-export type GhostColumn = { path: string; ids: string[] };
+type GhostColumn = { path: string; ids: string[] };
 
 /**
  * Positions for every node, plus the ghosts: each column of them goes after its parent's column.
@@ -20,7 +20,7 @@ export type GhostColumn = { path: string; ids: string[] };
  */
 export function layoutTree(
   tree: JoinTree,
-  extra?: GhostColumn | GhostColumn[],
+  extra?: GhostColumn[],
 ): { placed: Placed[]; ghosts: { id: string; x: number; y: number }[]; width: number; height: number } {
   const placed: Placed[] = [];
   const slot = new Map<string, { depth: number; row: number }>();
@@ -45,7 +45,7 @@ export function layoutTree(
   placed.reverse(); // the main mart first
   const ghosts: { id: string; x: number; y: number }[] = [];
   let bottom = nextRow;
-  for (const column of extra === undefined ? [] : Array.isArray(extra) ? extra : [extra]) {
+  for (const column of extra ?? []) {
     const parent = slot.get(column.path);
     if (!parent || column.ids.length === 0) continue;
     const depth = parent.depth + 1;

@@ -108,12 +108,11 @@ function AppBody() {
     const t = setTimeout(() => setHeld(true), LOADED_HOLD_MS);
     return () => clearTimeout(t);
   }, [full, held]);
-  const opened = held;
   // The total grows once the storages are known, so the raw fraction can dip: the bar never moves back.
   const raw = Math.min(1, done / total);
   const [peak, setPeak] = useState(0);
   if (raw > peak) setPeak(raw);
-  const loading = opened ? null : Math.max(raw, peak);
+  const loading = held ? null : Math.max(raw, peak);
   const toggle = (band: Fold) => {
     const now = !folded(band);
     setTouched((t) => ({ ...t, [band]: now }));
@@ -229,7 +228,7 @@ function AppBody() {
         error={error}
         onRetry={reload}
         history={<HistoryButtons model={model} />}
-        onCopyLink={ctx.route !== undefined && ctx.ui.copyLink ? () => void link.copy() : undefined}
+        onCopyLink={ctx.route !== undefined ? () => void link.copy() : undefined}
         notice={link.notice}
         onDismissNotice={link.dismiss}
       />
@@ -250,7 +249,7 @@ function AppBody() {
           onFoldMarts={() => toggle('marts')}
           onRetryCount={(id) => void recount(id)}
           onRequestCount={request}
-          onOpenApp={(id) => void ctx.ui.openExternal(martAppUrl(ctx.projectId, id))}
+          onOpenApp={(id) => void ctx.ui.openExternal(martAppUrl(ctx, id))}
           loading={loading}
         >
           {/* While the bar shows, neither band reads anything: the saved folds are not known yet, and one saved as folded must not read rows first. */}

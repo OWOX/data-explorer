@@ -8,9 +8,9 @@ import type { Flow } from './sankeyLayout';
 import { numberOf } from './Scorecards';
 
 /** One node of a column: its key (a value, BLANK_KEY or OTHER_KEY) and its exact total. */
-export type ColumnNode = { key: string; value: number };
+type ColumnNode = { key: string; value: number };
 
-export type SankeyData = {
+type SankeyData = {
   /** Per column: the blank node first, then the top values by total, Other last. Zero totals are left out. */
   columns: ColumnNode[][];
   /** `flows[i]` runs from column i to i+1, one per (origin, source, target); `origin` is the node in column 0 the flow came from. */
@@ -60,14 +60,14 @@ const nodeOf = (v: unknown, listed: Set<string>): string => { const k = keyOf(v)
  * Flows have no origin past the first pair: there is no single first-column node a joined row belongs to.
  */
 export function foldSankey({ flowRows, lowRows, pairRows, pairLowRows, columnRows, dims, measure }: { flowRows?: Row[]; lowRows?: Row[]; pairRows?: Row[][]; pairLowRows?: (Row[] | null | undefined)[]; columnRows: Row[][]; dims: Field[]; measure: Measure }): SankeyData {
-  const cols = dims.map((d, i) => foldColumn(columnRows[i] ?? [], d, measure));
+  const cols = dims.map((d, i) => foldColumn(columnRows[i]!, d, measure));
   const key = measureKey(measure);
   const sums: Map<string, Flow>[] = dims.slice(1).map(() => new Map());
   // A capped flow read is sorted largest first, so a negative would be among the left-out flows: the few-row ascending read shows it (it filters out NULL sums with a HAVING, so they do not fill it).
   const lows = [...(lowRows ?? []), ...(pairLowRows ?? []).flatMap((r) => r ?? [])];
   let negative = cols.some((c) => c.negative) || lows.some((r) => (numberOf(r[key]) ?? 0) < 0);
   if (pairRows) {
-    pairRows.slice(0, sums.length).forEach((rows, i) => {
+    pairRows.forEach((rows, i) => {
       for (const row of rows) {
         const v = numberOf(row[key]);
         if (v === null || v === 0) continue;
@@ -99,6 +99,6 @@ export function foldSankey({ flowRows, lowRows, pairRows, pairLowRows, columnRow
     negative,
     capped: pairRows ? pairRows.some((r) => r.length >= SANKEY_FLOW_LIMIT) : (flowRows?.length ?? 0) >= SANKEY_FLOW_LIMIT,
     columnCapped: cols.some((c) => c.capped),
-    empty: columnRows.slice(0, dims.length).some((r) => r.length === 0) || flows.every((p) => p.length === 0),
+    empty: columnRows.some((r) => r.length === 0) || flows.every((p) => p.length === 0),
   };
 }

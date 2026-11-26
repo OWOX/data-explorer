@@ -1,5 +1,5 @@
 // Scorecard numbers in short form (1.6M, $117K): the exact value stays one hover away.
-import { formatsFor, type Format } from '../format/formats';
+import { formatsFor, formatValue, type Format } from '../format/formats';
 import { categorizeFieldType } from '../model/field-category';
 import { toNumber } from '../model/number';
 
@@ -7,7 +7,7 @@ import { toNumber } from '../model/number';
 // Money stays in the viewer's locale, as its full text does.
 const plain = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 /** Below this a number is short enough already, and 2026 must not read "2K". */
-export const COMPACT_FROM = 10_000;
+const COMPACT_FROM = 10_000;
 const money = new Map<string, Intl.NumberFormat | null>();
 function moneyCompact(currency: string): Intl.NumberFormat | null {
   if (!money.has(currency)) {
@@ -27,3 +27,6 @@ export function compactValue(v: unknown, type: string, f: Format): string | null
   if (f.kind === 'auto' || f.kind === 'plain' || !formatsFor(type).includes(f.kind)) return plain.format(n);
   return null;
 }
+
+/** An axis tick in the measure's format: short ($10.2K) when it has a short form, else the value rounded to 2 decimals unless the format scales or rounds it itself. */
+export const tickText = (n: number, type: string, format: Format): string => compactValue(n, type, format) ?? formatValue(format.kind === 'percent' || format.kind === 'money' ? n : Number(n.toFixed(2)), type, format);

@@ -50,7 +50,7 @@ function plainMessage(e: unknown): string {
 }
 
 /** The error followed down its `cause` links, outermost first. Capped so a looping chain ends. */
-export function causeChain(e: unknown): unknown[] {
+function causeChain(e: unknown): unknown[] {
   const chain: unknown[] = [];
   let cur: unknown = e;
   while (chain.length < 8 && cur !== undefined && cur !== null && !chain.includes(cur)) {

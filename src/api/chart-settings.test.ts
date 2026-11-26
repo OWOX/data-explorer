@@ -11,7 +11,7 @@ test('load is empty on a missing document', async () => {
 
 test('save does one put under the mart id and load reads it back', async () => {
   const store = new Map<string, unknown>();
-  const s = { version: 2 as const, charts: [{ id: 'a', kind: 'pie' as const, measure: 'amount' }] };
+  const s = { charts: [{ id: 'a', kind: 'pie' as const, measure: 'amount' }] };
   const cs = createChartSettings(ctxWith(async (id) => (store.has(id) ? { document: store.get(id) } : null), async (id, d) => { store.set(id, d); }));
   cs.save('M', s);
   await vi.waitFor(() => expect(store.get('M')).toEqual(s));
@@ -46,7 +46,7 @@ test('a v2 document keeps known chart keys of the right type and drops bad chart
     { id: 'a', kind: 'pie' },
     { id: 'c', kind: 'heatmap', hidden: true, dimension: 'x', dimension2: 'y', stack: null, bucket: 'WEEK' },
   ] };
-  expect(await createChartSettings(ctxWith(async () => ({ document: doc }), async () => {})).load('M')).toEqual({ version: 2, charts: [
+  expect(await createChartSettings(ctxWith(async () => ({ document: doc }), async () => {})).load('M')).toEqual({ charts: [
     { id: 'a', kind: 'line', measure: 'm', measure2: null },
     { id: 'c', kind: 'heatmap', hidden: true, dimension: 'x', dimension2: 'y', stack: null, bucket: 'WEEK' },
   ] });
@@ -77,12 +77,23 @@ test('scorecard dates keep string values only, as metrics do', async () => {
   expect(await load({ scorecards: { dates: 'x' } })).toEqual({ scorecards: {} });
 });
 
+const pieChart = { id: 'a', kind: 'pie' as const, measure: 'amount' };
+const loadChartDoc = (doc: unknown) => createChartSettings(ctxWith(async () => ({ document: doc }), async () => {})).load('M');
+
+test('a document saved with the old version marker keeps its charts and loses the marker', async () => {
+  expect(await loadChartDoc({ version: 2, charts: [pieChart] })).toEqual({ charts: [pieChart] });
+});
+
+test('a document saved without the marker keeps its charts', async () => {
+  expect(await loadChartDoc({ charts: [pieChart] })).toEqual({ charts: [pieChart] });
+});
+
 test('a load waits for the same mart\'s pending save, and not for another mart\'s', async () => {
   const store = new Map<string, unknown>();
   let release!: () => void;
   const slow = new Promise<void>((r) => { release = r; });
   const cs = createChartSettings(ctxWith(async (id) => (store.has(id) ? { document: store.get(id) } : null), async (id, d) => { if (id === 'M') await slow; store.set(id, d); }));
-  const s = { version: 2 as const, charts: [{ id: 'a', kind: 'pie' as const }] };
+  const s = { charts: [{ id: 'a', kind: 'pie' as const }] };
   cs.save('M', s);
   cs.save('N', s);
   const loadN = cs.load('N');
@@ -120,7 +131,7 @@ describe('save queue', () => {
   test('saves while one is in flight coalesce into one more put with the newest doc; a load waits for both', async () => {
     vi.useFakeTimers();
     const { cs, puts } = gated();
-    const doc = (n: number) => ({ version: 2 as const, charts: [{ id: 'a', kind: 'pie' as const, size: { cols: n } }] });
+    const doc = (n: number) => ({ charts: [{ id: 'a', kind: 'pie' as const, size: { cols: n } }] });
     void cs.save('M', doc(11));
     await vi.advanceTimersByTimeAsync(0);
     void cs.save('M', doc(12));

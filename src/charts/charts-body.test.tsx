@@ -8,7 +8,7 @@ import { demoFixtures, type Fixtures } from '../sdk/mock/fixtures';
 import type { Ctx, Row, TraverseOptions } from '../sdk/types';
 import { AppServices, StoreProvider } from '../state/store';
 import { App } from '../ui/App';
-import { SAVED_COLUMNS_WAIT_MS } from '../ui/explorer/MartGrid';
+import { SAVED_COLUMNS_WAIT_MS } from '../ui/explorer/SeededGrid';
 import { openColumnMenu, openConfigMenu, closeConfigMenu, openFields, openSubmenu } from '../ui/explorer/menu-test-utils';
 import type { ChartSettings } from './settings';
 
@@ -88,11 +88,11 @@ test('a card’s menu switches its metric, saves it under the card id, and the s
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Count Unique' }));
   await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique', 'Count Unique']));
   expect(group('orders')!.querySelector('[data-card="amount"] svg[aria-label="Count Unique trend"]')).not.toBeNull();
-  expect(t.puts).toHaveBeenLastCalledWith('orders', { version: 2, scorecards: { metrics: { amount: 'records' } }, charts: undefined });
+  expect(t.puts).toHaveBeenLastCalledWith('orders', { scorecards: { metrics: { amount: 'records' } }, charts: undefined });
   await userEvent.click(within(group('orders')!).getAllByRole('button', { name: 'Count Unique options' })[1]!);
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Hide' }));
   await waitFor(() => expect(group('orders')!.querySelector('[data-card="amount"]')).toBeNull());
-  expect(t.puts).toHaveBeenLastCalledWith('orders', { version: 2, scorecards: { metrics: { amount: 'records' }, hidden: ['amount'] } });
+  expect(t.puts).toHaveBeenLastCalledWith('orders', { scorecards: { metrics: { amount: 'records' }, hidden: ['amount'] } });
 });
 
 test('a card is at most 10rem wide and does not grow to fill its mart’s cell', async () => {
@@ -138,7 +138,7 @@ test('Charts: Copy to clipboard copies the rows the Table read, with no new read
   await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
   const before = t.queries.filter((q) => q.limit === 201).length;
   await userEvent.click(within(data()).getByText('Export'));
-  expect(await within(data()).findByRole('menuitem', { name: 'Copy to clipboard' })).toBeEnabled();
+  expect(await screen.findByRole('menuitem', { name: 'Copy to clipboard' })).toBeEnabled();
   expect(t.queries.filter((q) => q.limit === 201)).toHaveLength(before);
 });
 
@@ -154,7 +154,7 @@ test('Charts: after a slice filter, opening Export reads the grid rows for it an
   expect(t.queries.some(filtered)).toBe(false);
   await userEvent.click(within(data()).getByText('Export'));
   await waitFor(() => expect(t.queries.filter(filtered)).toHaveLength(1));
-  await waitFor(() => expect(within(data()).getByRole('menuitem', { name: 'Copy to clipboard' })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Copy to clipboard' })).toBeEnabled());
 });
 
 test('Charts: a failed grid read says so in Export, and reopening Export reads again', async () => {
@@ -167,7 +167,7 @@ test('Charts: a failed grid read says so in Export, and reopening Export reads a
   const summary = within(data()).getByText('Export');
   await userEvent.click(summary);
   await waitFor(() => expect(reads()).toBe(1));
-  const item = () => within(data()).getByRole('menuitem', { name: 'Copy to clipboard' });
+  const item = () => screen.getByRole('menuitem', { name: 'Copy to clipboard' });
   await userEvent.hover(item().parentElement!);
   expect(await screen.findAllByText(/The rows could not be read/)).not.toHaveLength(0);
   failing = false;
@@ -251,7 +251,7 @@ test('hiding a column drops the card picks that name it, in one write; a pick of
   const menu = await openColumnMenu(within(data()), 'created_at');
   await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
   await waitFor(() => expect(t.puts).toHaveBeenCalledTimes(1));
-  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, scorecards: { metrics: { id: 'amount' }, dates: {} } });
+  expect(t.puts).toHaveBeenCalledWith('orders', { scorecards: { metrics: { id: 'amount' }, dates: {} } });
 });
 
 test('a saved pick of a column the grid does not open with (columns read late or failed) is never erased by loading', async () => {
@@ -266,14 +266,14 @@ test('hiding a card from the Charts menu removes it and saves', async () => {
   await openChartList();
   await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Amount · Sum' }));
   await waitFor(() => expect(cardNames(group('orders'))).toEqual(['Count Unique']));
-  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, scorecards: { hidden: ['amount'] } });
+  expect(t.puts).toHaveBeenCalledWith('orders', { scorecards: { hidden: ['amount'] } });
   expect(cardNames(group('products'))).toEqual(['Count Unique', 'price · Sum']);
 });
 
 test('hiding a column while Charts has not loaded its settings still drops the pick, through the store', async () => {
   let release!: () => void;
   const gate = new Promise<void>((r) => { release = r; });
-  const t = setup({ charts: { version: 2, scorecards: { dates: { amount: 'created_at' }, hidden: ['x'] } }, gate });
+  const t = setup({ charts: { scorecards: { dates: { amount: 'created_at' }, hidden: ['x'] } }, gate });
   await t.seeded;
   t.view();
   t.puts.mockClear();
@@ -283,13 +283,13 @@ test('hiding a column while Charts has not loaded its settings still drops the p
   const menu = await openColumnMenu(within(data()), 'created_at');
   await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
   release();
-  await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, scorecards: { dates: {}, hidden: ['x'] } }));
+  await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { scorecards: { dates: {}, hidden: ['x'] } }));
 });
 
 test('a change cannot be made before the saved settings load, and one made after keeps the rest of the doc', async () => {
   let release!: () => void;
   const gate = new Promise<void>((r) => { release = r; });
-  const saved: ChartSettings = { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', orientation: 'horizontal' }, { id: 'pie', kind: 'pie', dimension: 'status' }] };
+  const saved: ChartSettings = { charts: [{ id: 'time-series', kind: 'timeSeries', orientation: 'horizontal' }, { id: 'pie', kind: 'pie', dimension: 'status' }] };
   const t = setup({ charts: saved, gate });
   await t.seeded;
   t.view();
@@ -319,7 +319,7 @@ test('time series: stacking by a dimension draws several series and saves the ch
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Orders' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'status' }));
   await waitFor(() => expect(series().size).toBeGreaterThan(1));
-  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', stack: 'status' }, { id: 'pie', kind: 'pie' }] });
+  expect(t.puts).toHaveBeenCalledWith('orders', { charts: [{ id: 'time-series', kind: 'timeSeries', stack: 'status' }, { id: 'pie', kind: 'pie' }] });
 });
 
 test('time series without a stack is one series', async () => {
@@ -337,11 +337,11 @@ test('the Orientation menu row turns the chart and saves; the header has no bar 
   expect(await screen.findByRole('menuitemradio', { name: 'Vertical' })).toBeChecked();
   await userEvent.click(screen.getByRole('menuitemradio', { name: 'Horizontal' }));
   await waitFor(() => expect(data().querySelector('svg[data-orientation=horizontal]')).not.toBeNull());
-  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', orientation: 'horizontal' }, { id: 'pie', kind: 'pie' }] });
+  expect(t.puts).toHaveBeenCalledWith('orders', { charts: [{ id: 'time-series', kind: 'timeSeries', orientation: 'horizontal' }, { id: 'pie', kind: 'pie' }] });
 });
 
 test('a stack with more than 8 values adds an Other series from a not_in query; fewer than 8 sends none', async () => {
-  const many = await charts({ columns: withDims, charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', stack: 'products__title' }, { id: 'pie', kind: 'pie' }] } });
+  const many = await charts({ columns: withDims, charts: { charts: [{ id: 'time-series', kind: 'timeSeries', stack: 'products__title' }, { id: 'pie', kind: 'pie' }] } });
   await waitFor(() => expect(series().has('Other')).toBe(true));
   expect(series().size).toBe(9);
   const q = many.queries.find((o) => o.filter?.some((f) => f.operator === 'not_in'));
@@ -349,14 +349,14 @@ test('a stack with more than 8 values adds an Other series from a not_in query; 
 });
 
 test('a stack with fewer than 8 values sends no not_in query', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', stack: 'status' }, { id: 'pie', kind: 'pie' }] } });
+  const t = await charts({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries', stack: 'status' }, { id: 'pie', kind: 'pie' }] } });
   await waitFor(() => expect(series().size).toBeGreaterThan(1));
   expect(series().has('Other')).toBe(false);
   expect(t.queries.some((o) => o.filter?.some((f) => f.operator === 'not_in'))).toBe(false);
 });
 
 test('a saved pie dimension that is not shown falls back to the first dimension and writes nothing', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', dimension: 'not_shown' }] } });
+  const t = await charts({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', dimension: 'not_shown' }] } });
   await waitFor(() => expect(data().querySelector('svg[aria-label="Amount · Sum by status"]')).not.toBeNull());
   await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
   expect(t.puts).not.toHaveBeenCalled();
@@ -370,7 +370,7 @@ test('pie menu: a chosen dimension redraws the pie and saves', async () => {
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Products' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Name' }));
   await waitFor(() => expect(data().querySelector('[data-slice="Other"]')).not.toBeNull());
-  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', dimension: 'products__title' }] });
+  expect(t.puts).toHaveBeenCalledWith('orders', { charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', dimension: 'products__title' }] });
 });
 
 test('two quick edits both land in the saved doc', async () => {
@@ -383,7 +383,7 @@ test('two quick edits both land in the saved doc', async () => {
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Dimension' }));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Products' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Name' }));
-  expect(t.puts).toHaveBeenLastCalledWith('orders', { version: 2, charts: [
+  expect(t.puts).toHaveBeenLastCalledWith('orders', { charts: [
     { id: 'time-series', kind: 'timeSeries', orientation: 'horizontal' },
     { id: 'pie', kind: 'pie', dimension: 'products__title' },
   ] });
@@ -397,7 +397,7 @@ test('a v1 doc draws the default charts and keeps its hidden scorecards', async 
 });
 
 test('with only a pie, the sparklines still draw under the cards', async () => {
-  await charts({ charts: { version: 2, charts: [{ id: 'pie', kind: 'pie' }] } });
+  await charts({ charts: { charts: [{ id: 'pie', kind: 'pie' }] } });
   await waitFor(() => expect(data().querySelectorAll('svg[aria-label*="trend"]').length).toBeGreaterThan(0));
 });
 
@@ -488,7 +488,7 @@ test('choosing Count Unique from the Metric menu saves the time series measure r
   expect(opts.map((o) => o.textContent)).toEqual(['Count Unique', 'Amount · Sum', 'Net Revenue · Sum']);
   await userEvent.click(within(screen.getByRole('menu', { name: 'Orders' })).getByRole('menuitemradio', { name: 'Count Unique' }));
   await waitFor(() => expect(screen.getByRole('heading', { name: /^Count Unique by / })).toBeInTheDocument());
-  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'records' }, { id: 'pie', kind: 'pie' }] });
+  expect(t.puts).toHaveBeenCalledWith('orders', { charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'records' }, { id: 'pie', kind: 'pie' }] });
 });
 
 test('the Metric menus list every mart’s Count Unique and metrics; a joined mart’s records saves records:<martId>', async () => {
@@ -503,14 +503,14 @@ test('the Metric menus list every mart’s Count Unique and metrics; a joined ma
   expect(opts.map((o) => o.textContent)).toEqual(['Count Unique', 'price · Sum']);
   await userEvent.click(opts[0]!);
   await waitFor(() => expect(screen.getByRole('heading', { name: /^Products · Count Unique by / })).toBeInTheDocument());
-  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'records:products' }, { id: 'pie', kind: 'pie' }] });
+  expect(t.puts).toHaveBeenCalledWith('orders', { charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'records:products' }, { id: 'pie', kind: 'pie' }] });
   const q = t.queries.find((o) => o.dateTrunc && o.uniqueCount?.[0] && o.uniqueCount[0] !== '');
   expect(q).toMatchObject({ column: ['created_at'] });
   expect(q?.aggregation).toBeUndefined();
 });
 
 test('a pie of a joined mart’s Count Unique by a dimension asks the backend for that mart’s unique count', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', measure: 'records:products', dimension: 'status' }] } });
+  const t = await charts({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', measure: 'records:products', dimension: 'status' }] } });
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Products · Count Unique by status' })).toBeInTheDocument());
   await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
   const q = t.queries.find((o) => o.limit === 8 && o.column?.[0] === 'status' && o.uniqueCount?.[0] !== '' && o.uniqueCount);
@@ -551,7 +551,7 @@ test('a pie slice is keyboard reachable and "Other" is not clickable', async () 
 });
 
 test('clicking a bar bucket filters the date column to a between over that bucket', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', bucket: 'MONTH' }, { id: 'pie', kind: 'pie' }] } });
+  const t = await charts({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries', bucket: 'MONTH' }, { id: 'pie', kind: 'pie' }] } });
   await waitFor(() => expect(data().querySelector('[data-bucket]')).not.toBeNull());
   const band = data().querySelector<SVGElement>('[data-bucket]')!;
   const start = band.getAttribute('data-bucket')!.slice(0, 10);
@@ -566,7 +566,7 @@ test('clicking a bar bucket filters the date column to a between over that bucke
 
 let blanks = 0;
 test('a pie slice whose value is blank is not turned into a filter: no filter, no Undo step, a note says so', async () => {
-  await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', measure: 'records', dimension: 'status' }] }, mapRow: (r) => ('status' in r ? { ...r, status: ' '.repeat(++blanks) } : r) });
+  await charts({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', measure: 'records', dimension: 'status' }] }, mapRow: (r) => ('status' in r ? { ...r, status: ' '.repeat(++blanks) } : r) });
   await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
   const undoWas = (screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement).disabled;
   await userEvent.click(data().querySelector('[data-slice]')!);
@@ -576,7 +576,7 @@ test('a pie slice whose value is blank is not turned into a filter: no filter, n
 });
 
 test('a null value is the first slice, read "(blank)", and a click filters the column to blank', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', measure: 'records', dimension: 'status' }] }, mapRow: (r) => ('status' in r && r.status === 'paid' ? { ...r, status: null } : r) });
+  const t = await charts({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', measure: 'records', dimension: 'status' }] }, mapRow: (r) => ('status' in r && r.status === 'paid' ? { ...r, status: null } : r) });
   await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
   const first = data().querySelector('[data-slice]')!;
   expect(first.getAttribute('data-slice')).toBe('(blank)');
@@ -588,7 +588,7 @@ test('a null value is the first slice, read "(blank)", and a click filters the c
 });
 
 test('a null date bucket draws first as "(blank)" and a click filters the date to blank', async () => {
-  await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', bucket: 'MONTH' }] }, mapRow: (r) => ('created_at' in r && String(r.created_at).startsWith('2026-08') ? { ...r, created_at: null } : r) });
+  await charts({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries', bucket: 'MONTH' }] }, mapRow: (r) => ('created_at' in r && String(r.created_at).startsWith('2026-08') ? { ...r, created_at: null } : r) });
   const blank = await waitFor(() => { const b = data().querySelector('rect[data-bucket]'); expect(b?.getAttribute('aria-label')).toBe('Filter to (blank)'); return b!; });
   expect(data().querySelector('rect[data-bucket="null"]')).toBeNull();
   await userEvent.click(blank);
@@ -596,7 +596,7 @@ test('a null date bucket draws first as "(blank)" and a click filters the date t
 });
 
 test('the pie tooltip shows each share, except for another mart’s Count Unique whose slices overlap', async () => {
-  const own = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', measure: 'records', dimension: 'status' }] } });
+  const own = await charts({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', measure: 'records', dimension: 'status' }] } });
   await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
   fireEvent.focus(data().querySelector('[data-slice]')!);
   expect((await screen.findAllByText(/\(\d+%\)/)).length).toBeGreaterThan(0);
@@ -604,7 +604,7 @@ test('the pie tooltip shows each share, except for another mart’s Count Unique
 });
 
 test('a pie of another mart’s Count Unique hides the share in the tooltip', async () => {
-  await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', measure: 'records:products', dimension: 'status' }] } });
+  await charts({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', measure: 'records:products', dimension: 'status' }] } });
   await waitFor(() => expect(data().querySelector('[data-slice]')).not.toBeNull());
   const slice = data().querySelector('[data-slice]')!;
   fireEvent.focus(slice);
@@ -624,7 +624,7 @@ test('an unstacked time series rides on the sparklines read: one billed read whe
 });
 
 test('a stacked time series still reads its own series', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', stack: 'status' }, { id: 'pie', kind: 'pie' }] } });
+  const t = await charts({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries', stack: 'status' }, { id: 'pie', kind: 'pie' }] } });
   await waitFor(() => expect(series().size).toBeGreaterThan(1));
   const own = t.queries.slice(t.tableQueries()).filter((q) => q.dateTrunc?.length && q.column?.includes('status'));
   expect(own.length).toBeGreaterThan(0);
@@ -668,7 +668,7 @@ test('the Charts menu sits in the band header and adds and hides charts', async 
 
 test('Hide keeps the chart in the Charts list, and ticking it brings it back with its setup', async () => {
   const saved = { id: 'p', kind: 'pie', dimension: 'status' } as const;
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, saved] } });
+  const t = await charts({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries' }, saved] } });
   await userEvent.click(await screen.findByRole('button', { name: 'Pie options' }));
   await userEvent.click(screen.getByRole('menuitem', { name: 'Hide' }));
   await waitFor(() => expect(data().querySelector('section[data-chart-kind="Pie"]')).toBeNull());
@@ -690,13 +690,13 @@ test('Duplicate adds a chart beside its original', async () => {
 });
 
 test('a hidden chart sends no query', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'p', kind: 'pie', hidden: true }] } });
+  const t = await charts({ charts: { charts: [{ id: 'p', kind: 'pie', hidden: true }] } });
   await waitFor(() => expect(group('orders')).not.toBeNull());
   expect(t.queries.filter((q) => q.limit === 8)).toHaveLength(0);
 });
 
 test('a chart whose fields are not shown is listed as columns hidden and drawn again when they return', async () => {
-  const t = await charts({ columns: ['id', 'amount', 'created_at'], charts: { version: 2, charts: [{ id: 'p', kind: 'pie', dimension: 'status' }] } });
+  const t = await charts({ columns: ['id', 'amount', 'created_at'], charts: { charts: [{ id: 'p', kind: 'pie', dimension: 'status' }] } });
   expect(data().querySelectorAll('section.dm-chart')).toHaveLength(0);
   await openChartList();
   expect(screen.getByRole('menuitemcheckbox', { name: 'Pie (columns hidden)' })).toBeTruthy();
@@ -710,15 +710,15 @@ test('a chart whose fields are not shown is listed as columns hidden and drawn a
 });
 
 test('Chart type switches a chart in place and keeps its usable saved fields', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'p', kind: 'pie', measure: 'amount', dimension: 'status' }] } });
+  const t = await charts({ charts: { charts: [{ id: 'p', kind: 'pie', measure: 'amount', dimension: 'status' }] } });
   await userEvent.click(screen.getByRole('button', { name: 'Pie options' }));
   await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
   await userEvent.click(screen.getByRole('menuitemradio', { name: 'Time series' }));
-  expect(t.puts).toHaveBeenLastCalledWith('orders', { version: 2, charts: [{ id: 'p', kind: 'timeSeries', measure: 'amount' }] });
+  expect(t.puts).toHaveBeenLastCalledWith('orders', { charts: [{ id: 'p', kind: 'timeSeries', measure: 'amount' }] });
 });
 
 test('a ranked bar draws one bar per top value; switching it to pie keeps its measure and dimension', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'r', kind: 'rankedBar', measure: 'amount', dimension: 'status' }] } });
+  const t = await charts({ charts: { charts: [{ id: 'r', kind: 'rankedBar', measure: 'amount', dimension: 'status' }] } });
   await waitFor(() => expect(data().querySelector('section[data-chart-kind="Ranked bar"] svg[data-orientation="horizontal"]')).not.toBeNull());
   expect(t.queries.some((q) => q.limit === 8 && q.aggregation?.[0]?.function === 'SUM')).toBe(true);
   await userEvent.click(screen.getByRole('button', { name: 'Ranked bar options' }));
@@ -729,7 +729,7 @@ test('a ranked bar draws one bar per top value; switching it to pie keeps its me
 });
 
 test('a bar chart draws vertical bars per top value; switching it to a ranked bar keeps its measure and dimension', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'b', kind: 'bar', measure: 'amount', dimension: 'status' }] } });
+  const t = await charts({ charts: { charts: [{ id: 'b', kind: 'bar', measure: 'amount', dimension: 'status' }] } });
   await waitFor(() => expect(data().querySelector('section[data-chart-kind="Bar chart"] svg[data-orientation="vertical"] rect[data-series]')).not.toBeNull());
   expect(t.queries.some((q) => q.limit === 8 && q.aggregation?.[0]?.function === 'SUM')).toBe(true);
   await userEvent.click(screen.getByRole('button', { name: 'Bar chart options' }));
@@ -748,7 +748,7 @@ test('a chart menu ends with Chart type, Resize, Duplicate, Copy to clipboard an
 });
 
 test('the grid’s chosen aggregation reaches the charts: Average ranks the bars, and a switch to Pie goes back to Sum', async () => {
-  const t = setup({ charts: { version: 2, charts: [{ id: 'r', kind: 'rankedBar', measure: 'amount', dimension: 'status' }] } });
+  const t = setup({ charts: { charts: [{ id: 'r', kind: 'rankedBar', measure: 'amount', dimension: 'status' }] } });
   await t.seeded;
   t.view();
   await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
@@ -784,7 +784,7 @@ test('choosing a field that is not a shown column adds the column to the grid an
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Orders' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Net Revenue · Sum' }));
   await waitFor(() => expect(lastGrid(t).columns).toContain('net_revenue'));
-  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'net_revenue' }, { id: 'pie', kind: 'pie' }] });
+  expect(t.puts).toHaveBeenCalledWith('orders', { charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'net_revenue' }, { id: 'pie', kind: 'pie' }] });
   await waitFor(() => expect(screen.getByRole('heading', { name: /^Net Revenue · Sum by / })).toBeInTheDocument());
 });
 
@@ -815,7 +815,7 @@ test('Stack by a hidden dimension shows the column', async () => {
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Stack by' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'is_gift' }));
   await waitFor(() => expect(lastGrid(t).columns).toContain('is_gift'));
-  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries', stack: 'is_gift' }, { id: 'pie', kind: 'pie' }] });
+  expect(t.puts).toHaveBeenCalledWith('orders', { charts: [{ id: 'time-series', kind: 'timeSeries', stack: 'is_gift' }, { id: 'pie', kind: 'pie' }] });
 });
 
 test('a hidden field of a joined mart is shown when a chart picks it', async () => {
@@ -825,7 +825,7 @@ test('a hidden field of a joined mart is shown when a chart picks it', async () 
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Products' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Name' }));
   await waitFor(() => expect(lastGrid(t).columns).toContain('products__title'));
-  expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', dimension: 'products__title' }] });
+  expect(t.puts).toHaveBeenCalledWith('orders', { charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', dimension: 'products__title' }] });
 });
 
 test('a shown calculated metric has a card by its plain label, read by name with no function', async () => {
@@ -1052,7 +1052,7 @@ test('a press outside the charts ends resize mode; one on a chart does not', asy
 });
 
 test('a drag moves in whole cells and saves once, on release; Escape mid-drag puts the size back and keeps the mode', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] } });
+  const t = await charts({ charts: { charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] } });
   await startResize();
   vi.spyOn(panelOf('Pie'), 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 480, height: 288 } as DOMRect);
   const corner = handle('Pie', 'se')!;
@@ -1073,7 +1073,7 @@ test('a drag moves in whole cells and saves once, on release; Escape mid-drag pu
 });
 
 test('the arrow keys move a focused handle one cell; the size is there after a reload, with the rest of the mart view', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] }, aggregations: [{ column: 'amount', function: 'AVG' }] });
+  const t = await charts({ charts: { charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] }, aggregations: [{ column: 'amount', function: 'AVG' }] });
   await startResize();
   vi.spyOn(panelOf('Pie'), 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 480, height: 288 } as DOMRect);
   handle('Pie', 's')!.focus();
@@ -1109,7 +1109,7 @@ const lastSaved = (t: { puts: { mock: { calls: unknown[][] } } }) => t.puts.mock
 const pies = () => data().querySelectorAll('section[data-chart-kind="Pie"]').length;
 
 test('Hide is an Undo step: Undo brings the chart back and saves it, Redo hides it again', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'p', kind: 'pie' }] } });
+  const t = await charts({ charts: { charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'p', kind: 'pie' }] } });
   await userEvent.click(await screen.findByRole('button', { name: 'Pie options' }));
   await userEvent.click(screen.getByRole('menuitem', { name: 'Hide' }));
   await waitFor(() => expect(pies()).toBe(0));
@@ -1136,7 +1136,7 @@ test('a scorecard metric is an Undo step', async () => {
 });
 
 test('a chart type change is an Undo step', async () => {
-  await charts({ charts: { version: 2, charts: [{ id: 'p', kind: 'pie' }] } });
+  await charts({ charts: { charts: [{ id: 'p', kind: 'pie' }] } });
   await userEvent.click(await screen.findByRole('button', { name: 'Pie options' }));
   await userEvent.click(screen.getByRole('menuitem', { name: 'Chart type' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Ranked bar' }));
@@ -1146,7 +1146,7 @@ test('a chart type change is an Undo step', async () => {
 });
 
 test('a resize drag is one Undo step', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] } });
+  const t = await charts({ charts: { charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] } });
   await startResize();
   vi.spyOn(panelOf('Pie'), 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 480, height: 288 } as DOMRect);
   fireEvent.pointerDown(handle('Pie', 'se')!, { button: 0, pointerId: 1, clientX: 480, clientY: 288 });
@@ -1162,7 +1162,7 @@ test('a resize drag is one Undo step', async () => {
 });
 
 test('arrow-key resizes of one chart are one Undo step; a drag after them is another', async () => {
-  const t = await charts({ charts: { version: 2, charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] } });
+  const t = await charts({ charts: { charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] } });
   await startResize();
   vi.spyOn(panelOf('Pie'), 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 480, height: 288 } as DOMRect);
   handle('Pie', 's')!.focus();
@@ -1205,14 +1205,14 @@ test('hiding a column that drops a card pick is one Undo step: Undo shows the co
 });
 
 test('hiding a column with Charts closed prunes the server doc, not an older copy this tab kept (another tab saved since)', async () => {
-  const t = await charts({ charts: { version: 2, scorecards: { dates: { amount: 'created_at' } } } });
+  const t = await charts({ charts: { scorecards: { dates: { amount: 'created_at' } } } });
   await waitFor(() => expect(group('orders')).not.toBeNull());
   await userEvent.click(radio('Table'));
   await waitFor(() => expect(group('orders')).toBeNull());
   // Another tab saved a newer doc.
-  await t.ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', { version: 2, scorecards: { dates: { amount: 'created_at' }, hidden: ['from-tab-2'] } });
+  await t.ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', { scorecards: { dates: { amount: 'created_at' }, hidden: ['from-tab-2'] } });
   t.puts.mockClear();
   const menu = await openColumnMenu(within(data()), 'created_at');
   await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
-  await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { version: 2, scorecards: { dates: {}, hidden: ['from-tab-2'] } }));
+  await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { scorecards: { dates: {}, hidden: ['from-tab-2'] } }));
 });

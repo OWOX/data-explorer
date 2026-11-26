@@ -44,7 +44,7 @@ const BY_DIMENSION: ReadonlySet<ChartKind> = new Set(['pie', 'bar', 'rankedBar',
  * A new chart of a dimension kind starts on the dimension the fewest charts already show (the first of those in column order), so adding a
  * chart does not repeat one already on the page (hidden charts do not count). A dimension a chart saves but the columns no longer show counts as the one it falls back to.
  */
-export function withFreshDimension<S extends Omit<ChartSpec, 'id' | 'hidden'>>(spec: S, list: readonly ChartSpec[], cf: ChartFields): S {
+function withFreshDimension<S extends Omit<ChartSpec, 'id' | 'hidden'>>(spec: S, list: readonly ChartSpec[], cf: ChartFields): S {
   if (!BY_DIMENSION.has(spec.kind) || spec.dimension !== undefined || cf.dimensions.length === 0) return spec;
   const uses = new Map<string, number>();
   for (const c of list) {
@@ -86,8 +86,8 @@ export function chartListItem({ cf, settings, resolved, change }: { cf: ChartFie
       ...resolved.map(({ spec, title }): MenuItem => ({
         kind: 'check',
         // A chart that cannot draw with the shown columns keeps its place and setup; its title needs fields, so it is named by type.
-        label: title ?? `${KINDS[spec.kind]?.label ?? spec.kind} (columns hidden)`,
-        icon: KINDS[spec.kind]?.icon ?? ChartColumn,
+        label: title ?? `${KINDS[spec.kind].label} (columns hidden)`,
+        icon: KINDS[spec.kind].icon,
         checked: !spec.hidden,
         onToggle: () => change((cur) => patchChart(cur, spec.id, { hidden: !spec.hidden })),
       })),

@@ -1,10 +1,9 @@
-import { CalendarRange, Columns3, Grid3x3, Rows3, Gauge } from 'lucide-react';
-import { BUCKET_LABELS, DATE_BUCKETS, formatBucket, type DateBucket } from '../../model/aggregation';
+import { CalendarRange, Columns3, Grid3x3, Rows3 } from 'lucide-react';
+import { formatBucket, type DateBucket } from '../../model/aggregation';
 import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
-import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
-import { axisTitle, fieldGroups, groupByMart, hintOf, measureGroups } from '../menuGroups';
+import { axisTitle, BUCKET_OPTIONS, fieldGroups, groupByMart, hintOf, metricItem } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { BLANK_KEY, BLANK_LABEL, blankFirst, keyOf, labelOf } from '../blank';
 import { bucketFilter, dimensionFilter } from '../clickFilters';
@@ -19,15 +18,15 @@ import { useTopValues } from '../useTopValues';
 import { carry, seriesWidth, type ChartKindDef, type PanelProps } from './types';
 
 type Cols = { kind: 'date'; date: Field; bucket: DateBucket | 'AUTO' } | { kind: 'dim'; dim: Field };
-export type HeatR = { rows: Field; cols: Cols; measure: Measure };
+type HeatR = { rows: Field; cols: Cols; measure: Measure };
 
-function HeatmapPanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<HeatR>) {
+function HeatmapPanel({ martId, cf, title, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<HeatR>) {
   const { rows: y, cols, measure } = r;
   const date = cols.kind === 'date' ? cols.date : null;
   const { bucket, error, retry } = useBucket(martId, date, cols.kind === 'date' ? cols.bucket : 'AUTO', filter, version, idle || !date);
   // Each axis' values: the blank one first when it has rows, the top values after. A list cannot name NULL, so the blank row / column is read apart.
-  const yTop = useTopValues({ martId, cf, dim: y, measure, filter, version, idle, withOther: false });
-  const xTop = useTopValues({ martId, cf, dim: cols.kind === 'dim' ? cols.dim : y, measure, filter, version, idle: idle || cols.kind !== 'dim', withOther: false });
+  const yTop = useTopValues({ martId, counter: cf.counter, dim: y, measure, filter, version, idle, withOther: false });
+  const xTop = useTopValues({ martId, counter: cf.counter, dim: cols.kind === 'dim' ? cols.dim : y, measure, filter, version, idle: idle || cols.kind !== 'dim', withOther: false });
   const yNames = yTop.names;
   const yBlank = !!yTop.categories?.some((c) => c.key === BLANK_KEY);
   const xNames = cols.kind === 'dim' ? xTop.names : undefined;
@@ -60,15 +59,13 @@ function HeatmapPanel({ martId, cf, r, filter, version, idle, hasFilters, format
     { kind: 'radio', label: 'Rows', icon: Rows3, value: y.name, options: [], groups: fieldGroups(mc, mc.dimensions), onPick: (v) => onChange({ dimension: v }) },
     { kind: 'radio', label: 'Columns', icon: Columns3, value: cols.kind === 'date' ? `date:${cols.date.name}` : `dim:${cols.dim.name}`, options: [], groups: colGroups,
       onPick: (v) => onChange(v.startsWith('date:') ? { date: v.slice(5), dimension2: undefined } : { dimension2: v.slice(4) }) },
-    ...(cols.kind === 'date' ? [{ kind: 'radio', label: 'Bucket', icon: CalendarRange, value: cols.bucket, options: [{ value: 'AUTO', label: 'Auto' }, ...DATE_BUCKETS.map((b) => ({ value: b, label: BUCKET_LABELS[b] }))], onPick: (v: string) => onChange({ bucket: v as DateBucket | 'AUTO' }) } as MenuItem] : []),
-    { kind: 'radio', label: 'Metric', icon: Gauge, value: measureId(measure), options: [], groups: measureGroups(mc, measuresOf(mc)), onPick: (v) => onChange({ measure: v }) },
+    ...(cols.kind === 'date' ? [{ kind: 'radio', label: 'Bucket', icon: CalendarRange, value: cols.bucket, options: BUCKET_OPTIONS, onPick: (v: string) => onChange({ bucket: v as DateBucket | 'AUTO' }) } as MenuItem] : []),
+    metricItem(cf, measureId(measure), measuresOf(mc), onChange),
     ...tail,
   ];
-  const xLabel = cols.kind === 'date' ? fieldLabel(cols.date) : fieldLabel(cols.dim);
-  const title = `${measureLabel(cf, measure)} by ${fieldLabel(y)} × ${xLabel}`;
   return (
-    <ChartPanel title={title} name="Heatmap" items={ready ? items : null} width={seriesWidth(xs.length || null)}
-      loading={loading} error={failed?.error} onRetry={failed?.retry ?? (() => {})} empty={empty ? emptyText(hasFilters) : null}>
+    <ChartPanel title={title} name="Heatmap" items={items} ready={ready} width={seriesWidth(xs.length || null)}
+      loading={loading} failed={failed} empty={empty} hasFilters={hasFilters}>
       {settled && <Heatmap xs={xs} ys={ys} ariaLabel={title} xTitle={axisTitle(cf, cols.kind === 'date' ? cols.date : cols.dim)} yTitle={axisTitle(cf, y)}
         cell={(xk, yk) => { const row = at.get(`${xk}|${yk}`); return row ? { value: numberOf(row[key]), text: measureText(measure, row[key], formatOf) } : undefined; }}
         onPick={(xk, yk) => onFilter([dimensionFilter(y, yk), cols.kind === 'date' ? bucketFilter(cols.date, xk, bucket!, bucketZone(cols.date)) : dimensionFilter(cols.dim, xk)])} />}

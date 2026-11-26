@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import type { Ctx } from '../../sdk/types';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
-import { keyShown } from '../../sdk/mock/key-shown';
 import { AppServices, StoreProvider, useStore } from '../../state/store';
 import { App } from '../App';
 import { closeConfigMenu, openFields, openSubmenu } from '../explorer/menu-test-utils';
@@ -44,13 +43,11 @@ async function search(q: string) {
 const clearSearch = () => userEvent.click(screen.getByRole('button', { name: 'Clear search' }));
 
 // The orders grid used to open on its key; the key is no longer a default column, so these tests start from a grid that was saved with it.
-const withKeyShown = (c: Mock): Mock => keyShown(c);
 async function mountWith(wrap: (ctx: Mock) => Ctx = (c) => c, fixtures = demoFixtures(), seedKey = true) {
-  const base = createMockCtx(fixtures, { latencyMs: 0 });
+  const base = createMockCtx(fixtures, { latencyMs: 0, keyShown: seedKey });
   // A remembered main mart, so the page opens on it with the search as a button, not as an open box.
   void base.collections('preferences').put('main-mart', { martId: 'orders', sourceKey: null });
-  const ctx = titleSearchOnly(wrap((seedKey ? withKeyShown : (c: Mock) => c)(base)));
-  const view = render(<AppServices ctx={ctx}><StoreProvider><App /><ModelReload /><SelectSecretLedger /></StoreProvider></AppServices>);
+  const view = render(<AppServices ctx={titleSearchOnly(wrap(base))}><StoreProvider><App /><ModelReload /><SelectSecretLedger /></StoreProvider></AppServices>);
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
   await waitFor(() => expect(document.querySelector('.dm-loadbar')).toBeNull());
   return view;
@@ -541,7 +538,6 @@ describe('search, contexts and refresh', () => {
     await clearSearch();
     await search('customer');
     expect(await within(marts()).findByText('Customers')).toBeInTheDocument();
-    expect(within(marts()).getByText('Customers').closest('article')!.querySelector('.dm-badge-shrink')).toBeNull();
   });
 
   test('the toolbar holds the Contexts badges and then Storage, flush right; the Grid / Graph switch stays in the title row after the hint', async () => {
@@ -1158,7 +1154,7 @@ describe('the Data band loading bar', () => {
     const delay = { ms: 1500 };
     await mountWith(slow(delay));
     const first = await within(data()).findByRole('progressbar', { name: 'Loading rows' });
-    expect(first).toHaveClass('dm-progress');
+    expect(first).toHaveClass('dm-busybar');
     expect(first.closest('.dm-bigcard')).not.toBeNull();
     await within(data()).findByRole('table');
     await waitFor(() => expect(within(data()).getAllByRole('row')).toHaveLength(202));

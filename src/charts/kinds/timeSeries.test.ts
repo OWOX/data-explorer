@@ -1,5 +1,5 @@
 import { AUTO } from '../../format/formats';
-import { tickText } from './timeSeries';
+import { tickText } from '../compact';
 
 test('a plain measure reads short from 10,000 and rounded below', () => {
   expect(tickText(10240, 'INTEGER', AUTO)).toBe('10.2K');

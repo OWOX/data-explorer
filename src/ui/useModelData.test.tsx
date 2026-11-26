@@ -175,8 +175,8 @@ test('a queued card shows queued, and a request for a card that left the band is
 
 test('a bare node of the join tree is counted once it is in the ids, and stays idle without', async () => {
   const tree = buildJoinTree('main', ['id', 'a__c__name'], [
-    { aliasPath: 'a', martId: 'a', label: 'a', depth: 1, fields: [], uniqueCount: true },
-    { aliasPath: 'a.c', martId: 'c', label: 'c', depth: 2, fields: [{ name: 'a__c__name', alias: 'name', type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: 'c', label: 'c', aliasPath: 'a.c', originalName: 'name' } }], uniqueCount: true },
+    { aliasPath: 'a', martId: 'a', label: 'a', depth: 1, fields: [], uniqueCount: true, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown' },
+    { aliasPath: 'a.c', martId: 'c', label: 'c', depth: 2, fields: [{ name: 'a__c__name', alias: 'name', type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: 'c', label: 'c', aliasPath: 'a.c', originalName: 'name' } }], uniqueCount: true, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown' },
   ]);
   const model = modelOf(['main', 'a', 'c']);
   const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 5 }]));

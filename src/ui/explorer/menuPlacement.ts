@@ -1,5 +1,5 @@
 export type Box = { left: number; top: number; right: number; bottom: number };
-export type Size = { width: number; height: number };
+type Size = { width: number; height: number };
 export type Place = { left: number; top: number; side: 'left' | 'right' };
 
 /** The gap a floating menu keeps from the viewport edge. */

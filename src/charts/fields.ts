@@ -16,7 +16,7 @@ export type ChartFields = { marts: ChartMart[]; dimensions: Field[]; dates: Fiel
   menu?: ChartFields;
   /** Per alias path of a joined mart: 'none' when every join down to it is a lookup keyed by its target's primary key, so a main row matches at most one joined row. A path not listed collapses. */
   collapse?: Readonly<Record<string, MainGrainCollapse>> };
-export const MAX_BUCKETS = 60;
+const MAX_BUCKETS = 60;
 
 /** The fields the chart menus list: every column of the report's marts and of the marts on their joined paths, not only the shown ones. */
 export const menuOf = (cf: ChartFields): ChartFields => cf.menu ?? cf;
@@ -55,7 +55,7 @@ export const sankeyMeasures = (cf: ChartFields, dims: Field[]): Measure[] => pie
 });
 
 // The grid's own Σ function wins, so a chart and the grid never disagree about what a column means.
-export function metricFn(f: Field, agg: Aggregation): AggFn | null {
+function metricFn(f: Field, agg: Aggregation): AggFn | null {
   const allowed = allowedFunctions(f);
   const chosen = agg.aggregations.find((r) => r.column === f.name && allowed.includes(r.function));
   if (chosen) return chosen.function;

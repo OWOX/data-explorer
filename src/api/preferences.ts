@@ -1,6 +1,6 @@
 import type { Ctx } from '../sdk/types';
 
-export const PREFERENCES_COLLECTION = 'preferences';
+const PREFERENCES_COLLECTION = 'preferences';
 const DOC_ID = 'bands';
 const SEARCH_DOC_ID = 'search';
 type SearchDoc = { aiHintDismissed?: boolean };

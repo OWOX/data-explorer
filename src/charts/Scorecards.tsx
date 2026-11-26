@@ -12,7 +12,7 @@ import { Skeleton } from '../ui/Skeleton';
 import { Tooltip } from '../ui/Tooltip';
 import { ChartMenu, type MenuItem } from './ChartMenu';
 import { compactValue } from './compact';
-import type { ChartFields, ChartMart, Metric } from './fields';
+import { measurePath, type ChartFields, type ChartMart, type Metric } from './fields';
 import { metricKey, scoreQuery, sparklineQuery, uniqueKey, type Measure } from './queries';
 import { measureId, type Spark } from './settings';
 import { fieldGroups, measureGroups } from './menuGroups';
@@ -23,11 +23,8 @@ import { useChartQuery, type ChartResult } from './useChartQuery';
 
 export type Card = { id: string; label: string; key: string; measure: Measure };
 
-/** How a metric is named wherever it shows: on its card, in a chart title and in a menu. */
 /** A calculated metric has no function to name, so its label is the field's alone. */
 export const metricLabel = (m: Metric): string => (m.fn ? `${fieldLabel(m.field)} · ${AGG_LABELS[m.fn]}` : fieldLabel(m.field));
-
-const pathOfMeasure = (m: Measure): string => m.kind === 'records' ? m.aliasPath : m.metric.field.joined?.aliasPath ?? '';
 
 /**
  * A measure's name in a menu, a legend and a chart title. A joined mart's Count Unique always says whose it is; the main mart's
@@ -37,7 +34,7 @@ export function measureLabel(cf: ChartFields, m: Measure, scope: Measure[] = [m]
   if (m.kind === 'metric') return metricLabel(m.metric);
   const title = cf.marts.find((x) => x.aliasPath === m.aliasPath)?.title ?? '';
   if (m.aliasPath !== '') return `${title} · Count Unique`;
-  return title && new Set(scope.map(pathOfMeasure)).size > 1 ? `${title} · Count Unique` : 'Count Unique';
+  return title && new Set(scope.map(measurePath)).size > 1 ? `${title} · Count Unique` : 'Count Unique';
 }
 
 /** A mart's cards: its record count (when it has a primary key), then one per metric not already shown by another card's pick. A card keeps its id (what hides it and what a pick is saved under) and shows the measure `metrics` picked for it, when that is still one of the mart's. */
@@ -79,7 +76,7 @@ export function sparkQueryOf(mart: ChartMart, spark: Spark, bucket: DateBucket |
  * Null when the sparklines do not draw on the series' `date` (or are off or hidden), and the series reads for itself.
  */
 export function sharedSeriesQuery(cf: ChartFields, spark: Spark, measure: Measure, bucket: DateBucket | null, filter: TraverseFilter[], date: Field): TraverseOptions | null {
-  const path = measure.kind === 'records' ? measure.aliasPath : measure.metric.field.joined?.aliasPath ?? '';
+  const path = measurePath(measure);
   const owner = cf.marts.find((m) => m.aliasPath === path);
   if (!owner || !spark.date || date !== spark.date || sparkDate(owner, spark) !== spark.date) return null;
   const has = measure.kind === 'records' ? owner.hasPk : owner.metrics.some((m) => metricKey(m) === metricKey(measure.metric));
@@ -87,7 +84,7 @@ export function sharedSeriesQuery(cf: ChartFields, spark: Spark, measure: Measur
 }
 
 /** The scorecards' read plus the last row it returned, which the cards keep showing (dimmed) while the next read runs. */
-export type Scores = ChartResult & { previous?: Row | null };
+type Scores = ChartResult & { previous?: Row | null };
 
 /**
  * One query for every value card of every data mart: a filter change or an added mart is one billed read, not one per mart.
@@ -116,7 +113,7 @@ const reducedMotion = (): boolean => typeof window !== 'undefined' && !!window.m
  * no value, or whose measure was swapped, jumps instead of counting from an unrelated number. A newer target mid-roll starts from the number on screen.
  * `whole` rounds every frame, so a count never shows a fraction on its way.
  */
-export function useRolling(target: number | null, scope: string, whole: boolean, ms = ROLL_MS): number | null {
+function useRolling(target: number | null, scope: string, whole: boolean, ms = ROLL_MS): number | null {
   const [state, setState] = useState<{ value: number | null; scope: string }>({ value: target, scope });
   const from = state.scope === scope ? state.value : null;
   const rolls = target !== null && from !== null && from !== target && !reducedMotion();

@@ -18,7 +18,7 @@ export class CreateMartError extends Error {
   constructor(message: string, readonly stage: CreateStage, readonly martId?: string) { super(message); }
 }
 
-export type CreateMartRequest = { title: string; storageId: string; sql: string; /** Resume a mart an earlier attempt created: skips 'create'. */ martId?: string; /** Resume from this stage (with martId). */ from?: CreateStage; signal?: AbortSignal };
+type CreateMartRequest = { title: string; storageId: string; sql: string; /** Resume a mart an earlier attempt created: skips 'create'. */ martId?: string; /** Resume from this stage (with martId). */ from?: CreateStage; signal?: AbortSignal };
 
 const ORDER: CreateStage[] = ['create', 'define', 'schema', 'publish', 'share'];
 const SCHEMA_TIMEOUT = 'OWOX is still reading the columns. Open the data mart to publish it, or delete the draft.';
@@ -99,5 +99,5 @@ export async function createDataMart(ctx: Ctx, req: CreateMartRequest, onStage?:
   }
   if (start <= 3) await step('publish', () => owox.putJson(`${base}/publish`, {}).catch((e) => { if (!alreadyPublished(e)) throw e; }));
   await step('share', () => owox.putJson(`${base}/availability`, { availableForReporting: true, availableForMaintenance: false }));
-  return { id: id!, url: martAppUrl(ctx.projectId, id!) };
+  return { id: id!, url: martAppUrl(ctx, id!) };
 }

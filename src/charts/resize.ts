@@ -3,7 +3,7 @@ import { createContext } from 'react';
 
 export const CELL = 24;
 /** In cells. The smallest chart still shows a title, its menu and a plot. */
-export const COLS = { min: 8, max: 100 };
+const COLS = { min: 8, max: 100 };
 export const ROWS = { min: 7, max: 60 };
 
 /** A chart's saved size. A side that is absent follows the content. */

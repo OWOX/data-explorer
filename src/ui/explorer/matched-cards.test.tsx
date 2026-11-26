@@ -124,7 +124,7 @@ test('a mart kept with no column rides on the same read in both views and draws 
 });
 
 test('a hidden scorecard does not change the read', async () => {
-  const t = setup(withProducts, { charts: { version: 2, scorecards: { hidden: ['amount', 'records:products'] } } });
+  const t = setup(withProducts, { charts: { scorecards: { hidden: ['amount', 'records:products'] } } });
   await t.mount();
   await waitFor(() => expect(t.scoreReads()).toHaveLength(1));
   await userEvent.click(radio('Charts'));

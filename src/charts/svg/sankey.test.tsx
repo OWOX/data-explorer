@@ -10,7 +10,7 @@ const flows: Flow[][] = [
   [{ source: 'a', target: 'x', value: 5 }, { source: BLANK_KEY, target: 'x', value: 2 }, { source: 'a', target: OTHER_KEY, value: 3 }],
   [{ source: 'x', target: 'z', value: 7 }],
 ];
-const draw = (props: Partial<Parameters<typeof Sankey>[0]> = {}) => render(<TooltipProvider><Sankey titles={['One', 'Two', 'Three']} flows={flows} ariaLabel="S" text={(v) => `$${v}`} {...props} /></TooltipProvider>);
+const draw = (props: Partial<Parameters<typeof Sankey>[0]> = {}) => render(<TooltipProvider><Sankey titles={['One', 'Two', 'Three']} columns={[]} fit={false} flows={flows} ariaLabel="S" text={(v) => `$${v}`} {...props} /></TooltipProvider>);
 
 // Keys carry a NUL, which a CSS attribute selector cannot hold.
 const byAttr = (attr: string, value: string) => [...document.querySelectorAll(`[${attr}]`)].find((el) => el.getAttribute(attr) === value) ?? null;
@@ -115,11 +115,11 @@ test('hovering a node lights its ribbons through the DOM (data-hot, is-on) and l
 
 test('a new layout clears the lit state, so a hover the old layout left behind cannot dim the chart', async () => {
   const props = { titles: ['One', 'Two', 'Three'], ariaLabel: 'S', text: (v: number) => `$${v}`, onPickNode: () => {} };
-  const { container, rerender } = render(<TooltipProvider><Sankey {...props} flows={flows} /></TooltipProvider>);
+  const { container, rerender } = render(<TooltipProvider><Sankey columns={[]} fit={false} {...props} flows={flows} /></TooltipProvider>);
   const svg = container.querySelector('svg')!;
   await userEvent.hover(container.querySelector('rect[data-node="1|x"]')!);
   expect(svg.hasAttribute('data-hot')).toBe(true);
-  rerender(<TooltipProvider><Sankey {...props} flows={flows.map((p) => [...p])} /></TooltipProvider>);
+  rerender(<TooltipProvider><Sankey columns={[]} fit={false} {...props} flows={flows.map((p) => [...p])} /></TooltipProvider>);
   expect(svg.hasAttribute('data-hot')).toBe(false);
   expect(container.querySelectorAll('.is-on, .is-hot')).toHaveLength(0);
 });
@@ -222,7 +222,7 @@ test('two columns with different totals are each their own denominator', async (
 });
 
 test('a cut label carries the same share as its node', async () => {
-  const name = 'A rather long node name indeed';
+  const name = 'A rather long node name indeed, and then some';
   const { container } = draw({ titles: ['One', 'Two'], flows: [[{ source: name, target: 'x', value: 3 }, { source: 'b', target: 'x', value: 1 }]] });
   const cut = [...container.querySelectorAll('text.dm-chart-text')].find((t) => t.textContent?.endsWith('…'))!;
   expect(cut).toBeTruthy();
@@ -238,7 +238,7 @@ test('a node that grew past its exact total to hold its flows has a share of the
 });
 
 const pairFlows = (name: string): Flow[][] => [[{ source: name, target: 'x', value: 3 }, { source: 'b', target: 'x', value: 1 }]];
-const LONG = 'A rather long node name indeed';
+const LONG = 'A rather long node name indeed, and then some';
 
 test('a node always has its share of the drawn column, a column that overlaps (ribbonShare false) included, in fit mode too', async () => {
   for (const fit of [false, true]) {
@@ -257,7 +257,7 @@ test('ribbonShare false keeps the share on the cut label tooltip too', async () 
 });
 
 test('a visible label that fits keeps exactly its name and value, and the share stays out of the cut decision', () => {
-  // Room is 28 characters: "abcdefghijklmnopqrstuvwxy $3" is 28 and fits; with its share it would not.
+  // "abcdefghijklmnopqrstuvwxy $3" fits the room; with its share it would not.
   const name = 'abcdefghijklmnopqrstuvwxy';
   const { container } = draw({ titles: ['One', 'Two'], flows: pairFlows(name) });
   const texts = [...container.querySelectorAll('text.dm-chart-text')].map((t) => t.textContent);
@@ -271,12 +271,13 @@ test('a visible label that fits keeps exactly its name and value, and the share 
 test('a cut label shows its clipped text only, with no share', () => {
   const { container } = draw({ titles: ['One', 'Two'], flows: pairFlows(LONG) });
   const cut = [...container.querySelectorAll('text.dm-chart-text')].find((t) => t.textContent?.endsWith('…'))!;
-  expect(cut.textContent).toBe(`${`${LONG} $3`.slice(0, 27)}…`);
+  // Cut by measured width (jsdom estimates 6px a character), not by a character count.
+  expect(cut.textContent).toBe('A rather long node name ind…');
 });
 
 test('the shares follow new flows: a rerender with other values prints the new percent', async () => {
   const props = { titles: ['One', 'Two'], ariaLabel: 'S', text: (v: number) => `$${v}` };
-  const mk = (a: number) => <TooltipProvider><Sankey {...props} flows={[[{ source: 'a', target: 'x', value: a }, { source: 'b', target: 'x', value: 1 }]]} /></TooltipProvider>;
+  const mk = (a: number) => <TooltipProvider><Sankey columns={[]} fit={false} {...props} flows={[[{ source: 'a', target: 'x', value: a }, { source: 'b', target: 'x', value: 1 }]]} /></TooltipProvider>;
   const { rerender } = render(mk(3));
   expect(await tip(byAttr('data-node', '0|a')!)).toBe('a: $3 (75%)');
   await userEvent.unhover(byAttr('data-node', '0|a')!);

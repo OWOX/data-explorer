@@ -77,7 +77,7 @@ export function CreateMartDialog({ martTitle, variants, grouped, having, joinedM
     }
   }
   const error = local ?? failure?.message ?? null;
-  const draft = failure?.martId ? martAppUrl(ctx.projectId, failure.martId) : null;
+  const draft = failure?.martId ? martAppUrl(ctx, failure.martId) : null;
   const published = failure?.stage === 'share';
   const deletable = !!failure?.martId && (failure.stage === 'define' || failure.stage === 'schema');
   const where = storage.title ?? storage.type;

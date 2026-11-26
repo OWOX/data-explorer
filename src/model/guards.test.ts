@@ -1,4 +1,4 @@
-import { isRecord, own, strings } from './guards';
+import { isRecord, strings } from './guards';
 
 test('isRecord accepts plain objects only', () => {
   expect(isRecord({})).toBe(true);
@@ -11,11 +11,6 @@ test('strings keeps the strings of a list and is empty for anything else', () =>
   expect(strings(['a', 1, 'b', null])).toEqual(['a', 'b']);
   expect(strings('a')).toEqual([]);
   expect(strings(undefined)).toEqual([]);
-});
-
-test('own reads own properties only', () => {
-  expect(own({ a: 1 }, 'a')).toBe(1);
-  expect(own({}, 'constructor')).toBeUndefined();
 });
 
 test('errorMessage reads an Error message and stringifies anything else', async () => {

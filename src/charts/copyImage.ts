@@ -19,8 +19,6 @@ export function inlineStyles(source: SVGElement, clone: SVGElement): void {
   });
 }
 
-/** The swatch's outline colour, or null when it has none (only the blank colour's swatch has one). */
-const swatchBorder = (el: Element): string | null => { const cs = getComputedStyle(el); return parseFloat(cs.borderTopWidth) > 0 && cs.borderTopStyle !== 'none' ? cs.borderTopColor : null; };
 const loadImage = (url: string) => new Promise<HTMLImageElement>((ok, fail) => { const img = new Image(); img.onload = () => ok(img); img.onerror = fail; img.src = url; });
 const background = (el: HTMLElement): string => {
   for (let e: HTMLElement | null = el; e; e = e.parentElement) {
@@ -44,7 +42,7 @@ async function render(section: HTMLElement, title: string): Promise<Blob | null>
   const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml' }));
   try {
     const img = await loadImage(url);
-    const legend = [...section.querySelectorAll('.dm-chart-legend li')].map((li) => ({ color: getComputedStyle(li.querySelector('.dm-chart-swatch')!).backgroundColor, border: swatchBorder(li.querySelector('.dm-chart-swatch')!), text: li.textContent ?? '' }));
+    const legend = [...section.querySelectorAll('.dm-chart-legend li')].map((li) => ({ color: getComputedStyle(li.querySelector('.dm-chart-swatch')!).backgroundColor, text: li.textContent ?? '' }));
     const font = getComputedStyle(section).fontFamily || 'sans-serif';
     const fg = getComputedStyle(section).color || '#000';
     const titleH = 24;
@@ -67,7 +65,6 @@ async function render(section: HTMLElement, title: string): Promise<Blob | null>
       const y = PAD + titleH + h + 8 + Math.floor(i / 4) * 18;
       g.fillStyle = l.color;
       g.fillRect(x, y + 1, 10, 10);
-      if (l.border) { g.strokeStyle = l.border; g.lineWidth = 1; g.strokeRect(x + 0.5, y + 1.5, 9, 9); }
       g.fillStyle = fg;
       g.fillText(l.text, x + 16, y);
     });
@@ -80,7 +77,7 @@ async function render(section: HTMLElement, title: string): Promise<Blob | null>
 const dataUrl = (blob: Blob) => new Promise<string>((ok, fail) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = fail; r.readAsDataURL(blob); });
 
 /** The copy event route: needs no clipboard permission, carries text formats only. */
-export function copyHtml(html: string, text: string): boolean {
+function copyHtml(html: string, text: string): boolean {
   const on = (e: ClipboardEvent) => { e.preventDefault(); e.clipboardData?.setData('text/html', html); e.clipboardData?.setData('text/plain', text); };
   document.addEventListener('copy', on as EventListener, { once: true });
   try {

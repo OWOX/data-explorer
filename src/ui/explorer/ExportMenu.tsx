@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import { AlertTriangle, ArchiveRestore, Check, ChevronDown, Box, Code, Copy, ExternalLink, Loader2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { buildReportPayload, exportTitle, sheetUrl, type ExportSource } from '../../api/exports';
 import type { ColumnFilter } from '../../filters/build';
 import type { SortKey } from '../../model/sort';
@@ -9,7 +9,7 @@ import type { Edge, Schema } from '../../model/types';
 import type { JoinedSource } from '../../api/blendable';
 import { buildMartSql } from '../../datamart/build-sql';
 import { dialectFor } from '../../datamart/dialect';
-import type { Row } from '../../sdk/types';
+import type { Row as DataRow } from '../../sdk/types';
 import { buildTsv, tsvColumns } from '../../export/tsv';
 import type { Aggregation } from '../../model/aggregation';
 import { isGrouped, keepVisible } from '../../model/aggregation';
@@ -21,7 +21,6 @@ import { ChatGptIcon } from '../chatgpt-icon';
 import { ClaudeIcon } from '../claude-icon';
 import { GoogleSheetsIcon } from '../google-sheets-icon';
 import { Toast } from '../Toast';
-import { rovingTarget } from '../roving';
 import { Tooltip } from '../Tooltip';
 import { CreateMartDialog, type MartVariant, type MartVariants } from './export/CreateMartDialog';
 import { ExportDialog } from './export/ExportDialog';
@@ -29,9 +28,11 @@ import { TextDialog } from './export/TextDialog';
 import { UNRECOGNISED, useExportFlight, type Result } from './export/useExportFlight';
 import { copyText } from './clipboard';
 import type { GridRun } from './useMartRows';
-import { useOutsidePress } from '../outsidePress';
+import { FILTER_MENU_GROUP } from '../bands/MultiSelect';
+import { useMenuDismiss } from './ColumnMenu';
+import { Panel, Row } from './MenuParts';
 
-type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; /** The alias paths whose data mart's Unique Count is a column of the grid. */ uniqueCount?: string[]; filters: ColumnFilter[]; /** Pre-join filters on joined fields. */ slices?: ColumnFilter[]; sorts: SortKey[]; /** Only the sorts the member set; Create Data Mart never adds the grid's implicit order. */ ownSorts?: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: Row[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The last read of the rows failed. */ failed?: boolean; /** The grid shows Charts, where there is no Load more. */ charts?: boolean; /** The menu opened or closed. */ onOpenChange?: (open: boolean) => void; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun;
+type Props = { martId: string; martTitle: string; schema: Schema; visible: string[]; /** The functions and date buckets on the columns; any of them groups the rows. */ aggregation?: Aggregation; /** The alias paths whose data mart's Unique Count is a column of the grid. */ uniqueCount?: string[]; filters: ColumnFilter[]; /** Pre-join filters on joined fields. */ slices?: ColumnFilter[]; sorts: SortKey[]; /** Only the sorts the member set; Create Data Mart never adds the grid's implicit order. */ ownSorts?: SortKey[]; /** The rows the grid has loaded, in grid order; null until the first read. */ rows: DataRow[] | null; /** The mart has more rows than are loaded. */ hasMore: boolean; /** A read is in flight, so `rows` may be out of date. */ loading?: boolean; /** The last read of the rows failed. */ failed?: boolean; /** The grid shows Charts, where there is no Load more. */ charts?: boolean; /** The menu opened or closed. */ onOpenChange?: (open: boolean) => void; /** The query behind the grid's rows, for Copy SQL. */ run?: GridRun;
   /** The main mart's storage, for Create Data Mart. */ storage?: { id: string; type: string; title?: string };
   /** Reading the main mart's joined sources failed. */ joinsFailed?: boolean;
   /** The joined data marts the grid selects, as the Data Marts band shows them. */ joinedMarts?: { id: string; title: string }[];
@@ -65,7 +66,12 @@ export function ExportMenu(p: Props) {
   if (copiedFor !== p.martId) { setCopiedFor(p.martId); setCopy(null); setCopyOpen(false); }
   const run = p.run ?? { state: 'none' as const };
   const runId = run.state === 'done' ? run.runId : null;
-  const [menuOpen, setMenuOpen] = useState(false);
+  // The button the menu opens from; null while it is closed.
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const menuOpen = !!anchor;
+  const [focusSeq, setFocusSeq] = useState(1);
+  const button = useRef<HTMLButtonElement>(null);
+  const holder = useRef<HTMLSpanElement>(null);
   // What was read of each run's SQL, by run id, and in which opening of the menu; a late read of an older run never hides a newer one.
   const [sqls, setSqls] = useState<Record<string, { result: RunSql; opening: number }>>({});
   const [opening, setOpening] = useState(0);
@@ -125,7 +131,6 @@ export function ExportMenu(p: Props) {
     return { variants: { off, on: grouped ? variant(true) : off }, grouped };
   }, [p.storage, p.sources, p.joinsFailed, p.edges, p.titles, p.martId, p.martTitle, p.schema, p.visible, p.aggregation, p.filters, p.slices, p.ownSorts, metricKeys]);
   const [martDialog, setMartDialog] = useState<{ variants: MartVariants; grouped: boolean; having: boolean; joinedMarts: { id: string; title: string }[]; storage: { id: string; type: string; title?: string }; seq: number } | null>(null);
-  const menu = useRef<HTMLDetailsElement>(null);
 
   // Listed once per session; a model reload (Retry on a failed storage) lists them again.
   const seenVersion = useRef(modelVersion);
@@ -138,17 +143,34 @@ export function ExportMenu(p: Props) {
     exporter.destinations().then((d) => live && setDestinations(d), (e) => { if (live) { console.warn('Listing the Google Sheets destinations failed', e); setDestinations([]); } });
     return () => { live = false; };
   }, [exporter, modelVersion]);
-  // The menu closes on a press anywhere outside it, and when the host page outside the plugin frame is clicked (the window loses focus).
+  const close = useCallback((refocus = true) => { setAnchor(null); if (refocus) button.current?.focus(); }, []);
+  // The menu closes on a press anywhere outside it (the press goes no further), when something that holds the button scrolls, and when the host page outside the plugin frame is clicked (the window loses focus).
+  useMenuDismiss(menuOpen, holder, () => close(false), '.dm-export-menu');
   useEffect(() => {
-    const away = () => { if (menu.current?.open) menu.current.open = false; };
+    if (!menuOpen) return;
+    const away = () => close(false);
     window.addEventListener('blur', away);
     return () => window.removeEventListener('blur', away);
-  }, []);
-  // A press outside an open menu only closes it. The listener is always on: `open` is the native details state, not React's.
-  useOutsidePress(true, (t) => !menu.current?.open || menu.current.contains(t), () => { if (menu.current) menu.current.open = false; });
-
-  const closeMenu = () => { if (menu.current) menu.current.open = false; };
-  const focusSummary = () => menu.current?.querySelector<HTMLElement>('summary')?.focus();
+  }, [menuOpen, close]);
+  // This menu and the native filter menus (`<details name>`) are open one at a time: opening this one closes an open filter menu, and a filter menu that opens, from the keyboard, closes this one.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const group = `details[name="${FILTER_MENU_GROUP}"]`;
+    for (const d of document.querySelectorAll<HTMLDetailsElement>(`${group}[open]`)) d.open = false;
+    // `toggle` does not bubble: the capture phase on the document sees every details.
+    const toggled = (e: Event) => { const d = e.target; if (d instanceof HTMLDetailsElement && d.open && d.matches(group)) close(false); };
+    document.addEventListener('toggle', toggled, true);
+    return () => document.removeEventListener('toggle', toggled, true);
+  }, [menuOpen, close]);
+  // The parent hears each opening and each closing once, whichever way it happened; a closed menu on mount is no change.
+  const reported = useRef(false);
+  const onOpenChange = p.onOpenChange;
+  useEffect(() => {
+    if (reported.current === menuOpen) return;
+    reported.current = menuOpen;
+    onOpenChange?.(menuOpen);
+  }, [menuOpen, onOpenChange]);
+  const focusTrigger = () => button.current?.focus();
 
   function start(destination: DestinationDto, wanted: ExportSource, title: string, fromDialog = false) {
     if (exporter.inFlight(p.martId)) return;
@@ -166,7 +188,7 @@ export function ExportMenu(p: Props) {
 
   /** Copies `text` and shows the outcome; neither way of copying may work (the sandbox may block both), and then the text is shown to be copied by hand. */
   async function copyOut(text: string, ok: (copied: boolean) => Omit<Copy, 'text' | 'ok'>) {
-    closeMenu();
+    close();
     const home = generation();
     const copied = await copyText(text);
     if (generation() !== home) return;
@@ -186,7 +208,7 @@ export function ExportMenu(p: Props) {
 
   /** The loaded rows as tab-separated text, through the same clipboard path as the prompt. Nothing is queried and nothing is written. */
   function copyData() {
-    if (!p.rows?.length || p.loading) { closeMenu(); return; }
+    if (!p.rows?.length || p.loading) { close(); return; }
     const fields = p.visible.flatMap((name) => p.schema.find((f) => f.name === name) ?? []);
     const tsv = buildTsv(tsvColumns(fields, p.aggregation, p.uniqueCount), p.rows);
     const count = `${p.rows.length} ${p.rows.length === 1 ? 'row' : 'rows'}`;
@@ -208,10 +230,8 @@ export function ExportMenu(p: Props) {
     dialog: { name: 'SQL', note: 'Select the SQL and copy it. Copying writes nothing to OWOX.', areaLabel: 'SQL text' },
   }));
 
-  function openMenu(open: boolean) {
-    setMenuOpen(open);
-    p.onOpenChange?.(open);
-    if (!open) return;
+  function openMenu(from: HTMLElement) {
+    setAnchor(from);
     setOpening((n) => n + 1);
     // The live reads of this mart's reports start on its first opening and stay for the session.
     exporter.load(p.martId);
@@ -224,22 +244,43 @@ export function ExportMenu(p: Props) {
   const noteBody = !note ? null : result ? <ExportResultText result={result} /> : <CopiedText copy={copy!} />;
   const noteAction = !note ? undefined : result ? <ExportResultLink result={result} /> : copy!.ok && !copy!.showWhenOk ? undefined : <button type="button" onClick={() => setCopyOpen(true)} className="shrink-0 underline">{copy!.show}</button>;
 
+  /** On the button: ArrowDown opens the menu, or moves into it when it is open; Escape closes it. Enter and Space are its click. */
+  const onTriggerKey = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (busy) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (anchor) setFocusSeq((n) => n + 1); else openMenu(e.currentTarget);
+    } else if (e.key === 'Escape' && anchor) {
+      e.preventDefault();
+      close();
+    }
+  };
+  /** On an assistant's row: ArrowRight reaches its link, and ArrowLeft goes back to the item. */
+  const onAssistantKey = (e: ReactKeyboardEvent<HTMLElement>) => {
+    const t = e.target as HTMLElement;
+    const row = e.currentTarget;
+    if (e.key === 'ArrowRight' && t.dataset.action) { e.preventDefault(); e.stopPropagation(); row.querySelector<HTMLElement>('[data-link]')?.focus(); }
+    else if (e.key === 'ArrowLeft' && t.dataset.link) { e.preventDefault(); e.stopPropagation(); row.querySelector<HTMLElement>('[data-action]')?.focus(); }
+  };
+
   return (
     <>
       <span role="status" className="empty:absolute text-xs text-muted-foreground">{busy}</span>
-      <Toast tone={tone} onDismiss={dismissNote} returnTo={() => menu.current?.querySelector('summary')} action={noteAction} persistent={!busy && !!result} hold={copyOpen} stamp={note}>{noteBody}</Toast>
-      <details ref={menu} className="dm-filter dm-export" name="dm-filter" onToggle={(e) => openMenu(e.currentTarget.open)} {...(busy ? { 'aria-disabled': true } : {})}>
-          <summary onClick={(e) => { if (busy) e.preventDefault(); }} onKeyDown={onSummaryKey}>{label}<ChevronDown size={14} /></summary>
-          <div className="dm-filter-menu dm-export-menu" role="menu" data-level="1" onKeyDown={onMenuKey}>
+      <Toast tone={tone} onDismiss={dismissNote} returnTo={() => button.current} action={noteAction} persistent={!busy && !!result} hold={copyOpen} stamp={note}>{noteBody}</Toast>
+      <span ref={holder} className="dm-export inline-flex">
+        <button ref={button} type="button" aria-haspopup="menu" aria-expanded={menuOpen} {...(busy ? { 'aria-disabled': true } : {})}
+          onClick={(e) => { if (busy) return; if (anchor) close(false); else openMenu(e.currentTarget); }} onKeyDown={onTriggerKey}
+          className="inline-flex h-8 items-center gap-1 rounded-md border bg-card px-2.5 text-sm hover:bg-accent aria-expanded:bg-accent">
+          {label}<ChevronDown size={14} />
+        </button>
+        {anchor && (
+          <Panel anchor={anchor} mode="below" role="menu" label="Export" pinned onEscape={() => close()} onTab={() => close()} focusSeq={focusSeq} className="dm-menu-root dm-export-menu">
             <div role="group" aria-label="Assistants" className="dm-export-ai">
               {([['Claude', ClaudeIcon], ['ChatGPT', ChatGptIcon]] as const).map(([name, Icon]) => (
-                <div key={name} role="none" className="dm-export-ai-row">
-                  <button type="button" role="menuitem" data-lvl="1" data-action={name} className="dm-export-item" onClick={() => void copyPrompt(name)}>
-                    <Icon size={16} />
-                    <span className="dm-filter-label">{name}</span>
-                  </button>
+                <div key={name} role="none" className="dm-export-ai-row" onKeyDown={onAssistantKey}>
+                  <Row label={name} glyph={<Icon size={16} />} attrs={{ 'data-action': name }} onActivate={() => void copyPrompt(name)} />
                   <Tooltip content={`Open OWOX in ${name}`}>
-                    <button type="button" role="menuitem" data-link={name} className="dm-export-link" aria-label={`Open OWOX in ${name}`} onClick={() => void ctx.ui.openExternal(PROVIDER_LISTING[name]).catch(() => undefined)}>
+                    <button type="button" data-link={name} tabIndex={-1} className="dm-export-link" aria-label={`Open OWOX in ${name}`} onClick={() => void ctx.ui.openExternal(PROVIDER_LISTING[name]).catch(() => undefined)}>
                       <ExternalLink size={14} />
                     </button>
                   </Tooltip>
@@ -251,10 +292,7 @@ export function ExportMenu(p: Props) {
               <>
                 <div role="group" aria-label="Destinations" className="dm-export-dest">
                   {destinations.map((d) => (
-                    <button key={d.id} type="button" role="menuitem" data-lvl="1" data-dest={d.id} className="dm-export-item" onClick={() => { closeMenu(); setDialog({ destination: d, seq: nextSeq() }); }}>
-                      <GoogleSheetsIcon size={16} />
-                      <span className="dm-filter-label">{d.title}</span>
-                    </button>
+                    <Row key={d.id} label={d.title} glyph={<GoogleSheetsIcon size={16} />} attrs={{ 'data-dest': d.id }} onActivate={() => { close(); setDialog({ destination: d, seq: nextSeq() }); }} />
                   ))}
                 </div>
                 <div role="separator" className="dm-menu-sep" />
@@ -268,75 +306,24 @@ export function ExportMenu(p: Props) {
             <div role="group" aria-label="Data mart" className="dm-export-mart">
               <ExportItem
                 action="create-mart" icon={Box} label="Create Data Mart" off={'reason' in martSql ? martSql.reason : null}
-                onClick={() => { if (!('reason' in martSql)) { closeMenu(); setMartDialog({ variants: martSql.variants, grouped: martSql.grouped, having: p.filters.some((f) => !!f.fn), joinedMarts: p.joinedMarts ?? [], storage: p.storage!, seq: nextSeq() }); } }}
+                onClick={() => { if (!('reason' in martSql)) { close(); setMartDialog({ variants: martSql.variants, grouped: martSql.grouped, having: p.filters.some((f) => !!f.fn), joinedMarts: p.joinedMarts ?? [], storage: p.storage!, seq: nextSeq() }); } }}
               />
             </div>
-          </div>
-        </details>
-      {copyOpen && copy && <TextDialog {...copy.dialog} text={copy.text} onClose={() => setCopyOpen(false)} returnFocus={focusSummary} />}
-      {martDialog && <CreateMartDialog key={martDialog.seq} returnFocus={focusSummary} martTitle={p.martTitle} variants={martDialog.variants} grouped={martDialog.grouped} having={martDialog.having} joinedMarts={martDialog.joinedMarts} storage={martDialog.storage} onClose={() => setMartDialog(null)} />}
-      {dialog && <ExportDialog key={dialog.seq} returnFocus={focusSummary} exporter={exporter} martId={p.martId} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
+          </Panel>
+        )}
+      </span>
+      {copyOpen && copy && <TextDialog {...copy.dialog} text={copy.text} onClose={() => setCopyOpen(false)} returnFocus={focusTrigger} />}
+      {martDialog && <CreateMartDialog key={martDialog.seq} returnFocus={focusTrigger} martTitle={p.martTitle} variants={martDialog.variants} grouped={martDialog.grouped} having={martDialog.having} joinedMarts={martDialog.joinedMarts} storage={martDialog.storage} onClose={() => setMartDialog(null)} />}
+      {dialog && <ExportDialog key={dialog.seq} returnFocus={focusTrigger} exporter={exporter} martId={p.martId} destination={dialog.destination} initialError={dialog.error} title={exportTitle(p.martTitle)} busy={!!busy} onCancel={() => setDialog(null)} onExport={(title, source) => start(dialog.destination, source, title, true)} />}
     </>
   );
-
-  /** On the button: ArrowDown or Enter opens the menu and focuses its first row; Escape closes it. */
-  function onSummaryKey(e: ReactKeyboardEvent<HTMLElement>) {
-    if (busy) return;
-    if (e.key === 'ArrowDown' || e.key === 'Enter') {
-      e.preventDefault();
-      if (menu.current) menu.current.open = true;
-      menu.current?.querySelector<HTMLElement>('[data-lvl="1"]:not([disabled])')?.focus();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      closeMenu();
-    }
-  }
-
-  /** Arrow keys walk the menu. Enter and Space activate a row as a button does; on an assistant row ArrowRight reaches its link; Escape closes the menu. */
-  function onMenuKey(e: ReactKeyboardEvent<HTMLElement>) {
-    const target = e.target as HTMLElement;
-    // The external-link button at the end of an assistant row: ArrowLeft goes back to its item, Escape closes the menu.
-    if (target.dataset.link) {
-      if (e.key === 'ArrowLeft') { e.preventDefault(); target.parentElement?.querySelector<HTMLElement>('[data-lvl="1"]')?.focus(); }
-      else if (e.key === 'Escape') { e.preventDefault(); closeMenu(); focusSummary(); }
-      return;
-    }
-    if (!target.dataset.lvl) return;
-    if (e.key === 'ArrowRight' && target.dataset.action && target.dataset.action !== 'copy' && target.dataset.action !== 'sql' && target.dataset.action !== 'create-mart') {
-      e.preventDefault();
-      target.parentElement?.querySelector<HTMLElement>('[data-link]')?.focus();
-      return;
-    }
-    const items = [...target.closest('[data-level="1"]')!.querySelectorAll<HTMLElement>('[role="menuitem"][data-lvl="1"]:not([disabled])')];
-    const at = items.indexOf(target);
-    const to = rovingTarget(e.key, at, items.length);
-    if (to !== null) { e.preventDefault(); items[to]?.focus(); }
-    else if (e.key === 'Escape') {
-      e.preventDefault();
-      closeMenu();
-      focusSummary();
-    }
-  }
 }
 
-/** One row of the menu that does something: a button, or, with a reason in `off`, a disabled one whose tooltip says why. */
+/** One row of the menu that does something: a row, or, with a reason in `off`, a disabled one whose tooltip says why. */
 function ExportItem({ action, icon: Icon, label, off, tip, onClick }: { action: string; icon: LucideIcon; label: string; off: string | null; tip?: string; onClick: () => void }) {
-  if (off) {
-    return (
-      <Tooltip content={off}>
-        <span className="block">
-          <button type="button" role="menuitem" data-lvl="1" data-action={action} data-reason={off} disabled className="dm-export-item w-full"><Icon size={16} /><span className="dm-filter-label">{label}</span></button>
-        </span>
-      </Tooltip>
-    );
-  }
-  const button = (
-    <button type="button" role="menuitem" data-lvl="1" data-action={action} className="dm-export-item" onClick={onClick}>
-      <Icon size={16} />
-      <span className="dm-filter-label">{label}</span>
-    </button>
-  );
-  return tip ? <Tooltip content={tip}>{button}</Tooltip> : button;
+  const row = <Row label={label} glyph={<Icon size={16} />} disabled={!!off} attrs={{ 'data-action': action, ...(off ? { 'data-reason': off } : {}) }} onActivate={() => onClick()} />;
+  const why = off ?? tip;
+  return why ? <Tooltip content={why}><span className="block">{row}</span></Tooltip> : row;
 }
 
 /** The toast's text for a copy: a tick, or a warning when the clipboard was out of reach and the text is in the dialog instead. */

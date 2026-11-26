@@ -7,7 +7,8 @@ import { createDecide } from '../../search/decide';
 import type { Intent } from '../../search/intent';
 import { runPipeline, type Progress } from '../../search/pipeline';
 import { MIN_QUERY, queryProblem, searchEndpoint, type SearchHits } from '../../search/endpoint';
-import { reportSkippedMessage, reportToGrid, type ReportDto } from '../../search/report-load';
+import { reportSkippedMessage, reportToGrid } from '../../search/report-load';
+import type { ReportDto } from '../../sdk/types';
 import { deepEqual, reducer, sourceOfModel, useServices, useStore, type Action, type GridState, type State } from '../../state/store';
 import { defaultColumns } from '../../model/columns';
 import { useLatest } from '../useLatest';
@@ -23,7 +24,7 @@ export type Row =
   | { kind: 'adhoc'; query: string; pending: boolean; disabled: boolean; reason?: string };
 
 /** The contexts the found marts belong to, in the model's order: the choices of the dropdown's context filter. */
-export function contextsOfFound(martIds: string[], model: Model): Context[] {
+function contextsOfFound(martIds: string[], model: Model): Context[] {
   const ids = new Set(martIds.flatMap((id) => model.marts.get(id)?.contextIds ?? []));
   return model.contexts.filter((c) => ids.has(c.id));
 }

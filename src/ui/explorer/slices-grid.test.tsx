@@ -300,9 +300,9 @@ describe('the rule badges next to the config button', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await userEvent.click(await badge('1 filter'));
     await screen.findByRole('menu', { name: 'Filters' });
-    act(() => t.send.current!({ type: 'redo' }));
+    act(() => t.send.current!({ type: 'redo', known: () => true }));
     await waitFor(() => expect(screen.queryByRole('button', { name: '1 filter' })).toBeNull());
-    act(() => t.send.current!({ type: 'undo' }));
+    act(() => t.send.current!({ type: 'undo', known: () => true }));
     const back = await badge('1 filter');
     expect(back).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('menu', { name: 'Filters' })).toBeNull();

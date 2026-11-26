@@ -12,8 +12,8 @@ import { ChartsBody } from './ChartsBody';
 import type { ChartSettings } from './settings';
 
 const f = (name: string): Field => ({ name, alias: null, type: 'FLOAT', category: 'number', description: null, isPrimaryKey: false });
-const saved: ChartSettings = { version: 2, charts: [{ id: 'p', kind: 'pie', hidden: true }] };
-const undone: ChartSettings = { version: 2, charts: [{ id: 'p', kind: 'pie' }] };
+const saved: ChartSettings = { charts: [{ id: 'p', kind: 'pie', hidden: true }] };
+const undone: ChartSettings = { charts: [{ id: 'p', kind: 'pie' }] };
 
 const props = {
   martId: 'orders', schema: [f('amount')], shown: ['amount'], agg: { aggregations: [], dateTrunc: [] }, filter: [], groups: [{ id: 'orders', path: '', span: 1, title: 'Orders' }],
@@ -53,9 +53,9 @@ test('an Undo made while Charts is not mounted is saved', async () => {
   const dispatch = ((a) => grab.dispatch!(a)) as ReturnType<typeof useStore>[1];
   act(() => { dispatch({ type: 'init', focusId: 'orders' }); dispatch({ type: 'saveCharts', martId: 'orders', settings: saved }); dispatch({ type: 'editCharts', martId: 'orders', settings: undone }); });
   expect(puts).not.toHaveBeenCalled();
-  act(() => dispatch({ type: 'undo' }));
+  act(() => dispatch({ type: 'undo', known: () => true }));
   await waitFor(() => expect(puts).toHaveBeenCalledWith('orders', saved));
-  act(() => dispatch({ type: 'redo' }));
+  act(() => dispatch({ type: 'redo', known: () => true }));
   await waitFor(() => expect(puts).toHaveBeenLastCalledWith('orders', undone));
   expect(puts).toHaveBeenCalledTimes(2);
 });
@@ -73,7 +73,7 @@ test('an Undo that mounts Charts ends with the restored doc on screen, in the st
   await col.put('orders', undone);
   act(() => grab.dispatch!({ type: 'editCharts', martId: 'orders', settings: undone }));
   act(() => grab.dispatch!({ type: 'replace', selection: { sourceKey: null, martId: 'other', record: null } }));
-  act(() => grab.dispatch!({ type: 'undo' }));
+  act(() => grab.dispatch!({ type: 'undo', known: () => true }));
   await waitFor(async () => expect((await col.get('orders'))?.document).toEqual(saved));
   await new Promise((r) => setTimeout(r, 50));
   expect(grab.state!.charts.orders).toEqual(saved);
@@ -86,7 +86,7 @@ test('a pick that shows no column is one Undo step on its own', async () => {
   const grab: { dispatch?: ReturnType<typeof useStore>[1]; state?: ReturnType<typeof useStore>[0] } = {};
   function Grab() { const [s, d] = useStore(); useEffect(() => { grab.dispatch = d; grab.state = s; }); return null; }
   const withPie = { ...props, schema: [f('amount'), { ...f('status'), type: 'STRING', category: 'string' } as Field, { ...f('region'), type: 'STRING', category: 'string' } as Field], shown: ['amount', 'status'], onShowColumns: () => false };
-  await ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', { version: 2, charts: [{ id: 'pie', kind: 'pie' }] });
+  await ctx.collections<ChartSettings>(CHARTS_COLLECTION).put('orders', { charts: [{ id: 'pie', kind: 'pie' }] });
   render(<AppServices ctx={ctx}><StoreProvider><Grab /><table><ChartsBody {...withPie} /></table></StoreProvider></AppServices>);
   await waitFor(() => expect(grab.state!.charts.orders).toBeDefined());
   await userEvent.click(await screen.findByRole('button', { name: 'Pie options' }));

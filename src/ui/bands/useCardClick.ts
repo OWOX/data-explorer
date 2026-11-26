@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { withJoined, type JoinedSource } from '../../api/blendable';
 import type { Picks } from '../../api/grid-columns';
 import { PAGE_SIZE } from '../../config';
@@ -7,6 +7,7 @@ import { reducer, sourceOfModel, useServices, useStore, type Action, type GridSt
 import type { Model } from '../../model/types';
 import { pruneGrid } from '../../state/view-link-resolve';
 import { defaultColumns } from '../../model/columns';
+import { useLatest } from '../useLatest';
 
 /**
  * What a click on a data mart card does: add it to the main mart's grid, take it out, promote it, or make it the main mart.
@@ -32,14 +33,12 @@ const DRAW_MS = 2000;
 export function useCardClick(model: Model): (id: string, options?: ClickOptions) => Promise<void> {
   const [state, dispatch] = useStore();
   const { blendable, columnStore, schemas } = useServices();
-  const latest = useRef<State>(state);
+  const latest = useLatest<State>(state);
   // Whoever waits for the store to show what was just dispatched; the clicks run one at a time, each planned on what the one before left.
   // `from` is the state on screen when the wait began: only a render of another state ends it. Any other re-render of the bands must not,
   // not even one whose effects run late, after the dispatch.
   const waiters = useRef<{ from: State; done: () => void }[]>([]);
   const chain = useRef<Promise<void>>(Promise.resolve());
-  // Set at commit, so it is never behind what is on screen.
-  useLayoutEffect(() => { latest.current = state; });
   useEffect(() => {
     const ready = waiters.current.filter((w) => w.from !== latest.current);
     if (ready.length === 0) return;
@@ -47,18 +46,18 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
     for (const w of ready) w.done();
   });
   // A step that changes nothing never renders: the pause is the fallback. One that changes the state gets longer, for a slow machine to draw it.
-  const rendered = (fallback: number) => new Promise<void>((resolve) => {
+  const rendered = useCallback((fallback: number) => new Promise<void>((resolve) => {
     const waiter = { from: latest.current, done: () => { clearTimeout(t); resolve(); } };
     const t = setTimeout(() => { waiters.current = waiters.current.filter((w) => w !== waiter); resolve(); }, fallback);
     waiters.current.push(waiter);
-  });
+  }), [latest]);
 
   /** Dispatches and says how long to wait for the render: the reducer returns the same state for a step that changes nothing, and that one never renders. */
   const step = useCallback((action: Action) => {
     const changes = reducer(latest.current, action) !== latest.current;
     dispatch(action);
     return changes ? DRAW_MS : NOTHING_TO_DRAW_MS;
-  }, [dispatch]);
+  }, [dispatch, latest]);
 
   const run = useCallback(async (id: string, options?: ClickOptions) => {
     const main = latest.current.selection.martId;
@@ -163,7 +162,7 @@ export function useCardClick(model: Model): (id: string, options?: ClickOptions)
     for (const save of plan.saves) columnStore.save(save.martId, save.columns, save.picks);
     for (const r of plan.remember) columnStore.saveLastShown(r.martId, r.fields);
     await rendered(wait);
-  }, [blendable, columnStore, schemas, step, model]);
+  }, [blendable, columnStore, schemas, step, model, latest, rendered]);
 
   return useCallback((id: string, options?: ClickOptions) => {
     const next = chain.current.then(() => run(id, options), () => run(id, options));

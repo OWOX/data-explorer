@@ -1,7 +1,7 @@
-import { useId, type KeyboardEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
 import { BLANK_COLOR, isBlankKey } from '../blank';
-import { BlankDefs, blankFill } from './BlankPattern';
+import { BlankDefs, blankFill, useBlankId } from './BlankPattern';
+import { pickProps } from './pick';
 import { textWidth } from './fitText';
 import { plotHeight } from '../plotSize';
 import { useWidth } from '../useWidth';
@@ -14,7 +14,6 @@ const TOP = 8;
 const AXIS_H = 48;
 /** The space between the tick labels and the axis title. */
 const TITLE_GAP = 8;
-const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 
 /** One dot per point; positions are ratios of each axis's range from zero, for drawing only. */
 export function Scatter({ points, ariaLabel, xTitle, yTitle, formatX, formatY, onPick, integerX = false, integerY = false }: {
@@ -24,7 +23,7 @@ export function Scatter({ points, ariaLabel, xTitle, yTitle, formatX, formatY, o
 }) {
   const { ref, width, height: room } = useWidth<HTMLDivElement>();
   const plotH = plotHeight(room, TOP + AXIS_H, PLOT_H);
-  const blankId = `dm-blank-${useId().replace(/:/g, '')}`;
+  const blankId = useBlankId();
   const lo = (v: number[]) => Math.min(0, ...v);
   const hi = (v: number[]) => Math.max(0, ...v);
   const tx = niceTicks(hi(points.map((p) => p.x)), { lo: lo(points.map((p) => p.x)), integer: integerX });
@@ -50,7 +49,7 @@ export function Scatter({ points, ariaLabel, xTitle, yTitle, formatX, formatY, o
         <XTitle x={left + plotW / 2} y={TOP + plotH + 32 + TITLE_GAP} width={plotW} text={xTitle} />
         <YTitle x={8} mid={TOP + plotH / 2} length={plotH} text={yTitle} />
         {points.map((p) => {
-          const pick = onPick ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${p.label}`, style: { cursor: 'pointer' }, onClick: () => onPick(p.key), onKeyDown: press(() => onPick(p.key)) } : {};
+          const pick = onPick ? pickProps(`Filter to ${p.label}`, () => onPick(p.key)) : {};
           return <Tooltip key={p.key} content={`${p.label}: ${xTitle} ${p.xText}, ${yTitle} ${p.yText}`}><circle data-dot={p.key} cx={px(p.x)} cy={py(p.y)} r={4} {...(isBlankKey(p.key) ? { fill: blankFill(BLANK_COLOR, blankId), stroke: 'var(--muted-foreground)' } : { fill: 'var(--dm-series-1)', fillOpacity: 0.75 })} {...pick} /></Tooltip>;
         })}
       </svg>

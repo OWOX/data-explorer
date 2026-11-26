@@ -11,7 +11,7 @@ export const measureId = (m: Measure): string => (m.kind === 'metric' ? m.metric
 export const SANKEY_MIN = 2;
 export const SANKEY_MAX = 5;
 
-export const CHART_KINDS = ['timeSeries', 'bar', 'pie', 'rankedBar', 'line', 'heatmap', 'sankey', 'scatter', 'spread'] as const;
+const CHART_KINDS = ['timeSeries', 'bar', 'pie', 'rankedBar', 'line', 'heatmap', 'sankey', 'scatter', 'spread'] as const;
 export type ChartKind = (typeof CHART_KINDS)[number];
 export const isChartKind = (v: unknown): v is ChartKind => (CHART_KINDS as readonly unknown[]).includes(v);
 
@@ -24,7 +24,7 @@ export type ChartSpec = {
   size?: ChartSize;
 };
 /** `metrics` is the measure each card shows when it is not the card's own: card id (its default's saved id) to measure id. `dates` is the date field each card's sparkline is drawn on: card id to field name. */
-export type ChartSettings = { version?: 2; scorecards?: { hidden?: string[]; sparklines?: boolean; metrics?: Record<string, string>; dates?: Record<string, string> }; charts?: ChartSpec[] };
+export type ChartSettings = { scorecards?: { hidden?: string[]; sparklines?: boolean; metrics?: Record<string, string>; dates?: Record<string, string> }; charts?: ChartSpec[] };
 /** What the scorecards need: hidden cards, the sparklines switch, each card's picked measure, the date each card picked for its trend, and the default date the trends are drawn on. */
 export type Spark = { hidden: Set<string>; sparklines: boolean; metrics: Record<string, string>; dates: Record<string, string>; date: Field | null };
 
@@ -41,8 +41,8 @@ export const pickBucketChoice = (v: unknown): DateBucket | 'AUTO' => (v === 'AUT
 
 let seq = 0;
 export const newChartId = (): string => `c-${Date.now().toString(36)}-${(seq++).toString(36)}`;
-/** One edit of the list: the saved list, or the defaults it stands for, with `edit` applied. Always version 2. */
-export const editCharts = (s: ChartSettings, edit: (list: readonly ChartSpec[]) => ChartSpec[]): ChartSettings => ({ ...s, version: 2, charts: edit(chartsOf(s)) });
+/** One edit of the list: the saved list, or the defaults it stands for, with `edit` applied. */
+export const editCharts = (s: ChartSettings, edit: (list: readonly ChartSpec[]) => ChartSpec[]): ChartSettings => ({ ...s, charts: edit(chartsOf(s)) });
 /** Puts a chart back to the size its content needs. */
 export const resetSize = (s: ChartSettings, id: string): ChartSettings =>
   editCharts(s, (list) => list.map((c) => { if (c.id !== id) return c; const next = { ...c }; delete next.size; return next; }));

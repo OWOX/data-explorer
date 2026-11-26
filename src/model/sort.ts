@@ -15,6 +15,9 @@ export function cycleSort(sorts: SortKey[], field: string): SortKey[] {
 /** The sorts whose column is shown; a hidden column leaves no invisible ordering behind. */
 export const sortsOnColumns = (sorts: SortKey[], columns: string[]): SortKey[] => (sorts.every((s) => columns.includes(s.field)) ? sorts : sorts.filter((s) => columns.includes(s.field)));
 
+/** The sorts left after pruning: a list that pruning emptied is no sort at all (null), so the default order applies. */
+export const keptSorts = <S>(orig: readonly S[] | null, kept: S[]): S[] | null => (orig === null || (orig.length > 0 && kept.length === 0) ? null : kept);
+
 /**
  * The order a grid opens in when the member has set none: the first DATE, DATETIME or TIMESTAMP field,
  * newest first. A date among the columns on screen wins over one that is not shown; else the first in

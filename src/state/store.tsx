@@ -26,7 +26,7 @@ export type Selection = {
 };
 
 /** A selection Undo or Redo returns to, with the grids the step also changed (null: the mart had none). */
-export type Entry = Selection & { grids?: Record<string, GridState | null>; /** The chart settings the step also changed (null: the mart had none loaded). */ charts?: Record<string, ChartSettings | null>; /** Set on a step made by folded edits (arrow-key resizes): the next edit with the same key joins it. Not kept across Undo. */ fold?: string; /** Order the entry was recorded in (from `State.seq`); it keeps it across Undo and Redo. Unlike a position, it survives the history being trimmed. */ seq?: number };
+export type Entry = Selection & { grids?: Record<string, GridState | null>; /** The chart settings the step also changed (null: the mart had none loaded). */ charts?: Record<string, ChartSettings | null>; /** Set on a step made by folded edits (arrow-key resizes): the next edit with the same key joins it. Not kept across Undo. */ fold?: string; /** Order the entry was recorded in (from `State.seq`); it keeps it across Undo and Redo. Unlike a position, it survives the history being trimmed. */ seq: number };
 
 /** What the Data band's grid keeps per mart for the session. */
 export type GridState = { columns: string[]; filters: Record<string, ColumnFilter>; /** Pre-join filters on joined fields, keyed by field name, one per field. Absent or empty when there are none. */ slices?: Record<string, ColumnFilter>; /** null: the member set none, so the grid opens in the default order (newest date first); a list, even an empty one, is their own. */ sorts: SortKey[] | null; limit: number; /** Functions per column, in the order chosen; any of these or a bucket groups the rows. */ aggregations?: AggregationRule[]; /** One date bucket per date column. */ dateTrunc?: DateTruncRule[]; /** The alias paths whose data mart's Unique Count is a column ('' is the main mart). Absent or empty: none. It groups the rows like a function. */ uniqueCount?: string[]; /** The alias paths of joined data marts kept in the report with no column. Absent when none; never holds a path that has a column, nor ''. */ emptyPaths?: string[]; /** Absent is the table. Part of the grid state so Undo and the view link carry it; saved in the member's grid-columns store with the filters, slices, sort and limit. */ view?: 'charts' };
@@ -59,7 +59,7 @@ export type State = {
 };
 
 /** The source that feeds a mart, or null: lets the reducer keep a selected source only when it still applies. */
-export type SourceOf = (martId: string) => string | null;
+type SourceOf = (martId: string) => string | null;
 
 export type Action =
   | { type: 'init'; focusId: string; sourceKey?: string | null }
@@ -67,8 +67,8 @@ export type Action =
   | { type: 'selectMart'; id: string; sourceOf: SourceOf }
   | { type: 'openRecord'; martId: string; pk: Record<string, unknown>; sourceOf: SourceOf }
   | { type: 'follow'; target: ClickTarget; sourceOf: SourceOf }
-  | { type: 'undo'; known?: (selection: Selection) => boolean }
-  | { type: 'redo'; known?: (selection: Selection) => boolean }
+  | { type: 'undo'; known: (selection: Selection) => boolean }
+  | { type: 'redo'; known: (selection: Selection) => boolean }
   /** Swap the selection without a history entry: a refresh took the selected mart or source away. */
   | { type: 'replace'; selection: Selection }
   | { type: 'search'; q: string }
@@ -109,19 +109,19 @@ const sourceFor = (current: Selection, martId: string, sourceOf: SourceOf): stri
   (current.sourceKey && sourceOf(martId) === current.sourceKey ? current.sourceKey : null);
 
 /** Undo takes from `history` and fills `future`; redo is the same with the two swapped. Entries naming a mart or source a refresh removed are skipped. */
-function step(state: State, from: 'history' | 'future', known: ((s: Selection) => boolean) | undefined): State {
+function step(state: State, from: 'history' | 'future', known: (s: Selection) => boolean): State {
   const to = from === 'history' ? 'future' : 'history';
   const stack = [...state[from]];
   while (stack.length) {
     const { grids: put, charts: putCharts, seq, ...entry } = stack.pop()!;
     delete entry.fold;
-    if (!known || known(entry)) {
+    if (known(entry)) {
       const now = put ? valuesOf(state.grids, Object.keys(put)) : undefined;
       const nowCharts = putCharts ? valuesOf(state.charts, Object.keys(putCharts)) : undefined;
       const current = state.selection;
       const charts = putCharts ? applyGrids(state.charts, putCharts) : state.charts;
       const restored = putCharts ? Object.fromEntries(Object.entries(putCharts).filter((e): e is [string, ChartSettings] => e[1] !== null)) : undefined;
-      return { ...state, selection: entry, grids: put ? applyGrids(state.grids, put) : state.grids, charts, restored, [from]: stack, [to]: [...state[to], { ...current, ...(now ? { grids: now } : {}), ...(nowCharts ? { charts: nowCharts } : {}), ...(seq !== undefined ? { seq } : {}) }].slice(-HISTORY_LIMIT) };
+      return { ...state, selection: entry, grids: put ? applyGrids(state.grids, put) : state.grids, charts, restored, [from]: stack, [to]: [...state[to], { ...current, ...(now ? { grids: now } : {}), ...(nowCharts ? { charts: nowCharts } : {}), seq }].slice(-HISTORY_LIMIT) };
     }
   }
   return stack.length === state[from].length ? state : { ...state, [from]: stack };
@@ -233,7 +233,7 @@ function reduce(state: State, a: Action): State {
       // Undo below the hold or a Redo can reorder what is where. With no hold on record only the newest entry counts.
       const from = state.holds[a.martId] ?? state.history.at(-1)?.seq ?? state.seq;
       const patch = (e: Entry): Entry => {
-        if ((e.seq ?? -1) < from) return e;
+        if (e.seq < from) return e;
         const before = e.grids?.[a.martId];
         if (!before) return e;
         const next: GridState = { ...before, ...a.parts };

@@ -29,7 +29,6 @@ export function DataBand({ model, folded, onFold, loading = null, fullScreen, on
   const { martId } = selection;
   const mart = martId ? model.marts.get(martId) : undefined;
   // The grid follows the selection only while the band is open: a folded band mounts nothing new, so no hidden query is billed.
-  // A band that first appears folded mounts nothing, so no hidden query is billed.
   // The same while the load bar shows: nothing is read until the page has finished reading.
   const held = folded || loading !== null;
   const [shownId, setShownId] = useState(held ? null : martId);

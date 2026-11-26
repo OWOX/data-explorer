@@ -1,4 +1,3 @@
-// src/state/join-tree.ts
 // The report as a tree: the main mart at alias path '', each joined mart at the alias path its columns use.
 import { sourceOfField, type JoinedSource } from '../api/blendable';
 import { parentPath } from './join-plan';
@@ -72,13 +71,8 @@ export function joinableUnder(tree: JoinTree, sources: JoinedSource[], path: str
   return out;
 }
 
-/** What can join under a path of the tree and is not a node yet: one source per alias path. */
-export function ghostSources(tree: JoinTree, sources: JoinedSource[], path: string): JoinedSource[] {
-  return tree.nodes.has(path) ? joinableUnder(tree, sources, path) : [];
-}
-
 /** One column of ghosts: what hangs from `from` (a tree node, or a ghost of the level before). */
-export type GhostLevel = { from: string; fromMartId: string; ghosts: JoinedSource[] };
+type GhostLevel = { from: string; fromMartId: string; ghosts: JoinedSource[] };
 
 /**
  * The columns of ghosts for a hover chain. The first level is what joins under the anchor tree node; each link of the chain is a ghost of the level before it,
@@ -89,7 +83,7 @@ export function ghostLevels(tree: JoinTree, sources: JoinedSource[], anchor: str
   const root = anchor === null ? undefined : tree.nodes.get(anchor);
   if (!root) return { levels: [], chain: [] };
   const levels: GhostLevel[] = [];
-  const first = ghostSources(tree, sources, root.path).filter(keep);
+  const first = joinableUnder(tree, sources, root.path).filter(keep);
   if (first.length) levels.push({ from: root.path, fromMartId: root.martId, ghosts: first });
   const kept: string[] = [];
   let offered = first;

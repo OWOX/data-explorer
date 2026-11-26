@@ -17,7 +17,7 @@ function setup(answer: unknown, opts: { noAi?: boolean } = {}) {
   const base = stubCtx();
   const ctx = {
     ...base,
-    credentials: opts.noAi ? undefined : { ai: { fast: { doGenerate } } },
+    credentials: opts.noAi ? {} : { ai: { fast: { doGenerate } } },
     collections: <T,>(name: string) => ({ get: async (id: string) => (docs.has(`${name}/${id}`) ? { document: docs.get(`${name}/${id}`) as T } : null), put: async (id: string, d: T) => { docs.set(`${name}/${id}`, d); } }),
   } as unknown as Ctx;
   return { ctx, store: formatStore(ctx), doGenerate, docs };

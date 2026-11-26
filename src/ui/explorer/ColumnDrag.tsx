@@ -1,4 +1,5 @@
 import { useEffect, useState, type RefObject } from 'react';
+import { swallowNextClick } from '../outsidePress';
 import { useLatest } from '../useLatest';
 
 /**
@@ -65,11 +66,6 @@ function useColumnDrag({ scroller, head, groupOf, onMove }: Options): ColumnDrag
     let drag: { column: string; grab: number; before: string | null; changes: boolean } | null = null;
     let last = { x: 0, y: 0 };
     let raf = 0;
-    const swallowNextClick = () => {
-      const swallow = (c: MouseEvent) => { c.stopPropagation(); c.preventDefault(); };
-      window.addEventListener('click', swallow, { capture: true, once: true });
-      setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
-    };
     // After a drag that ended without a drop (Escape, a column with nowhere to go) the release still sends a click: swallow it.
     // Armed only until the next pointer event: a release that never comes (the window lost focus) must not eat a later, unrelated click.
     let disarm: () => void = () => undefined;

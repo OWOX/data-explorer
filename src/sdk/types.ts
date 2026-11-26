@@ -1,5 +1,5 @@
 // Narrow view of @owox/plugin-sdk's PluginContext. The real context satisfies it structurally.
-// Traverse types are copied from @owox/api-client (tmp/ref/packages_api-client_src_data-marts.ts).
+// Traverse types are copied from @owox/api-client (node_modules/@owox/api-client/dist/data-marts.d.ts).
 
 import type { Experimental_DecisionModel } from 'ai';
 import type { AggFn, AggregationRule, DateTruncRule } from '../model/aggregation';
@@ -48,7 +48,7 @@ export interface Traversal {
 }
 
 export type StorageDto = { id: string; title: string; type: string };
-export type DataMartListItemDto = {
+type DataMartListItemDto = {
   id: string;
   title: string;
   description: string | null;
@@ -60,7 +60,7 @@ export type DataMartListItemDto = {
 export type ConnectorDto = { name: string; title?: string | null; logo?: unknown };
 /** One custom connector from `/api/connectors/custom/summaries`: its API hosts say which service it is a connector of. */
 export type ConnectorSummaryDto = { id: string; name: string; title: string; logo: string | null; hosts: string[] };
-export type ModelCanvasNodeDto = {
+type ModelCanvasNodeDto = {
   id: string;
   title: string;
   description: string | null;
@@ -180,7 +180,7 @@ export type DecisionModel = Exclude<Experimental_DecisionModel, string>;
 /** The logical `ai` credential: the handle itself is the fast model, `decision` is there when declared. Absent when no AI is configured. */
 export type AiCredential = AiModel & { readonly fast?: AiModel; readonly decision?: DecisionModel };
 
-export interface CollectionLike<T> {
+interface CollectionLike<T> {
   get(id: string): Promise<{ document: T } | null>;
   put(id: string, document: T): Promise<unknown>;
 }
@@ -191,9 +191,9 @@ export interface Ctx {
   readonly signal: AbortSignal;
   /** The route the host opened the plugin with; undefined when the host has no page links. */
   readonly route?: string;
-  readonly ui: { openExternal(url: string): Promise<void>; copyLink?(path?: string): Promise<void>; setRoute?(path: string): void };
-  /** Declared, installation-bound credentials (SDK 0.43); undefined on a host without them. `ai` is absent until the project maintainer configures it. */
-  readonly credentials?: { readonly ai?: AiCredential };
+  readonly ui: { openExternal(url: string): Promise<void>; copyLink(path?: string): Promise<void>; setRoute(path: string): void; link(path: string): { href: string } | undefined };
+  /** Declared, installation-bound credentials. `ai` is absent until the project maintainer configures it. */
+  readonly credentials: { readonly ai?: AiCredential };
   collections<T>(name: string): CollectionLike<T>;
   readonly owox: {
     storages: { list(): Promise<StorageDto[]> };

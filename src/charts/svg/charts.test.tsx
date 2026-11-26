@@ -30,7 +30,7 @@ const two: Series[] = [
 ];
 
 test('BarChart: 2 series x 3 x give 5 rects (null y draws none), a legend, and the values in a table', () => {
-  const { container } = wrap(<BarChart series={two} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const { container } = wrap(<BarChart series={two} stacked={two.length > 1} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} />);
   expect(container.querySelectorAll('rect[data-series]')).toHaveLength(5);
   expect(container.querySelector('svg')).toHaveAttribute('data-orientation', 'vertical');
   expect(screen.getByText('A', { selector: 'li' })).toBeInTheDocument();
@@ -38,19 +38,19 @@ test('BarChart: 2 series x 3 x give 5 rects (null y draws none), a legend, and t
 });
 
 test('BarChart shows the X field name under the bucket labels, and nothing without it', () => {
-  const { container, rerender } = wrap(<BarChart series={two} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} xTitle="Order date" />);
+  const { container, rerender } = wrap(<BarChart series={two} stacked={two.length > 1} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} xTitle="Order date" />);
   const title = container.querySelector('.dm-chart-axis-title');
   expect(title).toHaveTextContent('Order date');
   const labelY = Number(container.querySelector('text.dm-chart-text[text-anchor="middle"]')!.getAttribute('y'));
   // 18px below the labels' baseline was the old gap; 8px more keeps the title off them.
   expect(Number(title!.getAttribute('y')) - labelY).toBeGreaterThanOrEqual(26);
-  rerender(<TooltipProvider><BarChart series={two} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} /></TooltipProvider>);
+  rerender(<TooltipProvider><BarChart series={two} stacked={two.length > 1} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} /></TooltipProvider>);
   expect(container.querySelector('.dm-chart-axis-title')).toBeNull();
 });
 
 test('BarChart truncates a long X field name and shows the full name in the app tooltip', async () => {
   const long = 'a_very_long_field_name_'.repeat(8);
-  const { container } = wrap(<BarChart series={two} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} xTitle={long} />);
+  const { container } = wrap(<BarChart series={two} stacked={two.length > 1} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} xTitle={long} />);
   const el = container.querySelector('.dm-chart-axis-title')!;
   const shown = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('');
   expect(shown).toMatch(/…$/);
@@ -62,7 +62,7 @@ test('BarChart truncates a long X field name and shows the full name in the app 
 });
 
 test('BarChart horizontal: rows are 20px with a 2px gap, no legend for one series', () => {
-  const { container } = wrap(<BarChart series={[two[1]!]} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const { container } = wrap(<BarChart series={[two[1]!]} stacked={[two[1]!].length > 1} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} />);
   expect(container.querySelector('svg')).toHaveAttribute('data-orientation', 'horizontal');
   const rects = [...container.querySelectorAll('rect[data-series]')];
   expect(rects).toHaveLength(3);
@@ -71,7 +71,7 @@ test('BarChart horizontal: rows are 20px with a 2px gap, no legend for one serie
 });
 
 test('BarChart: hovering a bucket band lists every series with its text and share', async () => {
-  const { container } = wrap(<BarChart series={two} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const { container } = wrap(<BarChart series={two} stacked={two.length > 1} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} />);
   const band = container.querySelector('rect[data-bucket="2026-01"]')!;
   fireEvent.focus(band);
   expect((await screen.findAllByText(/A: v1 \(25%\)/)).length).toBeGreaterThan(0);
@@ -86,7 +86,7 @@ test('BarChart: a negative value does not push bars off the plot', () => {
     { name: 'A', color: 'red', points: [pt(1, 10)] },
     { name: 'B', color: 'blue', points: [pt(1, -5)] },
   ];
-  const { container } = wrap(<BarChart series={s} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const { container } = wrap(<BarChart series={s} stacked={s.length > 1} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} />);
   const rects = [...container.querySelectorAll('rect[data-series]')];
   expect(rects.length).toBeGreaterThan(0);
   for (const r of rects) {
@@ -109,13 +109,13 @@ test('PieChart: 3 slices give 3 paths; one slice at 100% is a circle', () => {
 
 test('ChartPanel shows the error and Retry calls onRetry; empty text shows; the note is the (i) by the title', () => {
   const onRetry = vi.fn();
-  const { rerender } = wrap(<ChartPanel title="T" name="T" items={null} width="20rem" loading={false} error={new Error('nope')} onRetry={onRetry}>x</ChartPanel>);
+  const { rerender } = wrap(<ChartPanel title="T" name="T" items={[]} ready={false} hasFilters={false} width="20rem" loading={false} failed={{ error: new Error('nope'), retry: onRetry }}>x</ChartPanel>);
   expect(screen.getByRole('alert')).toHaveTextContent('nope');
   fireEvent.click(screen.getByText('Retry'));
   expect(onRetry).toHaveBeenCalled();
-  rerender(<TooltipProvider><ChartPanel title="T" name="T" items={null} width="20rem" loading={false} error={null} onRetry={onRetry} empty="No rows">x</ChartPanel></TooltipProvider>);
+  rerender(<TooltipProvider><ChartPanel title="T" name="T" items={[]} ready={false} hasFilters={false} width="20rem" loading={false} empty="No rows">x</ChartPanel></TooltipProvider>);
   expect(screen.getByText('No rows')).toBeInTheDocument();
-  rerender(<TooltipProvider><ChartPanel title="T" name="T" items={null} width="20rem" loading={false} error={null} onRetry={onRetry} note="Top 8">kid</ChartPanel></TooltipProvider>);
+  rerender(<TooltipProvider><ChartPanel title="T" name="T" items={[]} ready={false} hasFilters={false} width="20rem" loading={false} note="Top 8">kid</ChartPanel></TooltipProvider>);
   expect(screen.getByText('kid')).toBeInTheDocument();
   expect(screen.queryByText('Top 8')).toBeNull();
   expect(screen.getByRole('note', { name: 'About T' }).closest('.dm-chart-head')).not.toBeNull();
@@ -142,7 +142,7 @@ test('BarChart: with clickable buckets the svg is a group and every band is the 
 
 test('BarChart: a single stacked series still counts as stacked when the caller says so; no onPick keeps role img', () => {
   const one: Series[] = [{ name: 'A', color: 'red', points: [px('2026-01-01', 1)] }];
-  const a = wrap(<BarChart series={one} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const a = wrap(<BarChart series={one} stacked={one.length > 1} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} />);
   expect(a.container.querySelector('svg')).toHaveAttribute('role', 'img');
   a.unmount();
   const b = wrap(<BarChart series={one} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} onPick={() => {}} stacked />);
@@ -237,7 +237,7 @@ test('Heatmap with 60 buckets keeps every cell inside the svg width', () => {
 });
 
 test('a ranked bar anchors its first tick start and its last tick end', () => {
-  const { container } = wrap(<BarChart series={[two[1]!]} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const { container } = wrap(<BarChart series={[two[1]!]} stacked={[two[1]!].length > 1} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} />);
   const ticks = [...container.querySelectorAll('g.dm-chart-tick text')];
   expect(ticks.map((t) => t.getAttribute('text-anchor'))).toEqual(['start', 'middle', 'middle', 'end']);
 });
@@ -260,7 +260,7 @@ test('SpreadChart anchors its first tick start and its last end', () => {
 
 test('BarChart: a count axis shows whole-number ticks only', () => {
   const counts: Series[] = [{ name: 'n', color: 'red', points: [pt(1, 24), pt(2, 73)] }];
-  const { container } = wrap(<BarChart series={counts} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} integer />);
+  const { container } = wrap(<BarChart series={counts} stacked={counts.length > 1} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} integer />);
   const ticks = [...container.querySelectorAll('.dm-chart-tick text')].map((t) => t.textContent);
   expect(ticks).toEqual(['0', '20', '40', '60', '80']);
 });
@@ -276,7 +276,7 @@ test('the X title keeps 8px more room under the tick labels in the line, scatter
 const yTitles = (c: HTMLElement) => [...c.querySelectorAll('[data-y-title]')].map((t) => ({ text: t.getAttribute('aria-label') ?? t.textContent, rotated: t.getAttribute('transform')?.startsWith('rotate(-90') }));
 
 test('every chart with a Y axis draws its title vertically beside the ticks', () => {
-  const bar = wrap(<BarChart series={two} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} xTitle="Date" yTitle="Amount · Sum" />).container;
+  const bar = wrap(<BarChart series={two} stacked={two.length > 1} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} xTitle="Date" yTitle="Amount · Sum" />).container;
   expect(yTitles(bar)).toEqual([{ text: 'Amount · Sum', rotated: true }]);
   expect(bar.querySelector('.dm-chart-axis-title:not([data-y-title])')).toHaveTextContent('Date');
   const line = wrap(<LineChart left={two} right={two[1]} area={false} ariaLabel="l" formatLeft={(n) => `${n}`} yTitle="Left" yTitleRight="Right" />).container;
@@ -290,7 +290,7 @@ test('every chart with a Y axis draws its title vertically beside the ticks', ()
 });
 
 test('a horizontal bar puts the measure under the value ticks and the category beside its labels', () => {
-  const { container } = wrap(<BarChart series={two} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} xTitle="Channel" yTitle="Amount · Sum" />);
+  const { container } = wrap(<BarChart series={two} stacked={two.length > 1} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} xTitle="Channel" yTitle="Amount · Sum" />);
   expect(yTitles(container)).toEqual([{ text: 'Channel', rotated: true }]);
   expect(container.querySelector('.dm-chart-axis-title:not([data-y-title])')).toHaveTextContent('Amount · Sum');
 });
@@ -314,7 +314,7 @@ const xLabels = (c: HTMLElement) => [...c.querySelectorAll('svg > text.dm-chart-
 
 test('BarChart categorical: every label shows, cut to its column with the full text in the app tooltip; date buckets still skip', async () => {
   const long = (i: number) => `Category number ${i}`;
-  const cat = wrap(<BarChart series={many(30, long)} orientation="vertical" categorical ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const cat = wrap(<BarChart series={many(30, long)} stacked={many(30, long).length > 1} orientation="vertical" categorical ariaLabel="b" formatTick={(n) => `${n}`} />);
   const labels = xLabels(cat.container);
   expect(labels).toHaveLength(30);
   const first = labels[0]!;
@@ -325,13 +325,13 @@ test('BarChart categorical: every label shows, cut to its column with the full t
   expect(first.textContent!.replace('Category number 0', '').length).toBeLessThan('Category number 0'.length);
   expect(first.textContent).toMatch(/…/);
   cat.unmount();
-  const dates = wrap(<BarChart series={many(30, long)} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const dates = wrap(<BarChart series={many(30, long)} stacked={many(30, long).length > 1} orientation="vertical" ariaLabel="b" formatTick={(n) => `${n}`} />);
   expect(xLabels(dates.container).length).toBeLessThan(30);
   for (const l of xLabels(dates.container)) expect(l.querySelector('title')).toBeNull();
 });
 
 test('BarChart categorical: a short label that fits is shown whole, and the first label stays right of the value axis', () => {
-  const { container } = wrap(<BarChart series={many(3, (i) => `c${i}`)} orientation="vertical" categorical ariaLabel="b" formatTick={(n) => `${n}`} />);
+  const { container } = wrap(<BarChart series={many(3, (i) => `c${i}`)} stacked={many(3, (i) => `c${i}`).length > 1} orientation="vertical" categorical ariaLabel="b" formatTick={(n) => `${n}`} />);
   const labels = xLabels(container);
   expect(labels.map((l) => l.textContent)).toEqual(['c0', 'c1', 'c2']);
   for (const l of labels) expect(l.querySelector('title')).toBeNull();
@@ -552,7 +552,7 @@ test('a cut row label shows the full text in the app tooltip; a short one has no
   await userEvent.hover(cut);
   expect(await tipText(long)).toBe(true);
 
-  const bars = wrap(<BarChart series={many(2, () => long)} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} />).container;
+  const bars = wrap(<BarChart series={many(2, () => long)} stacked={many(2, () => long).length > 1} orientation="horizontal" ariaLabel="b" formatTick={(n) => `${n}`} />).container;
   expect(bars.querySelector('title')).toBeNull();
   await userEvent.hover(bars.querySelector(`text[aria-label="${long}"]`)!);
   expect(await tipText(long)).toBe(true);

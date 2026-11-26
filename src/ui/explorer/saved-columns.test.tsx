@@ -8,7 +8,7 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useServices, useStore, type State } from '../../state/store';
 import { App } from '../App';
-import { SAVED_COLUMNS_WAIT_MS, VIEW_HOLD_MAX_MS } from './MartGrid';
+import { SAVED_COLUMNS_WAIT_MS, VIEW_HOLD_MAX_MS } from './SeededGrid';
 import { openColumnMenu, closeConfigMenu, openFields } from './menu-test-utils';
 
 type Mock = ReturnType<typeof createMockCtx>;
@@ -25,10 +25,10 @@ function setup(saved: string[] | null, tweak: (ctx: Mock) => Ctx = (c) => c) {
     const c = inner.collections<T>(name);
     return name === SAVED ? { get: c.get, put: (id: string, d: T) => { put(id, d); return c.put(id, d); } } : c;
   } };
-  const col = inner.collections<{ columns: string[]; at: string }>(GRID_COLUMNS_COLLECTION);
+  const col = inner.collections<{ columns: string[] }>(GRID_COLUMNS_COLLECTION);
   // A remembered main mart keeps the first visit's open search box out of these tests.
   void inner.collections('preferences').put('main-mart', { martId: 'orders', sourceKey: null });
-  const seeded = saved ? col.put('orders', { columns: saved, at: 'then' }) : Promise.resolve();
+  const seeded = saved ? col.put('orders', { columns: saved }) : Promise.resolve();
   const services: { current: ReturnType<typeof useServices> | null } = { current: null };
   const Probe = () => { services.current = useServices(); return null; };
   const store: { current: State | null } = { current: null };
@@ -80,7 +80,7 @@ test('unavailable saved columns are dropped and the cleaned list is saved', asyn
   await t.seeded;
   t.view();
   await waitFor(() => expect(headers()).toHaveLength(2));
-  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: ['id', 'status'], at: expect.any(String) }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
+  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: ['id', 'status'] }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
   expect(ordersCalls(t.calls).every((c) => !c.column!.includes('gone'))).toBe(true);
 });
 
@@ -89,7 +89,7 @@ test('when every saved column is gone the defaults show', async () => {
   await t.seeded;
   t.view();
   await waitFor(() => expect(headers()).toHaveLength(5));
-  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: [], at: expect.any(String) }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
+  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: [] }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
 });
 
 test('a member change in the picker is saved; seeding is not', async () => {
@@ -102,7 +102,7 @@ test('a member change in the picker is saved; seeding is not', async () => {
   await userEvent.click(screen.getByRole('option', { name: /amount/i }));
   await waitFor(() => expect(headers()).toHaveLength(3));
   await waitFor(() => expect(t.put).toHaveBeenCalledTimes(1), { timeout: SAVE_DEBOUNCE_MS + 1500 });
-  expect(t.put).toHaveBeenCalledWith('orders', { columns: ['id', 'status', 'amount'], at: expect.any(String) });
+  expect(t.put).toHaveBeenCalledWith('orders', { columns: ['id', 'status', 'amount'] });
 });
 
 test('this session\'s columns win over the saved ones', async () => {
@@ -191,7 +191,7 @@ async function lateSetup(gated: boolean, opts: { gridView?: object; blendFails?:
       return name === SAVED ? { get: async (id: string) => { await gate; return inner.get(id); }, put: inner.put } : inner;
     },
   }));
-  await t.col.put('orders', { columns: ['id', 'status'], at: 'then', gridView: opts.gridView ?? { fl: [['status', 'eq', 'paid', null, 1]], s: [['amount', -1]], l: 400 } } as never);
+  await t.col.put('orders', { columns: ['id', 'status'], gridView: opts.gridView ?? { fl: [['status', 'eq', 'paid', null, 1]], s: [['amount', -1]], l: 400 } } as never);
   const mounted = t.view();
   await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
   await vi.advanceTimersByTimeAsync(SAVED_COLUMNS_WAIT_MS + 50);
@@ -330,7 +330,7 @@ test('a moved column is saved, and a fresh mount reading the same store shows th
   const menu = await openColumnMenu(within(document.getElementById('band-data')!), 'id');
   await userEvent.click(within(menu).getByRole('menuitem', { name: 'Move right' }));
   await waitFor(() => expect(headers().join()).toMatch(/status.*id.*Amount/));
-  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: ['status', 'id', 'amount'], at: expect.any(String) }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
+  await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: ['status', 'id', 'amount'] }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
   first.unmount();
   t.view();
   await waitFor(() => expect(headers()).toHaveLength(3));

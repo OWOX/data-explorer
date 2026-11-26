@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { createBlendableLoader, joinedSources, keyAliasOf, sourceOfField } from './blendable';
+import { createBlendableLoader, joinedSources, keyAliasOf, sourceOfField, type JoinedSource } from './blendable';
 import { pathTitle } from '../state/join-plan';
 import { stubCtx } from './test-ctx';
 import type { Edge, Schema } from '../model/types';
@@ -219,8 +219,8 @@ test('a read in flight before clear() is not served after it', async () => {
 
 test('sourceOfField maps each field name to its first source and builds the map once per sources array', () => {
   const field = (name: string) => ({ name, alias: null, type: 'STRING', category: 'string' as const, description: null, isPrimaryKey: false });
-  const a = { aliasPath: 'a', martId: 'ma', label: 'A', depth: 1, fields: [field('x'), field('y')], uniqueCount: false };
-  const b = { aliasPath: 'b', martId: 'mb', label: 'B', depth: 1, fields: [field('x'), field('z')], uniqueCount: false };
+  const a: JoinedSource = { aliasPath: 'a', martId: 'ma', label: 'A', depth: 1, fields: [field('x'), field('y')], uniqueCount: false, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown' };
+  const b: JoinedSource = { aliasPath: 'b', martId: 'mb', label: 'B', depth: 1, fields: [field('x'), field('z')], uniqueCount: false, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown' };
   const sources = [a, b];
   const map = sourceOfField(sources);
   expect(map.get('x')).toBe(a);

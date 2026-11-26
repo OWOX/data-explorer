@@ -42,3 +42,7 @@ test('normalizeType does its work once per spelling', () => {
     upper.mockRestore();
   }
 });
+
+it('counts every integer type as a number', () => {
+  for (const t of ['INTEGER', 'INT64', 'BIGINT', 'SMALLINT', 'TINYINT']) expect(categorizeFieldType(t)).toBe('number');
+});

@@ -1,5 +1,5 @@
 // Value-axis ticks shared by every chart: a "nice" step (1, 2 or 5 times a power of ten), so a count never reads 24.33 or 48.67.
-export type Ticks = { ticks: number[]; /** The axis top: the last tick, a whole number of steps at or above the data's end. */ top: number };
+type Ticks = { ticks: number[]; /** The axis top: the last tick, a whole number of steps at or above the data's end. */ top: number };
 
 const TARGET = 4;
 

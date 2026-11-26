@@ -1,8 +1,7 @@
 import type { Ctx, Row, TraverseOptions } from '../sdk/types';
 
-export interface ReadRowsHooks {
+interface ReadRowsHooks {
   signal?: AbortSignal;
-  onChunk?: (rowsSoFar: Row[]) => void;
   onRunId?: (runId: string | undefined) => void;
   /** The total row count, called once before the first row; undefined when none came. */
   onTotalRowCount?: (count: number | undefined) => void;
@@ -21,7 +20,6 @@ export async function readRows(ctx: Ctx, martId: string, options: TraverseOption
   try {
     for await (const chunk of traversal.rowChunks()) {
       rows.push(...chunk);
-      hooks.onChunk?.(rows);
       if (hooks.signal?.aborted) {
         await traversal.cancel();
         throw abortError();

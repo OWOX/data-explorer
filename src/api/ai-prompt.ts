@@ -77,7 +77,7 @@ export function describeHaving(f: ColumnFilter): string {
   return `${target} ${symbol} ${quoted(v)}`;
 }
 
-export type AiPromptInput = {
+type AiPromptInput = {
   projectId: string;
   /** The project's name when it is known; the id stands in otherwise. */
   projectTitle?: string;

@@ -10,11 +10,9 @@ import type { Series } from './svg/BarChart';
 import { labelColors, slotColor } from './labelColor';
 import { useChartQuery } from './useChartQuery';
 
-/** The colour of a chart that draws one measure rather than labels: slot `i` of the palette. Labels take theirs from `labelColors`. */
-export const seriesColor = (i: number): string => slotColor(i);
 export const OTHER_COLOR = 'var(--dm-other)';
 
-export type DateSeries = { series: Series[] | null; failed: { error: unknown; retry: () => void } | undefined; empty: boolean; loading: boolean; label: string; names: string[] | undefined };
+type DateSeries = { series: Series[] | null; failed: { error: unknown; retry: () => void } | undefined; empty: boolean; loading: boolean; label: string; names: string[] | undefined };
 
 /**
  * A measure over a date, one point per bucket, split by a dimension's top values plus "Other" when `stack` is set.
@@ -66,7 +64,7 @@ export function useDateSeries({ martId, cf, spark, date, bucket, measure, stack,
   const all = [...mainRows, ...(blank.rows ?? []), ...(other.rows ?? [])];
   // ISO dates sort as text, the blank bucket first; the queries return them ascending, this only merges the extra reads' buckets in.
   const xs = blankFirst([...new Set(all.map((x) => keyOf(x[date.name])))].sort());
-  if (!stack) return { series: [pivot(label, seriesColor(0), mainRows, xs)], failed, empty: !!empty, loading, label, names };
+  if (!stack) return { series: [pivot(label, slotColor(0), mainRows, xs)], failed, empty: !!empty, loading, label, names };
   const rowsOf = (n: string) => mainRows.filter((x) => keyOf(x[stack.name]) === n);
   // Each value keeps the colour its text hashes to, so it matches the same value in a pie or a Sankey.
   const colors = labelColors(names!);

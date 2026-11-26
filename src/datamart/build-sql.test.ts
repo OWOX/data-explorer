@@ -9,9 +9,9 @@ import type { Dialect } from './dialect';
 const f = (name: string, type = 'STRING', joined?: Field['joined']): Field => ({ name, alias: null, type, category: categorizeFieldType(type), description: null, isPrimaryKey: false, ...(joined ? { joined } : {}) });
 const j = (aliasPath: string, martId: string, originalName?: string, aggregateFunction: string | undefined = 'STRING_AGG', sourceType?: string): Field['joined'] => ({ martId, label: aliasPath, aliasPath, ...(originalName ? { originalName } : {}), ...(aggregateFunction ? { aggregateFunction } : {}), ...(sourceType ? { sourceType } : {}) });
 
-const customers = (fields: Field[], extra: Partial<JoinedSource> = {}): JoinedSource => ({ aliasPath: 'customers', martId: 'cus1', label: 'Customers', depth: 1, fields, uniqueCount: true, relationshipId: 'e1', ...extra });
-const items = (fields: Field[]): JoinedSource => ({ aliasPath: 'order_items', martId: 'itm1', label: 'Order Items', depth: 1, fields, uniqueCount: true, relationshipId: 'e3' });
-const region = (fields: Field[] = []): JoinedSource => ({ aliasPath: 'customers.region', martId: 'reg1', label: 'Region', depth: 2, fields, uniqueCount: false, relationshipId: 'e2' });
+const customers = (fields: Field[], extra: Partial<JoinedSource> = {}): JoinedSource => ({ aliasPath: 'customers', martId: 'cus1', label: 'Customers', depth: 1, fields, uniqueCount: true, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown', relationshipId: 'e1', ...extra });
+const items = (fields: Field[]): JoinedSource => ({ aliasPath: 'order_items', martId: 'itm1', label: 'Order Items', depth: 1, fields, uniqueCount: true, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown', relationshipId: 'e3' });
+const region = (fields: Field[] = []): JoinedSource => ({ aliasPath: 'customers.region', martId: 'reg1', label: 'Region', depth: 2, fields, uniqueCount: false, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown', relationshipId: 'e2' });
 const edges: Edge[] = [
   { id: 'e1', source: 'ord1', target: 'cus1', joins: [{ sourceField: 'customer_id', targetField: 'id' }] },
   { id: 'e2', source: 'cus1', target: 'reg1', joins: [{ sourceField: 'region_id', targetField: 'id' }, { sourceField: 'country', targetField: 'country' }] },
@@ -132,7 +132,7 @@ describe('depth 3 re-aggregation', () => {
   const l1 = f('a__n', 'INTEGER', j('a', 'a1', 'n', 'COUNT'));
   const l3 = f('a__b__c__n', 'INTEGER', j('a.b.c', 'c1', 'n', 'COUNT'));
   const flag = f('a__b__c__flag', 'BOOLEAN', j('a.b.c', 'c1', 'flag', 'ANY_VALUE'));
-  const src = (aliasPath: string, martId: string, fields: Field[], depth: number): JoinedSource => ({ aliasPath, martId, label: martId, depth, fields, uniqueCount: false, relationshipId: `r_${martId}` });
+  const src = (aliasPath: string, martId: string, fields: Field[], depth: number): JoinedSource => ({ aliasPath, martId, label: martId, depth, fields, uniqueCount: false, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown', relationshipId: `r_${martId}` });
   const chain: Edge[] = [
     { id: 'r_a1', source: 'ord1', target: 'a1', joins: [{ sourceField: 'k', targetField: 'k' }] },
     { id: 'r_b1', source: 'a1', target: 'b1', joins: [{ sourceField: 'k', targetField: 'k' }] },
@@ -867,14 +867,14 @@ describe('a chain through a middle mart with no column of its own', () => {
 
   test('two missing middle levels cannot be resolved when the synthetic hop names no relationship', () => {
     const e = [...edges, { id: 'e4', source: 'reg1', target: 'ctr1', joins: [{ sourceField: 'country_id', targetField: 'id' }] }];
-    const deep: JoinedSource = { aliasPath: 'customers.region.country', martId: 'ctr1', label: 'Country', depth: 3, fields: [], uniqueCount: false, relationshipId: 'e4' };
+    const deep: JoinedSource = { aliasPath: 'customers.region.country', martId: 'ctr1', label: 'Country', depth: 3, fields: [], uniqueCount: false, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown', relationshipId: 'e4' };
     const name = f('customers__region__country__name', 'STRING', j('customers.region.country', 'ctr1', 'name'));
     expect(run({ visible: ['id', 'customers__region__country__name'], schema: [f('id', 'INTEGER'), name], sources: [{ ...deep, fields: [name] }], edges: e, titles: new Map([...titles, ['ctr1', 'Country']]) })).toMatch(/^REASON The join to ".*" could not be resolved$/);
   });
 
   test('two levels resolve when every hop names its relationship', () => {
     const e = [...edges, { id: 'e4', source: 'reg1', target: 'ctr1', joins: [{ sourceField: 'country_id', targetField: 'id' }] }];
-    const deep: JoinedSource = { aliasPath: 'customers.region.country', martId: 'ctr1', label: 'Country', depth: 3, fields: [], uniqueCount: false, relationshipId: 'e4' };
+    const deep: JoinedSource = { aliasPath: 'customers.region.country', martId: 'ctr1', label: 'Country', depth: 3, fields: [], uniqueCount: false, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown', relationshipId: 'e4' };
     const name = f('customers__region__country__name', 'STRING', j('customers.region.country', 'ctr1', 'name'));
     const sql = run({ visible: ['id', 'customers__region__country__name'], schema: [f('id', 'INTEGER'), name], sources: [{ ...deep, fields: [name] }, region()], edges: e, titles: new Map([...titles, ['ctr1', 'Country']]) });
     expect(sql).toContain('FROM [Customers](dm:cus1) AS t');
@@ -888,7 +888,7 @@ describe('a chain through a middle mart with no column of its own', () => {
       { id: 'eX', source: 'ord1', target: 'cus1', joins: [{ sourceField: 'customer_id', targetField: 'id' }] },
       { id: 'eXc', source: 'cus1', target: 'ctr1', joins: [{ sourceField: 'country_id', targetField: 'id' }] },
     ];
-    const deep: JoinedSource = { aliasPath: 'y.country', martId: 'ctr1', label: 'Country', depth: 2, fields: [], uniqueCount: false, relationshipId: 'eYc' };
+    const deep: JoinedSource = { aliasPath: 'y.country', martId: 'ctr1', label: 'Country', depth: 2, fields: [], uniqueCount: false, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown', relationshipId: 'eYc' };
     const name = f('y__country__name', 'STRING', j('y.country', 'ctr1', 'name'));
     expect(run({ visible: ['id', 'y__country__name'], schema: [f('id', 'INTEGER'), name], sources: [{ ...deep, fields: [name] }], edges: e, titles: new Map([['ord1', 'Orders'], ['cus1', 'Customers'], ['ctr1', 'Country']]) })).toMatch(/^REASON A join could not be resolved$/);
   });

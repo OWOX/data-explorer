@@ -11,7 +11,7 @@ const DIALECTS: Dialect[] = ['bigquery', 'athena', 'snowflake', 'redshift', 'dat
 
 const pluginSql = (c: PCase, dialect: Dialect): string => {
   const joinedFields = joinedFieldsOf(c);
-  const sources: JoinedSource[] = c.marts.map((m) => ({ aliasPath: m.path, martId: m.martId, label: m.label, depth: m.path.split('.').length, fields: joinedFields.filter((x) => x.joined!.aliasPath === m.path), uniqueCount: false, relationshipId: m.edgeId }));
+  const sources: JoinedSource[] = c.marts.map((m) => ({ aliasPath: m.path, martId: m.martId, label: m.label, depth: m.path.split('.').length, fields: joinedFields.filter((x) => x.joined!.aliasPath === m.path), uniqueCount: false, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown', relationshipId: m.edgeId }));
   const r = buildMartSql({ dialect, main: { id: 'ord1', title: 'Orders' }, schema: schemaOf(c), visible: c.visible, filters: c.filters, ...(c.slices ? { slices: c.slices } : {}), ...(c.sorts ? { sorts: c.sorts } : {}), ...(c.aggregation ? { aggregation: c.aggregation } : {}), sources, edges, titles: new Map(c.marts.map((m) => [m.martId, m.label])).set('ord1', 'Orders') });
   if ('reason' in r) throw new Error(r.reason);
   return r.sql;

@@ -39,7 +39,7 @@ test('the Charts group has the cards, Sparklines and one tick per chart; Add cha
 });
 
 test('unticking a chart hides it and keeps its setup; Add chart appends a new chart', () => {
-  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie', dimension: 'status' }] };
+  let s: ChartSettings = { charts: [{ id: 'a', kind: 'pie', dimension: 'status' }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
   const items = () => listItems({ cf, settings: s, resolved: (s.charts ?? []).map((spec) => ({ spec, title: 'P' })), change });
   const tick = items().find((i) => i.label === 'P')!;
@@ -59,7 +59,7 @@ test('the Charts group lists every chart, hidden ones ticked off, so any of them
 });
 
 test('Chart type keeps the usable fields and the id', () => {
-  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie', measure: 'amount', dimension: 'status', hidden: false }] };
+  let s: ChartSettings = { charts: [{ id: 'a', kind: 'pie', measure: 'amount', dimension: 'status', hidden: false }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
   const [type] = tailItems({ cf, spec: s.charts![0]!, change });
   expect(type!.label).toBe('Chart type');
@@ -73,7 +73,7 @@ test('the tail is Chart type, Resize, Duplicate and Hide, with no Remove', () =>
 });
 
 test('Resize turns the mode on and off; a resized chart also has Reset size, which drops only its size', () => {
-  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie', measure: 'amount', size: { cols: 20 } }, { id: 'b', kind: 'pie', size: { rows: 12 } }] };
+  let s: ChartSettings = { charts: [{ id: 'a', kind: 'pie', measure: 'amount', size: { cols: 20 } }, { id: 'b', kind: 'pie', size: { rows: 12 } }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
   const onResizing = vi.fn();
   const items = tailItems({ cf, spec: s.charts![0]!, change, onResizing });
@@ -88,7 +88,7 @@ test('Resize turns the mode on and off; a resized chart also has Reset size, whi
 });
 
 test('a chart keeps its size through a type switch and a duplicate', () => {
-  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie', size: { cols: 20, rows: 12 } }] };
+  let s: ChartSettings = { charts: [{ id: 'a', kind: 'pie', size: { cols: 20, rows: 12 } }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
   const type = row(tailItems({ cf, spec: s.charts![0]!, change }), 'Chart type');
   if (type.kind === 'radio') type.onPick('bar');
@@ -99,7 +99,7 @@ test('a chart keeps its size through a type switch and a duplicate', () => {
 });
 
 test('Duplicate inserts a copy right after the original: new id, same choices, not hidden, arrays not shared', () => {
-  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'sankey', dimensions: ['x', 'y'], hidden: true }, { id: 'b', kind: 'pie' }] };
+  let s: ChartSettings = { charts: [{ id: 'a', kind: 'sankey', dimensions: ['x', 'y'], hidden: true }, { id: 'b', kind: 'pie' }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
   const dup = row(tailItems({ cf, spec: s.charts![0]!, change }), 'Duplicate');
   if (dup.kind === 'action') dup.onPick();
@@ -118,7 +118,7 @@ test('a Sankey with one column or none switches to another type and back, and du
   const region = { name: 'region', category: 'string', type: 'STRING' } as never;
   const two: ChartFields = { ...cf, marts: [{ ...cf.marts[0]!, dimensions: [dim, region] }], dimensions: [dim, region] };
   for (const [dimensions, then] of [[[], ['status', 'region']], [['status'], ['status', 'region']]] as const) {
-    let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'sankey', dimensions: [...dimensions] }] };
+    let s: ChartSettings = { charts: [{ id: 'a', kind: 'sankey', dimensions: [...dimensions] }] };
     const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
     const pick = (to: string) => { const [type] = tailItems({ cf: two, spec: s.charts![0]!, change }); if (type!.kind === 'radio') type!.onPick(to); };
     pick('pie');
@@ -127,7 +127,7 @@ test('a Sankey with one column or none switches to another type and back, and du
     // Back on a Sankey the columns the other type held fill it to the two it needs.
     expect(s.charts![0]).toEqual({ id: 'a', kind: 'sankey', dimensions: then });
   }
-  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'sankey', dimensions: [] }] };
+  let s: ChartSettings = { charts: [{ id: 'a', kind: 'sankey', dimensions: [] }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
   const dup = row(tailItems({ cf, spec: s.charts![0]!, change }), 'Duplicate');
   if (dup.kind === 'action') dup.onPick();
@@ -145,7 +145,7 @@ test('Duplicate on the default list saves the defaults with the copy after its o
 });
 
 test('Hide sets hidden and keeps the chart and its setup', () => {
-  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie', dimension: 'status' }] };
+  let s: ChartSettings = { charts: [{ id: 'a', kind: 'pie', dimension: 'status' }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
   const hide = row(tailItems({ cf, spec: s.charts![0]!, change }), 'Hide');
   if (hide.kind === 'action') hide.onPick();
@@ -240,7 +240,7 @@ test('a new chart of a dimension kind starts on the dimension the fewest shown c
   const region = { name: 'region', category: 'string', type: 'STRING' } as never;
   const cf3: ChartFields = { ...cf, dimensions: [dim, plan, region] };
   // 'status' is taken twice (a pie with no saved dimension falls back to the first), 'plan' once; a hidden chart does not count.
-  let s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie' }, { id: 'b', kind: 'bar', dimension: 'status' }, { id: 'c', kind: 'rankedBar', dimension: 'plan' }, { id: 'd', kind: 'bar', dimension: 'region', hidden: true }, { id: 'e', kind: 'timeSeries' }] };
+  let s: ChartSettings = { charts: [{ id: 'a', kind: 'pie' }, { id: 'b', kind: 'bar', dimension: 'status' }, { id: 'c', kind: 'rankedBar', dimension: 'plan' }, { id: 'd', kind: 'bar', dimension: 'region', hidden: true }, { id: 'e', kind: 'timeSeries' }] };
   const change = (edit: (c: ChartSettings) => ChartSettings) => { s = edit(s); };
   const add = addChartItem({ cf: cf3, change });
   if (add.kind === 'radio') add.onPick('bar');

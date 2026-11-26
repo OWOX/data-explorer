@@ -39,7 +39,6 @@ export function buildRowQuery(schema: Schema, visible: string[], filters: Column
   return { column, ...(filter.length ? { filter } : {}), ...(sort.length ? { sort } : {}), limit: limit + 1 };
 }
 
-/** The query behind the rows on the grid, for Copy SQL. */
 /** `paused`: Charts holds the grid's query back, and a key it has not read yet will not run until Table is back. */
 export type GridRun = { state: 'none' } | { state: 'paused' } | { state: 'running' } | { state: 'failed' } | { state: 'done'; runId: string | null };
 

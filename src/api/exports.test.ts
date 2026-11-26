@@ -137,8 +137,10 @@ describe('exporter', () => {
     try {
       const { ctx, calls } = exportCtx();
       const ex = createExporter(ctx);
-      const stages: string[] = [];
-      const p = ex.run({ martId: 'orders', destination: dest, title: 'T', source: { kind: 'new' }, payload, onStage: (s) => stages.push(s) });
+      const p = ex.run({ martId: 'orders', destination: dest, title: 'T', source: { kind: 'new' }, payload });
+      const flight = ex.inFlight('orders')!;
+      const stages: string[] = [flight.stage];
+      flight.subscribe((s) => stages.push(s));
       await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
       const { report, outcome } = await p;
       expect(outcome).toEqual({ state: 'success' });

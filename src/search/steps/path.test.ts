@@ -4,7 +4,7 @@ import { EMPTY_INTENT } from '../intent';
 import type { JoinedSource } from '../../api/blendable';
 import type { Mart, Model } from '../../model/types';
 
-const src = (aliasPath: string, martId: string, extra: Partial<JoinedSource> = {}): JoinedSource => ({ aliasPath, martId, label: martId, depth: aliasPath.split('.').length, fields: [], uniqueCount: true, ...extra });
+const src = (aliasPath: string, martId: string, extra: Partial<JoinedSource> = {}): JoinedSource => ({ aliasPath, martId, label: martId, depth: aliasPath.split('.').length, fields: [], uniqueCount: true, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown', ...extra });
 const mart = (id: string, title = id): Mart => ({ id, title, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
 const model: Model = { marts: new Map([['orders', mart('orders', 'Orders')], ['users', mart('users', 'Users')], ['items', mart('items')], ['deep', mart('deep')]]), sources: [], edges: [{ id: 'r1', source: 'users', target: 'orders', joins: [], alias: 'Placed orders', description: 'Orders the user placed' }], contexts: [], storages: [], failedStorages: [] };
 const input = { query: 'orders of users', intent: { ...EMPTY_INTENT, subjects: ['orders'] }, hits: { marts: [], reports: [] }, model };

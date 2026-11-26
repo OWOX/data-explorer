@@ -2,7 +2,7 @@
 // The joined marts are not stored anywhere: a mart is selected-joined exactly when one of its joined fields is a column of the main grid.
 import { sourceOfField, type JoinedSource } from '../api/blendable';
 import type { Picks } from '../api/grid-columns';
-import { sortsOnColumns } from '../model/sort';
+import { keptSorts, sortsOnColumns } from '../model/sort';
 import { keepVisible } from '../model/aggregation';
 import { uniqueKey } from '../model/unique-count';
 import { dropOrphanHaving } from '../filters/build';
@@ -22,18 +22,6 @@ export function joinedMartIds(columns: string[], sources: JoinedSource[], empty:
     const id = sources.find((s) => s.aliasPath === p)?.martId;
     if (id && !out.includes(id)) out.push(id);
   }
-  return out;
-}
-
-/** The alias paths a grid's columns use, in the order their first column appears; then the paths kept with no column (`empty`) that a source offers. */
-export function joinedPaths(columns: string[], sources: JoinedSource[], empty: readonly string[] = []): string[] {
-  const pathOf = sourceOfField(sources);
-  const out: string[] = [];
-  for (const c of columns) {
-    const p = pathOf.get(c)?.aliasPath;
-    if (p !== undefined && !out.includes(p)) out.push(p);
-  }
-  for (const p of empty) if (!out.includes(p) && sources.some((s) => s.aliasPath === p)) out.push(p);
   return out;
 }
 
@@ -87,7 +75,7 @@ export const shortestSource = (sources: JoinedSource[], martId: string, inUse: S
   return best;
 };
 
-export const isJoinable = (sources: JoinedSource[], martId: string) => sources.some((s) => s.martId === martId);
+const isJoinable = (sources: JoinedSource[], martId: string) => sources.some((s) => s.martId === martId);
 
 /** A key by name or alias: a primary key, `id`, a name ending in `_id` or `Id`, or an alias ending in " ID" (any case). */
 export const isIdField = (f: Field): boolean => f.isPrimaryKey || /^id$/i.test(f.name) || /_id$/i.test(f.name) || /[a-z0-9]Id$/.test(f.name) || /\sid$/i.test(f.alias ?? '');
@@ -108,7 +96,7 @@ export function defaultJoinFields(source: JoinedSource): Field[] {
 }
 
 /** A joined field's name in its own mart. */
-export const ownNameOf = (f: Field): string => f.joined?.originalName ?? f.name.slice(f.name.lastIndexOf('__') + 2);
+const ownNameOf = (f: Field): string => f.joined?.originalName ?? f.name.slice(f.name.lastIndexOf('__') + 2);
 
 /** The own field names of one joined mart's columns, in the order shown. */
 export function ownNamesIn(columns: string[], sources: JoinedSource[], martId: string): string[] {
@@ -118,29 +106,18 @@ export function ownNamesIn(columns: string[], sources: JoinedSource[], martId: s
 }
 
 /** The columns that are not a field of any joined mart: the mart's own. */
-export const ownColumnsIn = (columns: string[], sources: JoinedSource[]): string[] => {
+const ownColumnsIn = (columns: string[], sources: JoinedSource[]): string[] => {
   const joined = new Set(sources.flatMap((s) => s.fields.map((f) => f.name)));
   return columns.filter((c) => !joined.has(c));
 };
 
-/**
- * The fields a joined mart comes back with. What it showed when it last left a grid (`shown`, its own field names) wins:
- * those the source offers, in that order, else the default. With nothing remembered, what was last chosen for the pair
- * (those the source still offers), else its first non-ID text field and first non-ID metric. The path is the one
- * `sourceOfMart` picks for the paths in use.
- */
-export function fieldsFor(sources: JoinedSource[], martId: string, remembered: string[] | undefined, shown: string[] | null = null, inUse?: Set<string>): string[] {
+/** The fields a joined mart comes back with: what it showed when it last left a grid (`shown`, its own field names) that the source still offers, in that order, else its default fields. */
+export function fieldsFor(sources: JoinedSource[], martId: string, shown: string[], inUse?: Set<string>): string[] {
   const source = sourceOfMart(sources, martId, inUse);
-  if (shown && source) {
-    const byOwn = new Map(source.fields.map((f) => [ownNameOf(f), f.name] as const));
-    const mapped = shown.flatMap((n) => (byOwn.has(n) ? [byOwn.get(n)!] : []));
-    if (mapped.length) return mapped;
-    return defaultJoinFields(source).map((f) => f.name);
-  }
-  const offered = namesOf(sources, martId);
-  const kept = (remembered ?? []).filter((n) => offered.has(n));
-  if (kept.length) return kept;
-  return source ? defaultJoinFields(source).map((f) => f.name) : [];
+  if (!source) return [];
+  const byOwn = new Map(source.fields.map((f) => [ownNameOf(f), f.name] as const));
+  const mapped = shown.flatMap((n) => (byOwn.has(n) ? [byOwn.get(n)!] : []));
+  return mapped.length ? mapped : defaultJoinFields(source).map((f) => f.name);
 }
 
 /** The slices without the ones on the dropped fields; `undefined` when none is left, so the grid state carries no empty map. */
@@ -157,7 +134,7 @@ const refitRules = (grid: GridState, columns: string[], goneUnique: ReadonlySet<
   return {
     aggregation: agg,
     uniqueCount: uniqueCount.length ? uniqueCount : undefined,
-    sorts: grid.sorts && grid.sorts.length > 0 && kept!.length === 0 ? null : kept,
+    sorts: keptSorts(grid.sorts, kept ?? []),
     aggregations: agg.aggregations.length ? agg.aggregations : undefined,
     dateTrunc: agg.dateTrunc.length ? agg.dateTrunc : undefined,
   };
@@ -228,12 +205,10 @@ export type PlanEnv = {
   ownColumns: (martId: string) => string[];
   picksOf: (martId: string) => Picks;
   /** The own field names a mart showed when it last left a grid; null when none. Loaded before the plan is made. */
-  lastShownOf?: (martId: string) => string[] | null;
+  lastShownOf: (martId: string) => string[] | null;
   /** Every field name of the mart itself (its schema), for the marts that may become the main one. */
-  ownNames?: (martId: string) => string[];
+  ownNames: (martId: string) => string[];
 };
-
-const noShown = () => null;
 
 const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((p, i) => p === b[i]);
 
@@ -270,8 +245,8 @@ const becomeMain = (env: PlanEnv, id: string, remember: Plan['remember'] = []): 
     // what the screen showed (a later entry here would override it).
   }
   // What it showed when it last left a grid, as its own columns (this is the newest memory it has).
-  const offered = new Set(env.ownNames?.(id) ?? []);
-  const last = (env.lastShownOf ?? noShown)(id)?.filter((n) => offered.has(n)) ?? [];
+  const offered = new Set(env.ownNames(id));
+  const last = (env.lastShownOf(id) ?? []).filter((n) => offered.has(n));
   const restored = last.length > 0 && !(last.length === grid.columns.length && last.every((c, i) => c === grid.columns[i]));
   if (last.length > 0) {
     const { sorts, aggregations, dateTrunc, uniqueCount } = refitRules(grid, last);
@@ -289,7 +264,7 @@ export function planClick(env: PlanEnv, id: string): Plan {
   const sources = env.sourcesOf(main);
   const grid = env.gridOf(main);
   const joined = joinedMartIds(grid.columns, sources, grid.emptyPaths);
-  const shownOf = env.lastShownOf ?? noShown;
+  const shownOf = env.lastShownOf;
 
   if (id === main) {
     if (joined.length === 0) return { selection: { sourceKey: env.selection.sourceKey, martId: null, record: null, cleared: true }, grids: {}, saves: [], remember: leaveAll(main, sources, grid) };
@@ -297,12 +272,11 @@ export function planClick(env: PlanEnv, id: string): Plan {
     const [next, ...rest] = joined as [string, ...string[]];
     const nextSources = env.sourcesOf(next);
     const nextGrid = env.gridOf(next);
-    const nextPicks = env.picksOf(next);
     const remember: Plan['remember'] = [{ martId: main, fields: ownColumnsIn(grid.columns, sources) }];
     // A mart with no column on the grid showed nothing: forgetting what it last showed would lose it.
     if (ownNamesIn(grid.columns, sources, next).length > 0) remember.push({ martId: next, fields: null });
     // Its joined fields it was showing become its own columns: that is what it showed last.
-    const offered = new Set(env.ownNames?.(next) ?? []);
+    const offered = new Set(env.ownNames(next));
     const shownNow = ownNamesIn(grid.columns, sources, next).filter((n) => offered.has(n));
     let columns = shownNow.length ? shownNow : nextGrid.columns;
     // The empty paths of its own grid count only when that grid is what opens; the screen's columns replace it.
@@ -320,7 +294,7 @@ export function planClick(env: PlanEnv, id: string): Plan {
       }
       if (have.has(r)) continue;
       if (stayEmpty.has(r)) { if (!ownEmpty.has(r)) carried.push(carryPath(nextSources, r, columns, [...own, ...carried])); continue; }
-      columns = [...columns, ...fieldsFor(nextSources, r, nextPicks[r], ownNamesIn(grid.columns, sources, r), inUsePaths(columns, nextSources)).filter((n) => !columns.includes(n))];
+      columns = [...columns, ...fieldsFor(nextSources, r, ownNamesIn(grid.columns, sources, r), inUsePaths(columns, nextSources)).filter((n) => !columns.includes(n))];
     }
     columns = orderColumns(columns, nextSources, env.ownColumns(next));
     // A mart the loop gave columns is not kept empty as well; one already on its own grid keeps its empty path.
@@ -330,7 +304,7 @@ export function planClick(env: PlanEnv, id: string): Plan {
     const sorts = changed && nextGrid.sorts ? sortsOnColumns(nextGrid.sorts, columns) : nextGrid.sorts;
     return {
       selection: { sourceKey: env.sourceKeyFor(next), martId: next, record: null },
-      grids: changed ? { [next]: { ...nextGrid, columns, emptyPaths: emptyPaths.length ? emptyPaths : undefined, sorts: nextGrid.sorts && nextGrid.sorts.length > 0 && sorts!.length === 0 ? null : sorts } } : {},
+      grids: changed ? { [next]: { ...nextGrid, columns, emptyPaths: emptyPaths.length ? emptyPaths : undefined, sorts: keptSorts(nextGrid.sorts, sorts ?? []) } } : {},
       saves: changed ? [{ martId: next, columns }] : [],
       remember,
     };
@@ -369,14 +343,14 @@ export function planMakeMain(env: PlanEnv, id: string): Plan {
   const grid = env.gridOf(main);
   const nextSources = env.sourcesOf(id);
   const nextGrid = env.gridOf(id);
-  const offered = new Set(env.ownNames?.(id) ?? []);
+  const offered = new Set(env.ownNames(id));
   const shownNow = ownNamesIn(grid.columns, sources, id).filter((n) => offered.has(n));
-  const last = (env.lastShownOf ?? noShown)(id)?.filter((n) => offered.has(n)) ?? [];
+  const last = (env.lastShownOf(id) ?? []).filter((n) => offered.has(n));
   const own = ownColumnsIn(nextGrid.columns, nextSources);
   let columns = shownNow.length ? shownNow : last.length ? last : own.length ? own : env.ownColumns(id);
   const remember: Plan['remember'] = [];
   const add = (martId: string, shown: string[]) => {
-    const names = fieldsFor(nextSources, martId, undefined, shown, inUsePaths(columns, nextSources));
+    const names = fieldsFor(nextSources, martId, shown, inUsePaths(columns, nextSources));
     columns = [...columns, ...names.filter((n) => !columns.includes(n))];
   };
   const mainShown = ownColumnsIn(grid.columns, sources);
@@ -456,7 +430,7 @@ export function planRejoin(grid: GridState, sources: JoinedSource[], moves: Map<
     columns,
     filters,
     slices: Object.keys(slices).length ? slices : undefined,
-    sorts: grid.sorts && grid.sorts.length > 0 && sorts!.length === 0 ? null : sorts,
+    sorts: keptSorts(grid.sorts, sorts ?? []),
     aggregations: aggregations?.length ? aggregations : undefined,
     dateTrunc: dateTrunc?.length ? dateTrunc : undefined,
     uniqueCount: uniqueCount?.length ? [...new Set(uniqueCount)] : undefined,

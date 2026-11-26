@@ -1,13 +1,15 @@
 import { PAGE_SIZE } from '../config';
 import { dropOrphanHaving, type ColumnFilter } from '../filters/build';
 import { keepVisible, sanitizeAggregation } from '../model/aggregation';
+import { keptSorts } from '../model/sort';
 import { keepEmpty } from '../model/empty-paths';
 import type { Model, Schema } from '../model/types';
 import { keepUnique, uniqueKey } from '../model/unique-count';
+import { count } from '../ui/format';
 import type { GridState, Selection } from './store';
 import type { DecodedView } from './view-link';
 
-export type AppliedView = {
+type AppliedView = {
   selection: Selection;
   grid: GridState | null;
   search: string;
@@ -52,7 +54,7 @@ export function pruneGrid(grid: GridState, schema: Schema): { grid: GridState | 
     const kept = sorts.filter((s) => offered.has(s.field) || metricKeys.has(s.field));
     dropped.sorts += sorts.length - kept.length;
     // An empty list means the member chose no sort, so a list emptied by pruning goes back to the default order.
-    sorts = kept.length || !sorts.length ? kept : null;
+    sorts = keptSorts(sorts, kept);
   }
   // Rules on a column that is gone are left out; every column dropped means no grid (filters and sorts were still counted above).
   // Then what the backend would refuse: a function the field does not allow, a calculated field, a bucket on a column that cannot take one.
@@ -90,20 +92,12 @@ export async function resolveView(
   if (view.martId && !martId) skipped.mart = true;
 
   let sourceKey = view.sourceKey;
-  // A link made before custom connectors were grouped by service names the connector itself: follow it to the card that now holds it.
-  if (sourceKey && !model.sources.some((s) => s.key === sourceKey)) {
-    const old = sourceKey.toLowerCase();
-    const live = [...model.marts.values()].filter((m) => m.accessible && m.connectorName);
-    // The exact spelling first, so `Shopify` and `shopify` as two connectors each find their own card.
-    const found = live.find((m) => m.connectorName === sourceKey) ?? live.find((m) => m.connectorName!.toLowerCase() === old);
-    if (found) sourceKey = found.sourceKey;
-  }
   if (sourceKey && (!model.sources.some((s) => s.key === sourceKey) || (martId && mart!.sourceKey !== sourceKey))) {
     skipped.source = true;
     sourceKey = null;
   }
 
-  const record = martId && view.record && typeof view.record === 'object' && !Array.isArray(view.record) ? { martId, pk: view.record } : null;
+  const record = martId && view.record ? { martId, pk: view.record } : null;
   const selection: Selection = { sourceKey, martId, record };
 
   const contextIds = view.contextIds.filter((id) => model.contexts.some((c) => c.id === id));
@@ -139,20 +133,18 @@ export async function resolveView(
   return { apply: { selection, grid, search: lostFound ? '' : view.search, found, contextIds, storageIds, folded: view.folded }, skipped };
 }
 
-export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 /** The one-line notice for a skipped view, or null when nothing was. */
 export function skippedMessage(s: Skipped): string | null {
   const items = [
     s.mart && 'the data mart',
     s.found && 'the data marts the search found',
     s.source && 'the source',
-    s.columns > 0 && plural(s.columns, 'column', 'columns'),
-    s.filters > 0 && plural(s.filters, 'filter', 'filters'),
-    s.sorts > 0 && plural(s.sorts, 'sort', 'sorts'),
-    s.aggregations > 0 && plural(s.aggregations, 'aggregation', 'aggregations'),
-    s.contexts > 0 && plural(s.contexts, 'context', 'contexts'),
-    s.storages > 0 && plural(s.storages, 'storage', 'storages'),
+    s.columns > 0 && count(s.columns, 'column'),
+    s.filters > 0 && count(s.filters, 'filter'),
+    s.sorts > 0 && count(s.sorts, 'sort'),
+    s.aggregations > 0 && count(s.aggregations, 'aggregation'),
+    s.contexts > 0 && count(s.contexts, 'context'),
+    s.storages > 0 && count(s.storages, 'storage'),
   ].filter(Boolean);
   return items.length ? `Some parts of this link aren't available to you: ${items.join(', ')}.` : null;
 }

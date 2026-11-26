@@ -5,6 +5,9 @@ import { num } from '../format';
 import type { Mark } from '../storage-icons';
 import { SheetsChecklist, type ChecklistItem } from '../SheetsChecklist';
 
+/** The `name` of the native `<details>` menus that are open one at a time; the Export menu joins them. */
+export const FILTER_MENU_GROUP = 'dm-filter';
+
 type MultiOption = { value: string; label: string; count?: number; icon?: Mark };
 
 /**
@@ -40,7 +43,7 @@ export function MultiSelect({ label, options, selected, onChange }: {
   }));
 
   return (
-    <details ref={menu} className="dm-filter" name="dm-filter" onToggle={(e) => setShown(e.currentTarget.open)}>
+    <details ref={menu} className="dm-filter" name={FILTER_MENU_GROUP} onToggle={(e) => setShown(e.currentTarget.open)}>
       <summary>
         {label}
         <span className={typeof summary === 'string' ? 'dm-filter-all' : 'dm-filter-count'}>{summary}</span>

@@ -9,7 +9,7 @@ import type { Field, Schema } from '../../model/types';
 import type { JoinedSource } from '../../api/blendable';
 
 const f = (name: string, category: Field['category'], extra: Partial<Field> = {}): Field => ({ name, alias: null, type: category === 'number' ? 'FLOAT' : category === 'date' ? 'DATE' : 'STRING', category, description: null, isPrimaryKey: false, ...extra });
-const orders: JoinedSource = { aliasPath: 'orders', martId: 'o', label: 'Orders', depth: 1, uniqueCount: true, mainGrainMultiplication: 'multiplies', fields: [f('orders__country', 'string', { joined: { martId: 'o', label: 'Orders', aliasPath: 'orders', originalName: 'country' } })] };
+const orders: JoinedSource = { aliasPath: 'orders', martId: 'o', label: 'Orders', depth: 1, uniqueCount: true, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'multiplies', fields: [f('orders__country', 'string', { joined: { martId: 'o', label: 'Orders', aliasPath: 'orders', originalName: 'country' } })] };
 const schema = Object.assign([f('id', 'string'), f('signup_date', 'date'), f('spend', 'number'), f('country', 'string'), ...orders.fields], { primaryKey: ['id'] }) as Schema;
 const facts = (over: Partial<ShapeFacts> = {}): ShapeFacts => ({ schema, columns: ['country', 'signup_date', 'spend'], needed: new Set(['spend']), sources: [orders], hits: [], ...over });
 const intent = (over: Partial<Intent> = {}): Intent => ({ ...EMPTY_INTENT, ...over });

@@ -11,15 +11,13 @@ import { scrollBoxOf, zoomedScale } from './canvas-zoom';
 import { CARD_W, layoutTree } from './canvas-layout';
 import { MartCard, contextsOf, martElementId, type CountState } from './cards';
 import { useLatest } from '../useLatest';
-import { useCanvasDrag } from './useCanvasDrag';
+import { usePressDrag } from './usePressDrag';
 import { overOf, useGhostChain } from './useGhostChain';
 import type { ClickOptions } from './useCardClick';
 import { edgeOf, joinAlias, noteFields, relationshipNote } from './relationshipNote';
 import { litIds, revisionOf, useWires, type Wire } from './wires';
 
-const noOwnAliases = () => undefined;
-
-export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, counts, matched, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart, own = noOwnAliases }: {
+export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, counts, matched, dq, onOpenApp, onRetryCount, onRequestCount, click, onSelectedMart, own }: {
   model: Model;
   mainId: string | null;
   columns: string[];
@@ -27,7 +25,7 @@ export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, count
   emptyPaths?: string[];
   sources: JoinedSource[] | null;
   /** The Output Alias a joined mart's own settings give a path below it (`useOwnAliases`): lines under a joined mart read their names from it. */
-  own?: (martId: string, path: string) => string | undefined;
+  own: (martId: string, path: string) => string | undefined;
   counts: Map<string, CountState>;
   /** How many records of the mart at each alias path the grid's filters and slices keep. */
   matched?: ReadonlyMap<string, number>;
@@ -53,17 +51,21 @@ export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, count
   const latest = useLatest({ tree, mainId });
   // The drop handler runs after render, so it reads the latest layout through a ref (the layout is built further down).
   const placedRef = useRef<ReturnType<typeof layoutTree>['placed']>([]);
-  const drag = useCanvasDrag(
-    treeRef,
-    (p) => p !== '',
-    (path, x, y) => {
-      const pick = closestTarget(dropTargets(tree, sources ?? [], path), placedRef.current, x, y);
-      const node = tree.nodes.get(path);
+  // The tree is drawn scaled, so the client offset is divided by the scale to get layout pixels.
+  const local = (e: PointerEvent, el: HTMLElement) => { const r = el.getBoundingClientRect(); return { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale }; };
+  const drag = usePressDrag(treeRef, {
+    pick: (t) => { const path = t.closest<HTMLElement>('[data-tree-path]')?.dataset.treePath; return path ? { path } : null; },
+    canDrag: (p) => p !== '',
+    // The whole scroll box counts as the canvas, so the margin around the tree is not a dead zone.
+    over: (e, el) => e.target instanceof Node && scrollBoxOf(el).contains(e.target),
+    view: (p, e, inside, el) => ({ path: p.path, ...local(e, el), clientX: e.clientX, clientY: e.clientY, inside }),
+    drop: (p, e, el) => {
+      const at = local(e, el);
+      const pick = closestTarget(dropTargets(tree, sources ?? [], p.path), placedRef.current, at.x, at.y);
+      const node = tree.nodes.get(p.path);
       if (pick && node && pick.moves.size > 0) void click(node.martId, { moves: pick.moves });
     },
-    mainId,
-    scale,
-  );
+  }, mainId);
   // The pin, the card whose ghosts show and the chain of ghosts from it. A pin on a path the tree no longer has (a drag moved it, or Undo removed it), or one kept for another main mart, is let go.
   const hover = useGhostChain(mainId, tree);
   const { pin, pinnedChain, clear: clearGhosts } = hover;

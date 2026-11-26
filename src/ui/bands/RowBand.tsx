@@ -9,6 +9,8 @@ import { RecordView } from '../explorer/RecordView';
 import { Band } from './Band';
 import { PickedIcon } from './picked';
 
+export const ROW_HINT = 'One row of the selected data mart. Related titles open the mart they point at.';
+
 export function RowBand({ model, folded, onFold, loading = null }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null }) {
   const [{ selection, grids }] = useStore();
   const { record } = selection;
@@ -28,7 +30,7 @@ export function RowBand({ model, folded, onFold, loading = null }: { model: Mode
       id="band-row"
       icon={<PickedIcon icon={record ? mart?.icon : null} fallback={Rows3} size={18} />}
       title={title}
-      hint="One row of the selected data mart. Related titles open the mart they point at."
+      hint={ROW_HINT}
       folded={folded}
       onFold={onFold}
       grid={false}

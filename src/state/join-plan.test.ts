@@ -1,10 +1,10 @@
 import type { JoinedSource } from '../api/blendable';
 import type { Field } from '../model/types';
-import { joinedPaths, withoutPaths, planAddAt, planRejoin, defaultJoinFields, fieldsFor, inUsePaths, isIdField, joinedMartIds, planClick, planMakeMain, shortestSource, sourceOfMart, withoutMart, type PlanEnv } from './join-plan';
+import { withoutPaths, planAddAt, planRejoin, defaultJoinFields, fieldsFor, inUsePaths, isIdField, joinedMartIds, planClick, planMakeMain, shortestSource, sourceOfMart, withoutMart, type PlanEnv } from './join-plan';
 import type { GridState } from './store';
 
 const f = (name: string, category: Field['category'], martId: string): Field => ({ name, alias: null, type: 'STRING', category, description: null, isPrimaryKey: false, joined: { martId, label: martId, aliasPath: martId, originalName: name.slice(martId.length + 2) } });
-const src = (aliasPath: string, martId: string, fields: Field[], depth = 1): JoinedSource => ({ aliasPath, martId, label: martId, depth, fields, uniqueCount: false });
+const src = (aliasPath: string, martId: string, fields: Field[], depth = 1): JoinedSource => ({ aliasPath, martId, label: martId, depth, fields, uniqueCount: false, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown' });
 const ordersSources = [
   src('customers', 'customers', [f('customers__id', 'number', 'customers'), f('customers__city', 'string', 'customers'), f('customers__email', 'string', 'customers')]),
   src('products', 'products', [f('products__sku', 'string', 'products'), f('products__price', 'number', 'products')]),
@@ -17,7 +17,7 @@ const sel = (martId: string | null) => ({ sourceKey: null, martId, record: null 
 function env(grids: Record<string, GridState>, main: string | null, picks: Record<string, Record<string, string[]>> = {}): PlanEnv {
   const sources: Record<string, JoinedSource[]> = { orders: ordersSources, customers: customersSources, products: [], stores: [] };
   return {
-    selection: sel(main), sourceKeyFor: () => null, sourcesOf: (id) => sources[id] ?? [], gridOf: (id) => grids[id] ?? g(['id']), ownColumns: () => ['id'], picksOf: (id) => picks[id] ?? {},
+    selection: sel(main), sourceKeyFor: () => null, sourcesOf: (id) => sources[id] ?? [], gridOf: (id) => grids[id] ?? g(['id']), ownColumns: () => ['id'], picksOf: (id) => picks[id] ?? {}, lastShownOf: () => null, ownNames: () => [],
   };
 }
 
@@ -26,17 +26,16 @@ test('the joined marts are those with a field among the columns, in the order th
   expect(joinedMartIds(['id'], ordersSources)).toEqual([]);
 });
 
-test('a mart comes back with its remembered fields, else its default fields', () => {
-  expect(fieldsFor(ordersSources, 'customers', ['customers__email'])).toEqual(['customers__email']);
-  expect(fieldsFor(ordersSources, 'customers', undefined)).toEqual(['customers__city']);
+test('a mart comes back with the fields it showed that the source offers, else its default fields', () => {
+  expect(fieldsFor(ordersSources, 'customers', ['email'])).toEqual(['customers__email']);
   expect(fieldsFor(ordersSources, 'customers', [])).toEqual(['customers__city']);
   expect(fieldsFor(ordersSources, 'customers', ['gone'])).toEqual(['customers__city']);
-  expect(fieldsFor([src('n', 'n', [f('n__a', 'number', 'n'), f('n__b', 'number', 'n')])], 'n', undefined)).toEqual(['n__a', 'n__b']);
+  expect(fieldsFor(ordersSources, 'nope', ['email'])).toEqual([]);
 });
 
 test('with two paths to one mart the shallowest source decides the first text field', () => {
   const deep = src('a.stores', 'stores', [f('a__stores__z', 'string', 'stores')], 2);
-  expect(fieldsFor([...ordersSources, deep], 'stores', undefined)).toEqual(['stores__city']);
+  expect(fieldsFor([...ordersSources, deep], 'stores', [])).toEqual(['stores__city']);
 });
 
 test('clicking a joinable mart adds its first text field after the visible columns', () => {
@@ -278,7 +277,7 @@ describe('what a mart showed when it left the grid comes back', () => {
   test('joined marts stripped from the new main\'s stale saved grid do not override what the screen showed', () => {
     const stores = src('stores', 'stores', [f('stores__city', 'string', 'stores'), f('stores__zip', 'string', 'stores')]);
     const sources: Record<string, JoinedSource[]> = { orders: [stores], customers: [stores], z: [] };
-    const base: PlanEnv = { selection: sel('customers'), sourceKeyFor: () => null, sourcesOf: (id) => sources[id] ?? [], gridOf: (id) => ({ customers: g(['id', 'stores__zip']), orders: g(['id', 'stores__city']) }[id] ?? g(['id'])), ownColumns: () => ['id'], picksOf: () => ({}) };
+    const base: PlanEnv = { selection: sel('customers'), sourceKeyFor: () => null, sourcesOf: (id) => sources[id] ?? [], gridOf: (id) => ({ customers: g(['id', 'stores__zip']), orders: g(['id', 'stores__city']) }[id] ?? g(['id'])), ownColumns: () => ['id'], picksOf: () => ({}), lastShownOf: () => null, ownNames: () => [] };
     const plan = planMakeMain(withShown(base), 'orders');
     // The new main (orders) can join stores, so stores is joined into it and not remembered as left.
     expect(plan.remember.filter((r) => r.martId === 'stores')).toEqual([]);
@@ -345,7 +344,7 @@ describe('the path a mart joins by', () => {
 });
 
 const jf = (path: string, own: string): Field => ({ name: `${path.replaceAll('.', '__')}__${own}`, alias: own, type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: path.split('.').at(-1)!, label: path, aliasPath: path, originalName: own } });
-const js = (path: string, owns = ['name', 'n']): JoinedSource => ({ aliasPath: path, martId: path.split('.').at(-1)!, label: path, depth: path.split('.').length, fields: owns.map((o) => jf(path, o)), uniqueCount: true });
+const js = (path: string, owns = ['name', 'n']): JoinedSource => ({ aliasPath: path, martId: path.split('.').at(-1)!, label: path, depth: path.split('.').length, fields: owns.map((o) => jf(path, o)), uniqueCount: true, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown' });
 const jc = (path: string, own = 'name') => `${path.replaceAll('.', '__')}__${own}`;
 const rjSources = [js('a'), js('b'), js('a.c', ['name', 'n', 'only_a']), js('b.c')];
 const base: GridState = { columns: ['id', jc('a'), jc('b'), jc('a.c'), jc('a.c', 'n'), jc('a.c', 'only_a')], filters: { [jc('a.c')]: { field: jc('a.c'), op: 'eq', value: 'x' }, [jc('a.c', 'only_a')]: { field: jc('a.c', 'only_a'), op: 'eq', value: 'y' } }, sorts: [{ field: jc('a.c', 'n'), direction: 'desc' }], limit: 100, aggregations: [{ column: jc('a.c', 'n'), function: 'SUM' }] };
@@ -376,13 +375,13 @@ test('planRejoin with no moves returns the grid unchanged', () => {
   expect(planRejoin(base, rjSources, new Map(), ['id'])).toEqual(base);
 });
 
-describe('joinedPaths', () => {
+describe('inUsePaths without the main path', () => {
   const ps = [js('a'), js('b'), js('a.c'), js('b.c')];
   test('lists the alias paths of the columns in the order each first appears, once', () => {
-    expect(joinedPaths(['id', jc('b.c'), jc('a'), jc('b.c', 'n'), jc('a.c')], ps)).toEqual(['b.c', 'a', 'a.c']);
+    expect([...inUsePaths(['id', jc('b.c'), jc('a'), jc('b.c', 'n'), jc('a.c')], ps)].filter(Boolean)).toEqual(['b.c', 'a', 'a.c']);
   });
   test('the main mart own columns are no path', () => {
-    expect(joinedPaths(['id'], ps)).toEqual([]);
+    expect([...inUsePaths(['id'], ps)].filter(Boolean)).toEqual([]);
   });
 });
 
@@ -589,12 +588,12 @@ describe('joined marts kept with no column (empty paths)', () => {
   const stores = src('stores', 'stores', [f('stores__city', 'string', 'stores')], 1);
   const ps = [customers, stores, src('customers.stores', 'stores', [f('customers__stores__city', 'string', 'stores')], 2)];
 
-  test('joinedMartIds, joinedPaths and inUsePaths list the empty paths after those with columns, and skip unknown or repeated ones', () => {
+  test('joinedMartIds and inUsePaths list the empty paths after those with columns, and skip unknown or repeated ones', () => {
     expect(joinedMartIds(['id', 'stores__city'], ordersSources, ['customers', 'stores', 'nope', 'products'])).toEqual(['stores', 'customers', 'products']);
-    expect(joinedPaths(['id', 'stores__city'], ordersSources, ['customers', 'stores', 'nope'])).toEqual(['stores', 'customers']);
+    expect([...inUsePaths(['id', 'stores__city'], ordersSources, ['customers', 'stores', 'nope'])].filter(Boolean)).toEqual(['stores', 'customers']);
     expect(inUsePaths(['id', 'stores__city'], ordersSources, ['customers', 'nope'])).toEqual(new Set(['', 'stores', 'customers']));
     expect(joinedMartIds(['id'], ordersSources)).toEqual([]);
-    expect(joinedPaths(['id'], ordersSources)).toEqual([]);
+    expect([...inUsePaths(['id'], ordersSources)].filter(Boolean)).toEqual([]);
   });
 
   test('withoutPaths drops the removed paths from the empty ones, and a grid that only has the path as empty is touched', () => {

@@ -105,14 +105,14 @@ describe('saved doc v2', () => {
   test('no charts saved means the default time series and pie; an empty list stays empty', () => {
     expect(chartsOf({})).toEqual(DEFAULT_CHARTS);
     expect(DEFAULT_CHARTS.map((c) => c.kind)).toEqual(['timeSeries', 'pie']);
-    expect(chartsOf({ version: 2, charts: [] })).toEqual([]);
+    expect(chartsOf({ charts: [] })).toEqual([]);
   });
   test('editCharts applies to the defaults when nothing is saved and always writes version 2', () => {
     const s = editCharts({ scorecards: { sparklines: false } }, (list) => list.filter((c) => c.kind !== 'pie'));
-    expect(s).toEqual({ version: 2, scorecards: { sparklines: false }, charts: [{ id: 'time-series', kind: 'timeSeries' }] });
+    expect(s).toEqual({ scorecards: { sparklines: false }, charts: [{ id: 'time-series', kind: 'timeSeries' }] });
   });
   test('patchChart changes one chart by id and keeps the rest', () => {
-    const s: ChartSettings = { version: 2, charts: [{ id: 'a', kind: 'pie' }, { id: 'b', kind: 'line' }] };
+    const s: ChartSettings = { charts: [{ id: 'a', kind: 'pie' }, { id: 'b', kind: 'line' }] };
     expect(patchChart(s, 'b', { area: true }).charts).toEqual([{ id: 'a', kind: 'pie' }, { id: 'b', kind: 'line', area: true }]);
   });
   test('pickMeasure: the saved id, else the first metric, else the first measure', () => {

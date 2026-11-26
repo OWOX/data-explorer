@@ -70,7 +70,7 @@ const columnRow = async (n: number) => {
 const checked = (menu: HTMLElement) => within(menu).getAllByRole('menuitemradio').filter((el) => el.getAttribute('aria-checked') === 'true').map((el) => el.textContent);
 
 test('sankey: one Columns row holds five Column rows; a used column picks, an unused one appends, None takes a column out', async () => {
-  const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  const t = await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(titles()).toHaveLength(2));
   await userEvent.click(panel('Sankey'));
   const root = await screen.findByRole('menu', { name: 'Sankey menu' });
@@ -107,7 +107,7 @@ test('sankey: one Columns row holds five Column rows; a used column picks, an un
 });
 
 test('sankey: Right opens each of four levels; Left and Escape go back from the field and mart panels, Left from a Column row, Escape from the Columns list, with focus on the row; hover opens each level', async () => {
-  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(titles()).toHaveLength(2));
   await userEvent.click(panel('Sankey'));
   await screen.findByRole('menu', { name: 'Sankey menu' });
@@ -154,7 +154,7 @@ test('sankey: Right opens each of four levels; Left and Escape go back from the 
 });
 
 test('sankey: hovering another Column row replaces the open mart panel, and Tab on a Column row closes the menu with focus on the button', async () => {
-  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(titles()).toHaveLength(2));
   await userEvent.click(panel('Sankey'));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Columns' }));
@@ -177,7 +177,7 @@ test('sankey: hovering another Column row replaces the open mart panel, and Tab 
 });
 
 test('sankey: a dimension picked in an unused column that is not shown adds its grid column, and no read runs with other dimensions in between', async () => {
-  const t = await charts({ columns: middle, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  const t = await charts({ columns: middle, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   const menu = await columnRow(3);
   await userEvent.click(within(menu).getByRole('menuitem', { name: 'Customers' }));
@@ -195,7 +195,7 @@ test('sankey: a dimension picked in an unused column that is not shown adds its 
 });
 
 test('sankey: None on a column under two shows a notice and reads nothing; the menu still works and a second column draws at once', async () => {
-  const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  const t = await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   const section = () => data().querySelector<HTMLElement>('section[data-chart-kind="Sankey"]')!;
   let menu = await columnRow(2);
@@ -229,7 +229,7 @@ test('sankey: None on a column under two shows a notice and reads nothing; the m
 });
 
 test('sankey: with no columns its Charts list label differs from every scorecard label', async () => {
-  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: [] }] } });
+  await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: [] }] } });
   await waitFor(() => expect(within(data().querySelector<HTMLElement>('section[data-chart-kind="Sankey"]')!).getByText(/misconfigured/)).toBeInTheDocument());
   await userEvent.click(screen.getByRole('button', { name: 'Configure data' }));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Charts' }));
@@ -242,7 +242,7 @@ test('sankey: with no columns its Charts list label differs from every scorecard
 });
 
 test('sankey: a column title names its field and its data mart', async () => {
-  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'] }] } });
+  await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'] }] } });
   await waitFor(() => expect(titles()).toHaveLength(2));
   const texts = [...titles()].map((el) => el.textContent ?? '');
   expect(texts[0]).toMatch(/^status/);
@@ -251,13 +251,13 @@ test('sankey: a column title names its field and its data mart', async () => {
 });
 
 test('sankey: a main mart metric by a column of a one-to-one joined mart draws', async () => {
-  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'] }] } });
+  await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   expect(data().querySelector('section[data-chart-kind="Sankey"] [role="note"]')).toBeNull();
 });
 
 test('sankey: a column of a mart that fans out the main rows draws per-pair reads and says ribbons can overlap', async () => {
-  const t = await charts({ columns: [...dims, 'shipments__carrier'], charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'shipments__carrier'] }] } });
+  const t = await charts({ columns: [...dims, 'shipments__carrier'], charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'shipments__carrier'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   const hint = await within(data().querySelector<HTMLElement>('section[data-chart-kind="Sankey"]')!).findByRole('note');
   await userEvent.hover(hint);
@@ -276,7 +276,7 @@ test('sankey: a column of a mart that fans out the main rows draws per-pair read
 });
 
 test('sankey: one flow read grouped on the columns plus one total read per column', async () => {
-  const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  const t = await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   const reads = t.queries.slice(t.tableQueries());
   const flows = reads.filter((q) => q.column?.length === 3 && q.column.includes('status') && q.column.includes('is_gift') && q.limit === 5000);
@@ -291,7 +291,7 @@ test('sankey: one flow read grouped on the columns plus one total read per colum
 test('sankey: a flow read at its row cap draws what came back and says so', async () => {
   cap.n = 3;
   try {
-    const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+    const t = await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
     await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
     // Only a capped flow read is followed by the few-row read from the other end, to find a negative among the left-out flows.
     const low = t.queries.slice(t.tableQueries()).filter((q) => q.limit === 5 && q.sort?.[0]?.direction === 'asc');
@@ -306,14 +306,14 @@ test('sankey: a flow read at its row cap draws what came back and says so', asyn
 test('sankey: a capped flow read of a count reads no low rows (a count is never negative)', async () => {
   cap.n = 3;
   try {
-    const t = await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'], measure: 'records' }] } });
+    const t = await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'], measure: 'records' }] } });
     await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
     expect(t.queries.slice(t.tableQueries()).filter((q) => q.limit === 5 && q.sort?.[0]?.direction === 'asc')).toHaveLength(0);
   } finally { cap.n = 5000; }
 });
 
 test('sankey: negative values draw the empty state with a note, not a chart', async () => {
-  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] },
+  await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] },
     mapRow: (r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, k.includes(' | ') && typeof v === 'number' ? -v : v])) });
   expect(await within(data()).findByText('Sankey needs values of 0 or more; this metric has negative values.')).toBeInTheDocument();
   expect(data().querySelectorAll('path[data-link]')).toHaveLength(0);
@@ -330,7 +330,7 @@ const submenu = async (row: string, mart?: string) => {
 };
 
 test('sankey: a column lists a mart on the path that shows no column; picking its field adds it to the grid and draws it', async () => {
-  const t = await charts({ columns: middle, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  const t = await charts({ columns: middle, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(titles()).toHaveLength(2));
   expect(group('customers')).toBeNull();
   await submenu('Column 1', 'Customers');
@@ -346,7 +346,7 @@ test('sankey: a column lists a mart on the path that shows no column; picking it
 });
 
 test('sankey: a mart that is off the path stays out of the menus, and a mart on it offers no Count Unique until it shows a column', async () => {
-  await charts({ columns: middle, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  await charts({ columns: middle, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(titles()).toHaveLength(2));
   await submenu('Column 1');
   const sub = await screen.findByRole('menu', { name: 'Column 1' });
@@ -358,7 +358,7 @@ test('sankey: a mart that is off the path stays out of the menus, and a mart on 
 });
 
 test('a metric of a mart on the path that shows no column is listed, and picking it adds its column', async () => {
-  const t = await charts({ columns: ['status', 'amount', 'created_at', 'is_gift', 'products__categories__label'], charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  const t = await charts({ columns: ['status', 'amount', 'created_at', 'is_gift', 'products__categories__label'], charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(titles()).toHaveLength(2));
   await submenu('Metric', 'Products');
   const products = await screen.findByRole('menu', { name: 'Products' });
@@ -369,7 +369,7 @@ test('a metric of a mart on the path that shows no column is listed, and picking
 });
 
 test('sankey: in a fan-out Sankey every column has its node share, the overlapping one included, and the note says what it is of', async () => {
-  await charts({ columns: [...dims, 'shipments__carrier'], charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'shipments__carrier'] }] } });
+  await charts({ columns: [...dims, 'shipments__carrier'], charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'shipments__carrier'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   const nodeIn = (col: number) => [...data().querySelectorAll('rect[data-node]')].find((el) => el.getAttribute('data-node')!.startsWith(`${col}|`))!;
   await userEvent.hover(nodeIn(0));
@@ -381,7 +381,7 @@ test('sankey: in a fan-out Sankey every column has its node share, the overlappi
 });
 
 test('sankey: an exact Sankey shows the share on every column', async () => {
-  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   const nodeIn = (col: number) => [...data().querySelectorAll('rect[data-node]')].find((el) => el.getAttribute('data-node')!.startsWith(`${col}|`))!;
   await userEvent.hover(nodeIn(1));
@@ -411,34 +411,34 @@ const nodeTip = async (col: number, mid: (k: string) => boolean = () => true) =>
 };
 
 test('sankey: in a fan-out Sankey a ribbon shows its percent only when both its columns do', async () => {
-  await charts({ columns: [...dims, 'shipments__carrier'], charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'shipments__carrier'] }] } });
+  await charts({ columns: [...dims, 'shipments__carrier'], charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift', 'shipments__carrier'] }] } });
   await waitFor(() => expect(links().length).toBeGreaterThan(0));
   expect(await linkTip(0)).toMatch(/\(\d+%\)$/);
   expect(await linkTip(1)).not.toMatch(/%/);
 });
 
 test('sankey: an exact Sankey keeps the percent on its ribbons', async () => {
-  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(links().length).toBeGreaterThan(0));
   expect(await linkTip(0)).toMatch(/\(\d+%\)$/);
 });
 
 test('sankey: a main-mart sum keeps its share on a lookup-joined column', async () => {
-  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'], measure: 'amount' }] } });
+  await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'], measure: 'amount' }] } });
   await waitFor(() => expect(links().length).toBeGreaterThan(0));
   expect(await nodeTip(0)).toMatch(/\(\d+%\)$/);
   expect(await nodeTip(1)).toMatch(/\(\d+%\)$/);
 });
 
 test('sankey: a metric on a joined mart has a node share on a main-mart column and on its own mart', async () => {
-  await charts({ columns: dims.concat('products__price'), charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'], measure: 'products__price' }] } });
+  await charts({ columns: dims.concat('products__price'), charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'products__title'], measure: 'products__price' }] } });
   await waitFor(() => expect(links().length).toBeGreaterThan(0));
   expect(await nodeTip(0)).toMatch(/\(\d+%\)$/);
   expect(await nodeTip(1)).toMatch(/\(\d+%\)$/);
 });
 
 test('sankey: a sum above 10 shows no fraction in its node tooltip, its ribbon tooltip and its screen-reader table', async () => {
-  await charts({ columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'], measure: 'amount' }] } });
+  await charts({ columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'], measure: 'amount' }] } });
   await waitFor(() => expect(links().length).toBeGreaterThan(0));
   expect(await nodeTip(0)).toMatch(/: [\d,]{2,}( \(\d+%\))?$/);
   expect(await linkTip(0)).toMatch(/: [\d,]{2,}( \(\d+%\))?$/);
@@ -450,7 +450,7 @@ test('sankey: a sum above 10 shows no fraction in its node tooltip, its ribbon t
 // Column order: the Columns menu's rows are dragged by their ⋮ (or moved with Alt+Up / Alt+Down).
 const ROW_H = 32;
 const ORDER = ['status', 'is_gift', 'products__title'];
-const orderSaved: NonNullable<Parameters<typeof setup>[0]> = { columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ORDER }] } };
+const orderSaved: NonNullable<Parameters<typeof setup>[0]> = { columns: dims, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ORDER }] } };
 // jsdom has no layout: the Column rows are laid out 32px apart from y = 100.
 const layoutRows = () => {
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
@@ -477,7 +477,7 @@ const orderTitles = () => [...titles()].map((t) => t.textContent);
 afterEach(() => { vi.restoreAllMocks(); });
 
 test('sankey: the Column rows show a vertical ⋮ and no tag icon; an unused row has a muted one', async () => {
-  await charts({ ...orderSaved, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  await charts({ ...orderSaved, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   const menu = await columnsMenu();
   for (let n = 1; n <= 5; n++) {
     const row = colRow(menu, n);
@@ -560,7 +560,7 @@ test('sankey: while dragging, hovering another row opens no submenu and an open 
 
 test('sankey: an unused row cannot be dragged', async () => {
   layoutRows();
-  const t = await charts({ ...orderSaved, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  const t = await charts({ ...orderSaved, charts: { charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
   await waitFor(() => expect(titles()).toHaveLength(2));
   const menu = await columnsMenu();
   const grip = gripOf(menu, 4);

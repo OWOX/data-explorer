@@ -1,7 +1,7 @@
-import { useId, type KeyboardEvent } from 'react';
 import { Tooltip } from '../../ui/Tooltip';
 import { BLANK_COLOR, isBlankKey } from '../blank';
-import { BlankDefs, blankFill } from './BlankPattern';
+import { BlankDefs, blankFill, useBlankId } from './BlankPattern';
+import { pickProps } from './pick';
 import { fitText, textWidth } from './fitText';
 import { rowHeight } from '../plotSize';
 import { useWidth } from '../useWidth';
@@ -12,13 +12,12 @@ export type SpreadRow = { key: string; label: string; p25: number; p50: number; 
 const ROW_H = 24;
 const TOP = 8;
 const AXIS_H = 24;
-const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 
 /** One horizontal box per row: P25 to P75 with the median, and MIN to MAX whiskers when known. Positions are drawing ratios; the tooltip text is the caller's. */
 export function SpreadChart({ rows, ariaLabel, formatTick, onPick, yTitle }: { rows: SpreadRow[]; ariaLabel: string; formatTick: (n: number) => string; onPick?: (key: string) => void; /** The rows' field name, rotated beside the row labels. */ yTitle?: string }) {
   const { ref, width, height: room } = useWidth<HTMLDivElement>();
   const rowH = rowHeight(room, TOP + AXIS_H, rows.length, ROW_H);
-  const blankId = `dm-blank-${useId().replace(/:/g, '')}`;
+  const blankId = useBlankId();
   const all = rows.flatMap((r) => [r.p25, r.p75, r.min ?? r.p25, r.max ?? r.p75]);
   const { ticks, top } = niceTicks(Math.max(0, ...all), { lo: Math.min(0, ...all) });
   const lo = ticks[0]!;
@@ -42,7 +41,7 @@ export function SpreadChart({ rows, ariaLabel, formatTick, onPick, yTitle }: { r
         {yTitle && <YTitle x={8} mid={TOP + (rows.length * rowH) / 2} length={rows.length * rowH} text={yTitle} />}
         {rows.map((r, i) => {
           const mid = TOP + i * rowH + rowH / 2;
-          const pick = onPick ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${r.label}`, style: { cursor: 'pointer' }, onClick: () => onPick(r.key), onKeyDown: press(() => onPick(r.key)) } : {};
+          const pick = onPick ? pickProps(`Filter to ${r.label}`, () => onPick(r.key)) : {};
           return (
             <Tooltip key={r.key} content={`${r.label}: ${r.text}`}>
               <g {...pick}>

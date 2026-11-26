@@ -1,4 +1,4 @@
-import { blockOf, selectionTsv, toTsv, tsvField } from './copySelection';
+import { blockOf, selectionTsv } from './copySelection';
 
 const grid = [['a1', 'b1', 'c1'], ['a2', 'b2', 'c2'], ['a3', 'b3', 'c3']];
 const read = { cell: (r: number, c: number) => grid[r]![c]!, header: (c: number) => `H${c}` };
@@ -28,10 +28,12 @@ test('nothing to copy from an empty grid', () => {
   expect(selectionTsv({ kind: 'cell', row: 0, col: 0 }, { rows: 0, cols: 3 }, read)).toBeNull();
 });
 
-test('values with a tab, a line break or a quote are quoted, inner quotes doubled', () => {
-  expect(tsvField('plain')).toBe('plain');
-  expect(tsvField('a\tb')).toBe('"a\tb"');
-  expect(tsvField('a\nb')).toBe('"a\nb"');
-  expect(tsvField('say "hi"')).toBe('"say ""hi"""');
-  expect(toTsv([['x', 'a\tb'], ['', 'q"']])).toBe('x\t"a\tb"\n\t"q"""');
+it('guards a cell a spreadsheet would run as a formula', () => {
+  const tsv = selectionTsv({ kind: 'cell', row: 0, col: 0, to: { row: 0, col: 1 } }, { rows: 1, cols: 2 }, { cell: (_r, c) => ['=HYPERLINK("x")', '-12.5'][c]!, header: () => '' });
+  expect(tsv).toBe(`"'=HYPERLINK(""x"")"\t-12.5`);
+});
+
+it('flattens a line break, as Copy as TSV does', () => {
+  const tsv = selectionTsv({ kind: 'cell', row: 0, col: 0 }, { rows: 1, cols: 1 }, { cell: () => 'a\nb\tc', header: () => '' });
+  expect(tsv).toBe('a b c');
 });

@@ -1,26 +1,25 @@
-import { ChartCandlestick, Gauge, Shapes } from 'lucide-react';
+import { ChartCandlestick, Gauge } from 'lucide-react';
 import { aggregatedKey, AGG_LABELS, type AggFn } from '../../model/aggregation';
 import { fieldLabel } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
-import { emptyText } from '../../ui/format';
 import type { MenuItem } from '../ChartMenu';
-import { axisTitle, fieldGroups } from '../menuGroups';
+import { axisTitle, dimensionItem, fieldGroups } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { isBlankKey, keyOf, labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
+import { tickText } from '../compact';
 import { menuOf, type ChartFields } from '../fields';
 import { spreadFns, spreadQuery } from '../queries';
 import { metricFormat, metricText, numberOf } from '../Scorecards';
 import { pickField } from '../settings';
 import { SpreadChart, type SpreadRow } from '../svg/SpreadChart';
 import { useChartQuery } from '../useChartQuery';
-import { tickText } from './timeSeries';
 import { BOX_WIDTH, carry, type ChartKindDef, type PanelProps } from './types';
 
-export type SpreadR = { dimension: Field; field: Field };
+type SpreadR = { dimension: Field; field: Field };
 const fieldsOf = (cf: ChartFields): Field[] => cf.marts.flatMap((m) => m.metrics.map((x) => x.field)).filter((f) => spreadFns(f).length > 0);
 
-function SpreadPanel({ martId, cf, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<SpreadR>) {
+function SpreadPanel({ martId, cf, title, r, filter, version, idle, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<SpreadR>) {
   const { dimension: dim, field } = r;
   const fns = spreadFns(field);
   const read = useChartQuery(martId, idle ? null : spreadQuery(dim, field, filter), version);
@@ -37,14 +36,13 @@ function SpreadPanel({ martId, cf, r, filter, version, idle, hasFilters, formatO
   rows.sort((a, b) => Number(isBlankKey(b.key)) - Number(isBlankKey(a.key)));
   const [tt, tf] = metricFormat(field, 'P50', formatOf);
   const items: MenuItem[] = [
-    { kind: 'radio', label: 'Dimension', icon: Shapes, value: dim.name, options: [], groups: fieldGroups(menuOf(cf), menuOf(cf).dimensions), onPick: (x) => onChange({ dimension: x }) },
+    dimensionItem(cf, dim.name, onChange),
     { kind: 'radio', label: 'Metric', icon: Gauge, value: field.name, options: [], groups: fieldGroups(menuOf(cf), fieldsOf(menuOf(cf))), onPick: (x) => onChange({ measure: x }) },
     ...tail,
   ];
-  const title = `${fieldLabel(field)} spread by ${fieldLabel(dim)}`;
   return (
-    <ChartPanel title={title} name="Spread" items={ready ? items : null} width={BOX_WIDTH}
-      loading={!read.rows && !read.error} error={read.error} onRetry={read.retry} empty={read.rows?.length === 0 ? emptyText(hasFilters) : null}
+    <ChartPanel title={title} name="Spread" items={items} ready={ready} width={BOX_WIDTH}
+      loading={!read.rows && !read.error} failed={read.error ? read : null} empty={read.rows?.length === 0} hasFilters={hasFilters}
       note={`The ${fns.length > 3 ? 'line spans the minimum to the maximum, the ' : ''}box spans the 25th to the 75th percentile, the bar is the median. The 8 values with the largest median are shown.`}>
       {read.rows && <SpreadChart rows={rows} ariaLabel={title} yTitle={axisTitle(cf, dim)} formatTick={(n) => tickText(n, tt, tf)} onPick={(k) => onFilter([dimensionFilter(dim, k)])} />}
     </ChartPanel>

@@ -1,11 +1,10 @@
-// src/search/valueMatch.ts
 import { readRows } from '../api/rows';
 import { topValuesQuery, type Measure } from '../charts/queries';
 import type { Field } from '../model/types';
 import type { Ctx } from '../sdk/types';
 
 export const VALUE_COLUMNS = 6;
-export const VALUE_LIMIT = 200;
+const VALUE_LIMIT = 200;
 const RECORDS: Measure = { kind: 'records', aliasPath: '', recordsId: 'records' };
 
 export const normalize = (s: string): string => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
@@ -23,11 +22,6 @@ export function matchTiers(literal: string, values: string[]): [string[], string
     n ? values.filter((v) => normalize(v) === n) : [],
     values.filter((v) => re.test(v)),
   ];
-}
-
-/** The values a literal from the query means, best tier only. */
-export function matchValue(literal: string, values: string[]): string[] {
-  return matchTiers(literal, values).find((t) => t.length) ?? [];
 }
 
 /** A column's most frequent values (by record count), for matching only; they never go to a model unless they match. */

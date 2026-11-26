@@ -1,16 +1,18 @@
 import type { AvailableSourceDto, BlendableSchemaDto, BlendedFieldDto, Ctx, EdgeDto, Row, TraverseOptions } from '../types';
 import { aggregatedKey, allowedFunctions, knownFunctions } from '../../model/aggregation';
 import { categorizeFieldType } from '../../model/field-category';
+import { uniqueKey } from '../../model/unique-count';
 import { aggregateRows, distinctKeys, sortRows, type UniqueSource } from './aggregate';
 import { matchesFilter } from './evaluate';
 import { createFakeAi } from './ai';
 import { demoFixtures, demoReports, type Fixtures, type MockReportFixture } from './fixtures';
 import { mockSearch } from './search';
+import { GRID_COLUMNS_COLLECTION } from '../../api/grid-columns';
 import { sleep } from '../../api/sleep';
 
 declare global { interface Window { __copiedLink?: string; __routeSet?: string } }
 
-export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: number; runMs?: number; /** false: no AI credential, as in a project that has not configured one. */ ai?: boolean; /** How many hops a joined mart may be from the main one (2 by default). */ maxJoinDepth?: number } = {}): Ctx {
+export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: number; runMs?: number; /** false: no AI credential, as in a project that has not configured one. */ ai?: boolean; /** How many hops a joined mart may be from the main one (2 by default). */ maxJoinDepth?: number; /** Opens the orders grid with its key column, as it was before the key left the default columns. */ keyShown?: boolean } = {}): Ctx {
   const latency = opts.latencyMs ?? 0;
   const byId = new Map(f.marts.map((m) => [m.id, m]));
   const docs = new Map<string, unknown>();
@@ -171,7 +173,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     for (const h of having) if (!(o.aggregation ?? []).some((a) => a.column === h.column && a.function === h.function)) throw badRequest(`No aggregation matches the filter on ${h.function}(${h.column})`);
     // A unique count per source: the main mart (`''`) by its primary key, a joined one by its alias path, its key read off the joined row.
     const uniq: UniqueSource[] = (o.uniqueCount ?? []).map((path) => {
-      if (!path) return { key: 'Unique Count', pk: m.fields.filter((x) => x.isPrimaryKey).map((x) => x.name) };
+      if (!path) return { key: uniqueKey(''), pk: m.fields.filter((x) => x.isPrimaryKey).map((x) => x.name) };
       const hop = joinTree(id).find((h) => h.aliasPath === path);
       if (!hop) throw badRequest(`Unknown source: ${path}`);
       return { key: `${path.replaceAll('.', '_')}__unique_count`, pk: byId.get(hop.martId)!.fields.filter((x) => x.isPrimaryKey).map((x) => blendedName(path, x.name)) };
@@ -205,6 +207,8 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     return rows;
   }
 
+  if (opts.keyShown) docs.set(`${GRID_COLUMNS_COLLECTION}/orders`, { columns: ['id', 'customer_id', 'product_id', 'store_id', 'status'] });
+
   return {
     projectId: 'mock-project',
     theme: window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
@@ -216,6 +220,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         window.__copiedLink = path;
         try { await navigator.clipboard?.writeText(path ?? ''); } catch { /* the clipboard may be blocked */ }
       },
+      link: () => undefined,
       setRoute: (path) => {
         window.__routeSet = path;
         const url = new URL(location.href);
@@ -282,7 +287,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
         const detail = /^\/api\/data-marts\/([^/]+)$/.exec(path);
         if (detail) {
           const m = byId.get(decodeURIComponent(detail[1]!));
-          if (!m) throw new Error('Not found');
+          if (!m) throw notFound('Data Mart');
           return { id: m.id, schema: { fields: m.fields } } as T;
         }
         throw new Error(`Mock: unhandled GET ${path}`);

@@ -1,10 +1,11 @@
-import { useId, useMemo, type KeyboardEvent } from 'react';
+import { useMemo } from 'react';
 import { Tooltip, TipLines } from '../../ui/Tooltip';
 import { BLANK_KEY, BLANK_STROKE, swatchStyle, thinColor } from '../blank';
 import { plotHeight } from '../plotSize';
 import { useWidth } from '../useWidth';
 import type { Series } from './BarChart';
-import { BlankDefs, blankLines } from './BlankPattern';
+import { BlankDefs, blankLines, useBlankId } from './BlankPattern';
+import { pickProps } from './pick';
 import { textWidth } from './fitText';
 import { niceTicks } from './ticks';
 import { XTitle, Y_TITLE_W, YTitle } from './YTitle';
@@ -15,12 +16,11 @@ const AXIS_H = 24;
 const TITLE_H = 26;
 /** The space between the tick labels and the axis title. */
 const TITLE_GAP = 8;
-const press = (fn: () => void) => (e: KeyboardEvent<SVGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 
 /** Lines (and optional area fills) over buckets; a second measure on its own right axis. Positions are ratios for drawing only; every shown value is the caller's text. */
-export function LineChart({ left, right = null, area, ariaLabel, formatLeft, formatRight = formatLeft, onPick, canPick, xTitle, yTitle, yTitleRight, integerLeft = false, integerRight = false }: {
+export function LineChart({ left, right = null, area, ariaLabel, formatLeft, formatRight = formatLeft, onPick, xTitle, yTitle, yTitleRight, integerLeft = false, integerRight = false }: {
   left: Series[]; right?: Series | null; area: boolean; ariaLabel: string; formatLeft: (n: number) => string; formatRight?: (n: number) => string;
-  onPick?: (x: string, seriesIndex?: number) => void; canPick?: (x: string) => boolean; xTitle?: string;
+  onPick?: (x: string) => void; xTitle?: string;
   /** The left measure's name, and the right one's when there is a right axis, rotated beside the tick labels. */
   yTitle?: string; yTitleRight?: string;
   /** The axis counts whole things: its steps are whole numbers. */
@@ -28,7 +28,7 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
 }) {
   const { ref, width, height: room } = useWidth<HTMLDivElement>();
   const plotH = plotHeight(room, TOP + AXIS_H + (xTitle ? TITLE_H : 0), PLOT_H);
-  const blankId = `dm-blank-${useId().replace(/:/g, '')}`;
+  const blankId = useBlankId();
   // Buckets are the sorted union of every series' x, so a value is always placed under its own bucket (the two reads may differ).
   const seen = new Map<string, string>();
   for (const s of [...left, ...(right ? [right] : [])]) for (const p of s.points) if (!seen.has(p.x)) seen.set(p.x, p.label);
@@ -65,13 +65,12 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
     return runs.map((r) => `M${px(r[0]!).toFixed(1)} ${TOP + plotH} ${r.map((i) => `L${px(i).toFixed(1)} ${py(at(s, xs[i]!.x)!.y!, max).toFixed(1)}`).join(' ')} L${px(r.at(-1)!).toFixed(1)} ${TOP + plotH} Z`).join(' ');
   };
   const all = right ? [...left.map((s) => ({ s, max: tl.top })), { s: right, max: tr.top }] : left.map((s) => ({ s, max: tl.top }));
-  const pickable = (x: string) => !!onPick && (canPick?.(x) ?? true);
-  const labelStep = Math.max(1, Math.ceil((Math.max(...xs.map((p) => textWidth(p.label)), 0) + 8) / Math.max(1, step || plotW)));
+    const labelStep = Math.max(1, Math.ceil((Math.max(...xs.map((p) => textWidth(p.label)), 0) + 8) / Math.max(1, step || plotW)));
   const band = xs.length > 1 ? step : plotW;
   return (
     <div className="dm-line-chart">
       <div ref={ref} className="dm-chart-plot">
-      <svg role={xs.some((p) => pickable(p.x)) ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+      <svg role={onPick ? 'group' : 'img'} aria-label={ariaLabel} width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
         <BlankDefs id={blankId} lines />
         {tl.ticks.map((t) => (
           <g key={t}>
@@ -90,7 +89,7 @@ export function LineChart({ left, right = null, area, ariaLabel, formatLeft, for
         {all.map(({ s, max }, k) => <path key={s.key ?? s.name} data-line={s.name} d={pathOf(s, max)} fill="none" stroke={thinColor(s.color)} strokeWidth={2} strokeDasharray={right && k === all.length - 1 ? '5 3' : undefined} strokeLinejoin="round" strokeLinecap="round" />)}
         {xs.map((p, i) => {
           const content = <TipLines lines={[p.label, ...all.filter(({ s }) => at(s, p.x)?.y != null).map(({ s }) => <span key={s.key ?? s.name}><span className="dm-chart-swatch" style={swatchStyle(thinColor(s.color))} /> {s.name}: {at(s, p.x)!.valueText}</span>)]} />;
-          const pick = pickable(p.x) ? { role: 'button', tabIndex: 0, 'aria-label': `Filter to ${p.label}`, style: { cursor: 'pointer' }, onClick: () => onPick!(p.x), onKeyDown: press(() => onPick!(p.x)) } : {};
+          const pick = onPick ? pickProps(`Filter to ${p.label}`, () => onPick(p.x)) : {};
           return <Tooltip key={p.x} content={content}><rect data-bucket={p.x} fill="transparent" x={px(i) - band / 2} y={TOP} width={band} height={plotH} {...pick} /></Tooltip>;
         })}
       </svg>

@@ -4,7 +4,7 @@ import { perCtx } from '../sdk/per-ctx';
 import type { Ctx } from '../sdk/types';
 import { useServices } from '../state/store';
 import { pickFormats } from './ai-pick';
-import { AUTO, isValidFormat, resolveFormat, type Format } from './formats';
+import { AUTO, isValidFormat, type Format } from './formats';
 import { formatStore, type Formats } from './store';
 
 const NONE: Formats = { member: {}, project: {} };
@@ -129,7 +129,7 @@ export function useColumnFormats(martId: string, schema: Schema = NO_SCHEMA, mar
   const formats = useSyncExternalStore(entry.subscribe, entry.get);
   useEffect(() => entry.offer(schema, martTitle), [entry, schema, martTitle]);
   const formatOf = useCallback((column: string, type: string): Format => {
-    const f = resolveFormat(formats.member[column], formats.project[column]);
+    const f = formats.member[column] ?? formats.project[column] ?? AUTO;
     return isValidFormat(f, type) ? f : AUTO;
   }, [formats]);
   const setMember = useCallback((column: string, f: Format | null) => entry.setMember(column, f), [entry]);

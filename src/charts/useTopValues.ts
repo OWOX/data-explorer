@@ -1,13 +1,12 @@
 import type { Field } from '../model/types';
 import type { Row, TraverseFilter } from '../sdk/types';
 import { BLANK_KEY, keyOf } from './blank';
-import type { ChartFields } from './fields';
 import { measureKey, pieBlankQuery, pieOtherQuery, TOP_N, topValuesQuery, type Measure } from './queries';
 import { useChartQuery } from './useChartQuery';
 
 /** One category of a top list: its key (BLANK_KEY for the blank value) and the measure's returned value. */
 export type Category = { key: string; value: unknown };
-export type TopValues = {
+type TopValues = {
   /** Blank first, then the top values in the read's order; null while loading. */
   categories: Category[] | null;
   /** The real values in the top list (no blank), for the `in` and `not_in` rules that follow. */
@@ -23,8 +22,8 @@ export type TopValues = {
  * The measure's top values of a dimension, the blank value included as its own first category, with the rows outside them.
  * A top list cannot name NULL, so the blank value rides in the top read when it ranks, else is read apart; "Other" never holds blanks.
  */
-export function useTopValues({ martId, cf, dim, measure, filter, version, idle, withOther = true }: {
-  martId: string; cf: ChartFields; dim: Field; measure: Measure; filter: TraverseFilter[]; version: number; idle: boolean;
+export function useTopValues({ martId, counter, dim, measure, filter, version, idle, withOther = true }: {
+  martId: string; counter: Field | null | undefined; dim: Field; measure: Measure; filter: TraverseFilter[]; version: number; idle: boolean;
   /** Read the rows outside the top list too (default). An axis that only needs its values leaves it off. */
   withOther?: boolean;
 }): TopValues {
@@ -34,8 +33,8 @@ export function useTopValues({ martId, cf, dim, measure, filter, version, idle, 
   const topFull = top.rows?.length === TOP_N;
   const full = topFull && withOther;
   const hasBlank = !!keys?.includes(BLANK_KEY);
-  const blank = useChartQuery(martId, !idle && topFull && !hasBlank ? pieBlankQuery(measure, filter, dim, cf.counter) : null, version);
-  const other = useChartQuery(martId, !idle && full ? pieOtherQuery(measure, filter, dim, names!, cf.counter) : null, version);
+  const blank = useChartQuery(martId, !idle && topFull && !hasBlank ? pieBlankQuery(measure, filter, dim, counter) : null, version);
+  const other = useChartQuery(martId, !idle && full ? pieOtherQuery(measure, filter, dim, names!, counter) : null, version);
   const key = measureKey(measure);
   const failed = [top, blank, other].find((q) => q.error);
   const empty = top.rows?.length === 0;

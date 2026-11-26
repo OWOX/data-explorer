@@ -1,5 +1,6 @@
 import { chartFields, measuresOf } from './fields';
-import { axisTitle, fieldGroups, martTitleOf, measureAxisTitle, measureGroups } from './menuGroups';
+import { axisTitle, BUCKET_OPTIONS, dimensionItem, fieldGroups, martTitleOf, measureAxisTitle, measureGroups, metricItem } from './menuGroups';
+import { measureId } from './settings';
 import { NO_AGGREGATION } from '../model/aggregation';
 import type { Field } from '../model/types';
 
@@ -61,4 +62,31 @@ test('a field with a description carries it as its hint, in the field and the me
   const amount = measuresOf(cf)[1]!;
   const withText = amount.kind === 'metric' ? { ...amount, metric: { ...amount.metric, field: { ...amount.metric.field, description: 'Net' } } } : amount;
   expect(measureGroups(cf, [measuresOf(cf)[0]!, withText])[0]!.options.map((o) => o.hint)).toEqual([undefined, 'Net']);
+});
+
+test('builds the Metric row that patches the measure', () => {
+  const picked: unknown[] = [];
+  const list = measuresOf(cf);
+  const item = metricItem(cf, measureId(list[1]!), list, (p) => picked.push(p));
+  expect(item.label).toBe('Metric');
+  if (item.kind !== 'radio') throw new Error('expected a radio row');
+  expect(item.value).toBe(measureId(list[1]!));
+  expect(item.groups!.map((g) => g.title)).toEqual(['Contacts', 'Contact Organization']);
+  item.onPick(item.groups![1]!.options[0]!.value);
+  expect(picked).toEqual([{ measure: item.groups![1]!.options[0]!.value }]);
+});
+
+test('builds the Dimension row that patches the dimension', () => {
+  const picked: unknown[] = [];
+  const item = dimensionItem(cf, 'channel', (p) => picked.push(p));
+  expect(item.label).toBe('Dimension');
+  if (item.kind !== 'radio') throw new Error('expected a radio row');
+  expect(item.value).toBe('channel');
+  item.onPick('org__name');
+  expect(picked).toEqual([{ dimension: 'org__name' }]);
+});
+
+test('the bucket options start with Auto', () => {
+  expect(BUCKET_OPTIONS[0]).toEqual({ value: 'AUTO', label: 'Auto' });
+  expect(BUCKET_OPTIONS.length).toBeGreaterThan(3);
 });
