@@ -376,7 +376,10 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
   const martStorage = useMemo(() => { const sid = model.marts.get(martId)?.storageId; return model.storages.find((x) => x.id === sid); }, [model, martId]);
   const martTitles = useMemo(() => new Map([...model.marts].map(([id, m]) => [id, m.title])), [model.marts]);
   const { formatOf, memberFormat, setMember: setFormat } = useColumnFormats(martId, schema, model.marts.get(martId)?.title);
-  const [{ modelVersion }, dispatch] = useStore();
+  const [{ modelVersion, charts: storeCharts }, dispatch] = useStore();
+  // The store's copy of the chart settings, read at the moment of a hide (a late callback must not use a render's copy).
+  const chartsRef = useRef(storeCharts);
+  useLayoutEffect(() => { chartsRef.current = storeCharts; });
   // The columns, filters and page the reader left this mart with (a followed link has already written its filters there).
   const [visible, setVisible] = useState(initialColumns);
   // Cell or whole-column selection (see below); a changed column order or set drops it.
@@ -692,8 +695,11 @@ function Grid({ martId, model, schema: native, seed, holdView, lateView, initial
     const hidden = visible.filter((n) => !cols.includes(n));
     if (hidden.length > 0) {
       if (!pruneCards.current?.(hidden)) {
-        // One load then save at a time per mart, so two quick hides do not both start from the same saved doc.
-        pruneChain.current = pruneChain.current.then(() => chartSettings.load(martId)).then((cur) => { const next = dropPicksOf(cur, new Set(hidden)); if (next !== cur) { const doc: ChartSettings = { ...next, version: 2 }; dispatch({ type: 'saveCharts', martId, settings: doc }); chartSettings.save(martId, doc); } }).catch(() => {});
+        // The store's copy is the latest the member saw (an Undo may have changed it): prune that, as one step with the hide. With none, load and save one at a time per mart, so two quick hides do not both start from the same saved doc.
+        const prune = (cur: ChartSettings, stage: boolean) => { const next = dropPicksOf(cur, new Set(hidden)); if (next === cur) return; const doc: ChartSettings = { ...next, version: 2 }; dispatch({ type: stage ? 'stageCharts' : 'saveCharts', martId, settings: doc }); chartSettings.save(martId, doc); };
+        const held = chartsRef.current[martId];
+        if (held) prune(held, true);
+        else pruneChain.current = pruneChain.current.then(() => chartSettings.load(martId)).then((cur) => prune(chartsRef.current[martId] ?? cur, false)).catch(() => {});
       }
     }
     shownNow.current = cols;

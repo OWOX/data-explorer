@@ -553,4 +553,50 @@ describe('chart settings in the history', () => {
     expect(st.history).toEqual([]);
     expect(st.seq).toBe(0);
   });
+  test('stageCharts stores the settings with no step; the grid edit that follows takes the "before" with it', () => {
+    const staged = reducer(base(), { type: 'stageCharts', martId: 'a', settings: two });
+    expect(staged.charts.a).toBe(two);
+    expect(staged.history).toEqual([]);
+    const edited = reducer(staged, { type: 'editGrid', martId: 'a', grid: grid({ columns: ['a'] }) });
+    expect(edited.history).toHaveLength(1);
+    expect(edited.history[0]).toMatchObject({ grids: { a: grid() }, charts: { a: one } });
+    const undone = reducer(edited, { type: 'undo' });
+    expect(undone.grids.a).toEqual(grid());
+    expect(undone.charts.a).toEqual(one);
+    const redone = reducer(undone, { type: 'redo' });
+    expect(redone.grids.a).toEqual(grid({ columns: ['a'] }));
+    expect(redone.charts.a).toEqual(two);
+  });
+
+  test('a staged "before" is used once, and not after another step was recorded', () => {
+    const staged = reducer(base(), { type: 'stageCharts', martId: 'a', settings: two });
+    const first = reducer(staged, { type: 'editGrid', martId: 'a', grid: grid({ limit: 5 }) });
+    const second = reducer(first, { type: 'editGrid', martId: 'a', grid: grid({ limit: 6 }) });
+    expect(second.history[1]!.charts).toBeUndefined();
+    const stale = reducer(reducer(staged, { type: 'editCharts', martId: 'a', settings: one }), { type: 'editGrid', martId: 'a', grid: grid({ limit: 7 }) });
+    expect(stale.history[1]!.charts).toBeUndefined();
+  });
+
+  test('Undo and Redo report the settings they put back, for saving; other actions do not', () => {
+    const edited = reducer(base(), { type: 'editCharts', martId: 'a', settings: two });
+    expect(edited.restored).toBeUndefined();
+    const undone = reducer(edited, { type: 'undo' });
+    expect(undone.restored).toEqual({ a: one });
+    expect(reducer(undone, { type: 'saveCharts', martId: 'a', settings: two }).restored).toBeUndefined();
+    expect(reducer(reducer(undone, { type: 'redo' }), { type: 'undo' }).restored).toEqual({ a: one });
+  });
+
+  test('folded edits of one key are one step; another key or a plain edit starts a new one', () => {
+    const sized = (cols: number): ChartSettings => ({ version: 2, charts: [{ id: 'k', kind: 'sankey', size: { cols } }] });
+    let st = reducer(base(), { type: 'editCharts', martId: 'a', settings: sized(10), fold: 'size:k' });
+    st = reducer(st, { type: 'editCharts', martId: 'a', settings: sized(11), fold: 'size:k' });
+    st = reducer(st, { type: 'editCharts', martId: 'a', settings: sized(12), fold: 'size:k' });
+    expect(st.history).toHaveLength(1);
+    expect(st.history[0]!.charts).toEqual({ a: one });
+    expect(reducer(st, { type: 'editCharts', martId: 'a', settings: sized(13), fold: 'size:j' }).history).toHaveLength(2);
+    expect(reducer(st, { type: 'editCharts', martId: 'a', settings: sized(13) }).history).toHaveLength(2);
+    const undone = reducer(st, { type: 'undo' });
+    expect(undone.charts.a).toEqual(one);
+    expect(reducer(undone, { type: 'redo' }).charts.a).toEqual(sized(12));
+  });
 });

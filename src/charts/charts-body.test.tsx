@@ -1116,3 +1116,46 @@ test('a resize drag is one Undo step', async () => {
   await waitFor(() => expect(lastSaved(t).charts![0]!.size).toEqual({ cols: 20, rows: 12 }));
   expect(undoBtn()).toBeDisabled();
 });
+
+test('arrow-key resizes of one chart are one Undo step; a drag after them is another', async () => {
+  const t = await charts({ charts: { version: 2, charts: [{ id: 'pie', kind: 'pie', size: { cols: 20, rows: 12 } }] } });
+  await startResize();
+  vi.spyOn(panelOf('Pie'), 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 480, height: 288 } as DOMRect);
+  handle('Pie', 's')!.focus();
+  await userEvent.keyboard('{ArrowDown}{ArrowUp}{ArrowDown}');
+  handle('Pie', 'e')!.focus();
+  await userEvent.keyboard('{ArrowRight}');
+  expect(lastSaved(t).charts![0]!.size).toEqual({ cols: 21, rows: 13 });
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(lastSaved(t).charts![0]!.size).toEqual({ cols: 20, rows: 12 }));
+  // One step only: the next Undo is the selection's own entry, and the size stays.
+  await userEvent.click(undoBtn());
+  expect(lastSaved(t).charts![0]!.size).toEqual({ cols: 20, rows: 12 });
+  expect(undoBtn()).toBeDisabled();
+});
+
+test('a pick of a hidden field is one Undo step with the column it shows: Undo hides it and takes the pick back, Redo does both again', async () => {
+  const t = await charts({ columns: ['id', 'status', 'amount', 'created_at'] });
+  await waitFor(() => expect(data().querySelector('rect[data-series]')).not.toBeNull());
+  await userEvent.click(panel('Time series'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Stack by' }));
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'is_gift' }));
+  await waitFor(() => expect(lastGrid(t).columns).toContain('is_gift'));
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(lastGrid(t).columns).not.toContain('is_gift'));
+  await waitFor(() => expect(lastSaved(t).charts?.find((c) => c.id === 'time-series')?.stack).toBeUndefined());
+  await userEvent.click(redoBtn());
+  await waitFor(() => expect(lastGrid(t).columns).toContain('is_gift'));
+  await waitFor(() => expect(lastSaved(t).charts!.find((c) => c.id === 'time-series')!.stack).toBe('is_gift'));
+});
+
+test('hiding a column that drops a card pick is one Undo step: Undo shows the column and the pick again', async () => {
+  const t = await charts({ charts: { scorecards: { metrics: { id: 'amount' }, dates: { amount: 'created_at' } } } });
+  await waitFor(() => expect(within(group('orders')!).getByText('450')).toBeInTheDocument());
+  const menu = await openColumnMenu(within(data()), 'created_at');
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
+  await waitFor(() => expect(lastSaved(t).scorecards?.dates).toEqual({}));
+  await userEvent.click(undoBtn());
+  await waitFor(() => expect(lastGrid(t).columns).toContain('created_at'));
+  await waitFor(() => expect(lastSaved(t).scorecards?.dates).toEqual({ amount: 'created_at' }));
+});

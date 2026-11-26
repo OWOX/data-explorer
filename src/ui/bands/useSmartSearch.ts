@@ -227,8 +227,8 @@ export function useSmartSearch(model: Model) {
         owns: (martId, grid) => { const s = mirror.current; return s.future.length === 0 && s.selection.martId === martId && deepEqual(s.grids[martId] ?? null, grid); },
         progress: (p) => { if (!ctl.signal.aborted) setProgress(p); },
         alternatives: (ids, intent) => { if (ctl.signal.aborted) return; lastRun.current = { query, hits, intent }; setAlternatives(ids); },
-        // The Charts body keeps a copy in the store: the run's write updates it too, with no Undo step.
-        chartSettings: { load: chartSettings.load, save: (martId, settings) => { send({ type: 'saveCharts', martId, settings }); return chartSettings.save(martId, settings); } },
+        // The store's copy is the latest the member saw (an Undo may have changed it): the run builds on it, and its write updates it, with no Undo step.
+        chartSettings: { load: async (martId) => mirror.current.charts[martId] ?? chartSettings.load(martId), save: (martId, settings) => { send({ type: 'saveCharts', martId, settings }); return chartSettings.save(martId, settings); } },
       },
     );
     if (ctl.signal.aborted) return;

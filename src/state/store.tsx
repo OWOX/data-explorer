@@ -1,5 +1,5 @@
 import type { AggregationRule, DateTruncRule } from '../model/aggregation';
-import { createContext, useContext, useMemo, useReducer, type Dispatch, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch, type ReactNode } from 'react';
 import { createBlendableLoader, type BlendableLoader } from '../api/blendable';
 import { createExporter, type Exporter } from '../api/exports';
 import { createColumnStore, type ColumnStore } from '../api/grid-columns';
@@ -26,7 +26,7 @@ export type Selection = {
 };
 
 /** A selection Undo or Redo returns to, with the grids the step also changed (null: the mart had none). */
-export type Entry = Selection & { grids?: Record<string, GridState | null>; /** The chart settings the step also changed (null: the mart had none loaded). */ charts?: Record<string, ChartSettings | null>; /** Order the entry was recorded in (from `State.seq`); it keeps it across Undo and Redo. Unlike a position, it survives the history being trimmed. */ seq?: number };
+export type Entry = Selection & { grids?: Record<string, GridState | null>; /** The chart settings the step also changed (null: the mart had none loaded). */ charts?: Record<string, ChartSettings | null>; /** Set on a step made by folded edits (arrow-key resizes): the next edit with the same key joins it. Not kept across Undo. */ fold?: string; /** Order the entry was recorded in (from `State.seq`); it keeps it across Undo and Redo. Unlike a position, it survives the history being trimmed. */ seq?: number };
 
 /** What the Data band's grid keeps per mart for the session. */
 export type GridState = { columns: string[]; filters: Record<string, ColumnFilter>; /** Pre-join filters on joined fields, keyed by field name, one per field. Absent or empty when there are none. */ slices?: Record<string, ColumnFilter>; /** null: the member set none, so the grid opens in the default order (newest date first); a list, even an empty one, is their own. */ sorts: SortKey[] | null; limit: number; /** Functions per column, in the order chosen; any of these or a bucket groups the rows. */ aggregations?: AggregationRule[]; /** One date bucket per date column. */ dateTrunc?: DateTruncRule[]; /** The alias paths whose data mart's Unique Count is a column ('' is the main mart). Absent or empty: none. It groups the rows like a function. */ uniqueCount?: string[]; /** The alias paths of joined data marts kept in the report with no column. Absent when none; never holds a path that has a column, nor ''. */ emptyPaths?: string[]; /** Absent is the table. Part of the grid state so Undo and the view link carry it; saved in the member's grid-columns store with the filters, slices, sort and limit. */ view?: 'charts' };
@@ -47,6 +47,10 @@ export type State = {
   grids: Record<string, GridState>;
   /** The chart settings the Charts body loaded or saved, per mart. Member edits to them are Undo steps. */
   charts: Record<string, ChartSettings>;
+  /** Chart settings changed by a member action whose grid edit has not been recorded yet: the "before" the grid's step takes along. Valid only while `seq` is the one it was staged at. */
+  staged: Record<string, { before: ChartSettings | null; seq: number }>;
+  /** The chart settings the last Undo or Redo put back, for saving. Absent after any other action. */
+  restored?: Record<string, ChartSettings>;
   /** The seq the next history entry gets. */
   seq: number;
   /** Per mart whose saved view is still being read: the `seq` the next entry had when the grid began holding its saves. Entries from that seq on were made on defaults. */
@@ -79,7 +83,9 @@ export type Action =
   | { type: 'fillGrid'; martId: string; expect: GridState; grid: GridState }
   | { type: 'saveGrid'; martId: string; grid: GridState }
   /** The member changed a chart setting (a column order, a metric, a type, a size, a hide): stored like `saveCharts`, and one step Undo covers. */
-  | { type: 'editCharts'; martId: string; settings: ChartSettings }
+  | { type: 'editCharts'; martId: string; settings: ChartSettings; /** Edits with the same key, one after the other, are one step. */ fold?: string }
+  /** A chart change that goes with a grid edit coming next (a field picked from a chart menu, a hide that drops picks): stored with no step; the grid's step holds its "before" too. */
+  | { type: 'stageCharts'; martId: string; settings: ChartSettings }
   /** Stores chart settings with no history entry: the first load, a prune that goes with a hidden column, an AI run. */
   | { type: 'saveCharts'; martId: string; settings: ChartSettings }
   /** The member changed the grid (a filter, a sort, an aggregation, a column shown or hidden, Reset): stored like `saveGrid`, and one step Undo covers. */
@@ -96,7 +102,7 @@ export type Action =
 export const HISTORY_LIMIT = 20;
 
 const emptySelection: Selection = { sourceKey: null, martId: null, record: null };
-export const initialState: State = { selection: emptySelection, history: [], future: [], search: '', found: [], contextIds: [], storageIds: null, grids: {}, charts: {}, seq: 0, holds: {}, modelVersion: 0 };
+export const initialState: State = { selection: emptySelection, history: [], future: [], search: '', found: [], contextIds: [], storageIds: null, grids: {}, charts: {}, staged: {}, seq: 0, holds: {}, modelVersion: 0 };
 
 /** The source stays selected only when it feeds the mart being selected. */
 const sourceFor = (current: Selection, martId: string, sourceOf: SourceOf): string | null =>
@@ -108,11 +114,14 @@ function step(state: State, from: 'history' | 'future', known: ((s: Selection) =
   const stack = [...state[from]];
   while (stack.length) {
     const { grids: put, charts: putCharts, seq, ...entry } = stack.pop()!;
+    delete entry.fold;
     if (!known || known(entry)) {
       const now = put ? valuesOf(state.grids, Object.keys(put)) : undefined;
       const nowCharts = putCharts ? valuesOf(state.charts, Object.keys(putCharts)) : undefined;
       const current = state.selection;
-      return { ...state, selection: entry, grids: put ? applyGrids(state.grids, put) : state.grids, charts: putCharts ? applyGrids(state.charts, putCharts) : state.charts, [from]: stack, [to]: [...state[to], { ...current, ...(now ? { grids: now } : {}), ...(nowCharts ? { charts: nowCharts } : {}), ...(seq !== undefined ? { seq } : {}) }].slice(-HISTORY_LIMIT) };
+      const charts = putCharts ? applyGrids(state.charts, putCharts) : state.charts;
+      const restored = putCharts ? Object.fromEntries(Object.entries(putCharts).filter((e): e is [string, ChartSettings] => e[1] !== null)) : undefined;
+      return { ...state, selection: entry, grids: put ? applyGrids(state.grids, put) : state.grids, charts, restored, [from]: stack, [to]: [...state[to], { ...current, ...(now ? { grids: now } : {}), ...(nowCharts ? { charts: nowCharts } : {}), ...(seq !== undefined ? { seq } : {}) }].slice(-HISTORY_LIMIT) };
     }
   }
   return stack.length === state[from].length ? state : { ...state, [from]: stack };
@@ -179,14 +188,27 @@ export function reducer(state: State, a: Action): State {
     case 'editGrid': {
       const before = state.grids[a.martId] ?? null;
       if (deepEqual(before, a.grid)) return state;
-      return { ...state, grids: { ...state.grids, [a.martId]: a.grid }, seq: state.seq + 1, history: [...state.history, { ...cur, grids: { [a.martId]: before }, seq: state.seq }].slice(-HISTORY_LIMIT), future: [] };
+      const st = state.staged[a.martId];
+      const charts = st && st.seq === state.seq ? { charts: { [a.martId]: st.before } } : {};
+      const staged = { ...state.staged };
+      delete staged[a.martId];
+      return { ...state, staged, restored: undefined, grids: { ...state.grids, [a.martId]: a.grid }, seq: state.seq + 1, history: [...state.history, { ...cur, grids: { [a.martId]: before }, ...charts, seq: state.seq }].slice(-HISTORY_LIMIT), future: [] };
     }
     case 'editCharts': {
       const before = state.charts[a.martId] ?? null;
       if (deepEqual(before, a.settings)) return state;
-      return { ...state, charts: { ...state.charts, [a.martId]: a.settings }, seq: state.seq + 1, history: [...state.history, { ...cur, charts: { [a.martId]: before }, seq: state.seq }].slice(-HISTORY_LIMIT), future: [] };
+      const last = state.history.at(-1);
+      // Folded into the newest step when that one was made by the same key and nothing was recorded since.
+      if (a.fold && last?.fold === a.fold && last.seq === state.seq - 1 && last.charts && a.martId in last.charts && !last.grids && state.future.length === 0) return { ...state, restored: undefined, charts: { ...state.charts, [a.martId]: a.settings } };
+      return { ...state, restored: undefined, charts: { ...state.charts, [a.martId]: a.settings }, seq: state.seq + 1, history: [...state.history, { ...cur, charts: { [a.martId]: before }, ...(a.fold ? { fold: a.fold } : {}), seq: state.seq }].slice(-HISTORY_LIMIT), future: [] };
     }
-    case 'saveCharts': return { ...state, charts: { ...state.charts, [a.martId]: a.settings } };
+    case 'saveCharts': return { ...state, restored: undefined, charts: { ...state.charts, [a.martId]: a.settings } };
+    case 'stageCharts': {
+      const before = state.charts[a.martId] ?? null;
+      if (deepEqual(before, a.settings)) return state;
+      const kept = state.staged[a.martId];
+      return { ...state, restored: undefined, charts: { ...state.charts, [a.martId]: a.settings }, staged: { ...state.staged, [a.martId]: kept && kept.seq === state.seq ? kept : { before, seq: state.seq } } };
+    }
     case 'holdGrid': return { ...state, holds: { ...state.holds, [a.martId]: state.seq } };
     case 'releaseGrid': {
       if (!(a.martId in state.holds)) return state;
@@ -241,7 +263,17 @@ const StoreCtx = createContext<[State, Dispatch<Action>] | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const value = useReducer(reducer, initialState);
-  return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
+  return <StoreCtx.Provider value={value}><RestoredSaver restored={value[0].restored} />{children}</StoreCtx.Provider>;
+}
+
+/** Chart settings an Undo or Redo put back are saved here, so they persist whether or not the Charts body is mounted. */
+function RestoredSaver({ restored }: { restored: State['restored'] }) {
+  const services = useContext(ServicesCtx);
+  useEffect(() => {
+    if (!restored || !services) return;
+    for (const [martId, settings] of Object.entries(restored)) services.chartSettings.save(martId, settings);
+  }, [restored, services]);
+  return null;
 }
 
 export function useStore(): [State, Dispatch<Action>] {

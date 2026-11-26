@@ -716,7 +716,7 @@ test('sankey: a column drag is an Undo step: Undo puts the old order back and sa
   await waitFor(() => expect(orderTitles()).not.toEqual(before));
   // Escape steps back one menu level at a time; the Undo button is only reachable once the whole menu is closed.
   await waitFor(async () => { await userEvent.keyboard('{Escape}'); expect(screen.queryByRole('menu', { name: 'Sankey menu' })).toBeNull(); });
-  await new Promise((r) => setTimeout(r, 300));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled());
   await userEvent.click(screen.getByRole('button', { name: 'Undo' }));
   await waitFor(() => expect(savedDims(t)).toEqual(ORDER));
   await waitFor(() => expect(orderTitles()).toEqual(before));
