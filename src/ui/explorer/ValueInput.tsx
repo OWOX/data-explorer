@@ -5,9 +5,9 @@ import { Panel } from './MenuParts';
 
 /**
  * Where a text input's suggestions come from. `loaded` are the distinct values of the rows already on the grid: they show at once.
- * `key` names the read (column and rules): its values are read once and kept in `cache` until a reload. Without `load` only `loaded` is offered.
+ * `key` names the read (column and rules): its values are read once and kept in `cache` until a reload. `load` gets `fresh` true on a reload, which must read. Without `load` only `loaded` is offered.
  */
-export type ValueSource = { key: string; load?: (signal: AbortSignal) => Promise<string[]>; loaded?: string[]; cache: Map<string, string[]> };
+export type ValueSource = { key: string; load?: (signal: AbortSignal, fresh: boolean) => Promise<string[]>; loaded?: string[]; cache: Map<string, string[]> };
 
 /** Under these text operators a pick adds to the text; the second pick switches the operator to the list form. */
 const SWITCH: Record<string, string> = { contains: 'eq', not_contains: 'neq' };
@@ -41,19 +41,19 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
   const key = source?.key;
   const loaded = source && key !== undefined ? source.cache.get(key) : undefined;
   const loading = !!key && status[key] === 'loading';
-  const read = () => {
+  const read = (fresh: boolean) => {
     if (!source?.load || key === undefined) return;
     const ac = new AbortController();
     flights.current.add(ac);
     setStatus((s) => ({ ...s, [key]: 'loading' }));
-    source.load(ac.signal).then(
+    source.load(ac.signal, fresh).then(
       (values) => { if (!ac.signal.aborted) { source.cache.set(key, values); setStatus((s) => ({ ...s, [key]: 'done' })); onLoad?.(); } },
       () => { if (!ac.signal.aborted) setStatus((s) => ({ ...s, [key]: 'failed' })); },
     );
   };
-  const start = () => { if (key !== undefined && !source?.cache.has(key) && !status[key]) read(); };
+  const start = () => { if (key !== undefined && !source?.cache.has(key) && !status[key]) read(false); };
   // A reload forgets what was kept for this read and asks again.
-  const reload = () => { if (key === undefined) return; source?.cache.delete(key); read(); setHot(-1); setKeyed(false); };
+  const reload = () => { if (key === undefined) return; source?.cache.delete(key); read(true); setHot(-1); setKeyed(false); };
 
   // Pick mode lasts while the picked text is still there; typing after it narrows by the text after the last comma.
   const list = LIST_OPS.has(op) || (op in SWITCH && inPick);

@@ -313,12 +313,12 @@ export function demoFixtures(opts: { sheets?: 0 | 1 | 2 } = {}): Fixtures {
       definitionType: s.connectorSourceName ? 'CONNECTOR' : 'SQL',
       connectorSourceName: s.connectorSourceName ?? null,
       dataLastUpdatedAt: updatedOf[s.id] ?? null,
-      fields: s.fields,
+      fields: [...s.fields],
       rows: range(s.count).map((i) => s.row(i, r)),
       dq: dqOf[s.id] ?? { state: 'NEVER_RUN' },
     };
   });
-  return { storages: [{ id: 's1', title: 'Demo Warehouse', type: 'GOOGLE_BIGQUERY' }, { id: 's2', title: 'Sales Lake', type: 'AWS_ATHENA' }], contexts, marts, edges, connectors, customConnectors, destinations: [...DESTINATIONS.slice(0, sheets), DESTINATIONS[2]!] };
+  return { storages: [{ id: 's1', title: 'Demo Warehouse', type: 'GOOGLE_BIGQUERY' }, { id: 's2', title: 'Sales Lake', type: 'AWS_ATHENA' }], contexts: [...contexts], marts, edges: [...edges], connectors: [...connectors], customConnectors: [...customConnectors], destinations: [...DESTINATIONS.slice(0, sheets), DESTINATIONS[2]!] };
 }
 
 /** A saved report as `GET /api/reports/:id` returns it, before the mock adds its run state. */

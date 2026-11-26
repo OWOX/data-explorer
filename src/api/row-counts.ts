@@ -19,6 +19,8 @@ export function countOptions(schema: Schema): { options: TraverseOptions; key: s
 export interface RowCounter {
   count(id: string, schema: Schema): Promise<number | null>;
   recount(id: string, schema: Schema): Promise<number | null>;
+  /** Keeps a count the caller already has (the grid's total), as if it had been measured now. */
+  store(id: string, count: number): Promise<void>;
 }
 
 export function createRowCounter(ctx: Ctx): RowCounter {
@@ -41,5 +43,6 @@ export function createRowCounter(ctx: Ctx): RowCounter {
       return measure(id, schema);
     },
     recount: measure,
+    store: (id, count) => col.put(id, { dataMartId: id, count, at: new Date().toISOString() }).then(() => undefined, () => undefined),
   };
 }

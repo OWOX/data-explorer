@@ -32,3 +32,14 @@ test.each([true, false])('the header has the same classes and styles folded and 
   await userEvent.click(screen.getByRole('button', { name: 'Show Things' }));
   expect(shape(container)).toEqual(open);
 });
+
+test('a total that is the previous read\'s is dimmed and busy, and a fresh one is not', () => {
+  const band = (stale: boolean) => <TooltipProvider><Band id="b" icon={<i />} title="Things" total="200 of 1,234" totalStale={stale} hint="About" folded={false} onFold={() => {}}><p>body</p></Band></TooltipProvider>;
+  const { container, rerender } = render(band(true));
+  const total = () => container.querySelector('.dm-band-count')!;
+  expect(total()).toHaveClass('dm-stale');
+  expect(total()).toHaveAttribute('aria-busy', 'true');
+  rerender(band(false));
+  expect(total()).not.toHaveClass('dm-stale');
+  expect(total()).not.toHaveAttribute('aria-busy');
+});

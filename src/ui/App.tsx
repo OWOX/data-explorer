@@ -139,7 +139,7 @@ function AppBody() {
   // The join tree's marts are counted too: a bare node on the way to a joined mart is on the canvas but not in the band's list.
   const reportTree = useMemo(() => (mainId ? buildJoinTree(mainId, mainColumns ?? [], joinSources ?? [], mainEmptyPaths) : null), [mainId, mainColumns, joinSources, mainEmptyPaths]);
   const statusIdList = useMemo(() => statusIds(visible?.ids ?? [], reportTree), [visible, reportTree]);
-  const { dq, counts, request, recount } = useCardStatus(model, statusIdList, state.modelVersion);
+  const { dq, counts, request, offer, hold, recount } = useCardStatus(model, statusIdList, state.modelVersion);
 
   // There is always a selected mart after load: the first load picks the focus mart, and a mart or
   // source a refresh took away is dropped from the selection (no history entry, so Back is not trapped).
@@ -253,7 +253,7 @@ function AppBody() {
           loading={loading}
         >
           {/* While the bar shows, neither band reads anything: the saved folds are not known yet, and one saved as folded must not read rows first. */}
-          <DataBand onMatched={setMatched} model={model} folded={folded('data')} onFold={() => toggle('data')} loading={loading} fullScreen={{ on: fs, onToggle: () => setFs((f) => !f) }} />
+          <DataBand onMatched={setMatched} onCount={offer} onCardHold={hold} onRecount={(id) => void recount(id)} model={model} folded={folded('data')} onFold={() => toggle('data')} loading={loading} fullScreen={{ on: fs, onToggle: () => setFs((f) => !f) }} />
           <RowBand model={model} folded={folded('row')} onFold={() => toggle('row')} loading={loading} />
         </CardBands>
       </main>

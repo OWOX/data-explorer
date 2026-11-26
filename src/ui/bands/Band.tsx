@@ -14,6 +14,7 @@ export function Band({
   icon,
   title,
   total,
+  totalStale = false,
   hint,
   afterHint,
   toolbar,
@@ -29,6 +30,8 @@ export function Band({
   icon: ReactNode;
   title: string;
   total?: number | string;
+  /** The total is the previous read's: it is dimmed until the new one arrives. */
+  totalStale?: boolean;
   hint: string;
   /** Sits in the title row right after the hint, and wraps with it. */
   afterHint?: ReactNode;
@@ -55,7 +58,7 @@ export function Band({
     const t = window.setTimeout(() => { setGone(folded); setSettled(!folded); }, REVEAL_MS);
     return () => window.clearTimeout(t);
   }, [folded]);
-  const count = total !== undefined && <span className="dm-badge dm-band-count">{typeof total === 'number' ? num(total) : total}</span>;
+  const count = total !== undefined && <span className={`dm-badge dm-band-count${totalStale ? ' dm-stale' : ''}`} aria-busy={totalStale || undefined}>{typeof total === 'number' ? num(total) : total}</span>;
   const hidden = folded && gone;
   // Taking the body out of the page moves no box the line layer watches, so tell it to look again.
   const section = useRef<HTMLElement>(null);

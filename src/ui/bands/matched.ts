@@ -3,7 +3,7 @@ import { uniqueKey } from '../../model/unique-count';
 import type { Row } from '../../sdk/types';
 
 /** The matched counts of the main mart's report, by alias path ('' is the main mart). Kept in the page's memory only: never saved, never an Undo step. */
-export type Matched = { martId: string; byPath: ReadonlyMap<string, number> };
+export type Matched = { martId: string; byPath: ReadonlyMap<string, number>; /** The numbers are the previous filters' while the count for the new ones is under way. */ stale?: boolean };
 
 /** The counts of `paths` in the scorecard row, by path. A path whose count is missing or not a number is left out. */
 export function matchedFrom(row: Row | undefined, paths: readonly string[]): Map<string, number> {

@@ -88,10 +88,12 @@ describe('a mart whose primary key is hidden for reporting', () => {
     expect(within(menu).queryByRole('menuitem', { name: 'Aggregate' })).toBeNull();
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('menu', { name: 'Menu of Unique Count' })).toBeNull());
+    const reads = t.of('stores').length;
     await undo();
     await waitFor(() => expect(headers()).toEqual(before));
     expect(t.state.current!.grids.stores!.uniqueCount).toBeUndefined();
-    await waitFor(() => expect(t.of('stores').at(-1)!.o.uniqueCount).toBeUndefined());
+    // The plain read is a cache hit: Undo sends no query.
+    expect(t.of('stores')).toHaveLength(reads);
   });
 
   test('a mart with a composite key offers it too', async () => {

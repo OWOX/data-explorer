@@ -9,6 +9,7 @@ import { demoFixtures, demoReports, type Fixtures, type MockReportFixture } from
 import { mockSearch } from './search';
 import { GRID_COLUMNS_COLLECTION } from '../../api/grid-columns';
 import { sleep } from '../../api/sleep';
+import { systemTheme } from '../theme';
 
 declare global { interface Window { __copiedLink?: string; __routeSet?: string } }
 
@@ -211,7 +212,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
 
   return {
     projectId: 'mock-project',
-    theme: window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+    theme: systemTheme(),
     signal: new AbortController().signal,
     route: new URLSearchParams(location.search).get('route') ?? '/',
     ui: {

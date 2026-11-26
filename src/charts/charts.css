@@ -47,6 +47,7 @@
 .dm-chart-title { font-size: 0.875rem; font-weight: 600; }
 .dm-chart-actions { display: flex; align-items: center; gap: 0.5rem; }
 .dm-chart-empty { font-size: 0.75rem; }
+.dm-chart-staleframe { position: relative; }
 /* A chart that changes size (bucket, type, second measure...) grows and shrinks instead of snapping. The width is a clamp()/min() expression: a transition runs between its computed lengths. The body follows its content's measured height. */
 .dm-chart-body { transition: height 200ms ease; }
 /* Clipped only while the height moves; the tooltips are portalled to the page, so nothing else needs the clip. */
@@ -91,7 +92,8 @@
 /* A panel whose height the member set: its body takes what the head leaves, the plot takes what the legend leaves, and a plot that needs more scrolls in it. */
 .dm-chart[data-fill] .dm-chart-body { flex: 1 1 0; min-height: 0; overflow: auto; transition: none; }
 .dm-chart[data-fill] .dm-chart-fit { height: 100%; }
-.dm-chart[data-fill] .dm-chart-fit > :is(.dm-bar-chart, .dm-line-chart, .dm-scatter, .dm-heatmap, .dm-spread, .dm-sankey) { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.dm-chart[data-fill] .dm-chart-staleframe, .dm-chart[data-fill] .dm-chart-staleframe > div { height: 100%; }
+.dm-chart[data-fill] .dm-chart-staleframe > div > :is(.dm-bar-chart, .dm-line-chart, .dm-scatter, .dm-heatmap, .dm-spread, .dm-sankey) { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .dm-chart[data-fill] .dm-chart-plot { flex: 1 1 0; min-width: 0; min-height: 0; overflow: hidden auto; }
 .dm-chart[data-fill] .dm-chart-legend { flex: none; max-height: 40%; overflow-y: auto; }
 .dm-chart[data-fill] .dm-pie { flex-wrap: nowrap; height: 100%; }

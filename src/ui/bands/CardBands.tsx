@@ -357,7 +357,7 @@ export function CardBands({
             // Scrolling this box moves its cards without resizing anything, so tell the page wires to look again.
             onScroll={(e) => e.currentTarget.dispatchEvent(new Event('animationend', { bubbles: true }))}
           >
-            <MartsCanvas model={model} mainId={selection.martId} columns={mainColumns} emptyPaths={mainEmptyPaths} sources={joinSources} counts={counts} matched={matchedHere} dq={dq} onOpenApp={onOpenApp} onRetryCount={onRetryCount} onRequestCount={onRequestCount} click={click} onSelectedMart={setGraphSelected} own={own} />
+            <MartsCanvas model={model} mainId={selection.martId} columns={mainColumns} emptyPaths={mainEmptyPaths} sources={joinSources} counts={counts} matched={matchedHere} matchedStale={matched?.stale} dq={dq} onOpenApp={onOpenApp} onRetryCount={onRetryCount} onRequestCount={onRequestCount} click={click} onSelectedMart={setGraphSelected} own={own} />
           </div>
         ) : <>
         {(visible.ids.length === 0 || noMatch) && <p className="dm-muted text-sm" style={{ gridColumn: '1 / -1' }}>No data marts match.</p>}
@@ -374,7 +374,7 @@ export function CardBands({
               <MartCard
                 key={isMain ? id : `${id}@${path}`}
                 {...realCard(mart, el)}
-                matched={matchedHere?.get(path)}
+                matched={matchedHere?.get(path)} matchedStale={matched?.stale}
                 selected={isMain}
                 joined={!isMain}
                 path={path || undefined}

@@ -20,7 +20,7 @@ const spark = (date: Field): Spark => ({ hidden: new Set(), sparklines: true, me
 function show(shownMart: ChartMart, menuMart: ChartMart, handlers: { onMetric?: (id: string, m: string) => void; onDate?: (id: string, d: string) => void } = {}) {
   render(
     <AppServices ctx={createMockCtx(demoFixtures(), { latencyMs: 0 })}><StoreProvider>
-      <MartCards martId="orders" mart={shownMart} menuMart={menuMart} main spark={spark(created)} scores={{ rows: [{ amount: 1 }], error: null, loading: false, retry: () => {} }} bucket="MONTH" autoBucket={false}
+      <MartCards martId="orders" mart={shownMart} menuMart={menuMart} main spark={spark(created)} scores={{ rows: [{ amount: 1 }], error: null, loading: false, held: false, retry: () => {} }} bucket="MONTH" autoBucket={false}
         filter={[]} version={0} paused hasFilters={false} formatOf={() => ({} as never)} onHide={() => {}} {...handlers} />
     </StoreProvider></AppServices>,
   );
