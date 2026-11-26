@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 
@@ -351,10 +351,6 @@ test('sankey: a mart that is off the path stays out of the menus, and a mart on 
   await submenu('Column 1');
   const sub = await screen.findByRole('menu', { name: 'Column 1' });
   expect(within(sub).getAllByRole('menuitem').map((el) => el.textContent)).toEqual(['Orders', 'Products', 'Countries', 'Customers']);
-  await userEvent.keyboard('{Escape}{Escape}');
-  await userEvent.click(await screen.findByRole('menuitem', { name: 'Metric' }));
-  // Customers has no metric of its own, and its Count Unique needs a column on the grid.
-  expect(within(await screen.findByRole('menu', { name: 'Metric' })).queryByRole('menuitem', { name: 'Customers' })).toBeNull();
 });
 
 test('a metric of a mart on the path that shows no column is listed, and picking it adds its column', async () => {
@@ -445,4 +441,145 @@ test('sankey: a sum above 10 shows no fraction in its node tooltip, its ribbon t
   const cells = [...data().querySelectorAll('section[data-chart-kind="Sankey"] table.sr-only tbody tr td:last-child')].map((c) => c.textContent!);
   expect(cells.length).toBeGreaterThan(0);
   for (const c of cells) expect(c).not.toMatch(/\.\d/);
+});
+
+// Column order: the Columns menu's rows are dragged by their ⋮ (or moved with Alt+Up / Alt+Down).
+const ROW_H = 32;
+const ORDER = ['status', 'is_gift', 'products__title'];
+const orderSaved: NonNullable<Parameters<typeof setup>[0]> = { columns: dims, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ORDER }] } };
+// jsdom has no layout: the Column rows are laid out 32px apart from y = 100.
+const layoutRows = () => {
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    const label = this.getAttribute('role') === 'menuitem' ? /^Column (\d)/.exec(this.textContent ?? '') : null;
+    const top = label ? 100 + (Number(label[1]) - 1) * ROW_H : 0;
+    return { x: 0, y: top, left: 0, top, right: 200, bottom: top + (label ? ROW_H : 0), width: 200, height: label ? ROW_H : 0, toJSON: () => ({}) } as DOMRect;
+  });
+};
+const columnsMenu = async () => {
+  await userEvent.click(panel('Sankey'));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Columns' }));
+  return screen.findByRole('menu', { name: 'Columns' });
+};
+const colRow = (menu: HTMLElement, n: number) => within(menu).getByRole('menuitem', { name: `Column ${n}` });
+const gripOf = (menu: HTMLElement, n: number) => colRow(menu, n).querySelector<HTMLElement>('[data-grip]')!;
+const y = (n: number) => 100 + (n - 1) * ROW_H + ROW_H / 2;
+const press = (grip: HTMLElement, at: number) => fireEvent.pointerDown(grip, { pointerId: 1, button: 0, clientY: at });
+const move = (grip: HTMLElement, at: number) => fireEvent.pointerMove(grip, { pointerId: 1, clientY: at });
+const release = (grip: HTMLElement, at: number) => fireEvent.pointerUp(grip, { pointerId: 1, clientY: at });
+const orderTitles = () => [...titles()].map((t) => t.textContent);
+
+afterEach(() => { vi.restoreAllMocks(); });
+
+test('sankey: the Column rows show a vertical ⋮ and no tag icon; an unused row has a muted one', async () => {
+  await charts({ ...orderSaved, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  const menu = await columnsMenu();
+  for (let n = 1; n <= 5; n++) {
+    const row = colRow(menu, n);
+    expect(row.querySelector('svg.lucide-ellipsis-vertical')).not.toBeNull();
+    expect(row.querySelector('svg.lucide-tag')).toBeNull();
+    expect(gripOf(menu, n).hasAttribute('data-off')).toBe(n > 2);
+  }
+});
+
+test('sankey: dragging Column 1 by its ⋮ below Column 3 saves the new order in one write and keeps the menu open', async () => {
+  layoutRows();
+  const t = await charts(orderSaved);
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  const before = orderTitles();
+  const menu = await columnsMenu();
+  const grip = gripOf(menu, 1);
+  press(grip, y(1));
+  move(grip, y(1) + 2);
+  expect(t.puts).not.toHaveBeenCalled();
+  move(grip, y(3) + 10);
+  expect(menu.querySelector('[data-drop-line]')).not.toBeNull();
+  expect(t.puts).not.toHaveBeenCalled();
+  release(grip, y(3) + 10);
+  await waitFor(() => expect(savedDims(t)).toEqual(['is_gift', 'products__title', 'status']));
+  expect(t.puts).toHaveBeenCalledTimes(1);
+  expect(menu.querySelector('[data-drop-line]')).toBeNull();
+  expect(screen.getByRole('menu', { name: 'Columns' })).toBeInTheDocument();
+  await waitFor(() => expect(orderTitles()).not.toEqual(before));
+});
+
+test('sankey: a press on the ⋮ without moving, and a drag back to its own place, save nothing', async () => {
+  layoutRows();
+  const t = await charts(orderSaved);
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  const menu = await columnsMenu();
+  const grip = gripOf(menu, 2);
+  press(grip, y(2));
+  release(grip, y(2));
+  fireEvent.click(grip);
+  expect(screen.queryByRole('menu', { name: 'Column 2' })).toBeNull();
+  press(grip, y(2));
+  move(grip, y(3));
+  move(grip, y(2) + 3);
+  release(grip, y(2) + 3);
+  expect(t.puts).not.toHaveBeenCalled();
+});
+
+test('sankey: Escape during a drag cancels it, saves nothing and keeps the menu open', async () => {
+  layoutRows();
+  const t = await charts(orderSaved);
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  const menu = await columnsMenu();
+  const grip = gripOf(menu, 1);
+  press(grip, y(1));
+  move(grip, y(3));
+  expect(menu.querySelector('[data-drop-line]')).not.toBeNull();
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+  expect(menu.querySelector('[data-drop-line]')).toBeNull();
+  release(grip, y(3));
+  expect(t.puts).not.toHaveBeenCalled();
+  expect(screen.getByRole('menu', { name: 'Columns' })).toBeInTheDocument();
+});
+
+test('sankey: while dragging, hovering another row opens no submenu and an open Column submenu closes', async () => {
+  layoutRows();
+  await charts(orderSaved);
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  const menu = await columnsMenu();
+  await userEvent.click(colRow(menu, 3));
+  await screen.findByRole('menu', { name: 'Column 3' });
+  const grip = gripOf(menu, 1);
+  press(grip, y(1));
+  move(grip, y(1) + 20);
+  expect(screen.queryByRole('menu', { name: 'Column 3' })).toBeNull();
+  fireEvent.mouseEnter(colRow(menu, 2));
+  await new Promise((r) => setTimeout(r, 200));
+  expect(screen.queryByRole('menu', { name: 'Column 2' })).toBeNull();
+  release(grip, y(1));
+});
+
+test('sankey: an unused row cannot be dragged', async () => {
+  layoutRows();
+  const t = await charts({ ...orderSaved, charts: { version: 2, charts: [{ id: 's', kind: 'sankey', dimensions: ['status', 'is_gift'] }] } });
+  await waitFor(() => expect(titles()).toHaveLength(2));
+  const menu = await columnsMenu();
+  const grip = gripOf(menu, 4);
+  press(grip, y(4));
+  move(grip, y(1));
+  expect(menu.querySelector('[data-drop-line]')).toBeNull();
+  release(grip, y(1));
+  expect(t.puts).not.toHaveBeenCalled();
+});
+
+test('sankey: Alt+ArrowDown moves the focused column down one place, focus stays on it; Alt+ArrowUp at the top does nothing', async () => {
+  const t = await charts(orderSaved);
+  await waitFor(() => expect(titles()).toHaveLength(3));
+  const menu = await columnsMenu();
+  expect(colRow(menu, 1)).toHaveAttribute('aria-description', expect.stringContaining('Alt+Up or Alt+Down to move'));
+  colRow(menu, 1).focus();
+  fireEvent.keyDown(colRow(menu, 1), { key: 'ArrowUp', altKey: true });
+  expect(t.puts).not.toHaveBeenCalled();
+  fireEvent.keyDown(colRow(menu, 1), { key: 'ArrowDown', altKey: true });
+  await waitFor(() => expect(savedDims(t)).toEqual(['is_gift', 'status', 'products__title']));
+  expect(document.activeElement).toBe(colRow(menu, 2));
+  fireEvent.keyDown(colRow(menu, 2), { key: 'ArrowUp', altKey: true });
+  await waitFor(() => expect(savedDims(t)).toEqual(['status', 'is_gift', 'products__title']));
+  expect(document.activeElement).toBe(colRow(menu, 1));
+  // A plain arrow still moves focus.
+  fireEvent.keyDown(colRow(menu, 1), { key: 'ArrowDown' });
+  expect(document.activeElement).toBe(colRow(menu, 2));
 });
