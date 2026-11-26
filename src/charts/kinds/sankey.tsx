@@ -144,7 +144,8 @@ export const sankey: ChartKindDef<SankeyR> = {
     return { kind: 'sankey', ...carry(from, ['measure']), dimensions: withColumns([...new Set(saved)].slice(0, SANKEY_MAX), Math.max(SANKEY_MIN, Math.min(saved.length, SANKEY_MAX)), cf.dimensions) };
   },
   resolve(spec, cf) {
-    if (pieMeasures(cf).length === 0) return null;
+    const offered = pieMeasures(cf);
+    if (offered.length === 0) return null;
     const saved = spec.dimensions;
     // Fewer than two saved columns is the member's choice (None): nothing is filled in, and a saved column that is not shown counts as unused.
     const shownSaved = saved && saved.length < SANKEY_MIN ? [...new Set(saved)].flatMap((n) => cf.dimensions.filter((d) => d.name === n)) : null;
@@ -159,7 +160,6 @@ export const sankey: ChartKindDef<SankeyR> = {
       if (next) dims.push(next);
     }
     // Any additive measure is offered. A saved one is kept; with none saved, one that is exact for the columns comes first (see `SankeyR`).
-    const offered = pieMeasures(cf);
     const exactList = sankeyMeasures(cf, dims);
     const measure = offered.find((m) => measureId(m) === spec.measure) ?? pickMeasure(exactList.length ? exactList : offered)!;
     return { dims, measure, exact: exactList.some((m) => measureId(m) === measureId(measure)) };
