@@ -190,6 +190,7 @@ async function rule(panel: HTMLElement, field: string, row: 'Filter' | 'Slice', 
 describe('a filter or slice from a data mart with no column joins it', () => {
   const filters = () => probe.state.grids.orders!.filters;
   const slices = () => probe.state.grids.orders!.slices ?? {};
+  const grid = () => probe.state.grids.orders!;
   const undo = () => userEvent.click(screen.getByRole('button', { name: 'Undo' }));
   const joinable = async () => {
     const orders = await openFields('Orders');
@@ -197,30 +198,32 @@ describe('a filter or slice from a data mart with no column joins it', () => {
     return screen.findByRole('dialog', { name: 'Customers' });
   };
 
-  test.each([['Filter', filters], ['Slice', slices]] as const)('a %s from a joinable data mart adds its column, and one Undo takes both back', async (row, rules) => {
+  test.each([['Filter', filters], ['Slice', slices]] as const)('a %s from a joinable data mart joins it with no column, and one Undo takes both back', async (row, rules) => {
     await setup([]);
     const before = [...columns()];
     await rule(await joinable(), 'city', row, 'K');
-    await waitFor(() => expect(columns()).toContain('customers__city'));
+    await waitFor(() => expect(grid().emptyPaths).toEqual(['customers']));
+    expect(columns()).toEqual(before);
     expect(Object.keys(rules())).toEqual(['customers__city']);
     await userEvent.keyboard('{Escape}{Escape}{Escape}');
     await undo();
-    await waitFor(() => expect(columns()).toEqual(before));
+    await waitFor(() => expect(grid().emptyPaths).toBeUndefined());
+    expect(columns()).toEqual(before);
     expect(rules()).toEqual({});
   });
 
-  test.each([['Filter', filters], ['Slice', slices]] as const)('a %s from a path data mart adds its column too', async (row, rules) => {
+  test.each([['Filter', filters], ['Slice', slices]] as const)('a %s from a path data mart adds no column either', async (row, rules) => {
     await setup(['customers__countries__name']);
     const menu = await openConfigMenu();
     await userEvent.click(within(menu).getByRole('menuitem', { name: 'Customers' }));
     const customers = await screen.findByRole('dialog', { name: 'Customers' });
     await rule(customers, 'city', row, 'K');
-    await waitFor(() => expect(columns()).toContain('customers__city'));
-    expect(Object.keys(rules())).toEqual(['customers__city']);
+    await waitFor(() => expect(Object.keys(rules())).toEqual(['customers__city']));
+    expect(columns()).not.toContain('customers__city');
     await userEvent.keyboard('{Escape}{Escape}');
     await undo();
-    await waitFor(() => expect(columns()).not.toContain('customers__city'));
-    expect(rules()).toEqual({});
+    await waitFor(() => expect(rules()).toEqual({}));
+    expect(columns()).not.toContain('customers__city');
   });
 
   test('a filter on a hidden field of a data mart that is in the grid adds no column', async () => {

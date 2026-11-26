@@ -640,12 +640,20 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const hasFilters = Object.keys(filters).length > 0;
   const hasSorts = own !== null;
   const hasSlices = Object.keys(allSlices).length > 0;
+  // A rule on a field of a data mart that is not in the report joins the mart with no column (its path goes to the empty paths); a mart already in the report adds nothing.
+  const joinEmpty = useCallback((names: string[]) => {
+    const inUse = inUsePaths(shown, sources, epNow);
+    const add = [...new Set(names.flatMap((n) => { const p = byName.get(n)?.joined?.aliasPath; return p !== undefined && !inUse.has(p) ? [p] : []; }))];
+    if (!add.length) return;
+    emptyNow.current = [...epNow, ...add];
+    setEp([...epNow, ...add]);
+  }, [shown, sources, epNow, byName, setEp, emptyNow]);
   /** A click on a chart mark: the same step as a filter edit (so Undo covers it), one filter per column. */
   const applyChartFilters = (add: ColumnFilter[]) => {
     // A filter the column cannot take as it stands (a blank value) is left out, with the same note a filter edit gives.
     const usable = add.filter((f) => { const field = schema.find((x) => x.name === f.field); const unapplied = unappliedFilter(f, field); if (unapplied) setNote({ text: unapplied }); return !!field && !unapplied; });
     if (!usable.length) return;
-    edit(() => setAllFilters((cur) => ({ ...cur, ...Object.fromEntries(usable.map((f) => [f.field, f])) })));
+    edit(() => { joinEmpty(usable.map((f) => f.field)); setAllFilters((cur) => ({ ...cur, ...Object.fromEntries(usable.map((f) => [f.field, f])) })); });
   };
   /** One slice per joined field; an unusable one (a blank value, a field that is not joined) is left out with the same note a filter edit gives. */
   const setSlice = useCallback((name: string, f: ColumnFilter | undefined) => {
@@ -684,18 +692,12 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
       if (shown.includes(name)) return null;
       return byName.get(name)?.joined ? [...shown, name] : [...ownInSchemaOrder(shown, native.map((f) => f.name), new Set([...shown.filter((c) => ownNames.has(c)), name])), ...shown.filter((c) => !ownNames.has(c))];
     };
-    // The columns with the field added when its data mart has no column; null otherwise.
-    const joinColumns = (name: string): string[] | null => {
-      const path = byName.get(name)?.joined?.aliasPath;
-      return path !== undefined && !inUsePaths(shown, sources, epNow).has(path) ? withField(name) : null;
-    };
-    const joinWith = (cols: string[], name: string) => edit(() => changeColumns(cols, (cur) => ruleNewColumns({ ...cur, uniqueCount: ucNow }, [byName.get(name)!])));
     return {
       sorts: shownSorts, toggleSort, filters, slices,
-      // Filter and Slice keep the columns as they are: a hidden field of a data mart in the grid stays hidden and its rule still reaches the query.
-      // A rule on a field of a data mart that has no column first joins it, in the same edit, so the mart is in the report and Undo takes both back. Clearing a rule adds nothing.
-      setSlice: (name, f) => { const cols = f ? joinColumns(name) : null; if (cols) joinWith(cols, name); setSlice(name, f); },
-      setFilter: (name, f) => { const cols = f ? joinColumns(name) : null; if (cols) joinWith(cols, name); setFilter(name, f); },
+      // Filter and Slice add no column: a hidden field stays hidden and its rule still reaches the query.
+      // A rule on a field of a data mart that is not in the report first joins it with no column, in the same edit, so Undo takes both back. Clearing a rule adds nothing.
+      setSlice: (name, f) => { if (f && byName.get(name)?.joined) edit(() => joinEmpty([name])); setSlice(name, f); },
+      setFilter: (name, f) => { if (f) edit(() => joinEmpty([name])); setFilter(name, f); },
       // Aggregate, Sort and Format on a field that is not a column first show it, in the same edit, so Undo takes both back.
       setSort: (field, direction) => {
         const cols = withField(field);
@@ -727,7 +729,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
       valuesFor,
       removeUnique,
     };
-  }, [removeUnique, valuesFor, shownSorts, toggleSort, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, epNow, ownNames, changeColumns, sources, reorder, charts, byName, native, outputs, edit, setOwn, ucNow]);
+  }, [removeUnique, valuesFor, shownSorts, toggleSort, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, joinEmpty, ownNames, changeColumns, sources, reorder, charts, byName, native, outputs, edit, setOwn, ucNow]);
   // Measured for the charts: their panels are as wide as the visible grid, not the (wider) table.
   const { ref: scroller, width: scrollerWidth } = useWidth<HTMLDivElement>(charts);
   const owner = useMemo(() => groupMap(sources), [sources]);
