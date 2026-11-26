@@ -1019,7 +1019,7 @@ describe('the AI group', () => {
     expect(screen.queryByText(/Prompt copied/)).toBeNull();
   });
 
-  test('the provider link is reached from its item with ArrowRight and Tab, and Enter opens it', async () => {
+  test('the provider link is reached from its item with ArrowRight, and Enter opens it', async () => {
     const t = setup(1);
     t.view();
     await rowsLoaded();

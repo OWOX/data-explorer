@@ -8,7 +8,7 @@ const fire = (target: EventTarget, type: string, init: PointerEventInit) => act(
 function Host({ options }: { options: PressDragOptions<{ x: number }> }) {
   const root = useRef<HTMLDivElement>(null);
   const drag = usePressDrag(root, options);
-  return <div ref={root}><div data-card="a" onClick={() => clicked()} />{drag && <span data-testid="drag">{drag.x}</span>}</div>;
+  return <div ref={root}><div data-card="a" onClick={() => clicked()}><button type="button">x</button></div>{drag && <span data-testid="drag">{drag.x}</span>}</div>;
 }
 const clicked = vi.fn();
 const options = (drop = vi.fn()): PressDragOptions<{ x: number }> => ({
@@ -53,8 +53,12 @@ describe('usePressDrag', () => {
   });
   it('ignores a press on a button inside a card', () => {
     const drop = vi.fn();
-    const opts = options(drop);
-    const { container } = render(<Host options={{ ...opts, pick: (t) => (t.closest('button') ? null : opts.pick(t)) }} />);
+    const { container } = render(<Host options={options(drop)} />);
+    const button = container.querySelector('[data-card] button')!;
+    fire(button, 'pointerdown', { button: 0, clientX: 0, clientY: 0 });
+    fire(window, 'pointermove', { buttons: 1, clientX: 20, clientY: 0 });
     expect(container.querySelector('[data-testid="drag"]')).toBeNull();
+    fire(window, 'pointerup', { clientX: 20, clientY: 0 });
+    expect(drop).not.toHaveBeenCalled();
   });
 });
