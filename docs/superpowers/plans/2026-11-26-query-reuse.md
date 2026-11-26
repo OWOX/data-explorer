@@ -1,6 +1,6 @@
 # Plan: fewer reads, faster repaints
 
-Goal: the grid, the charts and the Row band reuse what was already read. Five changes, all in the plugin; no API, schema or rule change.
+Goal: the grid, the charts and the Row band reuse what was already read. Four changes, all in the plugin; no API, schema or rule change.
 
 ## Global Constraints
 

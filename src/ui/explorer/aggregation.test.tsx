@@ -263,6 +263,19 @@ test('a visible calculated column does not block the grouped query: it is sent a
   expect(within(data()).queryByRole('button', { name: 'Aggregate zz_gain' })).toBeNull();
 });
 
+test('a calculated column the grid shows is not handed to the Row band with the row', async () => {
+  setup({ fields: [{ name: 'zz_net', type: 'NUMERIC', calculated: { level: 'column' } }] });
+  await ready();
+  await showColumn('zz_net');
+  await waitFor(() => expect(headers()).toContain('zz_net'));
+  vi.mocked(rememberRow).mockClear();
+  fireEvent.click(bodyRows()[0]!);
+  await waitFor(() => expect(rememberRow).toHaveBeenCalled());
+  const seen = vi.mocked(rememberRow).mock.calls.at(-1)![3];
+  expect(seen.columns).toContain('id');
+  expect(seen.columns).not.toContain('zz_net');
+});
+
 test('the implicit first-key sort is sent but shows no arrow and no aria-sort; a click then sorts that column', async () => {
   const t = setup();
   await ready();

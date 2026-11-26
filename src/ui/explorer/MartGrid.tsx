@@ -406,7 +406,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const [exportOpen, setExportOpen] = useState(false);
   // A blocked grid unmounts the menu without a close: it counts as closed.
   if (blocked && exportOpen) setExportOpen(false);
-  const { rows: read, loading: reading, error, hasMore, run, errorRunId, total, counted } = useMartRows(martId, asked, version + rowsRetry, charts && !exportOpen && exportFor !== asked, !!asked?.column?.some((c) => calculated.has(c)) || !!asked?.filter?.some((r) => calculated.has(r.column)));
+  const { rows: read, loading: reading, error, hasMore, run, errorRunId, total, counted } = useMartRows(martId, asked, version + rowsRetry, charts && !exportOpen && exportFor !== asked, !!asked?.column?.some((c) => calculated.has(c)) || !!asked?.filter?.some((r) => calculated.has(r.column)), modelVersion);
   const failed = !!error;
   const onExportOpen = (open: boolean) => {
     setExportOpen(open);

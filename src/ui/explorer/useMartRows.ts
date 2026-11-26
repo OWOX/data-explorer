@@ -47,14 +47,14 @@ export type GridRun = { state: 'none' } | { state: 'paused' } | { state: 'runnin
 type RowsState = { rows: Row[] | null; error: unknown; hasMore: boolean; doneFor: string | null; shape: string; runId: string | null; errorRunId: string | null; total: number | null; /** What `total` counted (the base of the ask) and whether that read named a calculated field. */ totalBase: string | null; totalExact: boolean; /** The columns that read carried: a plain read joins every mart it names a column of, so its count is of those joins. */ totalColumns: string[] };
 /** What the rows are rows of: plain rows, or groups over these columns and rules. Rows of one shape never stand in for another's. */
 const isGroupedRead = (o: TraverseOptions): boolean => !!(o.aggregation?.length || o.dateTrunc?.length || o.uniqueCount?.length);
-const shapeOf = (o: TraverseOptions | null): string => (o?.aggregation?.length || o?.dateTrunc?.length || o?.uniqueCount?.length ? JSON.stringify([o.column, o.aggregation, o.dateTrunc, o.uniqueCount]) : 'plain');
+const shapeOf = (o: TraverseOptions | null): string => (o && isGroupedRead(o) ? JSON.stringify([o.column, o.aggregation, o.dateTrunc, o.uniqueCount]) : 'plain');
 const NO_COUNT = { total: null, exact: false, columns: [] as string[] };
 
 /** How many resolved reads a ctx keeps for the grid. The least recently used is dropped first. */
 export const GRID_CACHE_LIMIT = 16;
 // Resolved reads only, per ctx: a failed or aborted read is never stored, so Retry always reads again.
 // `rows` is everything the read returned (up to its limit + 1), so a smaller page is answered from it with no read.
-type Entry = { martId: string; version: number; options: TraverseOptions; rows: Row[]; columns: string[]; exact: boolean; rest: string; total: number | undefined; totalBase: string; totalColumns: string[]; totalExact: boolean; runId: string | null };
+type Entry = { martId: string; version: number; model: number; options: TraverseOptions; rows: Row[]; columns: string[]; exact: boolean; rest: string; total: number | undefined; totalBase: string; totalColumns: string[]; totalExact: boolean; runId: string | null };
 const cacheOf = perCtx(() => new Map<string, Entry>());
 
 function remember(ctx: Ctx, key: string, entry: Entry) {
@@ -81,14 +81,14 @@ function viewOf(e: Entry, options: TraverseOptions, key: string, base: string): 
 }
 
 /** The cached read that answers this ask: the same result (mart, version, filters, sort, grouping) with the columns and enough rows. */
-function lookup(ctx: Ctx, martId: string, version: number, options: TraverseOptions, exact: boolean): { key: string; entry: Entry } | null {
+function lookup(ctx: Ctx, martId: string, version: number, model: number, options: TraverseOptions, exact: boolean): { key: string; entry: Entry } | null {
   if (options.limit === undefined) return null;
   const pageLimit = options.limit - 1;
   const rest = restOf(options);
   const want = options.column ?? [];
   const grouped = isGroupedRead(options);
   for (const [key, e] of cacheOf(ctx)) {
-    if (e.martId !== martId || e.version !== version || e.rest !== rest) continue;
+    if (e.martId !== martId || e.version !== version || e.model !== model || e.rest !== rest) continue;
     // A grouped read: other columns are other group keys. A plain read: the loaded columns may hold more; a calculated field may make OWOX group the read, so then the sets must match.
     const columnsOk = grouped ? e.columns.length === want.length && e.columns.every((c, i) => c === want[i]) : want.every((c) => e.columns.includes(c)) && (!(exact || e.exact) || want.length === e.columns.length);
     if (!columnsOk) continue;
@@ -101,9 +101,10 @@ type Query = { dataKey: string; columns: string[]; key: string };
 
 /**
  * `paused` keeps the key (and the rows) but reads nothing; what was read for a key is not read again when the pause ends.
+ * `model`: the model version the read was made under. The grid's own version counters restart on a remount, so a reloaded mart must not match an entry read before the reload.
  * `exact`: this read names a calculated field. OWOX may group such a read (it does when the formula aggregates), so its count is reused only by a read of the same columns (it is not part of any key).
  */
-export function useMartRows(martId: string, options: TraverseOptions | null, version: number, paused = false, exact = false) {
+export function useMartRows(martId: string, options: TraverseOptions | null, version: number, paused = false, exact = false, model = 0) {
   const { ctx } = useServices();
   const [state, setState] = useState<RowsState>({ rows: null, error: null, hasMore: false, doneFor: null, shape: 'plain', runId: null, errorRunId: null, total: null, totalBase: null, totalExact: false, totalColumns: [] });
   // Each traverseData call is a billed warehouse run. Everything but the column list (filters, sort, limit,
@@ -126,7 +127,7 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
   const counted = useRef<{ base: string; columns: string[]; exact: boolean; total: number | undefined } | null>(null);
   useEffect(() => {
     if (!options || paused || readKey.current === key) return;
-    const hit = lookup(ctx, martId, version, options, exact);
+    const hit = lookup(ctx, martId, version, model, options, exact);
     if (hit) {
       // The render already shows this hit; this commits it to state and refs and marks the entry recently used.
       const cache = cacheOf(ctx);
@@ -158,7 +159,7 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
         if (ask) counted.current = { base, columns: sent, exact, total };
         const totalExact = ask ? exact : !!c?.exact;
         const totalColumns = ask ? sent : c?.columns ?? sent;
-        if (options.limit !== undefined) remember(ctx, key, { martId, version, options, rows, columns: sent, exact, rest: restOf(options), total, totalBase: base, totalColumns, totalExact, runId });
+        if (options.limit !== undefined) remember(ctx, key, { martId, version, model, options, rows, columns: sent, exact, rest: restOf(options), total, totalBase: base, totalColumns, totalExact, runId });
         setState({ rows: rows.slice(0, pageLimit), error: null, hasMore: rows.length > pageLimit, doneFor: key, shape: shapeOf(options), runId, errorRunId: null, total: total ?? null, totalBase: base, totalExact, totalColumns });
       },
       (error) => { if (!ac.signal.aborted) setState({ rows: null, error, hasMore: false, doneFor: key, shape: shapeOf(options), runId: null, errorRunId: runId, total: null, totalBase: null, totalExact: false, totalColumns: [] }); },
@@ -170,7 +171,7 @@ export function useMartRows(martId: string, options: TraverseOptions | null, ver
   const pending = state.doneFor !== key;
   // Looked up once per key (the lookup restringifies the options); `key` stands for the options.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const hit = useMemo(() => (options && !paused && pending ? lookup(ctx, martId, version, options, exact) : null), [ctx, martId, version, key, paused, exact, pending]);
+  const hit = useMemo(() => (options && !paused && pending ? lookup(ctx, martId, version, model, options, exact) : null), [ctx, martId, version, model, key, paused, exact, pending]);
   const view = hit ? viewOf(hit.entry, options!, key, base) : state;
   // The previous rows stay visible while a newer request is in flight; an old error does not.
   const loading = view.doneFor !== key;

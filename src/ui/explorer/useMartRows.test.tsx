@@ -637,4 +637,15 @@ describe('the grid cache', () => {
     await waitFor(() => expect(c.traverseData).toHaveBeenCalledTimes(2));
     await done(again.result);
   });
+
+  test('a mart reload (another model version) is not answered from rows read before it, even when the summed versions match', async () => {
+    const c = cacheCtx(() => 3);
+    const o = byFilter(['id', 'a'], 1);
+    const first = renderHook(({ m }: { m: number }) => useMartRows('m', o, 0, false, false, m), { wrapper: c.wrapper, initialProps: { m: 0 } });
+    await done(first.result);
+    first.unmount();
+    const again = renderHook(({ m }: { m: number }) => useMartRows('m', o, 0, false, false, m), { wrapper: c.wrapper, initialProps: { m: 1 } });
+    await waitFor(() => expect(c.traverseData).toHaveBeenCalledTimes(2));
+    await done(again.result);
+  });
 });

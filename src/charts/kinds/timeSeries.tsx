@@ -30,7 +30,7 @@ export function dateMenu(cf: ChartFields, r: { date: Field; bucket: DateBucket |
   ];
 }
 
-function TimeSeriesPanel({ martId, cf, r, spark, filter, version, idle, hold, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<TimeSeriesR>) {
+function TimeSeriesPanel({ martId, cf, title: memoKey, r, spark, filter, version, idle, hold, hasFilters, formatOf, ready, tail, onChange, onFilter }: PanelProps<TimeSeriesR>) {
   const { date, measure, stack } = r;
   const { bucket, error, retry } = useBucket(martId, date, r.bucket, filter, version, idle, hold);
   const s = useDateSeries({ martId, cf, spark, date, bucket, measure, stack, filter, version, idle, hold, formatOf, range: { error, retry } });
@@ -41,11 +41,11 @@ function TimeSeriesPanel({ martId, cf, r, spark, filter, version, idle, hold, ha
     { kind: 'radio', label: 'Orientation', icon: ArrowRightLeft, value: r.orientation, options: [{ value: 'vertical', label: 'Vertical' }, { value: 'horizontal', label: 'Horizontal' }], onPick: (v) => onChange({ orientation: v as Orientation }) },
     ...tail,
   ];
-  const title = `${s.label} by ${BUCKET_LABELS[bucket ?? 'DAY'].toLowerCase()}`;
-  const full = stack ? `${title} · by ${fieldLabel(stack)}` : title;
+  const heading = `${s.label} by ${BUCKET_LABELS[bucket ?? 'DAY'].toLowerCase()}`;
+  const full = stack ? `${heading} · by ${fieldLabel(stack)}` : heading;
   const buckets = s.series?.[0]?.points.length ?? null;
   return (
-    <ChartPanel title={bucket ? full : `${s.label} by date`} name="Time series" items={items} ready={ready}
+    <ChartPanel title={bucket ? full : `${s.label} by date`} name="Time series" memoKey={memoKey} items={items} ready={ready}
       width={r.orientation === 'horizontal' ? BOX_WIDTH : seriesWidth(buckets)}
       loading={s.loading} failed={s.failed} empty={s.empty} hasFilters={hasFilters}>
       {s.series && (() => {

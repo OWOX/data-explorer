@@ -5,8 +5,8 @@ let observers = new WeakMap<Element | Document, IntersectionObserver>();
 // A null root is the viewport; a Document stands for it as a map key.
 const VIEWPORT = document;
 
-// A page scrolls inside the nearest `[data-scroll-root]` element, not the viewport, so that element is the
-// observer's root: against the viewport the 200px margin would never reach the clipped content.
+// The grid scrolls inside its own `[data-scroll-root]` element, not the viewport, so that element is the observer's root:
+// against the viewport the 200px margin would never reach the clipped content. Cards on the canvas observe against the viewport.
 
 function observer(root: Element | null): IntersectionObserver {
   // Keyed on the constructor so a stubbed one (tests) never reuses observers built from another.

@@ -46,11 +46,11 @@ function useMeasuredHeight() {
 }
 
 /** One chart's frame: title, its ⋮ menu (none before the saved settings load, so `ready` gates `items`) and the width its content needs, on whole cells. A size the member dragged it to wins. */
-export function ChartPanel({ title, name, items, ready, width, loading, failed, empty, hasFilters, note, children }: {
+export function ChartPanel({ title, name, items, ready, width, loading, failed, empty, hasFilters, note, memoKey, children }: {
   title: string; name: string; items: MenuItem[]; ready: boolean; width: string;
   loading: boolean; failed?: { error: unknown; retry: () => void } | null;
   /** True shows the standard empty text for `hasFilters`; a string shows that text. */
-  empty?: boolean | string; hasFilters: boolean; note?: string; children: ReactNode;
+  empty?: boolean | string; hasFilters: boolean; note?: string; /** Stands in for `title` in the key of the kept drawing, for a title that changes while its chart does not. */ memoKey?: string; children: ReactNode;
 }) {
   const menu = ready ? items : null;
   const error = failed?.error;
@@ -61,9 +61,9 @@ export function ChartPanel({ title, name, items, ready, width, loading, failed, 
   const [draft, setDraft] = useState<ChartSize | null>(null);
   const size = draft ?? frame?.size ?? {};
   const fill = size.rows !== undefined;
-  // The last drawn body and width, so a new read shows them dimmed instead of a skeleton. An error, an empty result or another kind or title drops them.
+  // The last drawn body and width, so a new read shows them dimmed instead of a skeleton. An error, an empty result or another kind or title (or `memoKey`) drops them.
   const [drawn, setDrawn] = useState<{ key: string; body: ReactNode; width: string } | null>(null);
-  const key = `${name}\u0000${title}`;
+  const key = `${name}\u0000${memoKey ?? title}`;
   if (!failed && !loading && !emptyNote) { if (drawn?.key !== key || drawn.body !== children || drawn.width !== width) setDrawn({ key, body: children, width }); }
   else if ((failed || emptyNote || drawn?.key !== key) && drawn) setDrawn(null);
   const staleDrawn = loading && !failed && drawn?.key === key ? drawn : null;

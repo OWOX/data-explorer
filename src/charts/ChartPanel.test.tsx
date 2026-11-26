@@ -81,6 +81,14 @@ describe('a reload keeps the last drawing', () => {
     b.rerender(panel({ loading: true }, 'x'));
     expect(b.getByText('x')).toBe(el);
   });
+  test('a changed title keeps the drawing while the memoKey stays', () => {
+    const { rerender } = render(panel({ memoKey: 'K', title: 'Sales by day' }, 'old'));
+    rerender(panel({ memoKey: 'K', title: 'Sales by date', loading: true }, 'old'));
+    expect(screen.queryByLabelText('Loading')).toBeNull();
+    expect(screen.getByText('old').closest('[inert]')).toBeTruthy();
+    rerender(panel({ memoKey: 'Other', title: 'Sales by date', loading: true }, 'old'));
+    expect(screen.getByLabelText('Loading')).toBeTruthy();
+  });
   test('Copy to clipboard on the stale drawing says there is nothing to copy', async () => {
     const spy = vi.spyOn(internals, 'render');
     const items = [{ kind: 'action' as const, label: 'Hide', icon: EyeOff, onPick: () => {} }];

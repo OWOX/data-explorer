@@ -9,10 +9,15 @@ import { App } from '../App';
 import { closeConfigMenu, openFields, openSubmenu } from '../explorer/menu-test-utils';
 import { num } from '../format';
 import { forgetSeenRows, rememberRow } from '../../records/seen-rows';
+import { forgetGridRows } from '../explorer/useMartRows';
 
 vi.mock('../../records/seen-rows', async (orig) => {
   const m = await orig<typeof import('../../records/seen-rows')>();
   return { ...m, rememberRow: vi.fn(m.rememberRow), forgetSeenRows: vi.fn(m.forgetSeenRows) };
+});
+vi.mock('../explorer/useMartRows', async (orig) => {
+  const m = await orig<typeof import('../explorer/useMartRows')>();
+  return { ...m, forgetGridRows: vi.fn(m.forgetGridRows) };
 });
 
 type Mock = ReturnType<typeof createMockCtx>;
@@ -480,6 +485,14 @@ describe('the record', () => {
     await within(data()).findByRole('table');
     await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
     expect(forgetSeenRows).toHaveBeenCalledWith(expect.anything(), 'orders');
+  });
+
+  test('the grid\'s Refresh drops its cached reads', async () => {
+    vi.mocked(forgetGridRows).mockClear();
+    await mountWith();
+    await within(data()).findByRole('table');
+    await userEvent.click(within(data()).getByRole('button', { name: 'Refresh' }));
+    expect(forgetGridRows).toHaveBeenCalledWith(expect.anything(), 'orders');
   });
 
   test('a row clicked while a newer read of more columns is in flight is not handed over, so the record reads', async () => {
