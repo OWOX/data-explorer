@@ -91,6 +91,12 @@ test('Displaying is the number of columns of the mart visible in the grid', asyn
   expect(screen.getByRole('button', { name: 'Select all 3' })).toBeInTheDocument();
 });
 
+test('lists the shown fields first, then the rest, each group alphabetical by label', async () => {
+  const mixed = ['zeta', 'Beta', 'alpha', 'Delta', 'gamma'].map((name) => ({ name, type: 'STRING', category: 'string' }) as Field);
+  render(<TooltipProvider><MartFields mart={orders({ fields: mixed })} visible={['zeta', 'Delta']} onChange={vi.fn()} /></TooltipProvider>);
+  expect(screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))).toEqual(['Delta', 'zeta', 'alpha', 'Beta', 'gamma']);
+});
+
 describe('the Unique Count row', () => {
   const openUnique = async (visible: string[], unique: { on: boolean; onToggle: () => void } | null) => {
     const onChange = vi.fn();
@@ -100,7 +106,7 @@ describe('the Unique Count row', () => {
 
   test('is the first row, left out of Select all and the counts, and absent when the mart offers no metric', async () => {
     await openUnique(['name'], { on: false, onToggle: () => undefined });
-    expect(screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))).toEqual(['Unique Count', 'name', 'id', 'city']);
+    expect(screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))).toEqual(['Unique Count', 'name', 'city', 'id']);
     expect(screen.getByRole('button', { name: 'Select all 3' })).toBeInTheDocument();
     expect(screen.getByText('Displaying 1')).toBeInTheDocument();
     cleanup();
