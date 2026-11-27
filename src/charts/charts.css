@@ -102,7 +102,6 @@
 
 /* Resize mode: every chart shows handles on its right edge, bottom edge and corner. The grid they snap to is never drawn.
    The marks ignore the pointer, so a missed edge filters nothing. */
-.dm-chart-panels[data-resizing] .dm-chart { position: relative; }
 .dm-chart-panels[data-resizing] .dm-chart-body { pointer-events: none; }
 .dm-chart-panels[data-resizing] .dm-chart:hover, .dm-chart[data-dragging] { border-color: var(--primary); }
 .dm-chart[data-dragging] { transition: none; }
