@@ -8,7 +8,7 @@ import { tickText } from '../compact';
 import type { MenuItem } from '../ChartMenu';
 import { axisTitle, BUCKET_OPTIONS, fieldGroups, measureAxisTitle, metricItem } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
-import { measuresOf, menuOf, type ChartFields } from '../fields';
+import { measuresOf, type ChartFields } from '../fields';
 import { bucketZone, type Measure } from '../queries';
 import { isIntegerMeasure, measureFormat, measureLabel } from '../Scorecards';
 import { measureId, pickBucketChoice, pickField, pickMeasure, type Orientation } from '../settings';
@@ -21,10 +21,9 @@ type TimeSeriesR = { date: Field; bucket: DateBucket | 'AUTO'; measure: Measure;
 
 /** The shared rows of a date chart's menu: Date field (when there is a choice), Bucket and Metric (when there is a choice). */
 export function dateMenu(cf: ChartFields, r: { date: Field; bucket: DateBucket | 'AUTO'; measure: Measure }, onChange: PanelProps<unknown>['onChange']): MenuItem[] {
-  const mc = menuOf(cf);
-  const measures = measuresOf(mc);
+  const measures = measuresOf(cf);
   return [
-    ...(mc.dates.length > 1 ? [{ kind: 'radio', label: 'Date field', icon: Calendar, value: r.date.name, options: [], groups: fieldGroups(mc, mc.dates), onPick: (v: string) => onChange({ date: v }) } as MenuItem] : []),
+    ...(cf.dates.length > 1 ? [{ kind: 'radio', label: 'Date field', icon: Calendar, value: r.date.name, options: [], groups: fieldGroups(cf, cf.dates), onPick: (v: string) => onChange({ date: v }) } as MenuItem] : []),
     { kind: 'radio', label: 'Bucket', icon: CalendarRange, value: r.bucket, options: BUCKET_OPTIONS, onPick: (v) => onChange({ bucket: v as DateBucket | 'AUTO' }) },
     ...(measures.length > 1 ? [metricItem(cf, measureId(r.measure), measures, onChange)] : []),
   ];
@@ -37,7 +36,7 @@ function TimeSeriesPanel({ martId, cf, title: memoKey, r, spark, filter, version
   const [tickType, tickFormat] = measureFormat(measure, formatOf);
   const items: MenuItem[] = [
     ...dateMenu(cf, r, onChange),
-    { kind: 'radio', label: 'Stack by', icon: ChartColumnStacked, value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }], groups: fieldGroups(menuOf(cf), menuOf(cf).dimensions), onPick: (v) => onChange({ stack: v === '' ? null : v }) },
+    { kind: 'radio', label: 'Stack by', icon: ChartColumnStacked, value: stack?.name ?? '', options: [{ value: '', label: 'No stacking' }], groups: fieldGroups(cf, cf.dimensions), onPick: (v) => onChange({ stack: v === '' ? null : v }) },
     { kind: 'radio', label: 'Orientation', icon: ArrowRightLeft, value: r.orientation, options: [{ value: 'vertical', label: 'Vertical' }, { value: 'horizontal', label: 'Horizontal' }], onPick: (v) => onChange({ orientation: v as Orientation }) },
     ...tail,
   ];

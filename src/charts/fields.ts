@@ -18,9 +18,6 @@ export type ChartFields = { marts: ChartMart[]; dimensions: Field[]; dates: Fiel
   collapse?: Readonly<Record<string, MainGrainCollapse>> };
 const MAX_BUCKETS = 60;
 
-/** The fields the chart menus list: the charts' own set, every field of the report's marts and of the marts on their joined paths. */
-export const menuOf = (cf: ChartFields): ChartFields => cf;
-
 /** Everything a chart can count, per chart mart in group order: its Count Unique when it has a key, then its metrics. Any mart's measure pairs with any mart's date or dimension. */
 export const measuresOf = (cf: ChartFields): Measure[] => cf.marts.flatMap((m): Measure[] => [
   ...(m.hasPk ? [{ kind: 'records', aliasPath: m.aliasPath, recordsId: m.recordsId } as const] : []),

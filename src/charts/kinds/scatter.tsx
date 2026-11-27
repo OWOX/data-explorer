@@ -7,7 +7,7 @@ import { ChartPanel } from '../ChartPanel';
 import { keyOf, labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
 import { tickText } from '../compact';
-import { measuresOf, menuOf } from '../fields';
+import { measuresOf } from '../fields';
 import { measureKey, SCATTER_LIMIT, scatterQuery, type Measure } from '../queries';
 import { isIntegerMeasure, measureFormat, measureLabel, measureText, numberOf } from '../Scorecards';
 import { measureId, pickField, pickMeasure } from '../settings';
@@ -29,11 +29,11 @@ function ScatterPanel({ martId, cf, title, r, filter, version, idle, hold, hasFi
   });
   const [xt, xf] = measureFormat(x, formatOf);
   const [yt, yf] = measureFormat(y, formatOf);
-  const all = measuresOf(menuOf(cf));
+  const all = measuresOf(cf);
   const items: MenuItem[] = [
     dimensionItem(cf, dim.name, onChange),
-    { kind: 'radio', label: 'X metric', icon: Gauge, value: measureId(x), options: [], groups: measureGroups(menuOf(cf), all), onPick: (v) => onChange({ measure: v }) },
-    { kind: 'radio', label: 'Y metric', icon: Gauge, value: measureId(y), options: [], groups: measureGroups(menuOf(cf), all.filter((m) => measureId(m) !== measureId(x))), onPick: (v) => onChange({ measure2: v }) },
+    { kind: 'radio', label: 'X metric', icon: Gauge, value: measureId(x), options: [], groups: measureGroups(cf, all), onPick: (v) => onChange({ measure: v }) },
+    { kind: 'radio', label: 'Y metric', icon: Gauge, value: measureId(y), options: [], groups: measureGroups(cf, all.filter((m) => measureId(m) !== measureId(x))), onPick: (v) => onChange({ measure2: v }) },
     ...tail,
   ];
   const full = read.rows?.length === SCATTER_LIMIT;

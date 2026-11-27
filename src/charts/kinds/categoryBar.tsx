@@ -9,7 +9,7 @@ import { tickText } from '../compact';
 import { labelColors, slotColor } from '../labelColor';
 import { OTHER_COLOR } from '../useDateSeries';
 import { dimensionFilter } from '../clickFilters';
-import { measuresOf, menuOf, type ChartFields } from '../fields';
+import { measuresOf, type ChartFields } from '../fields';
 import type { Measure } from '../queries';
 import { isIntegerMeasure, measureFormat, measureLabel, measureText, numberOf } from '../Scorecards';
 import { measureId, pickField, pickMeasure, type ChartKind, type ChartSpec } from '../settings';
@@ -34,7 +34,7 @@ function categoryPanel(orientation: 'vertical' | 'horizontal', name: string) {
     };
     const [tickType, tickFormat] = measureFormat(measure, formatOf);
     const items: MenuItem[] = [
-      metricItem(cf, measureId(measure), measuresOf(menuOf(cf)), onChange),
+      metricItem(cf, measureId(measure), measuresOf(cf), onChange),
       dimensionItem(cf, dim.name, onChange),
       ...tail,
     ];

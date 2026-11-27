@@ -557,7 +557,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     const titled = [...tree.nodes.keys(), ...offered.map((x) => x.aliasPath)];
     return offered.map((x) => ({
       path: x.aliasPath, title: pathTitle(x, titled, sources), icon: model.marts.get(x.martId)?.icon, description: model.marts.get(x.martId)?.description,
-      main: false, shown: false, fields: x.fields, rules: rulesOf(x.fields), locked: () => false,
+      main: false, shown: false, fields: x.fields, rules: rulesOf(x.fields),
     }));
   }), [tree, sources, model.marts, rulesOf]);
   // A remove button is off while its click is being applied, so a second click cannot put the mart back.
@@ -596,18 +596,17 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const configMarts: ConfigMart[] = [
     ...(mainEmpty ? [mainGroup, ...groups] : groups).map((g): ConfigMart => ({
       path: g.path, title: g.title, icon: g.icon, description: g.description, main: g.main, shown: true, fields: fieldsOf(g), rules: rulesOf(fieldsOf(g)),
-      locked: () => false,
       unique: uniqueOffered.has(g.path) ? { on: ucNow.includes(g.path), onToggle: () => toggleUnique(g.path) } : undefined,
       // `remove` reads the latest columns ref, but only when the menu calls it, never while rendering.
       // eslint-disable-next-line react-hooks/refs
       remove: several || !g.main ? { onRemove: () => remove(g), disabled: removing } : undefined,
     })),
     ...emptyMarts.map((m): ConfigMart => ({
-      path: m.path, title: m.title, icon: m.icon, description: m.description, main: false, shown: true, fields: m.fields, rules: rulesOf(m.fields), locked: () => false,
+      path: m.path, title: m.title, icon: m.icon, description: m.description, main: false, shown: true, fields: m.fields, rules: rulesOf(m.fields),
       // eslint-disable-next-line react-hooks/refs
       remove: { onRemove: () => remove({ id: m.martId, path: m.path, main: false }), disabled: removing },
     })),
-    ...pathMarts.filter((m) => !m.empty).map((m): ConfigMart => ({ path: m.path, title: m.title, icon: m.icon, description: m.description, main: false, shown: false, fields: m.fields, rules: rulesOf(m.fields), locked: () => false })),
+    ...pathMarts.filter((m) => !m.empty).map((m): ConfigMart => ({ path: m.path, title: m.title, icon: m.icon, description: m.description, main: false, shown: false, fields: m.fields, rules: rulesOf(m.fields) })),
   ];
   // The marts the rule badges list fields under: the report's marts in grid order, then the joined marts that are not in the report but still hold a rule
   // (it can be left over after the main mart changed): it is still sent, so the member must be able to see and take it off.
@@ -638,12 +637,13 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const hasSlices = Object.keys(allSlices).length > 0;
   // A rule on a field of a data mart that is not in the report joins the mart with no column (its path goes to the empty paths); a mart already in the report adds nothing.
   const joinEmpty = useCallback((names: string[]) => {
-    const inUse = inUsePaths(shown, sources, epNow);
+    const cur = emptyNow.current;
+    const inUse = inUsePaths(shownNow.current, sources, cur);
     const add = [...new Set(names.flatMap((n) => { const p = byName.get(n)?.joined?.aliasPath; return p !== undefined && !inUse.has(p) ? [p] : []; }))];
     if (!add.length) return;
-    emptyNow.current = [...epNow, ...add];
-    setEp([...epNow, ...add]);
-  }, [shown, sources, epNow, byName, setEp, emptyNow]);
+    emptyNow.current = [...cur, ...add];
+    setEp(emptyNow.current);
+  }, [sources, byName, setEp, emptyNow, shownNow]);
   /** A click on a chart mark: the same step as a filter edit (so Undo covers it), one filter per column. */
   const applyChartFilters = (add: ColumnFilter[]) => {
     // A filter the column cannot take as it stands (a blank value) is left out, with the same note a filter edit gives.

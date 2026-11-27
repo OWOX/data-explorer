@@ -8,7 +8,7 @@ import { ChartPanel } from '../ChartPanel';
 import { isBlankKey, keyOf, labelOf } from '../blank';
 import { dimensionFilter } from '../clickFilters';
 import { tickText } from '../compact';
-import { menuOf, type ChartFields } from '../fields';
+import { type ChartFields } from '../fields';
 import { spreadFns, spreadQuery } from '../queries';
 import { metricFormat, metricText, numberOf } from '../Scorecards';
 import { pickField } from '../settings';
@@ -37,7 +37,7 @@ function SpreadPanel({ martId, cf, title, r, filter, version, idle, hold, hasFil
   const [tt, tf] = metricFormat(field, 'P50', formatOf);
   const items: MenuItem[] = [
     dimensionItem(cf, dim.name, onChange),
-    { kind: 'radio', label: 'Metric', icon: Gauge, value: field.name, options: [], groups: fieldGroups(menuOf(cf), fieldsOf(menuOf(cf))), onPick: (x) => onChange({ measure: x }) },
+    { kind: 'radio', label: 'Metric', icon: Gauge, value: field.name, options: [], groups: fieldGroups(cf, fieldsOf(cf)), onPick: (x) => onChange({ measure: x }) },
     ...tail,
   ];
   return (

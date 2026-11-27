@@ -289,8 +289,13 @@ test('a saved list with joined columns and none of the main mart\'s own stays wi
   await t.seeded;
   t.view();
   await waitFor(() => expect(headers()).toEqual(['email', 'SKU']));
-  await new Promise((r) => setTimeout(r, 100));
-  expect(headers()).toEqual(['email', 'SKU']);
+  // An untick is saved after the pause: no saved column list holds a column of the main mart (the restore did not add one back).
+  await openPicker('Customers');
+  await userEvent.click(await screen.findByLabelText('email'));
+  await waitFor(() => expect(t.put).toHaveBeenCalled(), { timeout: SAVE_DEBOUNCE_MS + 1500 });
+  const saved = t.put.mock.calls.flatMap(([id, d]) => (id === 'orders' ? ['orders'] : (d as { columns: string[] }).columns));
+  expect(saved.filter((c) => ['orders', 'id', 'status', 'amount'].includes(c))).toEqual([]);
+  expect(headers()).toEqual(['SKU']);
 });
 
 test('Hide column focuses the neighbour by field, even when two columns share a title', async () => {
