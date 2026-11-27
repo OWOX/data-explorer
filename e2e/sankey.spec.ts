@@ -288,6 +288,8 @@ const tipText = (page: Page) => page.getByRole('tooltip').textContent();
 const centre = async (el: Locator) => { const b = (await el.boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
 
 test('the tooltip of the next node, then of a ribbon, replaces the last bubble once the pointer rests there', async ({ page }) => {
+  // The default charts sit above the Sankey now: a taller window keeps its second column clear of the band below it.
+  await page.setViewportSize({ width: 1440, height: 1300 });
   const sankey = await openSankey(page);
   const bubble = page.locator('.dm-hint-body');
   const first = sankey.locator('rect[data-node^="0|"]').first();
@@ -458,6 +460,6 @@ test('a view link carries a Sankey: a fresh page opened from it shows it, a plai
   // Without the route, the mart has no saved charts: the plain page has the default charts and no Sankey.
   await opened.goto('/?mock');
   await data(opened).getByRole('radio', { name: 'Charts' }).click();
-  await expect(data(opened).locator('section.dm-chart')).toHaveCount(1);
+  await expect(data(opened).locator('section.dm-chart')).toHaveCount(2);
   await expect(data(opened).locator('section[data-chart-kind="Sankey"]')).toHaveCount(0);
 });

@@ -169,7 +169,7 @@ test.describe('grouped submenus', () => {
   });
 });
 
-test('choosing a metric that is not a shown column adds it to the table', async ({ page }) => {
+test('choosing a metric that is not a shown column draws it and adds no column to the table', async ({ page }) => {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await expect(data(page).getByRole('columnheader', { name: /Net Revenue/ })).toHaveCount(0);
   await data(page).getByRole('radio', { name: 'Charts' }).click();
@@ -178,8 +178,10 @@ test('choosing a metric that is not a shown column adds it to the table', async 
   await pie.getByRole('button', { name: 'Pie options' }).click();
   await page.getByRole('menuitem', { name: 'Metric' }).click();
   await page.getByRole('menuitemradio', { name: /Net Revenue/ }).click();
+  await expect(pie.getByRole('heading', { name: /Net Revenue/ })).toBeVisible();
   await data(page).getByRole('radio', { name: 'Table' }).click();
-  await expect(data(page).getByRole('columnheader', { name: /Net Revenue/ })).toBeVisible();
+  await expect(data(page).getByRole('row')).toHaveCount(202);
+  await expect(data(page).getByRole('columnheader', { name: /Net Revenue/ })).toHaveCount(0);
 });
 
 test('the selected Chart type is marked with the green check, on the left of its row', async ({ page }) => {
