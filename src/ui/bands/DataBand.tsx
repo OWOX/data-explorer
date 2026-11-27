@@ -12,7 +12,7 @@ import type { Matched } from './matched';
 import { useFillHeight } from './useFillHeight';
 import { ViewSwitch, type SwitchOption } from './ViewSwitch';
 
-/** Shown as the warning's tooltip and at the end of the band's (i). A key hidden for reporting is still a key: no warning. */
+/** Shown as the warning's tooltip and at the end of the band's (i). A key hidden for reporting, or one a read cannot name, is still a key: no warning. */
 const NO_KEY_NOTE = 'Preview only: this data mart has no primary key.';
 const DATA_VIEWS: SwitchOption<'table' | 'charts'>[] = [
   { value: 'table', label: 'Table', icon: Table2 },
@@ -20,7 +20,7 @@ const DATA_VIEWS: SwitchOption<'table' | 'charts'>[] = [
 ];
 const HINT = 'The rows of the selected data mart. Click a row to open it below.';
 const HINT_FULL = 'The rows of the selected data mart. Exit full screen to see an opened row.';
-/** A key hidden for reporting cannot be filtered on, so a row cannot be opened: the hint does not offer it. */
+/** A key a read cannot name (inside a RECORD, or calculated) cannot be filtered on, so a row cannot be opened: the hint does not offer it. */
 const HINT_NO_OPEN = 'The rows of the selected data mart.';
 
 export function DataBand({ model, folded, onFold, loading = null, fullScreen, onMatched, onCount, onCardHold, onRecount }: { model: Model; folded: boolean; onFold: () => void; loading?: number | null; fullScreen?: { on: boolean; onToggle: () => void }; /** Told how many records of each data mart of the report the filters and slices keep, for the cards; null when the grid goes away. */ onMatched?: (matched: Matched | null) => void; /** The grid's total for the plain, unfiltered main mart: the card's record count. */ onCount?: (martId: string, n: number) => void; /** The grid's Refresh will be answered by its own total: the card's count is dimmed meanwhile. */ onCardHold?: (martId: string) => void; /** The grid's Refresh when its own total cannot refresh the card: the card is counted again. */ onRecount?: (martId: string) => void }) {

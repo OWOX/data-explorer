@@ -4,8 +4,18 @@ import type { Edge, Field, Schema } from '../model/types';
 import { isDayType } from '../model/field-category';
 import type { Row } from '../sdk/types';
 
-/** The key fields a query may name: visible ones only, since the backend rejects a field hidden for reporting. */
+/** A field of the mart a data mart read may name: an offered one, or one hidden for reporting that the read still takes. */
+export function readableField(schema: Schema, name: string): Field | undefined {
+  return schema.find((f) => f.name === name && !f.joined) ?? schema.hiddenFields?.find((f) => f.name === name);
+}
+
+/**
+ * The key fields a row is read and opened by. The declared key when the read can name each part, hidden ones included;
+ * else (a part inside a RECORD, or calculated) the offered key fields only.
+ */
 export function primaryKeys(schema: Schema): string[] {
+  const key = schema.primaryKey;
+  if (key?.length && key.every((k) => readableField(schema, k))) return [...key];
   return schema.filter((f) => f.isPrimaryKey).map((f) => f.name);
 }
 

@@ -91,7 +91,7 @@ const NO_MATCH: ReadonlyMap<string, number> = new Map();
 /** `saved` is the grid as the reader left it; `filters` only changes when a followed link asks a mounted grid to re-seed. */
 type GridSeed = { filters?: ColumnFilter[]; saved?: GridState };
 
-/** Why a grid is a preview: the mart has no primary key, or its key is hidden for reporting. */
+/** Why a grid is a preview: the mart has no primary key, or a part of its key is one a read cannot name (inside a RECORD, or calculated). */
 export type NoKey = false | 'missing' | 'hidden';
 /** What the page hands the grid: the mart, what it opens with, and where its changes go. */
 export type GridProps = { martId: string; model: Model; seed: GridSeed; onChange: (state: GridState, edit?: boolean) => void; onRows?: (label: string | null, grouped?: boolean, noKey?: NoKey, stale?: boolean) => void; /** How many records of each data mart (by alias path) the filters and slices keep; null when the grid goes away. Told again only when the counts change. */ onMatched?: (byPath: ReadonlyMap<string, number> | null, stale?: boolean) => void; /** The grid begins holding its saves for the saved view: edits from now on are recorded on defaults. */ onHold?: () => void; /** The late saved view replaced parts of the grid a held edit was recorded on: Undo's "before" takes them too. */ onRebase?: (parts: Partial<GridState>) => void; /** The hold ends with nothing to rebase (the grid unmounted, or there was no saved view). */ onRelease?: () => void; /** The grid's total row count, when it is also the main data mart's record count (a plain, unfiltered read of its own columns, on a mart with a primary key). */ onTotal?: (total: number) => void; /** A Refresh that the grid's own total will answer: the card's count is dimmed until it arrives (no read). */ onCardHold?: () => void; /** Refresh when the grid's next read cannot refresh the card's record count, or a held Refresh whose total did not arrive: the card is counted again. */ onRecount?: () => void };
@@ -511,7 +511,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   }, [shown, markEdit, columnStore, martId]);
   const rowsAmount = rows ? rowsLabel(rows.length, hasMore, total) : null;
   // The Data band's title row shows the no-primary-key warning, so it is told whether this grid is a plain preview.
-  // `hidden`: the mart has a key but it is hidden for reporting, so no row can be opened by it. Only `missing` is warned about.
+  // `hidden`: the mart has a key but a read cannot name it, so no row can be opened by it. Only `missing` is warned about.
   const noKey: NoKey = grouped || pks.length > 0 ? false : hasPrimaryKey(native) ? 'hidden' : 'missing';
   // A layout effect, so the label dims and undims in the frame the grid does. Dimmed only while a read runs.
   const rowsRunning = loading;

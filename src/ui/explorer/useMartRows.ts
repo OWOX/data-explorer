@@ -6,6 +6,7 @@ import type { SortKey } from '../../model/sort';
 import { isGrouped, type Grouping } from '../../model/aggregation';
 import type { Schema } from '../../model/types';
 import { uniqueKey } from '../../model/unique-count';
+import { primaryKeys } from '../../records/relationships';
 import { perCtx } from '../../sdk/per-ctx';
 import type { Ctx, Row, TraverseOptions } from '../../sdk/types';
 import { useServices } from '../../state/store';
@@ -29,14 +30,15 @@ function buildGroupedQuery(schema: Schema, visible: string[], filters: ColumnFil
 
 export function buildRowQuery(schema: Schema, visible: string[], filters: ColumnFilter[], limit: number, sorts: SortKey[] = [], agg?: Grouping, slices: ColumnFilter[] = []): TraverseOptions {
   if (isGrouped(agg)) return buildGroupedQuery(schema, visible, filters, limit, sorts, agg!, slices);
-  const need = new Set(visible);
-  schema.filter((f) => f.isPrimaryKey).forEach((f) => need.add(f.name));
-  const column = schema.map((f) => f.name).filter((n) => need.has(n));
+  // The key is always read, a part hidden for reporting too (after the shown columns): a row opens by it.
+  const keys = primaryKeys(schema);
+  const need = new Set([...visible, ...keys]);
+  const column = [...schema.map((f) => f.name).filter((n) => need.has(n)), ...keys.filter((k) => !schema.some((f) => f.name === k))];
   const filter = toTraverseFilters(schema, filters, slices);
   // The reader's sorts come first; the primary keys follow (unless already sorted) so "Load more" pages stay deterministic.
   const sort = [
     ...sorts.map((s) => ({ column: s.field, direction: s.direction })),
-    ...schema.filter((f) => f.isPrimaryKey && !sorts.some((s) => s.field === f.name)).map((f) => ({ column: f.name, direction: 'asc' as const })),
+    ...keys.filter((k) => !sorts.some((s) => s.field === k)).map((k) => ({ column: k, direction: 'asc' as const })),
   ];
   return { column, ...(filter.length ? { filter } : {}), ...(sort.length ? { sort } : {}), limit: limit + 1 };
 }

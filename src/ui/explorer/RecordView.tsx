@@ -3,7 +3,7 @@ import { useContext, useEffect, useState } from 'react';
 import { useColumnFormats } from '../../format/useColumnFormats';
 import { readRows } from '../../api/rows';
 import type { Model, Schema } from '../../model/types';
-import { joinFilters } from '../../records/relationships';
+import { joinFilters, readableField } from '../../records/relationships';
 import { forgetSeenRow, seenRow } from '../../records/seen-rows';
 import { useIncomingLinks } from '../../records/useIncomingLinks';
 import type { Row } from '../../sdk/types';
@@ -38,17 +38,22 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
     (async () => {
       const schema = await schemas.get(martId);
       const seen = version === first.version ? first.seen : undefined;
+      // The shown fields, then the hidden ones the links need: a join field hidden for reporting is read, not shown.
+      const shown = schema.map((f) => f.name);
+      const joinNames = incoming.flatMap((l) => l.joins.map((j) => j.targetField)).filter((n) => !shown.includes(n) && schema.hiddenFields?.some((f) => f.name === n));
+      const column = [...shown, ...new Set(joinNames)];
       let row: Row | undefined;
-      if (seen && schema.every((f) => seen.columns.includes(f.name))) {
+      // The key's values came with the click, so a hidden key part needs no read of its own.
+      if (seen && column.every((n) => seen.columns.includes(n) || n in pk)) {
         row = seen.row;
       } else {
         // Some fields were not loaded: the grid's values show at once, and the read's row replaces them.
         if (seen) setState((s) => (s.row === undefined ? { ver: -1, schema, row: seen.row, error: null } : s));
         const filter = Object.entries(pk).map(([column, v]) => {
-          const isNum = schema.find((f) => f.name === column)?.category === 'number';
+          const isNum = readableField(schema, column)?.category === 'number';
           return { column, operator: 'eq' as const, value: isNum ? Number(v) : String(v) };
         });
-        [row] = await readRows(ctx, martId, { column: schema.map((f) => f.name), filter, limit: 1 }, { signal: ac.signal });
+        [row] = await readRows(ctx, martId, { column, filter, limit: 1 }, { signal: ac.signal });
       }
       if (ac.signal.aborted) return;
       setState({ ver: version, schema, row: row ?? null, error: null });
@@ -74,8 +79,8 @@ export function RecordView({ martId, pk, model }: { martId: string; pk: Record<s
   if (state.row === undefined || !state.schema || (!loaded && state.row === null)) return <div className="flex flex-col">{header}<Skeleton rows={8} /></div>;
   if (state.row === null) return <div className="flex flex-col">{header}<p className="p-4 text-sm text-muted-foreground">Record not found</p></div>;
   const row = state.row;
-  // A join on a field hidden for reporting (on either side) cannot be followed: the backend rejects the filter.
-  const links = incoming.filter((link) => link.joins.every((j) => state.schema!.some((f) => f.name === j.targetField) && (!relSchemas.get(link.sourceMartId) || relSchemas.get(link.sourceMartId)!.some((f) => f.name === j.sourceField))));
+  // This record's join field may be hidden for reporting (the read names it). The referencing mart's may not: its grid filters only on offered fields.
+  const links = incoming.filter((link) => link.joins.every((j) => readableField(state.schema!, j.targetField) && (!relSchemas.get(link.sourceMartId) || relSchemas.get(link.sourceMartId)!.some((f) => f.name === j.sourceField))));
 
   return (
     <div className="flex max-h-[32rem] min-h-0 flex-col">

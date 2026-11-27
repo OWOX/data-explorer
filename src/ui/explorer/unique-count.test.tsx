@@ -57,7 +57,7 @@ const cellsOf = (title: string) => {
 };
 
 describe('a mart whose primary key is hidden for reporting', () => {
-  test('offers Unique Count in the Fields picker; ticking it adds a counted column, names no hidden field, and Undo takes it back', async () => {
+  test('offers Unique Count in the Fields picker; ticking it adds a counted column whose read names no hidden field, and Undo takes it back', async () => {
     const t = setup({ main: 'stores', hideStoreKey: true });
     await t.view();
     await waitFor(() => expect(within(data()).getAllByRole('row').some((r) => r.querySelector('td')?.textContent)).toBe(true));
@@ -73,10 +73,9 @@ describe('a mart whose primary key is hidden for reporting', () => {
     expect(groupRow().querySelector('th[data-group-path=""]')).toHaveAttribute('colspan', String(before.length + 1));
     await waitFor(() => expect(t.of('stores').at(-1)!.o.uniqueCount).toEqual(['']));
     const last = t.of('stores').at(-1)!.o;
-    // The shown columns become the group keys, and no hidden field is named anywhere.
+    // The shown columns become the group keys, and the counted read names no hidden field (the plain read names the key to open rows by).
     expect(last.column).toEqual(expect.arrayContaining(['name', 'city']));
-    expect(last.column).not.toContain('id');
-    expect(t.of('stores').flatMap((q) => [...(q.o.column ?? []), ...(q.o.sort ?? []).map((s) => s.column)])).not.toContain('id');
+    expect(t.of('stores').filter((q) => q.o.uniqueCount?.length).flatMap((q) => [...(q.o.column ?? []), ...(q.o.sort ?? []).map((s) => s.column)])).not.toContain('id');
     await waitFor(() => expect(cellsOf('Unique Count').length).toBeGreaterThan(0));
     for (const c of cellsOf('Unique Count')) expect(Number(c)).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/Unknown column/)).toBeNull();
