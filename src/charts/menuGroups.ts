@@ -3,7 +3,7 @@ import { BUCKET_LABELS, DATE_BUCKETS } from '../model/aggregation';
 import { fieldLabel } from '../model/fieldLabel';
 import type { Field } from '../model/types';
 import type { MenuGroup, MenuItem, MenuOption } from './ChartMenu';
-import { measurePath, menuOf, pathOf, type ChartFields } from './fields';
+import { measurePath, pathOf, type ChartFields } from './fields';
 import type { Measure } from './queries';
 import { metricLabel } from './Scorecards';
 import { measureId, type ChartSpec } from './settings';
@@ -30,7 +30,7 @@ export const measureGroups = (cf: ChartFields, list: Measure[]): MenuGroup[] => 
 }));
 
 /** The title the chart menus give a data mart's group (the grid tab's title); the main mart's has `aliasPath` ''. */
-export const martTitleOf = (cf: ChartFields, aliasPath: string): string => menuOf(cf).marts.find((m) => m.aliasPath === aliasPath)?.title || '';
+export const martTitleOf = (cf: ChartFields, aliasPath: string): string => cf.marts.find((m) => m.aliasPath === aliasPath)?.title || '';
 
 const withMart = (name: string, title: string): string => (title ? `${name} | ${title}` : name);
 
@@ -45,8 +45,8 @@ export const BUCKET_OPTIONS: MenuOption[] = [{ value: 'AUTO', label: 'Auto' }, .
 
 /** The Metric row: a radio of `list` (grouped by data mart) that patches the chart's `measure` with the id picked. `measure` is the id now chosen. */
 export const metricItem = (cf: ChartFields, measure: string, list: Measure[], onChange: (patch: Partial<ChartSpec>) => void): MenuItem =>
-  ({ kind: 'radio', label: 'Metric', icon: Gauge, value: measure, options: [], groups: measureGroups(menuOf(cf), list), onPick: (v) => onChange({ measure: v }) });
+  ({ kind: 'radio', label: 'Metric', icon: Gauge, value: measure, options: [], groups: measureGroups(cf, list), onPick: (v) => onChange({ measure: v }) });
 
 /** The Dimension row: a radio of every dimension (grouped by data mart) that patches the chart's `dimension`. `dimension` is the name now chosen. */
 export const dimensionItem = (cf: ChartFields, dimension: string, onChange: (patch: Partial<ChartSpec>) => void): MenuItem =>
-  ({ kind: 'radio', label: 'Dimension', icon: Shapes, value: dimension, options: [], groups: fieldGroups(menuOf(cf), menuOf(cf).dimensions), onPick: (v) => onChange({ dimension: v }) });
+  ({ kind: 'radio', label: 'Dimension', icon: Shapes, value: dimension, options: [], groups: fieldGroups(cf, cf.dimensions), onPick: (v) => onChange({ dimension: v }) });

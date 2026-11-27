@@ -5,7 +5,7 @@ import { dimensionFilter } from '../clickFilters';
 import type { MenuItem } from '../ChartMenu';
 import { dimensionItem, metricItem } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
-import { measurePath, menuOf, pathOf, pieMeasures } from '../fields';
+import { measurePath, pathOf, pieMeasures } from '../fields';
 import type { Measure } from '../queries';
 import { measureText, numberOf } from '../Scorecards';
 import { measureId } from '../settings';
@@ -33,7 +33,7 @@ function PiePanel({ martId, cf, title, r, filter, version, idle, hold, hasFilter
     ];
   };
   const items: MenuItem[] = [
-    metricItem(cf, measureId(measure), pieMeasures(menuOf(cf)), onChange),
+    metricItem(cf, measureId(measure), pieMeasures(cf), onChange),
     dimensionItem(cf, dim.name, onChange),
     ...tail,
   ];

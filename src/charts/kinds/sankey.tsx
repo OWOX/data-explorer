@@ -7,7 +7,7 @@ import type { MenuItem } from '../ChartMenu';
 import { axisTitle, fieldGroups, metricItem } from '../menuGroups';
 import { ChartPanel } from '../ChartPanel';
 import { dimensionFilter } from '../clickFilters';
-import { menuOf, pathOf, pieMeasures, sankeyMeasures } from '../fields';
+import { pathOf, pieMeasures, sankeyMeasures } from '../fields';
 import { sankeyColumnQuery, sankeyFlowQuery, sankeyLowQuery, SANKEY_COLUMN_LIMIT, SANKEY_FLOW_LIMIT, type Measure } from '../queries';
 import { foldSankey } from '../sankeyFold';
 import { measureLabel, measureText } from '../Scorecards';
@@ -105,7 +105,7 @@ function SankeyPanel({ martId, cf, title, r, filter, version, idle, hold, hasFil
   const empty = short || (settled && !!data && (data.negative || data.empty));
   const loading = !empty && !failed && !data;
   const names = dims.map((d) => d.name);
-  const dimGroups = fieldGroups(menuOf(cf), menuOf(cf).dimensions);
+  const dimGroups = fieldGroups(cf, cf.dimensions);
   // Five columns always, each with None first: a used one takes the column out, an unused one has None checked and picking a dimension appends it.
   const columnItems = Array.from({ length: SANKEY_MAX }, (_, i): MenuItem => {
     const used = i < n;
@@ -116,7 +116,7 @@ function SankeyPanel({ martId, cf, title, r, filter, version, idle, hold, hasFil
   const items: MenuItem[] = [
     { kind: 'group', label: 'Columns', icon: Columns3, items: columnItems, draggable: n,
       onReorder: (from, to) => { const next = moveColumn(names, from, to); if (next.join('\n') !== names.join('\n')) onChange({ dimensions: next }); } },
-    metricItem(cf, measureId(measure), pieMeasures(menuOf(cf)), onChange),
+    metricItem(cf, measureId(measure), pieMeasures(cf), onChange),
     ...tail,
   ];
   // Memoised on its inputs so a re-render with the same columns and metric keeps the ribbons.
