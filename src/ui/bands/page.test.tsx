@@ -1433,9 +1433,15 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(plain.length).toBeGreaterThan(0);
     expect(plain.at(-1)!.o.column!.at(-1)).toBe('id');
     expect(plain.at(-1)!.o.sort!.at(-1)!.column).toBe('id');
-    await userEvent.click(within(data()).getAllByRole('row')[2]!);
-    await waitFor(() => expect(within(row()).queryByText('Select a row.')).toBeNull());
+    const clicked = within(data()).getAllByRole('row')[2]!;
+    const value = clicked.querySelector('td')!.textContent!;
+    await userEvent.click(clicked);
+    await waitFor(() => expect(within(row()).getAllByText(value).length).toBeGreaterThan(0));
     expect(within(row()).queryByText('id')).toBeNull();
+    // Refresh reads the record by its hidden key, a number as the key's type says.
+    await userEvent.click(within(row()).getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(queries.some((q) => q.id === 'stores' && q.o.filter?.some((x) => x.column === 'id' && typeof (x as { value?: unknown }).value === 'number'))).toBe(true));
+    await waitFor(() => expect(within(row()).getAllByText(value).length).toBeGreaterThan(0));
     // The mart is still counted by its key: Unique Count is sent for it, and no card says it cannot count.
     expect(queries.some((q) => q.id === 'stores' && (q.o as { uniqueCount?: string[] }).uniqueCount?.[0] === '')).toBe(true);
     expect(screen.queryByText(/Can't count records/)).toBeNull();

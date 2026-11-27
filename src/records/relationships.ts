@@ -10,12 +10,12 @@ export function readableField(schema: Schema, name: string): Field | undefined {
 }
 
 /**
- * The key fields a row is read and opened by. The declared key when the read can name each part, hidden ones included;
- * else (a part inside a RECORD, or calculated) the offered key fields only.
+ * The key fields a row is read and opened by: the declared key, hidden parts included, when a read can name every part.
+ * A part it cannot name (inside a RECORD, or hidden and calculated) leaves no key: a partial key would open another row.
  */
 export function primaryKeys(schema: Schema): string[] {
   const key = schema.primaryKey;
-  if (key?.length && key.every((k) => readableField(schema, k))) return [...key];
+  if (key) return key.every((k) => readableField(schema, k)) ? [...key] : [];
   return schema.filter((f) => f.isPrimaryKey).map((f) => f.name);
 }
 

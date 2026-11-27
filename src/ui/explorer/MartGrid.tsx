@@ -407,7 +407,8 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const [exportOpen, setExportOpen] = useState(false);
   // A blocked grid unmounts the menu without a close: it counts as closed.
   if (blocked && exportOpen) setExportOpen(false);
-  const ownPlain = useMemo(() => new Set(native.filter((f) => !f.isCalculated).map((f) => f.name)), [native]);
+  // The mart's own stored columns, the hidden ones a read names (its key) included: none adds a join or a grouping.
+  const ownPlain = useMemo(() => new Set([...native.filter((f) => !f.isCalculated), ...(native.hiddenFields ?? [])].map((f) => f.name)), [native]);
   const { rows: read, loading: reading, error, hasMore, run, errorRunId, total, counted } = useMartRows(martId, asked, version + rowsRetry, charts && !exportOpen && exportFor !== asked, !!asked?.column?.some((c) => calculated.has(c)) || !!asked?.filter?.some((r) => calculated.has(r.column)), modelVersion, ownPlain);
   const failed = !!error;
   const onExportOpen = (open: boolean) => {
