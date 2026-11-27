@@ -86,6 +86,7 @@ export function ChartPanel({ title, name, items, ready, width, loading, failed, 
   const withCopy = menu ? (at >= 0 ? [...menu.slice(0, at), copy, ...menu.slice(at)] : [...menu, copy]) : null;
   return (
     <section ref={setSection} className="dm-chart" data-chart-kind={name} data-fill={fill || undefined} data-dragging={!!draft || undefined} style={{ width: frame ? panelWidth(size, staleDrawn?.width ?? width) : staleDrawn?.width ?? width, ...(fill ? { height: size.rows! * CELL } : {}) }}>
+      {stale ? <div role="progressbar" aria-label="Loading chart" className="dm-busybar" /> : null}
       <header className="dm-chart-head">
         <div className="dm-chart-titlegroup">
           <h3 className="dm-chart-title">{title}</h3>
@@ -100,7 +101,6 @@ export function ChartPanel({ title, name, items, ready, width, loading, failed, 
             : emptyNote ? <p className="dm-muted dm-chart-empty">{emptyNote}</p>
             : (
               <div className="dm-chart-staleframe">
-                {stale ? <div role="progressbar" aria-label="Loading chart" className="dm-busybar" /> : null}
                 <div className={stale ? 'dm-stale' : undefined} aria-busy={stale || undefined} inert={stale || undefined}>
                   <FillContext value={fill}>{staleDrawn ? staleDrawn.body : children}</FillContext>
                 </div>
