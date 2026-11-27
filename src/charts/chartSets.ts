@@ -1,6 +1,6 @@
 import type { JoinedSource } from '../api/blendable';
-import type { Aggregation } from '../model/aggregation';
-import type { Schema } from '../model/types';
+import type { Aggregation, DateBucket } from '../model/aggregation';
+import type { Field, Schema } from '../model/types';
 import { chartFields, type ChartFields } from './fields';
 import { KINDS } from './kinds';
 import { chartsOf, type ChartSettings } from './settings';
@@ -29,4 +29,16 @@ export function usesKeys(settings: ChartSettings | undefined, cf: ChartFields, c
   if (!settings) return false;
   if (cf.marts.some((m) => m.metrics.length > 0 || m.hasPk)) return true;
   return chartsOf(settings).some((spec) => !spec.hidden && KINDS[spec.kind].resolve(spec, chart) !== null);
+}
+
+/**
+ * The chart the scorecards' sparklines take their date and bucket from: the first resolved chart (in order, `null` for a hidden one) whose date is a shown column.
+ * A chart may draw on a hidden field; the sparklines stay on the shown columns, so a hidden date never sets their date or the Auto bucket's range.
+ */
+export function sparkLead(resolved: readonly unknown[], cf: ChartFields): { date: Field; bucket?: DateBucket | 'AUTO' } | undefined {
+  for (const r of resolved) {
+    const date = (r as { date?: Field } | null)?.date;
+    if (date && cf.dates.some((x) => x.name === date.name)) return r as { date: Field; bucket?: DateBucket | 'AUTO' };
+  }
+  return undefined;
 }
