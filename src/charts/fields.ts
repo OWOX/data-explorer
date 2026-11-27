@@ -1,4 +1,4 @@
-// Which shown columns the charts draw: metrics (numbers), dimensions (text, booleans) and dates, grouped by the data mart they belong to.
+// Which fields the charts draw: metrics (numbers), dimensions (text, booleans) and dates, grouped by the data mart they belong to.
 import { AGGREGATE_FUNCTIONS, allowedFunctions, canBucket, isCalculatedMetric, isGrouped, type AggFn, type Grouping, type DateBucket, type Aggregation } from '../model/aggregation';
 import type { MainGrainCollapse } from '../api/blendable';
 import type { Field, Schema } from '../model/types';
@@ -12,14 +12,14 @@ export type Metric = { field: Field; fn: AggFn | null };
 export type ChartMart = { aliasPath: string; recordsId: string; title: string; /** The mart's own picked icon, as the grid group header shows it. */ icon?: string | null; hasPk: boolean; metrics: Metric[]; dates: Field[]; dimensions: Field[] };
 /** `counter` is a main-mart field the warehouse may COUNT: a query with a slice and no column of its own reads it, so the slice has an explicit column list without a new group key. Null when the mart has none. */
 export type ChartFields = { marts: ChartMart[]; dimensions: Field[]; dates: Field[]; counter?: Field | null;
-  /** The same marts with every one of their columns, shown or not, then the marts the report keeps or joins through with no column of their own: what the menus list. A choice of a column that is not shown adds it to the grid. Absent: the menus list `marts`. */
-  menu?: ChartFields;
+  /** The scorecards' fields (the shown columns) when this set is the charts' one, which has every field of the report's marts. A chart read may ride on the sparklines' read only when the scorecards read what it asks for. Absent: this set is the shown columns. */
+  shown?: ChartFields;
   /** Per alias path of a joined mart: 'none' when every join down to it is a lookup keyed by its target's primary key, so a main row matches at most one joined row. A path not listed collapses. */
   collapse?: Readonly<Record<string, MainGrainCollapse>> };
 const MAX_BUCKETS = 60;
 
-/** The fields the chart menus list: every column of the report's marts and of the marts on their joined paths, not only the shown ones. */
-export const menuOf = (cf: ChartFields): ChartFields => cf.menu ?? cf;
+/** The fields the chart menus list: the charts' own set, every field of the report's marts and of the marts on their joined paths. */
+export const menuOf = (cf: ChartFields): ChartFields => cf;
 
 /** Everything a chart can count, per chart mart in group order: its Count Unique when it has a key, then its metrics. Any mart's measure pairs with any mart's date or dimension. */
 export const measuresOf = (cf: ChartFields): Measure[] => cf.marts.flatMap((m): Measure[] => [
@@ -64,8 +64,8 @@ function metricFn(f: Field, agg: Aggregation): AggFn | null {
 }
 
 /**
- * The rules a grouped grid needs for columns just shown by a chart choice: without one a column is a group key and multiplies the rows.
- * A metric gets the function the chart sums it with, a date the chart's bucket (Month when none is known); a dimension stays a key. An ungrouped grid needs no rule.
+ * The rules a grouped grid needs for columns just shown (a sort, an aggregation or a format on a hidden field): without one a column is a group key and multiplies the rows.
+ * A metric gets the function a chart would sum it with, a date the given bucket (Month when none is known); a dimension stays a key. An ungrouped grid needs no rule.
  */
 export function ruleNewColumns(cur: Grouping, fresh: Field[], buckets: Readonly<Record<string, DateBucket>> = {}): Aggregation {
   if (!isGrouped(cur)) return cur;

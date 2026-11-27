@@ -349,7 +349,7 @@ test('Remove from report on the main mart deselects it and promotes the next sel
   expect(card('Customers')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('the last own column of the main mart cannot be unticked while a joined mart is shown', async () => {
+test('the last own column of the main mart can be unticked while a joined mart is shown: the main mart stays in the report with none', async () => {
   setup();
   await ready();
   await click('Customers');
@@ -357,8 +357,12 @@ test('the last own column of the main mart cannot be unticked while a joined mar
   await openFields('Orders');
   for (const label of ['id', 'Customer', 'Product', 'Store']) await userEvent.click(await screen.findByLabelText(label));
   await waitFor(() => expect(headers()).toEqual(['status', 'name']));
-  expect(screen.getByRole('option', { name: 'status' })).toHaveAttribute('aria-disabled', 'true');
-  expect(groupTitles()).toEqual(['Orders', 'Customers']);
+  expect(screen.getByRole('option', { name: 'status' })).not.toHaveAttribute('aria-disabled', 'true');
+  await userEvent.click(screen.getByRole('option', { name: 'status' }));
+  await waitFor(() => expect(headers()).toEqual(['name']));
+  expect(groupTitles()).toEqual(['Customers']);
+  expect(screen.getByRole('menuitem', { name: 'Orders' })).toBeInTheDocument();
+  expect(card('Orders')).toHaveClass('lit');
 });
 
 test('a mart reachable through a joined mart is listed from the start and lights like its neighbour once that mart is joined', async () => {

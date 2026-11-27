@@ -125,6 +125,21 @@ describe('the Unique Count column', () => {
     await waitFor(() => expect(t.of('orders').at(-1)!.o.sort).toEqual([{ column: 'Unique Count', direction: 'asc' }]));
   });
 
+  test('the main mart\'s Unique Count stays visible after Clear and is the way to drop it', async () => {
+    const t = setup({ grid: { ...withCustomers, uniqueCount: [''] } });
+    await t.view();
+    await waitFor(() => expect(headers()).toEqual(['id', 'status', 'Unique Count', 'name']));
+    const fields = await picker('Orders');
+    await userEvent.click(fields.getByRole('button', { name: 'Clear' }));
+    await waitFor(() => expect(headers()).toEqual(['Unique Count', 'name']));
+    await waitFor(() => expect(t.of('orders').at(-1)!.o.uniqueCount).toEqual(['']));
+    const spans = [...groupRow().querySelectorAll<HTMLTableCellElement>('th[data-group-path]')].map((h) => [h.dataset.groupPath, h.colSpan]);
+    expect(spans).toEqual([['', 1], ['customers', 1]]);
+    await userEvent.click(fields.getByRole('option', { name: 'Unique Count' }));
+    await waitFor(() => expect(headers()).toEqual(['name']));
+    await waitFor(() => expect(t.of('orders').at(-1)!.o.uniqueCount ?? []).toEqual([]));
+  });
+
   test('a joined mart\'s Unique Count is sent by its alias path and shown in its group', async () => {
     const t = setup({ grid: withCustomers });
     await t.view();

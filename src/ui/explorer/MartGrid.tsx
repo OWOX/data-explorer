@@ -7,11 +7,12 @@ import { PAGE_SIZE } from '../../config';
 import { columnLetter } from './columnLetters';
 import { emptyText, isNumericType, rowsLabel } from '../format';
 import { withJoined, type JoinedSource } from '../../api/blendable';
-import { applyDraft, draftOf, isCalculatedMetric, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type Grouping, type AggregationDraft, type DateBucket, type Output } from '../../model/aggregation';
+import { applyDraft, draftOf, isCalculatedMetric, isGrouped, keepVisible, NO_AGGREGATION, outputsOf, outputType, sanitizeAggregation, ungroupableColumn, type Aggregation, type Grouping, type AggregationDraft, type Output } from '../../model/aggregation';
 import { columnTitle } from '../../model/fieldLabel';
 import { keepEmpty } from '../../model/empty-paths';
 import { dropUniqueSorts, keepUnique, uniqueField, uniqueKey, uniquePathsOf, withUniqueAfter } from '../../model/unique-count';
-import { chartFields, ruleNewColumns } from '../../charts/fields';
+import { ruleNewColumns } from '../../charts/fields';
+import { chartSetsOf, usesKeys } from '../../charts/chartSets';
 import { joinGrainOf } from '../../charts/answers';
 import { countsOf, scoreQuery, scoreRulesLost } from '../../charts/queries';
 import { useChartQuery } from '../../charts/useChartQuery';
@@ -50,7 +51,6 @@ import { ColumnMenuEnvContext, type ColumnMenuEnv, type RuleKind } from './Colum
 import { ConfigMenu, type ConfigMart } from './ConfigMenu';
 import { RuleBadges, type RuleMart } from './RuleBadges';
 import { ExportMenu } from './ExportMenu';
-import { defaultColumns } from '../../model/columns';
 import { forgetValues, suggestFromSearch } from '../../search/valueMatch';
 import { forgetSeenRows, rememberRow } from '../../records/seen-rows';
 import { buildRowQuery, forgetGridRows, useMartRows } from './useMartRows';
@@ -325,7 +325,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   useEffect(() => { const edit = editSeq !== seenSeq.current; seenSeq.current = editSeq; onChange(current, edit); }, [current, editSeq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every data mart's columns sit together: the main mart's own, then each joined mart's in the order it was added.
-  const shown = useMemo(() => orderColumns(visible, sources, defaultColumns(native)), [visible, sources, native]);
+  const shown = useMemo(() => orderColumns(visible, sources), [visible, sources]);
   // The marts kept with no column that apply: some field of the mart is offered by the path and no column of the grid is one of them. With the joined marts unread, a path is parked, not dropped.
   const epNow = useMemo(() => (sourcesRead ? keepEmpty(ep, schema, shown) : ep), [sourcesRead, ep, schema, shown]);
   if (sourcesRead && !sameList(epNow, ep)) setEp(epNow);
@@ -424,7 +424,10 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const outputs = useMemo(() => {
     const base = outputsOf(wanted.map((f) => f.name), aggNow);
     if (!ucNow.length) return base;
-    return withUniqueAfter(base, (o) => byName.get(o.column)?.joined?.aliasPath ?? '', ucNow, (path): Output => ({ key: uniqueKey(path), column: uniqueKey(path), unique: path, sortable: true }));
+    const make = (path: string): Output => ({ key: uniqueKey(path), column: uniqueKey(path), unique: path, sortable: true });
+    const after = withUniqueAfter(base, (o) => byName.get(o.column)?.joined?.aliasPath ?? '', ucNow, make);
+    // The main mart's Unique Count still groups the rows when the mart has no column: it leads, so it is never hidden.
+    return ucNow.includes('') && !base.some((o) => !byName.get(o.column)?.joined) ? [make(''), ...after] : after;
   }, [wanted, aggNow, ucNow, byName]);
   // The stand-in fields of the Unique Count columns, by row key.
   const uniqueFields = useMemo(() => new Map(ucNow.map((p) => { const src = sources.find((x) => x.aliasPath === p); return [uniqueKey(p), uniqueField(p, src && { martId: src.martId, label: src.label })] as const; })), [ucNow, sources]);
@@ -465,7 +468,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const removeUnique = useCallback((path: string) => setUnique(path, false), [setUnique]);
   // A hidden column's sort is dropped with it, so no ordering is left that the reader cannot see.
   const changeColumns = useCallback((picked: string[], more?: (cur: Aggregation) => Aggregation) => {
-    const cols = orderColumns(picked, sources, defaultColumns(native));
+    const cols = orderColumns(picked, sources);
     markEdit();
     // A card's saved pick of a column the member hides goes with it: through the open charts body, else straight in the store. Never from a load, so a failed or late read keeps every pick.
     const hidden = visible.filter((n) => !cols.includes(n));
@@ -497,14 +500,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
     columnStore.save(martId, cols);
     for (const m of left) columnStore.saveLastShown(m, ownNamesIn(visible, sources, m));
     return !sameList(cols, visible);
-  }, [shownNow, sources, native, markEdit, agg, applyAgg, visible, columnStore, chartSettings, dispatch, martId, setVisible, setOwn, setUc, setEp, sourcesRead, uc, ep, schema, linkCharts, storeCharts]);
-  // A chart menu's choice of a field that is not shown: the shown columns and the new ones, in one edit.
-  // In a grouped grid a new column without a rule would become a group key and multiply the rows: a metric gets the function the chart sums it with, a date the chart's bucket (Month when none is known yet). A dimension is a key, as intended.
-  const showColumns = useCallback((names: string[], buckets?: Readonly<Record<string, DateBucket>>) => changeColumns([...new Set([...shown, ...names])], (cur) => {
-    // A grid grouped by a Unique Count alone is grouped too: a new number column gets its function there as well.
-    const r = ruleNewColumns({ ...cur, uniqueCount: ucNow }, names.flatMap((n) => (shown.includes(n) ? [] : [byName.get(n)!])), buckets);
-    return r.aggregations === cur.aggregations && r.dateTrunc === cur.dateTrunc ? cur : { aggregations: r.aggregations, dateTrunc: r.dateTrunc };
-  }), [changeColumns, shown, byName, ucNow]);
+  }, [shownNow, sources, markEdit, agg, applyAgg, visible, columnStore, chartSettings, dispatch, martId, setVisible, setOwn, setUc, setEp, sourcesRead, uc, ep, schema, linkCharts, storeCharts]);
   // A moved column keeps its sorts, filters and functions: only the order changes, and it is one Undo step. The cell selection is dropped (its columns moved).
   const reorder = useCallback((cols: string[]) => {
     if (cols === shown) return;
@@ -588,19 +584,19 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   }, [groups, martId, configSlot]);
   // The marts kept with no column count too: with one, the main mart can be removed. Its last own column stays only while another mart has columns.
   const emptyMarts = pathMarts.filter((m) => m.empty);
-  const several = groups.length + emptyMarts.length > 1;
-  const othersShown = groups.length > 1;
-  // The first data mart is the main one: its last own column stays while a joined mart is shown.
+  // The main mart is in the report even with no column (Clear, or its last one unticked): it has no group then, but is listed and removable like the rest.
+  const mainEmpty = !groups.some((g) => g.main);
+  const several = groups.length + emptyMarts.length + (mainEmpty ? 1 : 0) > 1;
   const ownNames = useMemo(() => new Set(native.map((f) => f.name)), [native]);
-  const ownOn = shown.filter((n) => ownNames.has(n)).length;
   // The data marts that offer a Unique Count (a hidden or composite key counts): their panel in the config menu has the row for it.
   const uniqueOffered = useMemo(() => new Set(uniquePathsOf(schema)), [schema]);
   const fieldsOf = (g: { main: boolean; path: string }) => (g.main ? native : sources.filter((x) => x.aliasPath === g.path).flatMap((x) => x.fields));
   // The config menu's data marts: the ones with a column in grid order, then the ones kept with none (listed with them, and removable), then the ones the report only joins through.
+  const mainGroup = { id: martId, path: '', title: model.marts.get(martId)?.title ?? martId, icon: model.marts.get(martId)?.icon, description: model.marts.get(martId)?.description, span: 0, main: true };
   const configMarts: ConfigMart[] = [
-    ...groups.map((g): ConfigMart => ({
+    ...(mainEmpty ? [mainGroup, ...groups] : groups).map((g): ConfigMart => ({
       path: g.path, title: g.title, icon: g.icon, description: g.description, main: g.main, shown: true, fields: fieldsOf(g), rules: rulesOf(fieldsOf(g)),
-      locked: (n) => g.main && othersShown && ownOn === 1 && ownNames.has(n),
+      locked: () => false,
       unique: uniqueOffered.has(g.path) ? { on: ucNow.includes(g.path), onToggle: () => toggleUnique(g.path) } : undefined,
       // `remove` reads the latest columns ref, but only when the menu calls it, never while rendering.
       // eslint-disable-next-line react-hooks/refs
@@ -640,12 +636,20 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const hasFilters = Object.keys(filters).length > 0;
   const hasSorts = own !== null;
   const hasSlices = Object.keys(allSlices).length > 0;
+  // A rule on a field of a data mart that is not in the report joins the mart with no column (its path goes to the empty paths); a mart already in the report adds nothing.
+  const joinEmpty = useCallback((names: string[]) => {
+    const inUse = inUsePaths(shown, sources, epNow);
+    const add = [...new Set(names.flatMap((n) => { const p = byName.get(n)?.joined?.aliasPath; return p !== undefined && !inUse.has(p) ? [p] : []; }))];
+    if (!add.length) return;
+    emptyNow.current = [...epNow, ...add];
+    setEp([...epNow, ...add]);
+  }, [shown, sources, epNow, byName, setEp, emptyNow]);
   /** A click on a chart mark: the same step as a filter edit (so Undo covers it), one filter per column. */
   const applyChartFilters = (add: ColumnFilter[]) => {
     // A filter the column cannot take as it stands (a blank value) is left out, with the same note a filter edit gives.
     const usable = add.filter((f) => { const field = schema.find((x) => x.name === f.field); const unapplied = unappliedFilter(f, field); if (unapplied) setNote({ text: unapplied }); return !!field && !unapplied; });
     if (!usable.length) return;
-    edit(() => setAllFilters((cur) => ({ ...cur, ...Object.fromEntries(usable.map((f) => [f.field, f])) })));
+    edit(() => { joinEmpty(usable.map((f) => f.field)); setAllFilters((cur) => ({ ...cur, ...Object.fromEntries(usable.map((f) => [f.field, f])) })); });
   };
   /** One slice per joined field; an unusable one (a blank value, a field that is not joined) is left out with the same note a filter edit gives. */
   const setSlice = useCallback((name: string, f: ColumnFilter | undefined) => {
@@ -684,18 +688,12 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
       if (shown.includes(name)) return null;
       return byName.get(name)?.joined ? [...shown, name] : [...ownInSchemaOrder(shown, native.map((f) => f.name), new Set([...shown.filter((c) => ownNames.has(c)), name])), ...shown.filter((c) => !ownNames.has(c))];
     };
-    // The columns with the field added when its data mart has no column; null otherwise.
-    const joinColumns = (name: string): string[] | null => {
-      const path = byName.get(name)?.joined?.aliasPath;
-      return path !== undefined && !inUsePaths(shown, sources, epNow).has(path) ? withField(name) : null;
-    };
-    const joinWith = (cols: string[], name: string) => edit(() => changeColumns(cols, (cur) => ruleNewColumns({ ...cur, uniqueCount: ucNow }, [byName.get(name)!])));
     return {
       sorts: shownSorts, toggleSort, filters, slices,
-      // Filter and Slice keep the columns as they are: a hidden field of a data mart in the grid stays hidden and its rule still reaches the query.
-      // A rule on a field of a data mart that has no column first joins it, in the same edit, so the mart is in the report and Undo takes both back. Clearing a rule adds nothing.
-      setSlice: (name, f) => { const cols = f ? joinColumns(name) : null; if (cols) joinWith(cols, name); setSlice(name, f); },
-      setFilter: (name, f) => { const cols = f ? joinColumns(name) : null; if (cols) joinWith(cols, name); setFilter(name, f); },
+      // Filter and Slice add no column: a hidden field stays hidden and its rule still reaches the query.
+      // A rule on a field of a data mart that is not in the report first joins it with no column, in the same edit, so Undo takes both back. Clearing a rule adds nothing.
+      setSlice: (name, f) => { if (f && byName.get(name)?.joined) edit(() => joinEmpty([name])); setSlice(name, f); },
+      setFilter: (name, f) => { if (f) edit(() => joinEmpty([name])); setFilter(name, f); },
       // Aggregate, Sort and Format on a field that is not a column first show it, in the same edit, so Undo takes both back.
       setSort: (field, direction) => {
         const cols = withField(field);
@@ -718,8 +716,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
       },
       isShown: (name) => shown.includes(name),
       outputOf: (name) => outputs.find((o) => o.column === name) ?? { key: name, column: name, sortable: true },
-      // The same rule as the config menu: the last column, and the last of the main mart's while a joined mart has columns, stay.
-      canHide: (name) => shown.length > 1 && !(othersShown && ownOn === 1 && ownNames.has(name)),
+      canHide: () => shown.length > 1,
       hide: (name) => changeColumns(shown.filter((n) => n !== name)),
       canMove: (name, dir) => moveColumnBy(shown, name, dir, sources) !== shown,
       move: (name, dir) => reorder(moveColumnBy(shown, name, dir, sources)),
@@ -728,7 +725,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
       valuesFor,
       removeUnique,
     };
-  }, [removeUnique, valuesFor, shownSorts, toggleSort, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, epNow, othersShown, ownOn, ownNames, changeColumns, sources, reorder, charts, byName, native, outputs, edit, setOwn, ucNow]);
+  }, [removeUnique, valuesFor, shownSorts, toggleSort, setSort, filters, slices, setSlice, setFilter, aggNow, blockers, changeAgg, formatOf, memberFormat, setFormat, shown, joinEmpty, ownNames, changeColumns, sources, reorder, charts, byName, native, outputs, edit, setOwn, ucNow]);
   // Measured for the charts: their panels are as wide as the visible grid, not the (wider) table.
   const { ref: scroller, width: scrollerWidth } = useWidth<HTMLDivElement>(charts);
   const owner = useMemo(() => groupMap(sources), [sources]);
@@ -738,17 +735,23 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   // A HAVING filter keeps whole groups, so the charts get the passing group keys as an `in` rule instead of the filter itself.
   const keysRead = useMemo(() => keysPlan(schema, shown, gridAgg, Object.values(filters), Object.values(slices)), [schema, shown, gridAgg, filters, slices]);
   const keyField = useMemo(() => (keysRead.kind === 'read' && keysRead.key ? schema.find((f) => f.name === keysRead.key) : undefined), [keysRead, schema]);
-  // Nothing is read when the charts are not shown, a folded band, a blocked grid, or no number column to chart (ChartsBody shows its hint then).
-  const scoreFields = useMemo(() => chartFields(schema, shown, aggNow, martId, groups.map((g) => g.path), new Set(sources.filter((x) => x.uniqueCount).map((x) => x.aliasPath)), {}), [schema, shown, aggNow, martId, groups, sources]);
-  const chartable = useMemo(() => !scoreFields.marts.every((m) => m.metrics.length === 0 && !m.hasPk), [scoreFields]);
-  const having = useHavingKeys(martId, keysRead, keyField, version, !charts || paused || !!blocked || !chartable);
+  // The scorecard read waits while the charts are not shown, the band is folded, the grid is blocked, or no number column is shown (the scorecards have nothing to read). The keys read waits for something that uses its rule (a scorecard, or a visible chart that resolves on any field of the report's marts): the charts draw hidden fields too and must follow a HAVING filter, but nothing else is billed.
+  const reportGroups = useMemo(() => (mainEmpty ? [{ path: '', title: model.marts.get(martId)?.title ?? martId, icon: model.marts.get(martId)?.icon }, ...groups] : groups), [mainEmpty, model, martId, groups]);
+  const sets = useMemo(() => chartSetsOf(schema, shown, aggNow, martId, groups, reportGroups, pathMarts, sources), [schema, shown, aggNow, martId, groups, reportGroups, pathMarts, sources]);
+  const scoreFields = sets.cf;
+  const savedHere = storeCharts[martId];
+  const usesKeysNow = useMemo(() => usesKeys(savedHere, sets.cf, sets.chart), [savedHere, sets]);
+  const having = useHavingKeys(martId, keysRead, keyField, version, !charts || paused || !!blocked || !usesKeysNow);
   const chartFilter = useMemo(() => (having.rule ? [...traverseFilters, having.rule] : traverseFilters), [traverseFilters, having.rule]);
   // The match badges of the cards. A filter or a slice applies when it reaches the query; a parked, incomplete or HAVING one does not.
   const applies = traverseFilters.length > 0;
   // While any HAVING filter is set the count would be of groups the charts cannot follow the same way: no badge in either view and no read for it here.
   const havingSet = keysRead.kind !== 'off';
   // The marts the report keeps with no column that have a usable key: their count rides on the scorecard read, while a rule applies, in Table and in Charts alike.
-  const keptUnique = useMemo(() => (applies && !havingSet ? pathMarts.filter((m) => m.empty && sources.some((x) => x.aliasPath === m.path && x.uniqueCount)).map((m) => m.path) : []), [applies, havingSet, pathMarts, sources]);
+  // The main mart with no column counts too (as '', first) when it has a key: no scorecard of it, but its match badge needs the count.
+  const keptUnique = useMemo(() => (applies && !havingSet ? [...(mainEmpty && mainKey ? [''] : []), ...pathMarts.filter((m) => m.empty && sources.some((x) => x.aliasPath === m.path && x.uniqueCount)).map((m) => m.path)] : []), [applies, havingSet, mainEmpty, mainKey, pathMarts, sources]);
+  // Charts reads when a shown field is a number or a key, or when the empty main mart's count rides on the read (its card shows the badge): the same read ChartsBody shares.
+  const chartable = useMemo(() => keptUnique.includes('') || !scoreFields.marts.every((m) => m.metrics.length === 0 && !m.hasPk), [scoreFields, keptUnique]);
   // The same query as the scorecards of Charts (one builder, one key): a read that Charts asks is shared, and Table's read is served to Charts from the cache.
   const full = useMemo(() => (applies && !havingSet ? scoreQuery(scoreFields, traverseFilters, keptUnique) : null), [applies, havingSet, scoreFields, traverseFilters, keptUnique]);
   // A query that counts nothing shows no badge, and one built without a slice (no metric and no countable field to carry it) would not be the member's: no read, no badge.
@@ -877,7 +880,7 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
             </tr>
           </thead>
           {/* ChartsBody renders its own <tbody>: nesting one in another makes the parser pull the headers out of the table. */}
-          {charts ? <ChartsBody pruneRef={pruneCards} blockedNote={blocked ? blockedText(blocked) : null} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} pathMarts={pathMarts} renderConfig={renderConfig} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} kept={keptUnique} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} onShowColumns={showColumns} />
+          {charts ? <ChartsBody pruneRef={pruneCards} blockedNote={blocked ? blockedText(blocked) : null} martId={martId} schema={schema} shown={shown} agg={aggNow} filter={chartFilter} havingNote={having.fallback} gate={having.gate} groups={groups} reportGroups={reportGroups} pathMarts={pathMarts} renderConfig={renderConfig} version={version} paused={paused} hasFilters={hasChartFilters} sources={sources} kept={keptUnique} formatOf={formatOf} scrollerWidth={scrollerWidth} onFilter={applyChartFilters} />
           : <tbody>
             {blocked ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4 text-sm text-muted-foreground" role="alert">{blockedText(blocked)}</td></tr>
               : error ? <tr><Gutter /><td colSpan={outputs.length + 1} className="p-4"><ErrorBox error={error} onRetry={() => { setRowsRetry((v) => v + 1); if (score.error) score.retry(); }} context={{ dataMartId: martId, options: asked, runId: errorRunId }} /></td></tr>

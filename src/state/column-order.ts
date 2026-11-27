@@ -3,7 +3,7 @@ import { sourceOfField, type JoinedSource } from '../api/blendable';
 /**
  * The columns of a grid with every data mart's together: the main mart's own columns first (in their order), then each joined
  * path's (one group per alias path, so a mart joined under two parents is two groups) in the order the paths first appear (the order they were added), each group keeping its fields' order.
- * `fallbackOwn` (the main mart's default columns) leads a list that has joined columns and none of the main mart's own.
+ * `fallbackOwn` (a mart's default columns) is for a mart becoming main: it leads a list that has joined columns and none of its own. Without it, such a list stays as it is: the main mart may show no column.
  */
 export function orderColumns(columns: string[], sources: JoinedSource[], fallbackOwn: string[] = []): string[] {
   const owner = sourceOfField(sources);
@@ -15,7 +15,6 @@ export function orderColumns(columns: string[], sources: JoinedSource[], fallbac
     else if (groups.has(id)) groups.get(id)!.push(c);
     else groups.set(id, [c]);
   }
-  // The first data mart is always the main one: a list that has joined columns and none of its own gets the mart's default columns first.
   return [...(own.length === 0 && groups.size > 0 ? fallbackOwn : own), ...[...groups.values()].flat()];
 }
 

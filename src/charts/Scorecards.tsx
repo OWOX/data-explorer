@@ -77,7 +77,8 @@ export function sparkQueryOf(mart: ChartMart, spark: Spark, bucket: DateBucket |
  */
 export function sharedSeriesQuery(cf: ChartFields, spark: Spark, measure: Measure, bucket: DateBucket | null, filter: TraverseFilter[], date: Field): TraverseOptions | null {
   const path = measurePath(measure);
-  const owner = cf.marts.find((m) => m.aliasPath === path);
+  // The sparklines read the shown columns: a measure that is only a field of the mart cannot ride on them.
+  const owner = (cf.shown ?? cf).marts.find((m) => m.aliasPath === path);
   if (!owner || !spark.date || date !== spark.date || sparkDate(owner, spark) !== spark.date) return null;
   const has = measure.kind === 'records' ? owner.hasPk : owner.metrics.some((m) => metricKey(m) === metricKey(measure.metric));
   return has ? sparkQueryOf(owner, spark, bucket, filter) : null;
@@ -289,7 +290,7 @@ function ScoreCard({ martId, mart, menuMart, card: c, spark, row, busy, bucket, 
   );
 }
 
-/** The cards of one data mart, wrapping inside its group's cell. The main mart's cell also shows the strip's error and empty state. `menuMart` is the same mart with every column: its metrics and dates are what a card's menu offers. */
+/** The cards of one data mart, wrapping inside its group's cell. The main mart's cell (the first one when the main mart has no column) also shows the strip's error and empty state. `menuMart` is the same mart with every field of it: its metrics and dates are what a card's menu offers. */
 export function MartCards({ martId, mart, menuMart = mart, main, spark, scores, bucket, bucketPending = false, autoBucket = true, filter, version, paused, joins, hasFilters, formatOf, onMetric, onDate, onHide }: {
   martId: string; mart: ChartMart; menuMart?: ChartMart; main: boolean; spark: Spark; scores: Scores; bucket: DateBucket | null; /** The charts' bucket is still being resolved by its range or scorecard read. */ bucketPending?: boolean; /** Whether the charts' bucket is Auto. */ autoBucket?: boolean; filter: TraverseFilter[]; version: number; paused: boolean; /** What lets a sparkline read be reused after a column is dropped. */ joins?: JoinGrain; hasFilters: boolean; formatOf: Formatter;
   /** A card's ⋮ menu: pick the measure a card shows, the date its trend is drawn on, and hide it. Without them (the settings are still loading) the cards have no menu. */

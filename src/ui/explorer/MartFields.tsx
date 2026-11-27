@@ -29,15 +29,16 @@ export type ConfigMart = {
  * ticked one goes right after the nearest field before it in the schema that is shown, or first when none is, so a grid
  * that was never reordered stays in schema order. `mart.locked` names the ticked fields that cannot be unticked.
  * `mart.unique` is the mart's Unique Count metric, when the mart offers one (a hidden or composite key counts too): a first row toggles its column, which sits after the mart's own columns. It does not show or hide any field.
- * The rows list the shown fields first, in the grid's order, then the rest in schema order, as they were when this mounted: a tick never moves a row.
+ * The rows list the shown fields first, then the rest, each group in alphabetical order of the label, as they were when this mounted: a tick never moves a row.
  */
 export function MartFields({ mart, visible, onChange }: { mart: ConfigMart; visible: string[]; onChange: (cols: string[]) => void }) {
   const { fields, main, locked, unique, title } = mart;
   const set = new Set(visible);
   const mine = new Set(fields.map((f) => f.name));
   const [order] = useState(() => {
-    const shown = visible.filter((c) => mine.has(c));
-    return [...shown, ...fields.map((f) => f.name).filter((n) => !shown.includes(n))];
+    const byLabel = (a: Field, b: Field) => fieldLabel(a).localeCompare(fieldLabel(b), undefined, { sensitivity: 'base', numeric: true });
+    const names = (list: Field[]) => [...list].sort(byLabel).map((f) => f.name);
+    return [...names(fields.filter((f) => set.has(f.name))), ...names(fields.filter((f) => !set.has(f.name)))];
   });
   // The Unique Count row is decided when the panel opens, like the rest of its rows: it does not appear later, and stays (disabled) while the mart offers none.
   const [hadUnique] = useState(() => !!unique);
@@ -67,7 +68,7 @@ export function MartFields({ mart, visible, onChange }: { mart: ConfigMart; visi
     disabled: set.has(f.name) && (visible.length === 1 || locked(f.name)),
   }));
   return (
-    <div className="flex flex-col gap-2">
+    <div className="dm-mart-fields flex flex-col gap-2">
       <SheetsChecklist label={`Fields of ${title}`} items={items} selected={shownNow} displaying={shownNow.length} onChange={apply}
         lead={hadUnique ? { item: { value: 'unique-count', text: UNIQUE_COUNT_LABEL, disabled: !unique }, on: unique?.on ?? false, onToggle: () => unique?.onToggle() } : undefined} />
     </div>

@@ -82,7 +82,7 @@ test('a joined tab lists that mart\'s fields with a count, each with its descrip
   t.view();
   await openPicker('Customers');
   const picker = within(await screen.findByRole('dialog'));
-  expect(picker.getAllByRole('option').map((c) => c.textContent)).toEqual(['Unique Count', 'email', 'id', 'name', 'city', 'Country']);
+  expect(picker.getAllByRole('option').map((c) => c.textContent)).toEqual(['Unique Count', 'email', 'city', 'Country', 'id', 'name']);
   expect(picker.queryByText(/Fields ·/)).toBeNull();
   expect(picker.getByLabelText('About name')).toBeInTheDocument();
   await userEvent.click(picker.getByLabelText('city'));
@@ -129,6 +129,44 @@ test('Clear in a joined mart\'s picker keeps the mart after the menu closes, and
   await waitFor(() => expect(screen.queryByRole('menu', { name: 'Configure data' })).toBeNull());
   const again = await openConfigMenu();
   expect(within(again).queryByRole('menuitem', { name: 'Customers' })).toBeNull();
+});
+
+test('Clear in the main mart\'s picker leaves only the joined columns; the mart stays listed first and a tick brings a column back', async () => {
+  const t = setup(['id', 'status', 'customers__email']);
+  await t.seeded;
+  t.view();
+  await waitFor(() => expect(headers()).toEqual(['id', 'status', 'email']));
+  const picker = within(await openPicker());
+  await userEvent.click(picker.getByRole('button', { name: 'Clear' }));
+  await waitFor(() => expect(headers()).toEqual(['email']));
+  await userEvent.keyboard('{Escape}{Escape}');
+  const menu = await openConfigMenu();
+  expect(within(menu).getAllByRole('menuitem').map((r) => r.textContent)[0]).toBe('Orders');
+  const again = within(await openPicker());
+  expect(again.getAllByRole('option').filter((o) => o.getAttribute('aria-selected') === 'true')).toHaveLength(0);
+  await userEvent.click(again.getByLabelText('status'));
+  await waitFor(() => expect(headers()).toEqual(['status', 'email']));
+});
+
+test('Remove from report on a main mart with no column promotes the joined mart', async () => {
+  const t = setup(['id', 'customers__email']);
+  await t.seeded;
+  t.view();
+  const picker = within(await openPicker());
+  await userEvent.click(picker.getByRole('button', { name: 'Clear' }));
+  await waitFor(() => expect(headers()).toEqual(['email']));
+  await userEvent.click(picker.getByRole('menuitem', { name: 'Remove from report' }));
+  await userEvent.keyboard('{Escape}{Escape}');
+  await waitFor(async () => expect(within(await openConfigMenu()).getAllByRole('menuitem').map((r) => r.textContent)).toEqual(['Customers']));
+});
+
+test('the last own column of the main mart can be unticked while a joined mart is shown', async () => {
+  const t = setup(['id', 'customers__email']);
+  await t.seeded;
+  t.view();
+  const picker = within(await openPicker());
+  await userEvent.click(picker.getByLabelText('id'));
+  await waitFor(() => expect(headers()).toEqual(['email']));
 });
 
 test('Clear in the main mart\'s picker still leaves a column', async () => {
@@ -246,11 +284,13 @@ test('a saved list that interleaves the marts shows grouped and is saved grouped
   await waitFor(() => expect(t.put).toHaveBeenCalledWith('orders', { columns: ['id', 'customers__email', 'customers__city', 'products__sku'] }), { timeout: SAVE_DEBOUNCE_MS + 1500 });
 });
 
-test('a saved list with joined columns and none of the main mart\'s own gets the main mart\'s default columns first', async () => {
+test('a saved list with joined columns and none of the main mart\'s own stays without one', async () => {
   const t = setup(['customers__email', 'products__sku']);
   await t.seeded;
   t.view();
-  await waitFor(() => expect(headers()).toEqual(['Customer', 'Product', 'Store', 'status', 'Amount', 'email', 'SKU']));
+  await waitFor(() => expect(headers()).toEqual(['email', 'SKU']));
+  await new Promise((r) => setTimeout(r, 100));
+  expect(headers()).toEqual(['email', 'SKU']);
 });
 
 test('Hide column focuses the neighbour by field, even when two columns share a title', async () => {
