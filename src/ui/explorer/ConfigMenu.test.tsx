@@ -13,7 +13,7 @@ afterEach(cleanup);
 
 const f = (name: string, description?: string) => ({ name, type: 'STRING', category: 'string', description }) as Field;
 const mart = (path: string, title: string, names: string[], extra: Partial<ConfigMart> = {}): ConfigMart => ({
-  path, title, main: path === '', shown: false, fields: names.map((n) => f(n)), locked: () => false, ...extra,
+  path, title, main: path === '', shown: false, fields: names.map((n) => f(n)), ...extra,
 });
 const ORDERS = ['id', 'name', 'city'];
 const CUSTOMERS = ['customers__email', 'customers__tier'];
@@ -614,19 +614,6 @@ describe('fix round 1', () => {
     expect(visibleNow()).toBe('id');
     const again = await openRow('Customers', menu);
     expect(within(again).getByRole('option', { name: 'Unique Count' })).toHaveAttribute('aria-selected', 'false');
-  });
-
-  test('a root mart that left gets a fresh locked from the data marts that can join', async () => {
-    const gone = (locked: (n: string) => boolean): ConfigMart => ({ ...mart('p', 'Partners', ['p1', 'p2']), locked });
-    const props = (marts: ConfigMart[], joinable: ConfigMart[]) => <TooltipProvider><ConfigMenu marts={marts} joinable={(p) => (p === '' ? joinable : [])} visible={['id', 'p1']} onChange={() => undefined} /></TooltipProvider>;
-    const main = { ...mart('', 'Orders', ORDERS), shown: true };
-    const listed = { ...gone(() => false), shown: true };
-    const { rerender } = render(props([main, listed], []));
-    await userEvent.click(screen.getByRole('button', { name: 'Configure data' }));
-    await screen.findByRole('menu', { name: 'Configure data' });
-    rerender(props([main], [gone((n) => n === 'p1')]));
-    const panel = await openRow('Partners', screen.getByRole('menu', { name: 'Configure data' }));
-    expect(within(panel).getByRole('option', { name: 'p1' })).toHaveAttribute('aria-disabled', 'true');
   });
 
   test('the third level of one chart submenu does not open by itself in the next one', async () => {

@@ -16,7 +16,6 @@ export type ConfigMart = {
   fields: Field[];
   /** Which rules some field of the mart carries (shown or not); the config menu marks the row with them. */
   rules?: { filter: boolean; slice: boolean; aggregate: boolean };
-  locked: (name: string) => boolean;
   unique?: { on: boolean; onToggle: () => void };
   /** Takes the data mart out of the report. Absent when it is not in the report, or is the only one. `onRemove` must read the state as it is when called: a change may have gone out just before it. */
   remove?: { onRemove: () => void; disabled?: boolean };
@@ -27,12 +26,12 @@ export type ConfigMart = {
  * `onChange` gets the whole grid's column list. A joined mart's new field goes last (the grid groups it with its mart).
  * The main mart's own fields that stay keep the order they have on the grid (the member may have dragged them); a newly
  * ticked one goes right after the nearest field before it in the schema that is shown, or first when none is, so a grid
- * that was never reordered stays in schema order. `mart.locked` names the ticked fields that cannot be unticked.
+ * that was never reordered stays in schema order.
  * `mart.unique` is the mart's Unique Count metric, when the mart offers one (a hidden or composite key counts too): a first row toggles its column, which sits after the mart's own columns. It does not show or hide any field.
  * The rows list the shown fields first, then the rest, each group in alphabetical order of the label, as they were when this mounted: a tick never moves a row.
  */
 export function MartFields({ mart, visible, onChange }: { mart: ConfigMart; visible: string[]; onChange: (cols: string[]) => void }) {
-  const { fields, main, locked, unique, title } = mart;
+  const { fields, main, unique, title } = mart;
   const set = new Set(visible);
   const mine = new Set(fields.map((f) => f.name));
   const [order] = useState(() => {
@@ -65,7 +64,7 @@ export function MartFields({ mart, visible, onChange }: { mart: ConfigMart; visi
     action: <FieldMenuButton field={f} onHide={() => apply(shownNow.filter((n) => n !== f.name))} />,
     extra: <FieldHint field={f} decorative />,
     description: f.description?.trim() || undefined,
-    disabled: set.has(f.name) && (visible.length === 1 || locked(f.name)),
+    disabled: set.has(f.name) && visible.length === 1,
   }));
   return (
     <div className="dm-mart-fields flex flex-col gap-2">

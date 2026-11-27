@@ -6,10 +6,10 @@ import type { Field } from '../../model/types';
 import { MartFields, type ConfigMart } from './MartFields';
 
 const fields = ['id', 'name', 'city'].map((name) => ({ name, type: 'STRING', category: 'string' }) as Field);
-const orders = (extra: Partial<ConfigMart> = {}): ConfigMart => ({ path: '', title: 'Orders', main: true, shown: true, fields, locked: () => false, ...extra });
-const open = async (visible: string[], locked: (n: string) => boolean = () => false) => {
+const orders = (extra: Partial<ConfigMart> = {}): ConfigMart => ({ path: '', title: 'Orders', main: true, shown: true, fields, ...extra });
+const open = async (visible: string[]) => {
   const onChange = vi.fn();
-  render(<TooltipProvider><MartFields mart={orders({ locked })} visible={visible} onChange={onChange} /></TooltipProvider>);
+  render(<TooltipProvider><MartFields mart={orders()} visible={visible} onChange={onChange} /></TooltipProvider>);
   return onChange;
 };
 
@@ -42,7 +42,7 @@ test('the last own column of the main mart can be unticked while a joined mart i
 test('Clear on a joined mart commits at once and leaves the other marts\' columns', async () => {
   const onChange = vi.fn();
   const joined = ['cus_a', 'cus_b'].map((name) => ({ name, type: 'STRING', category: 'string' }) as Field);
-  render(<TooltipProvider><MartFields mart={{ path: 'customers', title: 'Customers', main: false, shown: true, fields: joined, locked: () => false }} visible={['id', 'cus_a', 'cus_b']} onChange={onChange} /></TooltipProvider>);
+  render(<TooltipProvider><MartFields mart={{ path: 'customers', title: 'Customers', main: false, shown: true, fields: joined }} visible={['id', 'cus_a', 'cus_b']} onChange={onChange} /></TooltipProvider>);
   await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
   expect(onChange).toHaveBeenCalledOnce();
   expect(onChange).toHaveBeenLastCalledWith(['id']);
@@ -51,15 +51,9 @@ test('Clear on a joined mart commits at once and leaves the other marts\' column
 test('Clear on a joined mart with no column changes nothing', async () => {
   const onChange = vi.fn();
   const joined = ['cus_a'].map((name) => ({ name, type: 'STRING', category: 'string' }) as Field);
-  render(<TooltipProvider><MartFields mart={{ path: 'customers', title: 'Customers', main: false, shown: true, fields: joined, locked: () => false }} visible={['id']} onChange={onChange} /></TooltipProvider>);
+  render(<TooltipProvider><MartFields mart={{ path: 'customers', title: 'Customers', main: false, shown: true, fields: joined }} visible={['id']} onChange={onChange} /></TooltipProvider>);
   await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
   expect(onChange).not.toHaveBeenCalled();
-});
-
-test('Clear keeps a locked field', async () => {
-  const onChange = await open(['id', 'name', 'city'], (n) => n === 'name');
-  await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
-  expect(onChange).toHaveBeenLastCalledWith(['name']);
 });
 
 test('the Fields hint is a pointer shortcut: not in the Tab order, and the option carries the description', async () => {
