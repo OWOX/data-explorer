@@ -181,7 +181,7 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
         {groups.map((g, i) => (
           <td key={g.path} colSpan={g.span} data-chart-group={g.id} data-chart-path={g.path}>
             <div className="flex items-start gap-1">
-              <MartCards martId={martId} mart={cf.marts[i]!} main={g.path === ''} spark={spark} scores={scores} bucket={bucket} bucketPending={bucketPending} autoBucket={leadBucket === 'AUTO'} filter={filter} version={version} paused={idle} joins={joins} hasFilters={hasFilters} formatOf={formatOf}
+              <MartCards martId={martId} mart={cf.marts[i]!} main={g.path === '' || (i === 0 && !groups.some((x) => x.path === ''))} spark={spark} scores={scores} bucket={bucket} bucketPending={bucketPending} autoBucket={leadBucket === 'AUTO'} filter={filter} version={version} paused={idle} joins={joins} hasFilters={hasFilters} formatOf={formatOf}
                 onMetric={settings ? (id, v) => change((cur) => setCardMetric(cur, id, v, cf.marts[i]!)) : undefined}
                 onDate={settings ? (id, v) => change((cur) => setCardDate(cur, id, v, cf.marts[i]!, spark)) : undefined} onHide={settings ? (id) => change((cur) => hideCard(cur, id)) : undefined} />
             </div>

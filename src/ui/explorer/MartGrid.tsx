@@ -737,7 +737,6 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   const reportGroups = useMemo(() => (mainEmpty ? [{ path: '', title: model.marts.get(martId)?.title ?? martId, icon: model.marts.get(martId)?.icon }, ...groups] : groups), [mainEmpty, model, martId, groups]);
   const sets = useMemo(() => chartSetsOf(schema, shown, aggNow, martId, groups, reportGroups, pathMarts, sources), [schema, shown, aggNow, martId, groups, reportGroups, pathMarts, sources]);
   const scoreFields = sets.cf;
-  const chartable = useMemo(() => !scoreFields.marts.every((m) => m.metrics.length === 0 && !m.hasPk), [scoreFields]);
   const savedHere = savedCharts[martId];
   const usesKeysNow = useMemo(() => usesKeys(savedHere, sets.cf, sets.chart), [savedHere, sets]);
   const having = useHavingKeys(martId, keysRead, keyField, version, !charts || paused || !!blocked || !usesKeysNow);
@@ -749,6 +748,8 @@ export function Grid({ martId, model, schema: native, seed, holdView, lateView, 
   // The marts the report keeps with no column that have a usable key: their count rides on the scorecard read, while a rule applies, in Table and in Charts alike.
   // The main mart with no column counts too (as '', first) when it has a key: no scorecard of it, but its match badge needs the count.
   const keptUnique = useMemo(() => (applies && !havingSet ? [...(mainEmpty && mainKey ? [''] : []), ...pathMarts.filter((m) => m.empty && sources.some((x) => x.aliasPath === m.path && x.uniqueCount)).map((m) => m.path)] : []), [applies, havingSet, mainEmpty, mainKey, pathMarts, sources]);
+  // Charts reads when a shown field is a number or a key, or when the empty main mart's count rides on the read (its card shows the badge): the same read ChartsBody shares.
+  const chartable = useMemo(() => keptUnique.includes('') || !scoreFields.marts.every((m) => m.metrics.length === 0 && !m.hasPk), [scoreFields, keptUnique]);
   // The same query as the scorecards of Charts (one builder, one key): a read that Charts asks is shared, and Table's read is served to Charts from the cache.
   const full = useMemo(() => (applies && !havingSet ? scoreQuery(scoreFields, traverseFilters, keptUnique) : null), [applies, havingSet, scoreFields, traverseFilters, keptUnique]);
   // A query that counts nothing shows no badge, and one built without a slice (no metric and no countable field to carry it) would not be the member's: no read, no badge.

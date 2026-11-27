@@ -17,7 +17,7 @@ const isScore = (q: TraverseOptions) => !!(q.uniqueCount?.length || q.aggregatio
   && !(!q.filter && !q.uniqueCount && q.aggregation?.length === 1 && q.aggregation[0]!.function === 'COUNT');
 
 // Every traverseData call is a billed warehouse run: the match badge on the cards has no query of its own, it rides on the scorecard read.
-function setup(grid: GridState, opts: { /** How long a slow read waits (ms). */ slowMs?: number; charts?: ChartSettings; fail?: (o: TraverseOptions) => boolean; /** Marts that lose their primary key. */ noKey?: string[]; /** Adds a JSON field to Orders, which cannot be grouped. */ json?: boolean; /** Adds a calculated metric `margin` to Orders. */ calc?: boolean; /** Replaces the total row count of a read of Orders. */ total?: (o: TraverseOptions) => number | undefined; /** Reads that answer after this many ms. */ slow?: (o: TraverseOptions) => boolean } = {}) {
+function setup(grid: GridState, opts: { /** Reads that come back with no row. */ zero?: (o: TraverseOptions) => boolean; /** How long a slow read waits (ms). */ slowMs?: number; charts?: ChartSettings; fail?: (o: TraverseOptions) => boolean; /** Marts that lose their primary key. */ noKey?: string[]; /** Adds a JSON field to Orders, which cannot be grouped. */ json?: boolean; /** Adds a calculated metric `margin` to Orders. */ calc?: boolean; /** Replaces the total row count of a read of Orders. */ total?: (o: TraverseOptions) => number | undefined; /** Reads that answer after this many ms. */ slow?: (o: TraverseOptions) => boolean } = {}) {
   const fixtures = structuredClone(demoFixtures());
   for (const m of fixtures.marts) if (opts.noKey?.includes(m.id)) for (const f of m.fields) f.isPrimaryKey = false;
   if (opts.calc) fixtures.marts.find((m) => m.id === 'orders')!.fields.push({ name: 'margin', type: 'NUMERIC', alias: 'Margin', calculated: { level: 'metric' } } as never);
@@ -27,7 +27,7 @@ function setup(grid: GridState, opts: { /** How long a slow read waits (ms). */ 
   const real = base.owox.dataMarts.traverseData.bind(base.owox.dataMarts);
   const ctx: Ctx = {
     ...base,
-    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('read failed')); const n = id === 'orders' ? opts.total?.(o) : undefined; const done = n !== undefined && o.includeTotalRowCount ? real(id, o).then((r) => ({ ...r, totalRowCount: n })) : real(id, o); return id === 'orders' && opts.slow?.(o) ? new Promise((res) => setTimeout(res, opts.slowMs ?? 250)).then(() => done) : done; } } },
+    owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => { if (id === 'orders') queries.push(o); if (id === 'orders' && opts.fail?.(o)) return Promise.reject(new Error('read failed')); const n = id === 'orders' ? opts.total?.(o) : undefined; const done = id === 'orders' && opts.zero?.(o) ? real(id, o).then((r) => ({ ...r, totalRowCount: 0, rowChunks: async function* () { /* no rows */ } })) : n !== undefined && o.includeTotalRowCount ? real(id, o).then((r) => ({ ...r, totalRowCount: n })) : real(id, o); return id === 'orders' && opts.slow?.(o) ? new Promise((res) => setTimeout(res, opts.slowMs ?? 250)).then(() => done) : done; } } },
   };
   function Probe() {
     const [, dispatch] = useStore();
@@ -269,6 +269,38 @@ test('the main mart with no column and a joined mart with no key: the main count
   await waitFor(() => expect(t.scoreReads().length).toBeGreaterThan(0));
   expect(t.scoreReads()[0]!.uniqueCount).toEqual(['']);
   await waitFor(() => expect(badge('orders')).toMatch(/match/));
+});
+
+const cleared: GridState = { ...mainOnly, columns: ['products__price'], view: 'charts' };
+
+test('Charts, the main mart cleared: a failed scorecard read shows the error with Retry in the first group, and Retry reads again', async () => {
+  let broken = true;
+  const t = setup({ ...cleared, filters: {} }, { fail: (o) => broken && isScore(o) });
+  await t.mount();
+  const cell = () => data().querySelector<HTMLElement>('td[data-chart-group="products"]')!;
+  await waitFor(() => expect(within(cell()).getByRole('button', { name: 'Retry' })).toBeInTheDocument());
+  expect(data().querySelector('td[data-chart-group="orders"]')).toBeNull();
+  const before = t.scoreReads().length;
+  broken = false;
+  await userEvent.click(within(cell()).getByRole('button', { name: 'Retry' }));
+  await waitFor(() => expect(t.scoreReads().length).toBeGreaterThan(before));
+  await waitFor(() => expect(within(cell()).queryByRole('button', { name: 'Retry' })).toBeNull());
+});
+
+test('Charts, the main mart cleared: a scorecard read with no row shows the empty note in the first group', async () => {
+  const t = setup({ ...cleared, filters: {} }, { zero: isScore });
+  await t.mount();
+  await waitFor(() => expect(data().querySelector('td[data-chart-group="products"]')?.textContent).toMatch(/no rows|nothing|no data/i));
+  expect(t.scoreReads().length).toBeGreaterThan(0);
+});
+
+test('Charts, the main mart cleared and keyed, the joined mart text only: one score read, and the main card gets its badge', async () => {
+  const t = setup({ ...mainOnly, columns: ['products__title'], view: 'charts' }, { noKey: ['products'] });
+  await t.mount();
+  await waitFor(() => expect(badge('orders')).toMatch(/match/));
+  await calm();
+  expect(t.scoreReads()).toHaveLength(1);
+  expect(t.scoreReads()[0]!.uniqueCount).toEqual(['']);
 });
 
 test('a mart kept with no column joins the read only while a filter or a slice applies', async () => {
