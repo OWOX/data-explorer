@@ -288,13 +288,12 @@ const tipText = (page: Page) => page.getByRole('tooltip').textContent();
 const centre = async (el: Locator) => { const b = (await el.boundingBox())!; return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
 
 test('the tooltip of the next node, then of a ribbon, replaces the last bubble once the pointer rests there', async ({ page }) => {
-  // The default charts sit above the Sankey now: a taller window keeps its second column clear of the band below it.
-  await page.setViewportSize({ width: 1440, height: 1300 });
   const sankey = await openSankey(page);
   const bubble = page.locator('.dm-hint-body');
   const first = sankey.locator('rect[data-node^="0|"]').first();
   const second = sankey.locator('rect[data-node^="1|"]').first();
   // What the second node says when nothing else is open.
+  await second.scrollIntoViewIfNeeded();
   await page.mouse.move(...(Object.values(await centre(second)) as [number, number]));
   await expect(bubble).toBeVisible();
   const want = (await tipText(page))!;
@@ -309,6 +308,7 @@ test('the tooltip of the next node, then of a ribbon, replaces the last bubble o
   await first.hover();
   await expect(bubble).toBeVisible();
   expect(await tipText(page)).toBe(wantFirst);
+  await second.scrollIntoViewIfNeeded();
   const to = await centre(second);
   await page.mouse.move(to.x, to.y, { steps: 20 });
   await expect.poll(() => tipText(page).catch(() => null), { timeout: 1500 }).toBe(want);
@@ -319,10 +319,10 @@ test('the tooltip of the next node, then of a ribbon, replaces the last bubble o
   // Rest on a ribbon: the ribbon's plain tooltip, on top, with no copy button.
   await page.mouse.move(5, 5, { steps: 5 });
   await expect(bubble).toHaveCount(0, { timeout: 1500 });
-  const at = (await ribbonPoint(page))!;
-  expect(at).not.toBeNull();
   await first.hover();
   await expect(bubble).toBeVisible();
+  const at = (await ribbonPoint(page))!;
+  expect(at).not.toBeNull();
   await page.mouse.move(at.x, at.y, { steps: 20 });
   await expect.poll(() => tipText(page).catch(() => ''), { timeout: 1500 }).toMatch(/→/);
   await page.waitForTimeout(400);
