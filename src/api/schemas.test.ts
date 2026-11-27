@@ -34,6 +34,18 @@ test('get() records the declared key, a key hidden for reporting included, while
   expect(schema.primaryKey).toEqual(['id']);
 });
 
+test('get() keeps the hidden fields a read may name: top-level stored ones, not calculated, not disconnected, not inside a RECORD', async () => {
+  const getJson = vi.fn(async () => ({ id: 'a', schema: { fields: [
+    { name: 'id', type: 'INT64', isPrimaryKey: true, isHiddenForReporting: true },
+    { name: 'calc', type: 'INT64', isHiddenForReporting: true, calculated: { level: 'column' } },
+    { name: 'gone', type: 'STRING', isHiddenForReporting: true, status: 'DISCONNECTED' },
+    { name: 'rec', type: 'RECORD', fields: [{ name: 'inner', type: 'STRING', isHiddenForReporting: true }] },
+    { name: 'name', type: 'STRING' },
+  ] } }));
+  const schema = await createSchemaLoader(stubCtx({ getJson })).get('a');
+  expect(schema.hiddenFields).toEqual([{ name: 'id', alias: null, type: 'INT64', category: 'number', description: null, isPrimaryKey: true }]);
+});
+
 test('a key with a disconnected component is no key, as the backend counts it', async () => {
   const getJson = vi.fn(async () => ({ id: 'a', schema: { fields: [
     { name: 'a', type: 'INT64', isPrimaryKey: true },

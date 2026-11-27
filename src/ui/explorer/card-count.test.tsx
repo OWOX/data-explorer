@@ -11,8 +11,9 @@ import { App } from '../App';
 // Every traverseData call is a billed warehouse run. The card's own count is `{ uniqueCount: [''] }` and nothing else.
 const isCardCount = (q: TraverseOptions) => Object.keys(q).length === 1 && q.uniqueCount?.length === 1 && q.uniqueCount[0] === '';
 
-function setup(grid: GridState, opts: { noKey?: boolean; calc?: boolean } = {}) {
+function setup(grid: GridState, opts: { noKey?: boolean; calc?: boolean; hiddenKey?: boolean } = {}) {
   const fixtures = structuredClone(demoFixtures());
+  if (opts.hiddenKey) fixtures.marts.find((m) => m.id === 'orders')!.fields.find((f) => f.name === 'id')!.isHiddenForReporting = true;
   if (opts.noKey) for (const f of fixtures.marts.find((m) => m.id === 'orders')!.fields) f.isPrimaryKey = false;
   if (opts.calc) fixtures.marts.find((m) => m.id === 'orders')!.fields.push({ name: 'margin', type: 'NUMERIC', alias: 'Margin', calculated: { level: 'metric' } } as never);
   const base = createMockCtx(fixtures, { latencyMs: 0 });
@@ -63,6 +64,20 @@ test('a plain unfiltered grid of a mart with a key gives its total to the card',
   await t.mount();
   await waitFor(rowsShown);
   await waitFor(() => expect(shown()).toMatch(/123 records/));
+});
+
+test('a key hidden for reporting, which the grid reads to open rows by, still gives the total to the card, and Refresh adds no count read', async () => {
+  const t = setup({ ...plain, columns: ['status', 'amount', 'created_at'] }, { hiddenKey: true });
+  await t.mount();
+  await waitFor(() => expect(shown()).toMatch(/123 records/));
+  expect(t.queries.some((q) => q.column?.includes('id'))).toBe(true);
+  await calm();
+  const before = t.countReads().length;
+  t.state.total = 456;
+  await refresh();
+  await waitFor(() => expect(shown()).toMatch(/456 records/));
+  await calm();
+  expect(t.countReads()).toHaveLength(before);
 });
 
 test.each([

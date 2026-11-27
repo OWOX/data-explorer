@@ -1,6 +1,6 @@
 import { knownFunctions } from '../model/aggregation';
 import { categorizeFieldType } from '../model/field-category';
-import type { Schema } from '../model/types';
+import type { Field, Schema } from '../model/types';
 import type { Ctx, DataMartDetailDto, SchemaFieldDto } from '../sdk/types';
 
 export interface SchemaLoader {
@@ -44,22 +44,26 @@ export function createSchemaLoader(ctx: Ctx): SchemaLoader {
       .getJson<DataMartDetailDto>(`/api/data-marts/${encodeURIComponent(id)}`)
       .then((d) => {
         const all = d.schema?.fields ?? [];
+        const toField = (f: SchemaFieldDto): Field => ({
+          name: f.name,
+          alias: f.alias ?? null,
+          type: f.type,
+          // A repeated field is an array, whatever its element type: only blank filters apply.
+          category: f.mode === 'REPEATED' ? 'other' : categorizeFieldType(f.type),
+          description: f.description ?? null,
+          isPrimaryKey: f.isPrimaryKey === true,
+          ...(f.calculated !== undefined ? { isCalculated: true, calculatedLevel: f.calculated?.level === 'column' ? ('column' as const) : ('metric' as const) } : {}),
+          ...(Array.isArray(f.allowedAggregations) ? { allowedAggregations: knownFunctions(f.allowedAggregations) } : {}),
+        });
         const schema: Schema = all
           // A calculated field has no warehouse column, so its status is not meaningful: keep it.
-          // A field hidden for reporting is not offered anywhere: the backend rejects it in a column, filter, sort or report.
+          // A field hidden for reporting is offered nowhere: reports and exports reject it.
           .filter((f) => !f.isHiddenForReporting && (f.calculated !== undefined || f.status !== 'DISCONNECTED'))
-          .map((f) => ({
-            name: f.name,
-            alias: f.alias ?? null,
-            type: f.type,
-            // A repeated field is an array, whatever its element type: only blank filters apply.
-            category: f.mode === 'REPEATED' ? 'other' : categorizeFieldType(f.type),
-            description: f.description ?? null,
-            isPrimaryKey: f.isPrimaryKey === true,
-            ...(f.calculated !== undefined ? { isCalculated: true, calculatedLevel: f.calculated?.level === 'column' ? ('column' as const) : ('metric' as const) } : {}),
-            ...(Array.isArray(f.allowedAggregations) ? { allowedAggregations: knownFunctions(f.allowedAggregations) } : {}),
-          }));
+          .map(toField);
         schema.primaryKey = declaredKey(all);
+        // A data mart read still takes a hidden stored column by name (a key to open a row by, a join field to follow):
+        // top-level ones only, as the backend serves no hidden calculated field and no field inside a RECORD.
+        schema.hiddenFields = all.filter((f) => f.isHiddenForReporting && f.calculated === undefined && f.status !== 'DISCONNECTED').map(toField);
         if (inflight.get(id) === p) done.set(id, schema);
         return schema;
       })

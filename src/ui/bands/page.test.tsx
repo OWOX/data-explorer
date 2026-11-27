@@ -1413,11 +1413,11 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(named).not.toContain('internal_flag');
   });
 
-  test('a mart whose primary key is hidden for reporting has no warning, no 400, a record count, and no key in the picker; a row does not open', async () => {
+  test('a mart whose primary key is hidden for reporting reads the key, not shows it: no warning, a record count, no key in the picker, and a row opens', async () => {
     const f = demoFixtures();
     const stores = f.marts.find((m) => m.id === 'stores')!;
     stores.fields = stores.fields.map((x) => (x.name === 'id' ? { ...x, isHiddenForReporting: true } : x));
-    const queries: { id: string; o: { column?: string[]; sort?: { column: string }[] } }[] = [];
+    const queries: { id: string; o: { column?: string[]; sort?: { column: string }[]; filter?: { column: string }[] } }[] = [];
     await mountWith(overrideTraverse((real) => (id, o) => { queries.push({ id, o }); return real(id, o); }), f);
     await within(data()).findByRole('table');
     await search('stores');
@@ -1427,10 +1427,21 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(within(data()).queryByRole('note', { name: NO_PK })).toBeNull();
     expect(within(data()).queryByRole('note', { name: /Preview only/ })).toBeNull();
     expect(within(data()).queryByText(/Unknown column/)).toBeNull();
-    await userEvent.click(within(data()).getAllByRole('row')[2]!);
-    expect(within(row()).getByText('Select a row.')).toBeInTheDocument();
-    const named = queries.filter((q) => q.id === 'stores').flatMap((q) => [...(q.o.column ?? []), ...(q.o.sort ?? []).map((s) => s.column)]);
-    expect(named).not.toContain('id');
+    expect(within(data()).queryByLabelText('Column menu id')).toBeNull();
+    // The grid names the hidden key: read after the shown columns and sorted by last, so pages stay stable.
+    const plain = queries.filter((q) => q.id === 'stores' && q.o.column?.includes('id'));
+    expect(plain.length).toBeGreaterThan(0);
+    expect(plain.at(-1)!.o.column!.at(-1)).toBe('id');
+    expect(plain.at(-1)!.o.sort!.at(-1)!.column).toBe('id');
+    const clicked = within(data()).getAllByRole('row')[2]!;
+    const value = clicked.querySelector('td')!.textContent!;
+    await userEvent.click(clicked);
+    await waitFor(() => expect(within(row()).getAllByText(value).length).toBeGreaterThan(0));
+    expect(within(row()).queryByText('id')).toBeNull();
+    // Refresh reads the record by its hidden key, a number as the key's type says.
+    await userEvent.click(within(row()).getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(queries.some((q) => q.id === 'stores' && q.o.filter?.some((x) => x.column === 'id' && typeof (x as { value?: unknown }).value === 'number'))).toBe(true));
+    await waitFor(() => expect(within(row()).getAllByText(value).length).toBeGreaterThan(0));
     // The mart is still counted by its key: Unique Count is sent for it, and no card says it cannot count.
     expect(queries.some((q) => q.id === 'stores' && (q.o as { uniqueCount?: string[] }).uniqueCount?.[0] === '')).toBe(true);
     expect(screen.queryByText(/Can't count records/)).toBeNull();
@@ -1447,7 +1458,7 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     expect(within(data()).queryByRole('note', { name: NO_PK })).toBeNull();
   });
 
-  test('Referenced by leaves out a link whose join field is hidden for reporting', async () => {
+  test('Referenced by leaves out a link whose referencing join field is hidden for reporting', async () => {
     const f = demoFixtures();
     const shipments = f.marts.find((m) => m.id === 'shipments')!;
     shipments.fields = shipments.fields.map((x) => (x.name === 'order_id' ? { ...x, isHiddenForReporting: true } : x));
@@ -1457,6 +1468,22 @@ describe('hidden fields, clipped cells and the field (?)', () => {
     const section = await within(row()).findByRole('region', { name: 'Referenced by' });
     await waitFor(() => expect(within(section).queryByRole('button', { name: /Shipments/ })).toBeNull());
     expect(within(section).getAllByRole('button').map((b) => b.textContent)).toEqual(['Order Items', 'Returns', 'Payments']);
+  });
+
+  test('Referenced by follows a link whose join field on this record is hidden for reporting: the record reads it, and does not show it', async () => {
+    const f = demoFixtures();
+    const orders = f.marts.find((m) => m.id === 'orders')!;
+    orders.fields = orders.fields.map((x) => (x.name === 'id' ? { ...x, isHiddenForReporting: true } : x));
+    const queries: { id: string; o: { column?: string[]; filter?: { column: string }[] } }[] = [];
+    await mountWith(overrideTraverse((real) => (id, o) => { queries.push({ id, o }); return real(id, o); }), f);
+    const grid = await within(data()).findByRole('table');
+    await waitFor(() => expect(within(grid).getAllByRole('row').length).toBeGreaterThan(2));
+    await userEvent.click(within(grid).getAllByRole('row')[2]!);
+    const section = await within(row()).findByRole('region', { name: 'Referenced by' });
+    await waitFor(() => expect(within(section).getByRole('button', { name: /Shipments/ })).toBeEnabled());
+    expect(within(row()).queryByText('id')).toBeNull();
+    await userEvent.click(within(section).getByRole('button', { name: /Shipments/ }));
+    await waitFor(() => expect(queries.some((q) => q.id === 'shipments' && q.o.filter?.some((x) => x.column === 'order_id'))).toBe(true));
   });
 
   test('grid cells and headers are clipped to one line, with a width cap by type, and a filler cell keeps the header line full width', async () => {

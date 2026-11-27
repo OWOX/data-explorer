@@ -60,4 +60,4 @@ export type DqSummary = DqSummaryDto;
  * `primaryKey` is the mart's declared key as the backend knows it, hidden components included: a key hidden for reporting
  * is not a pickable field, but the mart still has it and Unique Count still counts by it.
  */
-export type Schema = Field[] & { primaryKey?: readonly string[]; /** The alias paths of the joined marts whose Unique Count the backend offers (set where the joined fields are added). */ joinedUniqueCount?: readonly string[] };
+export type Schema = Field[] & { primaryKey?: readonly string[]; /** The mart's own top-level stored fields hidden for reporting: never offered, but a data mart read may name them (a key, a join field). */ hiddenFields?: readonly Field[]; /** The alias paths of the joined marts whose Unique Count the backend offers (set where the joined fields are added). */ joinedUniqueCount?: readonly string[] };

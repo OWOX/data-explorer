@@ -175,6 +175,7 @@ export const withJoined = (schema: Schema, sources: JoinedSource[]): Schema => {
   const all: Schema = [...schema, ...sources.flatMap((s) => s.fields)];
   // The main mart's declared key travels with its fields, so a key hidden for reporting is still known to the charts.
   if (schema.primaryKey) all.primaryKey = schema.primaryKey;
+  if (schema.hiddenFields) all.hiddenFields = schema.hiddenFields;
   // Which joined marts can count their records, so a saved view or a link is checked against it without the joined sources.
   all.joinedUniqueCount = sources.filter((s) => s.uniqueCount).map((s) => s.aliasPath);
   return all;

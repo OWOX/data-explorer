@@ -107,7 +107,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     }
     return cur?.[field] ?? null;
   }
-  /** Like the backend: a field hidden for reporting is not a column a query or a report may name. */
+  /** Like the backend: a field hidden for reporting is not a column a report may name. A data mart read may name the mart's own, never a joined one's. */
   const badRequest = (message: string) => Object.assign(new Error(message), { payload: { code: 'HTTP_ERROR', status: 400 } });
   const hiddenSets = new Map<string, Set<string>>();
   function hiddenOf(martId: string): Set<string> {
@@ -120,9 +120,11 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     }
     return hidden;
   }
-  function rejectHidden(martId: string, names: string[]) {
+  const ownHidden = (martId: string) => new Set(byId.get(martId)?.fields.filter((x) => x.isHiddenForReporting).map((x) => x.name));
+  function rejectHidden(martId: string, names: string[], read = false) {
     const hidden = hiddenOf(martId);
-    const bad = names.find((n) => hidden.has(n));
+    const own = read ? ownHidden(martId) : new Set<string>();
+    const bad = names.find((n) => hidden.has(n) && !own.has(n));
     if (bad) throw badRequest(`Unknown column: ${bad}`);
   }
   const blendedIndexes = new Map<string, Map<string, { hop: Hop; field: string }>>();
@@ -161,7 +163,7 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     if (!m) throw new Error(`Data Mart ${id} not found`);
     if (!m.accessible) throw new Error('You do not have access to this Data Mart');
     // Columns, filters and sorts may name fields of joined marts: those are read off the joined row and added to each row.
-    rejectHidden(id, named(o));
+    rejectHidden(id, named(o), true);
     const index = blendedIndex(id);
     // Like the backend: a slice (pre-join rule) must name a joined field and takes no function; a HAVING rule must match an aggregation.
     const slices = (o.filter ?? []).filter((x) => x.placement === 'pre-join');
@@ -204,6 +206,10 @@ export function createMockCtx(f: Fixtures = demoFixtures(), opts: { latencyMs?: 
     if (o.column) {
       const cols = o.column;
       rows = rows.map((r) => Object.fromEntries(cols.map((c) => [c, r[c] ?? null])));
+    } else {
+      // A wildcard read leaves hidden fields out: only a read that names one gets it.
+      const hidden = ownHidden(id);
+      if (hidden.size) rows = rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !hidden.has(k))));
     }
     return rows;
   }

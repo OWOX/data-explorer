@@ -33,6 +33,15 @@ test('buildRowQuery adds primary keys, keeps schema order, applies complete filt
   });
 });
 
+test('buildRowQuery reads and sorts by a key hidden for reporting, after the shown columns', () => {
+  const s: Schema = Object.assign([f('a'), f('b')], { primaryKey: ['id'], hiddenFields: [f('id', true, 'INT64')] });
+  expect(buildRowQuery(s, ['b', 'a'], [], 10, [{ field: 'b', direction: 'desc' }])).toEqual({
+    column: ['a', 'b', 'id'],
+    sort: [{ column: 'b', direction: 'desc' }, { column: 'id', direction: 'asc' }],
+    limit: 11,
+  });
+});
+
 test('no primary key means no sort', () => {
   const noPk: Schema = [f('x'), f('cur'), f('day')];
   expect(buildRowQuery(noPk, ['x', 'cur'], [], 200)).toEqual({ column: ['x', 'cur'], limit: 201 });

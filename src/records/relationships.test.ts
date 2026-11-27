@@ -33,6 +33,14 @@ test('primaryKeys returns key fields in schema order', () => {
   expect(primaryKeys([f('b', 'STRING', 'string')])).toEqual([]);
 });
 
+test('primaryKeys names a key part hidden for reporting when a read can name it, and no key when a part cannot be named', () => {
+  const hidden = Object.assign([f('b', 'STRING', 'string'), { ...f('a', 'INT64', 'number'), isPrimaryKey: true }], { primaryKey: ['k', 'a'], hiddenFields: [{ ...f('k', 'INT64', 'number'), isPrimaryKey: true }] });
+  expect(primaryKeys(hidden)).toEqual(['k', 'a']);
+  // A part inside a RECORD is declared by its path and is no hidden field a read takes: opening by `a` alone could open another row.
+  const nested = Object.assign([{ ...f('a', 'INT64', 'number'), isPrimaryKey: true }], { primaryKey: ['a', 'rec.k'], hiddenFields: [] });
+  expect(primaryKeys(nested)).toEqual([]);
+});
+
 test('joinFilters picks the operator the join field supports', () => {
   const on = (type: string, category: Field['category'], value: unknown) => joinFilters([{ sourceField: 'v', targetField: 't' }], { v: value }, [f('t', type, category)]);
   expect(on('DATE', 'date', '2026-11-01')).toEqual([{ field: 't', op: 'on', value: '2026-11-01' }]);
