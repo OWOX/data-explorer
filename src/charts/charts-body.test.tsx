@@ -55,6 +55,14 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
   return { ctx, queries, puts, loads, gridPuts, seeded, unmount: () => cleanup(), view: (link?: ChartSettings) => render(<AppServices ctx={ctx}><StoreProvider>{link ? <OpenLink charts={link} /> : null}<App /></StoreProvider></AppServices>) };
 }
 
+// The grid may save its own unchanged list at any time; a chart pick must never add a column to it.
+const expectNoGridColumn = (t: { gridPuts: { mock: { calls: unknown[][] } } }, start: string[], field: string) => {
+  for (const [, d] of t.gridPuts.mock.calls as [string, { columns: string[] }][]) {
+    expect(d.columns).not.toContain(field);
+    expect([...d.columns].sort()).toEqual([...start].sort());
+  }
+};
+
 const lastGrid = (t: { gridPuts: { mock: { calls: unknown[][] } } }) => t.gridPuts.mock.calls.at(-1)![1] as { columns: string[]; aggregations?: { column: string; function: string }[] };
 const data = () => document.getElementById('band-data')!;
 const radio = (name: string) => within(data()).getByRole('radio', { name });
@@ -756,7 +764,7 @@ test('a chart on a field that is not a column is drawn, and the grid keeps its c
   await openChartList();
   expect(screen.getByRole('menuitemcheckbox', { name: /by status$/ })).toBeTruthy();
   expect(t.puts).not.toHaveBeenCalled();
-  expect(t.gridPuts).not.toHaveBeenCalled();
+  expectNoGridColumn(t, ['id', 'amount', 'created_at'], 'status');
 });
 
 test('a Bar chart’s Chart type lists Time series and Line when no date column is shown', async () => {
@@ -890,7 +898,7 @@ test('choosing a field that is not a shown column saves the choice and adds no c
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Net Revenue · Sum' }));
   await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { charts: [{ id: 'time-series', kind: 'timeSeries', measure: 'net_revenue' }, { id: 'pie', kind: 'pie' }] }));
   await waitFor(() => expect(screen.getByRole('heading', { name: /^Net Revenue · Sum by / })).toBeInTheDocument());
-  expect(t.gridPuts).not.toHaveBeenCalled();
+  expectNoGridColumn(t, COLUMNS, 'net_revenue');
 });
 
 test('the main mart with no column still offers its fields and Count Unique to the charts', async () => {
@@ -922,7 +930,7 @@ test('Stack by a hidden dimension saves the pick and shows no column', async () 
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Stack by' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'is_gift' }));
   await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { charts: [{ id: 'time-series', kind: 'timeSeries', stack: 'is_gift' }, { id: 'pie', kind: 'pie' }] }));
-  expect(t.gridPuts).not.toHaveBeenCalled();
+  expectNoGridColumn(t, ['id', 'status', 'amount', 'created_at'], 'is_gift');
 });
 
 test('a hidden field of a joined mart is picked by a chart with no column added', async () => {
@@ -932,7 +940,7 @@ test('a hidden field of a joined mart is picked by a chart with no column added'
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Products' }));
   await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Name' }));
   await waitFor(() => expect(t.puts).toHaveBeenCalledWith('orders', { charts: [{ id: 'time-series', kind: 'timeSeries' }, { id: 'pie', kind: 'pie', dimension: 'products__title' }] }));
-  expect(t.gridPuts).not.toHaveBeenCalled();
+  expectNoGridColumn(t, COLUMNS, 'products__title');
 });
 
 test('with no date column shown, Add chart lists Time series and a new one draws on a date of the mart', async () => {
@@ -944,7 +952,7 @@ test('with no date column shown, Add chart lists Time series and a new one draws
   await userEvent.click(screen.getByRole('menuitemradio', { name: 'Time series' }));
   await waitFor(() => expect(data().querySelector('section[data-chart-kind="Time series"]')).not.toBeNull());
   await waitFor(() => expect(t.queries.some((q) => q.dateTrunc?.some((r) => r.column === 'created_at') && !q.uniqueCount?.length)).toBe(true));
-  expect(t.gridPuts).not.toHaveBeenCalled();
+  expectNoGridColumn(t, ['id', 'status', 'amount'], 'created_at');
 });
 
 test('a shown calculated metric has a card by its plain label, read by name with no function', async () => {
@@ -1252,7 +1260,7 @@ test('a pick of a hidden field is one Undo step: Undo takes the pick back, Redo 
   await waitFor(() => expect(lastSaved(t).charts?.find((c) => c.id === 'time-series')?.stack).toBeUndefined());
   await userEvent.click(redoBtn());
   await waitFor(() => expect(lastSaved(t).charts!.find((c) => c.id === 'time-series')!.stack).toBe('is_gift'));
-  expect(t.gridPuts).not.toHaveBeenCalled();
+  expectNoGridColumn(t, ['id', 'status', 'amount', 'created_at'], 'is_gift');
 });
 
 test('hiding a column that drops a card pick is one Undo step: Undo shows the column and the pick again', async () => {
