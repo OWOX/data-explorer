@@ -39,6 +39,14 @@ function setup(opts: { charts?: ChartSettings; columns?: string[]; gate?: Promis
   return { queries, puts, gridPuts, seeded, view: () => render(<AppServices ctx={ctx}><StoreProvider><App /></StoreProvider></AppServices>) };
 }
 
+// The grid may save its own unchanged list at any time; a chart pick must never add a column to it.
+const expectNoGridColumn = (t: ReturnType<typeof setup>, start: string[], field: string) => {
+  for (const [, d] of t.gridPuts.mock.calls as [string, { columns: string[] }][]) {
+    expect(d.columns).not.toContain(field);
+    expect([...d.columns].sort()).toEqual([...start].sort());
+  }
+};
+
 const data = () => document.getElementById('band-data')!;
 const radio = (name: string) => within(data()).getByRole('radio', { name });
 const group = (id: string) => data().querySelector<HTMLElement>(`td[data-chart-group="${id}"]`);
@@ -184,7 +192,7 @@ test('sankey: a dimension picked in an unused column that is not shown adds no g
   const from = t.queries.length;
   await userEvent.click(within(await screen.findByRole('menu', { name: 'Customers' })).getByRole('menuitemradio', { name: 'city' }));
   await waitFor(() => expect(savedDims(t)).toEqual(['status', 'is_gift', 'customers__city']));
-  expect(t.gridPuts).not.toHaveBeenCalled();
+  expectNoGridColumn(t, middle, 'customers__city');
   await waitFor(() => expect(titles()).toHaveLength(3));
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
   const known = new Set(['status', 'is_gift', 'customers__city']);
@@ -335,7 +343,7 @@ test('sankey: a column lists a mart on the path that shows no column; picking it
   await submenu('Column 1', 'Customers');
   await userEvent.click(within(await screen.findByRole('menu', { name: 'Customers' })).getByRole('menuitemradio', { name: 'city' }));
   await waitFor(() => expect(savedDims(t)).toEqual(['customers__city', 'is_gift']));
-  expect(t.gridPuts).not.toHaveBeenCalled();
+  expectNoGridColumn(t, middle, 'customers__city');
   expect(group('customers')).toBeNull();
   await waitFor(() => expect(titles()[0]!.textContent).toMatch(/^city/));
   await waitFor(() => expect(data().querySelectorAll('path[data-link]').length).toBeGreaterThan(0));
@@ -364,7 +372,7 @@ test('a metric of a mart on the path that shows no column is listed, and picking
   expect(within(products).queryByRole('menuitemradio', { name: 'Count Unique' })).toBeNull();
   await userEvent.click(within(products).getByRole('menuitemradio', { name: 'price · Sum' }));
   await waitFor(() => expect(screen.getByRole('heading', { name: /^price · Sum.* by status/ })).toBeInTheDocument());
-  expect(t.gridPuts).not.toHaveBeenCalled();
+  expectNoGridColumn(t, ['status', 'amount', 'created_at', 'is_gift', 'products__categories__label'], 'products__price');
 });
 
 test('sankey: in a fan-out Sankey every column has its node share, the overlapping one included, and the note says what it is of', async () => {
