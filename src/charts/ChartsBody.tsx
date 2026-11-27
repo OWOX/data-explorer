@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ColumnFilter } from '../filters/build';
 import type { JoinedSource } from '../api/blendable';
-import type { Aggregation, DateBucket } from '../model/aggregation';
+import type { Aggregation } from '../model/aggregation';
 import type { Format } from '../format/formats';
 import type { Field, Schema } from '../model/types';
 import type { TraverseFilter } from '../sdk/types';
 import { useServices, useStore } from '../state/store';
 import { ErrorBox } from '../ui/ErrorBox';
 import { Skeleton } from '../ui/Skeleton';
-import { chartSetsOf } from './chartSets';
+import { chartSetsOf, sparkLead } from './chartSets';
 import type { HavingKeys } from './havingKeys';
 import type { MenuItem } from './ChartMenu';
 import { addChartItem, chartListItem, dropPicksOf, hideCard, setCardDate, setCardMetric, tailItems } from './listMenu';
@@ -138,8 +138,9 @@ export function ChartsBody({ martId, schema, shown, agg, filter, havingNote = fa
     const def = KINDS[spec.kind];
     return { spec, def, r: spec.hidden ? null : def.resolve(spec, chart) };
   }), [specs, chart]);
-  // The sparklines draw on the first shown chart's date and bucket; with none, the first date shown, by Auto.
-  const lead = drawn.find((d) => d.r && (d.r as { date?: unknown }).date)?.r as { date: Field; bucket?: DateBucket | 'AUTO' } | undefined;
+  // The sparklines draw on the date and bucket of the first shown chart whose date is a shown column; with none, the first date shown, by Auto.
+  // A chart may draw on a hidden field, but the scorecards (and so their sparklines) stay on the shown columns.
+  const lead = sparkLead(drawn.map((d) => d.r), cf);
   const spark: Spark = useMemo(() => ({ ...scorecardsOf(settings ?? {}), date: lead?.date ?? cf.dates[0] ?? null }), [settings, lead?.date, cf]);
   // Nothing is read until the member's saved choices are known: a read with the defaults would be billed and then thrown away.
   const idle = paused || !settings || !!gate || !!blockedNote;
