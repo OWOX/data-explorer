@@ -2,18 +2,36 @@ import type { Field, Schema } from '../model/types';
 import type { RelativeDatePreset, TraverseFilter, TraverseFilterRule } from '../sdk/types';
 import type { AggFn, AggregationRule } from '../model/aggregation';
 import { havingField, sliceField } from './slice';
-import { tokensOf } from './valueSuggest';
+import { parseListText } from './list-text';
 import { isDateTimeField, operatorsFor, RELATIVE_MAX_N, RELATIVE_PRESETS, type OpId } from './catalogue';
 
 export type FilterValue = string | number | { from: string | number; to: string | number } | RelativeDatePreset | undefined;
 /**
  * A column filter. With `fn` it is a HAVING filter on the aggregate of that column; slices never carry `fn`.
- * `list` marks a text eq/neq the user typed or picked as a comma list: `a, b` is any of the two (in / not_in). Without it the value is one exact text, comma or not.
+ * The value of `in` / `not_in` is a comma-separated text ("a, b", a value with a comma in double quotes: "Acme, Inc."); every other operator reads a comma as part of its one value.
  */
-export type ColumnFilter = { field: string; op: OpId; value?: FilterValue; fn?: AggFn; list?: true };
+export type ColumnFilter = { field: string; op: OpId; value?: FilterValue; fn?: AggFn };
 
 const filled = (v: unknown) => v !== undefined && v !== null && String(v).trim() !== '';
 const numeric = (v: unknown) => filled(v) && Number.isFinite(Number(v));
+
+/** The backend's IN_LIST_MAX_VALUES. */
+const IN_LIST_MAX = 500;
+const validRegex = (v: string) => { try { new RegExp(v); return true; } catch { return false; } };
+const realDate = (y: number, m: number, d: number) => { const dt = new Date(Date.UTC(y, m - 1, d)); return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d; };
+const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+const STAMP = /^(\d{4})-(\d{2})-(\d{2})[T ]([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+const CLOCK = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+/** One in / not_in entry, as the extension's list editor checks it: a real YYYY-MM-DD (a datetime may add HH:MM(:SS)), HH:MM(:SS), a number. */
+function validEntry(x: string, field: Field): boolean {
+  if (field.category === 'number') return numeric(x);
+  if (field.category === 'time') return CLOCK.test(x);
+  if (field.category === 'date') {
+    const m = DAY.exec(x) ?? (isDateTimeField(field) ? STAMP.exec(x) : null);
+    return !!m && realDate(Number(m[1]), Number(m[2]), Number(m[3]));
+  }
+  return true;
+}
 
 export function isComplete(f: ColumnFilter, field: Field): boolean {
   const def = operatorsFor(field).find((o) => o.id === f.op);
@@ -21,9 +39,10 @@ export function isComplete(f: ColumnFilter, field: Field): boolean {
   const v = f.value as never;
   switch (def.value) {
     case 'none': return true;
-    case 'text':
+    case 'text': return filled(v) && (f.op !== 'regex' && f.op !== 'not_regex' || validRegex(String(v)));
     case 'date': return filled(v);
     case 'number': return numeric(v);
+    case 'list': { const t = typeof v === 'string' ? parseListText(v) : []; return t.length > 0 && t.length <= IN_LIST_MAX && t.every((x) => validEntry(x, field)); }
     case 'number-range': return typeof v === 'object' && v !== null && numeric((v as { from: unknown }).from) && numeric((v as { to: unknown }).to);
     case 'date-range': return typeof v === 'object' && v !== null && filled((v as { from: unknown }).from) && filled((v as { to: unknown }).to);
     case 'relative': {
@@ -63,7 +82,14 @@ export function toTraverseFilter(f: ColumnFilter, field: Field): TraverseFilterR
   switch (f.op) {
     case 'is_blank': case 'is_not_blank': case 'is_true': case 'is_false':
       return { column, operator: f.op };
-    case 'on': return { column, operator: 'eq', value: String(f.value) };
+    // A datetime has no single moment to match: "on" a day is that whole day.
+    case 'on':
+      if (isDateTimeField(field)) return { column, operator: 'between', value: { from: bound(String(f.value), false), to: bound(String(f.value), true) } };
+      return { column, operator: 'eq', value: scalar(f.value) as string };
+    case 'in': case 'not_in': {
+      const tokens = parseListText(String(f.value ?? ''));
+      return { column, operator: f.op, value: (isNum ? tokens.map(Number) : stamped ? tokens.map(withSeconds) : tokens) as string[] | number[] };
+    }
     case 'before': return { column, operator: 'lt', value: scalar(f.value) as string };
     case 'after': return { column, operator: 'gt', value: scalar(f.value) as string };
     case 'relative': return { column, operator: 'relative_date', value: f.value as RelativeDatePreset };
@@ -74,12 +100,6 @@ export function toTraverseFilter(f: ColumnFilter, field: Field): TraverseFilterR
       return isNum
         ? { column, operator: 'between', value: { from: Number(r.from), to: Number(r.to) } }
         : { column, operator: 'between', value: { from: String(r.from), to: String(r.to) } };
-    }
-    case 'eq': case 'neq': {
-      // Only a rule marked as a list (typed in the filter editor) reads `a, b` as any of the two; every other value, comma or not, is exact.
-      const list = f.list && field.category === 'string' && typeof f.value === 'string' ? tokensOf(f.value) : [];
-      if (list.length > 1) return { column, operator: f.op === 'eq' ? 'in' : 'not_in', value: list };
-      return { column, operator: f.op, value: list.length === 1 ? list[0]! : scalar(f.value) } as TraverseFilterRule;
     }
     default:
       return { column, operator: f.op, value: scalar(f.value) } as TraverseFilterRule;

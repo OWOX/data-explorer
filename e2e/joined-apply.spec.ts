@@ -11,6 +11,11 @@ async function addCustomers(page: Page) {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
   await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
+  // The mart joins with its Unique Count alone: its name column is ticked.
+  await openFields(page, 'Customers');
+  await page.getByRole('dialog').getByLabel('name', { exact: true }).click();
+  await closeConfig(page);
+  await expect(data(page).getByRole('columnheader', { name: /Customers · name/ })).toBeVisible();
 }
 async function openSub(page: Page, column: string, row: 'Filter' | 'Aggregate') {
   const icon = data(page).getByLabel(`Column menu ${column}`, { exact: true });
@@ -92,8 +97,7 @@ test('far right: many joined columns ticked, scrolled to the last one, Aggregate
   for (const label of ['email', 'city']) await picker.getByLabel(label, { exact: true }).click();
   await closeConfig(page);
   await openFields(page, 'Orders');
-  // The first option is the mart's Unique Count; the seventh field is the eighth option.
-  await page.getByRole('dialog').getByRole('option').nth(7).click();
+  await page.getByRole('dialog').getByLabel('created_at', { exact: true }).click();
   await closeConfig(page);
   let dialog = await openSub(page, 'Customers · city', 'Aggregate');
   await click(page, dialog.getByLabel('Count Unique'));

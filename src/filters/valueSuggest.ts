@@ -1,6 +1,7 @@
 // Suggested values for a text filter input: the query that reads them and the pure text edits that pick one.
 import type { Field } from '../model/types';
 import { uniqueKey } from '../model/unique-count';
+import { formatListText, formatListValue, listPieces, parseListText } from './list-text';
 import type { TraverseFilter, TraverseOptions } from '../sdk/types';
 
 export const SUGGEST_LIMIT = 50;
@@ -14,8 +15,8 @@ export const valueCache = new Map<string, string[]>();
 /** `first` then `then`, each value once. */
 export const mergeValues = (first: string[], then: string[]): string[] => [...new Set([...first, ...then])];
 
-/** The operators whose value is a list (`a, b` reads as `in`), so a pick adds to what is typed. The others take one text: a pick replaces it. */
-export const LIST_OPS: ReadonlySet<string> = new Set(['eq', 'neq']);
+/** The operators whose value is a comma-separated list (is any of / is none of), so a pick adds to what is typed. The others take one text: a pick replaces it. */
+export const LIST_OPS: ReadonlySet<string> = new Set(['in', 'not_in']);
 
 /** Values are suggested for text columns only. */
 export const canSuggest = (field: Field): boolean => field.category === 'string';
@@ -41,13 +42,13 @@ export function valuesOf(rows: Record<string, unknown>[], field: Field): string[
   return [...seen];
 }
 
-/** What is typed, split at commas and trimmed; empty pieces dropped. */
-export const tokensOf = (text: string): string[] => text.split(',').map((t) => t.trim()).filter(Boolean);
+/** What is typed as its values: split at commas outside double quotes, trimmed, quotes removed; empty pieces dropped. */
+export const tokensOf = parseListText;
 
-/** The text after the last comma, trimmed: what narrows the list. */
-export const lastToken = (text: string): string => text.slice(text.lastIndexOf(',') + 1).trim();
+/** The piece after the last comma outside quotes, as its value: what narrows the list. A quote left open runs to the end. */
+export const lastToken = (text: string): string => parseListText(listPieces(text).at(-1)!.raw)[0] ?? '';
 
-const finished = (text: string): string[] => tokensOf(text.slice(0, text.lastIndexOf(',') + 1));
+const finished = (text: string): string[] => listPieces(text).slice(0, -1).flatMap((p) => parseListText(p.raw));
 
 /** The options that contain the text after the last comma (case-insensitive), minus values already in the text. */
 export function narrow(options: string[], text: string): string[] {
@@ -57,23 +58,37 @@ export function narrow(options: string[], text: string): string[] {
 }
 
 /**
- * The text with `value` added to the values already typed, separated by ", " and ending in ", " so the next pick or word follows.
- * The half-typed piece after the last comma is what the pick completes. A value already typed leaves the text as it was.
+ * The text with `value` added to the values already typed, separated by ", "; a value with a comma or a quote is written in double quotes.
+ * No comma trails the last value: it comes with the next one. The half-typed piece after the last comma is what the pick completes.
+ * A value already typed leaves the values as they were.
  */
 export function addValue(text: string, value: string): string {
   const done = finished(text);
-  if (done.some((t) => t.toLowerCase() === value.toLowerCase())) return text;
-  return `${[...done, value].join(', ')}, `;
+  return formatListText(done.some((t) => t.toLowerCase() === value.toLowerCase()) ? done : [...done, value]);
 }
 
 /**
- * Whether `text` still starts with the picked values in `base` followed by a comma (spaces around the comma do not matter).
+ * The text a list's suggestions read: when the text is exactly `finished` (what the last pick produced, or the value the editor opened with)
+ * its last piece is a finished pick, so a ", " is put after it and the next pick follows. Text typed by hand is never closed: it narrows by its last piece.
+ */
+export function closePick(text: string, finished: string | null): string {
+  return finished !== null && text === finished && lastToken(text) !== '' ? `${text.trimEnd()}, ` : text;
+}
+
+/**
+ * Whether `text` still starts with the picked values in `base` followed by a comma (spaces around the comma do not matter, a comma inside quotes is no separator).
  * A base that does not end in a separator is a single reopened value, so the text may also be just that value.
  */
 export function keepsPicks(base: string, text: string): boolean {
-  const toks = tokensOf(base);
-  if (!toks.length) return false;
-  const esc = toks.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  const end = base.trimEnd().endsWith(',') ? ',' : '(?:,|$)';
-  return new RegExp(`^\\s*${esc.join('\\s*,\\s*')}\\s*${end}`).test(text);
+  const want = parseListText(base);
+  if (!want.length) return false;
+  const pieces = listPieces(text);
+  const open = listPieces(base).at(-1)!.raw.trim() !== '';
+  if (pieces.length < want.length) return false;
+  return want.every((w, i) => {
+    const p = pieces[i]!;
+    // The piece must be written as a pick writes it: under contains a typed quote (`Acme"`) is part of the text, not list syntax.
+    if (p.raw.trim() !== formatListValue(w)) return false;
+    return p.ended || (i === want.length - 1 && open);
+  });
 }

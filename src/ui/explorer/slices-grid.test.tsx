@@ -251,8 +251,8 @@ describe('the rule badges next to the config button', () => {
     setup({ ...hidden, filters: { status: hidden.filters.status!, customers__city: { field: 'customers__city', op: 'eq', value: 'Kyiv' } } });
     await userEvent.hover(await badge('2 filters'));
     const tip = await screen.findByRole('tooltip');
-    expect(tip).toHaveTextContent('Orders · status: equals paid');
-    expect(tip).toHaveTextContent('Customers · city: equals Kyiv');
+    expect(tip).toHaveTextContent('Orders · status: is paid');
+    expect(tip).toHaveTextContent('Customers · city: is Kyiv');
     await userEvent.hover(await badge('1 slice'));
     await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent(/^Customers · Country: /));
   });
@@ -271,7 +271,7 @@ describe('the rule badges next to the config button', () => {
     await userEvent.unhover(screen.getByRole('button', { name: '1 filter' }));
     await userEvent.hover(screen.getByRole('button', { name: '1 filter' }));
     expect(screen.queryByRole('tooltip')).toBeNull();
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('Orders · status: equals paid');
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Orders · status: is paid');
     // Focus that later arrives from Tab opens it as before.
     await userEvent.unhover(screen.getByRole('button', { name: '1 filter' }));
     await userEvent.tab();

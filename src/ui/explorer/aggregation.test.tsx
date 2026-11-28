@@ -56,7 +56,7 @@ async function aggregate(column: string, ...functions: string[]) {
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 }
 
-test('a Sum on Amount groups by the other columns: Amount · Sum, no primary key sent, a groups badge, rows that open nothing', async () => {
+test('a Sum on Amount groups by the other columns: Amount · Sum, no primary key sent, a groups badge, rows that open the record while the key is a group column', async () => {
   const t = setup();
   await ready();
   await showColumn('Amount');
@@ -70,14 +70,33 @@ test('a Sum on Amount groups by the other columns: Amount · Sum, no primary key
   await sumLoaded();
   await waitFor(() => expect(within(data()).getByText(/\d+\+? groups?$/)).toBeInTheDocument());
   expect(within(data()).queryByText(/rows$/)).toBeNull();
-  // a grouped row is no single record, and hands nothing to the Row band
+  // the key is a group column, so each row is one record: it opens by the key values, and the grouped row is not remembered as a plain one
   vi.mocked(rememberRow).mockClear();
+  expect(bodyRows()[0]).toHaveClass('cursor-pointer');
+  // The record opened is the clicked row's own: its id cell.
+  const idCol = headers().indexOf('id');
+  const clickedId = bodyRows()[0]!.querySelectorAll('td')[idCol]?.textContent?.trim();
+  expect(clickedId).toMatch(/^\d+$/);
   fireEvent.click(bodyRows()[0]!);
   expect(rememberRow).not.toHaveBeenCalled();
-  expect(await within(row()).findByText('Grouped rows have no single record.')).toBeInTheDocument();
-  expect(bodyRows()[0]).not.toHaveClass('cursor-pointer');
+  await waitFor(() => expect(row().textContent).toContain(`Orders · ${clickedId}`));
   // the values are numbers read from the "<column> | SUM" key
   expect(sumCell()).toMatch(/\d/);
+});
+
+test('a grouped grid without the key as a group column has rows that open nothing', async () => {
+  setup();
+  await ready();
+  await showColumn('Amount');
+  await aggregate('Amount', 'Sum');
+  await sumLoaded();
+  const menu = await openColumnMenu(within(data()), 'id');
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hide column' }));
+  await waitFor(() => expect(headers()).not.toContain('id'));
+  await sumLoaded();
+  expect(bodyRows()[0]).not.toHaveClass('cursor-pointer');
+  fireEvent.click(bodyRows()[0]!);
+  expect(await within(row()).findByText('Grouped rows have no single record.')).toBeInTheDocument();
 });
 
 test('each function is its own column, the first is sortable, the others are not; the sort names the source column', async () => {

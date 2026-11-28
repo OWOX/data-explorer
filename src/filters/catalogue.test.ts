@@ -4,19 +4,20 @@ import type { Field } from '../model/types';
 const f = (type: string, category: Field['category']): Field => ({ name: 'x', alias: null, type, category, description: null, isPrimaryKey: false });
 const ids = (field: Field) => operatorsFor(field).map((o) => o.id);
 
-test('string operators', () => {
-  expect(ids(f('STRING', 'string'))).toEqual(['contains', 'not_contains', 'eq', 'neq', 'starts_with', 'ends_with', 'is_blank', 'is_not_blank']);
+const pairs = (field: Field) => operatorsFor(field).map((o) => [o.id, o.label]);
+test('string operators, as the OWOX output controls list them', () => {
+  expect(pairs(f('STRING', 'string'))).toEqual([['eq', 'is'], ['neq', 'is not'], ['in', 'is any of'], ['not_in', 'is none of'], ['contains', 'contains'], ['not_contains', "doesn't contain"], ['starts_with', 'starts with'], ['ends_with', 'ends with'], ['is_blank', 'is blank'], ['is_not_blank', 'is not blank'], ['regex', 'matches regex'], ['not_regex', "doesn't match regex"]]);
 });
 test('number operators', () => {
-  expect(ids(f('INT64', 'number'))).toEqual(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'between', 'is_blank', 'is_not_blank']);
+  expect(pairs(f('INT64', 'number'))).toEqual([['eq', 'equals'], ['neq', 'not equals'], ['in', 'is any of'], ['not_in', 'is none of'], ['gt', 'greater than'], ['lt', 'less than'], ['gte', 'greater than or equal'], ['lte', 'less than or equal'], ['between', 'between'], ['is_blank', 'is blank'], ['is_not_blank', 'is not blank']]);
 });
-test('DATE offers "on"; TIMESTAMP does not', () => {
-  expect(ids(f('DATE', 'date'))).toEqual(['on', 'before', 'after', 'between', 'relative', 'is_blank', 'is_not_blank']);
-  expect(ids(f('TIMESTAMP', 'date'))).toEqual(['before', 'after', 'between', 'relative', 'is_blank', 'is_not_blank']);
+test('every date type has the same operators, on / not on / on or after / on or before included', () => {
+  const dateList = [['on', 'on'], ['neq', 'not on'], ['in', 'is any of'], ['not_in', 'is none of'], ['after', 'after'], ['before', 'before'], ['gte', 'on or after'], ['lte', 'on or before'], ['between', 'between'], ['relative', 'relative'], ['is_blank', 'is blank'], ['is_not_blank', 'is not blank']];
+  for (const type of ['DATE', 'DATETIME', 'TIMESTAMP']) expect(pairs(f(type, 'date'))).toEqual(dateList);
 });
 test('time, boolean and other', () => {
-  expect(ids(f('TIME', 'time'))).toEqual(['before', 'after', 'between', 'is_blank', 'is_not_blank']);
-  expect(ids(f('BOOL', 'boolean'))).toEqual(['is_true', 'is_false', 'is_blank']);
+  expect(pairs(f('TIME', 'time'))).toEqual([['on', 'at'], ['neq', 'not at'], ['in', 'is any of'], ['not_in', 'is none of'], ['after', 'after'], ['before', 'before'], ['gte', 'at or after'], ['lte', 'at or before'], ['between', 'between'], ['is_blank', 'is blank'], ['is_not_blank', 'is not blank']]);
+  expect(ids(f('BOOL', 'boolean'))).toEqual(['is_true', 'is_false', 'is_blank', 'is_not_blank']);
   expect(ids(f('JSON', 'other'))).toEqual(['is_blank', 'is_not_blank']);
 });
 

@@ -331,13 +331,26 @@ describe('a joined data mart that loses its last column stays in the report', ()
     expect(grid().emptyPaths).toEqual(['customers']);
   });
 
-  test('its Unique Count goes with its last column', async () => {
+  test('its Unique Count stays with the mart that has no column left', async () => {
     await setup(['customers__name']);
     probe.dispatch({ type: 'editGrid', martId: 'orders', grid: { ...grid(), uniqueCount: ['customers'] } });
     await waitFor(() => expect(grid().uniqueCount).toEqual(['customers']));
     await clearCustomers();
     await waitFor(() => expect(grid().emptyPaths).toEqual(['customers']));
+    expect(grid().uniqueCount).toEqual(['customers']);
+  });
+
+  test('its Unique Count goes when the mart leaves the report, and Undo brings both back', async () => {
+    await setup(['customers__name']);
+    probe.dispatch({ type: 'editGrid', martId: 'orders', grid: { ...grid(), uniqueCount: ['customers'] } });
+    const panel = await clearCustomers();
+    await waitFor(() => expect(grid().emptyPaths).toEqual(['customers']));
+    await userEvent.click(within(panel).getByRole('menuitem', { name: 'Remove from report' }));
+    await waitFor(() => expect(grid().emptyPaths).toBeUndefined());
     expect(grid().uniqueCount).toBeUndefined();
+    await undo();
+    await waitFor(() => expect(grid().emptyPaths).toEqual(['customers']));
+    expect(grid().uniqueCount).toEqual(['customers']);
   });
 
   test('the chart menus list the fields of an empty mart', async () => {

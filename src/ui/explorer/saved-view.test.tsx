@@ -51,7 +51,7 @@ test('a saved view seeds the first rows query: filter, sort and limit', async ()
   t.view();
   await waitFor(() => expect(t.queries.length).toBeGreaterThan(0));
   const q = t.queries[0]!;
-  expect(q.filter).toEqual([expect.objectContaining({ column: 'status', operator: 'eq' })]);
+  expect(q.filter).toEqual([expect.objectContaining({ column: 'status', operator: 'in' })]);
   expect(q.sort?.[0]).toEqual({ column: 'amount', direction: 'desc' });
   expect(q.limit).toBe(401);
   expect(t.queries.every((x) => x.filter?.length === 1)).toBe(true);
@@ -103,7 +103,7 @@ test('a saved rule on a field that is not a column survives a reload: it is sent
   t.view();
   await waitFor(() => expect(t.queries.length).toBeGreaterThan(0));
   for (const q of t.queries) {
-    expect(q.filter).toEqual([expect.objectContaining({ column: 'status', operator: 'eq' })]);
+    expect(q.filter).toEqual([expect.objectContaining({ column: 'status', operator: 'in' })]);
     expect(q.column).not.toContain('status');
   }
 });

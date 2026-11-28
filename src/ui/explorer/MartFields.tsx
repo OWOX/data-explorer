@@ -28,21 +28,15 @@ export type ConfigMart = {
  * ticked one goes right after the nearest field before it in the schema that is shown, or first when none is, so a grid
  * that was never reordered stays in schema order.
  * `mart.unique` is the mart's Unique Count metric, when the mart offers one (a hidden or composite key counts too): a first row toggles its column, which sits after the mart's own columns. It does not show or hide any field.
- * The rows list the shown fields first, then the rest, each group in alphabetical order of the label, as they were when this mounted: a tick never moves a row.
+ * The rows list every field in ascending order of the label, shown or not, so a tick never moves a row.
  */
 export function MartFields({ mart, visible, onChange }: { mart: ConfigMart; visible: string[]; onChange: (cols: string[]) => void }) {
   const { fields, main, unique, title } = mart;
   const set = new Set(visible);
   const mine = new Set(fields.map((f) => f.name));
-  const [order] = useState(() => {
-    const byLabel = (a: Field, b: Field) => fieldLabel(a).localeCompare(fieldLabel(b), undefined, { sensitivity: 'base', numeric: true });
-    const names = (list: Field[]) => [...list].sort(byLabel).map((f) => f.name);
-    return [...names(fields.filter((f) => set.has(f.name))), ...names(fields.filter((f) => !set.has(f.name)))];
-  });
   // The Unique Count row is decided when the panel opens, like the rest of its rows: it does not appear later, and stays (disabled) while the mart offers none.
   const [hadUnique] = useState(() => !!unique);
-  const byName = new Map(fields.map((f) => [f.name, f]));
-  const listed = [...order.map((n) => byName.get(n)).filter((f): f is Field => !!f), ...fields.filter((f) => !order.includes(f.name))];
+  const listed = [...fields].sort((a, b) => fieldLabel(a).localeCompare(fieldLabel(b), undefined, { sensitivity: 'base', numeric: true }));
   // A joined mart whose last field is unticked stays in the report with no column (the grid keeps it), so Clear is one change like any other.
   const apply = (picked: string[]) => {
     // A joined mart with no column has nothing to untick.

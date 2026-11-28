@@ -7,7 +7,7 @@ import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore, type GridState } from '../../state/store';
 import { App } from '../App';
-import { openSubmenu } from './menu-test-utils';
+import { closeConfigMenu, openFields, openSubmenu } from './menu-test-utils';
 
 async function setup(saved: string[], post?: string[]) {
   const base0 = createMockCtx(demoFixtures(), { latencyMs: 0 });
@@ -76,15 +76,19 @@ test('a joined mart added from its card: Aggregate then Filter on its column bot
   const ctx = createMockCtx(demoFixtures(), { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
   const real = ctx.owox.dataMarts.traverseData.bind(ctx.owox.dataMarts);
-  const spied = { ...ctx, owox: { ...ctx.owox, dataMarts: { ...ctx.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { if (!o.uniqueCount) queries.push(o); return real(id, o); } } } };
+  const spied = { ...ctx, owox: { ...ctx.owox, dataMarts: { ...ctx.owox.dataMarts, traverseData: (id: string, o: TraverseOptions) => { queries.push(o); return real(id, o); } } } };
   render(<StrictMode><AppServices ctx={spied}><StoreProvider><App /></StoreProvider></AppServices></StrictMode>);
   await waitFor(() => expect(headers()).toHaveLength(5));
   const marts = document.getElementById('band-marts')!;
   await within(marts).findByText('Customers');
   await userEvent.click(within(marts).getByText('Customers').closest('article')!);
+  // The card adds the mart's Unique Count alone; a field of its own is ticked in the config menu.
   await waitFor(() => expect(headers()).toHaveLength(6));
-  const col = headers().at(-1)!;
-  await openSubmenu(within(data()), `Customers · ${col}`, 'Aggregate');
+  await openFields('Customers');
+  await userEvent.click(await screen.findByLabelText('email'));
+  await waitFor(() => expect(headers()).toHaveLength(7));
+  await closeConfigMenu();
+  await openSubmenu(within(data()), 'Customers · email', 'Aggregate');
   const dialog = await screen.findByRole('dialog');
   await userEvent.click(within(dialog).getByLabelText('Count Unique'));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));

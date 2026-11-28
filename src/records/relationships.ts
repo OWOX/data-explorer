@@ -19,6 +19,11 @@ export function primaryKeys(schema: Schema): string[] {
   return schema.filter((f) => f.isPrimaryKey).map((f) => f.name);
 }
 
+/** Whether every part of the key is a group column of a grouped grid (shown, no function, no date bucket): each group is then one record, opened by the key values in its row. */
+export function keyIsGrouped(keys: readonly string[], shown: readonly string[], agg: { aggregations: readonly { column: string }[]; dateTrunc: readonly { column: string }[] }): boolean {
+  return keys.length > 0 && keys.every((k) => shown.includes(k) && !agg.aggregations.some((r) => r.column === k) && !agg.dateTrunc.some((r) => r.column === k));
+}
+
 /** Whether the main mart has a primary key at all, a hidden one included: Unique Count counts by it, a column or sort cannot name it. */
 export function hasPrimaryKey(schema: Schema): boolean {
   // The loader's declared key decides when it is there: a key with a disconnected component is no key, whatever flags the other fields carry.

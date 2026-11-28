@@ -147,7 +147,7 @@ describe('the rows', () => {
 });
 
 describe('a data mart panel', () => {
-  test('lists the shown fields first, then the rest, each alphabetical, and a tick never moves a row', async () => {
+  test('lists the fields in ascending order, and a tick never moves a row', async () => {
     setup({ visible: ['city', 'customers__email'] });
     const menu = await openMenu();
     const panel = await openRow('Orders', menu);

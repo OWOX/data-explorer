@@ -16,7 +16,7 @@ export type RelativeDatePreset =
 export type TraverseFilter = TraverseFilterRule & ({ placement: 'pre-join'; function?: never } | { placement?: 'post-join'; function?: AggFn });
 
 export type TraverseFilterRule =
-  | { column: string; operator: 'eq' | 'neq' | 'contains' | 'not_contains' | 'starts_with' | 'ends_with' | 'gt' | 'lt' | 'gte' | 'lte'; value: string | number }
+  | { column: string; operator: 'eq' | 'neq' | 'contains' | 'not_contains' | 'starts_with' | 'ends_with' | 'regex' | 'not_regex' | 'gt' | 'lt' | 'gte' | 'lte'; value: string | number }
   | { column: string; operator: 'is_blank' | 'is_not_blank' | 'is_true' | 'is_false' }
   | { column: string; operator: 'in' | 'not_in'; value: string[] | number[] }
   | { column: string; operator: 'between'; value: { from: string; to: string } | { from: number; to: number } }

@@ -1,10 +1,10 @@
 import { PAGE_SIZE } from '../config';
+import { formatListText } from '../filters/list-text';
 import { havingField, sliceField } from '../filters/slice';
 import { isComplete, type ColumnFilter, type FilterValue } from '../filters/build';
 import { isDateTimeField, operatorsFor, RELATIVE_PRESETS, type OpId } from '../filters/catalogue';
 import { isAggFn, isDateBucket, isTimeZone, type AggregationRule, type DateTruncRule } from '../model/aggregation';
 import { isRecord } from '../model/guards';
-import { isDayType } from '../model/field-category';
 import type { SortKey } from '../model/sort';
 import type { Field, Schema } from '../model/types';
 import type { RelativeDatePreset, ReportDto } from '../sdk/types';
@@ -12,6 +12,7 @@ import type { GridState } from '../state/store';
 import { count } from '../ui/format';
 import { pruneGrid } from '../state/view-link-resolve';
 import { defaultColumns } from '../model/columns';
+import { uniquePathsOf } from '../model/unique-count';
 
 export type ReportSkipped = { columns: number; filters: number; sorts: number; aggregations: number; slices: number; having: number; uniqueCount: boolean };
 
@@ -22,7 +23,8 @@ const DATETIME_END = /^(\d{4}-\d{2}-\d{2}) 23:59:59$/;
 function opFor(operator: string, field: Field): OpId {
   if (operator === 'relative_date') return 'relative';
   if (field.category === 'date' || field.category === 'time') {
-    if (operator === 'eq' && field.category === 'date' && isDayType(field.type)) return 'on';
+    // An exact moment on a datetime has no "on" form (that one is a whole day).
+    if (operator === 'eq') return isDateTimeField(field) ? 'eq' : 'on';
     if (operator === 'lt') return 'before';
     if (operator === 'gt') return 'after';
   }
@@ -65,10 +67,14 @@ function valueFor(kind: string, value: unknown, field: Field): { ok: true; value
 export function fromTraverseFilter(rule: unknown, field: Field): ColumnFilter | null {
   if (!isRecord(rule) || typeof rule.column !== 'string' || typeof rule.operator !== 'string') return null;
   if (rule.operator === 'in' || rule.operator === 'not_in') {
-    if (field.category !== 'string' || !Array.isArray(rule.value) || rule.value.length === 0) return null;
+    const op = rule.operator;
+    if (!operatorsFor(field).some((o) => o.id === op) || !Array.isArray(rule.value) || rule.value.length === 0) return null;
     const vals = rule.value;
-    if (!vals.every((x): x is string => typeof x === 'string' && x.trim() !== '' && !x.includes(','))) return null;
-    const listed: ColumnFilter = { field: field.name, op: rule.operator === 'in' ? 'eq' : 'neq', value: vals.join(', '), list: true };
+    const ok = field.category === 'number'
+      ? vals.every((x) => typeof x === 'number' && Number.isFinite(x))
+      : vals.every((x) => typeof x === 'string' && x !== '');
+    if (!ok) return null;
+    const listed: ColumnFilter = { field: field.name, op, value: formatListText(vals as (string | number)[]) };
     return isComplete(listed, field) ? listed : null;
   }
   const op = opFor(rule.operator, field);
@@ -154,6 +160,11 @@ export function reportToGrid(report: ReportDto, schema: Schema, nativeSchema: Sc
   }
 
   const columns = asArray(report.columnConfig).filter((c): c is string => typeof c === 'string');
+  const shownColumns = columns.length ? columns : defaultColumns(nativeSchema);
+  // A joined mart's count with no column of its mart is a mart kept in the report with no column: without that path the count would be pruned.
+  const offered = new Set(uniquePathsOf(schema));
+  const withColumn = new Set(schema.filter((x) => x.joined && shownColumns.includes(x.name)).map((x) => x.joined!.aliasPath));
+  const emptyPaths = uniqueCount.filter((p) => p !== '' && offered.has(p) && !withColumn.has(p));
   const built: GridState = {
     columns: columns.length ? columns : defaultColumns(nativeSchema),
     filters,
@@ -163,6 +174,7 @@ export function reportToGrid(report: ReportDto, schema: Schema, nativeSchema: Sc
     ...(aggregations.length ? { aggregations } : {}),
     ...(dateTrunc.length ? { dateTrunc } : {}),
     ...(uniqueCount.length ? { uniqueCount } : {}),
+    ...(emptyPaths.length ? { emptyPaths } : {}),
   };
 
   const { grid, dropped } = pruneGrid(built, schema);

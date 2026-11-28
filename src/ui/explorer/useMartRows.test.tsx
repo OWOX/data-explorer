@@ -33,6 +33,11 @@ test('buildRowQuery adds primary keys, keeps schema order, applies complete filt
   });
 });
 
+test('a joined mart kept with no column but its Unique Count is carried by the grouped query', () => {
+  const s: Schema = Object.assign([f('a'), f('c__x')], { primaryKey: ['id'], joinedUniqueCount: ['c'] });
+  expect(buildRowQuery(s, ['a'], [], 10, [], { aggregations: [], dateTrunc: [], uniqueCount: ['c'] })).toEqual({ column: ['a'], uniqueCount: ['c'], limit: 11 });
+});
+
 test('buildRowQuery reads and sorts by a key hidden for reporting, after the shown columns', () => {
   const s: Schema = Object.assign([f('a'), f('b')], { primaryKey: ['id'], hiddenFields: [f('id', true, 'INT64')] });
   expect(buildRowQuery(s, ['b', 'a'], [], 10, [{ field: 'b', direction: 'desc' }])).toEqual({
