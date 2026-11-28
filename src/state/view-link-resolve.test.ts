@@ -279,6 +279,15 @@ describe('resolveView with Unique Counts', () => {
     const offGrid = await resolveView(grid({ columns: ['id', 'total'], uniqueCount: ['customers'] }), model, async () => keyed(['customers']));
     expect('uniqueCount' in offGrid.apply.grid!).toBe(false);
   });
+
+  it('keeps the metric of a joined mart the grid keeps with no column, and drops it when the path is not kept', async () => {
+    const kept = await resolveView(grid({ columns: ['id', 'total'], uniqueCount: ['customers'], emptyPaths: ['customers'] }), model, async () => keyed(['customers']));
+    expect(kept.apply.grid!.uniqueCount).toEqual(['customers']);
+    expect(kept.apply.grid!.emptyPaths).toEqual(['customers']);
+    expect(kept.skipped).toEqual(none);
+    const gone = await resolveView(grid({ columns: ['id', 'total'], uniqueCount: ['customers'], emptyPaths: ['nowhere'] }), model, async () => keyed(['customers']));
+    expect('uniqueCount' in gone.apply.grid!).toBe(false);
+  });
 });
 
 describe('resolveView with empty paths', () => {

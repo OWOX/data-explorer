@@ -740,12 +740,11 @@ describe('folding and lines', () => {
     await userEvent.click(within(data()).getByRole('button', { name: /^Show / }));
     await waitFor(() => expect(within(data()).getAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup').map((h) => h.querySelector('.truncate')!.textContent)).toEqual(['Orders', 'Customers', 'Stores']));
     await settle();
-    const fresh = rowQueries().slice(before);
-    // The grid's own rows query: one, with the joined columns in it.
-    const grid = fresh.filter((c) => (c.o as { sort?: unknown } | undefined)?.sort);
+    // The grid's own rows query: one, grouped, with the Unique Count of each joined mart in it (a mart joins with that alone).
+    const grid = calls.filter((c) => (c.o as { uniqueCount?: string[] } | undefined)?.uniqueCount?.includes('customers') && (c.o as { uniqueCount?: string[] }).uniqueCount!.includes('stores') && c.o.column?.length);
+    expect(rowQueries().slice(before)).toHaveLength(0);
     expect(grid).toHaveLength(1);
     expect(grid[0]!.id).toBe('orders');
-    expect(grid[0]!.o.column).toEqual(expect.arrayContaining(['customers__name', 'stores__name']));
   });
 
   test('a folded Row band fetches no record for rows selected meanwhile', async () => {

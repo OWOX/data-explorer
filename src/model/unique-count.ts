@@ -11,14 +11,15 @@ export const uniqueKey = (aliasPath: string): string => (aliasPath === '' ? UNIQ
 /** The alias paths whose Unique Count works: the main mart when it has a primary key (a hidden or composite one counts), a joined mart when the backend says so. */
 export const uniquePathsOf = (schema: Schema): string[] => [...(hasPrimaryKey(schema) ? [''] : []), ...(schema.joinedUniqueCount ?? [])];
 
-/** The paths that stay on: available, and (for a joined mart) with a column of its own on the grid. First occurrence wins, main first. */
-export function keepUnique(paths: readonly string[] | undefined, schema: Schema, columns: readonly string[]): string[] {
+/** The paths that stay on: available, and (for a joined mart) with a column of its own on the grid, or kept in the report with no column (`empty`, the alias paths of `GridState.emptyPaths`). First occurrence wins, main first. */
+export function keepUnique(paths: readonly string[] | undefined, schema: Schema, columns: readonly string[], empty: readonly string[] = []): string[] {
   if (!paths?.length) return [];
   const offered = new Set(uniquePathsOf(schema));
   const shown = new Set(columns);
-  const onGrid = (path: string) => path === '' || schema.some((f) => f.joined?.aliasPath === path && shown.has(f.name));
-  const kept = [...new Set(paths)].filter((p) => offered.has(p) && onGrid(p));
-  return kept.includes('') ? ['', ...kept.filter((p) => p !== '')] : kept;
+  const kept = new Set(empty);
+  const onGrid = (path: string) => path === '' || (kept.has(path) && schema.some((f) => f.joined?.aliasPath === path)) || schema.some((f) => f.joined?.aliasPath === path && shown.has(f.name));
+  const out = [...new Set(paths)].filter((p) => offered.has(p) && onGrid(p));
+  return out.includes('') ? ['', ...out.filter((p) => p !== '')] : out;
 }
 
 /** A stand-in field for the metric's column, so a header, a sort and a group read it like any other column. Read-only: no function, no filter. */
@@ -35,6 +36,18 @@ export function withUniqueAfter<T>(items: readonly T[], pathOf: (item: T) => str
     const next = items[i + 1];
     return (next === undefined || pathOf(next) !== path) && paths.includes(path) ? [item, make(path, item)] : [item];
   });
+}
+
+/**
+ * The grid's items with every Unique Count in place: after its mart's last item (`withUniqueAfter`), a joined mart kept with no item alone at the end, and the main mart's, with none of its own items, first (it still groups the rows, so it is never hidden).
+ * One rule for the grid and for the clipboard copy. `last` is undefined for a count with no item of its mart.
+ */
+export function withUniqueColumns<T>(items: readonly T[], pathOf: (item: T) => string, paths: readonly string[], make: (path: string, last: T | undefined) => T): T[] {
+  if (!paths.length) return [...items];
+  const after = withUniqueAfter(items, pathOf, paths, (path, last) => make(path, last));
+  const has = new Set(items.map(pathOf));
+  const alone = paths.filter((p) => p !== '' && !has.has(p)).map((p) => make(p, undefined));
+  return paths.includes('') && !items.some((i) => pathOf(i) === '') ? [make('', undefined), ...after, ...alone] : [...after, ...alone];
 }
 
 /** The sorts without the ones on the row keys of `paths`. The same list when none is; a list emptied this way is `null`, as a hidden column's sorts are (the default order returns). */

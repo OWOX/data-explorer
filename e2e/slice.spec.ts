@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { groupTitles } from './config-menu';
+import { closeConfig, groupTitles, openFields } from './config-menu';
 
 // A slice on a joined column, driven with the real mouse like a member.
 test.beforeEach(async ({ page }) => { await page.goto('/?mock'); });
@@ -11,6 +11,11 @@ async function addCustomers(page: Page) {
   await expect(data(page).getByRole('row')).toHaveCount(202);
   await page.locator('#band-marts').getByText('Customers', { exact: true }).first().click();
   await expect(groupTitles(page).filter({ hasText: 'Customers' })).toHaveCount(1);
+  // The mart joins with its Unique Count alone: its name column is ticked.
+  await openFields(page, 'Customers');
+  await page.getByRole('dialog').getByLabel('name', { exact: true }).click();
+  await closeConfig(page);
+  await expect(data(page).getByRole('columnheader', { name: /Customers · name/ })).toBeVisible();
 }
 async function openSub(page: Page, column: string, row: 'Filter' | 'Slice' | 'Aggregate') {
   const icon = data(page).getByLabel(`Column menu ${column}`, { exact: true });

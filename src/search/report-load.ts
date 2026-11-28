@@ -12,6 +12,7 @@ import type { GridState } from '../state/store';
 import { count } from '../ui/format';
 import { pruneGrid } from '../state/view-link-resolve';
 import { defaultColumns } from '../model/columns';
+import { uniquePathsOf } from '../model/unique-count';
 
 export type ReportSkipped = { columns: number; filters: number; sorts: number; aggregations: number; slices: number; having: number; uniqueCount: boolean };
 
@@ -159,6 +160,11 @@ export function reportToGrid(report: ReportDto, schema: Schema, nativeSchema: Sc
   }
 
   const columns = asArray(report.columnConfig).filter((c): c is string => typeof c === 'string');
+  const shownColumns = columns.length ? columns : defaultColumns(nativeSchema);
+  // A joined mart's count with no column of its mart is a mart kept in the report with no column: without that path the count would be pruned.
+  const offered = new Set(uniquePathsOf(schema));
+  const withColumn = new Set(schema.filter((x) => x.joined && shownColumns.includes(x.name)).map((x) => x.joined!.aliasPath));
+  const emptyPaths = uniqueCount.filter((p) => p !== '' && offered.has(p) && !withColumn.has(p));
   const built: GridState = {
     columns: columns.length ? columns : defaultColumns(nativeSchema),
     filters,
@@ -168,6 +174,7 @@ export function reportToGrid(report: ReportDto, schema: Schema, nativeSchema: Sc
     ...(aggregations.length ? { aggregations } : {}),
     ...(dateTrunc.length ? { dateTrunc } : {}),
     ...(uniqueCount.length ? { uniqueCount } : {}),
+    ...(emptyPaths.length ? { emptyPaths } : {}),
   };
 
   const { grid, dropped } = pruneGrid(built, schema);

@@ -24,6 +24,10 @@ describe('the Unique Count metric of a mart', () => {
     const s = schemaOf([f('name'), joined('c__name', 'c'), joined('d__name', 'd')], { primaryKey: ['id'], joinedUniqueCount: ['c', 'd'] });
     expect(keepUnique(['c', '', 'c', 'x', 'd'], s, ['name', 'c__name'])).toEqual(['', 'c']);
     expect(keepUnique(undefined, s, ['name'])).toEqual([]);
+    // A joined mart kept in the report with no column keeps its metric; one that is neither shown nor kept does not.
+    expect(keepUnique(['c', 'd'], s, ['name'], ['c'])).toEqual(['c']);
+    expect(keepUnique(['c'], s, ['name'], [])).toEqual([]);
+    expect(keepUnique(['c'], s, ['name'], ['x'])).toEqual([]);
     expect(keepUnique([''], schemaOf([f('name')]), ['name'])).toEqual([]);
   });
 

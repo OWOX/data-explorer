@@ -3,10 +3,12 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 import { createMockCtx } from '../../sdk/mock/ctx';
 import { demoFixtures } from '../../sdk/mock/fixtures';
 import type { Model } from '../../model/types';
-import { AppServices, StoreProvider, useServices, useStore, type State } from '../../state/store';
+import { AppServices, StoreProvider, useServices, useStore, type GridState, type State } from '../../state/store';
 import { useCardClick } from './useCardClick';
 
 const mart = (id: string) => [id, { id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null }] as const;
+// A mart added by a click joins with its Unique Count alone (no column), so it is in the report when its path is kept empty.
+const hasCustomers = (g?: State['grids'][string]) => !!g && (g.emptyPaths?.includes('customers') || g.columns.some((c) => c.startsWith('customers__')));
 const model = { marts: new Map(['orders', 'customers'].map(mart)), sources: [], edges: [], contexts: [], storages: [], failedStorages: [] } as unknown as Model;
 
 test('two direct deselect clicks on one joined mart take it out once and never put it back', async () => {
@@ -22,10 +24,10 @@ test('two direct deselect clicks on one joined mart take it out once and never p
   render(<AppServices ctx={createMockCtx(demoFixtures(), { latencyMs: 0 })}><StoreProvider><Probe /></StoreProvider></AppServices>);
   await waitFor(() => expect(state.selection.martId).toBe('orders'));
   await click('customers');
-  await waitFor(() => expect(state.grids.orders?.columns.some((c) => c.startsWith('customers__'))).toBe(true));
+  await waitFor(() => expect(hasCustomers(state.grids.orders)).toBe(true));
   await Promise.all([click('customers', { only: 'deselect' }), click('customers', { only: 'deselect' })]);
   await new Promise((r) => setTimeout(r, 100));
-  expect(state.grids.orders!.columns.some((c) => c.startsWith('customers__'))).toBe(false);
+  expect(hasCustomers(state.grids.orders)).toBe(false);
 });
 
 test('a failed joined-fields read keeps the saved joined-field rules instead of pruning them', async () => {
@@ -88,7 +90,7 @@ test('a click is not over when another re-render of the bands runs its effects a
   env.IS_REACT_ACT_ENVIRONMENT = false;
   try {
     hold = true;
-    const joined = () => shown.grids.orders?.columns.some((c) => c.startsWith('customers__')) ?? false;
+    const joined = () => hasCustomers(shown.grids.orders);
     const done = click('customers').then(joined);
     for (let i = 0; i < 200 && letGo === null; i++) await new Promise((r) => setTimeout(r, 5));
     expect(letGo).not.toBeNull();
@@ -116,4 +118,37 @@ test('a second click that adds what the first already added does not hold up the
   await click('customers', { addAt: 'customers' });
   // It renders nothing, so it must end on the short pause, not on the wait for a render.
   expect(performance.now() - start).toBeLessThan(1000);
+});
+
+test('a ghost click (addAt) adds the mart with its Unique Count alone, and a mart added back keeps what it showed', async () => {
+  let click!: ReturnType<typeof useCardClick>;
+  let state!: State;
+  let put!: (g: GridState) => void;
+  let columnStore!: ReturnType<typeof useServices>['columnStore'];
+  function Probe() {
+    const [s, dispatch] = useStore();
+    state = s;
+    put = (grid) => dispatch({ type: 'saveGrid', martId: 'orders', grid });
+    columnStore = useServices().columnStore;
+    click = useCardClick(model);
+    useEffect(() => { dispatch({ type: 'init', focusId: 'orders' }); }, [dispatch]);
+    return null;
+  }
+  render(<AppServices ctx={createMockCtx(demoFixtures(), { latencyMs: 0 })}><StoreProvider><Probe /></StoreProvider></AppServices>);
+  await waitFor(() => expect(state.selection.martId).toBe('orders'));
+  put({ columns: ['id', 'status'], filters: {}, sorts: null, limit: 200 });
+  await waitFor(() => expect(state.grids.orders).toBeDefined());
+  const before = state.grids.orders!.columns;
+  await click('customers', { addAt: 'customers' });
+  await waitFor(() => expect(state.grids.orders?.emptyPaths).toEqual(['customers']));
+  expect(state.grids.orders!.uniqueCount).toEqual(['customers']);
+  expect(state.grids.orders!.columns).toEqual(before);
+  // Back from the report with a remembered field: the new default does not replace it.
+  await click('customers', { removePaths: ['customers'] });
+  await waitFor(() => expect(state.grids.orders?.emptyPaths).toBeUndefined());
+  columnStore.saveLastShown('customers', ['email']);
+  await click('customers', { addAt: 'customers' });
+  await waitFor(() => expect(state.grids.orders?.columns).toContain('customers__email'));
+  expect(state.grids.orders!.uniqueCount).toBeUndefined();
+  expect(state.grids.orders!.emptyPaths).toBeUndefined();
 });
