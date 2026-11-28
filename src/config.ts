@@ -6,6 +6,8 @@ export const PAGE_SIZE = 200;
 /** The most marts a smart search names, in its answer and in a view link. */
 export const MAX_FOUND = 5;
 export const COUNT_CONCURRENCY = 4;
+/** The most filtered card counts kept per session, least recently used out first. */
+export const FILTERED_COUNT_LIMIT = 64;
 export const IN_LIST_MAX = 500;
 
 const martAppPath = (projectId: string, martId: string): string => `/ui/${encodeURIComponent(projectId)}/data-marts/${encodeURIComponent(martId)}/overview`;
