@@ -71,7 +71,7 @@ export function fromTraverseFilter(rule: unknown, field: Field): ColumnFilter | 
     const vals = rule.value;
     const ok = field.category === 'number'
       ? vals.every((x) => typeof x === 'number' && Number.isFinite(x))
-      : vals.every((x) => typeof x === 'string' && x.trim() !== '');
+      : vals.every((x) => typeof x === 'string' && x !== '');
     if (!ok) return null;
     const listed: ColumnFilter = { field: field.name, op, value: formatListText(vals as (string | number)[]) };
     return isComplete(listed, field) ? listed : null;

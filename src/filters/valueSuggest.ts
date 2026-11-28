@@ -1,7 +1,7 @@
 // Suggested values for a text filter input: the query that reads them and the pure text edits that pick one.
 import type { Field } from '../model/types';
 import { uniqueKey } from '../model/unique-count';
-import { formatListText, listPieces, parseListText } from './list-text';
+import { formatListText, formatListValue, listPieces, parseListText } from './list-text';
 import type { TraverseFilter, TraverseOptions } from '../sdk/types';
 
 export const SUGGEST_LIMIT = 50;
@@ -87,7 +87,8 @@ export function keepsPicks(base: string, text: string): boolean {
   if (pieces.length < want.length) return false;
   return want.every((w, i) => {
     const p = pieces[i]!;
-    if (parseListText(p.raw)[0] !== w) return false;
+    // The piece must be written as a pick writes it: under contains a typed quote (`Acme"`) is part of the text, not list syntax.
+    if (p.raw.trim() !== formatListValue(w)) return false;
     return p.ended || (i === want.length - 1 && open);
   });
 }

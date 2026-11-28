@@ -72,6 +72,10 @@ describe('fromTraverseFilter', () => {
     expect(fromTraverseFilter({ column: 'name', operator: 'not_in', value: ['a"b', ' x'] }, name)).toEqual({ field: 'name', op: 'not_in', value: '"a""b", " x"' });
     expect(toTraverseFilter(fromTraverseFilter({ column: 'name', operator: 'in', value: ['Acme, Inc.', 'c'] }, name)!, name)).toEqual({ column: 'name', operator: 'in', value: ['Acme, Inc.', 'c'] });
   });
+  test('a value of spaces, as the editor saves `" "`, loads back quoted; an empty value is refused', () => {
+    expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['a', ' '] }, name)).toEqual({ field: 'name', op: 'in', value: 'a, " "' });
+    expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['a', ''] }, name)).toBeNull();
+  });
   test('in on a number and on a date reads back as a list; numbers must be numbers', () => {
     expect(fromTraverseFilter({ column: 'amount', operator: 'in', value: [1, 2] }, amount)).toEqual({ field: 'amount', op: 'in', value: '1, 2' });
     expect(fromTraverseFilter({ column: 'amount', operator: 'in', value: ['1'] }, amount)).toBeNull();

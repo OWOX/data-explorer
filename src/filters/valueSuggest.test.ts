@@ -67,6 +67,12 @@ describe('addValue / closePick', () => {
 });
 
 describe('keepsPicks', () => {
+  test('a typed quote after a reopened contains value is part of the text, not list syntax', () => {
+    expect(keepsPicks('Acme', 'Acme"')).toBe(false);
+    expect(keepsPicks('Acme', '"Acme"')).toBe(false);
+    expect(keepsPicks('Acme', 'Acme')).toBe(true);
+    expect(keepsPicks('"Acme, Inc.", ', '"Acme, Inc.", U')).toBe(true);
+  });
   test('a picked list followed by a comma, with or without the space', () => {
     expect(keepsPicks('Ukraine, ', 'Ukraine, Ger')).toBe(true);
     expect(keepsPicks('Ukraine, ', 'Ukraine,')).toBe(true);
