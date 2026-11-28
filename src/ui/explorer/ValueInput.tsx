@@ -23,6 +23,7 @@ type Props = { op: string; value: string; onChange: (v: string, base?: string) =
  * a pick adds the value to the comma-separated list (for the list operators) and the input keeps its focus. A failed read shows nothing.
  */
 export function ValueInput({ op, value, onChange, source, className, inPick = false, onLoad }: Props) {
+  const [finished, setFinished] = useState<string | null>(value);
   const [anchor, setAnchor] = useState<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   // Whether the input was ever focused: the in-flow no-match note then stays after a blur, so pressing Apply does not shift it away between mouse down and up.
@@ -58,8 +59,8 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
   // A value with a comma would read as two in a list, so it is not offered there.
   const pool = mergeValues(source?.loaded ?? [], loaded ?? []);
   const known = pool.filter((o) => !o.includes(','));
-  // A piece after the last comma that is exactly a known value is a finished pick (a reopened single value too): the next pick follows it.
-  const text = list ? closePick(value, known) : value;
+  // The text as the last pick left it, or as the editor opened it, is a finished pick: the next pick follows it. Typed text narrows by its last piece, and a pick replaces that piece.
+  const text = list ? closePick(value, finished) : value;
   const options = list
     ? narrow(known, text)
     : pool.filter((o) => o !== value && o.toLowerCase().includes(value.trim().toLowerCase()));
@@ -79,8 +80,13 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
     // A value with a comma cannot join a list: it replaces the text.
     if (PICKS.has(op) && !v.includes(',')) {
       const next = addValue(inPick ? text : '', v);
+      setFinished(next);
       onChange(next, next);
-    } else onChange(LIST_OPS.has(op) ? addValue(text, v) : v);
+    } else {
+      const next = LIST_OPS.has(op) ? addValue(text, v) : v;
+      setFinished(next);
+      onChange(next);
+    }
     setHot(-1);
     setKeyed(false);
   };

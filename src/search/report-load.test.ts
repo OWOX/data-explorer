@@ -91,7 +91,9 @@ describe('fromTraverseFilter', () => {
 
   test('maps eq, lt, gt and relative_date on date fields', () => {
     expect(fromTraverseFilter({ column: 'day', operator: 'eq', value: '2026-01-02' }, day)).toEqual({ field: 'day', op: 'on', value: '2026-01-02' });
-    expect(fromTraverseFilter({ column: 'stamp', operator: 'eq', value: '2026-01-02 10:00:00' }, stamp)).toEqual({ field: 'stamp', op: 'on', value: '2026-01-02 10:00:00' });
+    // An exact moment on a datetime has no form here; a whole day comes back as a between.
+    expect(fromTraverseFilter({ column: 'stamp', operator: 'eq', value: '2026-01-02 10:00:00' }, stamp)).toBeNull();
+    expect(fromTraverseFilter({ column: 'stamp', operator: 'between', value: { from: '2026-01-02 00:00:00', to: '2026-01-02 23:59:59' } }, stamp)).toEqual({ field: 'stamp', op: 'between', value: { from: '2026-01-02', to: '2026-01-02' } });
     expect(fromTraverseFilter({ column: 'stamp', operator: 'gt', value: '2026-01-02 10:00:00' }, stamp)).toEqual({ field: 'stamp', op: 'after', value: '2026-01-02 10:00:00' });
     expect(fromTraverseFilter({ column: 'amount', operator: 'eq', value: 3 }, amount)).toEqual({ field: 'amount', op: 'eq', value: 3 });
     expect(fromTraverseFilter({ column: 'name', operator: 'eq', value: 3 }, name)).toEqual({ field: 'name', op: 'eq', value: '3' });

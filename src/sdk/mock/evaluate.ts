@@ -37,6 +37,8 @@ export function matchesFilter(row: Row, f: TraverseFilter, now = new Date()): bo
     case 'starts_with': return s.startsWith(String(f.value));
     case 'ends_with': return s.endsWith(String(f.value));
     case 'regex': case 'not_regex': {
+      // NULL never matches a pattern, so not_regex keeps it.
+      if (v == null) return f.operator === 'not_regex';
       let hit = false;
       try { hit = new RegExp(String(f.value)).test(s); } catch { /* an invalid pattern matches nothing */ }
       return f.operator === 'regex' ? hit : !hit;

@@ -384,9 +384,9 @@ test('typed text that matches no value keeps the panel open with a note and the 
   expect(options()).toEqual([]);
   expect(screen.getByRole('status')).toHaveTextContent('No matching values');
   await userEvent.click(screen.getByRole('button', { name: /Reload values/ }));
-  // The reloaded values hold ZA: it is now a finished pick, so the note goes and the others are offered.
+  // The reloaded values hold ZA: the typed text now narrows to it, so the note goes.
   await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
-  expect(options()).toEqual(['US', 'DE']);
+  expect(options()).toEqual(['ZA']);
   expect(load).toHaveBeenCalledTimes(2);
 });
 
@@ -498,15 +498,35 @@ test('the no-match note and Reload sit in the editor\'s flow next to the input, 
   expect(input().parentElement).toContainElement(note);
 });
 
-test('in a list, a value typed in full is a finished pick: the rest are offered, and the panel closes when none is left', async () => {
+test('in a list, typed text narrows by its last piece and the panel closes when nothing is left', async () => {
   render(<Harness op="in" src={source(loadOf(['paid', 'paid_late', 'open']))} />);
   await userEvent.click(input());
   await waitFor(() => expect(options()).toEqual(['paid', 'paid_late', 'open']));
-  await userEvent.type(input(), 'paid_late');
+  await userEvent.type(input(), 'paid');
+  expect(options()).toEqual(['paid', 'paid_late']);
+  await userEvent.type(input(), '_late, ');
   expect(options()).toEqual(['paid', 'open']);
-  await userEvent.type(input(), ', paid, open');
+  await userEvent.type(input(), 'paid, open, ');
   expect(screen.queryByRole('listbox')).toBeNull();
   expect(screen.queryByRole('status')).toBeNull();
+});
+
+test('typing US with US and USA known and clicking USA gives USA', async () => {
+  render(<Harness op="in" src={source(loadOf(['US', 'USA', 'DE']))} />);
+  await userEvent.click(input());
+  await screen.findAllByRole('option');
+  await userEvent.type(input(), 'US');
+  expect(options()).toEqual(['US', 'USA']);
+  await userEvent.click(screen.getByRole('option', { name: 'USA' }));
+  expect(input().value).toBe('USA');
+});
+
+test('a reopened "A, B" is finished: the next pick adds a third', async () => {
+  render(<Harness op="in" start="US, DE" src={source(loadOf(['US', 'DE', 'FR']))} />);
+  await userEvent.click(input());
+  await waitFor(() => expect(options()).toEqual(['FR']));
+  await userEvent.click(screen.getByRole('option', { name: 'FR' }));
+  expect(input().value).toBe('US, DE, FR');
 });
 
 test('in a list the first pick has no comma, the second adds ", ", and a third is still offered', async () => {

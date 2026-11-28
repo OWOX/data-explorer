@@ -379,13 +379,14 @@ test('a regex rule is a plain text input with no suggestions', async () => {
   expect(onApply).toHaveBeenCalledWith({ field: 'city', op: 'regex', value: '^a' });
 });
 
-test('a timestamp offers all the date conditions through Presets: on takes a datetime', async () => {
+test('a timestamp offers all the date conditions through Presets: on takes a day', async () => {
   const { onApply } = open(ts);
   await userEvent.click(screen.getByRole('menuitem', { name: 'On…' }));
   expect(screen.getByLabelText('Operator')).toHaveValue('on');
-  fireEvent.change(screen.getByLabelText('Value'), { target: { value: '2026-01-02T10:00' } });
+  expect(screen.getByLabelText('Value')).toHaveAttribute('type', 'date');
+  fireEvent.change(screen.getByLabelText('Value'), { target: { value: '2026-01-02' } });
   await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(onApply).toHaveBeenCalledWith({ field: 'created_at', op: 'on', value: '2026-01-02T10:00' });
+  expect(onApply).toHaveBeenCalledWith({ field: 'created_at', op: 'on', value: '2026-01-02' });
 });
 
 test('a reopened list shows as "a, b" and reapplies as in', async () => {

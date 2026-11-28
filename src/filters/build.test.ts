@@ -145,8 +145,29 @@ describe('is any of / is none of', () => {
   });
   test('on is an eq with the same value shape as the other date rules', () => {
     expect(toTraverseFilter({ field: 'd', op: 'on', value: '2026-01-01' }, day)).toEqual({ column: 'd', operator: 'eq', value: '2026-01-01' });
-    expect(toTraverseFilter({ field: 't', op: 'on', value: '2026-01-01T10:00' }, ts)).toEqual({ column: 't', operator: 'eq', value: '2026-01-01 10:00:00' });
+    // A datetime column has no single moment: on a day is the whole day.
+    expect(toTraverseFilter({ field: 't', op: 'on', value: '2026-01-01' }, ts)).toEqual({ column: 't', operator: 'between', value: { from: '2026-01-01 00:00:00', to: '2026-01-01 23:59:59' } });
     expect(toTraverseFilter({ field: 'c', op: 'on', value: '10:00' }, clock)).toEqual({ column: 'c', operator: 'eq', value: '10:00:00' });
+  });
+  test('list entries on date and time columns must be real dates and clock times', () => {
+    expect(isComplete({ field: 'd', op: 'in', value: '2026-01-01, 2026-02-28' }, day)).toBe(true);
+    expect(isComplete({ field: 'd', op: 'in', value: '2026-02-30' }, day)).toBe(false);
+    expect(isComplete({ field: 'd', op: 'in', value: '2026-13-01' }, day)).toBe(false);
+    expect(isComplete({ field: 'd', op: 'in', value: '2026-01-01 10:00' }, day)).toBe(false);
+    expect(isComplete({ field: 't', op: 'in', value: '2026-01-01, 2026-01-01 10:00:00, 2026-01-01T10:00' }, ts)).toBe(true);
+    expect(isComplete({ field: 't', op: 'in', value: 'yesterday' }, ts)).toBe(false);
+    expect(isComplete({ field: 'c', op: 'in', value: '10:00, 23:59:59' }, clock)).toBe(true);
+    expect(isComplete({ field: 'c', op: 'in', value: '24:00' }, clock)).toBe(false);
+  });
+  test('a list holds at most 500 values', () => {
+    const many = (n: number) => Array.from({ length: n }, (_, i) => `v${i}`).join(', ');
+    expect(isComplete({ field: 'status', op: 'in', value: many(500) }, str)).toBe(true);
+    expect(isComplete({ field: 'status', op: 'in', value: many(501) }, str)).toBe(false);
+  });
+  test('a regex that does not compile is incomplete', () => {
+    expect(isComplete({ field: 'status', op: 'regex', value: '^a(' }, str)).toBe(false);
+    expect(isComplete({ field: 'status', op: 'not_regex', value: '[' }, str)).toBe(false);
+    expect(isComplete({ field: 'status', op: 'regex', value: '^a.*' }, str)).toBe(true);
   });
   test('regex rules go out as they are', () => {
     expect(toTraverseFilter({ field: 'status', op: 'regex', value: '^a.*' }, str)).toEqual({ column: 'status', operator: 'regex', value: '^a.*' });

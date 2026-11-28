@@ -47,20 +47,22 @@ describe('a comma-separated value', () => {
 describe('addValue / closePick', () => {
   test('the first pick is the bare value, the second adds ", " between', () => {
     expect(addValue('', 'A')).toBe('A');
-    expect(addValue(closePick('A', ['A', 'B']), 'B')).toBe('A, B');
-    expect(addValue(closePick('A, B', ['A', 'B', 'C']), 'C')).toBe('A, B, C');
+    expect(addValue(closePick('A', 'A'), 'B')).toBe('A, B');
+    expect(addValue(closePick('A, B', 'A, B'), 'C')).toBe('A, B, C');
   });
   test('a value already there leaves the values as they were, minus a half-typed piece', () => {
     expect(addValue('A, B, ', 'a')).toBe('A, B');
     expect(addValue('A, ', 'A')).toBe('A');
   });
   test('the half-typed piece is what the pick completes', () => expect(addValue('A, Ge', 'Germany')).toBe('A, Germany'));
-  test('a piece that is exactly a known value is closed with ", "; others stay', () => {
-    expect(closePick('A', ['A', 'B'])).toBe('A, ');
-    expect(closePick('A, B', ['A', 'B', 'C'])).toBe('A, B, ');
-    expect(closePick('A, b', ['A', 'B'])).toBe('A, b');
-    expect(closePick('A, ', ['A'])).toBe('A, ');
-    expect(closePick('', ['A'])).toBe('');
+  test('only the text a pick produced (or the editor opened with) is closed with ", "; typed text stays', () => {
+    expect(closePick('A', 'A')).toBe('A, ');
+    expect(closePick('A, B', 'A, B')).toBe('A, B, ');
+    expect(closePick('US', 'A')).toBe('US');
+    expect(closePick('A, b', 'A, B')).toBe('A, b');
+    expect(closePick('A, ', 'A, ')).toBe('A, ');
+    expect(closePick('', '')).toBe('');
+    expect(closePick('A', null)).toBe('A');
   });
 });
 

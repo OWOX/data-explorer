@@ -128,6 +128,8 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
   const range = (val ?? { from: '', to: '' }) as { from: string; to: string };
   const rel = (val ?? { kind: 'today' }) as RelativeDatePreset;
   const dateType = field.category === 'time' ? 'time' : isDateTimeField(field) ? 'datetime-local' : 'date';
+  // "On" a datetime column is a whole day.
+  const valueType = op === 'on' && isDateTimeField(field) ? 'date' : dateType;
 
   return (
     <ActionForm className="dm-filter-form flex flex-col gap-2" onAction={() => { if (isComplete(draft, field)) onApply(draft); }}>
@@ -142,7 +144,7 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
       {def.value === 'number' && (
         <input aria-label="Value" className={input} type="number" value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />
       )}
-      {def.value === 'date' && <input aria-label="Value" className={input} type={dateType} value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />}
+      {def.value === 'date' && <input aria-label="Value" className={input} type={valueType} value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />}
       {(def.value === 'number-range' || def.value === 'date-range') && (
         <div className="flex flex-wrap gap-2">
           {(['from', 'to'] as const).map((k) => (

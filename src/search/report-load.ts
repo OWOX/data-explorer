@@ -21,7 +21,8 @@ const DATETIME_END = /^(\d{4}-\d{2}-\d{2}) 23:59:59$/;
 function opFor(operator: string, field: Field): OpId {
   if (operator === 'relative_date') return 'relative';
   if (field.category === 'date' || field.category === 'time') {
-    if (operator === 'eq') return 'on';
+    // An exact moment on a datetime has no "on" form (that one is a whole day).
+    if (operator === 'eq') return isDateTimeField(field) ? 'eq' : 'on';
     if (operator === 'lt') return 'before';
     if (operator === 'gt') return 'after';
   }

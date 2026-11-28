@@ -15,16 +15,34 @@ export type ColumnFilter = { field: string; op: OpId; value?: FilterValue; fn?: 
 const filled = (v: unknown) => v !== undefined && v !== null && String(v).trim() !== '';
 const numeric = (v: unknown) => filled(v) && Number.isFinite(Number(v));
 
+/** The backend's IN_LIST_MAX_VALUES. */
+const IN_LIST_MAX = 500;
+const validRegex = (v: string) => { try { new RegExp(v); return true; } catch { return false; } };
+const realDate = (y: number, m: number, d: number) => { const dt = new Date(Date.UTC(y, m - 1, d)); return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d; };
+const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+const STAMP = /^(\d{4})-(\d{2})-(\d{2})[T ]([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+const CLOCK = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+/** One in / not_in entry, as the extension's list editor checks it: a real YYYY-MM-DD (a datetime may add HH:MM(:SS)), HH:MM(:SS), a number. */
+function validEntry(x: string, field: Field): boolean {
+  if (field.category === 'number') return numeric(x);
+  if (field.category === 'time') return CLOCK.test(x);
+  if (field.category === 'date') {
+    const m = DAY.exec(x) ?? (isDateTimeField(field) ? STAMP.exec(x) : null);
+    return !!m && realDate(Number(m[1]), Number(m[2]), Number(m[3]));
+  }
+  return true;
+}
+
 export function isComplete(f: ColumnFilter, field: Field): boolean {
   const def = operatorsFor(field).find((o) => o.id === f.op);
   if (!def) return false;
   const v = f.value as never;
   switch (def.value) {
     case 'none': return true;
-    case 'text':
+    case 'text': return filled(v) && (f.op !== 'regex' && f.op !== 'not_regex' || validRegex(String(v)));
     case 'date': return filled(v);
     case 'number': return numeric(v);
-    case 'list': { const t = typeof v === 'string' ? tokensOf(v) : []; return t.length > 0 && (field.category !== 'number' || t.every(numeric)); }
+    case 'list': { const t = typeof v === 'string' ? tokensOf(v) : []; return t.length > 0 && t.length <= IN_LIST_MAX && t.every((x) => validEntry(x, field)); }
     case 'number-range': return typeof v === 'object' && v !== null && numeric((v as { from: unknown }).from) && numeric((v as { to: unknown }).to);
     case 'date-range': return typeof v === 'object' && v !== null && filled((v as { from: unknown }).from) && filled((v as { to: unknown }).to);
     case 'relative': {
@@ -64,7 +82,10 @@ export function toTraverseFilter(f: ColumnFilter, field: Field): TraverseFilterR
   switch (f.op) {
     case 'is_blank': case 'is_not_blank': case 'is_true': case 'is_false':
       return { column, operator: f.op };
-    case 'on': return { column, operator: 'eq', value: scalar(f.value) as string };
+    // A datetime has no single moment to match: "on" a day is that whole day.
+    case 'on':
+      if (isDateTimeField(field)) return { column, operator: 'between', value: { from: bound(String(f.value), false), to: bound(String(f.value), true) } };
+      return { column, operator: 'eq', value: scalar(f.value) as string };
     case 'in': case 'not_in': {
       const tokens = tokensOf(String(f.value ?? ''));
       return { column, operator: f.op, value: (isNum ? tokens.map(Number) : stamped ? tokens.map(withSeconds) : tokens) as string[] | number[] };

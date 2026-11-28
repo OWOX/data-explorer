@@ -66,11 +66,11 @@ export function addValue(text: string, value: string): string {
 }
 
 /**
- * The text a list's suggestions read: when the piece after the last comma is exactly a known value it is a finished pick, so a ", " is put after it
- * and the next pick or word follows.
+ * The text a list's suggestions read: when the text is exactly `finished` (what the last pick produced, or the value the editor opened with)
+ * its last piece is a finished pick, so a ", " is put after it and the next pick follows. Text typed by hand is never closed: it narrows by its last piece.
  */
-export function closePick(text: string, known: string[]): string {
-  return known.includes(lastToken(text)) && lastToken(text) !== '' ? `${text.trimEnd()}, ` : text;
+export function closePick(text: string, finished: string | null): string {
+  return finished !== null && text === finished && lastToken(text) !== '' ? `${text.trimEnd()}, ` : text;
 }
 
 /**
