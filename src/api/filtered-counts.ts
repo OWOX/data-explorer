@@ -6,7 +6,7 @@ import { perCtx } from '../sdk/per-ctx';
 import { countRows } from './row-counts';
 
 type Entry = { martId: string; n: number };
-type Store = { entries: Map<string, Entry>; reading: Map<string, Promise<number | null>> };
+type Store = { entries: Map<string, Entry>; reading: Map<string, { martId: string; read: Promise<number | null> }> };
 
 const storeOf = perCtx<Store>(() => ({ entries: new Map(), reading: new Map() }));
 
@@ -41,11 +41,11 @@ export function countFiltered(ctx: Ctx, key: string, martId: string, schema: Sch
   if (hit !== undefined) return Promise.resolve(hit);
   const { reading } = storeOf(ctx);
   const under = reading.get(key);
-  if (under) return under;
+  if (under) return under.read;
   const read = countRows(ctx, martId, schema, [...rules])
-    .then((n) => { if (n !== null) put(ctx, key, martId, n); return n; })
-    .finally(() => { reading.delete(key); });
-  reading.set(key, read);
+    .then((n) => { if (n !== null && reading.get(key)?.read === read) put(ctx, key, martId, n); return n; })
+    .finally(() => { if (reading.get(key)?.read === read) reading.delete(key); });
+  reading.set(key, { martId, read });
   return read;
 }
 
@@ -57,6 +57,8 @@ export function rememberFiltered(ctx: Ctx, key: string, n: number): void {
 
 /** Drops every entry of a mart (the grid's Refresh). */
 export function forgetFiltered(ctx: Ctx, martId: string): void {
-  const { entries } = storeOf(ctx);
+  const { entries, reading } = storeOf(ctx);
   for (const [key, e] of entries) if (e.martId === martId) entries.delete(key);
+  // A read under way began before the refresh: it must neither be joined nor cached.
+  for (const [key, r] of reading) if (r.martId === martId) reading.delete(key);
 }

@@ -78,3 +78,20 @@ test('the least recently used entry goes out first', () => {
   expect(cachedFiltered(ctx, keys[0]!)).toBe(0);
   expect(cachedFiltered(ctx, keys[FILTERED_COUNT_LIMIT]!)).toBe(99);
 });
+
+test('a read under way when its mart is forgotten is neither cached nor joined', async () => {
+  let release: () => void = () => {};
+  const traverseData = vi.fn(async () => { await new Promise<void>((r) => { release = r; }); return traversalOf([{ id: 1 }], 2, 5); });
+  const ctx = stubCtx({ dataMarts: { list: vi.fn(), traverseData } });
+  const key = filteredKey('a', rules, null);
+  const first = countFiltered(ctx, key, 'a', schema, rules);
+  await vi.waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
+  forgetFiltered(ctx, 'a');
+  release();
+  await first;
+  expect(cachedFiltered(ctx, key)).toBeUndefined();
+  const second = countFiltered(ctx, key, 'a', schema, rules);
+  await vi.waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
+  release();
+  expect(await second).toBe(5);
+});
