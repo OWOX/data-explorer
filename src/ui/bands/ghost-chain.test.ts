@@ -111,7 +111,9 @@ test.each([
   ['focus a+, blur', 'a...'],
   ['focus a+, over b, blur', 'b'],
   ['over b, focus a+, blur', 'b'],
-  ['focus a+, blur b', 'a'],
+  ['focus a+, blur a', 'a'],
+  ['focus a+, blur b', 'a...'],
+  ['focus a+, blur b+', 'a'],
   ['plus a, over ~c, plus a', 'nothing'],
   ['plus a, ghostPlus c, over ~e, ghostPlus c', 'nothing'],
   ['over a, card a, over -, card a', 'a...'],
@@ -137,7 +139,7 @@ test('an event that changes nothing keeps the state object', () => {
 });
 
 test('after any few events, once the pointer and focus are away and the deadline has passed, hover and focus have changed no ghosts and nothing is dimmed', () => {
-  const words = ['over a', 'over a+', 'over b+', 'over ~c', 'over ~c+', 'over -', 'focus a+', 'focus b+', 'focus ~c+', 'blur', 'plus a', 'plus b', 'ghostPlus c', 'card b', 'select c', 'clear', 'lose b'];
+  const words = ['over a', 'over a+', 'over b+', 'over ~c', 'over ~c+', 'over -', 'focus a+', 'focus b+', 'focus ~c+', 'blur', 'blur b', 'plus a', 'plus b', 'ghostPlus c', 'card b', 'select c', 'clear', 'lose b'];
   const clicks = new Set(['plus a', 'plus b', 'ghostPlus c', 'clear', 'lose b']);
   const walk = (s: GhostState, left: number, trail: string[]) => {
     const end = run(['over -', 'blur', 'dim'], s);

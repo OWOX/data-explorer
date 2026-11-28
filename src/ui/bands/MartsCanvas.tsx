@@ -130,7 +130,7 @@ export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, count
     onSelectedMart?.(selectedMart);
     return () => onSelectedMart?.(null);
   }, [selectedMart, onSelectedMart]);
-  // While a card is in hand no ghosts show and the hover and pin logic sits still.
+  // While a card is in hand no ghosts show and the ghosts and the dimming sit still.
   const anchor = drag ? null : hover.anchor;
   // A source counts only when its mart can be read.
   const readable = useCallback((s: JoinedSource) => model.marts.get(s.martId)?.accessible === true, [model]);
@@ -217,7 +217,7 @@ export function MartsCanvas({ model, mainId, columns, emptyPaths, sources, count
       onPointerLeave={() => hover.onLeave()}
       onFocus={(e) => {
         if (!e.currentTarget.contains(e.target as Node)) return;
-        // The browser focuses the element the window left on when it comes back: that is no one asking for the ghosts.
+        // The browser focuses the element the window left on when it comes back: that is no one asking for the dimming.
         if (returning.current === e.target) { returning.current = null; return; }
         const over = overOf(e.target);
         if (over.plus || over.ghost !== null) hover.onFocus(over);

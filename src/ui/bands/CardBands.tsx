@@ -117,7 +117,7 @@ export function CardBands({
   // waits 400 ms, so the pointer can cross the gap to a ghost.
   const [ghostOf, setGhostOf] = useState<string | null>(null);
   const click = useCardClick(model);
-  // The Graph's pinned card, when it is a joined one (the Grid's own is `focus`, below).
+  // The Graph's selected card, when it is a joined one (the Grid's own is `focus`, below).
   const [graphSelected, setGraphSelected] = useState<string | null>(null);
 
   // The matched counts belong to the main mart that sent them; each card, in Grid and in Graph, takes its own path's number.

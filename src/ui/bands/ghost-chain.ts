@@ -77,8 +77,8 @@ function step(s: GhostState, e: GhostEvent): GhostState {
     case 'focus':
       return { ...s, focus: true, at: sameCard(s.at, e.over) ? s.at : e.over, atFocus: !sameCard(s.pointer, e.over) };
     case 'blur':
-      // To another card or ghost: the focus event that follows moves the dimming.
-      if (e.to !== null && (e.to.card !== null || e.to.ghost !== null)) return s;
+      // To a (+) or a ghost the focus event that follows moves the dimming; within the same card it stays. A card body sends no focus event, so it lets go.
+      if (e.to !== null && (e.to.plus || e.to.ghost !== null || (e.to.card !== null && e.to.card === s.at?.card))) return s;
       return { ...s, focus: false, at: s.atFocus ? s.pointer ?? s.at : s.at, atFocus: false };
     case 'card':
       return { ...s, selected: s.selected?.path === e.path ? null : { main: e.main, path: e.path } };
