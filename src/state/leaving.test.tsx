@@ -38,3 +38,15 @@ test('a mart kept with its count alone is remembered when the grid is left', asy
   h.leave('stores');
   await waitFor(() => expect(h.columnStore.lastShown('customers')).toEqual([UNIQUE_SHOWN]));
 });
+
+test('a grid not in the store yet is remembered from the saved view with its Unique Count', async () => {
+  const h = setup();
+  await waitFor(() => expect(h.state.selection.martId).toBe('orders'));
+  h.columnStore.save('orders', ['id']);
+  h.columnStore.saveView('orders', { filters: {}, sorts: null, limit: 200, uniqueCount: ['customers'], emptyPaths: ['customers'] });
+  await waitFor(async () => expect((await h.columnStore.loadView('orders'))?.uniqueCount).toEqual(['customers']));
+  h.put([], {});
+  await waitFor(() => expect(h.state.grids.orders?.columns).toEqual([]));
+  h.leave('stores');
+  await waitFor(() => expect(h.columnStore.lastShown('customers')).toEqual([UNIQUE_SHOWN]));
+});

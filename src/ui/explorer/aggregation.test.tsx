@@ -73,9 +73,13 @@ test('a Sum on Amount groups by the other columns: Amount · Sum, no primary key
   // the key is a group column, so each row is one record: it opens by the key values, and the grouped row is not remembered as a plain one
   vi.mocked(rememberRow).mockClear();
   expect(bodyRows()[0]).toHaveClass('cursor-pointer');
+  // The record opened is the clicked row's own: its id cell.
+  const idCol = headers().indexOf('id');
+  const clickedId = bodyRows()[0]!.querySelectorAll('td')[idCol]?.textContent?.trim();
+  expect(clickedId).toMatch(/^\d+$/);
   fireEvent.click(bodyRows()[0]!);
   expect(rememberRow).not.toHaveBeenCalled();
-  await waitFor(() => expect(row().textContent).toMatch(/Orders · \d+/));
+  await waitFor(() => expect(row().textContent).toContain(`Orders · ${clickedId}`));
   // the values are numbers read from the "<column> | SUM" key
   expect(sumCell()).toMatch(/\d/);
 });
