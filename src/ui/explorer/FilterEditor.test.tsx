@@ -401,3 +401,12 @@ test('describeFilter reads a list as any of / none of', () => {
   expect(describeFilter(text, { op: 'not_in', value: 'a,b' })).toBe('is none of a, b');
   expect(describeFilter(text, { op: 'eq', value: 'San Francisco, CA' })).toBe('is San Francisco, CA');
 });
+
+test('switching operators starts the value over: a reopened "is US" switched to is any of narrows "US" typed again, so a pick of USA gives USA', async () => {
+  const onApply = vi.fn();
+  render(<FilterEditor field={text} value={{ field: 'city', op: 'eq', value: 'US' }} onApply={onApply} onClear={vi.fn()} values={{ key: 'k', loaded: ['US', 'USA', 'DE'], cache: new Map() }} />);
+  await userEvent.selectOptions(screen.getByLabelText('Operator'), 'in');
+  await userEvent.type(screen.getByLabelText('Value'), 'US');
+  await userEvent.click(await screen.findByRole('option', { name: 'USA' }));
+  expect(screen.getByLabelText('Value')).toHaveValue('USA');
+});

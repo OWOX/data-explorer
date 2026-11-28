@@ -109,6 +109,8 @@ function DateFilterEditor({ field, value, onApply, onClear, note, removeLabel = 
 function OperatorForm({ field, value, onApply, onClear, note, values, startOp }: EditorProps & { startOp?: OpId }) {
   const ops = operatorsFor(field).filter((o) => field.category !== 'date' || o.id !== 'relative');
   const [op, setOp] = useState<OpId>(startOp ?? (value && ops.some((o) => o.id === value.op) ? value.op : ops[0]!.id));
+  // Bumped when the member picks another operator: the value input starts over, so a pick made under the old operator does not count as finished.
+  const [opSeq, setOpSeq] = useState(0);
   const [val, setVal] = useState<FilterValue>(value?.op === op ? value.value : undefined);
   const def = ops.find((o) => o.id === op)!;
   // Under contains / does not contain the text was built by suggestion picks (a trailing ", " is the separator, not part of the value).
@@ -133,10 +135,10 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
 
   return (
     <ActionForm className="dm-filter-form flex flex-col gap-2" onAction={() => { if (isComplete(draft, field)) onApply(draft); }}>
-      <Select aria-label="Operator" value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); setBase(null); }}>
+      <Select aria-label="Operator" value={op} onChange={(e) => { setOp(e.target.value as OpId); setVal(undefined); setBase(null); setOpSeq((n) => n + 1); }}>
         {ops.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
       </Select>
-      {(def.value === 'text' || (def.value === 'list' && field.category === 'string')) && <ValueInput op={op} value={String(val ?? '')} onChange={(v, b) => { setVal(v);
+      {(def.value === 'text' || (def.value === 'list' && field.category === 'string')) && <ValueInput key={opSeq} op={op} value={String(val ?? '')} onChange={(v, b) => { setVal(v);
             // Typing before the suggestions load leaves the base unseeded, so a reopened value is seeded once they arrive.
             setBase(b ?? (eb !== null && keepsPicks(eb, v) ? eb : base === undefined && seed !== null && !loadedValues ? undefined : null)); }}
             inPick={inPick} onLoad={() => setLoadedTick((t) => t + 1)} source={canSuggest(field) && op !== 'regex' && op !== 'not_regex' ? values : undefined} className={input} />}
