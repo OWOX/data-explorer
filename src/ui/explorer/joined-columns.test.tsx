@@ -82,7 +82,7 @@ test('a joined tab lists that mart\'s fields with a count, each with its descrip
   t.view();
   await openPicker('Customers');
   const picker = within(await screen.findByRole('dialog'));
-  expect(picker.getAllByRole('option').map((c) => c.textContent)).toEqual(['Unique Count', 'email', 'city', 'Country', 'id', 'name']);
+  expect(picker.getAllByRole('option').map((c) => c.textContent)).toEqual(['Unique Count', 'city', 'Country', 'email', 'id', 'name']);
   expect(picker.queryByText(/Fields ·/)).toBeNull();
   expect(picker.getByLabelText('About name')).toBeInTheDocument();
   await userEvent.click(picker.getByLabelText('city'));
