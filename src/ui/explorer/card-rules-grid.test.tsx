@@ -14,8 +14,9 @@ import { DataBand } from '../bands/DataBand';
 import { TooltipProvider } from '../Tooltip';
 
 // Every traverseData call is a billed warehouse run: the cards count their own rules, the grid reads no scorecard for them.
-async function setup(grid: GridState, opts: { noKey?: boolean; failGrid?: boolean; strict?: boolean; wired?: boolean } = {}) {
+async function setup(grid: GridState, opts: { calc?: boolean; noKey?: boolean; failGrid?: boolean; strict?: boolean; wired?: boolean } = {}) {
   const fixtures = structuredClone(demoFixtures());
+  if (opts.calc) fixtures.marts.find((m) => m.id === 'orders')!.fields.push({ name: 'margin', type: 'NUMERIC', alias: 'Margin', calculated: { level: 'column' } } as never);
   if (opts.noKey) for (const f of fixtures.marts.find((m) => m.id === 'orders')!.fields) f.isPrimaryKey = false;
   const base = createMockCtx(fixtures, { latencyMs: 0 });
   const queries: TraverseOptions[] = [];
@@ -64,6 +65,18 @@ test('a filter on a main field sends the rule at path "" and reads no scorecard'
   expect([...last(t).keys()]).toEqual(['']);
   expect(last(t).get('')).toEqual({ martId: 'orders', rules: [expect.objectContaining({ column: 'status', operator: 'eq', value: 'paid' })], partial: false });
   expect(t.scoreReads()).toHaveLength(0);
+});
+
+test('a main filter with a calculated-field filter is partial, and the grid total goes to no card', async () => {
+  const t = await setup({ ...plain, filters: { ...paid, margin: { field: 'margin', op: 'gt', value: 1 } } }, { calc: true, wired: true });
+  t.mount();
+  await waitFor(rowsShown);
+  await calm();
+  expect(last(t).get('')).toEqual(expect.objectContaining({ partial: true }));
+  expect(t.spies.onFilteredTotal).not.toHaveBeenCalled();
+  expect(t.spies.onCount).not.toHaveBeenCalled();
+  expect(t.filteredReads()).toHaveLength(0);
+  expect(t.counts.current!.filtered.get('')).toEqual({ partial: true });
 });
 
 test('a slice on a joined field sends its path with the renamed column', async () => {

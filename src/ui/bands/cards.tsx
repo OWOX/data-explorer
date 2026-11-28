@@ -105,23 +105,24 @@ const PARTIAL_NOTE = 'Filters on calculated fields are not counted.';
 function CountBadge({ count, filtered, countable, onRetry, onRetryFiltered }: { count: CountState; filtered?: { state?: CountState; partial: boolean }; countable: boolean; onRetry: () => void; onRetryFiltered: () => void }) {
   // A card that is never counted (a ghost) shows no badge, or it would wait for ever.
   if (!countable) return null;
-  const own = filtered?.state;
+  // A card with a rule that cannot be counted shows its unfiltered count, whatever state it was handed: a number filtered by only some of its rules would be wrong.
+  const own = filtered?.partial ? undefined : filtered?.state;
   const shown = own ?? count;
-  const note = filtered?.partial ? ` ${PARTIAL_NOTE}` : '';
+  const tip = (text: string) => (filtered?.partial ? `${text.replace(/[.…]$/, '')}. ${PARTIAL_NOTE}` : text);
   // The row reserves one badge's height (bands.css), so the count arriving or turning out empty does not move the bands below.
   if (shown.state === 'idle' || shown.state === 'queued') {
     return (
-      <Tooltip content={`Waiting to count rows. Up to ${COUNT_CONCURRENCY} data marts count at a time.`}>
+      <Tooltip content={tip(`Waiting to count rows. Up to ${COUNT_CONCURRENCY} data marts count at a time.`)}>
         <span className="dm-badge" aria-label="Waiting to count rows">—</span>
       </Tooltip>
     );
   }
   if (shown.state === 'loading') {
-    return <Tooltip content="Counting rows…"><span className="dm-badge" aria-label="Counting rows"><LoaderCircle className="dm-spin" size={12} /></span></Tooltip>;
+    return <Tooltip content={tip('Counting rows…')}><span className="dm-badge" aria-label="Counting rows"><LoaderCircle className="dm-spin" size={12} /></span></Tooltip>;
   }
   if (shown.state === 'error') {
     return (
-      <Tooltip content={`${shown.message.replace(/\.$/, '')}. Click to retry.`}>
+      <Tooltip content={tip(`${shown.message.replace(/\.$/, '')}. Click to retry.`)}>
         <button
           type="button"
           className="dm-badge dm-badge-button"
@@ -131,14 +132,14 @@ function CountBadge({ count, filtered, countable, onRetry, onRetryFiltered }: { 
     );
   }
   if (shown.value === null) {
-    return <Tooltip content="Can't count rows: this data mart has no field that can be read."><span className="dm-badge">—</span></Tooltip>;
+    return <Tooltip content={tip("Can't count rows: this data mart has no field that can be read.")}><span className="dm-badge">—</span></Tooltip>;
   }
-  const tip = !own
+  const text = !own
     ? rowCountLabel(num(shown.value))
     : count.state === 'ok' && count.value !== null
       ? `${num(shown.value)} of ${num(count.value)} rows match this data mart's filters`
       : `${num(shown.value)} rows match this data mart's filters`;
-  return <Tooltip content={`${tip}${note}`}><span className={`dm-badge${shown.stale ? ' dm-stale' : ''}`} aria-busy={shown.stale || undefined}>{rowCountLabel(compactNumber(shown.value))}</span></Tooltip>;
+  return <Tooltip content={tip(text)}><span className={`dm-badge${shown.stale ? ' dm-stale' : ''}`} aria-busy={shown.stale || undefined}>{rowCountLabel(compactNumber(shown.value))}</span></Tooltip>;
 }
 
 /** The contexts of a mart, in the project's order. */

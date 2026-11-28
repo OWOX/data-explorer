@@ -72,6 +72,15 @@ test('a partial path without rules has no state and sends no read', async () => 
   expect(traverseData).not.toHaveBeenCalled();
 });
 
+test('a partial path with rules has no state and sends no read: a number from only some of its rules would be wrong', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ id: 1 }], 2, 7));
+  const byPath = new Map([['', rulesOf('a', 1, true)]]);
+  const { result } = renderHook(() => useFilteredCounts(modelOf(['a']), byPath), { wrapper: setup(traverseData) });
+  await new Promise((r) => setTimeout(r, 20));
+  expect(result.current.filtered.get('')).toEqual({ partial: true });
+  expect(traverseData).not.toHaveBeenCalled();
+});
+
 test('at most 4 reads run at once', async () => {
   let running = 0;
   let peak = 0;

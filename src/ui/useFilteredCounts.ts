@@ -38,6 +38,8 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
     const out = new Map<string, Wanted>();
     if (!model || !byPath) return out;
     for (const [path, c] of byPath) {
+      // A card with a rule that cannot be counted shows its unfiltered count: a number filtered by only some of its rules would be wrong.
+      if (c.partial) { out.set(path, { key: '', martId: c.martId, rules: [], partial: true, awaitGrid: false }); continue; }
       const key = c.rules.length > 0 ? filteredKey(c.martId, c.rules, model.marts.get(c.martId)?.dataLastUpdatedAt ?? null, new Date(`${day}T12:00:00`)) : '';
       out.set(path, { key, martId: c.martId, rules: c.rules, partial: c.partial, awaitGrid: !!c.awaitGrid });
     }

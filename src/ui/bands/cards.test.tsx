@@ -340,12 +340,26 @@ describe('the row count badge', () => {
   test('rules that cannot be counted leave the unfiltered count and a note in the tooltip', async () => {
     renderMart({ count: { state: 'ok', value: 1234 }, filtered: { partial: true } });
     await userEvent.hover(screen.getByText('1.2K rows'));
-    expect((await screen.findAllByText('1,234 rows Filters on calculated fields are not counted.')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('1,234 rows. Filters on calculated fields are not counted.')).length).toBeGreaterThan(0);
   });
-  test('the note ends the tooltip of a filtered count too', async () => {
+  test('a partial card shows its unfiltered count even when handed a filtered one', async () => {
     renderMart({ count: { state: 'ok', value: 1234 }, filtered: { state: { state: 'ok', value: 56 }, partial: true } });
-    await userEvent.hover(screen.getByText('56 rows'));
-    expect((await screen.findAllByText("56 of 1,234 rows match this data mart's filters Filters on calculated fields are not counted.")).length).toBeGreaterThan(0);
+    expect(screen.queryByText('56 rows')).toBeNull();
+    await userEvent.hover(screen.getByText('1.2K rows'));
+    expect((await screen.findAllByText('1,234 rows. Filters on calculated fields are not counted.')).length).toBeGreaterThan(0);
+  });
+  test('the note ends every tooltip of a partial card: waiting, counting, error', async () => {
+    renderMart({ count: { state: 'queued' }, filtered: { partial: true } });
+    await userEvent.hover(screen.getByLabelText('Waiting to count rows'));
+    expect((await screen.findAllByText('Waiting to count rows. Up to 4 data marts count at a time. Filters on calculated fields are not counted.')).length).toBeGreaterThan(0);
+    cleanup();
+    renderMart({ count: { state: 'loading' }, filtered: { partial: true } });
+    await userEvent.hover(screen.getByLabelText('Counting rows'));
+    expect((await screen.findAllByText('Counting rows. Filters on calculated fields are not counted.')).length).toBeGreaterThan(0);
+    cleanup();
+    renderMart({ count: { state: 'error', message: 'nope' }, filtered: { partial: true } });
+    await userEvent.hover(screen.getByText('—'));
+    expect((await screen.findAllByText('nope. Click to retry. Filters on calculated fields are not counted.')).length).toBeGreaterThan(0);
   });
   test('no match badge is ever drawn', () => {
     const { container } = renderMart({ count: { state: 'ok', value: 100 }, filtered: { state: { state: 'ok', value: 5 }, partial: false } });
