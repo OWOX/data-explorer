@@ -136,7 +136,7 @@ function CountBadge({ count, filtered, countable, onRetry, onRetryFiltered }: { 
   }
   const text = !own
     ? rowCountLabel(num(shown.value))
-    : count.state === 'ok' && count.value !== null
+    : count.state === 'ok' && count.value !== null && shown.value <= count.value
       ? `${num(shown.value)} of ${num(count.value)} rows match this data mart's filters`
       : `${num(shown.value)} rows match this data mart's filters`;
   return <Tooltip content={tip(text)}><span className={`dm-badge${shown.stale ? ' dm-stale' : ''}`} aria-busy={shown.stale || undefined}>{rowCountLabel(compactNumber(shown.value))}</span></Tooltip>;

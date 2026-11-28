@@ -71,7 +71,8 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
 
   useEffect(() => {
     queue.current = queue.current.filter((j) => wanted.get(j.path)?.key === j.key);
-    for (const path of [...requested.current.keys()]) if (!wanted.has(path)) requested.current.delete(path);
+    // A read asked for under a key the path no longer wants (gone, partial, or cached under a new key) must not block asking again for that key later.
+    for (const [path, k] of [...requested.current]) if (wanted.get(path)?.key !== k) requested.current.delete(path);
     for (const [path, w] of wanted) {
       if (w.rules.length === 0) continue;
       if (w.awaitGrid || (waiting.current?.wanted === wanted && waiting.current.paths.has(path))) {

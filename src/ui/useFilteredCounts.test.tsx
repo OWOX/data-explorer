@@ -178,3 +178,44 @@ test('forget with the grid answering reads nothing until the path stops awaiting
   rerender({ byPath: new Map([['', rulesOf('a')]]) });
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(2));
 });
+
+test('going back to a key whose read failed while the path wanted a cached one reads it again', async () => {
+  let fail = true;
+  let release: () => void = () => {};
+  const traverseData = vi.fn(async () => {
+    if (fail) { await new Promise<void>((r) => { release = r; }); throw new Error('boom'); }
+    return traversalOf([{ id: 1 }], 2, 7);
+  });
+  const model = modelOf(['a']);
+  const { result, rerender } = renderHook(({ byPath }) => useFilteredCounts(model, byPath), { wrapper: setup(traverseData), initialProps: { byPath: new Map([['', rulesOf('a', 1)]]) } });
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
+  act(() => result.current.seed(filteredKey('a', [rule(2)], null), 5));
+  rerender({ byPath: new Map([['', rulesOf('a', 2)]]) });
+  expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 5 });
+  fail = true;
+  await act(async () => { release(); await new Promise((r) => setTimeout(r, 10)); });
+  fail = false;
+  rerender({ byPath: new Map([['', rulesOf('a', 1)]]) });
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7 }));
+  expect(traverseData).toHaveBeenCalledTimes(2);
+});
+
+test('going back to a key that was queued when the path wanted a cached one reads it', async () => {
+  const releases: (() => void)[] = [];
+  const traverseData = vi.fn(async (id: unknown) => {
+    if (id !== 'a') await new Promise<void>((r) => { releases.push(r); });
+    return traversalOf([{ id: 1 }], 2, 7);
+  });
+  const ids = ['b', 'c', 'd', 'e'];
+  const model = modelOf(['a', ...ids]);
+  const others = ids.map((id) => [id, rulesOf(id)] as const);
+  const { result, rerender } = renderHook(({ byPath }) => useFilteredCounts(model, byPath), { wrapper: setup(traverseData), initialProps: { byPath: new Map([...others, ['', rulesOf('a', 1)] as const]) } });
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
+  expect(result.current.filtered.get('')?.state).toEqual({ state: 'queued' });
+  act(() => result.current.seed(filteredKey('a', [rule(2)], null), 5));
+  rerender({ byPath: new Map([...others, ['', rulesOf('a', 2)] as const]) });
+  rerender({ byPath: new Map([...others, ['', rulesOf('a', 1)] as const]) });
+  await act(async () => { releases.forEach((r) => r()); });
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7 }));
+  expect(traverseData).toHaveBeenCalledWith('a', expect.anything());
+});

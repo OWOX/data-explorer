@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { heatmapQuery, pieBlankQuery, seriesBlankQuery, SCATTER_LIMIT, scatterQuery, spreadFns, spreadQuery, monthsQuery, pieOtherQuery, rangeKeys, rangeQuery, scoreQuery, scoreRulesLost, countsOf, scorecardsQuery, seriesOtherQuery, seriesQuery, sparklineQuery, topValuesQuery, uniqueKey, metricKey } from './queries';
+import { heatmapQuery, pieBlankQuery, seriesBlankQuery, SCATTER_LIMIT, scatterQuery, spreadFns, spreadQuery, monthsQuery, pieOtherQuery, rangeKeys, rangeQuery, scoreQuery, scorecardsQuery, seriesOtherQuery, seriesQuery, sparklineQuery, topValuesQuery, uniqueKey, metricKey } from './queries';
 import type { ChartMart, Metric } from './fields';
 import type { Measure } from './queries';
 import type { Field } from '../model/types';
@@ -47,19 +47,6 @@ describe('queries', () => {
     expect(scoreQuery(cf, flt)).toEqual(scorecardsQuery([main, cust], flt, null));
     // The rules are in it, so two different asks are two different queries.
     expect(scoreQuery(cf, [])).not.toEqual(scoreQuery(cf, flt));
-  });
-  it('a slice with no metric and no counter field has nowhere to go: the query would be sent without it', () => {
-    const slice = { column: 'c__ltv', operator: 'eq' as const, value: 1, placement: 'pre-join' as const };
-    const noMetric = { marts: [{ ...main, metrics: [] }], dimensions: [], dates: [], counter: null };
-    expect(scoreRulesLost([slice], scoreQuery(noMetric, [slice]))).toBe(true);
-    expect(scoreRulesLost([slice], scoreQuery({ ...noMetric, counter: f('channel', 'string') }, [slice]))).toBe(false);
-    expect(scoreRulesLost([slice], scoreQuery({ marts: [main], dimensions: [], dates: [], counter: null }, [slice]))).toBe(false);
-    expect(scoreRulesLost(flt, scoreQuery(noMetric, flt))).toBe(false);
-    expect(scoreRulesLost([slice], null)).toBe(false);
-  });
-  it('countsOf is the same ask with no metric: the counts a cached read of the same rules also holds', () => {
-    const o = scoreQuery({ marts: [main, cust], dimensions: [], dates: [], counter: null }, flt)!;
-    expect(countsOf(o)).toEqual({ uniqueCount: ['', 'c.x'], filter: flt });
   });
   it('keys match the aggregated row keys', () => {
     expect(metricKey(amount)).toBe('amount | SUM');

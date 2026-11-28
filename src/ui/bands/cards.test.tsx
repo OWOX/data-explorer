@@ -322,6 +322,11 @@ describe('the row count badge', () => {
     await userEvent.hover(screen.getByText('56 rows'));
     expect((await screen.findAllByText("56 rows match this data mart's filters")).length).toBeGreaterThan(0);
   });
+  test('a filtered count above the total leaves the total out of the tooltip', async () => {
+    renderMart({ count: { state: 'ok', value: 50 }, filtered: { state: { state: 'ok', value: 56 }, partial: false } });
+    await userEvent.hover(screen.getByText('56 rows'));
+    expect((await screen.findAllByText("56 rows match this data mart's filters")).length).toBeGreaterThan(0);
+  });
   test('a filtered error retries the filtered read, not the count', async () => {
     const onRetryFiltered = vi.fn();
     const { props } = renderMart({ filtered: { state: { state: 'error', message: 'nope' }, partial: false }, filteredRetry: onRetryFiltered });

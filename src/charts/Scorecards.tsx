@@ -92,7 +92,7 @@ type Scores = ChartResult & { previous?: Row | null };
  * `previous` is the last row a read returned, kept so the cards do not fall back to skeletons while the next read runs. Nothing runs while paused.
  */
 export function useScorecards(martId: string, cf: ChartFields, filter: TraverseFilter[], version: number, paused: boolean, joins?: JoinGrain, ranges: Field[] = []): Scores {
-  // `ranges` ride on the read. The same ask without them is enough for the cards, so a cached read of it (Table's badge) still serves them with no read.
+  // `ranges` ride on the read. The same ask without them is enough for the cards, so a cached read of it still serves them with no read.
   const result = useChartQuery(martId, paused ? null : scoreQuery(cf, filter, ranges), version, joins, ranges.length && !paused ? scoreQuery(cf, filter) : undefined);
   const [previous, setPrevious] = useState<Row | null>(null);
   // Adjusting state while rendering (not in an effect) so the card never paints a frame without the previous value.

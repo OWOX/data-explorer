@@ -1192,6 +1192,27 @@ describe('remembered folds', () => {
     expect(data()).not.toHaveClass('folded');
   });
 
+  test('a folded Data Marts band sends no filtered card count; unfolding sends it', async () => {
+    const calls: { id: string; o: Parameters<Mock['owox']['dataMarts']['traverseData']>[1] }[] = [];
+    const spy = overrideTraverse((real) => (id, o) => { calls.push({ id, o }); return real(id, o); });
+    function SaveSlice() {
+      const [, dispatch] = useStore();
+      useEffect(() => { dispatch({ type: 'saveGrid', martId: 'orders', grid: { columns: ['id', 'status', 'customers__city'], filters: {}, slices: { customers__country_code: { field: 'customers__country_code', op: 'eq', value: 'PL' } }, sorts: null, limit: 200 } }); }, [dispatch]);
+      return null;
+    }
+    const base = createMockCtx(demoFixtures(), { latencyMs: 0, keyShown: true });
+    void base.collections('preferences').put('main-mart', { martId: 'orders', sourceKey: null });
+    render(<AppServices ctx={titleSearchOnly(seeded({ 'band-marts': true })(spy(base) as Mock))}><StoreProvider><App /><SaveSlice /></StoreProvider></AppServices>);
+    await waitFor(() => expect(document.getElementById('band-data')).not.toBeNull());
+    await waitFor(() => expect(within(data()).getAllByRole('row').length).toBeGreaterThan(2));
+    expect(marts()).toHaveClass('folded');
+    await settle();
+    const filteredCounts = () => calls.filter((c) => c.id !== 'orders' && isCardCount(c.o) && c.o.filter?.length);
+    expect(filteredCounts()).toEqual([]);
+    await userEvent.click(within(marts()).getByRole('button', { name: /^Show / }));
+    await waitFor(() => expect(filteredCounts().length).toBeGreaterThan(0));
+  });
+
   test('each click writes the choices to the preferences collection, document "bands"', async () => {
     const puts: unknown[] = [];
     await mountWith((ctx) => ({ ...ctx, collections: <T,>(name: string) => { const c = ctx.collections<T>(name); return name === 'preferences' ? { get: c.get, put: async (id: string, d: T) => { puts.push([id, d]); return c.put(id, d); } } : c; } }));

@@ -74,13 +74,6 @@ export function scorecardsQuery(marts: ChartMart[], filter: TraverseFilter[], co
 /** The one scorecard query of a grid, for Table and for Charts: both ask with this, so one billed read answers both and its cache key is shared. */
 export const scoreQuery = (cf: ChartFields, filter: TraverseFilter[], ranges: Field[] = []): TraverseOptions | null => scorecardsQuery(cf.marts, filter, cf.counter, ranges);
 
-/** A rule that the scorecard query was built without: a slice needs an explicit column list, which a mart with no metric and no countable field cannot give it. The read would be unfiltered. */
-export const scoreRulesLost = (filter: TraverseFilter[], o: TraverseOptions | null): boolean =>
-  !!o && filter.filter((f) => f.placement === 'pre-join').length !== (o.filter ?? []).filter((f) => f.placement === 'pre-join').length;
-
-/** The same ask with no metric: what the counts need and nothing else. A cached read of the same rules that holds these counts answers it. */
-export const countsOf = (o: TraverseOptions): TraverseOptions => ({ ...(o.uniqueCount ? { uniqueCount: o.uniqueCount } : {}), ...(o.filter ? { filter: o.filter } : {}) });
-
 export function rangeQuery(date: Field, filter: TraverseFilter[]): TraverseOptions {
   return withFilter({ column: [date.name], aggregation: [{ column: date.name, function: 'MIN' }, { column: date.name, function: 'MAX' }] }, filter);
 }
