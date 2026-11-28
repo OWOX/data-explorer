@@ -122,7 +122,7 @@ function CountBadge({ count, countable, onRetry }: { count: CountState; countabl
     );
   }
   if (count.value === null) {
-    return <Tooltip content="Can't count records: this data mart has no primary key and no text or boolean field."><span className="dm-badge">—</span></Tooltip>;
+    return <Tooltip content="Can't count rows: this data mart has no field that can be read."><span className="dm-badge">—</span></Tooltip>;
   }
   return <Tooltip content={recordsLabel(num(count.value))}><span className={`dm-badge${count.stale ? ' dm-stale' : ''}`} aria-busy={count.stale || undefined}>{recordsLabel(compactNumber(count.value))}</span></Tooltip>;
 }

@@ -55,7 +55,7 @@ export function useCardStatus(model: Model | null, visibleIds: string[], modelVe
     // A recount keeps the card's previous count on screen, dimmed; a first count has none to show.
     setCounts((c) => { const was = c.get(id); return new Map(c).set(id, recount && was?.state === 'ok' && was.value !== null ? { ...was, stale: true } : { state: 'loading' }); });
     return schemas.get(id)
-      .then((s) => (recount ? counter.recount(id, s) : counter.count(id, s)))
+      .then((s) => (recount ? counter.recount(id, s) : counter.count(id, s, lastModel.current?.marts.get(id)?.dataLastUpdatedAt ?? null)))
       .then(
         (value) => { if (current()) setCounts((c) => new Map(c).set(id, { state: 'ok', value })); },
         (e) => { if (current()) setCounts((c) => new Map(c).set(id, { state: 'error', message: errorMessage(e) })); },

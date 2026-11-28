@@ -1,8 +1,9 @@
 import { vi } from 'vitest';
 import type { Ctx, Row, Traversal } from '../sdk/types';
 
-export function traversalOf(rows: Row[], chunk = 2): Traversal {
+export function traversalOf(rows: Row[], chunk = 2, totalRowCount?: number): Traversal {
   return {
+    totalRowCount,
     async *rowChunks() { for (let i = 0; i < rows.length; i += chunk) yield rows.slice(i, i + chunk); },
     cancel: vi.fn(async () => {}),
   };

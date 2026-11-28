@@ -8,8 +8,8 @@ import { demoFixtures } from '../../sdk/mock/fixtures';
 import { AppServices, StoreProvider, useStore, type Action, type GridState } from '../../state/store';
 import { App } from '../App';
 
-// Every traverseData call is a billed warehouse run. The card's own count is `{ uniqueCount: [''] }` and nothing else.
-const isCardCount = (q: TraverseOptions) => Object.keys(q).length === 1 && q.uniqueCount?.length === 1 && q.uniqueCount[0] === '';
+// Every traverseData call is a billed warehouse run. The card's own count is one column, `limit: 1` and `includeTotalRowCount`, and nothing else.
+const isCardCount = (q: TraverseOptions) => Object.keys(q).length === 3 && q.column?.length === 1 && q.limit === 1 && q.includeTotalRowCount === true;
 
 function setup(grid: GridState, opts: { noKey?: boolean; calc?: boolean; hiddenKey?: boolean } = {}) {
   const fixtures = structuredClone(demoFixtures());
@@ -25,9 +25,9 @@ function setup(grid: GridState, opts: { noKey?: boolean; calc?: boolean; hiddenK
     ...base,
     owox: { ...base.owox, dataMarts: { ...base.owox.dataMarts, traverseData: (id, o) => {
       if (id === 'orders') queries.push(o);
-      if (id === 'orders' && o.includeTotalRowCount && state.fail) return Promise.reject(new Error('read failed'));
-      const done = id === 'orders' && o.includeTotalRowCount ? real(id, o).then((r) => ({ ...r, totalRowCount: state.total })) : real(id, o);
-      return id === 'orders' && o.includeTotalRowCount && state.gate ? state.gate.then(() => done) : done;
+      if (id === 'orders' && o.includeTotalRowCount && !isCardCount(o) && state.fail) return Promise.reject(new Error('read failed'));
+      const done = id === 'orders' && o.includeTotalRowCount && !isCardCount(o) ? real(id, o).then((r) => ({ ...r, totalRowCount: state.total })) : real(id, o);
+      return id === 'orders' && o.includeTotalRowCount && !isCardCount(o) && state.gate ? state.gate.then(() => done) : done;
     } } },
   };
   function Probe() {

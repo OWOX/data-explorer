@@ -30,7 +30,7 @@ test('a card is counted only once it asks, 4 at a time', async () => {
     running++; peak = Math.max(peak, running);
     await new Promise((r) => setTimeout(r, 5));
     running--;
-    return traversalOf([{ 'Unique Count': 7 }]);
+    return traversalOf([{ day: 'x' }], 2, 7);
   });
   const { result } = renderHook(() => useCardStatus(modelOf(ids), ids, 0), { wrapper: setup(traverseData) });
 
@@ -48,7 +48,7 @@ test('a card is counted only once it asks, 4 at a time', async () => {
 test('a refresh that fails leaves counts and data quality as they were, and shows no spinner', async () => {
   const ids = ['a', 'b'];
   const model = modelOf(ids);
-  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
+  const traverseData = vi.fn(async () => traversalOf([{ day: 'x' }], 2, 7));
   const wrapper = setup(traverseData);
   const { result, rerender } = renderHook(({ version }) => useCardStatus(model, ids, version), { wrapper, initialProps: { version: 0 } });
   act(() => ids.forEach((id) => result.current.request(id)));
@@ -70,7 +70,7 @@ test('a successful refresh recounts what was shown, keeping the old number until
   let release: () => void = () => {};
   const traverseData = vi.fn(async () => {
     if (value === 9) await new Promise<void>((r) => { release = r; });
-    return traversalOf([{ 'Unique Count': value }]);
+    return traversalOf([{ day: 'x' }], 2, value);
   });
   const wrapper = setup(traverseData);
   const { result, rerender } = renderHook(({ model, version }) => useCardStatus(model, ids, version), { wrapper, initialProps: { model: modelOf(ids), version: 0 } });
@@ -88,7 +88,7 @@ test('a successful refresh recounts what was shown, keeping the old number until
 test('after a failed reload, a changed visible set neither recounts nor reloads; a later new model refreshes once', async () => {
   const ids = ['a', 'b'];
   const model = modelOf(ids);
-  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
+  const traverseData = vi.fn(async () => traversalOf([{ day: 'x' }], 2, 7));
   const { result, rerender } = renderHook(({ m, v, vis }) => useCardStatus(m, vis, v), { wrapper: setup(traverseData), initialProps: { m: model, v: 0, vis: ids } });
   act(() => ids.forEach((id) => result.current.request(id)));
   await waitFor(() => expect(result.current.counts.get('b')).toEqual({ state: 'ok', value: 7 }));
@@ -106,7 +106,7 @@ test('after a failed reload, a changed visible set neither recounts nor reloads;
 
 test('a card first seen after a refresh still goes through the count cache', async () => {
   const ids = ['a', 'b'];
-  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
+  const traverseData = vi.fn(async () => traversalOf([{ day: 'x' }], 2, 7));
   const base = stubCtx({
     dataMarts: { list: vi.fn(), traverseData },
     getJson: async () => ({ id: 'x', schema: { fields: [{ name: 'id', type: 'INT64', isPrimaryKey: true }] } }),
@@ -133,7 +133,7 @@ test('a refresh while counts are queued or in flight counts each card once per g
     perId.set(id, (perId.get(id) ?? 0) + 1);
     const v = value;
     await new Promise<void>((r) => releases.push(r));
-    return traversalOf([{ 'Unique Count': v }]);
+    return traversalOf([{ day: 'x' }], 2, v);
   });
   const { result, rerender } = renderHook(({ m, v }) => useCardStatus(m, ids, v), {
     wrapper: setup(traverseData as never), initialProps: { m: modelOf(ids), v: 0 },
@@ -153,7 +153,7 @@ test('a refresh while counts are queued or in flight counts each card once per g
 test('a queued card shows queued, and a request for a card that left the band is dropped so the visible one counts first', async () => {
   const ids = Array.from({ length: 12 }, (_, i) => `m${i}`);
   const gates: (() => void)[] = [];
-  const traverseData = vi.fn(() => new Promise<ReturnType<typeof traversalOf>>((r) => { gates.push(() => r(traversalOf([{ 'Unique Count': 7 }]))); }));
+  const traverseData = vi.fn(() => new Promise<ReturnType<typeof traversalOf>>((r) => { gates.push(() => r(traversalOf([{ day: 'x' }], 2, 7))); }));
   const model = modelOf(ids);
   const { result, rerender } = renderHook(({ vis }) => useCardStatus(model, vis, 0), { wrapper: setup(traverseData), initialProps: { vis: ids } });
   act(() => ids.forEach((id) => result.current.request(id)));
@@ -182,7 +182,7 @@ test('a bare node of the join tree is counted once it is in the ids, and stays i
     { aliasPath: 'a.c', martId: 'c', label: 'c', depth: 2, fields: [{ name: 'a__c__name', alias: 'name', type: 'STRING', category: 'string', description: null, isPrimaryKey: false, joined: { martId: 'c', label: 'c', aliasPath: 'a.c', originalName: 'name' } }], uniqueCount: true, mainGrainCollapse: 'collapses', mainGrainMultiplication: 'unknown' },
   ]);
   const model = modelOf(['main', 'a', 'c']);
-  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 5 }]));
+  const traverseData = vi.fn(async () => traversalOf([{ day: 'x' }], 2, 5));
   const wrapper = setup(traverseData);
   const without = renderHook(() => useCardStatus(model, ['main', 'c'], 0), { wrapper });
   act(() => without.result.current.request('a'));
@@ -199,7 +199,7 @@ test('a bare node of the join tree is counted once it is in the ids, and stays i
 test('a refresh dims every recounted card at once, also the ones still waiting in the queue behind the first 4', async () => {
   const ids = Array.from({ length: 8 }, (_, i) => `m${i}`);
   let gate: Promise<void> | null = null;
-  const traverseData = vi.fn(async () => { await gate; return traversalOf([{ 'Unique Count': 7 }]); });
+  const traverseData = vi.fn(async () => { await gate; return traversalOf([{ day: 'x' }], 2, 7); });
   const { result, rerender } = renderHook(({ model, version }) => useCardStatus(model, ids, version), { wrapper: setup(traverseData), initialProps: { model: modelOf(ids), version: 0 } });
   act(() => ids.forEach((id) => result.current.request(id)));
   await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
@@ -217,7 +217,7 @@ test('a refresh dims every recounted card at once, also the ones still waiting i
 test('a recount dropped from the queue because its card left view is no longer dimmed', async () => {
   const ids = Array.from({ length: 8 }, (_, i) => `m${i}`);
   let gate: Promise<void> | null = null;
-  const traverseData = vi.fn(async () => { await gate; return traversalOf([{ 'Unique Count': 7 }]); });
+  const traverseData = vi.fn(async () => { await gate; return traversalOf([{ day: 'x' }], 2, 7); });
   const { result, rerender } = renderHook(({ model, version, vis }) => useCardStatus(model, vis, version), { wrapper: setup(traverseData), initialProps: { model: modelOf(ids), version: 0, vis: ids } });
   act(() => ids.forEach((id) => result.current.request(id)));
   await waitFor(() => expect(result.current.counts.get('m7')).toEqual({ state: 'ok', value: 7 }));
@@ -238,7 +238,7 @@ test('an offered count replaces a queued read: it never runs, and the card shows
   const ids = Array.from({ length: 6 }, (_, i) => `m${i}`);
   const releases: (() => void)[] = [];
   const called: string[] = [];
-  const traverseData = vi.fn(async (id: string) => { called.push(id); await new Promise<void>((r) => releases.push(r)); return traversalOf([{ 'Unique Count': 7 }]); });
+  const traverseData = vi.fn(async (id: string) => { called.push(id); await new Promise<void>((r) => releases.push(r)); return traversalOf([{ day: 'x' }], 2, 7); });
   const { result } = renderHook(() => useCardStatus(modelOf(ids), ids, 0), { wrapper: setup(traverseData as never) });
   act(() => ids.forEach((id) => result.current.request(id))); // 4 in flight, m4 and m5 queued
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(4));
@@ -252,7 +252,7 @@ test('an offered count replaces a queued read: it never runs, and the card shows
 
 test('an offered count is not overwritten by a read already running, and a later request reads nothing', async () => {
   const releases: (() => void)[] = [];
-  const traverseData = vi.fn(async () => { await new Promise<void>((r) => releases.push(r)); return traversalOf([{ 'Unique Count': 7 }]); });
+  const traverseData = vi.fn(async () => { await new Promise<void>((r) => releases.push(r)); return traversalOf([{ day: 'x' }], 2, 7); });
   const { result } = renderHook(() => useCardStatus(modelOf(['a']), ['a'], 0), { wrapper: setup(traverseData as never) });
   act(() => result.current.request('a'));
   await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
@@ -266,7 +266,7 @@ test('an offered count is not overwritten by a read already running, and a later
 });
 
 test('after an offer, request reads nothing', async () => {
-  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
+  const traverseData = vi.fn(async () => traversalOf([{ day: 'x' }], 2, 7));
   const { result } = renderHook(() => useCardStatus(modelOf(['a']), ['a'], 0), { wrapper: setup(traverseData) });
   act(() => result.current.offer('a', 5));
   act(() => result.current.request('a'));
@@ -288,7 +288,7 @@ test('an offered count is stored for 24 h like a measured one', async () => {
 });
 
 test('hold dims a card that has a count and adds no read; offer clears it', async () => {
-  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
+  const traverseData = vi.fn(async () => traversalOf([{ day: 'x' }], 2, 7));
   const { result } = renderHook(() => useCardStatus(modelOf(['a']), ['a'], 0), { wrapper: setup(traverseData) });
   act(() => result.current.request('a'));
   await waitFor(() => expect(result.current.counts.get('a')).toEqual({ state: 'ok', value: 7 }));
