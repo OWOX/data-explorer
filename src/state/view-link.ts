@@ -1,5 +1,6 @@
 import { MAX_FOUND } from '../config';
 import type { ColumnFilter, FilterValue } from '../filters/build';
+import { formatListText } from '../filters/list-text';
 import { isOpId } from '../filters/catalogue';
 import { cleanChartSettings } from '../api/chart-settings';
 import { newChartId, type ChartSettings } from '../charts/settings';
@@ -164,7 +165,7 @@ const isFilterValue = (v: unknown): boolean =>
 
 /**
  * One rule from its tuple: a filter is [column, op, value?, fn?, 1?]; a slice is [column, op, value?, 1?]. A null value or function is an empty slot before a later one.
- * A trailing 1 is the old list flag: such an eq / neq read as is any of / is none of, so it decodes as `in` / `not_in`. New links never write it. Null when the tuple is malformed.
+ * A trailing 1 is the old list flag: such an eq / neq read as is any of / is none of, so it decodes as `in` / `not_in`. Those values were plain comma text where a quote was a literal character, so they are split plainly and written back as list text (a quote is then quoted). New links never write it. Null when the tuple is malformed.
  */
 export function decodeRule(e: unknown, withFn: boolean, name: (c: unknown) => string | null): ColumnFilter | null {
   const arity = Array.isArray(e) ? e.length : 0;
@@ -181,7 +182,7 @@ export function decodeRule(e: unknown, withFn: boolean, name: (c: unknown) => st
   if (!ok) return null;
   if (value !== undefined && value !== null) entry.value = value;
   if (isAggFn(fn)) entry.fn = fn;
-  if (listFlag === 1 && typeof entry.value === 'string' && (entry.op === 'eq' || entry.op === 'neq')) entry.op = entry.op === 'eq' ? 'in' : 'not_in';
+  if (listFlag === 1 && typeof entry.value === 'string' && (entry.op === 'eq' || entry.op === 'neq')) { entry.op = entry.op === 'eq' ? 'in' : 'not_in'; entry.value = formatListText(entry.value.split(',').map((t) => t.trim()).filter(Boolean)); }
   return entry;
 }
 

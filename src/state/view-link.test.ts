@@ -400,5 +400,7 @@ describe('list rules in a link', () => {
     expect(decodeRule(['a', 'neq', 'x, y', null, 1], true, name)).toEqual({ field: 'a', op: 'not_in', value: 'x, y' });
     expect(decodeRule(['a', 'eq', 'x, y', 1], false, name)).toEqual({ field: 'a', op: 'in', value: 'x, y' });
     expect(decodeRule(['a', 'eq', 'x, y'], false, name)).toEqual({ field: 'a', op: 'eq', value: 'x, y' });
+    // Old list values were plain comma text: a quote in one was a literal character, so it is written back quoted.
+    expect(decodeRule(['a', 'eq', 'say "hi", b', null, 1], true, name)).toEqual({ field: 'a', op: 'in', value: '"say ""hi""", b' });
   });
 });

@@ -1,5 +1,5 @@
 import { buildReportPayload } from '../api/exports';
-import type { ColumnFilter } from '../filters/build';
+import { toTraverseFilter, type ColumnFilter } from '../filters/build';
 import type { Field, Schema } from '../model/types';
 import type { GridState } from '../state/store';
 import { PAGE_SIZE } from '../config';
@@ -65,10 +65,12 @@ describe('round trip with buildReportPayload', () => {
 });
 
 describe('fromTraverseFilter', () => {
-  test('in and not_in stay in / not_in; a text value with a comma is unsupported', () => {
+  test('in and not_in stay in / not_in; a text value with a comma or a quote is written in quotes', () => {
     expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['a', 'b'] }, name)).toEqual({ field: 'name', op: 'in', value: 'a, b' });
     expect(fromTraverseFilter({ column: 'name', operator: 'not_in', value: ['a', 'b'] }, name)).toEqual({ field: 'name', op: 'not_in', value: 'a, b' });
-    expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['a,b', 'c'] }, name)).toBeNull();
+    expect(fromTraverseFilter({ column: 'name', operator: 'in', value: ['Acme, Inc.', 'c'] }, name)).toEqual({ field: 'name', op: 'in', value: '"Acme, Inc.", c' });
+    expect(fromTraverseFilter({ column: 'name', operator: 'not_in', value: ['a"b', ' x'] }, name)).toEqual({ field: 'name', op: 'not_in', value: '"a""b", " x"' });
+    expect(toTraverseFilter(fromTraverseFilter({ column: 'name', operator: 'in', value: ['Acme, Inc.', 'c'] }, name)!, name)).toEqual({ column: 'name', operator: 'in', value: ['Acme, Inc.', 'c'] });
   });
   test('in on a number and on a date reads back as a list; numbers must be numbers', () => {
     expect(fromTraverseFilter({ column: 'amount', operator: 'in', value: [1, 2] }, amount)).toEqual({ field: 'amount', op: 'in', value: '1, 2' });

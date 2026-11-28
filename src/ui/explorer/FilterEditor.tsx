@@ -1,7 +1,8 @@
 import { Check, Trash2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { DATE_PRESETS, RELATIVE_MAX_N, RELATIVE_PRESETS, RELATIVE_UNITS, fromRule, isDateTimeField, isPreset, operatorsFor, toRule, type OpId, type RelativeUnit } from '../../filters/catalogue';
-import { canSuggest, keepsPicks, tokensOf } from '../../filters/valueSuggest';
+import { formatListValue, parseListText } from '../../filters/list-text';
+import { canSuggest, keepsPicks } from '../../filters/valueSuggest';
 import { isComplete, type ColumnFilter, type FilterValue } from '../../filters/build';
 import { columnTitle } from '../../model/fieldLabel';
 import type { Field } from '../../model/types';
@@ -119,13 +120,13 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
   const [base, setBase] = useState<string | null | undefined>(undefined);
   const [, setLoadedTick] = useState(0);
   const loadedValues = values && canSuggest(field) ? values.cache.get(values.key) : undefined;
-  const seed = value?.op === op && (op === 'contains' || op === 'not_contains') && typeof value.value === 'string' && !value.value.includes(',') ? value.value : null;
+  const seed = value?.op === op && (op === 'contains' || op === 'not_contains') && typeof value.value === 'string' && formatListValue(value.value) === value.value ? value.value : null;
   const eb = base !== undefined ? base : seed !== null && (loadedValues?.includes(seed) || values?.loaded?.includes(seed)) ? seed : null;
   const inPick = eb !== null && typeof val === 'string' && keepsPicks(eb, val);
   // A second value in a contains text built by picks (or typed after them) makes it the list form: the operator becomes is any of / is none of.
-  if (inPick && op in TO_LIST && typeof val === 'string' && tokensOf(val).length >= 2) { setOp(TO_LIST[op]!); setBase(null); }
+  if (inPick && op in TO_LIST && typeof val === 'string' && parseListText(val).length >= 2) { setOp(TO_LIST[op]!); setBase(null); }
   // Under contains the text built by picks has no separator left over: "Ukraine," is the one value "Ukraine".
-  const sent = inPick && op in TO_LIST && typeof val === 'string' ? tokensOf(val).join(', ') : val;
+  const sent = inPick && op in TO_LIST && typeof val === 'string' ? parseListText(val).join(', ') : val;
   const draft: ColumnFilter = { field: field.name, op, ...(def.value === 'none' ? {} : { value: sent }) };
   const range = (val ?? { from: '', to: '' }) as { from: string; to: string };
   const rel = (val ?? { kind: 'today' }) as RelativeDatePreset;

@@ -1,7 +1,7 @@
 import type { Field } from '../model/types';
 import { isDayType } from '../model/field-category';
 import { zonesBuckets } from '../model/aggregation';
-import { tokensOf } from './valueSuggest';
+import { formatListText, parseListText } from './list-text';
 import type { RelativeDatePreset } from '../sdk/types';
 
 const OP_IDS = ['contains', 'not_contains', 'eq', 'neq', 'in', 'not_in', 'starts_with', 'ends_with', 'regex', 'not_regex', 'gt', 'gte', 'lt', 'lte', 'between', 'on', 'before', 'after', 'relative', 'is_true', 'is_false', 'is_blank', 'is_not_blank'] as const;
@@ -168,7 +168,7 @@ export function describeFilter(field: Field, filter: { op: OpId; value?: unknown
   if (filter.op === 'relative') return filter.value && typeof filter.value === 'object' && 'kind' in filter.value ? presetName(filter.value as RelativeDatePreset) : 'relative';
   const label = operatorsFor(field).find((o) => o.id === filter.op)?.label ?? filter.op;
   const v = filter.value;
-  if ((filter.op === 'in' || filter.op === 'not_in') && typeof v === 'string') return `${label} ${tokensOf(v).join(', ')}`;
+  if ((filter.op === 'in' || filter.op === 'not_in') && typeof v === 'string') return `${label} ${formatListText(parseListText(v))}`;
   if (v === undefined || v === null || v === '') return label;
   if (typeof v === 'object' && 'from' in v) { const r = v as { from: unknown; to: unknown }; const text = `${label} ${String(r.from)} and ${String(r.to)}`; return zonesBuckets(field) && [r.from, r.to].every((x) => typeof x === 'string' && ZONED_BOUND.test(x)) ? `${text} (UTC)` : text; }
   return `${label} ${String(v)}`;

@@ -92,3 +92,33 @@ describe('keepsPicks', () => {
 test('mergeValues keeps the first list first and drops repeats', () => {
   expect(mergeValues(['b', 'a'], ['a', 'c'])).toEqual(['b', 'a', 'c']);
 });
+
+describe('quoted values', () => {
+  const all = ['Acme, Inc.', 'Acme', 'say "hi"', 'Beta'];
+  test('narrowing by the last piece ignores commas inside quotes, open or closed', () => {
+    expect(lastToken('"Acme, I')).toBe('Acme, I');
+    expect(narrow(all, '"Acme, I')).toEqual(['Acme, Inc.']);
+    expect(narrow(all, 'Beta, "Acme, I')).toEqual(['Acme, Inc.']);
+    expect(lastToken('"Acme, Inc.", Be')).toBe('Be');
+    expect(narrow(all, '"Acme, Inc.", ')).toEqual(['Acme', 'say "hi"', 'Beta']);
+  });
+  test('a value already picked is found by its parsed value', () => {
+    expect(narrow(all, '"Acme, Inc.", Be')).not.toContain('Acme, Inc.');
+    expect(addValue('"Acme, Inc.", ', 'acme, inc.')).toBe('"Acme, Inc."');
+  });
+  test('a pick with a comma or a quote is added quoted', () => {
+    expect(addValue('', 'Acme, Inc.')).toBe('"Acme, Inc."');
+    expect(addValue('Beta, ', 'say "hi"')).toBe('Beta, "say ""hi"""');
+    expect(addValue(closePick('"Acme, Inc."', '"Acme, Inc."'), 'Beta')).toBe('"Acme, Inc.", Beta');
+    expect(addValue('Beta, "Acme, I', 'Acme, Inc.')).toBe('Beta, "Acme, Inc."');
+  });
+  test('keepsPicks compares parsed values', () => {
+    expect(keepsPicks('"Acme, Inc.", ', '"Acme, Inc.", Be')).toBe(true);
+    expect(keepsPicks('"Acme, Inc.", ', '"Acme, Inc." , Be')).toBe(true);
+    expect(keepsPicks('"Acme, Inc.", ', 'Acme, Inc., Be')).toBe(false);
+    expect(keepsPicks('"Acme, Inc."', '"Acme, Inc."')).toBe(true);
+  });
+  test('toTraverseFilter reads quoted values and a doubled quote', () => {
+    expect(toTraverseFilter({ field: 'country', op: 'in', value: '"Acme, Inc.", "a""b", x' }, f())).toEqual({ column: 'country', operator: 'in', value: ['Acme, Inc.', 'a"b', 'x'] });
+  });
+});

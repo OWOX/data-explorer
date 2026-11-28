@@ -164,6 +164,11 @@ describe('is any of / is none of', () => {
     expect(isComplete({ field: 'status', op: 'in', value: many(500) }, str)).toBe(true);
     expect(isComplete({ field: 'status', op: 'in', value: many(501) }, str)).toBe(false);
   });
+  test('the 500 cap counts parsed values, not commas', () => {
+    const quoted = (n: number) => Array.from({ length: n }, (_, i) => `"v, ${i}"`).join(', ');
+    expect(isComplete({ field: 'status', op: 'in', value: quoted(500) }, str)).toBe(true);
+    expect(isComplete({ field: 'status', op: 'in', value: quoted(501) }, str)).toBe(false);
+  });
   test('a regex that does not compile is incomplete', () => {
     expect(isComplete({ field: 'status', op: 'regex', value: '^a(' }, str)).toBe(false);
     expect(isComplete({ field: 'status', op: 'not_regex', value: '[' }, str)).toBe(false);

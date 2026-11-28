@@ -1,6 +1,7 @@
 import { AGG_LABELS, BUCKET_LABELS, type Aggregation } from '../model/aggregation';
 import { presetName } from '../filters/catalogue';
 import type { ColumnFilter } from '../filters/build';
+import { parseListText } from '../filters/list-text';
 import type { SortKey } from '../model/sort';
 import type { Schema } from '../model/types';
 import type { RelativeDatePreset } from '../sdk/types';
@@ -46,7 +47,7 @@ export function filterSentence(f: ColumnFilter): string {
     return `${field} is in ${name.startsWith('last') ? 'the ' : ''}${name}`;
   }
   if ((f.op === 'in' || f.op === 'not_in') && typeof f.value === 'string') {
-    const values = f.value.split(',').map((v) => v.trim()).filter(Boolean).map(quoted).join(', ');
+    const values = parseListText(f.value).map(quoted).join(', ');
     return `${field} ${WORDS[f.op]} ${values}`;
   }
   const word = WORDS[f.op] ?? f.op;

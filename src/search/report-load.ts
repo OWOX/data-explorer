@@ -1,4 +1,5 @@
 import { PAGE_SIZE } from '../config';
+import { formatListText } from '../filters/list-text';
 import { havingField, sliceField } from '../filters/slice';
 import { isComplete, type ColumnFilter, type FilterValue } from '../filters/build';
 import { isDateTimeField, operatorsFor, RELATIVE_PRESETS, type OpId } from '../filters/catalogue';
@@ -70,9 +71,9 @@ export function fromTraverseFilter(rule: unknown, field: Field): ColumnFilter | 
     const vals = rule.value;
     const ok = field.category === 'number'
       ? vals.every((x) => typeof x === 'number' && Number.isFinite(x))
-      : vals.every((x) => typeof x === 'string' && x.trim() !== '' && !x.includes(','));
+      : vals.every((x) => typeof x === 'string' && x.trim() !== '');
     if (!ok) return null;
-    const listed: ColumnFilter = { field: field.name, op, value: vals.join(', ') };
+    const listed: ColumnFilter = { field: field.name, op, value: formatListText(vals as (string | number)[]) };
     return isComplete(listed, field) ? listed : null;
   }
   const op = opFor(rule.operator, field);

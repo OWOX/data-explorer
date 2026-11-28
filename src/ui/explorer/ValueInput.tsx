@@ -1,5 +1,6 @@
 import { RotateCw } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { formatListValue } from '../../filters/list-text';
 import { LIST_OPS, addValue, closePick, lastToken, mergeValues, narrow } from '../../filters/valueSuggest';
 import { Panel } from './MenuParts';
 
@@ -56,9 +57,8 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
 
   // Pick mode lasts while the picked text is still there; typing after it narrows by the text after the last comma.
   const list = LIST_OPS.has(op) || (PICKS.has(op) && inPick);
-  // A value with a comma would read as two in a list, so it is not offered there.
   const pool = mergeValues(source?.loaded ?? [], loaded ?? []);
-  const known = pool.filter((o) => !o.includes(','));
+  const known = pool;
   // The text as the last pick left it, or as the editor opened it, is a finished pick: the next pick follows it. Typed text narrows by its last piece, and a pick replaces that piece.
   const text = list ? closePick(value, finished) : value;
   const options = list
@@ -77,11 +77,14 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
   const at = Math.min(hot, rows - 1);
   const onReload = !!loaded && at === options.length;
   const pick = (v: string) => {
-    // A value with a comma cannot join a list: it replaces the text.
-    if (PICKS.has(op) && !v.includes(',')) {
-      const next = addValue(inPick ? text : '', v);
+    if (PICKS.has(op) && inPick) {
+      const next = addValue(text, v);
       setFinished(next);
       onChange(next, next);
+    } else if (PICKS.has(op)) {
+      // The first pick under contains is the raw value. One that list text would quote (a comma, a quote) cannot start a list, so it has no base ('').
+      setFinished(v);
+      onChange(v, formatListValue(v) === v ? v : '');
     } else {
       const next = LIST_OPS.has(op) ? addValue(text, v) : v;
       setFinished(next);
@@ -100,7 +103,7 @@ export function ValueInput({ op, value, onChange, source, className, inPick = fa
 
   return (
     <>
-      <input ref={setAnchor} aria-label="Value" className={className} type="text" value={value} autoComplete="off"
+      <input ref={setAnchor} aria-label="Value" className={className} type="text" value={value} autoComplete="off" placeholder={LIST_OPS.has(op) ? 'Put a value with a comma in "quotes"' : undefined}
         {...(source ? { role: 'combobox', 'aria-autocomplete': 'list' as const, 'aria-expanded': shown, 'aria-controls': listed && options.length ? id : undefined, 'aria-activedescendant': listed && at >= 0 ? (onReload ? `${id}-reload` : `${id}-${at}`) : undefined } : {})}
         onChange={(e) => { onChange(e.target.value); setOpen(true); setHot(-1); setKeyed(false); start(); }}
         onFocus={() => { setOpen(true); setTouched(true); start(); }}

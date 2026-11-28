@@ -587,3 +587,49 @@ test('the first read asks for a kept answer, a reload asks for a fresh one', asy
   await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
   expect(load.mock.calls[1]![1]).toBe(true);
 });
+
+test('a known value with a comma is offered in a list and added quoted; typing narrows inside the open quote', async () => {
+  render(<Harness src={source(loadOf(['Acme, Inc.', 'Acme', 'Beta']))} />);
+  await userEvent.click(input());
+  await waitFor(() => expect(options()).toEqual(['Acme, Inc.', 'Acme', 'Beta']));
+  await userEvent.click(screen.getByRole('option', { name: 'Acme, Inc.' }));
+  expect(input().value).toBe('"Acme, Inc."');
+  await waitFor(() => expect(options()).toEqual(['Acme', 'Beta']));
+  await userEvent.click(screen.getByRole('option', { name: 'Beta' }));
+  expect(input().value).toBe('"Acme, Inc.", Beta');
+  await userEvent.clear(input());
+  await userEvent.type(input(), '"Acme, I');
+  expect(options()).toEqual(['Acme, Inc.']);
+});
+
+test('the list input hints at quoting, other operators do not', () => {
+  const { rerender } = render(<Harness src={source(loadOf([]))} />);
+  expect(input().placeholder).toMatch(/quotes/);
+  rerender(<Harness op="eq" src={source(loadOf([]))} />);
+  expect(input().placeholder).toBe('');
+});
+
+test('under contains a pick with a comma replaces the text with the raw value; the next pick after plain ones is quoted', async () => {
+  const onApply = vi.fn();
+  render(<FilterEditor field={country} value={undefined} onApply={onApply} onClear={vi.fn()} values={source(loadOf(['Acme, Inc.', 'Beta', 'Gamma']))} />);
+  await userEvent.selectOptions(op(), 'contains');
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'Acme, Inc.' }));
+  expect(input().value).toBe('Acme, Inc.');
+  expect(op().value).toBe('contains');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'contains', value: 'Acme, Inc.' });
+});
+
+test('the second pick under contains switches to is any of and quotes a value with a comma', async () => {
+  const onApply = vi.fn();
+  render(<FilterEditor field={country} value={undefined} onApply={onApply} onClear={vi.fn()} values={source(loadOf(['Beta', 'Acme, Inc.']))} />);
+  await userEvent.selectOptions(op(), 'contains');
+  await userEvent.click(input());
+  await userEvent.click(await screen.findByRole('option', { name: 'Beta' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'Acme, Inc.' }));
+  expect(op().value).toBe('in');
+  expect(input().value).toBe('Beta, "Acme, Inc."');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'country', op: 'in', value: 'Beta, "Acme, Inc."' });
+});
