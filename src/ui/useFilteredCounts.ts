@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { hasPrimaryKey } from '../records/relationships';
 import { cachedFiltered, countFiltered, filteredKey, forgetFiltered, rememberFiltered } from '../api/filtered-counts';
 import { COUNT_CONCURRENCY } from '../config';
 import type { GridRules } from '../filters/card-rules';
@@ -50,10 +51,17 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
   const wantedRef = useRef(wanted);
   useEffect(() => { wantedRef.current = wanted; }, [wanted]);
 
+  // A cached count made the other way (rows, or unique records) than the loaded schema now gives is no hit: it is read again. With no schema loaded the entry is trusted.
+  const hitOf = useCallback((key: string, martId: string) => {
+    const hit = cachedFiltered(ctx, key);
+    const schema = schemas.peek(martId);
+    return hit && schema && hit.unique !== hasPrimaryKey(schema) ? undefined : hit;
+  }, [ctx, schemas]);
+
   const pump = useCallback(function run() {
     while (active.current < COUNT_CONCURRENCY && queue.current.length > 0) {
       const job = queue.current.shift()!;
-      if (cachedFiltered(ctx, job.key) !== undefined) continue;
+      if (hitOf(job.key, job.martId) !== undefined) continue;
       const current = () => wantedRef.current.get(job.path)?.key === job.key && latest.current.get(job.path) === job;
       const put = (state: CountState) => { if (current()) setStatus((s) => {
         const was = s.get(job.path);
@@ -68,7 +76,7 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
         .then(({ value, unique }) => put({ state: 'ok', value, unique }), (e) => put({ state: 'error', message: errorMessage(e) }))
         .finally(() => { active.current--; run(); });
     }
-  }, [ctx, schemas]);
+  }, [ctx, schemas, hitOf]);
 
   useEffect(() => {
     queue.current = queue.current.filter((j) => wanted.get(j.path)?.key === j.key);
@@ -81,7 +89,7 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
         queue.current = queue.current.filter((j) => j.path !== path);
         continue;
       }
-      if (requested.current.get(path) === w.key || cachedFiltered(ctx, w.key) !== undefined) continue;
+      if (requested.current.get(path) === w.key || hitOf(w.key, w.martId) !== undefined) continue;
       requested.current.set(path, w.key);
       queue.current = queue.current.filter((j) => j.path !== path);
       const job = { ...w, path };
@@ -89,7 +97,7 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
       queue.current.push(job);
     }
     pump();
-  }, [ctx, wanted, tick, pump]);
+  }, [ctx, wanted, tick, pump, hitOf]);
 
   const retry = useCallback((path: string) => {
     requested.current.delete(path);
@@ -119,7 +127,7 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
     const out = new Map<string, FilteredCount>();
     for (const [path, w] of wanted) {
       if (w.rules.length === 0) { if (w.partial) out.set(path, { partial: true }); continue; }
-      const hit = cachedFiltered(ctx, w.key);
+      const hit = hitOf(w.key, w.martId);
       const was = status.get(path);
       let state: CountState;
       if (hit !== undefined) state = { state: 'ok', value: hit.n, unique: hit.unique };
@@ -129,7 +137,7 @@ export function useFilteredCounts(model: Model | null, byPath: ReadonlyMap<strin
       out.set(path, { state, partial: w.partial });
     }
     return out;
-  }, [ctx, wanted, status, tick]);
+  }, [wanted, status, tick, hitOf]);
 
   return { filtered, retry, seed, forget };
 }

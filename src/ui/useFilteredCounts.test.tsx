@@ -1,12 +1,13 @@
+import { useEffect, useMemo, useState } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { vi } from 'vitest';
-import { filteredKey } from '../api/filtered-counts';
+import { filteredKey, rememberFiltered } from '../api/filtered-counts';
 import { stubCtx, traversalOf } from '../api/test-ctx';
 import type { CardRules } from '../filters/card-rules';
 import type { Mart, Model } from '../model/types';
 import type { TraverseFilter } from '../sdk/types';
-import { AppServices, StoreProvider } from '../state/store';
+import { AppServices, StoreProvider, useServices } from '../state/store';
 import { useFilteredCounts } from './useFilteredCounts';
 
 const mart = (id: string): Mart => ({ id, title: id, description: null, icon: null, storageId: 's', contextIds: [], dataLastUpdatedAt: null, accessible: true, sourceKey: null });
@@ -242,9 +243,27 @@ test('a seeded total for a mart with a key is shown as unique records, with no r
   const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
   const model = modelOf(['a']);
   const { result, rerender } = renderHook(({ byPath }) => useFilteredCounts(model, byPath), { wrapper: setupKeyed(traverseData), initialProps: { byPath: new Map([['', rulesOf('a')]]) } });
-  await waitFor(() => expect(result.current.filtered.get('')?.state?.state).toBe('ok'));
+  await waitFor(() => expect(traverseData).toHaveBeenCalledTimes(1));
   act(() => result.current.seed(filteredKey('a', [rule(2)], null), 5, true));
   rerender({ byPath: new Map([['', rulesOf('a', 2)]]) });
   expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 5, unique: true });
   expect(traverseData).toHaveBeenCalledTimes(1);
+});
+
+test('a cached entry of the other kind than the loaded schema is read again once, and ends ok', async () => {
+  const traverseData = vi.fn(async () => traversalOf([{ 'Unique Count': 7 }]));
+  const model = modelOf(['a']);
+  const wrapper = setupKeyed(traverseData);
+  const key = filteredKey('a', [rule(1)], null);
+  const { result } = renderHook(() => {
+    const { ctx, schemas } = useServices();
+    // The schema is loaded, and the stale entry cached, before the path asks.
+    const [ready, setReady] = useState(false);
+    useEffect(() => { rememberFiltered(ctx, key, 42, false); void schemas.get('a').then(() => setReady(true)); }, [ctx, schemas]);
+    const byPath = useMemo(() => (ready ? new Map([['', rulesOf('a')]]) : null), [ready]);
+    return useFilteredCounts(model, byPath);
+  }, { wrapper });
+  await waitFor(() => expect(result.current.filtered.get('')?.state).toEqual({ state: 'ok', value: 7, unique: true }));
+  expect(traverseData).toHaveBeenCalledTimes(1);
+  expect(traverseData).toHaveBeenCalledWith('a', { uniqueCount: [''], filter: [rule(1)] });
 });
