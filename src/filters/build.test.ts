@@ -179,3 +179,21 @@ describe('is any of / is none of', () => {
     expect(toTraverseFilter({ field: 'status', op: 'not_regex', value: 'x' }, str)).toEqual({ column: 'status', operator: 'not_regex', value: 'x' });
   });
 });
+
+describe('stamps and RE2 patterns', () => {
+  const stamps = ['2024-01-01 10:00:00.123', '2024-01-01T10:00:00Z', '2024-01-01 10:00:00+02:00', '2024-01-01 10:00:00+0200', '2024-01-01 10:00:00 UTC', '2024-01-01 10:00:00.123456789Z'];
+  test('list entries on a timestamp accept a fraction and a zone, and build passes them through untouched', () => {
+    for (const s of stamps) {
+      expect(isComplete({ field: 'created_at', op: 'in', value: s }, ts)).toBe(true);
+      expect(toTraverseFilter({ field: 'created_at', op: 'in', value: `"${s}"` }, ts)).toEqual({ column: 'created_at', operator: 'in', value: [s] });
+    }
+    expect(isComplete({ field: 'created_at', op: 'in', value: '2024-01-01 10:00:00.' }, ts)).toBe(false);
+    expect(isComplete({ field: 'created_at', op: 'in', value: '2024-02-31 10:00:00Z' }, ts)).toBe(false);
+  });
+  test('regex accepts RE2 inline flags and still rejects real syntax errors', () => {
+    for (const p of ['(?i)foo', '(?s)a.b', '(?m)^a', '(?is)a', '(?i:foo)bar', '(?U)a+', 'abc'])
+      expect(isComplete({ field: 'status', op: 'regex', value: p }, str)).toBe(true);
+    for (const p of ['(', '[a-', '(?i)('])
+      expect(isComplete({ field: 'status', op: 'regex', value: p }, str)).toBe(false);
+  });
+});

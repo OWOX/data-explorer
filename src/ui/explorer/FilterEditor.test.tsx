@@ -410,3 +410,16 @@ test('switching operators starts the value over: a reopened "is US" switched to 
   await userEvent.click(await screen.findByRole('option', { name: 'USA' }));
   expect(screen.getByLabelText('Value')).toHaveValue('USA');
 });
+
+test('a loaded datetime value shows in the datetime-local input and is sent as loaded', async () => {
+  const { onApply } = open(ts, { field: 'created_at', op: 'gte', value: '2024-01-01 10:00:00' });
+  expect(screen.getByLabelText('Value')).toHaveValue('2024-01-01T10:00');
+  await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply).toHaveBeenCalledWith({ field: 'created_at', op: 'gte', value: '2024-01-01 10:00:00' });
+});
+
+test('loaded between bounds with a fraction and a zone show in the inputs', () => {
+  open(ts, { field: 'created_at', op: 'between', value: { from: '2024-01-01 10:00:00.5', to: '2024-01-02T11:30:00Z' } });
+  expect(screen.getByLabelText('From')).toHaveValue('2024-01-01T10:00');
+  expect(screen.getByLabelText('To')).toHaveValue('2024-01-02T11:30');
+});

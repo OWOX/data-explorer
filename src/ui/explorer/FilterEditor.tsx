@@ -130,6 +130,14 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
   const draft: ColumnFilter = { field: field.name, op, ...(def.value === 'none' ? {} : { value: sent }) };
   const range = (val ?? { from: '', to: '' }) as { from: string; to: string };
   const rel = (val ?? { kind: 'today' }) as RelativeDatePreset;
+  /** What a date input can show: a loaded `2024-01-01 10:00:00.5+02:00` becomes `2024-01-01T10:00:00`. The stored value stays as loaded until edited. */
+  const shown = (v: unknown, type: string) => {
+    const t = String(v ?? '');
+    if (type === 'date') return /^\d{4}-\d{2}-\d{2}[T ]/.test(t) ? t.slice(0, 10) : t;
+    if (type !== 'datetime-local') return t;
+    const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?)/.exec(t);
+    return m ? `${m[1]}T${m[2]}` : t;
+  };
   const dateType = field.category === 'time' ? 'time' : isDateTimeField(field) ? 'datetime-local' : 'date';
   // "On" a datetime column is a whole day.
   const valueType = op === 'on' && isDateTimeField(field) ? 'date' : dateType;
@@ -147,12 +155,12 @@ function OperatorForm({ field, value, onApply, onClear, note, values, startOp }:
       {def.value === 'number' && (
         <input aria-label="Value" className={input} type="number" value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />
       )}
-      {def.value === 'date' && <input aria-label="Value" className={input} type={valueType} value={String(val ?? '')} onChange={(e) => setVal(e.target.value)} />}
+      {def.value === 'date' && <input aria-label="Value" className={input} type={valueType} value={shown(val, valueType)} onChange={(e) => setVal(e.target.value)} />}
       {(def.value === 'number-range' || def.value === 'date-range') && (
         <div className="flex flex-wrap gap-2">
           {(['from', 'to'] as const).map((k) => (
             <input key={k} aria-label={k === 'from' ? 'From' : 'To'} className={`${input} !w-auto min-w-0 flex-1 basis-40`} type={def.value === 'number-range' ? 'number' : dateType}
-              value={range[k] ?? ''} onChange={(e) => setVal({ ...range, [k]: e.target.value })} />
+              value={def.value === 'date-range' ? shown(range[k], dateType) : (range[k] ?? '')} onChange={(e) => setVal({ ...range, [k]: e.target.value })} />
           ))}
         </div>
       )}

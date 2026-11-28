@@ -1,3 +1,4 @@
+import { jsRegexSource } from '../../filters/regex';
 import type { RelativeDatePreset, Row, TraverseFilter } from '../types';
 
 const day = 86_400_000;
@@ -40,7 +41,7 @@ export function matchesFilter(row: Row, f: TraverseFilter, now = new Date()): bo
       // NULL never matches a pattern, so not_regex keeps it.
       if (v == null) return f.operator === 'not_regex';
       let hit = false;
-      try { hit = new RegExp(String(f.value)).test(s); } catch { /* an invalid pattern matches nothing */ }
+      try { const r = jsRegexSource(String(f.value)); hit = new RegExp(r.source, r.flags).test(s); } catch { /* an invalid pattern matches nothing */ }
       return f.operator === 'regex' ? hit : !hit;
     }
     case 'gt': return v != null && cmp(v, f.value) > 0;

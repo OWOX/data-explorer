@@ -2,6 +2,7 @@ import type { Field, Schema } from '../model/types';
 import type { RelativeDatePreset, TraverseFilter, TraverseFilterRule } from '../sdk/types';
 import type { AggFn, AggregationRule } from '../model/aggregation';
 import { havingField, sliceField } from './slice';
+import { jsRegexSource } from './regex';
 import { parseListText } from './list-text';
 import { isDateTimeField, operatorsFor, RELATIVE_MAX_N, RELATIVE_PRESETS, type OpId } from './catalogue';
 
@@ -17,10 +18,10 @@ const numeric = (v: unknown) => filled(v) && Number.isFinite(Number(v));
 
 /** The backend's IN_LIST_MAX_VALUES. */
 const IN_LIST_MAX = 500;
-const validRegex = (v: string) => { try { new RegExp(v); return true; } catch { return false; } };
+const validRegex = (v: string) => { try { const r = jsRegexSource(v); new RegExp(r.source, r.flags); return true; } catch { return false; } };
 const realDate = (y: number, m: number, d: number) => { const dt = new Date(Date.UTC(y, m - 1, d)); return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d; };
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
-const STAMP = /^(\d{4})-(\d{2})-(\d{2})[T ]([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+const STAMP = /^(\d{4})-(\d{2})-(\d{2})[T ]([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d{1,9})?)?(Z| ?UTC|[+-]\d{2}:?\d{2})?$/;
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
 /** One in / not_in entry, as the extension's list editor checks it: a real YYYY-MM-DD (a datetime may add HH:MM(:SS)), HH:MM(:SS), a number. */
 function validEntry(x: string, field: Field): boolean {
